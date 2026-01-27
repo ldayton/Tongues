@@ -17,13 +17,7 @@ Your options:
 
 Write it once in restricted Python. Get native, human-readable code in 10+ languages. One test suite. One source of truth. Zero runtime dependencies.
 
-```
-source.py → frontend → IR → backend → target code (Go, Rust, etc)
-```
-
 Your Python code *runs*. Test with pytest, debug with pdb, iterate fast—then emit to every ecosystem.
-
-## Backends
 
 | Language   | Reference        | Homebrew         | Status      |
 |------------|------------------|------------------|-------------|
@@ -78,8 +72,8 @@ Not transpiled garbage. Idiomatic code that looks like a native wrote it:
 └─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
 ```
 
-- **Frontend**: Python AST to language-agnostic IR. All source semantics resolved here.
-- **Middleend**: Scope analysis, flow tracking, annotations. Read-only—never transforms.
+- **Frontend**: Python AST to language-agnostic intermediate representation (IR). All source semantics resolved here.
+- **Middleend**: Scope analysis, flow tracking, annotations. Read-only, never transforms the IR.
 - **Backend**: Pure syntax emission. No source knowledge, no target heuristics.
 
 ## Proof
