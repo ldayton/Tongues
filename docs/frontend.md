@@ -3,7 +3,7 @@
 The frontend (`src/frontend.py`) converts Python AST to language-agnostic IR. It handles all Python-specific semantics so backends only emit syntax.
 
 ```
-parable.py → [Python AST] → Frontend → [IR] → Middleend → Backend → target code
+source.py → [Python AST] → Frontend → [IR] → Middleend → Backend → target code
 ```
 
 ## Current State
@@ -260,3 +260,89 @@ Orchestration only:
 10. **Update imports** in `cli.py` and tests
 
 Each step should pass tests before proceeding.
+
+## Frontend Responsibilities
+
+The frontend (Python AST → IR) performs all analysis:
+
+1. **Type inference** — Resolve types from annotations and usage
+2. **Symbol resolution** — Build table of structs, methods, functions
+3. **Scope analysis** — Variable lifetimes, hoisting requirements
+4. **Ownership analysis** — Mark `Pointer.owned` for Rust/C (see Ownership Model)
+5. **Method resolution** — Fill `MethodCall.receiver_type`
+6. **Nil analysis** — `x is None` → `IsNil`
+7. **Truthiness** — `if items:` → `if len(items) > 0`
+8. **Type narrowing** — `isinstance` → `TypeSwitch` (see below)
+9. **Fallibility analysis** — Mark functions containing `raise` as `fallible=true`
+
+### Type Narrowing
+
+Convert `isinstance` chains to `TypeSwitch`:
+
+```python
+# Python source
+if isinstance(node, CommandSubstitution):
+    process(node.command)
+elif isinstance(node, ArithBinaryOp) or isinstance(node, ArithComma):
+    process_binary(node)
+```
+
+```
+// IR
+TypeSwitch {
+    expr: node
+    binding: "node"
+    cases: [
+        TypeCase { typ: StructRef("CommandSubstitution"), body: [...] }
+        TypeCase { typ: Union("", [StructRef("ArithBinaryOp"), StructRef("ArithComma")]), body: [...] }
+    ]
+}
+```
+
+**Collection element types:** When a field is annotated `list[Node]` but usage shows specific types, the frontend narrows:
+
+| Annotation          | Actual Usage          | Resolved Type                         |
+| ------------------- | --------------------- | ------------------------------------- |
+| `list[Node]`        | Only `Word` assigned  | `Slice(StructRef("Word"))`            |
+| `list[Node]`        | Mixed expansion types | `Slice(Union("Expansion", [...]))`    |
+| `ArithNode \| None` | Type alias            | `Optional(Union("ArithNode", [...]))` |
+
+Resolve Python `Union[...]` and `X | Y` type aliases to IR `Union` with explicit variants.
+
+### Type Inference
+
+Two-pass local inference. All function signatures are annotated; only local variables and expressions need inference.
+
+**Pass 1 — Symbol Collection:**
+- Struct definitions → field names and types
+- Function signatures → parameter types, return types
+- Module constants → names and types
+- Union type aliases → variant lists
+
+**Pass 2 — Expression Typing:**
+
+Traverse each function body. Compute `Expr.typ` bottom-up:
+
+| Expression | Type Rule |
+|------------|-----------|
+| `IntLit`, `FloatLit`, `StringLit`, `BoolLit` | Literal's intrinsic type |
+| `NilLit` | Context-dependent (from annotation or assignment target) |
+| `Var` | Lookup in scope: parameter type or previously inferred local |
+| `FieldAccess` | Lookup field type on struct |
+| `Index` on `Slice(T)` | `T` |
+| `Index` on `Map(K,V)` | `V` |
+| `Index` on `str` | `str` (single character) |
+| `Call` | Function's return type from symbol table |
+| `MethodCall` | Method's return type from struct definition |
+| `BinaryOp` | Fixed rules: `int + int → int`, `str + str → str`, `x == y → bool` |
+| `UnaryOp` | `!bool → bool`, `-int → int` |
+
+**Local Variable Typing:**
+
+On first assignment `x = expr`, record `x`'s type as `expr.typ`. Subsequent assignments must have compatible type (same type or subtype). Reassignment to incompatible type is a frontend error.
+
+**Narrowing Scope:**
+
+Maintain a `narrowed: dict[str, Type]` map per scope. When entering `if node.kind == "command":`, set `narrowed["node"] = StructRef("Command")`. Variable lookups check `narrowed` before declared type. On scope exit, restore previous narrowing state.
+
+**Principle:** No unification, no constraint solving. Types flow forward from annotations and initializers. This suffices because all function boundaries are annotated. See [Pierce & Turner, Local Type Inference](https://www.cis.upenn.edu/~bcpierce/papers/lti-toplas.pdf).

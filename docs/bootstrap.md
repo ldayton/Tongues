@@ -118,23 +118,23 @@ Tongues source → [Tongues-in-Tongues] → any target
 
 The transpiler transpiles itself. Changes to the core propagate to all targets automatically.
 
-## Implications for Parable
+## Current State
 
-### Current State
-
-Parable's transpiler (`transpiler/src/`) is a single-layer Python application:
+The transpiler pipeline:
 
 ```
-parable.py → [frontend.py] → IR → [middleend.py] → [backend/go.py] → parable.go
+source.py → [frontend.py] → IR → [middleend.py] → [backend/go.py] → source.go
 ```
 
-It uses `ast.parse()` directly and cannot transpile itself.
+The bootstrap layer (`bootstrap/`) handles AST parsing; the core (`src/tongues/`) is transpilable.
 
-### Migration Path
+### Verification
 
-1. **Extract to Tongues subset** — Rewrite frontend/middleend/backend without Python-specific features
-2. **Add bootstrap layer** — Move AST parsing to a separate non-transpilable module
-3. **Verify compliance** — Use `tongues verify` to ensure core code is transpilable
+Use `tongues verify` to ensure core code remains transpilable:
+
+```bash
+tongues verify src/tongues/
+```
 4. **Transpile the transpiler** — Generate Go/Rust versions of the transpiler itself
 
 ### What Changes

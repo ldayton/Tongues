@@ -425,6 +425,19 @@ s.union(other), s.intersection(other), s.difference(other)
 s.issubset(other), s.issuperset(other)
 ```
 
+## Truthiness Semantics
+
+Python's `if x:` has type-dependent meaning. Tongues restricts this to four unambiguous patterns:
+
+| Type        | Pattern     | Meaning      |
+| ----------- | ----------- | ------------ |
+| `bool`      | `if flag:`  | Boolean test |
+| `T \| None` | `if node:`  | Not None     |
+| `list[T]`   | `if items:` | Non-empty    |
+| `str`       | `if s:`     | Non-empty    |
+
+**Constraint:** No variable may have a type where truthiness is ambiguous (e.g., `list[T] | None` where `if x:` could mean "not None" or "non-empty"). Use explicit checks: `if x is not None` or `if len(x) > 0`.
+
 ## Style Recommendations
 
 ### Prefer Explicit Over Implicit

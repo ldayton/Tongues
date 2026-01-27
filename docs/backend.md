@@ -415,3 +415,103 @@ Follow the Kalai principle: implement target-specific first, then generalize.
 6. **Extract shared patterns** only when they genuinely span multiple backends
 
 Don't create abstract "shared" code until you have at least 2-3 working backends that demonstrate the pattern.
+
+## Backend Responsibilities
+
+Backends (IR → target) handle only syntax:
+
+1. **Name conversion** — snake_case → camelCase/PascalCase
+2. **Syntax emission** — IR nodes → target syntax
+3. **Error propagation** — Fallible calls: Go uses panic, Rust uses `?`, TS uses throw
+4. **Idioms** — Target-specific patterns (defer/recover, try/catch)
+5. **Formatting** — Indentation, line breaks
+
+## Memory Strategy
+
+### Rust Backend
+
+Arena allocation with single lifetime `'arena` for all AST nodes:
+
+```rust
+struct Command<'arena> {
+    words: Vec<'arena, &'arena Word<'arena>>,
+}
+```
+
+Uses `bumpalo::Bump`. Sidesteps ownership inference.
+
+### C Backend
+
+Arena allocation with ptr+len strings:
+
+```c
+typedef struct { const char *data; size_t len; } Str;
+typedef struct { char *base; char *ptr; size_t cap; } Arena;
+
+void *arena_alloc(Arena *a, size_t size);
+```
+
+No per-node `free()`. Single `arena_free()` at end.
+
+### Python Backend
+
+Emit idiomatic Python, shedding restrictions. The source is written in restricted Python for transpilation; the Python backend produces clean Pythonic output.
+
+**Easy transforms:**
+```
+lst[len(lst)-1]     →  lst[-1]
+int(a / b)          →  a // b
+a < b and b < c     →  a < b < c
+if x is None: x=[]  →  x = x or []
+TypeSwitch          →  match/case
+```
+
+**Pattern-based transforms:**
+```
+i = 0                       for i, item in enumerate(items):
+for item in items:      →       process(item)
+    process(item)
+    i += 1
+
+for i in range(len(a)):     for x, y in zip(a, b):
+    x = a[i]            →       process(x, y)
+    y = b[i]
+    process(x, y)
+```
+
+**Not recoverable** (not in IR): `**kwargs`, decorators, generators, `async`/`await`.
+
+## Ownership Model
+
+AST is a **strict tree**: parent→child only, no cycles, no shared nodes, no back-references.
+
+Nodes are immutable after construction. All nodes live until parse completion.
+
+Arena allocation with single lifetime `'arena`. No reference counting needed.
+
+**Ownership rule:** All child references are owned. No complex inference needed:
+
+| Field Pattern   | Ownership        | Rust                          | C                   |
+| --------------- | ---------------- | ----------------------------- | ------------------- |
+| `field: Node`   | Owned            | `Box<Node>` or `&'arena Node` | `Node*` (arena)     |
+| `field: [Node]` | Owned collection | `Vec<&'arena Node>`           | `NodeSlice` (arena) |
+| `field: Node?`  | Owned optional   | `Option<&'arena Node>`        | `Node*` (nullable)  |
+
+Back-references (if ever needed) would use indices, not pointers: `parent_idx: u32`.
+
+## String Handling
+
+Two string representations:
+
+```
+StringRef { start: u32, end: u32 }    // Byte range into source buffer
+ArenaStr { ptr: *const u8, len: u32 } // Arena-allocated
+```
+
+| Field type                  | Representation | Example                                     |
+| --------------------------- | -------------- | ------------------------------------------- |
+| Parameter names, delimiters | `StringRef`    | `ParamExpansion.param`, `HereDoc.delimiter` |
+| Constructed content         | `ArenaStr`     | `Word.value`, `AnsiCQuote.content`          |
+| Operator literals           | `&'static str` | `Operator.op`                               |
+
+Input buffer must outlive AST, or copy referenced ranges into arena at parse end.
