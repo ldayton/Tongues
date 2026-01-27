@@ -1,0 +1,25 @@
+[project]
+name = "tongues"
+version = "0.1.0"
+description = "Write algorithms once in Python. Get native code in every language."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+tongues = "tongues.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tongues"]
+
+[tool.ruff]
+line-length = 100
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
