@@ -4,9 +4,8 @@ import ast
 import builtins
 
 import pytest
-from tongues.verify import (
-    ALLOWED_BUILTINS, BANNED_BUILTINS, ALLOWED_NODES, BANNED_NODES, verify_source
-)
+from bootstrap.cli import verify_source
+from tongues.verify import ALLOWED_BUILTINS, BANNED_BUILTINS, ALLOWED_NODES, BANNED_NODES
 
 
 def violations(source: str) -> list[tuple[str, str]]:
