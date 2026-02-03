@@ -19,5 +19,5 @@ jobs:
           allow-prereleases: true
       - uses: extractions/setup-just@v3
       - run: sudo apt-get install -y fd-find
-      - run: ln -s "$(which fdfind)" "$HOME/.local/bin/fd"
+      - run: mkdir -p "$HOME/.local/bin" && ln -s "$(which fdfind)" "$HOME/.local/bin/fd"
       - run: just check
