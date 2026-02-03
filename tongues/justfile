@@ -1,0 +1,36 @@
+set shell := ["bash", "-o", "pipefail", "-cu"]
+
+# Verify all transpiler source is subset-compliant
+subset:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    failed=0
+    for f in $(fd -e py . src) tests/run_tests.py; do
+        if ! uv run python -m src.tongues --verify < "$f" 2>/dev/null; then
+            echo "FAIL: $f"
+            uv run python -m src.tongues --verify < "$f" 2>&1 | head -5
+            failed=1
+        fi
+    done
+    exit $failed
+
+# Run phase tests (subset/names verification)
+test-phases:
+    python3 tests/run_testsw.py tests/phases/
+
+# Run codegen tests
+test-codegen:
+    python3 tests/run_codegen_testsw.py tests/codegen/
+
+# Run all transpiler tests
+test: test-phases test-codegen
+
+# Lint (--fix to apply changes)
+lint *ARGS:
+    uvx ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
+
+# Format (--fix to apply changes)
+fmt *ARGS:
+    uvx ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} src/
+
+check: fmt lint subset test
