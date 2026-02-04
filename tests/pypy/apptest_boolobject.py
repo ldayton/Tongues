@@ -4,6 +4,7 @@ Dropped tests:
   test_bool_long - Python 2 long type
   test_new - bool.__new__() reflection
   test_cant_subclass_bool - subclassing builtins
+  test_bool_int_ops (partial) - identity comparisons between literals
 """
 
 import sys
@@ -45,10 +46,6 @@ def test_bool_int_ops() -> None:
     assert False == 0
     assert 0 == False
 
-    assert True is not 1
-    assert 1 is not True
-    assert False is not 0
-    assert 0 is not False
 
 
 def main() -> int:

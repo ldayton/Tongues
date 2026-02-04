@@ -1,6 +1,11 @@
-"""Generated Python code."""
+"""Bool object tests, adapted from PyPy's apptest_boolobject.py.
 
-from __future__ import annotations
+Dropped tests:
+  test_bool_long - Python 2 long type
+  test_new - bool.__new__() reflection
+  test_cant_subclass_bool - subclassing builtins
+  test_bool_int_ops (partial) - identity comparisons between literals
+"""
 
 import sys
 
@@ -40,16 +45,18 @@ def test_bool_int_ops() -> None:
     assert 1 == True
     assert False == 0
     assert 0 == False
-    assert True != 1
-    assert 1 != True
-    assert False != 0
-    assert 0 != False
 
 
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [("test_bool_callable", test_bool_callable), ("test_bool_string", test_bool_string), ("test_bool_int", test_bool_int), ("test_bool_ops", test_bool_ops), ("test_bool_int_ops", test_bool_int_ops)]
+    tests = [
+        ("test_bool_callable", test_bool_callable),
+        ("test_bool_string", test_bool_string),
+        ("test_bool_int", test_bool_int),
+        ("test_bool_ops", test_bool_ops),
+        ("test_bool_int_ops", test_bool_int_ops),
+    ]
     for name, fn in tests:
         try:
             fn()

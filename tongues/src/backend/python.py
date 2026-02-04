@@ -286,9 +286,11 @@ class PythonBackend:
             for s in module.structs
         )
 
-        self._line('"""Generated Python code."""')
-        self._line()
-        self._line("from __future__ import annotations")
+        doc = module.doc or "Generated Python code."
+        if "\n" in doc:
+            self._line('"""' + doc + '"""')
+        else:
+            self._line(f'"""{doc}"""')
         self._line()
 
         plain_imports: list[str] = []

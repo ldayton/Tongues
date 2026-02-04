@@ -819,7 +819,9 @@ class Verifier:
             comparator = comparators[i]
             op_type = op.get("_type", "")
             if op_type in ("Is", "IsNot"):
-                if not is_constant(left) and not is_constant(comparator):
+                if is_constant(left) and is_constant(comparator):
+                    self.error(node, "reflection", "is/is not: cannot compare two literals")
+                elif not is_constant(left) and not is_constant(comparator):
                     self.error(node, "reflection", "is/is not: requires a literal on one side")
             left = comparator
             i += 1

@@ -29,6 +29,10 @@ def transpile(source_path, out_path):
         return result.stderr.strip()
     with open(out_path, "w") as f:
         f.write(result.stdout)
+    subprocess.run(
+        ["uvx", "ruff", "format", "--quiet", out_path],
+        capture_output=True,
+    )
     return None
 
 

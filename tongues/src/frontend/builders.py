@@ -466,6 +466,12 @@ def build_module(
 
     module = Module(name="parable")
     module.hierarchy_root = hierarchy_root
+    # Extract module docstring
+    body = tree.get("body", [])
+    if body and is_type(body[0], ["Expr"]):
+        val = body[0].get("value")
+        if val and is_type(val, ["Constant"]) and isinstance(val.get("value"), str):
+            module.doc = val.get("value")
     # Build constants (module-level and class-level)
     for node in tree.get("body", []):
         if is_type(node, ["Assign"]) and len(node.get("targets", [])) == 1:
