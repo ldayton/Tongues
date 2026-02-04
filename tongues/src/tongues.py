@@ -21,6 +21,7 @@ from .backend.typescript import TsBackend
 from .backend.csharp import CSharpBackend
 from .backend.dart import DartBackend
 from .backend.php import PhpBackend
+from .backend.rust import RustBackend
 from .backend.swift import SwiftBackend
 
 BACKENDS: dict[
@@ -37,6 +38,7 @@ BACKENDS: dict[
     | type[CSharpBackend]
     | type[DartBackend]
     | type[PhpBackend]
+    | type[RustBackend]
     | type[SwiftBackend],
 ] = {
     "c": CBackend,
@@ -50,6 +52,7 @@ BACKENDS: dict[
     "php": PhpBackend,
     "python": PythonBackend,
     "ruby": RubyBackend,
+    "rust": RustBackend,
     "swift": SwiftBackend,
     "typescript": TsBackend,
 }
@@ -58,7 +61,7 @@ USAGE: str = """\
 tongues [OPTIONS] < input.py > output.go
 
 Options:
-  --target TARGET   Output language: c, csharp, dart, go, java, javascript, lua, perl, php, python, ruby, swift, typescript
+  --target TARGET   Output language: c, csharp, dart, go, java, javascript, lua, perl, php, python, ruby, rust, swift, typescript
   --verify [PATH]   Check subset compliance only, no codegen
                     PATH can be a file or directory (reads stdin if omitted)
   --help            Show this help message
@@ -169,9 +172,6 @@ def parse_args() -> tuple[str, bool, str | None]:
         else:
             print("error: unknown option: " + arg, file=sys.stderr)
             sys.exit(1)
-    if target == "rust":
-        print("error: backend 'rust' is not yet implemented", file=sys.stderr)
-        sys.exit(1)
     if target not in BACKENDS:
         print("error: unknown target: " + target, file=sys.stderr)
         sys.exit(1)

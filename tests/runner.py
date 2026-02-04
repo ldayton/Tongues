@@ -21,6 +21,7 @@ TARGETS = {
     "php": {"ext": ".php", "run": lambda p: ["php", p]},
     "c": {"ext": ".c", "run": lambda p: ["sh", "-c", f"gcc -std=c11 -o /tmp/tongues_c_test {p} -lm && /tmp/tongues_c_test"]},
     "perl": {"ext": ".pl", "run": lambda p: ["perl", p]},
+    "rust": {"ext": ".rs", "run": lambda p: ["sh", "-c", f"rustc -o /tmp/tongues_rust_test {p} && /tmp/tongues_rust_test"]},
 }
 
 
@@ -57,7 +58,10 @@ def transpile(source_path, target, out_path):
         "perl": ["perltidy", "-b", "-bext=/", out_path],
     }.get(target)
     if fmt_cmd:
-        subprocess.run(fmt_cmd, capture_output=True)
+        try:
+            subprocess.run(fmt_cmd, capture_output=True)
+        except FileNotFoundError:
+            pass
     return None
 
 
