@@ -26,7 +26,7 @@ The transpiler currently supports these target languages, although output isn't 
 | ---------- | ------------ | --------- |
 | C          | GCC 13       | Prototype |
 | C#         | .NET 8       | Prototype |
-| Dart       | Dart 3.2     | Test pass |
+| Dart       | Dart 3.2     | Prototype |
 | Go         | Go 1.21      | Prototype |
 | Java       | Temurin 21   | Prototype |
 | Javascript | Node.js 21   | Prototype |

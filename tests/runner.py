@@ -14,6 +14,13 @@ TARGETS = {
     "javascript": {"ext": ".js", "run": lambda p: ["node", p]},
     "typescript": {"ext": ".ts", "run": lambda p: ["npx", "tsx", p]},
     "ruby": {"ext": ".rb", "run": lambda p: ["ruby", p]},
+    "java": {"ext": ".java", "run": lambda p: ["java", p]},
+    "dart": {"ext": ".dart", "run": lambda p: ["dart", "run", p]},
+    "go": {"ext": ".go", "run": lambda p: ["go", "run", p]},
+    "lua": {"ext": ".lua", "run": lambda p: ["lua", p]},
+    "php": {"ext": ".php", "run": lambda p: ["php", p]},
+    "c": {"ext": ".c", "run": lambda p: ["sh", "-c", f"gcc -std=c11 -o /tmp/tongues_c_test {p} -lm && /tmp/tongues_c_test"]},
+    "perl": {"ext": ".pl", "run": lambda p: ["perl", p]},
 }
 
 
@@ -36,16 +43,21 @@ def transpile(source_path, target, out_path):
         return result.stderr.strip()
     with open(out_path, "w") as f:
         f.write(result.stdout)
-    if target == "python":
-        subprocess.run(
-            ["uvx", "ruff", "format", "--quiet", out_path],
-            capture_output=True,
-        )
-    elif target == "javascript":
-        subprocess.run(
-            ["npx", "@biomejs/biome", "format", "--write", out_path],
-            capture_output=True,
-        )
+    fmt_cmd = {
+        "python": ["uvx", "ruff", "format", "--quiet", out_path],
+        "javascript": ["npx", "@biomejs/biome", "format", "--write", out_path],
+        "typescript": ["npx", "@biomejs/biome", "format", "--write", out_path],
+        "go": ["gofmt", "-w", out_path],
+        "dart": ["dart", "format", out_path],
+        "ruby": ["rubocop", "-A", "--fail-level", "fatal", "-o", "/dev/null", out_path],
+        "java": ["java", "-jar", "/usr/local/lib/google-java-format.jar", "-i", out_path],
+        "lua": ["stylua", out_path],
+        "php": ["php-cs-fixer", "fix", "--quiet", out_path],
+        "c": ["clang-format", "-i", out_path],
+        "perl": ["perltidy", "-b", "-bext=/", out_path],
+    }.get(target)
+    if fmt_cmd:
+        subprocess.run(fmt_cmd, capture_output=True)
     return None
 
 

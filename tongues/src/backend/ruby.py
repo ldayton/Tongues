@@ -260,12 +260,17 @@ class RubyBackend:
         self.lines: list[str] = []
         self.receiver_name: str | None = None
         self._known_functions: set[str] = set()
+        self._needs_set = False
 
     def emit(self, module: Module) -> str:
         """Emit Ruby code from IR Module."""
         self.indent = 0
         self.lines = []
+        self._needs_set = False
         self._emit_module(module)
+        if self._needs_set:
+            self.lines.insert(self._import_insert_pos, "require 'set'")
+            self.lines.insert(self._import_insert_pos + 1, "")
         return "\n".join(self.lines)
 
     def _line(self, text: str = "") -> None:
@@ -281,8 +286,7 @@ class RubyBackend:
                 self._known_functions.add(m.name)
         self._line("# frozen_string_literal: true")
         self._line()
-        self._line("require 'set'")
-        self._line()
+        self._import_insert_pos = len(self.lines)
         need_blank = False
         if module.constants:
             for const in module.constants:
@@ -994,6 +998,7 @@ class RubyBackend:
                 pairs = ", ".join(f"{self._expr(k)} => {self._expr(v)}" for k, v in entries)
                 return f"{{{pairs}}}"
             case SetLit(elements=elements):
+                self._needs_set = True
                 if not elements:
                     return "Set.new"
                 elems = ", ".join(self._expr(e) for e in elements)
@@ -1142,6 +1147,7 @@ class RubyBackend:
             case Map():
                 return "{}"
             case Set():
+                self._needs_set = True
                 return "Set.new"
             case _:
                 return "nil"

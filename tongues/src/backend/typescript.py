@@ -769,11 +769,16 @@ class TsBackend:
 
         emitted_chain = False
         has_default = False
+        seen_conds: set[str] = set()
         for clause in catches:
             cond: str | None = None
             if isinstance(clause.typ, StructRef):
                 exc_name = _PYTHON_EXCEPTION_MAP.get(clause.typ.name, clause.typ.name)
                 cond = f"_e instanceof {exc_name}"
+            if cond is not None and cond in seen_conds:
+                continue
+            if cond is not None:
+                seen_conds.add(cond)
             if cond is None:
                 if not emitted_chain:
                     if clause.var:

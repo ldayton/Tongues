@@ -79,6 +79,7 @@ from src.ir import (
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -296,14 +297,14 @@ class GoBackend:
             for m in iface.methods:
                 self._interface_methods.add(m.name)
                 self._interface_methods.add(go_to_pascal(m.name))
-                # Store with PascalCase key for lookup
                 self._method_to_interface[go_to_pascal(m.name)] = iface.name
-            # Interface fields become getter methods in Go
             for f in iface.fields:
                 getter = go_to_pascal("get_" + f.name)
                 self._interface_field_getters[(iface.name, f.name)] = getter
         self._struct_names = {s.name for s in module.structs}
-        self._emit_header(module)
+        self._func_names = {f.name for f in module.functions}
+        # Two-pass: emit body first, then prepend header with only needed helpers
+        body_output = self.output
         self._emit_constants(module.constants)
         for iface in module.interfaces:
             self._emit_interface_def(iface)
@@ -313,7 +314,17 @@ class GoBackend:
             if func.name in ("_repeat_str", "_sublist"):
                 continue
             self._emit_function(func)
-        return "\n".join(self.output)
+        if module.entrypoint is not None:
+            self._line("")
+            self._line("func main() {")
+            self.indent += 1
+            self._emit_stmt(module.entrypoint)
+            self.indent -= 1
+            self._line("}")
+        body = "\n".join(body_output)
+        self.output = []
+        self._emit_header(module, body)
+        return "\n".join(self.output) + "\n" + body
 
     def _emit_constants(self, constants: list[Constant]) -> None:
         """Emit module-level constants."""
@@ -343,96 +354,94 @@ class GoBackend:
             self._line(")")
             self._line("")
 
-    def _emit_header(self, module: Module) -> None:
-        """Emit package declaration and imports."""
-        self._line(f"package {module.name}")
+    def _emit_header(self, module: Module, body: str) -> None:
+        """Emit package declaration, imports, and helpers based on what body uses."""
+        pkg = "main" if module.entrypoint is not None else module.name
+        self._line(f"package {pkg}")
         self._line("")
-        self._line("import (")
-        self.indent += 1
-        self._line('"fmt"')
-        self._line('"reflect"')
-        self._line('"strconv"')
-        self._line('"strings"')
-        self._line('"unicode"')
-        self._line('"unicode/utf8"')
-        self.indent -= 1
-        self._line(")")
-        self._line("")
-        self._line("var _ = strings.Compare // ensure import is used")
-        self._line("")
-        # Emit string character classification helpers
-        self._emit_string_helpers()
+        # Collect needed imports based on body content
+        imports = []
+        if "fmt." in body or "fmt.Sprint" in body:
+            imports.append('"fmt"')
+        if module.entrypoint is not None:
+            imports.append('"os"')
+        if "_isNilInterfaceRef(" in body:
+            imports.append('"reflect"')
+        if "strconv." in body or "_parseInt(" in body:
+            imports.append('"strconv"')
+        if "strings." in body:
+            imports.append('"strings"')
+        if any(f"_strIs{s}(" in body for s in ("Alnum", "Alpha", "Digit", "Space", "Upper", "Lower")):
+            imports.append('"unicode"')
+        if "_runeAt(" in body or "_runeLen(" in body or "_Substring(" in body:
+            imports.append('"unicode/utf8"')
+        if imports:
+            self._line("import (")
+            self.indent += 1
+            for imp in imports:
+                self._line(imp)
+            self.indent -= 1
+            self._line(")")
+            self._line("")
+        self._emit_helpers(body)
 
-    def _emit_string_helpers(self) -> None:
-        """Emit helper functions for Python string methods."""
-        helpers = """
-func _strIsAlnum(s string) bool {
+    # Each helper: (trigger substring, Go source)
+    _HELPERS: list[tuple[str, str]] = [
+        ("_strIsAlnum(", """func _strIsAlnum(s string) bool {
 	for _, r := range s {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}
-
-func _strIsAlpha(s string) bool {
+}"""),
+        ("_strIsAlpha(", """func _strIsAlpha(s string) bool {
 	for _, r := range s {
 		if !unicode.IsLetter(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}
-
-func _strIsDigit(s string) bool {
+}"""),
+        ("_strIsDigit(", """func _strIsDigit(s string) bool {
 	for _, r := range s {
 		if !unicode.IsDigit(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}
-
-func _strIsSpace(s string) bool {
+}"""),
+        ("_strIsSpace(", """func _strIsSpace(s string) bool {
 	for _, r := range s {
 		if !unicode.IsSpace(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}
-
-func _strIsUpper(s string) bool {
+}"""),
+        ("_strIsUpper(", """func _strIsUpper(s string) bool {
 	for _, r := range s {
 		if !unicode.IsUpper(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}
-
-func _strIsLower(s string) bool {
+}"""),
+        ("_strIsLower(", """func _strIsLower(s string) bool {
 	for _, r := range s {
 		if !unicode.IsLower(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}
-
-// _intPtr converts a sentinel int (-1 = nil) to *int
-func _intPtr(val int) *int {
+}"""),
+        ("_intPtr(", """func _intPtr(val int) *int {
 	if val == -1 {
 		return nil
 	}
 	return &val
-}
-
-// Range generates a slice of integers similar to Python's range()
-// Range(end) -> [0, 1, ..., end-1]
-// Range(start, end) -> [start, start+1, ..., end-1]
-// Range(start, end, step) -> [start, start+step, ..., last < end]
-func Range(args ...int) []int {
+}"""),
+        ("Range(", """func Range(args ...int) []int {
 	var start, end, step int
 	switch len(args) {
 	case 1:
@@ -458,41 +467,29 @@ func Range(args ...int) []int {
 		}
 	}
 	return result
-}
-
-func _parseInt(s string, base int) int {
+}"""),
+        ("_parseInt(", """func _parseInt(s string, base int) int {
 	n, _ := strconv.ParseInt(s, base, 64)
 	return int(n)
-}
-
-// _mapGet returns the value for key from map m, or defaultVal if not found
-func _mapGet[K comparable, V any](m map[K]V, key K, defaultVal V) V {
+}"""),
+        ("_mapGet(", """func _mapGet[K comparable, V any](m map[K]V, key K, defaultVal V) V {
 	if v, ok := m[key]; ok {
 		return v
 	}
 	return defaultVal
-}
-
-// _mapHas returns true if key exists in map m
-func _mapHas[K comparable, V any](m map[K]V, key K) bool {
+}"""),
+        ("_mapHas(", """func _mapHas[K comparable, V any](m map[K]V, key K) bool {
 	_, ok := m[key]
 	return ok
-}
-
-// _isNilInterface checks if an interface value is nil.
-// In Go, an interface is nil only when both type and value are nil.
-// This handles the case where interface contains a typed nil pointer.
-func _isNilInterfaceRef(i interface{}) bool {
+}"""),
+        ("_isNilInterfaceRef(", """func _isNilInterfaceRef(i interface{}) bool {
 	if i == nil {
 		return true
 	}
 	v := reflect.ValueOf(i)
 	return v.Kind() == reflect.Ptr && v.IsNil()
-}
-
-// _runeAt returns the character (as string) at rune index i in string s.
-// Python s[i] on a string returns the i-th character, not byte.
-func _runeAt(s string, i int) string {
+}"""),
+        ("_runeAt(", """func _runeAt(s string, i int) string {
 	if i < 0 {
 		return ""
 	}
@@ -504,17 +501,11 @@ func _runeAt(s string, i int) string {
 		byteOffset += size
 	}
 	return ""
-}
-
-// _runeLen returns the number of runes (characters) in string s.
-// Python len(s) on a string returns character count, not byte count.
-func _runeLen(s string) int {
+}"""),
+        ("_runeLen(", """func _runeLen(s string) int {
 	return utf8.RuneCountInString(s)
-}
-
-// _Substring returns s[start:end] using rune (character) indices.
-// Python s[start:end] uses character indices, not byte indices.
-func _Substring(s string, start int, end int) string {
+}"""),
+        ("_Substring(", """func _Substring(s string, start int, end int) string {
 	if start < 0 {
 		start = 0
 	}
@@ -536,11 +527,29 @@ func _Substring(s string, start int, end int) string {
 		return ""
 	}
 	return s[byteStart:byteEnd]
-}
-"""
-        for line in helpers.strip().split("\n"):
-            self._line_raw(line)
-        self._line("")
+}"""),
+        ("AssertionError(", "type AssertionError string"),
+        ("_boolToInt(", """func _boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}"""),
+        ("_boolStr(", """func _boolStr(b bool) string {
+	if b {
+		return "True"
+	}
+	return "False"
+}"""),
+    ]
+
+    def _emit_helpers(self, body: str) -> None:
+        """Emit only the helper functions referenced by body."""
+        for trigger, source in self._HELPERS:
+            if trigger in body:
+                for line in source.split("\n"):
+                    self._line_raw(line)
+                self._line("")
 
     def _emit_interface_def(self, iface: InterfaceDef) -> None:
         """Emit interface definition."""
@@ -669,6 +678,8 @@ func _Substring(s string, start int, end int) string {
             self._emit_stmt_TypeSwitch(stmt)
         elif isinstance(stmt, Match):
             self._emit_stmt_Match(stmt)
+        elif isinstance(stmt, EntryPoint):
+            self._line(f"os.Exit({go_to_pascal(stmt.function_name)}())")
         elif isinstance(stmt, NoOp):
             pass  # No output for NoOp
         else:
@@ -679,7 +690,7 @@ func _Substring(s string, start int, end int) string {
         msg = self._emit_expr(stmt.message) if stmt.message is not None else '"assertion failed"'
         self._line(f"if !({test}) {{")
         self.indent += 1
-        self._line(f"panic({msg})")
+        self._line(f"panic(AssertionError({msg}))")
         self.indent -= 1
         self._line("}")
 
@@ -1153,7 +1164,24 @@ func _Substring(s string, start int, end int) string {
                     typ_name = clause.typ.name
                     var_name = go_to_camel(clause.var) if clause.var else "_"
                     keyword = "if" if not chain_started else "} else if"
-                    self._line(f"{keyword} {var_name}, ok := r.(*{typ_name}); ok {{")
+                    # Exception is catch-all in Go (no equivalent type)
+                    if typ_name == "Exception":
+                        self._line("} else {" if chain_started else "{")
+                        self.indent += 1
+                        if clause.var:
+                            self._line(f"{var_name} := fmt.Sprint(r)")
+                        for s in clause.body:
+                            self._emit_stmt(s)
+                        if stmt.reraise:
+                            self._line("panic(r)")
+                        self.indent -= 1
+                        self._line("}")
+                        return
+                    # AssertionError is a value type (not pointer)
+                    if typ_name == "AssertionError":
+                        self._line(f"{keyword} {var_name}, ok := r.(AssertionError); ok {{")
+                    else:
+                        self._line(f"{keyword} {var_name}, ok := r.(*{typ_name}); ok {{")
                     self.indent += 1
                     for s in clause.body:
                         self._emit_stmt(s)
@@ -1556,6 +1584,8 @@ func _Substring(s string, start int, end int) string {
         # Check for type switch binding rename (reads use narrowed name)
         if expr.name in self._type_switch_binding_rename:
             return self._type_switch_binding_rename[expr.name]
+        if isinstance(expr.typ, FuncType) or expr.name in self._func_names:
+            return go_to_pascal(expr.name)
         return go_to_camel(expr.name)
 
     def _emit_expr_FieldAccess(self, expr: FieldAccess) -> str:
@@ -1623,6 +1653,13 @@ func _Substring(s string, start int, end int) string {
         return f"func() []{target_elem} {{ _r := make([]{target_elem}, len({source})); for _i, _v := range {source} {{ _r[_i] = _v }}; return _r }}()"
 
     def _emit_expr_Call(self, expr: Call) -> str:
+        if expr.func == "repr" and len(expr.args) == 1 and expr.args[0].typ == BOOL:
+            return f"_boolStr({self._emit_expr(expr.args[0])})"
+        if expr.func == "bool":
+            if not expr.args:
+                return "false"
+            if len(expr.args) == 1 and expr.args[0].typ == INT:
+                return f"({self._emit_expr(expr.args[0])} != 0)"
         # _repeat_str(s, n) → strings.Repeat(s, n)
         if expr.func == "_repeat_str" and len(expr.args) == 2:
             s = self._emit_expr(expr.args[0])
@@ -1651,6 +1688,10 @@ func _Substring(s string, start int, end int) string {
         # Known function parameter names that are called as functions - keep lowercase
         elif expr.func in ("parsefn",):
             func = expr.func
+        # Local variables used as callables — type-assert to func() and call
+        elif expr.func not in self._func_names:
+            args = ", ".join(self._emit_expr(a) for a in expr.args)
+            return f"{go_to_camel(expr.func)}.(func())({args})"
         else:
             func = go_to_pascal(expr.func)
         args = ", ".join(self._emit_expr(a) for a in expr.args)
@@ -1763,6 +1804,25 @@ func _Substring(s string, start int, end int) string {
         return f"{on_type}.{method}({args})"
 
     def _emit_expr_BinaryOp(self, expr: BinaryOp) -> str:
+        # Bool/int coercion for ==, != with mixed bool/int operands
+        if expr.op in ("==", "!=") and _go_needs_bool_int_coerce(expr.left, expr.right):
+            left_str = _go_coerce_bool_to_int(self, expr.left)
+            right_str = _go_coerce_bool_to_int(self, expr.right)
+            return f"{left_str} {expr.op} {right_str}"
+        # Bool coercion for arithmetic ops
+        if expr.op in ("+", "-", "*", "/", "%") and (
+            _go_is_bool(expr.left) or _go_is_bool(expr.right)
+        ):
+            left_str = _go_coerce_bool_to_int(self, expr.left)
+            right_str = _go_coerce_bool_to_int(self, expr.right)
+            return f"{left_str} {expr.op} {right_str}"
+        # Go has no bitwise ops on bools — coerce any bool operand to int
+        if expr.op in ("|", "&", "^") and (
+            expr.left.typ == BOOL or expr.right.typ == BOOL
+        ):
+            left_str = _go_coerce_bool_to_int(self, expr.left)
+            right_str = _go_coerce_bool_to_int(self, expr.right)
+            return f"({left_str} {expr.op} {right_str})"
         # Handle single-char string comparisons with runes
         # In Go, for-range over string yields runes, so "'" must become '\''
         if expr.op in ("==", "!="):
@@ -1774,6 +1834,13 @@ func _Substring(s string, start int, end int) string {
                 right_str = self._emit_rune_literal(expr.right.value)
             elif right_is_rune and isinstance(expr.left, StringLit) and len(expr.left.value) == 1:
                 left_str = self._emit_rune_literal(expr.left.value)
+            # Wrap nested comparisons in parens to prevent Go from
+            # parsing a == b != c as (a == b) != c
+            _CMP_OPS = ("==", "!=", "<", ">", "<=", ">=")
+            if isinstance(expr.left, BinaryOp) and expr.left.op in _CMP_OPS:
+                left_str = f"({left_str})"
+            if isinstance(expr.right, BinaryOp) and expr.right.op in _CMP_OPS:
+                right_str = f"({right_str})"
             return f"{left_str} {expr.op} {right_str}"
         # Handle comparisons with optional (pointer) types - dereference the pointer
         # Pattern: x > 0 where x is *int needs to become *x > 0
@@ -1909,6 +1976,11 @@ func _Substring(s string, start int, end int) string {
     def _emit_expr_Cast(self, expr: Cast) -> str:
         inner = self._emit_expr(expr.expr)
         to_type = self._type_to_go(expr.to_type)
+        if expr.expr.typ == BOOL:
+            if expr.to_type in (INT, BYTE, RUNE):
+                return f"_boolToInt({inner})"
+            if expr.to_type == STRING:
+                return f"_boolStr({inner})"
         # Skip redundant string() wrapper around _runeAt (which already returns string)
         if to_type == "string" and isinstance(expr.expr, Index):
             obj_type = expr.expr.obj.typ
@@ -2222,3 +2294,27 @@ func _Substring(s string, start int, end int) string {
     def _line_raw(self, text: str) -> None:
         """Emit text without newline (for continuations)."""
         self.output.append("\t" * self.indent + text)
+
+
+def _go_is_bool(expr: Expr) -> bool:
+    """True if this expression is genuinely bool in Go output.
+
+    Bitwise ops on bools are coerced to int by the backend, so they're not bool in Go.
+    """
+    if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "^"):
+        return False
+    if isinstance(expr, Call) and expr.func == "bool":
+        return True
+    return expr.typ == BOOL
+
+
+def _go_needs_bool_int_coerce(left: Expr, right: Expr) -> bool:
+    """True when one side is boolean in Go and the other is not."""
+    lb, rb = _go_is_bool(left), _go_is_bool(right)
+    return lb != rb
+
+
+def _go_coerce_bool_to_int(backend: GoBackend, expr: Expr) -> str:
+    if _go_is_bool(expr):
+        return f"_boolToInt({backend._emit_expr(expr)})"
+    return backend._emit_expr(expr)

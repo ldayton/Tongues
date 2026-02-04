@@ -14,6 +14,8 @@ def escape_string(value: str) -> str:
 
 
 from src.ir import (
+    BOOL,
+    INT,
     Args,
     Array,
     Assert,
@@ -252,8 +254,11 @@ class DartBackend:
         self._type_switch_binding_rename: dict[str, str] = {}
         self._loop_temp_counter = 0
         self._func_params: set[str] = set()
+        self._needed_helpers: set[str] = set()
+        self._needed_imports: set[str] = set()
         self._current_break_flag: str | None = None
         self._current_return_type: Type | None = None
+        self._entrypoint_name: str | None = None
 
     def emit(self, module: Module) -> str:
         """Emit Dart code from IR Module."""
@@ -261,10 +266,17 @@ class DartBackend:
         self.lines = []
         self.struct_fields = {}
         self._hoisted_vars = set()
+        self._needed_helpers = set()
+        self._needed_imports = set()
         self._module_name = module.name
         self._interface_names = {iface.name for iface in module.interfaces}
         self._collect_struct_fields(module)
         self._emit_module(module)
+        if self._needed_imports:
+            import_lines = [f"import '{imp}';" for imp in sorted(self._needed_imports)]
+            import_lines.append("")
+            for i, line in enumerate(import_lines):
+                self.lines.insert(self._import_insert_pos + i, line)
         return "\n".join(self.lines)
 
     def _collect_struct_fields(self, module: Module) -> None:
@@ -279,6 +291,7 @@ class DartBackend:
             self.lines.append("")
 
     def _emit_module(self, module: Module) -> None:
+        self._entrypoint_name = module.entrypoint.function_name if module.entrypoint else None
         # Disable strict null safety checks for transpiled code
         self._line("// ignore_for_file: unnecessary_null_comparison")
         self._line("// ignore_for_file: unnecessary_non_null_assertion")
@@ -287,13 +300,11 @@ class DartBackend:
         self._line("// ignore_for_file: invalid_assignment")
         self._line("// ignore_for_file: unchecked_use_of_nullable_value")
         self._line("")
-        # Emit imports for dart:io and dart:convert
-        self._line("import 'dart:io';")
-        self._line("import 'dart:convert';")
-        self._line("")
+        self._import_insert_pos = len(self.lines)
         # Emit module doc comment if present
         if module.doc:
-            self._line(f"/// {module.doc}")
+            for doc_line in module.doc.split("\n"):
+                self._line(f"/// {doc_line}" if doc_line.strip() else "///")
             self._line("")
         # Emit constants
         if module.constants:
@@ -315,6 +326,16 @@ class DartBackend:
         # Emit free functions
         for func in module.functions:
             self._emit_function(func)
+            self._line("")
+        # Emit entrypoint wrapper
+        if self._entrypoint_name:
+            self._needed_imports.add("dart:io")
+            ep = _safe_name(self._entrypoint_name)
+            self._line("void main() {")
+            self.indent += 1
+            self._line(f"exit(_{ep}());")
+            self.indent -= 1
+            self._line("}")
             self._line("")
         # Emit helper functions
         self._emit_helpers()
@@ -536,6 +557,8 @@ class DartBackend:
         if func.body and self._has_null_return(func.body) and not isinstance(func.ret, Optional):
             ret = "dynamic"
         name = _safe_name(func.name)
+        if func.name == self._entrypoint_name:
+            name = f"_{name}"
         self._line(f"{ret} {name}({params}) {{")
         self.indent += 1
         if not func.body:
@@ -742,9 +765,13 @@ class DartBackend:
             case Assert(test=test, message=message):
                 cond_str = self._expr(test)
                 if message is not None:
-                    self._line(f"assert({cond_str}, {self._expr(message)});")
+                    self._line(
+                        f"if (!({cond_str})) {{ throw AssertionError({self._expr(message)}); }}"
+                    )
                 else:
-                    self._line(f"assert({cond_str});")
+                    self._line(
+                        f'if (!({cond_str})) {{ throw AssertionError("assertion failed"); }}'
+                    )
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -1133,8 +1160,11 @@ class DartBackend:
         self.indent -= 1
         for clause in stmt.catches:
             if isinstance(clause.typ, StructRef):
-                exc_type = clause.typ.name
-                if clause.var:
+                exc_type = _DART_EXCEPTION_MAP.get(clause.typ.name, clause.typ.name)
+                if exc_type is None:
+                    var = _safe_name(clause.var) if clause.var else "_e"
+                    self._line(f"}} catch ({var}) {{")
+                elif clause.var:
                     var = _safe_name(clause.var)
                     self._line(f"}} on {exc_type} catch ({var}) {{")
                 else:
@@ -1231,10 +1261,15 @@ class DartBackend:
                 # Custom trim chars - use helper functions
                 chars_str = self._expr(chars)
                 if mode == "left":
+                    self._needed_helpers.add("_trimLeft")
                     return f"_trimLeft({s_str}, {chars_str})"
                 elif mode == "right":
+                    self._needed_helpers.add("_trimRight")
                     return f"_trimRight({s_str}, {chars_str})"
                 else:
+                    self._needed_helpers.add("_trimBoth")
+                    self._needed_helpers.add("_trimLeft")
+                    self._needed_helpers.add("_trimRight")
                     return f"_trimBoth({s_str}, {chars_str})"
             case Call(func=func, args=args):
                 return self._call(func, args)
@@ -1270,12 +1305,36 @@ class DartBackend:
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op=op, left=left, right=right):
-                left_str = self._expr(left)
-                right_str = self._expr(right)
-                dart_op = _binary_op(op)
-                # Handle string comparisons - Dart doesn't support >, <, >=, <= on strings
                 left_type = left.typ
                 right_type = right.typ
+                left_is_bool = isinstance(left_type, Primitive) and left_type.kind == "bool"
+                right_is_bool = isinstance(right_type, Primitive) and right_type.kind == "bool"
+                # Dart bools don't support arithmetic; cast to int
+                if op in ("+", "-", "*", "/", "%", "~/"):
+                    if left_is_bool:
+                        left_str = f"({self._expr(left)} ? 1 : 0)"
+                    else:
+                        left_str = self._expr(left)
+                    if right_is_bool:
+                        right_str = f"({self._expr(right)} ? 1 : 0)"
+                    else:
+                        right_str = self._expr(right)
+                # Dart bool bitwise ops require both operands to be the same type
+                elif op in ("&", "|", "^") and left_is_bool != right_is_bool:
+                    left_str = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
+                    right_str = f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                elif op in ("==", "!=") and _dart_needs_bool_int_coerce(left, right):
+                    left_str = self._expr(left)
+                    right_str = self._expr(right)
+                    if _dart_is_bool_in_dart(left):
+                        left_str = f"({left_str} ? 1 : 0)"
+                    if _dart_is_bool_in_dart(right):
+                        right_str = f"({right_str} ? 1 : 0)"
+                else:
+                    left_str = self._expr(left)
+                    right_str = self._expr(right)
+                dart_op = _binary_op(op)
+                # Handle string comparisons - Dart doesn't support >, <, >=, <= on strings
                 if (
                     op in (">=", "<=", ">", "<")
                     and isinstance(left_type, Primitive)
@@ -1283,8 +1342,6 @@ class DartBackend:
                     and isinstance(right_type, Primitive)
                     and right_type.kind == "string"
                 ):
-                    # Use compareTo for string comparisons
-                    compare_val = "0"
                     if op == ">=":
                         return f"({left_str}.compareTo({right_str}) >= 0)"
                     if op == "<=":
@@ -1293,6 +1350,12 @@ class DartBackend:
                         return f"({left_str}.compareTo({right_str}) > 0)"
                     if op == "<":
                         return f"({left_str}.compareTo({right_str}) < 0)"
+                # Dart forbids chained comparisons
+                if dart_op in ("==", "!=", "<", ">", "<=", ">="):
+                    if isinstance(left, BinaryOp) and _binary_op(left.op) in ("==", "!=", "<", ">", "<=", ">="):
+                        left_str = f"({left_str})"
+                    if isinstance(right, BinaryOp) and _binary_op(right.op) in ("==", "!=", "<", ">", "<=", ">="):
+                        right_str = f"({right_str})"
                 # Add parens around || when inside && to preserve precedence
                 if dart_op == "&&":
                     if isinstance(left, BinaryOp) and left.op == "||":
@@ -1410,10 +1473,12 @@ class DartBackend:
                 s_str = self._expr(s)
                 # Use safe substring that clamps indices like Python does
                 if low and high:
+                    self._needed_helpers.add("_safeSubstring")
                     return f"_safeSubstring({s_str}, {self._expr(low)}, {self._expr(high)})"
                 elif low:
                     return f"{s_str}.substring({self._expr(low)})"
                 elif high:
+                    self._needed_helpers.add("_safeSubstring")
                     return f"_safeSubstring({s_str}, 0, {self._expr(high)})"
                 return s_str
             case LastElement(sequence=seq):
@@ -1480,13 +1545,23 @@ class DartBackend:
                 s = f"{s}!"
             arg_parts.append(s)
         args_str = ", ".join(arg_parts)
+        if func == "bool":
+            if not args:
+                return "false"
+            return f"({self._expr(args[0])} != 0)"
         if func == "int" and len(args) == 2:
             return f"int.parse({self._expr(args[0])}, radix: {self._expr(args[1])})"
         if func == "str":
+            if args and isinstance(args[0].typ, Primitive) and args[0].typ.kind == "bool":
+                return f'({self._expr(args[0])} ? "True" : "False")'
             if args and isinstance(args[0].typ, Slice):
                 elem_type = args[0].typ.element
                 if isinstance(elem_type, Primitive) and elem_type.kind == "byte":
                     return f"String.fromCharCodes({self._expr(args[0])})"
+            return f"({self._expr(args[0])}).toString()"
+        if func == "repr":
+            if args and isinstance(args[0].typ, Primitive) and args[0].typ.kind == "bool":
+                return f'({self._expr(args[0])} ? "True" : "False")'
             return f"({self._expr(args[0])}).toString()"
         if func == "len":
             arg = self._expr(args[0])
@@ -1502,6 +1577,7 @@ class DartBackend:
                 start = self._expr(args[0])
                 stop = self._expr(args[1])
                 step = self._expr(args[2])
+                self._needed_helpers.add("_range")
                 return f"_range({start}, {stop}, {step})"
         if func == "ord":
             return f"({self._expr(args[0])}).codeUnitAt(0)"
@@ -1511,10 +1587,12 @@ class DartBackend:
             return f"({self._expr(args[0])}).abs()"
         if func == "min":
             if len(args) == 2:
+                self._needed_helpers.add("_min")
                 return f"_min({args_str})"
             return f"[{args_str}].reduce((a, b) => a < b ? a : b)"
         if func == "max":
             if len(args) == 2:
+                self._needed_helpers.add("_max")
                 return f"_max({args_str})"
             return f"[{args_str}].reduce((a, b) => a > b ? a : b)"
         if func in ("_intPtr", "_int_ptr"):
@@ -1554,6 +1632,7 @@ class DartBackend:
                 if isinstance(elem, Primitive) and elem.kind == "byte":
                     # Use utf8.decode with allowMalformed to replace invalid UTF-8 with U+FFFD
                     # This matches Python's bytes.decode("utf-8", errors="replace")
+                    self._needed_imports.add("dart:convert")
                     return f"utf8.decode({obj_str}, allowMalformed: true)"
         if isinstance(receiver_type, Primitive) and receiver_type.kind == "string":
             if method == "startswith":
@@ -1614,10 +1693,12 @@ class DartBackend:
             if low and high:
                 lo = self._expr(low)
                 hi = self._expr(high)
+                self._needed_helpers.add("_safeSubstring")
                 return f"_safeSubstring({obj_str}, {lo}, {hi})"
             elif low:
                 return f"{obj_str}.substring({self._expr(low)})"
             elif high:
+                self._needed_helpers.add("_safeSubstring")
                 return f"_safeSubstring({obj_str}, 0, {self._expr(high)})"
             return obj_str
         if low and high:
@@ -1654,6 +1735,8 @@ class DartBackend:
         inner_type = inner.typ
         if isinstance(to_type, Primitive):
             if to_type.kind == "int":
+                if isinstance(inner_type, Primitive) and inner_type.kind == "bool":
+                    return f"({inner_str} ? 1 : 0)"
                 if isinstance(inner_type, Primitive) and inner_type.kind == "float":
                     return f"({inner_str}).toInt()"
                 # When casting from Index of a string to int, need codeUnitAt
@@ -1673,11 +1756,12 @@ class DartBackend:
                     return f"({inner_str}).toDouble()"
                 return f"({inner_str} as double)"
             if to_type.kind == "string":
+                if isinstance(inner_type, Primitive) and inner_type.kind == "bool":
+                    return f'({inner_str} ? "True" : "False")'
                 if isinstance(inner_type, Slice):
                     elem = inner_type.element
                     if isinstance(elem, Primitive) and elem.kind == "byte":
-                        # Use utf8.decode with allowMalformed to replace invalid UTF-8 with U+FFFD
-                        # This matches Python's bytes.decode("utf-8", errors="replace")
+                        self._needed_imports.add("dart:convert")
                         return f"utf8.decode({inner_str}, allowMalformed: true)"
                 if isinstance(inner_type, Primitive) and inner_type.kind == "rune":
                     return f"String.fromCharCode({inner_str})"
@@ -1696,6 +1780,7 @@ class DartBackend:
         ):
             if isinstance(inner_type, Primitive) and inner_type.kind == "string":
                 # Use utf8.encode for proper UTF-8 encoding, matching Python's str.encode("utf-8")
+                self._needed_imports.add("dart:convert")
                 return f"utf8.encode({inner_str})"
         return f"({inner_str} as {dart_type})"
 
@@ -1876,58 +1961,66 @@ class DartBackend:
                 return "null as dynamic"
 
     def _emit_helpers(self) -> None:
-        """Emit helper functions needed by generated code."""
-        self._line("// Helper functions")
-        self._line("int _min(int a, int b) => a < b ? a : b;")
-        self._line("int _max(int a, int b) => a > b ? a : b;")
+        """Emit only the helper functions actually referenced by generated code."""
+        if not self._needed_helpers:
+            return
         self._line("")
-        self._line("// Safe substring that clamps indices like Python slice semantics")
-        self._line("String _safeSubstring(String s, int start, int end) {")
-        self.indent += 1
-        self._line("if (start < 0) start = 0;")
-        self._line("if (end > s.length) end = s.length;")
-        self._line("if (start >= end) return '';")
-        self._line("return s.substring(start, end);")
-        self.indent -= 1
-        self._line("}")
-        self._line("")
-        self._line("List<int> _range(int start, int stop, int step) {")
-        self.indent += 1
-        self._line("final result = <int>[];")
-        self._line("if (step > 0) {")
-        self.indent += 1
-        self._line("for (var i = start; i < stop; i += step) result.add(i);")
-        self.indent -= 1
-        self._line("} else {")
-        self.indent += 1
-        self._line("for (var i = start; i > stop; i += step) result.add(i);")
-        self.indent -= 1
-        self._line("}")
-        self._line("return result;")
-        self.indent -= 1
-        self._line("}")
-        self._line("")
-        self._line("String _trimLeft(String s, String chars) {")
-        self.indent += 1
-        self._line("int i = 0;")
-        self._line("while (i < s.length && chars.contains(s[i])) i++;")
-        self._line("return s.substring(i);")
-        self.indent -= 1
-        self._line("}")
-        self._line("")
-        self._line("String _trimRight(String s, String chars) {")
-        self.indent += 1
-        self._line("int i = s.length;")
-        self._line("while (i > 0 && chars.contains(s[i - 1])) i--;")
-        self._line("return s.substring(0, i);")
-        self.indent -= 1
-        self._line("}")
-        self._line("")
-        self._line("String _trimBoth(String s, String chars) {")
-        self.indent += 1
-        self._line("return _trimRight(_trimLeft(s, chars), chars);")
-        self.indent -= 1
-        self._line("}")
+        if "_min" in self._needed_helpers:
+            self._line("int _min(int a, int b) => a < b ? a : b;")
+        if "_max" in self._needed_helpers:
+            self._line("int _max(int a, int b) => a > b ? a : b;")
+        if "_safeSubstring" in self._needed_helpers:
+            self._line("")
+            self._line("String _safeSubstring(String s, int start, int end) {")
+            self.indent += 1
+            self._line("if (start < 0) start = 0;")
+            self._line("if (end > s.length) end = s.length;")
+            self._line("if (start >= end) return '';")
+            self._line("return s.substring(start, end);")
+            self.indent -= 1
+            self._line("}")
+        if "_range" in self._needed_helpers:
+            self._line("")
+            self._line("List<int> _range(int start, int stop, int step) {")
+            self.indent += 1
+            self._line("final result = <int>[];")
+            self._line("if (step > 0) {")
+            self.indent += 1
+            self._line("for (var i = start; i < stop; i += step) result.add(i);")
+            self.indent -= 1
+            self._line("} else {")
+            self.indent += 1
+            self._line("for (var i = start; i > stop; i += step) result.add(i);")
+            self.indent -= 1
+            self._line("}")
+            self._line("return result;")
+            self.indent -= 1
+            self._line("}")
+        if "_trimLeft" in self._needed_helpers:
+            self._line("")
+            self._line("String _trimLeft(String s, String chars) {")
+            self.indent += 1
+            self._line("int i = 0;")
+            self._line("while (i < s.length && chars.contains(s[i])) i++;")
+            self._line("return s.substring(i);")
+            self.indent -= 1
+            self._line("}")
+        if "_trimRight" in self._needed_helpers:
+            self._line("")
+            self._line("String _trimRight(String s, String chars) {")
+            self.indent += 1
+            self._line("int i = s.length;")
+            self._line("while (i > 0 && chars.contains(s[i - 1])) i--;")
+            self._line("return s.substring(0, i);")
+            self.indent -= 1
+            self._line("}")
+        if "_trimBoth" in self._needed_helpers:
+            self._line("")
+            self._line("String _trimBoth(String s, String chars) {")
+            self.indent += 1
+            self._line("return _trimRight(_trimLeft(s, chars), chars);")
+            self.indent -= 1
+            self._line("}")
 
 
 def _primitive_type(kind: str) -> str:
@@ -1962,3 +2055,27 @@ def _binary_op(op: str) -> str:
 
 def _is_string_type(typ: Type) -> bool:
     return isinstance(typ, Primitive) and typ.kind in ("string", "rune")
+
+
+_DART_EXCEPTION_MAP: dict[str, str | None] = {
+    "AssertionError": "AssertionError",
+    "Exception": None,  # general catch — Dart Exception doesn't catch Error subclasses
+}
+
+
+def _dart_is_bool_in_dart(expr: Expr) -> bool:
+    """True when *expr* produces bool in Dart, even if the IR type is INT."""
+    if isinstance(expr.typ, Primitive) and expr.typ.kind == "bool":
+        return True
+    if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "^"):
+        return _dart_is_bool_in_dart(expr.left) and _dart_is_bool_in_dart(expr.right)
+    return False
+
+
+def _dart_needs_bool_int_coerce(left: Expr, right: Expr) -> bool:
+    """True when one side is bool-in-Dart and the other is genuinely int."""
+    l_bool = _dart_is_bool_in_dart(left)
+    r_bool = _dart_is_bool_in_dart(right)
+    l_int = isinstance(left.typ, Primitive) and left.typ.kind == "int" and not l_bool
+    r_int = isinstance(right.typ, Primitive) and right.typ.kind == "int" and not r_bool
+    return (l_bool and r_int) or (l_int and r_bool)

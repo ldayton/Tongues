@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from src.backend.util import escape_string, to_snake
 from src.ir import (
+    BOOL,
     Array,
     Assert,
     Assign,
@@ -18,6 +19,7 @@ from src.ir import (
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -55,6 +57,7 @@ from src.ir import (
     Param,
     ParseInt,
     Pointer,
+    Print,
     Primitive,
     Raise,
     Receiver,
@@ -368,8 +371,10 @@ class PerlBackend:
         self.constants: set[str] = set()
         self._hoisted_vars: set[str] = set()
         self._func_params: set[str] = set()  # Parameters with FuncType
+        self._known_functions: set[str] = set()  # Module-level function names
         self.struct_fields: dict[str, list[tuple[str, Type]]] = {}  # Struct field info
         self._in_try_with_return: bool = False  # Flag for return-from-eval workaround
+        self._needs_encode = False
 
     def emit(self, module: Module) -> str:
         """Emit Perl code from IR Module."""
@@ -377,9 +382,16 @@ class PerlBackend:
         self.lines = []
         self.constants = set()
         self._hoisted_vars = set()
+        self._needs_encode = False
+        self._known_functions = {f.name for f in module.functions}
+        for s in module.structs:
+            for m in s.methods:
+                self._known_functions.add(m.name)
         for const in module.constants:
             self.constants.add(const.name)
         self._emit_module(module)
+        if self._needs_encode:
+            self.lines.insert(self._import_insert_pos, "use Encode;")
         return "\n".join(self.lines)
 
     def _line(self, text: str = "") -> None:
@@ -533,9 +545,9 @@ class PerlBackend:
     def _emit_module(self, module: Module) -> None:
         self._line("use strict;")
         self._line("use warnings;")
-        self._line("use feature 'signatures';")
+        self._line("use feature qw(signatures say);")
         self._line("no warnings 'experimental::signatures';")
-        self._line("use Encode;")
+        self._import_insert_pos = len(self.lines)
         need_blank = True
         if module.constants:
             self._line()
@@ -561,6 +573,9 @@ class PerlBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        if module.entrypoint is not None:
+            self._line()
+            self._emit_stmt(module.entrypoint)
         self._line()
         self._line("1;")
 
@@ -778,6 +793,14 @@ class PerlBackend:
                 else:
                     msg = self._expr(message)
                     self._line(f"die {msg};")
+            case Print(value=value, newline=newline):
+                val_str = self._expr(value)
+                if newline:
+                    self._line(f"say({val_str});")
+                else:
+                    self._line(f"print({val_str});")
+            case EntryPoint(function_name=function_name):
+                self._line(f"exit({_safe_name(function_name)}());")
             case SoftFail():
                 self._line("return undef;")
             case _:
@@ -1033,6 +1056,8 @@ class PerlBackend:
                     if self.current_package is not None:
                         return f"main::{const_call}"
                     return const_call
+                if name in self._known_functions:
+                    return f"\\&{_safe_name(name)}"
                 return f"${_safe_name(name)}"
             case FieldAccess(obj=obj, field=field):
                 if field.startswith("F") and field[1:].isdigit():
@@ -1106,14 +1131,29 @@ class PerlBackend:
                 # _intPtr is a no-op in Perl (pointers are transparent)
                 if func == "_intPtr" and args:
                     return self._expr(args[0])
+                if func == "print":
+                    args_str = ", ".join(self._expr(a) for a in args)
+                    return f"say({args_str})"
+                if func == "bool":
+                    if not args:
+                        return "0"
+                    return f"({self._expr(args[0])} ? 1 : 0)"
+                if func == "repr":
+                    arg = args[0]
+                    if arg.typ == BOOL:
+                        return f'({self._expr(arg)} ? "True" : "False")'
+                    return f'("" . {self._expr(arg)})'
                 args_str = ", ".join(self._expr(a) for a in args)
                 safe_func = _safe_name(func)
                 # Function parameters need to be called via reference
                 if func in self._func_params:
                     return f"${safe_func}->({args_str})"
-                if self.current_package is not None:
-                    return f"main::{safe_func}({args_str})"
-                return f"{safe_func}({args_str})"
+                if func in self._known_functions:
+                    if self.current_package is not None:
+                        return f"main::{safe_func}({args_str})"
+                    return f"{safe_func}({args_str})"
+                # Coderef variable call
+                return f"${safe_func}->({args_str})"
             case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
                 args_str = ", ".join(self._expr(a) for a in args)
                 obj_str = self._expr(obj)
@@ -1289,13 +1329,15 @@ class PerlBackend:
                     f"({self._cond_expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
                 )
             case Cast(expr=inner, to_type=to_type):
+                if to_type == Primitive(kind="string") and inner.typ == BOOL:
+                    return f'({self._expr(inner)} ? "True" : "False")'
                 if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
-                    # Decode UTF-8 with replacement, then re-encode to bytes
-                    # This matches Python's bytes.decode("utf-8", errors="replace")
+                    self._needs_encode = True
                     return f'Encode::encode("UTF-8", Encode::decode("UTF-8", pack("C*", @{{{self._expr(inner)}}}), Encode::FB_DEFAULT))'
                 if to_type == Primitive(kind="string") and inner.typ == Primitive(kind="rune"):
                     return f"chr({self._expr(inner)})"
                 if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
+                    self._needs_encode = True
                     return f"[unpack('C*', Encode::encode('UTF-8', {self._expr(inner)}))]"
                 if to_type == Primitive(kind="int") and inner.typ in (
                     Primitive(kind="string"),

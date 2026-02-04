@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from src.backend.util import to_camel, to_pascal, to_screaming_snake
 from src.ir import (
+    BOOL,
+    INT,
     Array,
     Assert,
     Assign,
@@ -17,6 +19,7 @@ from src.ir import (
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -223,6 +226,7 @@ class PhpBackend:
         self._hoisted_vars: set[str] = set()
         self._module_name: str = ""
         self._callable_params: set[str] = set()
+        self._function_names: set[str] = set()
 
     def emit(self, module: Module) -> str:
         """Emit PHP code from IR Module."""
@@ -273,9 +277,13 @@ class PhpBackend:
         for struct in module.structs:
             self._emit_struct(struct)
             self._line("")
+        self._function_names = {func.name for func in module.functions}
         for func in module.functions:
             self._emit_function(func)
             self._line("")
+        if module.entrypoint:
+            ep = _safe_name(module.entrypoint.function_name)
+            self._line(f"exit({ep}());")
 
     def _emit_constant(self, const: Constant) -> None:
         val = self._expr(const.value)
@@ -481,9 +489,12 @@ class PhpBackend:
             case Assert(test=test, message=message):
                 cond_str = self._expr(test)
                 if message is not None:
-                    self._line(f"assert({cond_str}, {self._expr(message)});")
+                    msg = self._expr(message)
+                    self._line(f"if (!({cond_str})) {{ throw new \\AssertionError({msg}); }}")
                 else:
-                    self._line(f"assert({cond_str});")
+                    self._line(f'if (!({cond_str})) {{ throw new \\AssertionError("assertion failed"); }}')
+            case EntryPoint():
+                pass
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -717,11 +728,16 @@ class PhpBackend:
         self._line("}")
         for clause in stmt.catches:
             var = _safe_name(clause.var) if clause.var else "ex"
-            exc_type = (
-                _safe_pascal(clause.typ.name)
-                if isinstance(clause.typ, StructRef)
-                else "Exception"
-            )
+            if isinstance(clause.typ, StructRef):
+                exc_name = clause.typ.name
+                if exc_name == "Exception":
+                    exc_type = "\\Throwable"
+                elif exc_name == "AssertionError":
+                    exc_type = "\\AssertionError"
+                else:
+                    exc_type = _safe_pascal(exc_name)
+            else:
+                exc_type = "\\Throwable"
             self._line(f"catch ({exc_type} ${var})")
             self._line("{")
             self.indent += 1
@@ -754,6 +770,8 @@ class PhpBackend:
                     name[0].isupper() and "_" in name and name.split("_", 1)[1].isupper()
                 ):
                     return to_screaming_snake(name)
+                if name in self._function_names:
+                    return f"'{_safe_name(name)}'"
                 return "$" + _safe_name(name)
             case FieldAccess(obj=obj, field=field):
                 obj_str = self._expr(obj)
@@ -834,6 +852,12 @@ class PhpBackend:
                     left_str = self._maybe_paren(left, ".", is_left=True)
                     right_str = self._maybe_paren(right, ".", is_left=False)
                     return f"{left_str} . {right_str}"
+                # Use loose equality when comparing bool with int
+                if op in ("==", "!=") and _is_bool_int_compare(left, right):
+                    loose_op = "==" if op == "==" else "!="
+                    left_str = self._maybe_paren(left, loose_op, is_left=True)
+                    right_str = self._maybe_paren(right, loose_op, is_left=False)
+                    return f"{left_str} {loose_op} {right_str}"
                 php_op = _binary_op(op, left.typ)
                 left_str = self._maybe_paren(left, php_op, is_left=True)
                 right_str = self._maybe_paren(right, php_op, is_left=False)
@@ -912,9 +936,23 @@ class PhpBackend:
         args_str = ", ".join(self._expr(a) for a in args)
         if func == "_intPtr" and len(args) == 1:
             return self._expr(args[0])
+        if func == "print":
+            if args:
+                return f"echo {self._expr(args[0])} . \"\\n\""
+            return 'echo "\\n"'
+        if func == "bool":
+            if not args:
+                return "false"
+            return f"(bool)({self._expr(args[0])})"
+        if func == "repr":
+            if args and args[0].typ == BOOL:
+                return f"({self._expr(args[0])} ? \"True\" : \"False\")"
+            return f"strval({self._expr(args[0])})"
         if func == "int" and len(args) == 2:
             return f"intval({args_str})"
         if func == "str":
+            if args and args[0].typ == BOOL:
+                return f"({self._expr(args[0])} ? \"True\" : \"False\")"
             return f"strval({self._expr(args[0])})"
         if func == "len":
             arg = self._expr(args[0])
@@ -940,7 +978,7 @@ class PhpBackend:
         if func == "max":
             return f"max({args_str})"
         safe_func = _safe_name(func)
-        if func in self._callable_params:
+        if func in self._callable_params or func not in self._function_names:
             return f"${safe_func}({args_str})"
         return f"{safe_func}({args_str})"
 
@@ -1100,15 +1138,14 @@ class PhpBackend:
                 return f"(bool)({inner_str})"
             if to_type.kind == "string":
                 inner_type = inner.typ
+                if inner_type == BOOL:
+                    return f"({inner_str} ? \"True\" : \"False\")"
                 if isinstance(inner_type, Slice):
                     elem = inner_type.element
                     if isinstance(elem, Primitive) and elem.kind == "byte":
-                        # UConverter::transcode replaces invalid UTF-8 with U+FFFD
-                        # This matches Python's bytes.decode("utf-8", errors="replace")
                         return (
                             f"UConverter::transcode(pack('C*', ...{inner_str}), 'UTF-8', 'UTF-8')"
                         )
-                # rune (codepoint) to string: use mb_chr to get the character
                 if isinstance(inner_type, Primitive) and inner_type.kind == "rune":
                     return f"mb_chr({inner_str})"
                 return f"(string)({inner_str})"
@@ -1311,6 +1348,11 @@ def _escape_php_string(value: str) -> str:
 
 def _is_string_type(typ: Type) -> bool:
     return isinstance(typ, Primitive) and typ.kind in ("string", "rune")
+
+
+def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
+    l, r = left.typ, right.typ
+    return (l == BOOL and r == INT) or (l == INT and r == BOOL)
 
 
 # PHP operator precedence (higher number = tighter binding)
