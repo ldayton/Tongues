@@ -7,6 +7,7 @@ from src.backend.util import escape_string as _escape_string_generic
 from src.ir import (
     Args,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -737,6 +738,12 @@ class SwiftBackend:
                     self._line(f"return {val}")
                 else:
                     self._line("return")
+            case Assert(test=test, message=message):
+                cond_str = self._try_expr(test)
+                if message is not None:
+                    self._line(f"assert({cond_str}, {self._try_expr(message)})")
+                else:
+                    self._line(f"assert({cond_str})")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -784,11 +791,9 @@ class SwiftBackend:
                     self.indent -= 1
                     self._line("}")
             case TryCatch(
-                body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
-                reraise=reraise,
+                body=_,
+                catches=_,
+                reraise=_,
             ):
                 self._emit_try_catch(stmt)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
@@ -1040,35 +1045,35 @@ class SwiftBackend:
         for s in stmt.body:
             self._emit_stmt(s)
         self.indent -= 1
-        exc_type = stmt.catch_type.name if isinstance(stmt.catch_type, StructRef) else "Error"
-        is_generic = exc_type in ("Exception", "Error")
-        needs_binding = (not stmt.catch_var_unused or stmt.reraise) and stmt.catch_var
-        needs_reraise_binding = stmt.reraise and not stmt.catch_var
-        if is_generic:
-            if needs_binding:
-                var = _safe_name(stmt.catch_var)
-                self._line(f"}} catch let {var} {{")
-            elif needs_reraise_binding:
-                self._line("} catch let _err {")
+        for clause in stmt.catches:
+            exc_type = clause.typ.name if isinstance(clause.typ, StructRef) else "Error"
+            is_generic = exc_type in ("Exception", "Error")
+            if clause.var:
+                var = _safe_name(clause.var)
+                if is_generic:
+                    self._line(f"}} catch let {var} {{")
+                else:
+                    self._line(f"}} catch let {var} as {_safe_type_name(exc_type)} {{")
+                bound = var
             else:
-                self._line("} catch {")
-        else:
-            if needs_binding:
-                var = _safe_name(stmt.catch_var)
-                self._line(f"}} catch let {var} as {_safe_type_name(exc_type)} {{")
-            elif needs_reraise_binding:
-                self._line(f"}} catch let _err as {_safe_type_name(exc_type)} {{")
-            else:
-                self._line(f"}} catch is {_safe_type_name(exc_type)} {{")
-        self.indent += 1
-        for s in stmt.catch_body:
-            self._emit_stmt(s)
-        if stmt.reraise:
-            if stmt.catch_var:
-                self._line(f"throw {_safe_name(stmt.catch_var)}")
-            else:
-                self._line("throw _err")
-        self.indent -= 1
+                if stmt.reraise:
+                    if is_generic:
+                        self._line("} catch let _err {")
+                    else:
+                        self._line(f"}} catch let _err as {_safe_type_name(exc_type)} {{")
+                    bound = "_err"
+                else:
+                    if is_generic:
+                        self._line("} catch {")
+                    else:
+                        self._line(f"}} catch is {_safe_type_name(exc_type)} {{")
+                    bound = None
+            self.indent += 1
+            for s in clause.body:
+                self._emit_stmt(s)
+            if stmt.reraise and bound:
+                self._line(f"throw {bound}")
+            self.indent -= 1
         self._line("}")
 
     def _expr(self, expr: Expr) -> str:
@@ -1814,7 +1819,7 @@ def _can_throw(stmts: list[Stmt]) -> bool:
                 return True
         elif isinstance(s, TryCatch):
             # Raises inside try body are caught, but catch body can re-throw
-            if _can_throw(s.catch_body):
+            if any(_can_throw(c.body) for c in s.catches):
                 return True
     return False
 
@@ -1871,7 +1876,7 @@ def _stmt_calls_any(s: Stmt, names: set[str]) -> bool:
             return True
     elif isinstance(s, TryCatch):
         # Calls in try body are handled, but catch body propagates
-        if _calls_any(s.catch_body, names):
+        if any(_calls_any(c.body, names) for c in s.catches):
             return True
     return False
 
@@ -1957,7 +1962,7 @@ def _returns_nil(stmts: list[Stmt]) -> bool:
             if s.default and _returns_nil(s.default):
                 return True
         elif isinstance(s, TryCatch):
-            if _returns_nil(s.body) or _returns_nil(s.catch_body):
+            if _returns_nil(s.body) or any(_returns_nil(c.body) for c in s.catches):
                 return True
     return False
 

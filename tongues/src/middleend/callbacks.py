@@ -98,7 +98,8 @@ def _scan_stmt(stmt: Stmt, func_params: dict[str, list[Param]], current_struct: 
         _scan_stmts(stmt.body, func_params, current_struct)
     elif isinstance(stmt, TryCatch):
         _scan_stmts(stmt.body, func_params, current_struct)
-        _scan_stmts(stmt.catch_body, func_params, current_struct)
+        for clause in stmt.catches:
+            _scan_stmts(clause.body, func_params, current_struct)
     elif isinstance(stmt, TypeSwitch):
         _scan_expr(stmt.expr, func_params, current_struct)
         for case in stmt.cases:

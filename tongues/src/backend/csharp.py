@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.backend.util import escape_string, to_camel, to_pascal, to_screaming_snake
 from src.ir import (
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -510,6 +511,15 @@ class CSharpBackend:
                     self._line(f"return {self._expr(value)};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    msg = self._expr(message)
+                    self._line(
+                        f"System.Diagnostics.Debug.Assert({cond_str}, Convert.ToString({msg}));"
+                    )
+                else:
+                    self._line(f"System.Diagnostics.Debug.Assert({cond_str});")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -567,11 +577,9 @@ class CSharpBackend:
                     self.indent -= 1
                     self._line("}")
             case TryCatch(
-                body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
-                reraise=reraise,
+                body=_,
+                catches=_,
+                reraise=_,
             ):
                 self._emit_try_catch(stmt)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
@@ -893,20 +901,22 @@ class CSharpBackend:
         for s in stmt.body:
             self._emit_stmt(s)
         self.indent -= 1
-        exc_type = stmt.catch_type.name if isinstance(stmt.catch_type, StructRef) else "Exception"
-        if stmt.catch_var_unused or not stmt.catch_var:
-            self._line(f"}} catch ({exc_type})")
-        else:
-            var = _safe_name(stmt.catch_var)
-            self._line(f"}} catch ({exc_type} {var})")
-        self._line("{")
-        self.indent += 1
-        for s in stmt.catch_body:
-            self._emit_stmt(s)
-        if stmt.reraise:
-            self._line(f"throw;")
-        self.indent -= 1
         self._line("}")
+        for clause in stmt.catches:
+            exc_type = clause.typ.name if isinstance(clause.typ, StructRef) else "Exception"
+            if clause.var:
+                var = _safe_name(clause.var)
+                self._line(f"catch ({exc_type} {var})")
+            else:
+                self._line(f"catch ({exc_type})")
+            self._line("{")
+            self.indent += 1
+            for s in clause.body:
+                self._emit_stmt(s)
+            if stmt.reraise:
+                self._line("throw;")
+            self.indent -= 1
+            self._line("}")
 
     def _expr(self, expr: Expr) -> str:
         match expr:

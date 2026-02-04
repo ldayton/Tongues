@@ -413,6 +413,7 @@ class Module:
     enums: list[Enum] = field(default_factory=list)
     exports: list[Export] = field(default_factory=list)
     hierarchy_root: str | None = None  # Root interface for Node-like class hierarchies
+    entrypoint: EntryPoint | None = None
 
 
 @dataclass
@@ -963,13 +964,22 @@ class Block(Stmt):
 
 
 @dataclass
+class CatchClause:
+    """A single catch/except handler in a TryCatch."""
+
+    var: str | None
+    typ: Type | None
+    body: list[Stmt]
+
+
+@dataclass
 class TryCatch(Stmt):
     """Exception handling.
 
     Semantics:
     - Execute body
-    - If exception of catch_type is raised, bind to catch_var and execute catch_body
-    - If reraise is True, catch_body re-raises after cleanup
+    - If exception matches a catch clause, bind to its var and execute its body
+    - If reraise is True, the active catch clause re-raises after cleanup
 
     | Target | Representation                |
     |--------|-------------------------------|
@@ -981,17 +991,13 @@ class TryCatch(Stmt):
     | TS     | try/catch                     |
 
     Middleend annotations:
-    - catch_var_unused: catch_var never referenced in catch_body
     - hoisted_vars: Variables needing hoisting
     """
 
     body: list[Stmt]
-    catch_var: str | None = None
-    catch_type: Type | None = None  # Exception type to catch
-    catch_body: list[Stmt] = field(default_factory=list)
+    catches: list[CatchClause] = field(default_factory=list)
     reraise: bool = False
     # Middleend annotations
-    catch_var_unused: bool = False
     has_returns: bool = False
     has_catch_returns: bool = False
     hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
@@ -1019,6 +1025,17 @@ class Raise(Stmt):
     message: Expr
     pos: Expr
     reraise_var: str | None = None
+
+
+@dataclass
+class Assert(Stmt):
+    """Assert statement.
+
+    Semantics: If test is false, raise AssertionError with optional message.
+    """
+
+    test: Expr
+    message: Expr | None = None
 
 
 @dataclass

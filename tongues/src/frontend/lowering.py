@@ -1462,6 +1462,21 @@ def lower_stmt_Return(
     return ir.Return(value=value, loc=loc_from_node(node))
 
 
+def lower_stmt_Assert(
+    node: ASTNode,
+    lower_expr_as_bool: Callable[[ASTNode], "ir.Expr"],
+    lower_expr: Callable[[ASTNode], "ir.Expr"],
+) -> "ir.Stmt":
+    """Lower assert statement."""
+    from .. import ir
+
+    test_node = node.get("test")
+    msg_node = node.get("msg")
+    test = lower_expr_as_bool(test_node) if test_node else ir.BoolLit(value=True, typ=BOOL)
+    message = lower_expr(msg_node) if msg_node else None
+    return ir.Assert(test=test, message=message, loc=loc_from_node(node))
+
+
 # ============================================================
 # EXCEPTION STATEMENT LOWERING
 # ============================================================
@@ -2673,15 +2688,13 @@ def lower_stmt_Try(
     from .. import ir
 
     body = dispatch.lower_stmts(node.get("body", []))
-    catch_var = None
-    catch_type: ir.Type | None = None
-    catch_body: list[ir.Stmt] = []
+    catches: list[ir.CatchClause] = []
     reraise = False
     handlers = node.get("handlers", [])
-    if handlers:
-        handler = handlers[0]
+    for handler in handlers:
         catch_var = handler.get("name")
         # Extract exception type from handler
+        catch_type: ir.Type | None = None
         catch_type_node = handler.get("type")
         if catch_type_node and is_type(catch_type_node, ["Name"]):
             type_name = catch_type_node.get("id")
@@ -2695,11 +2708,10 @@ def lower_stmt_Try(
         for stmt in handler_body:
             if is_type(stmt, ["Raise"]) and stmt.get("exc") is None:
                 reraise = True
+        catches.append(ir.CatchClause(var=catch_var, typ=catch_type, body=catch_body))
     return ir.TryCatch(
         body=body,
-        catch_var=catch_var,
-        catch_type=catch_type,
-        catch_body=catch_body,
+        catches=catches,
         reraise=reraise,
         loc=loc_from_node(node),
     )
@@ -2919,6 +2931,12 @@ def _lower_stmt_Raise_dispatch(
     return lower_stmt_Raise(node, d.lower_expr, ctx.current_catch_var)
 
 
+def _lower_stmt_Assert_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Stmt":
+    return lower_stmt_Assert(node, d.lower_expr_as_bool, d.lower_expr)
+
+
 def _lower_stmt_FunctionDef_dispatch(
     node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
 ) -> "ir.Stmt":
@@ -2944,6 +2962,7 @@ STMT_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch
     "Continue": _lower_stmt_Continue_dispatch,
     "Pass": _lower_stmt_Pass_dispatch,
     "Raise": _lower_stmt_Raise_dispatch,
+    "Assert": _lower_stmt_Assert_dispatch,
     "Try": _lower_stmt_Try_dispatch,
     "FunctionDef": _lower_stmt_FunctionDef_dispatch,
 }

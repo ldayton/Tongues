@@ -132,11 +132,12 @@ def _vars_first_assigned_in(
                 _vars_first_assigned_in(stmt.body, branch_declared, hierarchy_root),
                 hierarchy_root,
             )
-            _merge_var_types(
-                result,
-                _vars_first_assigned_in(stmt.catch_body, branch_declared, hierarchy_root),
-                hierarchy_root,
-            )
+            for clause in stmt.catches:
+                _merge_var_types(
+                    result,
+                    _vars_first_assigned_in(clause.body, branch_declared, hierarchy_root),
+                    hierarchy_root,
+                )
     return result
 
 
@@ -189,7 +190,8 @@ def _collect_conflicting_loop_vars(
             result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
         elif isinstance(stmt, TryCatch):
             result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
-            result.extend(_collect_conflicting_loop_vars(stmt.catch_body, all_func_assigned))
+            for clause in stmt.catches:
+                result.extend(_collect_conflicting_loop_vars(clause.body, all_func_assigned))
         elif isinstance(stmt, (Match, TypeSwitch)):
             for case in stmt.cases:
                 result.extend(_collect_conflicting_loop_vars(case.body, all_func_assigned))
@@ -210,15 +212,19 @@ def _analyze_stmts(
         all_func_assigned = set()
     for i, stmt in enumerate(stmts):
         if isinstance(stmt, TryCatch):
+            catch_stmts: list[Stmt] = []
+            for clause in stmt.catches:
+                catch_stmts.extend(clause.body)
             inner_new = _vars_first_assigned_in(
-                stmt.body + stmt.catch_body, declared, hierarchy_root
+                stmt.body + catch_stmts, declared, hierarchy_root
             )
             used_after = _collect_used_vars(stmts[i + 1 :])
             needs_hoisting = _filter_hoisted_vars(inner_new, used_after)
             stmt.hoisted_vars = needs_hoisting
             _update_declared_from_hoisted(declared, needs_hoisting)
             _analyze_stmts(func_name, stmt.body, declared, all_func_assigned, hierarchy_root)
-            _analyze_stmts(func_name, stmt.catch_body, declared, all_func_assigned, hierarchy_root)
+            for clause in stmt.catches:
+                _analyze_stmts(func_name, clause.body, declared, all_func_assigned, hierarchy_root)
         elif isinstance(stmt, If):
             inner_new = _vars_first_assigned_in(
                 stmt.then_body + stmt.else_body, declared, hierarchy_root

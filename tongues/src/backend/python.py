@@ -26,9 +26,12 @@ Middleend deficiencies (should be fixed in middleend.py):
 
 from __future__ import annotations
 
+import dataclasses
+
 from src.backend.util import escape_string
 from src.ir import (
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -37,9 +40,11 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -204,6 +209,43 @@ def _safe_name(name: str) -> str:
     return name
 
 
+def _ir_contains_call(node: object, func: str) -> bool:
+    """Return True if IR contains a Call to the given function name."""
+    seen: set[int] = set()
+
+    def visit(obj: object) -> bool:
+        if obj is None:
+            return False
+        if isinstance(obj, Call) and obj.func == func:
+            return True
+        # Avoid cycles (shouldn't happen, but be defensive)
+        obj_id = id(obj)
+        if obj_id in seen:
+            return False
+        # Walk dataclasses and containers
+        if dataclasses.is_dataclass(obj):
+            seen.add(obj_id)
+            for f in dataclasses.fields(obj):
+                if visit(getattr(obj, f.name)):
+                    return True
+            return False
+        if isinstance(obj, (list, tuple, set)):
+            seen.add(obj_id)
+            for item in obj:
+                if visit(item):
+                    return True
+            return False
+        if isinstance(obj, dict):
+            seen.add(obj_id)
+            for item in obj.values():
+                if visit(item):
+                    return True
+            return False
+        return False
+
+    return visit(node)
+
+
 class PythonBackend:
     """Emit Python code from IR."""
 
@@ -226,21 +268,65 @@ class PythonBackend:
             self.lines.append("")
 
     def _emit_module(self, module: Module) -> None:
+        def _struct_is_emitted(struct: Struct) -> bool:
+            is_empty = not struct.fields and not struct.methods and not struct.doc
+            return not (is_empty and not struct.is_exception and not struct.implements)
+
+        needs_protocol = bool(module.interfaces)
+        needs_intptr = _ir_contains_call(module, "_intPtr")
+        needs_dataclass = any(
+            _struct_is_emitted(s) and not s.is_exception for s in module.structs
+        )
+        needs_field = any(
+            _struct_is_emitted(s)
+            and any(
+                fld.default is None and isinstance(fld.typ, (Slice, Array, Map, Set))
+                for fld in s.fields
+            )
+            for s in module.structs
+        )
+
         self._line('"""Generated Python code."""')
         self._line()
         self._line("from __future__ import annotations")
         self._line()
-        self._line("from dataclasses import dataclass, field")
-        self._line("from typing import Protocol")
-        self._line()
-        self._line()
-        self._line("def _intPtr(val: int) -> int | None:")
-        self._line("    return None if val == -1 else val")
-        need_blank = True
-        if module.constants:
+
+        plain_imports: list[str] = []
+        from_imports: list[str] = []
+        if module.entrypoint is not None:
+            plain_imports.append("import sys")
+        if needs_dataclass and needs_field:
+            from_imports.append("from dataclasses import dataclass, field")
+        elif needs_dataclass:
+            from_imports.append("from dataclasses import dataclass")
+        elif needs_field:
+            from_imports.append("from dataclasses import field")
+        if needs_protocol:
+            from_imports.append("from typing import Protocol")
+
+        if plain_imports or from_imports:
+            for line in plain_imports:
+                self._line(line)
+            if plain_imports and from_imports:
+                self._line()
+            for line in from_imports:
+                self._line(line)
             self._line()
+        # Ensure two blank lines before the first top-level definition/class.
+        self._line()
+
+        need_blank = False
+        if needs_intptr:
+            self._line("def _intPtr(val: int) -> int | None:")
+            self._line("    return None if val == -1 else val")
+            need_blank = True
+
+        if module.constants:
+            if need_blank:
+                self._line()
             for const in module.constants:
                 self._emit_constant(const)
+            need_blank = True
         for iface in module.interfaces:
             if need_blank:
                 self._line()
@@ -259,6 +345,10 @@ class PythonBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        if module.entrypoint is not None:
+            self._line()
+            self._line()
+            self._emit_stmt(module.entrypoint)
 
     def _emit_constant(self, const: Constant) -> None:
         typ = self._type(const.typ)
@@ -420,12 +510,15 @@ class PythonBackend:
                     self._emit_stmt(s)
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
-                self._emit_try_catch(body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
+            case Assert(test=test, message=message):
+                if message is not None:
+                    self._line(f"assert {self._expr(test)}, {self._expr(message)}")
+                else:
+                    self._line(f"assert {self._expr(test)}")
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"raise {reraise_var}")
@@ -435,6 +528,11 @@ class PythonBackend:
                     self._line(f"raise {error_type}({msg}, {p})")
             case SoftFail():
                 self._line("return None")
+            case EntryPoint(function_name=function_name):
+                self._line('if __name__ == "__main__":')
+                self.indent += 1
+                self._line(f"sys.exit({function_name}())")
+                self.indent -= 1
             case _:
                 raise NotImplementedError("Unknown statement")
 
@@ -493,8 +591,51 @@ class PythonBackend:
             iter_expr = f"({iter_expr} or [])"
         idx = _safe_name(index) if index else None
         val = _safe_name(value) if value else None
+
+        # Fold tuple-unpacking prelude:
+        #   for _item in xs:
+        #       a = _item[0]
+        #       b = _item[1]
+        # into:
+        #   for a, b in xs:
+        if idx is None and value is not None and value.startswith("_"):
+            unpacked: list[str] = []
+            i = 0
+            while i < len(body):
+                stmt = body[i]
+                if not isinstance(stmt, Assign):
+                    break
+                if not isinstance(stmt.target, VarLV):
+                    break
+                if not isinstance(stmt.value, FieldAccess):
+                    break
+                field_access = stmt.value
+                if not isinstance(field_access.obj, Var) or field_access.obj.name != value:
+                    break
+                field = field_access.field
+                if not (field.startswith("F") and field[1:].isdigit()):
+                    break
+                if int(field[1:]) != i:
+                    break
+                unpacked.append(_safe_name(stmt.target.name))
+                i += 1
+            if i >= 2:
+                targets = ", ".join(unpacked)
+                self._line(f"for {targets} in {iter_expr}:")
+                self.indent += 1
+                rest = body[i:]
+                if _is_empty_body(rest):
+                    self._line("pass")
+                for s in rest:
+                    self._emit_stmt(s)
+                self.indent -= 1
+                return
+
         if idx is not None and val is not None:
-            self._line(f"for {idx}, {val} in enumerate({iter_expr}):")
+            if isinstance(iterable, Call) and iterable.func in ("enumerate", "zip"):
+                self._line(f"for {idx}, {val} in {iter_expr}:")
+            else:
+                self._line(f"for {idx}, {val} in enumerate({iter_expr}):")
         elif val is not None:
             self._line(f"for {val} in {iter_expr}:")
         elif idx is not None:
@@ -543,9 +684,7 @@ class PythonBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         self._line("try:")
@@ -555,17 +694,18 @@ class PythonBackend:
         for s in body:
             self._emit_stmt(s)
         self.indent -= 1
-        var = _safe_name(catch_var) if catch_var else "_e"
-        exc_type = catch_type.name if isinstance(catch_type, StructRef) else "Exception"
-        self._line(f"except {exc_type} as {var}:")
-        self.indent += 1
-        if _is_empty_body(catch_body) and not reraise:
-            self._line("pass")
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line("raise")
-        self.indent -= 1
+        for clause in catches:
+            var = _safe_name(clause.var) if clause.var else "_e"
+            exc_type = clause.typ.name if isinstance(clause.typ, StructRef) else "Exception"
+            self._line(f"except {exc_type} as {var}:")
+            self.indent += 1
+            if _is_empty_body(clause.body) and not reraise:
+                self._line("pass")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("raise")
+            self.indent -= 1
 
     def _emit_else_body(self, else_body: list[Stmt]) -> None:
         """Emit else body, converting single-If else to elif chains."""
@@ -678,6 +818,9 @@ class PythonBackend:
                 # Cast from rune to string is chr() in Python
                 if to_type == Primitive(kind="string") and inner.typ == Primitive(kind="rune"):
                     return f"chr({self._expr(inner)})"
+                # Cast to string is str() in Python
+                if to_type == Primitive(kind="string"):
+                    return f"str({self._expr(inner)})"
                 # Cast from string to []byte is .encode() in Python
                 if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
                     return f'{self._expr(inner)}.encode("utf-8")'

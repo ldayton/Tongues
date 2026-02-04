@@ -44,6 +44,7 @@ from src.ir import (
     VOID,
     AddrOf,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -457,8 +458,9 @@ class CBackend:
         elif isinstance(stmt, TryCatch):
             for s in stmt.body:
                 self._visit_stmt_for_tuples(s)
-            for s in stmt.catch_body:
-                self._visit_stmt_for_tuples(s)
+            for clause in stmt.catches:
+                for s in clause.body:
+                    self._visit_stmt_for_tuples(s)
         elif isinstance(stmt, TypeSwitch):
             self._visit_expr_for_tuples(stmt.expr)
             for case in stmt.cases:
@@ -649,8 +651,9 @@ class CBackend:
         elif isinstance(stmt, TryCatch):
             for s in stmt.body:
                 self._visit_stmt_for_slices(s)
-            for s in stmt.catch_body:
-                self._visit_stmt_for_slices(s)
+            for clause in stmt.catches:
+                for s in clause.body:
+                    self._visit_stmt_for_slices(s)
         elif isinstance(stmt, TypeSwitch):
             self._visit_expr_for_slices(stmt.expr)
             for case in stmt.cases:
@@ -816,6 +819,7 @@ class CBackend:
         self._line("#include <string.h>")
         self._line("#include <stdio.h>")
         self._line("#include <stdarg.h>")
+        self._line("#include <assert.h>")
         self._line("")
         self._line("// === Global error state ===")
         self._line("static int g_parse_error = 0;")
@@ -1732,6 +1736,8 @@ static bool _map_contains(void *map, const char *key) {
             self._emit_stmt_ExprStmt(stmt)
         elif isinstance(stmt, Return):
             self._emit_stmt_Return(stmt)
+        elif isinstance(stmt, Assert):
+            self._emit_stmt_Assert(stmt)
         elif isinstance(stmt, If):
             self._emit_stmt_If(stmt)
         elif isinstance(stmt, While):
@@ -1758,6 +1764,10 @@ static bool _map_contains(void *map, const char *key) {
             self._emit_stmt_Match(stmt)
         elif isinstance(stmt, NoOp):
             pass
+
+    def _emit_stmt_Assert(self, stmt: Assert) -> None:
+        cond = self._emit_expr(stmt.test)
+        self._line(f"assert({cond});")
 
     def _emit_stmt_VarDecl(self, stmt: VarDecl) -> None:
         c_type = self._type_to_c(stmt.typ)
@@ -2254,6 +2264,7 @@ static bool _map_contains(void *map, const char *key) {
 
     def _emit_stmt_TryCatch(self, stmt: TryCatch) -> None:
         # C doesn't have try/catch - simulate with g_parse_error checks
+        catch_body: list[Stmt] = stmt.catches[0].body if stmt.catches else []
         self._line("// try {")
         for name, typ in stmt.hoisted_vars:
             c_type = self._type_to_c(typ) if typ else "void *"
@@ -2264,13 +2275,13 @@ static bool _map_contains(void *map, const char *key) {
             c_name = _safe_name(name)
             self._line(f"{c_type} {c_name};")
             self._hoisted_vars[name] = c_type
-        if stmt.catch_body:
+        if catch_body:
             label = f"_catch_{self._try_label_counter}"
             self._try_label_counter += 1
             self._try_catch_labels.append(label)
         for s in stmt.body:
             self._emit_stmt(s)
-        if stmt.catch_body:
+        if catch_body:
             self._try_catch_labels.pop()
             self._line(f"if (g_parse_error) goto {label};")
             self._line(f"goto {label}_end;")
@@ -2279,7 +2290,7 @@ static bool _map_contains(void *map, const char *key) {
             self.indent += 1
             self._line("g_parse_error = 0;")
             self._line("g_error_msg[0] = '\\0';")
-            for s in stmt.catch_body:
+            for s in catch_body:
                 self._emit_stmt(s)
             self.indent -= 1
             self._line("}")
@@ -2374,8 +2385,9 @@ static bool _map_contains(void *map, const char *key) {
             result.extend(stmt.hoisted_vars)
             for s in stmt.body:
                 result.extend(self._collect_stmt_hoisted_vars(s))
-            for s in stmt.catch_body:
-                result.extend(self._collect_stmt_hoisted_vars(s))
+            for clause in stmt.catches:
+                for s in clause.body:
+                    result.extend(self._collect_stmt_hoisted_vars(s))
         return result
 
     def _collect_case_declarations(self, stmts: list[Stmt]) -> list[tuple[str, Type | None]]:
@@ -2424,7 +2436,8 @@ static bool _map_contains(void *map, const char *key) {
                     result.extend(self._collect_case_declarations(stmt.default))
             elif isinstance(stmt, TryCatch):
                 result.extend(self._collect_case_declarations(stmt.body))
-                result.extend(self._collect_case_declarations(stmt.catch_body))
+                for clause in stmt.catches:
+                    result.extend(self._collect_case_declarations(clause.body))
         return result
 
     def _emit_stmt_TypeSwitch(self, stmt: TypeSwitch) -> None:

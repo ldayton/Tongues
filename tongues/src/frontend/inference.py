@@ -811,6 +811,28 @@ def collect_var_types(
                             var_types[var_name] = Slice(INT)
                         else:
                             var_types[var_name] = Slice(InterfaceRef("any"))
+                    elif elts and is_type(elts[0], ["Tuple"]):
+                        tuple_elts = elts[0].get("elts", [])
+                        if len(tuple_elts) >= 2:
+                            inferred: list["Type"] = []
+                            for e in tuple_elts:
+                                if is_type(e, ["Constant"]):
+                                    v = e.get("value")
+                                    if isinstance(v, bool):
+                                        inferred.append(BOOL)
+                                    elif isinstance(v, int) and not isinstance(v, bool):
+                                        inferred.append(INT)
+                                    elif isinstance(v, float):
+                                        inferred.append(FLOAT)
+                                    elif isinstance(v, str):
+                                        inferred.append(STRING)
+                                    else:
+                                        inferred.append(InterfaceRef("any"))
+                                else:
+                                    inferred.append(InterfaceRef("any"))
+                            var_types[var_name] = Slice(Tuple(tuple(inferred)))
+                        else:
+                            var_types[var_name] = Slice(InterfaceRef("any"))
                     else:
                         var_types[var_name] = Slice(InterfaceRef("any"))
                 elif is_type(value, ["Dict"]):

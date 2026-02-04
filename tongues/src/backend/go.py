@@ -67,6 +67,7 @@ from src.ir import (
     STRING,
     VOID,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -642,6 +643,8 @@ func _Substring(s string, start int, end int) string {
             self._emit_stmt_ExprStmt(stmt)
         elif isinstance(stmt, Return):
             self._emit_stmt_Return(stmt)
+        elif isinstance(stmt, Assert):
+            self._emit_stmt_Assert(stmt)
         elif isinstance(stmt, If):
             self._emit_stmt_If(stmt)
         elif isinstance(stmt, While):
@@ -670,6 +673,15 @@ func _Substring(s string, start int, end int) string {
             pass  # No output for NoOp
         else:
             self._line("// TODO: unknown statement")
+
+    def _emit_stmt_Assert(self, stmt: Assert) -> None:
+        test = self._emit_expr(stmt.test)
+        msg = self._emit_expr(stmt.message) if stmt.message is not None else '"assertion failed"'
+        self._line(f"if !({test}) {{")
+        self.indent += 1
+        self._line(f"panic({msg})")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_stmt_VarDecl(self, stmt: VarDecl) -> None:
         go_type = self._type_to_go(stmt.typ)
@@ -1117,24 +1129,72 @@ func _Substring(s string, start int, end int) string {
             self._hoisted_in_try.add(name)
         has_returns = stmt.has_returns
         has_catch_returns = stmt.has_catch_returns
+
+        def _emit_catch_dispatch() -> None:
+            catches = stmt.catches
+            if not catches:
+                self._line("panic(r)")
+                return
+
+            first = catches[0]
+            if not isinstance(first.typ, StructRef):
+                # Catch-all first clause
+                if first.var:
+                    self._line(f"{go_to_camel(first.var)} := r")
+                for s in first.body:
+                    self._emit_stmt(s)
+                if stmt.reraise:
+                    self._line("panic(r)")
+                return
+
+            chain_started = False
+            for clause in catches:
+                if isinstance(clause.typ, StructRef):
+                    typ_name = clause.typ.name
+                    var_name = go_to_camel(clause.var) if clause.var else "_"
+                    keyword = "if" if not chain_started else "} else if"
+                    self._line(f"{keyword} {var_name}, ok := r.(*{typ_name}); ok {{")
+                    self.indent += 1
+                    for s in clause.body:
+                        self._emit_stmt(s)
+                    if stmt.reraise:
+                        self._line("panic(r)")
+                    self.indent -= 1
+                    chain_started = True
+                    continue
+
+                # Catch-all clause
+                self._line("} else {")
+                self.indent += 1
+                if clause.var:
+                    self._line(f"{go_to_camel(clause.var)} := r")
+                for s in clause.body:
+                    self._emit_stmt(s)
+                if stmt.reraise:
+                    self._line("panic(r)")
+                self.indent -= 1
+                self._line("}")
+                return
+
+            if chain_started:
+                self._line("} else {")
+                self.indent += 1
+                self._line("panic(r)")
+                self.indent -= 1
+                self._line("}")
+
         if has_returns:
             # When try/catch contains return statements, don't wrap in IIFE
             # Return statements will return from the enclosing function
             self._line("defer func() {")
             self.indent += 1
-            if stmt.catch_var:
-                self._line(f"if {stmt.catch_var} := recover(); {stmt.catch_var} != nil {{")
-            else:
-                self._line("if r := recover(); r != nil {")
+            self._line("if r := recover(); r != nil {")
             self.indent += 1
             # Track that we're in catch body (for return transformation)
             if has_catch_returns and self._named_returns:
                 self._in_catch_body = True
-            for s in stmt.catch_body:
-                self._emit_stmt(s)
+            _emit_catch_dispatch()
             self._in_catch_body = False
-            if stmt.reraise:
-                self._line("panic(r)")
             self.indent -= 1
             self._line("}")
             self.indent -= 1
@@ -1147,15 +1207,9 @@ func _Substring(s string, start int, end int) string {
             self.indent += 1
             self._line("defer func() {")
             self.indent += 1
-            if stmt.catch_var:
-                self._line(f"if {stmt.catch_var} := recover(); {stmt.catch_var} != nil {{")
-            else:
-                self._line("if r := recover(); r != nil {")
+            self._line("if r := recover(); r != nil {")
             self.indent += 1
-            for s in stmt.catch_body:
-                self._emit_stmt(s)
-            if stmt.reraise:
-                self._line("panic(r)")
+            _emit_catch_dispatch()
             self.indent -= 1
             self._line("}")
             self.indent -= 1

@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.backend.util import to_camel, to_pascal, to_screaming_snake
 from src.ir import (
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -477,6 +478,12 @@ class PhpBackend:
                     self._line(f"return {self._expr(value)};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    self._line(f"assert({cond_str}, {self._expr(message)});")
+                else:
+                    self._line(f"assert({cond_str});")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -528,11 +535,9 @@ class PhpBackend:
                     self.indent -= 1
                     self._line("}")
             case TryCatch(
-                body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
-                reraise=reraise,
+                body=_,
+                catches=_,
+                reraise=_,
             ):
                 self._emit_try_catch(stmt)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
@@ -709,21 +714,23 @@ class PhpBackend:
         for s in stmt.body:
             self._emit_stmt(s)
         self.indent -= 1
-        var = _safe_name(stmt.catch_var) if stmt.catch_var else "ex"
-        exc_type = (
-            _safe_pascal(stmt.catch_type.name)
-            if isinstance(stmt.catch_type, StructRef)
-            else "Exception"
-        )
-        self._line(f"}} catch ({exc_type} ${var})")
-        self._line("{")
-        self.indent += 1
-        for s in stmt.catch_body:
-            self._emit_stmt(s)
-        if stmt.reraise:
-            self._line(f"throw ${var};")
-        self.indent -= 1
         self._line("}")
+        for clause in stmt.catches:
+            var = _safe_name(clause.var) if clause.var else "ex"
+            exc_type = (
+                _safe_pascal(clause.typ.name)
+                if isinstance(clause.typ, StructRef)
+                else "Exception"
+            )
+            self._line(f"catch ({exc_type} ${var})")
+            self._line("{")
+            self.indent += 1
+            for s in clause.body:
+                self._emit_stmt(s)
+            if stmt.reraise:
+                self._line(f"throw ${var};")
+            self.indent -= 1
+            self._line("}")
 
     def _expr(self, expr: Expr) -> str:
         match expr:

@@ -412,6 +412,58 @@ def build_module(
     """Build IR Module from collected symbols."""
     from .. import ir
 
+    def _extract_entrypoint_function_name(node: ASTNode) -> str | None:
+        """Extract entrypoint function name from `if __name__ == "__main__": ...`."""
+        if not is_type(node, ["If"]):
+            return None
+        if node.get("orelse"):
+            return None
+        test = node.get("test")
+        if not is_type(test, ["Compare"]):
+            return None
+        left = test.get("left")
+        if not is_type(left, ["Name"]) or left.get("id") != "__name__":
+            return None
+        ops = test.get("ops", [])
+        comparators = test.get("comparators", [])
+        if len(ops) != 1 or len(comparators) != 1:
+            return None
+        if not is_type(ops[0], ["Eq"]):
+            return None
+        comp = comparators[0]
+        if is_type(comp, ["Constant"]):
+            if comp.get("value") != "__main__":
+                return None
+        elif is_type(comp, ["Str"]):
+            if comp.get("s") != "__main__":
+                return None
+        else:
+            return None
+        body = node.get("body", [])
+        if len(body) != 1 or not is_type(body[0], ["Expr"]):
+            return None
+        expr = body[0].get("value")
+        if not is_type(expr, ["Call"]):
+            return None
+        func = expr.get("func")
+        # Pattern: main()
+        if is_type(func, ["Name"]):
+            return func.get("id")
+        # Pattern: sys.exit(main())
+        if (
+            is_type(func, ["Attribute"])
+            and func.get("attr") == "exit"
+            and is_type(func.get("value"), ["Name"])
+            and func.get("value", {}).get("id") == "sys"
+        ):
+            args = expr.get("args", [])
+            if len(args) != 1 or not is_type(args[0], ["Call"]):
+                return None
+            inner_func = args[0].get("func")
+            if is_type(inner_func, ["Name"]):
+                return inner_func.get("id")
+        return None
+
     module = Module(name="parable")
     module.hierarchy_root = hierarchy_root
     # Build constants (module-level and class-level)
@@ -475,4 +527,13 @@ def build_module(
             module.functions.append(func)
     # Add constructor functions (must come after regular functions for dependency order)
     module.functions.extend(constructor_funcs)
+    # Detect module entry point guard (if __name__ == "__main__": main()).
+    for node in tree.get("body", []):
+        func_name = _extract_entrypoint_function_name(node)
+        if func_name:
+            module.entrypoint = ir.EntryPoint(
+                function_name=func_name,
+                loc=callbacks.loc_from_node(node),
+            )
+            break
     return module

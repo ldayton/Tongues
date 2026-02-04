@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.backend.util import escape_string, to_snake
 from src.ir import (
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -13,6 +14,7 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
@@ -473,9 +475,12 @@ class PerlBackend:
                     if init:
                         self._collect_undeclared_info([init], needs_predecl, declared_in_cf, True)
                     self._collect_undeclared_info(body, needs_predecl, declared_in_cf, True)
-                case TryCatch(body=body, catch_body=catch_body):
+                case TryCatch(body=body, catches=catches):
                     self._collect_undeclared_info(body, needs_predecl, declared_in_cf, True)
-                    self._collect_undeclared_info(catch_body, needs_predecl, declared_in_cf, True)
+                    for clause in catches:
+                        self._collect_undeclared_info(
+                            clause.body, needs_predecl, declared_in_cf, True
+                        )
                 case Match(cases=cases, default=default):
                     for case in cases:
                         self._collect_undeclared_info(
@@ -520,7 +525,7 @@ class PerlBackend:
                 case Block(body=body):
                     if self._body_has_return(body):
                         return True
-                case TryCatch(body=body, catch_body=catch_body):
+                case TryCatch():
                     # Don't recurse into nested try-catch; they'll handle their own returns
                     pass
         return False
@@ -716,6 +721,10 @@ class PerlBackend:
                     self._line(f"return {self._expr(value)};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                msg = self._expr(message) if message is not None else '"AssertionError"'
+                self._line(f"die {msg} unless ({cond_str});")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -758,13 +767,11 @@ class PerlBackend:
                     self._emit_stmt(s)
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
                 self._emit_hoisted_vars(stmt)
-                self._emit_try_catch(body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"die ${reraise_var};")
@@ -908,9 +915,7 @@ class PerlBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         has_return = self._body_has_return(body)
@@ -932,13 +937,45 @@ class PerlBackend:
             self._line("}")
         self.indent -= 1
         self._line("};")
-        var = _safe_name(catch_var) if catch_var else "_e"
-        self._line(f"if (my ${var} = $@) {{")
+        self._line("if (my $_e = $@) {")
         self.indent += 1
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line(f"die ${var};")
+        if not catches:
+            self._line("die $_e;")
+        elif len(catches) == 1:
+            clause = catches[0]
+            if clause.var:
+                self._line(f"my ${_safe_name(clause.var)} = $_e;")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("die $_e;")
+        else:
+            default_clause = catches[-1]
+            typed_clauses = [c for c in catches[:-1] if isinstance(c.typ, StructRef)]
+            if typed_clauses:
+                for i, clause in enumerate(typed_clauses):
+                    type_name = clause.typ.name if isinstance(clause.typ, StructRef) else ""
+                    keyword = "if" if i == 0 else "} elsif"
+                    self._line(f"{keyword} (ref($_e) eq '{type_name}') {{")
+                    self.indent += 1
+                    if clause.var:
+                        self._line(f"my ${_safe_name(clause.var)} = $_e;")
+                    for s in clause.body:
+                        self._emit_stmt(s)
+                    if reraise:
+                        self._line("die $_e;")
+                    self.indent -= 1
+                self._line("} else {")
+                self.indent += 1
+            if default_clause.var:
+                self._line(f"my ${_safe_name(default_clause.var)} = $_e;")
+            for s in default_clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("die $_e;")
+            if typed_clauses:
+                self.indent -= 1
+                self._line("}")
         self.indent -= 1
         self._line("}")
         if has_return:

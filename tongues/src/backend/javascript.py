@@ -10,6 +10,7 @@ from src.ir import (
     INT,
     STRING,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -18,6 +19,7 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
@@ -338,6 +340,12 @@ class JsBackend:
                     self._line(f"return {self._expr(value)};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    self._line(f"console.assert({cond_str}, {self._expr(message)});")
+                else:
+                    self._line(f"console.assert({cond_str});")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt.hoisted_vars)
                 if init is not None:
@@ -387,9 +395,9 @@ class JsBackend:
             case Block(body=body):
                 for s in body:
                     self._emit_stmt(s)
-            case TryCatch(body=body, catch_var=catch_var, catch_body=catch_body, reraise=reraise):
+            case TryCatch(body=body, catches=catches, reraise=reraise):
                 self._emit_hoisted_vars(stmt.hoisted_vars)
-                self._emit_try_catch(body, catch_var, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"throw {_camel(reraise_var)}")
@@ -612,8 +620,7 @@ class JsBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         self._line("try {")
@@ -621,13 +628,77 @@ class JsBackend:
         for s in body:
             self._emit_stmt(s)
         self.indent -= 1
-        var = _camel(catch_var) if catch_var else "_e"
-        self._line(f"}} catch ({var}) {{")
+        self._line("} catch (_e) {")
         self.indent += 1
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line(f"throw {var};")
+        if not catches:
+            if reraise:
+                self._line("throw _e;")
+            self.indent -= 1
+            self._line("}")
+            return
+
+        if len(catches) == 1:
+            clause = catches[0]
+            if clause.var:
+                self._line(f"let {_camel(clause.var)} = _e;")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("throw _e;")
+            self.indent -= 1
+            self._line("}")
+            return
+
+        emitted_chain = False
+        has_default = False
+        for clause in catches:
+            cond: str | None = None
+            if isinstance(clause.typ, StructRef):
+                cond = f"_e instanceof {clause.typ.name}"
+            if cond is None:
+                if not emitted_chain:
+                    if clause.var:
+                        self._line(f"let {_camel(clause.var)} = _e;")
+                    for s in clause.body:
+                        self._emit_stmt(s)
+                    if reraise:
+                        self._line("throw _e;")
+                    self.indent -= 1
+                    self._line("}")
+                    return
+                self._line("else {")
+                self.indent += 1
+                if clause.var:
+                    self._line(f"let {_camel(clause.var)} = _e;")
+                for s in clause.body:
+                    self._emit_stmt(s)
+                if reraise:
+                    self._line("throw _e;")
+                self.indent -= 1
+                self._line("}")
+                emitted_chain = True
+                has_default = True
+                break
+
+            keyword = "if" if not emitted_chain else "else if"
+            self._line(f"{keyword} ({cond}) {{")
+            self.indent += 1
+            if clause.var:
+                self._line(f"let {_camel(clause.var)} = _e;")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("throw _e;")
+            self.indent -= 1
+            self._line("}")
+            emitted_chain = True
+
+        if emitted_chain and not has_default:
+            self._line("else {")
+            self.indent += 1
+            self._line("throw _e;")
+            self.indent -= 1
+            self._line("}")
         self.indent -= 1
         self._line("}")
 

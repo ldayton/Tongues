@@ -69,6 +69,7 @@ ALLOWED_BUILTINS: set[str] = {
     "IndexError",
     "AttributeError",
     "RuntimeError",
+    "AssertionError",
     # print is handled specially
     "print",
 }

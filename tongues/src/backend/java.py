@@ -162,6 +162,7 @@ def _java_safe_class(name: str) -> str:
 
 from src.ir import (
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -170,6 +171,7 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
@@ -433,8 +435,9 @@ def _java_visit_stmt(backend: "JavaBackend", stmt: Stmt) -> None:
     elif isinstance(stmt, TryCatch):
         for s in stmt.body:
             _java_visit_stmt(backend, s)
-        for s in stmt.catch_body:
-            _java_visit_stmt(backend, s)
+        for clause in stmt.catches:
+            for s in clause.body:
+                _java_visit_stmt(backend, s)
     elif isinstance(stmt, Match):
         _java_visit_expr(backend, stmt.expr)
         for case in stmt.cases:
@@ -830,6 +833,14 @@ class JavaBackend:
                         self._line(f"return {self._expr(value)};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                msg = self._expr(message) if message is not None else '"assertion failed"'
+                self._line(f"if (!({cond_str})) {{")
+                self.indent += 1
+                self._line(f"throw new AssertionError({msg});")
+                self.indent -= 1
+                self._line("}")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -890,12 +901,10 @@ class JavaBackend:
                     self._line("}")
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
-                self._emit_try_catch(stmt, body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(stmt, body, catches, reraise)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"throw {reraise_var};")
@@ -1100,9 +1109,7 @@ class JavaBackend:
         self,
         stmt: Stmt,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         self._emit_hoisted_vars(stmt)
@@ -1111,15 +1118,16 @@ class JavaBackend:
         for s in body:
             self._emit_stmt(s)
         self.indent -= 1
-        var = _java_safe_name(catch_var) if catch_var else "e"
-        exc_type = catch_type.name if isinstance(catch_type, StructRef) else "Exception"
-        self._line(f"}} catch ({exc_type} {var}) {{")
-        self.indent += 1
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line(f"throw {var};")
-        self.indent -= 1
+        for clause in catches:
+            var = _java_safe_name(clause.var) if clause.var else "e"
+            exc_type = clause.typ.name if isinstance(clause.typ, StructRef) else "Exception"
+            self._line(f"}} catch ({exc_type} {var}) {{")
+            self.indent += 1
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line(f"throw {var};")
+            self.indent -= 1
         self._line("}")
 
     def _emit_tuple_pop(self, stmt: TupleAssign) -> None:

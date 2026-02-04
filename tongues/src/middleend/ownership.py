@@ -182,10 +182,11 @@ def _analyze_stmt(stmt: Stmt, ctx: OwnershipContext, info: OwnershipInfo) -> Non
     elif isinstance(stmt, TryCatch):
         for s in stmt.body:
             _analyze_stmt(s, ctx, info)
-        if stmt.catch_var:
-            ctx.var_ownership[stmt.catch_var] = "owned"
-        for s in stmt.catch_body:
-            _analyze_stmt(s, ctx, info)
+        for clause in stmt.catches:
+            if clause.var:
+                ctx.var_ownership[clause.var] = "owned"
+            for s in clause.body:
+                _analyze_stmt(s, ctx, info)
     elif isinstance(stmt, Match):
         _analyze_expr(stmt.expr, ctx, info, escaping=False)
         for case in stmt.cases:

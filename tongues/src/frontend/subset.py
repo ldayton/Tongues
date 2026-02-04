@@ -265,6 +265,11 @@ def is_none_constant(node: ASTNode) -> bool:
     return node.get("value") is None
 
 
+def is_constant(node: ASTNode) -> bool:
+    """Check if node is a constant literal."""
+    return node.get("_type") == "Constant"
+
+
 def is_obvious_literal(node: ASTNode) -> bool:
     """Check if node is a literal with obvious type."""
     if node.get("_type") != "Constant":
@@ -814,10 +819,8 @@ class Verifier:
             comparator = comparators[i]
             op_type = op.get("_type", "")
             if op_type in ("Is", "IsNot"):
-                left_is_none = is_none_constant(left)
-                right_is_none = is_none_constant(comparator)
-                if not left_is_none and not right_is_none:
-                    self.error(node, "reflection", "is/is not: only use with None")
+                if not is_constant(left) and not is_constant(comparator):
+                    self.error(node, "reflection", "is/is not: requires a literal on one side")
             left = comparator
             i += 1
         # Visit children

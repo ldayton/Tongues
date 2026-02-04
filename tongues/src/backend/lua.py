@@ -13,6 +13,7 @@ from __future__ import annotations
 from src.backend.util import escape_string, to_snake, to_screaming_snake
 from src.ir import (
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -21,6 +22,7 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     CharLit,
     Constant,
     Continue,
@@ -247,8 +249,11 @@ class LuaBackend:
                 if self._body_has_continue(stmt.body):
                     return True
             elif isinstance(stmt, TryCatch):
-                if self._body_has_continue(stmt.body) or self._body_has_continue(stmt.catch_body):
+                if self._body_has_continue(stmt.body):
                     return True
+                for clause in stmt.catches:
+                    if self._body_has_continue(clause.body):
+                        return True
             elif isinstance(stmt, Match):
                 for case in stmt.cases:
                     if self._body_has_continue(case.body):
@@ -271,10 +276,11 @@ class LuaBackend:
                 if self._body_has_direct_continue(stmt.body):
                     return True
             elif isinstance(stmt, TryCatch):
-                if self._body_has_direct_continue(stmt.body) or self._body_has_direct_continue(
-                    stmt.catch_body
-                ):
+                if self._body_has_direct_continue(stmt.body):
                     return True
+                for clause in stmt.catches:
+                    if self._body_has_direct_continue(clause.body):
+                        return True
             elif isinstance(stmt, Match):
                 for case in stmt.cases:
                     if self._body_has_direct_continue(case.body):
@@ -314,8 +320,11 @@ class LuaBackend:
                 if self._body_has_return(stmt.body):
                     return True
             elif isinstance(stmt, TryCatch):
-                if self._body_has_return(stmt.body) or self._body_has_return(stmt.catch_body):
+                if self._body_has_return(stmt.body):
                     return True
+                for clause in stmt.catches:
+                    if self._body_has_return(clause.body):
+                        return True
             elif isinstance(stmt, Match):
                 for case in stmt.cases:
                     if self._body_has_return(case.body):
@@ -360,11 +369,12 @@ class LuaBackend:
                     result.update(self._collect_assigned_vars(body))
                 case Block(body=body):
                     result.update(self._collect_assigned_vars(body))
-                case TryCatch(body=body, catch_var=catch_var, catch_body=catch_body):
+                case TryCatch(body=body, catches=catches):
                     result.update(self._collect_assigned_vars(body))
-                    if catch_var:
-                        result.add(catch_var)
-                    result.update(self._collect_assigned_vars(catch_body))
+                    for clause in catches:
+                        if clause.var:
+                            result.add(clause.var)
+                        result.update(self._collect_assigned_vars(clause.body))
                 case Match(cases=cases, default=default):
                     for case in cases:
                         result.update(self._collect_assigned_vars(case.body))
@@ -683,6 +693,12 @@ class LuaBackend:
                     self._line(f"return {self._expr(value)}")
                 else:
                     self._line("return")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    self._line(f"assert({cond_str}, {self._expr(message)})")
+                else:
+                    self._line(f"assert({cond_str})")
             case If(
                 cond=cond,
                 then_body=then_body,
@@ -743,12 +759,10 @@ class LuaBackend:
                     self._emit_stmt(s)
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
-                self._emit_try_catch(body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
             case Raise(
                 error_type=error_type,
                 message=message,
@@ -942,12 +956,9 @@ class LuaBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
-        var = _safe_name(catch_var) if catch_var else "_err"
         has_return = self._body_has_return(body)
         self._line("local _ok, _err = pcall(function()")
         self.indent += 1
@@ -959,14 +970,61 @@ class LuaBackend:
         self._line("end)")
         self._line("if not _ok then")
         self.indent += 1
-        if catch_var:
-            self._line(f"local {var} = _err")
-        if _is_empty_body(catch_body) and not reraise:
-            self._line("-- empty catch")
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
+        if not catches:
             self._line("error(_err)")
+        elif len(catches) == 1:
+            clause = catches[0]
+            if clause.var:
+                self._line(f"local {_safe_name(clause.var)} = _err")
+            if _is_empty_body(clause.body) and not reraise:
+                self._line("-- empty catch")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("error(_err)")
+        else:
+            emitted_default = False
+            for i, clause in enumerate(catches):
+                cond: str | None = None
+                if isinstance(clause.typ, StructRef):
+                    type_name = _safe_type_name(clause.typ.name)
+                    cond = f"type(_err) == 'table' and _err.{type_name}"
+                if cond is None:
+                    if i == 0:
+                        # Catch-all first clause: emit directly
+                        if clause.var:
+                            self._line(f"local {_safe_name(clause.var)} = _err")
+                        for s in clause.body:
+                            self._emit_stmt(s)
+                        if reraise:
+                            self._line("error(_err)")
+                        emitted_default = True
+                        break
+                    self._line("else")
+                    emitted_default = True
+                else:
+                    keyword = "if" if i == 0 else "elseif"
+                    self._line(f"{keyword} {cond} then")
+                if cond is not None or i != 0:
+                    self.indent += 1
+                    if clause.var:
+                        self._line(f"local {_safe_name(clause.var)} = _err")
+                    if _is_empty_body(clause.body) and not reraise:
+                        self._line("-- empty catch")
+                    for s in clause.body:
+                        self._emit_stmt(s)
+                    if reraise:
+                        self._line("error(_err)")
+                    self.indent -= 1
+                    if emitted_default:
+                        break
+            if not emitted_default:
+                self._line("else")
+                self.indent += 1
+                self._line("error(_err)")
+                self.indent -= 1
+            if not emitted_default or (emitted_default and i != 0):
+                self._line("end")
         self.indent -= 1
         self._line("end")
         # If try body has return statements, propagate the return value on success

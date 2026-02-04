@@ -16,6 +16,7 @@ def escape_string(value: str) -> str:
 from src.ir import (
     Args,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -738,6 +739,12 @@ class DartBackend:
                     self._line(f"return {val};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    self._line(f"assert({cond_str}, {self._expr(message)});")
+                else:
+                    self._line(f"assert({cond_str});")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -791,11 +798,9 @@ class DartBackend:
                     self.indent -= 1
                     self._line("}")
             case TryCatch(
-                body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
-                reraise=reraise,
+                body=_,
+                catches=_,
+                reraise=_,
             ):
                 self._emit_try_catch(stmt)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
@@ -1126,18 +1131,23 @@ class DartBackend:
         for s in stmt.body:
             self._emit_stmt(s)
         self.indent -= 1
-        exc_type = stmt.catch_type.name if isinstance(stmt.catch_type, StructRef) else "Exception"
-        if stmt.catch_var_unused or not stmt.catch_var:
-            self._line(f"}} on {exc_type} {{")
-        else:
-            var = _safe_name(stmt.catch_var)
-            self._line(f"}} on {exc_type} catch ({var}) {{")
-        self.indent += 1
-        for s in stmt.catch_body:
-            self._emit_stmt(s)
-        if stmt.reraise:
-            self._line("rethrow;")
-        self.indent -= 1
+        for clause in stmt.catches:
+            if isinstance(clause.typ, StructRef):
+                exc_type = clause.typ.name
+                if clause.var:
+                    var = _safe_name(clause.var)
+                    self._line(f"}} on {exc_type} catch ({var}) {{")
+                else:
+                    self._line(f"}} on {exc_type} {{")
+            else:
+                var = _safe_name(clause.var) if clause.var else "_e"
+                self._line(f"}} catch ({var}) {{")
+            self.indent += 1
+            for s in clause.body:
+                self._emit_stmt(s)
+            if stmt.reraise:
+                self._line("rethrow;")
+            self.indent -= 1
         self._line("}")
 
     def _expr(self, expr: Expr) -> str:

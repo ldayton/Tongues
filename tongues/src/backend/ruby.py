@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.backend.util import escape_string, to_snake, to_screaming_snake
 from src.ir import (
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -13,6 +14,7 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
@@ -413,6 +415,13 @@ class RubyBackend:
                     self._line(f"return {self._expr(value)}")
                 else:
                     self._line("return")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    msg = self._expr(message)
+                    self._line(f'raise "AssertionError: #{{{msg}}}" unless {cond_str}')
+                else:
+                    self._line(f'raise "AssertionError" unless {cond_str}')
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 if init is not None:
                     self._emit_stmt(init)
@@ -451,12 +460,10 @@ class RubyBackend:
                     self._emit_stmt(s)
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
-                self._emit_try_catch(body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"raise {reraise_var}")
@@ -587,9 +594,7 @@ class RubyBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         self._line("begin")
@@ -599,21 +604,22 @@ class RubyBackend:
         for s in body:
             self._emit_stmt(s)
         self.indent -= 1
-        var = _safe_name(catch_var) if catch_var else "_e"
-        exc_type = (
-            _safe_type_name(catch_type.name)
-            if isinstance(catch_type, StructRef)
-            else "StandardError"
-        )
-        self._line(f"rescue {exc_type} => {var}")
-        self.indent += 1
-        if _is_empty_body(catch_body) and not reraise:
-            self._line("nil")
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line("raise")
-        self.indent -= 1
+        for clause in catches:
+            var = _safe_name(clause.var) if clause.var else "_e"
+            exc_type = (
+                _safe_type_name(clause.typ.name)
+                if isinstance(clause.typ, StructRef)
+                else "StandardError"
+            )
+            self._line(f"rescue {exc_type} => {var}")
+            self.indent += 1
+            if _is_empty_body(clause.body) and not reraise:
+                self._line("nil")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("raise")
+            self.indent -= 1
         self._line("end")
 
     def _emit_else_body(self, else_body: list[Stmt]) -> None:
