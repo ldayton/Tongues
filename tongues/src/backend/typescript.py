@@ -48,8 +48,11 @@ Backend deficiencies (TypeScript-specific, fixable in typescript.py):
 
 from __future__ import annotations
 
+import dataclasses
+
 from src.backend.util import escape_string
 from src.ir import (
+    BOOL,
     INT,
     STRING,
     Array,
@@ -66,6 +69,7 @@ from src.ir import (
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -186,11 +190,11 @@ class TsBackend:
         else:
             self.lines.append("")
 
-    def _emit_preamble(self) -> None:
-        """Emit helper functions needed by generated code."""
-        # TextEncoder/TextDecoder are available in Node.js but TypeScript needs declarations
+    def _emit_text_codec_declares(self) -> None:
         self._line("declare var TextEncoder: { new(): { encode(s: string): Uint8Array } };")
         self._line("declare var TextDecoder: { new(): { decode(b: Uint8Array): string } };")
+
+    def _emit_range_function(self) -> None:
         self._line("function range(start: number, end?: number, step?: number): number[] {")
         self.indent += 1
         self._line("if (end === undefined) { end = start; start = 0; }")
@@ -212,8 +216,15 @@ class TsBackend:
     def _emit_module(self, module: Module) -> None:
         if module.doc:
             self._line(f"/** {module.doc} */")
-        self._emit_preamble()
-        need_blank = True
+        need_blank = False
+        if _ir_contains_cast(module, "byte", "string") or _ir_contains_cast(
+            module, "string", "byte"
+        ):
+            self._emit_text_codec_declares()
+            need_blank = True
+        if _ir_contains_call(module, "range"):
+            self._emit_range_function()
+            need_blank = True
         if module.constants:
             for const in module.constants:
                 self._emit_constant(const)
@@ -233,18 +244,21 @@ class TsBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
-        # Emit CommonJS exports
-        symbols = self._get_public_symbols(module)
-        if symbols:
+        if module.entrypoint is not None:
             self._line()
-            self._line("// CommonJS exports")
-            self._line("declare var module: any;")
-            self._line("if (typeof module !== 'undefined') {")
-            self.indent += 1
-            exports = ", ".join(symbols)
-            self._line(f"module.exports = {{ {exports} }};")
-            self.indent -= 1
-            self._line("}")
+            self._emit_stmt(module.entrypoint)
+        else:
+            symbols = self._get_public_symbols(module)
+            if symbols:
+                self._line()
+                self._line("// CommonJS exports")
+                self._line("declare var module: any;")
+                self._line("if (typeof module !== 'undefined') {")
+                self.indent += 1
+                exports = ", ".join(symbols)
+                self._line(f"module.exports = {{ {exports} }};")
+                self.indent -= 1
+                self._line("}")
 
     def _emit_constant(self, const: Constant) -> None:
         typ = self._type(const.typ)
@@ -424,9 +438,11 @@ class TsBackend:
             case Assert(test=test, message=message):
                 cond_str = self._expr(test)
                 if message is not None:
-                    self._line(f"console.assert({cond_str}, {self._expr(message)});")
+                    self._line(f"if (!({cond_str})) {{ throw new Error({self._expr(message)}); }}")
                 else:
-                    self._line(f"console.assert({cond_str});")
+                    self._line(f'if (!({cond_str})) {{ throw new Error("Assertion failed"); }}')
+            case EntryPoint(function_name=function_name):
+                self._line(f"process.exitCode = {_camel(function_name)}();")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 if init is not None:
                     self._emit_stmt(init)
@@ -756,7 +772,8 @@ class TsBackend:
         for clause in catches:
             cond: str | None = None
             if isinstance(clause.typ, StructRef):
-                cond = f"_e instanceof {clause.typ.name}"
+                exc_name = _PYTHON_EXCEPTION_MAP.get(clause.typ.name, clause.typ.name)
+                cond = f"_e instanceof {exc_name}"
             if cond is None:
                 if not emitted_chain:
                     if clause.var:
@@ -876,8 +893,17 @@ class TsBackend:
                 else:
                     return f"{s_str}.replace(/^[{escaped}]+/, '').replace(/[{escaped}]+$/, '')"
             case Call(func="_intPtr", args=[arg]):
-                # _intPtr is a Python type hint, just return the argument
                 return self._expr(arg)
+            case Call(func="print", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"console.log({args_str})"
+            case Call(func="repr", args=[arg]) if arg.typ == BOOL:
+                return f'({self._expr(arg)} ? "True" : "False")'
+            case Call(func="repr", args=[arg]):
+                return f"String({self._expr(arg)})"
+            case Call(func="bool", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"Boolean({args_str})"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"{_camel(func)}({args_str})"
@@ -950,6 +976,8 @@ class TsBackend:
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op=op, left=left, right=right):
                 ts_op = _binary_op(op)
+                if op in ("==", "!=") and _is_bool_int_compare(left, right):
+                    ts_op = op
                 left_str = self._expr_with_precedence(left, op, is_right=False)
                 right_str = self._expr_with_precedence(right, op, is_right=True)
                 return f"{left_str} {ts_op} {right_str}"
@@ -977,6 +1005,14 @@ class TsBackend:
                 # Wrap in parens - ternary has very low precedence in JS
                 return f"({self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
             case Cast(expr=inner, to_type=to_type):
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind in ("int", "byte", "rune")
+                    and inner.typ == BOOL
+                ):
+                    return f"Number({self._expr(inner)})"
+                if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == BOOL:
+                    return f'({self._expr(inner)} ? "True" : "False")'
                 ts_type = self._type(to_type)
                 from_type = self._type(inner.typ)
                 if from_type == ts_type:
@@ -1015,6 +1051,8 @@ class TsBackend:
                     and inner.typ.kind in ("rune", "int")
                 ):
                     return f"String.fromCodePoint({self._expr(inner)})"
+                if isinstance(to_type, Primitive) and to_type.kind == "string":
+                    return f"String({self._expr(inner)})"
                 # Use 'as unknown as' to allow any type conversion
                 return f"({self._expr(inner)} as unknown as {ts_type})"
             case TypeAssert(expr=inner, asserted=asserted):
@@ -1305,6 +1343,16 @@ def _safe_name(name: str) -> str:
 
 
 # Python string method → TypeScript string method
+_PYTHON_EXCEPTION_MAP = {
+    "Exception": "Error",
+    "AssertionError": "Error",
+    "ValueError": "Error",
+    "RuntimeError": "Error",
+    "KeyError": "Error",
+    "IndexError": "RangeError",
+    "TypeError": "TypeError",
+}
+
 _STRING_METHOD_MAP = {
     "startswith": "startsWith",
     "endswith": "endsWith",
@@ -1386,6 +1434,97 @@ def _escape_regex_literal(s: str) -> str:
         else:
             result.append(c)
     return "".join(result)
+
+
+def _ir_contains_call(node: object, func: str) -> bool:
+    """Return True if IR contains a Call to the given function name."""
+    seen: set[int] = set()
+
+    def visit(obj: object) -> bool:
+        if obj is None:
+            return False
+        if isinstance(obj, Call) and obj.func == func:
+            return True
+        obj_id = id(obj)
+        if obj_id in seen:
+            return False
+        if dataclasses.is_dataclass(obj):
+            seen.add(obj_id)
+            for f in dataclasses.fields(obj):
+                if visit(getattr(obj, f.name)):
+                    return True
+            return False
+        if isinstance(obj, (list, tuple, set)):
+            seen.add(obj_id)
+            for item in obj:
+                if visit(item):
+                    return True
+            return False
+        if isinstance(obj, dict):
+            seen.add(obj_id)
+            for item in obj.values():
+                if visit(item):
+                    return True
+            return False
+        return False
+
+    return visit(node)
+
+
+def _ir_contains_cast(node: object, from_kind: str, to_kind: str) -> bool:
+    """Return True if IR contains a Cast between the given primitive kinds."""
+    seen: set[int] = set()
+
+    def visit(obj: object) -> bool:
+        if obj is None:
+            return False
+        if isinstance(obj, Cast):
+            inner_type = obj.expr.typ
+            if (
+                isinstance(obj.to_type, Primitive)
+                and obj.to_type.kind == to_kind
+                and isinstance(inner_type, Primitive)
+                and inner_type.kind == from_kind
+            ):
+                return True
+            if (
+                isinstance(obj.to_type, Slice)
+                and isinstance(obj.to_type.element, Primitive)
+                and obj.to_type.element.kind == to_kind
+                and isinstance(inner_type, Primitive)
+                and inner_type.kind == from_kind
+            ):
+                return True
+        obj_id = id(obj)
+        if obj_id in seen:
+            return False
+        if dataclasses.is_dataclass(obj):
+            seen.add(obj_id)
+            for f in dataclasses.fields(obj):
+                if visit(getattr(obj, f.name)):
+                    return True
+            return False
+        if isinstance(obj, (list, tuple, set)):
+            seen.add(obj_id)
+            for item in obj:
+                if visit(item):
+                    return True
+            return False
+        if isinstance(obj, dict):
+            seen.add(obj_id)
+            for item in obj.values():
+                if visit(item):
+                    return True
+            return False
+        return False
+
+    return visit(node)
+
+
+def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
+    """True when one operand is bool and the other is int."""
+    l, r = left.typ, right.typ
+    return (l == BOOL and r == INT) or (l == INT and r == BOOL)
 
 
 def _ends_with_return(body: list[Stmt]) -> bool:
