@@ -20,7 +20,10 @@ def test_codegen(
     if codegen_lang == "python" and codegen_has_explicit:
         # Skip semantic check for statements (def, class, etc.)
         input_stripped = codegen_input.strip()
-        if not any(input_stripped.startswith(kw) for kw in ("def ", "class ", "@", "if ", "for ", "while ")):
+        if not any(
+            input_stripped.startswith(kw)
+            for kw in ("def ", "class ", "@", "if ", "for ", "while ")
+        ):
             try:
                 input_result = eval(input_stripped)
                 output_result = eval(transpiled_output.strip())
@@ -42,7 +45,10 @@ def contains_normalized(haystack: str, needle: str) -> bool:
         if haystack_lines[i] == needle_lines[0]:
             match = True
             for j in range(1, len(needle_lines)):
-                if i + j >= len(haystack_lines) or haystack_lines[i + j] != needle_lines[j]:
+                if (
+                    i + j >= len(haystack_lines)
+                    or haystack_lines[i + j] != needle_lines[j]
+                ):
                     match = False
                     break
             if match:

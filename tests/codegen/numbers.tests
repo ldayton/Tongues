@@ -240,24 +240,268 @@ min(max(1, 2), max(3, 4))
 1 + 2 << 3
 ---
 
-=== hex literal
-0xFF
+=== hex lowercase
+0xff
+--- python
+0xff
 ---
 
-=== octal literal
+=== hex uppercase
+0xFF
+--- python
+0xff
+---
+
+=== hex mixed case
+0xAbCd
+--- python
+0xabcd
+---
+
+=== hex single digit
+0xF
+--- python
+0xf
+---
+
+=== hex with leading zeros
+0x00FF
+--- python
+0xff
+---
+
+=== hex large
+0xDEADBEEF
+--- python
+0xdeadbeef
+---
+
+=== octal basic
+0o77
+--- python
 0o77
 ---
 
-=== binary literal
+=== octal single digit
+0o7
+--- python
+0o7
+---
+
+=== octal zero
+0o0
+--- python
+0o0
+---
+
+=== octal large
+0o755
+--- python
+0o755
+---
+
+=== binary basic
+0b1010
+--- python
 0b1010
 ---
 
-=== scientific notation
-1.5e10
+=== binary single bit
+0b1
+--- python
+0b1
 ---
 
-=== negative exponent notation
+=== binary zero
+0b0
+--- python
+0b0
+---
+
+=== binary byte
+0b11111111
+--- python
+0b11111111
+---
+
+=== binary with leading zeros
+0b00001010
+--- python
+0b1010
+---
+
+=== scientific positive exp
+1.5e10
+--- python
+1.5e+10
+---
+
+=== scientific negative exp
 1.5e-10
+--- python
+1.5e-10
+---
+
+=== scientific uppercase E
+1.5E10
+--- python
+1.5e+10
+---
+
+=== scientific zero exp
+1.5e0
+--- python
+1.5
+---
+
+=== scientific integer coeff
+1e10
+--- python
+1e+10
+---
+
+=== scientific negative coeff
+-1.5e10
+--- python
+-1.5e+10
+---
+
+=== scientific small number
+1e-100
+--- python
+1e-100
+---
+
+=== scientific large number
+1e100
+--- python
+1e+100
+---
+
+=== scientific with plus exp
+1.5e+10
+--- python
+1.5e+10
+---
+
+=== scientific trailing zeros
+1.50e10
+--- python
+1.5e+10
+---
+
+=== hex in expression
+0xFF + 1
+--- python
+0xff + 1
+---
+
+=== octal in expression
+0o77 * 2
+--- python
+0o77 * 2
+---
+
+=== binary in expression
+0b1010 | 0b0101
+--- python
+0b1010 | 0b101
+---
+
+=== scientific in expression
+1.5e10 + 1.0
+--- python
+1.5e+10 + 1.0
+---
+
+=== mixed literal formats
+0xFF + 0o77 + 0b1010
+--- python
+0xff + 0o77 + 0b1010
+---
+
+=== float trailing zeros
+1.00000
+--- python
+1.0
+---
+
+=== float many trailing zeros
+3.14000000
+--- python
+3.14
+---
+
+=== float trailing dot
+1.
+--- python
+1.0
+---
+
+=== float leading dot
+.5
+--- python
+0.5
+---
+
+=== float leading dot small
+.001
+--- python
+0.001
+---
+
+=== float integer value
+1.0
+--- python
+1.0
+---
+
+=== float zero
+0.0
+--- python
+0.0
+---
+
+=== float negative zero
+-0.0
+--- python
+-0.0
+---
+
+=== float negative trailing zeros
+-1.00000
+--- python
+-1.0
+---
+
+=== float negative leading dot
+-.5
+--- python
+-0.5
+---
+
+=== float underscores
+1_000_000.0
+--- python
+1000000.0
+---
+
+=== int underscores
+1_000_000
+--- python
+1000000
+---
+
+=== hex underscores
+0xFF_FF
+--- python
+0xffff
+---
+
+=== binary underscores
+0b1010_1010
+--- python
+0b10101010
 ---
 
 === large int
@@ -365,4 +609,3 @@ not True and False
 === not of and
 not (True and False)
 ---
-

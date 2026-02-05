@@ -899,6 +899,9 @@ def infer_expr_type_from_ast(
             for e in elts
         )
         return Tuple(elem_types)
+    # Comparison and boolean operations always produce bool
+    if node_t in ("Compare", "BoolOp"):
+        return BOOL
     return InterfaceRef("any")
 
 

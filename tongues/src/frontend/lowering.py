@@ -567,7 +567,42 @@ def coerce_sentinel_to_ptr(
 # ============================================================
 
 
-def lower_expr_Constant(node: ASTNode) -> "ir.Expr":
+def _extract_literal_text(source: str, node: ASTNode) -> str | None:
+    """Extract original literal text from source using AST location."""
+    lineno = node.get("lineno")
+    col = node.get("col_offset", 0)
+    end_col = node.get("end_col_offset")
+    if lineno is None or end_col is None:
+        return None
+    lines = source.split("\n")
+    if lineno > len(lines):
+        return None
+    line = lines[lineno - 1]  # 1-indexed
+    if col >= len(line) or end_col > len(line):
+        return None
+    return line[col:end_col]
+
+
+def _detect_int_format(text: str) -> str | None:
+    """Detect integer literal format from text."""
+    lower = text.lower()
+    if lower.startswith("0x"):
+        return "hex"
+    if lower.startswith("0o"):
+        return "oct"
+    if lower.startswith("0b"):
+        return "bin"
+    return None
+
+
+def _detect_float_format(text: str) -> str | None:
+    """Detect float literal format (scientific notation) from text."""
+    if "e" in text.lower():
+        return "exp"
+    return None
+
+
+def lower_expr_Constant(node: ASTNode, source: str = "") -> "ir.Expr":
     """Lower Python constant to IR literal."""
     from .. import ir
 
@@ -575,9 +610,13 @@ def lower_expr_Constant(node: ASTNode) -> "ir.Expr":
     if isinstance(value, bool):
         return ir.BoolLit(value=value, typ=BOOL, loc=loc_from_node(node))
     if isinstance(value, int):
-        return ir.IntLit(value=value, typ=INT, loc=loc_from_node(node))
+        text = _extract_literal_text(source, node) if source else None
+        fmt = _detect_int_format(text) if text else None
+        return ir.IntLit(value=value, typ=INT, loc=loc_from_node(node), format=fmt)
     if isinstance(value, float):
-        return ir.FloatLit(value=value, typ=FLOAT, loc=loc_from_node(node))
+        text = _extract_literal_text(source, node) if source else None
+        fmt = _detect_float_format(text) if text else None
+        return ir.FloatLit(value=value, typ=FLOAT, loc=loc_from_node(node), format=fmt)
     if isinstance(value, str):
         return ir.StringLit(value=value, typ=STRING, loc=loc_from_node(node))
     if isinstance(value, bytes):
@@ -1050,20 +1089,10 @@ def lower_expr_Compare(
             if inner == INT:
                 left = ir.UnaryOp(op="*", operand=left, typ=INT, loc=loc_from_node(node))
         return ir.BinaryOp(op=op, left=left, right=right, typ=BOOL, loc=loc_from_node(node))
-    # Chain comparisons - convert to AND of pairwise comparisons
-    result = None
-    prev = lower_expr(node_left)
-    for op, comp in zip(ops, comparators):
-        curr = lower_expr(comp)
-        cmp = ir.BinaryOp(
-            op=cmpop_to_str(op), left=prev, right=curr, typ=BOOL, loc=loc_from_node(node)
-        )
-        if result is None:
-            result = cmp
-        else:
-            result = ir.BinaryOp(op="&&", left=result, right=cmp, typ=BOOL, loc=loc_from_node(node))
-        prev = curr
-    return result or ir.BoolLit(value=True, typ=BOOL)
+    # Chain comparisons - preserve as ChainedCompare IR node
+    operands = [lower_expr(node_left)] + [lower_expr(comp) for comp in comparators]
+    op_strs = [cmpop_to_str(op) for op in ops]
+    return ir.ChainedCompare(operands=operands, ops=op_strs, typ=BOOL, loc=loc_from_node(node))
 
 
 def lower_expr_BoolOp(
@@ -1959,22 +1988,14 @@ def lower_expr_Call(
         if func_name == "chr" and len(args) == 1:
             rune_cast = ir.Cast(expr=args[0], to_type=RUNE, typ=RUNE, loc=loc_from_node(node))
             return ir.Cast(expr=rune_cast, to_type=STRING, typ=STRING, loc=loc_from_node(node))
-        # Check for max(a, b) -> a > b ? a : b
+        # Check for max(a, b) -> MaxExpr
         if func_name == "max" and len(args) == 2:
-            cond = ir.BinaryOp(
-                op=">", left=args[0], right=args[1], typ=BOOL, loc=loc_from_node(node)
-            )
-            return ir.Ternary(
-                cond=cond, then_expr=args[0], else_expr=args[1], typ=INT, loc=loc_from_node(node)
-            )
-        # Check for min(a, b) -> a < b ? a : b
+            result_type = get_expr_type(node_args[0])
+            return ir.MaxExpr(left=args[0], right=args[1], typ=result_type, loc=loc_from_node(node))
+        # Check for min(a, b) -> MinExpr
         if func_name == "min" and len(args) == 2:
-            cond = ir.BinaryOp(
-                op="<", left=args[0], right=args[1], typ=BOOL, loc=loc_from_node(node)
-            )
-            return ir.Ternary(
-                cond=cond, then_expr=args[0], else_expr=args[1], typ=INT, loc=loc_from_node(node)
-            )
+            result_type = get_expr_type(node_args[0])
+            return ir.MinExpr(left=args[0], right=args[1], typ=result_type, loc=loc_from_node(node))
         # Check for isinstance(x, Type) -> IsType expression
         if func_name == "isinstance" and len(node_args) == 2:
             expr = dispatch.lower_expr(node_args[0])
@@ -2900,7 +2921,7 @@ def lower_lvalue(
 def _lower_expr_Constant_dispatch(
     node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
 ) -> "ir.Expr":
-    return lower_expr_Constant(node)
+    return lower_expr_Constant(node, ctx.source)
 
 
 def _lower_expr_Name_dispatch(

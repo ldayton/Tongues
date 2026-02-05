@@ -278,12 +278,18 @@ def pytest_generate_tests(metafunc):
         target_filter = metafunc.config.getoption("target")
         tests = discover_codegen_tests()
         if target_filter:
-            tests = [(tid, inp, lang, exp, has_exp) for tid, inp, lang, exp, has_exp in tests if lang in target_filter]
+            tests = [
+                (tid, inp, lang, exp, has_exp)
+                for tid, inp, lang, exp, has_exp in tests
+                if lang in target_filter
+            ]
         params = [
             pytest.param(input_code, lang, expected, has_explicit, id=test_id)
             for test_id, input_code, lang, expected, has_explicit in tests
         ]
-        metafunc.parametrize("codegen_input,codegen_lang,codegen_expected,codegen_has_explicit", params)
+        metafunc.parametrize(
+            "codegen_input,codegen_lang,codegen_expected,codegen_has_explicit", params
+        )
 
 
 @pytest.fixture

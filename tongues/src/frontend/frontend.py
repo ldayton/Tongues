@@ -60,6 +60,8 @@ class Frontend:
         # Auto-generated kind -> struct mappings (built from class const_fields)
         self._kind_to_struct: dict[str, str] = {}
         self._kind_to_class: dict[str, str] = {}
+        # Source code for literal format detection
+        self._source: str = ""
 
     def _populate_structs_from_names(self, name_result: NameResult) -> None:
         """Populate structs from NameTable (Phase 4 integration)."""
@@ -73,6 +75,7 @@ class Frontend:
         """Parse Python source and produce IR Module."""
         from .names import resolve_names
 
+        self._source = source
         if tree is None:
             tree = parse(source)
         # Pass 1: Collect class names and inheritance (from Phase 4 name_result)
@@ -376,6 +379,7 @@ class Frontend:
             kind_to_class=self._kind_to_class,
             current_catch_var=self._current_catch_var,
             exception_subclasses=exception_subclasses,
+            source=self._source,
         )
         dispatch = LoweringDispatch(
             lower_expr=self._lower_expr,

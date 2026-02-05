@@ -44,6 +44,7 @@ class FrontendContext:
     kind_to_class: dict[str, str]
     current_catch_var: str | None
     exception_subclasses: set[str]
+    source: str = ""  # Original source for literal format detection
 
 
 @dataclass
