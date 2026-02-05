@@ -186,6 +186,7 @@ BANNED_NODES: set[str] = {
 EAGER_CONSUMERS: set[str] = {
     "tuple",
     "list",
+    "dict",
     "set",
     "frozenset",
     "any",

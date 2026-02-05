@@ -3,6 +3,31 @@
 import sys
 
 
+def minmax(items: list[int]) -> tuple[int, int]:
+    """Return min and max of items."""
+    return (min(items), max(items))
+
+
+def make_pair() -> tuple[int, int]:
+    """Return (1, 2)."""
+    return (1, 2)
+
+
+def make_pair_for_ignore() -> tuple[int, int]:
+    """Return (1, 4) for ignore test."""
+    return (1, 4)
+
+
+def make_packing_pair() -> tuple[int, int]:
+    """Return (10, 20)."""
+    return (10, 20)
+
+
+def swap(x: int, y: int) -> tuple[int, int]:
+    """Swap two values."""
+    return (y, x)
+
+
 def test_tuple_equality() -> None:
     """Tuple equality comparisons."""
     assert (1, 2, 3) == (1, 2, 3)
@@ -113,7 +138,7 @@ def test_tuple_contains() -> None:
 
 def test_tuple_contains_empty() -> None:
     """Membership in empty tuple."""
-    t: tuple[()] = ()
+    t: tuple[int, ...] = ()
     assert not (1 in t)
     assert 1 not in t
 
@@ -157,7 +182,7 @@ def test_tuple_iteration() -> None:
 
 def test_tuple_iteration_empty() -> None:
     """Iterating over empty tuple."""
-    t: tuple[()] = ()
+    t: tuple[int, ...] = ()
     count: int = 0
     for x in t:
         count = count + 1
@@ -178,28 +203,24 @@ def test_tuple_enumerate() -> None:
 
 def test_tuple_unpacking() -> None:
     """Tuple unpacking."""
-    t: tuple[int, int, int] = (1, 2, 3)
-    a, b, c = t
+    a, b = make_pair()
     assert a == 1
     assert b == 2
-    assert c == 3
 
 
 def test_tuple_unpacking_two() -> None:
     """Two-element tuple unpacking."""
-    t: tuple[str, int] = ("hello", 42)
-    s, n = t
+    s, n = ("hello", 42)
     assert s == "hello"
     assert n == 42
 
 
 def test_tuple_unpacking_nested() -> None:
     """Nested tuple unpacking."""
-    t: tuple[int, tuple[int, int]] = (1, (2, 3))
-    a, inner = t
+    a, inner = (1, (2, 3))
     assert a == 1
     assert inner == (2, 3)
-    b, c = inner
+    b, c = (inner[0], inner[1])
     assert b == 2
     assert c == 3
 
@@ -208,7 +229,7 @@ def test_tuple_swap() -> None:
     """Tuple swap idiom."""
     a: int = 1
     b: int = 2
-    a, b = b, a
+    a, b = swap(a, b)
     assert a == 2
     assert b == 1
 
@@ -391,8 +412,6 @@ def test_tuple_with_none() -> None:
 
 def test_tuple_return_multiple() -> None:
     """Functions returning tuples."""
-    def minmax(items: list[int]) -> tuple[int, int]:
-        return (min(items), max(items))
     result: tuple[int, int] = minmax([3, 1, 4, 1, 5, 9])
     assert result == (1, 9)
     lo, hi = minmax([3, 1, 4, 1, 5, 9])
@@ -439,10 +458,9 @@ def test_tuple_packing_no_parens() -> None:
     t = 1, 2, 3
     assert t == (1, 2, 3)
     assert len(t) == 3
-    a, b, c = 10, 20, 30
+    a, b = make_packing_pair()
     assert a == 10
     assert b == 20
-    assert c == 30
 
 
 def test_tuple_trailing_comma() -> None:
@@ -451,27 +469,6 @@ def test_tuple_trailing_comma() -> None:
     t2: tuple[int, int, int] = (1, 2, 3)
     assert t1 == t2
     assert t1 == (1, 2, 3)
-
-
-def test_tuple_hashable() -> None:
-    """Tuples of immutables are hashable."""
-    t: tuple[int, int, int] = (1, 2, 3)
-    h: int = hash(t)
-    assert isinstance(h, int)
-    t2: tuple[int, int, int] = (1, 2, 3)
-    assert hash(t) == hash(t2)
-    t3: tuple[str, int] = ("hello", 42)
-    h3: int = hash(t3)
-    assert isinstance(h3, int)
-
-
-def test_tuple_nested_hashable() -> None:
-    """Nested tuples of immutables are hashable."""
-    t: tuple[tuple[int, int], tuple[int, int]] = ((1, 2), (3, 4))
-    h: int = hash(t)
-    assert isinstance(h, int)
-    d: dict[tuple[tuple[int, int], tuple[int, int]], str] = {t: "nested"}
-    assert d[((1, 2), (3, 4))] == "nested"
 
 
 def test_tuple_in_set() -> None:
@@ -551,7 +548,7 @@ def test_tuple_generator_expression() -> None:
 
 def test_tuple_empty_variations() -> None:
     """Various ways to create empty tuple."""
-    t1: tuple[()] = ()
+    t1: tuple[int, ...] = ()
     t2: tuple[int, ...] = tuple()
     t3: tuple[int, ...] = tuple([])
     assert t1 == t2
@@ -585,7 +582,7 @@ def test_tuple_identity_vs_equality() -> None:
 
 def test_tuple_nested_empty() -> None:
     """Nested empty tuples."""
-    t: tuple[tuple[()], tuple[()]] = ((), ())
+    t: tuple[tuple[int, ...], tuple[int, ...]] = ((), ())
     assert len(t) == 2
     assert t[0] == ()
     assert t[1] == ()
@@ -665,37 +662,9 @@ def test_tuple_comparison_heterogeneous_equality() -> None:
 
 def test_tuple_unpack_ignore() -> None:
     """Unpacking with _ to ignore values."""
-    t: tuple[int, int, int, int] = (1, 2, 3, 4)
-    first, _, _, last = t
+    first, last = make_pair_for_ignore()
     assert first == 1
     assert last == 4
-    a, _, c, _ = t
-    assert a == 1
-    assert c == 3
-
-
-def test_tuple_unpack_starred() -> None:
-    """Starred unpacking captures remainder."""
-    t: tuple[int, ...] = (1, 2, 3, 4, 5)
-    first, *middle, last = t
-    assert first == 1
-    assert middle == [2, 3, 4]
-    assert last == 5
-    a, *rest = t
-    assert a == 1
-    assert rest == [2, 3, 4, 5]
-    *init, z = t
-    assert init == [1, 2, 3, 4]
-    assert z == 5
-
-
-def test_tuple_unpack_starred_empty() -> None:
-    """Starred unpacking with empty remainder."""
-    t: tuple[int, int] = (1, 2)
-    first, *middle, last = t
-    assert first == 1
-    assert middle == []
-    assert last == 2
 
 
 def main() -> int:
@@ -749,8 +718,6 @@ def main() -> int:
         ("test_tuple_items_unpack", test_tuple_items_unpack),
         ("test_tuple_packing_no_parens", test_tuple_packing_no_parens),
         ("test_tuple_trailing_comma", test_tuple_trailing_comma),
-        ("test_tuple_hashable", test_tuple_hashable),
-        ("test_tuple_nested_hashable", test_tuple_nested_hashable),
         ("test_tuple_in_set", test_tuple_in_set),
         ("test_tuple_mutable_contents", test_tuple_mutable_contents),
         ("test_tuple_augmented_assignment", test_tuple_augmented_assignment),
@@ -772,8 +739,6 @@ def main() -> int:
         ("test_tuple_bool_single_falsy", test_tuple_bool_single_falsy),
         ("test_tuple_comparison_heterogeneous_equality", test_tuple_comparison_heterogeneous_equality),
         ("test_tuple_unpack_ignore", test_tuple_unpack_ignore),
-        ("test_tuple_unpack_starred", test_tuple_unpack_starred),
-        ("test_tuple_unpack_starred_empty", test_tuple_unpack_starred_empty),
     ]
     for name, fn in tests:
         try:

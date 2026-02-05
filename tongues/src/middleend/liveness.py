@@ -319,8 +319,8 @@ def _expr_reads(name: str, expr: Expr | None) -> bool:
                 return True
         return False
     if isinstance(expr, MapLit):
-        for v in expr.entries.values():
-            if _expr_reads(name, v):
+        for k, v in expr.entries:
+            if _expr_reads(name, k) or _expr_reads(name, v):
                 return True
         return False
     if isinstance(expr, StructLit):

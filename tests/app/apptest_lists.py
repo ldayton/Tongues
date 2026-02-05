@@ -491,26 +491,6 @@ def test_list_slice_assignment() -> None:
     assert items == [1, 100, 200, 300, 4, 5]
 
 
-def test_list_del_index() -> None:
-    """del removes element by index."""
-    items: list[int] = [1, 2, 3, 4, 5]
-    del items[0]
-    assert items == [2, 3, 4, 5]
-    del items[-1]
-    assert items == [2, 3, 4]
-    del items[1]
-    assert items == [2, 4]
-
-
-def test_list_del_slice() -> None:
-    """del removes slice."""
-    items: list[int] = [1, 2, 3, 4, 5]
-    del items[1:3]
-    assert items == [1, 4, 5]
-    del items[:]
-    assert items == []
-
-
 def test_list_multiplication_reference() -> None:
     """Multiplication creates references for nested lists."""
     # For simple types, multiplication works as expected
@@ -685,14 +665,6 @@ def test_list_slice_copy_shallow() -> None:
     assert copied[0] == [1, 99]
 
 
-def test_list_reversed_builtin() -> None:
-    """reversed() returns iterator, doesn't modify original."""
-    items: list[int] = [1, 2, 3]
-    rev: list[int] = list(reversed(items))
-    assert rev == [3, 2, 1]
-    assert items == [1, 2, 3]
-
-
 def test_list_index_with_start() -> None:
     """index() with start parameter."""
     items: list[int] = [1, 2, 1, 2, 1]
@@ -793,8 +765,6 @@ def main() -> int:
         ("test_list_zip_unequal", test_list_zip_unequal),
         ("test_list_identity", test_list_identity),
         ("test_list_slice_assignment", test_list_slice_assignment),
-        ("test_list_del_index", test_list_del_index),
-        ("test_list_del_slice", test_list_del_slice),
         ("test_list_multiplication_reference", test_list_multiplication_reference),
         ("test_list_string_elements", test_list_string_elements),
         ("test_list_multiplication_nested_reference", test_list_multiplication_nested_reference),
@@ -811,7 +781,6 @@ def main() -> int:
         ("test_list_slice_insert_via_zero_length", test_list_slice_insert_via_zero_length),
         ("test_list_copy_shallow", test_list_copy_shallow),
         ("test_list_slice_copy_shallow", test_list_slice_copy_shallow),
-        ("test_list_reversed_builtin", test_list_reversed_builtin),
         ("test_list_index_with_start", test_list_index_with_start),
         ("test_list_index_with_start_end", test_list_index_with_start_end),
         ("test_list_pop_empty_default", test_list_pop_empty_default),

@@ -535,6 +535,11 @@ def synthesize_method_return_type(
             return Slice(obj_type.key)
         if method == "values":
             return Slice(obj_type.value)
+        if method == "items":
+            return Slice(Tuple((obj_type.key, obj_type.value)))
+    # Set methods that return bool
+    if isinstance(obj_type, Set) and method in ("isdisjoint", "issubset", "issuperset"):
+        return BOOL
     # Node interface methods
     if is_node_interface_type(obj_type, hierarchy_root):
         if method in ("to_sexp", "ToSexp"):
@@ -701,6 +706,17 @@ def infer_expr_type_from_ast(
                 return STRING
             if func_name == "bool":
                 return BOOL
+            if func_name == "float":
+                return FLOAT
+            # Built-in collection constructors
+            if func_name == "set":
+                return Set(InterfaceRef("any"))
+            if func_name == "list":
+                return Slice(InterfaceRef("any"))
+            if func_name == "dict":
+                return Map(InterfaceRef("any"), InterfaceRef("any"))
+            if func_name == "tuple":
+                return Tuple(())  # Empty tuple
             # Constructor calls
             if func_name in symbols.structs:
                 return Pointer(StructRef(func_name))
@@ -797,6 +813,22 @@ def infer_expr_type_from_ast(
     # Set literals
     if node_t == "Set":
         return Set(InterfaceRef("any"))
+    # Tuple literals
+    if node_t == "Tuple":
+        elts = node.get("elts", [])
+        elem_types = tuple(
+            infer_expr_type_from_ast(
+                e,
+                type_ctx,
+                symbols,
+                current_func_info,
+                current_class_name,
+                node_types,
+                hierarchy_root,
+            )
+            for e in elts
+        )
+        return Tuple(elem_types)
     return InterfaceRef("any")
 
 

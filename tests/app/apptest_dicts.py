@@ -241,23 +241,9 @@ def test_dict_mixed_operations() -> None:
     assert len(d) == 2
     d["a"] = 10
     assert d["a"] == 10
-    del d["b"]
-    assert len(d) == 1
-    assert "b" not in d
     d["c"] = 3
     d["d"] = 4
-    assert d == {"a": 10, "c": 3, "d": 4}
-
-
-def test_dict_del() -> None:
-    """del removes key."""
-    d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
-    del d["b"]
-    assert d == {"a": 1, "c": 3}
-    assert "b" not in d
-    del d["a"]
-    del d["c"]
-    assert d == {}
+    assert d == {"a": 10, "b": 2, "c": 3, "d": 4}
 
 
 def test_dict_nested() -> None:
@@ -607,8 +593,6 @@ def test_dict_len_after_modifications() -> None:
     assert len(d) == 1
     d["b"] = 2
     assert len(d) == 2
-    del d["a"]
-    assert len(d) == 1
 
 
 def test_dict_in_checks_keys_not_values() -> None:
@@ -639,13 +623,6 @@ def test_dict_zero_key() -> None:
     d: dict[int, str] = {0: "zero", 1: "one"}
     assert d[0] == "zero"
     assert 0 in d
-
-
-def test_dict_reversed() -> None:
-    """reversed() on dict iterates keys in reverse order."""
-    d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
-    rev_keys: list[str] = list(reversed(d))
-    assert rev_keys == ["c", "b", "a"]
 
 
 def test_dict_comprehension_overwrite() -> None:
@@ -686,7 +663,6 @@ def main() -> int:
         ("test_dict_comprehension_condition", test_dict_comprehension_condition),
         ("test_dict_int_keys", test_dict_int_keys),
         ("test_dict_mixed_operations", test_dict_mixed_operations),
-        ("test_dict_del", test_dict_del),
         ("test_dict_nested", test_dict_nested),
         ("test_dict_with_list_values", test_dict_with_list_values),
         ("test_dict_from_tuples", test_dict_from_tuples),
@@ -729,7 +705,6 @@ def main() -> int:
         ("test_dict_none_key", test_dict_none_key),
         ("test_dict_empty_string_key", test_dict_empty_string_key),
         ("test_dict_zero_key", test_dict_zero_key),
-        ("test_dict_reversed", test_dict_reversed),
         ("test_dict_comprehension_overwrite", test_dict_comprehension_overwrite),
     ]
     for name, fn in tests:

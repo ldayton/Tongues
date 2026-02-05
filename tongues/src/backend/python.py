@@ -202,6 +202,9 @@ _PYTHON_BUILTINS = frozenset(
     }
 )
 
+# Builtin types that have static methods (don't rename when used as method receiver)
+_BUILTIN_TYPES = frozenset({"dict", "list", "set", "tuple", "str", "int", "float", "bool", "bytes"})
+
 
 def _safe_name(name: str) -> str:
     """Rename variables that shadow Python builtins."""
@@ -784,16 +787,28 @@ class PythonBackend:
             case TrimChars(string=s, chars=chars, mode=mode):
                 method_map = {"left": "lstrip", "right": "rstrip", "both": "strip"}
                 return f"{self._expr(s)}.{method_map[mode]}({self._expr(chars)})"
-            case Call(func=func, args=args):
+            case Call(func=func, args=args, reverse=reverse):
                 args_str = ", ".join(self._expr(a) for a in args)
+                if reverse:
+                    if args_str:
+                        return f"{func}({args_str}, reverse=True)"
+                    return f"{func}(reverse=True)"
                 return f"{func}({args_str})"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse):
                 args_str = ", ".join(self._expr(a) for a in args)
                 py_method = _method_name(method, receiver_type)
-                obj_str = self._expr(obj)
+                # For builtin type static methods (dict.fromkeys, etc.), don't rename
+                if isinstance(obj, Var) and obj.name in _BUILTIN_TYPES:
+                    obj_str = obj.name
+                else:
+                    obj_str = self._expr(obj)
                 # Wrap receiver in parens for compound expressions (BinaryOp, UnaryOp, etc.)
                 if isinstance(obj, (BinaryOp, UnaryOp, Ternary)):
                     obj_str = f"({obj_str})"
+                if reverse:
+                    if args_str:
+                        return f"{obj_str}.{py_method}({args_str}, reverse=True)"
+                    return f"{obj_str}.{py_method}(reverse=True)"
                 return f"{obj_str}.{py_method}({args_str})"
             case StaticCall(on_type=on_type, method=method, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)

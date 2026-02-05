@@ -1303,6 +1303,7 @@ class Call(Expr):
 
     func: str
     args: list[Expr]
+    reverse: bool = False  # For sorted() with reverse=True
 
 
 @dataclass
@@ -1321,6 +1322,7 @@ class MethodCall(Expr):
     method: str
     args: list[Expr]
     receiver_type: Type
+    reverse: bool = False  # For sort(reverse=True)
 
 
 @dataclass

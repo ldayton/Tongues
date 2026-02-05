@@ -1355,11 +1355,11 @@ def lower_expr_as_bool(
     # Float truthy check
     if expr_type == FLOAT:
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
-    # Slice/Map/Set truthy check
-    if isinstance(expr_type, (Slice, Map, Set)):
+    # Slice/Map/Set/Tuple truthy check
+    if isinstance(expr_type, (Slice, Map, Set, Tuple)):
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
-    # Optional(Slice/Map/Set) truthy check (nil slice has len 0)
-    if isinstance(expr_type, Optional) and isinstance(expr_type.inner, (Slice, Map, Set)):
+    # Optional(Slice/Map/Set/Tuple) truthy check (nil slice has len 0)
+    if isinstance(expr_type, Optional) and isinstance(expr_type.inner, (Slice, Map, Set, Tuple)):
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
     # Interface truthy check: x != nil
     if isinstance(expr_type, InterfaceRef):
@@ -1633,6 +1633,13 @@ def lower_expr_Call(
 
     node_args = node.get("args", [])
     args = [dispatch.lower_expr(a) for a in node_args]
+    # Check for reverse=True keyword argument (for sorted/list.sort)
+    reverse = False
+    for kw in node.get("keywords", []):
+        if kw.get("arg") == "reverse":
+            kw_value = kw.get("value")
+            if is_type(kw_value, ["Constant"]) and kw_value.get("value") is True:
+                reverse = True
     # Method call
     func = node.get("func")
     if is_type(func, ["Attribute"]):
@@ -1780,12 +1787,15 @@ def lower_expr_Call(
         ret_type = type_inference.synthesize_method_return_type(
             obj_type, method, ctx.symbols, ctx.node_types, ctx.hierarchy_root
         )
+        # Pass reverse flag for list.sort()
+        method_reverse = reverse if method == "sort" else False
         return ir.MethodCall(
             obj=obj,
             method=method,
             args=args,
             receiver_type=obj_type,
             typ=ret_type,
+            reverse=method_reverse,
             loc=loc_from_node(node),
         )
     # Free function call
@@ -1832,7 +1842,7 @@ def lower_expr_Call(
                     loc=loc_from_node(node),
                 )
             # Collections: bool([]) -> len([]) != 0
-            if isinstance(arg_type, (Slice, Map, Set)):
+            if isinstance(arg_type, (Slice, Map, Set, Tuple)):
                 return ir.BinaryOp(
                     op="!=",
                     left=ir.Len(expr=args[0], typ=INT, loc=loc_from_node(node)),
@@ -1842,19 +1852,37 @@ def lower_expr_Call(
                 )
             # Default: assume pointer/optional, check != nil
             return ir.IsNil(expr=args[0], negated=True, typ=BOOL, loc=loc_from_node(node))
-        # Check for list() copy
+        # Check for list() copy/conversion
         if func_name == "list" and args:
-            # list(x) is a copy operation - preserve element type from source
             source_type = args[0].typ
-            if isinstance(source_type, Slice):
+            source_arg = args[0]
+            # Don't use .copy() for dict views (keys/values/items) - they're typed as Slice
+            # but don't have .copy()
+            is_dict_view = (
+                isinstance(source_arg, ir.MethodCall)
+                and source_arg.method in ("keys", "values", "items")
+                and isinstance(source_arg.receiver_type, Map)
+            )
+            if isinstance(source_type, Slice) and not is_dict_view:
+                # list(some_list) is a copy operation
+                return ir.MethodCall(
+                    obj=source_arg,
+                    method="copy",
+                    args=[],
+                    receiver_type=source_type,
+                    typ=source_type,
+                    loc=loc_from_node(node),
+                )
+            # list(iterable) - keep as builtin call for non-list iterables
+            if source_type == STRING:
+                result_type = Slice(STRING)
+            elif isinstance(source_type, Slice):
                 result_type = source_type
             else:
-                result_type = Slice(InterfaceRef("any"))
-            return ir.MethodCall(
-                obj=args[0],
-                method="copy",
-                args=[],
-                receiver_type=result_type,
+                result_type = Slice(INT)
+            return ir.Call(
+                func="list",
+                args=args,
                 typ=result_type,
                 loc=loc_from_node(node),
             )
@@ -2093,7 +2121,7 @@ def lower_expr_Call(
             args = dispatch.deref_for_func_slice_params(func_name, args, node_args)
             # Add type assertions for interface{} -> Node coercion
             args = coerce_args_to_node(func_info, args, ctx.hierarchy_root)
-        return ir.Call(func=func_name, args=args, typ=ret_type, loc=loc_from_node(node))
+        return ir.Call(func=func_name, args=args, reverse=reverse, typ=ret_type, loc=loc_from_node(node))
     return ir.Var(name="TODO_Call", typ=InterfaceRef("any"))
 
 
@@ -2191,24 +2219,24 @@ def lower_stmt_Assign(
                     )
                     block.no_scope = True  # Emit without braces
                     return block
-        # Handle tuple unpacking: a, b = func() where func returns tuple
+        # Handle tuple unpacking: a, b, c = func() where func returns tuple
         target_elts = target.get("elts", [])
-        if is_type(target, ["Tuple"]) and len(target_elts) == 2:
-            # Tuple unpacking from method call: a, b = obj.method()
+        if is_type(target, ["Tuple"]) and len(target_elts) >= 2:
+            # Tuple unpacking from method call: a, b, c = obj.method()
             node_value_func = node_value.get("func") if is_type(node_value, ["Call"]) else None
             if is_type(node_value, ["Call"]) and is_type(node_value_func, ["Attribute"]):
-                lval0 = dispatch.lower_lvalue(target_elts[0])
-                lval1 = dispatch.lower_lvalue(target_elts[1])
-                return ir.TupleAssign(targets=[lval0, lval1], value=value, loc=loc_from_node(node))
-            # General tuple unpacking for function calls: a, b = func()
+                lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
+                return ir.TupleAssign(targets=lvalues, value=value, loc=loc_from_node(node))
+            # General tuple unpacking for function calls: a, b, c = func()
             if is_type(node_value, ["Call"]):
-                lval0 = dispatch.lower_lvalue(target_elts[0])
-                lval1 = dispatch.lower_lvalue(target_elts[1])
-                return ir.TupleAssign(targets=[lval0, lval1], value=value, loc=loc_from_node(node))
-            # Tuple unpacking from index: a, b = list[idx] where list is []Tuple
+                lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
+                return ir.TupleAssign(targets=lvalues, value=value, loc=loc_from_node(node))
+            # Tuple unpacking from index: a, b, c = list[idx] where list is []Tuple
             if is_type(node_value, ["Subscript"]):
                 # Infer tuple element type from the list's type
-                entry_type: "Type" = Tuple((InterfaceRef("any"), InterfaceRef("any")))  # Default
+                n = len(target_elts)
+                default_types = tuple(InterfaceRef("any") for _ in range(n))
+                entry_type: "Type" = Tuple(default_types)
                 node_value_value = node_value.get("value")
                 if is_type(node_value_value, ["Name"]):
                     var_name = node_value_value.get("id")
@@ -2217,73 +2245,60 @@ def lower_stmt_Assign(
                         if isinstance(list_type, Slice) and isinstance(list_type.element, Tuple):
                             entry_type = list_type.element
                 # Get field types from entry_type
-                f0_type = (
-                    entry_type.elements[0]
-                    if isinstance(entry_type, Tuple) and len(entry_type.elements) > 0
+                field_types = [
+                    entry_type.elements[i]
+                    if isinstance(entry_type, Tuple) and len(entry_type.elements) > i
                     else InterfaceRef("any")
-                )
-                f1_type = (
-                    entry_type.elements[1]
-                    if isinstance(entry_type, Tuple) and len(entry_type.elements) > 1
-                    else InterfaceRef("any")
-                )
-                lval0 = dispatch.lower_lvalue(target_elts[0])
-                lval1 = dispatch.lower_lvalue(target_elts[1])
+                    for i in range(n)
+                ]
+                lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
                 entry_var = ir.Var(name="_entry", typ=entry_type)
                 # Update var_types for the targets
-                if is_type(target_elts[0], ["Name"]):
-                    type_ctx.var_types[target_elts[0].get("id")] = f0_type
-                if is_type(target_elts[1], ["Name"]):
-                    type_ctx.var_types[target_elts[1].get("id")] = f1_type
-                return ir.Block(
-                    body=[
-                        ir.VarDecl(name="_entry", typ=entry_type, value=value),
+                for i, target_elt in enumerate(target_elts):
+                    if is_type(target_elt, ["Name"]):
+                        type_ctx.var_types[target_elt.get("id")] = field_types[i]
+                # Build block with VarDecl and field accesses
+                body: list[ir.Stmt] = [ir.VarDecl(name="_entry", typ=entry_type, value=value)]
+                for i, lval in enumerate(lvalues):
+                    body.append(
                         ir.Assign(
-                            target=lval0,
-                            value=ir.FieldAccess(obj=entry_var, field="F0", typ=f0_type),
-                        ),
-                        ir.Assign(
-                            target=lval1,
-                            value=ir.FieldAccess(obj=entry_var, field="F1", typ=f1_type),
-                        ),
-                    ],
-                    loc=loc_from_node(node),
-                )
+                            target=lval,
+                            value=ir.FieldAccess(
+                                obj=entry_var, field=f"F{i}", typ=field_types[i]
+                            ),
+                        )
+                    )
+                return ir.Block(body=body, loc=loc_from_node(node))
             # Tuple unpacking from tuple literal: a, b = x, y
             node_value_elts = node_value.get("elts", []) if is_type(node_value, ["Tuple"]) else []
-            if is_type(node_value, ["Tuple"]) and len(node_value_elts) == 2:
-                lval0 = dispatch.lower_lvalue(target_elts[0])
-                lval1 = dispatch.lower_lvalue(target_elts[1])
-                val0 = dispatch.lower_expr(node_value_elts[0])
-                val1 = dispatch.lower_expr(node_value_elts[1])
-                # Update var_types
-                if is_type(target_elts[0], ["Name"]):
-                    type_ctx.var_types[target_elts[0].get("id")] = type_inference.synthesize_type(
-                        val0,
+            if is_type(node_value, ["Tuple"]) and len(node_value_elts) == len(target_elts):
+                lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
+                values = [dispatch.lower_expr(v) for v in node_value_elts]
+                # Update var_types for all targets
+                for i, target_elt in enumerate(target_elts):
+                    if is_type(target_elt, ["Name"]):
+                        type_ctx.var_types[target_elt.get("id")] = type_inference.synthesize_type(
+                            values[i],
+                            type_ctx,
+                            ctx.current_func_info,
+                            ctx.symbols,
+                            ctx.node_types,
+                            ctx.hierarchy_root,
+                        )
+                # Create TupleLit from RHS values and use TupleAssign for correct swap semantics
+                elem_types = tuple(
+                    type_inference.synthesize_type(
+                        v,
                         type_ctx,
                         ctx.current_func_info,
                         ctx.symbols,
                         ctx.node_types,
                         ctx.hierarchy_root,
                     )
-                if is_type(target_elts[1], ["Name"]):
-                    type_ctx.var_types[target_elts[1].get("id")] = type_inference.synthesize_type(
-                        val1,
-                        type_ctx,
-                        ctx.current_func_info,
-                        ctx.symbols,
-                        ctx.node_types,
-                        ctx.hierarchy_root,
-                    )
-                block = ir.Block(
-                    body=[
-                        ir.Assign(target=lval0, value=val0),
-                        ir.Assign(target=lval1, value=val1),
-                    ],
-                    loc=loc_from_node(node),
+                    for v in values
                 )
-                block.no_scope = True  # Don't emit braces
-                return block
+                tuple_lit = ir.TupleLit(elements=values, typ=Tuple(elem_types))
+                return ir.TupleAssign(targets=lvalues, value=tuple_lit, loc=loc_from_node(node))
         # Track variable type dynamically for later use in nested scopes
         # Coerce value to target type if known
         target_id = target.get("id") if is_type(target, ["Name"]) else None
