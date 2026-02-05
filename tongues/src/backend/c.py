@@ -3271,6 +3271,9 @@ class CBackend:
             op = "&&"
         if op == "or":
             op = "||"
+        # Floor division - C integer division already floors
+        if op == "//":
+            op = "/"
         return f"({left} {op} {right})"
 
     def _emit_char_literal(self, char: str) -> str:

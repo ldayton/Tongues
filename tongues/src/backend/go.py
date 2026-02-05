@@ -1879,18 +1879,22 @@ class GoBackend:
             if isinstance(right_type, (Set, Map)):
                 return f"!_mapHas({right}, {left})"
             return f"!strings.Contains({right}, {left})"
+        # Floor division - Go integer division already floors
+        op = expr.op
+        if op == "//":
+            op = "/"
         # Handle operator precedence: && binds tighter than ||
         # So a || expression nested inside && needs parentheses
-        if expr.op == "&&":
+        if op == "&&":
             if isinstance(expr.left, BinaryOp) and expr.left.op == "||":
                 left = f"({left})"
             if isinstance(expr.right, BinaryOp) and expr.right.op == "||":
                 right = f"({right})"
         # Don't wrap comparison, logical, or simple arithmetic in parens
         # Go handles precedence well and parens around conditions look unidiomatic
-        if expr.op in ("&&", "||", "==", "!=", "<", ">", "<=", ">=", "+", "-", "*"):
-            return f"{left} {expr.op} {right}"
-        return f"({left} {expr.op} {right})"
+        if op in ("&&", "||", "==", "!=", "<", ">", "<=", ">=", "+", "-", "*", "/"):
+            return f"{left} {op} {right}"
+        return f"({left} {op} {right})"
 
     def _emit_rune_literal(self, char: str) -> str:
         """Emit a single character as a Go rune literal."""

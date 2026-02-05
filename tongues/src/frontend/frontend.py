@@ -235,8 +235,8 @@ class Frontend:
 
     def _collect_var_types(
         self, stmts: list[ASTNode]
-    ) -> tuple[dict[str, Type], dict[str, list[str]], set[str], dict[str, list[str]]]:
-        """Pre-scan function body to collect variable types, tuple var mappings, and sentinel ints."""
+    ) -> tuple[dict[str, Type], dict[str, list[str]], set[str], set[str], dict[str, list[str]]]:
+        """Pre-scan function body to collect variable types, tuple var mappings, sentinel ints, and optional strings."""
         cb = inference.InferenceCallbacks(
             annotation_to_str=self._annotation_to_str,
             py_type_to_ir=self._py_type_to_ir,

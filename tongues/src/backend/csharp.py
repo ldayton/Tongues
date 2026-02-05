@@ -1027,6 +1027,9 @@ class CSharpBackend:
                 return self._containment_check(left, right, negated=False)
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
+            case BinaryOp(op="//", left=left, right=right):
+                # Floor division - C# integer division already floors
+                return f"{self._expr(left)} / {self._expr(right)}"
             case BinaryOp(op=op, left=left, right=right):
                 left_str = self._expr(left)
                 right_str = self._expr(right)

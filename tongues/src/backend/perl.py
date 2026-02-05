@@ -1310,6 +1310,11 @@ class PerlBackend:
                 if inner_type == Primitive(kind="string"):
                     return f"(length({self._expr(e)}) > 0)"
                 return f"({self._expr(e)} ? 1 : 0)"
+            case BinaryOp(op="//", left=left, right=right):
+                # Floor division in Perl uses int()
+                left_str = self._maybe_paren(left, "/", is_left=True)
+                right_str = self._maybe_paren(right, "/", is_left=False)
+                return f"int({left_str} / {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 if op == "in":
                     return self._containment_check(left, right, negated=False)

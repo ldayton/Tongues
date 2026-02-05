@@ -21,6 +21,7 @@ class TypeContext:
     return_type: Type | None = None
     tuple_vars: dict[str, list[str]] = field(default_factory=dict)
     sentinel_ints: set[str] = field(default_factory=set)
+    optional_strings: set[str] = field(default_factory=set)
     narrowed_vars: set[str] = field(default_factory=set)
     kind_source_vars: dict[str, str] = field(default_factory=dict)
     union_types: dict[str, list[str]] = field(default_factory=dict)

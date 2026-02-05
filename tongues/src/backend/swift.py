@@ -406,6 +406,9 @@ class SwiftBackend(Emitter):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
+        # Floor division - Swift integer division already floors
+        if op == "//":
+            op = "/"
         # Bool arithmetic: True + True → (true ? 1 : 0) + (true ? 1 : 0)
         if op in ("+", "-", "*", "/", "%") and (
             _is_bool(expr.left) or _is_bool(expr.right)

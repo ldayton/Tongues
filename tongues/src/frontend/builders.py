@@ -42,7 +42,7 @@ class BuilderCallbacks:
     py_return_type_to_ir: Callable[[str], "Type"]
     lower_expr: Callable[[ASTNode], "ir.Expr"]
     lower_stmts: Callable[[list[ASTNode]], list["ir.Stmt"]]
-    collect_var_types: Callable[[list[ASTNode]], tuple[dict, dict, set, dict]]
+    collect_var_types: Callable[[list[ASTNode]], tuple[dict, dict, set, set, dict]]
     is_exception_subclass: Callable[[str], bool]
     extract_union_struct_names: Callable[[str], list[str]]
     loc_from_node: Callable[[ASTNode], "Loc"]
@@ -142,7 +142,7 @@ def build_constructor(
     callbacks.setup_context(class_name, None)
     # Collect variable types and build type context
     init_body = init_ast.get("body", [])
-    var_types, tuple_vars, sentinel_ints, list_element_unions, unified_to_node = (
+    var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node = (
         callbacks.collect_var_types(init_body)
     )
     var_types.update(param_types)
@@ -152,6 +152,7 @@ def build_constructor(
         var_types=var_types,
         tuple_vars=tuple_vars,
         sentinel_ints=sentinel_ints,
+        optional_strings=optional_strings,
         list_element_unions=list_element_unions,
         unified_to_node=unified_to_node,
     )
@@ -215,7 +216,7 @@ def build_method_shell(
         callbacks.setup_context(class_name, func_info)
         # Collect variable types from body and add parameters + self
         node_body = node.get("body", [])
-        var_types, tuple_vars, sentinel_ints, list_element_unions, unified_to_node = (
+        var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node = (
             callbacks.collect_var_types(node_body)
         )
         if func_info:
@@ -239,6 +240,7 @@ def build_method_shell(
             var_types=var_types,
             tuple_vars=tuple_vars,
             sentinel_ints=sentinel_ints,
+            optional_strings=optional_strings,
             union_types=union_types,
             list_element_unions=list_element_unions,
             unified_to_node=unified_to_node,
@@ -278,7 +280,7 @@ def build_function_shell(
         # Set up context first (needed by collect_var_types) - empty class name for functions
         callbacks.setup_context("", func_info)
         # Collect variable types from body and add parameters
-        var_types, tuple_vars, sentinel_ints, list_element_unions, unified_to_node = (
+        var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node = (
             callbacks.collect_var_types(node.get("body", []))
         )
         if func_info:
@@ -301,6 +303,7 @@ def build_function_shell(
             var_types=var_types,
             tuple_vars=tuple_vars,
             sentinel_ints=sentinel_ints,
+            optional_strings=optional_strings,
             union_types=union_types,
             list_element_unions=list_element_unions,
             unified_to_node=unified_to_node,

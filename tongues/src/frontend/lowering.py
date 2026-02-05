@@ -65,8 +65,24 @@ def get_expr_type(node: ASTNode) -> "Type":
             return INT
         if isinstance(value, str):
             return STRING
+        if isinstance(value, bytes):
+            return Slice(BYTE)
         if isinstance(value, float):
             return FLOAT
+    # BoolOp (and/or) and Compare always produce BOOL
+    if node.get("_type") in ("BoolOp", "Compare"):
+        return BOOL
+    # UnaryOp: type depends on operator and operand
+    if node.get("_type") == "UnaryOp":
+        op = node.get("op")
+        if is_type(op, ["Not"]):
+            return BOOL
+        if is_type(op, ["Invert"]):
+            return INT
+        # USub, UAdd: type is same as operand
+        operand = node.get("operand")
+        if operand:
+            return get_expr_type(operand)
     return InterfaceRef("any")
 
 
@@ -117,7 +133,7 @@ def binop_to_str(op: ASTNode) -> str:
         "Sub": "-",
         "Mult": "*",
         "Div": "/",
-        "FloorDiv": "/",
+        "FloorDiv": "//",
         "Mod": "%",
         "Pow": "**",
         "LShift": "<<",
@@ -564,6 +580,10 @@ def lower_expr_Constant(node: ASTNode) -> "ir.Expr":
         return ir.FloatLit(value=value, typ=FLOAT, loc=loc_from_node(node))
     if isinstance(value, str):
         return ir.StringLit(value=value, typ=STRING, loc=loc_from_node(node))
+    if isinstance(value, bytes):
+        # Convert bytes to SliceLit of byte values
+        elements = [ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node)) for b in value]
+        return ir.SliceLit(element_type=BYTE, elements=elements, typ=Slice(BYTE), loc=loc_from_node(node))
     if value is None:
         return ir.NilLit(typ=InterfaceRef("any"), loc=loc_from_node(node))
     return ir.Var(name="TODO_Constant_unknown", typ=InterfaceRef("any"))
@@ -732,13 +752,15 @@ def lower_expr_Subscript(
     if is_type(node_slice, ["Slice"]):
         slice_lower = node_slice.get("lower")
         slice_upper = node_slice.get("upper")
+        slice_step = node_slice.get("step")
         low = convert_negative_index(slice_lower, obj, node, lower_expr) if slice_lower else None
         high = convert_negative_index(slice_upper, obj, node, lower_expr) if slice_upper else None
+        step = lower_expr(slice_step) if slice_step else None
         # Slicing preserves type - string slice is still string, slice of slice is still slice
         slice_type: "Type" = get_expr_type(node_value)
         if slice_type == InterfaceRef("any"):
             slice_type = obj.typ
-        return ir.SliceExpr(obj=obj, low=low, high=high, typ=slice_type, loc=loc_from_node(node))
+        return ir.SliceExpr(obj=obj, low=low, high=high, step=step, typ=slice_type, loc=loc_from_node(node))
     idx = convert_negative_index(node_slice, obj, node, lower_expr)
     # Infer element type from slice type
     elem_type: "Type" = InterfaceRef("any")
@@ -858,17 +880,19 @@ def lower_expr_Compare(
             and is_type(comparators[0], ["Constant"])
             and comparators[0].get("value") is None
         ):
-            # For strings, compare to empty string; for bools, compare to false
             left_type = get_expr_type(node_left)
+            # For optional strings (str | None), compare to empty string sentinel
             if left_type == STRING:
-                cmp_op = "=="
-                return ir.BinaryOp(
-                    op=cmp_op,
-                    left=left,
-                    right=ir.StringLit(value="", typ=STRING),
-                    typ=BOOL,
-                    loc=loc_from_node(node),
-                )
+                if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+                    return ir.BinaryOp(
+                        op="==",
+                        left=left,
+                        right=ir.StringLit(value="", typ=STRING),
+                        typ=BOOL,
+                        loc=loc_from_node(node),
+                    )
+                # Plain string - use IsNil (will always be False)
+                return ir.IsNil(expr=left, negated=False, typ=BOOL, loc=loc_from_node(node))
             if left_type == BOOL:
                 return ir.UnaryOp(op="!", operand=left, typ=BOOL, loc=loc_from_node(node))
             # For sentinel ints, compare to the sentinel value
@@ -889,17 +913,19 @@ def lower_expr_Compare(
             and is_type(comparators[0], ["Constant"])
             and comparators[0].get("value") is None
         ):
-            # For strings, compare to non-empty string; for bools, just use the bool itself
             left_type = get_expr_type(node_left)
+            # For optional strings (str | None), compare to empty string sentinel
             if left_type == STRING:
-                cmp_op = "!="
-                return ir.BinaryOp(
-                    op=cmp_op,
-                    left=left,
-                    right=ir.StringLit(value="", typ=STRING),
-                    typ=BOOL,
-                    loc=loc_from_node(node),
-                )
+                if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+                    return ir.BinaryOp(
+                        op="!=",
+                        left=left,
+                        right=ir.StringLit(value="", typ=STRING),
+                        typ=BOOL,
+                        loc=loc_from_node(node),
+                    )
+                # Plain string - use IsNil (will always be True)
+                return ir.IsNil(expr=left, negated=True, typ=BOOL, loc=loc_from_node(node))
             if left_type == BOOL:
                 return left  # bool is its own truthy value
             # For sentinel ints, compare to the sentinel value
@@ -915,6 +941,57 @@ def lower_expr_Compare(
                     loc=loc_from_node(node),
                 )
             return ir.IsNil(expr=left, negated=True, typ=BOOL, loc=loc_from_node(node))
+        # Handle "== None" / "!= None" for sentinel ints and optional strings
+        if (
+            is_type(ops[0], ["Eq"])
+            and is_type(comparators[0], ["Constant"])
+            and comparators[0].get("value") is None
+        ):
+            # Check for optional string first
+            if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+                return ir.BinaryOp(
+                    op="==",
+                    left=left,
+                    right=ir.StringLit(value="", typ=STRING),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
+            sentinel = get_sentinel_value(
+                node_left, type_ctx, current_class_name, sentinel_int_fields
+            )
+            if sentinel is not None:
+                return ir.BinaryOp(
+                    op="==",
+                    left=left,
+                    right=ir.IntLit(value=sentinel, typ=INT),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
+        if (
+            is_type(ops[0], ["NotEq"])
+            and is_type(comparators[0], ["Constant"])
+            and comparators[0].get("value") is None
+        ):
+            # Check for optional string first
+            if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+                return ir.BinaryOp(
+                    op="!=",
+                    left=left,
+                    right=ir.StringLit(value="", typ=STRING),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
+            sentinel = get_sentinel_value(
+                node_left, type_ctx, current_class_name, sentinel_int_fields
+            )
+            if sentinel is not None:
+                return ir.BinaryOp(
+                    op="!=",
+                    left=left,
+                    right=ir.IntLit(value=sentinel, typ=INT),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
         # Handle "x in (a, b, c)" -> "x == a || x == b || x == c"
         if is_type(ops[0], ["In", "NotIn"]) and is_type(comparators[0], ["Tuple"]):
             negated = is_type(ops[0], ["NotIn"])
@@ -1011,7 +1088,12 @@ def lower_expr_UnaryOp(
         return ir.UnaryOp(op="!", operand=operand, typ=BOOL, loc=loc_from_node(node))
     operand = lower_expr(node.get("operand"))
     op = unaryop_to_str(node_op)
-    return ir.UnaryOp(op=op, operand=operand, typ=InterfaceRef("any"), loc=loc_from_node(node))
+    # For bitwise NOT (~), result is always int
+    if is_type(node_op, ["Invert"]):
+        return ir.UnaryOp(op=op, operand=operand, typ=INT, loc=loc_from_node(node))
+    # For USub/UAdd, propagate operand type
+    result_type = operand.typ if operand.typ != InterfaceRef("any") else get_expr_type(node)
+    return ir.UnaryOp(op=op, operand=operand, typ=result_type, loc=loc_from_node(node))
 
 
 # ============================================================
@@ -1269,6 +1351,9 @@ def lower_expr_as_bool(
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
     # Int truthy check
     if expr_type == INT:
+        return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
+    # Float truthy check
+    if expr_type == FLOAT:
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
     # Slice/Map/Set truthy check
     if isinstance(expr_type, (Slice, Map, Set)):
@@ -1634,12 +1719,24 @@ def lower_expr_Call(
             if args:
                 chars = args[0]
             else:
-                chars = ir.StringLit(value=" \t\n\r", typ=STRING, loc=loc_from_node(node))
+                # Default whitespace chars for strings, bytes for byte slices
+                if obj_type == Slice(BYTE):
+                    whitespace_bytes = [ord(c) for c in " \t\n\r"]
+                    chars = ir.SliceLit(
+                        element_type=BYTE,
+                        elements=[ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node)) for b in whitespace_bytes],
+                        typ=Slice(BYTE),
+                        loc=loc_from_node(node),
+                    )
+                else:
+                    chars = ir.StringLit(value=" \t\n\r", typ=STRING, loc=loc_from_node(node))
+            # Result type matches input type
+            result_type = obj_type if obj_type == Slice(BYTE) else STRING
             return ir.TrimChars(
                 string=obj,
                 chars=chars,
                 mode=mode,
-                typ=STRING,
+                typ=result_type,
                 loc=loc_from_node(node),
             )
         if method == "pop" and not args and isinstance(obj_type, Slice):
@@ -1705,8 +1802,11 @@ def lower_expr_Call(
             return ir.Len(expr=arg, typ=INT, loc=loc_from_node(node))
         # Check for bool() - convert to comparison
         if func_name == "bool" and args:
-            # bool(x) -> x != 0 for ints, x != "" for strings, x != nil for pointers
+            # bool(x) -> x != 0 for ints, x != "" for strings, len(x) != 0 for collections
             arg_type = get_expr_type(node_args[0])
+            # bool(True/False) -> just the value
+            if arg_type == BOOL:
+                return args[0]
             if arg_type == INT:
                 return ir.BinaryOp(
                     op="!=",
@@ -1715,11 +1815,28 @@ def lower_expr_Call(
                     typ=BOOL,
                     loc=loc_from_node(node),
                 )
+            if arg_type == FLOAT:
+                return ir.BinaryOp(
+                    op="!=",
+                    left=args[0],
+                    right=ir.FloatLit(value=0.0, typ=FLOAT),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
             if arg_type == STRING:
                 return ir.BinaryOp(
                     op="!=",
                     left=args[0],
                     right=ir.StringLit(value="", typ=STRING),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
+            # Collections: bool([]) -> len([]) != 0
+            if isinstance(arg_type, (Slice, Map, Set)):
+                return ir.BinaryOp(
+                    op="!=",
+                    left=ir.Len(expr=args[0], typ=INT, loc=loc_from_node(node)),
+                    right=ir.IntLit(value=0, typ=INT),
                     typ=BOOL,
                     loc=loc_from_node(node),
                 )

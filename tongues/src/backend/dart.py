@@ -1309,6 +1309,9 @@ class DartBackend:
                 right_type = right.typ
                 left_is_bool = isinstance(left_type, Primitive) and left_type.kind == "bool"
                 right_is_bool = isinstance(right_type, Primitive) and right_type.kind == "bool"
+                # Convert floor division to Dart's ~/
+                if op == "//":
+                    op = "~/"
                 # Dart bools don't support arithmetic; cast to int
                 if op in ("+", "-", "*", "/", "%", "~/"):
                     if left_is_bool:

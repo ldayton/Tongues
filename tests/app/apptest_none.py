@@ -59,7 +59,7 @@ def test_none_is_singleton() -> None:
     """None is a singleton - all Nones are the same object."""
     a: None = None
     b: None = None
-    assert a is b
+    # assert a is b  # subset requires literal on one side of 'is'
     assert a is None
     assert b is None
 

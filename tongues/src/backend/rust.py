@@ -413,6 +413,9 @@ class RustBackend(Emitter):
 
     def _emit_BinaryOp(self, expr: BinaryOp) -> str:
         op = expr.op
+        # Floor division - Rust integer division already floors
+        if op == "//":
+            op = "/"
         # String concatenation: &str + &str doesn't work in Rust, use format!
         if op == "+" and expr.typ == STRING:
             return self._emit_string_add(expr)

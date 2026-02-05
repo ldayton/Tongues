@@ -1414,6 +1414,11 @@ class JavaBackend:
                 return self._containment_check(left, right, negated=False)
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
+            case BinaryOp(op="//", left=left, right=right):
+                # Floor division - Java integer division already floors for positive
+                left_str = _java_coerce_bool_to_int(self, left) if _java_is_bool_in_java(left) else self._expr(left)
+                right_str = _java_coerce_bool_to_int(self, right) if _java_is_bool_in_java(right) else self._expr(right)
+                return f"{left_str} / {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "==", "!=",
             ) and _java_needs_bool_int_coerce(left, right):

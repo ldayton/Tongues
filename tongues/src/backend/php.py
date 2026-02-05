@@ -846,6 +846,9 @@ class PhpBackend:
                 return self._containment_check(left, right, negated=False)
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
+            case BinaryOp(op="//", left=left, right=right):
+                # Floor division uses intdiv() in PHP
+                return f"intdiv({self._expr(left)}, {self._expr(right)})"
             case BinaryOp(op=op, left=left, right=right):
                 # String concatenation: + on strings becomes . in PHP
                 if op == "+" and (_is_string_type(left.typ) or _is_string_type(right.typ)):

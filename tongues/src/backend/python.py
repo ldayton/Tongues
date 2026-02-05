@@ -32,6 +32,7 @@ from src.backend.util import escape_string
 from src.ir import (
     Array,
     Assert,
+    BYTE,
     Assign,
     BinaryOp,
     Block,
@@ -764,8 +765,8 @@ class PythonBackend:
                 if neg_idx := self._negative_index(obj, index):
                     return f"{self._expr(obj)}[{neg_idx}]"
                 return f"{self._expr(obj)}[{self._expr(index)}]"
-            case SliceExpr(obj=obj, low=low, high=high):
-                return self._slice_expr(obj, low, high)
+            case SliceExpr(obj=obj, low=low, high=high, step=step):
+                return self._slice_expr(obj, low, high, step)
             case ParseInt(string=s, base=b):
                 return f"int({self._expr(s)}, {self._expr(b)})"
             case IntToStr(value=v):
@@ -807,8 +808,8 @@ class PythonBackend:
                 return f"{left_str} {py_op} {right_str}"
             case UnaryOp(op=op, operand=operand):
                 py_op = _unary_op(op)
-                # For 'not', wrap compound expressions in parens for correct precedence
-                if op == "!" and isinstance(operand, BinaryOp):
+                # Wrap compound expressions in parens for correct precedence
+                if isinstance(operand, (BinaryOp, Ternary)):
                     return f"{py_op}({self._expr(operand)})"
                 return f"{py_op}{self._expr(operand)}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
@@ -833,6 +834,9 @@ class PythonBackend:
                     Primitive(kind="rune"),
                 ):
                     return f"ord({self._expr(inner)})"
+                # Cast from float to int needs int() in Python
+                if to_type == Primitive(kind="int") and inner.typ == Primitive(kind="float"):
+                    return f"int({self._expr(inner)})"
                 # Most casts in Python are no-ops
                 return self._expr(inner)
             case TypeAssert(expr=inner):
@@ -853,8 +857,11 @@ class PythonBackend:
                 return "[]"
             case MakeMap():
                 return "{}"
-            case SliceLit(elements=elements):
+            case SliceLit(element_type=elem_type, elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
+                # Bytes literals: emit as bytes([...]) in Python
+                if elem_type == BYTE:
+                    return f"bytes([{elems}])"
                 return f"[{elems}]"
             case MapLit(entries=entries):
                 if not entries:
@@ -885,7 +892,9 @@ class PythonBackend:
             case _:
                 raise NotImplementedError("Unknown expression")
 
-    def _slice_expr(self, obj: Expr, low: Expr | None, high: Expr | None) -> str:
+    def _slice_expr(
+        self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
+    ) -> str:
         obj_str = self._expr(obj)
         # Detect len(x) - N pattern for negative slice bounds
         if low and (neg_idx := self._negative_index(obj, low)):
@@ -896,6 +905,9 @@ class PythonBackend:
             high_str = neg_idx
         else:
             high_str = self._expr(high) if high else ""
+        if step:
+            step_str = self._expr(step)
+            return f"{obj_str}[{low_str}:{high_str}:{step_str}]"
         return f"{obj_str}[{low_str}:{high_str}]"
 
     def _negative_index(self, obj: Expr, index: Expr) -> str | None:
@@ -1038,12 +1050,21 @@ class PythonBackend:
 
     def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Wrap expression in parens if needed for operator precedence."""
+        cmp_ops = ("==", "!=", "<", ">", "<=", ">=")
         match expr:
             case BinaryOp(op=child_op):
                 if _needs_parens(child_op, parent_op, is_left):
                     return f"({self._expr(expr)})"
             case Ternary():
                 return f"({self._expr(expr)})"
+            case UnaryOp(op="!"):
+                # 'not' has lower precedence than comparisons, so wrap in parens
+                if parent_op in cmp_ops:
+                    return f"({self._expr(expr)})"
+            case IsNil():
+                # 'is/is not' creates chained comparison if nested in comparison
+                if parent_op in cmp_ops:
+                    return f"({self._expr(expr)})"
         return self._expr(expr)
 
 
@@ -1106,11 +1127,17 @@ _PRECEDENCE = {
     ">": 3,
     "<=": 3,
     ">=": 3,
-    "+": 4,
-    "-": 4,
-    "*": 5,
-    "/": 5,
-    "%": 5,
+    "|": 4,
+    "^": 5,
+    "&": 6,
+    "<<": 7,
+    ">>": 7,
+    "+": 8,
+    "-": 8,
+    "*": 9,
+    "/": 9,
+    "//": 9,
+    "%": 9,
 }
 
 
@@ -1120,9 +1147,11 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     parent_prec = _PRECEDENCE.get(parent_op, 0)
     if child_prec < parent_prec:
         return True
-    if child_prec == parent_prec and not is_left:
-        # Same precedence on right side needs parens for non-associative ops
-        return child_op in ("==", "!=", "<", ">", "<=", ">=")
+    # Python chained comparisons: a != b == c means (a != b) and (b == c)
+    # To prevent this, wrap comparison inside comparison
+    cmp_ops = ("==", "!=", "<", ">", "<=", ">=")
+    if child_op in cmp_ops and parent_op in cmp_ops:
+        return True
     return False
 
 

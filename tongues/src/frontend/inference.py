@@ -582,11 +582,12 @@ def collect_var_types(
     node_types: set[str],
     callbacks: InferenceCallbacks,
     hierarchy_root: str | None = None,
-) -> tuple[dict[str, "Type"], dict[str, list[str]], set[str], dict[str, list[str]]]:
-    """Pre-scan function body to collect variable types, tuple var mappings, and sentinel ints."""
+) -> tuple[dict[str, "Type"], dict[str, list[str]], set[str], set[str], dict[str, list[str]]]:
+    """Pre-scan function body to collect variable types, tuple var mappings, sentinel ints, and optional strings."""
     var_types: dict[str, "Type"] = {}
     tuple_vars: dict[str, list[str]] = {}
     sentinel_ints: set[str] = set()
+    optional_strings: set[str] = set()
     # Track variables assigned None and their concrete types (for Optional inference)
     vars_assigned_none: set[str] = set()
     vars_all_types: dict[str, list["Type"]] = {}  # Track all types assigned to each var
@@ -732,6 +733,10 @@ def collect_var_types(
             ):
                 var_types[target.get("id")] = INT
                 sentinel_ints.add(target.get("id"))
+            # str | None uses empty string sentinel (py_type_to_ir flattens to STRING)
+            elif py_type == "str | None" or py_type == "None | str":
+                var_types[target.get("id")] = STRING
+                optional_strings.add(target.get("id"))
             else:
                 var_types[target.get("id")] = typ
         # Infer from return statements: if returning var and return type is known
@@ -1100,6 +1105,7 @@ def collect_var_types(
             if concrete_type == STRING:
                 # String with None -> just use string (empty = None)
                 var_types[var_name] = STRING
+                optional_strings.add(var_name)
             elif concrete_type == INT:
                 # Int with None -> use sentinel (-1 = None)
                 var_types[var_name] = INT
@@ -1121,7 +1127,7 @@ def collect_var_types(
             and concrete_type == hierarchy_root_iface
         ):
             var_types[var_name] = hierarchy_root_iface
-    return var_types, tuple_vars, sentinel_ints, list_element_unions, unified_to_node
+    return var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node
 
 
 @dataclass

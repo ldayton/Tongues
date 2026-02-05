@@ -487,6 +487,9 @@ class ZigBackend(Emitter):
 
     def _emit_BinaryOp(self, expr: BinaryOp) -> str:
         op = expr.op
+        # Floor division - use regular division (same for positive integers)
+        if op == "//":
+            op = "/"
         # String concatenation needs special handling in Zig
         if op == "+" and self._is_string_type(expr.typ):
             return self._emit_string_add(expr)

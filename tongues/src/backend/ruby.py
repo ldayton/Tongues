@@ -869,6 +869,11 @@ class RubyBackend:
                 if isinstance(e, BinaryOp):
                     return f"!!({expr_str})"
                 return f"!!{expr_str}"
+            case BinaryOp(op="//", left=left, right=right):
+                # Floor division - Ruby integer division already floors
+                left_str = self._maybe_paren(self._coerce_bool_to_int(left, raw=True), left, "/", is_left=True) if left.typ == BOOL else self._maybe_paren(self._expr(left), left, "/", is_left=True)
+                right_str = self._maybe_paren(self._coerce_bool_to_int(right, raw=True), right, "/", is_left=False) if right.typ == BOOL else self._maybe_paren(self._expr(right), right, "/", is_left=False)
+                return f"{left_str} / {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "==",
                 "!=",

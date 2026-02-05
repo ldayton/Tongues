@@ -809,9 +809,7 @@ class Verifier:
         """Check comparison constraints."""
         ops = node.get("ops", [])
         comparators = node.get("comparators", [])
-        # Check chained comparison
-        if len(ops) > 1:
-            self.error(node, "expression", "chained comparison: use 'and' explicitly")
+        # Chained comparisons like (a < b < c) are allowed - lowered to (a < b) and (b < c)
         # Check is/is not with non-None
         left = node.get("left", {})
         i = 0

@@ -631,6 +631,8 @@ def infer_expr_type_from_ast(
             return STRING
         if isinstance(value, float):
             return FLOAT
+        if isinstance(value, bytes):
+            return Slice(BYTE)
     # Variable lookup
     if node_t == "Name":
         name_id = node.get("id")
@@ -757,6 +759,44 @@ def infer_expr_type_from_ast(
             )
             if left_type == INT or right_type == INT:
                 return INT
+    # UnaryOp - infer type based on operator
+    if node_t == "UnaryOp":
+        op = op_type(node.get("op"))
+        if op == "Not":
+            return BOOL
+        if op == "Invert":
+            return INT
+        # USub, UAdd - return operand type
+        return infer_expr_type_from_ast(
+            node.get("operand"),
+            type_ctx,
+            symbols,
+            current_func_info,
+            current_class_name,
+            node_types,
+            hierarchy_root,
+        )
+    # List literals
+    if node_t == "List":
+        elts = node.get("elts", [])
+        if elts:
+            elem_type = infer_expr_type_from_ast(
+                elts[0],
+                type_ctx,
+                symbols,
+                current_func_info,
+                current_class_name,
+                node_types,
+                hierarchy_root,
+            )
+            return Slice(elem_type)
+        return Slice(InterfaceRef("any"))
+    # Dict literals
+    if node_t == "Dict":
+        return Map(InterfaceRef("any"), InterfaceRef("any"))
+    # Set literals
+    if node_t == "Set":
+        return Set(InterfaceRef("any"))
     return InterfaceRef("any")
 
 

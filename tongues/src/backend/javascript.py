@@ -859,6 +859,10 @@ class JsBackend:
                 return self._containment_check(left, right, negated=False)
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
+            case BinaryOp(op="//", left=left, right=right):
+                left_str = self._expr_with_precedence(left, "/", is_right=False)
+                right_str = self._expr_with_precedence(right, "/", is_right=True)
+                return f"Math.floor({left_str} / {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 js_op = _binary_op(op)
                 if op in ("==", "!=") and _is_bool_int_compare(left, right):
@@ -1165,6 +1169,8 @@ def _binary_op(op: str) -> str:
             return "==="
         case "!=":
             return "!=="
+        case "//":
+            return "/"  # Floor division handled specially in BinaryOp emission
         case _:
             return op
 

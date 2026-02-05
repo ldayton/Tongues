@@ -2645,6 +2645,12 @@ def process_escapes(s: str, is_bytes: bool) -> str | bytes:
             elif next_c == "r":
                 result.append("\r")
                 i += 2
+            elif next_c == "f":
+                result.append("\f")
+                i += 2
+            elif next_c == "v":
+                result.append("\v")
+                i += 2
             elif next_c == "\\":
                 result.append("\\")
                 i += 2
@@ -2670,6 +2676,14 @@ def process_escapes(s: str, is_bytes: bool) -> str | bytes:
                 try:
                     result.append(chr(int(hex_val, 16)))
                     i += 6
+                except ValueError:
+                    result.append(c)
+                    i += 1
+            elif next_c == "U" and not is_bytes and i + 9 < len(s):
+                hex_val = s[i + 2 : i + 10]
+                try:
+                    result.append(chr(int(hex_val, 16)))
+                    i += 10
                 except ValueError:
                     result.append(c)
                     i += 1
