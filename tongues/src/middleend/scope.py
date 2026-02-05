@@ -11,6 +11,7 @@ Annotations added:
 """
 
 from src.ir import (
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -200,6 +201,10 @@ def _scope_visit_stmt(result: set[str], stmt: Stmt) -> None:
     elif isinstance(stmt, Return):
         if stmt.value:
             _scope_visit_expr(result, stmt.value)
+    elif isinstance(stmt, Assert):
+        _scope_visit_expr(result, stmt.test)
+        if stmt.message:
+            _scope_visit_expr(result, stmt.message)
     elif isinstance(stmt, If):
         _scope_visit_expr(result, stmt.cond)
         if stmt.init:
@@ -363,6 +368,10 @@ def _scope_check_stmt(ctx: _ScopeContext, stmt: Stmt, local_assigned: set[str]) 
     elif isinstance(stmt, Return):
         if stmt.value:
             _scope_check_expr(ctx, stmt.value)
+    elif isinstance(stmt, Assert):
+        _scope_check_expr(ctx, stmt.test)
+        if stmt.message:
+            _scope_check_expr(ctx, stmt.message)
     elif isinstance(stmt, If):
         _scope_check_expr(ctx, stmt.cond)
         if stmt.init:
@@ -508,6 +517,10 @@ def _interface_visit_stmt(stmt: Stmt) -> None:
     elif isinstance(stmt, Return):
         if stmt.value:
             _interface_visit_expr(stmt.value)
+    elif isinstance(stmt, Assert):
+        _interface_visit_expr(stmt.test)
+        if stmt.message:
+            _interface_visit_expr(stmt.message)
     elif isinstance(stmt, If):
         _interface_visit_expr(stmt.cond)
         if stmt.init:

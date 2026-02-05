@@ -2,6 +2,7 @@
 
 from src.ir import (
     AddrOf,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -176,6 +177,12 @@ def _first_access_type(name: str, stmt: Stmt) -> str | None:
         return None
     elif isinstance(stmt, Return):
         if stmt.value and _expr_reads(name, stmt.value):
+            return "read"
+        return None
+    elif isinstance(stmt, Assert):
+        if _expr_reads(name, stmt.test):
+            return "read"
+        if stmt.message and _expr_reads(name, stmt.message):
             return "read"
         return None
     elif isinstance(stmt, Block):

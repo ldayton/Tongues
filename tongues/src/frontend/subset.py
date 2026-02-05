@@ -422,6 +422,8 @@ class Verifier:
             self.visit_Delete(node)
         elif node_type == "JoinedStr":
             self.visit_JoinedStr(node)
+        elif node_type == "Constant":
+            self.visit_Constant(node)
         elif node_type == "FormattedValue":
             self.visit_FormattedValue(node)
         elif node_type == "GeneratorExp":
@@ -1136,6 +1138,23 @@ class Verifier:
         while i < len(values):
             self.visit(values[i])
             i += 1
+
+    def visit_Constant(self, node: ASTNode) -> None:
+        """Check constant values - reject invalid Unicode in strings."""
+        value = node.get("value")
+        if isinstance(value, str):
+            i = 0
+            while i < len(value):
+                code = ord(value[i])
+                # Reject surrogate code points (not valid Unicode scalar values)
+                if 0xD800 <= code <= 0xDFFF:
+                    hex_str = hex(code)[2:].upper().zfill(4)
+                    self.error(
+                        node,
+                        "string",
+                        "surrogate code point U+" + hex_str + " not allowed in string literal",
+                    )
+                i += 1
 
     def visit_FormattedValue(self, node: ASTNode) -> None:
         """Check f-string replacement field: {expr} only, no !conv or :spec."""

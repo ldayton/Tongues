@@ -67,15 +67,6 @@ def test_chr_unicode_boundaries() -> None:
     assert ord(chr(0x10FFFF)) == 0x10FFFF  # max Unicode code point
 
 
-def test_surrogate_range() -> None:
-    """Surrogate code points (U+D800-U+DFFF) can be created but not encoded."""
-    # Python allows creating strings with surrogate code points
-    s: str = chr(0xD800)  # first surrogate
-    assert ord(s) == 0xD800
-    s = chr(0xDFFF)  # last surrogate
-    assert ord(s) == 0xDFFF
-
-
 def test_ord_chr_roundtrip() -> None:
     """ord and chr are inverses."""
     assert chr(ord("x")) == "x"
@@ -181,7 +172,6 @@ def main() -> int:
         ("test_chr", test_chr),
         ("test_chr_boundaries", test_chr_boundaries),
         ("test_chr_unicode_boundaries", test_chr_unicode_boundaries),
-        ("test_surrogate_range", test_surrogate_range),
         ("test_ord_chr_roundtrip", test_ord_chr_roundtrip),
         ("test_isalpha", test_isalpha),
         ("test_isdigit", test_isdigit),
