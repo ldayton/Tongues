@@ -208,6 +208,8 @@ min(max(1, 2), max(3, 4))
 
 === deeply nested arithmetic
 ((1 + 2) * (3 + 4)) / ((5 - 6) + (7 * 8))
+--- python
+(1 + 2) * (3 + 4) / (5 - 6 + 7 * 8)
 ---
 
 === mixed int float
@@ -296,6 +298,8 @@ pow(2, 10, 1000)
 
 === arithmetic and bitwise
 5 & (3 + 1)
+--- python
+5 & 3 + 1
 ---
 
 === xor chain
@@ -340,6 +344,8 @@ True + True
 
 === not of comparison
 not 1 < 2
+--- python
+not (1 < 2)
 ---
 
 === and of comparisons
@@ -352,6 +358,8 @@ not True and False
 
 === parenthesized not
 (not True) and False
+--- python
+not True and False
 ---
 
 === not of and

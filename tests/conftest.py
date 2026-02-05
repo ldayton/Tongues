@@ -230,8 +230,8 @@ def parse_codegen_file(path: Path) -> list[tuple[str, str, dict[str, str]]]:
     return result
 
 
-def discover_codegen_tests() -> list[tuple[str, str, str, str]]:
-    """Find all codegen tests, returns (test_id, input, lang, expected)."""
+def discover_codegen_tests() -> list[tuple[str, str, str, str, bool]]:
+    """Find all codegen tests, returns (test_id, input, lang, expected, has_explicit_expected)."""
     results = []
     for test_file in sorted(CODEGEN_DIR.glob("*.tests")):
         tests = parse_codegen_file(test_file)
@@ -240,9 +240,10 @@ def discover_codegen_tests() -> list[tuple[str, str, str, str]]:
             if "python" not in langs:
                 langs.append("python")
             for lang in langs:
+                has_explicit = lang in expected_by_lang
                 expected = expected_by_lang.get(lang, input_code)
                 test_id = f"{test_file.stem}/{name}[{lang}]"
-                results.append((test_id, input_code, lang, expected))
+                results.append((test_id, input_code, lang, expected, has_explicit))
     return results
 
 
@@ -277,12 +278,12 @@ def pytest_generate_tests(metafunc):
         target_filter = metafunc.config.getoption("target")
         tests = discover_codegen_tests()
         if target_filter:
-            tests = [(tid, inp, lang, exp) for tid, inp, lang, exp in tests if lang in target_filter]
+            tests = [(tid, inp, lang, exp, has_exp) for tid, inp, lang, exp, has_exp in tests if lang in target_filter]
         params = [
-            pytest.param(input_code, lang, expected, id=test_id)
-            for test_id, input_code, lang, expected in tests
+            pytest.param(input_code, lang, expected, has_explicit, id=test_id)
+            for test_id, input_code, lang, expected, has_explicit in tests
         ]
-        metafunc.parametrize("codegen_input,codegen_lang,codegen_expected", params)
+        metafunc.parametrize("codegen_input,codegen_lang,codegen_expected,codegen_has_explicit", params)
 
 
 @pytest.fixture
