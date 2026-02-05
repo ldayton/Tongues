@@ -2582,12 +2582,14 @@ def make_arguments() -> ASTNode:
 
 
 def make_constant_from_token(tok: Token) -> ASTNode:
-    """Create Constant node from number or string token."""
+    """Create Constant node from number or string token with proper end position."""
     if tok.type == TK_NUMBER:
         value = parse_number_value(tok.value)
     else:
         value = parse_string_value(tok.value)
-    return make_node("Constant", tok.lineno, tok.col, {"value": value})
+    node = make_node("Constant", tok.lineno, tok.col, {"value": value})
+    node["end_col_offset"] = tok.col + len(tok.value)
+    return node
 
 
 def parse_number_value(s: str) -> int | float:

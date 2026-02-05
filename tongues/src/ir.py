@@ -412,6 +412,7 @@ class Module:
     constants: list[Constant] = field(default_factory=list)
     enums: list[Enum] = field(default_factory=list)
     exports: list[Export] = field(default_factory=list)
+    statements: list[Stmt] = field(default_factory=list)
     hierarchy_root: str | None = None  # Root interface for Node-like class hierarchies
     entrypoint: EntryPoint | None = None
 
@@ -1140,9 +1141,11 @@ class IntLit(Expr):
 
     Invariants:
     - typ is INT
+    - format is one of: None, 'hex', 'oct', 'bin'
     """
 
     value: int
+    format: str | None = None
 
 
 @dataclass
@@ -1151,9 +1154,11 @@ class FloatLit(Expr):
 
     Invariants:
     - typ is FLOAT
+    - format is one of: None, 'exp' (scientific notation)
     """
 
     value: float
+    format: str | None = None
 
 
 @dataclass
@@ -1450,6 +1455,72 @@ class Ternary(Expr):
     then_expr: Expr
     else_expr: Expr
     needs_statement: bool = False
+
+
+@dataclass
+class ChainedCompare(Expr):
+    """Chained comparison: a < b < c < d ...
+
+    Semantics: All adjacent pairs must satisfy their comparison.
+    Equivalent to (a < b) and (b < c) and (c < d) but each operand evaluated once.
+
+    | Target | Representation              |
+    |--------|-----------------------------|
+    | C      | (a < b) && (b < c)          |
+    | Go     | (a < b) && (b < c)          |
+    | Java   | (a < b) && (b < c)          |
+    | Python | a < b < c                   |
+    | Rust   | (a < b) && (b < c)          |
+    | TS     | (a < b) && (b < c)          |
+
+    Invariants:
+    - len(operands) >= 2
+    - len(ops) == len(operands) - 1
+    - ops are comparison operators: <, <=, >, >=, ==, !=
+    """
+
+    operands: list[Expr]
+    ops: list[str]  # ["<", "<"] for a < b < c
+
+
+@dataclass
+class MinExpr(Expr):
+    """Minimum of two values.
+
+    Semantics: Return the smaller of left and right.
+
+    | Target | Representation        |
+    |--------|-----------------------|
+    | C      | left < right ? left : right |
+    | Go     | min(left, right) (1.21+) or ternary |
+    | Java   | Math.min(left, right) |
+    | Python | min(left, right)      |
+    | Rust   | left.min(right)       |
+    | TS     | Math.min(left, right) |
+    """
+
+    left: Expr
+    right: Expr
+
+
+@dataclass
+class MaxExpr(Expr):
+    """Maximum of two values.
+
+    Semantics: Return the larger of left and right.
+
+    | Target | Representation        |
+    |--------|-----------------------|
+    | C      | left > right ? left : right |
+    | Go     | max(left, right) (1.21+) or ternary |
+    | Java   | Math.max(left, right) |
+    | Python | max(left, right)      |
+    | Rust   | left.max(right)       |
+    | TS     | Math.max(left, right) |
+    """
+
+    left: Expr
+    right: Expr
 
 
 # --- Type Operations ---
@@ -1916,14 +1987,14 @@ class CharClassify(Expr):
 
     Semantics: Test if character belongs to class.
 
-    | Kind   | C           | Go                  | Java                      | Python       | Rust                 | TS          |
-    |--------|-------------|---------------------|---------------------------|--------------|----------------------|-------------|
-    | alnum  | isalnum(c)  | unicode.IsLetter || unicode.IsDigit | Character.isLetterOrDigit | c.isalnum()  | c.is_alphanumeric() | /\w/.test   |
-    | digit  | isdigit(c)  | unicode.IsDigit     | Character.isDigit         | c.isdigit()  | c.is_ascii_digit()   | /\d/.test   |
-    | alpha  | isalpha(c)  | unicode.IsLetter    | Character.isLetter        | c.isalpha()  | c.is_alphabetic()    | /[a-zA-Z]/  |
-    | space  | isspace(c)  | unicode.IsSpace     | Character.isWhitespace    | c.isspace()  | c.is_whitespace()    | /\s/.test   |
-    | upper  | isupper(c)  | unicode.IsUpper     | Character.isUpperCase     | c.isupper()  | c.is_uppercase()     | /[A-Z]/     |
-    | lower  | islower(c)  | unicode.IsLower     | Character.isLowerCase     | c.islower()  | c.is_lowercase()     | /[a-z]/     |
+    | Kind   | C           | Go                  | Java                      | Python       | Rust                 | TS           |
+    |--------|-------------|---------------------|---------------------------|--------------|----------------------|--------------|
+    | alnum  | isalnum(c)  | unicode.IsLetter || unicode.IsDigit | Character.isLetterOrDigit | c.isalnum()  | c.is_alphanumeric() | /\\w/.test   |
+    | digit  | isdigit(c)  | unicode.IsDigit     | Character.isDigit         | c.isdigit()  | c.is_ascii_digit()   | /\\d/.test   |
+    | alpha  | isalpha(c)  | unicode.IsLetter    | Character.isLetter        | c.isalpha()  | c.is_alphabetic()    | /[a-zA-Z]/   |
+    | space  | isspace(c)  | unicode.IsSpace     | Character.isWhitespace    | c.isspace()  | c.is_whitespace()    | /\\s/.test   |
+    | upper  | isupper(c)  | unicode.IsUpper     | Character.isUpperCase     | c.isupper()  | c.is_uppercase()     | /[A-Z]/      |
+    | lower  | islower(c)  | unicode.IsLower     | Character.isLowerCase     | c.islower()  | c.is_lowercase()     | /[a-z]/      |
 
     Invariants:
     - char.typ is CHAR or RUNE or STRING (single char)

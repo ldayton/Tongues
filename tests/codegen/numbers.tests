@@ -1,0 +1,611 @@
+=== int literal
+42
+---
+
+=== negative int
+-7
+---
+
+=== float literal
+3.14
+---
+
+=== negative float
+-2.5
+---
+
+=== int addition
+1 + 2
+---
+
+=== int subtraction
+5 - 3
+---
+
+=== int multiplication
+4 * 5
+---
+
+=== int division
+7 / 2
+---
+
+=== int floor division
+7 // 2
+---
+
+=== int modulo
+7 % 3
+---
+
+=== float addition
+1.5 + 2.5
+---
+
+=== float multiplication
+2.0 * 3.5
+---
+
+=== chained addition
+1 + 2 + 3
+---
+
+=== chained multiplication
+2 * 3 * 4
+---
+
+=== mixed operators
+1 + 2 * 3
+---
+
+=== parenthesized expression
+(1 + 2) * 3
+---
+
+=== nested parentheses
+(1 + 2) * (3 - 4)
+---
+
+=== comparison less than
+1 < 2
+---
+
+=== comparison greater than
+2 > 1
+---
+
+=== comparison equals
+1 == 1
+---
+
+=== comparison not equals
+1 != 2
+---
+
+=== comparison less equal
+1 <= 2
+---
+
+=== comparison greater equal
+2 >= 1
+---
+
+=== complex arithmetic
+2 * 3 + 8 // 2 - 7 % 3
+---
+
+=== float division chain
+8.0 / 2.0 / 2.0
+---
+
+=== power operator
+2 ** 3
+---
+
+=== float power
+2.0 ** 0.5
+---
+
+=== unary minus
+-5
+---
+
+=== unary plus
++5
+---
+
+=== boolean and
+True and False
+---
+
+=== boolean not
+not True
+---
+
+=== chained comparison
+1 < 2 < 3
+---
+
+=== bitwise and
+5 & 3
+---
+
+=== bitwise or
+5 | 3
+---
+
+=== bitwise xor
+5 ^ 3
+---
+
+=== bitwise not
+~5
+---
+
+=== left shift
+1 << 4
+---
+
+=== right shift
+16 >> 2
+---
+
+=== ternary expression
+1 if True else 0
+---
+
+=== ternary with comparison
+10 if 5 > 3 else 20
+---
+
+=== nested ternary
+1 if True else 2 if False else 3
+---
+
+=== power right associative
+2 ** 3 ** 2
+---
+
+=== double negation
+--5
+---
+
+=== negation of expression
+-(1 + 2)
+---
+
+=== abs call
+abs(-5)
+---
+
+=== min call
+min(3, 7)
+---
+
+=== max call
+max(3, 7)
+---
+
+=== nested min max
+min(max(1, 2), max(3, 4))
+---
+
+=== arithmetic in comparison
+1 + 2 < 3 + 4
+---
+
+=== comparison result in arithmetic
+(1 < 2) + (3 < 4)
+---
+
+=== subtraction left associative
+10 - 3 - 2
+---
+
+=== division left associative
+24 / 4 / 2
+---
+
+=== deeply nested arithmetic
+((1 + 2) * (3 + 4)) / ((5 - 6) + (7 * 8))
+--- python
+(1 + 2) * (3 + 4) / (5 - 6 + 7 * 8)
+---
+
+=== mixed int float
+1 + 2.0 * 3
+---
+
+=== power with negative base
+(-2) ** 3
+---
+
+=== power with negative exponent
+2 ** -1
+---
+
+=== modulo negative
+-7 % 3
+---
+
+=== floor div negative
+-7 // 3
+---
+
+=== bitwise precedence
+1 | 2 & 3
+---
+
+=== shift precedence
+1 + 2 << 3
+---
+
+=== hex lowercase
+0xff
+--- python
+0xff
+---
+
+=== hex uppercase
+0xFF
+--- python
+0xff
+---
+
+=== hex mixed case
+0xAbCd
+--- python
+0xabcd
+---
+
+=== hex single digit
+0xF
+--- python
+0xf
+---
+
+=== hex with leading zeros
+0x00FF
+--- python
+0xff
+---
+
+=== hex large
+0xDEADBEEF
+--- python
+0xdeadbeef
+---
+
+=== octal basic
+0o77
+--- python
+0o77
+---
+
+=== octal single digit
+0o7
+--- python
+0o7
+---
+
+=== octal zero
+0o0
+--- python
+0o0
+---
+
+=== octal large
+0o755
+--- python
+0o755
+---
+
+=== binary basic
+0b1010
+--- python
+0b1010
+---
+
+=== binary single bit
+0b1
+--- python
+0b1
+---
+
+=== binary zero
+0b0
+--- python
+0b0
+---
+
+=== binary byte
+0b11111111
+--- python
+0b11111111
+---
+
+=== binary with leading zeros
+0b00001010
+--- python
+0b1010
+---
+
+=== scientific positive exp
+1.5e10
+--- python
+1.5e+10
+---
+
+=== scientific negative exp
+1.5e-10
+--- python
+1.5e-10
+---
+
+=== scientific uppercase E
+1.5E10
+--- python
+1.5e+10
+---
+
+=== scientific zero exp
+1.5e0
+--- python
+1.5
+---
+
+=== scientific integer coeff
+1e10
+--- python
+1e+10
+---
+
+=== scientific negative coeff
+-1.5e10
+--- python
+-1.5e+10
+---
+
+=== scientific small number
+1e-100
+--- python
+1e-100
+---
+
+=== scientific large number
+1e100
+--- python
+1e+100
+---
+
+=== scientific with plus exp
+1.5e+10
+--- python
+1.5e+10
+---
+
+=== scientific trailing zeros
+1.50e10
+--- python
+1.5e+10
+---
+
+=== hex in expression
+0xFF + 1
+--- python
+0xff + 1
+---
+
+=== octal in expression
+0o77 * 2
+--- python
+0o77 * 2
+---
+
+=== binary in expression
+0b1010 | 0b0101
+--- python
+0b1010 | 0b101
+---
+
+=== scientific in expression
+1.5e10 + 1.0
+--- python
+1.5e+10 + 1.0
+---
+
+=== mixed literal formats
+0xFF + 0o77 + 0b1010
+--- python
+0xff + 0o77 + 0b1010
+---
+
+=== float trailing zeros
+1.00000
+--- python
+1.0
+---
+
+=== float many trailing zeros
+3.14000000
+--- python
+3.14
+---
+
+=== float trailing dot
+1.
+--- python
+1.0
+---
+
+=== float leading dot
+.5
+--- python
+0.5
+---
+
+=== float leading dot small
+.001
+--- python
+0.001
+---
+
+=== float integer value
+1.0
+--- python
+1.0
+---
+
+=== float zero
+0.0
+--- python
+0.0
+---
+
+=== float negative zero
+-0.0
+--- python
+-0.0
+---
+
+=== float negative trailing zeros
+-1.00000
+--- python
+-1.0
+---
+
+=== float negative leading dot
+-.5
+--- python
+-0.5
+---
+
+=== float underscores
+1_000_000.0
+--- python
+1000000.0
+---
+
+=== int underscores
+1_000_000
+--- python
+1000000
+---
+
+=== hex underscores
+0xFF_FF
+--- python
+0xffff
+---
+
+=== binary underscores
+0b1010_1010
+--- python
+0b10101010
+---
+
+=== large int
+999999999999999999999
+---
+
+=== int conversion
+int(3.7)
+---
+
+=== float conversion
+float(42)
+---
+
+=== round call
+round(3.7)
+---
+
+=== round with precision
+round(3.14159, 2)
+---
+
+=== divmod call
+divmod(17, 5)
+---
+
+=== pow three arg
+pow(2, 10, 1000)
+---
+
+=== triple negation
+---5
+---
+
+=== bitwise and arithmetic
+(5 & 3) + 1
+---
+
+=== arithmetic and bitwise
+5 & (3 + 1)
+--- python
+5 & 3 + 1
+---
+
+=== xor chain
+1 ^ 2 ^ 3
+---
+
+=== shift chain
+1 << 2 << 1
+---
+
+=== complement of expression
+~(1 + 2)
+---
+
+=== modulo precedence
+2 + 3 % 2
+---
+
+=== floor div precedence
+2 + 7 // 3
+---
+
+=== power precedence over multiply
+2 * 3 ** 2
+---
+
+=== multiply precedence over add
+2 ** 3 * 4
+---
+
+=== comparison with bool result used
+(1 < 2) * 10
+---
+
+=== nested abs
+abs(abs(-5) - 10)
+---
+
+=== bool to int implicit
+True + True
+---
+
+=== not of comparison
+not 1 < 2
+--- python
+not (1 < 2)
+---
+
+=== and of comparisons
+1 < 2 and 3 < 4
+---
+
+=== mixed and not
+not True and False
+---
+
+=== parenthesized not
+(not True) and False
+--- python
+not True and False
+---
+
+=== not of and
+not (True and False)
+---

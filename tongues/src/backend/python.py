@@ -38,6 +38,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     CatchClause,
     CompGenerator,
@@ -75,7 +76,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -256,12 +259,12 @@ class PythonBackend:
             for s in module.structs
         )
 
-        doc = module.doc or "Generated Python code."
-        if "\n" in doc:
-            self._line('"""' + doc + '"""')
-        else:
-            self._line(f'"""{doc}"""')
-        self._line()
+        if module.doc:
+            if "\n" in module.doc:
+                self._line('"""' + module.doc + '"""')
+            else:
+                self._line(f'"""{module.doc}"""')
+            self._line()
 
         plain_imports: list[str] = []
         from_imports: list[str] = []
@@ -316,6 +319,11 @@ class PythonBackend:
                 self._line()
                 self._line()
             self._emit_function(func)
+            need_blank = True
+        for stmt in module.statements:
+            if need_blank:
+                self._line()
+            self._emit_stmt(stmt)
             need_blank = True
         if module.entrypoint is not None:
             self._line()
@@ -706,9 +714,17 @@ class PythonBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
+            case IntLit(value=value, format=fmt):
+                if fmt == "hex":
+                    return hex(value)
+                if fmt == "oct":
+                    return oct(value)
+                if fmt == "bin":
+                    return bin(value)
                 return str(value)
-            case FloatLit(value=value):
+            case FloatLit(value=value, format=fmt):
+                if fmt == "exp":
+                    return f"{value:g}"
                 return str(value)
             case StringLit(value=value):
                 return _string_literal(value)
@@ -797,6 +813,15 @@ class PythonBackend:
                 return f"{py_op}{self._expr(operand)}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 return f"{self._expr(then_expr)} if {self._cond_expr(cond)} else {self._expr(else_expr)}"
+            case MinExpr(left=left, right=right):
+                return f"min({self._expr(left)}, {self._expr(right)})"
+            case MaxExpr(left=left, right=right):
+                return f"max({self._expr(left)}, {self._expr(right)})"
+            case ChainedCompare(operands=operands, ops=ops):
+                parts = [self._expr(operands[0])]
+                for op, operand in zip(ops, operands[1:]):
+                    parts.append(f" {op} {self._expr(operand)}")
+                return "".join(parts)
             case Cast(expr=inner, to_type=to_type):
                 # Cast from list[int] (bytearray) to string needs bytes().decode()
                 if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
@@ -1070,8 +1095,16 @@ class PythonBackend:
                 # 'not' has lower precedence than comparisons, so wrap in parens
                 if parent_op in cmp_ops:
                     return f"({self._expr(expr)})"
+            case UnaryOp(op="-" | "+"):
+                # ** binds tighter than unary -, so (-2)**3 != -2**3
+                if parent_op == "**" and is_left:
+                    return f"({self._expr(expr)})"
             case IsNil():
                 # 'is/is not' creates chained comparison if nested in comparison
+                if parent_op in cmp_ops:
+                    return f"({self._expr(expr)})"
+            case ChainedCompare():
+                # Chained comparisons need parens when nested in another comparison
                 if parent_op in cmp_ops:
                     return f"({self._expr(expr)})"
         return self._expr(expr)
@@ -1147,6 +1180,7 @@ _PRECEDENCE = {
     "/": 9,
     "//": 9,
     "%": 9,
+    "**": 11,
 }
 
 
