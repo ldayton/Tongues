@@ -15,20 +15,16 @@ subset:
     done
     exit $failed
 
-# Run phase tests (subset/names verification)
-test-phases:
-    python3 tongues/tests/run_testsw.py tongues/tests/phases/
-
 # Run codegen tests
 test-codegen:
-    python3 tongues/tests/run_codegen_testsw.py tongues/tests/codegen/
+    uv run --directory tongues pytest ../tests/test_codegen.py -v
 
 # Run Python apptests
 test-apptests:
     uv run --directory tongues pytest ../tests/test_apptests.py -k "python" -v
 
 # Run all transpiler tests
-test: test-phases test-codegen test-apptests
+test: test-codegen test-apptests
 
 # Lint (--fix to apply changes)
 lint *ARGS:

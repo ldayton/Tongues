@@ -1,4 +1,4 @@
-"""Pytest configuration for Tongues apptest suite."""
+"""Pytest configuration for Tongues test suite."""
 
 import subprocess
 import sys
@@ -7,9 +7,42 @@ from pathlib import Path
 
 import pytest
 
-TESTS_DIR = Path(__file__).parent / "app"
-OUT_DIR = TESTS_DIR / ".out"
-TONGUES_DIR = Path(__file__).parent.parent / "tongues"
+sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
+
+from src.frontend import Frontend
+from src.frontend.parse import parse
+from src.frontend.subset import verify as verify_subset
+from src.frontend.names import resolve_names
+from src.middleend import analyze
+from src.backend.go import GoBackend
+from src.backend.java import JavaBackend
+from src.backend.javascript import JsBackend
+from src.backend.lua import LuaBackend
+from src.backend.perl import PerlBackend
+from src.backend.python import PythonBackend
+from src.backend.ruby import RubyBackend
+from src.backend.typescript import TsBackend
+from src.backend.csharp import CSharpBackend
+from src.backend.php import PhpBackend
+
+TESTS_DIR = Path(__file__).parent
+APP_DIR = TESTS_DIR / "app"
+CODEGEN_DIR = TESTS_DIR / "codegen"
+OUT_DIR = APP_DIR / ".out"
+TONGUES_DIR = TESTS_DIR.parent / "tongues"
+
+BACKENDS = {
+    "csharp": CSharpBackend,
+    "go": GoBackend,
+    "java": JavaBackend,
+    "javascript": JsBackend,
+    "lua": LuaBackend,
+    "perl": PerlBackend,
+    "php": PhpBackend,
+    "python": PythonBackend,
+    "ruby": RubyBackend,
+    "typescript": TsBackend,
+}
 
 
 class TranspileError(Exception):
@@ -162,7 +195,55 @@ TARGETS: dict[str, Target] = {
 
 def discover_apptests() -> list[Path]:
     """Find all apptest_*.py files."""
-    return sorted(TESTS_DIR.glob("apptest_*.py"))
+    return sorted(APP_DIR.glob("apptest_*.py"))
+
+
+def parse_codegen_file(path: Path) -> list[tuple[str, str, dict[str, str]]]:
+    """Parse .tests file into (name, input, {lang: expected}) tuples."""
+    lines = path.read_text().split("\n")
+    result: list[tuple[str, str, dict[str, str]]] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("=== "):
+            test_name = line[4:].strip()
+            i += 1
+            input_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("---"):
+                input_lines.append(lines[i])
+                i += 1
+            expected_by_lang: dict[str, str] = {}
+            while i < len(lines) and lines[i].startswith("--- "):
+                lang = lines[i][4:].strip()
+                i += 1
+                expected_lines: list[str] = []
+                while i < len(lines) and not lines[i].startswith("---"):
+                    expected_lines.append(lines[i])
+                    i += 1
+                expected_by_lang[lang] = "\n".join(expected_lines)
+            if i < len(lines) and lines[i] == "---":
+                i += 1
+            test_input = "\n".join(input_lines)
+            result.append((test_name, test_input, expected_by_lang))
+        else:
+            i += 1
+    return result
+
+
+def discover_codegen_tests() -> list[tuple[str, str, str, str]]:
+    """Find all codegen tests, returns (test_id, input, lang, expected)."""
+    results = []
+    for test_file in sorted(CODEGEN_DIR.glob("*.tests")):
+        tests = parse_codegen_file(test_file)
+        for name, input_code, expected_by_lang in tests:
+            langs = list(expected_by_lang.keys())
+            if "python" not in langs:
+                langs.append("python")
+            for lang in langs:
+                expected = expected_by_lang.get(lang, input_code)
+                test_id = f"{test_file.stem}/{name}[{lang}]"
+                results.append((test_id, input_code, lang, expected))
+    return results
 
 
 def pytest_addoption(parser):
@@ -176,7 +257,7 @@ def pytest_addoption(parser):
 
 
 def pytest_generate_tests(metafunc):
-    """Parametrize tests over (apptest, target) combinations."""
+    """Parametrize tests over test combinations."""
     if "apptest" in metafunc.fixturenames and "target" in metafunc.fixturenames:
         apptests = discover_apptests()
         target_filter = metafunc.config.getoption("target")
@@ -191,6 +272,17 @@ def pytest_generate_tests(metafunc):
             for target in targets
         ]
         metafunc.parametrize("apptest,target", params)
+
+    if "codegen_input" in metafunc.fixturenames:
+        target_filter = metafunc.config.getoption("target")
+        tests = discover_codegen_tests()
+        if target_filter:
+            tests = [(tid, inp, lang, exp) for tid, inp, lang, exp in tests if lang in target_filter]
+        params = [
+            pytest.param(input_code, lang, expected, id=test_id)
+            for test_id, input_code, lang, expected in tests
+        ]
+        metafunc.parametrize("codegen_input,codegen_lang,codegen_expected", params)
 
 
 @pytest.fixture
@@ -245,3 +337,36 @@ def compiled(formatted: Path, target: Target) -> Path:
 def executable(compiled: Path, target: Target) -> list[str]:
     """Return the command to execute the test."""
     return target.get_run_command(compiled)
+
+
+def transpile_code(source: str, target: str) -> tuple[str | None, str | None]:
+    """Transpile source to target language. Returns (output, error)."""
+    ast_dict = parse(source)
+    result = verify_subset(ast_dict)
+    errors = result.errors()
+    if errors:
+        return (None, errors[0].message)
+    name_result = resolve_names(ast_dict)
+    errors = name_result.errors()
+    if errors:
+        return (None, errors[0].message)
+    fe = Frontend()
+    module = fe.transpile(source, ast_dict, name_result=name_result)
+    analyze(module)
+    backend_cls = BACKENDS.get(target)
+    if backend_cls is None:
+        return (None, f"unknown target: {target}")
+    be = backend_cls()
+    code = be.emit(module)
+    return (code, None)
+
+
+@pytest.fixture
+def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
+    """Transpile codegen input to target language."""
+    output, err = transpile_code(codegen_input, codegen_lang)
+    if err is not None:
+        pytest.fail(f"Transpile error: {err}")
+    if output is None:
+        pytest.fail("No output from transpiler")
+    return output

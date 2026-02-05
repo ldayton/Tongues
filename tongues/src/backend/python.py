@@ -256,12 +256,12 @@ class PythonBackend:
             for s in module.structs
         )
 
-        doc = module.doc or "Generated Python code."
-        if "\n" in doc:
-            self._line('"""' + doc + '"""')
-        else:
-            self._line(f'"""{doc}"""')
-        self._line()
+        if module.doc:
+            if "\n" in module.doc:
+                self._line('"""' + module.doc + '"""')
+            else:
+                self._line(f'"""{module.doc}"""')
+            self._line()
 
         plain_imports: list[str] = []
         from_imports: list[str] = []
@@ -316,6 +316,11 @@ class PythonBackend:
                 self._line()
                 self._line()
             self._emit_function(func)
+            need_blank = True
+        for stmt in module.statements:
+            if need_blank:
+                self._line()
+            self._emit_stmt(stmt)
             need_blank = True
         if module.entrypoint is not None:
             self._line()

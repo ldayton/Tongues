@@ -10,6 +10,7 @@ from .ast_compat import ASTNode, is_type
 from ..ir import (
     INT,
     Constant,
+    ExprStmt,
     Field,
     Function,
     InterfaceDef,
@@ -547,6 +548,16 @@ def build_module(
             module.functions.append(func)
     # Add constructor functions (must come after regular functions for dependency order)
     module.functions.extend(constructor_funcs)
+    # Build module-level statements (bare expressions)
+    for i, node in enumerate(tree.get("body", [])):
+        if is_type(node, ["Expr"]):
+            # Skip module docstring (first Expr if it's a string constant)
+            if i == 0:
+                val = node.get("value")
+                if val and is_type(val, ["Constant"]) and isinstance(val.get("value"), str):
+                    continue
+            expr = callbacks.lower_expr(node.get("value"))
+            module.statements.append(ExprStmt(expr=expr))
     # Detect module entry point guard (if __name__ == "__main__": main()).
     for node in tree.get("body", []):
         func_name = _extract_entrypoint_function_name(node)

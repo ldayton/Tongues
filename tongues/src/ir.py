@@ -412,6 +412,7 @@ class Module:
     constants: list[Constant] = field(default_factory=list)
     enums: list[Enum] = field(default_factory=list)
     exports: list[Export] = field(default_factory=list)
+    statements: list[Stmt] = field(default_factory=list)
     hierarchy_root: str | None = None  # Root interface for Node-like class hierarchies
     entrypoint: EntryPoint | None = None
 
