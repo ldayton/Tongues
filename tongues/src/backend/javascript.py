@@ -1,11 +1,16 @@
 """JavaScript backend: IR → JavaScript code.
 
-Simpler than TypeScript - no type annotations, interfaces, or casts.
+Inherits from JsLikeBackend. Adds JS-specific features:
+- Preamble helper functions (range, bytes array helpers)
+- Hoisted variable tracking for control structures
+- Implicit return null for void functions
+- Map indexing with .get() method
 """
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, ir_contains_call, ir_has_bytes_ops, is_bytes_type
+from src.backend.jslike import JsLikeBackend, _camel, _is_array_type, _is_bool_int_compare
+from src.backend.util import ir_contains_call, ir_has_bytes_ops, is_bytes_type
 from src.ir import (
     BOOL,
     FLOAT,
@@ -13,203 +18,133 @@ from src.ir import (
     STRING,
     VOID,
     Array,
-    Assert,
     Assign,
     BinaryOp,
-    Block,
-    BoolLit,
-    Break,
     Call,
     Cast,
-    ChainedCompare,
-    CharClassify,
-    CatchClause,
-    Constant,
-    Continue,
-    DerefLV,
-    EntryPoint,
     Expr,
-    ExprStmt,
-    Field,
-    FieldAccess,
-    FieldLV,
-    FloatLit,
-    ForClassic,
-    ForRange,
-    FuncRef,
-    FuncType,
     Function,
     If,
-    Index,
     IndexLV,
     IntLit,
-    IntToStr,
     InterfaceDef,
-    InterfaceRef,
-    IsNil,
-    IsType,
-    Len,
+    Field,
+    ForClassic,
+    ForRange,
+    Index,
     LValue,
-    MakeMap,
-    MakeSlice,
     Map,
-    MapLit,
     Match,
-    MatchCase,
-    MaxExpr,
     MethodCall,
-    MinExpr,
     Module,
     NilLit,
-    NoOp,
-    OpAssign,
     Optional,
     Param,
-    ParseInt,
     Pointer,
     Primitive,
-    Raise,
-    Receiver,
     Return,
     Set,
-    SetLit,
     Slice,
-    SliceConvert,
     SliceExpr,
     SliceLit,
-    SoftFail,
-    StaticCall,
     Stmt,
-    StringConcat,
-    StringFormat,
     StringLit,
-    StringSlice,
-    Struct,
-    StructLit,
-    StructRef,
-    TupleAssign,
-    TupleLit,
     Ternary,
     TryCatch,
-    TrimChars,
-    Truthy,
-    Tuple,
+    TupleAssign,
     Type,
-    TypeAssert,
-    TypeCase,
     TypeSwitch,
-    UnaryOp,
-    Union,
-    Var,
     VarDecl,
     VarLV,
     While,
 )
 
 
-class JsBackend:
+class JsBackend(JsLikeBackend):
     """Emit JavaScript code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
-        self.lines: list[str] = []
-        self.receiver_name: str | None = None
-        self.current_struct: str | None = None
-        self.struct_fields: dict[str, list[str]] = {}  # struct name -> [field_names]
-        self._struct_field_count: dict[str, int] = {}  # struct name -> field count
-        self._hoisted_vars: set[str] = set()  # vars hoisted in current scope
+        super().__init__()
+        self._hoisted_vars: set[str] = set()
 
     def emit(self, module: Module) -> str:
-        """Emit JavaScript code from IR Module."""
-        self.indent = 0
-        self.lines = []
-        self.struct_fields = {}
-        self._struct_field_count = {}
         self._hoisted_vars = set()
-        for struct in module.structs:
-            self.struct_fields[struct.name] = [f.name for f in struct.fields]
-            self._struct_field_count[struct.name] = len(struct.fields)
-        self._emit_module(module)
-        return "\n".join(self.lines)
+        return super().emit(module)
 
-    def _get_public_symbols(self, module: Module) -> list[str]:
-        """Collect public (non-underscore) symbols for export."""
-        symbols = []
-        for func in module.functions:
-            if not func.name.startswith("_"):
-                symbols.append(_camel(func.name))
-        for struct in module.structs:
-            if not struct.name.startswith("_"):
-                symbols.append(_safe_name(struct.name))
-        return symbols
+    # --- Preamble ---
 
-    def _line(self, text: str = "") -> None:
-        if text:
-            self.lines.append("  " * self.indent + text)
-        else:
-            self.lines.append("")
-
-    def _emit_preamble(self, module: Module) -> None:
+    def _emit_preamble(self, module: Module) -> bool:
         """Emit helper functions needed by generated code."""
+        emitted = False
         if ir_contains_call(module, "range"):
-            self._line("function range(start, end, step) {")
-            self.indent += 1
-            self._line("if (end === undefined) { end = start; start = 0; }")
-            self._line("if (step === undefined) { step = 1; }")
-            self._line("const result = [];")
-            self._line("if (step > 0) {")
-            self.indent += 1
-            self._line("for (var i = start; i < end; i += step) result.push(i);")
-            self.indent -= 1
-            self._line("} else {")
-            self.indent += 1
-            self._line("for (var i = start; i > end; i += step) result.push(i);")
-            self.indent -= 1
-            self._line("}")
-            self._line("return result;")
-            self.indent -= 1
-            self._line("}")
+            self._emit_range_helper()
+            emitted = True
         if ir_contains_call(module, "divmod"):
             self._line("function divmod(a, b) { return [Math.floor(a / b), a % b]; }")
+            emitted = True
         if ir_contains_call(module, "pow"):
             self._line("function pow(base, exp) { return Math.pow(base, exp); }")
+            emitted = True
         if ir_contains_call(module, "abs"):
             self._line("function abs(x) { return Math.abs(x); }")
+            emitted = True
         if ir_contains_call(module, "min"):
             self._line("function min(...args) { return Math.min(...args); }")
+            emitted = True
         if ir_contains_call(module, "max"):
             self._line("function max(...args) { return Math.max(...args); }")
+            emitted = True
         if ir_contains_call(module, "round"):
-            # Python-style round: banker's rounding (round half to even)
-            self._line("function round(x, n) {")
-            self.indent += 1
-            self._line("if (n === undefined) {")
-            self.indent += 1
-            self._line("let f = Math.floor(x), c = Math.ceil(x);")
-            self._line("if (Math.abs(x - f) === 0.5) return f % 2 === 0 ? f : c;")
-            self._line("return Math.round(x);")
-            self.indent -= 1
-            self._line("}")
-            self._line("let m = Math.pow(10, n), v = x * m;")
-            self._line("let f = Math.floor(v), c = Math.ceil(v);")
-            self._line("if (Math.abs(v - f) === 0.5) return (f % 2 === 0 ? f : c) / m;")
-            self._line("return Math.round(v) / m;")
-            self.indent -= 1
-            self._line("}")
+            self._emit_round_helper()
+            emitted = True
         if ir_contains_call(module, "bytes"):
             self._line(
                 "function bytes(x) { return Array.isArray(x) ? x.slice() : new Array(x).fill(0); }"
             )
-        if self._needs_bytes_helpers(module):
+            emitted = True
+        if ir_has_bytes_ops(module):
             self._emit_bytes_helpers()
+            emitted = True
+        return emitted
 
-    def _needs_bytes_helpers(self, module: Module) -> bool:
-        """Check if module uses byte array operations that need helpers."""
-        return ir_has_bytes_ops(module)
+    def _emit_range_helper(self) -> None:
+        self._line("function range(start, end, step) {")
+        self.indent += 1
+        self._line("if (end === undefined) { end = start; start = 0; }")
+        self._line("if (step === undefined) { step = 1; }")
+        self._line("const result = [];")
+        self._line("if (step > 0) {")
+        self.indent += 1
+        self._line("for (var i = start; i < end; i += step) result.push(i);")
+        self.indent -= 1
+        self._line("} else {")
+        self.indent += 1
+        self._line("for (var i = start; i > end; i += step) result.push(i);")
+        self.indent -= 1
+        self._line("}")
+        self._line("return result;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_round_helper(self) -> None:
+        self._line("function round(x, n) {")
+        self.indent += 1
+        self._line("if (n === undefined) {")
+        self.indent += 1
+        self._line("let f = Math.floor(x), c = Math.ceil(x);")
+        self._line("if (Math.abs(x - f) === 0.5) return f % 2 === 0 ? f : c;")
+        self._line("return Math.round(x);")
+        self.indent -= 1
+        self._line("}")
+        self._line("let m = Math.pow(10, n), v = x * m;")
+        self._line("let f = Math.floor(v), c = Math.ceil(v);")
+        self._line("if (Math.abs(v - f) === 0.5) return (f % 2 === 0 ? f : c) / m;")
+        self._line("return Math.round(v) / m;")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_bytes_helpers(self) -> None:
         """Emit helper functions for byte array operations."""
-        # Array equality
         self._line("function arrEq(a, b) {")
         self.indent += 1
         self._line("if (a.length !== b.length) return false;")
@@ -217,7 +152,6 @@ class JsBackend:
         self._line("return true;")
         self.indent -= 1
         self._line("}")
-        # Array less-than (lexicographic)
         self._line("function arrLt(a, b) {")
         self.indent += 1
         self._line("for (let i = 0; i < Math.min(a.length, b.length); i++) {")
@@ -229,15 +163,12 @@ class JsBackend:
         self._line("return a.length < b.length;")
         self.indent -= 1
         self._line("}")
-        # Array concatenation
         self._line("function arrConcat(...arrs) { return [].concat(...arrs); }")
-        # Array repeat
         self._line("function arrRepeat(a, n) {")
         self.indent += 1
         self._line("let r = []; for (let i = 0; i < n; i++) r.push(...a); return r;")
         self.indent -= 1
         self._line("}")
-        # Subsequence contains
         self._line("function arrContains(h, n) {")
         self.indent += 1
         self._line("if (n.length === 0) return true;")
@@ -250,7 +181,6 @@ class JsBackend:
         self._line("return false;")
         self.indent -= 1
         self._line("}")
-        # Find subsequence index
         self._line("function arrFind(h, n) {")
         self.indent += 1
         self._line("if (n.length === 0) return 0;")
@@ -263,7 +193,6 @@ class JsBackend:
         self._line("return -1;")
         self.indent -= 1
         self._line("}")
-        # Count occurrences
         self._line("function arrCount(h, n) {")
         self.indent += 1
         self._line("if (n.length === 0) return 0;")
@@ -278,7 +207,6 @@ class JsBackend:
         self._line("return c;")
         self.indent -= 1
         self._line("}")
-        # startsWith / endsWith
         self._line("function arrStartsWith(a, p) {")
         self.indent += 1
         self._line("if (p.length > a.length) return false;")
@@ -294,10 +222,8 @@ class JsBackend:
         self._line("return true;")
         self.indent -= 1
         self._line("}")
-        # upper/lower for byte arrays
         self._line("function arrUpper(a) { return a.map(b => b >= 97 && b <= 122 ? b - 32 : b); }")
         self._line("function arrLower(a) { return a.map(b => b >= 65 && b <= 90 ? b + 32 : b); }")
-        # strip
         self._line("function arrStrip(a, cs) {")
         self.indent += 1
         self._line("let s = 0, e = a.length;")
@@ -318,7 +244,6 @@ class JsBackend:
         )
         self.indent -= 1
         self._line("}")
-        # split
         self._line("function arrSplit(a, sep) {")
         self.indent += 1
         self._line("let r = [], i = 0;")
@@ -332,7 +257,6 @@ class JsBackend:
         self._line("return r;")
         self.indent -= 1
         self._line("}")
-        # join
         self._line("function arrJoin(arrs, sep) {")
         self.indent += 1
         self._line("if (arrs.length === 0) return [];")
@@ -341,7 +265,6 @@ class JsBackend:
         self._line("return r;")
         self.indent -= 1
         self._line("}")
-        # replace
         self._line("function arrReplace(a, old, nw) {")
         self.indent += 1
         self._line("if (old.length === 0) return a.slice();")
@@ -355,7 +278,6 @@ class JsBackend:
         self._line("return r;")
         self.indent -= 1
         self._line("}")
-        # Step slicing (Python a[::step])
         self._line("function arrStep(a, lo, hi, step) {")
         self.indent += 1
         self._line("if (lo === null) lo = step > 0 ? 0 : a.length - 1;")
@@ -366,7 +288,6 @@ class JsBackend:
         self._line("return r;")
         self.indent -= 1
         self._line("}")
-        # Deep equality for arrays of arrays (used by split result comparisons)
         self._line("function deepArrEq(a, b) {")
         self.indent += 1
         self._line("if (a.length !== b.length) return false;")
@@ -383,184 +304,108 @@ class JsBackend:
         self.indent -= 1
         self._line("}")
 
-    def _emit_module(self, module: Module) -> None:
-        if module.doc:
-            self._line(f"/** {module.doc} */")
-        need_blank = False
-        preamble_funcs = ("range", "divmod", "pow", "abs", "min", "max", "bytes")
-        if any(ir_contains_call(module, f) for f in preamble_funcs) or self._needs_bytes_helpers(
-            module
-        ):
-            self._emit_preamble(module)
-            need_blank = True
-        if module.constants:
-            for const in module.constants:
-                self._emit_constant(const)
-            need_blank = True
-        # Skip interfaces - JavaScript has no interface construct
-        for struct in module.structs:
-            if need_blank:
-                self._line()
-            self._emit_struct(struct)
-            need_blank = True
-        for func in module.functions:
-            if need_blank:
-                self._line()
-            self._emit_function(func)
-            need_blank = True
-        for stmt in module.statements:
-            if need_blank:
-                self._line()
-            self._emit_stmt(stmt)
-            need_blank = True
-        if module.entrypoint is not None:
-            self._line()
-            self._emit_stmt(module.entrypoint)
-        else:
-            symbols = self._get_public_symbols(module)
-            if symbols:
-                self._line()
-                self._line("// CommonJS exports")
-                self._line("if (typeof module !== 'undefined') {")
-                self.indent += 1
-                exports = ", ".join(symbols)
-                self._line(f"module.exports = {{ {exports} }};")
-                self.indent -= 1
-                self._line("}")
+    # --- Interface/Field (no-op for JS) ---
 
-    def _emit_constant(self, const: Constant) -> None:
-        val = self._expr(const.value)
-        self._line(f"const {const.name} = {val};")
+    def _emit_interface(self, iface: InterfaceDef) -> None:
+        pass
 
-    def _emit_struct(self, struct: Struct) -> None:
-        if struct.doc:
-            self._line(f"/** {struct.doc} */")
-        extends = ""
-        if struct.embedded_type:
-            extends = f" extends {struct.embedded_type}"
-        self._line(f"class {_safe_name(struct.name)}{extends} {{")
-        self.indent += 1
-        # No field declarations in JavaScript - just constructor
-        if struct.fields:
-            self._emit_constructor(struct)
-        self.current_struct = struct.name
-        for i, method in enumerate(struct.methods):
-            if i > 0 or struct.fields:
-                self._line()
-            self._emit_method(method)
-        self.current_struct = None
-        self.indent -= 1
-        self._line("}")
+    def _emit_field(self, fld: Field) -> None:
+        pass
 
-    def _emit_constructor(self, struct: Struct) -> None:
-        params = ", ".join(
-            f"{_camel(f.name)} = {self._default_value(f.typ)}" for f in struct.fields
-        )
-        self._line(f"constructor({params}) {{")
-        self.indent += 1
-        for fld in struct.fields:
-            name = _camel(fld.name)
-            # For array/slice fields, convert null to empty array
-            is_nullable_slice = isinstance(fld.typ, Optional) and isinstance(
-                fld.typ.inner, (Slice, Array)
-            )
-            if isinstance(fld.typ, (Slice, Array)) and not is_nullable_slice:
-                self._line(f"this.{name} = {name} ?? [];")
-            else:
-                self._line(f"this.{name} = {name};")
-        self.indent -= 1
-        self._line("}")
+    # --- Signatures ---
 
-    def _default_value(self, typ: Type) -> str:
-        """Return default value for a type."""
-        if isinstance(typ, Primitive):
-            if typ.kind == "string":
-                return '""'
-            if typ.kind in ("int", "float", "byte", "rune"):
-                return "0"
-            if typ.kind == "bool":
-                return "false"
-        if isinstance(typ, Optional):
-            return "null"
-        if isinstance(typ, (Slice, Array)):
-            return "[]"
-        if isinstance(typ, Map):
-            return "new Map()"
-        if isinstance(typ, Set):
-            return "new Set()"
-        return "null"
+    def _func_signature(self, name: str, params: list[Param], ret: Type) -> str:
+        return f"function {_camel(name)}({self._param_list(params)})"
 
-    def _emit_function(self, func: Function) -> None:
-        self._hoisted_vars = set()
-        if func.doc:
-            self._line(f"/** {func.doc} */")
-        params = self._params(func.params)
-        self._line(f"function {_camel(func.name)}({params}) {{")
-        self.indent += 1
-        for stmt in func.body:
-            self._emit_stmt(stmt)
-        # Add implicit return null for void functions to match Python's None semantics
-        if _is_void_func(func):
-            self._line("return null;")
-        self.indent -= 1
-        self._line("}")
+    def _method_signature(self, name: str, params: list[Param], ret: Type) -> str:
+        return f"{_camel(name)}({self._param_list(params)})"
 
-    def _emit_method(self, func: Function) -> None:
-        self._hoisted_vars = set()
-        if func.doc:
-            self._line(f"/** {func.doc} */")
-        params = self._params(func.params)
-        self._line(f"{_camel(func.name)}({params}) {{")
-        self.indent += 1
-        if func.receiver:
-            self.receiver_name = func.receiver.name
-        for stmt in func.body:
-            self._emit_stmt(stmt)
-        self.receiver_name = None
-        self.indent -= 1
-        self._line("}")
-
-    def _params(self, params: list[Param]) -> str:
+    def _param_list(self, params: list[Param]) -> str:
         return ", ".join(_camel(p.name) for p in params)
 
-    def _emit_hoisted_vars(self, hoisted_vars: list[tuple[str, Type]]) -> None:
-        """Emit var declarations for hoisted variables before control structures."""
-        for name, _ in hoisted_vars:
+    # --- Variable declarations ---
+
+    def _var_decl(self, name: str, typ: Type | None, value: Expr | None) -> None:
+        if value is not None:
+            val = self._expr(value)
+            self._line(f"let {_camel(name)} = {val};")
+        else:
+            self._line(f"let {_camel(name)};")
+
+    def _assign_decl(self, lv: str, value: Expr) -> None:
+        val = self._expr(value)
+        self._line(f"let {lv} = {val};")
+
+    def _tuple_assign_decl(self, lvalues: str, value: Expr, value_type: Type | None) -> None:
+        val = self._expr(value)
+        self._line(f"let [{lvalues}] = {val};")
+
+    def _var_decl_inline(self, name: str, typ: Type | None, value: Expr | None) -> str:
+        if value is not None:
+            return f"let {_camel(name)} = {self._expr(value)}"
+        return f"let {_camel(name)}"
+
+    def _assign_decl_inline(self, lv: str, value: Expr) -> str:
+        return f"let {lv} = {self._expr(value)}"
+
+    def _for_value_decl(self, name: str, iter_expr: str, index_name: str | None, elem_type: str) -> None:
+        self._line(f"const {name} = {iter_expr}[{index_name}];")
+
+    # --- Exports ---
+
+    def _emit_exports(self, symbols: list[str]) -> None:
+        self._line("// CommonJS exports")
+        self._line("if (typeof module !== 'undefined') {")
+        self.indent += 1
+        exports = ", ".join(symbols)
+        self._line(f"module.exports = {{ {exports} }};")
+        self.indent -= 1
+        self._line("}")
+
+    # --- Hoisted variables ---
+
+    def _pre_function_hook(self) -> None:
+        self._hoisted_vars = set()
+
+    def _post_function_body(self, func: Function) -> None:
+        if _is_void_func(func):
+            self._line("return null;")
+
+    def _hoisted_vars_hook(self, stmt: Stmt) -> None:
+        hoisted = _get_hoisted_vars(stmt)
+        for name, _ in hoisted:
             js_name = _camel(name)
             if name not in self._hoisted_vars:
                 self._line(f"var {js_name};")
                 self._hoisted_vars.add(name)
 
     def _emit_stmt(self, stmt: Stmt) -> None:
+        # Handle Map assignment specially
         match stmt:
-            case VarDecl(name=name, typ=typ, value=value):
-                if value is not None:
+            case Assign(target=LValue() as target, value=value):
+                if isinstance(target, IndexLV) and isinstance(target.obj.typ, Map):
+                    obj_str = self._expr(target.obj)
+                    idx_str = self._expr(target.index)
                     val = self._expr(value)
-                    self._line(f"let {_camel(name)} = {val};")
-                else:
-                    self._line(f"let {_camel(name)};")
-            case Assign(target=IndexLV(obj=obj, index=index), value=value) if isinstance(
-                obj.typ, Map
-            ):
-                # Map assignment uses .set() instead of bracket notation
-                obj_str = self._expr(obj)
-                idx_str = self._expr(index)
-                val = self._expr(value)
-                self._line(f"{obj_str}.set({idx_str}, {val});")
-            case Assign(target=target, value=value):
-                lv = self._lvalue(target)
-                val = self._expr(value)
-                # Check if variable was hoisted (already declared)
-                var_name = target.name if isinstance(target, VarLV) else None
-                is_hoisted = var_name is not None and var_name in self._hoisted_vars
-                if stmt.is_declaration and not is_hoisted:
-                    self._line(f"let {lv} = {val};")
-                else:
-                    self._line(f"{lv} = {val};")
+                    self._line(f"{obj_str}.set({idx_str}, {val});")
+                    return
+                # Check if variable was hoisted
+                if isinstance(target, VarLV):
+                    var_name = target.name
+                    is_hoisted = var_name in self._hoisted_vars
+                    if stmt.is_declaration and not is_hoisted:
+                        lv = self._lvalue(target)
+                        val = self._expr(value)
+                        self._line(f"let {lv} = {val};")
+                        return
+                    elif stmt.is_declaration and is_hoisted:
+                        lv = self._lvalue(target)
+                        val = self._expr(value)
+                        self._line(f"{lv} = {val};")
+                        return
             case TupleAssign(targets=targets, value=value):
                 lvalues = ", ".join(self._lvalue(t) for t in targets)
                 val = self._expr(value)
-                # Check if all targets are hoisted
                 all_hoisted = all(
                     isinstance(t, VarLV) and t.name in self._hoisted_vars for t in targets
                 )
@@ -572,906 +417,38 @@ class JsBackend:
                         if name not in self._hoisted_vars:
                             self._line(f"let {_camel(name)};")
                     self._line(f"[{lvalues}] = {val};")
-            case OpAssign(target=target, op=op, value=value):
-                lv = self._lvalue(target)
-                val = self._expr(value)
-                self._line(f"{lv} {op}= {val};")
-            case NoOp():
-                pass
-            case ExprStmt(expr=expr):
-                self._line(f"{self._expr(expr)};")
-            case Return(value=value):
-                if value is not None:
-                    self._line(f"return {self._expr(value)};")
-                else:
-                    self._line("return;")
-            case Assert(test=test, message=message):
-                cond_str = self._expr(test)
-                if message is not None:
-                    self._line(f"if (!({cond_str})) {{ throw new Error({self._expr(message)}); }}")
-                else:
-                    self._line(f'if (!({cond_str})) {{ throw new Error("Assertion failed"); }}')
-            case EntryPoint(function_name=function_name):
-                self._line(f"process.exitCode = {_camel(function_name)}();")
-            case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
-                self._emit_hoisted_vars(stmt.hoisted_vars)
-                if init is not None:
-                    self._emit_stmt(init)
-                self._line(f"if ({self._expr(cond)}) {{")
-                self.indent += 1
-                for s in then_body:
-                    self._emit_stmt(s)
-                self.indent -= 1
-                self._emit_else_body(else_body)
-            case TypeSwitch(expr=expr, binding=binding, cases=cases, default=default):
-                self._emit_hoisted_vars(stmt.hoisted_vars)
-                self._emit_type_switch(expr, binding, cases, default)
-            case Match(expr=expr, cases=cases, default=default):
-                self._emit_hoisted_vars(stmt.hoisted_vars)
-                self._emit_match(expr, cases, default)
-            case ForRange(index=index, value=value, iterable=iterable, body=body):
-                self._emit_hoisted_vars(stmt.hoisted_vars)
-                self._emit_for_range(index, value, iterable, body)
-            case ForClassic(init=init, cond=cond, post=post, body=body):
-                self._emit_hoisted_vars(stmt.hoisted_vars)
-                self._emit_for_classic(init, cond, post, body)
-            case While(cond=cond, body=body):
-                self._emit_hoisted_vars(stmt.hoisted_vars)
-                self._line(f"while ({self._expr(cond)}) {{")
-                self.indent += 1
-                for s in body:
-                    self._emit_stmt(s)
-                self.indent -= 1
-                self._line("}")
-            case Break(label=label):
-                if label:
-                    self._line(f"break {label};")
-                else:
-                    self._line("break;")
-            case Continue(label=label):
-                if label:
-                    self._line(f"continue {label};")
-                else:
-                    self._line("continue;")
-            case Block(body=body):
-                for s in body:
-                    self._emit_stmt(s)
-            case TryCatch(body=body, catches=catches, reraise=reraise):
-                self._emit_hoisted_vars(stmt.hoisted_vars)
-                self._emit_try_catch(body, catches, reraise)
-            case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
-                if reraise_var:
-                    self._line(f"throw {_camel(reraise_var)}")
-                elif error_type and self._struct_field_count.get(error_type, 0) == 0:
-                    self._line(f"throw new {error_type}()")
-                else:
-                    p = self._expr(pos)
-                    if isinstance(message, StringLit):
-                        msg_val = (
-                            message.value.replace("\\", "\\\\")
-                            .replace("`", "\\`")
-                            .replace("$", "\\$")
-                        )
-                        self._line(f"throw new {error_type}(`{msg_val} at position ${{{p}}}`, {p})")
-                    else:
-                        msg = self._expr(message)
-                        self._line(
-                            f"throw new {error_type}(`${{{msg}}} at position ${{{p}}}`, {p})"
-                        )
-            case SoftFail():
-                self._line("return null;")
-            case _:
-                raise NotImplementedError("Unknown statement")
+                return
+        super()._emit_stmt(stmt)
 
-    def _emit_type_switch(
-        self, expr: Expr, binding: str, cases: list[TypeCase], default: list[Stmt]
-    ) -> None:
-        var = self._expr(expr)
-        binding_name = _camel(binding)
-        shadows = isinstance(expr, Var) and _camel(expr.name) == binding_name
-        for i, case in enumerate(cases):
-            keyword = "if" if i == 0 else "} else if"
-            if isinstance(case.typ, Primitive):
-                js_typeof = _typeof_check(case.typ.kind)
-                self._line(f"{keyword} (typeof {var} === '{js_typeof}') {{")
-            else:
-                type_name = self._type_name_for_check(case.typ)
-                self._line(f"{keyword} ({var} instanceof {type_name}) {{")
-            self.indent += 1
-            if not shadows:
-                self._line(f"const {binding_name} = {var};")
-            for s in case.body:
-                self._emit_stmt(s)
-            self.indent -= 1
-        if default:
-            self._line("} else {")
-            self.indent += 1
-            for s in default:
-                self._emit_stmt(s)
-            self.indent -= 1
-        self._line("}")
+    def _emit_tuple_reassign(self, stmt: TupleAssign, targets: list[LValue], lvalues: str, value: Expr) -> None:
+        new_targets = stmt.new_targets
+        for name in new_targets:
+            if name not in self._hoisted_vars:
+                self._line(f"let {_camel(name)};")
+        val = self._expr(value)
+        self._line(f"[{lvalues}] = {val};")
 
-    def _emit_match(self, expr: Expr, cases: list[MatchCase], default: list[Stmt]) -> None:
-        self._line(f"switch ({self._expr(expr)}) {{")
-        self.indent += 1
-        for case in cases:
-            for pattern in case.patterns:
-                self._line(f"case {self._expr(pattern)}:")
-            self.indent += 1
-            for s in case.body:
-                self._emit_stmt(s)
-            if not _ends_with_return(case.body):
-                self._line("break;")
-            self.indent -= 1
-        if default:
-            self._line("default:")
-            self.indent += 1
-            for s in default:
-                self._emit_stmt(s)
-            self.indent -= 1
-        self.indent -= 1
-        self._line("}")
+    # --- Expressions ---
 
-    def _emit_else_body(self, else_body: list[Stmt]) -> None:
-        """Emit else body, converting single-If else to else-if chains."""
-        if not else_body:
-            self._line("}")
-            return
-        # Check for else-if pattern: else body is single If statement
-        if len(else_body) == 1 and isinstance(else_body[0], If):
-            elif_stmt = else_body[0]
-            if elif_stmt.init is not None:
-                self._emit_stmt(elif_stmt.init)
-            self._line(f"}} else if ({self._expr(elif_stmt.cond)}) {{")
-            self.indent += 1
-            for s in elif_stmt.then_body:
-                self._emit_stmt(s)
-            self.indent -= 1
-            self._emit_else_body(elif_stmt.else_body)
-        else:
-            self._line("} else {")
-            self.indent += 1
-            for s in else_body:
-                self._emit_stmt(s)
-            self.indent -= 1
-            self._line("}")
-
-    def _emit_for_range(
-        self,
-        index: str | None,
-        value: str | None,
-        iterable: Expr,
-        body: list[Stmt],
-    ) -> None:
-        if self._try_emit_map(index, value, iterable, body):
-            return
-        iter_expr = self._expr(iterable)
-        iter_type = iterable.typ
-        is_string = isinstance(iter_type, Primitive) and iter_type.kind == "string"
-        if index is not None and value is not None:
-            self._line(
-                f"for (var {_camel(index)} = 0; {_camel(index)} < {iter_expr}.length; {_camel(index)}++) {{"
-            )
-            self.indent += 1
-            self._line(f"const {_camel(value)} = {iter_expr}[{_camel(index)}];")
-        elif value is not None:
-            self._line(f"for (const {_camel(value)} of {iter_expr}) {{")
-            self.indent += 1
-        elif index is not None:
-            self._line(
-                f"for (var {_camel(index)} = 0; {_camel(index)} < {iter_expr}.length; {_camel(index)}++) {{"
-            )
-            self.indent += 1
-        else:
-            self._line(f"for (const _ of {iter_expr}) {{")
-            self.indent += 1
-        for s in body:
-            self._emit_stmt(s)
-        self.indent -= 1
-        self._line("}")
-
-    def _try_emit_map(
-        self,
-        index: str | None,
-        value: str | None,
-        iterable: Expr,
-        body: list[Stmt],
-    ) -> bool:
-        """Try to emit ForRange as .map(). Returns True if successful."""
-        if index is not None or value is None:
-            return False
-        if len(body) != 1:
-            return False
-        stmt = body[0]
-        if not isinstance(stmt, ExprStmt):
-            return False
-        expr = stmt.expr
-        if not isinstance(expr, MethodCall):
-            return False
-        if expr.method != "append":
-            return False
-        if len(expr.args) != 1:
-            return False
-        if not isinstance(expr.obj, Var):
-            return False
-        transform_expr = expr.args[0]
-        if not self._expr_uses_var(transform_expr, value):
-            return False
-        accumulator = self._expr(expr.obj)
-        iter_expr = self._expr(iterable)
-        transform = self._expr(transform_expr)
-        self._line(f"{accumulator}.push(...{iter_expr}.map({_camel(value)} => {transform}));")
-        return True
-
-    def _expr_uses_var(self, expr: Expr, var_name: str) -> bool:
-        """Check if an expression uses a variable (shallow check)."""
-        if isinstance(expr, Var):
-            return expr.name == var_name
-        if isinstance(expr, MethodCall):
-            if self._expr_uses_var(expr.obj, var_name):
-                return True
-            return any(self._expr_uses_var(a, var_name) for a in expr.args)
-        if isinstance(expr, Call):
-            return any(self._expr_uses_var(a, var_name) for a in expr.args)
-        if isinstance(expr, FieldAccess):
-            return self._expr_uses_var(expr.obj, var_name)
-        if isinstance(expr, Index):
-            return self._expr_uses_var(expr.obj, var_name) or self._expr_uses_var(
-                expr.index, var_name
-            )
-        if isinstance(expr, BinaryOp):
-            return self._expr_uses_var(expr.left, var_name) or self._expr_uses_var(
-                expr.right, var_name
-            )
-        if isinstance(expr, UnaryOp):
-            return self._expr_uses_var(expr.operand, var_name)
-        if isinstance(expr, Ternary):
-            return (
-                self._expr_uses_var(expr.cond, var_name)
-                or self._expr_uses_var(expr.then_expr, var_name)
-                or self._expr_uses_var(expr.else_expr, var_name)
-            )
-        if isinstance(expr, Cast):
-            return self._expr_uses_var(expr.expr, var_name)
-        if isinstance(expr, SliceLit):
-            return any(self._expr_uses_var(e, var_name) for e in expr.elements)
-        if isinstance(expr, TupleLit):
-            return any(self._expr_uses_var(e, var_name) for e in expr.elements)
-        if isinstance(expr, StructLit):
-            return any(self._expr_uses_var(v, var_name) for v in expr.fields.values())
-        return False
-
-    def _emit_for_classic(
-        self,
-        init: Stmt | None,
-        cond: Expr | None,
-        post: Stmt | None,
-        body: list[Stmt],
-    ) -> None:
-        init_str = self._stmt_inline(init) if init else ""
-        cond_str = self._expr(cond) if cond else ""
-        post_str = self._stmt_inline(post) if post else ""
-        self._line(f"for ({init_str}; {cond_str}; {post_str}) {{")
-        self.indent += 1
-        for s in body:
-            self._emit_stmt(s)
-        self.indent -= 1
-        self._line("}")
-
-    def _stmt_inline(self, stmt: Stmt) -> str:
-        match stmt:
-            case VarDecl(name=name, typ=typ, value=value):
-                if value is not None:
-                    return f"let {_camel(name)} = {self._expr(value)}"
-                return f"let {_camel(name)}"
-            case Assign(
-                target=VarLV(name=name),
-                value=BinaryOp(op=op, left=Var(name=left_name), right=IntLit(value=1)),
-            ) if name == left_name and op in ("+", "-"):
-                return f"{_camel(name)}++" if op == "+" else f"{_camel(name)}--"
-            case Assign(target=target, value=value):
-                lv = self._lvalue(target)
-                val = self._expr(value)
-                if stmt.is_declaration:
-                    return f"let {lv} = {val}"
-                return f"{lv} = {val}"
-            case OpAssign(target=target, op=op, value=value):
-                return f"{self._lvalue(target)} {op}= {self._expr(value)}"
-            case ExprStmt(expr=expr):
-                return self._expr(expr)
-            case _:
-                raise NotImplementedError("Cannot inline")
-
-    def _emit_try_catch(
-        self,
-        body: list[Stmt],
-        catches: list[CatchClause],
-        reraise: bool,
-    ) -> None:
-        self._line("try {")
-        self.indent += 1
-        for s in body:
-            self._emit_stmt(s)
-        self.indent -= 1
-        self._line("} catch (_e) {")
-        self.indent += 1
-        if not catches:
-            if reraise:
-                self._line("throw _e;")
-            self.indent -= 1
-            self._line("}")
-            return
-
-        if len(catches) == 1:
-            clause = catches[0]
-            if clause.var:
-                self._line(f"let {_camel(clause.var)} = _e;")
-            for s in clause.body:
-                self._emit_stmt(s)
-            if reraise:
-                self._line("throw _e;")
-            self.indent -= 1
-            self._line("}")
-            return
-
-        emitted_chain = False
-        has_default = False
-        seen_conds: set[str] = set()
-        for clause in catches:
-            cond: str | None = None
-            if isinstance(clause.typ, StructRef):
-                exc_name = _PYTHON_EXCEPTION_MAP.get(clause.typ.name, clause.typ.name)
-                cond = f"_e instanceof {exc_name}"
-            if cond is not None and cond in seen_conds:
-                continue
-            if cond is not None:
-                seen_conds.add(cond)
-            if cond is None:
-                if not emitted_chain:
-                    if clause.var:
-                        self._line(f"let {_camel(clause.var)} = _e;")
-                    for s in clause.body:
-                        self._emit_stmt(s)
-                    if reraise:
-                        self._line("throw _e;")
-                    self.indent -= 1
-                    self._line("}")
-                    return
-                self._line("else {")
-                self.indent += 1
-                if clause.var:
-                    self._line(f"let {_camel(clause.var)} = _e;")
-                for s in clause.body:
-                    self._emit_stmt(s)
-                if reraise:
-                    self._line("throw _e;")
-                self.indent -= 1
-                self._line("}")
-                emitted_chain = True
-                has_default = True
-                break
-
-            keyword = "if" if not emitted_chain else "else if"
-            self._line(f"{keyword} ({cond}) {{")
-            self.indent += 1
-            if clause.var:
-                self._line(f"let {_camel(clause.var)} = _e;")
-            for s in clause.body:
-                self._emit_stmt(s)
-            if reraise:
-                self._line("throw _e;")
-            self.indent -= 1
-            self._line("}")
-            emitted_chain = True
-
-        if emitted_chain and not has_default:
-            self._line("else {")
-            self.indent += 1
-            self._line("throw _e;")
-            self.indent -= 1
-            self._line("}")
-        self.indent -= 1
-        self._line("}")
-
-    def _expr(self, expr: Expr) -> str:
-        match expr:
-            case IntLit(value=value, format=fmt):
-                if fmt == "hex":
-                    return hex(value)
-                if fmt == "oct":
-                    return f"0o{oct(value)[2:]}"
-                if fmt == "bin":
-                    return bin(value)
-                # Use BigInt for large integers exceeding JS safe integer range
-                if abs(value) > 9007199254740991:  # Number.MAX_SAFE_INTEGER
-                    return f"{value}n"
-                return str(value)
-            case FloatLit(value=value, format=fmt):
-                if fmt == "exp":
-                    # JS doesn't need + for positive exponent
-                    return f"{value:g}".replace("e+", "e")
-                return str(value)
-            case StringLit(value=value):
-                return _string_literal(value)
-            case BoolLit(value=value):
-                return "true" if value else "false"
-            case NilLit():
-                return "null"
-            case Var(name=name):
-                if name == self.receiver_name:
-                    return "this"
-                return _camel(name)
-            case FieldAccess(obj=obj, field=field):
-                if field.startswith("F") and field[1:].isdigit():
-                    return f"{self._expr(obj)}[{field[1:]}]"
-                obj_str = self._expr(obj)
-                field_str = _camel(field)
-                return f"{obj_str}.{field_str}"
-            case FuncRef(name=name, obj=obj):
-                if obj is not None:
-                    obj_str = self._expr(obj)
-                    return f"{obj_str}.{_camel(name)}.bind({obj_str})"
-                return _camel(name)
-            case Index(obj=obj, index=index, typ=typ):
-                obj_str = self._expr(obj)
-                idx_str = self._expr(index)
-                obj_type = obj.typ
-                if (
-                    obj_type == STRING
-                    and isinstance(typ, Primitive)
-                    and typ.kind in ("int", "byte", "rune")
-                ):
-                    return f"{obj_str}.charCodeAt({idx_str})"
-                if isinstance(obj_type, Map):
-                    return f"{obj_str}.get({idx_str})"
-                return f"{obj_str}[{idx_str}]"
-            case SliceExpr(obj=obj, low=low, high=high, step=step):
-                return self._slice_expr(obj, low, high, step)
-            case ParseInt(string=s, base=b):
-                return f"parseInt({self._expr(s)}, {self._expr(b)})"
-            case IntToStr(value=v):
-                return f"String({self._expr(v)})"
-            case CharClassify(kind=kind, char=char):
-                regex_map = {
-                    "digit": r"/^\d+$/",
-                    "alpha": r"/^[a-zA-Z]+$/",
-                    "alnum": r"/^[a-zA-Z0-9]+$/",
-                    "space": r"/^\s+$/",
-                    "upper": r"/^[A-Z]+$/",
-                    "lower": r"/^[a-z]+$/",
-                }
-                return f"{regex_map[kind]}.test({self._expr(char)})"
-            case TrimChars(string=s, chars=chars, mode=mode):
-                s_str = self._expr(s)
-                # For byte arrays, use arr* functions
-                if is_bytes_type(s.typ):
-                    chars_str = self._expr(chars)
-                    if mode == "left":
-                        return f"arrLstrip({s_str}, {chars_str})"
-                    elif mode == "right":
-                        return f"arrRstrip({s_str}, {chars_str})"
-                    else:
-                        return f"arrStrip({s_str}, {chars_str})"
-                if isinstance(chars, StringLit) and chars.value == " \t\n\r":
-                    method_map = {"left": "trimStart", "right": "trimEnd", "both": "trim"}
-                    return f"{s_str}.{method_map[mode]}()"
-                escaped = (
-                    _escape_regex_class(chars.value) if isinstance(chars, StringLit) else "..."
-                )
-                if mode == "left":
-                    return f"{s_str}.replace(/^[{escaped}]+/, '')"
-                elif mode == "right":
-                    return f"{s_str}.replace(/[{escaped}]+$/, '')"
-                else:
-                    return f"{s_str}.replace(/^[{escaped}]+/, '').replace(/[{escaped}]+$/, '')"
-            case Call(func="_intPtr", args=[arg]):
-                return self._expr(arg)
-            case Call(func="float", args=[StringLit(value="nan")]):
-                return "NaN"
-            case Call(func="float", args=[StringLit(value="inf")]):
-                return "Infinity"
-            case Call(func="float", args=[StringLit(value="-inf")]):
-                return "-Infinity"
-            case Call(func="float", args=[IntLit() as arg]):
-                # JS doesn't distinguish int/float, no conversion needed
-                return self._expr(arg)
-            case Call(func="float", args=[arg]):
-                return f"Number({self._expr(arg)})"
-            case Call(func="print", args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                return f"console.log({args_str})"
-            case Call(func="repr", args=[NilLit()]):
-                return '"None"'
-            case Call(func="repr", args=[arg]) if arg.typ == BOOL:
-                return f'({self._expr(arg)} ? "True" : "False")'
-            case Call(func="repr", args=[arg]):
-                return f"String({self._expr(arg)})"
-            case Call(func="bool", args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                return f"Boolean({args_str})"
-            case Call(func="abs", args=[arg]):
-                return f"Math.abs({self._expr(arg)})"
-            case Call(func="min", args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                return f"Math.min({args_str})"
-            case Call(func="max", args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                return f"Math.max({args_str})"
-            case Call(func="round", args=[arg]):
-                return f"Math.round({self._expr(arg)})"
-            case Call(func="round", args=[arg, IntLit(value=n)]):
-                # round(x, n) with literal n -> Math.round(x * 10^n) / 10^n
-                mult = 10 ** n
-                return f"Math.round({self._expr(arg)} * {mult}) / {mult}"
-            case Call(func="round", args=[arg, precision]):
-                # round(x, n) with variable n
-                prec = self._expr(precision)
-                return f"Math.round({self._expr(arg)} * 10 ** {prec}) / 10 ** {prec}"
-            case Call(func="int", args=[arg]):
-                return f"Math.trunc({self._expr(arg)})"
-            case Call(func="divmod", args=[a, b]):
-                return f"[Math.floor({self._expr(a)} / {self._expr(b)}), {self._expr(a)} % {self._expr(b)}]"
-            case Call(func="pow", args=[base, exp]):
-                return f"{self._expr(base)} ** {self._expr(exp)}"
-            case Call(func="pow", args=[base, exp, mod]):
-                return f"{self._expr(base)} ** {self._expr(exp)} % {self._expr(mod)}"
-            case Call(func=func, args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                return f"{_camel(func)}({args_str})"
-            case MethodCall(obj=obj, method="join", args=[arr], receiver_type=receiver_type) if (
-                not _is_bytes_join(arr, receiver_type, [obj])
-            ):
-                return f"{self._expr(arr)}.join({self._expr(obj)})"
-            case MethodCall(
-                obj=obj, method="extend", args=[other], receiver_type=receiver_type
-            ) if _is_array_type(receiver_type):
-                return f"{self._expr(obj)}.push(...{self._expr(other)})"
-            case MethodCall(obj=obj, method="copy", args=[], receiver_type=receiver_type) if (
-                _is_array_type(receiver_type)
-            ):
-                return f"{self._expr(obj)}.slice()"
-            case MethodCall(obj=obj, method="get", args=[key], receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map)
-            ):
-                # Map.get() returns undefined for missing keys; convert to null for Python semantics
-                obj_str = self._expr(obj)
-                key_str = self._expr(key)
-                return f"({obj_str}.get({key_str}) ?? null)"
-            case MethodCall(
-                obj=obj, method="get", args=[key, default], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
-                # Use ternary to match Python semantics: default only when key missing (not when value is null)
-                obj_str = self._expr(obj)
-                key_str = self._expr(key)
-                return (
-                    f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
-                )
-            case MethodCall(
-                obj=obj, method="replace", args=[StringLit(value=old_str), new], receiver_type=_
-            ):
-                escaped = _escape_regex_literal(old_str)
-                return f"{self._expr(obj)}.replace(/{escaped}/g, {self._expr(new)})"
-            case MethodCall(
-                obj=obj, method=method, args=[TupleLit(elements=elements)], receiver_type=_
-            ) if method in ("startswith", "endswith"):
-                js_method = "startsWith" if method == "startswith" else "endsWith"
-                obj_str = self._expr(obj)
-                checks = [f"{obj_str}.{js_method}({self._expr(e)})" for e in elements]
-                return f"({' || '.join(checks)})"
-            case MethodCall(
-                obj=obj, method="pop", args=[IntLit(value=0)], receiver_type=receiver_type
-            ) if _is_array_type(receiver_type):
-                # Python: list.pop(0) -> JS: list.shift()
-                return f"{self._expr(obj)}.shift()"
-            case MethodCall(obj=obj, method="join", args=args, receiver_type=receiver_type) if (
-                _is_bytes_join(obj, receiver_type, args)
-            ):
-                # Join on list of bytes: list.join(sep) -> arrJoin(list, sep)
-                obj_str = self._expr(obj)
-                sep_str = self._expr(args[0]) if args else "[]"
-                return f"arrJoin({obj_str}, {sep_str})"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type) if (
-                is_bytes_type(receiver_type)
-            ):
-                # Byte array methods need helper functions
-                obj_str = self._expr(obj)
-                if method == "count" and len(args) == 1:
-                    return f"arrCount({obj_str}, {self._expr(args[0])})"
-                if method == "find" and len(args) == 1:
-                    return f"arrFind({obj_str}, {self._expr(args[0])})"
-                if method == "startswith" and len(args) == 1:
-                    return f"arrStartsWith({obj_str}, {self._expr(args[0])})"
-                if method == "endswith" and len(args) == 1:
-                    return f"arrEndsWith({obj_str}, {self._expr(args[0])})"
-                if method == "upper":
-                    return f"arrUpper({obj_str})"
-                if method == "lower":
-                    return f"arrLower({obj_str})"
-                if method == "strip" and len(args) == 1:
-                    return f"arrStrip({obj_str}, {self._expr(args[0])})"
-                if method == "lstrip" and len(args) == 1:
-                    return f"arrLstrip({obj_str}, {self._expr(args[0])})"
-                if method == "rstrip" and len(args) == 1:
-                    return f"arrRstrip({obj_str}, {self._expr(args[0])})"
-                if method == "split" and len(args) == 1:
-                    return f"arrSplit({obj_str}, {self._expr(args[0])})"
-                if method == "replace" and len(args) == 2:
-                    return f"arrReplace({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
-                # For join, the bytes object is the separator
-                if method == "join" and len(args) == 1:
-                    return f"arrJoin({self._expr(args[0])}, {obj_str})"
-                # Fallback to standard handling
-                args_str = ", ".join(self._expr(a) for a in args)
-                js_method = _method_name(method, receiver_type)
-                return f"{obj_str}.{js_method}({args_str})"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
-                args_str = ", ".join(self._expr(a) for a in args)
-                js_method = _method_name(method, receiver_type)
-                return f"{self._expr(obj)}.{js_method}({args_str})"
-            case StaticCall(on_type=on_type, method=method, args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                type_name = self._type_name_for_check(on_type)
-                return f"{type_name}.{_camel(method)}({args_str})"
-            case Truthy(expr=e):
-                inner_str = self._expr(e)
-                inner_type = e.typ
-                if isinstance(inner_type, (Map, Set)):
-                    return f"({inner_str}.size > 0)"
-                if isinstance(inner_type, Slice) or inner_type == STRING:
-                    return f"({inner_str}.length > 0)"
-                if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Map, Set)):
-                    return f"({inner_str} != null && {inner_str}.size > 0)"
-                if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Slice):
-                    return f"({inner_str} != null && {inner_str}.length > 0)"
-                if inner_type == INT:
-                    if isinstance(e, BinaryOp):
-                        return f"(({inner_str}) !== 0)"
-                    return f"({inner_str} !== 0)"
-                if inner_type == FLOAT:
-                    if isinstance(e, BinaryOp):
-                        return f"(({inner_str}) !== 0)"
-                    return f"({inner_str} !== 0)"
-                return f"({inner_str} != null)"
-            case BinaryOp(op="in", left=left, right=right):
-                return self._containment_check(left, right, negated=False)
-            case BinaryOp(op="not in", left=left, right=right):
-                return self._containment_check(left, right, negated=True)
-            case BinaryOp(op="//", left=left, right=right):
-                left_str = self._expr_with_precedence(left, "/", is_right=False)
-                right_str = self._expr_with_precedence(right, "/", is_right=True)
-                return f"Math.floor({left_str} / {right_str})"
-            case BinaryOp(op=op, left=left, right=right) if _is_bytes_list_type(
-                left.typ
-            ) or _is_bytes_list_type(right.typ):
-                # Array of byte arrays (e.g., split result) need deep comparison
-                left_str = self._expr(left)
-                right_str = self._expr(right)
-                if op == "==":
-                    return f"deepArrEq({left_str}, {right_str})"
-                if op == "!=":
-                    return f"!deepArrEq({left_str}, {right_str})"
-                # Fallback
-                js_op = _binary_op(op)
-                return f"{left_str} {js_op} {right_str}"
-            case BinaryOp(op=op, left=left, right=right) if is_bytes_type(
-                left.typ
-            ) or is_bytes_type(right.typ):
-                # Byte array operations need helper functions
-                left_str = self._expr(left)
-                right_str = self._expr(right)
-                if op == "==":
-                    return f"arrEq({left_str}, {right_str})"
-                if op == "!=":
-                    return f"!arrEq({left_str}, {right_str})"
-                if op == "<":
-                    return f"arrLt({left_str}, {right_str})"
-                if op == "<=":
-                    return f"(arrLt({left_str}, {right_str}) || arrEq({left_str}, {right_str}))"
-                if op == ">":
-                    return f"arrLt({right_str}, {left_str})"
-                if op == ">=":
-                    return f"(arrLt({right_str}, {left_str}) || arrEq({left_str}, {right_str}))"
-                if op == "+":
-                    return f"arrConcat({left_str}, {right_str})"
-                if op == "*":
-                    # One side is bytes, other is int
-                    if is_bytes_type(left.typ):
-                        return f"arrRepeat({left_str}, {right_str})"
-                    return f"arrRepeat({right_str}, {left_str})"
-                # Fallback to normal handling
-                js_op = _binary_op(op)
-                return f"{left_str} {js_op} {right_str}"
-            case BinaryOp(op="**", left=UnaryOp() as left, right=right):
-                # JS requires parens around unary operand on left of **
-                left_str = f"({self._expr(left)})"
-                right_str = self._expr_with_precedence(right, "**", is_right=True)
-                return f"{left_str} ** {right_str}"
-            case BinaryOp(op=op, left=left, right=right):
-                js_op = _binary_op(op)
-                if op in ("==", "!=") and _is_bool_int_compare(left, right):
-                    js_op = op
-                left_str = self._expr_with_precedence(left, op, is_right=False)
-                right_str = self._expr_with_precedence(right, op, is_right=True)
-                return f"{left_str} {js_op} {right_str}"
-            case ChainedCompare(operands=operands, ops=ops):
-                # JS doesn't support chained comparisons: a < b < c -> a < b && b < c
-                parts = []
-                for i, op in enumerate(ops):
-                    left_str = self._expr(operands[i])
-                    right_str = self._expr(operands[i + 1])
-                    js_op = _binary_op(op)
-                    parts.append(f"{left_str} {js_op} {right_str}")
-                return " && ".join(parts)
-            case MinExpr(left=left, right=right):
-                return f"Math.min({self._expr(left)}, {self._expr(right)})"
-            case MaxExpr(left=left, right=right):
-                return f"Math.max({self._expr(left)}, {self._expr(right)})"
-            case UnaryOp(op="&", operand=operand):
-                return self._expr(operand)
-            case UnaryOp(op="*", operand=operand):
-                return self._expr(operand)
-            case UnaryOp(op="!", operand=BinaryOp(op="!=", left=left, right=right)):
-                left_str = self._expr_with_precedence(left, "===", is_right=False)
-                right_str = self._expr_with_precedence(right, "===", is_right=True)
-                return f"{left_str} === {right_str}"
-            case UnaryOp(op="!", operand=BinaryOp(op="==", left=left, right=right)):
-                left_str = self._expr_with_precedence(left, "!==", is_right=False)
-                right_str = self._expr_with_precedence(right, "!==", is_right=True)
-                return f"{left_str} !== {right_str}"
-            case UnaryOp(op=op, operand=operand):
-                inner = self._expr(operand)
-                # For - and +, add space before nested unary to avoid --x/++x ambiguity
-                # For !, no separation needed: !!true is valid JS
-                if isinstance(operand, UnaryOp):
-                    if op in ("-", "+"):
-                        return f"{op} {inner}"
-                    return f"{op}{inner}"
-                # Wrap binary ops in parens
-                if isinstance(operand, BinaryOp):
-                    inner = f"({inner})"
-                return f"{op}{inner}"
-            case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
-                return f"{self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)}"
-            case Cast(expr=NilLit(), to_type=to_type) if (
-                isinstance(to_type, Primitive) and to_type.kind == "string"
-            ):
-                return '"None"'
-            case Cast(expr=inner, to_type=to_type):
-                if (
-                    isinstance(to_type, Primitive)
-                    and to_type.kind in ("int", "byte", "rune")
-                    and inner.typ == BOOL
-                ):
-                    return f"Number({self._expr(inner)})"
-                if (
-                    isinstance(to_type, Primitive)
-                    and to_type.kind == "string"
-                    and inner.typ == BOOL
-                ):
-                    return f'({self._expr(inner)} ? "True" : "False")'
-                if (
-                    isinstance(to_type, Slice)
-                    and isinstance(to_type.element, Primitive)
-                    and to_type.element.kind == "byte"
-                    and isinstance(inner.typ, Primitive)
-                    and inner.typ.kind == "string"
-                ):
-                    return f"Array.from(new TextEncoder().encode({self._expr(inner)}))"
-                if (
-                    isinstance(to_type, Primitive)
-                    and to_type.kind == "string"
-                    and isinstance(inner.typ, Slice)
-                    and isinstance(inner.typ.element, Primitive)
-                    and inner.typ.element.kind == "byte"
-                ):
-                    return f"new TextDecoder().decode(new Uint8Array({self._expr(inner)}))"
-                if (
-                    isinstance(to_type, Primitive)
-                    and to_type.kind == "string"
-                    and isinstance(inner.typ, Primitive)
-                    and inner.typ.kind in ("rune", "int")
-                ):
-                    return f"String.fromCodePoint({self._expr(inner)})"
-                if (
-                    isinstance(to_type, Primitive)
-                    and to_type.kind == "string"
-                    and inner.typ == FLOAT
-                ):
-                    # Preserve decimal point for floats (1.0 -> "1.0", not "1")
-                    inner_str = self._expr(inner)
-                    return f"(Number.isInteger({inner_str}) ? {inner_str}.toFixed(1) : String({inner_str}))"
-                if isinstance(to_type, Primitive) and to_type.kind == "string":
-                    return f"String({self._expr(inner)})"
-                if (
-                    isinstance(to_type, Primitive)
-                    and to_type.kind in ("int", "byte", "rune")
-                    and inner.typ == FLOAT
-                ):
-                    # Python's int() truncates toward zero
-                    return f"Math.trunc({self._expr(inner)})"
-                return self._expr(inner)
-            case TypeAssert(expr=inner, asserted=asserted):
-                # No type assertions in JavaScript - just emit the inner expression
-                return self._expr(inner)
-            case IsType(expr=inner, tested_type=tested_type):
-                if isinstance(tested_type, Primitive):
-                    js_typeof = _typeof_check(tested_type.kind)
-                    return f"typeof {self._expr(inner)} === '{js_typeof}'"
-                type_name = self._type_name_for_check(tested_type)
-                return f"{self._expr(inner)} instanceof {type_name}"
-            case IsNil(expr=inner, negated=negated):
-                op = "!==" if negated else "==="
-                return f"{self._expr(inner)} {op} null"
-            case Len(expr=inner):
-                inner_type = inner.typ
-                if isinstance(inner_type, (Map, Set)):
-                    return f"{self._expr(inner)}.size"
-                return f"{self._expr(inner)}.length"
-            case MakeSlice(element_type=_, length=length, capacity=_):
-                if length is not None:
-                    return f"new Array({self._expr(length)})"
-                return "[]"
-            case MakeMap():
-                return "new Map()"
-            case SliceLit(elements=elements):
-                elems = ", ".join(self._expr(e) for e in elements)
-                return f"[{elems}]"
-            case MapLit(entries=entries):
-                if not entries:
-                    return "new Map()"
-                pairs = ", ".join(f"[{self._expr(k)}, {self._expr(v)}]" for k, v in entries)
-                return f"new Map([{pairs}])"
-            case SetLit(elements=elements):
-                elems = ", ".join(self._expr(e) for e in elements)
-                return f"new Set([{elems}])"
-            case StructLit(struct_name=struct_name, fields=fields):
-                field_names = self.struct_fields.get(struct_name, [])
-                ordered_args = []
-                for field_name in field_names:
-                    if field_name in fields:
-                        ordered_args.append(self._expr(fields[field_name]))
-                    else:
-                        ordered_args.append("null")
-                args = ", ".join(ordered_args)
-                return f"new {_safe_name(struct_name)}({args})"
-            case TupleLit(elements=elements):
-                elems = ", ".join(self._expr(e) for e in elements)
-                return f"[{elems}]"
-            case StringConcat(parts=parts):
-                wrapped_parts: list[str] = []
-                for p in parts:
-                    expr_str = self._expr(p)
-                    if " ?? " in expr_str:
-                        wrapped_parts.append(f"({expr_str})")
-                    else:
-                        wrapped_parts.append(expr_str)
-                return " + ".join(wrapped_parts)
-            case StringFormat(template=template, args=args):
-                return self._format_string(template, args)
-            case SliceConvert(source=source):
-                return self._expr(source)
-            case _:
-                raise NotImplementedError("Unknown expression")
-
-    def _containment_check(self, item: Expr, container: Expr, negated: bool) -> str:
-        """Generate containment check: `x in y` or `x not in y`."""
-        item_str = self._expr(item)
-        container_str = self._expr(container)
-        container_type = container.typ
-        neg = "!" if negated else ""
-        if isinstance(container_type, (Set, Map)):
-            return f"{neg}{container_str}.has({item_str})"
-        # For byte arrays, use arrContains for subsequence check
-        if is_bytes_type(container_type):
-            return f"{neg}arrContains({container_str}, {item_str})"
-        return f"{neg}{container_str}.includes({item_str})"
+    def _index_expr(self, obj: Expr, index: Expr, typ: Type | None) -> str:
+        obj_str = self._expr(obj)
+        idx_str = self._expr(index)
+        obj_type = obj.typ
+        if (
+            obj_type == STRING
+            and isinstance(typ, Primitive)
+            and typ.kind in ("int", "byte", "rune")
+        ):
+            return f"{obj_str}.charCodeAt({idx_str})"
+        if isinstance(obj_type, Map):
+            return f"{obj_str}.get({idx_str})"
+        return f"{obj_str}[{idx_str}]"
 
     def _slice_expr(
         self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
     ) -> str:
         obj_str = self._expr(obj)
         if step is not None:
-            # Handle stepped slicing with helper function
             low_str = self._expr(low) if low else "null"
             high_str = self._expr(high) if high else "null"
             step_str = self._expr(step)
@@ -1485,232 +462,202 @@ class JsBackend:
         else:
             return f"{obj_str}.slice({self._expr(low)}, {self._expr(high)})"
 
-    def _expr_with_precedence(self, expr: Expr, parent_op: str, is_right: bool) -> str:
-        """Wrap expr in parens if needed based on operator precedence."""
-        inner = self._expr(expr)
-        if " ?? " in inner and parent_op in ("+", "-", "*", "/", "%"):
-            return f"({inner})"
-        # Ternary has very low precedence, wrap when inside binary ops
-        if isinstance(expr, Ternary):
-            return f"({inner})"
-        if not isinstance(expr, BinaryOp):
-            return inner
-        child_prec = _op_precedence(expr.op)
-        parent_prec = _op_precedence(parent_op)
-        # ** is right-associative, so no parens needed on right for same precedence
-        if parent_op == "**" and expr.op == "**" and is_right:
-            return inner
-        needs_parens = child_prec < parent_prec or (child_prec == parent_prec and is_right)
-        return f"({inner})" if needs_parens else inner
-
-    def _format_string(self, template: str, args: list[Expr]) -> str:
-        result = template
-        for i, arg in enumerate(args):
+    def _call_expr(self, func: str, args: list[Expr]) -> str:
+        # Handle float() with special string values
+        if func == "float" and len(args) == 1:
+            arg = args[0]
             if isinstance(arg, StringLit):
-                val = arg.value.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-                result = result.replace(f"{{{i}}}", val, 1)
+                if arg.value == "nan":
+                    return "NaN"
+                if arg.value == "inf":
+                    return "Infinity"
+                if arg.value == "-inf":
+                    return "-Infinity"
+            if isinstance(arg, IntLit):
+                return self._expr(arg)
+            return f"Number({self._expr(arg)})"
+        args_str = ", ".join(self._expr(a) for a in args)
+        return f"{_camel(func)}({args_str})"
+
+    def _join_expr(self, sep: Expr, arr: Expr) -> str:
+        if _is_bytes_join(sep, arr):
+            return f"arrJoin({self._expr(arr)}, {self._expr(sep)})"
+        return f"{self._expr(arr)}.join({self._expr(sep)})"
+
+    def _map_get(self, obj: Expr, key: Expr, default: Expr | None) -> str:
+        obj_str = self._expr(obj)
+        key_str = self._expr(key)
+        if default is not None:
+            return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
+        return f"({obj_str}.get({key_str}) ?? null)"
+
+    def _method_call(self, obj: Expr, method: str, args: list[Expr], receiver_type: Type) -> str:
+        # Handle bytes join (separator is obj, list is first arg)
+        if method == "join" and len(args) == 1 and is_bytes_type(receiver_type):
+            return f"arrJoin({self._expr(args[0])}, {self._expr(obj)})"
+        # Handle bytes list join
+        if method == "join" and len(args) == 1 and _is_bytes_list_type(obj.typ):
+            sep_str = self._expr(args[0]) if args else "[]"
+            return f"arrJoin({self._expr(obj)}, {sep_str})"
+        # Byte array methods
+        if is_bytes_type(receiver_type):
+            obj_str = self._expr(obj)
+            if method == "count" and len(args) == 1:
+                return f"arrCount({obj_str}, {self._expr(args[0])})"
+            if method == "find" and len(args) == 1:
+                return f"arrFind({obj_str}, {self._expr(args[0])})"
+            if method == "startswith" and len(args) == 1:
+                return f"arrStartsWith({obj_str}, {self._expr(args[0])})"
+            if method == "endswith" and len(args) == 1:
+                return f"arrEndsWith({obj_str}, {self._expr(args[0])})"
+            if method == "upper":
+                return f"arrUpper({obj_str})"
+            if method == "lower":
+                return f"arrLower({obj_str})"
+            if method == "strip" and len(args) == 1:
+                return f"arrStrip({obj_str}, {self._expr(args[0])})"
+            if method == "lstrip" and len(args) == 1:
+                return f"arrLstrip({obj_str}, {self._expr(args[0])})"
+            if method == "rstrip" and len(args) == 1:
+                return f"arrRstrip({obj_str}, {self._expr(args[0])})"
+            if method == "split" and len(args) == 1:
+                return f"arrSplit({obj_str}, {self._expr(args[0])})"
+            if method == "replace" and len(args) == 2:
+                return f"arrReplace({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
+        return super()._method_call(obj, method, args, receiver_type)
+
+    def _binary_expr(self, op: str, left: Expr, right: Expr) -> str:
+        # Handle bytes list comparison
+        if _is_bytes_list_type(left.typ) or _is_bytes_list_type(right.typ):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "==":
+                return f"deepArrEq({left_str}, {right_str})"
+            if op == "!=":
+                return f"!deepArrEq({left_str}, {right_str})"
+        # Handle bytes comparison
+        if is_bytes_type(left.typ) or is_bytes_type(right.typ):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "==":
+                return f"arrEq({left_str}, {right_str})"
+            if op == "!=":
+                return f"!arrEq({left_str}, {right_str})"
+            if op == "<":
+                return f"arrLt({left_str}, {right_str})"
+            if op == "<=":
+                return f"(arrLt({left_str}, {right_str}) || arrEq({left_str}, {right_str}))"
+            if op == ">":
+                return f"arrLt({right_str}, {left_str})"
+            if op == ">=":
+                return f"(arrLt({right_str}, {left_str}) || arrEq({left_str}, {right_str}))"
+            if op == "+":
+                return f"arrConcat({left_str}, {right_str})"
+            if op == "*":
+                if is_bytes_type(left.typ):
+                    return f"arrRepeat({left_str}, {right_str})"
+                return f"arrRepeat({right_str}, {left_str})"
+        return super()._binary_expr(op, left, right)
+
+    def _cast_expr(self, inner: Expr, to_type: Type) -> str:
+        # Handle float to string with decimal preservation
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+            and inner.typ == FLOAT
+        ):
+            inner_str = self._expr(inner)
+            return f"(Number.isInteger({inner_str}) ? {inner_str}.toFixed(1) : String({inner_str}))"
+        # Handle None to string
+        if isinstance(inner, NilLit) and isinstance(to_type, Primitive) and to_type.kind == "string":
+            return '"None"'
+        return super()._cast_expr(inner, to_type)
+
+    def _containment_check(self, item: Expr, container: Expr, negated: bool) -> str:
+        item_str = self._expr(item)
+        container_str = self._expr(container)
+        container_type = container.typ
+        neg = "!" if negated else ""
+        if isinstance(container_type, (Set, Map)):
+            return f"{neg}{container_str}.has({item_str})"
+        if is_bytes_type(container_type):
+            return f"{neg}arrContains({container_str}, {item_str})"
+        return f"{neg}{container_str}.includes({item_str})"
+
+    def _trim_chars(self, s: Expr, chars: Expr, mode: str) -> str:
+        s_str = self._expr(s)
+        if is_bytes_type(s.typ):
+            chars_str = self._expr(chars)
+            if mode == "left":
+                return f"arrLstrip({s_str}, {chars_str})"
+            elif mode == "right":
+                return f"arrRstrip({s_str}, {chars_str})"
             else:
-                result = result.replace(f"{{{i}}}", f"${{{self._expr(arg)}}}", 1)
-        arg_idx = 0
-        while "%v" in result:
-            if arg_idx >= len(args):
-                break
-            arg = args[arg_idx]
-            arg_idx += 1
-            if isinstance(arg, StringLit):
-                val = arg.value.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-                result = result.replace("%v", val, 1)
-            else:
-                result = result.replace("%v", f"${{{self._expr(arg)}}}", 1)
-        result = result.replace("`", "\\`")
-        return f"`{result}`"
-
-    def _lvalue(self, lv: LValue) -> str:
-        match lv:
-            case VarLV(name=name):
-                if name == self.receiver_name:
-                    return "this"
-                return _camel(name)
-            case FieldLV(obj=obj, field=field):
-                return f"{self._expr(obj)}.{_camel(field)}"
-            case IndexLV(obj=obj, index=index):
-                return f"{self._expr(obj)}[{self._expr(index)}]"
-            case DerefLV(ptr=ptr):
-                return self._expr(ptr)
-            case _:
-                raise NotImplementedError("Unknown lvalue")
-
-    def _type_name_for_check(self, typ: Type) -> str:
-        match typ:
-            case StructRef(name=name):
-                return _safe_name(name)
-            case InterfaceRef(name=name):
-                return _safe_name(name)
-            case Pointer(target=target):
-                return self._type_name_for_check(target)
-            case _:
-                return "Object"
+                return f"arrStrip({s_str}, {chars_str})"
+        return super()._trim_chars(s, chars, mode)
 
 
-def _typeof_check(kind: str) -> str:
-    """Return the typeof result for a primitive type check."""
-    match kind:
-        case "string":
-            return "string"
-        case "int" | "float" | "byte" | "rune":
-            return "number"
-        case "bool":
-            return "boolean"
+# --- Helpers ---
+
+def _is_void_func(func: Function) -> bool:
+    """Check if a function returns void/None and needs implicit return null."""
+    if func.ret != VOID:
+        return False
+    if func.body and isinstance(func.body[-1], Return):
+        return False
+    return True
+
+
+def _get_hoisted_vars(stmt: Stmt) -> list[tuple[str, Type]]:
+    """Get hoisted variables from a statement."""
+    match stmt:
+        case If():
+            return stmt.hoisted_vars
+        case TypeSwitch():
+            return stmt.hoisted_vars
+        case Match():
+            return stmt.hoisted_vars
+        case ForRange():
+            return stmt.hoisted_vars
+        case ForClassic():
+            return stmt.hoisted_vars
+        case While():
+            return stmt.hoisted_vars
+        case TryCatch():
+            return stmt.hoisted_vars
         case _:
-            return "object"
+            return []
 
 
-def _camel(name: str, is_receiver_ref: bool = False) -> str:
-    """Convert snake_case or PascalCase to camelCase."""
-    if name in ("this", "self") and is_receiver_ref:
-        return "this"
-    if "_" not in name:
-        if name and name[0].isupper():
-            name = name[0].lower() + name[1:]
-        return _safe_name(name)
-    parts = name.split("_")
-    if len(parts) > 1 and any(p.isupper() for p in parts[1:]):
-        return _safe_name(name)
-    result = parts[0] + "".join(p.capitalize() for p in parts[1:])
-    return _safe_name(result)
+def _is_bytes_list_type(typ: Type) -> bool:
+    """Check if type is a list of byte arrays."""
+    if isinstance(typ, Slice):
+        return is_bytes_type(typ.element)
+    return False
 
 
-_JS_RESERVED = {
-    "var",
-    "var",
-    "const",
-    "function",
-    "class",
-    "Array",
-    "Function",
-    "Object",
-    "String",
-    "Number",
-    "Boolean",
-    "Symbol",
-    "Map",
-    "Set",
-    "Promise",
-    "Error",
-}
-
-
-def _safe_name(name: str) -> str:
-    """Rename JavaScript reserved words to safe alternatives."""
-    if name in _JS_RESERVED:
-        return f"{name}Name"
-    return name
-
-
-_PYTHON_EXCEPTION_MAP = {
-    "Exception": "Error",
-    "AssertionError": "Error",
-    "ValueError": "Error",
-    "RuntimeError": "Error",
-    "KeyError": "Error",
-    "IndexError": "RangeError",
-    "TypeError": "TypeError",
-}
-
-_STRING_METHOD_MAP = {
-    "startswith": "startsWith",
-    "endswith": "endsWith",
-    "lower": "toLowerCase",
-    "upper": "toUpperCase",
-    "find": "indexOf",
-    "rfind": "lastIndexOf",
-}
-
-
-def _is_array_type(typ: Type) -> bool:
-    """Check if type is an array/slice type, possibly wrapped in Pointer."""
-    if isinstance(typ, (Slice, Array)):
+def _is_bytes_join(sep: Expr, arr: Expr) -> bool:
+    """Check if this is a join operation on byte arrays."""
+    if _is_bytes_list_type(arr.typ):
         return True
-    if isinstance(typ, Pointer) and isinstance(typ.target, (Slice, Array)):
+    if isinstance(arr, SliceLit) and arr.elements:
+        if isinstance(arr.elements[0], SliceLit):
+            return True
+    if sep.typ is not None and is_bytes_type(sep.typ):
         return True
     return False
 
 
-def _method_name(method: str, receiver_type: Type) -> str:
-    """Convert method name based on receiver type."""
-    if _is_array_type(receiver_type) and method == "append":
-        return "push"
-    if method in _STRING_METHOD_MAP:
-        return _STRING_METHOD_MAP[method]
-    return _camel(method)
-
-
-def _binary_op(op: str) -> str:
-    match op:
-        case "&&":
-            return "&&"
-        case "||":
-            return "||"
-        case "==":
-            return "==="
-        case "!=":
-            return "!=="
-        case "//":
-            return "/"  # Floor division handled specially in BinaryOp emission
-        case _:
-            return op
-
-
-def _string_literal(value: str) -> str:
-    return f'"{escape_string(value)}"'
-
-
-def _escape_regex_class(chars: str) -> str:
-    """Escape characters for use in a regex character class []."""
-    result = []
-    for c in chars:
-        if c in r"]\^-":
-            result.append(f"\\{c}")
-        elif c == "\t":
-            result.append("\\t")
-        elif c == "\n":
-            result.append("\\n")
-        elif c == "\r":
-            result.append("\\r")
-        else:
-            result.append(c)
-    return "".join(result)
-
-
-def _escape_regex_literal(s: str) -> str:
-    """Escape a string for use as a literal in a regex pattern."""
-    result = []
-    for c in s:
-        if c in r"\^$.*+?()[]{}|":
-            result.append(f"\\{c}")
-        elif c == "\t":
-            result.append("\\t")
-        elif c == "\n":
-            result.append("\\n")
-        elif c == "\r":
-            result.append("\\r")
-        else:
-            result.append(c)
-    return "".join(result)
-
-
-def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
-    """True when one operand is bool and the other is int, or involves bool arithmetic."""
-    l, r = left.typ, right.typ
-    if (l == BOOL and r == INT) or (l == INT and r == BOOL):
+def _is_bool_int_compare_js(left: Expr, right: Expr) -> bool:
+    """Extended bool/int comparison check for JavaScript."""
+    if _is_bool_int_compare(left, right):
         return True
-    # Check for arithmetic on bools (e.g., true + false == true)
+    l, r = left.typ, right.typ
     if l == BOOL or r == BOOL:
         if isinstance(left, BinaryOp) and left.op in ("+", "-", "*", "/", "//", "%"):
             return True
         if isinstance(right, BinaryOp) and right.op in ("+", "-", "*", "/", "//", "%"):
             return True
-    # Check for ternary with mixed bool/int (e.g., min(true, 2) == 1)
     if isinstance(left, Ternary) and _ternary_has_bool_int_mix(left):
         return True
     if isinstance(right, Ternary) and _ternary_has_bool_int_mix(right):
@@ -1720,74 +667,5 @@ def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
 
 def _ternary_has_bool_int_mix(t: Ternary) -> bool:
     """Check if a ternary has both bool and int in its branches."""
-    then_type = t.then_expr.typ
-    else_type = t.else_expr.typ
-    types = {then_type, else_type}
+    types = {t.then_expr.typ, t.else_expr.typ}
     return BOOL in types and INT in types
-
-
-def _is_void_func(func: Function) -> bool:
-    """Check if a function returns void/None and needs implicit return null."""
-    if func.ret != VOID:
-        return False
-    # Don't add if function already ends with return
-    if func.body and isinstance(func.body[-1], Return):
-        return False
-    return True
-
-
-def _is_bytes_list_type(typ: Type) -> bool:
-    """Check if type is a list of byte arrays (Slice of Slice of byte)."""
-    if isinstance(typ, Slice):
-        return is_bytes_type(typ.element)
-    return False
-
-
-def _is_bytes_join(obj: Expr, receiver_type: Type, args: list[Expr]) -> bool:
-    """Check if this is a join operation on byte arrays."""
-    # Check receiver type
-    if _is_bytes_list_type(receiver_type):
-        return True
-    # Check object type
-    if obj.typ is not None and _is_bytes_list_type(obj.typ):
-        return True
-    # Check if object is a SliceLit with SliceLit elements
-    if isinstance(obj, SliceLit) and obj.elements:
-        if isinstance(obj.elements[0], SliceLit):
-            return True
-    # Check if separator arg is bytes
-    if args and args[0].typ is not None and is_bytes_type(args[0].typ):
-        return True
-    return False
-
-
-def _ends_with_return(body: list[Stmt]) -> bool:
-    """Check if a statement list ends with a return (no break needed)."""
-    return bool(body) and isinstance(body[-1], Return)
-
-
-def _op_precedence(op: str) -> int:
-    """Return precedence level for binary operator (higher = binds tighter)."""
-    match op:
-        case "||":
-            return 1
-        case "&&":
-            return 2
-        case "|":
-            return 3
-        case "^":
-            return 4
-        case "&":
-            return 5
-        case "==" | "!=" | "===" | "!==":
-            return 6
-        case "<" | ">" | "<=" | ">=":
-            return 7
-        case "<<" | ">>":
-            return 8
-        case "+" | "-":
-            return 9
-        case "*" | "/" | "%":
-            return 10
-        case _:
-            return 11
