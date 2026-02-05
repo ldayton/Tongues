@@ -25,7 +25,7 @@ test-codegen:
 
 # Run Python apptests
 test-apptests:
-    uv run pytest tests/test_apptests.py -k "python" -v
+    uv run --directory tongues pytest ../tests/test_apptests.py -k "python" -v
 
 # Run all transpiler tests
 test: test-phases test-codegen test-apptests
