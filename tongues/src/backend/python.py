@@ -807,7 +807,15 @@ class PythonBackend:
                 return f"{left_str} {py_op} {right_str}"
             case UnaryOp(op=op, operand=operand):
                 py_op = _unary_op(op)
-                # Wrap compound expressions in parens for correct precedence
+                # 'not' has lower precedence than comparisons, so no parens needed
+                if op == "!" and isinstance(operand, (BinaryOp, ChainedCompare)):
+                    if isinstance(operand, ChainedCompare):
+                        return f"{py_op}{self._expr(operand)}"
+                    # Only need parens for and/or (lower precedence than not)
+                    if operand.op in ("and", "or", "&&", "||"):
+                        return f"{py_op}({self._expr(operand)})"
+                    return f"{py_op}{self._expr(operand)}"
+                # Other unary ops: wrap compound expressions
                 if isinstance(operand, (BinaryOp, Ternary)):
                     return f"{py_op}({self._expr(operand)})"
                 return f"{py_op}{self._expr(operand)}"
@@ -1075,12 +1083,8 @@ class PythonBackend:
                 return self._zero_value(typ)
 
     def _cond_expr(self, expr: Expr) -> str:
-        """Emit a condition expression, wrapping in parens only if needed for ternary."""
-        match expr:
-            case BinaryOp(op=op) if op in ("and", "or", "&&", "||"):
-                return f"({self._expr(expr)})"
-            case _:
-                return self._expr(expr)
+        """Emit a condition expression for ternary - no parens needed."""
+        return self._expr(expr)
 
     def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Wrap expression in parens if needed for operator precedence."""

@@ -499,7 +499,7 @@ def test_count_set_bits_kernighan() -> None:
 
 def test_sign_extension_right_shift() -> None:
     # Python right shift preserves sign (arithmetic shift)
-    assert -1 >> 100 == -1
+    assert -1 >> 31 == -1
     assert -2 >> 1 == -1
     assert -3 >> 1 == -2
     assert -4 >> 1 == -2

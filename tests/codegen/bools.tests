@@ -1,0 +1,507 @@
+=== true literal
+True
+--- javascript
+true;
+--- typescript
+true;
+---
+
+=== false literal
+False
+--- javascript
+false;
+--- typescript
+false;
+---
+
+=== not true
+not True
+--- javascript
+!true;
+--- typescript
+!true;
+---
+
+=== not false
+not False
+--- javascript
+!false;
+--- typescript
+!false;
+---
+
+=== double not
+not not True
+--- javascript
+!!true;
+--- typescript
+!!true;
+---
+
+=== triple not
+not not not True
+--- javascript
+!!!true;
+--- typescript
+!!!true;
+---
+
+=== and true true
+True and True
+--- javascript
+true && true;
+--- typescript
+true && true;
+---
+
+=== and true false
+True and False
+--- javascript
+true && false;
+--- typescript
+true && false;
+---
+
+=== and false true
+False and True
+--- javascript
+false && true;
+--- typescript
+false && true;
+---
+
+=== and false false
+False and False
+--- javascript
+false && false;
+--- typescript
+false && false;
+---
+
+=== or true true
+True or True
+--- javascript
+true || true;
+--- typescript
+true || true;
+---
+
+=== or true false
+True or False
+--- javascript
+true || false;
+--- typescript
+true || false;
+---
+
+=== or false true
+False or True
+--- javascript
+false || true;
+--- typescript
+false || true;
+---
+
+=== or false false
+False or False
+--- javascript
+false || false;
+--- typescript
+false || false;
+---
+
+=== not and
+not (True and False)
+--- javascript
+!(true && false);
+--- typescript
+!(true && false);
+---
+
+=== not or
+not (True or False)
+--- javascript
+!(true || false);
+--- typescript
+!(true || false);
+---
+
+=== and precedence over or
+True or False and False
+--- javascript
+true || false && false;
+--- typescript
+true || false && false;
+---
+
+=== or with parens
+(True or False) and False
+--- javascript
+(true || false) && false;
+--- typescript
+(true || false) && false;
+---
+
+=== chained and
+True and True and True
+--- javascript
+true && true && true;
+--- typescript
+true && true && true;
+---
+
+=== chained or
+False or False or True
+--- javascript
+false || false || true;
+--- typescript
+false || false || true;
+---
+
+=== mixed and or
+True and False or True
+--- javascript
+true && false || true;
+--- typescript
+true && false || true;
+---
+
+=== mixed or and
+True or False and True
+--- javascript
+true || false && true;
+--- typescript
+true || false && true;
+---
+
+=== not with and
+not True and False
+--- javascript
+!true && false;
+--- typescript
+!true && false;
+---
+
+=== not with or
+not False or True
+--- javascript
+!false || true;
+--- typescript
+!false || true;
+---
+
+=== parenthesized not and
+(not True) and False
+--- python
+not True and False
+--- javascript
+!true && false;
+--- typescript
+!true && false;
+---
+
+=== parenthesized not or
+(not False) or True
+--- python
+not False or True
+--- javascript
+!false || true;
+--- typescript
+!false || true;
+---
+
+=== comparison produces bool
+1 < 2
+--- javascript
+1 < 2;
+--- typescript
+1 < 2;
+---
+
+=== equality produces bool
+1 == 1
+--- javascript
+1 === 1;
+--- typescript
+1 === 1;
+---
+
+=== inequality produces bool
+1 != 2
+--- javascript
+1 !== 2;
+--- typescript
+1 !== 2;
+---
+
+=== comparison and bool
+1 < 2 and True
+--- javascript
+1 < 2 && true;
+--- typescript
+1 < 2 && true;
+---
+
+=== comparison or bool
+1 > 2 or True
+--- javascript
+1 > 2 || true;
+--- typescript
+1 > 2 || true;
+---
+
+=== not comparison
+not (1 < 2)
+--- python
+not 1 < 2
+--- javascript
+!(1 < 2);
+--- typescript
+!(1 < 2);
+---
+
+=== chained comparison
+1 < 2 < 3
+--- javascript
+1 < 2 && 2 < 3;
+--- typescript
+1 < 2 && 2 < 3;
+---
+
+=== chained comparison false
+1 < 3 < 2
+--- javascript
+1 < 3 && 3 < 2;
+--- typescript
+1 < 3 && 3 < 2;
+---
+
+=== comparison chain with eq
+1 <= 2 <= 2
+--- javascript
+1 <= 2 && 2 <= 2;
+--- typescript
+1 <= 2 && 2 <= 2;
+---
+
+=== and of comparisons
+1 < 2 and 3 < 4
+--- javascript
+1 < 2 && 3 < 4;
+--- typescript
+1 < 2 && 3 < 4;
+---
+
+=== or of comparisons
+1 > 2 or 3 < 4
+--- javascript
+1 > 2 || 3 < 4;
+--- typescript
+1 > 2 || 3 < 4;
+---
+
+=== complex bool expr
+(1 < 2) and (3 > 4 or 5 == 5)
+--- python
+1 < 2 and (3 > 4 or 5 == 5)
+--- javascript
+1 < 2 && (3 > 4 || 5 === 5);
+--- typescript
+1 < 2 && (3 > 4 || 5 === 5);
+---
+
+=== bool in ternary cond
+1 if True else 0
+--- javascript
+true ? 1 : 0;
+--- typescript
+true ? 1 : 0;
+---
+
+=== comparison in ternary cond
+1 if 1 < 2 else 0
+--- javascript
+1 < 2 ? 1 : 0;
+--- typescript
+1 < 2 ? 1 : 0;
+---
+
+=== and in ternary cond
+1 if True and True else 0
+--- javascript
+true && true ? 1 : 0;
+--- typescript
+true && true ? 1 : 0;
+---
+
+=== or in ternary cond
+1 if False or True else 0
+--- javascript
+false || true ? 1 : 0;
+--- typescript
+false || true ? 1 : 0;
+---
+
+=== bool ternary result
+True if 1 < 2 else False
+--- javascript
+1 < 2 ? true : false;
+--- typescript
+1 < 2 ? true : false;
+---
+
+=== nested bool ternary
+True if True else False if False else True
+--- javascript
+true ? true : false ? false : true;
+--- typescript
+true ? true : false ? false : true;
+---
+
+=== bool equality
+True == True
+--- javascript
+true === true;
+--- typescript
+true === true;
+---
+
+=== bool inequality
+True != False
+--- javascript
+true !== false;
+--- typescript
+true !== false;
+---
+
+=== bool and comparison
+True and 1 < 2
+--- javascript
+true && 1 < 2;
+--- typescript
+true && 1 < 2;
+---
+
+=== bool or comparison
+False or 1 < 2
+--- javascript
+false || 1 < 2;
+--- typescript
+false || 1 < 2;
+---
+
+=== deeply nested bool
+not (True and (False or (True and not False)))
+--- python
+not (True and (False or True and not False))
+--- javascript
+!(true && (false || true && !false));
+--- typescript
+!(true && (false || true && !false));
+---
+
+=== all and
+True and True and True and True
+--- javascript
+true && true && true && true;
+--- typescript
+true && true && true && true;
+---
+
+=== all or
+False or False or False or True
+--- javascript
+false || false || false || true;
+--- typescript
+false || false || false || true;
+---
+
+=== alternating and or
+True and False or True and False or True
+--- javascript
+true && false || true && false || true;
+--- typescript
+true && false || true && false || true;
+---
+
+=== de morgan and
+not (True and False)
+--- javascript
+!(true && false);
+--- typescript
+!(true && false);
+---
+
+=== de morgan or
+not (True or False)
+--- javascript
+!(true || false);
+--- typescript
+!(true || false);
+---
+
+=== bool with arithmetic comparison
+(1 + 1) < (2 + 1)
+--- python
+1 + 1 < 2 + 1
+--- javascript
+1 + 1 < 2 + 1;
+--- typescript
+1 + 1 < 2 + 1;
+---
+
+=== multiple comparisons and
+1 < 2 and 2 < 3 and 3 < 4
+--- javascript
+1 < 2 && 2 < 3 && 3 < 4;
+--- typescript
+1 < 2 && 2 < 3 && 3 < 4;
+---
+
+=== multiple comparisons or
+1 > 2 or 2 > 3 or 3 < 4
+--- javascript
+1 > 2 || 2 > 3 || 3 < 4;
+--- typescript
+1 > 2 || 2 > 3 || 3 < 4;
+---
+
+=== not not not
+not not not True
+--- javascript
+!!!true;
+--- typescript
+!!!true;
+---
+
+=== bool identity
+True == True and False == False
+--- javascript
+true === true && false === false;
+--- typescript
+true === true && false === false;
+---
+
+=== comparison chain four
+1 < 2 < 3 < 4
+--- javascript
+1 < 2 && 2 < 3 && 3 < 4;
+--- typescript
+1 < 2 && 2 < 3 && 3 < 4;
+---
+
+=== comparison chain mixed ops
+1 < 2 <= 2 < 3
+--- javascript
+1 < 2 && 2 <= 2 && 2 < 3;
+--- typescript
+1 < 2 && 2 <= 2 && 2 < 3;
+---
+
+=== comparison chain ge
+4 >= 3 >= 2 >= 1
+--- javascript
+4 >= 3 && 3 >= 2 && 2 >= 1;
+--- typescript
+4 >= 3 && 3 >= 2 && 2 >= 1;
+---

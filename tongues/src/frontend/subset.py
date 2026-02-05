@@ -422,6 +422,8 @@ class Verifier:
             self.visit_Delete(node)
         elif node_type == "JoinedStr":
             self.visit_JoinedStr(node)
+        elif node_type == "Constant":
+            self.visit_Constant(node)
         elif node_type == "FormattedValue":
             self.visit_FormattedValue(node)
         elif node_type == "GeneratorExp":
@@ -834,27 +836,7 @@ class Verifier:
 
     def visit_BoolOp(self, node: ASTNode) -> None:
         """Check boolean operation constraints."""
-        op = node.get("op", {})
-        op_type = op.get("_type", "")
         values = node.get("values", [])
-        # Check or-default pattern: x or []
-        if op_type == "Or":
-            i = 1
-            while i < len(values):
-                val = values[i]
-                val_type = val.get("_type", "")
-                if val_type in ("List", "Dict", "Set"):
-                    self.error(
-                        node, "expression", "or-default: use 'if x is None: x = ...' instead"
-                    )
-                if val_type == "Constant":
-                    v = val.get("value")
-                    if v in (0, "", None, False):
-                        self.error(
-                            node, "expression", "or-default: use 'if x is None: x = ...' instead"
-                        )
-                i += 1
-        # Visit children
         j = 0
         while j < len(values):
             self.visit(values[j])
@@ -1156,6 +1138,23 @@ class Verifier:
         while i < len(values):
             self.visit(values[i])
             i += 1
+
+    def visit_Constant(self, node: ASTNode) -> None:
+        """Check constant values - reject invalid Unicode in strings."""
+        value = node.get("value")
+        if isinstance(value, str):
+            i = 0
+            while i < len(value):
+                code = ord(value[i])
+                # Reject surrogate code points (not valid Unicode scalar values)
+                if 0xD800 <= code <= 0xDFFF:
+                    hex_str = hex(code)[2:].upper().zfill(4)
+                    self.error(
+                        node,
+                        "string",
+                        "surrogate code point U+" + hex_str + " not allowed in string literal",
+                    )
+                i += 1
 
     def visit_FormattedValue(self, node: ASTNode) -> None:
         """Check f-string replacement field: {expr} only, no !conv or :spec."""
