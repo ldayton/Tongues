@@ -23,6 +23,7 @@ from .backend.dart import DartBackend
 from .backend.php import PhpBackend
 from .backend.rust import RustBackend
 from .backend.swift import SwiftBackend
+from .backend.zig import ZigBackend
 
 BACKENDS: dict[
     str,
@@ -39,7 +40,8 @@ BACKENDS: dict[
     | type[DartBackend]
     | type[PhpBackend]
     | type[RustBackend]
-    | type[SwiftBackend],
+    | type[SwiftBackend]
+    | type[ZigBackend],
 ] = {
     "c": CBackend,
     "csharp": CSharpBackend,
@@ -55,13 +57,14 @@ BACKENDS: dict[
     "rust": RustBackend,
     "swift": SwiftBackend,
     "typescript": TsBackend,
+    "zig": ZigBackend,
 }
 
 USAGE: str = """\
 tongues [OPTIONS] < input.py > output.go
 
 Options:
-  --target TARGET   Output language: c, csharp, dart, go, java, javascript, lua, perl, php, python, ruby, rust, swift, typescript
+  --target TARGET   Output language: c, csharp, dart, go, java, javascript, lua, perl, php, python, ruby, rust, swift, typescript, zig
   --verify [PATH]   Check subset compliance only, no codegen
                     PATH can be a file or directory (reads stdin if omitted)
   --help            Show this help message

@@ -22,6 +22,8 @@ TARGETS = {
     "c": {"ext": ".c", "run": lambda p: ["sh", "-c", f"gcc -std=c11 -o /tmp/tongues_c_test {p} -lm && /tmp/tongues_c_test"]},
     "perl": {"ext": ".pl", "run": lambda p: ["perl", p]},
     "rust": {"ext": ".rs", "run": lambda p: ["sh", "-c", f"rustc -o /tmp/tongues_rust_test {p} && /tmp/tongues_rust_test"]},
+    "swift": {"ext": ".swift", "run": lambda p: ["swift", p]},
+    "zig": {"ext": ".zig", "run": lambda p: ["sh", "-c", f"zig build-exe {p} -fno-emit-bin -fno-emit-asm --cache-dir /tmp/zig-cache -femit-bin=/tmp/tongues_zig_test && /tmp/tongues_zig_test"]},
 }
 
 
@@ -61,7 +63,7 @@ def transpile(source_path, target, out_path):
         try:
             subprocess.run(fmt_cmd, capture_output=True)
         except FileNotFoundError:
-            pass
+            print(f"  warning: formatter not found: {fmt_cmd[0]}", file=sys.stderr)
     return None
 
 

@@ -165,6 +165,7 @@ BANNED_BUILTINS: set[str] = {
     "staticmethod",
     "classmethod",
     "property",
+    "complex",
 }
 
 # Node types that are completely banned
