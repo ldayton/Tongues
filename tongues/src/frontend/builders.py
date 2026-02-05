@@ -42,7 +42,7 @@ class BuilderCallbacks:
     py_return_type_to_ir: Callable[[str], "Type"]
     lower_expr: Callable[[ASTNode], "ir.Expr"]
     lower_stmts: Callable[[list[ASTNode]], list["ir.Stmt"]]
-    collect_var_types: Callable[[list[ASTNode]], tuple[dict, dict, set, dict]]
+    collect_var_types: Callable[[list[ASTNode]], tuple[dict, dict, set, set, dict]]
     is_exception_subclass: Callable[[str], bool]
     extract_union_struct_names: Callable[[str], list[str]]
     loc_from_node: Callable[[ASTNode], "Loc"]
@@ -142,7 +142,7 @@ def build_constructor(
     callbacks.setup_context(class_name, None)
     # Collect variable types and build type context
     init_body = init_ast.get("body", [])
-    var_types, tuple_vars, sentinel_ints, list_element_unions, unified_to_node = (
+    var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node = (
         callbacks.collect_var_types(init_body)
     )
     var_types.update(param_types)
@@ -152,6 +152,7 @@ def build_constructor(
         var_types=var_types,
         tuple_vars=tuple_vars,
         sentinel_ints=sentinel_ints,
+        optional_strings=optional_strings,
         list_element_unions=list_element_unions,
         unified_to_node=unified_to_node,
     )
@@ -215,9 +216,14 @@ def build_method_shell(
         callbacks.setup_context(class_name, func_info)
         # Collect variable types from body and add parameters + self
         node_body = node.get("body", [])
-        var_types, tuple_vars, sentinel_ints, list_element_unions, unified_to_node = (
-            callbacks.collect_var_types(node_body)
-        )
+        (
+            var_types,
+            tuple_vars,
+            sentinel_ints,
+            optional_strings,
+            list_element_unions,
+            unified_to_node,
+        ) = callbacks.collect_var_types(node_body)
         if func_info:
             for p in func_info.params:
                 var_types[p.name] = p.typ
@@ -239,6 +245,7 @@ def build_method_shell(
             var_types=var_types,
             tuple_vars=tuple_vars,
             sentinel_ints=sentinel_ints,
+            optional_strings=optional_strings,
             union_types=union_types,
             list_element_unions=list_element_unions,
             unified_to_node=unified_to_node,
@@ -278,9 +285,14 @@ def build_function_shell(
         # Set up context first (needed by collect_var_types) - empty class name for functions
         callbacks.setup_context("", func_info)
         # Collect variable types from body and add parameters
-        var_types, tuple_vars, sentinel_ints, list_element_unions, unified_to_node = (
-            callbacks.collect_var_types(node.get("body", []))
-        )
+        (
+            var_types,
+            tuple_vars,
+            sentinel_ints,
+            optional_strings,
+            list_element_unions,
+            unified_to_node,
+        ) = callbacks.collect_var_types(node.get("body", []))
         if func_info:
             for p in func_info.params:
                 var_types[p.name] = p.typ
@@ -301,6 +313,7 @@ def build_function_shell(
             var_types=var_types,
             tuple_vars=tuple_vars,
             sentinel_ints=sentinel_ints,
+            optional_strings=optional_strings,
             union_types=union_types,
             list_element_unions=list_element_unions,
             unified_to_node=unified_to_node,
@@ -403,6 +416,59 @@ def build_struct(
     return struct, ctor_func
 
 
+def _extract_entrypoint_function_name(node: ASTNode) -> str | None:
+    """Extract entrypoint function name from `if __name__ == "__main__": ...`."""
+    if not is_type(node, ["If"]):
+        return None
+    if node.get("orelse"):
+        return None
+    test = node.get("test")
+    if not is_type(test, ["Compare"]):
+        return None
+    left = test.get("left")
+    if not is_type(left, ["Name"]) or left.get("id") != "__name__":
+        return None
+    ops = test.get("ops", [])
+    comparators = test.get("comparators", [])
+    if len(ops) != 1 or len(comparators) != 1:
+        return None
+    if not is_type(ops[0], ["Eq"]):
+        return None
+    comp = comparators[0]
+    if is_type(comp, ["Constant"]):
+        if comp.get("value") != "__main__":
+            return None
+    elif is_type(comp, ["Str"]):
+        if comp.get("s") != "__main__":
+            return None
+    else:
+        return None
+    body = node.get("body", [])
+    if len(body) != 1 or not is_type(body[0], ["Expr"]):
+        return None
+    expr = body[0].get("value")
+    if not is_type(expr, ["Call"]):
+        return None
+    func = expr.get("func")
+    # Pattern: main()
+    if is_type(func, ["Name"]):
+        return func.get("id")
+    # Pattern: sys.exit(main())
+    if (
+        is_type(func, ["Attribute"])
+        and func.get("attr") == "exit"
+        and is_type(func.get("value"), ["Name"])
+        and func.get("value", {}).get("id") == "sys"
+    ):
+        args = expr.get("args", [])
+        if len(args) != 1 or not is_type(args[0], ["Call"]):
+            return None
+        inner_func = args[0].get("func")
+        if is_type(inner_func, ["Name"]):
+            return inner_func.get("id")
+    return None
+
+
 def build_module(
     tree: ASTNode,
     symbols: "SymbolTable",
@@ -414,6 +480,12 @@ def build_module(
 
     module = Module(name="parable")
     module.hierarchy_root = hierarchy_root
+    # Extract module docstring
+    body = tree.get("body", [])
+    if body and is_type(body[0], ["Expr"]):
+        val = body[0].get("value")
+        if val and is_type(val, ["Constant"]) and isinstance(val.get("value"), str):
+            module.doc = val.get("value")
     # Build constants (module-level and class-level)
     for node in tree.get("body", []):
         if is_type(node, ["Assign"]) and len(node.get("targets", [])) == 1:
@@ -475,4 +547,13 @@ def build_module(
             module.functions.append(func)
     # Add constructor functions (must come after regular functions for dependency order)
     module.functions.extend(constructor_funcs)
+    # Detect module entry point guard (if __name__ == "__main__": main()).
+    for node in tree.get("body", []):
+        func_name = _extract_entrypoint_function_name(node)
+        if func_name:
+            module.entrypoint = ir.EntryPoint(
+                function_name=func_name,
+                loc=callbacks.loc_from_node(node),
+            )
+            break
     return module

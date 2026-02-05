@@ -161,7 +161,10 @@ def _java_safe_class(name: str) -> str:
 
 
 from src.ir import (
+    BOOL,
+    INT,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -170,9 +173,11 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -433,8 +438,9 @@ def _java_visit_stmt(backend: "JavaBackend", stmt: Stmt) -> None:
     elif isinstance(stmt, TryCatch):
         for s in stmt.body:
             _java_visit_stmt(backend, s)
-        for s in stmt.catch_body:
-            _java_visit_stmt(backend, s)
+        for clause in stmt.catches:
+            for s in clause.body:
+                _java_visit_stmt(backend, s)
     elif isinstance(stmt, Match):
         _java_visit_expr(backend, stmt.expr)
         for case in stmt.cases:
@@ -472,6 +478,9 @@ class JavaBackend:
         self._func_params: set[str] = set()  # Function-typed parameter names
         self._module_name: str = ""  # Current module name
         self._method_to_interface: dict[str, str] = {}  # method name -> interface name
+        self._known_functions: set[str] = set()  # top-level function names
+        self._needs_function_import = False
+        self._needs_bytes_helper = False
 
     def emit(self, module: Module) -> str:
         """Emit Java code from IR Module."""
@@ -485,14 +494,19 @@ class JavaBackend:
         self._module_name = module.name
         self._hoisted_vars = set()
         self._type_switch_binding_rename = {}
+        self._known_functions = {f.name for f in module.functions}
         self._method_to_interface = {}
         for iface in module.interfaces:
             for m in iface.methods:
                 # Store with camelCase key since that's what we use for lookup
                 self._method_to_interface[to_camel(m.name)] = iface.name
+        self._needs_function_import = False
+        self._needs_bytes_helper = False
         self._collect_struct_fields(module)
         self._collect_tuple_types(module)
         self._emit_module(module)
+        if self._needs_function_import:
+            self.lines.insert(self._import_insert_pos, "import java.util.function.*;")
         return "\n".join(self.lines)
 
     def _emit_hoisted_vars(
@@ -537,7 +551,7 @@ class JavaBackend:
 
     def _emit_module(self, module: Module) -> None:
         self._line("import java.util.*;")
-        self._line("import java.util.function.*;")
+        self._import_insert_pos: int = len(self.lines)
         self._line("")
         if module.constants:
             self._line("final class Constants {")
@@ -546,10 +560,6 @@ class JavaBackend:
                 self._emit_constant(const)
             self.indent -= 1
             self._line("}")
-            self._line("")
-        # Emit record definitions for tuple types
-        for sig, name in self.tuple_records.items():
-            self._emit_tuple_record(name, sig)
             self._line("")
         for iface in module.interfaces:
             self._emit_interface(iface)
@@ -561,7 +571,7 @@ class JavaBackend:
             # Free functions go in a utility class
             pass
         if module.functions:
-            self._emit_functions_class(module)
+            self._emit_functions_class(module, module.entrypoint)
 
     def _emit_tuple_record(self, name: str, sig: tuple[str, ...]) -> None:
         """Emit a record definition for a tuple type."""
@@ -640,25 +650,35 @@ class JavaBackend:
         typ = self._type(fld.typ)
         self._line(f"{typ} {_java_safe_name(fld.name)};")
 
-    def _emit_functions_class(self, module: Module) -> None:
+    def _emit_functions_class(self, module: Module, entrypoint: EntryPoint | None = None) -> None:
         """Emit free functions as static methods in a utility class."""
         self._line(f"final class {to_pascal(module.name)}Functions {{")
         self.indent += 1
         self._line(f"private {to_pascal(module.name)}Functions() {{}}")
+        for sig, name in self.tuple_records.items():
+            self._line("")
+            self._emit_tuple_record(name, sig)
         self._line("")
         for i, func in enumerate(module.functions):
             if i > 0:
                 self._line("")
             self._emit_function(func)
-        # Emit _bytesToString helper for bytes.decode() calls
-        self._line("")
-        self._line("static String _bytesToString(List<Byte> bytes) {")
-        self.indent += 1
-        self._line("byte[] arr = new byte[bytes.size()];")
-        self._line("for (int i = 0; i < bytes.size(); i++) arr[i] = bytes.get(i);")
-        self._line("return new String(arr, java.nio.charset.StandardCharsets.UTF_8);")
-        self.indent -= 1
-        self._line("}")
+        if entrypoint is not None:
+            self._line("")
+            self._line("public static void main(String[] args) {")
+            self.indent += 1
+            self._emit_stmt(entrypoint)
+            self.indent -= 1
+            self._line("}")
+        if self._needs_bytes_helper:
+            self._line("")
+            self._line("static String _bytesToString(List<Byte> bytes) {")
+            self.indent += 1
+            self._line("byte[] arr = new byte[bytes.size()];")
+            self._line("for (int i = 0; i < bytes.size(); i++) arr[i] = bytes.get(i);")
+            self._line("return new String(arr, java.nio.charset.StandardCharsets.UTF_8);")
+            self.indent -= 1
+            self._line("}")
         self.indent -= 1
         self._line("}")
 
@@ -830,6 +850,14 @@ class JavaBackend:
                         self._line(f"return {self._expr(value)};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                msg = self._expr(message) if message is not None else '"assertion failed"'
+                self._line(f"if (!({cond_str})) {{")
+                self.indent += 1
+                self._line(f"throw new AssertionError({msg});")
+                self.indent -= 1
+                self._line("}")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -890,12 +918,10 @@ class JavaBackend:
                     self._line("}")
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
-                self._emit_try_catch(stmt, body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(stmt, body, catches, reraise)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"throw {reraise_var};")
@@ -905,6 +931,9 @@ class JavaBackend:
                     self._line(f"throw new {error_type}({msg}, {p}, 0);")
             case SoftFail():
                 self._line("return null;")
+            case EntryPoint(function_name=function_name):
+                func_class = f"{to_pascal(self._module_name)}Functions"
+                self._line(f"System.exit({func_class}.{to_camel(function_name)}());")
             case _:
                 self._line("// TODO: unknown statement")
 
@@ -1100,9 +1129,7 @@ class JavaBackend:
         self,
         stmt: Stmt,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         self._emit_hoisted_vars(stmt)
@@ -1111,15 +1138,19 @@ class JavaBackend:
         for s in body:
             self._emit_stmt(s)
         self.indent -= 1
-        var = _java_safe_name(catch_var) if catch_var else "e"
-        exc_type = catch_type.name if isinstance(catch_type, StructRef) else "Exception"
-        self._line(f"}} catch ({exc_type} {var}) {{")
-        self.indent += 1
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line(f"throw {var};")
-        self.indent -= 1
+        for clause in catches:
+            var = _java_safe_name(clause.var) if clause.var else "e"
+            if isinstance(clause.typ, StructRef):
+                exc_type = _PYTHON_EXCEPTION_MAP.get(clause.typ.name, clause.typ.name)
+            else:
+                exc_type = "Exception"
+            self._line(f"}} catch ({exc_type} {var}) {{")
+            self.indent += 1
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line(f"throw {var};")
+            self.indent -= 1
         self._line("}")
 
     def _emit_tuple_pop(self, stmt: TupleAssign) -> None:
@@ -1183,14 +1214,15 @@ class JavaBackend:
             case Var(name=name):
                 if name == self.receiver_name:
                     return "this"
-                # Check for type switch binding rename (use narrowed name)
                 if name in self._type_switch_binding_rename:
                     return self._type_switch_binding_rename[name]
-                # Check if this is a constant (all uppercase, or ClassName_CONSTANT pattern)
                 if name.isupper() or (
                     name[0].isupper() and "_" in name and name.split("_", 1)[1].isupper()
                 ):
                     return f"Constants.{to_screaming_snake(name)}"
+                if isinstance(expr.typ, FuncType) or name in self._known_functions:
+                    func_class = f"{to_pascal(self._module_name)}Functions"
+                    return f"(Runnable) {func_class}::{to_camel(name)}"
                 return _java_safe_name(name)
             case FieldAccess(obj=obj, field=field):
                 obj_str = self._expr(obj)
@@ -1273,9 +1305,22 @@ class JavaBackend:
                     return f'{s_str}.replaceFirst("[" + {chars_str} + "]+$", "")'
                 else:
                     return f'{s_str}.replaceFirst("^[" + {chars_str} + "]+", "").replaceFirst("[" + {chars_str} + "]+$", "")'
+            case Call(func="print", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"System.out.println({args_str})"
+            case Call(func="repr", args=[arg]) if arg.typ == BOOL:
+                return f'({self._expr(arg)} ? "True" : "False")'
+            case Call(func="repr", args=[arg]):
+                return f"String.valueOf({self._expr(arg)})"
+            case Call(func="bool", args=[]):
+                return "false"
+            case Call(func="bool", args=[arg]):
+                inner = self._expr(arg)
+                if isinstance(arg.typ, Primitive) and arg.typ.kind == "int":
+                    return f"({inner} != 0)"
+                return f"({inner} != null)"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
-                # Handle built-in functions
                 if func == "int" and len(args) == 2:
                     # int(s, base) -> Long.parseLong then cast to int (handles overflow)
                     return f"(int) Long.parseLong({args_str})"
@@ -1284,6 +1329,7 @@ class JavaBackend:
                     if args and isinstance(args[0].typ, Slice):
                         elem_type = args[0].typ.element
                         if isinstance(elem_type, Primitive) and elem_type.kind == "byte":
+                            self._needs_bytes_helper = True
                             return f"ParableFunctions._bytesToString({args_str})"
                     return f"String.valueOf({args_str})"
                 if func == "len":
@@ -1329,10 +1375,10 @@ class JavaBackend:
                 if func == "_intPtr" or func == "_int_ptr":
                     # Java auto-boxes int to Integer
                     return f"({self._expr(args[0])})"
-                # Check if calling a function-typed parameter (Supplier.get())
                 if func in self._func_params:
                     return f"{func}.get()"
-                # Module-level functions are in {ModuleName}Functions class
+                if func not in self._known_functions:
+                    return f"((Runnable) {_java_safe_name(func)}).run()"
                 func_class = f"{to_pascal(self._module_name)}Functions"
                 return f"{func_class}.{to_camel(func)}({args_str})"
             case MethodCall(
@@ -1368,6 +1414,43 @@ class JavaBackend:
                 return self._containment_check(left, right, negated=False)
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
+            case BinaryOp(op="//", left=left, right=right):
+                # Floor division - Java integer division already floors for positive
+                left_str = (
+                    _java_coerce_bool_to_int(self, left)
+                    if _java_is_bool_in_java(left)
+                    else self._expr(left)
+                )
+                right_str = (
+                    _java_coerce_bool_to_int(self, right)
+                    if _java_is_bool_in_java(right)
+                    else self._expr(right)
+                )
+                return f"{left_str} / {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "==",
+                "!=",
+            ) and _java_needs_bool_int_coerce(left, right):
+                left_str = _java_coerce_bool_to_int(self, left)
+                right_str = _java_coerce_bool_to_int(self, right)
+                return f"{left_str} {_binary_op(op)} {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "+",
+                "-",
+                "*",
+                "/",
+                "%",
+            ) and (_java_is_bool_in_java(left) or _java_is_bool_in_java(right)):
+                left_str = _java_coerce_bool_to_int(self, left)
+                right_str = _java_coerce_bool_to_int(self, right)
+                return f"{left_str} {_binary_op(op)} {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in ("|", "&", "^") and (
+                (_java_is_bool_in_java(left) and not _java_is_bool_in_java(right))
+                or (not _java_is_bool_in_java(left) and _java_is_bool_in_java(right))
+            ):
+                left_str = _java_coerce_bool_to_int(self, left)
+                right_str = _java_coerce_bool_to_int(self, right)
+                return f"({left_str} {_binary_op(op)} {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 java_op = _binary_op(op)
                 right_str = self._expr(right)
@@ -1428,11 +1511,22 @@ class JavaBackend:
                 # Bitwise operators need parens due to low precedence
                 if java_op in ("&", "|", "^"):
                     return f"({left_str} {java_op} {right_str})"
-                # Add parens around || when inside && to preserve precedence
                 if java_op == "&&":
                     if isinstance(left, BinaryOp) and left.op == "||":
                         left_str = f"({left_str})"
                     if isinstance(right, BinaryOp) and right.op == "||":
+                        right_str = f"({right_str})"
+                # Wrap RHS comparison in parens when outer is also a comparison
+                # (Java evaluates left-to-right, so a == b != c is (a == b) != c)
+                if java_op in ("==", "!=", "<", "<=", ">", ">="):
+                    if isinstance(right, BinaryOp) and right.op in (
+                        "==",
+                        "!=",
+                        "<",
+                        "<=",
+                        ">",
+                        ">=",
+                    ):
                         right_str = f"({right_str})"
                 return f"{left_str} {java_op} {right_str}"
             case UnaryOp(op="&", operand=operand):
@@ -1635,6 +1729,7 @@ class JavaBackend:
                 return f"{obj_str}.getOrDefault({key}, {default})"
         # Handle bytes.decode() -> convert List<Byte> to String
         if method == "decode":
+            self._needs_bytes_helper = True
             return f"ParableFunctions._bytesToString({obj_str})"
         # Fallback: convert common Python methods to Java equivalents
         if method == "append":
@@ -1707,6 +1802,14 @@ class JavaBackend:
     def _cast(self, inner: Expr, to_type: Type) -> str:
         inner_str = self._expr(inner)
         java_type = self._type(to_type)
+        if (
+            inner.typ == BOOL
+            and isinstance(to_type, Primitive)
+            and to_type.kind in ("int", "byte", "rune")
+        ):
+            return f"({inner_str} ? 1 : 0)"
+        if inner.typ == BOOL and isinstance(to_type, Primitive) and to_type.kind == "string":
+            return f'({inner_str} ? "True" : "False")'
         if isinstance(to_type, Primitive):
             if to_type.kind == "int":
                 return f"(int) ({inner_str})"
@@ -1722,6 +1825,7 @@ class JavaBackend:
                         isinstance(inner_type.element, Primitive)
                         and inner_type.element.kind == "byte"
                     ):
+                        self._needs_bytes_helper = True
                         return f"ParableFunctions._bytesToString({inner_str})"
                 # Handle rune -> String (need to support supplementary codepoints)
                 if isinstance(inner_type, Primitive) and inner_type.kind == "rune":
@@ -1817,6 +1921,7 @@ class JavaBackend:
                     return _java_safe_class(name)
                 return "Object"
             case FuncType(params=params, ret=ret):
+                self._needs_function_import = True
                 # Use Supplier<T> for () -> T pattern
                 if not params and isinstance(ret, (InterfaceRef, StructRef)):
                     ret_type = self._type(ret)
@@ -1947,6 +2052,50 @@ def _binary_op(op: str) -> str:
             return "||"
         case _:
             return op
+
+
+_PYTHON_EXCEPTION_MAP = {
+    "Exception": "Exception",
+    "AssertionError": "AssertionError",
+    "ValueError": "IllegalArgumentException",
+    "RuntimeError": "RuntimeException",
+    "KeyError": "NoSuchElementException",
+    "IndexError": "IndexOutOfBoundsException",
+    "TypeError": "ClassCastException",
+}
+
+
+def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
+    """True when one operand is bool and the other is int."""
+    l, r = left.typ, right.typ
+    return (l == BOOL and r == INT) or (l == INT and r == BOOL)
+
+
+def _java_needs_bool_int_coerce(left: Expr, right: Expr) -> bool:
+    """True when one side is boolean in Java and the other is int."""
+    lb = _java_is_bool_in_java(left)
+    rb = _java_is_bool_in_java(right)
+    if lb and rb:
+        return False  # both boolean, Java == works fine
+    li = left.typ == INT and not lb
+    ri = right.typ == INT and not rb
+    return (lb and ri) or (li and rb)
+
+
+def _java_is_bool_in_java(expr: Expr) -> bool:
+    """True if this expression produces a boolean in Java, even if IR type says INT."""
+    if expr.typ == BOOL:
+        return True
+    if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "^"):
+        return _java_is_bool_in_java(expr.left) and _java_is_bool_in_java(expr.right)
+    return False
+
+
+def _java_coerce_bool_to_int(backend: "JavaBackend", expr: Expr) -> str:
+    """Coerce a boolean expression to int for mixed-type operations."""
+    if _java_is_bool_in_java(expr):
+        return f"({backend._expr(expr)} ? 1 : 0)"
+    return backend._expr(expr)
 
 
 def _is_string_type(typ: Type) -> bool:

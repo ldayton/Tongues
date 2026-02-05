@@ -12,7 +12,10 @@ from __future__ import annotations
 
 from src.backend.util import escape_string, to_snake, to_screaming_snake
 from src.ir import (
+    BOOL,
+    INT,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -21,10 +24,12 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     CharLit,
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -187,10 +192,7 @@ class LuaBackend:
         self.receiver_name: str | None = None
         self.struct_fields: dict[str, list[str]] = {}  # struct name -> [field_names]
         self._has_continue = False  # Track if we need continue helper
-        self._needs_table_slice = False
-        self._needs_string_split = False
-        self._needs_set_contains = False
-        self._needs_string_find = False
+        self._needed_helpers: set[str] = set()
         self._hoisted_vars: set[str] = set()  # Variables already declared via hoisting
 
     def emit(self, module: Module) -> str:
@@ -199,10 +201,7 @@ class LuaBackend:
         self.lines = []
         self.struct_fields = {}
         self._has_continue = False
-        self._needs_table_slice = False
-        self._needs_string_split = False
-        self._needs_set_contains = False
-        self._needs_string_find = False
+        self._needed_helpers = set()
         self._hoisted_vars = set()
         # First pass to collect struct field info
         for struct in module.structs:
@@ -210,6 +209,11 @@ class LuaBackend:
         # Scan for continue statements
         self._scan_for_continue(module)
         self._emit_module(module)
+        # Insert only needed helper functions after the header
+        preamble = self._build_preamble()
+        if preamble:
+            for i, line in enumerate(preamble):
+                self.lines.insert(self._preamble_insert_pos + i, line)
         return "\n".join(self.lines)
 
     def _scan_for_continue(self, module: Module) -> None:
@@ -247,8 +251,11 @@ class LuaBackend:
                 if self._body_has_continue(stmt.body):
                     return True
             elif isinstance(stmt, TryCatch):
-                if self._body_has_continue(stmt.body) or self._body_has_continue(stmt.catch_body):
+                if self._body_has_continue(stmt.body):
                     return True
+                for clause in stmt.catches:
+                    if self._body_has_continue(clause.body):
+                        return True
             elif isinstance(stmt, Match):
                 for case in stmt.cases:
                     if self._body_has_continue(case.body):
@@ -271,10 +278,11 @@ class LuaBackend:
                 if self._body_has_direct_continue(stmt.body):
                     return True
             elif isinstance(stmt, TryCatch):
-                if self._body_has_direct_continue(stmt.body) or self._body_has_direct_continue(
-                    stmt.catch_body
-                ):
+                if self._body_has_direct_continue(stmt.body):
                     return True
+                for clause in stmt.catches:
+                    if self._body_has_direct_continue(clause.body):
+                        return True
             elif isinstance(stmt, Match):
                 for case in stmt.cases:
                     if self._body_has_direct_continue(case.body):
@@ -314,8 +322,11 @@ class LuaBackend:
                 if self._body_has_return(stmt.body):
                     return True
             elif isinstance(stmt, TryCatch):
-                if self._body_has_return(stmt.body) or self._body_has_return(stmt.catch_body):
+                if self._body_has_return(stmt.body):
                     return True
+                for clause in stmt.catches:
+                    if self._body_has_return(clause.body):
+                        return True
             elif isinstance(stmt, Match):
                 for case in stmt.cases:
                     if self._body_has_return(case.body):
@@ -360,11 +371,12 @@ class LuaBackend:
                     result.update(self._collect_assigned_vars(body))
                 case Block(body=body):
                     result.update(self._collect_assigned_vars(body))
-                case TryCatch(body=body, catch_var=catch_var, catch_body=catch_body):
+                case TryCatch(body=body, catches=catches):
                     result.update(self._collect_assigned_vars(body))
-                    if catch_var:
-                        result.add(catch_var)
-                    result.update(self._collect_assigned_vars(catch_body))
+                    for clause in catches:
+                        if clause.var:
+                            result.add(clause.var)
+                        result.update(self._collect_assigned_vars(clause.body))
                 case Match(cases=cases, default=default):
                     for case in cases:
                         result.update(self._collect_assigned_vars(case.body))
@@ -386,8 +398,8 @@ class LuaBackend:
     def _emit_module(self, module: Module) -> None:
         self._line("-- Generated Lua code")
         self._line()
-        self._emit_preamble()
-        need_blank = True
+        self._preamble_insert_pos: int = len(self.lines)
+        need_blank = False
         if module.constants:
             for const in module.constants:
                 self._emit_constant(const)
@@ -407,135 +419,142 @@ class LuaBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        if module.entrypoint:
+            self._line()
+            ep = _safe_name(module.entrypoint.function_name)
+            self._line(f"os.exit({ep}())")
 
-    def _emit_preamble(self) -> None:
-        """Emit helper functions needed by generated code."""
-        # Table slice helper
-        self._line("local function _table_slice(t, i, j)")
-        self.indent += 1
-        self._line("local result = {}")
-        self._line("j = j or #t")
-        self._line("for k = i, j do")
-        self.indent += 1
-        self._line("result[#result + 1] = t[k]")
-        self.indent -= 1
-        self._line("end")
-        self._line("return result")
-        self.indent -= 1
-        self._line("end")
-        self._line()
-        # String split helper
-        self._line("local function _string_split(s, sep)")
-        self.indent += 1
-        self._line("if sep == '' then")
-        self.indent += 1
-        self._line("local result = {}")
-        self._line("for i = 1, #s do")
-        self.indent += 1
-        self._line("result[i] = s:sub(i, i)")
-        self.indent -= 1
-        self._line("end")
-        self._line("return result")
-        self.indent -= 1
-        self._line("end")
-        self._line("local result = {}")
-        self._line("local pattern = '([^' .. sep .. ']+)'")
-        self._line("for part in string.gmatch(s, pattern) do")
-        self.indent += 1
-        self._line("result[#result + 1] = part")
-        self.indent -= 1
-        self._line("end")
-        self._line("return result")
-        self.indent -= 1
-        self._line("end")
-        self._line()
-        # Set contains helper
-        self._line("local function _set_contains(s, v)")
-        self.indent += 1
-        self._line("return s[v] == true")
-        self.indent -= 1
-        self._line("end")
-        self._line()
-        # Set add helper
-        self._line("local function _set_add(s, v)")
-        self.indent += 1
-        self._line("s[v] = true")
-        self.indent -= 1
-        self._line("end")
-        self._line()
-        # String find helper (returns 0-based index or -1)
-        self._line("local function _string_find(s, sub, start)")
-        self.indent += 1
-        self._line("start = start or 0")
-        self._line("local pos = string.find(s, sub, start + 1, true)")
-        self._line("if pos then return pos - 1 else return -1 end")
-        self.indent -= 1
-        self._line("end")
-        self._line()
-        # String rfind helper (returns 0-based index or -1)
-        self._line("local function _string_rfind(s, sub)")
-        self.indent += 1
-        self._line("local last = -1")
-        self._line("local start = 1")
-        self._line("while true do")
-        self.indent += 1
-        self._line("local pos = string.find(s, sub, start, true)")
-        self._line("if not pos then break end")
-        self._line("last = pos - 1")
-        self._line("start = pos + 1")
-        self.indent -= 1
-        self._line("end")
-        self._line("return last")
-        self.indent -= 1
-        self._line("end")
-        self._line()
-        # Range helper for range() calls
-        self._line("local function _range(start, stop, step)")
-        self.indent += 1
-        self._line("if stop == nil then stop = start; start = 0 end")
-        self._line("step = step or 1")
-        self._line("local result = {}")
-        self._line("if step > 0 then")
-        self.indent += 1
-        self._line("for i = start, stop - 1, step do")
-        self.indent += 1
-        self._line("result[#result + 1] = i")
-        self.indent -= 1
-        self._line("end")
-        self.indent -= 1
-        self._line("else")
-        self.indent += 1
-        self._line("for i = start, stop + 1, step do")
-        self.indent += 1
-        self._line("result[#result + 1] = i")
-        self.indent -= 1
-        self._line("end")
-        self.indent -= 1
-        self._line("end")
-        self._line("return result")
-        self.indent -= 1
-        self._line("end")
-        self._line()
-        # Map get with default
-        self._line("local function _map_get(m, key, default)")
-        self.indent += 1
-        self._line("local v = m[key]")
-        self._line("if v == nil then return default else return v end")
-        self.indent -= 1
-        self._line("end")
-        self._line()
-        # Bytes to string helper (for decode())
-        self._line("local function _bytes_to_string(bytes)")
-        self.indent += 1
-        self._line("local chars = {}")
-        self._line("for i, b in ipairs(bytes) do")
-        self.indent += 1
-        self._line("chars[i] = string.char(b)")
-        self.indent -= 1
-        self._line("end")
-        self._line("return table.concat(chars, '')")
-        self.indent -= 1
-        self._line("end")
+    def _build_preamble(self) -> list[str]:
+        """Build helper function lines for only the helpers actually used."""
+        if not self._needed_helpers:
+            return []
+        lines: list[str] = []
+        if "_table_slice" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _table_slice(t, i, j)",
+                    "  local result = {}",
+                    "  j = j or #t",
+                    "  for k = i, j do",
+                    "    result[#result + 1] = t[k]",
+                    "  end",
+                    "  return result",
+                    "end",
+                    "",
+                ]
+            )
+        if "_string_split" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _string_split(s, sep)",
+                    "  if sep == '' then",
+                    "    local result = {}",
+                    "    for i = 1, #s do",
+                    "      result[i] = s:sub(i, i)",
+                    "    end",
+                    "    return result",
+                    "  end",
+                    "  local result = {}",
+                    "  local pattern = '([^' .. sep .. ']+)'",
+                    "  for part in string.gmatch(s, pattern) do",
+                    "    result[#result + 1] = part",
+                    "  end",
+                    "  return result",
+                    "end",
+                    "",
+                ]
+            )
+        if "_set_contains" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _set_contains(s, v)",
+                    "  return s[v] == true",
+                    "end",
+                    "",
+                ]
+            )
+        if "_set_add" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _set_add(s, v)",
+                    "  s[v] = true",
+                    "end",
+                    "",
+                ]
+            )
+        if "_string_find" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _string_find(s, sub, start)",
+                    "  start = start or 0",
+                    "  local pos = string.find(s, sub, start + 1, true)",
+                    "  if pos then return pos - 1 else return -1 end",
+                    "end",
+                    "",
+                ]
+            )
+        if "_string_rfind" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _string_rfind(s, sub)",
+                    "  local last = -1",
+                    "  local start = 1",
+                    "  while true do",
+                    "    local pos = string.find(s, sub, start, true)",
+                    "    if not pos then break end",
+                    "    last = pos - 1",
+                    "    start = pos + 1",
+                    "  end",
+                    "  return last",
+                    "end",
+                    "",
+                ]
+            )
+        if "_range" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _range(start, stop, step)",
+                    "  if stop == nil then stop = start; start = 0 end",
+                    "  step = step or 1",
+                    "  local result = {}",
+                    "  if step > 0 then",
+                    "    for i = start, stop - 1, step do",
+                    "      result[#result + 1] = i",
+                    "    end",
+                    "  else",
+                    "    for i = start, stop + 1, step do",
+                    "      result[#result + 1] = i",
+                    "    end",
+                    "  end",
+                    "  return result",
+                    "end",
+                    "",
+                ]
+            )
+        if "_map_get" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _map_get(m, key, default)",
+                    "  local v = m[key]",
+                    "  if v == nil then return default else return v end",
+                    "end",
+                    "",
+                ]
+            )
+        if "_bytes_to_string" in self._needed_helpers:
+            lines.extend(
+                [
+                    "local function _bytes_to_string(bytes)",
+                    "  local chars = {}",
+                    "  for i, b in ipairs(bytes) do",
+                    "    chars[i] = string.char(b)",
+                    "  end",
+                    "  return table.concat(chars, '')",
+                    "end",
+                    "",
+                ]
+            )
+        return lines
 
     def _emit_constant(self, const: Constant) -> None:
         name = to_screaming_snake(const.name)
@@ -683,6 +702,14 @@ class LuaBackend:
                     self._line(f"return {self._expr(value)}")
                 else:
                     self._line("return")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    self._line(f"if not ({cond_str}) then error({self._expr(message)}) end")
+                else:
+                    self._line(f'if not ({cond_str}) then error("assertion failed") end')
+            case EntryPoint():
+                pass
             case If(
                 cond=cond,
                 then_body=then_body,
@@ -743,12 +770,10 @@ class LuaBackend:
                     self._emit_stmt(s)
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
-                self._emit_try_catch(body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
             case Raise(
                 error_type=error_type,
                 message=message,
@@ -942,12 +967,9 @@ class LuaBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
-        var = _safe_name(catch_var) if catch_var else "_err"
         has_return = self._body_has_return(body)
         self._line("local _ok, _err = pcall(function()")
         self.indent += 1
@@ -959,14 +981,67 @@ class LuaBackend:
         self._line("end)")
         self._line("if not _ok then")
         self.indent += 1
-        if catch_var:
-            self._line(f"local {var} = _err")
-        if _is_empty_body(catch_body) and not reraise:
-            self._line("-- empty catch")
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
+        if not catches:
             self._line("error(_err)")
+        elif len(catches) == 1:
+            clause = catches[0]
+            if clause.var:
+                self._line(f"local {_safe_name(clause.var)} = _err")
+            if _is_empty_body(clause.body) and not reraise:
+                self._line("-- empty catch")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("error(_err)")
+        else:
+            emitted_default = False
+            for i, clause in enumerate(catches):
+                cond: str | None = None
+                if isinstance(clause.typ, StructRef):
+                    exc_name = clause.typ.name
+                    if exc_name == "Exception":
+                        cond = None
+                    elif exc_name == "AssertionError":
+                        cond = "type(_err) == 'string'"
+                    else:
+                        type_name = _safe_type_name(exc_name)
+                        cond = f"type(_err) == 'table' and _err.{type_name}"
+                if cond is None:
+                    if i == 0:
+                        # Catch-all first clause: emit directly
+                        if clause.var:
+                            self._line(f"local {_safe_name(clause.var)} = _err")
+                        for s in clause.body:
+                            self._emit_stmt(s)
+                        if reraise:
+                            self._line("error(_err)")
+                        emitted_default = True
+                        break
+                    self._line("else")
+                    emitted_default = True
+                else:
+                    keyword = "if" if i == 0 else "elseif"
+                    self._line(f"{keyword} {cond} then")
+                if cond is not None or i != 0:
+                    self.indent += 1
+                    if clause.var:
+                        self._line(f"local {_safe_name(clause.var)} = _err")
+                    if _is_empty_body(clause.body) and not reraise:
+                        self._line("-- empty catch")
+                    for s in clause.body:
+                        self._emit_stmt(s)
+                    if reraise:
+                        self._line("error(_err)")
+                    self.indent -= 1
+                    if emitted_default:
+                        break
+            if not emitted_default:
+                self._line("else")
+                self.indent += 1
+                self._line("error(_err)")
+                self.indent -= 1
+            if not emitted_default or (emitted_default and i != 0):
+                self._line("end")
         self.indent -= 1
         self._line("end")
         # If try body has return statements, propagate the return value on success
@@ -1090,7 +1165,20 @@ class LuaBackend:
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 if func == "range":
+                    self._needed_helpers.add("_range")
                     return f"_range({args_str})"
+                if func == "bool":
+                    if not args:
+                        return "false"
+                    return f"({self._expr(args[0])} ~= 0)"
+                if func == "repr":
+                    if args and args[0].typ == BOOL:
+                        return f'({self._expr(args[0])} and "True" or "False")'
+                    return f"tostring({self._expr(args[0])})"
+                if func == "str":
+                    if args and args[0].typ == BOOL:
+                        return f'({self._expr(args[0])} and "True" or "False")'
+                    return f"tostring({self._expr(args[0])})"
                 return f"{_safe_name(func)}({args_str})"
             case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
                 return self._method_call(obj, method, args, receiver_type)
@@ -1137,6 +1225,47 @@ class LuaBackend:
                     left_str = self._maybe_paren(left, "..", is_left=True)
                     right_str = self._maybe_paren(right, "..", is_left=False)
                     return f"{left_str} .. {right_str}"
+                left_is_bool = left.typ == BOOL
+                right_is_bool = right.typ == BOOL
+                # Bool-int comparison: Lua's true ~= 1
+                if op in ("==", "!=") and _is_bool_int_compare(left, right):
+                    left_str = (
+                        f"({self._expr(left)} and 1 or 0)"
+                        if left_is_bool
+                        else self._maybe_paren(left, op, is_left=True)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} and 1 or 0)"
+                        if right_is_bool
+                        else self._maybe_paren(right, op, is_left=False)
+                    )
+                    return f"{left_str} {_binary_op(op)} {right_str}"
+                # Lua bools don't support arithmetic
+                if op in ("+", "-", "*", "/", "%", "//") and (left_is_bool or right_is_bool):
+                    left_str = (
+                        f"({self._expr(left)} and 1 or 0)"
+                        if left_is_bool
+                        else self._maybe_paren(left, op, is_left=True)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} and 1 or 0)"
+                        if right_is_bool
+                        else self._maybe_paren(right, op, is_left=False)
+                    )
+                    return f"{left_str} {_binary_op(op)} {right_str}"
+                # Lua bitwise ops only work on numbers
+                if op in ("&", "|", "^") and (left_is_bool or right_is_bool):
+                    left_str = (
+                        f"({self._expr(left)} and 1 or 0)"
+                        if left_is_bool
+                        else self._maybe_paren(left, op, is_left=True)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} and 1 or 0)"
+                        if right_is_bool
+                        else self._maybe_paren(right, op, is_left=False)
+                    )
+                    return f"{left_str} {_binary_op(op)} {right_str}"
                 lua_op = _binary_op(op)
                 left_str = self._maybe_paren(left, op, is_left=True)
                 right_str = self._maybe_paren(right, op, is_left=False)
@@ -1164,22 +1293,29 @@ class LuaBackend:
                     return f"(function() if {cond_str} then return {then_str} else return {else_str} end end)()"
                 return f"({cond_str} and {then_str} or {else_str})"
             case Cast(expr=inner, to_type=to_type):
-                if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
-                    # byte slice to string
-                    return f"_bytes_to_string({self._expr(inner)})"
-                if to_type == Primitive(kind="string") and inner.typ == Primitive(kind="rune"):
-                    # Use utf8.char for Unicode codepoints (Lua 5.3+)
-                    return f"utf8.char({self._expr(inner)})"
+                inner_str = self._expr(inner)
+                inner_type = inner.typ
+                if to_type == Primitive(kind="int"):
+                    if inner_type == BOOL:
+                        return f"({inner_str} and 1 or 0)"
+                    if inner_type in (
+                        Primitive(kind="string"),
+                        Primitive(kind="byte"),
+                        Primitive(kind="rune"),
+                    ):
+                        return f"string.byte({inner_str})"
+                if to_type == Primitive(kind="string"):
+                    if inner_type == BOOL:
+                        return f'({inner_str} and "True" or "False")'
+                    if isinstance(inner_type, Slice):
+                        self._needed_helpers.add("_bytes_to_string")
+                        return f"_bytes_to_string({inner_str})"
+                    if inner_type == Primitive(kind="rune"):
+                        return f"utf8.char({inner_str})"
+                    return f"tostring({inner_str})"
                 if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
-                    # string to byte slice
-                    return f"({{string.byte({self._expr(inner)}, 1, -1)}})"
-                if to_type == Primitive(kind="int") and inner.typ in (
-                    Primitive(kind="string"),
-                    Primitive(kind="byte"),
-                    Primitive(kind="rune"),
-                ):
-                    return f"string.byte({self._expr(inner)})"
-                return self._expr(inner)
+                    return f"({{string.byte({inner_str}, 1, -1)}})"
+                return inner_str
             case TypeAssert(expr=inner):
                 return self._expr(inner)
             case IsType(expr=inner, tested_type=tested_type):
@@ -1262,6 +1398,7 @@ class LuaBackend:
         container_type = container.typ
         neg = "not " if negated else ""
         if isinstance(container_type, Set):
+            self._needed_helpers.add("_set_contains")
             return f"{neg}_set_contains({container_str}, {item_str})"
         if isinstance(container_type, Map):
             return f"({neg}({container_str}[{item_str}] ~= nil))"
@@ -1286,16 +1423,19 @@ class LuaBackend:
                 # "sep".join(arr) -> table.concat(arr, sep)
                 return f"table.concat({self._expr(args[0])}, {obj_str})"
             if method == "split" and len(args) == 1:
+                self._needed_helpers.add("_string_split")
                 return f"_string_split({obj_str}, {self._expr(args[0])})"
             if method == "lower":
                 return f"string.lower({obj_str})"
             if method == "upper":
                 return f"string.upper({obj_str})"
             if method == "find":
+                self._needed_helpers.add("_string_find")
                 if len(args) == 1:
                     return f"_string_find({obj_str}, {self._expr(args[0])})"
                 return f"_string_find({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
             if method == "rfind":
+                self._needed_helpers.add("_string_rfind")
                 return f"_string_rfind({obj_str}, {self._expr(args[0])})"
             if method == "startswith":
                 prefix = self._expr(args[0])
@@ -1339,13 +1479,16 @@ class LuaBackend:
                 key = self._expr(args[0])
                 if len(args) == 2:
                     default = self._expr(args[1])
+                    self._needed_helpers.add("_map_get")
                     return f"_map_get({obj_str}, {key}, {default})"
                 return f"{obj_str}[{key}]"
         # Set methods
         if isinstance(inner_type, Set):
             if method == "add":
+                self._needed_helpers.add("_set_add")
                 return f"_set_add({obj_str}, {args_str})"
             if method == "contains":
+                self._needed_helpers.add("_set_contains")
                 return f"_set_contains({obj_str}, {args_str})"
         # Fallback for string methods when type isn't known
         if method == "endswith" and len(args) == 1:
@@ -1370,6 +1513,7 @@ class LuaBackend:
         if method == "upper":
             return f"string.upper({obj_str})"
         if method == "split" and len(args) == 1:
+            self._needed_helpers.add("_string_split")
             return f"_string_split({obj_str}, {self._expr(args[0])})"
         if method == "isdigit":
             return f"(string.match({obj_str}, '^%d+$') ~= nil)"
@@ -1397,10 +1541,12 @@ class LuaBackend:
             new = self._expr(args[1])
             return f"(string.gsub({obj_str}, {old}, {new}))"
         if method == "find" and len(args) >= 1:
+            self._needed_helpers.add("_string_find")
             if len(args) == 1:
                 return f"_string_find({obj_str}, {self._expr(args[0])})"
             return f"_string_find({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
         if method == "rfind" and len(args) >= 1:
+            self._needed_helpers.add("_string_rfind")
             return f"_string_rfind({obj_str}, {self._expr(args[0])})"
         if method == "append" and len(args) == 1:
             return f"(function() table.insert({obj_str}, {args_str}); return {obj_str} end)()"
@@ -1429,6 +1575,7 @@ class LuaBackend:
             high_str = f"#{obj_str}"
         if is_string:
             return f"string.sub({obj_str}, {low_str}, {high_str})"
+        self._needed_helpers.add("_table_slice")
         return f"_table_slice({obj_str}, {low_str}, {high_str})"
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
@@ -1540,6 +1687,8 @@ def _binary_op(op: str) -> str:
             return "or"
         case "!=":
             return "~="
+        case "^":
+            return "~"  # Lua bitwise XOR
         case "//":
             return "//"  # Lua 5.3+ has floor division
         case "**":
@@ -1601,6 +1750,12 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     if child_prec == parent_prec and not is_left:
         return child_op in ("==", "~=", "<", ">", "<=", ">=")
     return False
+
+
+def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
+    """True when one operand is bool and the other is int."""
+    l, r = left.typ, right.typ
+    return (l == BOOL and r == INT) or (l == INT and r == BOOL)
 
 
 def _escape_lua_string(value: str) -> str:

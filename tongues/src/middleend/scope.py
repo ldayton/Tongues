@@ -93,7 +93,8 @@ def _collect_assigned_vars(stmts: list[Stmt]) -> set[str]:
             result.update(_collect_assigned_vars(stmt.body))
         elif isinstance(stmt, TryCatch):
             result.update(_collect_assigned_vars(stmt.body))
-            result.update(_collect_assigned_vars(stmt.catch_body))
+            for clause in stmt.catches:
+                result.update(_collect_assigned_vars(clause.body))
     return result
 
 
@@ -230,8 +231,9 @@ def _scope_visit_stmt(result: set[str], stmt: Stmt) -> None:
     elif isinstance(stmt, TryCatch):
         for s in stmt.body:
             _scope_visit_stmt(result, s)
-        for s in stmt.catch_body:
-            _scope_visit_stmt(result, s)
+        for clause in stmt.catches:
+            for s in clause.body:
+                _scope_visit_stmt(result, s)
     elif isinstance(stmt, Match):
         _scope_visit_expr(result, stmt.expr)
         for case in stmt.cases:
@@ -395,8 +397,9 @@ def _scope_check_stmt(ctx: _ScopeContext, stmt: Stmt, local_assigned: set[str]) 
         for s in stmt.body:
             _scope_check_stmt(ctx, s, try_assigned)
         catch_assigned: set[str] = set(local_assigned)
-        for s in stmt.catch_body:
-            _scope_check_stmt(ctx, s, catch_assigned)
+        for clause in stmt.catches:
+            for s in clause.body:
+                _scope_check_stmt(ctx, s, catch_assigned)
     elif isinstance(stmt, Match):
         _scope_check_expr(ctx, stmt.expr)
         for case in stmt.cases:
@@ -536,8 +539,9 @@ def _interface_visit_stmt(stmt: Stmt) -> None:
     elif isinstance(stmt, TryCatch):
         for s in stmt.body:
             _interface_visit_stmt(s)
-        for s in stmt.catch_body:
-            _interface_visit_stmt(s)
+        for clause in stmt.catches:
+            for s in clause.body:
+                _interface_visit_stmt(s)
     elif isinstance(stmt, Match):
         _interface_visit_expr(stmt.expr)
         for case in stmt.cases:

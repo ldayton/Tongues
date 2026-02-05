@@ -44,6 +44,7 @@ from src.ir import (
     VOID,
     AddrOf,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -55,6 +56,7 @@ from src.ir import (
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -212,6 +214,744 @@ def _is_zero_literal(expr: Expr) -> bool:
     return isinstance(expr, IntLit) and expr.value == 0
 
 
+def _get_helper_sections() -> list[tuple[str, list[str], list[str], str]]:
+    """Return helper C code split into conditional sections.
+
+    Each entry is (name, triggers, deps, code) where:
+    - triggers: strings in generated code that indicate this section is needed
+    - deps: other section names this section depends on
+    """
+    return [
+        # ── core: always emitted ──
+        (
+            "core",
+            [],
+            [],
+            r"""
+// === Generic 'any' interface type ===
+typedef struct Any {
+    int kind;
+    void *data;
+} Any;
+
+// === Arena allocator (chunked, never reallocates) ===
+typedef struct ArenaChunk {
+    struct ArenaChunk *next;
+    char *base;
+    char *ptr;
+    size_t cap;
+} ArenaChunk;
+
+typedef struct Arena {
+    ArenaChunk *head;
+    ArenaChunk *current;
+    size_t chunk_size;
+} Arena;
+
+static Arena *g_arena = NULL;
+static bool g_initialized = false;
+
+static ArenaChunk *arena_chunk_new(size_t cap) {
+    ArenaChunk *c = (ArenaChunk *)malloc(sizeof(ArenaChunk));
+    c->base = (char *)malloc(cap);
+    c->ptr = c->base;
+    c->cap = cap;
+    c->next = NULL;
+    return c;
+}
+
+static Arena *arena_new(size_t cap) {
+    Arena *a = (Arena *)malloc(sizeof(Arena));
+    a->head = arena_chunk_new(cap);
+    a->current = a->head;
+    a->chunk_size = cap;
+    return a;
+}
+
+static void *arena_alloc(Arena *a, size_t size) {
+    size = (size + 7) & ~7;
+    ArenaChunk *c = a->current;
+    if ((size_t)(c->ptr - c->base) + size > c->cap) {
+        size_t new_cap = a->chunk_size;
+        while (new_cap < size) new_cap *= 2;
+        ArenaChunk *new_chunk = arena_chunk_new(new_cap);
+        c->next = new_chunk;
+        a->current = new_chunk;
+        c = new_chunk;
+    }
+    void *result = c->ptr;
+    c->ptr += size;
+    return result;
+}
+
+static void arena_free(Arena *a) {
+    if (a) {
+        ArenaChunk *c = a->head;
+        while (c) {
+            ArenaChunk *next = c->next;
+            free(c->base);
+            free(c);
+            c = next;
+        }
+        free(a);
+    }
+}
+
+static void arena_reset(Arena *a) {
+    ArenaChunk *c = a->head;
+    while (c) {
+        c->ptr = c->base;
+        c = c->next;
+    }
+    a->current = a->head;
+}
+
+static char *arena_strdup(Arena *a, const char *s) {
+    size_t len = strlen(s);
+    char *r = (char *)arena_alloc(a, len + 1);
+    memcpy(r, s, len + 1);
+    return r;
+}
+
+static char *arena_strndup(Arena *a, const char *s, size_t n) {
+    char *r = (char *)arena_alloc(a, n + 1);
+    memcpy(r, s, n);
+    r[n] = '\0';
+    return r;
+}
+
+static void init(void) {
+    if (g_initialized) return;
+    g_initialized = true;
+    g_arena = arena_new(65536);
+}
+""",
+        ),
+        # ── string_index: rune/char indexing and substring ──
+        (
+            "string_index",
+            ["_rune_at(", "_rune_len(", "_char_at_str(", "__c_substring("],
+            [],
+            r"""
+// === String indexing ===
+static int32_t _rune_at(const char *s, int idx) {
+    if (idx < 0 || !s) return -1;
+    int i = 0;
+    const unsigned char *u = (const unsigned char *)s;
+    while (*u) {
+        if (i == idx) {
+            if (*u < 0x80) return *u;
+            if ((*u & 0xE0) == 0xC0) return ((*u & 0x1F) << 6) | (u[1] & 0x3F);
+            if ((*u & 0xF0) == 0xE0) return ((*u & 0x0F) << 12) | ((u[1] & 0x3F) << 6) | (u[2] & 0x3F);
+            if ((*u & 0xF8) == 0xF0) return ((*u & 0x07) << 18) | ((u[1] & 0x3F) << 12) | ((u[2] & 0x3F) << 6) | (u[3] & 0x3F);
+            return -1;
+        }
+        if (*u < 0x80) u++;
+        else if ((*u & 0xE0) == 0xC0) u += 2;
+        else if ((*u & 0xF0) == 0xE0) u += 3;
+        else if ((*u & 0xF8) == 0xF0) u += 4;
+        else u++;
+        i++;
+    }
+    return -1;
+}
+
+static int _rune_len(const char *s) {
+    if (!s) return 0;
+    int len = 0;
+    const unsigned char *u = (const unsigned char *)s;
+    while (*u) {
+        if (*u < 0x80) u++;
+        else if ((*u & 0xE0) == 0xC0) u += 2;
+        else if ((*u & 0xF0) == 0xE0) u += 3;
+        else if ((*u & 0xF8) == 0xF0) u += 4;
+        else u++;
+        len++;
+    }
+    return len;
+}
+
+static char *_char_at_str(Arena *a, const char *s, int idx) {
+    int32_t r = _rune_at(s, idx);
+    if (r < 0) return arena_strdup(a, "");
+    char buf[5] = {0};
+    if (r < 0x80) { buf[0] = r; }
+    else if (r < 0x800) { buf[0] = 0xC0 | (r >> 6); buf[1] = 0x80 | (r & 0x3F); }
+    else if (r < 0x10000) { buf[0] = 0xE0 | (r >> 12); buf[1] = 0x80 | ((r >> 6) & 0x3F); buf[2] = 0x80 | (r & 0x3F); }
+    else { buf[0] = 0xF0 | (r >> 18); buf[1] = 0x80 | ((r >> 12) & 0x3F); buf[2] = 0x80 | ((r >> 6) & 0x3F); buf[3] = 0x80 | (r & 0x3F); }
+    return arena_strdup(a, buf);
+}
+
+static char *__c_substring(Arena *a, const char *s, int start, int end) {
+    if (!s || start < 0) start = 0;
+    if (end < start) return arena_strdup(a, "");
+    const unsigned char *u = (const unsigned char *)s;
+    const char *byte_start = NULL;
+    const char *byte_end = NULL;
+    int i = 0;
+    while (*u) {
+        if (i == start) byte_start = (const char *)u;
+        if (i == end) { byte_end = (const char *)u; break; }
+        if (*u < 0x80) u++;
+        else if ((*u & 0xE0) == 0xC0) u += 2;
+        else if ((*u & 0xF0) == 0xE0) u += 3;
+        else if ((*u & 0xF8) == 0xF0) u += 4;
+        else u++;
+        i++;
+    }
+    if (!byte_start) return arena_strdup(a, "");
+    if (!byte_end) byte_end = (const char *)u;
+    return arena_strndup(a, byte_start, byte_end - byte_start);
+}
+""",
+        ),
+        # ── string_search: startswith, endswith, find, rfind, replace ──
+        (
+            "string_search",
+            [
+                "_str_startswith(",
+                "_str_startswith_at(",
+                "_str_endswith(",
+                "_str_find(",
+                "_str_rfind(",
+                "_str_replace(",
+                "_str_contains(",
+                "_str_count(",
+            ],
+            [],
+            r"""
+// === String search/match ===
+static bool _str_startswith(const char *s, const char *prefix) {
+    if (!s || !prefix) return false;
+    size_t plen = strlen(prefix);
+    return strncmp(s, prefix, plen) == 0;
+}
+
+static bool _str_startswith_at(const char *s, int64_t pos, const char *prefix) {
+    if (!s || !prefix || pos < 0) return false;
+    size_t slen = strlen(s);
+    if ((size_t)pos >= slen) return false;
+    size_t plen = strlen(prefix);
+    if (slen - (size_t)pos < plen) return false;
+    return strncmp(s + pos, prefix, plen) == 0;
+}
+
+static bool _str_endswith(const char *s, const char *suffix) {
+    if (!s || !suffix) return false;
+    size_t slen = strlen(s);
+    size_t suflen = strlen(suffix);
+    if (suflen > slen) return false;
+    return strcmp(s + slen - suflen, suffix) == 0;
+}
+
+static int _str_find(const char *s, const char *sub) {
+    if (!s || !sub) return -1;
+    const char *p = strstr(s, sub);
+    if (!p) return -1;
+    int idx = 0;
+    const unsigned char *u = (const unsigned char *)s;
+    while ((const char *)u < p) {
+        if (*u < 0x80) u++;
+        else if ((*u & 0xE0) == 0xC0) u += 2;
+        else if ((*u & 0xF0) == 0xE0) u += 3;
+        else if ((*u & 0xF8) == 0xF0) u += 4;
+        else u++;
+        idx++;
+    }
+    return idx;
+}
+
+static int _str_rfind(const char *s, const char *sub) {
+    if (!s || !sub) return -1;
+    size_t slen = strlen(s);
+    size_t sublen = strlen(sub);
+    if (sublen > slen) return -1;
+    for (size_t i = slen - sublen + 1; i > 0; i--) {
+        if (strncmp(s + i - 1, sub, sublen) == 0) {
+            int idx = 0;
+            const unsigned char *u = (const unsigned char *)s;
+            while ((const char *)u < s + i - 1) {
+                if (*u < 0x80) u++;
+                else if ((*u & 0xE0) == 0xC0) u += 2;
+                else if ((*u & 0xF0) == 0xE0) u += 3;
+                else if ((*u & 0xF8) == 0xF0) u += 4;
+                else u++;
+                idx++;
+            }
+            return idx;
+        }
+    }
+    return -1;
+}
+
+static char *_str_replace(Arena *a, const char *s, const char *old, const char *new_) {
+    if (!s || !old || !new_) return arena_strdup(a, s ? s : "");
+    size_t slen = strlen(s);
+    size_t oldlen = strlen(old);
+    size_t newlen = strlen(new_);
+    if (oldlen == 0) return arena_strdup(a, s);
+    int count = 0;
+    const char *p = s;
+    while ((p = strstr(p, old)) != NULL) { count++; p += oldlen; }
+    if (count == 0) return arena_strdup(a, s);
+    size_t rlen = slen + count * (newlen - oldlen);
+    char *r = (char *)arena_alloc(a, rlen + 1);
+    char *dst = r;
+    p = s;
+    const char *prev = s;
+    while ((p = strstr(p, old)) != NULL) {
+        size_t n = p - prev;
+        memcpy(dst, prev, n);
+        dst += n;
+        memcpy(dst, new_, newlen);
+        dst += newlen;
+        p += oldlen;
+        prev = p;
+    }
+    strcpy(dst, prev);
+    return r;
+}
+
+static bool _str_contains(const char *s, const char *sub) {
+    if (!s || !sub) return false;
+    return strstr(s, sub) != NULL;
+}
+
+static int _str_count(const char *s, const char *sub) {
+    if (!s || !sub || !*sub) return 0;
+    int count = 0;
+    size_t sublen = strlen(sub);
+    const char *p = s;
+    while ((p = strstr(p, sub)) != NULL) { count++; p += sublen; }
+    return count;
+}
+""",
+        ),
+        # ── string_case: lower, upper ──
+        (
+            "string_case",
+            ["_str_lower(", "_str_upper("],
+            [],
+            r"""
+// === String case ===
+static char *_str_lower(Arena *a, const char *s) {
+    if (!s) return arena_strdup(a, "");
+    size_t len = strlen(s);
+    char *r = (char *)arena_alloc(a, len + 1);
+    for (size_t i = 0; i <= len; i++) {
+        char c = s[i];
+        if (c >= 'A' && c <= 'Z') c = c + 32;
+        r[i] = c;
+    }
+    return r;
+}
+
+static char *_str_upper(Arena *a, const char *s) {
+    if (!s) return arena_strdup(a, "");
+    size_t len = strlen(s);
+    char *r = (char *)arena_alloc(a, len + 1);
+    for (size_t i = 0; i <= len; i++) {
+        char c = s[i];
+        if (c >= 'a' && c <= 'z') c = c - 32;
+        r[i] = c;
+    }
+    return r;
+}
+""",
+        ),
+        # ── string_classify: isdigit, isalpha, etc. ──
+        (
+            "string_classify",
+            [
+                "_str_is_digit(",
+                "_str_is_alpha(",
+                "_str_is_alnum(",
+                "_str_is_space(",
+            ],
+            [],
+            r"""
+// === String classification ===
+static bool _str_is_digit(const char *s) {
+    if (!s || !*s) return false;
+    while (*s) { if (*s < '0' || *s > '9') return false; s++; }
+    return true;
+}
+
+static bool _str_is_alpha(const char *s) {
+    if (!s || !*s) return false;
+    while (*s) { if (!((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z'))) return false; s++; }
+    return true;
+}
+
+static bool _str_is_alnum(const char *s) {
+    if (!s || !*s) return false;
+    while (*s) { if (!((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z') || (*s >= '0' && *s <= '9'))) return false; s++; }
+    return true;
+}
+
+static bool _str_is_space(const char *s) {
+    if (!s || !*s) return false;
+    while (*s) { if (*s != ' ' && *s != '\t' && *s != '\n' && *s != '\r' && *s != '\f' && *s != '\v') return false; s++; }
+    return true;
+}
+""",
+        ),
+        # ── rune_classify: rune-level classification ──
+        (
+            "rune_classify",
+            [
+                "_rune_is_digit(",
+                "_rune_is_alpha(",
+                "_rune_is_alnum(",
+                "_rune_is_space(",
+                "_rune_is_upper(",
+                "_rune_is_lower(",
+            ],
+            [],
+            r"""
+// === Rune classification ===
+static bool _rune_is_digit(int32_t r) { return r >= '0' && r <= '9'; }
+static bool _rune_is_alpha(int32_t r) { return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z'); }
+static bool _rune_is_alnum(int32_t r) { return _rune_is_alpha(r) || _rune_is_digit(r); }
+static bool _rune_is_space(int32_t r) { return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' || r == '\v'; }
+static bool _rune_is_upper(int32_t r) { return r >= 'A' && r <= 'Z'; }
+static bool _rune_is_lower(int32_t r) { return r >= 'a' && r <= 'z'; }
+""",
+        ),
+        # ── string_concat ──
+        (
+            "string_concat",
+            ["_str_concat("],
+            [],
+            r"""
+static char *_str_concat(Arena *a, const char *s1, const char *s2) {
+    if (!s1) s1 = "";
+    if (!s2) s2 = "";
+    size_t len1 = strlen(s1);
+    size_t len2 = strlen(s2);
+    char *r = (char *)arena_alloc(a, len1 + len2 + 1);
+    memcpy(r, s1, len1);
+    memcpy(r + len1, s2, len2 + 1);
+    return r;
+}
+""",
+        ),
+        # ── string_repeat ──
+        (
+            "string_repeat",
+            ["_str_repeat("],
+            [],
+            r"""
+static char *_str_repeat(Arena *a, const char *s, int n) {
+    if (!s || n <= 0) return arena_strdup(a, "");
+    size_t len = strlen(s);
+    char *r = (char *)arena_alloc(a, len * n + 1);
+    char *p = r;
+    for (int i = 0; i < n; i++) { memcpy(p, s, len); p += len; }
+    *p = '\0';
+    return r;
+}
+""",
+        ),
+        # ── string_trim: trim, ltrim, rtrim ──
+        (
+            "string_trim",
+            ["_str_trim(", "_str_ltrim(", "_str_rtrim("],
+            [],
+            r"""
+// === String trim ===
+static char *_str_trim(Arena *a, const char *s, const char *chars) {
+    if (!s) return arena_strdup(a, "");
+    const char *start = s;
+    while (*start && strchr(chars, *start)) start++;
+    if (!*start) return arena_strdup(a, "");
+    const char *end = s + strlen(s) - 1;
+    while (end > start && strchr(chars, *end)) end--;
+    return arena_strndup(a, start, end - start + 1);
+}
+
+static char *_str_ltrim(Arena *a, const char *s, const char *chars) {
+    if (!s) return arena_strdup(a, "");
+    while (*s && strchr(chars, *s)) s++;
+    return arena_strdup(a, s);
+}
+
+static char *_str_rtrim(Arena *a, const char *s, const char *chars) {
+    if (!s || !*s) return arena_strdup(a, "");
+    size_t len = strlen(s);
+    while (len > 0 && strchr(chars, s[len - 1])) len--;
+    return arena_strndup(a, s, len);
+}
+""",
+        ),
+        # ── parse_int ──
+        (
+            "parse_int",
+            ["_parse_int("],
+            [],
+            r"""
+static int64_t _parse_int(const char *s, int base) {
+    if (!s) return 0;
+    return strtoll(s, NULL, base);
+}
+""",
+        ),
+        # ── int_to_str ──
+        (
+            "int_to_str",
+            ["_int_to_str("],
+            [],
+            r"""
+static char *_int_to_str(Arena *a, int64_t n) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%lld", (long long)n);
+    return arena_strdup(a, buf);
+}
+""",
+        ),
+        # ── rune_to_str ──
+        (
+            "rune_to_str",
+            ["_rune_to_str("],
+            [],
+            r"""
+static char *_rune_to_str(Arena *a, int32_t r) {
+    char buf[5] = {0};
+    if (r < 0x80) { buf[0] = r; }
+    else if (r < 0x800) { buf[0] = 0xC0 | (r >> 6); buf[1] = 0x80 | (r & 0x3F); }
+    else if (r < 0x10000) { buf[0] = 0xE0 | (r >> 12); buf[1] = 0x80 | ((r >> 6) & 0x3F); buf[2] = 0x80 | (r & 0x3F); }
+    else { buf[0] = 0xF0 | (r >> 18); buf[1] = 0x80 | ((r >> 12) & 0x3F); buf[2] = 0x80 | ((r >> 6) & 0x3F); buf[3] = 0x80 | (r & 0x3F); }
+    return arena_strdup(a, buf);
+}
+""",
+        ),
+        # ── vec: dynamic array macros ──
+        (
+            "vec",
+            ["VEC_PUSH(", "VEC_EXTEND(", "_vec_extend("],
+            [],
+            r"""
+// === Dynamic array (Vec) helpers ===
+#define VEC_INIT_CAP 8
+
+#define VEC_PUSH(a, vec, item) do { \
+    if ((vec)->len >= (vec)->cap) { \
+        size_t new_cap = (vec)->cap ? (vec)->cap * 2 : VEC_INIT_CAP; \
+        void *new_data = arena_alloc(a, new_cap * sizeof(*(vec)->data)); \
+        if ((vec)->data) memcpy(new_data, (vec)->data, (vec)->len * sizeof(*(vec)->data)); \
+        (vec)->data = new_data; \
+        (vec)->cap = new_cap; \
+    } \
+    (vec)->data[(vec)->len++] = (item); \
+} while(0)
+
+#define VEC_EXTEND(a, dest, src) do { \
+    for (size_t _i = 0; _i < (src)->len; _i++) { \
+        VEC_PUSH((a), (dest), (src)->data[_i]); \
+    } \
+} while(0)
+
+static void _vec_extend(Arena *a, void *dest_ptr, void *src_ptr) {
+    (void)a; (void)dest_ptr; (void)src_ptr;
+}
+""",
+        ),
+        # ── map: StrMap and hash helpers ──
+        (
+            "map",
+            [
+                "StrMap",
+                "_strmap_new(",
+                "_strmap_set_str(",
+                "_strmap_set_int(",
+                "_strmap_get_str(",
+                "_strmap_get_int(",
+                "_strmap_contains(",
+                "_hash_str(",
+                "_hash_int(",
+                "_map_contains(",
+            ],
+            [],
+            r"""
+// === Map helpers ===
+typedef struct StrMap {
+    const char **keys;
+    const char **vals;
+    int64_t *ivals;
+    size_t len;
+    size_t cap;
+    bool is_int_val;
+} StrMap;
+
+static StrMap *_strmap_new(Arena *a, size_t cap, bool is_int_val) {
+    StrMap *m = (StrMap *)arena_alloc(a, sizeof(StrMap));
+    m->keys = (const char **)arena_alloc(a, cap * sizeof(const char *));
+    if (is_int_val) {
+        m->ivals = (int64_t *)arena_alloc(a, cap * sizeof(int64_t));
+        m->vals = NULL;
+    } else {
+        m->vals = (const char **)arena_alloc(a, cap * sizeof(const char *));
+        m->ivals = NULL;
+    }
+    m->len = 0;
+    m->cap = cap;
+    m->is_int_val = is_int_val;
+    return m;
+}
+
+static void _strmap_set_str(StrMap *m, const char *key, const char *val) {
+    for (size_t i = 0; i < m->len; i++) {
+        if (strcmp(m->keys[i], key) == 0) { m->vals[i] = val; return; }
+    }
+    if (m->len < m->cap) { m->keys[m->len] = key; m->vals[m->len] = val; m->len++; }
+}
+
+static void _strmap_set_int(StrMap *m, const char *key, int64_t val) {
+    for (size_t i = 0; i < m->len; i++) {
+        if (strcmp(m->keys[i], key) == 0) { m->ivals[i] = val; return; }
+    }
+    if (m->len < m->cap) { m->keys[m->len] = key; m->ivals[m->len] = val; m->len++; }
+}
+
+static const char *_strmap_get_str(StrMap *m, const char *key, const char *def) {
+    if (!m) return def;
+    for (size_t i = 0; i < m->len; i++) {
+        if (strcmp(m->keys[i], key) == 0) return m->vals[i];
+    }
+    return def;
+}
+
+static int64_t _strmap_get_int(StrMap *m, const char *key, int64_t def) {
+    if (!m) return def;
+    for (size_t i = 0; i < m->len; i++) {
+        if (strcmp(m->keys[i], key) == 0) return m->ivals[i];
+    }
+    return def;
+}
+
+static bool _strmap_contains(StrMap *m, const char *key) {
+    if (!m) return false;
+    for (size_t i = 0; i < m->len; i++) {
+        if (strcmp(m->keys[i], key) == 0) return true;
+    }
+    return false;
+}
+
+static uint64_t _hash_str(const char *s) {
+    uint64_t h = 5381;
+    while (*s) h = ((h << 5) + h) ^ (unsigned char)*s++;
+    return h;
+}
+
+static uint64_t _hash_int(int64_t n) {
+    return (uint64_t)n * 0x9e3779b97f4a7c15ULL;
+}
+
+static bool _map_contains(void *map, const char *key) {
+    return _strmap_contains((StrMap *)map, key);
+}
+""",
+        ),
+        # ── format: _str_format (variadic) ──
+        (
+            "format",
+            ["_str_format("],
+            [],
+            r"""
+// === String formatting ===
+static char *_str_format(Arena *a, const char *fmt, ...) {
+    size_t flen = strlen(fmt);
+    char *cfmt = (char *)arena_alloc(a, flen + 1);
+    const char *src = fmt;
+    char *dst = cfmt;
+    while (*src) {
+        if (src[0] == '%' && src[1] == 'v') {
+            *dst++ = '%';
+            *dst++ = 's';
+            src += 2;
+        } else {
+            *dst++ = *src++;
+        }
+    }
+    *dst = '\0';
+    va_list args1, args2;
+    va_start(args1, fmt);
+    va_copy(args2, args1);
+    int len = vsnprintf(NULL, 0, cfmt, args1);
+    va_end(args1);
+    if (len < 0) { va_end(args2); return arena_strdup(a, ""); }
+    char *buf = (char *)arena_alloc(a, len + 1);
+    vsnprintf(buf, len + 1, cfmt, args2);
+    va_end(args2);
+    return buf;
+}
+""",
+        ),
+        # ── bytes: Vec_Byte, str_to_bytes, bytes_to_str ──
+        (
+            "bytes",
+            ["Vec_Byte", "_str_to_bytes(", "_bytes_to_str("],
+            [],
+            r"""
+// === Bytes ===
+typedef struct Vec_Byte { uint8_t *data; size_t len; size_t cap; } Vec_Byte;
+
+static Vec_Byte _str_to_bytes(Arena *a, const char *s) {
+    if (!s) return (Vec_Byte){NULL, 0, 0};
+    size_t len = strlen(s);
+    uint8_t *data = (uint8_t *)arena_alloc(a, len);
+    memcpy(data, s, len);
+    return (Vec_Byte){data, len, len};
+}
+
+static const char *_bytes_to_str(Arena *a, Vec_Byte v) {
+    if (!v.data || v.len == 0) return "";
+    char *s = (char *)arena_alloc(a, v.len * 3 + 1);
+    size_t j = 0;
+    for (size_t i = 0; i < v.len; ) {
+        unsigned char b = v.data[i];
+        if (b < 0x80) {
+            s[j++] = b;
+            i++;
+        } else if ((b & 0xE0) == 0xC0 && i + 1 < v.len && (v.data[i+1] & 0xC0) == 0x80) {
+            s[j++] = b; s[j++] = v.data[i+1];
+            i += 2;
+        } else if ((b & 0xF0) == 0xE0 && i + 2 < v.len && (v.data[i+1] & 0xC0) == 0x80 && (v.data[i+2] & 0xC0) == 0x80) {
+            s[j++] = b; s[j++] = v.data[i+1]; s[j++] = v.data[i+2];
+            i += 3;
+        } else if ((b & 0xF8) == 0xF0 && i + 3 < v.len && (v.data[i+1] & 0xC0) == 0x80 && (v.data[i+2] & 0xC0) == 0x80 && (v.data[i+3] & 0xC0) == 0x80) {
+            s[j++] = b; s[j++] = v.data[i+1]; s[j++] = v.data[i+2]; s[j++] = v.data[i+3];
+            i += 4;
+        } else {
+            s[j++] = (char)0xEF; s[j++] = (char)0xBF; s[j++] = (char)0xBD;
+            i++;
+        }
+    }
+    s[j] = '\0';
+    return s;
+}
+""",
+        ),
+        # ── set_contains: generic set/map membership ──
+        (
+            "set_contains",
+            ["_set_contains("],
+            [],
+            r"""
+// === Set containment ===
+static bool _set_contains(void *set, const char *key) {
+    if (!set || !key) return false;
+    const char **elems = (const char **)set;
+    for (; *elems; elems++) {
+        if (strcmp(*elems, key) == 0) return true;
+    }
+    return false;
+}
+""",
+        ),
+    ]
+
+
 class CBackend:
     """Emit C11 code from IR Module."""
 
@@ -239,6 +979,8 @@ class CBackend:
         self._deferred_constants: list[Constant] = []  # Constants needing runtime init
         self._try_catch_labels: list[str] = []  # Stack of goto labels for try-with-catch
         self._try_label_counter: int = 0
+        self._entrypoint_func: str = ""  # Original name of the entrypoint function
+        self._function_names: set[str] = set()  # All module-level function names
 
     def emit(self, module: Module) -> str:
         """Emit C code from IR Module."""
@@ -258,6 +1000,8 @@ class CBackend:
         for c in module.constants:
             if isinstance(c.value, SetLit):
                 self._constant_set_values[c.name] = c.value
+        self._function_names = {func.name for func in module.functions}
+        self._entrypoint_func = module.entrypoint.function_name if module.entrypoint else ""
         self._collect_struct_fields(module)
         self._collect_function_sigs(module)
         self._collect_tuple_types(module)
@@ -284,6 +1028,15 @@ class CBackend:
                     emitted_funcs.add(method_name)
                     self._emit_method(struct.name, method)
         self._emit_interface_dispatchers(module)
+        self._finalize_helpers()
+        if self._entrypoint_func:
+            ep = self._ep_func_name(self._entrypoint_func)
+            self._line(f"int main(void) {{")
+            self.indent += 1
+            self._line("init();")
+            self._line(f"return (int){ep}();")
+            self.indent -= 1
+            self._line("}")
         return "\n".join(self.lines)
 
     def _collect_struct_fields(self, module: Module) -> None:
@@ -457,8 +1210,9 @@ class CBackend:
         elif isinstance(stmt, TryCatch):
             for s in stmt.body:
                 self._visit_stmt_for_tuples(s)
-            for s in stmt.catch_body:
-                self._visit_stmt_for_tuples(s)
+            for clause in stmt.catches:
+                for s in clause.body:
+                    self._visit_stmt_for_tuples(s)
         elif isinstance(stmt, TypeSwitch):
             self._visit_expr_for_tuples(stmt.expr)
             for case in stmt.cases:
@@ -649,8 +1403,9 @@ class CBackend:
         elif isinstance(stmt, TryCatch):
             for s in stmt.body:
                 self._visit_stmt_for_slices(s)
-            for s in stmt.catch_body:
-                self._visit_stmt_for_slices(s)
+            for clause in stmt.catches:
+                for s in clause.body:
+                    self._visit_stmt_for_slices(s)
         elif isinstance(stmt, TypeSwitch):
             self._visit_expr_for_slices(stmt.expr)
             for case in stmt.cases:
@@ -815,621 +1570,48 @@ class CBackend:
         self._line("#include <stdlib.h>")
         self._line("#include <string.h>")
         self._line("#include <stdio.h>")
-        self._line("#include <stdarg.h>")
+        self._include_pos: int = len(self.lines)  # conditional includes inserted later
         self._line("")
         self._line("// === Global error state ===")
-        self._line("static int g_parse_error = 0;")
+        self._line("static int g_error = 0;")
         self._line("static char g_error_msg[1024] = {0};")
         self._line("")
 
     def _emit_helpers(self) -> None:
-        """Emit helper functions for string ops, arena, etc."""
-        helpers = r"""
-// === Generic 'any' interface type ===
-// Used for interface{}/any types that need runtime type checking
-typedef struct Any {
-    int kind;
-    void *data;
-} Any;
+        """Mark position for helpers — actual emission deferred to _finalize_helpers."""
+        self._helpers_insert_pos: int = len(self.lines)
 
-// === Arena allocator (chunked, never reallocates) ===
-typedef struct ArenaChunk {
-    struct ArenaChunk *next;
-    char *base;
-    char *ptr;
-    size_t cap;
-} ArenaChunk;
-
-typedef struct Arena {
-    ArenaChunk *head;    // first chunk (for freeing)
-    ArenaChunk *current; // current allocation chunk
-    size_t chunk_size;   // default size for new chunks
-} Arena;
-
-static Arena *g_arena = NULL;
-static bool g_initialized = false;
-
-static ArenaChunk *arena_chunk_new(size_t cap) {
-    ArenaChunk *c = (ArenaChunk *)malloc(sizeof(ArenaChunk));
-    c->base = (char *)malloc(cap);
-    c->ptr = c->base;
-    c->cap = cap;
-    c->next = NULL;
-    return c;
-}
-
-static Arena *arena_new(size_t cap) {
-    Arena *a = (Arena *)malloc(sizeof(Arena));
-    a->head = arena_chunk_new(cap);
-    a->current = a->head;
-    a->chunk_size = cap;
-    return a;
-}
-
-static void *arena_alloc(Arena *a, size_t size) {
-    size = (size + 7) & ~7;  // 8-byte align
-    ArenaChunk *c = a->current;
-    if ((size_t)(c->ptr - c->base) + size > c->cap) {
-        // Need new chunk - pick size that fits the allocation
-        size_t new_cap = a->chunk_size;
-        while (new_cap < size) new_cap *= 2;
-        ArenaChunk *new_chunk = arena_chunk_new(new_cap);
-        c->next = new_chunk;
-        a->current = new_chunk;
-        c = new_chunk;
-    }
-    void *result = c->ptr;
-    c->ptr += size;
-    return result;
-}
-
-static void arena_free(Arena *a) {
-    if (a) {
-        ArenaChunk *c = a->head;
-        while (c) {
-            ArenaChunk *next = c->next;
-            free(c->base);
-            free(c);
-            c = next;
-        }
-        free(a);
-    }
-}
-
-static void arena_reset(Arena *a) {
-    // Reset all chunks to empty and set current back to head
-    ArenaChunk *c = a->head;
-    while (c) {
-        c->ptr = c->base;
-        c = c->next;
-    }
-    a->current = a->head;
-}
-
-static char *arena_strdup(Arena *a, const char *s) {
-    size_t len = strlen(s);
-    char *r = (char *)arena_alloc(a, len + 1);
-    memcpy(r, s, len + 1);
-    return r;
-}
-
-static char *arena_strndup(Arena *a, const char *s, size_t n) {
-    char *r = (char *)arena_alloc(a, n + 1);
-    memcpy(r, s, n);
-    r[n] = '\0';
-    return r;
-}
-
-static void init(void) {
-    if (g_initialized) return;
-    g_initialized = true;
-    g_arena = arena_new(65536);
-}
-
-// === String helpers ===
-static int32_t _rune_at(const char *s, int idx) {
-    if (idx < 0 || !s) return -1;
-    int i = 0;
-    const unsigned char *u = (const unsigned char *)s;
-    while (*u) {
-        if (i == idx) {
-            if (*u < 0x80) return *u;
-            if ((*u & 0xE0) == 0xC0) return ((*u & 0x1F) << 6) | (u[1] & 0x3F);
-            if ((*u & 0xF0) == 0xE0) return ((*u & 0x0F) << 12) | ((u[1] & 0x3F) << 6) | (u[2] & 0x3F);
-            if ((*u & 0xF8) == 0xF0) return ((*u & 0x07) << 18) | ((u[1] & 0x3F) << 12) | ((u[2] & 0x3F) << 6) | (u[3] & 0x3F);
-            return -1;
-        }
-        if (*u < 0x80) u++;
-        else if ((*u & 0xE0) == 0xC0) u += 2;
-        else if ((*u & 0xF0) == 0xE0) u += 3;
-        else if ((*u & 0xF8) == 0xF0) u += 4;
-        else u++;
-        i++;
-    }
-    return -1;
-}
-
-static int _rune_len(const char *s) {
-    if (!s) return 0;
-    int len = 0;
-    const unsigned char *u = (const unsigned char *)s;
-    while (*u) {
-        if (*u < 0x80) u++;
-        else if ((*u & 0xE0) == 0xC0) u += 2;
-        else if ((*u & 0xF0) == 0xE0) u += 3;
-        else if ((*u & 0xF8) == 0xF0) u += 4;
-        else u++;
-        len++;
-    }
-    return len;
-}
-
-static char *_char_at_str(Arena *a, const char *s, int idx) {
-    int32_t r = _rune_at(s, idx);
-    if (r < 0) return arena_strdup(a, "");
-    char buf[5] = {0};
-    if (r < 0x80) { buf[0] = r; }
-    else if (r < 0x800) { buf[0] = 0xC0 | (r >> 6); buf[1] = 0x80 | (r & 0x3F); }
-    else if (r < 0x10000) { buf[0] = 0xE0 | (r >> 12); buf[1] = 0x80 | ((r >> 6) & 0x3F); buf[2] = 0x80 | (r & 0x3F); }
-    else { buf[0] = 0xF0 | (r >> 18); buf[1] = 0x80 | ((r >> 12) & 0x3F); buf[2] = 0x80 | ((r >> 6) & 0x3F); buf[3] = 0x80 | (r & 0x3F); }
-    return arena_strdup(a, buf);
-}
-
-static char *__c_substring(Arena *a, const char *s, int start, int end) {
-    if (!s || start < 0) start = 0;
-    if (end < start) return arena_strdup(a, "");
-    const unsigned char *u = (const unsigned char *)s;
-    const char *byte_start = NULL;
-    const char *byte_end = NULL;
-    int i = 0;
-    while (*u) {
-        if (i == start) byte_start = (const char *)u;
-        if (i == end) { byte_end = (const char *)u; break; }
-        if (*u < 0x80) u++;
-        else if ((*u & 0xE0) == 0xC0) u += 2;
-        else if ((*u & 0xF0) == 0xE0) u += 3;
-        else if ((*u & 0xF8) == 0xF0) u += 4;
-        else u++;
-        i++;
-    }
-    if (!byte_start) return arena_strdup(a, "");
-    if (!byte_end) byte_end = (const char *)u;
-    return arena_strndup(a, byte_start, byte_end - byte_start);
-}
-
-static bool _str_startswith(const char *s, const char *prefix) {
-    if (!s || !prefix) return false;
-    size_t plen = strlen(prefix);
-    return strncmp(s, prefix, plen) == 0;
-}
-
-static bool _str_startswith_at(const char *s, int64_t pos, const char *prefix) {
-    if (!s || !prefix || pos < 0) return false;
-    size_t slen = strlen(s);
-    if ((size_t)pos >= slen) return false;
-    size_t plen = strlen(prefix);
-    if (slen - (size_t)pos < plen) return false;
-    return strncmp(s + pos, prefix, plen) == 0;
-}
-
-static bool _str_endswith(const char *s, const char *suffix) {
-    if (!s || !suffix) return false;
-    size_t slen = strlen(s);
-    size_t suflen = strlen(suffix);
-    if (suflen > slen) return false;
-    return strcmp(s + slen - suflen, suffix) == 0;
-}
-
-static int _str_find(const char *s, const char *sub) {
-    if (!s || !sub) return -1;
-    const char *p = strstr(s, sub);
-    if (!p) return -1;
-    // Return character index, not byte index
-    int idx = 0;
-    const unsigned char *u = (const unsigned char *)s;
-    while ((const char *)u < p) {
-        if (*u < 0x80) u++;
-        else if ((*u & 0xE0) == 0xC0) u += 2;
-        else if ((*u & 0xF0) == 0xE0) u += 3;
-        else if ((*u & 0xF8) == 0xF0) u += 4;
-        else u++;
-        idx++;
-    }
-    return idx;
-}
-
-static int _str_rfind(const char *s, const char *sub) {
-    if (!s || !sub) return -1;
-    size_t slen = strlen(s);
-    size_t sublen = strlen(sub);
-    if (sublen > slen) return -1;
-    for (size_t i = slen - sublen + 1; i > 0; i--) {
-        if (strncmp(s + i - 1, sub, sublen) == 0) {
-            // Return character index
-            int idx = 0;
-            const unsigned char *u = (const unsigned char *)s;
-            while ((const char *)u < s + i - 1) {
-                if (*u < 0x80) u++;
-                else if ((*u & 0xE0) == 0xC0) u += 2;
-                else if ((*u & 0xF0) == 0xE0) u += 3;
-                else if ((*u & 0xF8) == 0xF0) u += 4;
-                else u++;
-                idx++;
-            }
-            return idx;
-        }
-    }
-    return -1;
-}
-
-static char *_str_replace(Arena *a, const char *s, const char *old, const char *new_) {
-    if (!s || !old || !new_) return arena_strdup(a, s ? s : "");
-    size_t slen = strlen(s);
-    size_t oldlen = strlen(old);
-    size_t newlen = strlen(new_);
-    if (oldlen == 0) return arena_strdup(a, s);
-    // Count occurrences
-    int count = 0;
-    const char *p = s;
-    while ((p = strstr(p, old)) != NULL) { count++; p += oldlen; }
-    if (count == 0) return arena_strdup(a, s);
-    size_t rlen = slen + count * (newlen - oldlen);
-    char *r = (char *)arena_alloc(a, rlen + 1);
-    char *dst = r;
-    p = s;
-    const char *prev = s;
-    while ((p = strstr(p, old)) != NULL) {
-        size_t n = p - prev;
-        memcpy(dst, prev, n);
-        dst += n;
-        memcpy(dst, new_, newlen);
-        dst += newlen;
-        p += oldlen;
-        prev = p;
-    }
-    strcpy(dst, prev);
-    return r;
-}
-
-static char *_str_lower(Arena *a, const char *s) {
-    if (!s) return arena_strdup(a, "");
-    size_t len = strlen(s);
-    char *r = (char *)arena_alloc(a, len + 1);
-    for (size_t i = 0; i <= len; i++) {
-        char c = s[i];
-        if (c >= 'A' && c <= 'Z') c = c + 32;
-        r[i] = c;
-    }
-    return r;
-}
-
-static char *_str_upper(Arena *a, const char *s) {
-    if (!s) return arena_strdup(a, "");
-    size_t len = strlen(s);
-    char *r = (char *)arena_alloc(a, len + 1);
-    for (size_t i = 0; i <= len; i++) {
-        char c = s[i];
-        if (c >= 'a' && c <= 'z') c = c - 32;
-        r[i] = c;
-    }
-    return r;
-}
-
-static bool _str_is_digit(const char *s) {
-    if (!s || !*s) return false;
-    while (*s) {
-        if (*s < '0' || *s > '9') return false;
-        s++;
-    }
-    return true;
-}
-
-static bool _str_is_alpha(const char *s) {
-    if (!s || !*s) return false;
-    while (*s) {
-        if (!((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z'))) return false;
-        s++;
-    }
-    return true;
-}
-
-static bool _str_is_alnum(const char *s) {
-    if (!s || !*s) return false;
-    while (*s) {
-        if (!((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z') || (*s >= '0' && *s <= '9'))) return false;
-        s++;
-    }
-    return true;
-}
-
-static bool _str_is_space(const char *s) {
-    if (!s || !*s) return false;
-    while (*s) {
-        if (*s != ' ' && *s != '\t' && *s != '\n' && *s != '\r' && *s != '\f' && *s != '\v') return false;
-        s++;
-    }
-    return true;
-}
-
-static bool _rune_is_digit(int32_t r) { return r >= '0' && r <= '9'; }
-static bool _rune_is_alpha(int32_t r) { return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z'); }
-static bool _rune_is_alnum(int32_t r) { return _rune_is_alpha(r) || _rune_is_digit(r); }
-static bool _rune_is_space(int32_t r) { return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' || r == '\v'; }
-static bool _rune_is_upper(int32_t r) { return r >= 'A' && r <= 'Z'; }
-static bool _rune_is_lower(int32_t r) { return r >= 'a' && r <= 'z'; }
-
-static char *_str_concat(Arena *a, const char *s1, const char *s2) {
-    if (!s1) s1 = "";
-    if (!s2) s2 = "";
-    size_t len1 = strlen(s1);
-    size_t len2 = strlen(s2);
-    char *r = (char *)arena_alloc(a, len1 + len2 + 1);
-    memcpy(r, s1, len1);
-    memcpy(r + len1, s2, len2 + 1);
-    return r;
-}
-
-static char *_str_repeat(Arena *a, const char *s, int n) {
-    if (!s || n <= 0) return arena_strdup(a, "");
-    size_t len = strlen(s);
-    char *r = (char *)arena_alloc(a, len * n + 1);
-    char *p = r;
-    for (int i = 0; i < n; i++) { memcpy(p, s, len); p += len; }
-    *p = '\0';
-    return r;
-}
-
-static char *_str_trim(Arena *a, const char *s, const char *chars) {
-    if (!s) return arena_strdup(a, "");
-    const char *start = s;
-    while (*start && strchr(chars, *start)) start++;
-    if (!*start) return arena_strdup(a, "");
-    const char *end = s + strlen(s) - 1;
-    while (end > start && strchr(chars, *end)) end--;
-    return arena_strndup(a, start, end - start + 1);
-}
-
-static char *_str_ltrim(Arena *a, const char *s, const char *chars) {
-    if (!s) return arena_strdup(a, "");
-    while (*s && strchr(chars, *s)) s++;
-    return arena_strdup(a, s);
-}
-
-static char *_str_rtrim(Arena *a, const char *s, const char *chars) {
-    if (!s || !*s) return arena_strdup(a, "");
-    size_t len = strlen(s);
-    while (len > 0 && strchr(chars, s[len - 1])) len--;
-    return arena_strndup(a, s, len);
-}
-
-static int64_t _parse_int(const char *s, int base) {
-    if (!s) return 0;
-    return strtoll(s, NULL, base);
-}
-
-static char *_int_to_str(Arena *a, int64_t n) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%lld", (long long)n);
-    return arena_strdup(a, buf);
-}
-
-static char *_rune_to_str(Arena *a, int32_t r) {
-    char buf[5] = {0};
-    if (r < 0x80) { buf[0] = r; }
-    else if (r < 0x800) { buf[0] = 0xC0 | (r >> 6); buf[1] = 0x80 | (r & 0x3F); }
-    else if (r < 0x10000) { buf[0] = 0xE0 | (r >> 12); buf[1] = 0x80 | ((r >> 6) & 0x3F); buf[2] = 0x80 | (r & 0x3F); }
-    else { buf[0] = 0xF0 | (r >> 18); buf[1] = 0x80 | ((r >> 12) & 0x3F); buf[2] = 0x80 | ((r >> 6) & 0x3F); buf[3] = 0x80 | (r & 0x3F); }
-    return arena_strdup(a, buf);
-}
-
-static bool _str_contains(const char *s, const char *sub) {
-    if (!s || !sub) return false;
-    return strstr(s, sub) != NULL;
-}
-
-static int _str_count(const char *s, const char *sub) {
-    if (!s || !sub || !*sub) return 0;
-    int count = 0;
-    size_t sublen = strlen(sub);
-    const char *p = s;
-    while ((p = strstr(p, sub)) != NULL) { count++; p += sublen; }
-    return count;
-}
-
-// === Dynamic array (Vec) helpers ===
-#define VEC_INIT_CAP 8
-
-#define VEC_PUSH(a, vec, item) do { \
-    if ((vec)->len >= (vec)->cap) { \
-        size_t new_cap = (vec)->cap ? (vec)->cap * 2 : VEC_INIT_CAP; \
-        void *new_data = arena_alloc(a, new_cap * sizeof(*(vec)->data)); \
-        if ((vec)->data) memcpy(new_data, (vec)->data, (vec)->len * sizeof(*(vec)->data)); \
-        (vec)->data = new_data; \
-        (vec)->cap = new_cap; \
-    } \
-    (vec)->data[(vec)->len++] = (item); \
-} while(0)
-
-// Extend a vector with all elements from another vector
-#define VEC_EXTEND(a, dest, src) do { \
-    for (size_t _i = 0; _i < (src)->len; _i++) { \
-        VEC_PUSH((a), (dest), (src)->data[_i]); \
-    } \
-} while(0)
-
-static void _vec_extend(Arena *a, void *dest_ptr, void *src_ptr) {
-    // Generic extend - caller ensures types match
-    // This is a placeholder; actual use should be VEC_EXTEND macro
-    (void)a; (void)dest_ptr; (void)src_ptr;
-}
-
-// === Map helpers ===
-// Simple linear-scan map for small maps (arena-allocated)
-typedef struct StrMap {
-    const char **keys;
-    const char **vals;
-    int64_t *ivals;
-    size_t len;
-    size_t cap;
-    bool is_int_val;
-} StrMap;
-
-static StrMap *_strmap_new(Arena *a, size_t cap, bool is_int_val) {
-    StrMap *m = (StrMap *)arena_alloc(a, sizeof(StrMap));
-    m->keys = (const char **)arena_alloc(a, cap * sizeof(const char *));
-    if (is_int_val) {
-        m->ivals = (int64_t *)arena_alloc(a, cap * sizeof(int64_t));
-        m->vals = NULL;
-    } else {
-        m->vals = (const char **)arena_alloc(a, cap * sizeof(const char *));
-        m->ivals = NULL;
-    }
-    m->len = 0;
-    m->cap = cap;
-    m->is_int_val = is_int_val;
-    return m;
-}
-
-static void _strmap_set_str(StrMap *m, const char *key, const char *val) {
-    for (size_t i = 0; i < m->len; i++) {
-        if (strcmp(m->keys[i], key) == 0) { m->vals[i] = val; return; }
-    }
-    if (m->len < m->cap) { m->keys[m->len] = key; m->vals[m->len] = val; m->len++; }
-}
-
-static void _strmap_set_int(StrMap *m, const char *key, int64_t val) {
-    for (size_t i = 0; i < m->len; i++) {
-        if (strcmp(m->keys[i], key) == 0) { m->ivals[i] = val; return; }
-    }
-    if (m->len < m->cap) { m->keys[m->len] = key; m->ivals[m->len] = val; m->len++; }
-}
-
-static const char *_strmap_get_str(StrMap *m, const char *key, const char *def) {
-    if (!m) return def;
-    for (size_t i = 0; i < m->len; i++) {
-        if (strcmp(m->keys[i], key) == 0) return m->vals[i];
-    }
-    return def;
-}
-
-static int64_t _strmap_get_int(StrMap *m, const char *key, int64_t def) {
-    if (!m) return def;
-    for (size_t i = 0; i < m->len; i++) {
-        if (strcmp(m->keys[i], key) == 0) return m->ivals[i];
-    }
-    return def;
-}
-
-static bool _strmap_contains(StrMap *m, const char *key) {
-    if (!m) return false;
-    for (size_t i = 0; i < m->len; i++) {
-        if (strcmp(m->keys[i], key) == 0) return true;
-    }
-    return false;
-}
-
-static uint64_t _hash_str(const char *s) {
-    uint64_t h = 5381;
-    while (*s) h = ((h << 5) + h) ^ (unsigned char)*s++;
-    return h;
-}
-
-static uint64_t _hash_int(int64_t n) {
-    return (uint64_t)n * 0x9e3779b97f4a7c15ULL;
-}
-
-// Variable-argument string formatting helper
-// Pre-processes format string to convert %v to %s (vsnprintf doesn't know %v)
-static char *_str_format(Arena *a, const char *fmt, ...) {
-    // Convert %v to %s in format string
-    size_t flen = strlen(fmt);
-    char *cfmt = (char *)arena_alloc(a, flen + 1);
-    const char *src = fmt;
-    char *dst = cfmt;
-    while (*src) {
-        if (src[0] == '%' && src[1] == 'v') {
-            *dst++ = '%';
-            *dst++ = 's';
-            src += 2;
-        } else {
-            *dst++ = *src++;
-        }
-    }
-    *dst = '\0';
-    va_list args1, args2;
-    va_start(args1, fmt);
-    va_copy(args2, args1);
-    int len = vsnprintf(NULL, 0, cfmt, args1);
-    va_end(args1);
-    if (len < 0) { va_end(args2); return arena_strdup(a, ""); }
-    char *buf = (char *)arena_alloc(a, len + 1);
-    vsnprintf(buf, len + 1, cfmt, args2);
-    va_end(args2);
-    return buf;
-}
-
-// Vec_Byte forward declaration for _str_to_bytes
-typedef struct Vec_Byte { uint8_t *data; size_t len; size_t cap; } Vec_Byte;
-
-// String to bytes conversion (UTF-8 encoded)
-static Vec_Byte _str_to_bytes(Arena *a, const char *s) {
-    if (!s) return (Vec_Byte){NULL, 0, 0};
-    size_t len = strlen(s);
-    uint8_t *data = (uint8_t *)arena_alloc(a, len);
-    memcpy(data, s, len);
-    return (Vec_Byte){data, len, len};
-}
-
-// Bytes to string conversion with UTF-8 validation (replaces invalid sequences with U+FFFD)
-static const char *_bytes_to_str(Arena *a, Vec_Byte v) {
-    if (!v.data || v.len == 0) return "";
-    // Worst case: every byte is invalid -> 3 bytes (U+FFFD) each
-    char *s = (char *)arena_alloc(a, v.len * 3 + 1);
-    size_t j = 0;
-    for (size_t i = 0; i < v.len; ) {
-        unsigned char b = v.data[i];
-        if (b < 0x80) {
-            s[j++] = b;
-            i++;
-        } else if ((b & 0xE0) == 0xC0 && i + 1 < v.len && (v.data[i+1] & 0xC0) == 0x80) {
-            s[j++] = b; s[j++] = v.data[i+1];
-            i += 2;
-        } else if ((b & 0xF0) == 0xE0 && i + 2 < v.len && (v.data[i+1] & 0xC0) == 0x80 && (v.data[i+2] & 0xC0) == 0x80) {
-            s[j++] = b; s[j++] = v.data[i+1]; s[j++] = v.data[i+2];
-            i += 3;
-        } else if ((b & 0xF8) == 0xF0 && i + 3 < v.len && (v.data[i+1] & 0xC0) == 0x80 && (v.data[i+2] & 0xC0) == 0x80 && (v.data[i+3] & 0xC0) == 0x80) {
-            s[j++] = b; s[j++] = v.data[i+1]; s[j++] = v.data[i+2]; s[j++] = v.data[i+3];
-            i += 4;
-        } else {
-            s[j++] = (char)0xEF; s[j++] = (char)0xBF; s[j++] = (char)0xBD; // U+FFFD
-            i++;
-        }
-    }
-    s[j] = '\0';
-    return s;
-}
-
-// Generic set membership - string sets are NULL-terminated const char*[]
-static bool _set_contains(void *set, const char *key) {
-    if (!set || !key) return false;
-    const char **elems = (const char **)set;
-    for (; *elems; elems++) {
-        if (strcmp(*elems, key) == 0) return true;
-    }
-    return false;
-}
-
-static bool _map_contains(void *map, const char *key) {
-    return _strmap_contains((StrMap *)map, key);
-}
-
-"""
-        for line in helpers.strip().split("\n"):
-            self._line(line)
-        self._line("")
+    def _finalize_helpers(self) -> None:
+        """Insert only the helper sections referenced by the generated code."""
+        code = "\n".join(self.lines[self._helpers_insert_pos :])
+        sections = _get_helper_sections()
+        needed: set[str] = {"core"}
+        for name, triggers, deps, _ in sections:
+            if name == "core":
+                continue
+            for t in triggers:
+                if t in code:
+                    needed.add(name)
+                    needed.update(deps)
+                    break
+        helper_lines: list[str] = []
+        for name, _, _, text in sections:
+            if name in needed:
+                for line in text.strip().split("\n"):
+                    helper_lines.append(line)
+                helper_lines.append("")
+        self.lines[self._helpers_insert_pos : self._helpers_insert_pos] = helper_lines
+        # Conditional includes
+        extra_includes: list[str] = []
+        if "format" in needed:
+            extra_includes.append("#include <stdarg.h>")
+        if extra_includes:
+            self.lines[self._include_pos : self._include_pos] = extra_includes
 
     def _emit_forward_decls(self, module: Module) -> None:
         """Emit forward declarations for all structs and interfaces."""
+        if not module.interfaces and not module.structs:
+            return
         self._line("// === Forward declarations ===")
         for iface in module.interfaces:
             self._line(f"typedef struct {_type_name(iface.name)} {_type_name(iface.name)};")
@@ -1439,21 +1621,19 @@ static bool _map_contains(void *map, const char *key) {
 
     def _emit_kind_constants(self, module: Module) -> None:
         """Emit KIND_* constants for all structs and a kind_to_str helper."""
+        if not module.structs and not module.interfaces:
+            return
         self._line("// === Kind constants ===")
-        # Generate KIND_* constants for all structs
         for i, struct in enumerate(module.structs):
             const_name = f"KIND_{_type_name(struct.name).upper()}"
             self._line(f"#define {const_name} {i + 1}")
-        # Special kind for string values in any interface
         self._line(f"#define KIND_STRING {len(module.structs) + 1}")
         self._line("")
-        # Generate _kind_to_str helper
         self._line("static const char *_kind_to_str(int kind) {")
         self.indent += 1
         self._line("switch (kind) {")
         for i, struct in enumerate(module.structs):
             const_name = f"KIND_{_type_name(struct.name).upper()}"
-            # Get the original Python kind string from the struct name
             kind_str = self._struct_name_to_kind(struct.name)
             self._line(f'case {const_name}: return "{kind_str}";')
         self._line('default: return "";')
@@ -1564,11 +1744,14 @@ static bool _map_contains(void *map, const char *key) {
         """Emit struct definitions for tuple types."""
         if not self._tuple_types:
             return
-        self._line("// === Tuple types ===")
-        for sig in sorted(self._tuple_types.keys()):
-            self._line(f"typedef struct {sig} {sig};")
-        self._line("")
-        # Emit actual struct definitions with proper field types
+        # Forward-declare only tuples not already declared for Vec element types
+        vec_fwd = {s for s in self._slice_types if s.startswith("Tuple_")}
+        need_fwd = sorted(k for k in self._tuple_types if k not in vec_fwd)
+        if need_fwd:
+            self._line("// === Tuple types ===")
+            for sig in need_fwd:
+                self._line(f"typedef struct {sig} {sig};")
+            self._line("")
         for sig in sorted(self._tuple_types.keys()):
             tup = self._tuple_types[sig]
             self._line(f"struct {sig} {{")
@@ -1601,13 +1784,20 @@ static bool _map_contains(void *map, const char *key) {
     # FUNCTION EMISSION
     # ============================================================
 
+    def _ep_func_name(self, name: str) -> str:
+        """Get the C name for a function, renaming entrypoint to avoid conflict with C main."""
+        safe = _safe_name(name)
+        if name == self._entrypoint_func:
+            return f"_ep_{safe}"
+        return safe
+
     def _emit_function_decls(self, module: Module) -> None:
         """Emit forward declarations for all functions and methods."""
         self._line("// === Function declarations ===")
         emitted: set[str] = set()  # Track emitted names to avoid duplicates
         # Top-level functions
         for func in module.functions:
-            name = _safe_name(func.name)
+            name = self._ep_func_name(func.name)
             if name in emitted:
                 continue
             emitted.add(name)
@@ -1665,13 +1855,13 @@ static bool _map_contains(void *map, const char *key) {
             if isinstance(p.typ, FuncType) and p.typ.receiver is not None:
                 self._callback_params.add(p.name)
         ret_type = self._type_to_c(func.ret)
-        name = _safe_name(func.name)
+        name = self._ep_func_name(func.name)
         params = ", ".join(self._param_with_type(p.typ, _safe_name(p.name)) for p in func.params)
         if not params:
             params = "void"
         self._line(f"static {ret_type} {name}({params}) {{")
         self.indent += 1
-        if func.name == "parse":
+        if func.name == "parse" or func.name == self._entrypoint_func:
             self._line("init();")
             for const in self._deferred_constants:
                 cname = _safe_name(const.name).upper()
@@ -1732,6 +1922,8 @@ static bool _map_contains(void *map, const char *key) {
             self._emit_stmt_ExprStmt(stmt)
         elif isinstance(stmt, Return):
             self._emit_stmt_Return(stmt)
+        elif isinstance(stmt, Assert):
+            self._emit_stmt_Assert(stmt)
         elif isinstance(stmt, If):
             self._emit_stmt_If(stmt)
         elif isinstance(stmt, While):
@@ -1756,8 +1948,32 @@ static bool _map_contains(void *map, const char *key) {
             self._emit_stmt_TypeSwitch(stmt)
         elif isinstance(stmt, Match):
             self._emit_stmt_Match(stmt)
+        elif isinstance(stmt, EntryPoint):
+            pass
         elif isinstance(stmt, NoOp):
             pass
+
+    def _emit_stmt_Assert(self, stmt: Assert) -> None:
+        cond = self._emit_expr(stmt.test)
+        if stmt.message is not None:
+            msg = self._emit_expr(stmt.message)
+        else:
+            msg = '"assertion failed"'
+        in_try_catch = bool(self._try_catch_labels)
+        self._line(f"if (!({cond})) {{")
+        self.indent += 1
+        self._line("g_error = 1;")
+        self._line(f'snprintf(g_error_msg, sizeof(g_error_msg), "%s", {msg});')
+        if in_try_catch:
+            self._line(f"goto {self._try_catch_labels[-1]};")
+        else:
+            err_val = self._error_return_value()
+            if err_val:
+                self._line(f"return {err_val};")
+            else:
+                self._line("return;")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_stmt_VarDecl(self, stmt: VarDecl) -> None:
         c_type = self._type_to_c(stmt.typ)
@@ -2133,7 +2349,7 @@ static bool _map_contains(void *map, const char *key) {
             self._line(f"{c_type} {c_name};")
             self._hoisted_vars[name] = c_type
         cond = self._emit_expr(stmt.cond)
-        self._line(f"while (!g_parse_error && ({cond})) {{")
+        self._line(f"while (!g_error && ({cond})) {{")
         self.indent += 1
         for s in stmt.body:
             self._emit_stmt(s)
@@ -2253,7 +2469,8 @@ static bool _map_contains(void *map, const char *key) {
             self._line("}")
 
     def _emit_stmt_TryCatch(self, stmt: TryCatch) -> None:
-        # C doesn't have try/catch - simulate with g_parse_error checks
+        # C doesn't have try/catch - simulate with g_error checks
+        catch_body: list[Stmt] = stmt.catches[0].body if stmt.catches else []
         self._line("// try {")
         for name, typ in stmt.hoisted_vars:
             c_type = self._type_to_c(typ) if typ else "void *"
@@ -2264,28 +2481,33 @@ static bool _map_contains(void *map, const char *key) {
             c_name = _safe_name(name)
             self._line(f"{c_type} {c_name};")
             self._hoisted_vars[name] = c_type
-        if stmt.catch_body:
+        if catch_body:
             label = f"_catch_{self._try_label_counter}"
             self._try_label_counter += 1
             self._try_catch_labels.append(label)
         for s in stmt.body:
             self._emit_stmt(s)
-        if stmt.catch_body:
+        if catch_body:
             self._try_catch_labels.pop()
-            self._line(f"if (g_parse_error) goto {label};")
+            self._line(f"if (g_error) goto {label};")
             self._line(f"goto {label}_end;")
             self._line(f"{label}:;")
-            self._line("if (g_parse_error) {")
+            self._line("if (g_error) {")
             self.indent += 1
-            self._line("g_parse_error = 0;")
+            # Declare catch variable as copy of error message before clearing
+            catch_var = (
+                _safe_name(stmt.catches[0].var) if stmt.catches and stmt.catches[0].var else "_err"
+            )
+            self._line(f"const char *{catch_var} = arena_strdup(g_arena, g_error_msg);")
+            self._line("g_error = 0;")
             self._line("g_error_msg[0] = '\\0';")
-            for s in stmt.catch_body:
+            for s in catch_body:
                 self._emit_stmt(s)
             self.indent -= 1
             self._line("}")
             self._line(f"{label}_end:;")
         elif stmt.reraise:
-            self._line("if (g_parse_error) {")
+            self._line("if (g_error) {")
             self.indent += 1
             err_val = self._error_return_value()
             if err_val:
@@ -2301,7 +2523,7 @@ static bool _map_contains(void *map, const char *key) {
         in_try_catch = bool(self._try_catch_labels)
         if stmt.reraise_var:
             self._line("// re-raise")
-            self._line("g_parse_error = 1;")
+            self._line("g_error = 1;")
             if in_try_catch:
                 self._line(f"goto {self._try_catch_labels[-1]};")
             elif err_val:
@@ -2310,7 +2532,7 @@ static bool _map_contains(void *map, const char *key) {
                 self._line("return;")
             return
         msg = self._emit_expr(stmt.message)
-        self._line("g_parse_error = 1;")
+        self._line("g_error = 1;")
         self._line(f'snprintf(g_error_msg, sizeof(g_error_msg), "%s", {msg});')
         if in_try_catch:
             self._line(f"goto {self._try_catch_labels[-1]};")
@@ -2374,8 +2596,9 @@ static bool _map_contains(void *map, const char *key) {
             result.extend(stmt.hoisted_vars)
             for s in stmt.body:
                 result.extend(self._collect_stmt_hoisted_vars(s))
-            for s in stmt.catch_body:
-                result.extend(self._collect_stmt_hoisted_vars(s))
+            for clause in stmt.catches:
+                for s in clause.body:
+                    result.extend(self._collect_stmt_hoisted_vars(s))
         return result
 
     def _collect_case_declarations(self, stmts: list[Stmt]) -> list[tuple[str, Type | None]]:
@@ -2424,7 +2647,8 @@ static bool _map_contains(void *map, const char *key) {
                     result.extend(self._collect_case_declarations(stmt.default))
             elif isinstance(stmt, TryCatch):
                 result.extend(self._collect_case_declarations(stmt.body))
-                result.extend(self._collect_case_declarations(stmt.catch_body))
+                for clause in stmt.catches:
+                    result.extend(self._collect_case_declarations(clause.body))
         return result
 
     def _emit_stmt_TypeSwitch(self, stmt: TypeSwitch) -> None:
@@ -2779,6 +3003,30 @@ static bool _map_contains(void *map, const char *key) {
 
     def _emit_expr_Call(self, expr: Call) -> str:
         func = expr.func
+        # Python builtins
+        if func == "print":
+            if expr.args:
+                arg = self._emit_expr(expr.args[0])
+                return f'printf("%s\\n", {arg})'
+            return 'printf("\\n")'
+        if func == "bool":
+            if not expr.args:
+                return "false"
+            return f"(bool)({self._emit_expr(expr.args[0])})"
+        if func == "repr":
+            if expr.args and expr.args[0].typ == BOOL:
+                arg = self._emit_expr(expr.args[0])
+                return f'({arg} ? "True" : "False")'
+            if expr.args:
+                return f"_int_to_str(g_arena, {self._emit_expr(expr.args[0])})"
+            return '""'
+        if func == "str":
+            if expr.args and expr.args[0].typ == BOOL:
+                arg = self._emit_expr(expr.args[0])
+                return f'({arg} ? "True" : "False")'
+            if expr.args:
+                return f"_int_to_str(g_arena, {self._emit_expr(expr.args[0])})"
+            return '""'
         # Special builtins
         # _int_ptr / _intPtr creates a pointer to an int value
         if func in ("_int_ptr", "_intPtr") and len(expr.args) == 1:
@@ -2832,6 +3080,14 @@ static bool _map_contains(void *map, const char *key) {
                     arg_str = f"&{arg_str}"
             arg_list.append(arg_str)
         args = ", ".join(arg_list)
+        # Variable callable — cast to function pointer
+        if func not in self._function_sigs and func not in self._callback_params:
+            ret_c = self._type_to_c(expr.typ) if expr.typ and expr.typ != VOID else "void"
+            param_types_c = [self._type_to_c(a.typ) for a in expr.args] if expr.args else ["void"]
+            fp_params = ", ".join(param_types_c)
+            if args:
+                return f"(({ret_c} (*)({fp_params})){func_name})({args})"
+            return f"(({ret_c} (*)(void)){func_name})()"
         return f"{func_name}({args})"
 
     def _emit_expr_MethodCall(self, expr: MethodCall) -> str:
@@ -3017,6 +3273,9 @@ static bool _map_contains(void *map, const char *key) {
             op = "&&"
         if op == "or":
             op = "||"
+        # Floor division - C integer division already floors
+        if op == "//":
+            op = "/"
         return f"({left} {op} {right})"
 
     def _emit_char_literal(self, char: str) -> str:
@@ -3099,6 +3358,13 @@ static bool _map_contains(void *map, const char *key) {
     def _emit_expr_Cast(self, expr: Cast) -> str:
         inner = self._emit_expr(expr.expr)
         to_type = self._type_to_c(expr.to_type)
+        # Bool to string: Python-style "True"/"False"
+        if (
+            isinstance(expr.to_type, Primitive)
+            and expr.to_type.kind == "string"
+            and expr.expr.typ == BOOL
+        ):
+            return f'({inner} ? "True" : "False")'
         # Skip redundant casts
         if to_type == "const char *" and expr.expr.typ == STRING:
             return inner

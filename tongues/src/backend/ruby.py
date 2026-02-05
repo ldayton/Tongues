@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from src.backend.util import escape_string, to_snake, to_screaming_snake
 from src.ir import (
+    BOOL,
+    INT,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -13,9 +16,11 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -90,6 +95,23 @@ from src.ir import (
     VarLV,
     While,
 )
+
+
+_PYTHON_EXCEPTION_MAP = {
+    "Exception": "StandardError",
+    "AssertionError": "RuntimeError",
+    "ValueError": "ArgumentError",
+    "RuntimeError": "RuntimeError",
+    "KeyError": "KeyError",
+    "IndexError": "IndexError",
+    "TypeError": "TypeError",
+}
+
+
+def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
+    """True when one operand is bool and the other is int."""
+    l, r = left.typ, right.typ
+    return (l == BOOL and r == INT) or (l == INT and r == BOOL)
 
 
 def _is_empty_body(body: list[Stmt]) -> bool:
@@ -237,12 +259,18 @@ class RubyBackend:
         self.indent = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
+        self._known_functions: set[str] = set()
+        self._needs_set = False
 
     def emit(self, module: Module) -> str:
         """Emit Ruby code from IR Module."""
         self.indent = 0
         self.lines = []
+        self._needs_set = False
         self._emit_module(module)
+        if self._needs_set:
+            self.lines.insert(self._import_insert_pos, "require 'set'")
+            self.lines.insert(self._import_insert_pos + 1, "")
         return "\n".join(self.lines)
 
     def _line(self, text: str = "") -> None:
@@ -252,10 +280,13 @@ class RubyBackend:
             self.lines.append("")
 
     def _emit_module(self, module: Module) -> None:
+        self._known_functions = {f.name for f in module.functions}
+        for s in module.structs:
+            for m in s.methods:
+                self._known_functions.add(m.name)
         self._line("# frozen_string_literal: true")
         self._line()
-        self._line("require 'set'")
-        self._line()
+        self._import_insert_pos: int = len(self.lines)
         need_blank = False
         if module.constants:
             for const in module.constants:
@@ -276,6 +307,9 @@ class RubyBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        if module.entrypoint is not None:
+            self._line()
+            self._emit_stmt(module.entrypoint)
 
     def _emit_constant(self, const: Constant) -> None:
         name = to_screaming_snake(const.name)
@@ -413,6 +447,13 @@ class RubyBackend:
                     self._line(f"return {self._expr(value)}")
                 else:
                     self._line("return")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    msg = self._expr(message)
+                    self._line(f'raise "AssertionError: #{{{msg}}}" unless {cond_str}')
+                else:
+                    self._line(f'raise "AssertionError" unless {cond_str}')
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 if init is not None:
                     self._emit_stmt(init)
@@ -451,12 +492,10 @@ class RubyBackend:
                     self._emit_stmt(s)
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
-                self._emit_try_catch(body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"raise {reraise_var}")
@@ -469,6 +508,8 @@ class RubyBackend:
                         self._line(f"raise {error_type}.new(message: {msg})")
             case SoftFail():
                 self._line("return nil")
+            case EntryPoint(function_name=function_name):
+                self._line(f"exit({_safe_name(function_name)})")
             case _:
                 raise NotImplementedError("Unknown statement")
 
@@ -587,9 +628,7 @@ class RubyBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         self._line("begin")
@@ -599,21 +638,23 @@ class RubyBackend:
         for s in body:
             self._emit_stmt(s)
         self.indent -= 1
-        var = _safe_name(catch_var) if catch_var else "_e"
-        exc_type = (
-            _safe_type_name(catch_type.name)
-            if isinstance(catch_type, StructRef)
-            else "StandardError"
-        )
-        self._line(f"rescue {exc_type} => {var}")
-        self.indent += 1
-        if _is_empty_body(catch_body) and not reraise:
-            self._line("nil")
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line("raise")
-        self.indent -= 1
+        for clause in catches:
+            var = _safe_name(clause.var) if clause.var else "_e"
+            if isinstance(clause.typ, StructRef):
+                exc_type = _PYTHON_EXCEPTION_MAP.get(
+                    clause.typ.name, _safe_type_name(clause.typ.name)
+                )
+            else:
+                exc_type = "StandardError"
+            self._line(f"rescue {exc_type} => {var}")
+            self.indent += 1
+            if _is_empty_body(clause.body) and not reraise:
+                self._line("nil")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("raise")
+            self.indent -= 1
         self._line("end")
 
     def _emit_else_body(self, else_body: list[Stmt]) -> None:
@@ -669,9 +710,10 @@ class RubyBackend:
                     return "self"
                 if _is_constant(name):
                     return to_screaming_snake(name)
-                # Check for constant-like names (e.g., ParserStateFlags_NONE)
                 if "_" in name and name[0].isupper():
                     return to_screaming_snake(name)
+                if isinstance(expr.typ, FuncType) or name in self._known_functions:
+                    return f"method(:{_safe_name(name)})"
                 return _safe_name(name)
             case FieldAccess(obj=obj, field=field):
                 if field.startswith("F") and field[1:].isdigit():
@@ -720,13 +762,22 @@ class RubyBackend:
                     )
                 )
             case Call(func="_intPtr", args=[arg]):
-                # _intPtr is a sentinel int wrapper - in Ruby, just pass value
                 val = self._expr(arg)
                 return f"({val} == -1 ? nil : {val})"
+            case Call(func="print", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"puts({args_str})"
+            case Call(func="repr", args=[arg]) if arg.typ == BOOL:
+                return f'({self._expr(arg)} ? "True" : "False")'
+            case Call(func="repr", args=[arg]):
+                return f"{self._expr(arg)}.inspect"
+            case Call(func="bool", args=[]):
+                return "false"
+            case Call(func="bool", args=[arg]):
+                return f"!!{self._expr(arg)}"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
-                # Callable parameters need .call() in Ruby
-                if func in ("parsefn",):
+                if func not in self._known_functions:
                     if args_str:
                         return f"{_safe_name(func)}.call({args_str})"
                     return f"{_safe_name(func)}.call"
@@ -820,6 +871,53 @@ class RubyBackend:
                 if isinstance(e, BinaryOp):
                     return f"!!({expr_str})"
                 return f"!!{expr_str}"
+            case BinaryOp(op="//", left=left, right=right):
+                # Floor division - Ruby integer division already floors
+                left_str = (
+                    self._maybe_paren(
+                        self._coerce_bool_to_int(left, raw=True), left, "/", is_left=True
+                    )
+                    if left.typ == BOOL
+                    else self._maybe_paren(self._expr(left), left, "/", is_left=True)
+                )
+                right_str = (
+                    self._maybe_paren(
+                        self._coerce_bool_to_int(right, raw=True), right, "/", is_left=False
+                    )
+                    if right.typ == BOOL
+                    else self._maybe_paren(self._expr(right), right, "/", is_left=False)
+                )
+                return f"{left_str} / {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "==",
+                "!=",
+            ) and _is_bool_int_compare(left, right):
+                left_str = self._maybe_paren(
+                    self._coerce_bool_to_int(left, raw=True), left, op, is_left=True
+                )
+                right_str = self._maybe_paren(
+                    self._coerce_bool_to_int(right, raw=True), right, op, is_left=False
+                )
+                rb_op = _binary_op(op)
+                return f"{left_str} {rb_op} {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "+",
+                "-",
+                "*",
+                "/",
+                "%",
+                "|",
+                "&",
+                "^",
+            ) and (left.typ == BOOL or right.typ == BOOL):
+                left_str = self._maybe_paren(
+                    self._coerce_bool_to_int(left, raw=True), left, op, is_left=True
+                )
+                right_str = self._maybe_paren(
+                    self._coerce_bool_to_int(right, raw=True), right, op, is_left=False
+                )
+                rb_op = _binary_op(op)
+                return f"{left_str} {rb_op} {right_str}"
             case BinaryOp(op=op, left=left, right=right):
                 if op == "in":
                     return f"{self._expr(right)}.include?({self._expr(left)})"
@@ -853,8 +951,8 @@ class RubyBackend:
                         else:
                             return f"!{obj_str}.index({args_str}).nil?"
                 rb_op = _binary_op(op)
-                left_str = self._maybe_paren(left, op, is_left=True)
-                right_str = self._maybe_paren(right, op, is_left=False)
+                left_str = self._maybe_paren_expr(left, op, is_left=True)
+                right_str = self._maybe_paren_expr(right, op, is_left=False)
                 return f"{left_str} {rb_op} {right_str}"
             case UnaryOp(op=op, operand=operand):
                 rb_op = _unary_op(op)
@@ -875,8 +973,19 @@ class RubyBackend:
                     f"{self._cond_expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)}"
                 )
             case Cast(expr=inner, to_type=to_type):
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind in ("int", "byte", "rune")
+                    and inner.typ == BOOL
+                ):
+                    return f"({self._expr(inner)} ? 1 : 0)"
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind == "string"
+                    and inner.typ == BOOL
+                ):
+                    return f'({self._expr(inner)} ? "True" : "False")'
                 if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
-                    # Pack bytes, interpret as UTF-8, scrub invalid sequences
                     return (
                         f"{self._expr(inner)}.pack('C*').force_encoding('UTF-8').scrub(\"\\uFFFD\")"
                     )
@@ -890,6 +999,8 @@ class RubyBackend:
                     Primitive(kind="rune"),
                 ):
                     return f"{self._expr(inner)}.ord"
+                if isinstance(to_type, Primitive) and to_type.kind == "string":
+                    return f"{self._expr(inner)}.to_s"
                 return self._expr(inner)
             case TypeAssert(expr=inner):
                 return self._expr(inner)
@@ -918,6 +1029,7 @@ class RubyBackend:
                 pairs = ", ".join(f"{self._expr(k)} => {self._expr(v)}" for k, v in entries)
                 return f"{{{pairs}}}"
             case SetLit(elements=elements):
+                self._needs_set = True
                 if not elements:
                     return "Set.new"
                 elems = ", ".join(self._expr(e) for e in elements)
@@ -1066,6 +1178,7 @@ class RubyBackend:
             case Map():
                 return "{}"
             case Set():
+                self._needs_set = True
                 return "Set.new"
             case _:
                 return "nil"
@@ -1078,15 +1191,28 @@ class RubyBackend:
             case _:
                 return self._expr(expr)
 
-    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
-        """Wrap expression in parens if needed for operator precedence."""
+    def _coerce_bool_to_int(self, expr: Expr, raw: bool = False) -> str:
+        """Coerce a bool expression to int for comparison with int."""
+        if expr.typ == BOOL:
+            inner = self._expr(expr)
+            return f"({inner} ? 1 : 0)"
+        if raw:
+            return self._expr(expr)
+        return self._expr(expr)
+
+    def _maybe_paren(self, text: str, expr: Expr, parent_op: str, is_left: bool) -> str:
+        """Wrap pre-rendered text in parens if the original expr needs it."""
         match expr:
             case BinaryOp(op=child_op):
                 if _needs_parens(child_op, parent_op, is_left):
-                    return f"({self._expr(expr)})"
+                    return f"({text})"
             case Ternary():
-                return f"({self._expr(expr)})"
-        return self._expr(expr)
+                return f"({text})"
+        return text
+
+    def _maybe_paren_expr(self, expr: Expr, parent_op: str, is_left: bool) -> str:
+        """Wrap expression in parens if needed for operator precedence."""
+        return self._maybe_paren(self._expr(expr), expr, parent_op, is_left)
 
 
 def _primitive_type(kind: str) -> str:

@@ -165,6 +165,7 @@ BANNED_BUILTINS: set[str] = {
     "staticmethod",
     "classmethod",
     "property",
+    "complex",
 }
 
 # Node types that are completely banned
@@ -185,6 +186,7 @@ BANNED_NODES: set[str] = {
 EAGER_CONSUMERS: set[str] = {
     "tuple",
     "list",
+    "dict",
     "set",
     "frozenset",
     "any",
@@ -263,6 +265,11 @@ def is_none_constant(node: ASTNode) -> bool:
     if node.get("_type") != "Constant":
         return False
     return node.get("value") is None
+
+
+def is_constant(node: ASTNode) -> bool:
+    """Check if node is a constant literal."""
+    return node.get("_type") == "Constant"
 
 
 def is_obvious_literal(node: ASTNode) -> bool:
@@ -803,9 +810,7 @@ class Verifier:
         """Check comparison constraints."""
         ops = node.get("ops", [])
         comparators = node.get("comparators", [])
-        # Check chained comparison
-        if len(ops) > 1:
-            self.error(node, "expression", "chained comparison: use 'and' explicitly")
+        # Chained comparisons like (a < b < c) are allowed - lowered to (a < b) and (b < c)
         # Check is/is not with non-None
         left = node.get("left", {})
         i = 0
@@ -814,10 +819,10 @@ class Verifier:
             comparator = comparators[i]
             op_type = op.get("_type", "")
             if op_type in ("Is", "IsNot"):
-                left_is_none = is_none_constant(left)
-                right_is_none = is_none_constant(comparator)
-                if not left_is_none and not right_is_none:
-                    self.error(node, "reflection", "is/is not: only use with None")
+                if is_constant(left) and is_constant(comparator):
+                    self.error(node, "reflection", "is/is not: cannot compare two literals")
+                elif not is_constant(left) and not is_constant(comparator):
+                    self.error(node, "reflection", "is/is not: requires a literal on one side")
             left = comparator
             i += 1
         # Visit children

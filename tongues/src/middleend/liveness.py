@@ -1,4 +1,4 @@
-"""Liveness analysis: initial_value_unused, catch_var_unused, binding_unused, unused_indices."""
+"""Liveness analysis: initial_value_unused, binding_unused, unused_indices."""
 
 from src.ir import (
     AddrOf,
@@ -92,18 +92,15 @@ def _analyze_initial_value_in_stmts(stmts: list[Stmt]) -> None:
             _analyze_initial_value_in_stmts(stmt.body)
         elif isinstance(stmt, TryCatch):
             _analyze_initial_value_in_stmts(stmt.body)
-            _analyze_initial_value_in_stmts(stmt.catch_body)
-            # Check if catch variable is used
-            if stmt.catch_var:
-                used = _collect_used_vars(stmt.catch_body)
-                stmt.catch_var_unused = stmt.catch_var not in used
-            else:
-                stmt.catch_var_unused = True
+            for clause in stmt.catches:
+                _analyze_initial_value_in_stmts(clause.body)
             # Check if try or catch body contains Return statements
             # This affects how the TryCatch should be emitted (IIFE vs defer pattern)
-            stmt.has_returns = contains_return(stmt.body) or contains_return(stmt.catch_body)
+            stmt.has_returns = contains_return(stmt.body) or any(
+                contains_return(c.body) for c in stmt.catches
+            )
             # Track if specifically the catch body has returns (needs named return pattern)
-            stmt.has_catch_returns = contains_return(stmt.catch_body)
+            stmt.has_catch_returns = any(contains_return(c.body) for c in stmt.catches)
         elif isinstance(stmt, Match):
             for case in stmt.cases:
                 _analyze_initial_value_in_stmts(case.body)
@@ -230,9 +227,10 @@ def _first_access_type(name: str, stmt: Stmt) -> str | None:
         if result == "read":
             return "read"
         # Catch body might execute
-        catch_result = _first_access_in_stmts(name, stmt.catch_body)
-        if catch_result == "read":
-            return "read"
+        for clause in stmt.catches:
+            catch_result = _first_access_in_stmts(name, clause.body)
+            if catch_result == "read":
+                return "read"
         return None
     return None
 
@@ -321,8 +319,8 @@ def _expr_reads(name: str, expr: Expr | None) -> bool:
                 return True
         return False
     if isinstance(expr, MapLit):
-        for v in expr.entries.values():
-            if _expr_reads(name, v):
+        for k, v in expr.entries:
+            if _expr_reads(name, k) or _expr_reads(name, v):
                 return True
         return False
     if isinstance(expr, StructLit):
@@ -346,15 +344,20 @@ def _expr_reads(name: str, expr: Expr | None) -> bool:
         return _expr_reads(name, expr.expr)
     # Comprehensions
     if isinstance(expr, ListComp):
-        return _expr_reads(name, expr.iterable) or _expr_reads(name, expr.element)
+        for gen in expr.generators:
+            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+                return True
+        return _expr_reads(name, expr.element)
     if isinstance(expr, SetComp):
-        return _expr_reads(name, expr.iterable) or _expr_reads(name, expr.element)
+        for gen in expr.generators:
+            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+                return True
+        return _expr_reads(name, expr.element)
     if isinstance(expr, DictComp):
-        return (
-            _expr_reads(name, expr.iterable)
-            or _expr_reads(name, expr.key)
-            or _expr_reads(name, expr.value)
-        )
+        for gen in expr.generators:
+            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+                return True
+        return _expr_reads(name, expr.key) or _expr_reads(name, expr.value)
     return False
 
 
@@ -388,7 +391,8 @@ def iter_all_stmts(stmts: list[Stmt]) -> list[Stmt]:
             yield from iter_all_stmts(stmt.body)
         elif isinstance(stmt, TryCatch):
             yield from iter_all_stmts(stmt.body)
-            yield from iter_all_stmts(stmt.catch_body)
+            for clause in stmt.catches:
+                yield from iter_all_stmts(clause.body)
         elif isinstance(stmt, (Match, TypeSwitch)):
             for case in stmt.cases:
                 yield from iter_all_stmts(case.body)

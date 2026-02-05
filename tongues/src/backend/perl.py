@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from src.backend.util import escape_string, to_snake
 from src.ir import (
+    BOOL,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -13,9 +15,11 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -53,6 +57,7 @@ from src.ir import (
     Param,
     ParseInt,
     Pointer,
+    Print,
     Primitive,
     Raise,
     Receiver,
@@ -366,8 +371,10 @@ class PerlBackend:
         self.constants: set[str] = set()
         self._hoisted_vars: set[str] = set()
         self._func_params: set[str] = set()  # Parameters with FuncType
+        self._known_functions: set[str] = set()  # Module-level function names
         self.struct_fields: dict[str, list[tuple[str, Type]]] = {}  # Struct field info
         self._in_try_with_return: bool = False  # Flag for return-from-eval workaround
+        self._needs_encode = False
 
     def emit(self, module: Module) -> str:
         """Emit Perl code from IR Module."""
@@ -375,9 +382,16 @@ class PerlBackend:
         self.lines = []
         self.constants = set()
         self._hoisted_vars = set()
+        self._needs_encode = False
+        self._known_functions = {f.name for f in module.functions}
+        for s in module.structs:
+            for m in s.methods:
+                self._known_functions.add(m.name)
         for const in module.constants:
             self.constants.add(const.name)
         self._emit_module(module)
+        if self._needs_encode:
+            self.lines.insert(self._import_insert_pos, "use Encode;")
         return "\n".join(self.lines)
 
     def _line(self, text: str = "") -> None:
@@ -473,9 +487,12 @@ class PerlBackend:
                     if init:
                         self._collect_undeclared_info([init], needs_predecl, declared_in_cf, True)
                     self._collect_undeclared_info(body, needs_predecl, declared_in_cf, True)
-                case TryCatch(body=body, catch_body=catch_body):
+                case TryCatch(body=body, catches=catches):
                     self._collect_undeclared_info(body, needs_predecl, declared_in_cf, True)
-                    self._collect_undeclared_info(catch_body, needs_predecl, declared_in_cf, True)
+                    for clause in catches:
+                        self._collect_undeclared_info(
+                            clause.body, needs_predecl, declared_in_cf, True
+                        )
                 case Match(cases=cases, default=default):
                     for case in cases:
                         self._collect_undeclared_info(
@@ -520,7 +537,7 @@ class PerlBackend:
                 case Block(body=body):
                     if self._body_has_return(body):
                         return True
-                case TryCatch(body=body, catch_body=catch_body):
+                case TryCatch():
                     # Don't recurse into nested try-catch; they'll handle their own returns
                     pass
         return False
@@ -528,9 +545,9 @@ class PerlBackend:
     def _emit_module(self, module: Module) -> None:
         self._line("use strict;")
         self._line("use warnings;")
-        self._line("use feature 'signatures';")
+        self._line("use feature qw(signatures say);")
         self._line("no warnings 'experimental::signatures';")
-        self._line("use Encode;")
+        self._import_insert_pos: int = len(self.lines)
         need_blank = True
         if module.constants:
             self._line()
@@ -556,6 +573,9 @@ class PerlBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        if module.entrypoint is not None:
+            self._line()
+            self._emit_stmt(module.entrypoint)
         self._line()
         self._line("1;")
 
@@ -716,6 +736,10 @@ class PerlBackend:
                     self._line(f"return {self._expr(value)};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                msg = self._expr(message) if message is not None else '"AssertionError"'
+                self._line(f"die {msg} unless ({cond_str});")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
@@ -758,19 +782,25 @@ class PerlBackend:
                     self._emit_stmt(s)
             case TryCatch(
                 body=body,
-                catch_var=catch_var,
-                catch_type=catch_type,
-                catch_body=catch_body,
+                catches=catches,
                 reraise=reraise,
             ):
                 self._emit_hoisted_vars(stmt)
-                self._emit_try_catch(body, catch_var, catch_type, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"die ${reraise_var};")
                 else:
                     msg = self._expr(message)
                     self._line(f"die {msg};")
+            case Print(value=value, newline=newline):
+                val_str = self._expr(value)
+                if newline:
+                    self._line(f"say({val_str});")
+                else:
+                    self._line(f"print({val_str});")
+            case EntryPoint(function_name=function_name):
+                self._line(f"exit({_safe_name(function_name)}());")
             case SoftFail():
                 self._line("return undef;")
             case _:
@@ -908,9 +938,7 @@ class PerlBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_type: Type | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         has_return = self._body_has_return(body)
@@ -932,13 +960,45 @@ class PerlBackend:
             self._line("}")
         self.indent -= 1
         self._line("};")
-        var = _safe_name(catch_var) if catch_var else "_e"
-        self._line(f"if (my ${var} = $@) {{")
+        self._line("if (my $_e = $@) {")
         self.indent += 1
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line(f"die ${var};")
+        if not catches:
+            self._line("die $_e;")
+        elif len(catches) == 1:
+            clause = catches[0]
+            if clause.var:
+                self._line(f"my ${_safe_name(clause.var)} = $_e;")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("die $_e;")
+        else:
+            default_clause = catches[-1]
+            typed_clauses = [c for c in catches[:-1] if isinstance(c.typ, StructRef)]
+            if typed_clauses:
+                for i, clause in enumerate(typed_clauses):
+                    type_name = clause.typ.name if isinstance(clause.typ, StructRef) else ""
+                    keyword = "if" if i == 0 else "} elsif"
+                    self._line(f"{keyword} (ref($_e) eq '{type_name}') {{")
+                    self.indent += 1
+                    if clause.var:
+                        self._line(f"my ${_safe_name(clause.var)} = $_e;")
+                    for s in clause.body:
+                        self._emit_stmt(s)
+                    if reraise:
+                        self._line("die $_e;")
+                    self.indent -= 1
+                self._line("} else {")
+                self.indent += 1
+            if default_clause.var:
+                self._line(f"my ${_safe_name(default_clause.var)} = $_e;")
+            for s in default_clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("die $_e;")
+            if typed_clauses:
+                self.indent -= 1
+                self._line("}")
         self.indent -= 1
         self._line("}")
         if has_return:
@@ -996,6 +1056,8 @@ class PerlBackend:
                     if self.current_package is not None:
                         return f"main::{const_call}"
                     return const_call
+                if name in self._known_functions:
+                    return f"\\&{_safe_name(name)}"
                 return f"${_safe_name(name)}"
             case FieldAccess(obj=obj, field=field):
                 if field.startswith("F") and field[1:].isdigit():
@@ -1069,14 +1131,29 @@ class PerlBackend:
                 # _intPtr is a no-op in Perl (pointers are transparent)
                 if func == "_intPtr" and args:
                     return self._expr(args[0])
+                if func == "print":
+                    args_str = ", ".join(self._expr(a) for a in args)
+                    return f"say({args_str})"
+                if func == "bool":
+                    if not args:
+                        return "0"
+                    return f"({self._expr(args[0])} ? 1 : 0)"
+                if func == "repr":
+                    arg = args[0]
+                    if arg.typ == BOOL:
+                        return f'({self._expr(arg)} ? "True" : "False")'
+                    return f'("" . {self._expr(arg)})'
                 args_str = ", ".join(self._expr(a) for a in args)
                 safe_func = _safe_name(func)
                 # Function parameters need to be called via reference
                 if func in self._func_params:
                     return f"${safe_func}->({args_str})"
-                if self.current_package is not None:
-                    return f"main::{safe_func}({args_str})"
-                return f"{safe_func}({args_str})"
+                if func in self._known_functions:
+                    if self.current_package is not None:
+                        return f"main::{safe_func}({args_str})"
+                    return f"{safe_func}({args_str})"
+                # Coderef variable call
+                return f"${safe_func}->({args_str})"
             case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
                 args_str = ", ".join(self._expr(a) for a in args)
                 obj_str = self._expr(obj)
@@ -1233,6 +1310,11 @@ class PerlBackend:
                 if inner_type == Primitive(kind="string"):
                     return f"(length({self._expr(e)}) > 0)"
                 return f"({self._expr(e)} ? 1 : 0)"
+            case BinaryOp(op="//", left=left, right=right):
+                # Floor division in Perl uses int()
+                left_str = self._maybe_paren(left, "/", is_left=True)
+                right_str = self._maybe_paren(right, "/", is_left=False)
+                return f"int({left_str} / {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 if op == "in":
                     return self._containment_check(left, right, negated=False)
@@ -1252,13 +1334,15 @@ class PerlBackend:
                     f"({self._cond_expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
                 )
             case Cast(expr=inner, to_type=to_type):
+                if to_type == Primitive(kind="string") and inner.typ == BOOL:
+                    return f'({self._expr(inner)} ? "True" : "False")'
                 if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
-                    # Decode UTF-8 with replacement, then re-encode to bytes
-                    # This matches Python's bytes.decode("utf-8", errors="replace")
+                    self._needs_encode = True
                     return f'Encode::encode("UTF-8", Encode::decode("UTF-8", pack("C*", @{{{self._expr(inner)}}}), Encode::FB_DEFAULT))'
                 if to_type == Primitive(kind="string") and inner.typ == Primitive(kind="rune"):
                     return f"chr({self._expr(inner)})"
                 if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
+                    self._needs_encode = True
                     return f"[unpack('C*', Encode::encode('UTF-8', {self._expr(inner)}))]"
                 if to_type == Primitive(kind="int") and inner.typ in (
                     Primitive(kind="string"),

@@ -5,11 +5,15 @@ Simpler than TypeScript - no type annotations, interfaces, or casts.
 
 from __future__ import annotations
 
-from src.backend.util import escape_string
+from src.backend.util import escape_string, ir_contains_call, ir_has_bytes_ops, is_bytes_type
 from src.ir import (
+    BOOL,
+    FLOAT,
     INT,
     STRING,
+    VOID,
     Array,
+    Assert,
     Assign,
     BinaryOp,
     Block,
@@ -18,9 +22,11 @@ from src.ir import (
     Call,
     Cast,
     CharClassify,
+    CatchClause,
     Constant,
     Continue,
     DerefLV,
+    EntryPoint,
     Expr,
     ExprStmt,
     Field,
@@ -140,31 +146,250 @@ class JsBackend:
         else:
             self.lines.append("")
 
-    def _emit_preamble(self) -> None:
+    def _emit_preamble(self, module: Module) -> None:
         """Emit helper functions needed by generated code."""
-        self._line("function range(start, end, step) {")
+        if ir_contains_call(module, "range"):
+            self._line("function range(start, end, step) {")
+            self.indent += 1
+            self._line("if (end === undefined) { end = start; start = 0; }")
+            self._line("if (step === undefined) { step = 1; }")
+            self._line("const result = [];")
+            self._line("if (step > 0) {")
+            self.indent += 1
+            self._line("for (var i = start; i < end; i += step) result.push(i);")
+            self.indent -= 1
+            self._line("} else {")
+            self.indent += 1
+            self._line("for (var i = start; i > end; i += step) result.push(i);")
+            self.indent -= 1
+            self._line("}")
+            self._line("return result;")
+            self.indent -= 1
+            self._line("}")
+        if ir_contains_call(module, "divmod"):
+            self._line("function divmod(a, b) { return [Math.floor(a / b), a % b]; }")
+        if ir_contains_call(module, "pow"):
+            self._line("function pow(base, exp) { return Math.pow(base, exp); }")
+        if ir_contains_call(module, "abs"):
+            self._line("function abs(x) { return Math.abs(x); }")
+        if ir_contains_call(module, "min"):
+            self._line("function min(...args) { return Math.min(...args); }")
+        if ir_contains_call(module, "max"):
+            self._line("function max(...args) { return Math.max(...args); }")
+        if ir_contains_call(module, "round"):
+            # Python-style round: banker's rounding (round half to even)
+            self._line("function round(x, n) {")
+            self.indent += 1
+            self._line("if (n === undefined) {")
+            self.indent += 1
+            self._line("let f = Math.floor(x), c = Math.ceil(x);")
+            self._line("if (Math.abs(x - f) === 0.5) return f % 2 === 0 ? f : c;")
+            self._line("return Math.round(x);")
+            self.indent -= 1
+            self._line("}")
+            self._line("let m = Math.pow(10, n), v = x * m;")
+            self._line("let f = Math.floor(v), c = Math.ceil(v);")
+            self._line("if (Math.abs(v - f) === 0.5) return (f % 2 === 0 ? f : c) / m;")
+            self._line("return Math.round(v) / m;")
+            self.indent -= 1
+            self._line("}")
+        if ir_contains_call(module, "bytes"):
+            self._line(
+                "function bytes(x) { return Array.isArray(x) ? x.slice() : new Array(x).fill(0); }"
+            )
+        if self._needs_bytes_helpers(module):
+            self._emit_bytes_helpers()
+
+    def _needs_bytes_helpers(self, module: Module) -> bool:
+        """Check if module uses byte array operations that need helpers."""
+        return ir_has_bytes_ops(module)
+
+    def _emit_bytes_helpers(self) -> None:
+        """Emit helper functions for byte array operations."""
+        # Array equality
+        self._line("function arrEq(a, b) {")
         self.indent += 1
-        self._line("if (end === undefined) { end = start; start = 0; }")
-        self._line("if (step === undefined) { step = 1; }")
-        self._line("const result = [];")
-        self._line("if (step > 0) {")
-        self.indent += 1
-        self._line("for (var i = start; i < end; i += step) result.push(i);")
-        self.indent -= 1
-        self._line("} else {")
-        self.indent += 1
-        self._line("for (var i = start; i > end; i += step) result.push(i);")
+        self._line("if (a.length !== b.length) return false;")
+        self._line("for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;")
+        self._line("return true;")
         self.indent -= 1
         self._line("}")
-        self._line("return result;")
+        # Array less-than (lexicographic)
+        self._line("function arrLt(a, b) {")
+        self.indent += 1
+        self._line("for (let i = 0; i < Math.min(a.length, b.length); i++) {")
+        self.indent += 1
+        self._line("if (a[i] < b[i]) return true;")
+        self._line("if (a[i] > b[i]) return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return a.length < b.length;")
+        self.indent -= 1
+        self._line("}")
+        # Array concatenation
+        self._line("function arrConcat(...arrs) { return [].concat(...arrs); }")
+        # Array repeat
+        self._line("function arrRepeat(a, n) {")
+        self.indent += 1
+        self._line("let r = []; for (let i = 0; i < n; i++) r.push(...a); return r;")
+        self.indent -= 1
+        self._line("}")
+        # Subsequence contains
+        self._line("function arrContains(h, n) {")
+        self.indent += 1
+        self._line("if (n.length === 0) return true;")
+        self._line("outer: for (let i = 0; i <= h.length - n.length; i++) {")
+        self.indent += 1
+        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+        # Find subsequence index
+        self._line("function arrFind(h, n) {")
+        self.indent += 1
+        self._line("if (n.length === 0) return 0;")
+        self._line("outer: for (let i = 0; i <= h.length - n.length; i++) {")
+        self.indent += 1
+        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;")
+        self._line("return i;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return -1;")
+        self.indent -= 1
+        self._line("}")
+        # Count occurrences
+        self._line("function arrCount(h, n) {")
+        self.indent += 1
+        self._line("if (n.length === 0) return 0;")
+        self._line("let c = 0, i = 0;")
+        self._line("while (i <= h.length - n.length) {")
+        self.indent += 1
+        self._line("let m = true;")
+        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) { m = false; break; }")
+        self._line("if (m) { c++; i += n.length; } else { i++; }")
+        self.indent -= 1
+        self._line("}")
+        self._line("return c;")
+        self.indent -= 1
+        self._line("}")
+        # startsWith / endsWith
+        self._line("function arrStartsWith(a, p) {")
+        self.indent += 1
+        self._line("if (p.length > a.length) return false;")
+        self._line("for (let i = 0; i < p.length; i++) if (a[i] !== p[i]) return false;")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrEndsWith(a, s) {")
+        self.indent += 1
+        self._line("if (s.length > a.length) return false;")
+        self._line("let o = a.length - s.length;")
+        self._line("for (let i = 0; i < s.length; i++) if (a[o+i] !== s[i]) return false;")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+        # upper/lower for byte arrays
+        self._line("function arrUpper(a) { return a.map(b => b >= 97 && b <= 122 ? b - 32 : b); }")
+        self._line("function arrLower(a) { return a.map(b => b >= 65 && b <= 90 ? b + 32 : b); }")
+        # strip
+        self._line("function arrStrip(a, cs) {")
+        self.indent += 1
+        self._line("let s = 0, e = a.length;")
+        self._line("while (s < e && cs.includes(a[s])) s++;")
+        self._line("while (e > s && cs.includes(a[e-1])) e--;")
+        self._line("return a.slice(s, e);")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrLstrip(a, cs) {")
+        self.indent += 1
+        self._line("let s = 0; while (s < a.length && cs.includes(a[s])) s++; return a.slice(s);")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrRstrip(a, cs) {")
+        self.indent += 1
+        self._line(
+            "let e = a.length; while (e > 0 && cs.includes(a[e-1])) e--; return a.slice(0, e);"
+        )
+        self.indent -= 1
+        self._line("}")
+        # split
+        self._line("function arrSplit(a, sep) {")
+        self.indent += 1
+        self._line("let r = [], i = 0;")
+        self._line("while (i <= a.length) {")
+        self.indent += 1
+        self._line("let j = arrFind(a.slice(i), sep);")
+        self._line("if (j === -1) { r.push(a.slice(i)); break; }")
+        self._line("r.push(a.slice(i, i + j)); i += j + sep.length;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return r;")
+        self.indent -= 1
+        self._line("}")
+        # join
+        self._line("function arrJoin(arrs, sep) {")
+        self.indent += 1
+        self._line("if (arrs.length === 0) return [];")
+        self._line("let r = arrs[0].slice();")
+        self._line("for (let i = 1; i < arrs.length; i++) { r.push(...sep); r.push(...arrs[i]); }")
+        self._line("return r;")
+        self.indent -= 1
+        self._line("}")
+        # replace
+        self._line("function arrReplace(a, old, nw) {")
+        self.indent += 1
+        self._line("if (old.length === 0) return a.slice();")
+        self._line("let r = [], i = 0;")
+        self._line("while (i < a.length) {")
+        self.indent += 1
+        self._line("if (arrStartsWith(a.slice(i), old)) { r.push(...nw); i += old.length; }")
+        self._line("else { r.push(a[i]); i++; }")
+        self.indent -= 1
+        self._line("}")
+        self._line("return r;")
+        self.indent -= 1
+        self._line("}")
+        # Step slicing (Python a[::step])
+        self._line("function arrStep(a, lo, hi, step) {")
+        self.indent += 1
+        self._line("if (lo === null) lo = step > 0 ? 0 : a.length - 1;")
+        self._line("if (hi === null) hi = step > 0 ? a.length : -1;")
+        self._line("let r = [];")
+        self._line("if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }")
+        self._line("else { for (let i = lo; i > hi; i += step) r.push(a[i]); }")
+        self._line("return r;")
+        self.indent -= 1
+        self._line("}")
+        # Deep equality for arrays of arrays (used by split result comparisons)
+        self._line("function deepArrEq(a, b) {")
+        self.indent += 1
+        self._line("if (a.length !== b.length) return false;")
+        self._line("for (let i = 0; i < a.length; i++) {")
+        self.indent += 1
+        self._line("if (Array.isArray(a[i]) && Array.isArray(b[i])) {")
+        self.indent += 1
+        self._line("if (!arrEq(a[i], b[i])) return false;")
+        self.indent -= 1
+        self._line("} else if (a[i] !== b[i]) return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return true;")
         self.indent -= 1
         self._line("}")
 
     def _emit_module(self, module: Module) -> None:
         if module.doc:
             self._line(f"/** {module.doc} */")
-        self._emit_preamble()
-        need_blank = True
+        need_blank = False
+        preamble_funcs = ("range", "divmod", "pow", "abs", "min", "max", "bytes")
+        if any(ir_contains_call(module, f) for f in preamble_funcs) or self._needs_bytes_helpers(
+            module
+        ):
+            self._emit_preamble(module)
+            need_blank = True
         if module.constants:
             for const in module.constants:
                 self._emit_constant(const)
@@ -180,17 +405,20 @@ class JsBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
-        # Emit CommonJS exports
-        symbols = self._get_public_symbols(module)
-        if symbols:
+        if module.entrypoint is not None:
             self._line()
-            self._line("// CommonJS exports")
-            self._line("if (typeof module !== 'undefined') {")
-            self.indent += 1
-            exports = ", ".join(symbols)
-            self._line(f"module.exports = {{ {exports} }};")
-            self.indent -= 1
-            self._line("}")
+            self._emit_stmt(module.entrypoint)
+        else:
+            symbols = self._get_public_symbols(module)
+            if symbols:
+                self._line()
+                self._line("// CommonJS exports")
+                self._line("if (typeof module !== 'undefined') {")
+                self.indent += 1
+                exports = ", ".join(symbols)
+                self._line(f"module.exports = {{ {exports} }};")
+                self.indent -= 1
+                self._line("}")
 
     def _emit_constant(self, const: Constant) -> None:
         val = self._expr(const.value)
@@ -263,6 +491,9 @@ class JsBackend:
         self.indent += 1
         for stmt in func.body:
             self._emit_stmt(stmt)
+        # Add implicit return null for void functions to match Python's None semantics
+        if _is_void_func(func):
+            self._line("return null;")
         self.indent -= 1
         self._line("}")
 
@@ -300,6 +531,14 @@ class JsBackend:
                     self._line(f"let {_camel(name)} = {val};")
                 else:
                     self._line(f"let {_camel(name)};")
+            case Assign(target=IndexLV(obj=obj, index=index), value=value) if isinstance(
+                obj.typ, Map
+            ):
+                # Map assignment uses .set() instead of bracket notation
+                obj_str = self._expr(obj)
+                idx_str = self._expr(index)
+                val = self._expr(value)
+                self._line(f"{obj_str}.set({idx_str}, {val});")
             case Assign(target=target, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
@@ -338,6 +577,14 @@ class JsBackend:
                     self._line(f"return {self._expr(value)};")
                 else:
                     self._line("return;")
+            case Assert(test=test, message=message):
+                cond_str = self._expr(test)
+                if message is not None:
+                    self._line(f"if (!({cond_str})) {{ throw new Error({self._expr(message)}); }}")
+                else:
+                    self._line(f'if (!({cond_str})) {{ throw new Error("Assertion failed"); }}')
+            case EntryPoint(function_name=function_name):
+                self._line(f"process.exitCode = {_camel(function_name)}();")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
                 self._emit_hoisted_vars(stmt.hoisted_vars)
                 if init is not None:
@@ -387,9 +634,9 @@ class JsBackend:
             case Block(body=body):
                 for s in body:
                     self._emit_stmt(s)
-            case TryCatch(body=body, catch_var=catch_var, catch_body=catch_body, reraise=reraise):
+            case TryCatch(body=body, catches=catches, reraise=reraise):
                 self._emit_hoisted_vars(stmt.hoisted_vars)
-                self._emit_try_catch(body, catch_var, catch_body, reraise)
+                self._emit_try_catch(body, catches, reraise)
             case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
                 if reraise_var:
                     self._line(f"throw {_camel(reraise_var)}")
@@ -612,8 +859,7 @@ class JsBackend:
     def _emit_try_catch(
         self,
         body: list[Stmt],
-        catch_var: str | None,
-        catch_body: list[Stmt],
+        catches: list[CatchClause],
         reraise: bool,
     ) -> None:
         self._line("try {")
@@ -621,13 +867,83 @@ class JsBackend:
         for s in body:
             self._emit_stmt(s)
         self.indent -= 1
-        var = _camel(catch_var) if catch_var else "_e"
-        self._line(f"}} catch ({var}) {{")
+        self._line("} catch (_e) {")
         self.indent += 1
-        for s in catch_body:
-            self._emit_stmt(s)
-        if reraise:
-            self._line(f"throw {var};")
+        if not catches:
+            if reraise:
+                self._line("throw _e;")
+            self.indent -= 1
+            self._line("}")
+            return
+
+        if len(catches) == 1:
+            clause = catches[0]
+            if clause.var:
+                self._line(f"let {_camel(clause.var)} = _e;")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("throw _e;")
+            self.indent -= 1
+            self._line("}")
+            return
+
+        emitted_chain = False
+        has_default = False
+        seen_conds: set[str] = set()
+        for clause in catches:
+            cond: str | None = None
+            if isinstance(clause.typ, StructRef):
+                exc_name = _PYTHON_EXCEPTION_MAP.get(clause.typ.name, clause.typ.name)
+                cond = f"_e instanceof {exc_name}"
+            if cond is not None and cond in seen_conds:
+                continue
+            if cond is not None:
+                seen_conds.add(cond)
+            if cond is None:
+                if not emitted_chain:
+                    if clause.var:
+                        self._line(f"let {_camel(clause.var)} = _e;")
+                    for s in clause.body:
+                        self._emit_stmt(s)
+                    if reraise:
+                        self._line("throw _e;")
+                    self.indent -= 1
+                    self._line("}")
+                    return
+                self._line("else {")
+                self.indent += 1
+                if clause.var:
+                    self._line(f"let {_camel(clause.var)} = _e;")
+                for s in clause.body:
+                    self._emit_stmt(s)
+                if reraise:
+                    self._line("throw _e;")
+                self.indent -= 1
+                self._line("}")
+                emitted_chain = True
+                has_default = True
+                break
+
+            keyword = "if" if not emitted_chain else "else if"
+            self._line(f"{keyword} ({cond}) {{")
+            self.indent += 1
+            if clause.var:
+                self._line(f"let {_camel(clause.var)} = _e;")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if reraise:
+                self._line("throw _e;")
+            self.indent -= 1
+            self._line("}")
+            emitted_chain = True
+
+        if emitted_chain and not has_default:
+            self._line("else {")
+            self.indent += 1
+            self._line("throw _e;")
+            self.indent -= 1
+            self._line("}")
         self.indent -= 1
         self._line("}")
 
@@ -668,9 +984,11 @@ class JsBackend:
                     and typ.kind in ("int", "byte", "rune")
                 ):
                     return f"{obj_str}.charCodeAt({idx_str})"
+                if isinstance(obj_type, Map):
+                    return f"{obj_str}.get({idx_str})"
                 return f"{obj_str}[{idx_str}]"
-            case SliceExpr(obj=obj, low=low, high=high):
-                return self._slice_expr(obj, low, high)
+            case SliceExpr(obj=obj, low=low, high=high, step=step):
+                return self._slice_expr(obj, low, high, step)
             case ParseInt(string=s, base=b):
                 return f"parseInt({self._expr(s)}, {self._expr(b)})"
             case IntToStr(value=v):
@@ -687,6 +1005,15 @@ class JsBackend:
                 return f"{regex_map[kind]}.test({self._expr(char)})"
             case TrimChars(string=s, chars=chars, mode=mode):
                 s_str = self._expr(s)
+                # For byte arrays, use arr* functions
+                if is_bytes_type(s.typ):
+                    chars_str = self._expr(chars)
+                    if mode == "left":
+                        return f"arrLstrip({s_str}, {chars_str})"
+                    elif mode == "right":
+                        return f"arrRstrip({s_str}, {chars_str})"
+                    else:
+                        return f"arrStrip({s_str}, {chars_str})"
                 if isinstance(chars, StringLit) and chars.value == " \t\n\r":
                     method_map = {"left": "trimStart", "right": "trimEnd", "both": "trim"}
                     return f"{s_str}.{method_map[mode]}()"
@@ -701,10 +1028,32 @@ class JsBackend:
                     return f"{s_str}.replace(/^[{escaped}]+/, '').replace(/[{escaped}]+$/, '')"
             case Call(func="_intPtr", args=[arg]):
                 return self._expr(arg)
+            case Call(func="float", args=[StringLit(value="nan")]):
+                return "NaN"
+            case Call(func="float", args=[StringLit(value="inf")]):
+                return "Infinity"
+            case Call(func="float", args=[StringLit(value="-inf")]):
+                return "-Infinity"
+            case Call(func="float", args=[arg]):
+                return f"Number({self._expr(arg)})"
+            case Call(func="print", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"console.log({args_str})"
+            case Call(func="repr", args=[NilLit()]):
+                return '"None"'
+            case Call(func="repr", args=[arg]) if arg.typ == BOOL:
+                return f'({self._expr(arg)} ? "True" : "False")'
+            case Call(func="repr", args=[arg]):
+                return f"String({self._expr(arg)})"
+            case Call(func="bool", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"Boolean({args_str})"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"{_camel(func)}({args_str})"
-            case MethodCall(obj=obj, method="join", args=[arr], receiver_type=_):
+            case MethodCall(obj=obj, method="join", args=[arr], receiver_type=receiver_type) if (
+                not _is_bytes_join(arr, receiver_type, [obj])
+            ):
                 return f"{self._expr(arr)}.join({self._expr(obj)})"
             case MethodCall(
                 obj=obj, method="extend", args=[other], receiver_type=receiver_type
@@ -714,10 +1063,22 @@ class JsBackend:
                 _is_array_type(receiver_type)
             ):
                 return f"{self._expr(obj)}.slice()"
+            case MethodCall(obj=obj, method="get", args=[key], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
+                # Map.get() returns undefined for missing keys; convert to null for Python semantics
+                obj_str = self._expr(obj)
+                key_str = self._expr(key)
+                return f"({obj_str}.get({key_str}) ?? null)"
             case MethodCall(
                 obj=obj, method="get", args=[key, default], receiver_type=receiver_type
             ) if isinstance(receiver_type, Map):
-                return f"{self._expr(obj)}.get({self._expr(key)}) ?? {self._expr(default)}"
+                # Use ternary to match Python semantics: default only when key missing (not when value is null)
+                obj_str = self._expr(obj)
+                key_str = self._expr(key)
+                return (
+                    f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
+                )
             case MethodCall(
                 obj=obj, method="replace", args=[StringLit(value=old_str), new], receiver_type=_
             ):
@@ -735,6 +1096,47 @@ class JsBackend:
             ) if _is_array_type(receiver_type):
                 # Python: list.pop(0) -> JS: list.shift()
                 return f"{self._expr(obj)}.shift()"
+            case MethodCall(obj=obj, method="join", args=args, receiver_type=receiver_type) if (
+                _is_bytes_join(obj, receiver_type, args)
+            ):
+                # Join on list of bytes: list.join(sep) -> arrJoin(list, sep)
+                obj_str = self._expr(obj)
+                sep_str = self._expr(args[0]) if args else "[]"
+                return f"arrJoin({obj_str}, {sep_str})"
+            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type) if (
+                is_bytes_type(receiver_type)
+            ):
+                # Byte array methods need helper functions
+                obj_str = self._expr(obj)
+                if method == "count" and len(args) == 1:
+                    return f"arrCount({obj_str}, {self._expr(args[0])})"
+                if method == "find" and len(args) == 1:
+                    return f"arrFind({obj_str}, {self._expr(args[0])})"
+                if method == "startswith" and len(args) == 1:
+                    return f"arrStartsWith({obj_str}, {self._expr(args[0])})"
+                if method == "endswith" and len(args) == 1:
+                    return f"arrEndsWith({obj_str}, {self._expr(args[0])})"
+                if method == "upper":
+                    return f"arrUpper({obj_str})"
+                if method == "lower":
+                    return f"arrLower({obj_str})"
+                if method == "strip" and len(args) == 1:
+                    return f"arrStrip({obj_str}, {self._expr(args[0])})"
+                if method == "lstrip" and len(args) == 1:
+                    return f"arrLstrip({obj_str}, {self._expr(args[0])})"
+                if method == "rstrip" and len(args) == 1:
+                    return f"arrRstrip({obj_str}, {self._expr(args[0])})"
+                if method == "split" and len(args) == 1:
+                    return f"arrSplit({obj_str}, {self._expr(args[0])})"
+                if method == "replace" and len(args) == 2:
+                    return f"arrReplace({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
+                # For join, the bytes object is the separator
+                if method == "join" and len(args) == 1:
+                    return f"arrJoin({self._expr(args[0])}, {obj_str})"
+                # Fallback to standard handling
+                args_str = ", ".join(self._expr(a) for a in args)
+                js_method = _method_name(method, receiver_type)
+                return f"{obj_str}.{js_method}({args_str})"
             case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
                 args_str = ", ".join(self._expr(a) for a in args)
                 js_method = _method_name(method, receiver_type)
@@ -746,13 +1148,19 @@ class JsBackend:
             case Truthy(expr=e):
                 inner_str = self._expr(e)
                 inner_type = e.typ
-                if isinstance(inner_type, (Slice, Map, Set)) or inner_type == STRING:
+                if isinstance(inner_type, (Map, Set)):
+                    return f"({inner_str}.size > 0)"
+                if isinstance(inner_type, Slice) or inner_type == STRING:
                     return f"({inner_str}.length > 0)"
-                if isinstance(inner_type, Optional) and isinstance(
-                    inner_type.inner, (Slice, Map, Set)
-                ):
+                if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Map, Set)):
+                    return f"({inner_str} != null && {inner_str}.size > 0)"
+                if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Slice):
                     return f"({inner_str} != null && {inner_str}.length > 0)"
                 if inner_type == INT:
+                    if isinstance(e, BinaryOp):
+                        return f"(({inner_str}) !== 0)"
+                    return f"({inner_str} !== 0)"
+                if inner_type == FLOAT:
                     if isinstance(e, BinaryOp):
                         return f"(({inner_str}) !== 0)"
                     return f"({inner_str} !== 0)"
@@ -761,8 +1169,55 @@ class JsBackend:
                 return self._containment_check(left, right, negated=False)
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
+            case BinaryOp(op="//", left=left, right=right):
+                left_str = self._expr_with_precedence(left, "/", is_right=False)
+                right_str = self._expr_with_precedence(right, "/", is_right=True)
+                return f"Math.floor({left_str} / {right_str})"
+            case BinaryOp(op=op, left=left, right=right) if _is_bytes_list_type(
+                left.typ
+            ) or _is_bytes_list_type(right.typ):
+                # Array of byte arrays (e.g., split result) need deep comparison
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                if op == "==":
+                    return f"deepArrEq({left_str}, {right_str})"
+                if op == "!=":
+                    return f"!deepArrEq({left_str}, {right_str})"
+                # Fallback
+                js_op = _binary_op(op)
+                return f"{left_str} {js_op} {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if is_bytes_type(
+                left.typ
+            ) or is_bytes_type(right.typ):
+                # Byte array operations need helper functions
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                if op == "==":
+                    return f"arrEq({left_str}, {right_str})"
+                if op == "!=":
+                    return f"!arrEq({left_str}, {right_str})"
+                if op == "<":
+                    return f"arrLt({left_str}, {right_str})"
+                if op == "<=":
+                    return f"(arrLt({left_str}, {right_str}) || arrEq({left_str}, {right_str}))"
+                if op == ">":
+                    return f"arrLt({right_str}, {left_str})"
+                if op == ">=":
+                    return f"(arrLt({right_str}, {left_str}) || arrEq({left_str}, {right_str}))"
+                if op == "+":
+                    return f"arrConcat({left_str}, {right_str})"
+                if op == "*":
+                    # One side is bytes, other is int
+                    if is_bytes_type(left.typ):
+                        return f"arrRepeat({left_str}, {right_str})"
+                    return f"arrRepeat({right_str}, {left_str})"
+                # Fallback to normal handling
+                js_op = _binary_op(op)
+                return f"{left_str} {js_op} {right_str}"
             case BinaryOp(op=op, left=left, right=right):
                 js_op = _binary_op(op)
+                if op in ("==", "!=") and _is_bool_int_compare(left, right):
+                    js_op = op
                 left_str = self._expr_with_precedence(left, op, is_right=False)
                 right_str = self._expr_with_precedence(right, op, is_right=True)
                 return f"{left_str} {js_op} {right_str}"
@@ -780,14 +1235,29 @@ class JsBackend:
                 return f"{left_str} !== {right_str}"
             case UnaryOp(op=op, operand=operand):
                 inner = self._expr(operand)
-                if isinstance(operand, BinaryOp):
+                # Wrap in parens if operand is BinaryOp or UnaryOp (to avoid --x, ++x)
+                if isinstance(operand, (BinaryOp, UnaryOp)):
                     inner = f"({inner})"
                 return f"{op}{inner}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 return f"({self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
+            case Cast(expr=NilLit(), to_type=to_type) if (
+                isinstance(to_type, Primitive) and to_type.kind == "string"
+            ):
+                return '"None"'
             case Cast(expr=inner, to_type=to_type):
-                # No type casts in JavaScript - just emit the inner expression
-                # But handle string/byte conversions
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind in ("int", "byte", "rune")
+                    and inner.typ == BOOL
+                ):
+                    return f"Number({self._expr(inner)})"
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind == "string"
+                    and inner.typ == BOOL
+                ):
+                    return f'({self._expr(inner)} ? "True" : "False")'
                 if (
                     isinstance(to_type, Slice)
                     and isinstance(to_type.element, Primitive)
@@ -811,6 +1281,23 @@ class JsBackend:
                     and inner.typ.kind in ("rune", "int")
                 ):
                     return f"String.fromCodePoint({self._expr(inner)})"
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind == "string"
+                    and inner.typ == FLOAT
+                ):
+                    # Preserve decimal point for floats (1.0 -> "1.0", not "1")
+                    inner_str = self._expr(inner)
+                    return f"(Number.isInteger({inner_str}) ? {inner_str}.toFixed(1) : String({inner_str}))"
+                if isinstance(to_type, Primitive) and to_type.kind == "string":
+                    return f"String({self._expr(inner)})"
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind in ("int", "byte", "rune")
+                    and inner.typ == FLOAT
+                ):
+                    # Python's int() truncates toward zero
+                    return f"Math.trunc({self._expr(inner)})"
                 return self._expr(inner)
             case TypeAssert(expr=inner, asserted=asserted):
                 # No type assertions in JavaScript - just emit the inner expression
@@ -825,6 +1312,9 @@ class JsBackend:
                 op = "!==" if negated else "==="
                 return f"{self._expr(inner)} {op} null"
             case Len(expr=inner):
+                inner_type = inner.typ
+                if isinstance(inner_type, (Map, Set)):
+                    return f"{self._expr(inner)}.size"
                 return f"{self._expr(inner)}.length"
             case MakeSlice(element_type=_, length=length, capacity=_):
                 if length is not None:
@@ -880,10 +1370,21 @@ class JsBackend:
         neg = "!" if negated else ""
         if isinstance(container_type, (Set, Map)):
             return f"{neg}{container_str}.has({item_str})"
+        # For byte arrays, use arrContains for subsequence check
+        if is_bytes_type(container_type):
+            return f"{neg}arrContains({container_str}, {item_str})"
         return f"{neg}{container_str}.includes({item_str})"
 
-    def _slice_expr(self, obj: Expr, low: Expr | None, high: Expr | None) -> str:
+    def _slice_expr(
+        self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
+    ) -> str:
         obj_str = self._expr(obj)
+        if step is not None:
+            # Handle stepped slicing with helper function
+            low_str = self._expr(low) if low else "null"
+            high_str = self._expr(high) if high else "null"
+            step_str = self._expr(step)
+            return f"arrStep({obj_str}, {low_str}, {high_str}, {step_str})"
         if low is None and high is None:
             return f"{obj_str}.slice()"
         elif low is None:
@@ -1009,6 +1510,16 @@ def _safe_name(name: str) -> str:
     return name
 
 
+_PYTHON_EXCEPTION_MAP = {
+    "Exception": "Error",
+    "AssertionError": "Error",
+    "ValueError": "Error",
+    "RuntimeError": "Error",
+    "KeyError": "Error",
+    "IndexError": "RangeError",
+    "TypeError": "TypeError",
+}
+
 _STRING_METHOD_MAP = {
     "startswith": "startsWith",
     "endswith": "endsWith",
@@ -1047,6 +1558,8 @@ def _binary_op(op: str) -> str:
             return "==="
         case "!=":
             return "!=="
+        case "//":
+            return "/"  # Floor division handled specially in BinaryOp emission
         case _:
             return op
 
@@ -1087,6 +1600,68 @@ def _escape_regex_literal(s: str) -> str:
         else:
             result.append(c)
     return "".join(result)
+
+
+def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
+    """True when one operand is bool and the other is int, or involves bool arithmetic."""
+    l, r = left.typ, right.typ
+    if (l == BOOL and r == INT) or (l == INT and r == BOOL):
+        return True
+    # Check for arithmetic on bools (e.g., true + false == true)
+    if l == BOOL or r == BOOL:
+        if isinstance(left, BinaryOp) and left.op in ("+", "-", "*", "/", "//", "%"):
+            return True
+        if isinstance(right, BinaryOp) and right.op in ("+", "-", "*", "/", "//", "%"):
+            return True
+    # Check for ternary with mixed bool/int (e.g., min(true, 2) == 1)
+    if isinstance(left, Ternary) and _ternary_has_bool_int_mix(left):
+        return True
+    if isinstance(right, Ternary) and _ternary_has_bool_int_mix(right):
+        return True
+    return False
+
+
+def _ternary_has_bool_int_mix(t: Ternary) -> bool:
+    """Check if a ternary has both bool and int in its branches."""
+    then_type = t.then_expr.typ
+    else_type = t.else_expr.typ
+    types = {then_type, else_type}
+    return BOOL in types and INT in types
+
+
+def _is_void_func(func: Function) -> bool:
+    """Check if a function returns void/None and needs implicit return null."""
+    if func.ret != VOID:
+        return False
+    # Don't add if function already ends with return
+    if func.body and isinstance(func.body[-1], Return):
+        return False
+    return True
+
+
+def _is_bytes_list_type(typ: Type) -> bool:
+    """Check if type is a list of byte arrays (Slice of Slice of byte)."""
+    if isinstance(typ, Slice):
+        return is_bytes_type(typ.element)
+    return False
+
+
+def _is_bytes_join(obj: Expr, receiver_type: Type, args: list[Expr]) -> bool:
+    """Check if this is a join operation on byte arrays."""
+    # Check receiver type
+    if _is_bytes_list_type(receiver_type):
+        return True
+    # Check object type
+    if obj.typ is not None and _is_bytes_list_type(obj.typ):
+        return True
+    # Check if object is a SliceLit with SliceLit elements
+    if isinstance(obj, SliceLit) and obj.elements:
+        if isinstance(obj.elements[0], SliceLit):
+            return True
+    # Check if separator arg is bytes
+    if args and args[0].typ is not None and is_bytes_type(args[0].typ):
+        return True
+    return False
 
 
 def _ends_with_return(body: list[Stmt]) -> bool:

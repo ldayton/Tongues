@@ -26,7 +26,7 @@ The transpiler currently supports these target languages, although output isn't 
 | ---------- | ------------ | --------- |
 | C          | GCC 13       | Prototype |
 | C#         | .NET 8       | Prototype |
-| Dart       | Dart 3.2     | Test pass |
+| Dart       | Dart 3.2     | Prototype |
 | Go         | Go 1.21      | Prototype |
 | Java       | Temurin 21   | Prototype |
 | Javascript | Node.js 21   | Prototype |
@@ -37,8 +37,8 @@ The transpiler currently supports these target languages, although output isn't 
 | Ruby       | Ruby 3.2     | Prototype |
 | Typescript | tsc 5.3      | Prototype |
 | Swift      | Swift 5.9    | WIP       |
-| Rust       | Rust 1.75    | Future    |
-| Zig        | Zig 0.11     | Future    |
+| Rust       | Rust 1.75    | WIP       |
+| Zig        | Zig 0.11     | WIP       |
 
 We target language versions from ~3 years ago. New enough for modern idioms, old enough to be everywhere—LTS distros, corporate environments, CI images. No bleeding-edge features, no legacy baggage.
 

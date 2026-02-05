@@ -98,7 +98,8 @@ def _scan_stmt(stmt: Stmt, func_params: dict[str, list[Param]], current_struct: 
         _scan_stmts(stmt.body, func_params, current_struct)
     elif isinstance(stmt, TryCatch):
         _scan_stmts(stmt.body, func_params, current_struct)
-        _scan_stmts(stmt.catch_body, func_params, current_struct)
+        for clause in stmt.catches:
+            _scan_stmts(clause.body, func_params, current_struct)
     elif isinstance(stmt, TypeSwitch):
         _scan_expr(stmt.expr, func_params, current_struct)
         for case in stmt.cases:
@@ -245,17 +246,20 @@ def _scan_expr(expr: Expr, func_params: dict[str, list[Param]], current_struct: 
             _scan_expr(e, func_params, current_struct)
     elif isinstance(expr, ListComp):
         _scan_expr(expr.element, func_params, current_struct)
-        _scan_expr(expr.iterable, func_params, current_struct)
-        if expr.condition:
-            _scan_expr(expr.condition, func_params, current_struct)
+        for gen in expr.generators:
+            _scan_expr(gen.iterable, func_params, current_struct)
+            for cond in gen.conditions:
+                _scan_expr(cond, func_params, current_struct)
     elif isinstance(expr, SetComp):
         _scan_expr(expr.element, func_params, current_struct)
-        _scan_expr(expr.iterable, func_params, current_struct)
-        if expr.condition:
-            _scan_expr(expr.condition, func_params, current_struct)
+        for gen in expr.generators:
+            _scan_expr(gen.iterable, func_params, current_struct)
+            for cond in gen.conditions:
+                _scan_expr(cond, func_params, current_struct)
     elif isinstance(expr, DictComp):
         _scan_expr(expr.key, func_params, current_struct)
         _scan_expr(expr.value, func_params, current_struct)
-        _scan_expr(expr.iterable, func_params, current_struct)
-        if expr.condition:
-            _scan_expr(expr.condition, func_params, current_struct)
+        for gen in expr.generators:
+            _scan_expr(gen.iterable, func_params, current_struct)
+            for cond in gen.conditions:
+                _scan_expr(cond, func_params, current_struct)

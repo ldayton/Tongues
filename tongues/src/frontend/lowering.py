@@ -65,8 +65,24 @@ def get_expr_type(node: ASTNode) -> "Type":
             return INT
         if isinstance(value, str):
             return STRING
+        if isinstance(value, bytes):
+            return Slice(BYTE)
         if isinstance(value, float):
             return FLOAT
+    # BoolOp (and/or) and Compare always produce BOOL
+    if node.get("_type") in ("BoolOp", "Compare"):
+        return BOOL
+    # UnaryOp: type depends on operator and operand
+    if node.get("_type") == "UnaryOp":
+        op = node.get("op")
+        if is_type(op, ["Not"]):
+            return BOOL
+        if is_type(op, ["Invert"]):
+            return INT
+        # USub, UAdd: type is same as operand
+        operand = node.get("operand")
+        if operand:
+            return get_expr_type(operand)
     return InterfaceRef("any")
 
 
@@ -117,7 +133,7 @@ def binop_to_str(op: ASTNode) -> str:
         "Sub": "-",
         "Mult": "*",
         "Div": "/",
-        "FloorDiv": "/",
+        "FloorDiv": "//",
         "Mod": "%",
         "Pow": "**",
         "LShift": "<<",
@@ -564,6 +580,12 @@ def lower_expr_Constant(node: ASTNode) -> "ir.Expr":
         return ir.FloatLit(value=value, typ=FLOAT, loc=loc_from_node(node))
     if isinstance(value, str):
         return ir.StringLit(value=value, typ=STRING, loc=loc_from_node(node))
+    if isinstance(value, bytes):
+        # Convert bytes to SliceLit of byte values
+        elements = [ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node)) for b in value]
+        return ir.SliceLit(
+            element_type=BYTE, elements=elements, typ=Slice(BYTE), loc=loc_from_node(node)
+        )
     if value is None:
         return ir.NilLit(typ=InterfaceRef("any"), loc=loc_from_node(node))
     return ir.Var(name="TODO_Constant_unknown", typ=InterfaceRef("any"))
@@ -732,13 +754,17 @@ def lower_expr_Subscript(
     if is_type(node_slice, ["Slice"]):
         slice_lower = node_slice.get("lower")
         slice_upper = node_slice.get("upper")
+        slice_step = node_slice.get("step")
         low = convert_negative_index(slice_lower, obj, node, lower_expr) if slice_lower else None
         high = convert_negative_index(slice_upper, obj, node, lower_expr) if slice_upper else None
+        step = lower_expr(slice_step) if slice_step else None
         # Slicing preserves type - string slice is still string, slice of slice is still slice
         slice_type: "Type" = get_expr_type(node_value)
         if slice_type == InterfaceRef("any"):
             slice_type = obj.typ
-        return ir.SliceExpr(obj=obj, low=low, high=high, typ=slice_type, loc=loc_from_node(node))
+        return ir.SliceExpr(
+            obj=obj, low=low, high=high, step=step, typ=slice_type, loc=loc_from_node(node)
+        )
     idx = convert_negative_index(node_slice, obj, node, lower_expr)
     # Infer element type from slice type
     elem_type: "Type" = InterfaceRef("any")
@@ -858,17 +884,22 @@ def lower_expr_Compare(
             and is_type(comparators[0], ["Constant"])
             and comparators[0].get("value") is None
         ):
-            # For strings, compare to empty string; for bools, compare to false
             left_type = get_expr_type(node_left)
+            # For optional strings (str | None), compare to empty string sentinel
             if left_type == STRING:
-                cmp_op = "=="
-                return ir.BinaryOp(
-                    op=cmp_op,
-                    left=left,
-                    right=ir.StringLit(value="", typ=STRING),
-                    typ=BOOL,
-                    loc=loc_from_node(node),
-                )
+                if (
+                    is_type(node_left, ["Name"])
+                    and node_left.get("id") in type_ctx.optional_strings
+                ):
+                    return ir.BinaryOp(
+                        op="==",
+                        left=left,
+                        right=ir.StringLit(value="", typ=STRING),
+                        typ=BOOL,
+                        loc=loc_from_node(node),
+                    )
+                # Plain string - use IsNil (will always be False)
+                return ir.IsNil(expr=left, negated=False, typ=BOOL, loc=loc_from_node(node))
             if left_type == BOOL:
                 return ir.UnaryOp(op="!", operand=left, typ=BOOL, loc=loc_from_node(node))
             # For sentinel ints, compare to the sentinel value
@@ -889,17 +920,22 @@ def lower_expr_Compare(
             and is_type(comparators[0], ["Constant"])
             and comparators[0].get("value") is None
         ):
-            # For strings, compare to non-empty string; for bools, just use the bool itself
             left_type = get_expr_type(node_left)
+            # For optional strings (str | None), compare to empty string sentinel
             if left_type == STRING:
-                cmp_op = "!="
-                return ir.BinaryOp(
-                    op=cmp_op,
-                    left=left,
-                    right=ir.StringLit(value="", typ=STRING),
-                    typ=BOOL,
-                    loc=loc_from_node(node),
-                )
+                if (
+                    is_type(node_left, ["Name"])
+                    and node_left.get("id") in type_ctx.optional_strings
+                ):
+                    return ir.BinaryOp(
+                        op="!=",
+                        left=left,
+                        right=ir.StringLit(value="", typ=STRING),
+                        typ=BOOL,
+                        loc=loc_from_node(node),
+                    )
+                # Plain string - use IsNil (will always be True)
+                return ir.IsNil(expr=left, negated=True, typ=BOOL, loc=loc_from_node(node))
             if left_type == BOOL:
                 return left  # bool is its own truthy value
             # For sentinel ints, compare to the sentinel value
@@ -915,6 +951,57 @@ def lower_expr_Compare(
                     loc=loc_from_node(node),
                 )
             return ir.IsNil(expr=left, negated=True, typ=BOOL, loc=loc_from_node(node))
+        # Handle "== None" / "!= None" for sentinel ints and optional strings
+        if (
+            is_type(ops[0], ["Eq"])
+            and is_type(comparators[0], ["Constant"])
+            and comparators[0].get("value") is None
+        ):
+            # Check for optional string first
+            if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+                return ir.BinaryOp(
+                    op="==",
+                    left=left,
+                    right=ir.StringLit(value="", typ=STRING),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
+            sentinel = get_sentinel_value(
+                node_left, type_ctx, current_class_name, sentinel_int_fields
+            )
+            if sentinel is not None:
+                return ir.BinaryOp(
+                    op="==",
+                    left=left,
+                    right=ir.IntLit(value=sentinel, typ=INT),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
+        if (
+            is_type(ops[0], ["NotEq"])
+            and is_type(comparators[0], ["Constant"])
+            and comparators[0].get("value") is None
+        ):
+            # Check for optional string first
+            if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+                return ir.BinaryOp(
+                    op="!=",
+                    left=left,
+                    right=ir.StringLit(value="", typ=STRING),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
+            sentinel = get_sentinel_value(
+                node_left, type_ctx, current_class_name, sentinel_int_fields
+            )
+            if sentinel is not None:
+                return ir.BinaryOp(
+                    op="!=",
+                    left=left,
+                    right=ir.IntLit(value=sentinel, typ=INT),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
         # Handle "x in (a, b, c)" -> "x == a || x == b || x == c"
         if is_type(ops[0], ["In", "NotIn"]) and is_type(comparators[0], ["Tuple"]):
             negated = is_type(ops[0], ["NotIn"])
@@ -1011,7 +1098,12 @@ def lower_expr_UnaryOp(
         return ir.UnaryOp(op="!", operand=operand, typ=BOOL, loc=loc_from_node(node))
     operand = lower_expr(node.get("operand"))
     op = unaryop_to_str(node_op)
-    return ir.UnaryOp(op=op, operand=operand, typ=InterfaceRef("any"), loc=loc_from_node(node))
+    # For bitwise NOT (~), result is always int
+    if is_type(node_op, ["Invert"]):
+        return ir.UnaryOp(op=op, operand=operand, typ=INT, loc=loc_from_node(node))
+    # For USub/UAdd, propagate operand type
+    result_type = operand.typ if operand.typ != InterfaceRef("any") else get_expr_type(node)
+    return ir.UnaryOp(op=op, operand=operand, typ=result_type, loc=loc_from_node(node))
 
 
 # ============================================================
@@ -1270,11 +1362,14 @@ def lower_expr_as_bool(
     # Int truthy check
     if expr_type == INT:
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
-    # Slice/Map/Set truthy check
-    if isinstance(expr_type, (Slice, Map, Set)):
+    # Float truthy check
+    if expr_type == FLOAT:
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
-    # Optional(Slice/Map/Set) truthy check (nil slice has len 0)
-    if isinstance(expr_type, Optional) and isinstance(expr_type.inner, (Slice, Map, Set)):
+    # Slice/Map/Set/Tuple truthy check
+    if isinstance(expr_type, (Slice, Map, Set, Tuple)):
+        return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
+    # Optional(Slice/Map/Set/Tuple) truthy check (nil slice has len 0)
+    if isinstance(expr_type, Optional) and isinstance(expr_type.inner, (Slice, Map, Set, Tuple)):
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
     # Interface truthy check: x != nil
     if isinstance(expr_type, InterfaceRef):
@@ -1462,6 +1557,21 @@ def lower_stmt_Return(
     return ir.Return(value=value, loc=loc_from_node(node))
 
 
+def lower_stmt_Assert(
+    node: ASTNode,
+    lower_expr_as_bool: Callable[[ASTNode], "ir.Expr"],
+    lower_expr: Callable[[ASTNode], "ir.Expr"],
+) -> "ir.Stmt":
+    """Lower assert statement."""
+    from .. import ir
+
+    test_node = node.get("test")
+    msg_node = node.get("msg")
+    test = lower_expr_as_bool(test_node) if test_node else ir.BoolLit(value=True, typ=BOOL)
+    message = lower_expr(msg_node) if msg_node else None
+    return ir.Assert(test=test, message=message, loc=loc_from_node(node))
+
+
 # ============================================================
 # EXCEPTION STATEMENT LOWERING
 # ============================================================
@@ -1533,6 +1643,13 @@ def lower_expr_Call(
 
     node_args = node.get("args", [])
     args = [dispatch.lower_expr(a) for a in node_args]
+    # Check for reverse=True keyword argument (for sorted/list.sort)
+    reverse = False
+    for kw in node.get("keywords", []):
+        if kw.get("arg") == "reverse":
+            kw_value = kw.get("value")
+            if is_type(kw_value, ["Constant"]) and kw_value.get("value") is True:
+                reverse = True
     # Method call
     func = node.get("func")
     if is_type(func, ["Attribute"]):
@@ -1619,12 +1736,27 @@ def lower_expr_Call(
             if args:
                 chars = args[0]
             else:
-                chars = ir.StringLit(value=" \t\n\r", typ=STRING, loc=loc_from_node(node))
+                # Default whitespace chars for strings, bytes for byte slices
+                if obj_type == Slice(BYTE):
+                    whitespace_bytes = [ord(c) for c in " \t\n\r"]
+                    chars = ir.SliceLit(
+                        element_type=BYTE,
+                        elements=[
+                            ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node))
+                            for b in whitespace_bytes
+                        ],
+                        typ=Slice(BYTE),
+                        loc=loc_from_node(node),
+                    )
+                else:
+                    chars = ir.StringLit(value=" \t\n\r", typ=STRING, loc=loc_from_node(node))
+            # Result type matches input type
+            result_type = obj_type if obj_type == Slice(BYTE) else STRING
             return ir.TrimChars(
                 string=obj,
                 chars=chars,
                 mode=mode,
-                typ=STRING,
+                typ=result_type,
                 loc=loc_from_node(node),
             )
         if method == "pop" and not args and isinstance(obj_type, Slice):
@@ -1668,12 +1800,15 @@ def lower_expr_Call(
         ret_type = type_inference.synthesize_method_return_type(
             obj_type, method, ctx.symbols, ctx.node_types, ctx.hierarchy_root
         )
+        # Pass reverse flag for list.sort()
+        method_reverse = reverse if method == "sort" else False
         return ir.MethodCall(
             obj=obj,
             method=method,
             args=args,
             receiver_type=obj_type,
             typ=ret_type,
+            reverse=method_reverse,
             loc=loc_from_node(node),
         )
     # Free function call
@@ -1690,13 +1825,24 @@ def lower_expr_Call(
             return ir.Len(expr=arg, typ=INT, loc=loc_from_node(node))
         # Check for bool() - convert to comparison
         if func_name == "bool" and args:
-            # bool(x) -> x != 0 for ints, x != "" for strings, x != nil for pointers
+            # bool(x) -> x != 0 for ints, x != "" for strings, len(x) != 0 for collections
             arg_type = get_expr_type(node_args[0])
+            # bool(True/False) -> just the value
+            if arg_type == BOOL:
+                return args[0]
             if arg_type == INT:
                 return ir.BinaryOp(
                     op="!=",
                     left=args[0],
                     right=ir.IntLit(value=0, typ=INT),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
+            if arg_type == FLOAT:
+                return ir.BinaryOp(
+                    op="!=",
+                    left=args[0],
+                    right=ir.FloatLit(value=0.0, typ=FLOAT),
                     typ=BOOL,
                     loc=loc_from_node(node),
                 )
@@ -1708,21 +1854,48 @@ def lower_expr_Call(
                     typ=BOOL,
                     loc=loc_from_node(node),
                 )
+            # Collections: bool([]) -> len([]) != 0
+            if isinstance(arg_type, (Slice, Map, Set, Tuple)):
+                return ir.BinaryOp(
+                    op="!=",
+                    left=ir.Len(expr=args[0], typ=INT, loc=loc_from_node(node)),
+                    right=ir.IntLit(value=0, typ=INT),
+                    typ=BOOL,
+                    loc=loc_from_node(node),
+                )
             # Default: assume pointer/optional, check != nil
             return ir.IsNil(expr=args[0], negated=True, typ=BOOL, loc=loc_from_node(node))
-        # Check for list() copy
+        # Check for list() copy/conversion
         if func_name == "list" and args:
-            # list(x) is a copy operation - preserve element type from source
             source_type = args[0].typ
-            if isinstance(source_type, Slice):
+            source_arg = args[0]
+            # Don't use .copy() for dict views (keys/values/items) - they're typed as Slice
+            # but don't have .copy()
+            is_dict_view = (
+                isinstance(source_arg, ir.MethodCall)
+                and source_arg.method in ("keys", "values", "items")
+                and isinstance(source_arg.receiver_type, Map)
+            )
+            if isinstance(source_type, Slice) and not is_dict_view:
+                # list(some_list) is a copy operation
+                return ir.MethodCall(
+                    obj=source_arg,
+                    method="copy",
+                    args=[],
+                    receiver_type=source_type,
+                    typ=source_type,
+                    loc=loc_from_node(node),
+                )
+            # list(iterable) - keep as builtin call for non-list iterables
+            if source_type == STRING:
+                result_type = Slice(STRING)
+            elif isinstance(source_type, Slice):
                 result_type = source_type
             else:
-                result_type = Slice(InterfaceRef("any"))
-            return ir.MethodCall(
-                obj=args[0],
-                method="copy",
-                args=[],
-                receiver_type=result_type,
+                result_type = Slice(INT)
+            return ir.Call(
+                func="list",
+                args=args,
                 typ=result_type,
                 loc=loc_from_node(node),
             )
@@ -1961,7 +2134,9 @@ def lower_expr_Call(
             args = dispatch.deref_for_func_slice_params(func_name, args, node_args)
             # Add type assertions for interface{} -> Node coercion
             args = coerce_args_to_node(func_info, args, ctx.hierarchy_root)
-        return ir.Call(func=func_name, args=args, typ=ret_type, loc=loc_from_node(node))
+        return ir.Call(
+            func=func_name, args=args, reverse=reverse, typ=ret_type, loc=loc_from_node(node)
+        )
     return ir.Var(name="TODO_Call", typ=InterfaceRef("any"))
 
 
@@ -2059,24 +2234,24 @@ def lower_stmt_Assign(
                     )
                     block.no_scope = True  # Emit without braces
                     return block
-        # Handle tuple unpacking: a, b = func() where func returns tuple
+        # Handle tuple unpacking: a, b, c = func() where func returns tuple
         target_elts = target.get("elts", [])
-        if is_type(target, ["Tuple"]) and len(target_elts) == 2:
-            # Tuple unpacking from method call: a, b = obj.method()
+        if is_type(target, ["Tuple"]) and len(target_elts) >= 2:
+            # Tuple unpacking from method call: a, b, c = obj.method()
             node_value_func = node_value.get("func") if is_type(node_value, ["Call"]) else None
             if is_type(node_value, ["Call"]) and is_type(node_value_func, ["Attribute"]):
-                lval0 = dispatch.lower_lvalue(target_elts[0])
-                lval1 = dispatch.lower_lvalue(target_elts[1])
-                return ir.TupleAssign(targets=[lval0, lval1], value=value, loc=loc_from_node(node))
-            # General tuple unpacking for function calls: a, b = func()
+                lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
+                return ir.TupleAssign(targets=lvalues, value=value, loc=loc_from_node(node))
+            # General tuple unpacking for function calls: a, b, c = func()
             if is_type(node_value, ["Call"]):
-                lval0 = dispatch.lower_lvalue(target_elts[0])
-                lval1 = dispatch.lower_lvalue(target_elts[1])
-                return ir.TupleAssign(targets=[lval0, lval1], value=value, loc=loc_from_node(node))
-            # Tuple unpacking from index: a, b = list[idx] where list is []Tuple
+                lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
+                return ir.TupleAssign(targets=lvalues, value=value, loc=loc_from_node(node))
+            # Tuple unpacking from index: a, b, c = list[idx] where list is []Tuple
             if is_type(node_value, ["Subscript"]):
                 # Infer tuple element type from the list's type
-                entry_type: "Type" = Tuple((InterfaceRef("any"), InterfaceRef("any")))  # Default
+                n = len(target_elts)
+                default_types = tuple(InterfaceRef("any") for _ in range(n))
+                entry_type: "Type" = Tuple(default_types)
                 node_value_value = node_value.get("value")
                 if is_type(node_value_value, ["Name"]):
                     var_name = node_value_value.get("id")
@@ -2085,73 +2260,58 @@ def lower_stmt_Assign(
                         if isinstance(list_type, Slice) and isinstance(list_type.element, Tuple):
                             entry_type = list_type.element
                 # Get field types from entry_type
-                f0_type = (
-                    entry_type.elements[0]
-                    if isinstance(entry_type, Tuple) and len(entry_type.elements) > 0
+                field_types = [
+                    entry_type.elements[i]
+                    if isinstance(entry_type, Tuple) and len(entry_type.elements) > i
                     else InterfaceRef("any")
-                )
-                f1_type = (
-                    entry_type.elements[1]
-                    if isinstance(entry_type, Tuple) and len(entry_type.elements) > 1
-                    else InterfaceRef("any")
-                )
-                lval0 = dispatch.lower_lvalue(target_elts[0])
-                lval1 = dispatch.lower_lvalue(target_elts[1])
+                    for i in range(n)
+                ]
+                lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
                 entry_var = ir.Var(name="_entry", typ=entry_type)
                 # Update var_types for the targets
-                if is_type(target_elts[0], ["Name"]):
-                    type_ctx.var_types[target_elts[0].get("id")] = f0_type
-                if is_type(target_elts[1], ["Name"]):
-                    type_ctx.var_types[target_elts[1].get("id")] = f1_type
-                return ir.Block(
-                    body=[
-                        ir.VarDecl(name="_entry", typ=entry_type, value=value),
+                for i, target_elt in enumerate(target_elts):
+                    if is_type(target_elt, ["Name"]):
+                        type_ctx.var_types[target_elt.get("id")] = field_types[i]
+                # Build block with VarDecl and field accesses
+                body: list[ir.Stmt] = [ir.VarDecl(name="_entry", typ=entry_type, value=value)]
+                for i, lval in enumerate(lvalues):
+                    body.append(
                         ir.Assign(
-                            target=lval0,
-                            value=ir.FieldAccess(obj=entry_var, field="F0", typ=f0_type),
-                        ),
-                        ir.Assign(
-                            target=lval1,
-                            value=ir.FieldAccess(obj=entry_var, field="F1", typ=f1_type),
-                        ),
-                    ],
-                    loc=loc_from_node(node),
-                )
+                            target=lval,
+                            value=ir.FieldAccess(obj=entry_var, field=f"F{i}", typ=field_types[i]),
+                        )
+                    )
+                return ir.Block(body=body, loc=loc_from_node(node))
             # Tuple unpacking from tuple literal: a, b = x, y
             node_value_elts = node_value.get("elts", []) if is_type(node_value, ["Tuple"]) else []
-            if is_type(node_value, ["Tuple"]) and len(node_value_elts) == 2:
-                lval0 = dispatch.lower_lvalue(target_elts[0])
-                lval1 = dispatch.lower_lvalue(target_elts[1])
-                val0 = dispatch.lower_expr(node_value_elts[0])
-                val1 = dispatch.lower_expr(node_value_elts[1])
-                # Update var_types
-                if is_type(target_elts[0], ["Name"]):
-                    type_ctx.var_types[target_elts[0].get("id")] = type_inference.synthesize_type(
-                        val0,
+            if is_type(node_value, ["Tuple"]) and len(node_value_elts) == len(target_elts):
+                lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
+                values = [dispatch.lower_expr(v) for v in node_value_elts]
+                # Update var_types for all targets
+                for i, target_elt in enumerate(target_elts):
+                    if is_type(target_elt, ["Name"]):
+                        type_ctx.var_types[target_elt.get("id")] = type_inference.synthesize_type(
+                            values[i],
+                            type_ctx,
+                            ctx.current_func_info,
+                            ctx.symbols,
+                            ctx.node_types,
+                            ctx.hierarchy_root,
+                        )
+                # Create TupleLit from RHS values and use TupleAssign for correct swap semantics
+                elem_types = tuple(
+                    type_inference.synthesize_type(
+                        v,
                         type_ctx,
                         ctx.current_func_info,
                         ctx.symbols,
                         ctx.node_types,
                         ctx.hierarchy_root,
                     )
-                if is_type(target_elts[1], ["Name"]):
-                    type_ctx.var_types[target_elts[1].get("id")] = type_inference.synthesize_type(
-                        val1,
-                        type_ctx,
-                        ctx.current_func_info,
-                        ctx.symbols,
-                        ctx.node_types,
-                        ctx.hierarchy_root,
-                    )
-                block = ir.Block(
-                    body=[
-                        ir.Assign(target=lval0, value=val0),
-                        ir.Assign(target=lval1, value=val1),
-                    ],
-                    loc=loc_from_node(node),
+                    for v in values
                 )
-                block.no_scope = True  # Don't emit braces
-                return block
+                tuple_lit = ir.TupleLit(elements=values, typ=Tuple(elem_types))
+                return ir.TupleAssign(targets=lvalues, value=tuple_lit, loc=loc_from_node(node))
         # Track variable type dynamically for later use in nested scopes
         # Coerce value to target type if known
         target_id = target.get("id") if is_type(target, ["Name"]) else None
@@ -2673,15 +2833,13 @@ def lower_stmt_Try(
     from .. import ir
 
     body = dispatch.lower_stmts(node.get("body", []))
-    catch_var = None
-    catch_type: ir.Type | None = None
-    catch_body: list[ir.Stmt] = []
+    catches: list[ir.CatchClause] = []
     reraise = False
     handlers = node.get("handlers", [])
-    if handlers:
-        handler = handlers[0]
+    for handler in handlers:
         catch_var = handler.get("name")
         # Extract exception type from handler
+        catch_type: ir.Type | None = None
         catch_type_node = handler.get("type")
         if catch_type_node and is_type(catch_type_node, ["Name"]):
             type_name = catch_type_node.get("id")
@@ -2695,11 +2853,10 @@ def lower_stmt_Try(
         for stmt in handler_body:
             if is_type(stmt, ["Raise"]) and stmt.get("exc") is None:
                 reraise = True
+        catches.append(ir.CatchClause(var=catch_var, typ=catch_type, body=catch_body))
     return ir.TryCatch(
         body=body,
-        catch_var=catch_var,
-        catch_type=catch_type,
-        catch_body=catch_body,
+        catches=catches,
         reraise=reraise,
         loc=loc_from_node(node),
     )
@@ -2724,7 +2881,13 @@ def lower_lvalue(
         return ir.FieldLV(obj=obj, field=node.get("attr"), loc=loc_from_node(node))
     if is_type(node, ["Subscript"]):
         obj = lower_expr(node.get("value"))
-        idx = lower_expr(node.get("slice"))
+        node_slice = node.get("slice")
+        if is_type(node_slice, ["Slice"]):
+            low = lower_expr(node_slice.get("lower")) if node_slice.get("lower") else None
+            high = lower_expr(node_slice.get("upper")) if node_slice.get("upper") else None
+            step = lower_expr(node_slice.get("step")) if node_slice.get("step") else None
+            return ir.SliceLV(obj=obj, low=low, high=high, step=step, loc=loc_from_node(node))
+        idx = lower_expr(node_slice)
         return ir.IndexLV(obj=obj, index=idx, loc=loc_from_node(node))
     return ir.VarLV(name="_unknown_lvalue", loc=loc_from_node(node))
 
@@ -2842,6 +3005,110 @@ def _lower_expr_Set_dispatch(
     return lower_expr_Set(node, d.lower_expr)
 
 
+def _extract_target_names(target: ASTNode) -> list[str] | None:
+    """Extract target variable names from a comprehension target (Name or Tuple)."""
+    target_type = target.get("_type")
+    if target_type == "Name":
+        return [target.get("id")]
+    elif target_type == "Tuple":
+        names = []
+        for elt in target.get("elts", []):
+            if elt.get("_type") == "Name":
+                names.append(elt.get("id"))
+            else:
+                return None  # Nested tuple or complex pattern not supported
+        return names
+    return None
+
+
+def _lower_generators(
+    generators: list[ASTNode], d: "LoweringDispatch"
+) -> list["ir.CompGenerator"] | None:
+    """Lower a list of comprehension generators to IR CompGenerator nodes."""
+    from .. import ir
+
+    result = []
+    for gen in generators:
+        target = gen.get("target", {})
+        target_names = _extract_target_names(target)
+        if target_names is None:
+            return None  # Complex unpacking not supported
+        iterable = d.lower_expr(gen.get("iter"))
+        conditions = [d.lower_expr(if_node) for if_node in gen.get("ifs", [])]
+        result.append(
+            ir.CompGenerator(targets=target_names, iterable=iterable, conditions=conditions)
+        )
+    return result
+
+
+def _lower_expr_ListComp_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Expr":
+    """Lower list comprehension: [expr for target in iter if cond]."""
+    from .. import ir
+
+    generators = node.get("generators", [])
+    ir_generators = _lower_generators(generators, d)
+    if ir_generators is None:
+        return ir.Var(name="TODO_ComplexUnpack", typ=InterfaceRef("any"))
+    element = d.lower_expr(node.get("elt"))
+    elem_type = get_expr_type(node.get("elt"))
+    loc = loc_from_node(node)
+    return ir.ListComp(element=element, generators=ir_generators, typ=Slice(elem_type), loc=loc)
+
+
+def _lower_expr_SetComp_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Expr":
+    """Lower set comprehension: {expr for target in iter if cond}."""
+    from .. import ir
+
+    generators = node.get("generators", [])
+    ir_generators = _lower_generators(generators, d)
+    if ir_generators is None:
+        return ir.Var(name="TODO_ComplexUnpack", typ=InterfaceRef("any"))
+    element = d.lower_expr(node.get("elt"))
+    elem_type = get_expr_type(node.get("elt"))
+    loc = loc_from_node(node)
+    return ir.SetComp(element=element, generators=ir_generators, typ=Set(elem_type), loc=loc)
+
+
+def _lower_expr_DictComp_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Expr":
+    """Lower dict comprehension: {key: value for target in iter if cond}."""
+    from .. import ir
+
+    generators = node.get("generators", [])
+    ir_generators = _lower_generators(generators, d)
+    if ir_generators is None:
+        return ir.Var(name="TODO_ComplexUnpack", typ=InterfaceRef("any"))
+    key = d.lower_expr(node.get("key"))
+    value = d.lower_expr(node.get("value"))
+    key_type = get_expr_type(node.get("key"))
+    value_type = get_expr_type(node.get("value"))
+    loc = loc_from_node(node)
+    return ir.DictComp(
+        key=key, value=value, generators=ir_generators, typ=Map(key_type, value_type), loc=loc
+    )
+
+
+def _lower_expr_GeneratorExp_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Expr":
+    """Lower generator expression as list comprehension (eager evaluation)."""
+    from .. import ir
+
+    generators = node.get("generators", [])
+    ir_generators = _lower_generators(generators, d)
+    if ir_generators is None:
+        return ir.Var(name="TODO_ComplexUnpack", typ=InterfaceRef("any"))
+    element = d.lower_expr(node.get("elt"))
+    elem_type = get_expr_type(node.get("elt"))
+    loc = loc_from_node(node)
+    return ir.ListComp(element=element, generators=ir_generators, typ=Slice(elem_type), loc=loc)
+
+
 EXPR_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch"], "ir.Expr"]] = {
     "Constant": _lower_expr_Constant_dispatch,
     "Name": _lower_expr_Name_dispatch,
@@ -2858,6 +3125,10 @@ EXPR_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch
     "JoinedStr": _lower_expr_JoinedStr_dispatch,
     "Tuple": _lower_expr_Tuple_dispatch,
     "Set": _lower_expr_Set_dispatch,
+    "ListComp": _lower_expr_ListComp_dispatch,
+    "SetComp": _lower_expr_SetComp_dispatch,
+    "DictComp": _lower_expr_DictComp_dispatch,
+    "GeneratorExp": _lower_expr_GeneratorExp_dispatch,
 }
 
 
@@ -2919,6 +3190,12 @@ def _lower_stmt_Raise_dispatch(
     return lower_stmt_Raise(node, d.lower_expr, ctx.current_catch_var)
 
 
+def _lower_stmt_Assert_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Stmt":
+    return lower_stmt_Assert(node, d.lower_expr_as_bool, d.lower_expr)
+
+
 def _lower_stmt_FunctionDef_dispatch(
     node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
 ) -> "ir.Stmt":
@@ -2944,6 +3221,7 @@ STMT_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch
     "Continue": _lower_stmt_Continue_dispatch,
     "Pass": _lower_stmt_Pass_dispatch,
     "Raise": _lower_stmt_Raise_dispatch,
+    "Assert": _lower_stmt_Assert_dispatch,
     "Try": _lower_stmt_Try_dispatch,
     "FunctionDef": _lower_stmt_FunctionDef_dispatch,
 }

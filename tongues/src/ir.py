@@ -413,6 +413,7 @@ class Module:
     enums: list[Enum] = field(default_factory=list)
     exports: list[Export] = field(default_factory=list)
     hierarchy_root: str | None = None  # Root interface for Node-like class hierarchies
+    entrypoint: EntryPoint | None = None
 
 
 @dataclass
@@ -963,13 +964,22 @@ class Block(Stmt):
 
 
 @dataclass
+class CatchClause:
+    """A single catch/except handler in a TryCatch."""
+
+    var: str | None
+    typ: Type | None
+    body: list[Stmt]
+
+
+@dataclass
 class TryCatch(Stmt):
     """Exception handling.
 
     Semantics:
     - Execute body
-    - If exception of catch_type is raised, bind to catch_var and execute catch_body
-    - If reraise is True, catch_body re-raises after cleanup
+    - If exception matches a catch clause, bind to its var and execute its body
+    - If reraise is True, the active catch clause re-raises after cleanup
 
     | Target | Representation                |
     |--------|-------------------------------|
@@ -981,17 +991,13 @@ class TryCatch(Stmt):
     | TS     | try/catch                     |
 
     Middleend annotations:
-    - catch_var_unused: catch_var never referenced in catch_body
     - hoisted_vars: Variables needing hoisting
     """
 
     body: list[Stmt]
-    catch_var: str | None = None
-    catch_type: Type | None = None  # Exception type to catch
-    catch_body: list[Stmt] = field(default_factory=list)
+    catches: list[CatchClause] = field(default_factory=list)
     reraise: bool = False
     # Middleend annotations
-    catch_var_unused: bool = False
     has_returns: bool = False
     has_catch_returns: bool = False
     hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
@@ -1019,6 +1025,17 @@ class Raise(Stmt):
     message: Expr
     pos: Expr
     reraise_var: str | None = None
+
+
+@dataclass
+class Assert(Stmt):
+    """Assert statement.
+
+    Semantics: If test is false, raise AssertionError with optional message.
+    """
+
+    test: Expr
+    message: Expr | None = None
 
 
 @dataclass
@@ -1286,6 +1303,7 @@ class Call(Expr):
 
     func: str
     args: list[Expr]
+    reverse: bool = False  # For sorted() with reverse=True
 
 
 @dataclass
@@ -1304,6 +1322,7 @@ class MethodCall(Expr):
     method: str
     args: list[Expr]
     receiver_type: Type
+    reverse: bool = False  # For sort(reverse=True)
 
 
 @dataclass
@@ -2194,8 +2213,20 @@ class GetEnv(Expr):
 
 
 @dataclass
+class CompGenerator:
+    """Single generator clause in a comprehension.
+
+    Represents `for x, y in items if cond1 if cond2`.
+    """
+
+    targets: list[str]
+    iterable: Expr
+    conditions: list[Expr] = field(default_factory=list)
+
+
+@dataclass
 class ListComp(Expr):
-    """List comprehension: [expr for target in iter if cond]
+    """List comprehension: [expr for x in xs for y in ys if cond]
 
     Semantics: Build list by iterating and filtering.
 
@@ -2209,49 +2240,43 @@ class ListComp(Expr):
     | TS     | iter.filter().map() or loop         |
 
     Invariants:
-    - iterable.typ is Slice, Array, or iterable
+    - generators is non-empty
     - typ is Slice(element.typ)
     """
 
     element: Expr
-    target: str
-    iterable: Expr
-    condition: Expr | None = None
+    generators: list[CompGenerator]
 
 
 @dataclass
 class SetComp(Expr):
-    """Set comprehension: {expr for target in iter if cond}
+    """Set comprehension: {expr for x in xs for y in ys if cond}
 
     Semantics: Build set by iterating and filtering.
 
     Invariants:
-    - iterable.typ is Slice, Array, or iterable
+    - generators is non-empty
     - typ is Set(element.typ)
     """
 
     element: Expr
-    target: str
-    iterable: Expr
-    condition: Expr | None = None
+    generators: list[CompGenerator]
 
 
 @dataclass
 class DictComp(Expr):
-    """Dict comprehension: {key: value for target in iter if cond}
+    """Dict comprehension: {k: v for x in xs for y in ys if cond}
 
     Semantics: Build map by iterating and filtering.
 
     Invariants:
-    - iterable.typ is Slice, Array, or iterable
+    - generators is non-empty
     - typ is Map(key.typ, value.typ)
     """
 
     key: Expr
     value: Expr
-    target: str
-    iterable: Expr
-    condition: Expr | None = None
+    generators: list[CompGenerator]
 
 
 # ============================================================
@@ -2287,6 +2312,16 @@ class IndexLV(LValue):
 
     obj: Expr
     index: Expr
+
+
+@dataclass
+class SliceLV(LValue):
+    """Slice as lvalue: obj[low:high] = ..."""
+
+    obj: Expr
+    low: Expr | None = None
+    high: Expr | None = None
+    step: Expr | None = None
 
 
 @dataclass

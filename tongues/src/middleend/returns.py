@@ -45,7 +45,7 @@ def contains_return(stmts: list[Stmt]) -> bool:
             if contains_return(stmt.body):
                 return True
         elif isinstance(stmt, TryCatch):
-            if contains_return(stmt.body) or contains_return(stmt.catch_body):
+            if contains_return(stmt.body) or any(contains_return(c.body) for c in stmt.catches):
                 return True
         elif isinstance(stmt, Match):
             for case in stmt.cases:
@@ -75,7 +75,7 @@ def always_returns(stmts: list[Stmt]) -> bool:
             if all_return and always_returns(stmt.default):
                 return True
         if isinstance(stmt, TryCatch):
-            if always_returns(stmt.body) and always_returns(stmt.catch_body):
+            if always_returns(stmt.body) and all(always_returns(c.body) for c in stmt.catches):
                 return True
         if isinstance(stmt, Block):
             if always_returns(stmt.body):
@@ -87,12 +87,13 @@ def _function_needs_named_returns(stmts: list[Stmt]) -> bool:
     """Check if any TryCatch in the statements has returns in its catch body."""
     for stmt in stmts:
         if isinstance(stmt, TryCatch):
-            if contains_return(stmt.catch_body):
+            if any(contains_return(c.body) for c in stmt.catches):
                 return True
-            if _function_needs_named_returns(stmt.body) or _function_needs_named_returns(
-                stmt.catch_body
-            ):
+            if _function_needs_named_returns(stmt.body):
                 return True
+            for clause in stmt.catches:
+                if _function_needs_named_returns(clause.body):
+                    return True
         elif isinstance(stmt, If):
             if _function_needs_named_returns(stmt.then_body) or _function_needs_named_returns(
                 stmt.else_body

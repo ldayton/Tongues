@@ -2590,11 +2590,11 @@ def make_constant_from_token(tok: Token) -> ASTNode:
     return make_node("Constant", tok.lineno, tok.col, {"value": value})
 
 
-def parse_number_value(s: str) -> int | float | complex:
+def parse_number_value(s: str) -> int | float:
     """Parse a number literal string to value."""
     s = s.replace("_", "")
     if s.endswith(("j", "J")):
-        return complex(s)
+        raise ValueError("complex numbers not supported in subset")
     if "." in s or ("e" in s.lower() and not s.startswith(("0x", "0X", "0b", "0B", "0o", "0O"))):
         return float(s)
     return int(s, 0)
@@ -2645,6 +2645,12 @@ def process_escapes(s: str, is_bytes: bool) -> str | bytes:
             elif next_c == "r":
                 result.append("\r")
                 i += 2
+            elif next_c == "f":
+                result.append("\f")
+                i += 2
+            elif next_c == "v":
+                result.append("\v")
+                i += 2
             elif next_c == "\\":
                 result.append("\\")
                 i += 2
@@ -2670,6 +2676,14 @@ def process_escapes(s: str, is_bytes: bool) -> str | bytes:
                 try:
                     result.append(chr(int(hex_val, 16)))
                     i += 6
+                except ValueError:
+                    result.append(c)
+                    i += 1
+            elif next_c == "U" and not is_bytes and i + 9 < len(s):
+                hex_val = s[i + 2 : i + 10]
+                try:
+                    result.append(chr(int(hex_val, 16)))
+                    i += 10
                 except ValueError:
                     result.append(c)
                     i += 1
