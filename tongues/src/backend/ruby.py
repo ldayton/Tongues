@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.backend.util import escape_string, to_snake, to_screaming_snake
 from src.ir import (
     BOOL,
+    FLOAT,
     INT,
     Array,
     Assert,
@@ -15,6 +16,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     CatchClause,
     Constant,
@@ -49,7 +51,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -307,6 +311,11 @@ class RubyBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        for stmt in module.statements:
+            if need_blank:
+                self._line()
+            self._emit_stmt(stmt)
+            need_blank = True
         if module.entrypoint is not None:
             self._line()
             self._emit_stmt(module.entrypoint)
@@ -383,10 +392,7 @@ class RubyBackend:
         self.indent += 1
         if func.doc:
             self._line(f"# {func.doc}")
-        if _is_empty_body(func.body):
-            self._line("nil")
-        for stmt in func.body:
-            self._emit_stmt(stmt)
+        self._emit_body_with_implicit_return(func.body)
         self.indent -= 1
         self._line("end")
 
@@ -398,10 +404,7 @@ class RubyBackend:
             self._line(f"# {func.doc}")
         if func.receiver:
             self.receiver_name = func.receiver.name
-        if _is_empty_body(func.body):
-            self._line("nil")
-        for stmt in func.body:
-            self._emit_stmt(stmt)
+        self._emit_body_with_implicit_return(func.body)
         self.receiver_name = None
         self.indent -= 1
         self._line("end")
@@ -416,6 +419,21 @@ class RubyBackend:
             else:
                 parts.append(name)
         return ", ".join(parts)
+
+    def _emit_body_with_implicit_return(self, body: list[Stmt]) -> None:
+        """Emit function body with Ruby implicit return for last statement."""
+        if _is_empty_body(body):
+            self._line("nil")
+            return
+        # Emit all but the last statement normally
+        for stmt in body[:-1]:
+            self._emit_stmt(stmt)
+        # Handle last statement - if it's a Return, emit just the value
+        last = body[-1]
+        if isinstance(last, Return) and last.value is not None:
+            self._line(self._expr(last.value))
+        else:
+            self._emit_stmt(last)
 
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:
@@ -695,10 +713,10 @@ class RubyBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
-                return str(value)
-            case FloatLit(value=value):
-                return str(value)
+            case IntLit(value=value, format=fmt):
+                return self._int_lit(value, fmt)
+            case FloatLit(value=value, format=fmt):
+                return self._float_lit(value, fmt)
             case StringLit(value=value):
                 return _string_literal(value)
             case BoolLit(value=value):
@@ -775,6 +793,57 @@ class RubyBackend:
                 return "false"
             case Call(func="bool", args=[arg]):
                 return f"!!{self._expr(arg)}"
+            case Call(func="abs", args=[arg]):
+                inner = self._expr(arg)
+                if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
+                    return f"({inner}).abs"
+                return f"{inner}.abs"
+            case Call(func="min", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"[{args_str}].min"
+            case Call(func="max", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"[{args_str}].max"
+            case Call(func="round", args=[arg]):
+                inner = self._expr(arg)
+                if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
+                    return f"({inner}).round"
+                return f"{inner}.round"
+            case Call(func="round", args=[arg, precision]):
+                inner = self._expr(arg)
+                prec = self._expr(precision)
+                if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
+                    return f"({inner}).round({prec})"
+                return f"{inner}.round({prec})"
+            case Call(func="int", args=[arg]):
+                inner = self._expr(arg)
+                if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
+                    return f"({inner}).to_i"
+                return f"{inner}.to_i"
+            case Call(func="float", args=[arg]):
+                inner = self._expr(arg)
+                if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
+                    return f"({inner}).to_f"
+                return f"{inner}.to_f"
+            case Call(func="divmod", args=[a, b]):
+                inner = self._expr(a)
+                divisor = self._expr(b)
+                if isinstance(a, (BinaryOp, UnaryOp, Ternary)):
+                    return f"({inner}).divmod({divisor})"
+                return f"{inner}.divmod({divisor})"
+            case Call(func="pow", args=[base, exp]):
+                base_str = self._expr(base)
+                exp_str = self._expr(exp)
+                if isinstance(base, (BinaryOp, UnaryOp, Ternary)):
+                    base_str = f"({base_str})"
+                return f"{base_str} ** {exp_str}"
+            case Call(func="pow", args=[base, exp, mod]):
+                base_str = self._expr(base)
+                exp_str = self._expr(exp)
+                mod_str = self._expr(mod)
+                if isinstance(base, (BinaryOp, UnaryOp, Ternary)):
+                    base_str = f"({base_str})"
+                return f"{base_str}.pow({exp_str}, {mod_str})"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 if func not in self._known_functions:
@@ -873,31 +942,29 @@ class RubyBackend:
                 return f"!!{expr_str}"
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - Ruby integer division already floors
-                left_str = (
-                    self._maybe_paren(
-                        self._coerce_bool_to_int(left, raw=True), left, "/", is_left=True
-                    )
-                    if left.typ == BOOL
-                    else self._maybe_paren(self._expr(left), left, "/", is_left=True)
-                )
-                right_str = (
-                    self._maybe_paren(
-                        self._coerce_bool_to_int(right, raw=True), right, "/", is_left=False
-                    )
-                    if right.typ == BOOL
-                    else self._maybe_paren(self._expr(right), right, "/", is_left=False)
-                )
+                # For bool coercion, the ternary already provides parens, no need for _maybe_paren
+                if left.typ == BOOL:
+                    left_str = self._coerce_bool_to_int(left, raw=True)
+                else:
+                    left_str = self._maybe_paren(self._expr(left), left, "/", is_left=True)
+                if right.typ == BOOL:
+                    right_str = self._coerce_bool_to_int(right, raw=True)
+                else:
+                    right_str = self._maybe_paren(self._expr(right), right, "/", is_left=False)
                 return f"{left_str} / {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "==",
                 "!=",
             ) and _is_bool_int_compare(left, right):
-                left_str = self._maybe_paren(
-                    self._coerce_bool_to_int(left, raw=True), left, op, is_left=True
-                )
-                right_str = self._maybe_paren(
-                    self._coerce_bool_to_int(right, raw=True), right, op, is_left=False
-                )
+                # For bool coercion, the ternary already provides parens, no need for _maybe_paren
+                if left.typ == BOOL:
+                    left_str = self._coerce_bool_to_int(left, raw=True)
+                else:
+                    left_str = self._maybe_paren(self._expr(left), left, op, is_left=True)
+                if right.typ == BOOL:
+                    right_str = self._coerce_bool_to_int(right, raw=True)
+                else:
+                    right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
@@ -910,12 +977,15 @@ class RubyBackend:
                 "&",
                 "^",
             ) and (left.typ == BOOL or right.typ == BOOL):
-                left_str = self._maybe_paren(
-                    self._coerce_bool_to_int(left, raw=True), left, op, is_left=True
-                )
-                right_str = self._maybe_paren(
-                    self._coerce_bool_to_int(right, raw=True), right, op, is_left=False
-                )
+                # For bool coercion, the ternary already provides parens, no need for _maybe_paren
+                if left.typ == BOOL:
+                    left_str = self._coerce_bool_to_int(left, raw=True)
+                else:
+                    left_str = self._maybe_paren(self._expr(left), left, op, is_left=True)
+                if right.typ == BOOL:
+                    right_str = self._coerce_bool_to_int(right, raw=True)
+                else:
+                    right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
             case BinaryOp(op=op, left=left, right=right):
@@ -954,10 +1024,20 @@ class RubyBackend:
                 left_str = self._maybe_paren_expr(left, op, is_left=True)
                 right_str = self._maybe_paren_expr(right, op, is_left=False)
                 return f"{left_str} {rb_op} {right_str}"
+            case ChainedCompare(operands=operands, ops=ops):
+                parts: list[str] = []
+                for i, op in enumerate(ops):
+                    left_str = self._expr(operands[i])
+                    right_str = self._expr(operands[i + 1])
+                    rb_op = _binary_op(op)
+                    parts.append(f"{left_str} {rb_op} {right_str}")
+                return " && ".join(parts)
+            case MinExpr(left=left, right=right):
+                return f"[{self._expr(left)}, {self._expr(right)}].min"
+            case MaxExpr(left=left, right=right):
+                return f"[{self._expr(left)}, {self._expr(right)}].max"
             case UnaryOp(op=op, operand=operand):
                 rb_op = _unary_op(op)
-                if op == "!" and isinstance(operand, BinaryOp):
-                    return f"{rb_op}({self._expr(operand)})"
                 # Handle not(truthy(int_expr)) -> (expr) == 0
                 # Python's `not (x & Y)` should be true when result is 0
                 if op == "!" and isinstance(operand, Truthy):
@@ -967,7 +1047,14 @@ class RubyBackend:
                         if isinstance(inner, BinaryOp):
                             return f"({inner_str}) == 0"
                         return f"{inner_str} == 0"
-                return f"{rb_op}{self._expr(operand)}"
+                # Wrap BinaryOp in parens for all unary operators
+                if isinstance(operand, BinaryOp):
+                    return f"{rb_op}({self._expr(operand)})"
+                operand_str = self._expr(operand)
+                # Add space for double negation to avoid Ruby's -- decrement
+                if op == "-" and operand_str.startswith("-"):
+                    return f"- {operand_str}"
+                return f"{rb_op}{operand_str}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 return (
                     f"{self._cond_expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)}"
@@ -999,6 +1086,18 @@ class RubyBackend:
                     Primitive(kind="rune"),
                 ):
                     return f"{self._expr(inner)}.ord"
+                # float -> int conversion
+                if to_type == INT and inner.typ == FLOAT:
+                    expr_str = self._expr(inner)
+                    if isinstance(inner, (BinaryOp, UnaryOp, Ternary)):
+                        return f"({expr_str}).to_i"
+                    return f"{expr_str}.to_i"
+                # int -> float conversion
+                if to_type == FLOAT and inner.typ == INT:
+                    expr_str = self._expr(inner)
+                    if isinstance(inner, (BinaryOp, UnaryOp, Ternary)):
+                        return f"({expr_str}).to_f"
+                    return f"{expr_str}.to_f"
                 if isinstance(to_type, Primitive) and to_type.kind == "string":
                     return f"{self._expr(inner)}.to_s"
                 return self._expr(inner)
@@ -1184,21 +1283,34 @@ class RubyBackend:
                 return "nil"
 
     def _cond_expr(self, expr: Expr) -> str:
-        """Emit a condition expression, wrapping in parens only if needed for ternary."""
-        match expr:
-            case BinaryOp(op=op) if op in ("and", "or", "&&", "||"):
-                return f"({self._expr(expr)})"
-            case _:
-                return self._expr(expr)
+        """Emit a condition expression for ternary. In Ruby && and || have higher precedence than ?:."""
+        return self._expr(expr)
 
     def _coerce_bool_to_int(self, expr: Expr, raw: bool = False) -> str:
         """Coerce a bool expression to int for comparison with int."""
         if expr.typ == BOOL:
             inner = self._expr(expr)
+            # Ternary has lower precedence than arithmetic, so wrap in parens
             return f"({inner} ? 1 : 0)"
         if raw:
             return self._expr(expr)
         return self._expr(expr)
+
+    def _int_lit(self, value: int, fmt: str | None) -> str:
+        """Format integer literal, preserving hex/oct/bin format."""
+        if fmt == "hex":
+            return hex(value)
+        if fmt == "oct":
+            return f"0o{oct(value)[2:]}"
+        if fmt == "bin":
+            return f"0b{bin(value)[2:]}"
+        return str(value)
+
+    def _float_lit(self, value: float, fmt: str | None) -> str:
+        """Format float literal, preserving scientific notation."""
+        if fmt == "exp":
+            return f"{value:g}".replace("e+", "e")
+        return str(value)
 
     def _maybe_paren(self, text: str, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Wrap pre-rendered text in parens if the original expr needs it."""
@@ -1207,6 +1319,9 @@ class RubyBackend:
                 if _needs_parens(child_op, parent_op, is_left):
                     return f"({text})"
             case Ternary():
+                return f"({text})"
+            case UnaryOp(op="-") if parent_op == "**" and is_left:
+                # Ruby ** binds tighter than unary -, so (-2) ** 3 needs parens
                 return f"({text})"
         return text
 
@@ -1297,7 +1412,9 @@ _PRECEDENCE = {
     "-": 4,
     "*": 5,
     "/": 5,
+    "//": 5,
     "%": 5,
+    "**": 6,
 }
 
 

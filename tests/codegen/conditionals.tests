@@ -4,6 +4,8 @@
 true ? 1 : 0;
 --- typescript
 true ? 1 : 0;
+--- ruby
+true ? 1 : 0
 ---
 
 === ternary with false
@@ -12,6 +14,8 @@ true ? 1 : 0;
 false ? 1 : 0;
 --- typescript
 false ? 1 : 0;
+--- ruby
+false ? 1 : 0
 ---
 
 === ternary comparison condition
@@ -20,6 +24,8 @@ false ? 1 : 0;
 5 > 3 ? 10 : 20;
 --- typescript
 5 > 3 ? 10 : 20;
+--- ruby
+5 > 3 ? 10 : 20
 ---
 
 === ternary string result
@@ -28,6 +34,8 @@ false ? 1 : 0;
 true ? "yes" : "no";
 --- typescript
 true ? "yes" : "no";
+--- ruby
+true ? "yes" : "no"
 ---
 
 === ternary int result
@@ -36,6 +44,8 @@ true ? "yes" : "no";
 1 < 2 ? 42 : 0;
 --- typescript
 1 < 2 ? 42 : 0;
+--- ruby
+1 < 2 ? 42 : 0
 ---
 
 === nested ternary else
@@ -44,6 +54,8 @@ true ? "yes" : "no";
 true ? 1 : false ? 2 : 3;
 --- typescript
 true ? 1 : false ? 2 : 3;
+--- ruby
+true ? 1 : false ? 2 : 3
 ---
 
 === nested ternary then
@@ -54,6 +66,8 @@ true ? 1 : false ? 2 : 3;
 true ? true ? 1 : 2 : 3;
 --- typescript
 true ? true ? 1 : 2 : 3;
+--- ruby
+true ? true ? 1 : 2 : 3
 ---
 
 === ternary with arithmetic
@@ -64,6 +78,8 @@ true ? true ? 1 : 2 : 3;
 true ? 1 + 2 : 3 + 4;
 --- typescript
 true ? 1 + 2 : 3 + 4;
+--- ruby
+true ? 1 + 2 : 3 + 4
 ---
 
 === ternary with variables
@@ -77,6 +93,10 @@ function pick(a, b, useFirst) {
 function pick(a: number, b: number, useFirst: boolean): number {
   return useFirst ? a : b;
 }
+--- ruby
+def pick(a, b, use_first)
+  use_first ? a : b
+end
 ---
 
 === ternary in expression
@@ -85,6 +105,8 @@ function pick(a: number, b: number, useFirst: boolean): number {
 1 + (true ? 2 : 3);
 --- typescript
 1 + (true ? 2 : 3);
+--- ruby
+1 + (true ? 2 : 3)
 ---
 
 === ternary both sides same type
@@ -93,6 +115,8 @@ function pick(a: number, b: number, useFirst: boolean): number {
 true ? "a" : "b";
 --- typescript
 true ? "a" : "b";
+--- ruby
+true ? "a" : "b"
 ---
 
 === chained comparison in ternary
@@ -101,6 +125,8 @@ true ? "a" : "b";
 1 < 2 && 2 < 3 ? 1 : 0;
 --- typescript
 1 < 2 && 2 < 3 ? 1 : 0;
+--- ruby
+1 < 2 && 2 < 3 ? 1 : 0
 ---
 
 === ternary with equality
@@ -109,6 +135,8 @@ true ? "a" : "b";
 1 === 1 ? "equal" : "not equal";
 --- typescript
 1 === 1 ? "equal" : "not equal";
+--- ruby
+1 == 1 ? "equal" : "not equal"
 ---
 
 === ternary with inequality
@@ -117,6 +145,8 @@ true ? "a" : "b";
 1 !== 2 ? "different" : "same";
 --- typescript
 1 !== 2 ? "different" : "same";
+--- ruby
+1 != 2 ? "different" : "same"
 ---
 
 === simple if statement
@@ -138,6 +168,13 @@ function check(x: number): number {
   }
   return 0;
 }
+--- ruby
+def check(x)
+  if x > 0
+    return 1
+  end
+  0
+end
 ---
 
 === if else statement
@@ -162,6 +199,14 @@ function check(x: number): number {
     return -1;
   }
 }
+--- ruby
+def check(x)
+  if x > 0
+    return 1
+  else
+    return -1
+  end
+end
 ---
 
 === if elif else
@@ -192,6 +237,16 @@ function classify(x: number): string {
     return "zero";
   }
 }
+--- ruby
+def classify(x)
+  if x > 0
+    return "positive"
+  elsif x < 0
+    return "negative"
+  else
+    return "zero"
+  end
+end
 ---
 
 === multiple elif
@@ -234,6 +289,20 @@ function grade(score: number): string {
     return "F";
   }
 }
+--- ruby
+def grade(score)
+  if score >= 90
+    return "A"
+  elsif score >= 80
+    return "B"
+  elsif score >= 70
+    return "C"
+  elsif score >= 60
+    return "D"
+  else
+    return "F"
+  end
+end
 ---
 
 === nested if
@@ -269,6 +338,18 @@ function nested(x: number, y: number): number {
     return 3;
   }
 }
+--- ruby
+def nested(x, y)
+  if x > 0
+    if y > 0
+      return 1
+    else
+      return 2
+    end
+  else
+    return 3
+  end
+end
 ---
 
 === if with and
@@ -290,6 +371,13 @@ function bothPositive(x: number, y: number): boolean {
   }
   return false;
 }
+--- ruby
+def both_positive(x, y)
+  if x > 0 && y > 0
+    return true
+  end
+  false
+end
 ---
 
 === if with not
@@ -322,6 +410,15 @@ function isZero(x: number): boolean {
   }
   return false;
 }
+--- ruby
+def is_zero(x)
+  if !(x > 0)
+    if !(x < 0)
+      return true
+    end
+  end
+  false
+end
 ---
 
 === if with chained comparison
@@ -343,6 +440,13 @@ function inRange(x: number): boolean {
   }
   return false;
 }
+--- ruby
+def in_range(x)
+  if 0 < x && x < 10
+    return true
+  end
+  false
+end
 ---
 
 === if modifies variable
@@ -373,6 +477,16 @@ function clamp(x: number): number {
   }
   return result;
 }
+--- ruby
+def clamp(x)
+  result = x
+  if x < 0
+    result = 0
+  elsif x > 100
+    result = 100
+  end
+  result
+end
 ---
 
 === if with break
@@ -405,6 +519,17 @@ function findFirstPositive(nums: number[]): number {
   }
   return -1;
 }
+--- ruby
+def find_first_positive(nums)
+  i = 0
+  while i < nums.length
+    if nums[i] > 0
+      return nums[i]
+    end
+    i = i + 1
+  end
+  -1
+end
 ---
 
 === if with continue
@@ -446,6 +571,20 @@ function countPositive(nums: number[]): number {
   }
   return count;
 }
+--- ruby
+def count_positive(nums)
+  count = 0
+  i = 0
+  while i < nums.length
+    if nums[i] <= 0
+      i = i + 1
+      next
+    end
+    count = count + 1
+    i = i + 1
+  end
+  count
+end
 ---
 
 === ternary assigns to variable
@@ -462,6 +601,11 @@ function pickValue(flag: boolean): number {
   let x: number = flag ? 10 : 20;
   return x;
 }
+--- ruby
+def pick_value(flag)
+  x = flag ? 10 : 20
+  x
+end
 ---
 
 === multiple conditions same block
@@ -493,6 +637,17 @@ function multiCheck(a: number, b: number, c: number): boolean {
   }
   return false;
 }
+--- ruby
+def multi_check(a, b, c)
+  if a > 0
+    if b > 0
+      if c > 0
+        return true
+      end
+    end
+  end
+  false
+end
 ---
 
 === early return pattern
@@ -522,6 +677,16 @@ function validate(x: number): boolean {
   }
   return true;
 }
+--- ruby
+def validate(x)
+  if x < 0
+    return false
+  end
+  if x > 100
+    return false
+  end
+  true
+end
 ---
 
 === guard clause
@@ -543,6 +708,13 @@ function process(x: number): number {
   }
   return x * 2;
 }
+--- ruby
+def process(x)
+  if x == 0
+    return 0
+  end
+  x * 2
+end
 ---
 
 === ternary with min
@@ -551,6 +723,8 @@ min(1, 2) if True else 0
 true ? Math.min(1, 2) : 0;
 --- typescript
 true ? Math.min(1, 2) : 0;
+--- ruby
+true ? [1, 2].min : 0
 ---
 
 === ternary with max
@@ -559,6 +733,8 @@ max(1, 2) if True else 0
 true ? Math.max(1, 2) : 0;
 --- typescript
 true ? Math.max(1, 2) : 0;
+--- ruby
+true ? [1, 2].max : 0
 ---
 
 === ternary float result
@@ -567,6 +743,8 @@ true ? Math.max(1, 2) : 0;
 true ? 1.5 : 2.5;
 --- typescript
 true ? 1.5 : 2.5;
+--- ruby
+true ? 1.5 : 2.5
 ---
 
 === if statement empty else
@@ -591,6 +769,14 @@ function maybeDouble(x: number, doIt: boolean): number {
   }
   return result;
 }
+--- ruby
+def maybe_double(x, do_it)
+  result = x
+  if do_it
+    result = x * 2
+  end
+  result
+end
 ---
 
 === comparison chain in if
@@ -612,6 +798,13 @@ function ordered(a: number, b: number, c: number): boolean {
   }
   return false;
 }
+--- ruby
+def ordered(a, b, c)
+  if a < b && b < c
+    return true
+  end
+  false
+end
 ---
 
 === equality chain
@@ -633,4 +826,11 @@ function allEqual(a: number, b: number, c: number): boolean {
   }
   return false;
 }
+--- ruby
+def all_equal(a, b, c)
+  if a == b && b == c
+    return true
+  end
+  false
+end
 ---
