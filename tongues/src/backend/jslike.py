@@ -6,8 +6,6 @@ for type annotations and language-specific features.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-
 from src.backend.util import escape_string
 from src.ir import (
     BOOL,
@@ -109,7 +107,7 @@ from src.ir import (
 )
 
 
-class JsLikeBackend(ABC):
+class JsLikeBackend:
     """Base class for JavaScript-like code generators."""
 
     def __init__(self) -> None:
@@ -151,52 +149,55 @@ class JsLikeBackend(ABC):
 
     # --- Hooks for subclasses ---
 
-    @abstractmethod
     def _emit_preamble(self, module: Module) -> bool:
         """Emit language-specific preamble. Return True if anything was emitted."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _emit_interface(self, iface: InterfaceDef) -> None:
         """Emit interface definition (TS only, JS is a no-op)."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _emit_field(self, fld: Field) -> None:
         """Emit field declaration (TS only, JS is a no-op)."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _func_signature(self, name: str, params: list[Param], ret: Type) -> str:
         """Return function signature string."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _method_signature(self, name: str, params: list[Param], ret: Type) -> str:
         """Return method signature string."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _param_list(self, params: list[Param]) -> str:
         """Return parameter list string."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _var_decl(self, name: str, typ: Type | None, value: Expr | None) -> None:
         """Emit variable declaration."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _assign_decl(self, lv: str, value: Expr) -> None:
         """Emit assignment that is a declaration."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _tuple_assign_decl(self, lvalues: str, value: Expr, value_type: Type | None) -> None:
         """Emit tuple assignment that is a declaration."""
+        raise NotImplementedError
 
-    @abstractmethod
-    def _for_value_decl(self, name: str, iter_expr: str, index_name: str | None, elem_type: str) -> None:
+    def _for_value_decl(
+        self, name: str, iter_expr: str, index_name: str | None, elem_type: str
+    ) -> None:
         """Emit loop value variable declaration."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _emit_exports(self, symbols: list[str]) -> None:
         """Emit module exports."""
+        raise NotImplementedError
 
     def _hoisted_vars_hook(self, stmt: Stmt) -> None:
         """Hook for hoisted variable handling (JS only)."""
+        pass
 
     # --- Module structure ---
 
@@ -428,12 +429,20 @@ class JsLikeBackend(ABC):
             case _:
                 raise NotImplementedError("Unknown statement")
 
-    def _emit_tuple_reassign(self, stmt: TupleAssign, targets: list[LValue], lvalues: str, value: Expr) -> None:
+    def _emit_tuple_reassign(
+        self, stmt: TupleAssign, targets: list[LValue], lvalues: str, value: Expr
+    ) -> None:
         """Emit tuple reassignment (non-declaration). Override for JS hoisting."""
         val = self._expr(value)
         self._line(f"[{lvalues}] = {val};")
 
-    def _emit_raise(self, error_type: str | None, message: Expr | None, pos: Expr | None, reraise_var: str | None) -> None:
+    def _emit_raise(
+        self,
+        error_type: str | None,
+        message: Expr | None,
+        pos: Expr | None,
+        reraise_var: str | None,
+    ) -> None:
         if reraise_var:
             self._line(f"throw {_camel(reraise_var)}")
         elif error_type and self._struct_field_count.get(error_type, 0) == 0:
@@ -442,9 +451,7 @@ class JsLikeBackend(ABC):
             p = self._expr(pos)
             if isinstance(message, StringLit):
                 msg_val = (
-                    message.value.replace("\\", "\\\\")
-                    .replace("`", "\\`")
-                    .replace("$", "\\$")
+                    message.value.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
                 )
                 self._line(f"throw new {error_type}(`{msg_val} at position ${{{p}}}`, {p})")
             else:
@@ -556,7 +563,9 @@ class JsLikeBackend(ABC):
                 f"for (var {_camel(index)} = 0; {_camel(index)} < {iter_expr}.length; {_camel(index)}++) {{"
             )
             self.indent += 1
-            self._for_value_decl(_camel(value), iter_expr, _camel(index), self._element_type_str(iter_type))
+            self._for_value_decl(
+                _camel(value), iter_expr, _camel(index), self._element_type_str(iter_type)
+            )
         elif value is not None:
             self._emit_for_of(value, iter_expr, iter_type)
             self.indent += 1
@@ -691,13 +700,13 @@ class JsLikeBackend(ABC):
             case _:
                 raise NotImplementedError("Cannot inline")
 
-    @abstractmethod
     def _var_decl_inline(self, name: str, typ: Type | None, value: Expr | None) -> str:
         """Return inline variable declaration string."""
+        raise NotImplementedError
 
-    @abstractmethod
     def _assign_decl_inline(self, lv: str, value: Expr) -> str:
         """Return inline assignment declaration string."""
+        raise NotImplementedError
 
     def _emit_try_catch(
         self,
@@ -864,7 +873,7 @@ class JsLikeBackend(ABC):
             case Call(func="round", args=[arg]):
                 return f"Math.round({self._expr(arg)})"
             case Call(func="round", args=[arg, IntLit(value=n)]):
-                mult = 10 ** n
+                mult = 10**n
                 return f"Math.round({self._expr(arg)} * {mult}) / {mult}"
             case Call(func="round", args=[arg, precision]):
                 prec = self._expr(precision)
@@ -889,9 +898,9 @@ class JsLikeBackend(ABC):
                 _is_array_type(receiver_type)
             ):
                 return f"{self._expr(obj)}.slice()"
-            case MethodCall(
-                obj=obj, method="get", args=[key], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
+            case MethodCall(obj=obj, method="get", args=[key], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
                 return self._map_get(obj, key, None)
             case MethodCall(
                 obj=obj, method="get", args=[key, default], receiver_type=receiver_type
@@ -1142,11 +1151,7 @@ class JsLikeBackend(ABC):
             and inner.typ == BOOL
         ):
             return f"Number({self._expr(inner)})"
-        if (
-            isinstance(to_type, Primitive)
-            and to_type.kind == "string"
-            and inner.typ == BOOL
-        ):
+        if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == BOOL:
             return f'({self._expr(inner)} ? "True" : "False")'
         if (
             isinstance(to_type, Slice)
@@ -1204,32 +1209,31 @@ class JsLikeBackend(ABC):
         return f"new {_safe_name(struct_name)}({args})"
 
     def _list_comp(self, element: Expr, generators: list[CompGenerator]) -> str:
-        """Emit list comprehension as chained filter/map."""
-        return self._comp_chain(element, generators, "[]", "push")
-
-    def _set_comp(self, element: Expr, generators: list[CompGenerator]) -> str:
-        """Emit set comprehension."""
-        return self._comp_chain(element, generators, "new Set()", "add")
-
-    def _dict_comp(self, key: Expr, value: Expr, generators: list[CompGenerator]) -> str:
-        """Emit dict comprehension."""
-        # Build as IIFE with nested loops
+        """Emit list comprehension as IIFE with nested loops."""
         result_var = "_result"
-        body_lines: list[str] = [f"const {result_var} = new Map();"]
-        self._emit_comp_loops(generators, 0, body_lines, lambda: [
-            f"{result_var}.set({self._expr(key)}, {self._expr(value)});"
-        ])
+        body_lines: list[str] = [f"const {result_var} = [];"]
+        body_stmt = f"{result_var}.push({self._expr(element)});"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
         body_lines.append(f"return {result_var};")
         body = " ".join(body_lines)
         return f"(() => {{ {body} }})()"
 
-    def _comp_chain(self, element: Expr, generators: list[CompGenerator], init: str, add_method: str) -> str:
-        """Build comprehension as IIFE with nested loops."""
+    def _set_comp(self, element: Expr, generators: list[CompGenerator]) -> str:
+        """Emit set comprehension as IIFE with nested loops."""
         result_var = "_result"
-        body_lines: list[str] = [f"const {result_var} = {init};"]
-        self._emit_comp_loops(generators, 0, body_lines, lambda: [
-            f"{result_var}.{add_method}({self._expr(element)});"
-        ])
+        body_lines: list[str] = [f"const {result_var} = new Set();"]
+        body_stmt = f"{result_var}.add({self._expr(element)});"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
+        body_lines.append(f"return {result_var};")
+        body = " ".join(body_lines)
+        return f"(() => {{ {body} }})()"
+
+    def _dict_comp(self, key: Expr, value: Expr, generators: list[CompGenerator]) -> str:
+        """Emit dict comprehension as IIFE with nested loops."""
+        result_var = "_result"
+        body_lines: list[str] = [f"const {result_var} = new Map();"]
+        body_stmt = f"{result_var}.set({self._expr(key)}, {self._expr(value)});"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
         body_lines.append(f"return {result_var};")
         body = " ".join(body_lines)
         return f"(() => {{ {body} }})()"
@@ -1239,11 +1243,11 @@ class JsLikeBackend(ABC):
         generators: list[CompGenerator],
         idx: int,
         lines: list[str],
-        emit_body: callable,
+        body_stmt: str,
     ) -> None:
         """Recursively emit nested loops for comprehension generators."""
         if idx >= len(generators):
-            lines.extend(emit_body())
+            lines.append(body_stmt)
             return
         gen = generators[idx]
         iter_expr = self._expr(gen.iterable)
@@ -1255,13 +1259,11 @@ class JsLikeBackend(ABC):
                 target = _camel(target_name)
             lines.append(f"for (const {target} of {iter_expr}) {{")
         else:
-            targets = ", ".join(
-                "_unused" if t == "_" else _camel(t) for t in gen.targets
-            )
+            targets = ", ".join("_unused" if t == "_" else _camel(t) for t in gen.targets)
             lines.append(f"for (const [{targets}] of {iter_expr}) {{")
         for cond in gen.conditions:
             lines.append(f"if (!({self._expr(cond)})) continue;")
-        self._emit_comp_loops(generators, idx + 1, lines, emit_body)
+        self._emit_comp_loops(generators, idx + 1, lines, body_stmt)
         lines.append("}")
 
     def _containment_check(self, item: Expr, container: Expr, negated: bool) -> str:
@@ -1343,6 +1345,7 @@ class JsLikeBackend(ABC):
 
 
 # --- Shared utilities ---
+
 
 def _typeof_check(kind: str) -> str:
     """Return the typeof result for a primitive type check."""

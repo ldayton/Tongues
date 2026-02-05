@@ -34,6 +34,7 @@ from src.ir import (
     IntLit,
     InterfaceDef,
     Len,
+    LValue,
     MakeMap,
     MakeSlice,
     Map,
@@ -59,6 +60,7 @@ from src.ir import (
     StructRef,
     InterfaceRef,
     Tuple,
+    TupleAssign,
     TupleLit,
     Type,
     TypeAssert,
@@ -79,10 +81,10 @@ class TsBackend(JsLikeBackend):
         self.struct_fields: dict[str, list[tuple[str, Type]]] = {}
 
     def emit(self, module: Module) -> str:
-        self.indent = 0
-        self.lines = []
+        self.indent: int = 0
+        self.lines: list[str] = []
         self.struct_fields = {}
-        self._struct_field_count = {}
+        self._struct_field_count: dict[str, int] = {}
         for struct in module.structs:
             self.struct_fields[struct.name] = [(f.name, f.typ) for f in struct.fields]
             self._struct_field_count[struct.name] = len(struct.fields)
@@ -207,7 +209,9 @@ class TsBackend(JsLikeBackend):
         ts_type = self._type(value.typ) if value.typ else "any"
         return f"let {lv}: {ts_type} = {self._expr(value)}"
 
-    def _for_value_decl(self, name: str, iter_expr: str, index_name: str | None, elem_type: str) -> None:
+    def _for_value_decl(
+        self, name: str, iter_expr: str, index_name: str | None, elem_type: str
+    ) -> None:
         self._line(f"const {name}: {elem_type} = {iter_expr}[{index_name}];")
 
     # --- Exports ---
@@ -254,7 +258,9 @@ class TsBackend(JsLikeBackend):
 
     # --- Tuple reassign ---
 
-    def _emit_tuple_reassign(self, stmt, targets, lvalues: str, value: Expr) -> None:
+    def _emit_tuple_reassign(
+        self, stmt: TupleAssign, targets: list[LValue], lvalues: str, value: Expr
+    ) -> None:
         new_targets = stmt.new_targets
         for name in new_targets:
             self._line(f"var {_camel(name)}: any;")
@@ -283,11 +289,7 @@ class TsBackend(JsLikeBackend):
             and inner.typ == BOOL
         ):
             return f"Number({self._expr(inner)})"
-        if (
-            isinstance(to_type, Primitive)
-            and to_type.kind == "string"
-            and inner.typ == BOOL
-        ):
+        if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == BOOL:
             return f'({self._expr(inner)} ? "True" : "False")'
         ts_type = self._type(to_type)
         from_type = self._type(inner.typ)
@@ -394,6 +396,7 @@ class TsBackend(JsLikeBackend):
 
 
 # --- Helpers ---
+
 
 def _primitive_type(kind: str) -> str:
     match kind:

@@ -348,7 +348,9 @@ class JsBackend(JsLikeBackend):
     def _assign_decl_inline(self, lv: str, value: Expr) -> str:
         return f"let {lv} = {self._expr(value)}"
 
-    def _for_value_decl(self, name: str, iter_expr: str, index_name: str | None, elem_type: str) -> None:
+    def _for_value_decl(
+        self, name: str, iter_expr: str, index_name: str | None, elem_type: str
+    ) -> None:
         self._line(f"const {name} = {iter_expr}[{index_name}];")
 
     # --- Exports ---
@@ -420,7 +422,9 @@ class JsBackend(JsLikeBackend):
                 return
         super()._emit_stmt(stmt)
 
-    def _emit_tuple_reassign(self, stmt: TupleAssign, targets: list[LValue], lvalues: str, value: Expr) -> None:
+    def _emit_tuple_reassign(
+        self, stmt: TupleAssign, targets: list[LValue], lvalues: str, value: Expr
+    ) -> None:
         new_targets = stmt.new_targets
         for name in new_targets:
             if name not in self._hoisted_vars:
@@ -561,15 +565,15 @@ class JsBackend(JsLikeBackend):
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
         # Handle float to string with decimal preservation
-        if (
-            isinstance(to_type, Primitive)
-            and to_type.kind == "string"
-            and inner.typ == FLOAT
-        ):
+        if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == FLOAT:
             inner_str = self._expr(inner)
             return f"(Number.isInteger({inner_str}) ? {inner_str}.toFixed(1) : String({inner_str}))"
         # Handle None to string
-        if isinstance(inner, NilLit) and isinstance(to_type, Primitive) and to_type.kind == "string":
+        if (
+            isinstance(inner, NilLit)
+            and isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+        ):
             return '"None"'
         return super()._cast_expr(inner, to_type)
 
@@ -598,6 +602,7 @@ class JsBackend(JsLikeBackend):
 
 
 # --- Helpers ---
+
 
 def _is_void_func(func: Function) -> bool:
     """Check if a function returns void/None and needs implicit return null."""
