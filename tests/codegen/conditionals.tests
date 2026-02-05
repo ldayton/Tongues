@@ -2,11 +2,15 @@
 1 if True else 0
 --- javascript
 true ? 1 : 0;
+--- typescript
+true ? 1 : 0;
 ---
 
 === ternary with false
 1 if False else 0
 --- javascript
+false ? 1 : 0;
+--- typescript
 false ? 1 : 0;
 ---
 
@@ -14,11 +18,15 @@ false ? 1 : 0;
 10 if 5 > 3 else 20
 --- javascript
 5 > 3 ? 10 : 20;
+--- typescript
+5 > 3 ? 10 : 20;
 ---
 
 === ternary string result
 "yes" if True else "no"
 --- javascript
+true ? "yes" : "no";
+--- typescript
 true ? "yes" : "no";
 ---
 
@@ -26,11 +34,15 @@ true ? "yes" : "no";
 42 if 1 < 2 else 0
 --- javascript
 1 < 2 ? 42 : 0;
+--- typescript
+1 < 2 ? 42 : 0;
 ---
 
 === nested ternary else
 1 if True else 2 if False else 3
 --- javascript
+true ? 1 : false ? 2 : 3;
+--- typescript
 true ? 1 : false ? 2 : 3;
 ---
 
@@ -40,6 +52,8 @@ true ? 1 : false ? 2 : 3;
 1 if True else 2 if True else 3
 --- javascript
 true ? true ? 1 : 2 : 3;
+--- typescript
+true ? true ? 1 : 2 : 3;
 ---
 
 === ternary with arithmetic
@@ -47,6 +61,8 @@ true ? true ? 1 : 2 : 3;
 --- python
 1 + 2 if True else 3 + 4
 --- javascript
+true ? 1 + 2 : 3 + 4;
+--- typescript
 true ? 1 + 2 : 3 + 4;
 ---
 
@@ -57,11 +73,17 @@ def pick(a: int, b: int, use_first: bool) -> int:
 function pick(a, b, useFirst) {
   return useFirst ? a : b;
 }
+--- typescript
+function pick(a: number, b: number, useFirst: boolean): number {
+  return useFirst ? a : b;
+}
 ---
 
 === ternary in expression
 1 + (2 if True else 3)
 --- javascript
+1 + (true ? 2 : 3);
+--- typescript
 1 + (true ? 2 : 3);
 ---
 
@@ -69,11 +91,15 @@ function pick(a, b, useFirst) {
 "a" if True else "b"
 --- javascript
 true ? "a" : "b";
+--- typescript
+true ? "a" : "b";
 ---
 
 === chained comparison in ternary
 1 if 1 < 2 < 3 else 0
 --- javascript
+1 < 2 && 2 < 3 ? 1 : 0;
+--- typescript
 1 < 2 && 2 < 3 ? 1 : 0;
 ---
 
@@ -81,11 +107,15 @@ true ? "a" : "b";
 "equal" if 1 == 1 else "not equal"
 --- javascript
 1 === 1 ? "equal" : "not equal";
+--- typescript
+1 === 1 ? "equal" : "not equal";
 ---
 
 === ternary with inequality
 "different" if 1 != 2 else "same"
 --- javascript
+1 !== 2 ? "different" : "same";
+--- typescript
 1 !== 2 ? "different" : "same";
 ---
 
@@ -96,6 +126,13 @@ def check(x: int) -> int:
     return 0
 --- javascript
 function check(x) {
+  if (x > 0) {
+    return 1;
+  }
+  return 0;
+}
+--- typescript
+function check(x: number): number {
   if (x > 0) {
     return 1;
   }
@@ -117,6 +154,14 @@ function check(x) {
     return -1;
   }
 }
+--- typescript
+function check(x: number): number {
+  if (x > 0) {
+    return 1;
+  } else {
+    return -1;
+  }
+}
 ---
 
 === if elif else
@@ -129,6 +174,16 @@ def classify(x: int) -> str:
         return "zero"
 --- javascript
 function classify(x) {
+  if (x > 0) {
+    return "positive";
+  } else if (x < 0) {
+    return "negative";
+  } else {
+    return "zero";
+  }
+}
+--- typescript
+function classify(x: number): string {
   if (x > 0) {
     return "positive";
   } else if (x < 0) {
@@ -165,6 +220,20 @@ function grade(score) {
     return "F";
   }
 }
+--- typescript
+function grade(score: number): string {
+  if (score >= 90) {
+    return "A";
+  } else if (score >= 80) {
+    return "B";
+  } else if (score >= 70) {
+    return "C";
+  } else if (score >= 60) {
+    return "D";
+  } else {
+    return "F";
+  }
+}
 ---
 
 === nested if
@@ -188,6 +257,18 @@ function nested(x, y) {
     return 3;
   }
 }
+--- typescript
+function nested(x: number, y: number): number {
+  if (x > 0) {
+    if (y > 0) {
+      return 1;
+    } else {
+      return 2;
+    }
+  } else {
+    return 3;
+  }
+}
 ---
 
 === if with and
@@ -197,6 +278,13 @@ def both_positive(x: int, y: int) -> bool:
     return False
 --- javascript
 function bothPositive(x, y) {
+  if (x > 0 && y > 0) {
+    return true;
+  }
+  return false;
+}
+--- typescript
+function bothPositive(x: number, y: number): boolean {
   if (x > 0 && y > 0) {
     return true;
   }
@@ -225,6 +313,15 @@ function isZero(x) {
   }
   return false;
 }
+--- typescript
+function isZero(x: number): boolean {
+  if (!(x > 0)) {
+    if (!(x < 0)) {
+      return true;
+    }
+  }
+  return false;
+}
 ---
 
 === if with chained comparison
@@ -234,6 +331,13 @@ def in_range(x: int) -> bool:
     return False
 --- javascript
 function inRange(x) {
+  if (0 < x && x < 10) {
+    return true;
+  }
+  return false;
+}
+--- typescript
+function inRange(x: number): boolean {
   if (0 < x && x < 10) {
     return true;
   }
@@ -259,6 +363,16 @@ function clamp(x) {
   }
   return result;
 }
+--- typescript
+function clamp(x: number): number {
+  let result: number = x;
+  if (x < 0) {
+    result = 0;
+  } else if (x > 100) {
+    result = 100;
+  }
+  return result;
+}
 ---
 
 === if with break
@@ -272,6 +386,17 @@ def find_first_positive(nums: list[int]) -> int:
 --- javascript
 function findFirstPositive(nums) {
   let i = 0;
+  while (i < nums.length) {
+    if (nums[i] > 0) {
+      return nums[i];
+    }
+    i = i + 1;
+  }
+  return -1;
+}
+--- typescript
+function findFirstPositive(nums: number[]): number {
+  let i: number = 0;
   while (i < nums.length) {
     if (nums[i] > 0) {
       return nums[i];
@@ -307,6 +432,20 @@ function countPositive(nums) {
   }
   return count;
 }
+--- typescript
+function countPositive(nums: number[]): number {
+  let count: number = 0;
+  let i: number = 0;
+  while (i < nums.length) {
+    if (nums[i] <= 0) {
+      i = i + 1;
+      continue;
+    }
+    count = count + 1;
+    i = i + 1;
+  }
+  return count;
+}
 ---
 
 === ternary assigns to variable
@@ -316,6 +455,11 @@ def pick_value(flag: bool) -> int:
 --- javascript
 function pickValue(flag) {
   let x = flag ? 10 : 20;
+  return x;
+}
+--- typescript
+function pickValue(flag: boolean): number {
+  let x: number = flag ? 10 : 20;
   return x;
 }
 ---
@@ -329,6 +473,17 @@ def multi_check(a: int, b: int, c: int) -> bool:
     return False
 --- javascript
 function multiCheck(a, b, c) {
+  if (a > 0) {
+    if (b > 0) {
+      if (c > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+--- typescript
+function multiCheck(a: number, b: number, c: number): boolean {
   if (a > 0) {
     if (b > 0) {
       if (c > 0) {
@@ -357,6 +512,16 @@ function validate(x) {
   }
   return true;
 }
+--- typescript
+function validate(x: number): boolean {
+  if (x < 0) {
+    return false;
+  }
+  if (x > 100) {
+    return false;
+  }
+  return true;
+}
 ---
 
 === guard clause
@@ -371,11 +536,20 @@ function process(x) {
   }
   return x * 2;
 }
+--- typescript
+function process(x: number): number {
+  if (x === 0) {
+    return 0;
+  }
+  return x * 2;
+}
 ---
 
 === ternary with min
 min(1, 2) if True else 0
 --- javascript
+true ? Math.min(1, 2) : 0;
+--- typescript
 true ? Math.min(1, 2) : 0;
 ---
 
@@ -383,11 +557,15 @@ true ? Math.min(1, 2) : 0;
 max(1, 2) if True else 0
 --- javascript
 true ? Math.max(1, 2) : 0;
+--- typescript
+true ? Math.max(1, 2) : 0;
 ---
 
 === ternary float result
 1.5 if True else 2.5
 --- javascript
+true ? 1.5 : 2.5;
+--- typescript
 true ? 1.5 : 2.5;
 ---
 
@@ -400,6 +578,14 @@ def maybe_double(x: int, do_it: bool) -> int:
 --- javascript
 function maybeDouble(x, doIt) {
   let result = x;
+  if (doIt) {
+    result = x * 2;
+  }
+  return result;
+}
+--- typescript
+function maybeDouble(x: number, doIt: boolean): number {
+  let result: number = x;
   if (doIt) {
     result = x * 2;
   }
@@ -419,6 +605,13 @@ function ordered(a, b, c) {
   }
   return false;
 }
+--- typescript
+function ordered(a: number, b: number, c: number): boolean {
+  if (a < b && b < c) {
+    return true;
+  }
+  return false;
+}
 ---
 
 === equality chain
@@ -428,6 +621,13 @@ def all_equal(a: int, b: int, c: int) -> bool:
     return False
 --- javascript
 function allEqual(a, b, c) {
+  if (a === b && b === c) {
+    return true;
+  }
+  return false;
+}
+--- typescript
+function allEqual(a: number, b: number, c: number): boolean {
   if (a === b && b === c) {
     return true;
   }

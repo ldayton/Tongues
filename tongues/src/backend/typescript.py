@@ -62,6 +62,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     CatchClause,
     Constant,
@@ -96,7 +97,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -240,6 +243,11 @@ class TsBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        for stmt in module.statements:
+            if need_blank:
+                self._line()
+            self._emit_stmt(stmt)
+            need_blank = True
         if module.entrypoint is not None:
             self._line()
             self._emit_stmt(module.entrypoint)
@@ -380,23 +388,18 @@ class TsBackend:
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:
             case VarDecl(name=name, typ=typ, value=value):
-                # Use var for function-scoped semantics (matches Python/Go)
-                # Use any type because same variable may be re-declared with a
-                # different inferred type in another branch (TypeScript var
-                # requires all declarations to have the same type)
+                ts_type = self._type(typ) if typ else "any"
                 if value is not None:
                     val = self._expr(value)
-                    self._line(f"var {_camel(name)}: any = {val};")
+                    self._line(f"let {_camel(name)}: {ts_type} = {val};")
                 else:
-                    self._line(f"var {_camel(name)}: any;")
+                    self._line(f"let {_camel(name)}: {ts_type};")
             case Assign(target=target, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
                 if stmt.is_declaration:
-                    # Use var for function-scoped semantics; use 'any' type because
-                    # the same variable may be re-assigned with different types in
-                    # different branches (TypeScript var requires consistent types)
-                    self._line(f"var {lv}: any = {val};")
+                    ts_type = self._type(value.typ) if value.typ else "any"
+                    self._line(f"let {lv}: {ts_type} = {val};")
                 else:
                     self._line(f"{lv} = {val};")
             case TupleAssign(targets=targets, value=value):
@@ -448,12 +451,9 @@ class TsBackend:
                     self._emit_stmt(s)
                 self.indent -= 1
                 if else_body:
-                    self._line("} else {")
-                    self.indent += 1
-                    for s in else_body:
-                        self._emit_stmt(s)
-                    self.indent -= 1
-                self._line("}")
+                    self._emit_else_body(else_body)
+                else:
+                    self._line("}")
             case TypeSwitch(expr=expr, binding=binding, cases=cases, default=default):
                 self._emit_type_switch(expr, binding, cases, default)
             case Match(expr=expr, cases=cases, default=default):
@@ -515,6 +515,30 @@ class TsBackend:
                 self._line("return null;")
             case _:
                 raise NotImplementedError("Unknown statement")
+
+    def _emit_else_body(self, else_body: list[Stmt]) -> None:
+        """Emit else body, using 'else if' for chained conditionals."""
+        # If else body is a single If statement, emit as 'else if'
+        if len(else_body) == 1 and isinstance(else_body[0], If):
+            elif_stmt = else_body[0]
+            if elif_stmt.init is not None:
+                self._emit_stmt(elif_stmt.init)
+            self._line(f"}} else if ({self._expr(elif_stmt.cond)}) {{")
+            self.indent += 1
+            for s in elif_stmt.then_body:
+                self._emit_stmt(s)
+            self.indent -= 1
+            if elif_stmt.else_body:
+                self._emit_else_body(elif_stmt.else_body)
+            else:
+                self._line("}")
+        else:
+            self._line("} else {")
+            self.indent += 1
+            for s in else_body:
+                self._emit_stmt(s)
+            self.indent -= 1
+            self._line("}")
 
     def _emit_type_switch(
         self, expr: Expr, binding: str, cases: list[TypeCase], default: list[Stmt]
@@ -709,9 +733,10 @@ class TsBackend:
     def _stmt_inline(self, stmt: Stmt) -> str:
         match stmt:
             case VarDecl(name=name, typ=typ, value=value):
+                ts_type = self._type(typ) if typ else "any"
                 if value is not None:
-                    return f"var {_camel(name)}: any = {self._expr(value)}"
-                return f"var {_camel(name)}: any"
+                    return f"let {_camel(name)}: {ts_type} = {self._expr(value)}"
+                return f"let {_camel(name)}: {ts_type}"
             case Assign(
                 target=VarLV(name=name),
                 value=BinaryOp(op=op, left=Var(name=left_name), right=IntLit(value=1)),
@@ -721,8 +746,8 @@ class TsBackend:
                 lv = self._lvalue(target)
                 val = self._expr(value)
                 if stmt.is_declaration:
-                    # Use any - same variable may have different types in different branches
-                    return f"var {lv}: any = {val}"
+                    ts_type = self._type(value.typ) if value.typ else "any"
+                    return f"let {lv}: {ts_type} = {val}"
                 return f"{lv} = {val}"
             case OpAssign(target=target, op=op, value=value):
                 return f"{self._lvalue(target)} {op}= {self._expr(value)}"
@@ -824,9 +849,20 @@ class TsBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
+            case IntLit(value=value, format=fmt):
+                if fmt == "hex":
+                    return hex(value)
+                if fmt == "oct":
+                    return f"0o{oct(value)[2:]}"
+                if fmt == "bin":
+                    return bin(value)
+                # Large integers that exceed JS safe integer range need BigInt
+                if abs(value) > 9007199254740991:  # Number.MAX_SAFE_INTEGER
+                    return f"{value}n"
                 return str(value)
-            case FloatLit(value=value):
+            case FloatLit(value=value, format=fmt):
+                if fmt == "exp":
+                    return _scientific_notation(value)
                 return str(value)
             case StringLit(value=value):
                 return _string_literal(value)
@@ -905,6 +941,35 @@ class TsBackend:
             case Call(func="bool", args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Boolean({args_str})"
+            case Call(func="abs", args=[arg]):
+                return f"Math.abs({self._expr(arg)})"
+            case Call(func="round", args=[arg]):
+                return f"Math.round({self._expr(arg)})"
+            case Call(func="round", args=[arg, IntLit(value=digits)]):
+                factor = 10 ** digits
+                a = self._expr(arg)
+                return f"Math.round({a} * {factor}) / {factor}"
+            case Call(func="round", args=[arg, digits]):
+                d = self._expr(digits)
+                a = self._expr(arg)
+                return f"Math.round({a} * 10 ** {d}) / 10 ** {d}"
+            case Call(func="int", args=[arg]) if isinstance(arg, IntLit):
+                return str(arg.value)
+            case Call(func="int", args=[arg]):
+                return f"Math.trunc({self._expr(arg)})"
+            case Call(func="float", args=[arg]) if isinstance(arg, IntLit):
+                return str(arg.value)
+            case Call(func="float", args=[arg]) if isinstance(arg, FloatLit):
+                # For float literals, output without trailing .0
+                v = arg.value
+                return str(int(v)) if v == int(v) else str(v)
+            case Call(func="float", args=[arg]):
+                return f"Number({self._expr(arg)})"
+            case Call(func="divmod", args=[a, b]):
+                av, bv = self._expr(a), self._expr(b)
+                return f"[Math.floor({av} / {bv}), {av} % {bv}]"
+            case Call(func="pow", args=[base, exp, mod]):
+                return f"{self._expr(base)} ** {self._expr(exp)} % {self._expr(mod)}"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"{_camel(func)}({args_str})"
@@ -986,6 +1051,18 @@ class TsBackend:
                 left_str = self._expr_with_precedence(left, op, is_right=False)
                 right_str = self._expr_with_precedence(right, op, is_right=True)
                 return f"{left_str} {ts_op} {right_str}"
+            case ChainedCompare(operands=operands, ops=ops):
+                parts = []
+                for i, op in enumerate(ops):
+                    left = self._expr(operands[i])
+                    right = self._expr(operands[i + 1])
+                    ts_op = _binary_op(op)
+                    parts.append(f"{left} {ts_op} {right}")
+                return " && ".join(parts)
+            case MinExpr(left=left, right=right):
+                return f"Math.min({self._expr(left)}, {self._expr(right)})"
+            case MaxExpr(left=left, right=right):
+                return f"Math.max({self._expr(left)}, {self._expr(right)})"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)  # TypeScript passes objects by reference
             case UnaryOp(op="*", operand=operand):
@@ -1002,14 +1079,27 @@ class TsBackend:
                 return f"{left_str} !== {right_str}"
             case UnaryOp(op=op, operand=operand):
                 inner = self._expr(operand)
+                # For consecutive unary ops like - -5, add space to avoid --
+                if isinstance(operand, UnaryOp):
+                    if op in ("-", "+"):
+                        return f"{op} {inner}"
+                    # For !, no parens needed: !!true not !(!(true))
+                    return f"{op}{inner}"
                 # Wrap in parentheses if operand is a binary expression (precedence)
                 if isinstance(operand, BinaryOp):
                     inner = f"({inner})"
                 return f"{op}{inner}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
-                # Wrap in parens - ternary has very low precedence in JS
-                return f"({self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
+                return f"{self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)}"
             case Cast(expr=inner, to_type=to_type):
+                # float to int: use Math.trunc for truncation
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind == "int"
+                    and isinstance(inner.typ, Primitive)
+                    and inner.typ.kind == "float"
+                ):
+                    return f"Math.trunc({self._expr(inner)})"
                 if (
                     isinstance(to_type, Primitive)
                     and to_type.kind in ("int", "byte", "rune")
@@ -1158,10 +1248,19 @@ class TsBackend:
         # This handles cases like Map.get(key) ?? default inside string concatenation
         if " ?? " in inner and parent_op in ("+", "-", "*", "/", "%"):
             return f"({inner})"
+        # Ternary has lower precedence than binary ops
+        if isinstance(expr, Ternary):
+            return f"({inner})"
+        # ** with unary operand on left needs parens: (-2) ** 3
+        if parent_op == "**" and not is_right and isinstance(expr, UnaryOp):
+            return f"({inner})"
         if not isinstance(expr, BinaryOp):
             return inner
         child_prec = _op_precedence(expr.op)
         parent_prec = _op_precedence(parent_op)
+        # ** is right-associative: 2 ** 3 ** 2 = 2 ** (3 ** 2)
+        if parent_op == "**" and expr.op == "**" and is_right:
+            return inner
         # Need parens if child has lower precedence, or same precedence on right side
         needs_parens = child_prec < parent_prec or (child_prec == parent_prec and is_right)
         return f"({inner})" if needs_parens else inner
@@ -1445,6 +1544,37 @@ def _escape_regex_literal(s: str) -> str:
     return "".join(result)
 
 
+def _scientific_notation(value: float) -> str:
+    """Format a float in compact scientific notation like 1e0, 1.5e3."""
+    if value == 0:
+        return "0"
+    # Calculate exponent using log10
+    abs_val = abs(value)
+    exp = 0
+    if abs_val >= 10:
+        while abs_val >= 10:
+            abs_val = abs_val / 10
+            exp = exp + 1
+    elif abs_val < 1:
+        while abs_val < 1:
+            abs_val = abs_val * 10
+            exp = exp - 1
+    coeff = value / (10 ** exp)
+    # Round to avoid floating point artifacts
+    coeff = round(coeff, 10)
+    # For zero exponent, just return the coefficient
+    if exp == 0:
+        if coeff == int(coeff):
+            return str(int(coeff))
+        return f"{coeff:.10g}"
+    # Check if coefficient is an integer
+    if coeff == int(coeff):
+        return f"{int(coeff)}e{exp}"
+    # Format with minimal decimal places
+    coeff_str = f"{coeff:.10g}"
+    return f"{coeff_str}e{exp}"
+
+
 def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
     """True when one operand is bool and the other is int."""
     l, r = left.typ, right.typ
@@ -1484,8 +1614,10 @@ def _op_precedence(op: str) -> int:
             return 9
         case "*" | "/" | "%":
             return 10
-        case _:
+        case "**":
             return 11
+        case _:
+            return 12
 
 
 def _can_infer_type(value: Expr) -> bool:
