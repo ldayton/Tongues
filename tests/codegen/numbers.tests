@@ -4,6 +4,8 @@
 42;
 --- typescript
 42;
+--- ruby
+42
 ---
 
 === negative int
@@ -12,6 +14,8 @@
 -7;
 --- typescript
 -7;
+--- ruby
+-7
 ---
 
 === float literal
@@ -20,6 +24,8 @@
 3.14;
 --- typescript
 3.14;
+--- ruby
+3.14
 ---
 
 === negative float
@@ -28,6 +34,8 @@
 -2.5;
 --- typescript
 -2.5;
+--- ruby
+-2.5
 ---
 
 === int addition
@@ -36,6 +44,8 @@
 1 + 2;
 --- typescript
 1 + 2;
+--- ruby
+1 + 2
 ---
 
 === int subtraction
@@ -44,6 +54,8 @@
 5 - 3;
 --- typescript
 5 - 3;
+--- ruby
+5 - 3
 ---
 
 === int multiplication
@@ -52,6 +64,8 @@
 4 * 5;
 --- typescript
 4 * 5;
+--- ruby
+4 * 5
 ---
 
 === int division
@@ -60,6 +74,8 @@
 7 / 2;
 --- typescript
 7 / 2;
+--- ruby
+7 / 2
 ---
 
 === int floor division
@@ -68,6 +84,8 @@
 Math.floor(7 / 2);
 --- typescript
 Math.floor(7 / 2);
+--- ruby
+7 / 2
 ---
 
 === int modulo
@@ -76,6 +94,8 @@ Math.floor(7 / 2);
 7 % 3;
 --- typescript
 7 % 3;
+--- ruby
+7 % 3
 ---
 
 === float addition
@@ -84,6 +104,8 @@ Math.floor(7 / 2);
 1.5 + 2.5;
 --- typescript
 1.5 + 2.5;
+--- ruby
+1.5 + 2.5
 ---
 
 === float multiplication
@@ -92,6 +114,8 @@ Math.floor(7 / 2);
 2.0 * 3.5;
 --- typescript
 2.0 * 3.5;
+--- ruby
+2.0 * 3.5
 ---
 
 === chained addition
@@ -100,6 +124,8 @@ Math.floor(7 / 2);
 1 + 2 + 3;
 --- typescript
 1 + 2 + 3;
+--- ruby
+1 + 2 + 3
 ---
 
 === chained multiplication
@@ -108,6 +134,8 @@ Math.floor(7 / 2);
 2 * 3 * 4;
 --- typescript
 2 * 3 * 4;
+--- ruby
+2 * 3 * 4
 ---
 
 === mixed operators
@@ -116,6 +144,8 @@ Math.floor(7 / 2);
 1 + 2 * 3;
 --- typescript
 1 + 2 * 3;
+--- ruby
+1 + 2 * 3
 ---
 
 === parenthesized expression
@@ -124,6 +154,8 @@ Math.floor(7 / 2);
 (1 + 2) * 3;
 --- typescript
 (1 + 2) * 3;
+--- ruby
+(1 + 2) * 3
 ---
 
 === nested parentheses
@@ -132,6 +164,8 @@ Math.floor(7 / 2);
 (1 + 2) * (3 - 4);
 --- typescript
 (1 + 2) * (3 - 4);
+--- ruby
+(1 + 2) * (3 - 4)
 ---
 
 === comparison less than
@@ -140,6 +174,8 @@ Math.floor(7 / 2);
 1 < 2;
 --- typescript
 1 < 2;
+--- ruby
+1 < 2
 ---
 
 === comparison greater than
@@ -148,6 +184,8 @@ Math.floor(7 / 2);
 2 > 1;
 --- typescript
 2 > 1;
+--- ruby
+2 > 1
 ---
 
 === comparison equals
@@ -156,6 +194,8 @@ Math.floor(7 / 2);
 1 === 1;
 --- typescript
 1 === 1;
+--- ruby
+1 == 1
 ---
 
 === comparison not equals
@@ -164,6 +204,8 @@ Math.floor(7 / 2);
 1 !== 2;
 --- typescript
 1 !== 2;
+--- ruby
+1 != 2
 ---
 
 === comparison less equal
@@ -172,6 +214,8 @@ Math.floor(7 / 2);
 1 <= 2;
 --- typescript
 1 <= 2;
+--- ruby
+1 <= 2
 ---
 
 === comparison greater equal
@@ -180,6 +224,8 @@ Math.floor(7 / 2);
 2 >= 1;
 --- typescript
 2 >= 1;
+--- ruby
+2 >= 1
 ---
 
 === complex arithmetic
@@ -188,6 +234,8 @@ Math.floor(7 / 2);
 2 * 3 + Math.floor(8 / 2) - 7 % 3;
 --- typescript
 2 * 3 + Math.floor(8 / 2) - 7 % 3;
+--- ruby
+2 * 3 + 8 / 2 - 7 % 3
 ---
 
 === float division chain
@@ -196,6 +244,8 @@ Math.floor(7 / 2);
 8.0 / 2.0 / 2.0;
 --- typescript
 8.0 / 2.0 / 2.0;
+--- ruby
+8.0 / 2.0 / 2.0
 ---
 
 === power operator
@@ -204,6 +254,8 @@ Math.floor(7 / 2);
 2 ** 3;
 --- typescript
 2 ** 3;
+--- ruby
+2 ** 3
 ---
 
 === float power
@@ -212,6 +264,8 @@ Math.floor(7 / 2);
 2.0 ** 0.5;
 --- typescript
 2.0 ** 0.5;
+--- ruby
+2.0 ** 0.5
 ---
 
 === unary minus
@@ -220,6 +274,8 @@ Math.floor(7 / 2);
 -5;
 --- typescript
 -5;
+--- ruby
+-5
 ---
 
 === unary plus
@@ -228,6 +284,8 @@ Math.floor(7 / 2);
 +5;
 --- typescript
 +5;
+--- ruby
++5
 ---
 
 === boolean and
@@ -236,6 +294,8 @@ True and False
 true && false;
 --- typescript
 true && false;
+--- ruby
+true && false
 ---
 
 === boolean not
@@ -244,6 +304,8 @@ not True
 !true;
 --- typescript
 !true;
+--- ruby
+!true
 ---
 
 === chained comparison
@@ -252,6 +314,8 @@ not True
 1 < 2 && 2 < 3;
 --- typescript
 1 < 2 && 2 < 3;
+--- ruby
+1 < 2 && 2 < 3
 ---
 
 === bitwise and
@@ -260,6 +324,8 @@ not True
 5 & 3;
 --- typescript
 5 & 3;
+--- ruby
+5 & 3
 ---
 
 === bitwise or
@@ -268,6 +334,8 @@ not True
 5 | 3;
 --- typescript
 5 | 3;
+--- ruby
+5 | 3
 ---
 
 === bitwise xor
@@ -276,6 +344,8 @@ not True
 5 ^ 3;
 --- typescript
 5 ^ 3;
+--- ruby
+5 ^ 3
 ---
 
 === bitwise not
@@ -284,6 +354,8 @@ not True
 ~5;
 --- typescript
 ~5;
+--- ruby
+~5
 ---
 
 === left shift
@@ -292,6 +364,8 @@ not True
 1 << 4;
 --- typescript
 1 << 4;
+--- ruby
+1 << 4
 ---
 
 === right shift
@@ -300,6 +374,8 @@ not True
 16 >> 2;
 --- typescript
 16 >> 2;
+--- ruby
+16 >> 2
 ---
 
 === ternary expression
@@ -308,6 +384,8 @@ not True
 true ? 1 : 0;
 --- typescript
 true ? 1 : 0;
+--- ruby
+true ? 1 : 0
 ---
 
 === ternary with comparison
@@ -316,6 +394,8 @@ true ? 1 : 0;
 5 > 3 ? 10 : 20;
 --- typescript
 5 > 3 ? 10 : 20;
+--- ruby
+5 > 3 ? 10 : 20
 ---
 
 === nested ternary
@@ -324,6 +404,8 @@ true ? 1 : 0;
 true ? 1 : false ? 2 : 3;
 --- typescript
 true ? 1 : false ? 2 : 3;
+--- ruby
+true ? 1 : false ? 2 : 3
 ---
 
 === power right associative
@@ -332,6 +414,8 @@ true ? 1 : false ? 2 : 3;
 2 ** 3 ** 2;
 --- typescript
 2 ** 3 ** 2;
+--- ruby
+2 ** 3 ** 2
 ---
 
 === double negation
@@ -340,6 +424,8 @@ true ? 1 : false ? 2 : 3;
 - -5;
 --- typescript
 - -5;
+--- ruby
+- -5
 ---
 
 === negation of expression
@@ -348,6 +434,8 @@ true ? 1 : false ? 2 : 3;
 -(1 + 2);
 --- typescript
 -(1 + 2);
+--- ruby
+-(1 + 2)
 ---
 
 === abs call
@@ -356,6 +444,8 @@ abs(-5)
 Math.abs(-5);
 --- typescript
 Math.abs(-5);
+--- ruby
+(-5).abs
 ---
 
 === min call
@@ -364,6 +454,8 @@ min(3, 7)
 Math.min(3, 7);
 --- typescript
 Math.min(3, 7);
+--- ruby
+[3, 7].min
 ---
 
 === max call
@@ -372,6 +464,8 @@ max(3, 7)
 Math.max(3, 7);
 --- typescript
 Math.max(3, 7);
+--- ruby
+[3, 7].max
 ---
 
 === nested min max
@@ -380,6 +474,8 @@ min(max(1, 2), max(3, 4))
 Math.min(Math.max(1, 2), Math.max(3, 4));
 --- typescript
 Math.min(Math.max(1, 2), Math.max(3, 4));
+--- ruby
+[[1, 2].max, [3, 4].max].min
 ---
 
 === arithmetic in comparison
@@ -388,6 +484,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 1 + 2 < 3 + 4;
 --- typescript
 1 + 2 < 3 + 4;
+--- ruby
+1 + 2 < 3 + 4
 ---
 
 === comparison result in arithmetic
@@ -396,6 +494,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 (1 < 2) + (3 < 4);
 --- typescript
 (1 < 2) + (3 < 4);
+--- ruby
+(1 < 2 ? 1 : 0) + (3 < 4 ? 1 : 0)
 ---
 
 === subtraction left associative
@@ -404,6 +504,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 10 - 3 - 2;
 --- typescript
 10 - 3 - 2;
+--- ruby
+10 - 3 - 2
 ---
 
 === division left associative
@@ -412,6 +514,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 24 / 4 / 2;
 --- typescript
 24 / 4 / 2;
+--- ruby
+24 / 4 / 2
 ---
 
 === deeply nested arithmetic
@@ -422,6 +526,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 (1 + 2) * (3 + 4) / (5 - 6 + 7 * 8);
 --- typescript
 (1 + 2) * (3 + 4) / (5 - 6 + 7 * 8);
+--- ruby
+(1 + 2) * (3 + 4) / (5 - 6 + 7 * 8)
 ---
 
 === mixed int float
@@ -430,6 +536,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 1 + 2.0 * 3;
 --- typescript
 1 + 2.0 * 3;
+--- ruby
+1 + 2.0 * 3
 ---
 
 === power with negative base
@@ -438,6 +546,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 (-2) ** 3;
 --- typescript
 (-2) ** 3;
+--- ruby
+(-2) ** 3
 ---
 
 === power with negative exponent
@@ -446,6 +556,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 2 ** -1;
 --- typescript
 2 ** -1;
+--- ruby
+2 ** -1
 ---
 
 === modulo negative
@@ -454,6 +566,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 -7 % 3;
 --- typescript
 -7 % 3;
+--- ruby
+-7 % 3
 ---
 
 === floor div negative
@@ -462,6 +576,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 Math.floor(-7 / 3);
 --- typescript
 Math.floor(-7 / 3);
+--- ruby
+-7 / 3
 ---
 
 === bitwise precedence
@@ -470,6 +586,8 @@ Math.floor(-7 / 3);
 1 | 2 & 3;
 --- typescript
 1 | 2 & 3;
+--- ruby
+1 | 2 & 3
 ---
 
 === shift precedence
@@ -478,6 +596,8 @@ Math.floor(-7 / 3);
 1 + 2 << 3;
 --- typescript
 1 + 2 << 3;
+--- ruby
+1 + 2 << 3
 ---
 
 === hex lowercase
@@ -488,6 +608,8 @@ Math.floor(-7 / 3);
 0xff;
 --- typescript
 0xff;
+--- ruby
+0xff
 ---
 
 === hex uppercase
@@ -498,6 +620,8 @@ Math.floor(-7 / 3);
 0xff;
 --- typescript
 0xff;
+--- ruby
+0xff
 ---
 
 === hex mixed case
@@ -508,6 +632,8 @@ Math.floor(-7 / 3);
 0xabcd;
 --- typescript
 0xabcd;
+--- ruby
+0xabcd
 ---
 
 === hex single digit
@@ -518,6 +644,8 @@ Math.floor(-7 / 3);
 0xf;
 --- typescript
 0xf;
+--- ruby
+0xf
 ---
 
 === hex with leading zeros
@@ -528,6 +656,8 @@ Math.floor(-7 / 3);
 0xff;
 --- typescript
 0xff;
+--- ruby
+0xff
 ---
 
 === hex large
@@ -538,6 +668,8 @@ Math.floor(-7 / 3);
 0xdeadbeef;
 --- typescript
 0xdeadbeef;
+--- ruby
+0xdeadbeef
 ---
 
 === octal basic
@@ -548,6 +680,8 @@ Math.floor(-7 / 3);
 0o77;
 --- typescript
 0o77;
+--- ruby
+0o77
 ---
 
 === octal single digit
@@ -558,6 +692,8 @@ Math.floor(-7 / 3);
 0o7;
 --- typescript
 0o7;
+--- ruby
+0o7
 ---
 
 === octal zero
@@ -568,6 +704,8 @@ Math.floor(-7 / 3);
 0o0;
 --- typescript
 0o0;
+--- ruby
+0o0
 ---
 
 === octal large
@@ -578,6 +716,8 @@ Math.floor(-7 / 3);
 0o755;
 --- typescript
 0o755;
+--- ruby
+0o755
 ---
 
 === binary basic
@@ -588,6 +728,8 @@ Math.floor(-7 / 3);
 0b1010;
 --- typescript
 0b1010;
+--- ruby
+0b1010
 ---
 
 === binary single bit
@@ -598,6 +740,8 @@ Math.floor(-7 / 3);
 0b1;
 --- typescript
 0b1;
+--- ruby
+0b1
 ---
 
 === binary zero
@@ -608,6 +752,8 @@ Math.floor(-7 / 3);
 0b0;
 --- typescript
 0b0;
+--- ruby
+0b0
 ---
 
 === binary byte
@@ -618,6 +764,8 @@ Math.floor(-7 / 3);
 0b11111111;
 --- typescript
 0b11111111;
+--- ruby
+0b11111111
 ---
 
 === binary with leading zeros
@@ -628,6 +776,8 @@ Math.floor(-7 / 3);
 0b1010;
 --- typescript
 0b1010;
+--- ruby
+0b1010
 ---
 
 === scientific positive exp
@@ -638,6 +788,8 @@ Math.floor(-7 / 3);
 1.5e10;
 --- typescript
 1.5e10;
+--- ruby
+1.5e10
 ---
 
 === scientific negative exp
@@ -648,6 +800,8 @@ Math.floor(-7 / 3);
 1.5e-10;
 --- typescript
 1.5e-10;
+--- ruby
+1.5e-10
 ---
 
 === scientific uppercase E
@@ -658,6 +812,8 @@ Math.floor(-7 / 3);
 1.5e10;
 --- typescript
 1.5e10;
+--- ruby
+1.5e10
 ---
 
 === scientific zero exp
@@ -668,6 +824,8 @@ Math.floor(-7 / 3);
 1.5;
 --- typescript
 1.5;
+--- ruby
+1.5
 ---
 
 === scientific integer coeff
@@ -678,6 +836,8 @@ Math.floor(-7 / 3);
 1e10;
 --- typescript
 1e10;
+--- ruby
+1e10
 ---
 
 === scientific negative coeff
@@ -688,6 +848,8 @@ Math.floor(-7 / 3);
 -1.5e10;
 --- typescript
 -1.5e10;
+--- ruby
+-1.5e10
 ---
 
 === scientific small number
@@ -698,6 +860,8 @@ Math.floor(-7 / 3);
 1e-100;
 --- typescript
 1e-100;
+--- ruby
+1e-100
 ---
 
 === scientific large number
@@ -708,6 +872,8 @@ Math.floor(-7 / 3);
 1e100;
 --- typescript
 1e100;
+--- ruby
+1e100
 ---
 
 === scientific with plus exp
@@ -718,6 +884,8 @@ Math.floor(-7 / 3);
 1.5e10;
 --- typescript
 1.5e10;
+--- ruby
+1.5e10
 ---
 
 === scientific trailing zeros
@@ -728,6 +896,8 @@ Math.floor(-7 / 3);
 1.5e10;
 --- typescript
 1.5e10;
+--- ruby
+1.5e10
 ---
 
 === hex in expression
@@ -738,6 +908,8 @@ Math.floor(-7 / 3);
 0xff + 1;
 --- typescript
 0xff + 1;
+--- ruby
+0xff + 1
 ---
 
 === octal in expression
@@ -748,6 +920,8 @@ Math.floor(-7 / 3);
 0o77 * 2;
 --- typescript
 0o77 * 2;
+--- ruby
+0o77 * 2
 ---
 
 === binary in expression
@@ -758,6 +932,8 @@ Math.floor(-7 / 3);
 0b1010 | 0b101;
 --- typescript
 0b1010 | 0b101;
+--- ruby
+0b1010 | 0b101
 ---
 
 === scientific in expression
@@ -768,6 +944,8 @@ Math.floor(-7 / 3);
 1.5e10 + 1.0;
 --- typescript
 1.5e10 + 1.0;
+--- ruby
+1.5e10 + 1.0
 ---
 
 === mixed literal formats
@@ -778,6 +956,8 @@ Math.floor(-7 / 3);
 0xff + 0o77 + 0b1010;
 --- typescript
 0xff + 0o77 + 0b1010;
+--- ruby
+0xff + 0o77 + 0b1010
 ---
 
 === float trailing zeros
@@ -788,6 +968,8 @@ Math.floor(-7 / 3);
 1.0;
 --- typescript
 1.0;
+--- ruby
+1.0
 ---
 
 === float many trailing zeros
@@ -798,6 +980,8 @@ Math.floor(-7 / 3);
 3.14;
 --- typescript
 3.14;
+--- ruby
+3.14
 ---
 
 === float trailing dot
@@ -808,6 +992,8 @@ Math.floor(-7 / 3);
 1.0;
 --- typescript
 1.0;
+--- ruby
+1.0
 ---
 
 === float leading dot
@@ -818,6 +1004,8 @@ Math.floor(-7 / 3);
 0.5;
 --- typescript
 0.5;
+--- ruby
+0.5
 ---
 
 === float leading dot small
@@ -828,6 +1016,8 @@ Math.floor(-7 / 3);
 0.001;
 --- typescript
 0.001;
+--- ruby
+0.001
 ---
 
 === float integer value
@@ -838,6 +1028,8 @@ Math.floor(-7 / 3);
 1.0;
 --- typescript
 1.0;
+--- ruby
+1.0
 ---
 
 === float zero
@@ -848,6 +1040,8 @@ Math.floor(-7 / 3);
 0.0;
 --- typescript
 0.0;
+--- ruby
+0.0
 ---
 
 === float negative zero
@@ -858,6 +1052,8 @@ Math.floor(-7 / 3);
 -0.0;
 --- typescript
 -0.0;
+--- ruby
+-0.0
 ---
 
 === float negative trailing zeros
@@ -868,6 +1064,8 @@ Math.floor(-7 / 3);
 -1.0;
 --- typescript
 -1.0;
+--- ruby
+-1.0
 ---
 
 === float negative leading dot
@@ -878,6 +1076,8 @@ Math.floor(-7 / 3);
 -0.5;
 --- typescript
 -0.5;
+--- ruby
+-0.5
 ---
 
 === float underscores
@@ -888,6 +1088,8 @@ Math.floor(-7 / 3);
 1000000.0;
 --- typescript
 1000000.0;
+--- ruby
+1000000.0
 ---
 
 === int underscores
@@ -898,6 +1100,8 @@ Math.floor(-7 / 3);
 1000000;
 --- typescript
 1000000;
+--- ruby
+1000000
 ---
 
 === hex underscores
@@ -908,6 +1112,8 @@ Math.floor(-7 / 3);
 0xffff;
 --- typescript
 0xffff;
+--- ruby
+0xffff
 ---
 
 === binary underscores
@@ -918,6 +1124,8 @@ Math.floor(-7 / 3);
 0b10101010;
 --- typescript
 0b10101010;
+--- ruby
+0b10101010
 ---
 
 === large int
@@ -926,6 +1134,8 @@ Math.floor(-7 / 3);
 999999999999999999999n;
 --- typescript
 999999999999999999999n;
+--- ruby
+999999999999999999999
 ---
 
 === int conversion
@@ -934,6 +1144,8 @@ int(3.7)
 Math.trunc(3.7);
 --- typescript
 Math.trunc(3.7);
+--- ruby
+3.7.to_i
 ---
 
 === float conversion
@@ -942,6 +1154,8 @@ float(42)
 42;
 --- typescript
 42;
+--- ruby
+42.to_f
 ---
 
 === round call
@@ -950,6 +1164,8 @@ round(3.7)
 Math.round(3.7);
 --- typescript
 Math.round(3.7);
+--- ruby
+3.7.round
 ---
 
 === round with precision
@@ -958,6 +1174,8 @@ round(3.14159, 2)
 Math.round(3.14159 * 100) / 100;
 --- typescript
 Math.round(3.14159 * 100) / 100;
+--- ruby
+3.14159.round(2)
 ---
 
 === divmod call
@@ -966,6 +1184,8 @@ divmod(17, 5)
 [Math.floor(17 / 5), 17 % 5];
 --- typescript
 [Math.floor(17 / 5), 17 % 5];
+--- ruby
+17.divmod(5)
 ---
 
 === pow three arg
@@ -974,6 +1194,8 @@ pow(2, 10, 1000)
 2 ** 10 % 1000;
 --- typescript
 2 ** 10 % 1000;
+--- ruby
+2.pow(10, 1000)
 ---
 
 === triple negation
@@ -982,6 +1204,8 @@ pow(2, 10, 1000)
 - - -5;
 --- typescript
 - - -5;
+--- ruby
+- - -5
 ---
 
 === bitwise and arithmetic
@@ -990,6 +1214,8 @@ pow(2, 10, 1000)
 (5 & 3) + 1;
 --- typescript
 (5 & 3) + 1;
+--- ruby
+(5 & 3) + 1
 ---
 
 === arithmetic and bitwise
@@ -1000,6 +1226,8 @@ pow(2, 10, 1000)
 5 & 3 + 1;
 --- typescript
 5 & 3 + 1;
+--- ruby
+5 & 3 + 1
 ---
 
 === xor chain
@@ -1008,6 +1236,8 @@ pow(2, 10, 1000)
 1 ^ 2 ^ 3;
 --- typescript
 1 ^ 2 ^ 3;
+--- ruby
+1 ^ 2 ^ 3
 ---
 
 === shift chain
@@ -1016,6 +1246,8 @@ pow(2, 10, 1000)
 1 << 2 << 1;
 --- typescript
 1 << 2 << 1;
+--- ruby
+1 << 2 << 1
 ---
 
 === complement of expression
@@ -1024,6 +1256,8 @@ pow(2, 10, 1000)
 ~(1 + 2);
 --- typescript
 ~(1 + 2);
+--- ruby
+~(1 + 2)
 ---
 
 === modulo precedence
@@ -1032,6 +1266,8 @@ pow(2, 10, 1000)
 2 + 3 % 2;
 --- typescript
 2 + 3 % 2;
+--- ruby
+2 + 3 % 2
 ---
 
 === floor div precedence
@@ -1040,6 +1276,8 @@ pow(2, 10, 1000)
 2 + Math.floor(7 / 3);
 --- typescript
 2 + Math.floor(7 / 3);
+--- ruby
+2 + 7 / 3
 ---
 
 === power precedence over multiply
@@ -1048,6 +1286,8 @@ pow(2, 10, 1000)
 2 * 3 ** 2;
 --- typescript
 2 * 3 ** 2;
+--- ruby
+2 * 3 ** 2
 ---
 
 === multiply precedence over add
@@ -1056,6 +1296,8 @@ pow(2, 10, 1000)
 2 ** 3 * 4;
 --- typescript
 2 ** 3 * 4;
+--- ruby
+2 ** 3 * 4
 ---
 
 === comparison with bool result used
@@ -1064,6 +1306,8 @@ pow(2, 10, 1000)
 (1 < 2) * 10;
 --- typescript
 (1 < 2) * 10;
+--- ruby
+(1 < 2 ? 1 : 0) * 10
 ---
 
 === nested abs
@@ -1072,6 +1316,8 @@ abs(abs(-5) - 10)
 Math.abs(Math.abs(-5) - 10);
 --- typescript
 Math.abs(Math.abs(-5) - 10);
+--- ruby
+((-5).abs - 10).abs
 ---
 
 === bool to int implicit
@@ -1080,6 +1326,8 @@ True + True
 true + true;
 --- typescript
 true + true;
+--- ruby
+(true ? 1 : 0) + (true ? 1 : 0)
 ---
 
 === not of comparison
@@ -1088,6 +1336,8 @@ not 1 < 2
 !(1 < 2);
 --- typescript
 !(1 < 2);
+--- ruby
+!(1 < 2)
 ---
 
 === and of comparisons
@@ -1096,6 +1346,8 @@ not 1 < 2
 1 < 2 && 3 < 4;
 --- typescript
 1 < 2 && 3 < 4;
+--- ruby
+1 < 2 && 3 < 4
 ---
 
 === mixed and not
@@ -1104,6 +1356,8 @@ not True and False
 !true && false;
 --- typescript
 !true && false;
+--- ruby
+!true && false
 ---
 
 === parenthesized not
@@ -1114,6 +1368,8 @@ not True and False
 !true && false;
 --- typescript
 !true && false;
+--- ruby
+!true && false
 ---
 
 === not of and
@@ -1122,4 +1378,6 @@ not (True and False)
 !(true && false);
 --- typescript
 !(true && false);
+--- ruby
+!(true && false)
 ---
