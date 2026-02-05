@@ -834,27 +834,7 @@ class Verifier:
 
     def visit_BoolOp(self, node: ASTNode) -> None:
         """Check boolean operation constraints."""
-        op = node.get("op", {})
-        op_type = op.get("_type", "")
         values = node.get("values", [])
-        # Check or-default pattern: x or []
-        if op_type == "Or":
-            i = 1
-            while i < len(values):
-                val = values[i]
-                val_type = val.get("_type", "")
-                if val_type in ("List", "Dict", "Set"):
-                    self.error(
-                        node, "expression", "or-default: use 'if x is None: x = ...' instead"
-                    )
-                if val_type == "Constant":
-                    v = val.get("value")
-                    if v in (0, "", None, False):
-                        self.error(
-                            node, "expression", "or-default: use 'if x is None: x = ...' instead"
-                        )
-                i += 1
-        # Visit children
         j = 0
         while j < len(values):
             self.visit(values[j])

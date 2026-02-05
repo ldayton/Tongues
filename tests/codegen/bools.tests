@@ -1,0 +1,259 @@
+=== true literal
+True
+---
+
+=== false literal
+False
+---
+
+=== not true
+not True
+---
+
+=== not false
+not False
+---
+
+=== double not
+not not True
+---
+
+=== triple not
+not not not True
+---
+
+=== and true true
+True and True
+---
+
+=== and true false
+True and False
+---
+
+=== and false true
+False and True
+---
+
+=== and false false
+False and False
+---
+
+=== or true true
+True or True
+---
+
+=== or true false
+True or False
+---
+
+=== or false true
+False or True
+---
+
+=== or false false
+False or False
+---
+
+=== not and
+not (True and False)
+---
+
+=== not or
+not (True or False)
+---
+
+=== and precedence over or
+True or False and False
+---
+
+=== or with parens
+(True or False) and False
+---
+
+=== chained and
+True and True and True
+---
+
+=== chained or
+False or False or True
+---
+
+=== mixed and or
+True and False or True
+---
+
+=== mixed or and
+True or False and True
+---
+
+=== not with and
+not True and False
+---
+
+=== not with or
+not False or True
+---
+
+=== parenthesized not and
+(not True) and False
+--- python
+not True and False
+---
+
+=== parenthesized not or
+(not False) or True
+--- python
+not False or True
+---
+
+=== comparison produces bool
+1 < 2
+---
+
+=== equality produces bool
+1 == 1
+---
+
+=== inequality produces bool
+1 != 2
+---
+
+=== comparison and bool
+1 < 2 and True
+---
+
+=== comparison or bool
+1 > 2 or True
+---
+
+=== not comparison
+not (1 < 2)
+--- python
+not 1 < 2
+---
+
+=== chained comparison
+1 < 2 < 3
+---
+
+=== chained comparison false
+1 < 3 < 2
+---
+
+=== comparison chain with eq
+1 <= 2 <= 2
+---
+
+=== and of comparisons
+1 < 2 and 3 < 4
+---
+
+=== or of comparisons
+1 > 2 or 3 < 4
+---
+
+=== complex bool expr
+(1 < 2) and (3 > 4 or 5 == 5)
+--- python
+1 < 2 and (3 > 4 or 5 == 5)
+---
+
+=== bool in ternary cond
+1 if True else 0
+---
+
+=== comparison in ternary cond
+1 if 1 < 2 else 0
+---
+
+=== and in ternary cond
+1 if True and True else 0
+---
+
+=== or in ternary cond
+1 if False or True else 0
+---
+
+=== bool ternary result
+True if 1 < 2 else False
+---
+
+=== nested bool ternary
+True if True else False if False else True
+---
+
+=== bool equality
+True == True
+---
+
+=== bool inequality
+True != False
+---
+
+=== bool and comparison
+True and 1 < 2
+---
+
+=== bool or comparison
+False or 1 < 2
+---
+
+=== deeply nested bool
+not (True and (False or (True and not False)))
+--- python
+not (True and (False or True and not False))
+---
+
+=== all and
+True and True and True and True
+---
+
+=== all or
+False or False or False or True
+---
+
+=== alternating and or
+True and False or True and False or True
+---
+
+=== de morgan and
+not (True and False)
+---
+
+=== de morgan or
+not (True or False)
+---
+
+=== bool with arithmetic comparison
+(1 + 1) < (2 + 1)
+--- python
+1 + 1 < 2 + 1
+---
+
+=== multiple comparisons and
+1 < 2 and 2 < 3 and 3 < 4
+---
+
+=== multiple comparisons or
+1 > 2 or 2 > 3 or 3 < 4
+---
+
+=== not not not
+not not not True
+---
+
+=== bool identity
+True == True and False == False
+---
+
+=== comparison chain four
+1 < 2 < 3 < 4
+---
+
+=== comparison chain mixed ops
+1 < 2 <= 2 < 3
+---
+
+=== comparison chain ge
+4 >= 3 >= 2 >= 1
+---

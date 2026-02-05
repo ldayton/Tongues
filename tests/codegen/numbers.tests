@@ -588,8 +588,6 @@ True + True
 
 === not of comparison
 not 1 < 2
---- python
-not (1 < 2)
 ---
 
 === and of comparisons

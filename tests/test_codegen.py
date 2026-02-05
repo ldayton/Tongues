@@ -1,6 +1,17 @@
 """Pytest-based codegen tests for Tongues transpiler."""
 
+import ast
+
 import pytest
+
+
+def is_expression(code: str) -> bool:
+    """Check if code is a valid Python expression (not a statement)."""
+    try:
+        ast.parse(code, mode="eval")
+        return True
+    except SyntaxError:
+        return False
 
 
 def test_codegen(
@@ -18,21 +29,15 @@ def test_codegen(
 
     # For Python with explicit expected, verify semantic equivalence (expressions only)
     if codegen_lang == "python" and codegen_has_explicit:
-        # Skip semantic check for statements (def, class, etc.)
         input_stripped = codegen_input.strip()
-        if not any(
-            input_stripped.startswith(kw)
-            for kw in ("def ", "class ", "@", "if ", "for ", "while ")
-        ):
-            try:
-                input_result = eval(input_stripped)
-                output_result = eval(transpiled_output.strip())
-                if input_result != output_result:
-                    pytest.fail(
-                        f"Semantic mismatch:\n  input  {input_stripped!r} = {input_result!r}\n  output {transpiled_output.strip()!r} = {output_result!r}"
-                    )
-            except SyntaxError:
-                pass  # Not a simple expression, skip semantic check
+        output_stripped = transpiled_output.strip()
+        if is_expression(input_stripped) and is_expression(output_stripped):
+            input_result = eval(input_stripped)
+            output_result = eval(output_stripped)
+            if input_result != output_result:
+                pytest.fail(
+                    f"Semantic mismatch:\n  input  {input_stripped!r} = {input_result!r}\n  output {output_stripped!r} = {output_result!r}"
+                )
 
 
 def contains_normalized(haystack: str, needle: str) -> bool:
