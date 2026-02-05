@@ -48,9 +48,7 @@ Backend deficiencies (TypeScript-specific, fixable in typescript.py):
 
 from __future__ import annotations
 
-import dataclasses
-
-from src.backend.util import escape_string
+from src.backend.util import escape_string, ir_contains_call, ir_contains_cast
 from src.ir import (
     BOOL,
     INT,
@@ -217,12 +215,10 @@ class TsBackend:
         if module.doc:
             self._line(f"/** {module.doc} */")
         need_blank = False
-        if _ir_contains_cast(module, "byte", "string") or _ir_contains_cast(
-            module, "string", "byte"
-        ):
+        if ir_contains_cast(module, "byte", "string") or ir_contains_cast(module, "string", "byte"):
             self._emit_text_codec_declares()
             need_blank = True
-        if _ir_contains_call(module, "range"):
+        if ir_contains_call(module, "range"):
             self._emit_range_function()
             need_blank = True
         if module.constants:
@@ -1020,7 +1016,11 @@ class TsBackend:
                     and inner.typ == BOOL
                 ):
                     return f"Number({self._expr(inner)})"
-                if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == BOOL:
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind == "string"
+                    and inner.typ == BOOL
+                ):
                     return f'({self._expr(inner)} ? "True" : "False")'
                 ts_type = self._type(to_type)
                 from_type = self._type(inner.typ)
@@ -1443,91 +1443,6 @@ def _escape_regex_literal(s: str) -> str:
         else:
             result.append(c)
     return "".join(result)
-
-
-def _ir_contains_call(node: object, func: str) -> bool:
-    """Return True if IR contains a Call to the given function name."""
-    seen: set[int] = set()
-
-    def visit(obj: object) -> bool:
-        if obj is None:
-            return False
-        if isinstance(obj, Call) and obj.func == func:
-            return True
-        obj_id = id(obj)
-        if obj_id in seen:
-            return False
-        if dataclasses.is_dataclass(obj):
-            seen.add(obj_id)
-            for f in dataclasses.fields(obj):
-                if visit(getattr(obj, f.name)):
-                    return True
-            return False
-        if isinstance(obj, (list, tuple, set)):
-            seen.add(obj_id)
-            for item in obj:
-                if visit(item):
-                    return True
-            return False
-        if isinstance(obj, dict):
-            seen.add(obj_id)
-            for item in obj.values():
-                if visit(item):
-                    return True
-            return False
-        return False
-
-    return visit(node)
-
-
-def _ir_contains_cast(node: object, from_kind: str, to_kind: str) -> bool:
-    """Return True if IR contains a Cast between the given primitive kinds."""
-    seen: set[int] = set()
-
-    def visit(obj: object) -> bool:
-        if obj is None:
-            return False
-        if isinstance(obj, Cast):
-            inner_type = obj.expr.typ
-            if (
-                isinstance(obj.to_type, Primitive)
-                and obj.to_type.kind == to_kind
-                and isinstance(inner_type, Primitive)
-                and inner_type.kind == from_kind
-            ):
-                return True
-            if (
-                isinstance(obj.to_type, Slice)
-                and isinstance(obj.to_type.element, Primitive)
-                and obj.to_type.element.kind == to_kind
-                and isinstance(inner_type, Primitive)
-                and inner_type.kind == from_kind
-            ):
-                return True
-        obj_id = id(obj)
-        if obj_id in seen:
-            return False
-        if dataclasses.is_dataclass(obj):
-            seen.add(obj_id)
-            for f in dataclasses.fields(obj):
-                if visit(getattr(obj, f.name)):
-                    return True
-            return False
-        if isinstance(obj, (list, tuple, set)):
-            seen.add(obj_id)
-            for item in obj:
-                if visit(item):
-                    return True
-            return False
-        if isinstance(obj, dict):
-            seen.add(obj_id)
-            for item in obj.values():
-                if visit(item):
-                    return True
-            return False
-        return False
-
-    return visit(node)
 
 
 def _is_bool_int_compare(left: Expr, right: Expr) -> bool:

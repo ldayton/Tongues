@@ -54,25 +54,84 @@ from src.ir import (
     VarLV,
 )
 
-RUST_RESERVED = frozenset({
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn",
-    "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
-    "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
-    "self", "Self", "static", "struct", "super", "trait", "true", "type",
-    "union", "unsafe", "use", "where", "while", "abstract", "become", "box",
-    "do", "final", "macro", "override", "priv", "try", "typeof", "unsized",
-    "virtual", "yield",
-})
+RUST_RESERVED = frozenset(
+    {
+        "as",
+        "async",
+        "await",
+        "break",
+        "const",
+        "continue",
+        "crate",
+        "dyn",
+        "else",
+        "enum",
+        "extern",
+        "false",
+        "fn",
+        "for",
+        "if",
+        "impl",
+        "in",
+        "let",
+        "loop",
+        "match",
+        "mod",
+        "move",
+        "mut",
+        "pub",
+        "ref",
+        "return",
+        "self",
+        "Self",
+        "static",
+        "struct",
+        "super",
+        "trait",
+        "true",
+        "type",
+        "union",
+        "unsafe",
+        "use",
+        "where",
+        "while",
+        "abstract",
+        "become",
+        "box",
+        "do",
+        "final",
+        "macro",
+        "override",
+        "priv",
+        "try",
+        "typeof",
+        "unsized",
+        "virtual",
+        "yield",
+    }
+)
 
 # Rust operator precedence (higher number = tighter binding).
 # In Rust, bitwise ops bind tighter than comparisons (unlike C).
 _RUST_PREC: dict[str, int] = {
-    "||": 1, "&&": 2,
-    "==": 3, "!=": 3, "<": 3, "<=": 3, ">": 3, ">=": 3,
-    "|": 4, "^": 5, "&": 6,
-    "<<": 7, ">>": 7,
-    "+": 8, "-": 8,
-    "*": 9, "/": 9, "%": 9,
+    "||": 1,
+    "&&": 2,
+    "==": 3,
+    "!=": 3,
+    "<": 3,
+    "<=": 3,
+    ">": 3,
+    ">=": 3,
+    "|": 4,
+    "^": 5,
+    "&": 6,
+    "<<": 7,
+    ">>": 7,
+    "+": 8,
+    "-": 8,
+    "*": 9,
+    "/": 9,
+    "%": 9,
 }
 
 
@@ -107,7 +166,7 @@ class RustBackend(Emitter):
         self._entrypoint_fn: str | None = None
 
     def emit(self, module: Module) -> str:
-        self.lines = []
+        self.lines: list[str] = []
         self.indent = 0
         self._func_names = {f.name for f in module.functions}
         self._needs_catch_unwind = False
@@ -144,9 +203,15 @@ class RustBackend(Emitter):
 
     def _type_to_rust(self, typ: "type | object") -> str:
         if isinstance(typ, Primitive):
-            return {"int": "i64", "float": "f64", "bool": "bool",
-                    "string": "&str", "void": "()", "byte": "u8",
-                    "rune": "char"}[typ.kind]
+            return {
+                "int": "i64",
+                "float": "f64",
+                "bool": "bool",
+                "string": "&str",
+                "void": "()",
+                "byte": "u8",
+                "rune": "char",
+            }[typ.kind]
         if isinstance(typ, Slice):
             return f"Vec<{self._type_to_rust(typ.element)}>"
         if isinstance(typ, Tuple):
@@ -180,9 +245,7 @@ class RustBackend(Emitter):
     # ── functions ────────────────────────────────────────────
 
     def _emit_function(self, func: Function) -> None:
-        params = ", ".join(
-            f"{self._safe(p.name)}: {self._param_type(p)}" for p in func.params
-        )
+        params = ", ".join(f"{self._safe(p.name)}: {self._param_type(p)}" for p in func.params)
         name = self._fn_name(func.name)
         if func.ret == VOID:
             self.line(f"fn {name}({params}) {{")
@@ -229,7 +292,7 @@ class RustBackend(Emitter):
         elif isinstance(stmt, NoOp):
             pass
         else:
-            raise NotImplementedError(f"Rust stmt: {type(stmt).__name__}")
+            raise NotImplementedError(f"Rust stmt: {stmt}")
 
     def _emit_VarDecl(self, s: VarDecl) -> None:
         name = self._safe(s.name)
@@ -270,7 +333,7 @@ class RustBackend(Emitter):
         test = self._emit_expr(s.test)
         if s.message is not None:
             msg = self._emit_expr(s.message)
-            self.line(f"if !({test}) {{ panic!(\"{{}}\", {msg}); }}")
+            self.line(f'if !({test}) {{ panic!("{{}}", {msg}); }}')
         else:
             self.line(f'if !({test}) {{ panic!("assertion failed"); }}')
 
@@ -340,7 +403,7 @@ class RustBackend(Emitter):
             args = s.expr.args
             if args:
                 val = self._emit_expr(args[0])
-                self.line(f"println!(\"{{}}\", {val});")
+                self.line(f'println!("{{}}", {val});')
             else:
                 self.line("println!();")
             return
@@ -360,12 +423,12 @@ class RustBackend(Emitter):
         macro = "eprint" if s.stderr else "print"
         if s.newline:
             macro += "ln"
-        self.line(f"{macro}!(\"{{}}\", {val});")
+        self.line(f'{macro}!("{{}}", {val});')
 
     def _emit_lvalue(self, lv: "object") -> str:
         if isinstance(lv, VarLV):
             return self._safe(lv.name)
-        raise NotImplementedError(f"Rust lvalue: {type(lv).__name__}")
+        raise NotImplementedError(f"Rust lvalue: {lv}")
 
     # ── expressions ──────────────────────────────────────────
 
@@ -400,7 +463,7 @@ class RustBackend(Emitter):
             return f"{self._emit_expr(expr.value)}.to_string()"
         if isinstance(expr, Ternary):
             return self._emit_Ternary(expr)
-        raise NotImplementedError(f"Rust expr: {type(expr).__name__}")
+        raise NotImplementedError(f"Rust expr: {expr}")
 
     def _emit_Var(self, expr: Var) -> str:
         name = self._safe(expr.name)
@@ -425,9 +488,7 @@ class RustBackend(Emitter):
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
         # Bool arithmetic: True + True → (true as i64) + (true as i64)
-        if op in ("+", "-", "*", "/", "%") and (
-            _is_bool(expr.left) or _is_bool(expr.right)
-        ):
+        if op in ("+", "-", "*", "/", "%") and (_is_bool(expr.left) or _is_bool(expr.right)):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
@@ -531,8 +592,7 @@ class RustBackend(Emitter):
         for e in expr.elements:
             s = self._emit_expr(e)
             if isinstance(e, FuncRef) or (
-                isinstance(e.typ, (FuncType, InterfaceRef))
-                and e.typ != VOID
+                isinstance(e.typ, (FuncType, InterfaceRef)) and e.typ != VOID
             ):
                 s += " as fn()"
             parts.append(s)

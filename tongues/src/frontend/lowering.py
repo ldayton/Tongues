@@ -583,7 +583,9 @@ def lower_expr_Constant(node: ASTNode) -> "ir.Expr":
     if isinstance(value, bytes):
         # Convert bytes to SliceLit of byte values
         elements = [ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node)) for b in value]
-        return ir.SliceLit(element_type=BYTE, elements=elements, typ=Slice(BYTE), loc=loc_from_node(node))
+        return ir.SliceLit(
+            element_type=BYTE, elements=elements, typ=Slice(BYTE), loc=loc_from_node(node)
+        )
     if value is None:
         return ir.NilLit(typ=InterfaceRef("any"), loc=loc_from_node(node))
     return ir.Var(name="TODO_Constant_unknown", typ=InterfaceRef("any"))
@@ -760,7 +762,9 @@ def lower_expr_Subscript(
         slice_type: "Type" = get_expr_type(node_value)
         if slice_type == InterfaceRef("any"):
             slice_type = obj.typ
-        return ir.SliceExpr(obj=obj, low=low, high=high, step=step, typ=slice_type, loc=loc_from_node(node))
+        return ir.SliceExpr(
+            obj=obj, low=low, high=high, step=step, typ=slice_type, loc=loc_from_node(node)
+        )
     idx = convert_negative_index(node_slice, obj, node, lower_expr)
     # Infer element type from slice type
     elem_type: "Type" = InterfaceRef("any")
@@ -883,7 +887,10 @@ def lower_expr_Compare(
             left_type = get_expr_type(node_left)
             # For optional strings (str | None), compare to empty string sentinel
             if left_type == STRING:
-                if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+                if (
+                    is_type(node_left, ["Name"])
+                    and node_left.get("id") in type_ctx.optional_strings
+                ):
                     return ir.BinaryOp(
                         op="==",
                         left=left,
@@ -916,7 +923,10 @@ def lower_expr_Compare(
             left_type = get_expr_type(node_left)
             # For optional strings (str | None), compare to empty string sentinel
             if left_type == STRING:
-                if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+                if (
+                    is_type(node_left, ["Name"])
+                    and node_left.get("id") in type_ctx.optional_strings
+                ):
                     return ir.BinaryOp(
                         op="!=",
                         left=left,
@@ -1731,7 +1741,10 @@ def lower_expr_Call(
                     whitespace_bytes = [ord(c) for c in " \t\n\r"]
                     chars = ir.SliceLit(
                         element_type=BYTE,
-                        elements=[ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node)) for b in whitespace_bytes],
+                        elements=[
+                            ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node))
+                            for b in whitespace_bytes
+                        ],
                         typ=Slice(BYTE),
                         loc=loc_from_node(node),
                     )
@@ -2121,7 +2134,9 @@ def lower_expr_Call(
             args = dispatch.deref_for_func_slice_params(func_name, args, node_args)
             # Add type assertions for interface{} -> Node coercion
             args = coerce_args_to_node(func_info, args, ctx.hierarchy_root)
-        return ir.Call(func=func_name, args=args, reverse=reverse, typ=ret_type, loc=loc_from_node(node))
+        return ir.Call(
+            func=func_name, args=args, reverse=reverse, typ=ret_type, loc=loc_from_node(node)
+        )
     return ir.Var(name="TODO_Call", typ=InterfaceRef("any"))
 
 
@@ -2263,9 +2278,7 @@ def lower_stmt_Assign(
                     body.append(
                         ir.Assign(
                             target=lval,
-                            value=ir.FieldAccess(
-                                obj=entry_var, field=f"F{i}", typ=field_types[i]
-                            ),
+                            value=ir.FieldAccess(obj=entry_var, field=f"F{i}", typ=field_types[i]),
                         )
                     )
                 return ir.Block(body=body, loc=loc_from_node(node))
@@ -2868,7 +2881,13 @@ def lower_lvalue(
         return ir.FieldLV(obj=obj, field=node.get("attr"), loc=loc_from_node(node))
     if is_type(node, ["Subscript"]):
         obj = lower_expr(node.get("value"))
-        idx = lower_expr(node.get("slice"))
+        node_slice = node.get("slice")
+        if is_type(node_slice, ["Slice"]):
+            low = lower_expr(node_slice.get("lower")) if node_slice.get("lower") else None
+            high = lower_expr(node_slice.get("upper")) if node_slice.get("upper") else None
+            step = lower_expr(node_slice.get("step")) if node_slice.get("step") else None
+            return ir.SliceLV(obj=obj, low=low, high=high, step=step, loc=loc_from_node(node))
+        idx = lower_expr(node_slice)
         return ir.IndexLV(obj=obj, index=idx, loc=loc_from_node(node))
     return ir.VarLV(name="_unknown_lvalue", loc=loc_from_node(node))
 
@@ -2986,6 +3005,110 @@ def _lower_expr_Set_dispatch(
     return lower_expr_Set(node, d.lower_expr)
 
 
+def _extract_target_names(target: ASTNode) -> list[str] | None:
+    """Extract target variable names from a comprehension target (Name or Tuple)."""
+    target_type = target.get("_type")
+    if target_type == "Name":
+        return [target.get("id")]
+    elif target_type == "Tuple":
+        names = []
+        for elt in target.get("elts", []):
+            if elt.get("_type") == "Name":
+                names.append(elt.get("id"))
+            else:
+                return None  # Nested tuple or complex pattern not supported
+        return names
+    return None
+
+
+def _lower_generators(
+    generators: list[ASTNode], d: "LoweringDispatch"
+) -> list["ir.CompGenerator"] | None:
+    """Lower a list of comprehension generators to IR CompGenerator nodes."""
+    from .. import ir
+
+    result = []
+    for gen in generators:
+        target = gen.get("target", {})
+        target_names = _extract_target_names(target)
+        if target_names is None:
+            return None  # Complex unpacking not supported
+        iterable = d.lower_expr(gen.get("iter"))
+        conditions = [d.lower_expr(if_node) for if_node in gen.get("ifs", [])]
+        result.append(
+            ir.CompGenerator(targets=target_names, iterable=iterable, conditions=conditions)
+        )
+    return result
+
+
+def _lower_expr_ListComp_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Expr":
+    """Lower list comprehension: [expr for target in iter if cond]."""
+    from .. import ir
+
+    generators = node.get("generators", [])
+    ir_generators = _lower_generators(generators, d)
+    if ir_generators is None:
+        return ir.Var(name="TODO_ComplexUnpack", typ=InterfaceRef("any"))
+    element = d.lower_expr(node.get("elt"))
+    elem_type = get_expr_type(node.get("elt"))
+    loc = loc_from_node(node)
+    return ir.ListComp(element=element, generators=ir_generators, typ=Slice(elem_type), loc=loc)
+
+
+def _lower_expr_SetComp_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Expr":
+    """Lower set comprehension: {expr for target in iter if cond}."""
+    from .. import ir
+
+    generators = node.get("generators", [])
+    ir_generators = _lower_generators(generators, d)
+    if ir_generators is None:
+        return ir.Var(name="TODO_ComplexUnpack", typ=InterfaceRef("any"))
+    element = d.lower_expr(node.get("elt"))
+    elem_type = get_expr_type(node.get("elt"))
+    loc = loc_from_node(node)
+    return ir.SetComp(element=element, generators=ir_generators, typ=Set(elem_type), loc=loc)
+
+
+def _lower_expr_DictComp_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Expr":
+    """Lower dict comprehension: {key: value for target in iter if cond}."""
+    from .. import ir
+
+    generators = node.get("generators", [])
+    ir_generators = _lower_generators(generators, d)
+    if ir_generators is None:
+        return ir.Var(name="TODO_ComplexUnpack", typ=InterfaceRef("any"))
+    key = d.lower_expr(node.get("key"))
+    value = d.lower_expr(node.get("value"))
+    key_type = get_expr_type(node.get("key"))
+    value_type = get_expr_type(node.get("value"))
+    loc = loc_from_node(node)
+    return ir.DictComp(
+        key=key, value=value, generators=ir_generators, typ=Map(key_type, value_type), loc=loc
+    )
+
+
+def _lower_expr_GeneratorExp_dispatch(
+    node: ASTNode, ctx: "FrontendContext", d: "LoweringDispatch"
+) -> "ir.Expr":
+    """Lower generator expression as list comprehension (eager evaluation)."""
+    from .. import ir
+
+    generators = node.get("generators", [])
+    ir_generators = _lower_generators(generators, d)
+    if ir_generators is None:
+        return ir.Var(name="TODO_ComplexUnpack", typ=InterfaceRef("any"))
+    element = d.lower_expr(node.get("elt"))
+    elem_type = get_expr_type(node.get("elt"))
+    loc = loc_from_node(node)
+    return ir.ListComp(element=element, generators=ir_generators, typ=Slice(elem_type), loc=loc)
+
+
 EXPR_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch"], "ir.Expr"]] = {
     "Constant": _lower_expr_Constant_dispatch,
     "Name": _lower_expr_Name_dispatch,
@@ -3002,6 +3125,10 @@ EXPR_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch
     "JoinedStr": _lower_expr_JoinedStr_dispatch,
     "Tuple": _lower_expr_Tuple_dispatch,
     "Set": _lower_expr_Set_dispatch,
+    "ListComp": _lower_expr_ListComp_dispatch,
+    "SetComp": _lower_expr_SetComp_dispatch,
+    "DictComp": _lower_expr_DictComp_dispatch,
+    "GeneratorExp": _lower_expr_GeneratorExp_dispatch,
 }
 
 

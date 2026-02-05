@@ -38,9 +38,9 @@ def test_ord() -> None:
 
 def test_ord_boundaries() -> None:
     """ord() at ASCII boundaries."""
-    assert ord("\x00") == 0      # null
-    assert ord("\x7f") == 127    # DEL (last ASCII)
-    assert ord("\x80") == 128    # first non-ASCII
+    assert ord("\x00") == 0  # null
+    assert ord("\x7f") == 127  # DEL (last ASCII)
+    assert ord("\x80") == 128  # first non-ASCII
 
 
 def test_chr() -> None:
@@ -55,15 +55,15 @@ def test_chr() -> None:
 
 def test_chr_boundaries() -> None:
     """chr() at ASCII boundaries."""
-    assert chr(0) == "\x00"      # null
-    assert chr(127) == "\x7f"    # DEL
-    assert chr(128) == "\x80"    # first non-ASCII
+    assert chr(0) == "\x00"  # null
+    assert chr(127) == "\x7f"  # DEL
+    assert chr(128) == "\x80"  # first non-ASCII
 
 
 def test_chr_unicode_boundaries() -> None:
     """chr() at Unicode plane boundaries."""
-    assert ord(chr(0xFFFF)) == 0xFFFF      # last BMP character
-    assert ord(chr(0x10000)) == 0x10000    # first astral (SMP)
+    assert ord(chr(0xFFFF)) == 0xFFFF  # last BMP character
+    assert ord(chr(0x10000)) == 0x10000  # first astral (SMP)
     assert ord(chr(0x10FFFF)) == 0x10FFFF  # max Unicode code point
 
 
@@ -72,7 +72,7 @@ def test_surrogate_range() -> None:
     # Python allows creating strings with surrogate code points
     s: str = chr(0xD800)  # first surrogate
     assert ord(s) == 0xD800
-    s = chr(0xDFFF)       # last surrogate
+    s = chr(0xDFFF)  # last surrogate
     assert ord(s) == 0xDFFF
 
 
@@ -118,9 +118,9 @@ def test_isspace() -> None:
     assert " ".isspace()
     assert "\t".isspace()
     assert "\n".isspace()
-    assert "\r".isspace()     # carriage return
-    assert "\f".isspace()     # form feed
-    assert "\v".isspace()     # vertical tab
+    assert "\r".isspace()  # carriage return
+    assert "\f".isspace()  # form feed
+    assert "\v".isspace()  # vertical tab
     assert not "a".isspace()
     assert not "0".isspace()
     assert not "\x00".isspace()  # null is not whitespace

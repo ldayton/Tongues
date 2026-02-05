@@ -353,7 +353,7 @@ def test_tuple_single_element() -> None:
     assert len(t) == 1
     assert t[0] == 42
     # Without comma, it's just grouping
-    n: int = (42)
+    n: int = 42
     assert n == 42
 
 
@@ -465,7 +465,11 @@ def test_tuple_packing_no_parens() -> None:
 
 def test_tuple_trailing_comma() -> None:
     """Trailing comma is allowed in multi-element tuples."""
-    t1: tuple[int, int, int] = (1, 2, 3,)
+    t1: tuple[int, int, int] = (
+        1,
+        2,
+        3,
+    )
     t2: tuple[int, int, int] = (1, 2, 3)
     assert t1 == t2
     assert t1 == (1, 2, 3)
@@ -560,7 +564,7 @@ def test_tuple_empty_variations() -> None:
 def test_tuple_single_vs_parens() -> None:
     """Single element: comma makes tuple, parens alone don't."""
     t: tuple[int] = (1,)
-    n: int = (1)
+    n: int = 1
     assert isinstance(t, tuple)
     assert isinstance(n, int)
     assert len(t) == 1
@@ -737,7 +741,10 @@ def main() -> int:
         ("test_tuple_count_none", test_tuple_count_none),
         ("test_tuple_negative_index_slice", test_tuple_negative_index_slice),
         ("test_tuple_bool_single_falsy", test_tuple_bool_single_falsy),
-        ("test_tuple_comparison_heterogeneous_equality", test_tuple_comparison_heterogeneous_equality),
+        (
+            "test_tuple_comparison_heterogeneous_equality",
+            test_tuple_comparison_heterogeneous_equality,
+        ),
         ("test_tuple_unpack_ignore", test_tuple_unpack_ignore),
     ]
     for name, fn in tests:

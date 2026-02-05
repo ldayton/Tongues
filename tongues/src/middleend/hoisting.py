@@ -215,9 +215,7 @@ def _analyze_stmts(
             catch_stmts: list[Stmt] = []
             for clause in stmt.catches:
                 catch_stmts.extend(clause.body)
-            inner_new = _vars_first_assigned_in(
-                stmt.body + catch_stmts, declared, hierarchy_root
-            )
+            inner_new = _vars_first_assigned_in(stmt.body + catch_stmts, declared, hierarchy_root)
             used_after = _collect_used_vars(stmts[i + 1 :])
             needs_hoisting = _filter_hoisted_vars(inner_new, used_after)
             stmt.hoisted_vars = needs_hoisting

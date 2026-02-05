@@ -813,6 +813,76 @@ def infer_expr_type_from_ast(
     # Set literals
     if node_t == "Set":
         return Set(InterfaceRef("any"))
+    # Comprehensions and generator expressions
+    if node_t == "ListComp":
+        elt = node.get("elt")
+        if elt:
+            elem_type = infer_expr_type_from_ast(
+                elt,
+                type_ctx,
+                symbols,
+                current_func_info,
+                current_class_name,
+                node_types,
+                hierarchy_root,
+            )
+            return Slice(elem_type)
+        return Slice(InterfaceRef("any"))
+    if node_t == "SetComp":
+        elt = node.get("elt")
+        if elt:
+            elem_type = infer_expr_type_from_ast(
+                elt,
+                type_ctx,
+                symbols,
+                current_func_info,
+                current_class_name,
+                node_types,
+                hierarchy_root,
+            )
+            return Set(elem_type)
+        return Set(InterfaceRef("any"))
+    if node_t == "DictComp":
+        key_node = node.get("key")
+        value_node = node.get("value")
+        key_type = InterfaceRef("any")
+        value_type = InterfaceRef("any")
+        if key_node:
+            key_type = infer_expr_type_from_ast(
+                key_node,
+                type_ctx,
+                symbols,
+                current_func_info,
+                current_class_name,
+                node_types,
+                hierarchy_root,
+            )
+        if value_node:
+            value_type = infer_expr_type_from_ast(
+                value_node,
+                type_ctx,
+                symbols,
+                current_func_info,
+                current_class_name,
+                node_types,
+                hierarchy_root,
+            )
+        return Map(key_type, value_type)
+    if node_t == "GeneratorExp":
+        # Generator expressions consumed eagerly become lists
+        elt = node.get("elt")
+        if elt:
+            elem_type = infer_expr_type_from_ast(
+                elt,
+                type_ctx,
+                symbols,
+                current_func_info,
+                current_class_name,
+                node_types,
+                hierarchy_root,
+            )
+            return Slice(elem_type)
+        return Slice(InterfaceRef("any"))
     # Tuple literals
     if node_t == "Tuple":
         elts = node.get("elts", [])

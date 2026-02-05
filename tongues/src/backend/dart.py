@@ -300,7 +300,7 @@ class DartBackend:
         self._line("// ignore_for_file: invalid_assignment")
         self._line("// ignore_for_file: unchecked_use_of_nullable_value")
         self._line("")
-        self._import_insert_pos = len(self.lines)
+        self._import_insert_pos: int = len(self.lines)
         # Emit module doc comment if present
         if module.doc:
             for doc_line in module.doc.split("\n"):
@@ -1325,7 +1325,9 @@ class DartBackend:
                 # Dart bool bitwise ops require both operands to be the same type
                 elif op in ("&", "|", "^") and left_is_bool != right_is_bool:
                     left_str = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
-                    right_str = f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                    right_str = (
+                        f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                    )
                 elif op in ("==", "!=") and _dart_needs_bool_int_coerce(left, right):
                     left_str = self._expr(left)
                     right_str = self._expr(right)
@@ -1355,9 +1357,23 @@ class DartBackend:
                         return f"({left_str}.compareTo({right_str}) < 0)"
                 # Dart forbids chained comparisons
                 if dart_op in ("==", "!=", "<", ">", "<=", ">="):
-                    if isinstance(left, BinaryOp) and _binary_op(left.op) in ("==", "!=", "<", ">", "<=", ">="):
+                    if isinstance(left, BinaryOp) and _binary_op(left.op) in (
+                        "==",
+                        "!=",
+                        "<",
+                        ">",
+                        "<=",
+                        ">=",
+                    ):
                         left_str = f"({left_str})"
-                    if isinstance(right, BinaryOp) and _binary_op(right.op) in ("==", "!=", "<", ">", "<=", ">="):
+                    if isinstance(right, BinaryOp) and _binary_op(right.op) in (
+                        "==",
+                        "!=",
+                        "<",
+                        ">",
+                        "<=",
+                        ">=",
+                    ):
                         right_str = f"({right_str})"
                 # Add parens around || when inside && to preserve precedence
                 if dart_op == "&&":

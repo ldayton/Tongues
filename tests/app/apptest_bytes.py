@@ -47,7 +47,7 @@ def test_bytes_indexing() -> None:
 def test_bytes_indexing_special() -> None:
     """Indexing special byte values."""
     b: bytes = b"\x00\xff\x7f\x80"
-    assert b[0] == 0    # null
+    assert b[0] == 0  # null
     assert b[1] == 255  # max byte
     assert b[2] == 127  # max signed byte
     assert b[3] == 128  # min negative as unsigned
@@ -117,11 +117,11 @@ def test_bytes_null_handling() -> None:
     """Null bytes are valid data, not terminators."""
     b: bytes = b"a\x00b\x00c"
     assert len(b) == 5
-    assert b[0] == 97   # 'a'
-    assert b[1] == 0    # null
-    assert b[2] == 98   # 'b'
-    assert b[3] == 0    # null
-    assert b[4] == 99   # 'c'
+    assert b[0] == 97  # 'a'
+    assert b[1] == 0  # null
+    assert b[2] == 98  # 'b'
+    assert b[3] == 0  # null
+    assert b[4] == 99  # 'c'
     # Slicing preserves nulls
     assert b[1:4] == b"\x00b\x00"
     # Contains works with nulls

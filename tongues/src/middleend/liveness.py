@@ -344,15 +344,20 @@ def _expr_reads(name: str, expr: Expr | None) -> bool:
         return _expr_reads(name, expr.expr)
     # Comprehensions
     if isinstance(expr, ListComp):
-        return _expr_reads(name, expr.iterable) or _expr_reads(name, expr.element)
+        for gen in expr.generators:
+            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+                return True
+        return _expr_reads(name, expr.element)
     if isinstance(expr, SetComp):
-        return _expr_reads(name, expr.iterable) or _expr_reads(name, expr.element)
+        for gen in expr.generators:
+            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+                return True
+        return _expr_reads(name, expr.element)
     if isinstance(expr, DictComp):
-        return (
-            _expr_reads(name, expr.iterable)
-            or _expr_reads(name, expr.key)
-            or _expr_reads(name, expr.value)
-        )
+        for gen in expr.generators:
+            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+                return True
+        return _expr_reads(name, expr.key) or _expr_reads(name, expr.value)
     return False
 
 

@@ -1127,7 +1127,14 @@ def collect_var_types(
             and concrete_type == hierarchy_root_iface
         ):
             var_types[var_name] = hierarchy_root_iface
-    return var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node
+    return (
+        var_types,
+        tuple_vars,
+        sentinel_ints,
+        optional_strings,
+        list_element_unions,
+        unified_to_node,
+    )
 
 
 @dataclass

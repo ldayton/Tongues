@@ -1570,7 +1570,7 @@ class CBackend:
         self._line("#include <stdlib.h>")
         self._line("#include <string.h>")
         self._line("#include <stdio.h>")
-        self._include_pos = len(self.lines)  # conditional includes inserted later
+        self._include_pos: int = len(self.lines)  # conditional includes inserted later
         self._line("")
         self._line("// === Global error state ===")
         self._line("static int g_error = 0;")
@@ -1579,11 +1579,11 @@ class CBackend:
 
     def _emit_helpers(self) -> None:
         """Mark position for helpers — actual emission deferred to _finalize_helpers."""
-        self._helpers_insert_pos = len(self.lines)
+        self._helpers_insert_pos: int = len(self.lines)
 
     def _finalize_helpers(self) -> None:
         """Insert only the helper sections referenced by the generated code."""
-        code = "\n".join(self.lines[self._helpers_insert_pos:])
+        code = "\n".join(self.lines[self._helpers_insert_pos :])
         sections = _get_helper_sections()
         needed: set[str] = {"core"}
         for name, triggers, deps, _ in sections:
@@ -1600,13 +1600,13 @@ class CBackend:
                 for line in text.strip().split("\n"):
                     helper_lines.append(line)
                 helper_lines.append("")
-        self.lines[self._helpers_insert_pos:self._helpers_insert_pos] = helper_lines
+        self.lines[self._helpers_insert_pos : self._helpers_insert_pos] = helper_lines
         # Conditional includes
         extra_includes: list[str] = []
         if "format" in needed:
             extra_includes.append("#include <stdarg.h>")
         if extra_includes:
-            self.lines[self._include_pos:self._include_pos] = extra_includes
+            self.lines[self._include_pos : self._include_pos] = extra_includes
 
     def _emit_forward_decls(self, module: Module) -> None:
         """Emit forward declarations for all structs and interfaces."""
@@ -2495,7 +2495,9 @@ class CBackend:
             self._line("if (g_error) {")
             self.indent += 1
             # Declare catch variable as copy of error message before clearing
-            catch_var = _safe_name(stmt.catches[0].var) if stmt.catches and stmt.catches[0].var else "_err"
+            catch_var = (
+                _safe_name(stmt.catches[0].var) if stmt.catches and stmt.catches[0].var else "_err"
+            )
             self._line(f"const char *{catch_var} = arena_strdup(g_arena, g_error_msg);")
             self._line("g_error = 0;")
             self._line("g_error_msg[0] = '\\0';")

@@ -547,7 +547,7 @@ class PerlBackend:
         self._line("use warnings;")
         self._line("use feature qw(signatures say);")
         self._line("no warnings 'experimental::signatures';")
-        self._import_insert_pos = len(self.lines)
+        self._import_insert_pos: int = len(self.lines)
         need_blank = True
         if module.constants:
             self._line()

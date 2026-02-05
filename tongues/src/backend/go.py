@@ -302,7 +302,7 @@ class GoBackend:
                 getter = go_to_pascal("get_" + f.name)
                 self._interface_field_getters[(iface.name, f.name)] = getter
         self._struct_names = {s.name for s in module.structs}
-        self._func_names = {f.name for f in module.functions}
+        self._func_names: set[str] = {f.name for f in module.functions}
         # Two-pass: emit body first, then prepend header with only needed helpers
         body_output = self.output
         self._emit_constants(module.constants)
@@ -371,7 +371,9 @@ class GoBackend:
             imports.append('"strconv"')
         if "strings." in body:
             imports.append('"strings"')
-        if any(f"_strIs{s}(" in body for s in ("Alnum", "Alpha", "Digit", "Space", "Upper", "Lower")):
+        if any(
+            f"_strIs{s}(" in body for s in ("Alnum", "Alpha", "Digit", "Space", "Upper", "Lower")
+        ):
             imports.append('"unicode"')
         if "_runeAt(" in body or "_runeLen(" in body or "_Substring(" in body:
             imports.append('"unicode/utf8"')
@@ -387,61 +389,84 @@ class GoBackend:
 
     # Each helper: (trigger substring, Go source)
     _HELPERS: list[tuple[str, str]] = [
-        ("_strIsAlnum(", """func _strIsAlnum(s string) bool {
+        (
+            "_strIsAlnum(",
+            """func _strIsAlnum(s string) bool {
 	for _, r := range s {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}"""),
-        ("_strIsAlpha(", """func _strIsAlpha(s string) bool {
+}""",
+        ),
+        (
+            "_strIsAlpha(",
+            """func _strIsAlpha(s string) bool {
 	for _, r := range s {
 		if !unicode.IsLetter(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}"""),
-        ("_strIsDigit(", """func _strIsDigit(s string) bool {
+}""",
+        ),
+        (
+            "_strIsDigit(",
+            """func _strIsDigit(s string) bool {
 	for _, r := range s {
 		if !unicode.IsDigit(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}"""),
-        ("_strIsSpace(", """func _strIsSpace(s string) bool {
+}""",
+        ),
+        (
+            "_strIsSpace(",
+            """func _strIsSpace(s string) bool {
 	for _, r := range s {
 		if !unicode.IsSpace(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}"""),
-        ("_strIsUpper(", """func _strIsUpper(s string) bool {
+}""",
+        ),
+        (
+            "_strIsUpper(",
+            """func _strIsUpper(s string) bool {
 	for _, r := range s {
 		if !unicode.IsUpper(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}"""),
-        ("_strIsLower(", """func _strIsLower(s string) bool {
+}""",
+        ),
+        (
+            "_strIsLower(",
+            """func _strIsLower(s string) bool {
 	for _, r := range s {
 		if !unicode.IsLower(r) {
 			return false
 		}
 	}
 	return len(s) > 0
-}"""),
-        ("_intPtr(", """func _intPtr(val int) *int {
+}""",
+        ),
+        (
+            "_intPtr(",
+            """func _intPtr(val int) *int {
 	if val == -1 {
 		return nil
 	}
 	return &val
-}"""),
-        ("Range(", """func Range(args ...int) []int {
+}""",
+        ),
+        (
+            "Range(",
+            """func Range(args ...int) []int {
 	var start, end, step int
 	switch len(args) {
 	case 1:
@@ -467,29 +492,44 @@ class GoBackend:
 		}
 	}
 	return result
-}"""),
-        ("_parseInt(", """func _parseInt(s string, base int) int {
+}""",
+        ),
+        (
+            "_parseInt(",
+            """func _parseInt(s string, base int) int {
 	n, _ := strconv.ParseInt(s, base, 64)
 	return int(n)
-}"""),
-        ("_mapGet(", """func _mapGet[K comparable, V any](m map[K]V, key K, defaultVal V) V {
+}""",
+        ),
+        (
+            "_mapGet(",
+            """func _mapGet[K comparable, V any](m map[K]V, key K, defaultVal V) V {
 	if v, ok := m[key]; ok {
 		return v
 	}
 	return defaultVal
-}"""),
-        ("_mapHas(", """func _mapHas[K comparable, V any](m map[K]V, key K) bool {
+}""",
+        ),
+        (
+            "_mapHas(",
+            """func _mapHas[K comparable, V any](m map[K]V, key K) bool {
 	_, ok := m[key]
 	return ok
-}"""),
-        ("_isNilInterfaceRef(", """func _isNilInterfaceRef(i interface{}) bool {
+}""",
+        ),
+        (
+            "_isNilInterfaceRef(",
+            """func _isNilInterfaceRef(i interface{}) bool {
 	if i == nil {
 		return true
 	}
 	v := reflect.ValueOf(i)
 	return v.Kind() == reflect.Ptr && v.IsNil()
-}"""),
-        ("_runeAt(", """func _runeAt(s string, i int) string {
+}""",
+        ),
+        (
+            "_runeAt(",
+            """func _runeAt(s string, i int) string {
 	if i < 0 {
 		return ""
 	}
@@ -501,11 +541,17 @@ class GoBackend:
 		byteOffset += size
 	}
 	return ""
-}"""),
-        ("_runeLen(", """func _runeLen(s string) int {
+}""",
+        ),
+        (
+            "_runeLen(",
+            """func _runeLen(s string) int {
 	return utf8.RuneCountInString(s)
-}"""),
-        ("_Substring(", """func _Substring(s string, start int, end int) string {
+}""",
+        ),
+        (
+            "_Substring(",
+            """func _Substring(s string, start int, end int) string {
 	if start < 0 {
 		start = 0
 	}
@@ -527,20 +573,27 @@ class GoBackend:
 		return ""
 	}
 	return s[byteStart:byteEnd]
-}"""),
+}""",
+        ),
         ("AssertionError(", "type AssertionError string"),
-        ("_boolToInt(", """func _boolToInt(b bool) int {
+        (
+            "_boolToInt(",
+            """func _boolToInt(b bool) int {
 	if b {
 		return 1
 	}
 	return 0
-}"""),
-        ("_boolStr(", """func _boolStr(b bool) string {
+}""",
+        ),
+        (
+            "_boolStr(",
+            """func _boolStr(b bool) string {
 	if b {
 		return "True"
 	}
 	return "False"
-}"""),
+}""",
+        ),
     ]
 
     def _emit_helpers(self, body: str) -> None:
@@ -1130,6 +1183,73 @@ class GoBackend:
             self.indent -= 1
             self._line("}")
 
+    def _emit_catch_dispatch(self, stmt: TryCatch) -> None:
+        """Emit catch dispatch logic for try/catch."""
+        catches = stmt.catches
+        if not catches:
+            self._line("panic(r)")
+            return
+        first = catches[0]
+        if not isinstance(first.typ, StructRef):
+            # Catch-all first clause
+            if first.var:
+                self._line(f"{go_to_camel(first.var)} := r")
+            for s in first.body:
+                self._emit_stmt(s)
+            if stmt.reraise:
+                self._line("panic(r)")
+            return
+        chain_started = False
+        for clause in catches:
+            if isinstance(clause.typ, StructRef):
+                typ_name = clause.typ.name
+                var_name = go_to_camel(clause.var) if clause.var else "_"
+                keyword = "if" if not chain_started else "} else if"
+                # Exception is catch-all in Go (no equivalent type)
+                if typ_name == "Exception":
+                    self._line("} else {" if chain_started else "{")
+                    self.indent += 1
+                    if clause.var:
+                        self._line(f"{var_name} := fmt.Sprint(r)")
+                    for s in clause.body:
+                        self._emit_stmt(s)
+                    if stmt.reraise:
+                        self._line("panic(r)")
+                    self.indent -= 1
+                    self._line("}")
+                    return
+                # AssertionError is a value type (not pointer)
+                if typ_name == "AssertionError":
+                    self._line(f"{keyword} {var_name}, ok := r.(AssertionError); ok {{")
+                else:
+                    self._line(f"{keyword} {var_name}, ok := r.(*{typ_name}); ok {{")
+                self.indent += 1
+                for s in clause.body:
+                    self._emit_stmt(s)
+                if stmt.reraise:
+                    self._line("panic(r)")
+                self.indent -= 1
+                chain_started = True
+                continue
+            # Catch-all clause
+            self._line("} else {")
+            self.indent += 1
+            if clause.var:
+                self._line(f"{go_to_camel(clause.var)} := r")
+            for s in clause.body:
+                self._emit_stmt(s)
+            if stmt.reraise:
+                self._line("panic(r)")
+            self.indent -= 1
+            self._line("}")
+            return
+        if chain_started:
+            self._line("} else {")
+            self.indent += 1
+            self._line("panic(r)")
+            self.indent -= 1
+            self._line("}")
+
     def _emit_stmt_TryCatch(self, stmt: TryCatch) -> None:
         # Emit hoisted variable declarations before the try/catch
         hoisted_vars = stmt.hoisted_vars
@@ -1141,76 +1261,6 @@ class GoBackend:
         has_returns = stmt.has_returns
         has_catch_returns = stmt.has_catch_returns
 
-        def _emit_catch_dispatch() -> None:
-            catches = stmt.catches
-            if not catches:
-                self._line("panic(r)")
-                return
-
-            first = catches[0]
-            if not isinstance(first.typ, StructRef):
-                # Catch-all first clause
-                if first.var:
-                    self._line(f"{go_to_camel(first.var)} := r")
-                for s in first.body:
-                    self._emit_stmt(s)
-                if stmt.reraise:
-                    self._line("panic(r)")
-                return
-
-            chain_started = False
-            for clause in catches:
-                if isinstance(clause.typ, StructRef):
-                    typ_name = clause.typ.name
-                    var_name = go_to_camel(clause.var) if clause.var else "_"
-                    keyword = "if" if not chain_started else "} else if"
-                    # Exception is catch-all in Go (no equivalent type)
-                    if typ_name == "Exception":
-                        self._line("} else {" if chain_started else "{")
-                        self.indent += 1
-                        if clause.var:
-                            self._line(f"{var_name} := fmt.Sprint(r)")
-                        for s in clause.body:
-                            self._emit_stmt(s)
-                        if stmt.reraise:
-                            self._line("panic(r)")
-                        self.indent -= 1
-                        self._line("}")
-                        return
-                    # AssertionError is a value type (not pointer)
-                    if typ_name == "AssertionError":
-                        self._line(f"{keyword} {var_name}, ok := r.(AssertionError); ok {{")
-                    else:
-                        self._line(f"{keyword} {var_name}, ok := r.(*{typ_name}); ok {{")
-                    self.indent += 1
-                    for s in clause.body:
-                        self._emit_stmt(s)
-                    if stmt.reraise:
-                        self._line("panic(r)")
-                    self.indent -= 1
-                    chain_started = True
-                    continue
-
-                # Catch-all clause
-                self._line("} else {")
-                self.indent += 1
-                if clause.var:
-                    self._line(f"{go_to_camel(clause.var)} := r")
-                for s in clause.body:
-                    self._emit_stmt(s)
-                if stmt.reraise:
-                    self._line("panic(r)")
-                self.indent -= 1
-                self._line("}")
-                return
-
-            if chain_started:
-                self._line("} else {")
-                self.indent += 1
-                self._line("panic(r)")
-                self.indent -= 1
-                self._line("}")
-
         if has_returns:
             # When try/catch contains return statements, don't wrap in IIFE
             # Return statements will return from the enclosing function
@@ -1221,7 +1271,7 @@ class GoBackend:
             # Track that we're in catch body (for return transformation)
             if has_catch_returns and self._named_returns:
                 self._in_catch_body = True
-            _emit_catch_dispatch()
+            self._emit_catch_dispatch(stmt)
             self._in_catch_body = False
             self.indent -= 1
             self._line("}")
@@ -1237,7 +1287,7 @@ class GoBackend:
             self.indent += 1
             self._line("if r := recover(); r != nil {")
             self.indent += 1
-            _emit_catch_dispatch()
+            self._emit_catch_dispatch(stmt)
             self.indent -= 1
             self._line("}")
             self.indent -= 1
@@ -1817,9 +1867,7 @@ class GoBackend:
             right_str = _go_coerce_bool_to_int(self, expr.right)
             return f"{left_str} {expr.op} {right_str}"
         # Go has no bitwise ops on bools — coerce any bool operand to int
-        if expr.op in ("|", "&", "^") and (
-            expr.left.typ == BOOL or expr.right.typ == BOOL
-        ):
+        if expr.op in ("|", "&", "^") and (expr.left.typ == BOOL or expr.right.typ == BOOL):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
             return f"({left_str} {expr.op} {right_str})"

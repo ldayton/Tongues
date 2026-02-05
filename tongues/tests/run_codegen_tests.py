@@ -24,7 +24,19 @@ from src.backend.typescript import TsBackend
 from src.backend.csharp import CSharpBackend
 from src.backend.php import PhpBackend
 
-BACKENDS: dict[str, type[GoBackend] | type[JavaBackend] | type[JsBackend] | type[LuaBackend] | type[PerlBackend] | type[PythonBackend] | type[RubyBackend] | type[TsBackend] | type[CSharpBackend] | type[PhpBackend]] = {
+BACKENDS: dict[
+    str,
+    type[GoBackend]
+    | type[JavaBackend]
+    | type[JsBackend]
+    | type[LuaBackend]
+    | type[PerlBackend]
+    | type[PythonBackend]
+    | type[RubyBackend]
+    | type[TsBackend]
+    | type[CSharpBackend]
+    | type[PhpBackend],
+] = {
     "csharp": CSharpBackend,
     "go": GoBackend,
     "java": JavaBackend,
@@ -154,7 +166,13 @@ def run_test(code: str, lang: str, expected: str) -> tuple[bool, str]:
     if output is None:
         return (False, "no output")
     if not contains_normalized(output, expected):
-        return (False, "expected not found in output:\n--- expected ---\n" + expected + "\n--- got ---\n" + output)
+        return (
+            False,
+            "expected not found in output:\n--- expected ---\n"
+            + expected
+            + "\n--- got ---\n"
+            + output,
+        )
     return (True, "")
 
 

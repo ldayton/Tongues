@@ -686,7 +686,10 @@ def main() -> int:
         ("test_dict_copy_shallow_nested", test_dict_copy_shallow_nested),
         ("test_dict_copy_shallow_list_values", test_dict_copy_shallow_list_values),
         ("test_dict_setdefault_no_default", test_dict_setdefault_no_default),
-        ("test_dict_setdefault_existing_unchanged", test_dict_setdefault_existing_unchanged),
+        (
+            "test_dict_setdefault_existing_unchanged",
+            test_dict_setdefault_existing_unchanged,
+        ),
         ("test_dict_popitem", test_dict_popitem),
         ("test_dict_insertion_order_preserved", test_dict_insertion_order_preserved),
         ("test_dict_fromkeys", test_dict_fromkeys),

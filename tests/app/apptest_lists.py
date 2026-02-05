@@ -767,7 +767,10 @@ def main() -> int:
         ("test_list_slice_assignment", test_list_slice_assignment),
         ("test_list_multiplication_reference", test_list_multiplication_reference),
         ("test_list_string_elements", test_list_string_elements),
-        ("test_list_multiplication_nested_reference", test_list_multiplication_nested_reference),
+        (
+            "test_list_multiplication_nested_reference",
+            test_list_multiplication_nested_reference,
+        ),
         ("test_list_append_vs_extend", test_list_append_vs_extend),
         ("test_list_extend_unpacks", test_list_extend_unpacks),
         ("test_list_extend_string", test_list_extend_string),
@@ -778,7 +781,10 @@ def main() -> int:
         ("test_list_slice_out_of_bounds", test_list_slice_out_of_bounds),
         ("test_list_insert_negative", test_list_insert_negative),
         ("test_list_slice_delete", test_list_slice_delete),
-        ("test_list_slice_insert_via_zero_length", test_list_slice_insert_via_zero_length),
+        (
+            "test_list_slice_insert_via_zero_length",
+            test_list_slice_insert_via_zero_length,
+        ),
         ("test_list_copy_shallow", test_list_copy_shallow),
         ("test_list_slice_copy_shallow", test_list_slice_copy_shallow),
         ("test_list_index_with_start", test_list_index_with_start),

@@ -54,25 +54,84 @@ from src.ir import (
     VarLV,
 )
 
-ZIG_RESERVED = frozenset({
-    "addrspace", "align", "allowzero", "and", "anyframe", "anytype", "asm",
-    "async", "await", "break", "callconv", "catch", "comptime", "const",
-    "continue", "defer", "else", "enum", "errdefer", "error", "export",
-    "extern", "false", "fn", "for", "if", "inline", "linksection", "noalias",
-    "nosuspend", "null", "opaque", "or", "orelse", "packed", "pub", "resume",
-    "return", "struct", "suspend", "switch", "test", "threadlocal", "true",
-    "try", "type", "undefined", "union", "unreachable", "usingnamespace",
-    "var", "volatile", "while",
-})
+ZIG_RESERVED = frozenset(
+    {
+        "addrspace",
+        "align",
+        "allowzero",
+        "and",
+        "anyframe",
+        "anytype",
+        "asm",
+        "async",
+        "await",
+        "break",
+        "callconv",
+        "catch",
+        "comptime",
+        "const",
+        "continue",
+        "defer",
+        "else",
+        "enum",
+        "errdefer",
+        "error",
+        "export",
+        "extern",
+        "false",
+        "fn",
+        "for",
+        "if",
+        "inline",
+        "linksection",
+        "noalias",
+        "nosuspend",
+        "null",
+        "opaque",
+        "or",
+        "orelse",
+        "packed",
+        "pub",
+        "resume",
+        "return",
+        "struct",
+        "suspend",
+        "switch",
+        "test",
+        "threadlocal",
+        "true",
+        "try",
+        "type",
+        "undefined",
+        "union",
+        "unreachable",
+        "usingnamespace",
+        "var",
+        "volatile",
+        "while",
+    }
+)
 
 # Zig operator precedence (higher number = tighter binding)
 _ZIG_PREC: dict[str, int] = {
-    "or": 1, "and": 2,
-    "==": 3, "!=": 3, "<": 3, "<=": 3, ">": 3, ">=": 3,
-    "|": 4, "^": 5, "&": 6,
-    "<<": 7, ">>": 7,
-    "+": 8, "-": 8,
-    "*": 9, "/": 9, "%": 9,
+    "or": 1,
+    "and": 2,
+    "==": 3,
+    "!=": 3,
+    "<": 3,
+    "<=": 3,
+    ">": 3,
+    ">=": 3,
+    "|": 4,
+    "^": 5,
+    "&": 6,
+    "<<": 7,
+    ">>": 7,
+    "+": 8,
+    "-": 8,
+    "*": 9,
+    "/": 9,
+    "%": 9,
 }
 
 
@@ -107,7 +166,7 @@ class ZigBackend(Emitter):
         self._needs_panic_handler = False
 
     def emit(self, module: Module) -> str:
-        self.lines = []
+        self.lines: list[str] = []
         self.indent = 0
         self._func_names = {f.name for f in module.functions}
         self._entrypoint_fn = module.entrypoint.function_name if module.entrypoint else None
@@ -117,7 +176,7 @@ class ZigBackend(Emitter):
             self._emit_function(func)
         body_lines = self.lines
         self.lines = []
-        self.line("const std = @import(\"std\");")
+        self.line('const std = @import("std");')
         self.line("")
         if self._needs_panic_handler:
             self._emit_panic_handler()
@@ -137,17 +196,19 @@ class ZigBackend(Emitter):
 
     def _emit_panic_handler(self) -> None:
         """Emit helper for try/catch simulation using panic capture."""
-        self.line("fn callWithPanicCapture(comptime F: type, f: F) struct { ok: bool, err: []const u8 } {")
+        self.line(
+            "fn callWithPanicCapture(comptime F: type, f: F) struct { ok: bool, err: []const u8 } {"
+        )
         self.indent += 1
         self.line("var ok = true;")
-        self.line("var err: []const u8 = \"\";")
+        self.line('var err: []const u8 = "";')
         self.line("_ = &ok;")
         self.line("_ = &err;")
         self.line("@call(.auto, f, .{}) catch |e| {")
         self.indent += 1
         self.line("_ = e;")
         self.line("ok = false;")
-        self.line("err = \"panic\";")
+        self.line('err = "panic";')
         self.indent -= 1
         self.line("};")
         self.line("return .{ .ok = ok, .err = err };")
@@ -159,7 +220,7 @@ class ZigBackend(Emitter):
 
     def _safe(self, name: str) -> str:
         if name in ZIG_RESERVED:
-            return "@\"" + name + "\""
+            return '@"' + name + '"'
         return name
 
     def _is_string_type(self, typ: "type | object") -> bool:
@@ -185,9 +246,15 @@ class ZigBackend(Emitter):
 
     def _type_to_zig(self, typ: "type | object") -> str:
         if isinstance(typ, Primitive):
-            return {"int": "i64", "float": "f64", "bool": "bool",
-                    "string": "[]const u8", "void": "void", "byte": "u8",
-                    "rune": "u21"}[typ.kind]
+            return {
+                "int": "i64",
+                "float": "f64",
+                "bool": "bool",
+                "string": "[]const u8",
+                "void": "void",
+                "byte": "u8",
+                "rune": "u21",
+            }[typ.kind]
         if isinstance(typ, Slice):
             inner = self._type_to_zig(typ.element)
             return f"std.ArrayList({inner})"
@@ -225,9 +292,7 @@ class ZigBackend(Emitter):
     # ── functions ────────────────────────────────────────────
 
     def _emit_function(self, func: Function) -> None:
-        params = ", ".join(
-            f"{self._safe(p.name)}: {self._param_type(p)}" for p in func.params
-        )
+        params = ", ".join(f"{self._safe(p.name)}: {self._param_type(p)}" for p in func.params)
         name = self._fn_name(func.name)
         ret = self._type_to_zig(func.ret)
         self.line(f"fn {name}({params}) {ret} {{")
@@ -271,7 +336,7 @@ class ZigBackend(Emitter):
         elif isinstance(stmt, NoOp):
             pass
         else:
-            raise NotImplementedError(f"Zig stmt: {type(stmt).__name__}")
+            raise NotImplementedError(f"Zig stmt: {stmt}")
 
     def _emit_VarDecl(self, s: VarDecl) -> None:
         name = self._safe(s.name)
@@ -382,7 +447,7 @@ class ZigBackend(Emitter):
                 fmt_str, fmt_args = self._build_format_string(args[0])
                 self.line(f'std.debug.print("{fmt_str}\\n", .{{{fmt_args}}});')
             else:
-                self.line("std.debug.print(\"\\n\", .{});")
+                self.line('std.debug.print("\\n", .{});')
             return
         expr = self._emit_expr(s.expr)
         self.line(f"_ = {expr};")
@@ -440,7 +505,7 @@ class ZigBackend(Emitter):
     def _emit_lvalue(self, lv: "object") -> str:
         if isinstance(lv, VarLV):
             return self._safe(lv.name)
-        raise NotImplementedError(f"Zig lvalue: {type(lv).__name__}")
+        raise NotImplementedError(f"Zig lvalue: {lv}")
 
     # ── expressions ──────────────────────────────────────────
 
@@ -475,7 +540,7 @@ class ZigBackend(Emitter):
             return self._emit_IntToStr(expr)
         if isinstance(expr, Ternary):
             return self._emit_Ternary(expr)
-        raise NotImplementedError(f"Zig expr: {type(expr).__name__}")
+        raise NotImplementedError(f"Zig expr: {expr}")
 
     def _emit_Var(self, expr: Var) -> str:
         name = self._safe(expr.name)
@@ -494,7 +559,11 @@ class ZigBackend(Emitter):
         if op == "+" and self._is_string_type(expr.typ):
             return self._emit_string_add(expr)
         # String comparison: use std.mem.eql
-        if op in ("==", "!=") and self._is_string_expr(expr.left) and self._is_string_expr(expr.right):
+        if (
+            op in ("==", "!=")
+            and self._is_string_expr(expr.left)
+            and self._is_string_expr(expr.right)
+        ):
             left = self._emit_expr(expr.left)
             right = self._emit_expr(expr.right)
             cmp = f"std.mem.eql(u8, {left}, {right})"
@@ -507,9 +576,7 @@ class ZigBackend(Emitter):
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
         # Bool arithmetic: True + True → @as(i64, @intFromBool(true)) + ...
-        if op in ("+", "-", "*", "/", "%") and (
-            _is_bool(expr.left) or _is_bool(expr.right)
-        ):
+        if op in ("+", "-", "*", "/", "%") and (_is_bool(expr.left) or _is_bool(expr.right)):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
@@ -600,7 +667,7 @@ class ZigBackend(Emitter):
         # print() handled in _emit_ExprStmt; fallback here
         if func == "print":
             a = ", ".join(self._emit_expr(a) for a in args)
-            return f"std.debug.print(\"{{s}}\\n\", .{{{a}}})"
+            return f'std.debug.print("{{s}}\\n", .{{{a}}})'
         # Known module-level function
         name = self._fn_name(func) if func in self._func_names else self._safe(func)
         a = ", ".join(self._emit_expr(a) for a in args)

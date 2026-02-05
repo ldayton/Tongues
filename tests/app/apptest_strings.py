@@ -313,7 +313,7 @@ def test_string_str_repr() -> None:
     """str() and repr() of strings."""
     assert str("hello") == "hello"
     assert repr("hello") == "'hello'"
-    assert repr("it's") == "\"it's\""
+    assert repr("it's") == '"it\'s"'
 
 
 def test_string_escape_sequences() -> None:
@@ -321,8 +321,8 @@ def test_string_escape_sequences() -> None:
     assert len("\n") == 1
     assert len("\t") == 1
     assert len("\\") == 1
-    assert len("\"") == 1
-    assert len("\'") == 1
+    assert len('"') == 1
+    assert len("'") == 1
     assert "\n" != "n"
     assert "\t" != "t"
 
@@ -393,7 +393,7 @@ def test_unicode_length() -> None:
     assert len("\u00e9") == 1  # é (e with acute)
     assert len("\u4e2d") == 1  # 中 (Chinese character)
     # Emoji (astral plane) is 1 code point
-    assert len("\U0001F600") == 1  # 😀
+    assert len("\U0001f600") == 1  # 😀
 
 
 def test_unicode_indexing() -> None:
@@ -484,7 +484,10 @@ def main() -> int:
         ("test_string_comparison_empty", test_string_comparison_empty),
         ("test_string_split_maxsplit", test_string_split_maxsplit),
         ("test_string_rsplit_maxsplit", test_string_rsplit_maxsplit),
-        ("test_string_split_consecutive_delimiters", test_string_split_consecutive_delimiters),
+        (
+            "test_string_split_consecutive_delimiters",
+            test_string_split_consecutive_delimiters,
+        ),
         ("test_string_split_whitespace", test_string_split_whitespace),
         ("test_string_split_leading_trailing", test_string_split_leading_trailing),
         ("test_unicode_length", test_unicode_length),
@@ -493,7 +496,10 @@ def main() -> int:
         ("test_string_multiplication_negative", test_string_multiplication_negative),
         ("test_string_format_basic", test_string_format_basic),
         ("test_string_swapcase", test_string_swapcase),
-        ("test_string_removeprefix_removesuffix", test_string_removeprefix_removesuffix),
+        (
+            "test_string_removeprefix_removesuffix",
+            test_string_removeprefix_removesuffix,
+        ),
     ]
     for name, fn in tests:
         try:

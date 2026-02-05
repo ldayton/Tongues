@@ -26,9 +26,7 @@ Middleend deficiencies (should be fixed in middleend.py):
 
 from __future__ import annotations
 
-import dataclasses
-
-from src.backend.util import escape_string
+from src.backend.util import escape_string, ir_contains_call
 from src.ir import (
     Array,
     Assert,
@@ -42,9 +40,11 @@ from src.ir import (
     Cast,
     CharClassify,
     CatchClause,
+    CompGenerator,
     Constant,
     Continue,
     DerefLV,
+    DictComp,
     EntryPoint,
     Expr,
     ExprStmt,
@@ -67,6 +67,7 @@ from src.ir import (
     IsNil,
     IsType,
     Len,
+    ListComp,
     LValue,
     MakeMap,
     MakeSlice,
@@ -88,11 +89,13 @@ from src.ir import (
     Receiver,
     Return,
     Set,
+    SetComp,
     SetLit,
     Slice,
     SliceConvert,
     SliceExpr,
     SliceLit,
+    SliceLV,
     SoftFail,
     StaticCall,
     Stmt,
@@ -213,41 +216,10 @@ def _safe_name(name: str) -> str:
     return name
 
 
-def _ir_contains_call(node: object, func: str) -> bool:
-    """Return True if IR contains a Call to the given function name."""
-    seen: set[int] = set()
-
-    def visit(obj: object) -> bool:
-        if obj is None:
-            return False
-        if isinstance(obj, Call) and obj.func == func:
-            return True
-        # Avoid cycles (shouldn't happen, but be defensive)
-        obj_id = id(obj)
-        if obj_id in seen:
-            return False
-        # Walk dataclasses and containers
-        if dataclasses.is_dataclass(obj):
-            seen.add(obj_id)
-            for f in dataclasses.fields(obj):
-                if visit(getattr(obj, f.name)):
-                    return True
-            return False
-        if isinstance(obj, (list, tuple, set)):
-            seen.add(obj_id)
-            for item in obj:
-                if visit(item):
-                    return True
-            return False
-        if isinstance(obj, dict):
-            seen.add(obj_id)
-            for item in obj.values():
-                if visit(item):
-                    return True
-            return False
-        return False
-
-    return visit(node)
+def _struct_is_emitted(struct: Struct) -> bool:
+    """Check if struct should be emitted (not empty or has special properties)."""
+    is_empty = not struct.fields and not struct.methods and not struct.doc
+    return not (is_empty and not struct.is_exception and not struct.implements)
 
 
 class PythonBackend:
@@ -272,15 +244,9 @@ class PythonBackend:
             self.lines.append("")
 
     def _emit_module(self, module: Module) -> None:
-        def _struct_is_emitted(struct: Struct) -> bool:
-            is_empty = not struct.fields and not struct.methods and not struct.doc
-            return not (is_empty and not struct.is_exception and not struct.implements)
-
         needs_protocol = bool(module.interfaces)
-        needs_intptr = _ir_contains_call(module, "_intPtr")
-        needs_dataclass = any(
-            _struct_is_emitted(s) and not s.is_exception for s in module.structs
-        )
+        needs_intptr = ir_contains_call(module, "_intPtr")
+        needs_dataclass = any(_struct_is_emitted(s) and not s.is_exception for s in module.structs)
         needs_field = any(
             _struct_is_emitted(s)
             and any(
@@ -794,7 +760,9 @@ class PythonBackend:
                         return f"{func}({args_str}, reverse=True)"
                     return f"{func}(reverse=True)"
                 return f"{func}({args_str})"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
+            ):
                 args_str = ", ".join(self._expr(a) for a in args)
                 py_method = _method_name(method, receiver_type)
                 # For builtin type static methods (dict.fromkeys, etc.), don't rename
@@ -888,6 +856,18 @@ class PythonBackend:
                     return "set()"
                 elems = ", ".join(self._expr(e) for e in elements)
                 return f"{{{elems}}}"
+            case ListComp(element=element, generators=generators):
+                elem = self._expr(element)
+                gen_parts = self._comp_generators(generators)
+                return f"[{elem} {gen_parts}]"
+            case SetComp(element=element, generators=generators):
+                elem = self._expr(element)
+                gen_parts = self._comp_generators(generators)
+                return f"{{{elem} {gen_parts}}}"
+            case DictComp(key=key, value=value, generators=generators):
+                k, v = self._expr(key), self._expr(value)
+                gen_parts = self._comp_generators(generators)
+                return f"{{{k}: {v} {gen_parts}}}"
             case StructLit(struct_name=struct_name, fields=fields):
                 # Skip None fields to use dataclass defaults
                 non_none = [(k, v) for k, v in fields.items() if not isinstance(v, NilLit)]
@@ -906,6 +886,18 @@ class PythonBackend:
                 return self._expr(source)
             case _:
                 raise NotImplementedError("Unknown expression")
+
+    def _comp_generators(self, generators: list[CompGenerator]) -> str:
+        """Emit generator clauses for a comprehension."""
+        parts = []
+        for gen in generators:
+            var = ", ".join(_safe_name(t) for t in gen.targets)
+            iter_str = self._expr(gen.iterable)
+            part = f"for {var} in {iter_str}"
+            for cond in gen.conditions:
+                part += f" if {self._expr(cond)}"
+            parts.append(part)
+        return " ".join(parts)
 
     def _slice_expr(
         self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
@@ -978,6 +970,8 @@ class PythonBackend:
                 if neg_idx := self._negative_index(obj, index):
                     return f"{self._expr(obj)}[{neg_idx}]"
                 return f"{self._expr(obj)}[{self._expr(index)}]"
+            case SliceLV(obj=obj, low=low, high=high, step=step):
+                return self._slice_expr(obj, low, high, step)
             case DerefLV(ptr=ptr):
                 return self._expr(ptr)
             case _:

@@ -92,7 +92,10 @@ def run_test(filepath: str, code: str, expected: str) -> tuple[bool, str]:
             i += 1
         if len(errors) == 0:
             return (False, "expected error containing '" + substring + "' but got no errors")
-        return (False, "expected error containing '" + substring + "' but got: " + errors[0].message)
+        return (
+            False,
+            "expected error containing '" + substring + "' but got: " + errors[0].message,
+        )
     if expected_stripped.startswith("warning:"):
         substring = expected_stripped[8:].strip()
         i = 0
@@ -102,7 +105,10 @@ def run_test(filepath: str, code: str, expected: str) -> tuple[bool, str]:
             i += 1
         if len(warnings) == 0:
             return (False, "expected warning containing '" + substring + "' but got no warnings")
-        return (False, "expected warning containing '" + substring + "' but got: " + warnings[0].message)
+        return (
+            False,
+            "expected warning containing '" + substring + "' but got: " + warnings[0].message,
+        )
     return (False, "unknown expected format: " + expected_stripped)
 
 

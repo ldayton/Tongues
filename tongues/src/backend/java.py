@@ -551,7 +551,7 @@ class JavaBackend:
 
     def _emit_module(self, module: Module) -> None:
         self._line("import java.util.*;")
-        self._import_insert_pos = len(self.lines)
+        self._import_insert_pos: int = len(self.lines)
         self._line("")
         if module.constants:
             self._line("final class Constants {")
@@ -1416,17 +1416,30 @@ class JavaBackend:
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - Java integer division already floors for positive
-                left_str = _java_coerce_bool_to_int(self, left) if _java_is_bool_in_java(left) else self._expr(left)
-                right_str = _java_coerce_bool_to_int(self, right) if _java_is_bool_in_java(right) else self._expr(right)
+                left_str = (
+                    _java_coerce_bool_to_int(self, left)
+                    if _java_is_bool_in_java(left)
+                    else self._expr(left)
+                )
+                right_str = (
+                    _java_coerce_bool_to_int(self, right)
+                    if _java_is_bool_in_java(right)
+                    else self._expr(right)
+                )
                 return f"{left_str} / {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
-                "==", "!=",
+                "==",
+                "!=",
             ) and _java_needs_bool_int_coerce(left, right):
                 left_str = _java_coerce_bool_to_int(self, left)
                 right_str = _java_coerce_bool_to_int(self, right)
                 return f"{left_str} {_binary_op(op)} {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
-                "+", "-", "*", "/", "%",
+                "+",
+                "-",
+                "*",
+                "/",
+                "%",
             ) and (_java_is_bool_in_java(left) or _java_is_bool_in_java(right)):
                 left_str = _java_coerce_bool_to_int(self, left)
                 right_str = _java_coerce_bool_to_int(self, right)
@@ -1506,7 +1519,14 @@ class JavaBackend:
                 # Wrap RHS comparison in parens when outer is also a comparison
                 # (Java evaluates left-to-right, so a == b != c is (a == b) != c)
                 if java_op in ("==", "!=", "<", "<=", ">", ">="):
-                    if isinstance(right, BinaryOp) and right.op in ("==", "!=", "<", "<=", ">", ">="):
+                    if isinstance(right, BinaryOp) and right.op in (
+                        "==",
+                        "!=",
+                        "<",
+                        "<=",
+                        ">",
+                        ">=",
+                    ):
                         right_str = f"({right_str})"
                 return f"{left_str} {java_op} {right_str}"
             case UnaryOp(op="&", operand=operand):
@@ -1782,7 +1802,11 @@ class JavaBackend:
     def _cast(self, inner: Expr, to_type: Type) -> str:
         inner_str = self._expr(inner)
         java_type = self._type(to_type)
-        if inner.typ == BOOL and isinstance(to_type, Primitive) and to_type.kind in ("int", "byte", "rune"):
+        if (
+            inner.typ == BOOL
+            and isinstance(to_type, Primitive)
+            and to_type.kind in ("int", "byte", "rune")
+        ):
             return f"({inner_str} ? 1 : 0)"
         if inner.typ == BOOL and isinstance(to_type, Primitive) and to_type.kind == "string":
             return f'({inner_str} ? "True" : "False")'

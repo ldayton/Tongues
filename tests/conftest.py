@@ -23,6 +23,7 @@ class CompileError(Exception):
 @dataclass
 class Target:
     """Configuration for a language target."""
+
     name: str
     ext: str
     run_cmd: list[str] | None = None  # None means needs compilation first
@@ -40,7 +41,9 @@ class Target:
         """Return the command to compile the output file."""
         if not self.compile_cmd:
             return None
-        return [arg.format(path=path, out=path.with_suffix("")) for arg in self.compile_cmd]
+        return [
+            arg.format(path=path, out=path.with_suffix("")) for arg in self.compile_cmd
+        ]
 
     def get_format_command(self, path: Path) -> list[str] | None:
         """Return the command to format the output file."""
@@ -72,13 +75,27 @@ TARGETS: dict[str, Target] = {
         name="ruby",
         ext=".rb",
         run_cmd=["ruby", "{path}"],
-        format_cmd=["rubocop", "-A", "--fail-level", "fatal", "-o", "/dev/null", "{path}"],
+        format_cmd=[
+            "rubocop",
+            "-A",
+            "--fail-level",
+            "fatal",
+            "-o",
+            "/dev/null",
+            "{path}",
+        ],
     ),
     "java": Target(
         name="java",
         ext=".java",
         run_cmd=["java", "{path}"],
-        format_cmd=["java", "-jar", "/usr/local/lib/google-java-format.jar", "-i", "{path}"],
+        format_cmd=[
+            "java",
+            "-jar",
+            "/usr/local/lib/google-java-format.jar",
+            "-i",
+            "{path}",
+        ],
     ),
     "dart": Target(
         name="dart",
@@ -130,9 +147,13 @@ TARGETS: dict[str, Target] = {
         name="zig",
         ext=".zig",
         compile_cmd=[
-            "zig", "build-exe", "{path}",
-            "-fno-emit-bin", "-fno-emit-asm",
-            "--cache-dir", "/tmp/zig-cache",
+            "zig",
+            "build-exe",
+            "{path}",
+            "-fno-emit-bin",
+            "-fno-emit-asm",
+            "--cache-dir",
+            "/tmp/zig-cache",
             "-femit-bin={out}",
         ],
     ),

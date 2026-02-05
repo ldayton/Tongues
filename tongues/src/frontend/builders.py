@@ -216,9 +216,14 @@ def build_method_shell(
         callbacks.setup_context(class_name, func_info)
         # Collect variable types from body and add parameters + self
         node_body = node.get("body", [])
-        var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node = (
-            callbacks.collect_var_types(node_body)
-        )
+        (
+            var_types,
+            tuple_vars,
+            sentinel_ints,
+            optional_strings,
+            list_element_unions,
+            unified_to_node,
+        ) = callbacks.collect_var_types(node_body)
         if func_info:
             for p in func_info.params:
                 var_types[p.name] = p.typ
@@ -280,9 +285,14 @@ def build_function_shell(
         # Set up context first (needed by collect_var_types) - empty class name for functions
         callbacks.setup_context("", func_info)
         # Collect variable types from body and add parameters
-        var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node = (
-            callbacks.collect_var_types(node.get("body", []))
-        )
+        (
+            var_types,
+            tuple_vars,
+            sentinel_ints,
+            optional_strings,
+            list_element_unions,
+            unified_to_node,
+        ) = callbacks.collect_var_types(node.get("body", []))
         if func_info:
             for p in func_info.params:
                 var_types[p.name] = p.typ
@@ -406,6 +416,59 @@ def build_struct(
     return struct, ctor_func
 
 
+def _extract_entrypoint_function_name(node: ASTNode) -> str | None:
+    """Extract entrypoint function name from `if __name__ == "__main__": ...`."""
+    if not is_type(node, ["If"]):
+        return None
+    if node.get("orelse"):
+        return None
+    test = node.get("test")
+    if not is_type(test, ["Compare"]):
+        return None
+    left = test.get("left")
+    if not is_type(left, ["Name"]) or left.get("id") != "__name__":
+        return None
+    ops = test.get("ops", [])
+    comparators = test.get("comparators", [])
+    if len(ops) != 1 or len(comparators) != 1:
+        return None
+    if not is_type(ops[0], ["Eq"]):
+        return None
+    comp = comparators[0]
+    if is_type(comp, ["Constant"]):
+        if comp.get("value") != "__main__":
+            return None
+    elif is_type(comp, ["Str"]):
+        if comp.get("s") != "__main__":
+            return None
+    else:
+        return None
+    body = node.get("body", [])
+    if len(body) != 1 or not is_type(body[0], ["Expr"]):
+        return None
+    expr = body[0].get("value")
+    if not is_type(expr, ["Call"]):
+        return None
+    func = expr.get("func")
+    # Pattern: main()
+    if is_type(func, ["Name"]):
+        return func.get("id")
+    # Pattern: sys.exit(main())
+    if (
+        is_type(func, ["Attribute"])
+        and func.get("attr") == "exit"
+        and is_type(func.get("value"), ["Name"])
+        and func.get("value", {}).get("id") == "sys"
+    ):
+        args = expr.get("args", [])
+        if len(args) != 1 or not is_type(args[0], ["Call"]):
+            return None
+        inner_func = args[0].get("func")
+        if is_type(inner_func, ["Name"]):
+            return inner_func.get("id")
+    return None
+
+
 def build_module(
     tree: ASTNode,
     symbols: "SymbolTable",
@@ -414,58 +477,6 @@ def build_module(
 ) -> Module:
     """Build IR Module from collected symbols."""
     from .. import ir
-
-    def _extract_entrypoint_function_name(node: ASTNode) -> str | None:
-        """Extract entrypoint function name from `if __name__ == "__main__": ...`."""
-        if not is_type(node, ["If"]):
-            return None
-        if node.get("orelse"):
-            return None
-        test = node.get("test")
-        if not is_type(test, ["Compare"]):
-            return None
-        left = test.get("left")
-        if not is_type(left, ["Name"]) or left.get("id") != "__name__":
-            return None
-        ops = test.get("ops", [])
-        comparators = test.get("comparators", [])
-        if len(ops) != 1 or len(comparators) != 1:
-            return None
-        if not is_type(ops[0], ["Eq"]):
-            return None
-        comp = comparators[0]
-        if is_type(comp, ["Constant"]):
-            if comp.get("value") != "__main__":
-                return None
-        elif is_type(comp, ["Str"]):
-            if comp.get("s") != "__main__":
-                return None
-        else:
-            return None
-        body = node.get("body", [])
-        if len(body) != 1 or not is_type(body[0], ["Expr"]):
-            return None
-        expr = body[0].get("value")
-        if not is_type(expr, ["Call"]):
-            return None
-        func = expr.get("func")
-        # Pattern: main()
-        if is_type(func, ["Name"]):
-            return func.get("id")
-        # Pattern: sys.exit(main())
-        if (
-            is_type(func, ["Attribute"])
-            and func.get("attr") == "exit"
-            and is_type(func.get("value"), ["Name"])
-            and func.get("value", {}).get("id") == "sys"
-        ):
-            args = expr.get("args", [])
-            if len(args) != 1 or not is_type(args[0], ["Call"]):
-                return None
-            inner_func = args[0].get("func")
-            if is_type(inner_func, ["Name"]):
-                return inner_func.get("id")
-        return None
 
     module = Module(name="parable")
     module.hierarchy_root = hierarchy_root

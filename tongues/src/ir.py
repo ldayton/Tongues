@@ -2213,8 +2213,20 @@ class GetEnv(Expr):
 
 
 @dataclass
+class CompGenerator:
+    """Single generator clause in a comprehension.
+
+    Represents `for x, y in items if cond1 if cond2`.
+    """
+
+    targets: list[str]
+    iterable: Expr
+    conditions: list[Expr] = field(default_factory=list)
+
+
+@dataclass
 class ListComp(Expr):
-    """List comprehension: [expr for target in iter if cond]
+    """List comprehension: [expr for x in xs for y in ys if cond]
 
     Semantics: Build list by iterating and filtering.
 
@@ -2228,49 +2240,43 @@ class ListComp(Expr):
     | TS     | iter.filter().map() or loop         |
 
     Invariants:
-    - iterable.typ is Slice, Array, or iterable
+    - generators is non-empty
     - typ is Slice(element.typ)
     """
 
     element: Expr
-    target: str
-    iterable: Expr
-    condition: Expr | None = None
+    generators: list[CompGenerator]
 
 
 @dataclass
 class SetComp(Expr):
-    """Set comprehension: {expr for target in iter if cond}
+    """Set comprehension: {expr for x in xs for y in ys if cond}
 
     Semantics: Build set by iterating and filtering.
 
     Invariants:
-    - iterable.typ is Slice, Array, or iterable
+    - generators is non-empty
     - typ is Set(element.typ)
     """
 
     element: Expr
-    target: str
-    iterable: Expr
-    condition: Expr | None = None
+    generators: list[CompGenerator]
 
 
 @dataclass
 class DictComp(Expr):
-    """Dict comprehension: {key: value for target in iter if cond}
+    """Dict comprehension: {k: v for x in xs for y in ys if cond}
 
     Semantics: Build map by iterating and filtering.
 
     Invariants:
-    - iterable.typ is Slice, Array, or iterable
+    - generators is non-empty
     - typ is Map(key.typ, value.typ)
     """
 
     key: Expr
     value: Expr
-    target: str
-    iterable: Expr
-    condition: Expr | None = None
+    generators: list[CompGenerator]
 
 
 # ============================================================
@@ -2306,6 +2312,16 @@ class IndexLV(LValue):
 
     obj: Expr
     index: Expr
+
+
+@dataclass
+class SliceLV(LValue):
+    """Slice as lvalue: obj[low:high] = ..."""
+
+    obj: Expr
+    low: Expr | None = None
+    high: Expr | None = None
+    step: Expr | None = None
 
 
 @dataclass

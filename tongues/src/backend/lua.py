@@ -398,7 +398,7 @@ class LuaBackend:
     def _emit_module(self, module: Module) -> None:
         self._line("-- Generated Lua code")
         self._line()
-        self._preamble_insert_pos = len(self.lines)
+        self._preamble_insert_pos: int = len(self.lines)
         need_blank = False
         if module.constants:
             for const in module.constants:
@@ -430,112 +430,130 @@ class LuaBackend:
             return []
         lines: list[str] = []
         if "_table_slice" in self._needed_helpers:
-            lines.extend([
-                "local function _table_slice(t, i, j)",
-                "  local result = {}",
-                "  j = j or #t",
-                "  for k = i, j do",
-                "    result[#result + 1] = t[k]",
-                "  end",
-                "  return result",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _table_slice(t, i, j)",
+                    "  local result = {}",
+                    "  j = j or #t",
+                    "  for k = i, j do",
+                    "    result[#result + 1] = t[k]",
+                    "  end",
+                    "  return result",
+                    "end",
+                    "",
+                ]
+            )
         if "_string_split" in self._needed_helpers:
-            lines.extend([
-                "local function _string_split(s, sep)",
-                "  if sep == '' then",
-                "    local result = {}",
-                "    for i = 1, #s do",
-                "      result[i] = s:sub(i, i)",
-                "    end",
-                "    return result",
-                "  end",
-                "  local result = {}",
-                "  local pattern = '([^' .. sep .. ']+)'",
-                "  for part in string.gmatch(s, pattern) do",
-                "    result[#result + 1] = part",
-                "  end",
-                "  return result",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _string_split(s, sep)",
+                    "  if sep == '' then",
+                    "    local result = {}",
+                    "    for i = 1, #s do",
+                    "      result[i] = s:sub(i, i)",
+                    "    end",
+                    "    return result",
+                    "  end",
+                    "  local result = {}",
+                    "  local pattern = '([^' .. sep .. ']+)'",
+                    "  for part in string.gmatch(s, pattern) do",
+                    "    result[#result + 1] = part",
+                    "  end",
+                    "  return result",
+                    "end",
+                    "",
+                ]
+            )
         if "_set_contains" in self._needed_helpers:
-            lines.extend([
-                "local function _set_contains(s, v)",
-                "  return s[v] == true",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _set_contains(s, v)",
+                    "  return s[v] == true",
+                    "end",
+                    "",
+                ]
+            )
         if "_set_add" in self._needed_helpers:
-            lines.extend([
-                "local function _set_add(s, v)",
-                "  s[v] = true",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _set_add(s, v)",
+                    "  s[v] = true",
+                    "end",
+                    "",
+                ]
+            )
         if "_string_find" in self._needed_helpers:
-            lines.extend([
-                "local function _string_find(s, sub, start)",
-                "  start = start or 0",
-                "  local pos = string.find(s, sub, start + 1, true)",
-                "  if pos then return pos - 1 else return -1 end",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _string_find(s, sub, start)",
+                    "  start = start or 0",
+                    "  local pos = string.find(s, sub, start + 1, true)",
+                    "  if pos then return pos - 1 else return -1 end",
+                    "end",
+                    "",
+                ]
+            )
         if "_string_rfind" in self._needed_helpers:
-            lines.extend([
-                "local function _string_rfind(s, sub)",
-                "  local last = -1",
-                "  local start = 1",
-                "  while true do",
-                "    local pos = string.find(s, sub, start, true)",
-                "    if not pos then break end",
-                "    last = pos - 1",
-                "    start = pos + 1",
-                "  end",
-                "  return last",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _string_rfind(s, sub)",
+                    "  local last = -1",
+                    "  local start = 1",
+                    "  while true do",
+                    "    local pos = string.find(s, sub, start, true)",
+                    "    if not pos then break end",
+                    "    last = pos - 1",
+                    "    start = pos + 1",
+                    "  end",
+                    "  return last",
+                    "end",
+                    "",
+                ]
+            )
         if "_range" in self._needed_helpers:
-            lines.extend([
-                "local function _range(start, stop, step)",
-                "  if stop == nil then stop = start; start = 0 end",
-                "  step = step or 1",
-                "  local result = {}",
-                "  if step > 0 then",
-                "    for i = start, stop - 1, step do",
-                "      result[#result + 1] = i",
-                "    end",
-                "  else",
-                "    for i = start, stop + 1, step do",
-                "      result[#result + 1] = i",
-                "    end",
-                "  end",
-                "  return result",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _range(start, stop, step)",
+                    "  if stop == nil then stop = start; start = 0 end",
+                    "  step = step or 1",
+                    "  local result = {}",
+                    "  if step > 0 then",
+                    "    for i = start, stop - 1, step do",
+                    "      result[#result + 1] = i",
+                    "    end",
+                    "  else",
+                    "    for i = start, stop + 1, step do",
+                    "      result[#result + 1] = i",
+                    "    end",
+                    "  end",
+                    "  return result",
+                    "end",
+                    "",
+                ]
+            )
         if "_map_get" in self._needed_helpers:
-            lines.extend([
-                "local function _map_get(m, key, default)",
-                "  local v = m[key]",
-                "  if v == nil then return default else return v end",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _map_get(m, key, default)",
+                    "  local v = m[key]",
+                    "  if v == nil then return default else return v end",
+                    "end",
+                    "",
+                ]
+            )
         if "_bytes_to_string" in self._needed_helpers:
-            lines.extend([
-                "local function _bytes_to_string(bytes)",
-                "  local chars = {}",
-                "  for i, b in ipairs(bytes) do",
-                "    chars[i] = string.char(b)",
-                "  end",
-                "  return table.concat(chars, '')",
-                "end",
-                "",
-            ])
+            lines.extend(
+                [
+                    "local function _bytes_to_string(bytes)",
+                    "  local chars = {}",
+                    "  for i, b in ipairs(bytes) do",
+                    "    chars[i] = string.char(b)",
+                    "  end",
+                    "  return table.concat(chars, '')",
+                    "end",
+                    "",
+                ]
+            )
         return lines
 
     def _emit_constant(self, const: Constant) -> None:
@@ -1211,18 +1229,42 @@ class LuaBackend:
                 right_is_bool = right.typ == BOOL
                 # Bool-int comparison: Lua's true ~= 1
                 if op in ("==", "!=") and _is_bool_int_compare(left, right):
-                    left_str = f"({self._expr(left)} and 1 or 0)" if left_is_bool else self._maybe_paren(left, op, is_left=True)
-                    right_str = f"({self._expr(right)} and 1 or 0)" if right_is_bool else self._maybe_paren(right, op, is_left=False)
+                    left_str = (
+                        f"({self._expr(left)} and 1 or 0)"
+                        if left_is_bool
+                        else self._maybe_paren(left, op, is_left=True)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} and 1 or 0)"
+                        if right_is_bool
+                        else self._maybe_paren(right, op, is_left=False)
+                    )
                     return f"{left_str} {_binary_op(op)} {right_str}"
                 # Lua bools don't support arithmetic
                 if op in ("+", "-", "*", "/", "%", "//") and (left_is_bool or right_is_bool):
-                    left_str = f"({self._expr(left)} and 1 or 0)" if left_is_bool else self._maybe_paren(left, op, is_left=True)
-                    right_str = f"({self._expr(right)} and 1 or 0)" if right_is_bool else self._maybe_paren(right, op, is_left=False)
+                    left_str = (
+                        f"({self._expr(left)} and 1 or 0)"
+                        if left_is_bool
+                        else self._maybe_paren(left, op, is_left=True)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} and 1 or 0)"
+                        if right_is_bool
+                        else self._maybe_paren(right, op, is_left=False)
+                    )
                     return f"{left_str} {_binary_op(op)} {right_str}"
                 # Lua bitwise ops only work on numbers
                 if op in ("&", "|", "^") and (left_is_bool or right_is_bool):
-                    left_str = f"({self._expr(left)} and 1 or 0)" if left_is_bool else self._maybe_paren(left, op, is_left=True)
-                    right_str = f"({self._expr(right)} and 1 or 0)" if right_is_bool else self._maybe_paren(right, op, is_left=False)
+                    left_str = (
+                        f"({self._expr(left)} and 1 or 0)"
+                        if left_is_bool
+                        else self._maybe_paren(left, op, is_left=True)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} and 1 or 0)"
+                        if right_is_bool
+                        else self._maybe_paren(right, op, is_left=False)
+                    )
                     return f"{left_str} {_binary_op(op)} {right_str}"
                 lua_op = _binary_op(op)
                 left_str = self._maybe_paren(left, op, is_left=True)

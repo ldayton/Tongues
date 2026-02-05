@@ -291,21 +291,24 @@ def _analyze_expr(expr: Expr, ctx: OwnershipContext, info: OwnershipInfo, escapi
         for arg in expr.args:
             _analyze_expr(arg, ctx, info, escaping=False)
     elif isinstance(expr, ListComp):
-        _analyze_expr(expr.iterable, ctx, info, escaping=False)
+        for gen in expr.generators:
+            _analyze_expr(gen.iterable, ctx, info, escaping=False)
+            for cond in gen.conditions:
+                _analyze_expr(cond, ctx, info, escaping=False)
         _analyze_expr(expr.element, ctx, info, escaping=True)
-        if expr.condition:
-            _analyze_expr(expr.condition, ctx, info, escaping=False)
     elif isinstance(expr, SetComp):
-        _analyze_expr(expr.iterable, ctx, info, escaping=False)
+        for gen in expr.generators:
+            _analyze_expr(gen.iterable, ctx, info, escaping=False)
+            for cond in gen.conditions:
+                _analyze_expr(cond, ctx, info, escaping=False)
         _analyze_expr(expr.element, ctx, info, escaping=True)
-        if expr.condition:
-            _analyze_expr(expr.condition, ctx, info, escaping=False)
     elif isinstance(expr, DictComp):
-        _analyze_expr(expr.iterable, ctx, info, escaping=False)
+        for gen in expr.generators:
+            _analyze_expr(gen.iterable, ctx, info, escaping=False)
+            for cond in gen.conditions:
+                _analyze_expr(cond, ctx, info, escaping=False)
         _analyze_expr(expr.key, ctx, info, escaping=True)
         _analyze_expr(expr.value, ctx, info, escaping=True)
-        if expr.condition:
-            _analyze_expr(expr.condition, ctx, info, escaping=False)
 
 
 def _infer_expr_ownership(expr: Expr, ctx: OwnershipContext) -> Ownership:

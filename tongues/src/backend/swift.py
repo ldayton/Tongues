@@ -58,25 +58,87 @@ from src.ir import (
     VarLV,
 )
 
-SWIFT_RESERVED = frozenset({
-    "as", "associatedtype", "break", "case", "catch", "class", "continue",
-    "default", "defer", "deinit", "do", "else", "enum", "extension",
-    "fallthrough", "false", "fileprivate", "final", "for", "func", "guard",
-    "if", "import", "in", "init", "inout", "internal", "is", "let", "nil",
-    "open", "operator", "override", "precedencegroup", "private", "protocol",
-    "public", "repeat", "required", "rethrows", "return", "self", "Self",
-    "static", "struct", "subscript", "super", "switch", "throw", "throws",
-    "true", "try", "typealias", "var", "where", "while",
-})
+SWIFT_RESERVED = frozenset(
+    {
+        "as",
+        "associatedtype",
+        "break",
+        "case",
+        "catch",
+        "class",
+        "continue",
+        "default",
+        "defer",
+        "deinit",
+        "do",
+        "else",
+        "enum",
+        "extension",
+        "fallthrough",
+        "false",
+        "fileprivate",
+        "final",
+        "for",
+        "func",
+        "guard",
+        "if",
+        "import",
+        "in",
+        "init",
+        "inout",
+        "internal",
+        "is",
+        "let",
+        "nil",
+        "open",
+        "operator",
+        "override",
+        "precedencegroup",
+        "private",
+        "protocol",
+        "public",
+        "repeat",
+        "required",
+        "rethrows",
+        "return",
+        "self",
+        "Self",
+        "static",
+        "struct",
+        "subscript",
+        "super",
+        "switch",
+        "throw",
+        "throws",
+        "true",
+        "try",
+        "typealias",
+        "var",
+        "where",
+        "while",
+    }
+)
 
 # Swift operator precedence (higher number = tighter binding).
 _SWIFT_PREC: dict[str, int] = {
-    "||": 1, "&&": 2,
-    "==": 3, "!=": 3, "<": 3, "<=": 3, ">": 3, ">=": 3,
-    "|": 4, "^": 5, "&": 6,
-    "<<": 7, ">>": 7,
-    "+": 8, "-": 8,
-    "*": 9, "/": 9, "%": 9,
+    "||": 1,
+    "&&": 2,
+    "==": 3,
+    "!=": 3,
+    "<": 3,
+    "<=": 3,
+    ">": 3,
+    ">=": 3,
+    "|": 4,
+    "^": 5,
+    "&": 6,
+    "<<": 7,
+    ">>": 7,
+    "+": 8,
+    "-": 8,
+    "*": 9,
+    "/": 9,
+    "%": 9,
 }
 
 
@@ -110,7 +172,7 @@ class SwiftBackend(Emitter):
         self._entrypoint_fn: str | None = None
 
     def emit(self, module: Module) -> str:
-        self.lines = []
+        self.lines: list[str] = []
         self.indent = 0
         self._func_names = {f.name for f in module.functions}
         self._entrypoint_fn = module.entrypoint.function_name if module.entrypoint else None
@@ -137,9 +199,15 @@ class SwiftBackend(Emitter):
 
     def _type_to_swift(self, typ: "type | object") -> str:
         if isinstance(typ, Primitive):
-            return {"int": "Int", "float": "Double", "bool": "Bool",
-                    "string": "String", "void": "Void", "byte": "UInt8",
-                    "rune": "Character"}[typ.kind]
+            return {
+                "int": "Int",
+                "float": "Double",
+                "bool": "Bool",
+                "string": "String",
+                "void": "Void",
+                "byte": "UInt8",
+                "rune": "Character",
+            }[typ.kind]
         if isinstance(typ, Slice):
             return f"[{self._type_to_swift(typ.element)}]"
         if isinstance(typ, Tuple):
@@ -173,9 +241,7 @@ class SwiftBackend(Emitter):
     # ── functions ────────────────────────────────────────────
 
     def _emit_function(self, func: Function) -> None:
-        params = ", ".join(
-            f"_ {self._safe(p.name)}: {self._param_type(p)}" for p in func.params
-        )
+        params = ", ".join(f"_ {self._safe(p.name)}: {self._param_type(p)}" for p in func.params)
         name = self._fn_name(func.name)
         if func.ret == VOID:
             self.line(f"func {name}({params}) {{")
@@ -222,7 +288,7 @@ class SwiftBackend(Emitter):
         elif isinstance(stmt, NoOp):
             pass
         else:
-            raise NotImplementedError(f"Swift stmt: {type(stmt).__name__}")
+            raise NotImplementedError(f"Swift stmt: {stmt}")
 
     def _emit_VarDecl(self, s: VarDecl) -> None:
         name = self._safe(s.name)
@@ -345,7 +411,7 @@ class SwiftBackend(Emitter):
     def _emit_lvalue(self, lv: "object") -> str:
         if isinstance(lv, VarLV):
             return self._safe(lv.name)
-        raise NotImplementedError(f"Swift lvalue: {type(lv).__name__}")
+        raise NotImplementedError(f"Swift lvalue: {lv}")
 
     # ── expressions ──────────────────────────────────────────
 
@@ -386,7 +452,7 @@ class SwiftBackend(Emitter):
             return self._emit_Truthy(expr)
         if isinstance(expr, IsNil):
             return self._emit_IsNil(expr)
-        raise NotImplementedError(f"Swift expr: {type(expr).__name__}")
+        raise NotImplementedError(f"Swift expr: {expr}")
 
     def _emit_Var(self, expr: Var) -> str:
         name = self._safe(expr.name)
@@ -410,9 +476,7 @@ class SwiftBackend(Emitter):
         if op == "//":
             op = "/"
         # Bool arithmetic: True + True → (true ? 1 : 0) + (true ? 1 : 0)
-        if op in ("+", "-", "*", "/", "%") and (
-            _is_bool(expr.left) or _is_bool(expr.right)
-        ):
+        if op in ("+", "-", "*", "/", "%") and (_is_bool(expr.left) or _is_bool(expr.right)):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"

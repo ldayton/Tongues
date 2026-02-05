@@ -4,6 +4,7 @@ set shell := ["bash", "-o", "pipefail", "-cu"]
 subset:
     #!/usr/bin/env bash
     set -euo pipefail
+    cd tongues
     failed=0
     for f in $(fd -e py . src) tests/run_tests.py; do
         if ! uv run python -m src.tongues --verify < "$f" 2>/dev/null; then
@@ -16,21 +17,25 @@ subset:
 
 # Run phase tests (subset/names verification)
 test-phases:
-    python3 tests/run_testsw.py tests/phases/
+    python3 tongues/tests/run_testsw.py tongues/tests/phases/
 
 # Run codegen tests
 test-codegen:
-    python3 tests/run_codegen_testsw.py tests/codegen/
+    python3 tongues/tests/run_codegen_testsw.py tongues/tests/codegen/
+
+# Run Python apptests
+test-apptests:
+    uv run pytest tests/test_apptests.py -k "python" -v
 
 # Run all transpiler tests
-test: test-phases test-codegen
+test: test-phases test-codegen test-apptests
 
 # Lint (--fix to apply changes)
 lint *ARGS:
-    uvx ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
+    uvx ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} tongues/
 
 # Format (--fix to apply changes)
 fmt *ARGS:
-    uvx ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} src/
+    uvx ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
 
 check: fmt lint subset test

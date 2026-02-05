@@ -5,9 +5,7 @@ Simpler than TypeScript - no type annotations, interfaces, or casts.
 
 from __future__ import annotations
 
-import dataclasses
-
-from src.backend.util import escape_string
+from src.backend.util import escape_string, ir_contains_call, ir_has_bytes_ops, is_bytes_type
 from src.ir import (
     BOOL,
     FLOAT,
@@ -150,7 +148,7 @@ class JsBackend:
 
     def _emit_preamble(self, module: Module) -> None:
         """Emit helper functions needed by generated code."""
-        if _ir_contains_call(module, "range"):
+        if ir_contains_call(module, "range"):
             self._line("function range(start, end, step) {")
             self.indent += 1
             self._line("if (end === undefined) { end = start; start = 0; }")
@@ -168,17 +166,17 @@ class JsBackend:
             self._line("return result;")
             self.indent -= 1
             self._line("}")
-        if _ir_contains_call(module, "divmod"):
+        if ir_contains_call(module, "divmod"):
             self._line("function divmod(a, b) { return [Math.floor(a / b), a % b]; }")
-        if _ir_contains_call(module, "pow"):
+        if ir_contains_call(module, "pow"):
             self._line("function pow(base, exp) { return Math.pow(base, exp); }")
-        if _ir_contains_call(module, "abs"):
+        if ir_contains_call(module, "abs"):
             self._line("function abs(x) { return Math.abs(x); }")
-        if _ir_contains_call(module, "min"):
+        if ir_contains_call(module, "min"):
             self._line("function min(...args) { return Math.min(...args); }")
-        if _ir_contains_call(module, "max"):
+        if ir_contains_call(module, "max"):
             self._line("function max(...args) { return Math.max(...args); }")
-        if _ir_contains_call(module, "round"):
+        if ir_contains_call(module, "round"):
             # Python-style round: banker's rounding (round half to even)
             self._line("function round(x, n) {")
             self.indent += 1
@@ -195,7 +193,7 @@ class JsBackend:
             self._line("return Math.round(v) / m;")
             self.indent -= 1
             self._line("}")
-        if _ir_contains_call(module, "bytes"):
+        if ir_contains_call(module, "bytes"):
             self._line(
                 "function bytes(x) { return Array.isArray(x) ? x.slice() : new Array(x).fill(0); }"
             )
@@ -204,7 +202,7 @@ class JsBackend:
 
     def _needs_bytes_helpers(self, module: Module) -> bool:
         """Check if module uses byte array operations that need helpers."""
-        return _ir_has_bytes_ops(module)
+        return ir_has_bytes_ops(module)
 
     def _emit_bytes_helpers(self) -> None:
         """Emit helper functions for byte array operations."""
@@ -312,7 +310,9 @@ class JsBackend:
         self._line("}")
         self._line("function arrRstrip(a, cs) {")
         self.indent += 1
-        self._line("let e = a.length; while (e > 0 && cs.includes(a[e-1])) e--; return a.slice(0, e);")
+        self._line(
+            "let e = a.length; while (e > 0 && cs.includes(a[e-1])) e--; return a.slice(0, e);"
+        )
         self.indent -= 1
         self._line("}")
         # split
@@ -385,7 +385,7 @@ class JsBackend:
             self._line(f"/** {module.doc} */")
         need_blank = False
         preamble_funcs = ("range", "divmod", "pow", "abs", "min", "max", "bytes")
-        if any(_ir_contains_call(module, f) for f in preamble_funcs) or self._needs_bytes_helpers(
+        if any(ir_contains_call(module, f) for f in preamble_funcs) or self._needs_bytes_helpers(
             module
         ):
             self._emit_preamble(module)
@@ -1006,7 +1006,7 @@ class JsBackend:
             case TrimChars(string=s, chars=chars, mode=mode):
                 s_str = self._expr(s)
                 # For byte arrays, use arr* functions
-                if _is_bytes_type(s.typ):
+                if is_bytes_type(s.typ):
                     chars_str = self._expr(chars)
                     if mode == "left":
                         return f"arrLstrip({s_str}, {chars_str})"
@@ -1051,7 +1051,9 @@ class JsBackend:
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"{_camel(func)}({args_str})"
-            case MethodCall(obj=obj, method="join", args=[arr], receiver_type=receiver_type) if not _is_bytes_join(arr, receiver_type, [obj]):
+            case MethodCall(obj=obj, method="join", args=[arr], receiver_type=receiver_type) if (
+                not _is_bytes_join(arr, receiver_type, [obj])
+            ):
                 return f"{self._expr(arr)}.join({self._expr(obj)})"
             case MethodCall(
                 obj=obj, method="extend", args=[other], receiver_type=receiver_type
@@ -1061,9 +1063,9 @@ class JsBackend:
                 _is_array_type(receiver_type)
             ):
                 return f"{self._expr(obj)}.slice()"
-            case MethodCall(
-                obj=obj, method="get", args=[key], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
+            case MethodCall(obj=obj, method="get", args=[key], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
                 # Map.get() returns undefined for missing keys; convert to null for Python semantics
                 obj_str = self._expr(obj)
                 key_str = self._expr(key)
@@ -1074,7 +1076,9 @@ class JsBackend:
                 # Use ternary to match Python semantics: default only when key missing (not when value is null)
                 obj_str = self._expr(obj)
                 key_str = self._expr(key)
-                return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
+                return (
+                    f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
+                )
             case MethodCall(
                 obj=obj, method="replace", args=[StringLit(value=old_str), new], receiver_type=_
             ):
@@ -1092,16 +1096,16 @@ class JsBackend:
             ) if _is_array_type(receiver_type):
                 # Python: list.pop(0) -> JS: list.shift()
                 return f"{self._expr(obj)}.shift()"
-            case MethodCall(
-                obj=obj, method="join", args=args, receiver_type=receiver_type
-            ) if _is_bytes_join(obj, receiver_type, args):
+            case MethodCall(obj=obj, method="join", args=args, receiver_type=receiver_type) if (
+                _is_bytes_join(obj, receiver_type, args)
+            ):
                 # Join on list of bytes: list.join(sep) -> arrJoin(list, sep)
                 obj_str = self._expr(obj)
                 sep_str = self._expr(args[0]) if args else "[]"
                 return f"arrJoin({obj_str}, {sep_str})"
-            case MethodCall(
-                obj=obj, method=method, args=args, receiver_type=receiver_type
-            ) if _is_bytes_type(receiver_type):
+            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type) if (
+                is_bytes_type(receiver_type)
+            ):
                 # Byte array methods need helper functions
                 obj_str = self._expr(obj)
                 if method == "count" and len(args) == 1:
@@ -1182,9 +1186,9 @@ class JsBackend:
                 # Fallback
                 js_op = _binary_op(op)
                 return f"{left_str} {js_op} {right_str}"
-            case BinaryOp(op=op, left=left, right=right) if _is_bytes_type(left.typ) or _is_bytes_type(
-                right.typ
-            ):
+            case BinaryOp(op=op, left=left, right=right) if is_bytes_type(
+                left.typ
+            ) or is_bytes_type(right.typ):
                 # Byte array operations need helper functions
                 left_str = self._expr(left)
                 right_str = self._expr(right)
@@ -1204,7 +1208,7 @@ class JsBackend:
                     return f"arrConcat({left_str}, {right_str})"
                 if op == "*":
                     # One side is bytes, other is int
-                    if _is_bytes_type(left.typ):
+                    if is_bytes_type(left.typ):
                         return f"arrRepeat({left_str}, {right_str})"
                     return f"arrRepeat({right_str}, {left_str})"
                 # Fallback to normal handling
@@ -1237,7 +1241,9 @@ class JsBackend:
                 return f"{op}{inner}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 return f"({self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
-            case Cast(expr=NilLit(), to_type=to_type) if isinstance(to_type, Primitive) and to_type.kind == "string":
+            case Cast(expr=NilLit(), to_type=to_type) if (
+                isinstance(to_type, Primitive) and to_type.kind == "string"
+            ):
                 return '"None"'
             case Cast(expr=inner, to_type=to_type):
                 if (
@@ -1246,7 +1252,11 @@ class JsBackend:
                     and inner.typ == BOOL
                 ):
                     return f"Number({self._expr(inner)})"
-                if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == BOOL:
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind == "string"
+                    and inner.typ == BOOL
+                ):
                     return f'({self._expr(inner)} ? "True" : "False")'
                 if (
                     isinstance(to_type, Slice)
@@ -1361,7 +1371,7 @@ class JsBackend:
         if isinstance(container_type, (Set, Map)):
             return f"{neg}{container_str}.has({item_str})"
         # For byte arrays, use arrContains for subsequence check
-        if _is_bytes_type(container_type):
+        if is_bytes_type(container_type):
             return f"{neg}arrContains({container_str}, {item_str})"
         return f"{neg}{container_str}.includes({item_str})"
 
@@ -1629,18 +1639,10 @@ def _is_void_func(func: Function) -> bool:
     return True
 
 
-def _is_bytes_type(typ: Type) -> bool:
-    """Check if type is a byte array (Slice with byte element)."""
-    if isinstance(typ, Slice):
-        elem = typ.element
-        return isinstance(elem, Primitive) and elem.kind == "byte"
-    return False
-
-
 def _is_bytes_list_type(typ: Type) -> bool:
     """Check if type is a list of byte arrays (Slice of Slice of byte)."""
     if isinstance(typ, Slice):
-        return _is_bytes_type(typ.element)
+        return is_bytes_type(typ.element)
     return False
 
 
@@ -1657,105 +1659,9 @@ def _is_bytes_join(obj: Expr, receiver_type: Type, args: list[Expr]) -> bool:
         if isinstance(obj.elements[0], SliceLit):
             return True
     # Check if separator arg is bytes
-    if args and args[0].typ is not None and _is_bytes_type(args[0].typ):
+    if args and args[0].typ is not None and is_bytes_type(args[0].typ):
         return True
     return False
-
-
-def _ir_has_bytes_ops(node: object) -> bool:
-    """Check if IR contains operations on byte arrays that need helpers."""
-    seen: set[int] = set()
-
-    def visit(obj: object) -> bool:
-        if obj is None:
-            return False
-        obj_id = id(obj)
-        if obj_id in seen:
-            return False
-        # Check for byte array operations
-        if isinstance(obj, BinaryOp):
-            if obj.op in ("==", "!=", "<", "<=", ">", ">=", "+", "*", "in", "not in"):
-                if _is_bytes_type(obj.left.typ) or _is_bytes_type(obj.right.typ):
-                    return True
-        if isinstance(obj, TrimChars) and _is_bytes_type(obj.string.typ):
-            return True
-        # Check for step slices (need arrStep helper)
-        if isinstance(obj, SliceExpr) and obj.step is not None:
-            return True
-        if isinstance(obj, MethodCall):
-            if _is_bytes_type(obj.receiver_type):
-                if obj.method in (
-                    "count",
-                    "find",
-                    "rfind",
-                    "startswith",
-                    "endswith",
-                    "upper",
-                    "lower",
-                    "strip",
-                    "lstrip",
-                    "rstrip",
-                    "split",
-                    "join",
-                    "replace",
-                ):
-                    return True
-        if dataclasses.is_dataclass(obj):
-            seen.add(obj_id)
-            for f in dataclasses.fields(obj):
-                if visit(getattr(obj, f.name)):
-                    return True
-            return False
-        if isinstance(obj, (list, tuple, set)):
-            seen.add(obj_id)
-            for item in obj:
-                if visit(item):
-                    return True
-            return False
-        if isinstance(obj, dict):
-            seen.add(obj_id)
-            for item in obj.values():
-                if visit(item):
-                    return True
-            return False
-        return False
-
-    return visit(node)
-
-
-def _ir_contains_call(node: object, func: str) -> bool:
-    """Return True if IR contains a Call to the given function name."""
-    seen: set[int] = set()
-
-    def visit(obj: object) -> bool:
-        if obj is None:
-            return False
-        if isinstance(obj, Call) and obj.func == func:
-            return True
-        obj_id = id(obj)
-        if obj_id in seen:
-            return False
-        if dataclasses.is_dataclass(obj):
-            seen.add(obj_id)
-            for f in dataclasses.fields(obj):
-                if visit(getattr(obj, f.name)):
-                    return True
-            return False
-        if isinstance(obj, (list, tuple, set)):
-            seen.add(obj_id)
-            for item in obj:
-                if visit(item):
-                    return True
-            return False
-        if isinstance(obj, dict):
-            seen.add(obj_id)
-            for item in obj.values():
-                if visit(item):
-                    return True
-            return False
-        return False
-
-    return visit(node)
 
 
 def _ends_with_return(body: list[Stmt]) -> bool:

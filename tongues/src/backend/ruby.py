@@ -286,7 +286,7 @@ class RubyBackend:
                 self._known_functions.add(m.name)
         self._line("# frozen_string_literal: true")
         self._line()
-        self._import_insert_pos = len(self.lines)
+        self._import_insert_pos: int = len(self.lines)
         need_blank = False
         if module.constants:
             for const in module.constants:
@@ -641,7 +641,9 @@ class RubyBackend:
         for clause in catches:
             var = _safe_name(clause.var) if clause.var else "_e"
             if isinstance(clause.typ, StructRef):
-                exc_type = _PYTHON_EXCEPTION_MAP.get(clause.typ.name, _safe_type_name(clause.typ.name))
+                exc_type = _PYTHON_EXCEPTION_MAP.get(
+                    clause.typ.name, _safe_type_name(clause.typ.name)
+                )
             else:
                 exc_type = "StandardError"
             self._line(f"rescue {exc_type} => {var}")
@@ -871,15 +873,31 @@ class RubyBackend:
                 return f"!!{expr_str}"
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - Ruby integer division already floors
-                left_str = self._maybe_paren(self._coerce_bool_to_int(left, raw=True), left, "/", is_left=True) if left.typ == BOOL else self._maybe_paren(self._expr(left), left, "/", is_left=True)
-                right_str = self._maybe_paren(self._coerce_bool_to_int(right, raw=True), right, "/", is_left=False) if right.typ == BOOL else self._maybe_paren(self._expr(right), right, "/", is_left=False)
+                left_str = (
+                    self._maybe_paren(
+                        self._coerce_bool_to_int(left, raw=True), left, "/", is_left=True
+                    )
+                    if left.typ == BOOL
+                    else self._maybe_paren(self._expr(left), left, "/", is_left=True)
+                )
+                right_str = (
+                    self._maybe_paren(
+                        self._coerce_bool_to_int(right, raw=True), right, "/", is_left=False
+                    )
+                    if right.typ == BOOL
+                    else self._maybe_paren(self._expr(right), right, "/", is_left=False)
+                )
                 return f"{left_str} / {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "==",
                 "!=",
             ) and _is_bool_int_compare(left, right):
-                left_str = self._maybe_paren(self._coerce_bool_to_int(left, raw=True), left, op, is_left=True)
-                right_str = self._maybe_paren(self._coerce_bool_to_int(right, raw=True), right, op, is_left=False)
+                left_str = self._maybe_paren(
+                    self._coerce_bool_to_int(left, raw=True), left, op, is_left=True
+                )
+                right_str = self._maybe_paren(
+                    self._coerce_bool_to_int(right, raw=True), right, op, is_left=False
+                )
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
@@ -892,8 +910,12 @@ class RubyBackend:
                 "&",
                 "^",
             ) and (left.typ == BOOL or right.typ == BOOL):
-                left_str = self._maybe_paren(self._coerce_bool_to_int(left, raw=True), left, op, is_left=True)
-                right_str = self._maybe_paren(self._coerce_bool_to_int(right, raw=True), right, op, is_left=False)
+                left_str = self._maybe_paren(
+                    self._coerce_bool_to_int(left, raw=True), left, op, is_left=True
+                )
+                right_str = self._maybe_paren(
+                    self._coerce_bool_to_int(right, raw=True), right, op, is_left=False
+                )
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
             case BinaryOp(op=op, left=left, right=right):
@@ -957,7 +979,11 @@ class RubyBackend:
                     and inner.typ == BOOL
                 ):
                     return f"({self._expr(inner)} ? 1 : 0)"
-                if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == BOOL:
+                if (
+                    isinstance(to_type, Primitive)
+                    and to_type.kind == "string"
+                    and inner.typ == BOOL
+                ):
                     return f'({self._expr(inner)} ? "True" : "False")'
                 if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
                     return (
@@ -1165,7 +1191,7 @@ class RubyBackend:
             case _:
                 return self._expr(expr)
 
-    def _coerce_bool_to_int(self, expr: Expr, *, raw: bool = False) -> str:
+    def _coerce_bool_to_int(self, expr: Expr, raw: bool = False) -> str:
         """Coerce a bool expression to int for comparison with int."""
         if expr.typ == BOOL:
             inner = self._expr(expr)

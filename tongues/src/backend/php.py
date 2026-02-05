@@ -492,7 +492,9 @@ class PhpBackend:
                     msg = self._expr(message)
                     self._line(f"if (!({cond_str})) {{ throw new \\AssertionError({msg}); }}")
                 else:
-                    self._line(f'if (!({cond_str})) {{ throw new \\AssertionError("assertion failed"); }}')
+                    self._line(
+                        f'if (!({cond_str})) {{ throw new \\AssertionError("assertion failed"); }}'
+                    )
             case EntryPoint():
                 pass
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
@@ -941,7 +943,7 @@ class PhpBackend:
             return self._expr(args[0])
         if func == "print":
             if args:
-                return f"echo {self._expr(args[0])} . \"\\n\""
+                return f'echo {self._expr(args[0])} . "\\n"'
             return 'echo "\\n"'
         if func == "bool":
             if not args:
@@ -949,13 +951,13 @@ class PhpBackend:
             return f"(bool)({self._expr(args[0])})"
         if func == "repr":
             if args and args[0].typ == BOOL:
-                return f"({self._expr(args[0])} ? \"True\" : \"False\")"
+                return f'({self._expr(args[0])} ? "True" : "False")'
             return f"strval({self._expr(args[0])})"
         if func == "int" and len(args) == 2:
             return f"intval({args_str})"
         if func == "str":
             if args and args[0].typ == BOOL:
-                return f"({self._expr(args[0])} ? \"True\" : \"False\")"
+                return f'({self._expr(args[0])} ? "True" : "False")'
             return f"strval({self._expr(args[0])})"
         if func == "len":
             arg = self._expr(args[0])
@@ -1142,7 +1144,7 @@ class PhpBackend:
             if to_type.kind == "string":
                 inner_type = inner.typ
                 if inner_type == BOOL:
-                    return f"({inner_str} ? \"True\" : \"False\")"
+                    return f'({inner_str} ? "True" : "False")'
                 if isinstance(inner_type, Slice):
                     elem = inner_type.element
                     if isinstance(elem, Primitive) and elem.kind == "byte":
