@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 
-TESTS_DIR = os.path.join(os.path.dirname(__file__), "pypy")
+TESTS_DIR = os.path.join(os.path.dirname(__file__), "app")
 OUT_DIR = os.path.join(TESTS_DIR, ".out")
 TONGUES_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "tongues")
 
