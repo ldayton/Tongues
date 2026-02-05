@@ -1075,6 +1075,10 @@ class PythonBackend:
                 # 'not' has lower precedence than comparisons, so wrap in parens
                 if parent_op in cmp_ops:
                     return f"({self._expr(expr)})"
+            case UnaryOp(op="-" | "+"):
+                # ** binds tighter than unary -, so (-2)**3 != -2**3
+                if parent_op == "**" and is_left:
+                    return f"({self._expr(expr)})"
             case IsNil():
                 # 'is/is not' creates chained comparison if nested in comparison
                 if parent_op in cmp_ops:
@@ -1152,6 +1156,7 @@ _PRECEDENCE = {
     "/": 9,
     "//": 9,
     "%": 9,
+    "**": 11,
 }
 
 
