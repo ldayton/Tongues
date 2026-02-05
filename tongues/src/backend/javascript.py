@@ -21,6 +21,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     CatchClause,
     Constant,
@@ -55,7 +56,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -405,6 +408,11 @@ class JsBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        for stmt in module.statements:
+            if need_blank:
+                self._line()
+            self._emit_stmt(stmt)
+            need_blank = True
         if module.entrypoint is not None:
             self._line()
             self._emit_stmt(module.entrypoint)
@@ -594,13 +602,7 @@ class JsBackend:
                 for s in then_body:
                     self._emit_stmt(s)
                 self.indent -= 1
-                if else_body:
-                    self._line("} else {")
-                    self.indent += 1
-                    for s in else_body:
-                        self._emit_stmt(s)
-                    self.indent -= 1
-                self._line("}")
+                self._emit_else_body(else_body)
             case TypeSwitch(expr=expr, binding=binding, cases=cases, default=default):
                 self._emit_hoisted_vars(stmt.hoisted_vars)
                 self._emit_type_switch(expr, binding, cases, default)
@@ -709,6 +711,30 @@ class JsBackend:
             self.indent -= 1
         self.indent -= 1
         self._line("}")
+
+    def _emit_else_body(self, else_body: list[Stmt]) -> None:
+        """Emit else body, converting single-If else to else-if chains."""
+        if not else_body:
+            self._line("}")
+            return
+        # Check for else-if pattern: else body is single If statement
+        if len(else_body) == 1 and isinstance(else_body[0], If):
+            elif_stmt = else_body[0]
+            if elif_stmt.init is not None:
+                self._emit_stmt(elif_stmt.init)
+            self._line(f"}} else if ({self._expr(elif_stmt.cond)}) {{")
+            self.indent += 1
+            for s in elif_stmt.then_body:
+                self._emit_stmt(s)
+            self.indent -= 1
+            self._emit_else_body(elif_stmt.else_body)
+        else:
+            self._line("} else {")
+            self.indent += 1
+            for s in else_body:
+                self._emit_stmt(s)
+            self.indent -= 1
+            self._line("}")
 
     def _emit_for_range(
         self,
@@ -949,9 +975,21 @@ class JsBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
+            case IntLit(value=value, format=fmt):
+                if fmt == "hex":
+                    return hex(value)
+                if fmt == "oct":
+                    return f"0o{oct(value)[2:]}"
+                if fmt == "bin":
+                    return bin(value)
+                # Use BigInt for large integers exceeding JS safe integer range
+                if abs(value) > 9007199254740991:  # Number.MAX_SAFE_INTEGER
+                    return f"{value}n"
                 return str(value)
-            case FloatLit(value=value):
+            case FloatLit(value=value, format=fmt):
+                if fmt == "exp":
+                    # JS doesn't need + for positive exponent
+                    return f"{value:g}".replace("e+", "e")
                 return str(value)
             case StringLit(value=value):
                 return _string_literal(value)
@@ -1034,6 +1072,9 @@ class JsBackend:
                 return "Infinity"
             case Call(func="float", args=[StringLit(value="-inf")]):
                 return "-Infinity"
+            case Call(func="float", args=[IntLit() as arg]):
+                # JS doesn't distinguish int/float, no conversion needed
+                return self._expr(arg)
             case Call(func="float", args=[arg]):
                 return f"Number({self._expr(arg)})"
             case Call(func="print", args=args):
@@ -1048,6 +1089,32 @@ class JsBackend:
             case Call(func="bool", args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Boolean({args_str})"
+            case Call(func="abs", args=[arg]):
+                return f"Math.abs({self._expr(arg)})"
+            case Call(func="min", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"Math.min({args_str})"
+            case Call(func="max", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"Math.max({args_str})"
+            case Call(func="round", args=[arg]):
+                return f"Math.round({self._expr(arg)})"
+            case Call(func="round", args=[arg, IntLit(value=n)]):
+                # round(x, n) with literal n -> Math.round(x * 10^n) / 10^n
+                mult = 10 ** n
+                return f"Math.round({self._expr(arg)} * {mult}) / {mult}"
+            case Call(func="round", args=[arg, precision]):
+                # round(x, n) with variable n
+                prec = self._expr(precision)
+                return f"Math.round({self._expr(arg)} * 10 ** {prec}) / 10 ** {prec}"
+            case Call(func="int", args=[arg]):
+                return f"Math.trunc({self._expr(arg)})"
+            case Call(func="divmod", args=[a, b]):
+                return f"[Math.floor({self._expr(a)} / {self._expr(b)}), {self._expr(a)} % {self._expr(b)}]"
+            case Call(func="pow", args=[base, exp]):
+                return f"{self._expr(base)} ** {self._expr(exp)}"
+            case Call(func="pow", args=[base, exp, mod]):
+                return f"{self._expr(base)} ** {self._expr(exp)} % {self._expr(mod)}"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"{_camel(func)}({args_str})"
@@ -1214,6 +1281,11 @@ class JsBackend:
                 # Fallback to normal handling
                 js_op = _binary_op(op)
                 return f"{left_str} {js_op} {right_str}"
+            case BinaryOp(op="**", left=UnaryOp() as left, right=right):
+                # JS requires parens around unary operand on left of **
+                left_str = f"({self._expr(left)})"
+                right_str = self._expr_with_precedence(right, "**", is_right=True)
+                return f"{left_str} ** {right_str}"
             case BinaryOp(op=op, left=left, right=right):
                 js_op = _binary_op(op)
                 if op in ("==", "!=") and _is_bool_int_compare(left, right):
@@ -1221,6 +1293,19 @@ class JsBackend:
                 left_str = self._expr_with_precedence(left, op, is_right=False)
                 right_str = self._expr_with_precedence(right, op, is_right=True)
                 return f"{left_str} {js_op} {right_str}"
+            case ChainedCompare(operands=operands, ops=ops):
+                # JS doesn't support chained comparisons: a < b < c -> a < b && b < c
+                parts = []
+                for i, op in enumerate(ops):
+                    left_str = self._expr(operands[i])
+                    right_str = self._expr(operands[i + 1])
+                    js_op = _binary_op(op)
+                    parts.append(f"{left_str} {js_op} {right_str}")
+                return " && ".join(parts)
+            case MinExpr(left=left, right=right):
+                return f"Math.min({self._expr(left)}, {self._expr(right)})"
+            case MaxExpr(left=left, right=right):
+                return f"Math.max({self._expr(left)}, {self._expr(right)})"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)
             case UnaryOp(op="*", operand=operand):
@@ -1235,12 +1320,18 @@ class JsBackend:
                 return f"{left_str} !== {right_str}"
             case UnaryOp(op=op, operand=operand):
                 inner = self._expr(operand)
-                # Wrap in parens if operand is BinaryOp or UnaryOp (to avoid --x, ++x)
-                if isinstance(operand, (BinaryOp, UnaryOp)):
+                # For - and +, add space before nested unary to avoid --x/++x ambiguity
+                # For !, no separation needed: !!true is valid JS
+                if isinstance(operand, UnaryOp):
+                    if op in ("-", "+"):
+                        return f"{op} {inner}"
+                    return f"{op}{inner}"
+                # Wrap binary ops in parens
+                if isinstance(operand, BinaryOp):
                     inner = f"({inner})"
                 return f"{op}{inner}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
-                return f"({self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
+                return f"{self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)}"
             case Cast(expr=NilLit(), to_type=to_type) if (
                 isinstance(to_type, Primitive) and to_type.kind == "string"
             ):
@@ -1399,10 +1490,16 @@ class JsBackend:
         inner = self._expr(expr)
         if " ?? " in inner and parent_op in ("+", "-", "*", "/", "%"):
             return f"({inner})"
+        # Ternary has very low precedence, wrap when inside binary ops
+        if isinstance(expr, Ternary):
+            return f"({inner})"
         if not isinstance(expr, BinaryOp):
             return inner
         child_prec = _op_precedence(expr.op)
         parent_prec = _op_precedence(parent_op)
+        # ** is right-associative, so no parens needed on right for same precedence
+        if parent_op == "**" and expr.op == "**" and is_right:
+            return inner
         needs_parens = child_prec < parent_prec or (child_prec == parent_prec and is_right)
         return f"({inner})" if needs_parens else inner
 
