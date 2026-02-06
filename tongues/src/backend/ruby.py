@@ -854,6 +854,11 @@ class RubyBackend:
                 return f"puts({args_str})"
             case Call(func="repr", args=[arg]) if arg.typ == BOOL:
                 return f'({self._expr(arg)} ? "True" : "False")'
+            case Call(func="repr", args=[arg]) if arg.typ == Primitive(kind="string"):
+                # Python repr uses single quotes, Ruby inspect uses double quotes
+                return f'"\'" + {self._expr(arg)} + "\'"'
+            case Call(func="repr", args=[arg]) if isinstance(arg, NilLit):
+                return '"None"'
             case Call(func="repr", args=[arg]):
                 return f"{self._expr(arg)}.inspect"
             case Call(func="bool", args=[]):
@@ -903,6 +908,15 @@ class RubyBackend:
                     return f"({inner}).to_i"
                 return f"{inner}.to_i"
             case Call(func="float", args=[arg]):
+                # Handle special float values
+                if isinstance(arg, StringLit):
+                    val = arg.value.strip().lower()
+                    if val in ("inf", "infinity"):
+                        return "Float::INFINITY"
+                    if val == "-inf":
+                        return "-Float::INFINITY"
+                    if val == "nan":
+                        return "Float::NAN"
                 inner = self._expr(arg)
                 if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
                     return f"({inner}).to_f"
@@ -932,6 +946,9 @@ class RubyBackend:
                     exp_str = self._coerce_bool_to_int(exp, raw=True)
                 else:
                     exp_str = self._expr(exp)
+                    # Wrap exp in parens if it's a binary op (** has high precedence)
+                    if isinstance(exp, (BinaryOp, UnaryOp, Ternary)):
+                        exp_str = f"({exp_str})"
                 return f"{base_str} ** {exp_str}"
             case Call(func="pow", args=[base, exp, mod]):
                 # Coerce bool operands to int
@@ -1059,26 +1076,37 @@ class RubyBackend:
                 # So Truthy(Len(x)) needs to become x.length > 0
                 if isinstance(e, Len):
                     return f"{expr_str} > 0"
-                # For BinaryOp with integer result (e.g., flags & X), Ruby's !! doesn't work
-                # because !!(0) is true in Ruby (0 is truthy). Use != 0 instead.
-                if isinstance(e, BinaryOp) and e.typ == Primitive(kind="int"):
-                    return f"({expr_str}) != 0"
+                # In Python, 0 is falsy; in Ruby, only nil/false are falsy
+                # So Truthy(int) needs to become expr != 0
+                if inner_type == INT:
+                    if isinstance(e, (BinaryOp, UnaryOp, Ternary)):
+                        return f"({expr_str}) != 0"
+                    return f"{expr_str} != 0"
+                # In Python, 0.0 is falsy; in Ruby, only nil/false are falsy
+                # So Truthy(float) needs to become expr != 0.0
+                if inner_type == FLOAT:
+                    if isinstance(e, (BinaryOp, UnaryOp, Ternary)):
+                        return f"({expr_str}) != 0.0"
+                    return f"{expr_str} != 0.0"
                 # Non-int BinaryOp (e.g., comparisons) - wrap in parens for precedence
                 if isinstance(e, BinaryOp):
                     return f"!!({expr_str})"
                 return f"!!{expr_str}"
             case BinaryOp(op="//", left=left, right=right):
-                # Floor division - Ruby integer division already floors
-                # For bool coercion, the ternary already provides parens, no need for _maybe_paren
+                # Floor division - use .div() for Python semantics (floor toward -inf)
+                # Ruby's / truncates toward zero, but .div() floors toward -inf
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
-                    left_str = self._maybe_paren(self._expr(left), left, "/", is_left=True)
+                    left_str = self._expr(left)
                 if right.typ == BOOL:
                     right_str = self._coerce_bool_to_int(right, raw=True)
                 else:
-                    right_str = self._maybe_paren(self._expr(right), right, "/", is_left=False)
-                return f"{left_str} / {right_str}"
+                    right_str = self._expr(right)
+                # Wrap left in parens if it's a complex expression
+                if isinstance(left, (BinaryOp, UnaryOp, Ternary)) and left.typ != BOOL:
+                    left_str = f"({left_str})"
+                return f"{left_str}.div({right_str})"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "==",
                 "!=",
@@ -1277,13 +1305,14 @@ class RubyBackend:
                     return f"~({self._coerce_bool_to_int(operand, raw=True)})"
                 # Handle not(truthy(int_expr)) -> (expr) == 0
                 # Python's `not (x & Y)` should be true when result is 0
+                # Always wrap in parens so nested negations work: !(1 == 0)
                 if op == "!" and isinstance(operand, Truthy):
                     inner = operand.expr
                     if inner.typ == Primitive(kind="int"):
                         inner_str = self._expr(inner)
                         if isinstance(inner, BinaryOp):
-                            return f"({inner_str}) == 0"
-                        return f"{inner_str} == 0"
+                            return f"(({inner_str}) == 0)"
+                        return f"({inner_str} == 0)"
                 # Wrap BinaryOp in parens for all unary operators
                 if isinstance(operand, BinaryOp):
                     return f"{rb_op}({self._expr(operand)})"
@@ -1345,7 +1374,22 @@ class RubyBackend:
                     if isinstance(inner, (BinaryOp, UnaryOp, Ternary)):
                         return f"({expr_str}).to_f"
                     return f"{expr_str}.to_f"
+                # string -> float conversion (handles inf/nan)
+                if to_type == FLOAT and inner.typ == Primitive(kind="string"):
+                    if isinstance(inner, StringLit):
+                        val = inner.value.strip().lower()
+                        if val in ("inf", "infinity"):
+                            return "Float::INFINITY"
+                        if val == "-inf":
+                            return "-Float::INFINITY"
+                        if val == "nan":
+                            return "Float::NAN"
+                    expr_str = self._expr(inner)
+                    return f"{expr_str}.to_f"
                 if isinstance(to_type, Primitive) and to_type.kind == "string":
+                    # str(None) should return "None", not "" (Ruby's nil.to_s)
+                    if isinstance(inner, NilLit):
+                        return '"None"'
                     return f"{self._expr(inner)}.to_s"
                 return self._expr(inner)
             case TypeAssert(expr=inner):
@@ -1670,6 +1714,12 @@ def _method_name(method: str, receiver_type: Type) -> str:
         return "rindex"
     if method == "replace":
         return "gsub"
+    # upper/lower for strings only (bytes have their own upper/lower methods)
+    if receiver_type == Primitive(kind="string"):
+        if method == "upper":
+            return "upcase"
+        if method == "lower":
+            return "downcase"
     if method == "isdigit":
         return "match?(/\\A\\d+\\z/)"
     if method == "isalpha":

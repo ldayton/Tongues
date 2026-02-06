@@ -17,3 +17,5 @@ allow python
 allow python3
 allow ruby
 allow tsc
+allow uv
+
