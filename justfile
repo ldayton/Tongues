@@ -55,6 +55,39 @@ test-apptests lang:
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
         bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_apptests.py --target {{lang}} -v"
 
+# Check local runtime versions against Dockerfile expectations
+versions:
+    #!/usr/bin/env bash
+    printf "%-12s %-20s %-20s %s\n" "LANG" "EXPECTED" "LOCAL" "STATUS"
+    printf "%-12s %-20s %-20s %s\n" "----" "--------" "-----" "------"
+    check() {
+        lang=$1; expected=$2; cmd=$3
+        local_ver=$(eval "$cmd" 2>/dev/null || echo "not found")
+        if echo "$local_ver" | grep -q "$expected"; then
+            status="✅"
+        else
+            status="❌"
+        fi
+        printf "%-12s %-20s %-20s %s\n" "$lang" "$expected" "$local_ver" "$status"
+    }
+    check "c"          "13."     "gcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
+    check "csharp"     "8."      "dotnet --version | cut -d. -f1-2"
+    check "dart"       "3.2"     "dart --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
+    check "go"         "1.21"    "go version | grep -oE 'go[0-9]+\.[0-9]+' | sed 's/go//'"
+    check "java"       "21"      "java --version 2>&1 | head -1 | grep -oE '[0-9]+' | head -1"
+    check "javascript" "21"      "node --version | grep -oE '[0-9]+' | head -1"
+    check "lua"        "5.4"     "lua -v 2>&1 | grep -oE '[0-9]+\.[0-9]+'"
+    check "perl"       "5.38"    "perl -v | grep -oE 'v[0-9]+\.[0-9]+' | sed 's/v//'"
+    check "php"        "8.3"     "php --version | head -1 | grep -oE '[0-9]+\.[0-9]+'"
+    check "python"     "3.12"    "python --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "python3"    "3.12"    "python3 --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "ruby"       "3."      "ruby --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "rust"       "1.75"    "rustc --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "swift"      "5.9"     "swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+'"
+    check "typescript" "5.3"     "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "zig"        "0.11"    "zig version | grep -oE '[0-9]+\.[0-9]+'"
+    exit 0
+
 # Run all tests in Docker
 test: test-codegen \
     (test-apptests "c") \

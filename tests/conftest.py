@@ -1,6 +1,5 @@
 """Pytest configuration for Tongues test suite."""
 
-import os
 import re
 import subprocess
 import sys
@@ -23,10 +22,7 @@ _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
     "lua": (["lua", "-v"], r"5\.4"),
     "perl": (["perl", "-v"], r"v5\."),
     "php": (["php", "--version"], r"8\.3"),
-    "python": (
-        ["uv", "run", "--no-project", "--python", "~=3.12", "python", "--version"],
-        r"3\.12",
-    ),
+    "python": (["python3", "--version"], r"3\.12"),
     "ruby": (["ruby", "--version"], r"ruby 3\."),
     "rust": (["rustc", "--version"], r"1\.75"),
     "swift": (["swift", "--version"], r"5\.9"),
@@ -321,7 +317,7 @@ TARGETS: dict[str, Target] = {
     "python": Target(
         name="python",
         ext=".py",
-        run_cmd=["uv", "run", "--no-project", "--python", "~=3.12", "python", "{path}"],
+        run_cmd=["python3", "{path}"],
         format_cmd=["uvx", "ruff", "format", "--quiet", "{path}"],
     ),
     "javascript": Target(
@@ -433,19 +429,6 @@ TARGETS: dict[str, Target] = {
         format_cmd=["zig", "fmt", "{path}"],
     ),
 }
-
-
-def _get_clean_env() -> dict[str, str]:
-    """Get environment without venv contamination for running target Python."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("VIRTUAL_ENV")}
-    venv_bin = os.environ.get("VIRTUAL_ENV", "")
-    if venv_bin:
-        env["PATH"] = os.pathsep.join(
-            p
-            for p in os.environ.get("PATH", "").split(os.pathsep)
-            if not p.startswith(venv_bin)
-        )
-    return env
 
 
 def discover_apptests() -> list[Path]:
@@ -656,14 +639,6 @@ def compiled(formatted: Path, target: Target) -> Path:
 def executable(compiled: Path, target: Target) -> list[str]:
     """Return the command to execute the test."""
     return target.get_run_command(compiled)
-
-
-@pytest.fixture
-def run_env(target: Target) -> dict[str, str] | None:
-    """Return clean environment for Python target, None for others."""
-    if target.name == "python":
-        return _get_clean_env()
-    return None
 
 
 def transpile_code(source: str, target: str) -> tuple[str | None, str | None]:
