@@ -1159,28 +1159,6 @@ class CSharpBackend:
                 right_is_bool = op in int_ops and _is_bool_type(right.typ)
 
                 # Convert for comparisons between int and bool, and ordering on bools
-                # Skip conversion for expressions that already produce the right type
-                def _already_converted(e: Expr) -> bool:
-                    # UnaryOp with -, +, ~ on bool already produces int
-                    if (
-                        isinstance(e, UnaryOp)
-                        and e.op in ("-", "+", "~")
-                        and _is_bool_type(e.operand.typ)
-                    ):
-                        return True
-                    # MinExpr/MaxExpr with mixed bool/int already produces int
-                    if isinstance(e, (MinExpr, MaxExpr)):
-                        left_bool = _is_bool_type(e.left.typ)
-                        right_bool = _is_bool_type(e.right.typ)
-                        # If not both bools, we use Math.Min/Max which returns int
-                        if left_bool != right_bool:
-                            return True
-                    return False
-
-                def _is_bool_call(e: Expr) -> bool:
-                    # Call to bool() returns a C# bool even if IR type differs
-                    return isinstance(e, Call) and e.func == "bool"
-
                 if op in ("==", "!=", "<", "<=", ">", ">="):
                     # Treat bool() calls as having bool type for comparison purposes
                     left_eff_bool = _is_bool_type(left.typ) or _is_bool_call(left)
@@ -1946,3 +1924,22 @@ def _is_string_type(typ: Type) -> bool:
 
 def _is_bool_type(typ: Type) -> bool:
     return isinstance(typ, Primitive) and typ.kind == "bool"
+
+
+def _already_converted(e: Expr) -> bool:
+    """Check if expression already produces int from bool (skip double conversion)."""
+    # UnaryOp with -, +, ~ on bool already produces int
+    if isinstance(e, UnaryOp) and e.op in ("-", "+", "~") and _is_bool_type(e.operand.typ):
+        return True
+    # MinExpr/MaxExpr with mixed bool/int already produces int
+    if isinstance(e, (MinExpr, MaxExpr)):
+        left_bool = _is_bool_type(e.left.typ)
+        right_bool = _is_bool_type(e.right.typ)
+        if left_bool != right_bool:
+            return True
+    return False
+
+
+def _is_bool_call(e: Expr) -> bool:
+    """Check if expression is a call to bool()."""
+    return isinstance(e, Call) and e.func == "bool"
