@@ -1,14 +1,57 @@
 """Pytest configuration for Tongues test suite."""
 
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
+
+# Required versions for each language runtime (must match Dockerfiles)
+_VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
+    "c": (["gcc", "--version"], r"gcc.* 13\."),
+    "csharp": (["mcs", "--version"], r"5\."),
+    "dart": (["dart", "--version"], r"3\.2"),
+    "go": (["go", "version"], r"go1\.21"),
+    "java": (["java", "--version"], r"21\."),
+    "javascript": (["node", "--version"], r"v21\."),
+    "lua": (["lua", "-v"], r"5\.4"),
+    "perl": (["perl", "-v"], r"v5\."),
+    "php": (["php", "--version"], r"8\.3"),
+    "python": (
+        ["uv", "run", "--no-project", "--python", "~=3.12", "python", "--version"],
+        r"3\.12",
+    ),
+    "ruby": (["ruby", "--version"], r"ruby 3\."),
+    "rust": (["rustc", "--version"], r"1\.75"),
+    "swift": (["swift", "--version"], r"5\.9"),
+    "typescript": (["tsc", "--version"], r"5\.3"),
+    "zig": (["zig", "version"], r"0\.11"),
+}
+
+
+@cache
+def _check_version(lang: str) -> tuple[bool, str]:
+    """Check if language runtime has correct version. Returns (ok, message)."""
+    if lang not in _VERSION_CHECKS:
+        return True, "no version requirement"
+    cmd, pattern = _VERSION_CHECKS[lang]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        output = result.stdout + result.stderr
+        if re.search(pattern, output):
+            return True, output.split("\n")[0].strip()
+        return False, f"expected {pattern!r}, got: {output.split(chr(10))[0].strip()}"
+    except FileNotFoundError:
+        return False, f"{cmd[0]} not found"
+    except subprocess.TimeoutExpired:
+        return False, f"{cmd[0]} timed out"
+
 
 from src.frontend import Frontend
 from src.frontend.parse import parse
@@ -391,8 +434,6 @@ TARGETS: dict[str, Target] = {
     ),
 }
 
-PYTHON_TARGET_VERSION = (3, 12)
-
 
 def _get_clean_env() -> dict[str, str]:
     """Get environment without venv contamination for running target Python."""
@@ -405,22 +446,6 @@ def _get_clean_env() -> dict[str, str]:
             if not p.startswith(venv_bin)
         )
     return env
-
-
-def _verify_python_target_version() -> None:
-    """Verify Python target uses the expected version."""
-    target = TARGETS["python"]
-    cmd = target.run_cmd[:6] + ["-c", "import sys; print(sys.version_info[:2])"]
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, env=_get_clean_env(), cwd="/tmp"
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to check Python target version: {result.stderr}")
-    actual = eval(result.stdout.strip())
-    if actual[0] != PYTHON_TARGET_VERSION[0] or actual[1] != PYTHON_TARGET_VERSION[1]:
-        raise RuntimeError(
-            f"Python target version mismatch: expected {PYTHON_TARGET_VERSION}, got {actual}"
-        )
 
 
 def discover_apptests() -> list[Path]:
@@ -477,11 +502,6 @@ def discover_codegen_tests() -> list[tuple[str, str, str, str, bool]]:
     return results
 
 
-def pytest_configure(config):
-    """Verify Python target version at session start."""
-    _verify_python_target_version()
-
-
 def pytest_addoption(parser):
     """Add --target option for filtering targets."""
     parser.addoption(
@@ -506,7 +526,19 @@ def pytest_generate_tests(metafunc):
         for apptest in apptests:
             for target in targets:
                 test_id = f"{target.name}/{apptest.stem}"
-                if target.name in _SKIP_LANGS.get(apptest.stem, set()):
+                version_ok, version_msg = _check_version(target.name)
+                if not version_ok:
+                    params.append(
+                        pytest.param(
+                            apptest,
+                            target,
+                            id=test_id,
+                            marks=pytest.mark.skip(
+                                reason=f"wrong version: {version_msg}"
+                            ),
+                        )
+                    )
+                elif target.name in _SKIP_LANGS.get(apptest.stem, set()):
                     params.append(
                         pytest.param(
                             apptest,
@@ -528,10 +560,24 @@ def pytest_generate_tests(metafunc):
                 for tid, inp, lang, exp, has_exp in tests
                 if lang in target_filter
             ]
-        params = [
-            pytest.param(input_code, lang, expected, has_explicit, id=test_id)
-            for test_id, input_code, lang, expected, has_explicit in tests
-        ]
+        params = []
+        for test_id, input_code, lang, expected, has_explicit in tests:
+            version_ok, version_msg = _check_version(lang)
+            if not version_ok:
+                params.append(
+                    pytest.param(
+                        input_code,
+                        lang,
+                        expected,
+                        has_explicit,
+                        id=test_id,
+                        marks=pytest.mark.skip(reason=f"wrong version: {version_msg}"),
+                    )
+                )
+            else:
+                params.append(
+                    pytest.param(input_code, lang, expected, has_explicit, id=test_id)
+                )
         metafunc.parametrize(
             "codegen_input,codegen_lang,codegen_expected,codegen_has_explicit", params
         )
