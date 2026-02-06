@@ -77,11 +77,6 @@ from src.backend.zig import ZigBackend
 # Skip specific (apptest, language) combinations that are known to fail.
 # Format: apptest_stem -> set of languages to skip
 _SKIP_LANGS: dict[str, set[str]] = {
-    "apptest_bools": {
-        "csharp",
-        "go",
-        "zig",
-    },
     "apptest_bytes": {
         "csharp",
         "c",

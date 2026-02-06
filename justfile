@@ -47,13 +47,13 @@ docker-build lang:
 test-codegen:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest ../tests/test_codegen.py -v
+        bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_codegen.py -v"
 
 # Run apptests in Docker for a language (image must have python+uv installed)
 test-apptests lang="python":
     docker build -t tongues-{{lang}} docker/{{lang}}
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
-        uv run --directory tongues pytest ../tests/test_apptests.py --target {{lang}} -v
+        bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_apptests.py --target {{lang}} -v"
 
 # Run all tests in Docker
 test: test-codegen \

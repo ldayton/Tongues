@@ -1130,12 +1130,12 @@ class ZigBackend(Emitter):
             if args[1].typ == BOOL:
                 exp = f"@as(u6, @intFromBool({exp}))"
             return f"std.math.pow(i64, {base}, {exp})"
-        # abs(x)
+        # abs(x) - use std.math.absInt for Zig 0.11 compatibility
         if func == "abs" and len(args) == 1:
             x = self._emit_expr(args[0])
             if args[0].typ == BOOL:
                 x = f"@as(i64, @intFromBool({x}))"
-            return f"@abs({x})"
+            return f"(std.math.absInt({x}) catch 0)"
         # bytes() constructor
         if func == "bytes":
             if len(args) == 0:
