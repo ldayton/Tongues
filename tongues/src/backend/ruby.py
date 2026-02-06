@@ -256,7 +256,7 @@ def _safe_type_name(name: str) -> str:
     return name
 
 
-_BYTES_CLASS = '''\
+_BYTES_CLASS = """\
 class TonguesBytes
   include Comparable
   attr_reader :data
@@ -299,7 +299,7 @@ class TonguesBytes
   def join(arr); TonguesBytes.new(arr.map(&:to_s).join(to_s).bytes); end
   def gsub(old, new_s); TonguesBytes.new(to_s.gsub(old.to_s, new_s.to_s).bytes); end
 end
-'''
+"""
 
 
 class RubyBackend:
@@ -826,7 +826,9 @@ class RubyBackend:
                 is_bytes = isinstance(s.typ, Slice) and s.typ.element == Primitive(kind="byte")
                 if is_bytes:
                     # Use TonguesBytes strip methods
-                    if isinstance(chars, SliceLit) and all(isinstance(e, IntLit) and e.value in (32, 9, 10, 13) for e in chars.elements):
+                    if isinstance(chars, SliceLit) and all(
+                        isinstance(e, IntLit) and e.value in (32, 9, 10, 13) for e in chars.elements
+                    ):
                         # Default whitespace - use simple strip/lstrip/rstrip
                         return f"{s_expr}.{method_map[mode]}"
                     # Custom chars - pass to strip method
@@ -971,7 +973,9 @@ class RubyBackend:
                 # Python: "sep".join(iterable) -> Ruby: iterable.join("sep")
                 # But for bytes, TonguesBytes has its own join method
                 if method == "join" and len(args) == 1:
-                    is_bytes = isinstance(receiver_type, Slice) and receiver_type.element == Primitive(kind="byte")
+                    is_bytes = isinstance(
+                        receiver_type, Slice
+                    ) and receiver_type.element == Primitive(kind="byte")
                     if is_bytes:
                         # TonguesBytes#join(arr) - separator.join(array)
                         sep_str = self._expr(obj)
@@ -1400,7 +1404,9 @@ class RubyBackend:
             case _:
                 raise NotImplementedError("Unknown expression")
 
-    def _slice_expr(self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None) -> str:
+    def _slice_expr(
+        self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
+    ) -> str:
         obj_str = self._expr(obj)
         is_bytes = isinstance(obj.typ, Slice) and obj.typ.element == Primitive(kind="byte")
         # Handle step (e.g., arr[::2] or arr[::-1])

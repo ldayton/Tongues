@@ -1130,13 +1130,25 @@ class CSharpBackend:
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - C# integer division already floors
-                left_str = f"({self._expr(left)} ? 1 : 0)" if _is_bool_type(left.typ) else self._expr(left)
-                right_str = f"({self._expr(right)} ? 1 : 0)" if _is_bool_type(right.typ) else self._expr(right)
+                left_str = (
+                    f"({self._expr(left)} ? 1 : 0)" if _is_bool_type(left.typ) else self._expr(left)
+                )
+                right_str = (
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
                 return f"{left_str} / {right_str}"
             case BinaryOp(op="**", left=left, right=right):
                 # Power operator - C# uses Math.Pow
-                left_str = f"({self._expr(left)} ? 1 : 0)" if _is_bool_type(left.typ) else self._expr(left)
-                right_str = f"({self._expr(right)} ? 1 : 0)" if _is_bool_type(right.typ) else self._expr(right)
+                left_str = (
+                    f"({self._expr(left)} ? 1 : 0)" if _is_bool_type(left.typ) else self._expr(left)
+                )
+                right_str = (
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
                 return f"Math.Pow({left_str}, {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 left_str = self._expr(left)
@@ -1145,11 +1157,16 @@ class CSharpBackend:
                 int_ops = ("+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>")
                 left_is_bool = op in int_ops and _is_bool_type(left.typ)
                 right_is_bool = op in int_ops and _is_bool_type(right.typ)
+
                 # Convert for comparisons between int and bool, and ordering on bools
                 # Skip conversion for expressions that already produce the right type
                 def _already_converted(e: Expr) -> bool:
                     # UnaryOp with -, +, ~ on bool already produces int
-                    if isinstance(e, UnaryOp) and e.op in ("-", "+", "~") and _is_bool_type(e.operand.typ):
+                    if (
+                        isinstance(e, UnaryOp)
+                        and e.op in ("-", "+", "~")
+                        and _is_bool_type(e.operand.typ)
+                    ):
                         return True
                     # MinExpr/MaxExpr with mixed bool/int already produces int
                     if isinstance(e, (MinExpr, MaxExpr)):
@@ -1159,9 +1176,11 @@ class CSharpBackend:
                         if left_bool != right_bool:
                             return True
                     return False
+
                 def _is_bool_call(e: Expr) -> bool:
                     # Call to bool() returns a C# bool even if IR type differs
                     return isinstance(e, Call) and e.func == "bool"
+
                 if op in ("==", "!=", "<", "<=", ">", ">="):
                     # Treat bool() calls as having bool type for comparison purposes
                     left_eff_bool = _is_bool_type(left.typ) or _is_bool_call(left)
@@ -1429,20 +1448,37 @@ class CSharpBackend:
         if func == "round":
             return f"Math.Round({args_str})"
         if func == "divmod" and len(args) == 2:
-            a = f"({self._expr(args[0])} ? 1 : 0)" if _is_bool_type(args[0].typ) else self._expr(args[0])
-            b = f"({self._expr(args[1])} ? 1 : 0)" if _is_bool_type(args[1].typ) else self._expr(args[1])
+            a = (
+                f"({self._expr(args[0])} ? 1 : 0)"
+                if _is_bool_type(args[0].typ)
+                else self._expr(args[0])
+            )
+            b = (
+                f"({self._expr(args[1])} ? 1 : 0)"
+                if _is_bool_type(args[1].typ)
+                else self._expr(args[1])
+            )
             return f"({a} / {b}, {a} % {b})"
         if func == "pow":
-            converted = [f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a) for a in args]
+            converted = [
+                f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a)
+                for a in args
+            ]
             if len(args) == 2:
                 return f"Math.Pow({', '.join(converted)})"
             if len(args) == 3:
                 return f"(int)Math.Pow({converted[0]}, {converted[1]}) % {converted[2]}"
         if func == "min":
-            converted = [f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a) for a in args]
+            converted = [
+                f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a)
+                for a in args
+            ]
             return f"Math.Min({', '.join(converted)})"
         if func == "max":
-            converted = [f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a) for a in args]
+            converted = [
+                f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a)
+                for a in args
+            ]
             return f"Math.Max({', '.join(converted)})"
         if func == "print":
             return f"Console.WriteLine({args_str})"

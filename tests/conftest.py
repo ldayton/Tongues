@@ -552,7 +552,9 @@ def pytest_generate_tests(metafunc):
                             ),
                         )
                     )
-                elif not ignore_skips and target.name in _SKIP_LANGS.get(apptest.stem, set()):
+                elif not ignore_skips and target.name in _SKIP_LANGS.get(
+                    apptest.stem, set()
+                ):
                     params.append(
                         pytest.param(
                             apptest,
