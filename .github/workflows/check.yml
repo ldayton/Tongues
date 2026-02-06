@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  check:
+  lint:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -17,4 +17,20 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just check-docker
+      - run: just fmt lint subset test-codegen-docker
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [c, csharp, dart, go, java, javascript, lua, perl, php, python, ruby, rust, swift, typescript, zig]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: extractions/setup-just@v3
+      - run: just test-apptests-docker ${{ matrix.lang }}
