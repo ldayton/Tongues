@@ -19,9 +19,9 @@ subset:
 test-codegen:
     uv run --directory tongues pytest ../tests/test_codegen.py -v
 
-# Run Python apptests
+# Run apptests (all languages)
 test-apptests:
-    uv run --directory tongues pytest ../tests/test_apptests.py -k "python" -v
+    uv run --directory tongues pytest ../tests/test_apptests.py -v
 
 # Run all transpiler tests
 test: test-codegen test-apptests
@@ -54,5 +54,16 @@ test-apptests-docker lang="python":
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
         uv run --directory tongues pytest ../tests/test_apptests.py --target {{lang}} -v
 
-# Run all Docker tests (python only by default)
-test-docker: test-codegen-docker (test-apptests-docker "python")
+# Run all Docker tests (all languages with Docker images)
+test-docker: test-codegen-docker \
+    (test-apptests-docker "c") \
+    (test-apptests-docker "dart") \
+    (test-apptests-docker "go") \
+    (test-apptests-docker "java") \
+    (test-apptests-docker "javascript") \
+    (test-apptests-docker "lua") \
+    (test-apptests-docker "perl") \
+    (test-apptests-docker "php") \
+    (test-apptests-docker "python") \
+    (test-apptests-docker "ruby") \
+    (test-apptests-docker "typescript")

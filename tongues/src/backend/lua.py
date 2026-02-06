@@ -1336,7 +1336,12 @@ class LuaBackend:
                     )
                     return f"{left_str} {_binary_op(op)} {right_str}"
                 # Lua >> is logical right shift; use // for arithmetic right shift
+                # But for non-negative literals, we can use native >> for idiomatic code
                 if op == ">>":
+                    if isinstance(left, IntLit) and left.value >= 0:
+                        left_str = self._maybe_paren(left, ">>", is_left=True)
+                        right_str = self._maybe_paren(right, ">>", is_left=False)
+                        return f"{left_str} >> {right_str}"
                     left_str = self._maybe_paren(left, "//", is_left=True)
                     right_str = self._expr(right)
                     return f"{left_str} // (1 << {right_str})"

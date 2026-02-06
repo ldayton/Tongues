@@ -378,6 +378,7 @@ class PerlBackend:
         self.struct_fields: dict[str, list[tuple[str, Type]]] = {}  # Struct field info
         self._in_try_with_return: bool = False  # Flag for return-from-eval workaround
         self._needs_encode = False
+        self._needs_integer = False  # Track if bitwise ops require `use integer;`
 
     def emit(self, module: Module) -> str:
         """Emit Perl code from IR Module."""
@@ -386,6 +387,8 @@ class PerlBackend:
         self.constants = set()
         self._hoisted_vars = set()
         self._needs_encode = False
+        self._needs_integer = False
+        self._scan_for_bitwise(module)
         self._known_functions = {f.name for f in module.functions}
         for s in module.structs:
             for m in s.methods:
@@ -556,13 +559,102 @@ class PerlBackend:
             or module.enums
         )
 
+    def _scan_for_bitwise(self, module: Module) -> None:
+        """Scan module for bitwise operations to determine if `use integer;` is needed."""
+        for func in module.functions:
+            if self._body_has_bitwise(func.body):
+                self._needs_integer = True
+                return
+        for struct in module.structs:
+            for method in struct.methods:
+                if self._body_has_bitwise(method.body):
+                    self._needs_integer = True
+                    return
+        for stmt in module.statements:
+            if self._stmt_has_bitwise(stmt):
+                self._needs_integer = True
+                return
+
+    def _body_has_bitwise(self, body: list[Stmt]) -> bool:
+        """Check if body contains any bitwise operations."""
+        return any(self._stmt_has_bitwise(s) for s in body)
+
+    def _stmt_has_bitwise(self, stmt: Stmt) -> bool:
+        """Check if statement contains any bitwise operations."""
+        match stmt:
+            case ExprStmt(expr=expr):
+                return self._expr_has_bitwise(expr)
+            case VarDecl(value=value):
+                return value is not None and self._expr_has_bitwise(value)
+            case Assign(value=value):
+                return self._expr_has_bitwise(value)
+            case OpAssign(op=op, value=value):
+                return op in ("|", "&", "^", "<<", ">>") or self._expr_has_bitwise(value)
+            case Return(value=value):
+                return value is not None and self._expr_has_bitwise(value)
+            case If(cond=cond, then_body=then_body, else_body=else_body):
+                return (
+                    self._expr_has_bitwise(cond)
+                    or self._body_has_bitwise(then_body)
+                    or self._body_has_bitwise(else_body)
+                )
+            case While(cond=cond, body=body):
+                return self._expr_has_bitwise(cond) or self._body_has_bitwise(body)
+            case ForRange(body=body):
+                return self._body_has_bitwise(body)
+            case ForClassic(cond=cond, body=body):
+                return (
+                    cond is not None and self._expr_has_bitwise(cond)
+                ) or self._body_has_bitwise(body)
+            case Block(body=body):
+                return self._body_has_bitwise(body)
+            case TryCatch(body=body, catches=catches):
+                if self._body_has_bitwise(body):
+                    return True
+                return any(self._body_has_bitwise(c.body) for c in catches)
+            case Match(expr=expr, cases=cases, default=default):
+                if self._expr_has_bitwise(expr):
+                    return True
+                if any(self._body_has_bitwise(c.body) for c in cases):
+                    return True
+                return self._body_has_bitwise(default)
+            case _:
+                return False
+
+    def _expr_has_bitwise(self, expr: Expr) -> bool:
+        """Check if expression contains any bitwise operations."""
+        match expr:
+            case BinaryOp(op=op, left=left, right=right):
+                if op in ("|", "&", "^", "<<", ">>"):
+                    return True
+                return self._expr_has_bitwise(left) or self._expr_has_bitwise(right)
+            case UnaryOp(op=op, operand=operand):
+                if op == "~":
+                    return True
+                return self._expr_has_bitwise(operand)
+            case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
+                return (
+                    self._expr_has_bitwise(cond)
+                    or self._expr_has_bitwise(then_expr)
+                    or self._expr_has_bitwise(else_expr)
+                )
+            case Call(args=args):
+                return any(self._expr_has_bitwise(a) for a in args)
+            case MethodCall(obj=obj, args=args):
+                return self._expr_has_bitwise(obj) or any(self._expr_has_bitwise(a) for a in args)
+            case Index(obj=obj, index=index):
+                return self._expr_has_bitwise(obj) or self._expr_has_bitwise(index)
+            case Cast(expr=inner):
+                return self._expr_has_bitwise(inner)
+            case _:
+                return False
+
     def _emit_module(self, module: Module) -> None:
         needs_header = self._needs_header(module)
         if needs_header:
-            self._line("use strict;")
-            self._line("use warnings;")
-            self._line("use feature qw(signatures say);")
-            self._line("no warnings 'experimental::signatures';")
+            self._line("use v5.36;")
+        if self._needs_integer:
+            self._line("use integer;")
         self._import_insert_pos: int = len(self.lines)
         need_blank = needs_header
         if module.constants:
@@ -1369,9 +1461,6 @@ class PerlBackend:
                 pl_op = _binary_op(op, left.typ, right.typ)
                 left_str = self._maybe_paren(left, op, is_left=True)
                 right_str = self._maybe_paren(right, op, is_left=False)
-                # Wrap bitwise ops in signed integer scope (Perl's default is unsigned)
-                if op in ("|", "&", "^", "<<", ">>"):
-                    return f"do {{ use integer; {left_str} {pl_op} {right_str} }}"
                 return f"{left_str} {pl_op} {right_str}"
             case ChainedCompare(operands=operands, ops=ops):
                 parts = []
@@ -1390,12 +1479,9 @@ class PerlBackend:
                 r = self._expr(right)
                 return f"({l} > {r} ? {l} : {r})"
             case UnaryOp(op=op, operand=operand):
-                # Perl's ~ is unsigned bitwise NOT; Python's is signed: ~x = -(x+1)
-                if op == "~":
-                    return f"-(({self._expr(operand)}) + 1)"
                 pl_op = _unary_op(op)
                 # Wrap binary ops in parens for unary operators
-                if op in ("!", "-") and isinstance(operand, BinaryOp):
+                if op in ("!", "-", "~") and isinstance(operand, BinaryOp):
                     return f"{pl_op}({self._expr(operand)})"
                 # Add space between consecutive minus signs to avoid --
                 if op == "-" and isinstance(operand, UnaryOp) and operand.op == "-":
