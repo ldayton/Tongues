@@ -219,8 +219,7 @@ def _safe_pascal(name: str) -> str:
 class PhpBackend:
     """Emit PHP 8.1+ code from IR."""
 
-    def __init__(self, bare: bool = False) -> None:
-        self.bare = bare
+    def __init__(self) -> None:
         self.indent = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
@@ -266,8 +265,20 @@ class PhpBackend:
         else:
             self.lines.append("")
 
+    def _needs_header(self, module: Module) -> bool:
+        """Determine if module needs header boilerplate."""
+        return bool(
+            module.entrypoint
+            or module.functions
+            or module.structs
+            or module.interfaces
+            or module.constants
+            or module.enums
+        )
+
     def _emit_module(self, module: Module) -> None:
-        if not self.bare:
+        needs_header = self._needs_header(module)
+        if needs_header:
             self._line("<?php")
             self._line("")
             self._line("declare(strict_types=1);")
@@ -275,27 +286,24 @@ class PhpBackend:
         if module.constants:
             for const in module.constants:
                 self._emit_constant(const)
-            if not self.bare:
+            if needs_header:
                 self._line("")
         for iface in module.interfaces:
             self._emit_interface(iface)
-            if not self.bare:
+            if needs_header:
                 self._line("")
         for struct in module.structs:
             self._emit_struct(struct)
-            if not self.bare:
+            if needs_header:
                 self._line("")
         self._function_names = {func.name for func in module.functions}
         for func in module.functions:
             self._emit_function(func)
-            if not self.bare:
+            if needs_header:
                 self._line("")
         for stmt in module.statements:
-            if self.bare:
-                self._emit_stmt_bare(stmt)
-            else:
-                self._emit_stmt(stmt)
-        if module.entrypoint and not self.bare:
+            self._emit_stmt(stmt)
+        if module.entrypoint and needs_header:
             ep = _safe_name(module.entrypoint.function_name)
             self._line(f"exit({ep}());")
 
@@ -467,10 +475,6 @@ class PhpBackend:
             default = self._default_value(typ) if typ else "null"
             self._line(f"${var_name} = {default};")
             self._hoisted_vars.add(name)
-
-    def _emit_stmt_bare(self, stmt: Stmt) -> None:
-        """Emit a statement for bare mode (no preamble, but keep semicolons for PHP syntax)."""
-        self._emit_stmt(stmt)
 
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:

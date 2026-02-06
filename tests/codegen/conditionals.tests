@@ -9,7 +9,7 @@ true ? 1 : 0
 --- lua
 (true and 1 or 0)
 --- perl
-(1 ? 1 : 0)
+(1 ? 1 : 0);
 --- php
 true ? 1 : 0;
 ---
@@ -25,7 +25,7 @@ false ? 1 : 0
 --- lua
 (false and 1 or 0)
 --- perl
-(0 ? 1 : 0)
+(0 ? 1 : 0);
 --- php
 false ? 1 : 0;
 ---
@@ -41,7 +41,7 @@ false ? 1 : 0;
 --- lua
 (5 > 3 and 10 or 20)
 --- perl
-(5 > 3 ? 10 : 20)
+(5 > 3 ? 10 : 20);
 --- php
 5 > 3 ? 10 : 20;
 ---
@@ -57,7 +57,7 @@ true ? "yes" : "no"
 --- lua
 (true and "yes" or "no")
 --- perl
-(1 ? "yes" : "no")
+(1 ? "yes" : "no");
 --- php
 true ? "yes" : "no";
 ---
@@ -73,7 +73,7 @@ true ? "yes" : "no";
 --- lua
 (1 < 2 and 42 or 0)
 --- perl
-(1 < 2 ? 42 : 0)
+(1 < 2 ? 42 : 0);
 --- php
 1 < 2 ? 42 : 0;
 ---
@@ -89,7 +89,7 @@ true ? 1 : false ? 2 : 3
 --- lua
 (true and 1 or (false and 2 or 3))
 --- perl
-(1 ? 1 : 0 ? 2 : 3)
+(1 ? 1 : 0 ? 2 : 3);
 --- php
 true ? 1 : (false ? 2 : 3);
 ---
@@ -107,7 +107,7 @@ true ? true ? 1 : 2 : 3
 --- lua
 (true and (true and 1 or 2) or 3)
 --- perl
-(1 ? (1 ? 1 : 2) : 3)
+(1 ? (1 ? 1 : 2) : 3);
 --- php
 true ? true ? 1 : 2 : 3;
 ---
@@ -125,7 +125,7 @@ true ? 1 + 2 : 3 + 4
 --- lua
 (true and 1 + 2 or 3 + 4)
 --- perl
-(1 ? 1 + 2 : 3 + 4)
+(1 ? 1 + 2 : 3 + 4);
 --- php
 true ? 1 + 2 : 3 + 4;
 ---
@@ -171,7 +171,7 @@ function pick(int $a, int $b, bool $useFirst): int
 --- lua
 1 + (true and 2 or 3)
 --- perl
-1 + (1 ? 2 : 3)
+1 + (1 ? 2 : 3);
 --- php
 1 + (true ? 2 : 3);
 ---
@@ -187,7 +187,7 @@ true ? "a" : "b"
 --- lua
 (true and "a" or "b")
 --- perl
-(1 ? "a" : "b")
+(1 ? "a" : "b");
 --- php
 true ? "a" : "b";
 ---
@@ -203,7 +203,7 @@ true ? "a" : "b";
 --- lua
 (1 < 2 and 2 < 3 and 1 or 0)
 --- perl
-(1 < 2 && 2 < 3 ? 1 : 0)
+(1 < 2 && 2 < 3 ? 1 : 0);
 --- php
 1 < 2 && 2 < 3 ? 1 : 0;
 ---
@@ -219,7 +219,7 @@ true ? "a" : "b";
 --- lua
 (1 == 1 and "equal" or "not equal")
 --- perl
-(1 == 1 ? "equal" : "not equal")
+(1 == 1 ? "equal" : "not equal");
 --- php
 1 === 1 ? "equal" : "not equal";
 ---
@@ -235,7 +235,7 @@ true ? "a" : "b";
 --- lua
 (1 ~= 2 and "different" or "same")
 --- perl
-(1 != 2 ? "different" : "same")
+(1 != 2 ? "different" : "same");
 --- php
 1 !== 2 ? "different" : "same";
 ---
@@ -1321,7 +1321,7 @@ true ? [1, 2].min : 0
 --- lua
 (true and math.min(1, 2) or 0)
 --- perl
-(1 ? (1 < 2 ? 1 : 2) : 0)
+(1 ? (1 < 2 ? 1 : 2) : 0);
 --- php
 true ? min(1, 2) : 0;
 ---
@@ -1337,7 +1337,7 @@ true ? [1, 2].max : 0
 --- lua
 (true and math.max(1, 2) or 0)
 --- perl
-(1 ? (1 > 2 ? 1 : 2) : 0)
+(1 ? (1 > 2 ? 1 : 2) : 0);
 --- php
 true ? max(1, 2) : 0;
 ---
@@ -1353,7 +1353,7 @@ true ? 1.5 : 2.5
 --- lua
 (true and 1.5 or 2.5)
 --- perl
-(1 ? 1.5 : 2.5)
+(1 ? 1.5 : 2.5);
 --- php
 true ? 1.5 : 2.5;
 ---

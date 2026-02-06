@@ -366,8 +366,7 @@ def _is_string_type(typ: Type) -> bool:
 class PerlBackend:
     """Emit Perl code from IR."""
 
-    def __init__(self, bare: bool = False) -> None:
-        self.bare = bare
+    def __init__(self) -> None:
         self.indent = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
@@ -546,14 +545,26 @@ class PerlBackend:
                     pass
         return False
 
+    def _needs_header(self, module: Module) -> bool:
+        """Determine if module needs header/footer boilerplate."""
+        return bool(
+            module.entrypoint
+            or module.functions
+            or module.structs
+            or module.interfaces
+            or module.constants
+            or module.enums
+        )
+
     def _emit_module(self, module: Module) -> None:
-        if not self.bare:
+        needs_header = self._needs_header(module)
+        if needs_header:
             self._line("use strict;")
             self._line("use warnings;")
             self._line("use feature qw(signatures say);")
             self._line("no warnings 'experimental::signatures';")
         self._import_insert_pos: int = len(self.lines)
-        need_blank = not self.bare
+        need_blank = needs_header
         if module.constants:
             self._line()
             for const in module.constants:
@@ -579,18 +590,12 @@ class PerlBackend:
             self._emit_function(func)
             need_blank = True
         for stmt in module.statements:
-            if need_blank and not self.bare:
-                self._line()
-            if self.bare:
-                self._emit_stmt_bare(stmt)
-            else:
-                self._emit_stmt(stmt)
-            need_blank = True
+            self._emit_stmt(stmt)
         if module.entrypoint is not None:
-            if not self.bare:
+            if needs_header:
                 self._line()
             self._emit_stmt(module.entrypoint)
-        if not self.bare:
+        if needs_header:
             self._line()
             self._line("1;")
 
@@ -702,14 +707,6 @@ class PerlBackend:
         for p in params:
             parts.append(f"${_safe_name(p.name)}")
         return ", ".join(parts)
-
-    def _emit_stmt_bare(self, stmt: Stmt) -> None:
-        """Emit a statement without semicolons (for bare mode codegen tests)."""
-        match stmt:
-            case ExprStmt(expr=expr):
-                self._line(self._expr(expr))
-            case _:
-                self._emit_stmt(stmt)
 
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:
