@@ -6,7 +6,7 @@ subset:
     set -euo pipefail
     cd tongues
     failed=0
-    for f in $(fd -e py . src) tests/run_tests.py; do
+    for f in $(find src -name '*.py') tests/run_tests.py; do
         if ! uv run python -m src.tongues --verify < "$f" 2>/dev/null; then
             echo "FAIL: $f"
             uv run python -m src.tongues --verify < "$f" 2>&1 | head -5
