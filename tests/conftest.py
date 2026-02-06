@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
 # Required versions for each language runtime (must match Dockerfiles)
 _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
     "c": (["gcc", "--version"], r"gcc.* 13\."),
-    "csharp": (["mcs", "--version"], r"5\."),
+    "csharp": (["mcs", "--version"], r"[56]\."),
     "dart": (["dart", "--version"], r"3\.2"),
     "go": (["go", "version"], r"go1\.21"),
     "java": (["java", "--version"], r"21\."),
@@ -77,16 +77,6 @@ from src.backend.zig import ZigBackend
 # Skip specific (apptest, language) combinations that are known to fail.
 # Format: apptest_stem -> set of languages to skip
 _SKIP_LANGS: dict[str, set[str]] = {
-    "apptest_bits": {
-        "csharp",
-        "go",
-        "zig",
-    },
-    "apptest_bools": {
-        "csharp",
-        "go",
-        "zig",
-    },
     "apptest_bytes": {
         "csharp",
         "c",
@@ -96,7 +86,6 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "lua",
         "perl",
         "php",
-        "ruby",
         "rust",
         "swift",
         "typescript",
@@ -307,7 +296,9 @@ class Target:
     def get_run_command(self, path: Path) -> list[str]:
         """Return the command to run the output file."""
         if self.run_cmd:
-            return [arg.format(path=path) for arg in self.run_cmd]
+            return [
+                arg.format(path=path, out=path.with_suffix("")) for arg in self.run_cmd
+            ]
         # For compiled languages, return the executable path
         return [str(path.with_suffix(""))]
 
@@ -404,7 +395,8 @@ TARGETS: dict[str, Target] = {
     "csharp": Target(
         name="csharp",
         ext=".cs",
-        compile_cmd=["mcs", "-out:{out}", "{path}"],
+        compile_cmd=["mcs", "-out:{out}.exe", "{path}"],
+        run_cmd=["mono", "{out}.exe"],
         format_cmd=["csharpier", "format", "{path}"],
     ),
     "perl": Target(
@@ -511,7 +503,7 @@ def discover_codegen_tests() -> list[tuple[str, str, str, str, bool]]:
 
 
 def pytest_addoption(parser):
-    """Add --target and --ignore-version options."""
+    """Add --target, --ignore-version, and --ignore-skips options."""
     parser.addoption(
         "--target",
         action="append",
@@ -524,11 +516,18 @@ def pytest_addoption(parser):
         default=False,
         help="Skip version checks and run tests with whatever runtime is available",
     )
+    parser.addoption(
+        "--ignore-skips",
+        action="store_true",
+        default=False,
+        help="Run tests even if they are in the known-failure skip list",
+    )
 
 
 def pytest_generate_tests(metafunc):
     """Parametrize tests over test combinations."""
     ignore_version = metafunc.config.getoption("ignore_version")
+    ignore_skips = metafunc.config.getoption("ignore_skips")
     if "apptest" in metafunc.fixturenames and "target" in metafunc.fixturenames:
         apptests = discover_apptests()
         target_filter = metafunc.config.getoption("target")
@@ -553,7 +552,9 @@ def pytest_generate_tests(metafunc):
                             ),
                         )
                     )
-                elif target.name in _SKIP_LANGS.get(apptest.stem, set()):
+                elif not ignore_skips and target.name in _SKIP_LANGS.get(
+                    apptest.stem, set()
+                ):
                     params.append(
                         pytest.param(
                             apptest,

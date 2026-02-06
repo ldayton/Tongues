@@ -991,7 +991,15 @@ class ZigBackend(Emitter):
                 right = f"@as(u6, @intFromBool({self._emit_expr(expr.right)}))"
             else:
                 right = self._emit_expr(expr.right)
+            if op == ">>":
+                return f"std.math.shr(i64, {left}, {right})"
             return f"({left} {op} {right})"
+        # Right shift needs std.math.shr for consistent arithmetic shift behavior
+        # (Zig's >> has different comptime vs runtime behavior in 0.11)
+        if op == ">>":
+            left = self._maybe_paren(expr.left, ">>", is_left=True)
+            right = self._emit_expr(expr.right)
+            return f"std.math.shr(i64, {left}, {right})"
         # Bitwise ops on bools
         if op in ("|", "&", "^"):
             l_bool = _is_bool(expr.left)
@@ -1122,12 +1130,12 @@ class ZigBackend(Emitter):
             if args[1].typ == BOOL:
                 exp = f"@as(u6, @intFromBool({exp}))"
             return f"std.math.pow(i64, {base}, {exp})"
-        # abs(x)
+        # abs(x) - use std.math.absInt for Zig 0.11 compatibility
         if func == "abs" and len(args) == 1:
             x = self._emit_expr(args[0])
             if args[0].typ == BOOL:
                 x = f"@as(i64, @intFromBool({x}))"
-            return f"@abs({x})"
+            return f"(std.math.absInt({x}) catch 0)"
         # bytes() constructor
         if func == "bytes":
             if len(args) == 0:

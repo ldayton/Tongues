@@ -256,6 +256,52 @@ def _safe_type_name(name: str) -> str:
     return name
 
 
+_BYTES_CLASS = """\
+class TonguesBytes
+  include Comparable
+  attr_reader :data
+  def initialize(data)
+    @data = data.is_a?(String) ? data.bytes : data
+  end
+  def self.from_str(s); new(s.bytes); end
+  def self.zeros(n); new(Array.new(n, 0)); end
+  def <=>(other); @data <=> other.data; end
+  def ==(other); other.is_a?(TonguesBytes) && @data == other.data; end
+  def eql?(other); self == other; end
+  def hash; @data.hash; end
+  def length; @data.length; end
+  def empty?; @data.empty?; end
+  def [](idx)
+    return @data[idx] if idx.is_a?(Integer)
+    TonguesBytes.new(@data[idx])
+  end
+  def +(other); TonguesBytes.new(@data + other.data); end
+  def *(n); TonguesBytes.new(@data * n); end
+  def coerce(other); [self, other]; end
+  def include?(sub); to_s.include?(sub.to_s); end
+  def to_s; @data.pack('C*').force_encoding('UTF-8'); end
+  def to_str; to_s; end
+  def inspect; "b" + to_s.inspect; end
+  def each(&block); @data.each(&block); end
+  def count(sub); to_s.scan(sub.to_s).length; end
+  def index(sub); to_s.index(sub.to_s); end
+  def find(sub); (i = index(sub)) ? i : -1; end
+  def start_with?(prefix); to_s.start_with?(prefix.to_s); end
+  def end_with?(suffix); to_s.end_with?(suffix.to_s); end
+  def upper; TonguesBytes.new(to_s.upcase.bytes); end
+  def lower; TonguesBytes.new(to_s.downcase.bytes); end
+  def strip(chars = nil)
+    chars.nil? ? TonguesBytes.new(to_s.strip.bytes) : TonguesBytes.new(to_s.gsub(/\\A[#{Regexp.escape(chars.to_s)}]+|[#{Regexp.escape(chars.to_s)}]+\\z/, '').bytes)
+  end
+  def lstrip; TonguesBytes.new(to_s.lstrip.bytes); end
+  def rstrip; TonguesBytes.new(to_s.rstrip.bytes); end
+  def split(sep); to_s.split(sep.to_s, -1).map { |s| TonguesBytes.new(s.bytes) }; end
+  def join(arr); TonguesBytes.new(arr.map(&:to_s).join(to_s).bytes); end
+  def gsub(old, new_s); TonguesBytes.new(to_s.gsub(old.to_s, new_s.to_s).bytes); end
+end
+"""
+
+
 class RubyBackend:
     """Emit Ruby code from IR."""
 
@@ -265,16 +311,24 @@ class RubyBackend:
         self.receiver_name: str | None = None
         self._known_functions: set[str] = set()
         self._needs_set = False
+        self._needs_bytes = False
 
     def emit(self, module: Module) -> str:
         """Emit Ruby code from IR Module."""
         self.indent = 0
         self.lines = []
         self._needs_set = False
+        self._needs_bytes = False
         self._emit_module(module)
+        insert_pos = self._import_insert_pos
         if self._needs_set:
-            self.lines.insert(self._import_insert_pos, "require 'set'")
-            self.lines.insert(self._import_insert_pos + 1, "")
+            self.lines.insert(insert_pos, "require 'set'")
+            self.lines.insert(insert_pos + 1, "")
+            insert_pos += 2
+        if self._needs_bytes:
+            for i, line in enumerate(_BYTES_CLASS.strip().split("\n")):
+                self.lines.insert(insert_pos + i, line)
+            self.lines.insert(insert_pos + len(_BYTES_CLASS.strip().split("\n")), "")
         return "\n".join(self.lines)
 
     def _line(self, text: str = "") -> None:
@@ -745,8 +799,8 @@ class RubyBackend:
                 if neg_idx := self._negative_index(obj, index):
                     return f"{self._expr(obj)}[{neg_idx}]"
                 return f"{self._expr(obj)}[{self._expr(index)}]"
-            case SliceExpr(obj=obj, low=low, high=high):
-                return self._slice_expr(obj, low, high)
+            case SliceExpr(obj=obj, low=low, high=high, step=step):
+                return self._slice_expr(obj, low, high, step)
             case ParseInt(string=s, base=b):
                 base_val = self._expr(b)
                 if base_val == "10":
@@ -767,16 +821,29 @@ class RubyBackend:
                 return method_map[kind]
             case TrimChars(string=s, chars=chars, mode=mode):
                 method_map = {"left": "lstrip", "right": "rstrip", "both": "strip"}
+                s_expr = self._expr(s)
+                # Check if operating on bytes
+                is_bytes = isinstance(s.typ, Slice) and s.typ.element == Primitive(kind="byte")
+                if is_bytes:
+                    # Use TonguesBytes strip methods
+                    if isinstance(chars, SliceLit) and all(
+                        isinstance(e, IntLit) and e.value in (32, 9, 10, 13) for e in chars.elements
+                    ):
+                        # Default whitespace - use simple strip/lstrip/rstrip
+                        return f"{s_expr}.{method_map[mode]}"
+                    # Custom chars - pass to strip method
+                    chars_expr = self._expr(chars)
+                    return f"{s_expr}.{method_map[mode]}({chars_expr})"
                 chars_expr = self._expr(chars)
                 if chars_expr == '" "':
-                    return f"{self._expr(s)}.{method_map[mode]}"
+                    return f"{s_expr}.{method_map[mode]}"
                 return (
-                    f"{self._expr(s)}.gsub(/\\A[{chars_expr[1:-1]}]+/, '')"
+                    f"{s_expr}.gsub(/\\A[{chars_expr[1:-1]}]+/, '')"
                     if mode == "left"
                     else (
-                        f"{self._expr(s)}.gsub(/[{chars_expr[1:-1]}]+\\z/, '')"
+                        f"{s_expr}.gsub(/[{chars_expr[1:-1]}]+\\z/, '')"
                         if mode == "right"
-                        else f"{self._expr(s)}.gsub(/\\A[{chars_expr[1:-1]}]+|[{chars_expr[1:-1]}]+\\z/, '')"
+                        else f"{s_expr}.gsub(/\\A[{chars_expr[1:-1]}]+|[{chars_expr[1:-1]}]+\\z/, '')"
                     )
                 )
             case Call(func="_intPtr", args=[arg]):
@@ -883,6 +950,14 @@ class RubyBackend:
                 else:
                     mod_str = self._expr(mod)
                 return f"{base_str}.pow({exp_str}, {mod_str})"
+            case Call(func="bytes", args=[arg]) if isinstance(arg.typ, Slice):
+                # bytes([int_list]) -> TonguesBytes.new([...])
+                self._needs_bytes = True
+                return f"TonguesBytes.new({self._expr(arg)})"
+            case Call(func="bytes", args=[arg]) if arg.typ == INT:
+                # bytes(n) -> TonguesBytes.zeros(n)
+                self._needs_bytes = True
+                return f"TonguesBytes.zeros({self._expr(arg)})"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 if func not in self._known_functions:
@@ -896,7 +971,16 @@ class RubyBackend:
                     args_str = ", ".join(self._expr(a) for a in args)
                     return f"({self._coerce_bool_to_int(obj, raw=True)}).divmod({args_str})"
                 # Python: "sep".join(iterable) -> Ruby: iterable.join("sep")
+                # But for bytes, TonguesBytes has its own join method
                 if method == "join" and len(args) == 1:
+                    is_bytes = isinstance(
+                        receiver_type, Slice
+                    ) and receiver_type.element == Primitive(kind="byte")
+                    if is_bytes:
+                        # TonguesBytes#join(arr) - separator.join(array)
+                        sep_str = self._expr(obj)
+                        arr_str = self._expr(args[0])
+                        return f"{sep_str}.join({arr_str})"
                     sep_str = self._expr(obj)
                     arr_str = self._expr(args[0])
                     if sep_str == '""':
@@ -1232,13 +1316,17 @@ class RubyBackend:
                 ):
                     return f'({self._expr(inner)} ? "True" : "False")'
                 if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
+                    if inner.typ.element == Primitive(kind="byte"):
+                        # TonguesBytes has .to_s method
+                        return f"{self._expr(inner)}.to_s"
                     return (
                         f"{self._expr(inner)}.pack('C*').force_encoding('UTF-8').scrub(\"\\uFFFD\")"
                     )
                 if to_type == Primitive(kind="string") and inner.typ == Primitive(kind="rune"):
                     return f"[{self._expr(inner)}].pack('U')"
                 if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
-                    return f"{self._expr(inner)}.bytes"
+                    self._needs_bytes = True
+                    return f"TonguesBytes.from_str({self._expr(inner)})"
                 if to_type == Primitive(kind="int") and inner.typ in (
                     Primitive(kind="string"),
                     Primitive(kind="byte"),
@@ -1272,14 +1360,22 @@ class RubyBackend:
             case Len(expr=inner):
                 return f"{self._expr(inner)}.length"
             case MakeSlice(element_type=element_type, length=length):
+                if element_type == Primitive(kind="byte"):
+                    self._needs_bytes = True
+                    if length is not None:
+                        return f"TonguesBytes.zeros({self._expr(length)})"
+                    return "TonguesBytes.new([])"
                 if length is not None:
                     zero = self._zero_value(element_type)
                     return f"Array.new({self._expr(length)}, {zero})"
                 return "[]"
             case MakeMap():
                 return "{}"
-            case SliceLit(elements=elements):
+            case SliceLit(element_type=element_type, elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
+                if element_type == Primitive(kind="byte"):
+                    self._needs_bytes = True
+                    return f"TonguesBytes.new([{elems}])"
                 return f"[{elems}]"
             case MapLit(entries=entries):
                 if not entries:
@@ -1308,8 +1404,47 @@ class RubyBackend:
             case _:
                 raise NotImplementedError("Unknown expression")
 
-    def _slice_expr(self, obj: Expr, low: Expr | None, high: Expr | None) -> str:
+    def _slice_expr(
+        self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
+    ) -> str:
         obj_str = self._expr(obj)
+        is_bytes = isinstance(obj.typ, Slice) and obj.typ.element == Primitive(kind="byte")
+        # Handle step (e.g., arr[::2] or arr[::-1])
+        if step is not None:
+            step_val = self._expr(step)
+            if low and (neg_idx := self._negative_index(obj, low)):
+                low_str = neg_idx
+            else:
+                low_str = self._expr(low) if low else "0"
+            if high and (neg_idx := self._negative_index(obj, high)):
+                high_str = neg_idx
+            else:
+                high_str = self._expr(high) if high else ""
+            # Reverse: step == -1
+            if step_val == "-1":
+                if is_bytes:
+                    if not low and not high:
+                        return f"TonguesBytes.new({obj_str}.data.reverse)"
+                    if high_str:
+                        return f"TonguesBytes.new({obj_str}[{low_str}...{high_str}].data.reverse)"
+                    return f"TonguesBytes.new({obj_str}[{low_str}..].data.reverse)"
+                if not low and not high:
+                    return f"{obj_str}.reverse"
+                if high_str:
+                    return f"{obj_str}[{low_str}...{high_str}].reverse"
+                return f"{obj_str}[{low_str}..].reverse"
+            # Positive step: select every nth element
+            if is_bytes:
+                if not low and not high:
+                    return f"TonguesBytes.new({obj_str}.data.each_slice({step_val}).map(&:first))"
+                if high_str:
+                    return f"TonguesBytes.new({obj_str}[{low_str}...{high_str}].data.each_slice({step_val}).map(&:first))"
+                return f"TonguesBytes.new({obj_str}[{low_str}..].data.each_slice({step_val}).map(&:first))"
+            if not low and not high:
+                return f"{obj_str}.each_slice({step_val}).map(&:first)"
+            if high_str:
+                return f"{obj_str}[{low_str}...{high_str}].each_slice({step_val}).map(&:first)"
+            return f"{obj_str}[{low_str}..].each_slice({step_val}).map(&:first)"
         if low and (neg_idx := self._negative_index(obj, low)):
             low_str = neg_idx
         else:

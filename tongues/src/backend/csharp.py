@@ -226,8 +226,10 @@ class CSharpBackend:
         self._type_switch_binding_rename: dict[str, str] = {}
         self._loop_temp_counter = 0
         self._func_params: set[str] = set()
+        self._func_vars: set[str] = set()  # Local variables with function types
         self._current_break_flag: str | None = None
         self._method_to_interface: dict[str, str] = {}  # method name -> interface name
+        self._function_names: set[str] = set()  # Module-level function names
 
     def emit(self, module: Module) -> str:
         """Emit C# code from IR Module."""
@@ -237,6 +239,7 @@ class CSharpBackend:
         self._hoisted_vars = set()
         self._module_name = module.name
         self._interface_names = {iface.name for iface in module.interfaces}
+        self._function_names = {func.name for func in module.functions}
         self._method_to_interface = {}
         for iface in module.interfaces:
             for m in iface.methods:
@@ -266,6 +269,15 @@ class CSharpBackend:
             self._line("using System;")
             self._line("using System.Collections.Generic;")
             self._line("using System.Linq;")
+            self._line("")
+            # Emit AssertionError class for Python compatibility
+            self._line("public class AssertionError : Exception")
+            self._line("{")
+            self.indent += 1
+            self._line("public AssertionError() : base() { }")
+            self._line("public AssertionError(string message) : base(message) { }")
+            self.indent -= 1
+            self._line("}")
             self._line("")
         if module.constants:
             self._line("public static class Constants")
@@ -417,13 +429,14 @@ class CSharpBackend:
         self._hoisted_vars = set()
         self._declared_vars = {p.name for p in func.params}  # Track all declared vars
         self._object_vars = set()
+        self._func_vars = set()  # Reset function-typed local variables
         self._func_params = {p.name for p in func.params if isinstance(p.typ, FuncType)}
         params = self._params(func.params)
         ret = self._type(func.ret)
         name = _safe_pascal(func.name)
         # Special case: _substring needs clamping to match Python slice semantics
         if func.name == "_substring":
-            self._line(f"{ret} {name}({params}) {{")
+            self._line(f"public static {ret} {name}({params}) {{")
             self.indent += 1
             self._line("int len = s.Length;")
             self._line("int clampedStart = Math.Max(0, Math.Min(start, len));")
@@ -432,7 +445,7 @@ class CSharpBackend:
             self.indent -= 1
             self._line("}")
             return
-        self._line(f"{ret} {name}({params}) {{")
+        self._line(f"public static {ret} {name}({params}) {{")
         self.indent += 1
         if not func.body:
             self._line("throw new NotImplementedException();")
@@ -445,6 +458,7 @@ class CSharpBackend:
         self._hoisted_vars = set()
         self._declared_vars = {p.name for p in func.params}  # Track all declared vars
         self._object_vars = set()
+        self._func_vars = set()  # Reset function-typed local variables
         self._func_params = {p.name for p in func.params if isinstance(p.typ, FuncType)}
         params = self._params(func.params)
         ret = self._type(func.ret)
@@ -512,6 +526,8 @@ class CSharpBackend:
                 self._declared_vars.add(name)
                 if cs_type == "object":
                     self._object_vars.add(name)
+                if isinstance(typ, FuncType):
+                    self._func_vars.add(name)
                 if value is not None:
                     val = self._expr(value)
                     self._line(f"{cs_type} {var_name} = {val};")
@@ -528,7 +544,8 @@ class CSharpBackend:
                     lv = self._lvalue(target)
                     target_name = target.name if isinstance(target, VarLV) else None
                     is_hoisted = target_name and target_name in self._hoisted_vars
-                    if stmt.is_declaration and not is_hoisted:
+                    is_new_var = target_name and target_name not in self._declared_vars
+                    if (stmt.is_declaration or is_new_var) and not is_hoisted:
                         # Prefer decl_typ (unified type from frontend) over value.typ
                         decl_type = stmt.decl_typ if stmt.decl_typ is not None else value.typ
                         cs_type = self._type(decl_type) if decl_type else "object"
@@ -679,15 +696,17 @@ class CSharpBackend:
         else:
             # Fallback for non-tuple multi-returns
             val_str = self._expr(value)
-            self._line(f"var _tuple = {val_str};")
+            self.temp_counter += 1
+            tuple_var = f"_tuple{self.temp_counter}"
+            self._line(f"var {tuple_var} = {val_str};")
             for i, target in enumerate(targets):
                 lv = self._lvalue(target)
                 target_name = target.name if isinstance(target, VarLV) else None
                 is_hoisted = target_name and target_name in self._hoisted_vars
                 if (is_decl or (target_name and target_name in new_targets)) and not is_hoisted:
-                    self._line(f"var {lv} = _tuple.Item{i + 1};")
+                    self._line(f"var {lv} = {tuple_var}.Item{i + 1};")
                 else:
-                    self._line(f"{lv} = _tuple.Item{i + 1};")
+                    self._line(f"{lv} = {tuple_var}.Item{i + 1};")
 
     def _emit_tuple_pop(self, stmt: TupleAssign) -> None:
         """Emit tuple unpacking from list.pop().
@@ -1021,6 +1040,9 @@ class CSharpBackend:
                     name[0].isupper() and "_" in name and name.split("_", 1)[1].isupper()
                 ):
                     return f"Constants.{to_screaming_snake(name)}"
+                # Function references use PascalCase and need Action cast for boxing
+                if name in self._function_names:
+                    return f"(Action){_safe_pascal(name)}"
                 return _safe_name(name)
             case FieldAccess(obj=obj, field=field):
                 obj_str = self._expr(obj)
@@ -1108,16 +1130,70 @@ class CSharpBackend:
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - C# integer division already floors
-                return f"{self._expr(left)} / {self._expr(right)}"
+                left_str = (
+                    f"({self._expr(left)} ? 1 : 0)" if _is_bool_type(left.typ) else self._expr(left)
+                )
+                right_str = (
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
+                return f"{left_str} / {right_str}"
             case BinaryOp(op="**", left=left, right=right):
                 # Power operator - C# uses Math.Pow
-                return f"Math.Pow({self._expr(left)}, {self._expr(right)})"
+                left_str = (
+                    f"({self._expr(left)} ? 1 : 0)" if _is_bool_type(left.typ) else self._expr(left)
+                )
+                right_str = (
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
+                return f"Math.Pow({left_str}, {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 left_str = self._expr(left)
                 right_str = self._expr(right)
-                # Convert bool to int for arithmetic operations (before precedence parens)
-                left_is_bool = op in ("+", "-", "*", "/", "%") and _is_bool_type(left.typ)
-                right_is_bool = op in ("+", "-", "*", "/", "%") and _is_bool_type(right.typ)
+                # Convert bool to int for arithmetic/bitwise/shift operations
+                int_ops = ("+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>")
+                left_is_bool = op in int_ops and _is_bool_type(left.typ)
+                right_is_bool = op in int_ops and _is_bool_type(right.typ)
+
+                # Convert for comparisons between int and bool, and ordering on bools
+                # Skip conversion for expressions that already produce the right type
+                def _already_converted(e: Expr) -> bool:
+                    # UnaryOp with -, +, ~ on bool already produces int
+                    if (
+                        isinstance(e, UnaryOp)
+                        and e.op in ("-", "+", "~")
+                        and _is_bool_type(e.operand.typ)
+                    ):
+                        return True
+                    # MinExpr/MaxExpr with mixed bool/int already produces int
+                    if isinstance(e, (MinExpr, MaxExpr)):
+                        left_bool = _is_bool_type(e.left.typ)
+                        right_bool = _is_bool_type(e.right.typ)
+                        # If not both bools, we use Math.Min/Max which returns int
+                        if left_bool != right_bool:
+                            return True
+                    return False
+
+                def _is_bool_call(e: Expr) -> bool:
+                    # Call to bool() returns a C# bool even if IR type differs
+                    return isinstance(e, Call) and e.func == "bool"
+
+                if op in ("==", "!=", "<", "<=", ">", ">="):
+                    # Treat bool() calls as having bool type for comparison purposes
+                    left_eff_bool = _is_bool_type(left.typ) or _is_bool_call(left)
+                    right_eff_bool = _is_bool_type(right.typ) or _is_bool_call(right)
+                    # For ordering comparisons on bools, convert both to int
+                    if op in ("<", "<=", ">", ">=") and left_eff_bool and right_eff_bool:
+                        left_is_bool = _is_bool_type(left.typ) and not _already_converted(left)
+                        right_is_bool = _is_bool_type(right.typ) and not _already_converted(right)
+                    # For mixed int/bool comparisons, convert the bool side
+                    elif left_eff_bool and not right_eff_bool:
+                        left_is_bool = _is_bool_type(left.typ) and not _already_converted(left)
+                    elif right_eff_bool and not left_eff_bool:
+                        right_is_bool = _is_bool_type(right.typ) and not _already_converted(right)
                 # Wrap operands in parens based on precedence (skip if converting to ternary)
                 if not left_is_bool:
                     if isinstance(left, Ternary):
@@ -1191,6 +1267,9 @@ class CSharpBackend:
                 # Wrap binary ops in parens to ensure correct precedence
                 if isinstance(operand, BinaryOp):
                     inner = f"({inner})"
+                # Convert bool to int for bitwise not and unary minus/plus
+                if op in ("~", "-", "+") and _is_bool_type(operand.typ):
+                    inner = f"({inner} ? 1 : 0)"
                 # Add space to avoid --x or ++x being parsed as decrement/increment
                 if op == "-" and inner.startswith("-"):
                     return f"- {inner}"
@@ -1283,9 +1362,21 @@ class CSharpBackend:
                     parts.append(f"{left_str} {cs_op} {right_str}")
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
-                return f"Math.Min({self._expr(left)}, {self._expr(right)})"
+                left_bool, right_bool = _is_bool_type(left.typ), _is_bool_type(right.typ)
+                if left_bool and right_bool:
+                    # min of two bools: result is bool (both must be true for true)
+                    return f"({self._expr(left)} && {self._expr(right)})"
+                left_str = f"({self._expr(left)} ? 1 : 0)" if left_bool else self._expr(left)
+                right_str = f"({self._expr(right)} ? 1 : 0)" if right_bool else self._expr(right)
+                return f"Math.Min({left_str}, {right_str})"
             case MaxExpr(left=left, right=right):
-                return f"Math.Max({self._expr(left)}, {self._expr(right)})"
+                left_bool, right_bool = _is_bool_type(left.typ), _is_bool_type(right.typ)
+                if left_bool and right_bool:
+                    # max of two bools: result is bool (either being true is enough)
+                    return f"({self._expr(left)} || {self._expr(right)})"
+                left_str = f"({self._expr(left)} ? 1 : 0)" if left_bool else self._expr(left)
+                right_str = f"({self._expr(right)} ? 1 : 0)" if right_bool else self._expr(right)
+                return f"Math.Max({left_str}, {right_str})"
             case _:
                 return "null /* TODO: unknown expression */"
 
@@ -1301,6 +1392,19 @@ class CSharpBackend:
                     func_class = to_pascal(self._module_name) + "Functions"
                     return f"{func_class}._BytesToString({args_str})"
             return f"({self._expr(args[0])}).ToString()"
+        if func == "bool":
+            if len(args) == 0:
+                return "false"
+            arg = args[0]
+            arg_str = self._expr(arg)
+            # bool(x) is truthy check
+            if _is_bool_type(arg.typ):
+                return arg_str  # bool(bool) is identity
+            if isinstance(arg.typ, Primitive) and arg.typ.kind in ("int", "float"):
+                return f"({arg_str} != 0)"
+            if isinstance(arg.typ, Primitive) and arg.typ.kind == "string":
+                return f"({arg_str} != null && {arg_str}.Length > 0)"
+            return f"({arg_str} != 0)"
         if func == "len":
             arg = self._expr(args[0])
             arg_type = args[0].typ
@@ -1329,29 +1433,67 @@ class CSharpBackend:
             return f"(int)({self._expr(args[0])}[0])"
         if func == "chr":
             return f"char.ConvertFromUtf32({self._expr(args[0])})"
+        if func == "repr":
+            arg = args[0]
+            arg_str = self._expr(arg)
+            if _is_bool_type(arg.typ):
+                return f"({arg_str}).ToString()"
+            return f"{arg_str}.ToString()"
         if func == "abs":
-            return f"Math.Abs({args_str})"
+            arg = args[0]
+            arg_str = self._expr(arg)
+            if _is_bool_type(arg.typ):
+                arg_str = f"({arg_str} ? 1 : 0)"
+            return f"Math.Abs({arg_str})"
         if func == "round":
             return f"Math.Round({args_str})"
         if func == "divmod" and len(args) == 2:
-            a, b = self._expr(args[0]), self._expr(args[1])
+            a = (
+                f"({self._expr(args[0])} ? 1 : 0)"
+                if _is_bool_type(args[0].typ)
+                else self._expr(args[0])
+            )
+            b = (
+                f"({self._expr(args[1])} ? 1 : 0)"
+                if _is_bool_type(args[1].typ)
+                else self._expr(args[1])
+            )
             return f"({a} / {b}, {a} % {b})"
         if func == "pow":
+            converted = [
+                f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a)
+                for a in args
+            ]
             if len(args) == 2:
-                return f"Math.Pow({args_str})"
+                return f"Math.Pow({', '.join(converted)})"
             if len(args) == 3:
-                base, exp, mod = self._expr(args[0]), self._expr(args[1]), self._expr(args[2])
-                return f"(int)Math.Pow({base}, {exp}) % {mod}"
+                return f"(int)Math.Pow({converted[0]}, {converted[1]}) % {converted[2]}"
         if func == "min":
-            return f"Math.Min({args_str})"
+            converted = [
+                f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a)
+                for a in args
+            ]
+            return f"Math.Min({', '.join(converted)})"
         if func == "max":
-            return f"Math.Max({args_str})"
+            converted = [
+                f"({self._expr(a)} ? 1 : 0)" if _is_bool_type(a.typ) else self._expr(a)
+                for a in args
+            ]
+            return f"Math.Max({', '.join(converted)})"
+        if func == "print":
+            return f"Console.WriteLine({args_str})"
         # Pointer boxing not needed in C#
         if func in ("_intPtr", "_int_ptr"):
             return self._expr(args[0])
         # Function-typed parameters are called directly, not via ParableFunctions
         if func in self._func_params:
             return f"{_safe_name(func)}({args_str})"
+        # Function-typed local variables are invoked directly as delegates
+        if func in self._func_vars:
+            return f"{_safe_name(func)}({args_str})"
+        # Local variables that might be callable (e.g., from tuple unpacking)
+        if func in self._declared_vars:
+            return f"((Action){_safe_name(func)})({args_str})"
         func_class = to_pascal(self._module_name) + "Functions"
         return f"{func_class}.{_safe_pascal(func)}({args_str})"
 
@@ -1510,6 +1652,9 @@ class CSharpBackend:
         needs_parens = isinstance(inner, (BinaryOp, Ternary, UnaryOp))
         if isinstance(to_type, Primitive):
             if to_type.kind == "int":
+                # C# can't cast bool to int directly
+                if _is_bool_type(inner_type):
+                    return f"({inner_str} ? 1 : 0)"
                 if needs_parens:
                     return f"(int)({inner_str})"
                 return f"(int){inner_str}"
