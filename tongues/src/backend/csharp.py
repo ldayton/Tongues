@@ -13,6 +13,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     Constant,
     Continue,
@@ -45,7 +46,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -174,6 +177,7 @@ _CSHARP_RESERVED = frozenset(
 )
 
 
+# C# operator precedence (higher number = tighter binding).
 def _safe_name(name: str) -> str:
     """Escape C# reserved words with @ prefix."""
     result = to_camel(name)
@@ -252,11 +256,17 @@ class CSharpBackend:
         else:
             self.lines.append("")
 
+    def _needs_wrapper(self, module: Module) -> bool:
+        """Check if module has bare statements that need wrapping in a class."""
+        return bool(module.statements) and not module.functions and not module.structs
+
     def _emit_module(self, module: Module) -> None:
-        self._line("using System;")
-        self._line("using System.Collections.Generic;")
-        self._line("using System.Linq;")
-        self._line("")
+        # Skip headers for simple expression tests
+        if not self._needs_wrapper(module):
+            self._line("using System;")
+            self._line("using System.Collections.Generic;")
+            self._line("using System.Linq;")
+            self._line("")
         if module.constants:
             self._line("public static class Constants")
             self._line("{")
@@ -274,6 +284,25 @@ class CSharpBackend:
             self._line("")
         if module.functions:
             self._emit_functions_class(module)
+        # Handle bare statements (for codegen tests)
+        if module.statements:
+            if self._needs_wrapper(module):
+                # Wrap in a dummy class for bare expressions
+                self._line("public static class Program")
+                self._line("{")
+                self.indent += 1
+                self._line("public static void Main()")
+                self._line("{")
+                self.indent += 1
+                for stmt in module.statements:
+                    self._emit_stmt(stmt)
+                self.indent -= 1
+                self._line("}")
+                self.indent -= 1
+                self._line("}")
+            else:
+                for stmt in module.statements:
+                    self._emit_stmt(stmt)
 
     def _emit_constant(self, const: Constant) -> None:
         typ = self._type(const.typ)
@@ -394,8 +423,7 @@ class CSharpBackend:
         name = _safe_pascal(func.name)
         # Special case: _substring needs clamping to match Python slice semantics
         if func.name == "_substring":
-            self._line(f"public static {ret} {name}({params})")
-            self._line("{")
+            self._line(f"{ret} {name}({params}) {{")
             self.indent += 1
             self._line("int len = s.Length;")
             self._line("int clampedStart = Math.Max(0, Math.Min(start, len));")
@@ -404,8 +432,7 @@ class CSharpBackend:
             self.indent -= 1
             self._line("}")
             return
-        self._line(f"public static {ret} {name}({params})")
-        self._line("{")
+        self._line(f"{ret} {name}({params}) {{")
         self.indent += 1
         if not func.body:
             self._line("throw new NotImplementedException();")
@@ -455,6 +482,27 @@ class CSharpBackend:
             self._declared_vars.add(name)
             if cs_type == "object":
                 self._object_vars.add(name)
+
+    def _emit_else_body(self, else_body: list[Stmt]) -> None:
+        """Emit else body, handling else-if chains."""
+        if len(else_body) == 1 and isinstance(else_body[0], If):
+            elif_stmt = else_body[0]
+            self._line(f"}} else if ({self._expr(elif_stmt.cond)}) {{")
+            self.indent += 1
+            for s in elif_stmt.then_body:
+                self._emit_stmt(s)
+            self.indent -= 1
+            if elif_stmt.else_body:
+                self._emit_else_body(elif_stmt.else_body)
+            else:
+                self._line("}")
+        else:
+            self._line("} else {")
+            self.indent += 1
+            for s in else_body:
+                self._emit_stmt(s)
+            self.indent -= 1
+            self._line("}")
 
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:
@@ -524,8 +572,7 @@ class CSharpBackend:
                 self._emit_hoisted_vars(stmt)
                 if init is not None:
                     self._emit_stmt(init)
-                self._line(f"if ({self._expr(cond)})")
-                self._line("{")
+                self._line(f"if ({self._expr(cond)}) {{")
                 self.indent += 1
                 saved_hoisted = self._hoisted_vars.copy()
                 for s in then_body:
@@ -533,16 +580,29 @@ class CSharpBackend:
                 self._hoisted_vars = saved_hoisted
                 self.indent -= 1
                 if else_body:
+                    # Check for else-if pattern
+                    if len(else_body) == 1 and isinstance(else_body[0], If):
+                        elif_stmt = else_body[0]
+                        self._line(f"}} else if ({self._expr(elif_stmt.cond)}) {{")
+                        self.indent += 1
+                        for s in elif_stmt.then_body:
+                            self._emit_stmt(s)
+                        self.indent -= 1
+                        if elif_stmt.else_body:
+                            self._emit_else_body(elif_stmt.else_body)
+                        else:
+                            self._line("}")
+                    else:
+                        self._line("} else {")
+                        self.indent += 1
+                        saved_hoisted = self._hoisted_vars.copy()
+                        for s in else_body:
+                            self._emit_stmt(s)
+                        self._hoisted_vars = saved_hoisted
+                        self.indent -= 1
+                        self._line("}")
+                else:
                     self._line("}")
-                    self._line("else")
-                    self._line("{")
-                    self.indent += 1
-                    saved_hoisted = self._hoisted_vars.copy()
-                    for s in else_body:
-                        self._emit_stmt(s)
-                    self._hoisted_vars = saved_hoisted
-                    self.indent -= 1
-                self._line("}")
             case TypeSwitch(expr=expr, binding=binding, cases=cases, default=default):
                 self._emit_type_switch(stmt)
             case Match(expr=expr, cases=cases, default=default):
@@ -553,8 +613,7 @@ class CSharpBackend:
                 self._emit_for_classic(stmt)
             case While(cond=cond, body=body):
                 self._emit_hoisted_vars(stmt)
-                self._line(f"while ({self._expr(cond)})")
-                self._line("{")
+                self._line(f"while ({self._expr(cond)}) {{")
                 self.indent += 1
                 for s in body:
                     self._emit_stmt(s)
@@ -920,9 +979,29 @@ class CSharpBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
+            case IntLit(value=value, format=fmt):
+                if fmt == "hex":
+                    return f"0x{value:x}"
+                if fmt == "bin":
+                    return f"0b{value:b}"
+                # C# doesn't have octal literals, use decimal
                 return str(value)
-            case FloatLit(value=value):
+            case FloatLit(value=value, format=fmt):
+                if fmt == "exp":
+                    s = f"{value:e}"
+                    mantissa, exp = s.split("e")
+                    exp_sign = exp[0] if exp[0] in "+-" else ""
+                    exp_val = exp.lstrip("+-").lstrip("0") or "0"
+                    if exp_sign == "+":
+                        exp_sign = ""
+                    if "." in mantissa:
+                        mantissa = mantissa.rstrip("0").rstrip(".")
+                    # If exponent is 0, just return the mantissa
+                    if exp_val == "0":
+                        if "." not in mantissa:
+                            return mantissa + ".0"
+                        return mantissa
+                    return f"{mantissa}e{exp_sign}{exp_val}"
                 s = str(value)
                 if "." not in s and "e" not in s.lower():
                     return s + ".0"
@@ -1030,9 +1109,31 @@ class CSharpBackend:
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - C# integer division already floors
                 return f"{self._expr(left)} / {self._expr(right)}"
+            case BinaryOp(op="**", left=left, right=right):
+                # Power operator - C# uses Math.Pow
+                return f"Math.Pow({self._expr(left)}, {self._expr(right)})"
             case BinaryOp(op=op, left=left, right=right):
                 left_str = self._expr(left)
                 right_str = self._expr(right)
+                # Convert bool to int for arithmetic operations (before precedence parens)
+                left_is_bool = op in ("+", "-", "*", "/", "%") and _is_bool_type(left.typ)
+                right_is_bool = op in ("+", "-", "*", "/", "%") and _is_bool_type(right.typ)
+                # Wrap operands in parens based on precedence (skip if converting to ternary)
+                if not left_is_bool:
+                    if isinstance(left, Ternary):
+                        left_str = f"({left_str})"
+                    elif isinstance(left, BinaryOp) and _needs_parens(left.op, op, is_left=True):
+                        left_str = f"({left_str})"
+                if not right_is_bool:
+                    if isinstance(right, Ternary):
+                        right_str = f"({right_str})"
+                    elif isinstance(right, BinaryOp) and _needs_parens(right.op, op, is_left=False):
+                        right_str = f"({right_str})"
+                # Apply bool-to-int conversion
+                if left_is_bool:
+                    left_str = f"({left_str} ? 1 : 0)"
+                if right_is_bool:
+                    right_str = f"({right_str} ? 1 : 0)"
                 cs_op = _binary_op(op)
                 # For ParseInt in comparisons, use uncasted long to avoid overflow
                 if cs_op in ("<", "<=", ">", ">=") and isinstance(left, ParseInt):
@@ -1058,15 +1159,6 @@ class CSharpBackend:
                         return f"string.Compare({left_str}, {right_str}) > 0"
                     if cs_op == ">=":
                         return f"string.Compare({left_str}, {right_str}) >= 0"
-                # Wrap bitwise ops in parens to ensure correct precedence with comparisons
-                if cs_op in ("&", "|", "^"):
-                    return f"({left_str} {cs_op} {right_str})"
-                # Add parens around || when inside && to preserve precedence
-                if cs_op == "&&":
-                    if isinstance(left, BinaryOp) and left.op == "||":
-                        left_str = f"({left_str})"
-                    if isinstance(right, BinaryOp) and right.op == "||":
-                        right_str = f"({right_str})"
                 return f"{left_str} {cs_op} {right_str}"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)
@@ -1082,6 +1174,9 @@ class CSharpBackend:
                     if operand_type.kind == "string":
                         return f"string.IsNullOrEmpty({operand_str})"
                     if operand_type.kind == "bool":
+                        # Simple literals/vars/unary don't need parens
+                        if isinstance(operand, (BoolLit, Var, UnaryOp)):
+                            return f"!{operand_str}"
                         return f"!({operand_str})"
                 if isinstance(operand_type, (InterfaceRef, StructRef, Pointer)):
                     return f"({operand_str} == null)"
@@ -1092,14 +1187,27 @@ class CSharpBackend:
                 # Fallback: wrap in parens and negate
                 return f"!({operand_str})"
             case UnaryOp(op=op, operand=operand):
-                return f"{op}{self._expr(operand)}"
+                inner = self._expr(operand)
+                # Wrap binary ops in parens to ensure correct precedence
+                if isinstance(operand, BinaryOp):
+                    inner = f"({inner})"
+                # Add space to avoid --x or ++x being parsed as decrement/increment
+                if op == "-" and inner.startswith("-"):
+                    return f"- {inner}"
+                if op == "+" and inner.startswith("+"):
+                    return f"+ {inner}"
+                return f"{op}{inner}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 # When else is null but then is a list, use empty List instead
                 else_str = self._expr(else_expr)
                 if isinstance(else_expr, NilLit) and isinstance(then_expr.typ, Slice):
                     elem = self._type(then_expr.typ.element)
                     else_str = f"new List<{elem}>()"
-                return f"({self._expr(cond)} ? {self._expr(then_expr)} : {else_str})"
+                cond_str = self._expr(cond)
+                # Add parens for || in ternary condition for clarity
+                if isinstance(cond, BinaryOp) and cond.op in ("||", "or"):
+                    cond_str = f"({cond_str})"
+                return f"{cond_str} ? {self._expr(then_expr)} : {else_str}"
             case Cast(expr=inner, to_type=to_type):
                 return self._cast(inner, to_type)
             case TypeAssert(expr=inner, asserted=asserted):
@@ -1166,6 +1274,18 @@ class CSharpBackend:
                 return " + ".join(self._expr(p) for p in parts)
             case StringFormat(template=template, args=args):
                 return self._format_string(template, args)
+            case ChainedCompare(operands=operands, ops=ops):
+                parts = []
+                for i, op in enumerate(ops):
+                    left_str = self._expr(operands[i])
+                    right_str = self._expr(operands[i + 1])
+                    cs_op = _binary_op(op)
+                    parts.append(f"{left_str} {cs_op} {right_str}")
+                return " && ".join(parts)
+            case MinExpr(left=left, right=right):
+                return f"Math.Min({self._expr(left)}, {self._expr(right)})"
+            case MaxExpr(left=left, right=right):
+                return f"Math.Max({self._expr(left)}, {self._expr(right)})"
             case _:
                 return "null /* TODO: unknown expression */"
 
@@ -1211,6 +1331,17 @@ class CSharpBackend:
             return f"char.ConvertFromUtf32({self._expr(args[0])})"
         if func == "abs":
             return f"Math.Abs({args_str})"
+        if func == "round":
+            return f"Math.Round({args_str})"
+        if func == "divmod" and len(args) == 2:
+            a, b = self._expr(args[0]), self._expr(args[1])
+            return f"({a} / {b}, {a} % {b})"
+        if func == "pow":
+            if len(args) == 2:
+                return f"Math.Pow({args_str})"
+            if len(args) == 3:
+                base, exp, mod = self._expr(args[0]), self._expr(args[1]), self._expr(args[2])
+                return f"(int)Math.Pow({base}, {exp}) % {mod}"
         if func == "min":
             return f"Math.Min({args_str})"
         if func == "max":
@@ -1375,13 +1506,21 @@ class CSharpBackend:
         inner_str = self._expr(inner)
         cs_type = self._type(to_type)
         inner_type = inner.typ
+        # Only wrap in parens if needed (complex expressions)
+        needs_parens = isinstance(inner, (BinaryOp, Ternary, UnaryOp))
         if isinstance(to_type, Primitive):
             if to_type.kind == "int":
-                return f"(int)({inner_str})"
+                if needs_parens:
+                    return f"(int)({inner_str})"
+                return f"(int){inner_str}"
             if to_type.kind == "float":
-                return f"(double)({inner_str})"
+                if needs_parens:
+                    return f"(double)({inner_str})"
+                return f"(double){inner_str}"
             if to_type.kind == "byte":
-                return f"(byte)({inner_str})"
+                if needs_parens:
+                    return f"(byte)({inner_str})"
+                return f"(byte){inner_str}"
             if to_type.kind == "string":
                 # Handle List<byte> -> string (decoding)
                 if isinstance(inner_type, Slice):
@@ -1613,5 +1752,52 @@ def _binary_op(op: str) -> str:
             return op
 
 
+# Operator precedence (higher = binds tighter)
+_PRECEDENCE = {
+    "||": 1,
+    "or": 1,
+    "&&": 2,
+    "and": 2,
+    "|": 3,
+    "^": 4,
+    "&": 5,
+    "==": 6,
+    "!=": 6,
+    "<": 7,
+    "<=": 7,
+    ">": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+    "//": 10,
+    "**": 11,
+}
+
+
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 0)
+
+
+def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
+    """Check if child binary op needs parens when used as operand of parent op."""
+    child_prec = _prec(child_op)
+    parent_prec = _prec(parent_op)
+    if child_prec < parent_prec:
+        return True
+    if child_prec == parent_prec and not is_left:
+        # Comparisons are non-associative
+        return child_op in ("==", "!=", "<", ">", "<=", ">=")
+    return False
+
+
 def _is_string_type(typ: Type) -> bool:
     return isinstance(typ, Primitive) and typ.kind in ("string", "rune")
+
+
+def _is_bool_type(typ: Type) -> bool:
+    return isinstance(typ, Primitive) and typ.kind == "bool"

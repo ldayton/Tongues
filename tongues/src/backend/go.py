@@ -157,6 +157,38 @@ from src.ir import (
     While,
 )
 
+# Go operator precedence (higher number = tighter binding).
+# From go.dev/ref/spec#Operator_precedence
+# Note: Go groups bitwise ops with arithmetic, not with comparisons like C.
+_PRECEDENCE: dict[str, int] = {
+    "||": 1,
+    "&&": 2,
+    "==": 3,
+    "!=": 3,
+    "<": 3,
+    "<=": 3,
+    ">": 3,
+    ">=": 3,
+    "+": 4,
+    "-": 4,
+    "|": 4,
+    "^": 4,
+    "*": 5,
+    "/": 5,
+    "%": 5,
+    "<<": 5,
+    ">>": 5,
+    "&": 5,
+}
+
+
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 6)
+
+
+def _is_comparison(op: str) -> bool:
+    return op in ("==", "!=", "<", "<=", ">", ">=")
+
 
 def _needs_deref(arg_type: Type, elem_type: Type) -> bool:
     """Check if pointer arg needs dereference when appending to slice."""
@@ -1537,6 +1569,23 @@ class GoBackend:
     # EXPRESSION EMISSION
     # ============================================================
 
+    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
+        """Emit expr, adding parens if its precedence requires it."""
+        s = self._emit_expr(expr)
+        if isinstance(expr, BinaryOp):
+            # Go doesn't allow chained comparisons
+            if _is_comparison(parent_op) and _is_comparison(expr.op):
+                return f"({s})"
+            child_prec = _prec(expr.op)
+            parent_prec = _prec(parent_op)
+            if not is_left:
+                if child_prec <= parent_prec:
+                    return f"({s})"
+            else:
+                if child_prec < parent_prec:
+                    return f"({s})"
+        return s
+
     def _emit_expr(self, expr: Expr) -> str:
         """Emit an expression and return Go code string."""
         if isinstance(expr, IntLit):
@@ -1854,95 +1903,80 @@ class GoBackend:
         return f"{on_type}.{method}({args})"
 
     def _emit_expr_BinaryOp(self, expr: BinaryOp) -> str:
+        op = expr.op
         # Bool/int coercion for ==, != with mixed bool/int operands
-        if expr.op in ("==", "!=") and _go_needs_bool_int_coerce(expr.left, expr.right):
+        if op in ("==", "!=") and _go_needs_bool_int_coerce(expr.left, expr.right):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
-            return f"{left_str} {expr.op} {right_str}"
+            return f"{left_str} {op} {right_str}"
         # Bool coercion for arithmetic ops
-        if expr.op in ("+", "-", "*", "/", "%") and (
-            _go_is_bool(expr.left) or _go_is_bool(expr.right)
-        ):
+        if op in ("+", "-", "*", "/", "%") and (_go_is_bool(expr.left) or _go_is_bool(expr.right)):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
-            return f"{left_str} {expr.op} {right_str}"
+            return f"{left_str} {op} {right_str}"
         # Go has no bitwise ops on bools — coerce any bool operand to int
-        if expr.op in ("|", "&", "^") and (expr.left.typ == BOOL or expr.right.typ == BOOL):
+        if op in ("|", "&", "^") and (expr.left.typ == BOOL or expr.right.typ == BOOL):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
-            return f"({left_str} {expr.op} {right_str})"
+            return f"({left_str} {op} {right_str})"
         # Handle single-char string comparisons with runes
         # In Go, for-range over string yields runes, so "'" must become '\''
-        if expr.op in ("==", "!="):
+        if op in ("==", "!="):
             left_is_rune = isinstance(expr.left, Var) and expr.left.typ == RUNE
             right_is_rune = isinstance(expr.right, Var) and expr.right.typ == RUNE
-            left_str = self._emit_expr(expr.left)
-            right_str = self._emit_expr(expr.right)
             if left_is_rune and isinstance(expr.right, StringLit) and len(expr.right.value) == 1:
+                left_str = self._maybe_paren(expr.left, op, is_left=True)
                 right_str = self._emit_rune_literal(expr.right.value)
-            elif right_is_rune and isinstance(expr.left, StringLit) and len(expr.left.value) == 1:
+                return f"{left_str} {op} {right_str}"
+            if right_is_rune and isinstance(expr.left, StringLit) and len(expr.left.value) == 1:
                 left_str = self._emit_rune_literal(expr.left.value)
-            # Wrap nested comparisons in parens to prevent Go from
-            # parsing a == b != c as (a == b) != c
-            _CMP_OPS = ("==", "!=", "<", ">", "<=", ">=")
-            if isinstance(expr.left, BinaryOp) and expr.left.op in _CMP_OPS:
-                left_str = f"({left_str})"
-            if isinstance(expr.right, BinaryOp) and expr.right.op in _CMP_OPS:
-                right_str = f"({right_str})"
-            return f"{left_str} {expr.op} {right_str}"
+                right_str = self._maybe_paren(expr.right, op, is_left=False)
+                return f"{left_str} {op} {right_str}"
         # Handle comparisons with optional (pointer) types - dereference the pointer
         # Pattern: x > 0 where x is *int needs to become *x > 0
-        if expr.op in ("<", ">", "<=", ">="):
+        if op in ("<", ">", "<=", ">="):
             left_type = expr.left.typ
             right_type = expr.right.typ
-            left_str = self._emit_expr(expr.left)
-            right_str = self._emit_expr(expr.right)
-            # Dereference left if it's a pointer/optional to a primitive
             left_inner = (
                 left_type.target
                 if isinstance(left_type, Pointer)
                 else (left_type.inner if isinstance(left_type, Optional) else None)
             )
-            if left_inner in (INT, FLOAT):
-                left_str = f"*{left_str}"
-            # Dereference right if it's a pointer/optional to a primitive
             right_inner = (
                 right_type.target
                 if isinstance(right_type, Pointer)
                 else (right_type.inner if isinstance(right_type, Optional) else None)
             )
-            if right_inner in (INT, FLOAT):
-                right_str = f"*{right_str}"
-            return f"{left_str} {expr.op} {right_str}"
-        left = self._emit_expr(expr.left)
-        right = self._emit_expr(expr.right)
+            if left_inner in (INT, FLOAT) or right_inner in (INT, FLOAT):
+                left_str = self._maybe_paren(expr.left, op, is_left=True)
+                right_str = self._maybe_paren(expr.right, op, is_left=False)
+                if left_inner in (INT, FLOAT):
+                    left_str = f"*{left_str}"
+                if right_inner in (INT, FLOAT):
+                    right_str = f"*{right_str}"
+                return f"{left_str} {op} {right_str}"
         # Handle 'in' and 'not in' operators
-        if expr.op == "in":
+        if op == "in":
+            left = self._emit_expr(expr.left)
+            right = self._emit_expr(expr.right)
             right_type = expr.right.typ
             if isinstance(right_type, (Set, Map)):
                 return f"_mapHas({right}, {left})"
             return f"strings.Contains({right}, {left})"
-        if expr.op == "not in":
+        if op == "not in":
+            left = self._emit_expr(expr.left)
+            right = self._emit_expr(expr.right)
             right_type = expr.right.typ
             if isinstance(right_type, (Set, Map)):
                 return f"!_mapHas({right}, {left})"
             return f"!strings.Contains({right}, {left})"
         # Floor division - Go integer division already floors
-        op = expr.op
         if op == "//":
             op = "/"
-        # Handle operator precedence: && binds tighter than ||
-        # So a || expression nested inside && needs parentheses
-        if op == "&&":
-            if isinstance(expr.left, BinaryOp) and expr.left.op == "||":
-                left = f"({left})"
-            if isinstance(expr.right, BinaryOp) and expr.right.op == "||":
-                right = f"({right})"
-        # Don't wrap comparison, logical, or simple arithmetic in parens
-        # Go handles precedence well and parens around conditions look unidiomatic
-        if op in ("&&", "||", "==", "!=", "<", ">", "<=", ">=", "+", "-", "*", "/"):
-            return f"{left} {op} {right}"
-        return f"({left} {op} {right})"
+        # Standard binary operation with precedence handling
+        left = self._maybe_paren(expr.left, op, is_left=True)
+        right = self._maybe_paren(expr.right, op, is_left=False)
+        return f"{left} {op} {right}"
 
     def _emit_rune_literal(self, char: str) -> str:
         """Emit a single character as a Go rune literal."""

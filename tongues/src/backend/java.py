@@ -172,6 +172,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     CatchClause,
     Constant,
@@ -206,7 +207,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -549,10 +552,16 @@ class JavaBackend:
         else:
             self.lines.append("")
 
+    def _needs_wrapper(self, module: Module) -> bool:
+        """Check if module has bare statements that need wrapping in a class."""
+        return bool(module.statements) and not module.functions and not module.structs
+
     def _emit_module(self, module: Module) -> None:
-        self._line("import java.util.*;")
-        self._import_insert_pos: int = len(self.lines)
-        self._line("")
+        # Skip headers for simple expression tests
+        if not self._needs_wrapper(module):
+            self._line("import java.util.*;")
+            self._import_insert_pos: int = len(self.lines)
+            self._line("")
         if module.constants:
             self._line("final class Constants {")
             self.indent += 1
@@ -572,6 +581,23 @@ class JavaBackend:
             pass
         if module.functions:
             self._emit_functions_class(module, module.entrypoint)
+        # Handle bare statements (for codegen tests)
+        if module.statements:
+            if self._needs_wrapper(module):
+                # Wrap in a dummy class for bare expressions
+                self._line("public class Program {")
+                self.indent += 1
+                self._line("public static void main(String[] args) {")
+                self.indent += 1
+                for stmt in module.statements:
+                    self._emit_stmt(stmt)
+                self.indent -= 1
+                self._line("}")
+                self.indent -= 1
+                self._line("}")
+            else:
+                for stmt in module.statements:
+                    self._emit_stmt(stmt)
 
     def _emit_tuple_record(self, name: str, sig: tuple[str, ...]) -> None:
         """Emit a record definition for a tuple type."""
@@ -691,7 +717,7 @@ class JavaBackend:
         name = to_camel(func.name)
         # Special case: _stringToBytes needs native implementation to avoid recursion
         if func.name == "_string_to_bytes":
-            self._line(f"static {ret} {name}({params}) {{")
+            self._line(f"{ret} {name}({params}) {{")
             self.indent += 1
             self._line("byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);")
             self._line("List<Byte> result = new ArrayList<>(bytes.length);")
@@ -702,7 +728,7 @@ class JavaBackend:
             return
         # Special case: _substring needs clamping to match Python slice semantics
         if func.name == "_substring":
-            self._line(f"static {ret} {name}({params}) {{")
+            self._line(f"{ret} {name}({params}) {{")
             self.indent += 1
             self._line("int len = s.length();")
             self._line("int clampedStart = Math.max(0, Math.min(start, len));")
@@ -711,7 +737,7 @@ class JavaBackend:
             self.indent -= 1
             self._line("}")
             return
-        self._line(f"static {ret} {name}({params}) {{")
+        self._line(f"{ret} {name}({params}) {{")
         self.indent += 1
         if not func.body:
             self._line('throw new UnsupportedOperationException("todo");')
@@ -750,6 +776,27 @@ class JavaBackend:
             typ = self._type(p.typ)
             parts.append(f"{typ} {_java_safe_name(p.name)}")
         return ", ".join(parts)
+
+    def _emit_else_if(self, if_stmt: If) -> None:
+        """Emit else-if chain for cleaner output."""
+        cond_str = self._expr(if_stmt.cond)
+        self._line(f"}} else if ({cond_str}) {{")
+        self.indent += 1
+        for s in if_stmt.then_body:
+            self._emit_stmt(s)
+        self.indent -= 1
+        if if_stmt.else_body:
+            if len(if_stmt.else_body) == 1 and isinstance(if_stmt.else_body[0], If):
+                self._emit_else_if(if_stmt.else_body[0])
+            else:
+                self._line("} else {")
+                self.indent += 1
+                for s in if_stmt.else_body:
+                    self._emit_stmt(s)
+                self.indent -= 1
+                self._line("}")
+        else:
+            self._line("}")
 
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:
@@ -873,12 +920,18 @@ class JavaBackend:
                     self._emit_stmt(s)
                 self.indent -= 1
                 if else_body:
-                    self._line("} else {")
-                    self.indent += 1
-                    for s in else_body:
-                        self._emit_stmt(s)
-                    self.indent -= 1
-                self._line("}")
+                    # Check for else-if pattern
+                    if len(else_body) == 1 and isinstance(else_body[0], If):
+                        self._emit_else_if(else_body[0])
+                    else:
+                        self._line("} else {")
+                        self.indent += 1
+                        for s in else_body:
+                            self._emit_stmt(s)
+                        self.indent -= 1
+                        self._line("}")
+                else:
+                    self._line("}")
             case TypeSwitch(expr=expr, binding=binding, cases=cases, default=default):
                 self._emit_type_switch(stmt, expr, binding, cases, default)
             case Match(expr=expr, cases=cases, default=default):
@@ -1198,9 +1251,35 @@ class JavaBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
+            case IntLit(value=value, format=fmt):
+                if fmt == "hex":
+                    return f"0x{value:x}"
+                if fmt == "oct":
+                    if value == 0:
+                        return "0"
+                    return f"0{value:o}"
+                if fmt == "bin":
+                    return f"0b{value:b}"
+                # Large decimal literals need L suffix
+                if value > 2147483647 or value < -2147483648:
+                    return f"{value}L"
                 return str(value)
-            case FloatLit(value=value):
+            case FloatLit(value=value, format=fmt):
+                if fmt == "exp":
+                    s = f"{value:e}"
+                    mantissa, exp = s.split("e")
+                    exp_sign = exp[0] if exp[0] in "+-" else ""
+                    exp_val = exp.lstrip("+-").lstrip("0") or "0"
+                    if exp_sign == "+":
+                        exp_sign = ""
+                    if "." in mantissa:
+                        mantissa = mantissa.rstrip("0").rstrip(".")
+                    # If exponent is 0, just return the mantissa
+                    if exp_val == "0":
+                        if "." not in mantissa:
+                            return mantissa + ".0"
+                        return mantissa
+                    return f"{mantissa}e{exp_sign}{exp_val}"
                 s = str(value)
                 if "." not in s and "e" not in s.lower():
                     return s + ".0"
@@ -1367,10 +1446,33 @@ class JavaBackend:
                     return f"new String(Character.toChars({self._expr(args[0])}))"
                 if func == "abs":
                     return f"Math.abs({args_str})"
+                if func == "round":
+                    if len(args) == 2:
+                        x = self._expr(args[0])
+                        # Compute multiplier directly if precision is a literal
+                        if isinstance(args[1], IntLit):
+                            mult = float(10 ** args[1].value)
+                            return f"Math.round({x} * {mult}) / {mult}"
+                        n = self._expr(args[1])
+                        return f"Math.round({x} * Math.pow(10, {n})) / Math.pow(10, {n})"
+                    return f"Math.round({args_str})"
                 if func == "min":
                     return f"Math.min({args_str})"
                 if func == "max":
                     return f"Math.max({args_str})"
+                if func == "divmod" and len(args) == 2:
+                    a, b = self._expr(args[0]), self._expr(args[1])
+                    return f"new int[]{{{a} / {b}, {a} % {b}}}"
+                if func == "pow":
+                    if len(args) == 2:
+                        return f"Math.pow({args_str})"
+                    if len(args) == 3:
+                        base, exp, mod = (
+                            self._expr(args[0]),
+                            self._expr(args[1]),
+                            self._expr(args[2]),
+                        )
+                        return f"(int)Math.pow({base}, {exp}) % {mod}"
                 # Helper functions for Go pointer boxing - inline in Java
                 if func == "_intPtr" or func == "_int_ptr":
                     # Java auto-boxes int to Integer
@@ -1414,6 +1516,9 @@ class JavaBackend:
                 return self._containment_check(left, right, negated=False)
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
+            case BinaryOp(op="**", left=left, right=right):
+                # Power operator - Java uses Math.pow
+                return f"Math.pow({self._expr(left)}, {self._expr(right)})"
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - Java integer division already floors for positive
                 left_str = (
@@ -1454,6 +1559,9 @@ class JavaBackend:
             case BinaryOp(op=op, left=left, right=right):
                 java_op = _binary_op(op)
                 right_str = self._expr(right)
+                # Wrap ternary operands in parens (low precedence)
+                if isinstance(right, Ternary):
+                    right_str = f"({right_str})"
                 # Pattern: !x != null (from Python's "not x" on nullable)
                 # Convert to: x == null
                 if java_op == "!=" and right_str == "null":
@@ -1495,6 +1603,15 @@ class JavaBackend:
                                 return f"{obj_str}.charAt({idx_str}) != {char_lit}"
                 left_str = self._expr(left)
                 right_str = self._expr(right)
+                # Wrap operands in parens based on precedence
+                if isinstance(left, Ternary):
+                    left_str = f"({left_str})"
+                elif isinstance(left, BinaryOp) and _needs_parens(left.op, op, is_left=True):
+                    left_str = f"({left_str})"
+                if isinstance(right, Ternary):
+                    right_str = f"({right_str})"
+                elif isinstance(right, BinaryOp) and _needs_parens(right.op, op, is_left=False):
+                    right_str = f"({right_str})"
                 # String comparison needs .equals() or .compareTo()
                 if java_op == "==" and _is_string_type(left.typ):
                     return f"{left_str}.equals({right_str})"
@@ -1508,26 +1625,6 @@ class JavaBackend:
                     return f"({left_str}.compareTo({right_str}) > 0)"
                 if java_op == ">=" and _is_string_type(left.typ):
                     return f"({left_str}.compareTo({right_str}) >= 0)"
-                # Bitwise operators need parens due to low precedence
-                if java_op in ("&", "|", "^"):
-                    return f"({left_str} {java_op} {right_str})"
-                if java_op == "&&":
-                    if isinstance(left, BinaryOp) and left.op == "||":
-                        left_str = f"({left_str})"
-                    if isinstance(right, BinaryOp) and right.op == "||":
-                        right_str = f"({right_str})"
-                # Wrap RHS comparison in parens when outer is also a comparison
-                # (Java evaluates left-to-right, so a == b != c is (a == b) != c)
-                if java_op in ("==", "!=", "<", "<=", ">", ">="):
-                    if isinstance(right, BinaryOp) and right.op in (
-                        "==",
-                        "!=",
-                        "<",
-                        "<=",
-                        ">",
-                        ">=",
-                    ):
-                        right_str = f"({right_str})"
                 return f"{left_str} {java_op} {right_str}"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)  # Java passes objects by reference
@@ -1565,14 +1662,26 @@ class JavaBackend:
                     return f"!({self._expr(operand)})"
                 return f"!{self._expr(operand)}"
             case UnaryOp(op=op, operand=operand):
-                return f"{op}{self._expr(operand)}"
+                inner = self._expr(operand)
+                # Wrap binary ops in parens to ensure correct precedence
+                if isinstance(operand, BinaryOp):
+                    inner = f"({inner})"
+                # Add space to avoid --x or ++x being parsed as decrement/increment
+                if op == "-" and inner.startswith("-"):
+                    return f"- {inner}"
+                if op == "+" and inner.startswith("+"):
+                    return f"+ {inner}"
+                return f"{op}{inner}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 # When else is null but then is a list, use empty ArrayList instead
                 else_str = self._expr(else_expr)
                 if isinstance(else_expr, NilLit) and isinstance(then_expr.typ, Slice):
                     else_str = "new ArrayList<>()"
-                # Wrap in parens to avoid precedence issues (?: has very low precedence in Java)
-                return f"({self._expr(cond)} ? {self._expr(then_expr)} : {else_str})"
+                cond_str = self._expr(cond)
+                # Add parens for || in ternary condition for clarity
+                if isinstance(cond, BinaryOp) and cond.op in ("||", "or"):
+                    cond_str = f"({cond_str})"
+                return f"{cond_str} ? {self._expr(then_expr)} : {else_str}"
             case Cast(expr=inner, to_type=to_type):
                 return self._cast(inner, to_type)
             case TypeAssert(expr=inner, asserted=asserted, safe=safe):
@@ -1687,6 +1796,18 @@ class JavaBackend:
                 return " + ".join(self._expr(p) for p in parts)
             case StringFormat(template=template, args=args):
                 return self._format_string(template, args)
+            case ChainedCompare(operands=operands, ops=ops):
+                parts = []
+                for i, op in enumerate(ops):
+                    left_str = self._expr(operands[i])
+                    right_str = self._expr(operands[i + 1])
+                    java_op = _binary_op(op)
+                    parts.append(f"{left_str} {java_op} {right_str}")
+                return " && ".join(parts)
+            case MinExpr(left=left, right=right):
+                return f"Math.min({self._expr(left)}, {self._expr(right)})"
+            case MaxExpr(left=left, right=right):
+                return f"Math.max({self._expr(left)}, {self._expr(right)})"
             case _:
                 return "null /* TODO: unknown expression */"
 
@@ -1802,6 +1923,8 @@ class JavaBackend:
     def _cast(self, inner: Expr, to_type: Type) -> str:
         inner_str = self._expr(inner)
         java_type = self._type(to_type)
+        # Only wrap in parens if needed (complex expressions)
+        needs_parens = isinstance(inner, (BinaryOp, Ternary, UnaryOp))
         if (
             inner.typ == BOOL
             and isinstance(to_type, Primitive)
@@ -1812,11 +1935,17 @@ class JavaBackend:
             return f'({inner_str} ? "True" : "False")'
         if isinstance(to_type, Primitive):
             if to_type.kind == "int":
-                return f"(int) ({inner_str})"
+                if needs_parens:
+                    return f"(int)({inner_str})"
+                return f"(int){inner_str}"
             if to_type.kind == "float":
-                return f"(double) ({inner_str})"
+                if needs_parens:
+                    return f"(double)({inner_str})"
+                return f"(double){inner_str}"
             if to_type.kind == "byte":
-                return f"(byte) ({inner_str})"
+                if needs_parens:
+                    return f"(byte)({inner_str})"
+                return f"(byte){inner_str}"
             if to_type.kind == "string":
                 # Handle List<Byte> -> String (decoding)
                 inner_type = inner.typ
@@ -2052,6 +2181,49 @@ def _binary_op(op: str) -> str:
             return "||"
         case _:
             return op
+
+
+# Operator precedence (higher = binds tighter)
+_PRECEDENCE = {
+    "||": 1,
+    "or": 1,
+    "&&": 2,
+    "and": 2,
+    "|": 3,
+    "^": 4,
+    "&": 5,
+    "==": 6,
+    "!=": 6,
+    "<": 7,
+    "<=": 7,
+    ">": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+    "//": 10,
+    "**": 11,
+}
+
+
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 0)
+
+
+def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
+    """Check if child binary op needs parens when used as operand of parent op."""
+    child_prec = _prec(child_op)
+    parent_prec = _prec(parent_op)
+    if child_prec < parent_prec:
+        return True
+    if child_prec == parent_prec and not is_left:
+        # Comparisons are non-associative
+        return child_op in ("==", "!=", "<", ">", "<=", ">=")
+    return False
 
 
 _PYTHON_EXCEPTION_MAP = {

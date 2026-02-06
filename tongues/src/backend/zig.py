@@ -125,7 +125,7 @@ ZIG_RESERVED = frozenset(
 
 # Zig operator precedence (higher number = tighter binding)
 # NOTE: Zig has & ^ | at SAME precedence (left-to-right), unlike Python where & > ^ > |
-_ZIG_PREC: dict[str, int] = {
+_PRECEDENCE: dict[str, int] = {
     "or": 1,
     "and": 2,
     "==": 3,
@@ -147,8 +147,8 @@ _ZIG_PREC: dict[str, int] = {
 }
 
 
-def _zig_prec(op: str) -> int:
-    return _ZIG_PREC.get(op, 10)
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 10)
 
 
 def _is_comparison(op: str) -> bool:
@@ -545,7 +545,7 @@ class ZigBackend(Emitter):
             return typ.name
         raise NotImplementedError(f"Zig type: {typ}")
 
-    def _wrap_prec(self, expr: Expr, parent_op: str, is_right: bool) -> str:
+    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Emit expr, adding parens if its precedence requires it."""
         s = self._emit_expr(expr)
         if isinstance(expr, BinaryOp):
@@ -555,9 +555,9 @@ class ZigBackend(Emitter):
             # Zig doesn't allow mixing comparison with bitwise ops without parens
             if _is_comparison(parent_op) and expr.op in ("|", "&", "^", "<<", ">>"):
                 return f"({s})"
-            child_prec = _zig_prec(expr.op)
-            parent_prec = _zig_prec(parent_op)
-            if is_right:
+            child_prec = _prec(expr.op)
+            parent_prec = _prec(parent_op)
+            if not is_left:
                 if child_prec <= parent_prec:
                     return f"({s})"
             else:
@@ -888,8 +888,8 @@ class ZigBackend(Emitter):
                 left = self._coerce_bool_to_int(expr.left)
                 right = self._coerce_bool_to_int(expr.right)
             else:
-                left = self._wrap_prec(expr.left, op, False)
-                right = self._wrap_prec(expr.right, op, True)
+                left = self._maybe_paren(expr.left, op, is_left=True)
+                right = self._maybe_paren(expr.right, op, is_left=False)
             return f"@divFloor({left}, {right})"
         # Regular division also requires @divFloor for signed integers
         if op == "/" and expr.typ == INT:
@@ -897,8 +897,8 @@ class ZigBackend(Emitter):
                 left = self._coerce_bool_to_int(expr.left)
                 right = self._coerce_bool_to_int(expr.right)
             else:
-                left = self._wrap_prec(expr.left, op, False)
-                right = self._wrap_prec(expr.right, op, True)
+                left = self._maybe_paren(expr.left, op, is_left=True)
+                right = self._maybe_paren(expr.right, op, is_left=False)
             return f"@divFloor({left}, {right})"
         # String/bytes concatenation needs special handling in Zig
         if op == "+" and self._is_string_or_bytes_type(expr.typ):
@@ -999,8 +999,8 @@ class ZigBackend(Emitter):
             if l_bool and r_bool:
                 # Both bools: use logical operators (Zig bool supports these)
                 zig_op = {"&": "and", "|": "or", "^": "!="}[op]
-                left = self._wrap_prec(expr.left, op, False)
-                right = self._wrap_prec(expr.right, op, True)
+                left = self._maybe_paren(expr.left, op, is_left=True)
+                right = self._maybe_paren(expr.right, op, is_left=False)
                 if op == "^":
                     # XOR becomes != which is a comparison - wrap to prevent chaining
                     return f"({left} {zig_op} {right})"
@@ -1010,8 +1010,8 @@ class ZigBackend(Emitter):
                 right = self._coerce_bool_to_int(expr.right)
                 return f"({left} {op} {right})"
         # Standard comparison - Zig uses same operators
-        left = self._wrap_prec(expr.left, op, False)
-        right = self._wrap_prec(expr.right, op, True)
+        left = self._maybe_paren(expr.left, op, is_left=True)
+        right = self._maybe_paren(expr.right, op, is_left=False)
         return f"{left} {op} {right}"
 
     def _emit_string_add(self, expr: BinaryOp) -> str:

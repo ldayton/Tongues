@@ -118,8 +118,8 @@ def test_list_contains() -> None:
     assert 1 in items
     assert 3 in items
     assert 5 in items
-    assert not (0 in items)
-    assert not (6 in items)
+    assert 0 not in items
+    assert 6 not in items
     assert 0 not in items
     assert 6 not in items
 
@@ -127,7 +127,7 @@ def test_list_contains() -> None:
 def test_list_contains_empty() -> None:
     """Membership in empty list."""
     empty: list[int] = []
-    assert not (1 in empty)
+    assert 1 not in empty
     assert 1 not in empty
 
 

@@ -120,7 +120,7 @@ SWIFT_RESERVED = frozenset(
 )
 
 # Swift operator precedence (higher number = tighter binding).
-_SWIFT_PREC: dict[str, int] = {
+_PRECEDENCE: dict[str, int] = {
     "||": 1,
     "&&": 2,
     "==": 3,
@@ -142,8 +142,12 @@ _SWIFT_PREC: dict[str, int] = {
 }
 
 
-def _swift_prec(op: str) -> int:
-    return _SWIFT_PREC.get(op, 10)
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 10)
+
+
+def _is_comparison(op: str) -> bool:
+    return op in ("==", "!=", "<", "<=", ">", ">=")
 
 
 def _is_bool(expr: Expr) -> bool:
@@ -224,13 +228,16 @@ class SwiftBackend(Emitter):
             return typ.name
         raise NotImplementedError(f"Swift type: {typ}")
 
-    def _wrap_prec(self, expr: Expr, parent_op: str, is_right: bool) -> str:
+    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Emit expr, adding parens if its precedence requires it."""
         s = self._emit_expr(expr)
         if isinstance(expr, BinaryOp):
-            child_prec = _swift_prec(expr.op)
-            parent_prec = _swift_prec(parent_op)
-            if is_right:
+            # Swift doesn't allow chained comparisons
+            if _is_comparison(parent_op) and _is_comparison(expr.op):
+                return f"({s})"
+            child_prec = _prec(expr.op)
+            parent_prec = _prec(parent_op)
+            if not is_left:
                 if child_prec <= parent_prec:
                     return f"({s})"
             else:
@@ -493,8 +500,8 @@ class SwiftBackend(Emitter):
                 left = self._coerce_bool_to_int(expr.left)
                 right = self._coerce_bool_to_int(expr.right)
                 return f"({left} {op} {right})"
-        left = self._wrap_prec(expr.left, op, False)
-        right = self._wrap_prec(expr.right, op, True)
+        left = self._maybe_paren(expr.left, op, is_left=True)
+        right = self._maybe_paren(expr.right, op, is_left=False)
         return f"{left} {op} {right}"
 
     def _emit_string_add(self, expr: BinaryOp) -> str:

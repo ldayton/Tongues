@@ -9,6 +9,7 @@ Error handling:
 - Return-based errors (no setjmp/longjmp)
 - Global error state (parable_parse_error, parable_error_msg)
 - Parse functions return NULL on error
+
 """
 
 from __future__ import annotations
@@ -188,6 +189,45 @@ _C_RESERVED = frozenset(
         "NULL",
     }
 )
+
+# C operator precedence (higher number = tighter binding).
+# From cppreference.com/w/c/language/operator_precedence
+_PRECEDENCE: dict[str, int] = {
+    "||": 1,
+    "&&": 2,
+    "|": 3,
+    "^": 4,
+    "&": 5,
+    "==": 6,
+    "!=": 6,
+    "<": 7,
+    "<=": 7,
+    ">": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+}
+
+
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 11)
+
+
+def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
+    """Determine if a child binary op needs parens inside a parent binary op."""
+    child_prec = _prec(child_op)
+    parent_prec = _prec(parent_op)
+    if child_prec < parent_prec:
+        return True
+    if child_prec == parent_prec and not is_left:
+        # Comparisons are non-associative
+        return child_op in ("==", "!=", "<", ">", "<=", ">=")
+    return False
 
 
 def _safe_name(name: str) -> str:
@@ -3202,6 +3242,15 @@ class CBackend:
         args = ", ".join(self._emit_expr(a) for a in expr.args)
         return f"{type_name}_{method}({args})"
 
+    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
+        """Wrap expression in parens if needed for operator precedence."""
+        if isinstance(expr, BinaryOp):
+            if _needs_parens(expr.op, parent_op, is_left):
+                return f"({self._emit_expr(expr)})"
+        elif isinstance(expr, Ternary):
+            return f"({self._emit_expr(expr)})"
+        return self._emit_expr(expr)
+
     def _emit_expr_BinaryOp(self, expr: BinaryOp) -> str:
         op = expr.op
         # Handle rune-to-char comparisons
@@ -3276,7 +3325,10 @@ class CBackend:
         # Floor division - C integer division already floors
         if op == "//":
             op = "/"
-        return f"({left} {op} {right})"
+        # Use precedence-aware emission for the general case
+        left = self._maybe_paren(expr.left, op, is_left=True)
+        right = self._maybe_paren(expr.right, op, is_left=False)
+        return f"{left} {op} {right}"
 
     def _emit_char_literal(self, char: str) -> str:
         """Emit a single character as a C character literal."""

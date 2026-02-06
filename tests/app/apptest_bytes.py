@@ -76,8 +76,8 @@ def test_bytes_contains() -> None:
     assert b"h" in b"hello"
     assert b"o" in b"hello"
     assert b"" in b"hello"
-    assert not (b"x" in b"hello")
-    assert not (b"Hello" in b"hello")
+    assert b"x" not in b"hello"
+    assert b"Hello" not in b"hello"
 
 
 def test_bytes_slicing() -> None:

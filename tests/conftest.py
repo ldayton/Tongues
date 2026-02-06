@@ -1,5 +1,6 @@
 """Pytest configuration for Tongues test suite."""
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -89,7 +90,7 @@ TARGETS: dict[str, Target] = {
     "python": Target(
         name="python",
         ext=".py",
-        run_cmd=[sys.executable, "{path}"],
+        run_cmd=["uv", "run", "--no-project", "--python", "~=3.12", "python", "{path}"],
         format_cmd=["uvx", "ruff", "format", "--quiet", "{path}"],
     ),
     "javascript": Target(
@@ -192,6 +193,37 @@ TARGETS: dict[str, Target] = {
     ),
 }
 
+PYTHON_TARGET_VERSION = (3, 12)
+
+
+def _get_clean_env() -> dict[str, str]:
+    """Get environment without venv contamination for running target Python."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("VIRTUAL_ENV")}
+    venv_bin = os.environ.get("VIRTUAL_ENV", "")
+    if venv_bin:
+        env["PATH"] = os.pathsep.join(
+            p
+            for p in os.environ.get("PATH", "").split(os.pathsep)
+            if not p.startswith(venv_bin)
+        )
+    return env
+
+
+def _verify_python_target_version() -> None:
+    """Verify Python target uses the expected version."""
+    target = TARGETS["python"]
+    cmd = target.run_cmd[:6] + ["-c", "import sys; print(sys.version_info[:2])"]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, env=_get_clean_env(), cwd="/tmp"
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to check Python target version: {result.stderr}")
+    actual = eval(result.stdout.strip())
+    if actual[0] != PYTHON_TARGET_VERSION[0] or actual[1] != PYTHON_TARGET_VERSION[1]:
+        raise RuntimeError(
+            f"Python target version mismatch: expected {PYTHON_TARGET_VERSION}, got {actual}"
+        )
+
 
 def discover_apptests() -> list[Path]:
     """Find all apptest_*.py files."""
@@ -245,6 +277,11 @@ def discover_codegen_tests() -> list[tuple[str, str, str, str, bool]]:
                 test_id = f"{test_file.stem}/{name}[{lang}]"
                 results.append((test_id, input_code, lang, expected, has_explicit))
     return results
+
+
+def pytest_configure(config):
+    """Verify Python target version at session start."""
+    _verify_python_target_version()
 
 
 def pytest_addoption(parser):
@@ -344,6 +381,14 @@ def compiled(formatted: Path, target: Target) -> Path:
 def executable(compiled: Path, target: Target) -> list[str]:
     """Return the command to execute the test."""
     return target.get_run_command(compiled)
+
+
+@pytest.fixture
+def run_env(target: Target) -> dict[str, str] | None:
+    """Return clean environment for Python target, None for others."""
+    if target.name == "python":
+        return _get_clean_env()
+    return None
 
 
 def transpile_code(source: str, target: str) -> tuple[str | None, str | None]:

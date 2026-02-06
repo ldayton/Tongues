@@ -12,6 +12,10 @@ true ? 1 : 0
 (1 ? 1 : 0);
 --- php
 true ? 1 : 0;
+--- csharp
+true ? 1 : 0;
+--- java
+true ? 1 : 0;
 ---
 
 === ternary with false
@@ -27,6 +31,10 @@ false ? 1 : 0
 --- perl
 (0 ? 1 : 0);
 --- php
+false ? 1 : 0;
+--- csharp
+false ? 1 : 0;
+--- java
 false ? 1 : 0;
 ---
 
@@ -44,6 +52,10 @@ false ? 1 : 0;
 (5 > 3 ? 10 : 20);
 --- php
 5 > 3 ? 10 : 20;
+--- csharp
+5 > 3 ? 10 : 20;
+--- java
+5 > 3 ? 10 : 20;
 ---
 
 === ternary string result
@@ -59,6 +71,10 @@ true ? "yes" : "no"
 --- perl
 (1 ? "yes" : "no");
 --- php
+true ? "yes" : "no";
+--- csharp
+true ? "yes" : "no";
+--- java
 true ? "yes" : "no";
 ---
 
@@ -76,6 +92,10 @@ true ? "yes" : "no";
 (1 < 2 ? 42 : 0);
 --- php
 1 < 2 ? 42 : 0;
+--- csharp
+1 < 2 ? 42 : 0;
+--- java
+1 < 2 ? 42 : 0;
 ---
 
 === nested ternary else
@@ -92,6 +112,10 @@ true ? 1 : false ? 2 : 3
 (1 ? 1 : 0 ? 2 : 3);
 --- php
 true ? 1 : (false ? 2 : 3);
+--- csharp
+true ? 1 : false ? 2 : 3;
+--- java
+true ? 1 : false ? 2 : 3;
 ---
 
 === nested ternary then
@@ -110,6 +134,10 @@ true ? true ? 1 : 2 : 3
 (1 ? (1 ? 1 : 2) : 3);
 --- php
 true ? true ? 1 : 2 : 3;
+--- csharp
+true ? true ? 1 : 2 : 3;
+--- java
+true ? true ? 1 : 2 : 3;
 ---
 
 === ternary with arithmetic
@@ -127,6 +155,10 @@ true ? 1 + 2 : 3 + 4
 --- perl
 (1 ? 1 + 2 : 3 + 4);
 --- php
+true ? 1 + 2 : 3 + 4;
+--- csharp
+true ? 1 + 2 : 3 + 4;
+--- java
 true ? 1 + 2 : 3 + 4;
 ---
 
@@ -158,6 +190,14 @@ function pick(int $a, int $b, bool $useFirst): int
 {
     return $useFirst ? $a : $b;
 }
+--- csharp
+int Pick(int a, int b, bool useFirst) {
+  return useFirst ? a : b;
+}
+--- java
+int pick(int a, int b, boolean useFirst) {
+  return useFirst ? a : b;
+}
 ---
 
 === ternary in expression
@@ -173,6 +213,10 @@ function pick(int $a, int $b, bool $useFirst): int
 --- perl
 1 + (1 ? 2 : 3);
 --- php
+1 + (true ? 2 : 3);
+--- csharp
+1 + (true ? 2 : 3);
+--- java
 1 + (true ? 2 : 3);
 ---
 
@@ -190,6 +234,10 @@ true ? "a" : "b"
 (1 ? "a" : "b");
 --- php
 true ? "a" : "b";
+--- csharp
+true ? "a" : "b";
+--- java
+true ? "a" : "b";
 ---
 
 === chained comparison in ternary
@@ -205,6 +253,10 @@ true ? "a" : "b";
 --- perl
 (1 < 2 && 2 < 3 ? 1 : 0);
 --- php
+1 < 2 && 2 < 3 ? 1 : 0;
+--- csharp
+1 < 2 && 2 < 3 ? 1 : 0;
+--- java
 1 < 2 && 2 < 3 ? 1 : 0;
 ---
 
@@ -222,6 +274,10 @@ true ? "a" : "b";
 (1 == 1 ? "equal" : "not equal");
 --- php
 1 === 1 ? "equal" : "not equal";
+--- csharp
+1 == 1 ? "equal" : "not equal";
+--- java
+1 == 1 ? "equal" : "not equal";
 ---
 
 === ternary with inequality
@@ -238,6 +294,10 @@ true ? "a" : "b";
 (1 != 2 ? "different" : "same");
 --- php
 1 !== 2 ? "different" : "same";
+--- csharp
+1 != 2 ? "different" : "same";
+--- java
+1 != 2 ? "different" : "same";
 ---
 
 === simple if statement
@@ -288,6 +348,20 @@ function check(int $x): int
         return 1;
     }
     return 0;
+}
+--- csharp
+int Check(int x) {
+  if (x > 0) {
+    return 1;
+  }
+  return 0;
+}
+--- java
+int check(int x) {
+  if (x > 0) {
+    return 1;
+  }
+  return 0;
 }
 ---
 
@@ -348,6 +422,22 @@ function check(int $x): int
     {
         return -1;
     }
+}
+--- csharp
+int Check(int x) {
+  if (x > 0) {
+    return 1;
+  } else {
+    return -1;
+  }
+}
+--- java
+int check(int x) {
+  if (x > 0) {
+    return 1;
+  } else {
+    return -1;
+  }
 }
 ---
 
@@ -427,6 +517,26 @@ function classify(int $x): string
             return "zero";
         }
     }
+}
+--- csharp
+string Classify(int x) {
+  if (x > 0) {
+    return "positive";
+  } else if (x < 0) {
+    return "negative";
+  } else {
+    return "zero";
+  }
+}
+--- java
+String classify(int x) {
+  if (x > 0) {
+    return "positive";
+  } else if (x < 0) {
+    return "negative";
+  } else {
+    return "zero";
+  }
 }
 ---
 
@@ -545,6 +655,34 @@ function grade(int $score): string
         }
     }
 }
+--- csharp
+string Grade(int score) {
+  if (score >= 90) {
+    return "A";
+  } else if (score >= 80) {
+    return "B";
+  } else if (score >= 70) {
+    return "C";
+  } else if (score >= 60) {
+    return "D";
+  } else {
+    return "F";
+  }
+}
+--- java
+String grade(int score) {
+  if (score >= 90) {
+    return "A";
+  } else if (score >= 80) {
+    return "B";
+  } else if (score >= 70) {
+    return "C";
+  } else if (score >= 60) {
+    return "D";
+  } else {
+    return "F";
+  }
+}
 ---
 
 === nested if
@@ -635,6 +773,30 @@ function nested(int $x, int $y): int
         return 3;
     }
 }
+--- csharp
+int Nested(int x, int y) {
+  if (x > 0) {
+    if (y > 0) {
+      return 1;
+    } else {
+      return 2;
+    }
+  } else {
+    return 3;
+  }
+}
+--- java
+int nested(int x, int y) {
+  if (x > 0) {
+    if (y > 0) {
+      return 1;
+    } else {
+      return 2;
+    }
+  } else {
+    return 3;
+  }
+}
 ---
 
 === if with and
@@ -685,6 +847,20 @@ function bothPositive(int $x, int $y): bool
         return true;
     }
     return false;
+}
+--- csharp
+bool BothPositive(int x, int y) {
+  if (x > 0 && y > 0) {
+    return true;
+  }
+  return false;
+}
+--- java
+boolean bothPositive(int x, int y) {
+  if (x > 0 && y > 0) {
+    return true;
+  }
+  return false;
 }
 ---
 
@@ -757,6 +933,24 @@ function isZero(int $x): bool
     }
     return false;
 }
+--- csharp
+bool IsZero(int x) {
+  if (!(x > 0)) {
+    if (!(x < 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+--- java
+boolean isZero(int x) {
+  if (!(x > 0)) {
+    if (!(x < 0)) {
+      return true;
+    }
+  }
+  return false;
+}
 ---
 
 === if with chained comparison
@@ -807,6 +1001,20 @@ function inRange(int $x): bool
         return true;
     }
     return false;
+}
+--- csharp
+bool InRange(int x) {
+  if (0 < x && x < 10) {
+    return true;
+  }
+  return false;
+}
+--- java
+boolean inRange(int x) {
+  if (0 < x && x < 10) {
+    return true;
+  }
+  return false;
 }
 ---
 
@@ -885,6 +1093,26 @@ function clamp(int $x): int
         }
     }
     return $result;
+}
+--- csharp
+int Clamp(int x) {
+  int result = x;
+  if (x < 0) {
+    result = 0;
+  } else if (x > 100) {
+    result = 100;
+  }
+  return result;
+}
+--- java
+int clamp(int x) {
+  int result = x;
+  if (x < 0) {
+    result = 0;
+  } else if (x > 100) {
+    result = 100;
+  }
+  return result;
 }
 ---
 
@@ -965,6 +1193,28 @@ function findFirstPositive(?array $nums): int
         $i = $i + 1;
     }
     return -1;
+}
+--- csharp
+int FindFirstPositive(List<int> nums) {
+  int i = 0;
+  while (i < nums.Count) {
+    if (nums[i] > 0) {
+      return nums[i];
+    }
+    i = i + 1;
+  }
+  return -1;
+}
+--- java
+int findFirstPositive(List<Integer> nums) {
+  int i = 0;
+  while (i < nums.size()) {
+    if (nums.get(i) > 0) {
+      return nums.get(i);
+    }
+    i = i + 1;
+  }
+  return -1;
 }
 ---
 
@@ -1068,6 +1318,34 @@ function countPositive(?array $nums): int
     }
     return $count;
 }
+--- csharp
+int CountPositive(List<int> nums) {
+  int count = 0;
+  int i = 0;
+  while (i < nums.Count) {
+    if (nums[i] <= 0) {
+      i = i + 1;
+      continue;
+    }
+    count = count + 1;
+    i = i + 1;
+  }
+  return count;
+}
+--- java
+int countPositive(List<Integer> nums) {
+  int count = 0;
+  int i = 0;
+  while (i < nums.size()) {
+    if (nums.get(i) <= 0) {
+      i = i + 1;
+      continue;
+    }
+    count = count + 1;
+    i = i + 1;
+  }
+  return count;
+}
 ---
 
 === ternary assigns to variable
@@ -1105,6 +1383,16 @@ function pickValue(bool $flag): int
 {
     $x = $flag ? 10 : 20;
     return $x;
+}
+--- csharp
+int PickValue(bool flag) {
+  int x = flag ? 10 : 20;
+  return x;
+}
+--- java
+int pickValue(boolean flag) {
+  int x = flag ? 10 : 20;
+  return x;
 }
 ---
 
@@ -1185,6 +1473,28 @@ function multiCheck(int $a, int $b, int $c): bool
     }
     return false;
 }
+--- csharp
+bool MultiCheck(int a, int b, int c) {
+  if (a > 0) {
+    if (b > 0) {
+      if (c > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+--- java
+boolean multiCheck(int a, int b, int c) {
+  if (a > 0) {
+    if (b > 0) {
+      if (c > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 ---
 
 === early return pattern
@@ -1257,6 +1567,26 @@ function validate(int $x): bool
     }
     return true;
 }
+--- csharp
+bool Validate(int x) {
+  if (x < 0) {
+    return false;
+  }
+  if (x > 100) {
+    return false;
+  }
+  return true;
+}
+--- java
+boolean validate(int x) {
+  if (x < 0) {
+    return false;
+  }
+  if (x > 100) {
+    return false;
+  }
+  return true;
+}
 ---
 
 === guard clause
@@ -1308,6 +1638,20 @@ function process(int $x): int
     }
     return $x * 2;
 }
+--- csharp
+int Process(int x) {
+  if (x == 0) {
+    return 0;
+  }
+  return x * 2;
+}
+--- java
+int process(int x) {
+  if (x == 0) {
+    return 0;
+  }
+  return x * 2;
+}
 ---
 
 === ternary with min
@@ -1324,6 +1668,10 @@ true ? [1, 2].min : 0
 (1 ? (1 < 2 ? 1 : 2) : 0);
 --- php
 true ? min(1, 2) : 0;
+--- csharp
+true ? Math.Min(1, 2) : 0;
+--- java
+true ? Math.min(1, 2) : 0;
 ---
 
 === ternary with max
@@ -1340,6 +1688,10 @@ true ? [1, 2].max : 0
 (1 ? (1 > 2 ? 1 : 2) : 0);
 --- php
 true ? max(1, 2) : 0;
+--- csharp
+true ? Math.Max(1, 2) : 0;
+--- java
+true ? Math.max(1, 2) : 0;
 ---
 
 === ternary float result
@@ -1355,6 +1707,10 @@ true ? 1.5 : 2.5
 --- perl
 (1 ? 1.5 : 2.5);
 --- php
+true ? 1.5 : 2.5;
+--- csharp
+true ? 1.5 : 2.5;
+--- java
 true ? 1.5 : 2.5;
 ---
 
@@ -1415,6 +1771,22 @@ function maybeDouble(int $x, bool $doIt): int
     }
     return $result;
 }
+--- csharp
+int MaybeDouble(int x, bool doIt) {
+  int result = x;
+  if (doIt) {
+    result = x * 2;
+  }
+  return result;
+}
+--- java
+int maybeDouble(int x, boolean doIt) {
+  int result = x;
+  if (doIt) {
+    result = x * 2;
+  }
+  return result;
+}
 ---
 
 === comparison chain in if
@@ -1466,6 +1838,20 @@ function ordered(int $a, int $b, int $c): bool
     }
     return false;
 }
+--- csharp
+bool Ordered(int a, int b, int c) {
+  if (a < b && b < c) {
+    return true;
+  }
+  return false;
+}
+--- java
+boolean ordered(int a, int b, int c) {
+  if (a < b && b < c) {
+    return true;
+  }
+  return false;
+}
 ---
 
 === equality chain
@@ -1516,5 +1902,19 @@ function allEqual(int $a, int $b, int $c): bool
         return true;
     }
     return false;
+}
+--- csharp
+bool AllEqual(int a, int b, int c) {
+  if (a == b && b == c) {
+    return true;
+  }
+  return false;
+}
+--- java
+boolean allEqual(int a, int b, int c) {
+  if (a == b && b == c) {
+    return true;
+  }
+  return false;
 }
 ---

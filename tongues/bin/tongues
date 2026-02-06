@@ -2,8 +2,8 @@
 """Tongues CLI entry point."""
 import sys
 
-if sys.version_info < (3, 14):
-    print("Tongues requires Python 3.14+. You have %d.%d." % sys.version_info[:2], file=sys.stderr)
+if not ((3, 12) <= sys.version_info < (4, 0)):
+    print("Tongues requires Python ~=3.12. You have %d.%d." % sys.version_info[:2], file=sys.stderr)
     sys.exit(1)
 
 from pathlib import Path

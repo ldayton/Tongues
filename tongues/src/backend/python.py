@@ -853,6 +853,9 @@ class PythonBackend:
                 # Cast from float to int needs int() in Python
                 if to_type == Primitive(kind="int") and inner.typ == Primitive(kind="float"):
                     return f"int({self._expr(inner)})"
+                # Cast to float needs float() in Python
+                if to_type == Primitive(kind="float"):
+                    return f"float({self._expr(inner)})"
                 # Most casts in Python are no-ops
                 return self._expr(inner)
             case TypeAssert(expr=inner):

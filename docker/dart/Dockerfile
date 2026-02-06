@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y curl unzip git \
     && curl -sSL "https://storage.googleapis.com/dart-archive/channels/stable/release/3.2.6/sdk/dartsdk-linux-${DART_ARCH}-release.zip" -o /tmp/dart.zip \
     && unzip -q /tmp/dart.zip -d /opt \
     && rm /tmp/dart.zip \
-    && /opt/dart-sdk/bin/dart --version 2>&1 | grep -q "3\.2\.6"
-ENV PATH="/opt/dart-sdk/bin:${PATH}"
+    && /opt/dart-sdk/bin/dart --version 2>&1 | grep -q "3\.2\.6" \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:/opt/dart-sdk/bin:${PATH}"
+RUN uv python install "~=3.12.0"
 WORKDIR /workspace

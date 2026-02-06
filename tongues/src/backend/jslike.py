@@ -935,8 +935,8 @@ class JsLikeBackend:
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op="//", left=left, right=right):
-                left_str = self._expr_with_precedence(left, "/", is_right=False)
-                right_str = self._expr_with_precedence(right, "/", is_right=True)
+                left_str = self._maybe_paren(left, "/", is_left=True)
+                right_str = self._maybe_paren(right, "/", is_left=False)
                 return f"Math.floor({left_str} / {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 return self._binary_expr(op, left, right)
@@ -957,12 +957,12 @@ class JsLikeBackend:
             case UnaryOp(op="*", operand=operand):
                 return self._expr(operand)
             case UnaryOp(op="!", operand=BinaryOp(op="!=", left=left, right=right)):
-                left_str = self._expr_with_precedence(left, "===", is_right=False)
-                right_str = self._expr_with_precedence(right, "===", is_right=True)
+                left_str = self._maybe_paren(left, "===", is_left=True)
+                right_str = self._maybe_paren(right, "===", is_left=False)
                 return f"{left_str} === {right_str}"
             case UnaryOp(op="!", operand=BinaryOp(op="==", left=left, right=right)):
-                left_str = self._expr_with_precedence(left, "!==", is_right=False)
-                right_str = self._expr_with_precedence(right, "!==", is_right=True)
+                left_str = self._maybe_paren(left, "!==", is_left=True)
+                right_str = self._maybe_paren(right, "!==", is_left=False)
                 return f"{left_str} !== {right_str}"
             case UnaryOp(op=op, operand=operand):
                 inner = self._expr(operand)
@@ -1139,8 +1139,8 @@ class JsLikeBackend:
         if op == "**" and isinstance(left, UnaryOp):
             left_str = f"({self._expr(left)})"
         else:
-            left_str = self._expr_with_precedence(left, op, is_right=False)
-        right_str = self._expr_with_precedence(right, op, is_right=True)
+            left_str = self._maybe_paren(left, op, is_left=True)
+        right_str = self._maybe_paren(right, op, is_left=False)
         return f"{left_str} {js_op} {right_str}"
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
@@ -1276,7 +1276,7 @@ class JsLikeBackend:
             return f"{neg}{container_str}.has({item_str})"
         return f"{neg}{container_str}.includes({item_str})"
 
-    def _expr_with_precedence(self, expr: Expr, parent_op: str, is_right: bool) -> str:
+    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Wrap expr in parens if needed based on operator precedence."""
         inner = self._expr(expr)
         if " ?? " in inner and parent_op in ("+", "-", "*", "/", "%"):
@@ -1285,11 +1285,11 @@ class JsLikeBackend:
             return f"({inner})"
         if not isinstance(expr, BinaryOp):
             return inner
-        child_prec = _op_precedence(expr.op)
-        parent_prec = _op_precedence(parent_op)
-        if parent_op == "**" and expr.op == "**" and is_right:
+        child_prec = _prec(expr.op)
+        parent_prec = _prec(parent_op)
+        if parent_op == "**" and expr.op == "**" and not is_left:
             return inner
-        needs_parens = child_prec < parent_prec or (child_prec == parent_prec and is_right)
+        needs_parens = child_prec < parent_prec or (child_prec == parent_prec and not is_left)
         return f"({inner})" if needs_parens else inner
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
@@ -1508,7 +1508,7 @@ def _ends_with_return(body: list[Stmt]) -> bool:
     return bool(body) and isinstance(body[-1], Return)
 
 
-def _op_precedence(op: str) -> int:
+def _prec(op: str) -> int:
     """Return precedence level for binary operator (higher = binds tighter)."""
     match op:
         case "||":

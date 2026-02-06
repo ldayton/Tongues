@@ -1954,6 +1954,9 @@ def lower_expr_Call(
             else:
                 # Already numeric: just cast to int
                 return ir.Cast(expr=args[0], to_type=INT, typ=INT, loc=loc_from_node(node))
+        # Check for float(x) - numeric conversion to float
+        if func_name == "float" and len(args) == 1:
+            return ir.Cast(expr=args[0], to_type=FLOAT, typ=FLOAT, loc=loc_from_node(node))
         # Check for str(n) - int to string conversion
         if func_name == "str" and len(args) == 1:
             arg_type = get_expr_type(node_args[0])
