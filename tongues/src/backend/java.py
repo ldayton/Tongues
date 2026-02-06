@@ -1281,9 +1281,35 @@ class JavaBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
+            case IntLit(value=value, format=fmt):
+                if fmt == "hex":
+                    return f"0x{value:x}"
+                if fmt == "oct":
+                    if value == 0:
+                        return "0"
+                    return f"0{value:o}"
+                if fmt == "bin":
+                    return f"0b{value:b}"
+                # Large decimal literals need L suffix
+                if value > 2147483647 or value < -2147483648:
+                    return f"{value}L"
                 return str(value)
-            case FloatLit(value=value):
+            case FloatLit(value=value, format=fmt):
+                if fmt == "exp":
+                    s = f"{value:e}"
+                    mantissa, exp = s.split("e")
+                    exp_sign = exp[0] if exp[0] in "+-" else ""
+                    exp_val = exp.lstrip("+-").lstrip("0") or "0"
+                    if exp_sign == "+":
+                        exp_sign = ""
+                    if "." in mantissa:
+                        mantissa = mantissa.rstrip("0").rstrip(".")
+                    # If exponent is 0, just return the mantissa
+                    if exp_val == "0":
+                        if "." not in mantissa:
+                            return mantissa + ".0"
+                        return mantissa
+                    return f"{mantissa}e{exp_sign}{exp_val}"
                 s = str(value)
                 if "." not in s and "e" not in s.lower():
                     return s + ".0"
