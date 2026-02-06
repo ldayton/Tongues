@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just fmt lint subset test-codegen-docker
+      - run: just fmt lint subset test-codegen
 
   test:
     runs-on: ubuntu-latest
@@ -33,4 +33,4 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just test-apptests-docker ${{ matrix.lang }}
+      - run: just test-apptests ${{ matrix.lang }}
