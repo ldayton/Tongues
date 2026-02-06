@@ -2,6 +2,7 @@ allow just
 ask just check-docker
 ask just test-docker
 deny uvx ruff "use `just fmt [--fix]` instead"
+deny git stash "don't stash, other claudes are going at the same time"
 
 #---- Langs ----#
 allow docker
@@ -17,3 +18,5 @@ allow python
 allow python3
 allow ruby
 allow tsc
+allow uv
+

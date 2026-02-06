@@ -58,6 +58,7 @@ test-apptests lang:
 # Check local runtime versions against Dockerfile expectations
 versions:
     #!/usr/bin/env bash
+    failed=0
     printf "%-12s %-20s %-20s %s\n" "LANG" "EXPECTED" "LOCAL" "STATUS"
     printf "%-12s %-20s %-20s %s\n" "----" "--------" "-----" "------"
     check() {
@@ -67,6 +68,7 @@ versions:
             status="✅"
         else
             status="❌"
+            failed=1
         fi
         printf "%-12s %-20s %-20s %s\n" "$lang" "$expected" "$local_ver" "$status"
     }
@@ -86,7 +88,7 @@ versions:
     check "swift"      "5.9"     "swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+'"
     check "typescript" "5.3"     "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
     check "zig"        "0.11"    "zig version | grep -oE '[0-9]+\.[0-9]+'"
-    exit 0
+    exit $failed
 
 # Run all tests in Docker
 test: test-codegen \

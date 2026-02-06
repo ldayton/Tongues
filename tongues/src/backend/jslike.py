@@ -6,7 +6,7 @@ for type annotations and language-specific features.
 
 from __future__ import annotations
 
-from src.backend.util import escape_string
+from src.backend.util import escape_string, is_bytes_type
 from src.ir import (
     BOOL,
     INT,
@@ -1057,7 +1057,7 @@ class JsLikeBackend:
         return str(value)
 
     def _index_expr(self, obj: Expr, index: Expr, typ: Type | None) -> str:
-        """Emit index expression. Override for Map handling."""
+        """Emit index expression with Map handling."""
         obj_str = self._expr(obj)
         idx_str = self._expr(index)
         obj_type = obj.typ
@@ -1067,13 +1067,20 @@ class JsLikeBackend:
             and typ.kind in ("int", "byte", "rune")
         ):
             return f"{obj_str}.charCodeAt({idx_str})"
+        if isinstance(obj_type, Map):
+            return f"{obj_str}.get({idx_str})"
         return f"{obj_str}[{idx_str}]"
 
     def _slice_expr(
         self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
     ) -> str:
-        """Emit slice expression. Override for step handling."""
+        """Emit slice expression with step handling."""
         obj_str = self._expr(obj)
+        if step is not None:
+            low_str = self._expr(low) if low else "null"
+            high_str = self._expr(high) if high else "null"
+            step_str = self._expr(step)
+            return f"arrStep({obj_str}, {low_str}, {high_str}, {step_str})"
         if low is None and high is None:
             return f"{obj_str}.slice()"
         elif low is None:
@@ -1085,6 +1092,14 @@ class JsLikeBackend:
 
     def _trim_chars(self, s: Expr, chars: Expr, mode: str) -> str:
         s_str = self._expr(s)
+        if is_bytes_type(s.typ):
+            chars_str = self._expr(chars)
+            if mode == "left":
+                return f"arrLstrip({s_str}, {chars_str})"
+            elif mode == "right":
+                return f"arrRstrip({s_str}, {chars_str})"
+            else:
+                return f"arrStrip({s_str}, {chars_str})"
         if isinstance(chars, StringLit) and chars.value == " \t\n\r":
             method_map = {"left": "trimStart", "right": "trimEnd", "both": "trim"}
             return f"{s_str}.{method_map[mode]}()"
@@ -1102,19 +1117,54 @@ class JsLikeBackend:
         return f"{_camel(func)}({args_str})"
 
     def _join_expr(self, sep: Expr, arr: Expr) -> str:
-        """Emit join expression. Override for bytes handling."""
+        """Emit join expression with bytes handling."""
+        if is_bytes_type(sep.typ) or _is_bytes_list_type(arr.typ):
+            return f"arrJoin({self._expr(arr)}, {self._expr(sep)})"
         return f"{self._expr(arr)}.join({self._expr(sep)})"
 
     def _map_get(self, obj: Expr, key: Expr, default: Expr | None) -> str:
-        """Emit Map.get expression. Override for JS/TS differences."""
+        """Emit Map.get expression with proper null handling."""
         obj_str = self._expr(obj)
         key_str = self._expr(key)
         if default is not None:
-            return f"{obj_str}.get({key_str}) ?? {self._expr(default)}"
+            # Use ternary to distinguish null value from missing key
+            return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
         return f"({obj_str}.get({key_str}) ?? null)"
 
     def _method_call(self, obj: Expr, method: str, args: list[Expr], receiver_type: Type) -> str:
-        """Emit method call. Override for bytes handling."""
+        """Emit method call with bytes handling."""
+        # Handle bytes join (separator is obj, list is first arg)
+        if method == "join" and len(args) == 1 and is_bytes_type(receiver_type):
+            return f"arrJoin({self._expr(args[0])}, {self._expr(obj)})"
+        # Handle bytes list join
+        if method == "join" and len(args) == 1 and _is_bytes_list_type(obj.typ):
+            sep_str = self._expr(args[0]) if args else "[]"
+            return f"arrJoin({self._expr(obj)}, {sep_str})"
+        # Byte array methods
+        if is_bytes_type(receiver_type):
+            obj_str = self._expr(obj)
+            if method == "count" and len(args) == 1:
+                return f"arrCount({obj_str}, {self._expr(args[0])})"
+            if method == "find" and len(args) == 1:
+                return f"arrFind({obj_str}, {self._expr(args[0])})"
+            if method == "startswith" and len(args) == 1:
+                return f"arrStartsWith({obj_str}, {self._expr(args[0])})"
+            if method == "endswith" and len(args) == 1:
+                return f"arrEndsWith({obj_str}, {self._expr(args[0])})"
+            if method == "upper":
+                return f"arrUpper({obj_str})"
+            if method == "lower":
+                return f"arrLower({obj_str})"
+            if method == "strip" and len(args) == 1:
+                return f"arrStrip({obj_str}, {self._expr(args[0])})"
+            if method == "lstrip" and len(args) == 1:
+                return f"arrLstrip({obj_str}, {self._expr(args[0])})"
+            if method == "rstrip" and len(args) == 1:
+                return f"arrRstrip({obj_str}, {self._expr(args[0])})"
+            if method == "split" and len(args) == 1:
+                return f"arrSplit({obj_str}, {self._expr(args[0])})"
+            if method == "replace" and len(args) == 2:
+                return f"arrReplace({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
         args_str = ", ".join(self._expr(a) for a in args)
         js_method = _method_name(method, receiver_type)
         return f"{self._expr(obj)}.{js_method}({args_str})"
@@ -1137,7 +1187,37 @@ class JsLikeBackend:
         return f"({inner_str} != null)"
 
     def _binary_expr(self, op: str, left: Expr, right: Expr) -> str:
-        """Emit binary expression. Override for bytes handling."""
+        """Emit binary expression with bytes handling."""
+        # Handle bytes list comparison
+        if _is_bytes_list_type(left.typ) or _is_bytes_list_type(right.typ):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "==":
+                return f"deepArrEq({left_str}, {right_str})"
+            if op == "!=":
+                return f"!deepArrEq({left_str}, {right_str})"
+        # Handle bytes comparison
+        if is_bytes_type(left.typ) or is_bytes_type(right.typ):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "==":
+                return f"arrEq({left_str}, {right_str})"
+            if op == "!=":
+                return f"!arrEq({left_str}, {right_str})"
+            if op == "<":
+                return f"arrLt({left_str}, {right_str})"
+            if op == "<=":
+                return f"(arrLt({left_str}, {right_str}) || arrEq({left_str}, {right_str}))"
+            if op == ">":
+                return f"arrLt({right_str}, {left_str})"
+            if op == ">=":
+                return f"(arrLt({right_str}, {left_str}) || arrEq({left_str}, {right_str}))"
+            if op == "+":
+                return f"arrConcat({left_str}, {right_str})"
+            if op == "*":
+                if is_bytes_type(left.typ):
+                    return f"arrRepeat({left_str}, {right_str})"
+                return f"arrRepeat({right_str}, {left_str})"
         js_op = _binary_op(op)
         if op in ("==", "!=") and _is_bool_int_compare(left, right):
             js_op = op
@@ -1151,6 +1231,13 @@ class JsLikeBackend:
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
         """Emit cast expression. Override for language-specific handling."""
+        # str(None) -> "None"
+        if (
+            isinstance(inner, NilLit)
+            and isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+        ):
+            return '"None"'
         if (
             isinstance(to_type, Primitive)
             and to_type.kind in ("int", "byte", "rune")
@@ -1280,6 +1367,8 @@ class JsLikeBackend:
         neg = "!" if negated else ""
         if isinstance(container_type, (Set, Map)):
             return f"{neg}{container_str}.has({item_str})"
+        if is_bytes_type(container_type):
+            return f"{neg}arrContains({container_str}, {item_str})"
         return f"{neg}{container_str}.includes({item_str})"
 
     def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
@@ -1550,3 +1639,10 @@ def _prec(op: str) -> int:
             return 11
         case _:
             return 12
+
+
+def _is_bytes_list_type(typ: Type | None) -> bool:
+    """Check if type is a list of byte arrays."""
+    if isinstance(typ, Slice):
+        return is_bytes_type(typ.element)
+    return False

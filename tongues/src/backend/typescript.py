@@ -16,11 +16,12 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _safe_name,
 )
-from src.backend.util import escape_string, ir_contains_call, ir_contains_cast
+from src.backend.util import escape_string, ir_contains_call, ir_contains_cast, ir_has_bytes_ops
 from src.ir import (
     BOOL,
     INT,
     STRING,
+    VOID,
     Array,
     BinaryOp,
     BoolLit,
@@ -30,6 +31,7 @@ from src.ir import (
     Field,
     FloatLit,
     FuncType,
+    Function,
     Index,
     IntLit,
     InterfaceDef,
@@ -46,6 +48,7 @@ from src.ir import (
     Param,
     Pointer,
     Primitive,
+    Return,
     Set,
     SetLit,
     SliceExpr,
@@ -102,6 +105,14 @@ class TsBackend(JsLikeBackend):
         if ir_contains_call(module, "range"):
             self._emit_range_function()
             emitted = True
+        if ir_contains_call(module, "bytes"):
+            self._line(
+                "function bytes(x: number | number[]): number[] { return Array.isArray(x) ? x.slice() : new Array(x).fill(0); }"
+            )
+            emitted = True
+        if ir_has_bytes_ops(module):
+            self._emit_bytes_helpers()
+            emitted = True
         return emitted
 
     def _emit_range_function(self) -> None:
@@ -120,6 +131,177 @@ class TsBackend(JsLikeBackend):
         self.indent -= 1
         self._line("}")
         self._line("return result;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_bytes_helpers(self) -> None:
+        """Emit helper functions for byte array operations."""
+        self._line("function arrEq(a: number[], b: number[]): boolean {")
+        self.indent += 1
+        self._line("if (a.length !== b.length) return false;")
+        self._line("for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrLt(a: number[], b: number[]): boolean {")
+        self.indent += 1
+        self._line("for (let i = 0; i < Math.min(a.length, b.length); i++) {")
+        self.indent += 1
+        self._line("if (a[i] < b[i]) return true;")
+        self._line("if (a[i] > b[i]) return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return a.length < b.length;")
+        self.indent -= 1
+        self._line("}")
+        self._line(
+            "function arrConcat(...arrs: number[][]): number[] { return ([] as number[]).concat(...arrs); }"
+        )
+        self._line("function arrRepeat(a: number[], n: number): number[] {")
+        self.indent += 1
+        self._line("const r: number[] = []; for (let i = 0; i < n; i++) r.push(...a); return r;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrContains(h: number[], n: number[]): boolean {")
+        self.indent += 1
+        self._line("if (n.length === 0) return true;")
+        self._line("outer: for (let i = 0; i <= h.length - n.length; i++) {")
+        self.indent += 1
+        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrFind(h: number[], n: number[]): number {")
+        self.indent += 1
+        self._line("if (n.length === 0) return 0;")
+        self._line("outer: for (let i = 0; i <= h.length - n.length; i++) {")
+        self.indent += 1
+        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;")
+        self._line("return i;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return -1;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrCount(h: number[], n: number[]): number {")
+        self.indent += 1
+        self._line("if (n.length === 0) return 0;")
+        self._line("let c = 0, i = 0;")
+        self._line("while (i <= h.length - n.length) {")
+        self.indent += 1
+        self._line("let m = true;")
+        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) { m = false; break; }")
+        self._line("if (m) { c++; i += n.length; } else { i++; }")
+        self.indent -= 1
+        self._line("}")
+        self._line("return c;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrStartsWith(a: number[], p: number[]): boolean {")
+        self.indent += 1
+        self._line("if (p.length > a.length) return false;")
+        self._line("for (let i = 0; i < p.length; i++) if (a[i] !== p[i]) return false;")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrEndsWith(a: number[], s: number[]): boolean {")
+        self.indent += 1
+        self._line("if (s.length > a.length) return false;")
+        self._line("const o = a.length - s.length;")
+        self._line("for (let i = 0; i < s.length; i++) if (a[o+i] !== s[i]) return false;")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+        self._line(
+            "function arrUpper(a: number[]): number[] { return a.map(b => b >= 97 && b <= 122 ? b - 32 : b); }"
+        )
+        self._line(
+            "function arrLower(a: number[]): number[] { return a.map(b => b >= 65 && b <= 90 ? b + 32 : b); }"
+        )
+        self._line("function arrStrip(a: number[], cs: number[]): number[] {")
+        self.indent += 1
+        self._line("let s = 0, e = a.length;")
+        self._line("while (s < e && cs.includes(a[s])) s++;")
+        self._line("while (e > s && cs.includes(a[e-1])) e--;")
+        self._line("return a.slice(s, e);")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrLstrip(a: number[], cs: number[]): number[] {")
+        self.indent += 1
+        self._line("let s = 0; while (s < a.length && cs.includes(a[s])) s++; return a.slice(s);")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrRstrip(a: number[], cs: number[]): number[] {")
+        self.indent += 1
+        self._line(
+            "let e = a.length; while (e > 0 && cs.includes(a[e-1])) e--; return a.slice(0, e);"
+        )
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrSplit(a: number[], sep: number[]): number[][] {")
+        self.indent += 1
+        self._line("const r: number[][] = [];")
+        self._line("let i = 0;")
+        self._line("while (i <= a.length) {")
+        self.indent += 1
+        self._line("const j = arrFind(a.slice(i), sep);")
+        self._line("if (j === -1) { r.push(a.slice(i)); break; }")
+        self._line("r.push(a.slice(i, i + j)); i += j + sep.length;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return r;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrJoin(arrs: number[][], sep: number[]): number[] {")
+        self.indent += 1
+        self._line("if (arrs.length === 0) return [];")
+        self._line("const r = arrs[0].slice();")
+        self._line("for (let i = 1; i < arrs.length; i++) { r.push(...sep); r.push(...arrs[i]); }")
+        self._line("return r;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function arrReplace(a: number[], old: number[], nw: number[]): number[] {")
+        self.indent += 1
+        self._line("if (old.length === 0) return a.slice();")
+        self._line("const r: number[] = [];")
+        self._line("let i = 0;")
+        self._line("while (i < a.length) {")
+        self.indent += 1
+        self._line("if (arrStartsWith(a.slice(i), old)) { r.push(...nw); i += old.length; }")
+        self._line("else { r.push(a[i]); i++; }")
+        self.indent -= 1
+        self._line("}")
+        self._line("return r;")
+        self.indent -= 1
+        self._line("}")
+        self._line(
+            "function arrStep(a: number[], lo: number | null, hi: number | null, step: number): number[] {"
+        )
+        self.indent += 1
+        self._line("if (lo === null) lo = step > 0 ? 0 : a.length - 1;")
+        self._line("if (hi === null) hi = step > 0 ? a.length : -1;")
+        self._line("const r: number[] = [];")
+        self._line("if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }")
+        self._line("else { for (let i = lo; i > hi; i += step) r.push(a[i]); }")
+        self._line("return r;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function deepArrEq(a: number[][], b: number[][]): boolean {")
+        self.indent += 1
+        self._line("if (a.length !== b.length) return false;")
+        self._line("for (let i = 0; i < a.length; i++) {")
+        self.indent += 1
+        self._line("if (Array.isArray(a[i]) && Array.isArray(b[i])) {")
+        self.indent += 1
+        self._line("if (!arrEq(a[i], b[i])) return false;")
+        self.indent -= 1
+        self._line("} else if (a[i] !== b[i]) return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return true;")
         self.indent -= 1
         self._line("}")
 
@@ -214,6 +396,12 @@ class TsBackend(JsLikeBackend):
     ) -> None:
         self._line(f"const {name}: {elem_type} = {iter_expr}[{index_name}];")
 
+    # --- Function body hooks ---
+
+    def _post_function_body(self, func: Function) -> None:
+        if _is_void_func(func):
+            self._line("return null;")
+
     # --- Exports ---
 
     def _emit_exports(self, symbols: list[str]) -> None:
@@ -275,6 +463,13 @@ class TsBackend(JsLikeBackend):
     # --- Cast ---
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
+        # str(None) -> "None"
+        if (
+            isinstance(inner, NilLit)
+            and isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+        ):
+            return '"None"'
         # float to int: use Math.trunc
         if (
             isinstance(to_type, Primitive)
@@ -371,6 +566,8 @@ class TsBackend(JsLikeBackend):
             case StructRef(name=name):
                 return _safe_name(name)
             case InterfaceRef(name=name):
+                if name == "None":
+                    return "null"
                 return _safe_name(name)
             case Union(name=name, variants=variants):
                 if name:
@@ -410,3 +607,12 @@ def _primitive_type(kind: str) -> str:
             return "void"
         case _:
             raise NotImplementedError(f"Unknown primitive: {kind}")
+
+
+def _is_void_func(func: Function) -> bool:
+    """Check if a function returns void/None and needs implicit return null."""
+    if func.ret != VOID:
+        return False
+    if func.body and isinstance(func.body[-1], Return):
+        return False
+    return True

@@ -84,7 +84,6 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "php",
         "rust",
         "swift",
-        "typescript",
         "zig",
     },
     "apptest_chars": {
@@ -97,7 +96,6 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "lua",
         "perl",
         "php",
-        "ruby",
         "swift",
         "typescript",
         "zig",
@@ -174,10 +172,8 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "lua",
         "perl",
         "php",
-        "ruby",
         "rust",
         "swift",
-        "typescript",
         "zig",
     },
     "apptest_sets": {
