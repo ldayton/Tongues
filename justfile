@@ -57,6 +57,7 @@ test-apptests-docker lang="python":
 # Run all Docker tests (all languages with Docker images)
 test-docker: test-codegen-docker \
     (test-apptests-docker "c") \
+    (test-apptests-docker "csharp") \
     (test-apptests-docker "dart") \
     (test-apptests-docker "go") \
     (test-apptests-docker "java") \
@@ -66,4 +67,7 @@ test-docker: test-codegen-docker \
     (test-apptests-docker "php") \
     (test-apptests-docker "python") \
     (test-apptests-docker "ruby") \
-    (test-apptests-docker "typescript")
+    (test-apptests-docker "rust") \
+    (test-apptests-docker "swift") \
+    (test-apptests-docker "typescript") \
+    (test-apptests-docker "zig")
