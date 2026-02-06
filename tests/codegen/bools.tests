@@ -12,6 +12,10 @@ true
 1;
 --- php
 true;
+--- csharp
+true;
+--- java
+true;
 ---
 
 === false literal
@@ -27,6 +31,10 @@ false
 --- perl
 0;
 --- php
+false;
+--- csharp
+false;
+--- java
 false;
 ---
 
@@ -44,6 +52,10 @@ not true
 !1;
 --- php
 !true;
+--- csharp
+!true;
+--- java
+!true;
 ---
 
 === not false
@@ -59,6 +71,10 @@ not false
 --- perl
 !0;
 --- php
+!false;
+--- csharp
+!false;
+--- java
 !false;
 ---
 
@@ -76,6 +92,10 @@ not not true
 !!1;
 --- php
 !!true;
+--- csharp
+!!true;
+--- java
+!!true;
 ---
 
 === triple not
@@ -91,6 +111,10 @@ not not not true
 --- perl
 !!!1;
 --- php
+!!!true;
+--- csharp
+!!!true;
+--- java
 !!!true;
 ---
 
@@ -108,6 +132,10 @@ true and true
 1 && 1;
 --- php
 true && true;
+--- csharp
+true && true;
+--- java
+true && true;
 ---
 
 === and true false
@@ -123,6 +151,10 @@ true and false
 --- perl
 1 && 0;
 --- php
+true && false;
+--- csharp
+true && false;
+--- java
 true && false;
 ---
 
@@ -140,6 +172,10 @@ false and true
 0 && 1;
 --- php
 false && true;
+--- csharp
+false && true;
+--- java
+false && true;
 ---
 
 === and false false
@@ -155,6 +191,10 @@ false and false
 --- perl
 0 && 0;
 --- php
+false && false;
+--- csharp
+false && false;
+--- java
 false && false;
 ---
 
@@ -172,6 +212,10 @@ true or true
 1 || 1;
 --- php
 true || true;
+--- csharp
+true || true;
+--- java
+true || true;
 ---
 
 === or true false
@@ -187,6 +231,10 @@ true or false
 --- perl
 1 || 0;
 --- php
+true || false;
+--- csharp
+true || false;
+--- java
 true || false;
 ---
 
@@ -204,6 +252,10 @@ false or true
 0 || 1;
 --- php
 false || true;
+--- csharp
+false || true;
+--- java
+false || true;
 ---
 
 === or false false
@@ -219,6 +271,10 @@ false or false
 --- perl
 0 || 0;
 --- php
+false || false;
+--- csharp
+false || false;
+--- java
 false || false;
 ---
 
@@ -236,6 +292,10 @@ not (true and false)
 !(1 && 0);
 --- php
 !(true && false);
+--- csharp
+!(true && false);
+--- java
+!(true && false);
 ---
 
 === not or
@@ -251,6 +311,10 @@ not (true or false)
 --- perl
 !(1 || 0);
 --- php
+!(true || false);
+--- csharp
+!(true || false);
+--- java
 !(true || false);
 ---
 
@@ -268,6 +332,10 @@ true or false and false
 1 || 0 && 0;
 --- php
 true || false && false;
+--- csharp
+true || false && false;
+--- java
+true || false && false;
 ---
 
 === or with parens
@@ -283,6 +351,10 @@ true || false && false;
 --- perl
 (1 || 0) && 0;
 --- php
+(true || false) && false;
+--- csharp
+(true || false) && false;
+--- java
 (true || false) && false;
 ---
 
@@ -300,6 +372,10 @@ true and true and true
 1 && 1 && 1;
 --- php
 true && true && true;
+--- csharp
+true && true && true;
+--- java
+true && true && true;
 ---
 
 === chained or
@@ -315,6 +391,10 @@ false or false or true
 --- perl
 0 || 0 || 1;
 --- php
+false || false || true;
+--- csharp
+false || false || true;
+--- java
 false || false || true;
 ---
 
@@ -332,6 +412,10 @@ true and false or true
 1 && 0 || 1;
 --- php
 true && false || true;
+--- csharp
+true && false || true;
+--- java
+true && false || true;
 ---
 
 === mixed or and
@@ -347,6 +431,10 @@ true or false and true
 --- perl
 1 || 0 && 1;
 --- php
+true || false && true;
+--- csharp
+true || false && true;
+--- java
 true || false && true;
 ---
 
@@ -364,6 +452,10 @@ not true and false
 !1 && 0;
 --- php
 !true && false;
+--- csharp
+!true && false;
+--- java
+!true && false;
 ---
 
 === not with or
@@ -379,6 +471,10 @@ not false or true
 --- perl
 !0 || 1;
 --- php
+!false || true;
+--- csharp
+!false || true;
+--- java
 !false || true;
 ---
 
@@ -398,6 +494,10 @@ not true and false
 !1 && 0;
 --- php
 !true && false;
+--- csharp
+!true && false;
+--- java
+!true && false;
 ---
 
 === parenthesized not or
@@ -416,6 +516,10 @@ not false or true
 !0 || 1;
 --- php
 !false || true;
+--- csharp
+!false || true;
+--- java
+!false || true;
 ---
 
 === comparison produces bool
@@ -431,6 +535,10 @@ not false or true
 --- perl
 1 < 2;
 --- php
+1 < 2;
+--- csharp
+1 < 2;
+--- java
 1 < 2;
 ---
 
@@ -448,6 +556,10 @@ not false or true
 1 == 1;
 --- php
 1 === 1;
+--- csharp
+1 == 1;
+--- java
+1 == 1;
 ---
 
 === inequality produces bool
@@ -464,6 +576,10 @@ not false or true
 1 != 2;
 --- php
 1 !== 2;
+--- csharp
+1 != 2;
+--- java
+1 != 2;
 ---
 
 === comparison and bool
@@ -480,6 +596,10 @@ not false or true
 1 < 2 && 1;
 --- php
 1 < 2 && true;
+--- csharp
+1 < 2 && true;
+--- java
+1 < 2 && true;
 ---
 
 === comparison or bool
@@ -495,6 +615,10 @@ not false or true
 --- perl
 1 > 2 || 1;
 --- php
+1 > 2 || true;
+--- csharp
+1 > 2 || true;
+--- java
 1 > 2 || true;
 ---
 
@@ -514,6 +638,10 @@ not (1 < 2)
 !(1 < 2);
 --- php
 !(1 < 2);
+--- csharp
+!(1 < 2);
+--- java
+!(1 < 2);
 ---
 
 === chained comparison
@@ -529,6 +657,10 @@ not (1 < 2)
 --- perl
 1 < 2 && 2 < 3;
 --- php
+1 < 2 && 2 < 3;
+--- csharp
+1 < 2 && 2 < 3;
+--- java
 1 < 2 && 2 < 3;
 ---
 
@@ -546,6 +678,10 @@ not (1 < 2)
 1 < 3 && 3 < 2;
 --- php
 1 < 3 && 3 < 2;
+--- csharp
+1 < 3 && 3 < 2;
+--- java
+1 < 3 && 3 < 2;
 ---
 
 === comparison chain with eq
@@ -561,6 +697,10 @@ not (1 < 2)
 --- perl
 1 <= 2 && 2 <= 2;
 --- php
+1 <= 2 && 2 <= 2;
+--- csharp
+1 <= 2 && 2 <= 2;
+--- java
 1 <= 2 && 2 <= 2;
 ---
 
@@ -578,6 +718,10 @@ not (1 < 2)
 1 < 2 && 3 < 4;
 --- php
 1 < 2 && 3 < 4;
+--- csharp
+1 < 2 && 3 < 4;
+--- java
+1 < 2 && 3 < 4;
 ---
 
 === or of comparisons
@@ -593,6 +737,10 @@ not (1 < 2)
 --- perl
 1 > 2 || 3 < 4;
 --- php
+1 > 2 || 3 < 4;
+--- csharp
+1 > 2 || 3 < 4;
+--- java
 1 > 2 || 3 < 4;
 ---
 
@@ -612,6 +760,10 @@ not (1 < 2)
 1 < 2 && (3 > 4 || 5 == 5);
 --- php
 1 < 2 && (3 > 4 || 5 === 5);
+--- csharp
+1 < 2 && (3 > 4 || 5 == 5);
+--- java
+1 < 2 && (3 > 4 || 5 == 5);
 ---
 
 === bool in ternary cond
@@ -627,6 +779,10 @@ true ? 1 : 0
 --- perl
 (1 ? 1 : 0);
 --- php
+true ? 1 : 0;
+--- csharp
+true ? 1 : 0;
+--- java
 true ? 1 : 0;
 ---
 
@@ -644,6 +800,10 @@ true ? 1 : 0;
 (1 < 2 ? 1 : 0);
 --- php
 1 < 2 ? 1 : 0;
+--- csharp
+1 < 2 ? 1 : 0;
+--- java
+1 < 2 ? 1 : 0;
 ---
 
 === and in ternary cond
@@ -659,6 +819,10 @@ true && true ? 1 : 0
 --- perl
 (1 && 1 ? 1 : 0);
 --- php
+true && true ? 1 : 0;
+--- csharp
+true && true ? 1 : 0;
+--- java
 true && true ? 1 : 0;
 ---
 
@@ -676,6 +840,10 @@ false || true ? 1 : 0
 (0 || 1 ? 1 : 0);
 --- php
 (false || true) ? 1 : 0;
+--- csharp
+(false || true) ? 1 : 0;
+--- java
+(false || true) ? 1 : 0;
 ---
 
 === bool ternary result
@@ -691,6 +859,10 @@ True if 1 < 2 else False
 --- perl
 (1 < 2 ? 1 : 0);
 --- php
+1 < 2 ? true : false;
+--- csharp
+1 < 2 ? true : false;
+--- java
 1 < 2 ? true : false;
 ---
 
@@ -708,6 +880,10 @@ true ? true : false ? false : true
 (1 ? 1 : 0 ? 0 : 1);
 --- php
 true ? true : (false ? false : true);
+--- csharp
+true ? true : false ? false : true;
+--- java
+true ? true : false ? false : true;
 ---
 
 === bool equality
@@ -724,6 +900,10 @@ true == true
 1 == 1;
 --- php
 true === true;
+--- csharp
+true == true;
+--- java
+true == true;
 ---
 
 === bool inequality
@@ -740,6 +920,10 @@ true ~= false
 1 != 0;
 --- php
 true !== false;
+--- csharp
+true != false;
+--- java
+true != false;
 ---
 
 === bool and comparison
@@ -756,6 +940,10 @@ true and 1 < 2
 1 && 1 < 2;
 --- php
 true && 1 < 2;
+--- csharp
+true && 1 < 2;
+--- java
+true && 1 < 2;
 ---
 
 === bool or comparison
@@ -771,6 +959,10 @@ false or 1 < 2
 --- perl
 0 || 1 < 2;
 --- php
+false || 1 < 2;
+--- csharp
+false || 1 < 2;
+--- java
 false || 1 < 2;
 ---
 
@@ -790,6 +982,10 @@ not (true and (false or true and not false))
 !(1 && (0 || 1 && !0));
 --- php
 !(true && (false || true && !false));
+--- csharp
+!(true && (false || true && !false));
+--- java
+!(true && (false || true && !false));
 ---
 
 === all and
@@ -805,6 +1001,10 @@ true and true and true and true
 --- perl
 1 && 1 && 1 && 1;
 --- php
+true && true && true && true;
+--- csharp
+true && true && true && true;
+--- java
 true && true && true && true;
 ---
 
@@ -822,6 +1022,10 @@ false or false or false or true
 0 || 0 || 0 || 1;
 --- php
 false || false || false || true;
+--- csharp
+false || false || false || true;
+--- java
+false || false || false || true;
 ---
 
 === alternating and or
@@ -837,6 +1041,10 @@ true and false or true and false or true
 --- perl
 1 && 0 || 1 && 0 || 1;
 --- php
+true && false || true && false || true;
+--- csharp
+true && false || true && false || true;
+--- java
 true && false || true && false || true;
 ---
 
@@ -854,6 +1062,10 @@ not (true and false)
 !(1 && 0);
 --- php
 !(true && false);
+--- csharp
+!(true && false);
+--- java
+!(true && false);
 ---
 
 === de morgan or
@@ -869,6 +1081,10 @@ not (true or false)
 --- perl
 !(1 || 0);
 --- php
+!(true || false);
+--- csharp
+!(true || false);
+--- java
 !(true || false);
 ---
 
@@ -888,6 +1104,10 @@ not (true or false)
 1 + 1 < 2 + 1;
 --- php
 1 + 1 < 2 + 1;
+--- csharp
+1 + 1 < 2 + 1;
+--- java
+1 + 1 < 2 + 1;
 ---
 
 === multiple comparisons and
@@ -903,6 +1123,10 @@ not (true or false)
 --- perl
 1 < 2 && 2 < 3 && 3 < 4;
 --- php
+1 < 2 && 2 < 3 && 3 < 4;
+--- csharp
+1 < 2 && 2 < 3 && 3 < 4;
+--- java
 1 < 2 && 2 < 3 && 3 < 4;
 ---
 
@@ -920,6 +1144,10 @@ not (true or false)
 1 > 2 || 2 > 3 || 3 < 4;
 --- php
 1 > 2 || 2 > 3 || 3 < 4;
+--- csharp
+1 > 2 || 2 > 3 || 3 < 4;
+--- java
+1 > 2 || 2 > 3 || 3 < 4;
 ---
 
 === not not not
@@ -935,6 +1163,10 @@ not not not true
 --- perl
 !!!1;
 --- php
+!!!true;
+--- csharp
+!!!true;
+--- java
 !!!true;
 ---
 
@@ -952,6 +1184,10 @@ true == true and false == false
 1 == 1 && 0 == 0;
 --- php
 true === true && false === false;
+--- csharp
+true == true && false == false;
+--- java
+true == true && false == false;
 ---
 
 === comparison chain four
@@ -967,6 +1203,10 @@ true === true && false === false;
 --- perl
 1 < 2 && 2 < 3 && 3 < 4;
 --- php
+1 < 2 && 2 < 3 && 3 < 4;
+--- csharp
+1 < 2 && 2 < 3 && 3 < 4;
+--- java
 1 < 2 && 2 < 3 && 3 < 4;
 ---
 
@@ -984,6 +1224,10 @@ true === true && false === false;
 1 < 2 && 2 <= 2 && 2 < 3;
 --- php
 1 < 2 && 2 <= 2 && 2 < 3;
+--- csharp
+1 < 2 && 2 <= 2 && 2 < 3;
+--- java
+1 < 2 && 2 <= 2 && 2 < 3;
 ---
 
 === comparison chain ge
@@ -999,5 +1243,9 @@ true === true && false === false;
 --- perl
 4 >= 3 && 3 >= 2 && 2 >= 1;
 --- php
+4 >= 3 && 3 >= 2 && 2 >= 1;
+--- csharp
+4 >= 3 && 3 >= 2 && 2 >= 1;
+--- java
 4 >= 3 && 3 >= 2 && 2 >= 1;
 ---

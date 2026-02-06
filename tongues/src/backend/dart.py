@@ -1,4 +1,7 @@
-"""Dart backend: IR → Dart code."""
+"""Dart backend: IR → Dart code.
+
+TODO: _DART_PREC is defined but not yet integrated into BinaryOp emission.
+"""
 
 from __future__ import annotations
 
@@ -213,6 +216,35 @@ _DART_RESERVED = frozenset(
         "Record",
     }
 )
+
+# Dart operator precedence (higher number = tighter binding).
+# From dart.dev/language/operators
+# Dart follows C-style precedence: bitwise ops bind looser than comparisons.
+_DART_PREC: dict[str, int] = {
+    "||": 1,
+    "&&": 2,
+    "==": 3,
+    "!=": 3,
+    "<": 4,
+    "<=": 4,
+    ">": 4,
+    ">=": 4,
+    "|": 5,
+    "^": 6,
+    "&": 7,
+    "<<": 8,
+    ">>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+    "~/": 10,
+}
+
+
+def _dart_prec(op: str) -> int:
+    return _DART_PREC.get(op, 11)
 
 
 def _safe_name(name: str) -> str:

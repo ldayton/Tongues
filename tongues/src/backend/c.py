@@ -9,6 +9,8 @@ Error handling:
 - Return-based errors (no setjmp/longjmp)
 - Global error state (parable_parse_error, parable_error_msg)
 - Parse functions return NULL on error
+
+TODO: _C_PREC is defined but not yet integrated into BinaryOp emission.
 """
 
 from __future__ import annotations
@@ -188,6 +190,33 @@ _C_RESERVED = frozenset(
         "NULL",
     }
 )
+
+# C operator precedence (higher number = tighter binding).
+# From cppreference.com/w/c/language/operator_precedence
+_C_PREC: dict[str, int] = {
+    "||": 1,
+    "&&": 2,
+    "|": 3,
+    "^": 4,
+    "&": 5,
+    "==": 6,
+    "!=": 6,
+    "<": 7,
+    "<=": 7,
+    ">": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+}
+
+
+def _c_prec(op: str) -> int:
+    return _C_PREC.get(op, 11)
 
 
 def _safe_name(name: str) -> str:

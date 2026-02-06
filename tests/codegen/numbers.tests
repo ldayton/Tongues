@@ -12,6 +12,10 @@
 42;
 --- php
 42;
+--- csharp
+42;
+--- java
+42;
 ---
 
 === negative int
@@ -27,6 +31,10 @@
 --- perl
 -7;
 --- php
+-7;
+--- csharp
+-7;
+--- java
 -7;
 ---
 
@@ -44,6 +52,10 @@
 3.14;
 --- php
 3.14;
+--- csharp
+3.14;
+--- java
+3.14;
 ---
 
 === negative float
@@ -59,6 +71,10 @@
 --- perl
 -2.5;
 --- php
+-2.5;
+--- csharp
+-2.5;
+--- java
 -2.5;
 ---
 
@@ -76,6 +92,10 @@
 1 + 2;
 --- php
 1 + 2;
+--- csharp
+1 + 2;
+--- java
+1 + 2;
 ---
 
 === int subtraction
@@ -91,6 +111,10 @@
 --- perl
 5 - 3;
 --- php
+5 - 3;
+--- csharp
+5 - 3;
+--- java
 5 - 3;
 ---
 
@@ -108,6 +132,10 @@
 4 * 5;
 --- php
 4 * 5;
+--- csharp
+4 * 5;
+--- java
+4 * 5;
 ---
 
 === int division
@@ -123,6 +151,10 @@
 --- perl
 7 / 2;
 --- php
+7 / 2;
+--- csharp
+7 / 2;
+--- java
 7 / 2;
 ---
 
@@ -140,6 +172,10 @@ Math.floor(7 / 2);
 int(7 / 2);
 --- php
 intdiv(7, 2);
+--- csharp
+7 / 2;
+--- java
+7 / 2;
 ---
 
 === int modulo
@@ -155,6 +191,10 @@ intdiv(7, 2);
 --- perl
 7 % 3;
 --- php
+7 % 3;
+--- csharp
+7 % 3;
+--- java
 7 % 3;
 ---
 
@@ -172,6 +212,10 @@ intdiv(7, 2);
 1.5 + 2.5;
 --- php
 1.5 + 2.5;
+--- csharp
+1.5 + 2.5;
+--- java
+1.5 + 2.5;
 ---
 
 === float multiplication
@@ -187,6 +231,10 @@ intdiv(7, 2);
 --- perl
 2.0 * 3.5;
 --- php
+2.0 * 3.5;
+--- csharp
+2.0 * 3.5;
+--- java
 2.0 * 3.5;
 ---
 
@@ -204,6 +252,10 @@ intdiv(7, 2);
 1 + 2 + 3;
 --- php
 1 + 2 + 3;
+--- csharp
+1 + 2 + 3;
+--- java
+1 + 2 + 3;
 ---
 
 === chained multiplication
@@ -219,6 +271,10 @@ intdiv(7, 2);
 --- perl
 2 * 3 * 4;
 --- php
+2 * 3 * 4;
+--- csharp
+2 * 3 * 4;
+--- java
 2 * 3 * 4;
 ---
 
@@ -236,6 +292,10 @@ intdiv(7, 2);
 1 + 2 * 3;
 --- php
 1 + 2 * 3;
+--- csharp
+1 + 2 * 3;
+--- java
+1 + 2 * 3;
 ---
 
 === parenthesized expression
@@ -251,6 +311,10 @@ intdiv(7, 2);
 --- perl
 (1 + 2) * 3;
 --- php
+(1 + 2) * 3;
+--- csharp
+(1 + 2) * 3;
+--- java
 (1 + 2) * 3;
 ---
 
@@ -268,6 +332,10 @@ intdiv(7, 2);
 (1 + 2) * (3 - 4);
 --- php
 (1 + 2) * (3 - 4);
+--- csharp
+(1 + 2) * (3 - 4);
+--- java
+(1 + 2) * (3 - 4);
 ---
 
 === comparison less than
@@ -283,6 +351,10 @@ intdiv(7, 2);
 --- perl
 1 < 2;
 --- php
+1 < 2;
+--- csharp
+1 < 2;
+--- java
 1 < 2;
 ---
 
@@ -300,6 +372,10 @@ intdiv(7, 2);
 2 > 1;
 --- php
 2 > 1;
+--- csharp
+2 > 1;
+--- java
+2 > 1;
 ---
 
 === comparison equals
@@ -316,6 +392,10 @@ intdiv(7, 2);
 1 == 1;
 --- php
 1 === 1;
+--- csharp
+1 == 1;
+--- java
+1 == 1;
 ---
 
 === comparison not equals
@@ -332,6 +412,10 @@ intdiv(7, 2);
 1 != 2;
 --- php
 1 !== 2;
+--- csharp
+1 != 2;
+--- java
+1 != 2;
 ---
 
 === comparison less equal
@@ -347,6 +431,10 @@ intdiv(7, 2);
 --- perl
 1 <= 2;
 --- php
+1 <= 2;
+--- csharp
+1 <= 2;
+--- java
 1 <= 2;
 ---
 
@@ -364,6 +452,10 @@ intdiv(7, 2);
 2 >= 1;
 --- php
 2 >= 1;
+--- csharp
+2 >= 1;
+--- java
+2 >= 1;
 ---
 
 === complex arithmetic
@@ -380,6 +472,10 @@ intdiv(7, 2);
 2 * 3 + int(8 / 2) - 7 % 3;
 --- php
 2 * 3 + intdiv(8, 2) - 7 % 3;
+--- csharp
+2 * 3 + 8 / 2 - 7 % 3;
+--- java
+2 * 3 + 8 / 2 - 7 % 3;
 ---
 
 === float division chain
@@ -395,6 +491,10 @@ intdiv(7, 2);
 --- perl
 8.0 / 2.0 / 2.0;
 --- php
+8.0 / 2.0 / 2.0;
+--- csharp
+8.0 / 2.0 / 2.0;
+--- java
 8.0 / 2.0 / 2.0;
 ---
 
@@ -412,6 +512,10 @@ intdiv(7, 2);
 2 ** 3;
 --- php
 2 ** 3;
+--- csharp
+Math.Pow(2, 3);
+--- java
+Math.pow(2, 3);
 ---
 
 === float power
@@ -428,6 +532,10 @@ intdiv(7, 2);
 2.0 ** 0.5;
 --- php
 2.0 ** 0.5;
+--- csharp
+Math.Pow(2.0, 0.5);
+--- java
+Math.pow(2.0, 0.5);
 ---
 
 === unary minus
@@ -443,6 +551,10 @@ intdiv(7, 2);
 --- perl
 -5;
 --- php
+-5;
+--- csharp
+-5;
+--- java
 -5;
 ---
 
@@ -460,6 +572,10 @@ intdiv(7, 2);
 +5;
 --- php
 +5;
+--- csharp
++5;
+--- java
++5;
 ---
 
 === boolean and
@@ -475,6 +591,10 @@ true and false
 --- perl
 1 && 0;
 --- php
+true && false;
+--- csharp
+true && false;
+--- java
 true && false;
 ---
 
@@ -492,6 +612,10 @@ not true
 !1;
 --- php
 !true;
+--- csharp
+!true;
+--- java
+!true;
 ---
 
 === chained comparison
@@ -507,6 +631,10 @@ not true
 --- perl
 1 < 2 && 2 < 3;
 --- php
+1 < 2 && 2 < 3;
+--- csharp
+1 < 2 && 2 < 3;
+--- java
 1 < 2 && 2 < 3;
 ---
 
@@ -524,6 +652,10 @@ not true
 5 & 3;
 --- php
 5 & 3;
+--- csharp
+5 & 3;
+--- java
+5 & 3;
 ---
 
 === bitwise or
@@ -539,6 +671,10 @@ not true
 --- perl
 5 | 3;
 --- php
+5 | 3;
+--- csharp
+5 | 3;
+--- java
 5 | 3;
 ---
 
@@ -556,6 +692,10 @@ not true
 5 ^ 3;
 --- php
 5 ^ 3;
+--- csharp
+5 ^ 3;
+--- java
+5 ^ 3;
 ---
 
 === bitwise not
@@ -571,6 +711,10 @@ not true
 --- perl
 ~5;
 --- php
+~5;
+--- csharp
+~5;
+--- java
 ~5;
 ---
 
@@ -588,6 +732,10 @@ not true
 1 << 4;
 --- php
 1 << 4;
+--- csharp
+1 << 4;
+--- java
+1 << 4;
 ---
 
 === right shift
@@ -603,6 +751,10 @@ not true
 --- perl
 16 >> 2;
 --- php
+16 >> 2;
+--- csharp
+16 >> 2;
+--- java
 16 >> 2;
 ---
 
@@ -620,6 +772,10 @@ true ? 1 : 0
 (1 ? 1 : 0);
 --- php
 true ? 1 : 0;
+--- csharp
+true ? 1 : 0;
+--- java
+true ? 1 : 0;
 ---
 
 === ternary with comparison
@@ -635,6 +791,10 @@ true ? 1 : 0;
 --- perl
 (5 > 3 ? 10 : 20);
 --- php
+5 > 3 ? 10 : 20;
+--- csharp
+5 > 3 ? 10 : 20;
+--- java
 5 > 3 ? 10 : 20;
 ---
 
@@ -652,6 +812,10 @@ true ? 1 : false ? 2 : 3
 (1 ? 1 : 0 ? 2 : 3);
 --- php
 true ? 1 : (false ? 2 : 3);
+--- csharp
+true ? 1 : false ? 2 : 3;
+--- java
+true ? 1 : false ? 2 : 3;
 ---
 
 === power right associative
@@ -668,6 +832,10 @@ true ? 1 : (false ? 2 : 3);
 2 ** 3 ** 2;
 --- php
 2 ** 3 ** 2;
+--- csharp
+Math.Pow(2, Math.Pow(3, 2));
+--- java
+Math.pow(2, Math.pow(3, 2));
 ---
 
 === double negation
@@ -683,6 +851,10 @@ true ? 1 : (false ? 2 : 3);
 --- perl
 - -5;
 --- php
+- -5;
+--- csharp
+- -5;
+--- java
 - -5;
 ---
 
@@ -700,6 +872,10 @@ true ? 1 : (false ? 2 : 3);
 -(1 + 2);
 --- php
 -(1 + 2);
+--- csharp
+-(1 + 2);
+--- java
+-(1 + 2);
 ---
 
 === abs call
@@ -716,6 +892,10 @@ math.abs(-5)
 abs(-5);
 --- php
 abs(-5);
+--- csharp
+Math.Abs(-5);
+--- java
+Math.abs(-5);
 ---
 
 === min call
@@ -732,6 +912,10 @@ math.min(3, 7)
 (3 < 7 ? 3 : 7);
 --- php
 min(3, 7);
+--- csharp
+Math.Min(3, 7);
+--- java
+Math.min(3, 7);
 ---
 
 === max call
@@ -748,6 +932,10 @@ math.max(3, 7)
 (3 > 7 ? 3 : 7);
 --- php
 max(3, 7);
+--- csharp
+Math.Max(3, 7);
+--- java
+Math.max(3, 7);
 ---
 
 === nested min max
@@ -764,6 +952,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 ((1 > 2 ? 1 : 2) < (3 > 4 ? 3 : 4) ? (1 > 2 ? 1 : 2) : (3 > 4 ? 3 : 4));
 --- php
 min(max(1, 2), max(3, 4));
+--- csharp
+Math.Min(Math.Max(1, 2), Math.Max(3, 4));
+--- java
+Math.min(Math.max(1, 2), Math.max(3, 4));
 ---
 
 === arithmetic in comparison
@@ -779,6 +971,10 @@ min(max(1, 2), max(3, 4));
 --- perl
 1 + 2 < 3 + 4;
 --- php
+1 + 2 < 3 + 4;
+--- csharp
+1 + 2 < 3 + 4;
+--- java
 1 + 2 < 3 + 4;
 ---
 
@@ -796,6 +992,10 @@ min(max(1, 2), max(3, 4));
 (1 < 2) + (3 < 4);
 --- php
 (1 < 2 ? 1 : 0) + (3 < 4 ? 1 : 0);
+--- csharp
+(1 < 2 ? 1 : 0) + (3 < 4 ? 1 : 0);
+--- java
+(1 < 2 ? 1 : 0) + (3 < 4 ? 1 : 0);
 ---
 
 === subtraction left associative
@@ -812,6 +1012,10 @@ min(max(1, 2), max(3, 4));
 10 - 3 - 2;
 --- php
 10 - 3 - 2;
+--- csharp
+10 - 3 - 2;
+--- java
+10 - 3 - 2;
 ---
 
 === division left associative
@@ -827,6 +1031,10 @@ min(max(1, 2), max(3, 4));
 --- perl
 24 / 4 / 2;
 --- php
+24 / 4 / 2;
+--- csharp
+24 / 4 / 2;
+--- java
 24 / 4 / 2;
 ---
 
@@ -846,6 +1054,10 @@ min(max(1, 2), max(3, 4));
 (1 + 2) * (3 + 4) / (5 - 6 + 7 * 8);
 --- php
 (1 + 2) * (3 + 4) / (5 - 6 + 7 * 8);
+--- csharp
+(1 + 2) * (3 + 4) / (5 - 6 + 7 * 8);
+--- java
+(1 + 2) * (3 + 4) / (5 - 6 + 7 * 8);
 ---
 
 === mixed int float
@@ -861,6 +1073,10 @@ min(max(1, 2), max(3, 4));
 --- perl
 1 + 2.0 * 3;
 --- php
+1 + 2.0 * 3;
+--- csharp
+1 + 2.0 * 3;
+--- java
 1 + 2.0 * 3;
 ---
 
@@ -878,6 +1094,10 @@ min(max(1, 2), max(3, 4));
 (-2) ** 3;
 --- php
 (-2) ** 3;
+--- csharp
+Math.Pow(-2, 3);
+--- java
+Math.pow(-2, 3);
 ---
 
 === power with negative exponent
@@ -894,6 +1114,10 @@ min(max(1, 2), max(3, 4));
 2 ** -1;
 --- php
 2 ** -1;
+--- csharp
+Math.Pow(2, -1);
+--- java
+Math.pow(2, -1);
 ---
 
 === modulo negative
@@ -909,6 +1133,10 @@ min(max(1, 2), max(3, 4));
 --- perl
 -7 % 3;
 --- php
+-7 % 3;
+--- csharp
+-7 % 3;
+--- java
 -7 % 3;
 ---
 
@@ -926,6 +1154,10 @@ Math.floor(-7 / 3);
 int(-7 / 3);
 --- php
 intdiv(-7, 3);
+--- csharp
+-7 / 3;
+--- java
+-7 / 3;
 ---
 
 === bitwise precedence
@@ -942,6 +1174,10 @@ intdiv(-7, 3);
 1 | 2 & 3;
 --- php
 1 | 2 & 3;
+--- csharp
+1 | 2 & 3;
+--- java
+1 | 2 & 3;
 ---
 
 === shift precedence
@@ -957,6 +1193,10 @@ intdiv(-7, 3);
 --- perl
 1 + 2 << 3;
 --- php
+1 + 2 << 3;
+--- csharp
+1 + 2 << 3;
+--- java
 1 + 2 << 3;
 ---
 
@@ -976,6 +1216,10 @@ intdiv(-7, 3);
 0xff;
 --- php
 0xff;
+--- csharp
+0xff;
+--- java
+0xff;
 ---
 
 === hex uppercase
@@ -993,6 +1237,10 @@ intdiv(-7, 3);
 --- perl
 0xff;
 --- php
+0xff;
+--- csharp
+0xff;
+--- java
 0xff;
 ---
 
@@ -1012,6 +1260,10 @@ intdiv(-7, 3);
 0xabcd;
 --- php
 0xabcd;
+--- csharp
+0xabcd;
+--- java
+0xabcd;
 ---
 
 === hex single digit
@@ -1029,6 +1281,10 @@ intdiv(-7, 3);
 --- perl
 0xf;
 --- php
+0xf;
+--- csharp
+0xf;
+--- java
 0xf;
 ---
 
@@ -1048,6 +1304,10 @@ intdiv(-7, 3);
 0xff;
 --- php
 0xff;
+--- csharp
+0xff;
+--- java
+0xff;
 ---
 
 === hex large
@@ -1065,6 +1325,10 @@ intdiv(-7, 3);
 --- perl
 0xdeadbeef;
 --- php
+0xdeadbeef;
+--- csharp
+0xdeadbeef;
+--- java
 0xdeadbeef;
 ---
 
@@ -1084,6 +1348,10 @@ intdiv(-7, 3);
 0o77;
 --- php
 0o77;
+--- csharp
+63;
+--- java
+077;
 ---
 
 === octal single digit
@@ -1102,6 +1370,10 @@ intdiv(-7, 3);
 0o7;
 --- php
 0o7;
+--- csharp
+7;
+--- java
+07;
 ---
 
 === octal zero
@@ -1120,6 +1392,10 @@ intdiv(-7, 3);
 0o0;
 --- php
 0o0;
+--- csharp
+0;
+--- java
+0;
 ---
 
 === octal large
@@ -1138,6 +1414,10 @@ intdiv(-7, 3);
 0o755;
 --- php
 0o755;
+--- csharp
+493;
+--- java
+0755;
 ---
 
 === binary basic
@@ -1155,6 +1435,10 @@ intdiv(-7, 3);
 --- perl
 0b1010;
 --- php
+0b1010;
+--- csharp
+0b1010;
+--- java
 0b1010;
 ---
 
@@ -1174,6 +1458,10 @@ intdiv(-7, 3);
 0b1;
 --- php
 0b1;
+--- csharp
+0b1;
+--- java
+0b1;
 ---
 
 === binary zero
@@ -1191,6 +1479,10 @@ intdiv(-7, 3);
 --- perl
 0b0;
 --- php
+0b0;
+--- csharp
+0b0;
+--- java
 0b0;
 ---
 
@@ -1210,6 +1502,10 @@ intdiv(-7, 3);
 0b11111111;
 --- php
 0b11111111;
+--- csharp
+0b11111111;
+--- java
+0b11111111;
 ---
 
 === binary with leading zeros
@@ -1227,6 +1523,10 @@ intdiv(-7, 3);
 --- perl
 0b1010;
 --- php
+0b1010;
+--- csharp
+0b1010;
+--- java
 0b1010;
 ---
 
@@ -1246,6 +1546,10 @@ intdiv(-7, 3);
 1.5e10;
 --- php
 1.5e10;
+--- csharp
+1.5e10;
+--- java
+1.5e10;
 ---
 
 === scientific negative exp
@@ -1263,6 +1567,10 @@ intdiv(-7, 3);
 --- perl
 1.5e-10;
 --- php
+1.5e-10;
+--- csharp
+1.5e-10;
+--- java
 1.5e-10;
 ---
 
@@ -1282,6 +1590,10 @@ intdiv(-7, 3);
 1.5e10;
 --- php
 1.5e10;
+--- csharp
+1.5e10;
+--- java
+1.5e10;
 ---
 
 === scientific zero exp
@@ -1299,6 +1611,10 @@ intdiv(-7, 3);
 --- perl
 1.5;
 --- php
+1.5;
+--- csharp
+1.5;
+--- java
 1.5;
 ---
 
@@ -1318,6 +1634,10 @@ intdiv(-7, 3);
 1e10;
 --- php
 1e10;
+--- csharp
+1e10;
+--- java
+1e10;
 ---
 
 === scientific negative coeff
@@ -1335,6 +1655,10 @@ intdiv(-7, 3);
 --- perl
 -1.5e10;
 --- php
+-1.5e10;
+--- csharp
+-1.5e10;
+--- java
 -1.5e10;
 ---
 
@@ -1354,6 +1678,10 @@ intdiv(-7, 3);
 1e-100;
 --- php
 1e-100;
+--- csharp
+1e-100;
+--- java
+1e-100;
 ---
 
 === scientific large number
@@ -1371,6 +1699,10 @@ intdiv(-7, 3);
 --- perl
 1e100;
 --- php
+1e100;
+--- csharp
+1e100;
+--- java
 1e100;
 ---
 
@@ -1390,6 +1722,10 @@ intdiv(-7, 3);
 1.5e10;
 --- php
 1.5e10;
+--- csharp
+1.5e10;
+--- java
+1.5e10;
 ---
 
 === scientific trailing zeros
@@ -1407,6 +1743,10 @@ intdiv(-7, 3);
 --- perl
 1.5e10;
 --- php
+1.5e10;
+--- csharp
+1.5e10;
+--- java
 1.5e10;
 ---
 
@@ -1426,6 +1766,10 @@ intdiv(-7, 3);
 0xff + 1;
 --- php
 0xff + 1;
+--- csharp
+0xff + 1;
+--- java
+0xff + 1;
 ---
 
 === octal in expression
@@ -1444,6 +1788,10 @@ intdiv(-7, 3);
 0o77 * 2;
 --- php
 0o77 * 2;
+--- csharp
+63 * 2;
+--- java
+077 * 2;
 ---
 
 === binary in expression
@@ -1461,6 +1809,10 @@ intdiv(-7, 3);
 --- perl
 0b1010 | 0b101;
 --- php
+0b1010 | 0b101;
+--- csharp
+0b1010 | 0b101;
+--- java
 0b1010 | 0b101;
 ---
 
@@ -1480,6 +1832,10 @@ intdiv(-7, 3);
 1.5e10 + 1.0;
 --- php
 1.5e10 + 1.0;
+--- csharp
+1.5e10 + 1.0;
+--- java
+1.5e10 + 1.0;
 ---
 
 === mixed literal formats
@@ -1498,6 +1854,10 @@ intdiv(-7, 3);
 0xff + 0o77 + 0b1010;
 --- php
 0xff + 0o77 + 0b1010;
+--- csharp
+0xff + 63 + 0b1010;
+--- java
+0xff + 077 + 0b1010;
 ---
 
 === float trailing zeros
@@ -1515,6 +1875,10 @@ intdiv(-7, 3);
 --- perl
 1.0;
 --- php
+1.0;
+--- csharp
+1.0;
+--- java
 1.0;
 ---
 
@@ -1534,6 +1898,10 @@ intdiv(-7, 3);
 3.14;
 --- php
 3.14;
+--- csharp
+3.14;
+--- java
+3.14;
 ---
 
 === float trailing dot
@@ -1551,6 +1919,10 @@ intdiv(-7, 3);
 --- perl
 1.0;
 --- php
+1.0;
+--- csharp
+1.0;
+--- java
 1.0;
 ---
 
@@ -1570,6 +1942,10 @@ intdiv(-7, 3);
 0.5;
 --- php
 0.5;
+--- csharp
+0.5;
+--- java
+0.5;
 ---
 
 === float leading dot small
@@ -1587,6 +1963,10 @@ intdiv(-7, 3);
 --- perl
 0.001;
 --- php
+0.001;
+--- csharp
+0.001;
+--- java
 0.001;
 ---
 
@@ -1606,6 +1986,10 @@ intdiv(-7, 3);
 1.0;
 --- php
 1.0;
+--- csharp
+1.0;
+--- java
+1.0;
 ---
 
 === float zero
@@ -1623,6 +2007,10 @@ intdiv(-7, 3);
 --- perl
 0.0;
 --- php
+0.0;
+--- csharp
+0.0;
+--- java
 0.0;
 ---
 
@@ -1642,6 +2030,10 @@ intdiv(-7, 3);
 -0.0;
 --- php
 -0.0;
+--- csharp
+-0.0;
+--- java
+-0.0;
 ---
 
 === float negative trailing zeros
@@ -1659,6 +2051,10 @@ intdiv(-7, 3);
 --- perl
 -1.0;
 --- php
+-1.0;
+--- csharp
+-1.0;
+--- java
 -1.0;
 ---
 
@@ -1678,6 +2074,10 @@ intdiv(-7, 3);
 -0.5;
 --- php
 -0.5;
+--- csharp
+-0.5;
+--- java
+-0.5;
 ---
 
 === float underscores
@@ -1695,6 +2095,10 @@ intdiv(-7, 3);
 --- perl
 1000000.0;
 --- php
+1000000.0;
+--- csharp
+1000000.0;
+--- java
 1000000.0;
 ---
 
@@ -1714,6 +2118,10 @@ intdiv(-7, 3);
 1000000;
 --- php
 1000000;
+--- csharp
+1000000;
+--- java
+1000000;
 ---
 
 === hex underscores
@@ -1731,6 +2139,10 @@ intdiv(-7, 3);
 --- perl
 0xffff;
 --- php
+0xffff;
+--- csharp
+0xffff;
+--- java
 0xffff;
 ---
 
@@ -1750,6 +2162,10 @@ intdiv(-7, 3);
 0b10101010;
 --- php
 0b10101010;
+--- csharp
+0b10101010;
+--- java
+0b10101010;
 ---
 
 === large int
@@ -1766,6 +2182,10 @@ intdiv(-7, 3);
 999999999999999999999;
 --- php
 999999999999999999999;
+--- csharp
+999999999999999999999;
+--- java
+999999999999999999999L;
 ---
 
 === int conversion
@@ -1781,6 +2201,10 @@ math.floor(3.7)
 --- perl
 int(3.7);
 --- php
+(int)3.7;
+--- csharp
+(int)3.7;
+--- java
 (int)3.7;
 ---
 
@@ -1798,6 +2222,10 @@ float(42)
 42;
 --- php
 (float)42;
+--- csharp
+(double)42;
+--- java
+(double)42;
 ---
 
 === round call
@@ -1814,6 +2242,10 @@ math.floor(3.7 + 0.5)
 int(3.7 + 0.5);
 --- php
 round(3.7);
+--- csharp
+Math.Round(3.7);
+--- java
+Math.round(3.7);
 ---
 
 === round with precision
@@ -1830,6 +2262,10 @@ math.floor(3.14159 * 100 + 0.5) / 100
 int(3.14159 * 100 + 0.5) / 100;
 --- php
 round(3.14159, 2);
+--- csharp
+Math.Round(3.14159, 2);
+--- java
+Math.round(3.14159 * 100.0) / 100.0;
 ---
 
 === divmod call
@@ -1846,6 +2282,10 @@ divmod(17, 5)
 (int(17 / 5), 17 % 5);
 --- php
 [intdiv(17, 5), 17 % 5];
+--- csharp
+(17 / 5, 17 % 5);
+--- java
+new int[]{17 / 5, 17 % 5};
 ---
 
 === pow three arg
@@ -1862,6 +2302,10 @@ pow(2, 10, 1000)
 2 ** 10 % 1000;
 --- php
 2 ** 10 % 1000;
+--- csharp
+(int)Math.Pow(2, 10) % 1000;
+--- java
+(int)Math.pow(2, 10) % 1000;
 ---
 
 === triple negation
@@ -1878,6 +2322,10 @@ pow(2, 10, 1000)
 - - -5;
 --- php
 - - -5;
+--- csharp
+- - -5;
+--- java
+- - -5;
 ---
 
 === bitwise and arithmetic
@@ -1893,6 +2341,10 @@ pow(2, 10, 1000)
 --- perl
 (5 & 3) + 1;
 --- php
+(5 & 3) + 1;
+--- csharp
+(5 & 3) + 1;
+--- java
 (5 & 3) + 1;
 ---
 
@@ -1912,6 +2364,10 @@ pow(2, 10, 1000)
 5 & 3 + 1;
 --- php
 5 & 3 + 1;
+--- csharp
+5 & 3 + 1;
+--- java
+5 & 3 + 1;
 ---
 
 === xor chain
@@ -1927,6 +2383,10 @@ pow(2, 10, 1000)
 --- perl
 1 ^ 2 ^ 3;
 --- php
+1 ^ 2 ^ 3;
+--- csharp
+1 ^ 2 ^ 3;
+--- java
 1 ^ 2 ^ 3;
 ---
 
@@ -1944,6 +2404,10 @@ pow(2, 10, 1000)
 1 << 2 << 1;
 --- php
 1 << 2 << 1;
+--- csharp
+1 << 2 << 1;
+--- java
+1 << 2 << 1;
 ---
 
 === complement of expression
@@ -1959,6 +2423,10 @@ pow(2, 10, 1000)
 --- perl
 ~(1 + 2);
 --- php
+~(1 + 2);
+--- csharp
+~(1 + 2);
+--- java
 ~(1 + 2);
 ---
 
@@ -1976,6 +2444,10 @@ pow(2, 10, 1000)
 2 + 3 % 2;
 --- php
 2 + 3 % 2;
+--- csharp
+2 + 3 % 2;
+--- java
+2 + 3 % 2;
 ---
 
 === floor div precedence
@@ -1992,6 +2464,10 @@ pow(2, 10, 1000)
 2 + int(7 / 3);
 --- php
 2 + intdiv(7, 3);
+--- csharp
+2 + 7 / 3;
+--- java
+2 + 7 / 3;
 ---
 
 === power precedence over multiply
@@ -2008,6 +2484,10 @@ pow(2, 10, 1000)
 2 * 3 ** 2;
 --- php
 2 * 3 ** 2;
+--- csharp
+2 * Math.Pow(3, 2);
+--- java
+2 * Math.pow(3, 2);
 ---
 
 === multiply precedence over add
@@ -2024,6 +2504,10 @@ pow(2, 10, 1000)
 2 ** 3 * 4;
 --- php
 2 ** 3 * 4;
+--- csharp
+Math.Pow(2, 3) * 4;
+--- java
+Math.pow(2, 3) * 4;
 ---
 
 === comparison with bool result used
@@ -2039,6 +2523,10 @@ pow(2, 10, 1000)
 --- perl
 (1 < 2) * 10;
 --- php
+(1 < 2 ? 1 : 0) * 10;
+--- csharp
+(1 < 2 ? 1 : 0) * 10;
+--- java
 (1 < 2 ? 1 : 0) * 10;
 ---
 
@@ -2056,6 +2544,10 @@ math.abs(math.abs(-5) - 10)
 abs(abs(-5) - 10);
 --- php
 abs(abs(-5) - 10);
+--- csharp
+Math.Abs(Math.Abs(-5) - 10);
+--- java
+Math.abs(Math.abs(-5) - 10);
 ---
 
 === bool to int implicit
@@ -2071,6 +2563,10 @@ true + true;
 --- perl
 1 + 1;
 --- php
+(true ? 1 : 0) + (true ? 1 : 0);
+--- csharp
+(true ? 1 : 0) + (true ? 1 : 0);
+--- java
 (true ? 1 : 0) + (true ? 1 : 0);
 ---
 
@@ -2088,6 +2584,10 @@ not (1 < 2)
 !(1 < 2);
 --- php
 !(1 < 2);
+--- csharp
+!(1 < 2);
+--- java
+!(1 < 2);
 ---
 
 === and of comparisons
@@ -2104,6 +2604,10 @@ not (1 < 2)
 1 < 2 && 3 < 4;
 --- php
 1 < 2 && 3 < 4;
+--- csharp
+1 < 2 && 3 < 4;
+--- java
+1 < 2 && 3 < 4;
 ---
 
 === mixed and not
@@ -2119,6 +2623,10 @@ not true and false
 --- perl
 !1 && 0;
 --- php
+!true && false;
+--- csharp
+!true && false;
+--- java
 !true && false;
 ---
 
@@ -2138,6 +2646,10 @@ not true and false
 !1 && 0;
 --- php
 !true && false;
+--- csharp
+!true && false;
+--- java
+!true && false;
 ---
 
 === not of and
@@ -2153,5 +2665,9 @@ not (true and false)
 --- perl
 !(1 && 0);
 --- php
+!(true && false);
+--- csharp
+!(true && false);
+--- java
 !(true && false);
 ---

@@ -2,6 +2,8 @@
 
 Pure syntax emission - no analysis. All type information comes from IR.
 
+TODO: _GO_PREC is defined but not yet integrated into BinaryOp emission.
+
 COMPENSATIONS FOR EARLIER STAGE DEFICIENCIES
 ============================================
 
@@ -156,6 +158,34 @@ from src.ir import (
     VarLV,
     While,
 )
+
+# Go operator precedence (higher number = tighter binding).
+# From go.dev/ref/spec#Operator_precedence
+# Note: Go groups bitwise ops with arithmetic, not with comparisons like C.
+_GO_PREC: dict[str, int] = {
+    "||": 1,
+    "&&": 2,
+    "==": 3,
+    "!=": 3,
+    "<": 3,
+    "<=": 3,
+    ">": 3,
+    ">=": 3,
+    "+": 4,
+    "-": 4,
+    "|": 4,
+    "^": 4,
+    "*": 5,
+    "/": 5,
+    "%": 5,
+    "<<": 5,
+    ">>": 5,
+    "&": 5,
+}
+
+
+def _go_prec(op: str) -> int:
+    return _GO_PREC.get(op, 6)
 
 
 def _needs_deref(arg_type: Type, elem_type: Type) -> bool:
