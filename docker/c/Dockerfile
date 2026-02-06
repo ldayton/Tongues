@@ -1,8 +1,11 @@
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y gcc-13 g++-13 clang-format \
+RUN apt-get update && apt-get install -y gcc-13 g++-13 clang-format curl \
     && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100 \
     && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100 \
     && rm -rf /var/lib/apt/lists/* \
-    && gcc --version | head -1 | grep -q "gcc.* 13\."
+    && gcc --version | head -1 | grep -q "gcc.* 13\." \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+RUN uv python install "~=3.14"
 WORKDIR /workspace
