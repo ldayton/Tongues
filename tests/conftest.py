@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
 # Required versions for each language runtime (must match Dockerfiles)
 _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
     "c": (["gcc", "--version"], r"gcc.* 13\."),
-    "csharp": (["mcs", "--version"], r"5\."),
+    "csharp": (["mcs", "--version"], r"[56]\."),
     "dart": (["dart", "--version"], r"3\.2"),
     "go": (["go", "version"], r"go1\.21"),
     "java": (["java", "--version"], r"21\."),
@@ -77,11 +77,6 @@ from src.backend.zig import ZigBackend
 # Skip specific (apptest, language) combinations that are known to fail.
 # Format: apptest_stem -> set of languages to skip
 _SKIP_LANGS: dict[str, set[str]] = {
-    "apptest_bits": {
-        "csharp",
-        "go",
-        "zig",
-    },
     "apptest_bools": {
         "csharp",
         "go",
@@ -307,7 +302,9 @@ class Target:
     def get_run_command(self, path: Path) -> list[str]:
         """Return the command to run the output file."""
         if self.run_cmd:
-            return [arg.format(path=path) for arg in self.run_cmd]
+            return [
+                arg.format(path=path, out=path.with_suffix("")) for arg in self.run_cmd
+            ]
         # For compiled languages, return the executable path
         return [str(path.with_suffix(""))]
 
@@ -404,7 +401,8 @@ TARGETS: dict[str, Target] = {
     "csharp": Target(
         name="csharp",
         ext=".cs",
-        compile_cmd=["mcs", "-out:{out}", "{path}"],
+        compile_cmd=["mcs", "-out:{out}.exe", "{path}"],
+        run_cmd=["mono", "{out}.exe"],
         format_cmd=["csharpier", "format", "{path}"],
     ),
     "perl": Target(

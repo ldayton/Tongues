@@ -992,6 +992,11 @@ class ZigBackend(Emitter):
             else:
                 right = self._emit_expr(expr.right)
             return f"({left} {op} {right})"
+        # Right shift on comptime_int needs cast to i64 for arithmetic shift
+        if op == ">>" and self._is_comptime_int(expr.left):
+            left = f"@as(i64, {self._emit_expr(expr.left)})"
+            right = self._maybe_paren(expr.right, op, is_left=False)
+            return f"({left} {op} {right})"
         # Bitwise ops on bools
         if op in ("|", "&", "^"):
             l_bool = _is_bool(expr.left)

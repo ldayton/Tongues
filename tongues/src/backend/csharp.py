@@ -226,8 +226,10 @@ class CSharpBackend:
         self._type_switch_binding_rename: dict[str, str] = {}
         self._loop_temp_counter = 0
         self._func_params: set[str] = set()
+        self._func_vars: set[str] = set()  # Local variables with function types
         self._current_break_flag: str | None = None
         self._method_to_interface: dict[str, str] = {}  # method name -> interface name
+        self._function_names: set[str] = set()  # Module-level function names
 
     def emit(self, module: Module) -> str:
         """Emit C# code from IR Module."""
@@ -237,6 +239,7 @@ class CSharpBackend:
         self._hoisted_vars = set()
         self._module_name = module.name
         self._interface_names = {iface.name for iface in module.interfaces}
+        self._function_names = {func.name for func in module.functions}
         self._method_to_interface = {}
         for iface in module.interfaces:
             for m in iface.methods:
@@ -266,6 +269,15 @@ class CSharpBackend:
             self._line("using System;")
             self._line("using System.Collections.Generic;")
             self._line("using System.Linq;")
+            self._line("")
+            # Emit AssertionError class for Python compatibility
+            self._line("public class AssertionError : Exception")
+            self._line("{")
+            self.indent += 1
+            self._line("public AssertionError() : base() { }")
+            self._line("public AssertionError(string message) : base(message) { }")
+            self.indent -= 1
+            self._line("}")
             self._line("")
         if module.constants:
             self._line("public static class Constants")
@@ -417,13 +429,14 @@ class CSharpBackend:
         self._hoisted_vars = set()
         self._declared_vars = {p.name for p in func.params}  # Track all declared vars
         self._object_vars = set()
+        self._func_vars = set()  # Reset function-typed local variables
         self._func_params = {p.name for p in func.params if isinstance(p.typ, FuncType)}
         params = self._params(func.params)
         ret = self._type(func.ret)
         name = _safe_pascal(func.name)
         # Special case: _substring needs clamping to match Python slice semantics
         if func.name == "_substring":
-            self._line(f"{ret} {name}({params}) {{")
+            self._line(f"public static {ret} {name}({params}) {{")
             self.indent += 1
             self._line("int len = s.Length;")
             self._line("int clampedStart = Math.Max(0, Math.Min(start, len));")
@@ -432,7 +445,7 @@ class CSharpBackend:
             self.indent -= 1
             self._line("}")
             return
-        self._line(f"{ret} {name}({params}) {{")
+        self._line(f"public static {ret} {name}({params}) {{")
         self.indent += 1
         if not func.body:
             self._line("throw new NotImplementedException();")
@@ -445,6 +458,7 @@ class CSharpBackend:
         self._hoisted_vars = set()
         self._declared_vars = {p.name for p in func.params}  # Track all declared vars
         self._object_vars = set()
+        self._func_vars = set()  # Reset function-typed local variables
         self._func_params = {p.name for p in func.params if isinstance(p.typ, FuncType)}
         params = self._params(func.params)
         ret = self._type(func.ret)
@@ -512,6 +526,8 @@ class CSharpBackend:
                 self._declared_vars.add(name)
                 if cs_type == "object":
                     self._object_vars.add(name)
+                if isinstance(typ, FuncType):
+                    self._func_vars.add(name)
                 if value is not None:
                     val = self._expr(value)
                     self._line(f"{cs_type} {var_name} = {val};")
@@ -528,7 +544,8 @@ class CSharpBackend:
                     lv = self._lvalue(target)
                     target_name = target.name if isinstance(target, VarLV) else None
                     is_hoisted = target_name and target_name in self._hoisted_vars
-                    if stmt.is_declaration and not is_hoisted:
+                    is_new_var = target_name and target_name not in self._declared_vars
+                    if (stmt.is_declaration or is_new_var) and not is_hoisted:
                         # Prefer decl_typ (unified type from frontend) over value.typ
                         decl_type = stmt.decl_typ if stmt.decl_typ is not None else value.typ
                         cs_type = self._type(decl_type) if decl_type else "object"
@@ -1021,6 +1038,9 @@ class CSharpBackend:
                     name[0].isupper() and "_" in name and name.split("_", 1)[1].isupper()
                 ):
                     return f"Constants.{to_screaming_snake(name)}"
+                # Function references use PascalCase and need Action cast for boxing
+                if name in self._function_names:
+                    return f"(Action){_safe_pascal(name)}"
                 return _safe_name(name)
             case FieldAccess(obj=obj, field=field):
                 obj_str = self._expr(obj)
@@ -1346,12 +1366,20 @@ class CSharpBackend:
             return f"Math.Min({args_str})"
         if func == "max":
             return f"Math.Max({args_str})"
+        if func == "print":
+            return f"Console.WriteLine({args_str})"
         # Pointer boxing not needed in C#
         if func in ("_intPtr", "_int_ptr"):
             return self._expr(args[0])
         # Function-typed parameters are called directly, not via ParableFunctions
         if func in self._func_params:
             return f"{_safe_name(func)}({args_str})"
+        # Function-typed local variables are invoked directly as delegates
+        if func in self._func_vars:
+            return f"{_safe_name(func)}({args_str})"
+        # Local variables that might be callable (e.g., from tuple unpacking)
+        if func in self._declared_vars:
+            return f"((Action){_safe_name(func)})({args_str})"
         func_class = to_pascal(self._module_name) + "Functions"
         return f"{func_class}.{_safe_pascal(func)}({args_str})"
 
