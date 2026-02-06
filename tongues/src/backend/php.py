@@ -15,6 +15,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     Constant,
     Continue,
@@ -48,7 +49,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -216,7 +219,8 @@ def _safe_pascal(name: str) -> str:
 class PhpBackend:
     """Emit PHP 8.1+ code from IR."""
 
-    def __init__(self) -> None:
+    def __init__(self, bare: bool = False) -> None:
+        self.bare = bare
         self.indent = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
@@ -263,25 +267,35 @@ class PhpBackend:
             self.lines.append("")
 
     def _emit_module(self, module: Module) -> None:
-        self._line("<?php")
-        self._line("")
-        self._line("declare(strict_types=1);")
-        self._line("")
+        if not self.bare:
+            self._line("<?php")
+            self._line("")
+            self._line("declare(strict_types=1);")
+            self._line("")
         if module.constants:
             for const in module.constants:
                 self._emit_constant(const)
-            self._line("")
+            if not self.bare:
+                self._line("")
         for iface in module.interfaces:
             self._emit_interface(iface)
-            self._line("")
+            if not self.bare:
+                self._line("")
         for struct in module.structs:
             self._emit_struct(struct)
-            self._line("")
+            if not self.bare:
+                self._line("")
         self._function_names = {func.name for func in module.functions}
         for func in module.functions:
             self._emit_function(func)
-            self._line("")
-        if module.entrypoint:
+            if not self.bare:
+                self._line("")
+        for stmt in module.statements:
+            if self.bare:
+                self._emit_stmt_bare(stmt)
+            else:
+                self._emit_stmt(stmt)
+        if module.entrypoint and not self.bare:
             ep = _safe_name(module.entrypoint.function_name)
             self._line(f"exit({ep}());")
 
@@ -453,6 +467,10 @@ class PhpBackend:
             default = self._default_value(typ) if typ else "null"
             self._line(f"${var_name} = {default};")
             self._hoisted_vars.add(name)
+
+    def _emit_stmt_bare(self, stmt: Stmt) -> None:
+        """Emit a statement for bare mode (no preamble, but keep semicolons for PHP syntax)."""
+        self._emit_stmt(stmt)
 
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:
@@ -752,13 +770,10 @@ class PhpBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
-                return str(value)
-            case FloatLit(value=value):
-                s = str(value)
-                if "." not in s and "e" not in s.lower():
-                    return s + ".0"
-                return s
+            case IntLit(value=value, format=fmt):
+                return self._int_lit(value, fmt)
+            case FloatLit(value=value, format=fmt):
+                return self._float_lit(value, fmt)
             case StringLit(value=value):
                 return f'"{_escape_php_string(value)}"'
             case BoolLit(value=value):
@@ -866,12 +881,7 @@ class PhpBackend:
                 php_op = _binary_op(op, left.typ)
                 left_str = self._maybe_paren(left, php_op, is_left=True)
                 right_str = self._maybe_paren(right, php_op, is_left=False)
-                result = f"{left_str} {php_op} {right_str}"
-                if op in ("&", "|", "^") or (
-                    isinstance(left, BinaryOp) and left.op in ("&", "|", "^")
-                ):
-                    return f"({result})"
-                return result
+                return f"{left_str} {php_op} {right_str}"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)
             case UnaryOp(op="*", operand=operand):
@@ -887,9 +897,34 @@ class PhpBackend:
                     inner = f"({inner})"
                 return f"!{inner}"
             case UnaryOp(op=op, operand=operand):
+                # Wrap binary ops in parens for unary operators
+                if op in ("-", "~") and isinstance(operand, BinaryOp):
+                    return f"{op}({self._expr(operand)})"
+                # Add space between consecutive minus signs to avoid --
+                if op == "-" and isinstance(operand, UnaryOp) and operand.op == "-":
+                    return f"{op} {self._expr(operand)}"
                 return f"{op}{self._expr(operand)}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
-                return f"({self._expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
+                # Wrap logical ops in condition since || has lower precedence than ?:
+                cond_str = self._cond_expr(cond)
+                # PHP 8+ requires parens for nested ternaries
+                if isinstance(else_expr, Ternary):
+                    else_str = f"({self._expr(else_expr)})"
+                else:
+                    else_str = self._expr(else_expr)
+                return f"{cond_str} ? {self._expr(then_expr)} : {else_str}"
+            case ChainedCompare(operands=operands, ops=ops):
+                parts = []
+                for i, op in enumerate(ops):
+                    left_str = self._expr(operands[i])
+                    right_str = self._expr(operands[i + 1])
+                    php_op = _binary_op(op, operands[i].typ)
+                    parts.append(f"{left_str} {php_op} {right_str}")
+                return " && ".join(parts)
+            case MinExpr(left=left, right=right):
+                return f"min({self._expr(left)}, {self._expr(right)})"
+            case MaxExpr(left=left, right=right):
+                return f"max({self._expr(left)}, {self._expr(right)})"
             case Cast(expr=inner, to_type=to_type):
                 return self._cast(inner, to_type)
             case TypeAssert(expr=inner, asserted=asserted):
@@ -982,6 +1017,32 @@ class PhpBackend:
             return f"min({args_str})"
         if func == "max":
             return f"max({args_str})"
+        if func == "int":
+            arg_str = self._expr(args[0])
+            # No parens for simple values
+            if args[0].__class__.__name__ in ("IntLit", "FloatLit", "Name"):
+                return f"(int){arg_str}"
+            return f"(int)({arg_str})"
+        if func == "float":
+            arg_str = self._expr(args[0])
+            # No parens for simple values
+            if args[0].__class__.__name__ in ("IntLit", "FloatLit", "Name"):
+                return f"(float){arg_str}"
+            return f"(float)({arg_str})"
+        if func == "round":
+            if len(args) == 1:
+                return f"round({self._expr(args[0])})"
+            return f"round({args_str})"
+        if func == "divmod":
+            a, b = self._expr(args[0]), self._expr(args[1])
+            return f"[intdiv({a}, {b}), {a} % {b}]"
+        if func == "pow":
+            if len(args) == 2:
+                base, exp = self._expr(args[0]), self._expr(args[1])
+                return f"{base} ** {exp}"
+            # pow(base, exp, mod)
+            base, exp, mod = [self._expr(a) for a in args]
+            return f"{base} ** {exp} % {mod}"
         safe_func = _safe_name(func)
         if func in self._callable_params or func not in self._function_names:
             return f"${safe_func}({args_str})"
@@ -1136,9 +1197,9 @@ class PhpBackend:
                 inner_type = inner.typ
                 if isinstance(inner_type, Primitive) and inner_type.kind in ("byte", "rune"):
                     return f"mb_ord({inner_str})"
-                return f"(int)({inner_str})"
+                return f"(int){inner_str}"
             if to_type.kind == "float":
-                return f"(float)({inner_str})"
+                return f"(float){inner_str}"
             if to_type.kind == "bool":
                 return f"(bool)({inner_str})"
             if to_type.kind == "string":
@@ -1289,12 +1350,51 @@ class PhpBackend:
             case _:
                 return "null"
 
+    def _int_lit(self, value: int, fmt: str | None) -> str:
+        """Format integer literal, preserving hex/oct/bin format."""
+        if fmt == "hex":
+            return hex(value)
+        if fmt == "oct":
+            return f"0o{oct(value)[2:]}"
+        if fmt == "bin":
+            return f"0b{bin(value)[2:]}"
+        return str(value)
+
+    def _float_lit(self, value: float, fmt: str | None) -> str:
+        """Format float literal, preserving scientific notation."""
+        if fmt == "exp":
+            return f"{value:g}".replace("e+", "e")
+        s = str(value)
+        if "." not in s and "e" not in s.lower():
+            return s + ".0"
+        return s
+
+    def _cond_expr(self, expr: Expr) -> str:
+        """Emit condition expression, wrapping || in parens since it's lower precedence than ?: in PHP."""
+        match expr:
+            case BinaryOp(op=op) if op in ("or", "||"):
+                return f"({self._expr(expr)})"
+            case _:
+                return self._expr(expr)
+
+    def _expr_no_outer_paren(self, expr: Expr) -> str:
+        """Emit expression (PHP 8+ always requires parens for nested ternaries)."""
+        return self._expr(expr)
+
     def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Wrap expression in parens if needed for operator precedence."""
+        # Convert bool to int for arithmetic operations
+        arithmetic_ops = {"+", "-", "*", "/", "%", "**", "<<", ">>"}
+        if parent_op in arithmetic_ops and expr.typ == BOOL:
+            inner = self._expr(expr)
+            return f"({inner} ? 1 : 0)"
         match expr:
             case BinaryOp(op=child_op):
                 if _needs_parens(child_op, parent_op, is_left):
                     return f"({self._expr(expr)})"
+            case UnaryOp(op="-") if parent_op == "**" and is_left:
+                # Wrap negative base in power: (-2) ** 3
+                return f"({self._expr(expr)})"
             case Ternary():
                 return f"({self._expr(expr)})"
         return self._expr(expr)
@@ -1377,6 +1477,8 @@ _PRECEDENCE = {
     ">": 9,
     "<=": 9,
     ">=": 9,
+    "<<": 10,
+    ">>": 10,
     "+": 11,
     "-": 11,
     ".": 11,
@@ -1384,6 +1486,7 @@ _PRECEDENCE = {
     "/": 12,
     "%": 12,
     "//": 12,
+    "**": 13,
 }
 
 

@@ -346,7 +346,7 @@ def executable(compiled: Path, target: Target) -> list[str]:
     return target.get_run_command(compiled)
 
 
-def transpile_code(source: str, target: str) -> tuple[str | None, str | None]:
+def transpile_code(source: str, target: str, bare: bool = False) -> tuple[str | None, str | None]:
     """Transpile source to target language. Returns (output, error)."""
     ast_dict = parse(source)
     result = verify_subset(ast_dict)
@@ -363,7 +363,10 @@ def transpile_code(source: str, target: str) -> tuple[str | None, str | None]:
     backend_cls = BACKENDS.get(target)
     if backend_cls is None:
         return (None, f"unknown target: {target}")
-    be = backend_cls()
+    if bare and target in ("perl", "php"):
+        be = backend_cls(bare=True)
+    else:
+        be = backend_cls()
     code = be.emit(module)
     return (code, None)
 
@@ -371,7 +374,7 @@ def transpile_code(source: str, target: str) -> tuple[str | None, str | None]:
 @pytest.fixture
 def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
     """Transpile codegen input to target language."""
-    output, err = transpile_code(codegen_input, codegen_lang)
+    output, err = transpile_code(codegen_input, codegen_lang, bare=True)
     if err is not None:
         pytest.fail(f"Transpile error: {err}")
     if output is None:

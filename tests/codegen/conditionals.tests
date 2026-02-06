@@ -8,6 +8,10 @@ true ? 1 : 0;
 true ? 1 : 0
 --- lua
 (true and 1 or 0)
+--- perl
+(1 ? 1 : 0)
+--- php
+true ? 1 : 0;
 ---
 
 === ternary with false
@@ -20,6 +24,10 @@ false ? 1 : 0;
 false ? 1 : 0
 --- lua
 (false and 1 or 0)
+--- perl
+(0 ? 1 : 0)
+--- php
+false ? 1 : 0;
 ---
 
 === ternary comparison condition
@@ -32,6 +40,10 @@ false ? 1 : 0
 5 > 3 ? 10 : 20
 --- lua
 (5 > 3 and 10 or 20)
+--- perl
+(5 > 3 ? 10 : 20)
+--- php
+5 > 3 ? 10 : 20;
 ---
 
 === ternary string result
@@ -44,6 +56,10 @@ true ? "yes" : "no";
 true ? "yes" : "no"
 --- lua
 (true and "yes" or "no")
+--- perl
+(1 ? "yes" : "no")
+--- php
+true ? "yes" : "no";
 ---
 
 === ternary int result
@@ -56,6 +72,10 @@ true ? "yes" : "no"
 1 < 2 ? 42 : 0
 --- lua
 (1 < 2 and 42 or 0)
+--- perl
+(1 < 2 ? 42 : 0)
+--- php
+1 < 2 ? 42 : 0;
 ---
 
 === nested ternary else
@@ -68,6 +88,10 @@ true ? 1 : false ? 2 : 3;
 true ? 1 : false ? 2 : 3
 --- lua
 (true and 1 or (false and 2 or 3))
+--- perl
+(1 ? 1 : 0 ? 2 : 3)
+--- php
+true ? 1 : (false ? 2 : 3);
 ---
 
 === nested ternary then
@@ -82,6 +106,10 @@ true ? true ? 1 : 2 : 3;
 true ? true ? 1 : 2 : 3
 --- lua
 (true and (true and 1 or 2) or 3)
+--- perl
+(1 ? (1 ? 1 : 2) : 3)
+--- php
+true ? (true ? 1 : 2) : 3;
 ---
 
 === ternary with arithmetic
@@ -96,6 +124,10 @@ true ? 1 + 2 : 3 + 4;
 true ? 1 + 2 : 3 + 4
 --- lua
 (true and 1 + 2 or 3 + 4)
+--- perl
+(1 ? 1 + 2 : 3 + 4)
+--- php
+true ? 1 + 2 : 3 + 4;
 ---
 
 === ternary with variables
@@ -117,6 +149,14 @@ end
 function pick(a, b, use_first)
   return (use_first and a or b)
 end
+--- perl
+sub pick ($a, $b, $use_first) {
+    return ($use_first ? $a : $b);
+}
+--- php
+function pick($a, $b, $use_first) {
+    return $use_first ? $a : $b;
+}
 ---
 
 === ternary in expression
@@ -129,6 +169,10 @@ end
 1 + (true ? 2 : 3)
 --- lua
 1 + (true and 2 or 3)
+--- perl
+1 + (1 ? 2 : 3)
+--- php
+1 + (true ? 2 : 3);
 ---
 
 === ternary both sides same type
@@ -141,6 +185,10 @@ true ? "a" : "b";
 true ? "a" : "b"
 --- lua
 (true and "a" or "b")
+--- perl
+(1 ? "a" : "b")
+--- php
+true ? "a" : "b";
 ---
 
 === chained comparison in ternary
@@ -153,6 +201,10 @@ true ? "a" : "b"
 1 < 2 && 2 < 3 ? 1 : 0
 --- lua
 (1 < 2 and 2 < 3 and 1 or 0)
+--- perl
+(1 < 2 && 2 < 3 ? 1 : 0)
+--- php
+1 < 2 && 2 < 3 ? 1 : 0;
 ---
 
 === ternary with equality
@@ -165,6 +217,10 @@ true ? "a" : "b"
 1 == 1 ? "equal" : "not equal"
 --- lua
 (1 == 1 and "equal" or "not equal")
+--- perl
+(1 == 1 ? "equal" : "not equal")
+--- php
+1 === 1 ? "equal" : "not equal";
 ---
 
 === ternary with inequality
@@ -177,6 +233,10 @@ true ? "a" : "b"
 1 != 2 ? "different" : "same"
 --- lua
 (1 ~= 2 and "different" or "same")
+--- perl
+(1 != 2 ? "different" : "same")
+--- php
+1 !== 2 ? "different" : "same";
 ---
 
 === simple if statement
@@ -212,6 +272,20 @@ function check(x)
   end
   return 0
 end
+--- perl
+sub check ($x) {
+    if ($x > 0) {
+        return 1;
+    }
+    return 0;
+}
+--- php
+function check($x) {
+    if ($x > 0) {
+        return 1;
+    }
+    return 0;
+}
 ---
 
 === if else statement
@@ -252,6 +326,22 @@ function check(x)
     return -1
   end
 end
+--- perl
+sub check ($x) {
+    if ($x > 0) {
+        return 1;
+    } else {
+        return -1;
+    }
+}
+--- php
+function check($x) {
+    if ($x > 0) {
+        return 1;
+    } else {
+        return -1;
+    }
+}
 ---
 
 === if elif else
@@ -302,6 +392,26 @@ function classify(x)
     return "zero"
   end
 end
+--- perl
+sub classify ($x) {
+    if ($x > 0) {
+        return "positive";
+    } elsif ($x < 0) {
+        return "negative";
+    } else {
+        return "zero";
+    }
+}
+--- php
+function classify($x) {
+    if ($x > 0) {
+        return "positive";
+    } elseif ($x < 0) {
+        return "negative";
+    } else {
+        return "zero";
+    }
+}
 ---
 
 === multiple elif
@@ -372,6 +482,34 @@ function grade(score)
     return "F"
   end
 end
+--- perl
+sub grade ($score) {
+    if ($score >= 90) {
+        return "A";
+    } elsif ($score >= 80) {
+        return "B";
+    } elsif ($score >= 70) {
+        return "C";
+    } elsif ($score >= 60) {
+        return "D";
+    } else {
+        return "F";
+    }
+}
+--- php
+function grade($score) {
+    if ($score >= 90) {
+        return "A";
+    } elseif ($score >= 80) {
+        return "B";
+    } elseif ($score >= 70) {
+        return "C";
+    } elseif ($score >= 60) {
+        return "D";
+    } else {
+        return "F";
+    }
+}
 ---
 
 === nested if
@@ -431,6 +569,30 @@ function nested(x, y)
     return 3
   end
 end
+--- perl
+sub nested ($x, $y) {
+    if ($x > 0) {
+        if ($y > 0) {
+            return 1;
+        } else {
+            return 2;
+        }
+    } else {
+        return 3;
+    }
+}
+--- php
+function nested($x, $y) {
+    if ($x > 0) {
+        if ($y > 0) {
+            return 1;
+        } else {
+            return 2;
+        }
+    } else {
+        return 3;
+    }
+}
 ---
 
 === if with and
@@ -466,6 +628,20 @@ function both_positive(x, y)
   end
   return false
 end
+--- perl
+sub both_positive ($x, $y) {
+    if ($x > 0 && $y > 0) {
+        return 1;
+    }
+    return 0;
+}
+--- php
+function both_positive($x, $y) {
+    if ($x > 0 && $y > 0) {
+        return true;
+    }
+    return false;
+}
 ---
 
 === if with not
@@ -516,6 +692,24 @@ function is_zero(x)
   end
   return false
 end
+--- perl
+sub is_zero ($x) {
+    if (!($x > 0)) {
+        if (!($x < 0)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+--- php
+function is_zero($x) {
+    if (!($x > 0)) {
+        if (!($x < 0)) {
+            return true;
+        }
+    }
+    return false;
+}
 ---
 
 === if with chained comparison
@@ -551,6 +745,20 @@ function in_range(x)
   end
   return false
 end
+--- perl
+sub in_range ($x) {
+    if (0 < $x && $x < 10) {
+        return 1;
+    }
+    return 0;
+}
+--- php
+function in_range($x) {
+    if (0 < $x && $x < 10) {
+        return true;
+    }
+    return false;
+}
 ---
 
 === if modifies variable
@@ -602,6 +810,26 @@ function clamp(x)
   end
   return result
 end
+--- perl
+sub clamp ($x) {
+    my $result = $x;
+    if ($x < 0) {
+        $result = 0;
+    } elsif ($x > 100) {
+        $result = 100;
+    }
+    return $result;
+}
+--- php
+function clamp($x) {
+    $result = $x;
+    if ($x < 0) {
+        $result = 0;
+    } elseif ($x > 100) {
+        $result = 100;
+    }
+    return $result;
+}
 ---
 
 === if with break
@@ -657,6 +885,28 @@ function find_first_positive(nums)
   end
   return -1
 end
+--- perl
+sub find_first_positive ($nums) {
+    my $i = 0;
+    while ($i < scalar(@{$nums})) {
+        if ($nums->[$i] > 0) {
+            return $nums->[$i];
+        }
+        $i = $i + 1;
+    }
+    return -1;
+}
+--- php
+function find_first_positive($nums) {
+    $i = 0;
+    while ($i < count($nums)) {
+        if ($nums[$i] > 0) {
+            return $nums[$i];
+        }
+        $i = $i + 1;
+    }
+    return -1;
+}
 ---
 
 === if with continue
@@ -728,6 +978,34 @@ function count_positive(nums)
   end
   return count
 end
+--- perl
+sub count_positive ($nums) {
+    my $count = 0;
+    my $i = 0;
+    while ($i < scalar(@{$nums})) {
+        if ($nums->[$i] <= 0) {
+            $i = $i + 1;
+            next;
+        }
+        $count = $count + 1;
+        $i = $i + 1;
+    }
+    return $count;
+}
+--- php
+function count_positive($nums) {
+    $count = 0;
+    $i = 0;
+    while ($i < count($nums)) {
+        if ($nums[$i] <= 0) {
+            $i = $i + 1;
+            continue;
+        }
+        $count = $count + 1;
+        $i = $i + 1;
+    }
+    return $count;
+}
 ---
 
 === ternary assigns to variable
@@ -755,6 +1033,16 @@ function pick_value(flag)
   x = (flag and 10 or 20)
   return x
 end
+--- perl
+sub pick_value ($flag) {
+    my $x = ($flag ? 10 : 20);
+    return $x;
+}
+--- php
+function pick_value($flag) {
+    $x = $flag ? 10 : 20;
+    return $x;
+}
 ---
 
 === multiple conditions same block
@@ -808,6 +1096,28 @@ function multi_check(a, b, c)
   end
   return false
 end
+--- perl
+sub multi_check ($a, $b, $c) {
+    if ($a > 0) {
+        if ($b > 0) {
+            if ($c > 0) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+--- php
+function multi_check($a, $b, $c) {
+    if ($a > 0) {
+        if ($b > 0) {
+            if ($c > 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 ---
 
 === early return pattern
@@ -857,6 +1167,26 @@ function validate(x)
   end
   return true
 end
+--- perl
+sub validate ($x) {
+    if ($x < 0) {
+        return 0;
+    }
+    if ($x > 100) {
+        return 0;
+    }
+    return 1;
+}
+--- php
+function validate($x) {
+    if ($x < 0) {
+        return false;
+    }
+    if ($x > 100) {
+        return false;
+    }
+    return true;
+}
 ---
 
 === guard clause
@@ -892,6 +1222,20 @@ function process(x)
   end
   return x * 2
 end
+--- perl
+sub process ($x) {
+    if ($x == 0) {
+        return 0;
+    }
+    return $x * 2;
+}
+--- php
+function process($x) {
+    if ($x === 0) {
+        return 0;
+    }
+    return $x * 2;
+}
 ---
 
 === ternary with min
@@ -904,6 +1248,10 @@ true ? Math.min(1, 2) : 0;
 true ? [1, 2].min : 0
 --- lua
 (true and math.min(1, 2) or 0)
+--- perl
+(1 ? (1 < 2 ? 1 : 2) : 0)
+--- php
+true ? min(1, 2) : 0;
 ---
 
 === ternary with max
@@ -916,6 +1264,10 @@ true ? Math.max(1, 2) : 0;
 true ? [1, 2].max : 0
 --- lua
 (true and math.max(1, 2) or 0)
+--- perl
+(1 ? (1 > 2 ? 1 : 2) : 0)
+--- php
+true ? max(1, 2) : 0;
 ---
 
 === ternary float result
@@ -928,6 +1280,10 @@ true ? 1.5 : 2.5;
 true ? 1.5 : 2.5
 --- lua
 (true and 1.5 or 2.5)
+--- perl
+(1 ? 1.5 : 2.5)
+--- php
+true ? 1.5 : 2.5;
 ---
 
 === if statement empty else
@@ -969,6 +1325,22 @@ function maybe_double(x, do_it)
   end
   return result
 end
+--- perl
+sub maybe_double ($x, $do_it) {
+    my $result = $x;
+    if ($do_it) {
+        $result = $x * 2;
+    }
+    return $result;
+}
+--- php
+function maybe_double($x, $do_it) {
+    $result = $x;
+    if ($do_it) {
+        $result = $x * 2;
+    }
+    return $result;
+}
 ---
 
 === comparison chain in if
@@ -1004,6 +1376,20 @@ function ordered(a, b, c)
   end
   return false
 end
+--- perl
+sub ordered ($a, $b, $c) {
+    if ($a < $b && $b < $c) {
+        return 1;
+    }
+    return 0;
+}
+--- php
+function ordered($a, $b, $c) {
+    if ($a < $b && $b < $c) {
+        return true;
+    }
+    return false;
+}
 ---
 
 === equality chain
@@ -1039,4 +1425,18 @@ function all_equal(a, b, c)
   end
   return false
 end
+--- perl
+sub all_equal ($a, $b, $c) {
+    if ($a == $b && $b == $c) {
+        return 1;
+    }
+    return 0;
+}
+--- php
+function all_equal($a, $b, $c) {
+    if ($a === $b && $b === $c) {
+        return true;
+    }
+    return false;
+}
 ---

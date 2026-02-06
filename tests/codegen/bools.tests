@@ -8,6 +8,10 @@ true;
 true
 --- lua
 true
+--- perl
+1
+--- php
+true;
 ---
 
 === false literal
@@ -20,6 +24,10 @@ false;
 false
 --- lua
 false
+--- perl
+0
+--- php
+false;
 ---
 
 === not true
@@ -32,6 +40,10 @@ not True
 !true
 --- lua
 not true
+--- perl
+!1
+--- php
+!true;
 ---
 
 === not false
@@ -44,6 +56,10 @@ not False
 !false
 --- lua
 not false
+--- perl
+!0
+--- php
+!false;
 ---
 
 === double not
@@ -56,6 +72,10 @@ not not True
 !!true
 --- lua
 not not true
+--- perl
+!!1
+--- php
+!!true;
 ---
 
 === triple not
@@ -68,6 +88,10 @@ not not not True
 !!!true
 --- lua
 not not not true
+--- perl
+!!!1
+--- php
+!!!true;
 ---
 
 === and true true
@@ -80,6 +104,10 @@ true && true;
 true && true
 --- lua
 true and true
+--- perl
+1 && 1
+--- php
+true && true;
 ---
 
 === and true false
@@ -92,6 +120,10 @@ true && false;
 true && false
 --- lua
 true and false
+--- perl
+1 && 0
+--- php
+true && false;
 ---
 
 === and false true
@@ -104,6 +136,10 @@ false && true;
 false && true
 --- lua
 false and true
+--- perl
+0 && 1
+--- php
+false && true;
 ---
 
 === and false false
@@ -116,6 +152,10 @@ false && false;
 false && false
 --- lua
 false and false
+--- perl
+0 && 0
+--- php
+false && false;
 ---
 
 === or true true
@@ -128,6 +168,10 @@ true || true;
 true || true
 --- lua
 true or true
+--- perl
+1 || 1
+--- php
+true || true;
 ---
 
 === or true false
@@ -140,6 +184,10 @@ true || false;
 true || false
 --- lua
 true or false
+--- perl
+1 || 0
+--- php
+true || false;
 ---
 
 === or false true
@@ -152,6 +200,10 @@ false || true;
 false || true
 --- lua
 false or true
+--- perl
+0 || 1
+--- php
+false || true;
 ---
 
 === or false false
@@ -164,6 +216,10 @@ false || false;
 false || false
 --- lua
 false or false
+--- perl
+0 || 0
+--- php
+false || false;
 ---
 
 === not and
@@ -176,6 +232,10 @@ not (True and False)
 !(true && false)
 --- lua
 not (true and false)
+--- perl
+!(1 && 0)
+--- php
+!(true && false);
 ---
 
 === not or
@@ -188,6 +248,10 @@ not (True or False)
 !(true || false)
 --- lua
 not (true or false)
+--- perl
+!(1 || 0)
+--- php
+!(true || false);
 ---
 
 === and precedence over or
@@ -200,6 +264,10 @@ true || false && false;
 true || false && false
 --- lua
 true or false and false
+--- perl
+1 || 0 && 0
+--- php
+true || false && false;
 ---
 
 === or with parens
@@ -212,6 +280,10 @@ true or false and false
 (true || false) && false
 --- lua
 (true or false) and false
+--- perl
+(1 || 0) && 0
+--- php
+(true || false) && false;
 ---
 
 === chained and
@@ -224,6 +296,10 @@ true && true && true;
 true && true && true
 --- lua
 true and true and true
+--- perl
+1 && 1 && 1
+--- php
+true && true && true;
 ---
 
 === chained or
@@ -236,6 +312,10 @@ false || false || true;
 false || false || true
 --- lua
 false or false or true
+--- perl
+0 || 0 || 1
+--- php
+false || false || true;
 ---
 
 === mixed and or
@@ -248,6 +328,10 @@ true && false || true;
 true && false || true
 --- lua
 true and false or true
+--- perl
+1 && 0 || 1
+--- php
+true && false || true;
 ---
 
 === mixed or and
@@ -260,6 +344,10 @@ true || false && true;
 true || false && true
 --- lua
 true or false and true
+--- perl
+1 || 0 && 1
+--- php
+true || false && true;
 ---
 
 === not with and
@@ -272,6 +360,10 @@ not True and False
 !true && false
 --- lua
 not true and false
+--- perl
+!1 && 0
+--- php
+!true && false;
 ---
 
 === not with or
@@ -284,6 +376,10 @@ not False or True
 !false || true
 --- lua
 not false or true
+--- perl
+!0 || 1
+--- php
+!false || true;
 ---
 
 === parenthesized not and
@@ -298,6 +394,10 @@ not True and False
 !true && false
 --- lua
 not true and false
+--- perl
+!1 && 0
+--- php
+!true && false;
 ---
 
 === parenthesized not or
@@ -312,6 +412,10 @@ not False or True
 !false || true
 --- lua
 not false or true
+--- perl
+!0 || 1
+--- php
+!false || true;
 ---
 
 === comparison produces bool
@@ -324,6 +428,10 @@ not false or true
 1 < 2
 --- lua
 1 < 2
+--- perl
+1 < 2
+--- php
+1 < 2;
 ---
 
 === equality produces bool
@@ -336,6 +444,10 @@ not false or true
 1 == 1
 --- lua
 1 == 1
+--- perl
+1 == 1
+--- php
+1 === 1;
 ---
 
 === inequality produces bool
@@ -348,6 +460,10 @@ not false or true
 1 != 2
 --- lua
 1 ~= 2
+--- perl
+1 != 2
+--- php
+1 !== 2;
 ---
 
 === comparison and bool
@@ -360,6 +476,10 @@ not false or true
 1 < 2 && true
 --- lua
 1 < 2 and true
+--- perl
+1 < 2 && 1
+--- php
+1 < 2 && true;
 ---
 
 === comparison or bool
@@ -372,6 +492,10 @@ not false or true
 1 > 2 || true
 --- lua
 1 > 2 or true
+--- perl
+1 > 2 || 1
+--- php
+1 > 2 || true;
 ---
 
 === not comparison
@@ -386,6 +510,10 @@ not 1 < 2
 !(1 < 2)
 --- lua
 not (1 < 2)
+--- perl
+!(1 < 2)
+--- php
+!(1 < 2);
 ---
 
 === chained comparison
@@ -398,6 +526,10 @@ not (1 < 2)
 1 < 2 && 2 < 3
 --- lua
 1 < 2 and 2 < 3
+--- perl
+1 < 2 && 2 < 3
+--- php
+1 < 2 && 2 < 3;
 ---
 
 === chained comparison false
@@ -410,6 +542,10 @@ not (1 < 2)
 1 < 3 && 3 < 2
 --- lua
 1 < 3 and 3 < 2
+--- perl
+1 < 3 && 3 < 2
+--- php
+1 < 3 && 3 < 2;
 ---
 
 === comparison chain with eq
@@ -422,6 +558,10 @@ not (1 < 2)
 1 <= 2 && 2 <= 2
 --- lua
 1 <= 2 and 2 <= 2
+--- perl
+1 <= 2 && 2 <= 2
+--- php
+1 <= 2 && 2 <= 2;
 ---
 
 === and of comparisons
@@ -434,6 +574,10 @@ not (1 < 2)
 1 < 2 && 3 < 4
 --- lua
 1 < 2 and 3 < 4
+--- perl
+1 < 2 && 3 < 4
+--- php
+1 < 2 && 3 < 4;
 ---
 
 === or of comparisons
@@ -446,6 +590,10 @@ not (1 < 2)
 1 > 2 || 3 < 4
 --- lua
 1 > 2 or 3 < 4
+--- perl
+1 > 2 || 3 < 4
+--- php
+1 > 2 || 3 < 4;
 ---
 
 === complex bool expr
@@ -460,6 +608,10 @@ not (1 < 2)
 1 < 2 && (3 > 4 || 5 == 5)
 --- lua
 1 < 2 and (3 > 4 or 5 == 5)
+--- perl
+1 < 2 && (3 > 4 || 5 == 5)
+--- php
+1 < 2 && (3 > 4 || 5 === 5);
 ---
 
 === bool in ternary cond
@@ -472,6 +624,10 @@ true ? 1 : 0;
 true ? 1 : 0
 --- lua
 (true and 1 or 0)
+--- perl
+(1 ? 1 : 0)
+--- php
+true ? 1 : 0;
 ---
 
 === comparison in ternary cond
@@ -484,6 +640,10 @@ true ? 1 : 0
 1 < 2 ? 1 : 0
 --- lua
 (1 < 2 and 1 or 0)
+--- perl
+(1 < 2 ? 1 : 0)
+--- php
+1 < 2 ? 1 : 0;
 ---
 
 === and in ternary cond
@@ -496,6 +656,10 @@ true && true ? 1 : 0;
 true && true ? 1 : 0
 --- lua
 (true and true and 1 or 0)
+--- perl
+(1 && 1 ? 1 : 0)
+--- php
+true && true ? 1 : 0;
 ---
 
 === or in ternary cond
@@ -508,6 +672,10 @@ false || true ? 1 : 0;
 false || true ? 1 : 0
 --- lua
 ((false or true) and 1 or 0)
+--- perl
+(0 || 1 ? 1 : 0)
+--- php
+(false || true) ? 1 : 0;
 ---
 
 === bool ternary result
@@ -520,6 +688,10 @@ True if 1 < 2 else False
 1 < 2 ? true : false
 --- lua
 (function() if 1 < 2 then return true else return false end end)()
+--- perl
+(1 < 2 ? 1 : 0)
+--- php
+1 < 2 ? true : false;
 ---
 
 === nested bool ternary
@@ -532,6 +704,10 @@ true ? true : false ? false : true;
 true ? true : false ? false : true
 --- lua
 (function() if true then return true else return (function() if false then return false else return true end end)() end end)()
+--- perl
+(1 ? 1 : 0 ? 0 : 1)
+--- php
+true ? true : (false ? false : true);
 ---
 
 === bool equality
@@ -544,6 +720,10 @@ true === true;
 true == true
 --- lua
 true == true
+--- perl
+1 == 1
+--- php
+true === true;
 ---
 
 === bool inequality
@@ -556,6 +736,10 @@ true !== false;
 true != false
 --- lua
 true ~= false
+--- perl
+1 != 0
+--- php
+true !== false;
 ---
 
 === bool and comparison
@@ -568,6 +752,10 @@ true && 1 < 2;
 true && 1 < 2
 --- lua
 true and 1 < 2
+--- perl
+1 && 1 < 2
+--- php
+true && 1 < 2;
 ---
 
 === bool or comparison
@@ -580,6 +768,10 @@ false || 1 < 2;
 false || 1 < 2
 --- lua
 false or 1 < 2
+--- perl
+0 || 1 < 2
+--- php
+false || 1 < 2;
 ---
 
 === deeply nested bool
@@ -594,6 +786,10 @@ not (True and (False or True and not False))
 !(true && (false || true && !false))
 --- lua
 not (true and (false or true and not false))
+--- perl
+!(1 && (0 || 1 && !0))
+--- php
+!(true && (false || true && !false));
 ---
 
 === all and
@@ -606,6 +802,10 @@ true && true && true && true;
 true && true && true && true
 --- lua
 true and true and true and true
+--- perl
+1 && 1 && 1 && 1
+--- php
+true && true && true && true;
 ---
 
 === all or
@@ -618,6 +818,10 @@ false || false || false || true;
 false || false || false || true
 --- lua
 false or false or false or true
+--- perl
+0 || 0 || 0 || 1
+--- php
+false || false || false || true;
 ---
 
 === alternating and or
@@ -630,6 +834,10 @@ true && false || true && false || true;
 true && false || true && false || true
 --- lua
 true and false or true and false or true
+--- perl
+1 && 0 || 1 && 0 || 1
+--- php
+true && false || true && false || true;
 ---
 
 === de morgan and
@@ -642,6 +850,10 @@ not (True and False)
 !(true && false)
 --- lua
 not (true and false)
+--- perl
+!(1 && 0)
+--- php
+!(true && false);
 ---
 
 === de morgan or
@@ -654,6 +866,10 @@ not (True or False)
 !(true || false)
 --- lua
 not (true or false)
+--- perl
+!(1 || 0)
+--- php
+!(true || false);
 ---
 
 === bool with arithmetic comparison
@@ -668,6 +884,10 @@ not (true or false)
 1 + 1 < 2 + 1
 --- lua
 1 + 1 < 2 + 1
+--- perl
+1 + 1 < 2 + 1
+--- php
+1 + 1 < 2 + 1;
 ---
 
 === multiple comparisons and
@@ -680,6 +900,10 @@ not (true or false)
 1 < 2 && 2 < 3 && 3 < 4
 --- lua
 1 < 2 and 2 < 3 and 3 < 4
+--- perl
+1 < 2 && 2 < 3 && 3 < 4
+--- php
+1 < 2 && 2 < 3 && 3 < 4;
 ---
 
 === multiple comparisons or
@@ -692,6 +916,10 @@ not (true or false)
 1 > 2 || 2 > 3 || 3 < 4
 --- lua
 1 > 2 or 2 > 3 or 3 < 4
+--- perl
+1 > 2 || 2 > 3 || 3 < 4
+--- php
+1 > 2 || 2 > 3 || 3 < 4;
 ---
 
 === not not not
@@ -704,6 +932,10 @@ not not not True
 !!!true
 --- lua
 not not not true
+--- perl
+!!!1
+--- php
+!!!true;
 ---
 
 === bool identity
@@ -716,6 +948,10 @@ true === true && false === false;
 true == true && false == false
 --- lua
 true == true and false == false
+--- perl
+1 == 1 && 0 == 0
+--- php
+true === true && false === false;
 ---
 
 === comparison chain four
@@ -728,6 +964,10 @@ true == true and false == false
 1 < 2 && 2 < 3 && 3 < 4
 --- lua
 1 < 2 and 2 < 3 and 3 < 4
+--- perl
+1 < 2 && 2 < 3 && 3 < 4
+--- php
+1 < 2 && 2 < 3 && 3 < 4;
 ---
 
 === comparison chain mixed ops
@@ -740,6 +980,10 @@ true == true and false == false
 1 < 2 && 2 <= 2 && 2 < 3
 --- lua
 1 < 2 and 2 <= 2 and 2 < 3
+--- perl
+1 < 2 && 2 <= 2 && 2 < 3
+--- php
+1 < 2 && 2 <= 2 && 2 < 3;
 ---
 
 === comparison chain ge
@@ -752,4 +996,8 @@ true == true and false == false
 4 >= 3 && 3 >= 2 && 2 >= 1
 --- lua
 4 >= 3 and 3 >= 2 and 2 >= 1
+--- perl
+4 >= 3 && 3 >= 2 && 2 >= 1
+--- php
+4 >= 3 && 3 >= 2 && 2 >= 1;
 ---
