@@ -151,7 +151,9 @@ class TsBackend(JsLikeBackend):
         self._line("return a.length < b.length;")
         self.indent -= 1
         self._line("}")
-        self._line("function arrConcat(...arrs: number[][]): number[] { return ([] as number[]).concat(...arrs); }")
+        self._line(
+            "function arrConcat(...arrs: number[][]): number[] { return ([] as number[]).concat(...arrs); }"
+        )
         self._line("function arrRepeat(a: number[], n: number): number[] {")
         self.indent += 1
         self._line("const r: number[] = []; for (let i = 0; i < n; i++) r.push(...a); return r;")
@@ -210,8 +212,12 @@ class TsBackend(JsLikeBackend):
         self._line("return true;")
         self.indent -= 1
         self._line("}")
-        self._line("function arrUpper(a: number[]): number[] { return a.map(b => b >= 97 && b <= 122 ? b - 32 : b); }")
-        self._line("function arrLower(a: number[]): number[] { return a.map(b => b >= 65 && b <= 90 ? b + 32 : b); }")
+        self._line(
+            "function arrUpper(a: number[]): number[] { return a.map(b => b >= 97 && b <= 122 ? b - 32 : b); }"
+        )
+        self._line(
+            "function arrLower(a: number[]): number[] { return a.map(b => b >= 65 && b <= 90 ? b + 32 : b); }"
+        )
         self._line("function arrStrip(a: number[], cs: number[]): number[] {")
         self.indent += 1
         self._line("let s = 0, e = a.length;")
@@ -227,7 +233,9 @@ class TsBackend(JsLikeBackend):
         self._line("}")
         self._line("function arrRstrip(a: number[], cs: number[]): number[] {")
         self.indent += 1
-        self._line("let e = a.length; while (e > 0 && cs.includes(a[e-1])) e--; return a.slice(0, e);")
+        self._line(
+            "let e = a.length; while (e > 0 && cs.includes(a[e-1])) e--; return a.slice(0, e);"
+        )
         self.indent -= 1
         self._line("}")
         self._line("function arrSplit(a: number[], sep: number[]): number[][] {")
@@ -266,7 +274,9 @@ class TsBackend(JsLikeBackend):
         self._line("return r;")
         self.indent -= 1
         self._line("}")
-        self._line("function arrStep(a: number[], lo: number | null, hi: number | null, step: number): number[] {")
+        self._line(
+            "function arrStep(a: number[], lo: number | null, hi: number | null, step: number): number[] {"
+        )
         self.indent += 1
         self._line("if (lo === null) lo = step > 0 ? 0 : a.length - 1;")
         self._line("if (hi === null) hi = step > 0 ? a.length : -1;")

@@ -9,7 +9,13 @@ Inherits from JsLikeBackend. Adds JS-specific features:
 
 from __future__ import annotations
 
-from src.backend.jslike import JsLikeBackend, _camel, _is_array_type, _is_bool_int_compare, _is_bytes_list_type
+from src.backend.jslike import (
+    JsLikeBackend,
+    _camel,
+    _is_array_type,
+    _is_bool_int_compare,
+    _is_bytes_list_type,
+)
 from src.backend.util import ir_contains_call, ir_has_bytes_ops, is_bytes_type
 from src.ir import (
     BOOL,
@@ -495,7 +501,6 @@ class JsBackend(JsLikeBackend):
             return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
         return f"({obj_str}.get({key_str}) ?? null)"
 
-
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
         # Handle float to string with decimal preservation
         if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == FLOAT:
@@ -509,7 +514,6 @@ class JsBackend(JsLikeBackend):
         ):
             return '"None"'
         return super()._cast_expr(inner, to_type)
-
 
 
 # --- Helpers ---
