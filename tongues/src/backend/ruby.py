@@ -794,16 +794,31 @@ class RubyBackend:
             case Call(func="bool", args=[arg]):
                 return f"!!{self._expr(arg)}"
             case Call(func="abs", args=[arg]):
+                # Coerce bool to int for abs()
+                if arg.typ == BOOL:
+                    return f"({self._coerce_bool_to_int(arg, raw=True)}).abs"
                 inner = self._expr(arg)
                 if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
                     return f"({inner}).abs"
                 return f"{inner}.abs"
             case Call(func="min", args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                return f"[{args_str}].min"
+                # Ruby can't compare bools, always coerce to int
+                parts = []
+                for a in args:
+                    if a.typ == BOOL:
+                        parts.append(self._coerce_bool_to_int(a, raw=True))
+                    else:
+                        parts.append(self._expr(a))
+                return f"[{', '.join(parts)}].min"
             case Call(func="max", args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                return f"[{args_str}].max"
+                # Ruby can't compare bools, always coerce to int
+                parts = []
+                for a in args:
+                    if a.typ == BOOL:
+                        parts.append(self._coerce_bool_to_int(a, raw=True))
+                    else:
+                        parts.append(self._expr(a))
+                return f"[{', '.join(parts)}].max"
             case Call(func="round", args=[arg]):
                 inner = self._expr(arg)
                 if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
@@ -995,6 +1010,36 @@ class RubyBackend:
                     right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "==",
+                "!=",
+            ) and left.typ == BOOL and right.typ == BOOL and (
+                isinstance(left, (Call, MinExpr, MaxExpr)) or isinstance(right, (Call, MinExpr, MaxExpr))
+            ):
+                # MinExpr/MaxExpr with bool args already produce ints, compare directly
+                # Just coerce the BoolLit side to int, don't re-coerce the min/max result
+                if isinstance(left, (MinExpr, MaxExpr)):
+                    left_str = self._expr(left)
+                else:
+                    left_str = self._coerce_bool_to_int(left, raw=True)
+                if isinstance(right, (MinExpr, MaxExpr)):
+                    right_str = self._expr(right)
+                else:
+                    right_str = self._coerce_bool_to_int(right, raw=True)
+                rb_op = _binary_op(op)
+                return f"{left_str} {rb_op} {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "==",
+                "!=",
+            ) and (
+                (isinstance(left.typ, InterfaceRef) and right.typ == BOOL)
+                or (left.typ == BOOL and isinstance(right.typ, InterfaceRef))
+            ):
+                # Comparing any-typed expr (e.g., bool arithmetic) with bool: coerce bool side
+                left_str = self._expr(left)
+                right_str = self._coerce_bool_to_int(right, raw=True) if right.typ == BOOL else self._expr(right)
+                rb_op = _binary_op(op)
+                return f"{left_str} {rb_op} {right_str}"
             case BinaryOp(op="**", left=left, right=right) if left.typ == BOOL or right.typ == BOOL:
                 # Exponentiation with bool: coerce to int
                 if left.typ == BOOL:
@@ -1006,6 +1051,36 @@ class RubyBackend:
                 else:
                     right_str = self._maybe_paren(self._expr(right), right, "**", is_left=False)
                 return f"{left_str} ** {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "<",
+                ">",
+                "<=",
+                ">=",
+            ) and (left.typ == BOOL or right.typ == BOOL):
+                # Comparisons with bool: coerce to int
+                if left.typ == BOOL:
+                    left_str = self._coerce_bool_to_int(left, raw=True)
+                else:
+                    left_str = self._maybe_paren(self._expr(left), left, op, is_left=True)
+                if right.typ == BOOL:
+                    right_str = self._coerce_bool_to_int(right, raw=True)
+                else:
+                    right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
+                return f"{left_str} {op} {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "<<",
+                ">>",
+            ) and (left.typ == BOOL or right.typ == BOOL):
+                # Shifts with bool: coerce to int
+                if left.typ == BOOL:
+                    left_str = self._coerce_bool_to_int(left, raw=True)
+                else:
+                    left_str = self._maybe_paren(self._expr(left), left, op, is_left=True)
+                if right.typ == BOOL:
+                    right_str = self._coerce_bool_to_int(right, raw=True)
+                else:
+                    right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
+                return f"{left_str} {op} {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "+",
                 "-",
@@ -1072,14 +1147,23 @@ class RubyBackend:
                     parts.append(f"{left_str} {rb_op} {right_str}")
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
-                return f"[{self._expr(left)}, {self._expr(right)}].min"
+                # Ruby can't compare bools, coerce to int
+                left_str = self._coerce_bool_to_int(left, raw=True) if left.typ == BOOL else self._expr(left)
+                right_str = self._coerce_bool_to_int(right, raw=True) if right.typ == BOOL else self._expr(right)
+                return f"[{left_str}, {right_str}].min"
             case MaxExpr(left=left, right=right):
-                return f"[{self._expr(left)}, {self._expr(right)}].max"
+                # Ruby can't compare bools, coerce to int
+                left_str = self._coerce_bool_to_int(left, raw=True) if left.typ == BOOL else self._expr(left)
+                right_str = self._coerce_bool_to_int(right, raw=True) if right.typ == BOOL else self._expr(right)
+                return f"[{left_str}, {right_str}].max"
             case UnaryOp(op=op, operand=operand):
                 rb_op = _unary_op(op)
                 # Unary minus on bool needs parens around the coercion
                 if op == "-" and operand.typ == BOOL:
                     return f"-({self._coerce_bool_to_int(operand, raw=True)})"
+                # Bitwise NOT on bool needs coercion to int
+                if op == "~" and operand.typ == BOOL:
+                    return f"~({self._coerce_bool_to_int(operand, raw=True)})"
                 # Handle not(truthy(int_expr)) -> (expr) == 0
                 # Python's `not (x & Y)` should be true when result is 0
                 if op == "!" and isinstance(operand, Truthy):
@@ -1109,6 +1193,9 @@ class RubyBackend:
                 ):
                     # Skip coercion if inner is unary minus - already produces int
                     if isinstance(inner, UnaryOp) and inner.op == "-":
+                        return self._expr(inner)
+                    # Skip coercion if inner is MinExpr/MaxExpr - already produces int
+                    if isinstance(inner, (MinExpr, MaxExpr)):
                         return self._expr(inner)
                     return f"({self._expr(inner)} ? 1 : 0)"
                 if (
@@ -1336,6 +1423,9 @@ class RubyBackend:
         if expr.typ == BOOL:
             # Unary minus on bool already produces int via _expr, skip double coercion
             if isinstance(expr, UnaryOp) and expr.op == "-":
+                return self._expr(expr)
+            # MinExpr/MaxExpr already produce int via _expr, skip double coercion
+            if isinstance(expr, (MinExpr, MaxExpr)):
                 return self._expr(expr)
             inner = self._expr(expr)
             # Ternary has lower precedence than arithmetic, so wrap in parens
