@@ -1,0 +1,2 @@
+allow just check
+deny uvx ruff "use `just fmt [--fix]` instead"

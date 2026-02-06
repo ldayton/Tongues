@@ -852,7 +852,7 @@ class RubyBackend:
                     divisor = self._expr(b)
                 if isinstance(a, (BinaryOp, UnaryOp, Ternary)) and a.typ != BOOL:
                     return f"({inner}).divmod({divisor})"
-                return f"({inner}).divmod({divisor})"
+                return f"{inner}.divmod({divisor})"
             case Call(func="pow", args=[base, exp]):
                 # Coerce bool operands to int
                 if base.typ == BOOL:

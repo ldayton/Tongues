@@ -562,7 +562,12 @@ def compiled(formatted: Path, target: Target) -> Path:
     """Compile for compiled languages (C/Rust/Zig)."""
     compile_cmd = target.get_compile_command(formatted)
     if compile_cmd:
-        result = subprocess.run(compile_cmd, capture_output=True, text=True, timeout=60)
+        try:
+            result = subprocess.run(
+                compile_cmd, capture_output=True, text=True, timeout=60
+            )
+        except FileNotFoundError:
+            pytest.fail(f"Compiler not found: {compile_cmd[0]}")
         if result.returncode != 0:
             raise CompileError(result.stderr.strip())
     return formatted

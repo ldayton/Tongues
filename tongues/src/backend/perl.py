@@ -1279,7 +1279,7 @@ class PerlBackend:
                 if func == "divmod":
                     a = self._bool_to_int(args[0]) if args[0].typ == BOOL else self._expr(args[0])
                     b = self._bool_to_int(args[1]) if args[1].typ == BOOL else self._expr(args[1])
-                    return f"[int({a} / {b}), {a} % {b}]"
+                    return f"(int({a} / {b}), {a} % {b})"
                 if func == "pow":
                     if len(args) == 2:
                         base = (
@@ -1483,7 +1483,9 @@ class PerlBackend:
                 pl_op = _binary_op(op, left.typ, right.typ)
                 left_is_bool = left.typ == BOOL
                 right_is_bool = right.typ == BOOL
+
                 # Bool-to-int conversion for arithmetic/bitwise/shift/comparison ops
+                # Perl comparisons return 1/"" which coerce correctly, so use _maybe_paren
                 if op in (
                     "+",
                     "-",
@@ -1504,12 +1506,12 @@ class PerlBackend:
                     if left_is_bool or right_is_bool:
                         left_str = (
                             self._bool_to_int(left)
-                            if left_is_bool
+                            if _perl_needs_bool_coerce(left)
                             else self._maybe_paren(left, op, is_left=True)
                         )
                         right_str = (
                             self._bool_to_int(right)
-                            if right_is_bool
+                            if _perl_needs_bool_coerce(right)
                             else self._maybe_paren(right, op, is_left=False)
                         )
                         return f"{left_str} {pl_op} {right_str}"
@@ -1939,6 +1941,16 @@ _PRECEDENCE = {
     "//": 10,
     "**": 11,
 }
+
+
+def _perl_needs_bool_coerce(expr: Expr) -> bool:
+    """True if expr needs explicit bool-to-int coercion in Perl."""
+    if expr.typ != BOOL:
+        return False
+    # Perl comparisons return 1/"" which coerce correctly in numeric context
+    if isinstance(expr, BinaryOp) and expr.op in ("<", ">", "<=", ">=", "==", "!="):
+        return False
+    return True
 
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
