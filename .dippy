@@ -4,6 +4,7 @@ ask just test-docker
 deny uvx ruff "use `just fmt [--fix]` instead"
 
 #---- Langs ----#
+allow docker
 allow dotnet
 allow gcc
 allow go
