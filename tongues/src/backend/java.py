@@ -1456,6 +1456,15 @@ class JavaBackend:
                     return f"Math.min({args_str})"
                 if func == "max":
                     return f"Math.max({args_str})"
+                if func == "divmod" and len(args) == 2:
+                    a, b = self._expr(args[0]), self._expr(args[1])
+                    return f"new int[]{{{a} / {b}, {a} % {b}}}"
+                if func == "pow":
+                    if len(args) == 2:
+                        return f"Math.pow({args_str})"
+                    if len(args) == 3:
+                        base, exp, mod = self._expr(args[0]), self._expr(args[1]), self._expr(args[2])
+                        return f"(int)Math.pow({base}, {exp}) % {mod}"
                 # Helper functions for Go pointer boxing - inline in Java
                 if func == "_intPtr" or func == "_int_ptr":
                     # Java auto-boxes int to Integer
@@ -1906,6 +1915,8 @@ class JavaBackend:
     def _cast(self, inner: Expr, to_type: Type) -> str:
         inner_str = self._expr(inner)
         java_type = self._type(to_type)
+        # Only wrap in parens if needed (complex expressions)
+        needs_parens = isinstance(inner, (BinaryOp, Ternary, UnaryOp))
         if (
             inner.typ == BOOL
             and isinstance(to_type, Primitive)
@@ -1916,11 +1927,17 @@ class JavaBackend:
             return f'({inner_str} ? "True" : "False")'
         if isinstance(to_type, Primitive):
             if to_type.kind == "int":
-                return f"(int) ({inner_str})"
+                if needs_parens:
+                    return f"(int)({inner_str})"
+                return f"(int){inner_str}"
             if to_type.kind == "float":
-                return f"(double) ({inner_str})"
+                if needs_parens:
+                    return f"(double)({inner_str})"
+                return f"(double){inner_str}"
             if to_type.kind == "byte":
-                return f"(byte) ({inner_str})"
+                if needs_parens:
+                    return f"(byte)({inner_str})"
+                return f"(byte){inner_str}"
             if to_type.kind == "string":
                 # Handle List<Byte> -> String (decoding)
                 inner_type = inner.typ

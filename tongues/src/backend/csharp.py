@@ -1333,6 +1333,15 @@ class CSharpBackend:
             return f"Math.Abs({args_str})"
         if func == "round":
             return f"Math.Round({args_str})"
+        if func == "divmod" and len(args) == 2:
+            a, b = self._expr(args[0]), self._expr(args[1])
+            return f"({a} / {b}, {a} % {b})"
+        if func == "pow":
+            if len(args) == 2:
+                return f"Math.Pow({args_str})"
+            if len(args) == 3:
+                base, exp, mod = self._expr(args[0]), self._expr(args[1]), self._expr(args[2])
+                return f"(int)Math.Pow({base}, {exp}) % {mod}"
         if func == "min":
             return f"Math.Min({args_str})"
         if func == "max":
@@ -1497,13 +1506,21 @@ class CSharpBackend:
         inner_str = self._expr(inner)
         cs_type = self._type(to_type)
         inner_type = inner.typ
+        # Only wrap in parens if needed (complex expressions)
+        needs_parens = isinstance(inner, (BinaryOp, Ternary, UnaryOp))
         if isinstance(to_type, Primitive):
             if to_type.kind == "int":
-                return f"(int)({inner_str})"
+                if needs_parens:
+                    return f"(int)({inner_str})"
+                return f"(int){inner_str}"
             if to_type.kind == "float":
-                return f"(double)({inner_str})"
+                if needs_parens:
+                    return f"(double)({inner_str})"
+                return f"(double){inner_str}"
             if to_type.kind == "byte":
-                return f"(byte)({inner_str})"
+                if needs_parens:
+                    return f"(byte)({inner_str})"
+                return f"(byte){inner_str}"
             if to_type.kind == "string":
                 # Handle List<byte> -> string (decoding)
                 if isinstance(inner_type, Slice):
