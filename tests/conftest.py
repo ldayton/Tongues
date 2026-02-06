@@ -504,7 +504,7 @@ def discover_codegen_tests() -> list[tuple[str, str, str, str, bool]]:
 
 
 def pytest_addoption(parser):
-    """Add --target and --ignore-version options."""
+    """Add --target, --ignore-version, and --ignore-skips options."""
     parser.addoption(
         "--target",
         action="append",
@@ -517,11 +517,18 @@ def pytest_addoption(parser):
         default=False,
         help="Skip version checks and run tests with whatever runtime is available",
     )
+    parser.addoption(
+        "--ignore-skips",
+        action="store_true",
+        default=False,
+        help="Run tests even if they are in the known-failure skip list",
+    )
 
 
 def pytest_generate_tests(metafunc):
     """Parametrize tests over test combinations."""
     ignore_version = metafunc.config.getoption("ignore_version")
+    ignore_skips = metafunc.config.getoption("ignore_skips")
     if "apptest" in metafunc.fixturenames and "target" in metafunc.fixturenames:
         apptests = discover_apptests()
         target_filter = metafunc.config.getoption("target")
@@ -546,7 +553,7 @@ def pytest_generate_tests(metafunc):
                             ),
                         )
                     )
-                elif target.name in _SKIP_LANGS.get(apptest.stem, set()):
+                elif not ignore_skips and target.name in _SKIP_LANGS.get(apptest.stem, set()):
                     params.append(
                         pytest.param(
                             apptest,
