@@ -1420,7 +1420,10 @@ class DartBackend:
                     return f"({operand_str}.isEmpty)"
                 return f"!({operand_str})"
             case UnaryOp(op=op, operand=operand):
-                return f"{op}{self._expr(operand)}"
+                operand_str = self._expr(operand)
+                if isinstance(operand, (BinaryOp, Ternary)):
+                    operand_str = f"({operand_str})"
+                return f"{op}{operand_str}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 else_str = self._expr(else_expr)
                 if isinstance(else_expr, NilLit):
