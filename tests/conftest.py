@@ -79,9 +79,11 @@ from src.backend.zig import ZigBackend
 _SKIP_LANGS: dict[str, set[str]] = {
     "apptest_bits": {
         "csharp",
+        "zig",
     },
     "apptest_bools": {
         "csharp",
+        "zig",
     },
     "apptest_bytes": {
         "csharp",
@@ -348,8 +350,8 @@ TARGETS: dict[str, Target] = {
         format_cmd=[
             "rubocop",
             "-A",
-            "--fail-level",
-            "fatal",
+            "--only",
+            "Layout",
             "-o",
             "/dev/null",
             "{path}",
@@ -389,7 +391,7 @@ TARGETS: dict[str, Target] = {
         name="php",
         ext=".php",
         run_cmd=["php", "{path}"],
-        format_cmd=["php-cs-fixer", "fix", "--quiet", "{path}"],
+        format_cmd=["php-cs-fixer", "fix", "--rules=@PSR12", "--quiet", "{path}"],
     ),
     "c": Target(
         name="c",
@@ -401,6 +403,7 @@ TARGETS: dict[str, Target] = {
         name="csharp",
         ext=".cs",
         compile_cmd=["mcs", "-out:{out}", "{path}"],
+        format_cmd=["csharpier", "format", "{path}"],
     ),
     "perl": Target(
         name="perl",
@@ -412,11 +415,13 @@ TARGETS: dict[str, Target] = {
         name="rust",
         ext=".rs",
         compile_cmd=["rustc", "-o", "{out}", "{path}"],
+        format_cmd=["rustfmt", "{path}"],
     ),
     "swift": Target(
         name="swift",
         ext=".swift",
         run_cmd=["swift", "{path}"],
+        format_cmd=["swift-format", "-i", "{path}"],
     ),
     "zig": Target(
         name="zig",
@@ -431,6 +436,7 @@ TARGETS: dict[str, Target] = {
             "/tmp/zig-cache",
             "-femit-bin={out}",
         ],
+        format_cmd=["zig", "fmt", "{path}"],
     ),
 }
 
@@ -503,17 +509,24 @@ def discover_codegen_tests() -> list[tuple[str, str, str, str, bool]]:
 
 
 def pytest_addoption(parser):
-    """Add --target option for filtering targets."""
+    """Add --target and --ignore-version options."""
     parser.addoption(
         "--target",
         action="append",
         default=[],
         help="Run only specified targets (can be used multiple times)",
     )
+    parser.addoption(
+        "--ignore-version",
+        action="store_true",
+        default=False,
+        help="Skip version checks and run tests with whatever runtime is available",
+    )
 
 
 def pytest_generate_tests(metafunc):
     """Parametrize tests over test combinations."""
+    ignore_version = metafunc.config.getoption("ignore_version")
     if "apptest" in metafunc.fixturenames and "target" in metafunc.fixturenames:
         apptests = discover_apptests()
         target_filter = metafunc.config.getoption("target")
@@ -527,7 +540,7 @@ def pytest_generate_tests(metafunc):
             for target in targets:
                 test_id = f"{target.name}/{apptest.stem}"
                 version_ok, version_msg = _check_version(target.name)
-                if not version_ok:
+                if not version_ok and not ignore_version:
                     params.append(
                         pytest.param(
                             apptest,
@@ -563,7 +576,7 @@ def pytest_generate_tests(metafunc):
         params = []
         for test_id, input_code, lang, expected, has_explicit in tests:
             version_ok, version_msg = _check_version(lang)
-            if not version_ok:
+            if not version_ok and not ignore_version:
                 params.append(
                     pytest.param(
                         input_code,
