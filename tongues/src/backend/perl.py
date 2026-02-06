@@ -827,9 +827,9 @@ class PerlBackend:
                     isinstance(t, VarLV) and t.name in self._hoisted_vars for t in targets
                 )
                 if stmt.is_declaration and not any_hoisted:
-                    self._line(f"my ({lvalues}) = @{{{val}}};")
+                    self._line(f"my ({lvalues}) = {val};")
                 else:
-                    self._line(f"({lvalues}) = @{{{val}}};")
+                    self._line(f"({lvalues}) = {val};")
             case OpAssign(target=target, op=op, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)

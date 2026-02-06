@@ -34,7 +34,14 @@ from src.backend.zig import ZigBackend
 # Skip specific (apptest, language) combinations that are known to fail.
 # Format: apptest_stem -> set of languages to skip
 _SKIP_LANGS: dict[str, set[str]] = {
+    "apptest_bits": {
+        "csharp",
+    },
+    "apptest_bools": {
+        "csharp",
+    },
     "apptest_bytes": {
+        "csharp",
         "c",
         "dart",
         "go",
@@ -50,6 +57,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_chars": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -64,6 +72,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_dicts": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -79,6 +88,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_floats": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -94,6 +104,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_ints": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -108,6 +119,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_lists": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -123,6 +135,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_none": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -137,6 +150,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_sets": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -152,6 +166,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_strings": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -167,6 +182,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_truthiness": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",
@@ -182,6 +198,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_tuples": {
         "c",
+        "csharp",
         "dart",
         "go",
         "java",

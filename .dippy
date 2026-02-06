@@ -1,2 +1,18 @@
-allow just check
+allow just
+ask just check-docker
+ask just test-docker
 deny uvx ruff "use `just fmt [--fix]` instead"
+
+#---- Langs ----#
+allow dotnet
+allow gcc
+allow go
+allow java
+allow javac
+allow node
+allow perl
+allow php
+allow python
+allow python3
+allow ruby
+allow tsc
