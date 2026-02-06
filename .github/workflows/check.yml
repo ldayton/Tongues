@@ -19,4 +19,4 @@ jobs:
       - uses: extractions/setup-just@v3
       - run: sudo apt-get install -y fd-find
       - run: mkdir -p "$HOME/.local/bin" && ln -s "$(which fdfind)" "$HOME/.local/bin/fd"
-      - run: just check
+      - run: just check-docker
