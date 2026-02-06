@@ -56,6 +56,7 @@ from src.ir import (
     Var,
     VarDecl,
     VarLV,
+    While,
 )
 
 SWIFT_RESERVED = frozenset(
@@ -120,25 +121,26 @@ SWIFT_RESERVED = frozenset(
 )
 
 # Swift operator precedence (higher number = tighter binding).
+# Note: Swift's precedence differs from Python's - notably & is higher than +/-
 _PRECEDENCE: dict[str, int] = {
-    "||": 1,
-    "&&": 2,
-    "==": 3,
+    "||": 1,  # LogicalDisjunctionPrecedence
+    "&&": 2,  # LogicalConjunctionPrecedence
+    "==": 3,  # ComparisonPrecedence
     "!=": 3,
     "<": 3,
     "<=": 3,
     ">": 3,
     ">=": 3,
+    "+": 4,  # AdditionPrecedence
+    "-": 4,
     "|": 4,
-    "^": 5,
-    "&": 6,
-    "<<": 7,
-    ">>": 7,
-    "+": 8,
-    "-": 8,
-    "*": 9,
-    "/": 9,
-    "%": 9,
+    "^": 4,
+    "*": 5,  # MultiplicationPrecedence
+    "/": 5,
+    "%": 5,
+    "&": 5,
+    "<<": 6,  # BitwiseShiftPrecedence
+    ">>": 6,
 }
 
 
@@ -290,6 +292,8 @@ class SwiftBackend(Emitter):
             self._emit_Block(stmt)
         elif isinstance(stmt, Print):
             self._emit_Print(stmt)
+        elif isinstance(stmt, While):
+            self._emit_While(stmt)
         elif isinstance(stmt, EntryPoint):
             pass  # handled at module level
         elif isinstance(stmt, NoOp):
@@ -415,6 +419,15 @@ class SwiftBackend(Emitter):
             else:
                 self.line(f'print({val}, terminator: "")')
 
+    def _emit_While(self, s: While) -> None:
+        cond = self._emit_expr(s.cond)
+        self.line(f"while {cond} {{")
+        self.indent += 1
+        for st in s.body:
+            self._emit_stmt(st)
+        self.indent -= 1
+        self.line("}")
+
     def _emit_lvalue(self, lv: "object") -> str:
         if isinstance(lv, VarLV):
             return self._safe(lv.name)
@@ -525,6 +538,14 @@ class SwiftBackend(Emitter):
 
     def _emit_UnaryOp(self, expr: UnaryOp) -> str:
         operand = self._emit_expr(expr.operand)
+        # Swift doesn't allow juxtaposed unary operators, and needs parens for binops
+        needs_paren = (
+            isinstance(expr.operand, UnaryOp)
+            or isinstance(expr.operand, BinaryOp)
+            or (isinstance(expr.operand, IntLit) and expr.operand.value < 0)
+        )
+        if needs_paren:
+            operand = f"({operand})"
         if expr.op == "!":
             return f"!{operand}"
         if expr.op == "-":
