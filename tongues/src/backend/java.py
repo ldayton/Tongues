@@ -717,7 +717,7 @@ class JavaBackend:
         name = to_camel(func.name)
         # Special case: _stringToBytes needs native implementation to avoid recursion
         if func.name == "_string_to_bytes":
-            self._line(f"{ret} {name}({params}) {{")
+            self._line(f"static {ret} {name}({params}) {{")
             self.indent += 1
             self._line("byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);")
             self._line("List<Byte> result = new ArrayList<>(bytes.length);")
@@ -728,7 +728,7 @@ class JavaBackend:
             return
         # Special case: _substring needs clamping to match Python slice semantics
         if func.name == "_substring":
-            self._line(f"{ret} {name}({params}) {{")
+            self._line(f"static {ret} {name}({params}) {{")
             self.indent += 1
             self._line("int len = s.length();")
             self._line("int clampedStart = Math.max(0, Math.min(start, len));")
@@ -737,7 +737,7 @@ class JavaBackend:
             self.indent -= 1
             self._line("}")
             return
-        self._line(f"{ret} {name}({params}) {{")
+        self._line(f"static {ret} {name}({params}) {{")
         self.indent += 1
         if not func.body:
             self._line('throw new UnsupportedOperationException("todo");')
