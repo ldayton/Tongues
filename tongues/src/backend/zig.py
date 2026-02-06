@@ -991,12 +991,15 @@ class ZigBackend(Emitter):
                 right = f"@as(u6, @intFromBool({self._emit_expr(expr.right)}))"
             else:
                 right = self._emit_expr(expr.right)
+            if op == ">>":
+                return f"std.math.shr(i64, {left}, {right})"
             return f"({left} {op} {right})"
-        # Right shift on comptime_int needs cast to i64 for arithmetic shift
-        if op == ">>" and self._is_comptime_int(expr.left):
-            left = f"@as(i64, {self._emit_expr(expr.left)})"
-            right = self._maybe_paren(expr.right, op, is_left=False)
-            return f"({left} {op} {right})"
+        # Right shift needs std.math.shr for consistent arithmetic shift behavior
+        # (Zig's >> has different comptime vs runtime behavior in 0.11)
+        if op == ">>":
+            left = self._maybe_paren(expr.left, ">>", is_left=True)
+            right = self._emit_expr(expr.right)
+            return f"std.math.shr(i64, {left}, {right})"
         # Bitwise ops on bools
         if op in ("|", "&", "^"):
             l_bool = _is_bool(expr.left)
