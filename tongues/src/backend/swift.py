@@ -20,6 +20,7 @@ from src.ir import (
     BoolLit,
     Call,
     Cast,
+    ChainedCompare,
     EntryPoint,
     Expr,
     ExprStmt,
@@ -33,6 +34,11 @@ from src.ir import (
     IntLit,
     IntToStr,
     IsNil,
+    Len,
+    Map,
+    MapLit,
+    MaxExpr,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -51,6 +57,7 @@ from src.ir import (
     TryCatch,
     Truthy,
     Tuple,
+    TupleAssign,
     TupleLit,
     UnaryOp,
     Var,
@@ -162,7 +169,18 @@ def _is_bool(expr: Expr) -> bool:
         return expr.left.typ == BOOL and expr.right.typ == BOOL
     if isinstance(expr, Call) and expr.func == "bool":
         return True
-    return expr.typ == BOOL
+    if expr.typ != BOOL:
+        return False
+    # These expressions produce Int in Swift even though IR type is BOOL
+    if isinstance(expr, (MinExpr, MaxExpr)):
+        # MinExpr/MaxExpr with any bool operand produces Int
+        if expr.left.typ == BOOL or expr.right.typ == BOOL:
+            return False
+    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+        return False
+    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "//", "<<", ">>"):
+        return False
+    return True
 
 
 def _needs_bool_int_coerce(left: Expr, right: Expr) -> bool:
@@ -294,6 +312,8 @@ class SwiftBackend(Emitter):
             self._emit_Print(stmt)
         elif isinstance(stmt, While):
             self._emit_While(stmt)
+        elif isinstance(stmt, TupleAssign):
+            self._emit_TupleAssign(stmt)
         elif isinstance(stmt, EntryPoint):
             pass  # handled at module level
         elif isinstance(stmt, NoOp):
@@ -428,6 +448,14 @@ class SwiftBackend(Emitter):
         self.indent -= 1
         self.line("}")
 
+    def _emit_TupleAssign(self, s: TupleAssign) -> None:
+        targets = [self._emit_lvalue(t) for t in s.targets]
+        val = self._emit_expr(s.value)
+        if s.is_declaration:
+            self.line(f"var ({', '.join(targets)}) = {val}")
+        else:
+            self.line(f"({', '.join(targets)}) = {val}")
+
     def _emit_lvalue(self, lv: "object") -> str:
         if isinstance(lv, VarLV):
             return self._safe(lv.name)
@@ -472,6 +500,16 @@ class SwiftBackend(Emitter):
             return self._emit_Truthy(expr)
         if isinstance(expr, IsNil):
             return self._emit_IsNil(expr)
+        if isinstance(expr, MinExpr):
+            return self._emit_MinExpr(expr)
+        if isinstance(expr, MaxExpr):
+            return self._emit_MaxExpr(expr)
+        if isinstance(expr, ChainedCompare):
+            return self._emit_ChainedCompare(expr)
+        if isinstance(expr, Len):
+            return self._emit_Len(expr)
+        if isinstance(expr, MapLit):
+            return self._emit_MapLit(expr)
         raise NotImplementedError(f"Swift expr: {expr}")
 
     def _emit_Var(self, expr: Var) -> str:
@@ -497,6 +535,25 @@ class SwiftBackend(Emitter):
             op = "/"
         # Bool arithmetic: True + True → (true ? 1 : 0) + (true ? 1 : 0)
         if op in ("+", "-", "*", "/", "%") and (_is_bool(expr.left) or _is_bool(expr.right)):
+            left = self._coerce_bool_to_int(expr.left)
+            right = self._coerce_bool_to_int(expr.right)
+            # Need proper precedence for nested operations
+            if not _is_bool(expr.left):
+                left = self._maybe_paren(expr.left, op, is_left=True)
+            if not _is_bool(expr.right):
+                right = self._maybe_paren(expr.right, op, is_left=False)
+            return f"{left} {op} {right}"
+        # Shift operations with bools
+        if op in ("<<", ">>") and (_is_bool(expr.left) or _is_bool(expr.right)):
+            left = self._coerce_bool_to_int(expr.left)
+            right = self._coerce_bool_to_int(expr.right)
+            if not _is_bool(expr.left):
+                left = self._maybe_paren(expr.left, op, is_left=True)
+            if not _is_bool(expr.right):
+                right = self._maybe_paren(expr.right, op, is_left=False)
+            return f"{left} {op} {right}"
+        # Ordered comparisons with bools
+        if op in (">", "<", ">=", "<=") and (_is_bool(expr.left) or _is_bool(expr.right)):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
@@ -537,6 +594,10 @@ class SwiftBackend(Emitter):
             out.append(expr)
 
     def _emit_UnaryOp(self, expr: UnaryOp) -> str:
+        operand_is_bool = _is_bool(expr.operand)
+        # Swift bools don't support unary minus or bitwise NOT
+        if expr.op in ("-", "~") and operand_is_bool:
+            return f"{expr.op}({self._emit_expr(expr.operand)} ? 1 : 0)"
         operand = self._emit_expr(expr.operand)
         # Swift doesn't allow juxtaposed unary operators, and needs parens for binops
         needs_paren = (
@@ -584,16 +645,41 @@ class SwiftBackend(Emitter):
         if func == "print":
             a = ", ".join(self._emit_expr(a) for a in args)
             return f"print({a})"
+        # abs() with bool
+        if func == "abs" and len(args) == 1 and args[0].typ == BOOL:
+            return f"({self._emit_expr(args[0])} ? 1 : 0)"
+        # abs() with int
+        if func == "abs" and len(args) == 1:
+            return f"abs({self._emit_expr(args[0])})"
+        # pow() - Swift uses Foundation's pow() which returns Double
+        if func == "pow" and len(args) == 2:
+            arg0, arg1 = args[0], args[1]
+            a0 = self._coerce_bool_to_int(arg0) if _is_bool(arg0) else self._emit_expr(arg0)
+            a1 = self._coerce_bool_to_int(arg1) if _is_bool(arg1) else self._emit_expr(arg1)
+            return f"Int(pow(Double({a0}), Double({a1})))"
+        # divmod()
+        if func == "divmod" and len(args) == 2:
+            arg0, arg1 = args[0], args[1]
+            a0 = self._coerce_bool_to_int(arg0) if _is_bool(arg0) else self._emit_expr(arg0)
+            a1 = self._coerce_bool_to_int(arg1) if _is_bool(arg1) else self._emit_expr(arg1)
+            return f"({a0} / {a1}, {a0} % {a1})"
         # Known module-level function
         name = self._fn_name(func) if func in self._func_names else self._safe(func)
         a = ", ".join(self._emit_expr(a) for a in args)
         return f"{name}({a})"
 
     def _emit_Cast(self, expr: Cast) -> str:
-        inner = self._emit_expr(expr.expr)
-        from_type = expr.expr.typ
+        inner_expr = expr.expr
+        inner = self._emit_expr(inner_expr)
+        from_type = inner_expr.typ
         to_type = expr.to_type
         if from_type == BOOL and to_type == INT:
+            # MinExpr/MaxExpr with bool operands already produce int
+            if isinstance(inner_expr, (MinExpr, MaxExpr)):
+                return inner
+            # UnaryOp('-' or '~') on bool already produces int
+            if isinstance(inner_expr, UnaryOp) and inner_expr.op in ("-", "~"):
+                return inner
             return f"({inner} ? 1 : 0)"
         if from_type == BOOL and to_type == STRING:
             return f'({inner} ? "True" : "False")'
@@ -663,3 +749,44 @@ class SwiftBackend(Emitter):
         if _is_bool(expr):
             return f"({self._emit_expr(expr)} ? 1 : 0)"
         return self._emit_expr(expr)
+
+    def _emit_MinExpr(self, expr: MinExpr) -> str:
+        l_bool = _is_bool(expr.left)
+        r_bool = _is_bool(expr.right)
+        if l_bool or r_bool:
+            l = self._coerce_bool_to_int(expr.left)
+            r = self._coerce_bool_to_int(expr.right)
+        else:
+            l, r = self._emit_expr(expr.left), self._emit_expr(expr.right)
+        return f"min({l}, {r})"
+
+    def _emit_MaxExpr(self, expr: MaxExpr) -> str:
+        l_bool = _is_bool(expr.left)
+        r_bool = _is_bool(expr.right)
+        if l_bool or r_bool:
+            l = self._coerce_bool_to_int(expr.left)
+            r = self._coerce_bool_to_int(expr.right)
+        else:
+            l, r = self._emit_expr(expr.left), self._emit_expr(expr.right)
+        return f"max({l}, {r})"
+
+    def _emit_ChainedCompare(self, expr: ChainedCompare) -> str:
+        parts = []
+        for i, op in enumerate(expr.ops):
+            left_str = self._emit_expr(expr.operands[i])
+            right_str = self._emit_expr(expr.operands[i + 1])
+            parts.append(f"{left_str} {op} {right_str}")
+        return "(" + " && ".join(parts) + ")"
+
+    def _emit_Len(self, expr: Len) -> str:
+        inner = self._emit_expr(expr.expr)
+        return f"{inner}.count"
+
+    def _emit_MapLit(self, expr: MapLit) -> str:
+        if not expr.entries:
+            # Empty dict with type annotation
+            key_type = self._type_to_swift(expr.key_type)
+            val_type = self._type_to_swift(expr.value_type)
+            return f"[{key_type}: {val_type}]()"
+        pairs = ", ".join(f"{self._emit_expr(k)}: {self._emit_expr(v)}" for k, v in expr.entries)
+        return f"[{pairs}]"
