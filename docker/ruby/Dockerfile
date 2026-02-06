@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
-RUN apt-get update && apt-get install -y ruby curl \
+RUN apt-get update && apt-get install -y ruby ruby-dev build-essential curl \
     && rm -rf /var/lib/apt/lists/* \
     && ruby --version | grep -q "3\." \
     && curl -LsSf https://astral.sh/uv/install.sh | sh
