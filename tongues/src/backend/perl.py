@@ -14,6 +14,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     CatchClause,
     Constant,
@@ -48,7 +49,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -363,7 +366,8 @@ def _is_string_type(typ: Type) -> bool:
 class PerlBackend:
     """Emit Perl code from IR."""
 
-    def __init__(self) -> None:
+    def __init__(self, bare: bool = False) -> None:
+        self.bare = bare
         self.indent = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
@@ -543,12 +547,13 @@ class PerlBackend:
         return False
 
     def _emit_module(self, module: Module) -> None:
-        self._line("use strict;")
-        self._line("use warnings;")
-        self._line("use feature qw(signatures say);")
-        self._line("no warnings 'experimental::signatures';")
+        if not self.bare:
+            self._line("use strict;")
+            self._line("use warnings;")
+            self._line("use feature qw(signatures say);")
+            self._line("no warnings 'experimental::signatures';")
         self._import_insert_pos: int = len(self.lines)
-        need_blank = True
+        need_blank = not self.bare
         if module.constants:
             self._line()
             for const in module.constants:
@@ -573,11 +578,21 @@ class PerlBackend:
                 self._line()
             self._emit_function(func)
             need_blank = True
+        for stmt in module.statements:
+            if need_blank and not self.bare:
+                self._line()
+            if self.bare:
+                self._emit_stmt_bare(stmt)
+            else:
+                self._emit_stmt(stmt)
+            need_blank = True
         if module.entrypoint is not None:
-            self._line()
+            if not self.bare:
+                self._line()
             self._emit_stmt(module.entrypoint)
-        self._line()
-        self._line("1;")
+        if not self.bare:
+            self._line()
+            self._line("1;")
 
     def _emit_constant(self, const: Constant) -> None:
         name = const.name.upper()
@@ -687,6 +702,14 @@ class PerlBackend:
         for p in params:
             parts.append(f"${_safe_name(p.name)}")
         return ", ".join(parts)
+
+    def _emit_stmt_bare(self, stmt: Stmt) -> None:
+        """Emit a statement without semicolons (for bare mode codegen tests)."""
+        match stmt:
+            case ExprStmt(expr=expr):
+                self._line(self._expr(expr))
+            case _:
+                self._emit_stmt(stmt)
 
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:
@@ -1038,10 +1061,10 @@ class PerlBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
-                return str(value)
-            case FloatLit(value=value):
-                return str(value)
+            case IntLit(value=value, format=fmt):
+                return self._int_lit(value, fmt)
+            case FloatLit(value=value, format=fmt):
+                return self._float_lit(value, fmt)
             case StringLit(value=value):
                 return _string_literal(value)
             case BoolLit(value=value):
@@ -1143,6 +1166,32 @@ class PerlBackend:
                     if arg.typ == BOOL:
                         return f'({self._expr(arg)} ? "True" : "False")'
                     return f'("" . {self._expr(arg)})'
+                if func == "abs":
+                    return f"abs({self._expr(args[0])})"
+                if func == "int":
+                    return f"int({self._expr(args[0])})"
+                if func == "float":
+                    return self._expr(args[0])
+                if func == "round":
+                    if len(args) == 1:
+                        return f"int({self._expr(args[0])} + 0.5)"
+                    # round with precision
+                    val = self._expr(args[0])
+                    prec_arg = args[1]
+                    if isinstance(prec_arg, IntLit):
+                        mult = 10**prec_arg.value
+                        return f"int({val} * {mult} + 0.5) / {mult}"
+                    prec = self._expr(prec_arg)
+                    return f"int({val} * 10 ** {prec} + 0.5) / 10 ** {prec}"
+                if func == "divmod":
+                    a, b = self._expr(args[0]), self._expr(args[1])
+                    return f"(int({a} / {b}), {a} % {b})"
+                if func == "pow":
+                    if len(args) == 2:
+                        return f"{self._expr(args[0])} ** {self._expr(args[1])}"
+                    # pow(base, exp, mod)
+                    base, exp, mod = [self._expr(a) for a in args]
+                    return f"{base} ** {exp} % {mod}"
                 args_str = ", ".join(self._expr(a) for a in args)
                 safe_func = _safe_name(func)
                 # Function parameters need to be called via reference
@@ -1324,15 +1373,39 @@ class PerlBackend:
                 left_str = self._maybe_paren(left, op, is_left=True)
                 right_str = self._maybe_paren(right, op, is_left=False)
                 return f"{left_str} {pl_op} {right_str}"
+            case ChainedCompare(operands=operands, ops=ops):
+                parts = []
+                for i, op in enumerate(ops):
+                    left_str = self._expr(operands[i])
+                    right_str = self._expr(operands[i + 1])
+                    pl_op = _binary_op(op, operands[i].typ, operands[i + 1].typ)
+                    parts.append(f"{left_str} {pl_op} {right_str}")
+                return " && ".join(parts)
+            case MinExpr(left=left, right=right):
+                l = self._expr(left)
+                r = self._expr(right)
+                return f"({l} < {r} ? {l} : {r})"
+            case MaxExpr(left=left, right=right):
+                l = self._expr(left)
+                r = self._expr(right)
+                return f"({l} > {r} ? {l} : {r})"
             case UnaryOp(op=op, operand=operand):
                 pl_op = _unary_op(op)
-                if op == "!" and isinstance(operand, BinaryOp):
+                # Wrap binary ops in parens for unary operators
+                if op in ("!", "-", "~") and isinstance(operand, BinaryOp):
                     return f"{pl_op}({self._expr(operand)})"
+                # Add space between consecutive minus signs to avoid --
+                if op == "-" and isinstance(operand, UnaryOp) and operand.op == "-":
+                    return f"{pl_op} {self._expr(operand)}"
                 return f"{pl_op}{self._expr(operand)}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
-                return (
-                    f"({self._cond_expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)})"
+                # Don't wrap else ternary in parens - ternary is right-associative
+                else_str = (
+                    self._expr_no_outer_paren(else_expr)
+                    if isinstance(else_expr, Ternary)
+                    else self._expr(else_expr)
                 )
+                return f"({self._cond_expr(cond)} ? {self._expr(then_expr)} : {else_str})"
             case Cast(expr=inner, to_type=to_type):
                 if to_type == Primitive(kind="string") and inner.typ == BOOL:
                     return f'({self._expr(inner)} ? "True" : "False")'
@@ -1350,6 +1423,10 @@ class PerlBackend:
                     Primitive(kind="rune"),
                 ):
                     return f"ord({self._expr(inner)})"
+                if to_type == Primitive(kind="int") and inner.typ == Primitive(kind="float"):
+                    return f"int({self._expr(inner)})"
+                if to_type == Primitive(kind="float") and inner.typ == Primitive(kind="int"):
+                    return self._expr(inner)
                 return self._expr(inner)
             case TypeAssert(expr=inner):
                 return self._expr(inner)
@@ -1366,7 +1443,7 @@ class PerlBackend:
                     return f"scalar(keys %{{{self._expr(inner)}}})"
                 if isinstance(inner_type, Primitive) and inner_type.kind == "string":
                     return f"length({self._expr(inner)})"
-                return f"scalar(@{{({self._expr(inner)} // [])}})"
+                return f"scalar(@{{{self._expr(inner)}}})"
             case MakeSlice(element_type=element_type, length=length):
                 if length is not None:
                     zero = self._zero_value(element_type)
@@ -1578,8 +1655,19 @@ class PerlBackend:
     def _cond_expr(self, expr: Expr) -> str:
         """Emit a condition expression, wrapping in parens only if needed for ternary."""
         match expr:
-            case BinaryOp(op=op) if op in ("and", "or", "&&", "||"):
-                return f"({self._expr(expr)})"
+            case _:
+                return self._expr(expr)
+
+    def _expr_no_outer_paren(self, expr: Expr) -> str:
+        """Emit expression without outer parentheses (for nested ternaries)."""
+        match expr:
+            case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
+                else_str = (
+                    self._expr_no_outer_paren(else_expr)
+                    if isinstance(else_expr, Ternary)
+                    else self._expr(else_expr)
+                )
+                return f"{self._cond_expr(cond)} ? {self._expr(then_expr)} : {else_str}"
             case _:
                 return self._expr(expr)
 
@@ -1589,9 +1677,27 @@ class PerlBackend:
             case BinaryOp(op=child_op):
                 if _needs_parens(child_op, parent_op, is_left):
                     return f"({self._expr(expr)})"
-            case Ternary():
+            case UnaryOp(op="-") if parent_op == "**" and is_left:
+                # Wrap negative base in power: (-2) ** 3
                 return f"({self._expr(expr)})"
+            # Ternary already wraps itself in parens, no need to double-wrap
         return self._expr(expr)
+
+    def _int_lit(self, value: int, fmt: str | None) -> str:
+        """Format integer literal, preserving hex/oct/bin format."""
+        if fmt == "hex":
+            return hex(value)
+        if fmt == "oct":
+            return f"0o{oct(value)[2:]}"
+        if fmt == "bin":
+            return f"0b{bin(value)[2:]}"
+        return str(value)
+
+    def _float_lit(self, value: float, fmt: str | None) -> str:
+        """Format float literal, preserving scientific notation."""
+        if fmt == "exp":
+            return f"{value:g}".replace("e+", "e")
+        return str(value)
 
 
 def _method_name(method: str, receiver_type: Type) -> str:
@@ -1665,6 +1771,8 @@ _PRECEDENCE = {
     "*": 5,
     "/": 5,
     "%": 5,
+    "//": 6,  # Floor div becomes int() call - never needs parens
+    "**": 7,
 }
 
 

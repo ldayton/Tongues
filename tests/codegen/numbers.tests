@@ -8,6 +8,10 @@
 42
 --- lua
 42
+--- perl
+42
+--- php
+42;
 ---
 
 === negative int
@@ -20,6 +24,10 @@
 -7
 --- lua
 -7
+--- perl
+-7
+--- php
+-7;
 ---
 
 === float literal
@@ -32,6 +40,10 @@
 3.14
 --- lua
 3.14
+--- perl
+3.14
+--- php
+3.14;
 ---
 
 === negative float
@@ -44,6 +56,10 @@
 -2.5
 --- lua
 -2.5
+--- perl
+-2.5
+--- php
+-2.5;
 ---
 
 === int addition
@@ -56,6 +72,10 @@
 1 + 2
 --- lua
 1 + 2
+--- perl
+1 + 2
+--- php
+1 + 2;
 ---
 
 === int subtraction
@@ -68,6 +88,10 @@
 5 - 3
 --- lua
 5 - 3
+--- perl
+5 - 3
+--- php
+5 - 3;
 ---
 
 === int multiplication
@@ -80,6 +104,10 @@
 4 * 5
 --- lua
 4 * 5
+--- perl
+4 * 5
+--- php
+4 * 5;
 ---
 
 === int division
@@ -92,6 +120,10 @@
 7 / 2
 --- lua
 7 / 2
+--- perl
+7 / 2
+--- php
+7 / 2;
 ---
 
 === int floor division
@@ -104,6 +136,10 @@ Math.floor(7 / 2);
 7 / 2
 --- lua
 7 // 2
+--- perl
+int(7 / 2)
+--- php
+intdiv(7, 2);
 ---
 
 === int modulo
@@ -116,6 +152,10 @@ Math.floor(7 / 2);
 7 % 3
 --- lua
 7 % 3
+--- perl
+7 % 3
+--- php
+7 % 3;
 ---
 
 === float addition
@@ -128,6 +168,10 @@ Math.floor(7 / 2);
 1.5 + 2.5
 --- lua
 1.5 + 2.5
+--- perl
+1.5 + 2.5
+--- php
+1.5 + 2.5;
 ---
 
 === float multiplication
@@ -140,6 +184,10 @@ Math.floor(7 / 2);
 2.0 * 3.5
 --- lua
 2.0 * 3.5
+--- perl
+2.0 * 3.5
+--- php
+2.0 * 3.5;
 ---
 
 === chained addition
@@ -152,6 +200,10 @@ Math.floor(7 / 2);
 1 + 2 + 3
 --- lua
 1 + 2 + 3
+--- perl
+1 + 2 + 3
+--- php
+1 + 2 + 3;
 ---
 
 === chained multiplication
@@ -164,6 +216,10 @@ Math.floor(7 / 2);
 2 * 3 * 4
 --- lua
 2 * 3 * 4
+--- perl
+2 * 3 * 4
+--- php
+2 * 3 * 4;
 ---
 
 === mixed operators
@@ -176,6 +232,10 @@ Math.floor(7 / 2);
 1 + 2 * 3
 --- lua
 1 + 2 * 3
+--- perl
+1 + 2 * 3
+--- php
+1 + 2 * 3;
 ---
 
 === parenthesized expression
@@ -188,6 +248,10 @@ Math.floor(7 / 2);
 (1 + 2) * 3
 --- lua
 (1 + 2) * 3
+--- perl
+(1 + 2) * 3
+--- php
+(1 + 2) * 3;
 ---
 
 === nested parentheses
@@ -200,6 +264,10 @@ Math.floor(7 / 2);
 (1 + 2) * (3 - 4)
 --- lua
 (1 + 2) * (3 - 4)
+--- perl
+(1 + 2) * (3 - 4)
+--- php
+(1 + 2) * (3 - 4);
 ---
 
 === comparison less than
@@ -212,6 +280,10 @@ Math.floor(7 / 2);
 1 < 2
 --- lua
 1 < 2
+--- perl
+1 < 2
+--- php
+1 < 2;
 ---
 
 === comparison greater than
@@ -224,6 +296,10 @@ Math.floor(7 / 2);
 2 > 1
 --- lua
 2 > 1
+--- perl
+2 > 1
+--- php
+2 > 1;
 ---
 
 === comparison equals
@@ -236,6 +312,10 @@ Math.floor(7 / 2);
 1 == 1
 --- lua
 1 == 1
+--- perl
+1 == 1
+--- php
+1 === 1;
 ---
 
 === comparison not equals
@@ -248,6 +328,10 @@ Math.floor(7 / 2);
 1 != 2
 --- lua
 1 ~= 2
+--- perl
+1 != 2
+--- php
+1 !== 2;
 ---
 
 === comparison less equal
@@ -260,6 +344,10 @@ Math.floor(7 / 2);
 1 <= 2
 --- lua
 1 <= 2
+--- perl
+1 <= 2
+--- php
+1 <= 2;
 ---
 
 === comparison greater equal
@@ -272,6 +360,10 @@ Math.floor(7 / 2);
 2 >= 1
 --- lua
 2 >= 1
+--- perl
+2 >= 1
+--- php
+2 >= 1;
 ---
 
 === complex arithmetic
@@ -284,6 +376,10 @@ Math.floor(7 / 2);
 2 * 3 + 8 / 2 - 7 % 3
 --- lua
 2 * 3 + 8 // 2 - 7 % 3
+--- perl
+2 * 3 + int(8 / 2) - 7 % 3
+--- php
+2 * 3 + intdiv(8, 2) - 7 % 3;
 ---
 
 === float division chain
@@ -296,6 +392,10 @@ Math.floor(7 / 2);
 8.0 / 2.0 / 2.0
 --- lua
 8.0 / 2.0 / 2.0
+--- perl
+8.0 / 2.0 / 2.0
+--- php
+8.0 / 2.0 / 2.0;
 ---
 
 === power operator
@@ -308,6 +408,10 @@ Math.floor(7 / 2);
 2 ** 3
 --- lua
 2 ^ 3
+--- perl
+2 ** 3
+--- php
+2 ** 3;
 ---
 
 === float power
@@ -320,6 +424,10 @@ Math.floor(7 / 2);
 2.0 ** 0.5
 --- lua
 2.0 ^ 0.5
+--- perl
+2.0 ** 0.5
+--- php
+2.0 ** 0.5;
 ---
 
 === unary minus
@@ -332,6 +440,10 @@ Math.floor(7 / 2);
 -5
 --- lua
 -5
+--- perl
+-5
+--- php
+-5;
 ---
 
 === unary plus
@@ -344,6 +456,10 @@ Math.floor(7 / 2);
 +5
 --- lua
 +5
+--- perl
++5
+--- php
++5;
 ---
 
 === boolean and
@@ -356,6 +472,10 @@ true && false;
 true && false
 --- lua
 true and false
+--- perl
+1 && 0
+--- php
+true && false;
 ---
 
 === boolean not
@@ -368,6 +488,10 @@ not True
 !true
 --- lua
 not true
+--- perl
+!1
+--- php
+!true;
 ---
 
 === chained comparison
@@ -380,6 +504,10 @@ not true
 1 < 2 && 2 < 3
 --- lua
 1 < 2 and 2 < 3
+--- perl
+1 < 2 && 2 < 3
+--- php
+1 < 2 && 2 < 3;
 ---
 
 === bitwise and
@@ -392,6 +520,10 @@ not true
 5 & 3
 --- lua
 5 & 3
+--- perl
+5 & 3
+--- php
+5 & 3;
 ---
 
 === bitwise or
@@ -404,6 +536,10 @@ not true
 5 | 3
 --- lua
 5 | 3
+--- perl
+5 | 3
+--- php
+5 | 3;
 ---
 
 === bitwise xor
@@ -416,6 +552,10 @@ not true
 5 ^ 3
 --- lua
 5 ~ 3
+--- perl
+5 ^ 3
+--- php
+5 ^ 3;
 ---
 
 === bitwise not
@@ -428,6 +568,10 @@ not true
 ~5
 --- lua
 ~5
+--- perl
+~5
+--- php
+~5;
 ---
 
 === left shift
@@ -440,6 +584,10 @@ not true
 1 << 4
 --- lua
 1 << 4
+--- perl
+1 << 4
+--- php
+1 << 4;
 ---
 
 === right shift
@@ -452,6 +600,10 @@ not true
 16 >> 2
 --- lua
 16 >> 2
+--- perl
+16 >> 2
+--- php
+16 >> 2;
 ---
 
 === ternary expression
@@ -464,6 +616,10 @@ true ? 1 : 0;
 true ? 1 : 0
 --- lua
 (true and 1 or 0)
+--- perl
+(1 ? 1 : 0)
+--- php
+true ? 1 : 0;
 ---
 
 === ternary with comparison
@@ -476,6 +632,10 @@ true ? 1 : 0
 5 > 3 ? 10 : 20
 --- lua
 (5 > 3 and 10 or 20)
+--- perl
+(5 > 3 ? 10 : 20)
+--- php
+5 > 3 ? 10 : 20;
 ---
 
 === nested ternary
@@ -488,6 +648,10 @@ true ? 1 : false ? 2 : 3;
 true ? 1 : false ? 2 : 3
 --- lua
 (true and 1 or (false and 2 or 3))
+--- perl
+(1 ? 1 : 0 ? 2 : 3)
+--- php
+true ? 1 : (false ? 2 : 3);
 ---
 
 === power right associative
@@ -500,6 +664,10 @@ true ? 1 : false ? 2 : 3
 2 ** 3 ** 2
 --- lua
 2 ^ 3 ^ 2
+--- perl
+2 ** 3 ** 2
+--- php
+2 ** 3 ** 2;
 ---
 
 === double negation
@@ -512,6 +680,10 @@ true ? 1 : false ? 2 : 3
 - -5
 --- lua
 - -5
+--- perl
+- -5
+--- php
+- -5;
 ---
 
 === negation of expression
@@ -524,6 +696,10 @@ true ? 1 : false ? 2 : 3
 -(1 + 2)
 --- lua
 -(1 + 2)
+--- perl
+-(1 + 2)
+--- php
+-(1 + 2);
 ---
 
 === abs call
@@ -536,6 +712,10 @@ Math.abs(-5);
 (-5).abs
 --- lua
 math.abs(-5)
+--- perl
+abs(-5)
+--- php
+abs(-5);
 ---
 
 === min call
@@ -548,6 +728,10 @@ Math.min(3, 7);
 [3, 7].min
 --- lua
 math.min(3, 7)
+--- perl
+(3 < 7 ? 3 : 7)
+--- php
+min(3, 7);
 ---
 
 === max call
@@ -560,6 +744,10 @@ Math.max(3, 7);
 [3, 7].max
 --- lua
 math.max(3, 7)
+--- perl
+(3 > 7 ? 3 : 7)
+--- php
+max(3, 7);
 ---
 
 === nested min max
@@ -572,6 +760,10 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 [[1, 2].max, [3, 4].max].min
 --- lua
 math.min(math.max(1, 2), math.max(3, 4))
+--- perl
+((1 > 2 ? 1 : 2) < (3 > 4 ? 3 : 4) ? (1 > 2 ? 1 : 2) : (3 > 4 ? 3 : 4))
+--- php
+min(max(1, 2), max(3, 4));
 ---
 
 === arithmetic in comparison
@@ -584,6 +776,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 1 + 2 < 3 + 4
 --- lua
 1 + 2 < 3 + 4
+--- perl
+1 + 2 < 3 + 4
+--- php
+1 + 2 < 3 + 4;
 ---
 
 === comparison result in arithmetic
@@ -596,6 +792,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 (1 < 2 ? 1 : 0) + (3 < 4 ? 1 : 0)
 --- lua
 (1 < 2 and 1 or 0) + (3 < 4 and 1 or 0)
+--- perl
+(1 < 2) + (3 < 4)
+--- php
+(1 < 2 ? 1 : 0) + (3 < 4 ? 1 : 0);
 ---
 
 === subtraction left associative
@@ -608,6 +808,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 10 - 3 - 2
 --- lua
 10 - 3 - 2
+--- perl
+10 - 3 - 2
+--- php
+10 - 3 - 2;
 ---
 
 === division left associative
@@ -620,6 +824,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 24 / 4 / 2
 --- lua
 24 / 4 / 2
+--- perl
+24 / 4 / 2
+--- php
+24 / 4 / 2;
 ---
 
 === deeply nested arithmetic
@@ -634,6 +842,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 (1 + 2) * (3 + 4) / (5 - 6 + 7 * 8)
 --- lua
 (1 + 2) * (3 + 4) / (5 - 6 + 7 * 8)
+--- perl
+(1 + 2) * (3 + 4) / (5 - 6 + 7 * 8)
+--- php
+(1 + 2) * (3 + 4) / (5 - 6 + 7 * 8);
 ---
 
 === mixed int float
@@ -646,6 +858,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 1 + 2.0 * 3
 --- lua
 1 + 2.0 * 3
+--- perl
+1 + 2.0 * 3
+--- php
+1 + 2.0 * 3;
 ---
 
 === power with negative base
@@ -658,6 +874,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 (-2) ** 3
 --- lua
 (-2) ^ 3
+--- perl
+(-2) ** 3
+--- php
+(-2) ** 3;
 ---
 
 === power with negative exponent
@@ -670,6 +890,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 2 ** -1
 --- lua
 2 ^ -1
+--- perl
+2 ** -1
+--- php
+2 ** -1;
 ---
 
 === modulo negative
@@ -682,6 +906,10 @@ math.min(math.max(1, 2), math.max(3, 4))
 -7 % 3
 --- lua
 -7 % 3
+--- perl
+-7 % 3
+--- php
+-7 % 3;
 ---
 
 === floor div negative
@@ -694,6 +922,10 @@ Math.floor(-7 / 3);
 -7 / 3
 --- lua
 -7 // 3
+--- perl
+int(-7 / 3)
+--- php
+intdiv(-7, 3);
 ---
 
 === bitwise precedence
@@ -706,6 +938,10 @@ Math.floor(-7 / 3);
 1 | 2 & 3
 --- lua
 1 | 2 & 3
+--- perl
+1 | 2 & 3
+--- php
+1 | 2 & 3;
 ---
 
 === shift precedence
@@ -718,6 +954,10 @@ Math.floor(-7 / 3);
 1 + 2 << 3
 --- lua
 1 + 2 << 3
+--- perl
+1 + 2 << 3
+--- php
+1 + 2 << 3;
 ---
 
 === hex lowercase
@@ -732,6 +972,10 @@ Math.floor(-7 / 3);
 0xff
 --- lua
 0xff
+--- perl
+0xff
+--- php
+0xff;
 ---
 
 === hex uppercase
@@ -746,6 +990,10 @@ Math.floor(-7 / 3);
 0xff
 --- lua
 0xff
+--- perl
+0xff
+--- php
+0xff;
 ---
 
 === hex mixed case
@@ -760,6 +1008,10 @@ Math.floor(-7 / 3);
 0xabcd
 --- lua
 0xabcd
+--- perl
+0xabcd
+--- php
+0xabcd;
 ---
 
 === hex single digit
@@ -774,6 +1026,10 @@ Math.floor(-7 / 3);
 0xf
 --- lua
 0xf
+--- perl
+0xf
+--- php
+0xf;
 ---
 
 === hex with leading zeros
@@ -788,6 +1044,10 @@ Math.floor(-7 / 3);
 0xff
 --- lua
 0xff
+--- perl
+0xff
+--- php
+0xff;
 ---
 
 === hex large
@@ -802,6 +1062,10 @@ Math.floor(-7 / 3);
 0xdeadbeef
 --- lua
 0xdeadbeef
+--- perl
+0xdeadbeef
+--- php
+0xdeadbeef;
 ---
 
 === octal basic
@@ -816,6 +1080,10 @@ Math.floor(-7 / 3);
 0o77
 --- lua
 63
+--- perl
+0o77
+--- php
+0o77;
 ---
 
 === octal single digit
@@ -830,6 +1098,10 @@ Math.floor(-7 / 3);
 0o7
 --- lua
 7
+--- perl
+0o7
+--- php
+0o7;
 ---
 
 === octal zero
@@ -844,6 +1116,10 @@ Math.floor(-7 / 3);
 0o0
 --- lua
 0
+--- perl
+0o0
+--- php
+0o0;
 ---
 
 === octal large
@@ -858,6 +1134,10 @@ Math.floor(-7 / 3);
 0o755
 --- lua
 493
+--- perl
+0o755
+--- php
+0o755;
 ---
 
 === binary basic
@@ -872,6 +1152,10 @@ Math.floor(-7 / 3);
 0b1010
 --- lua
 10
+--- perl
+0b1010
+--- php
+0b1010;
 ---
 
 === binary single bit
@@ -886,6 +1170,10 @@ Math.floor(-7 / 3);
 0b1
 --- lua
 1
+--- perl
+0b1
+--- php
+0b1;
 ---
 
 === binary zero
@@ -900,6 +1188,10 @@ Math.floor(-7 / 3);
 0b0
 --- lua
 0
+--- perl
+0b0
+--- php
+0b0;
 ---
 
 === binary byte
@@ -914,6 +1206,10 @@ Math.floor(-7 / 3);
 0b11111111
 --- lua
 255
+--- perl
+0b11111111
+--- php
+0b11111111;
 ---
 
 === binary with leading zeros
@@ -928,6 +1224,10 @@ Math.floor(-7 / 3);
 0b1010
 --- lua
 10
+--- perl
+0b1010
+--- php
+0b1010;
 ---
 
 === scientific positive exp
@@ -942,6 +1242,10 @@ Math.floor(-7 / 3);
 1.5e10
 --- lua
 1.5e10
+--- perl
+1.5e10
+--- php
+1.5e10;
 ---
 
 === scientific negative exp
@@ -956,6 +1260,10 @@ Math.floor(-7 / 3);
 1.5e-10
 --- lua
 1.5e-10
+--- perl
+1.5e-10
+--- php
+1.5e-10;
 ---
 
 === scientific uppercase E
@@ -970,6 +1278,10 @@ Math.floor(-7 / 3);
 1.5e10
 --- lua
 1.5e10
+--- perl
+1.5e10
+--- php
+1.5e10;
 ---
 
 === scientific zero exp
@@ -984,6 +1296,10 @@ Math.floor(-7 / 3);
 1.5
 --- lua
 1.5
+--- perl
+1.5
+--- php
+1.5;
 ---
 
 === scientific integer coeff
@@ -998,6 +1314,10 @@ Math.floor(-7 / 3);
 1e10
 --- lua
 1e10
+--- perl
+1e10
+--- php
+1e10;
 ---
 
 === scientific negative coeff
@@ -1012,6 +1332,10 @@ Math.floor(-7 / 3);
 -1.5e10
 --- lua
 -1.5e10
+--- perl
+-1.5e10
+--- php
+-1.5e10;
 ---
 
 === scientific small number
@@ -1026,6 +1350,10 @@ Math.floor(-7 / 3);
 1e-100
 --- lua
 1e-100
+--- perl
+1e-100
+--- php
+1e-100;
 ---
 
 === scientific large number
@@ -1040,6 +1368,10 @@ Math.floor(-7 / 3);
 1e100
 --- lua
 1e100
+--- perl
+1e100
+--- php
+1e100;
 ---
 
 === scientific with plus exp
@@ -1054,6 +1386,10 @@ Math.floor(-7 / 3);
 1.5e10
 --- lua
 1.5e10
+--- perl
+1.5e10
+--- php
+1.5e10;
 ---
 
 === scientific trailing zeros
@@ -1068,6 +1404,10 @@ Math.floor(-7 / 3);
 1.5e10
 --- lua
 1.5e10
+--- perl
+1.5e10
+--- php
+1.5e10;
 ---
 
 === hex in expression
@@ -1082,6 +1422,10 @@ Math.floor(-7 / 3);
 0xff + 1
 --- lua
 0xff + 1
+--- perl
+0xff + 1
+--- php
+0xff + 1;
 ---
 
 === octal in expression
@@ -1096,6 +1440,10 @@ Math.floor(-7 / 3);
 0o77 * 2
 --- lua
 63 * 2
+--- perl
+0o77 * 2
+--- php
+0o77 * 2;
 ---
 
 === binary in expression
@@ -1110,6 +1458,10 @@ Math.floor(-7 / 3);
 0b1010 | 0b101
 --- lua
 10 | 5
+--- perl
+0b1010 | 0b101
+--- php
+0b1010 | 0b101;
 ---
 
 === scientific in expression
@@ -1124,6 +1476,10 @@ Math.floor(-7 / 3);
 1.5e10 + 1.0
 --- lua
 1.5e10 + 1.0
+--- perl
+1.5e10 + 1.0
+--- php
+1.5e10 + 1.0;
 ---
 
 === mixed literal formats
@@ -1138,6 +1494,10 @@ Math.floor(-7 / 3);
 0xff + 0o77 + 0b1010
 --- lua
 0xff + 63 + 10
+--- perl
+0xff + 0o77 + 0b1010
+--- php
+0xff + 0o77 + 0b1010;
 ---
 
 === float trailing zeros
@@ -1152,6 +1512,10 @@ Math.floor(-7 / 3);
 1.0
 --- lua
 1.0
+--- perl
+1.0
+--- php
+1.0;
 ---
 
 === float many trailing zeros
@@ -1166,6 +1530,10 @@ Math.floor(-7 / 3);
 3.14
 --- lua
 3.14
+--- perl
+3.14
+--- php
+3.14;
 ---
 
 === float trailing dot
@@ -1180,6 +1548,10 @@ Math.floor(-7 / 3);
 1.0
 --- lua
 1.0
+--- perl
+1.0
+--- php
+1.0;
 ---
 
 === float leading dot
@@ -1194,6 +1566,10 @@ Math.floor(-7 / 3);
 0.5
 --- lua
 0.5
+--- perl
+0.5
+--- php
+0.5;
 ---
 
 === float leading dot small
@@ -1208,6 +1584,10 @@ Math.floor(-7 / 3);
 0.001
 --- lua
 0.001
+--- perl
+0.001
+--- php
+0.001;
 ---
 
 === float integer value
@@ -1222,6 +1602,10 @@ Math.floor(-7 / 3);
 1.0
 --- lua
 1.0
+--- perl
+1.0
+--- php
+1.0;
 ---
 
 === float zero
@@ -1236,6 +1620,10 @@ Math.floor(-7 / 3);
 0.0
 --- lua
 0.0
+--- perl
+0.0
+--- php
+0.0;
 ---
 
 === float negative zero
@@ -1250,6 +1638,10 @@ Math.floor(-7 / 3);
 -0.0
 --- lua
 -0.0
+--- perl
+-0.0
+--- php
+-0.0;
 ---
 
 === float negative trailing zeros
@@ -1264,6 +1656,10 @@ Math.floor(-7 / 3);
 -1.0
 --- lua
 -1.0
+--- perl
+-1.0
+--- php
+-1.0;
 ---
 
 === float negative leading dot
@@ -1278,6 +1674,10 @@ Math.floor(-7 / 3);
 -0.5
 --- lua
 -0.5
+--- perl
+-0.5
+--- php
+-0.5;
 ---
 
 === float underscores
@@ -1292,6 +1692,10 @@ Math.floor(-7 / 3);
 1000000.0
 --- lua
 1000000.0
+--- perl
+1000000.0
+--- php
+1000000.0;
 ---
 
 === int underscores
@@ -1306,6 +1710,10 @@ Math.floor(-7 / 3);
 1000000
 --- lua
 1000000
+--- perl
+1000000
+--- php
+1000000;
 ---
 
 === hex underscores
@@ -1320,6 +1728,10 @@ Math.floor(-7 / 3);
 0xffff
 --- lua
 0xffff
+--- perl
+0xffff
+--- php
+0xffff;
 ---
 
 === binary underscores
@@ -1334,6 +1746,10 @@ Math.floor(-7 / 3);
 0b10101010
 --- lua
 170
+--- perl
+0b10101010
+--- php
+0b10101010;
 ---
 
 === large int
@@ -1346,6 +1762,10 @@ Math.floor(-7 / 3);
 999999999999999999999
 --- lua
 999999999999999999999
+--- perl
+999999999999999999999
+--- php
+999999999999999999999;
 ---
 
 === int conversion
@@ -1358,6 +1778,10 @@ Math.trunc(3.7);
 3.7.to_i
 --- lua
 math.floor(3.7)
+--- perl
+int(3.7)
+--- php
+(int)3.7;
 ---
 
 === float conversion
@@ -1370,6 +1794,10 @@ float(42)
 42.to_f
 --- lua
 42
+--- perl
+42
+--- php
+(float)42;
 ---
 
 === round call
@@ -1382,6 +1810,10 @@ Math.round(3.7);
 3.7.round
 --- lua
 math.floor(3.7 + 0.5)
+--- perl
+int(3.7 + 0.5)
+--- php
+round(3.7);
 ---
 
 === round with precision
@@ -1394,6 +1826,10 @@ Math.round(3.14159 * 100) / 100;
 3.14159.round(2)
 --- lua
 math.floor(3.14159 * 100 + 0.5) / 100
+--- perl
+int(3.14159 * 100 + 0.5) / 100
+--- php
+round(3.14159, 2);
 ---
 
 === divmod call
@@ -1406,6 +1842,10 @@ divmod(17, 5)
 17.divmod(5)
 --- lua
 {17 // 5, 17 % 5}
+--- perl
+(int(17 / 5), 17 % 5)
+--- php
+[intdiv(17, 5), 17 % 5];
 ---
 
 === pow three arg
@@ -1418,6 +1858,10 @@ pow(2, 10, 1000)
 2.pow(10, 1000)
 --- lua
 2 ^ 10 % 1000
+--- perl
+2 ** 10 % 1000
+--- php
+2 ** 10 % 1000;
 ---
 
 === triple negation
@@ -1430,6 +1874,10 @@ pow(2, 10, 1000)
 - - -5
 --- lua
 - - -5
+--- perl
+- - -5
+--- php
+- - -5;
 ---
 
 === bitwise and arithmetic
@@ -1442,6 +1890,10 @@ pow(2, 10, 1000)
 (5 & 3) + 1
 --- lua
 (5 & 3) + 1
+--- perl
+(5 & 3) + 1
+--- php
+(5 & 3) + 1;
 ---
 
 === arithmetic and bitwise
@@ -1456,6 +1908,10 @@ pow(2, 10, 1000)
 5 & 3 + 1
 --- lua
 5 & 3 + 1
+--- perl
+5 & 3 + 1
+--- php
+5 & 3 + 1;
 ---
 
 === xor chain
@@ -1468,6 +1924,10 @@ pow(2, 10, 1000)
 1 ^ 2 ^ 3
 --- lua
 1 ~ 2 ~ 3
+--- perl
+1 ^ 2 ^ 3
+--- php
+1 ^ 2 ^ 3;
 ---
 
 === shift chain
@@ -1480,6 +1940,10 @@ pow(2, 10, 1000)
 1 << 2 << 1
 --- lua
 1 << 2 << 1
+--- perl
+1 << 2 << 1
+--- php
+1 << 2 << 1;
 ---
 
 === complement of expression
@@ -1492,6 +1956,10 @@ pow(2, 10, 1000)
 ~(1 + 2)
 --- lua
 ~(1 + 2)
+--- perl
+~(1 + 2)
+--- php
+~(1 + 2);
 ---
 
 === modulo precedence
@@ -1504,6 +1972,10 @@ pow(2, 10, 1000)
 2 + 3 % 2
 --- lua
 2 + 3 % 2
+--- perl
+2 + 3 % 2
+--- php
+2 + 3 % 2;
 ---
 
 === floor div precedence
@@ -1516,6 +1988,10 @@ pow(2, 10, 1000)
 2 + 7 / 3
 --- lua
 2 + 7 // 3
+--- perl
+2 + int(7 / 3)
+--- php
+2 + intdiv(7, 3);
 ---
 
 === power precedence over multiply
@@ -1528,6 +2004,10 @@ pow(2, 10, 1000)
 2 * 3 ** 2
 --- lua
 2 * 3 ^ 2
+--- perl
+2 * 3 ** 2
+--- php
+2 * 3 ** 2;
 ---
 
 === multiply precedence over add
@@ -1540,6 +2020,10 @@ pow(2, 10, 1000)
 2 ** 3 * 4
 --- lua
 2 ^ 3 * 4
+--- perl
+2 ** 3 * 4
+--- php
+2 ** 3 * 4;
 ---
 
 === comparison with bool result used
@@ -1552,6 +2036,10 @@ pow(2, 10, 1000)
 (1 < 2 ? 1 : 0) * 10
 --- lua
 (1 < 2 and 1 or 0) * 10
+--- perl
+(1 < 2) * 10
+--- php
+(1 < 2 ? 1 : 0) * 10;
 ---
 
 === nested abs
@@ -1564,6 +2052,10 @@ Math.abs(Math.abs(-5) - 10);
 ((-5).abs - 10).abs
 --- lua
 math.abs(math.abs(-5) - 10)
+--- perl
+abs(abs(-5) - 10)
+--- php
+abs(abs(-5) - 10);
 ---
 
 === bool to int implicit
@@ -1576,6 +2068,10 @@ true + true;
 (true ? 1 : 0) + (true ? 1 : 0)
 --- lua
 (true and 1 or 0) + (true and 1 or 0)
+--- perl
+1 + 1
+--- php
+(true ? 1 : 0) + (true ? 1 : 0);
 ---
 
 === not of comparison
@@ -1588,6 +2084,10 @@ not 1 < 2
 !(1 < 2)
 --- lua
 not (1 < 2)
+--- perl
+!(1 < 2)
+--- php
+!(1 < 2);
 ---
 
 === and of comparisons
@@ -1600,6 +2100,10 @@ not (1 < 2)
 1 < 2 && 3 < 4
 --- lua
 1 < 2 and 3 < 4
+--- perl
+1 < 2 && 3 < 4
+--- php
+1 < 2 && 3 < 4;
 ---
 
 === mixed and not
@@ -1612,6 +2116,10 @@ not True and False
 !true && false
 --- lua
 not true and false
+--- perl
+!1 && 0
+--- php
+!true && false;
 ---
 
 === parenthesized not
@@ -1626,6 +2134,10 @@ not True and False
 !true && false
 --- lua
 not true and false
+--- perl
+!1 && 0
+--- php
+!true && false;
 ---
 
 === not of and
@@ -1638,4 +2150,8 @@ not (True and False)
 !(true && false)
 --- lua
 not (true and false)
+--- perl
+!(1 && 0)
+--- php
+!(true && false);
 ---
