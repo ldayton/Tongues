@@ -1369,6 +1369,9 @@ class PerlBackend:
                 pl_op = _binary_op(op, left.typ, right.typ)
                 left_str = self._maybe_paren(left, op, is_left=True)
                 right_str = self._maybe_paren(right, op, is_left=False)
+                # Wrap bitwise ops in signed integer scope (Perl's default is unsigned)
+                if op in ("|", "&", "^", "<<", ">>"):
+                    return f"do {{ use integer; {left_str} {pl_op} {right_str} }}"
                 return f"{left_str} {pl_op} {right_str}"
             case ChainedCompare(operands=operands, ops=ops):
                 parts = []
@@ -1387,9 +1390,12 @@ class PerlBackend:
                 r = self._expr(right)
                 return f"({l} > {r} ? {l} : {r})"
             case UnaryOp(op=op, operand=operand):
+                # Perl's ~ is unsigned bitwise NOT; Python's is signed: ~x = -(x+1)
+                if op == "~":
+                    return f"-(({self._expr(operand)}) + 1)"
                 pl_op = _unary_op(op)
                 # Wrap binary ops in parens for unary operators
-                if op in ("!", "-", "~") and isinstance(operand, BinaryOp):
+                if op in ("!", "-") and isinstance(operand, BinaryOp):
                     return f"{pl_op}({self._expr(operand)})"
                 # Add space between consecutive minus signs to avoid --
                 if op == "-" and isinstance(operand, UnaryOp) and operand.op == "-":
@@ -1745,31 +1751,38 @@ def _unary_op(op: str) -> str:
             return op
 
 
+# Perl operator precedence (higher = binds tighter). See perlop.
 _PRECEDENCE = {
     "or": 1,
-    "||": 1,
+    "xor": 1,
     "and": 2,
-    "&&": 2,
-    "eq": 3,
-    "ne": 3,
-    "lt": 3,
-    "gt": 3,
-    "le": 3,
-    "ge": 3,
-    "==": 3,
-    "!=": 3,
-    "<": 3,
-    ">": 3,
-    "<=": 3,
-    ">=": 3,
-    ".": 4,
-    "+": 4,
-    "-": 4,
-    "*": 5,
-    "/": 5,
-    "%": 5,
-    "//": 6,  # Floor div becomes int() call - never needs parens
-    "**": 7,
+    "||": 3,
+    "&&": 4,
+    "|": 5,
+    "^": 5,
+    "&": 6,
+    "eq": 7,
+    "ne": 7,
+    "lt": 7,
+    "gt": 7,
+    "le": 7,
+    "ge": 7,
+    "==": 7,
+    "!=": 7,
+    "<": 7,
+    ">": 7,
+    "<=": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    ".": 9,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+    "//": 10,
+    "**": 11,
 }
 
 

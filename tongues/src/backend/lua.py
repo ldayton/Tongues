@@ -1335,6 +1335,11 @@ class LuaBackend:
                         else self._maybe_paren(right, op, is_left=False)
                     )
                     return f"{left_str} {_binary_op(op)} {right_str}"
+                # Lua >> is logical right shift; use // for arithmetic right shift
+                if op == ">>":
+                    left_str = self._maybe_paren(left, "//", is_left=True)
+                    right_str = self._expr(right)
+                    return f"{left_str} // (1 << {right_str})"
                 lua_op = _binary_op(op)
                 left_str = self._maybe_paren(left, op, is_left=True)
                 right_str = self._maybe_paren(right, op, is_left=False)
@@ -1843,10 +1848,21 @@ _PRECEDENCE = {
 }
 
 
+def _lua_op_for_prec(op: str) -> str:
+    """Convert Python operator to Lua operator for precedence lookup."""
+    if op == "^":
+        return "~"  # Python XOR -> Lua ~
+    if op == "**":
+        return "^"  # Python exp -> Lua ^
+    if op == "!=":
+        return "~="
+    return op
+
+
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     """Determine if a child binary op needs parens inside a parent binary op."""
-    child_prec = _PRECEDENCE.get(child_op, 0)
-    parent_prec = _PRECEDENCE.get(parent_op, 0)
+    child_prec = _PRECEDENCE.get(_lua_op_for_prec(child_op), 0)
+    parent_prec = _PRECEDENCE.get(_lua_op_for_prec(parent_op), 0)
     if child_prec < parent_prec:
         return True
     if child_prec == parent_prec and not is_left:
