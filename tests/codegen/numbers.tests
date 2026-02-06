@@ -6,6 +6,8 @@
 42;
 --- ruby
 42
+--- lua
+42
 ---
 
 === negative int
@@ -15,6 +17,8 @@
 --- typescript
 -7;
 --- ruby
+-7
+--- lua
 -7
 ---
 
@@ -26,6 +30,8 @@
 3.14;
 --- ruby
 3.14
+--- lua
+3.14
 ---
 
 === negative float
@@ -35,6 +41,8 @@
 --- typescript
 -2.5;
 --- ruby
+-2.5
+--- lua
 -2.5
 ---
 
@@ -46,6 +54,8 @@
 1 + 2;
 --- ruby
 1 + 2
+--- lua
+1 + 2
 ---
 
 === int subtraction
@@ -55,6 +65,8 @@
 --- typescript
 5 - 3;
 --- ruby
+5 - 3
+--- lua
 5 - 3
 ---
 
@@ -66,6 +78,8 @@
 4 * 5;
 --- ruby
 4 * 5
+--- lua
+4 * 5
 ---
 
 === int division
@@ -75,6 +89,8 @@
 --- typescript
 7 / 2;
 --- ruby
+7 / 2
+--- lua
 7 / 2
 ---
 
@@ -86,6 +102,8 @@ Math.floor(7 / 2);
 Math.floor(7 / 2);
 --- ruby
 7 / 2
+--- lua
+7 // 2
 ---
 
 === int modulo
@@ -95,6 +113,8 @@ Math.floor(7 / 2);
 --- typescript
 7 % 3;
 --- ruby
+7 % 3
+--- lua
 7 % 3
 ---
 
@@ -106,6 +126,8 @@ Math.floor(7 / 2);
 1.5 + 2.5;
 --- ruby
 1.5 + 2.5
+--- lua
+1.5 + 2.5
 ---
 
 === float multiplication
@@ -115,6 +137,8 @@ Math.floor(7 / 2);
 --- typescript
 2.0 * 3.5;
 --- ruby
+2.0 * 3.5
+--- lua
 2.0 * 3.5
 ---
 
@@ -126,6 +150,8 @@ Math.floor(7 / 2);
 1 + 2 + 3;
 --- ruby
 1 + 2 + 3
+--- lua
+1 + 2 + 3
 ---
 
 === chained multiplication
@@ -135,6 +161,8 @@ Math.floor(7 / 2);
 --- typescript
 2 * 3 * 4;
 --- ruby
+2 * 3 * 4
+--- lua
 2 * 3 * 4
 ---
 
@@ -146,6 +174,8 @@ Math.floor(7 / 2);
 1 + 2 * 3;
 --- ruby
 1 + 2 * 3
+--- lua
+1 + 2 * 3
 ---
 
 === parenthesized expression
@@ -155,6 +185,8 @@ Math.floor(7 / 2);
 --- typescript
 (1 + 2) * 3;
 --- ruby
+(1 + 2) * 3
+--- lua
 (1 + 2) * 3
 ---
 
@@ -166,6 +198,8 @@ Math.floor(7 / 2);
 (1 + 2) * (3 - 4);
 --- ruby
 (1 + 2) * (3 - 4)
+--- lua
+(1 + 2) * (3 - 4)
 ---
 
 === comparison less than
@@ -175,6 +209,8 @@ Math.floor(7 / 2);
 --- typescript
 1 < 2;
 --- ruby
+1 < 2
+--- lua
 1 < 2
 ---
 
@@ -186,6 +222,8 @@ Math.floor(7 / 2);
 2 > 1;
 --- ruby
 2 > 1
+--- lua
+2 > 1
 ---
 
 === comparison equals
@@ -195,6 +233,8 @@ Math.floor(7 / 2);
 --- typescript
 1 === 1;
 --- ruby
+1 == 1
+--- lua
 1 == 1
 ---
 
@@ -206,6 +246,8 @@ Math.floor(7 / 2);
 1 !== 2;
 --- ruby
 1 != 2
+--- lua
+1 ~= 2
 ---
 
 === comparison less equal
@@ -215,6 +257,8 @@ Math.floor(7 / 2);
 --- typescript
 1 <= 2;
 --- ruby
+1 <= 2
+--- lua
 1 <= 2
 ---
 
@@ -226,6 +270,8 @@ Math.floor(7 / 2);
 2 >= 1;
 --- ruby
 2 >= 1
+--- lua
+2 >= 1
 ---
 
 === complex arithmetic
@@ -236,6 +282,8 @@ Math.floor(7 / 2);
 2 * 3 + Math.floor(8 / 2) - 7 % 3;
 --- ruby
 2 * 3 + 8 / 2 - 7 % 3
+--- lua
+2 * 3 + 8 // 2 - 7 % 3
 ---
 
 === float division chain
@@ -245,6 +293,8 @@ Math.floor(7 / 2);
 --- typescript
 8.0 / 2.0 / 2.0;
 --- ruby
+8.0 / 2.0 / 2.0
+--- lua
 8.0 / 2.0 / 2.0
 ---
 
@@ -256,6 +306,8 @@ Math.floor(7 / 2);
 2 ** 3;
 --- ruby
 2 ** 3
+--- lua
+2 ^ 3
 ---
 
 === float power
@@ -266,6 +318,8 @@ Math.floor(7 / 2);
 2.0 ** 0.5;
 --- ruby
 2.0 ** 0.5
+--- lua
+2.0 ^ 0.5
 ---
 
 === unary minus
@@ -275,6 +329,8 @@ Math.floor(7 / 2);
 --- typescript
 -5;
 --- ruby
+-5
+--- lua
 -5
 ---
 
@@ -286,6 +342,8 @@ Math.floor(7 / 2);
 +5;
 --- ruby
 +5
+--- lua
++5
 ---
 
 === boolean and
@@ -296,6 +354,8 @@ true && false;
 true && false;
 --- ruby
 true && false
+--- lua
+true and false
 ---
 
 === boolean not
@@ -306,6 +366,8 @@ not True
 !true;
 --- ruby
 !true
+--- lua
+not true
 ---
 
 === chained comparison
@@ -316,6 +378,8 @@ not True
 1 < 2 && 2 < 3;
 --- ruby
 1 < 2 && 2 < 3
+--- lua
+1 < 2 and 2 < 3
 ---
 
 === bitwise and
@@ -325,6 +389,8 @@ not True
 --- typescript
 5 & 3;
 --- ruby
+5 & 3
+--- lua
 5 & 3
 ---
 
@@ -336,6 +402,8 @@ not True
 5 | 3;
 --- ruby
 5 | 3
+--- lua
+5 | 3
 ---
 
 === bitwise xor
@@ -346,6 +414,8 @@ not True
 5 ^ 3;
 --- ruby
 5 ^ 3
+--- lua
+5 ~ 3
 ---
 
 === bitwise not
@@ -355,6 +425,8 @@ not True
 --- typescript
 ~5;
 --- ruby
+~5
+--- lua
 ~5
 ---
 
@@ -366,6 +438,8 @@ not True
 1 << 4;
 --- ruby
 1 << 4
+--- lua
+1 << 4
 ---
 
 === right shift
@@ -375,6 +449,8 @@ not True
 --- typescript
 16 >> 2;
 --- ruby
+16 >> 2
+--- lua
 16 >> 2
 ---
 
@@ -386,6 +462,8 @@ true ? 1 : 0;
 true ? 1 : 0;
 --- ruby
 true ? 1 : 0
+--- lua
+(true and 1 or 0)
 ---
 
 === ternary with comparison
@@ -396,6 +474,8 @@ true ? 1 : 0
 5 > 3 ? 10 : 20;
 --- ruby
 5 > 3 ? 10 : 20
+--- lua
+(5 > 3 and 10 or 20)
 ---
 
 === nested ternary
@@ -406,6 +486,8 @@ true ? 1 : false ? 2 : 3;
 true ? 1 : false ? 2 : 3;
 --- ruby
 true ? 1 : false ? 2 : 3
+--- lua
+(true and 1 or (false and 2 or 3))
 ---
 
 === power right associative
@@ -416,6 +498,8 @@ true ? 1 : false ? 2 : 3
 2 ** 3 ** 2;
 --- ruby
 2 ** 3 ** 2
+--- lua
+2 ^ 3 ^ 2
 ---
 
 === double negation
@@ -425,6 +509,8 @@ true ? 1 : false ? 2 : 3
 --- typescript
 - -5;
 --- ruby
+- -5
+--- lua
 - -5
 ---
 
@@ -436,6 +522,8 @@ true ? 1 : false ? 2 : 3
 -(1 + 2);
 --- ruby
 -(1 + 2)
+--- lua
+-(1 + 2)
 ---
 
 === abs call
@@ -446,6 +534,8 @@ Math.abs(-5);
 Math.abs(-5);
 --- ruby
 (-5).abs
+--- lua
+math.abs(-5)
 ---
 
 === min call
@@ -456,6 +546,8 @@ Math.min(3, 7);
 Math.min(3, 7);
 --- ruby
 [3, 7].min
+--- lua
+math.min(3, 7)
 ---
 
 === max call
@@ -466,6 +558,8 @@ Math.max(3, 7);
 Math.max(3, 7);
 --- ruby
 [3, 7].max
+--- lua
+math.max(3, 7)
 ---
 
 === nested min max
@@ -476,6 +570,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 Math.min(Math.max(1, 2), Math.max(3, 4));
 --- ruby
 [[1, 2].max, [3, 4].max].min
+--- lua
+math.min(math.max(1, 2), math.max(3, 4))
 ---
 
 === arithmetic in comparison
@@ -485,6 +581,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 --- typescript
 1 + 2 < 3 + 4;
 --- ruby
+1 + 2 < 3 + 4
+--- lua
 1 + 2 < 3 + 4
 ---
 
@@ -496,6 +594,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 (1 < 2) + (3 < 4);
 --- ruby
 (1 < 2 ? 1 : 0) + (3 < 4 ? 1 : 0)
+--- lua
+(1 < 2 and 1 or 0) + (3 < 4 and 1 or 0)
 ---
 
 === subtraction left associative
@@ -506,6 +606,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 10 - 3 - 2;
 --- ruby
 10 - 3 - 2
+--- lua
+10 - 3 - 2
 ---
 
 === division left associative
@@ -515,6 +617,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 --- typescript
 24 / 4 / 2;
 --- ruby
+24 / 4 / 2
+--- lua
 24 / 4 / 2
 ---
 
@@ -528,6 +632,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 (1 + 2) * (3 + 4) / (5 - 6 + 7 * 8);
 --- ruby
 (1 + 2) * (3 + 4) / (5 - 6 + 7 * 8)
+--- lua
+(1 + 2) * (3 + 4) / (5 - 6 + 7 * 8)
 ---
 
 === mixed int float
@@ -537,6 +643,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 --- typescript
 1 + 2.0 * 3;
 --- ruby
+1 + 2.0 * 3
+--- lua
 1 + 2.0 * 3
 ---
 
@@ -548,6 +656,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 (-2) ** 3;
 --- ruby
 (-2) ** 3
+--- lua
+(-2) ^ 3
 ---
 
 === power with negative exponent
@@ -558,6 +668,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 2 ** -1;
 --- ruby
 2 ** -1
+--- lua
+2 ^ -1
 ---
 
 === modulo negative
@@ -567,6 +679,8 @@ Math.min(Math.max(1, 2), Math.max(3, 4));
 --- typescript
 -7 % 3;
 --- ruby
+-7 % 3
+--- lua
 -7 % 3
 ---
 
@@ -578,6 +692,8 @@ Math.floor(-7 / 3);
 Math.floor(-7 / 3);
 --- ruby
 -7 / 3
+--- lua
+-7 // 3
 ---
 
 === bitwise precedence
@@ -588,6 +704,8 @@ Math.floor(-7 / 3);
 1 | 2 & 3;
 --- ruby
 1 | 2 & 3
+--- lua
+1 | 2 & 3
 ---
 
 === shift precedence
@@ -597,6 +715,8 @@ Math.floor(-7 / 3);
 --- typescript
 1 + 2 << 3;
 --- ruby
+1 + 2 << 3
+--- lua
 1 + 2 << 3
 ---
 
@@ -610,6 +730,8 @@ Math.floor(-7 / 3);
 0xff;
 --- ruby
 0xff
+--- lua
+0xff
 ---
 
 === hex uppercase
@@ -621,6 +743,8 @@ Math.floor(-7 / 3);
 --- typescript
 0xff;
 --- ruby
+0xff
+--- lua
 0xff
 ---
 
@@ -634,6 +758,8 @@ Math.floor(-7 / 3);
 0xabcd;
 --- ruby
 0xabcd
+--- lua
+0xabcd
 ---
 
 === hex single digit
@@ -645,6 +771,8 @@ Math.floor(-7 / 3);
 --- typescript
 0xf;
 --- ruby
+0xf
+--- lua
 0xf
 ---
 
@@ -658,6 +786,8 @@ Math.floor(-7 / 3);
 0xff;
 --- ruby
 0xff
+--- lua
+0xff
 ---
 
 === hex large
@@ -669,6 +799,8 @@ Math.floor(-7 / 3);
 --- typescript
 0xdeadbeef;
 --- ruby
+0xdeadbeef
+--- lua
 0xdeadbeef
 ---
 
@@ -682,6 +814,8 @@ Math.floor(-7 / 3);
 0o77;
 --- ruby
 0o77
+--- lua
+63
 ---
 
 === octal single digit
@@ -694,6 +828,8 @@ Math.floor(-7 / 3);
 0o7;
 --- ruby
 0o7
+--- lua
+7
 ---
 
 === octal zero
@@ -706,6 +842,8 @@ Math.floor(-7 / 3);
 0o0;
 --- ruby
 0o0
+--- lua
+0
 ---
 
 === octal large
@@ -718,6 +856,8 @@ Math.floor(-7 / 3);
 0o755;
 --- ruby
 0o755
+--- lua
+493
 ---
 
 === binary basic
@@ -730,6 +870,8 @@ Math.floor(-7 / 3);
 0b1010;
 --- ruby
 0b1010
+--- lua
+10
 ---
 
 === binary single bit
@@ -742,6 +884,8 @@ Math.floor(-7 / 3);
 0b1;
 --- ruby
 0b1
+--- lua
+1
 ---
 
 === binary zero
@@ -754,6 +898,8 @@ Math.floor(-7 / 3);
 0b0;
 --- ruby
 0b0
+--- lua
+0
 ---
 
 === binary byte
@@ -766,6 +912,8 @@ Math.floor(-7 / 3);
 0b11111111;
 --- ruby
 0b11111111
+--- lua
+255
 ---
 
 === binary with leading zeros
@@ -778,6 +926,8 @@ Math.floor(-7 / 3);
 0b1010;
 --- ruby
 0b1010
+--- lua
+10
 ---
 
 === scientific positive exp
@@ -789,6 +939,8 @@ Math.floor(-7 / 3);
 --- typescript
 1.5e10;
 --- ruby
+1.5e10
+--- lua
 1.5e10
 ---
 
@@ -802,6 +954,8 @@ Math.floor(-7 / 3);
 1.5e-10;
 --- ruby
 1.5e-10
+--- lua
+1.5e-10
 ---
 
 === scientific uppercase E
@@ -813,6 +967,8 @@ Math.floor(-7 / 3);
 --- typescript
 1.5e10;
 --- ruby
+1.5e10
+--- lua
 1.5e10
 ---
 
@@ -826,6 +982,8 @@ Math.floor(-7 / 3);
 1.5;
 --- ruby
 1.5
+--- lua
+1.5
 ---
 
 === scientific integer coeff
@@ -837,6 +995,8 @@ Math.floor(-7 / 3);
 --- typescript
 1e10;
 --- ruby
+1e10
+--- lua
 1e10
 ---
 
@@ -850,6 +1010,8 @@ Math.floor(-7 / 3);
 -1.5e10;
 --- ruby
 -1.5e10
+--- lua
+-1.5e10
 ---
 
 === scientific small number
@@ -861,6 +1023,8 @@ Math.floor(-7 / 3);
 --- typescript
 1e-100;
 --- ruby
+1e-100
+--- lua
 1e-100
 ---
 
@@ -874,6 +1038,8 @@ Math.floor(-7 / 3);
 1e100;
 --- ruby
 1e100
+--- lua
+1e100
 ---
 
 === scientific with plus exp
@@ -885,6 +1051,8 @@ Math.floor(-7 / 3);
 --- typescript
 1.5e10;
 --- ruby
+1.5e10
+--- lua
 1.5e10
 ---
 
@@ -898,6 +1066,8 @@ Math.floor(-7 / 3);
 1.5e10;
 --- ruby
 1.5e10
+--- lua
+1.5e10
 ---
 
 === hex in expression
@@ -909,6 +1079,8 @@ Math.floor(-7 / 3);
 --- typescript
 0xff + 1;
 --- ruby
+0xff + 1
+--- lua
 0xff + 1
 ---
 
@@ -922,6 +1094,8 @@ Math.floor(-7 / 3);
 0o77 * 2;
 --- ruby
 0o77 * 2
+--- lua
+63 * 2
 ---
 
 === binary in expression
@@ -934,6 +1108,8 @@ Math.floor(-7 / 3);
 0b1010 | 0b101;
 --- ruby
 0b1010 | 0b101
+--- lua
+10 | 5
 ---
 
 === scientific in expression
@@ -945,6 +1121,8 @@ Math.floor(-7 / 3);
 --- typescript
 1.5e10 + 1.0;
 --- ruby
+1.5e10 + 1.0
+--- lua
 1.5e10 + 1.0
 ---
 
@@ -958,6 +1136,8 @@ Math.floor(-7 / 3);
 0xff + 0o77 + 0b1010;
 --- ruby
 0xff + 0o77 + 0b1010
+--- lua
+0xff + 63 + 10
 ---
 
 === float trailing zeros
@@ -969,6 +1149,8 @@ Math.floor(-7 / 3);
 --- typescript
 1.0;
 --- ruby
+1.0
+--- lua
 1.0
 ---
 
@@ -982,6 +1164,8 @@ Math.floor(-7 / 3);
 3.14;
 --- ruby
 3.14
+--- lua
+3.14
 ---
 
 === float trailing dot
@@ -993,6 +1177,8 @@ Math.floor(-7 / 3);
 --- typescript
 1.0;
 --- ruby
+1.0
+--- lua
 1.0
 ---
 
@@ -1006,6 +1192,8 @@ Math.floor(-7 / 3);
 0.5;
 --- ruby
 0.5
+--- lua
+0.5
 ---
 
 === float leading dot small
@@ -1017,6 +1205,8 @@ Math.floor(-7 / 3);
 --- typescript
 0.001;
 --- ruby
+0.001
+--- lua
 0.001
 ---
 
@@ -1030,6 +1220,8 @@ Math.floor(-7 / 3);
 1.0;
 --- ruby
 1.0
+--- lua
+1.0
 ---
 
 === float zero
@@ -1041,6 +1233,8 @@ Math.floor(-7 / 3);
 --- typescript
 0.0;
 --- ruby
+0.0
+--- lua
 0.0
 ---
 
@@ -1054,6 +1248,8 @@ Math.floor(-7 / 3);
 -0.0;
 --- ruby
 -0.0
+--- lua
+-0.0
 ---
 
 === float negative trailing zeros
@@ -1065,6 +1261,8 @@ Math.floor(-7 / 3);
 --- typescript
 -1.0;
 --- ruby
+-1.0
+--- lua
 -1.0
 ---
 
@@ -1078,6 +1276,8 @@ Math.floor(-7 / 3);
 -0.5;
 --- ruby
 -0.5
+--- lua
+-0.5
 ---
 
 === float underscores
@@ -1089,6 +1289,8 @@ Math.floor(-7 / 3);
 --- typescript
 1000000.0;
 --- ruby
+1000000.0
+--- lua
 1000000.0
 ---
 
@@ -1102,6 +1304,8 @@ Math.floor(-7 / 3);
 1000000;
 --- ruby
 1000000
+--- lua
+1000000
 ---
 
 === hex underscores
@@ -1113,6 +1317,8 @@ Math.floor(-7 / 3);
 --- typescript
 0xffff;
 --- ruby
+0xffff
+--- lua
 0xffff
 ---
 
@@ -1126,6 +1332,8 @@ Math.floor(-7 / 3);
 0b10101010;
 --- ruby
 0b10101010
+--- lua
+170
 ---
 
 === large int
@@ -1135,6 +1343,8 @@ Math.floor(-7 / 3);
 --- typescript
 999999999999999999999n;
 --- ruby
+999999999999999999999
+--- lua
 999999999999999999999
 ---
 
@@ -1146,6 +1356,8 @@ Math.trunc(3.7);
 Math.trunc(3.7);
 --- ruby
 3.7.to_i
+--- lua
+math.floor(3.7)
 ---
 
 === float conversion
@@ -1156,6 +1368,8 @@ float(42)
 42;
 --- ruby
 42.to_f
+--- lua
+42
 ---
 
 === round call
@@ -1166,6 +1380,8 @@ Math.round(3.7);
 Math.round(3.7);
 --- ruby
 3.7.round
+--- lua
+math.floor(3.7 + 0.5)
 ---
 
 === round with precision
@@ -1176,6 +1392,8 @@ Math.round(3.14159 * 100) / 100;
 Math.round(3.14159 * 100) / 100;
 --- ruby
 3.14159.round(2)
+--- lua
+math.floor(3.14159 * 100 + 0.5) / 100
 ---
 
 === divmod call
@@ -1186,6 +1404,8 @@ divmod(17, 5)
 [Math.floor(17 / 5), 17 % 5];
 --- ruby
 17.divmod(5)
+--- lua
+{17 // 5, 17 % 5}
 ---
 
 === pow three arg
@@ -1196,6 +1416,8 @@ pow(2, 10, 1000)
 2 ** 10 % 1000;
 --- ruby
 2.pow(10, 1000)
+--- lua
+2 ^ 10 % 1000
 ---
 
 === triple negation
@@ -1206,6 +1428,8 @@ pow(2, 10, 1000)
 - - -5;
 --- ruby
 - - -5
+--- lua
+- - -5
 ---
 
 === bitwise and arithmetic
@@ -1215,6 +1439,8 @@ pow(2, 10, 1000)
 --- typescript
 (5 & 3) + 1;
 --- ruby
+(5 & 3) + 1
+--- lua
 (5 & 3) + 1
 ---
 
@@ -1228,6 +1454,8 @@ pow(2, 10, 1000)
 5 & 3 + 1;
 --- ruby
 5 & 3 + 1
+--- lua
+5 & 3 + 1
 ---
 
 === xor chain
@@ -1238,6 +1466,8 @@ pow(2, 10, 1000)
 1 ^ 2 ^ 3;
 --- ruby
 1 ^ 2 ^ 3
+--- lua
+1 ~ 2 ~ 3
 ---
 
 === shift chain
@@ -1247,6 +1477,8 @@ pow(2, 10, 1000)
 --- typescript
 1 << 2 << 1;
 --- ruby
+1 << 2 << 1
+--- lua
 1 << 2 << 1
 ---
 
@@ -1258,6 +1490,8 @@ pow(2, 10, 1000)
 ~(1 + 2);
 --- ruby
 ~(1 + 2)
+--- lua
+~(1 + 2)
 ---
 
 === modulo precedence
@@ -1267,6 +1501,8 @@ pow(2, 10, 1000)
 --- typescript
 2 + 3 % 2;
 --- ruby
+2 + 3 % 2
+--- lua
 2 + 3 % 2
 ---
 
@@ -1278,6 +1514,8 @@ pow(2, 10, 1000)
 2 + Math.floor(7 / 3);
 --- ruby
 2 + 7 / 3
+--- lua
+2 + 7 // 3
 ---
 
 === power precedence over multiply
@@ -1288,6 +1526,8 @@ pow(2, 10, 1000)
 2 * 3 ** 2;
 --- ruby
 2 * 3 ** 2
+--- lua
+2 * 3 ^ 2
 ---
 
 === multiply precedence over add
@@ -1298,6 +1538,8 @@ pow(2, 10, 1000)
 2 ** 3 * 4;
 --- ruby
 2 ** 3 * 4
+--- lua
+2 ^ 3 * 4
 ---
 
 === comparison with bool result used
@@ -1308,6 +1550,8 @@ pow(2, 10, 1000)
 (1 < 2) * 10;
 --- ruby
 (1 < 2 ? 1 : 0) * 10
+--- lua
+(1 < 2 and 1 or 0) * 10
 ---
 
 === nested abs
@@ -1318,6 +1562,8 @@ Math.abs(Math.abs(-5) - 10);
 Math.abs(Math.abs(-5) - 10);
 --- ruby
 ((-5).abs - 10).abs
+--- lua
+math.abs(math.abs(-5) - 10)
 ---
 
 === bool to int implicit
@@ -1328,6 +1574,8 @@ true + true;
 true + true;
 --- ruby
 (true ? 1 : 0) + (true ? 1 : 0)
+--- lua
+(true and 1 or 0) + (true and 1 or 0)
 ---
 
 === not of comparison
@@ -1338,6 +1586,8 @@ not 1 < 2
 !(1 < 2);
 --- ruby
 !(1 < 2)
+--- lua
+not (1 < 2)
 ---
 
 === and of comparisons
@@ -1348,6 +1598,8 @@ not 1 < 2
 1 < 2 && 3 < 4;
 --- ruby
 1 < 2 && 3 < 4
+--- lua
+1 < 2 and 3 < 4
 ---
 
 === mixed and not
@@ -1358,6 +1610,8 @@ not True and False
 !true && false;
 --- ruby
 !true && false
+--- lua
+not true and false
 ---
 
 === parenthesized not
@@ -1370,6 +1624,8 @@ not True and False
 !true && false;
 --- ruby
 !true && false
+--- lua
+not true and false
 ---
 
 === not of and
@@ -1380,4 +1636,6 @@ not (True and False)
 !(true && false);
 --- ruby
 !(true && false)
+--- lua
+not (true and false)
 ---

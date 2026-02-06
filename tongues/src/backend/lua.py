@@ -23,6 +23,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharClassify,
     CatchClause,
     CharLit,
@@ -58,7 +59,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -194,6 +197,7 @@ class LuaBackend:
         self._has_continue = False  # Track if we need continue helper
         self._needed_helpers: set[str] = set()
         self._hoisted_vars: set[str] = set()  # Variables already declared via hoisting
+        self._needs_paren_guard = False  # Track if ; needed before ( to prevent ambiguity
 
     def emit(self, module: Module) -> str:
         """Emit Lua code from IR Module."""
@@ -203,6 +207,7 @@ class LuaBackend:
         self._has_continue = False
         self._needed_helpers = set()
         self._hoisted_vars = set()
+        self._needs_paren_guard = False
         # First pass to collect struct field info
         for struct in module.structs:
             self.struct_fields[struct.name] = [f.name for f in struct.fields]
@@ -418,6 +423,11 @@ class LuaBackend:
             if need_blank:
                 self._line()
             self._emit_function(func)
+            need_blank = True
+        for stmt in module.statements:
+            if need_blank:
+                self._line()
+            self._emit_stmt(stmt)
             need_blank = True
         if module.entrypoint:
             self._line()
@@ -671,14 +681,17 @@ class LuaBackend:
                 if value is not None:
                     val = self._expr(value)
                     self._line(f"{safe} = {val}")
+                    self._needs_paren_guard = True
             case Assign(target=target, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
                 self._line(f"{lv} = {val}")
+                self._needs_paren_guard = True
             case TupleAssign(targets=targets, value=value):
                 lvalues = ", ".join(self._lvalue(t) for t in targets)
                 val = self._expr(value)
                 self._line(f"{lvalues} = table.unpack({val})")
+                self._needs_paren_guard = True
             case OpAssign(target=target, op=op, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
@@ -688,15 +701,18 @@ class LuaBackend:
                 else:
                     lua_op = _op_assign_op(op)
                     self._line(f"{lv} = {lv} {lua_op} {val}")
+                self._needs_paren_guard = True
             case NoOp():
                 pass
             case ExprStmt(expr=expr):
                 e = self._expr(expr)
                 # Prefix with ; if expr starts with ( to prevent Lua parsing ambiguity
-                if e.startswith("("):
+                # Only needed if previous statement could be misinterpreted as function call
+                if e.startswith("(") and self._needs_paren_guard:
                     self._line(";" + e)
                 else:
                     self._line(e)
+                self._needs_paren_guard = True
             case Return(value=value):
                 if value is not None:
                     self._line(f"return {self._expr(value)}")
@@ -1086,9 +1102,31 @@ class LuaBackend:
 
     def _expr(self, expr: Expr) -> str:
         match expr:
-            case IntLit(value=value):
+            case IntLit(value=value, format=fmt):
+                if fmt == "hex":
+                    return f"0x{value:x}"
+                # Lua doesn't support octal or binary literals, use decimal
                 return str(value)
-            case FloatLit(value=value):
+            case FloatLit(value=value, format=fmt):
+                if fmt == "exp":
+                    # Format as scientific notation, clean up the result
+                    s = f"{value:e}"
+                    mantissa, exp = s.split("e")
+                    # Clean up exponent: e+10 -> e10, e-05 -> e-5
+                    exp_sign = exp[0] if exp[0] in "+-" else ""
+                    exp_val = exp.lstrip("+-").lstrip("0") or "0"
+                    if exp_sign == "+":
+                        exp_sign = ""
+                    # If exponent is 0, just return the mantissa
+                    if exp_val == "0":
+                        mantissa = mantissa.rstrip("0").rstrip(".")
+                        if "." not in mantissa:
+                            return mantissa + ".0"
+                        return mantissa
+                    # Remove trailing zeros from mantissa
+                    if "." in mantissa:
+                        mantissa = mantissa.rstrip("0").rstrip(".")
+                    return f"{mantissa}e{exp_sign}{exp_val}"
                 return str(value)
             case StringLit(value=value):
                 return _string_literal(value)
@@ -1162,6 +1200,37 @@ class LuaBackend:
             case Call(func="_intPtr", args=[arg]):
                 val = self._expr(arg)
                 return f"(({val}) == -1 and nil or ({val}))"
+            case Call(func="abs", args=[arg]):
+                return f"math.abs({self._expr(arg)})"
+            case Call(func="min", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"math.min({args_str})"
+            case Call(func="max", args=args):
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"math.max({args_str})"
+            case Call(func="round", args=[arg]):
+                inner = self._expr(arg)
+                return f"math.floor({inner} + 0.5)"
+            case Call(func="round", args=[arg, precision]):
+                inner = self._expr(arg)
+                # Compute multiplier directly if precision is a constant
+                if isinstance(precision, IntLit):
+                    mult = 10**precision.value
+                    return f"math.floor({inner} * {mult} + 0.5) / {mult}"
+                prec = self._expr(precision)
+                return f"math.floor({inner} * 10 ^ {prec} + 0.5) / 10 ^ {prec}"
+            case Call(func="int", args=[arg]):
+                return f"math.floor({self._expr(arg)})"
+            case Call(func="float", args=[arg]):
+                return self._expr(arg)
+            case Call(func="divmod", args=[a, b]):
+                a_str = self._expr(a)
+                b_str = self._expr(b)
+                return f"{{{a_str} // {b_str}, {a_str} % {b_str}}}"
+            case Call(func="pow", args=[base, exp]):
+                return f"{self._expr(base)} ^ {self._expr(exp)}"
+            case Call(func="pow", args=[base, exp, mod]):
+                return f"{self._expr(base)} ^ {self._expr(exp)} % {self._expr(mod)}"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 if func == "range":
@@ -1272,8 +1341,9 @@ class LuaBackend:
                 return f"{left_str} {lua_op} {right_str}"
             case UnaryOp(op=op, operand=operand):
                 lua_op = _unary_op(op)
+                operand_str = self._expr(operand)
                 if op == "!" and isinstance(operand, BinaryOp):
-                    return f"{lua_op}({self._expr(operand)})"
+                    return f"{lua_op}({operand_str})"
                 if op == "!" and isinstance(operand, Truthy):
                     inner = operand.expr
                     if inner.typ == Primitive(kind="int"):
@@ -1281,13 +1351,25 @@ class LuaBackend:
                         if isinstance(inner, BinaryOp):
                             return f"(({inner_str}) == 0)"
                         return f"({inner_str} == 0)"
-                return f"{lua_op}{self._expr(operand)}"
+                # Preserve parentheses for complex operands with - and ~
+                if op in ("-", "~") and isinstance(operand, (BinaryOp, Ternary)):
+                    return f"{lua_op}({operand_str})"
+                # Handle double/triple negation: --5 becomes - -5 to avoid Lua comment
+                if op == "-" and operand_str.startswith("-"):
+                    return f"- {operand_str}"
+                # Bitwise not needs space before negative numbers
+                if op == "~" and operand_str.startswith("-"):
+                    return f"~ {operand_str}"
+                return f"{lua_op}{operand_str}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 # Lua ternary: cond and a or b (fails if a is false/nil)
                 # For safety, use function wrapper
                 cond_str = self._expr(cond)
                 then_str = self._expr(then_expr)
                 else_str = self._expr(else_expr)
+                # Wrap condition in parens if it's an 'or' expression (and has higher prec)
+                if isinstance(cond, BinaryOp) and cond.op in ("or", "||"):
+                    cond_str = f"({cond_str})"
                 # Check if then_expr could be falsy (boolean false or nil)
                 if self._could_be_falsy(then_expr):
                     return f"(function() if {cond_str} then return {then_str} else return {else_str} end end)()"
@@ -1304,6 +1386,8 @@ class LuaBackend:
                         Primitive(kind="rune"),
                     ):
                         return f"string.byte({inner_str})"
+                    if inner_type == Primitive(kind="float"):
+                        return f"math.floor({inner_str})"
                 if to_type == Primitive(kind="string"):
                     if inner_type == BOOL:
                         return f'({inner_str} and "True" or "False")'
@@ -1368,6 +1452,18 @@ class LuaBackend:
                 return self._format_string(template, args)
             case SliceConvert(source=source):
                 return self._expr(source)
+            case ChainedCompare(operands=operands, ops=ops):
+                parts = []
+                for i, op in enumerate(ops):
+                    left_str = self._expr(operands[i])
+                    right_str = self._expr(operands[i + 1])
+                    lua_op = _binary_op(op)
+                    parts.append(f"{left_str} {lua_op} {right_str}")
+                return " and ".join(parts)
+            case MinExpr(left=left, right=right):
+                return f"math.min({self._expr(left)}, {self._expr(right)})"
+            case MaxExpr(left=left, right=right):
+                return f"math.max({self._expr(left)}, {self._expr(right)})"
             case _:
                 raise NotImplementedError("Unknown expression")
 
@@ -1675,7 +1771,13 @@ class LuaBackend:
                 if _needs_parens(child_op, parent_op, is_left):
                     return f"({self._expr(expr)})"
             case Ternary():
-                return f"({self._expr(expr)})"
+                # Ternary _expr already includes outer parens, don't double-wrap
+                return self._expr(expr)
+            case UnaryOp(op="-"):
+                # In Lua, ^ has higher precedence than unary -, so -2 ^ 3 = -(2 ^ 3)
+                # Wrap negative operands in parens when parent is exponentiation
+                if parent_op == "**" and is_left:
+                    return f"({self._expr(expr)})"
         return self._expr(expr)
 
 
