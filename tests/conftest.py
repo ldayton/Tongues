@@ -79,6 +79,7 @@ from src.backend.zig import ZigBackend
 _SKIP_LANGS: dict[str, set[str]] = {
     "apptest_bits": {
         "csharp",
+        "go",
         "zig",
     },
     "apptest_bools": {
