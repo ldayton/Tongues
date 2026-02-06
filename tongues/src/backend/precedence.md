@@ -2,41 +2,60 @@
 
 ## Integration Status
 
-| Backend       | Table/Function                       | Integrated | Issues |
-| ------------- | ------------------------------------ | ---------- | ------ |
-| **c.py**      | `_C_PREC` + `_c_prec()`              | Yes        | —      |
-| **go.py**     | `_GO_PREC` + `_go_prec()`            | Yes        | —      |
-| **dart.py**   | `_DART_PREC` + `_dart_prec()`        | Yes        | —      |
-| **csharp.py** | `_OP_PRECEDENCE` + `_needs_parens()` | Yes        | —      |
-| **java.py**   | `_OP_PRECEDENCE` + `_needs_parens()` | Yes        | —      |
-| **rust.py**   | `_RUST_PREC` + `_rust_prec()`        | Yes        | —      |
-| **zig.py**    | `_ZIG_PREC` + `_zig_prec()`          | Yes        | —      |
-| **swift.py**  | `_SWIFT_PREC` + `_swift_prec()`      | Yes        | —      |
-| **python.py** | `_PRECEDENCE`                        | Yes        | —      |
-| **ruby.py**   | `_PRECEDENCE`                        | Yes        | —      |
-| **lua.py**    | `_PRECEDENCE`                        | Yes        | —      |
-| **perl.py**   | `_PRECEDENCE`                        | Yes        | —      |
-| **php.py**    | `_PRECEDENCE`                        | Yes        | —      |
-| **jslike.py** | `_op_precedence()`                   | Yes        | —      |
+All backends use consistent naming:
+- **Table**: `_PRECEDENCE`
+- **Lookup**: `_prec(op)`
+- **Decision**: `_needs_parens(child_op, parent_op, is_left)`
+- **Method**: `_maybe_paren(expr, parent_op, is_left)`
 
-## Implementation Patterns
+| Backend       | Integrated | Notes                        |
+| ------------- | ---------- | ---------------------------- |
+| **c.py**      | Yes        | —                            |
+| **go.py**     | Yes        | —                            |
+| **dart.py**   | Yes        | —                            |
+| **csharp.py** | Yes        | Inline `_needs_parens` calls |
+| **java.py**   | Yes        | Inline `_needs_parens` calls |
+| **rust.py**   | Yes        | —                            |
+| **zig.py**    | Yes        | —                            |
+| **swift.py**  | Yes        | —                            |
+| **python.py** | Yes        | —                            |
+| **ruby.py**   | Yes        | —                            |
+| **lua.py**    | Yes        | —                            |
+| **perl.py**   | Yes        | —                            |
+| **php.py**    | Yes        | —                            |
+| **jslike.py** | Yes        | —                            |
 
-| Backend    | Implementation            | Signature                               | Non-associative handling               |
-| ---------- | ------------------------- | --------------------------------------- | -------------------------------------- |
-| **c**      | `_maybe_paren()` method   | `(expr, parent_op, is_left)`            | Yes (comparisons on right)             |
-| **go**     | `_wrap_prec()` method     | `(expr, parent_op, is_right)`           | Yes (comparisons)                      |
-| **rust**   | `_wrap_prec()` method     | `(expr, parent_op, is_right)`           | Yes (comparisons)                      |
-| **zig**    | `_wrap_prec()` method     | `(expr, parent_op, is_right)`           | Yes (comparisons + bitwise/cmp mixing) |
-| **swift**  | `_wrap_prec()` method     | `(expr, parent_op, is_right)`           | Yes (comparisons)                      |
-| **python** | `_needs_parens()` func    | `(child_op, parent_op, is_left)`        | Yes (chained comparisons)              |
-| **ruby**   | `_needs_parens()` func    | `(child_op, parent_op, is_left)`        | Yes (comparisons on right)             |
-| **lua**    | `_needs_parens()` func    | `(child_op, parent_op, is_left)`        | Yes (comparisons on right)             |
-| **perl**   | `_needs_parens()` func    | `(child_op, parent_op, is_left)`        | Yes (includes string cmp ops)          |
-| **php**    | `_needs_parens()` func    | `(child_op, parent_op, is_left)`        | Yes (comparisons on right)             |
-| **jslike** | `_expr_with_precedence()` | `(expr, parent_op, is_right)`           | Special `**` handling                  |
-| **csharp** | `_needs_parens()` func    | `(child: BinaryOp, parent_op, is_left)` | Yes (comparisons on right)             |
-| **dart**   | `_maybe_paren()` method   | `(expr, parent_op, is_left)`            | Yes (comparisons on right)             |
-| **java**   | `_needs_parens()` func    | `(child: BinaryOp, parent_op, is_left)` | Yes (comparisons on right)             |
+## Standard Pattern
+
+```python
+_PRECEDENCE: dict[str, int] = {
+    "||": 1,
+    "&&": 2,
+    # ... language-specific order
+}
+
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, DEFAULT)
+
+def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
+    child_prec = _prec(child_op)
+    parent_prec = _prec(parent_op)
+    if child_prec < parent_prec:
+        return True
+    if child_prec == parent_prec and not is_left:
+        return child_op in COMPARISON_OPS  # non-associative
+    return False
+
+# Method on emitter class
+def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
+    match expr:
+        case BinaryOp(op=child_op):
+            if _needs_parens(child_op, parent_op, is_left):
+                return f"({self._expr(expr)})"
+        case Ternary():
+            return f"({self._expr(expr)})"
+    return self._expr(expr)
+```
 
 ## Precedence Families
 
@@ -82,13 +101,13 @@ No bitwise operators in precedence table.
 
 ## Special Operators by Language
 
-| Language   | Special Ops                    | Notes                                              |
-| ---------- | ------------------------------ | -------------------------------------------------- |
-| **zig**    | `and`, `or`                    | Keywords instead of `&&`, `                        |  | `                |
-| **lua**    | `~=`, `~`, `..`, `^`           | `~=` is !=, `~` is xor, `..` is concat, `^` is exp |
-| **perl**   | `eq ne lt gt le ge`, `.`       | String comparison ops, `.` is concat               |
-| **php**    | `or`, `and`, `.`, `===`, `!==` | 4 logical levels: `or` < `                         |  | ` < `and` < `&&` |
-| **jslike** | `===`, `!==`, `**`             | Strict equality, exponentiation                    |
-| **dart**   | `~/`                           | Integer division                                   |
-| **ruby**   | `**`                           | Exponentiation                                     |
-| **python** | `**`                           | Exponentiation                                     |
+| Language   | Special Ops                    | Notes                                            |
+| ---------- | ------------------------------ | ------------------------------------------------ |
+| **zig**    | `and`, `or`                    | Keywords instead of `&&`, `\|\|`                 |
+| **lua**    | `~=`, `~`, `..`, `^`           | `~=` is !=, `~` is xor, `..` is concat, `^` exp  |
+| **perl**   | `eq ne lt gt le ge`, `.`       | String comparison ops, `.` is concat             |
+| **php**    | `or`, `and`, `.`, `===`, `!==` | 4 logical levels: `or` < `\|\|` < `and` < `&&`   |
+| **jslike** | `===`, `!==`, `**`             | Strict equality, exponentiation                  |
+| **dart**   | `~/`                           | Integer division                                 |
+| **ruby**   | `**`                           | Exponentiation                                   |
+| **python** | `**`                           | Exponentiation                                   |

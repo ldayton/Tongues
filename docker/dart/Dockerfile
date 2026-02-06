@@ -10,5 +10,5 @@ RUN apt-get update && apt-get install -y curl unzip git \
     && /opt/dart-sdk/bin/dart --version 2>&1 | grep -q "3\.2\.6" \
     && curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:/opt/dart-sdk/bin:${PATH}"
-RUN uv python install "~=3.14"
+RUN uv python install "~=3.12.0"
 WORKDIR /workspace

@@ -10,5 +10,5 @@ RUN ARCH=$(dpkg --print-architecture) \
        "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.0.2/stylua-linux-${ARCH}" \
     && chmod +x /usr/local/bin/stylua \
     && stylua --version | grep -q "."
-RUN uv python install "~=3.14"
+RUN uv python install "~=3.12.0"
 WORKDIR /workspace

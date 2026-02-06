@@ -144,6 +144,7 @@ _JAVA_STDLIB_CLASSES = frozenset(
     }
 )
 
+
 def _java_safe_name(name: str) -> str:
     """Escape Java reserved words by appending underscore."""
     result = to_camel(name)
@@ -1605,11 +1606,11 @@ class JavaBackend:
                 # Wrap operands in parens based on precedence
                 if isinstance(left, Ternary):
                     left_str = f"({left_str})"
-                elif isinstance(left, BinaryOp) and _needs_parens(left, op, is_left=True):
+                elif isinstance(left, BinaryOp) and _needs_parens(left.op, op, is_left=True):
                     left_str = f"({left_str})"
                 if isinstance(right, Ternary):
                     right_str = f"({right_str})"
-                elif isinstance(right, BinaryOp) and _needs_parens(right, op, is_left=False):
+                elif isinstance(right, BinaryOp) and _needs_parens(right.op, op, is_left=False):
                     right_str = f"({right_str})"
                 # String comparison needs .equals() or .compareTo()
                 if java_op == "==" and _is_string_type(left.typ):
@@ -2183,7 +2184,7 @@ def _binary_op(op: str) -> str:
 
 
 # Operator precedence (higher = binds tighter)
-_OP_PRECEDENCE = {
+_PRECEDENCE = {
     "||": 1,
     "or": 1,
     "&&": 2,
@@ -2209,15 +2210,19 @@ _OP_PRECEDENCE = {
 }
 
 
-def _needs_parens(child: "BinaryOp", parent_op: str, is_left: bool) -> bool:
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 0)
+
+
+def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     """Check if child binary op needs parens when used as operand of parent op."""
-    child_prec = _OP_PRECEDENCE.get(child.op, 0)
-    parent_prec = _OP_PRECEDENCE.get(parent_op, 0)
+    child_prec = _prec(child_op)
+    parent_prec = _prec(parent_op)
     if child_prec < parent_prec:
         return True
     if child_prec == parent_prec and not is_left:
         # Comparisons are non-associative
-        return child.op in ("==", "!=", "<", ">", "<=", ">=")
+        return child_op in ("==", "!=", "<", ">", "<=", ">=")
     return False
 
 

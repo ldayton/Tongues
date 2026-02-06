@@ -36,6 +36,8 @@ fmt *ARGS:
 
 check: fmt lint subset test
 
+check-docker: fmt lint subset test-docker
+
 # Build Docker image for a language
 docker-build lang:
     docker build -t tongues-{{lang}} docker/{{lang}}

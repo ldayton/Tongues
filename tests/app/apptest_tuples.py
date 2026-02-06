@@ -130,8 +130,8 @@ def test_tuple_contains() -> None:
     assert 1 in t
     assert 3 in t
     assert 5 in t
-    assert not (0 in t)
-    assert not (6 in t)
+    assert 0 not in t
+    assert 6 not in t
     assert 0 not in t
     assert 6 not in t
 
@@ -139,7 +139,7 @@ def test_tuple_contains() -> None:
 def test_tuple_contains_empty() -> None:
     """Membership in empty tuple."""
     t: tuple[int, ...] = ()
-    assert not (1 in t)
+    assert 1 not in t
     assert 1 not in t
 
 

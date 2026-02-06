@@ -4,6 +4,6 @@ RUN apt-get update && apt-get install -y curl \
     && rm -rf /var/lib/apt/lists/* \
     && curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
-RUN uv python install "~=3.14" "~=3.12"
+RUN uv python install "~=3.12.0"
 RUN uvx ruff --version | grep -q "ruff"
 WORKDIR /workspace

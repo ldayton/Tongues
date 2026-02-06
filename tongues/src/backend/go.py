@@ -160,7 +160,7 @@ from src.ir import (
 # Go operator precedence (higher number = tighter binding).
 # From go.dev/ref/spec#Operator_precedence
 # Note: Go groups bitwise ops with arithmetic, not with comparisons like C.
-_GO_PREC: dict[str, int] = {
+_PRECEDENCE: dict[str, int] = {
     "||": 1,
     "&&": 2,
     "==": 3,
@@ -182,8 +182,8 @@ _GO_PREC: dict[str, int] = {
 }
 
 
-def _go_prec(op: str) -> int:
-    return _GO_PREC.get(op, 6)
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 6)
 
 
 def _is_comparison(op: str) -> bool:
@@ -1569,16 +1569,16 @@ class GoBackend:
     # EXPRESSION EMISSION
     # ============================================================
 
-    def _wrap_prec(self, expr: Expr, parent_op: str, is_right: bool) -> str:
+    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Emit expr, adding parens if its precedence requires it."""
         s = self._emit_expr(expr)
         if isinstance(expr, BinaryOp):
             # Go doesn't allow chained comparisons
             if _is_comparison(parent_op) and _is_comparison(expr.op):
                 return f"({s})"
-            child_prec = _go_prec(expr.op)
-            parent_prec = _go_prec(parent_op)
-            if is_right:
+            child_prec = _prec(expr.op)
+            parent_prec = _prec(parent_op)
+            if not is_left:
                 if child_prec <= parent_prec:
                     return f"({s})"
             else:
@@ -1910,9 +1910,7 @@ class GoBackend:
             right_str = _go_coerce_bool_to_int(self, expr.right)
             return f"{left_str} {op} {right_str}"
         # Bool coercion for arithmetic ops
-        if op in ("+", "-", "*", "/", "%") and (
-            _go_is_bool(expr.left) or _go_is_bool(expr.right)
-        ):
+        if op in ("+", "-", "*", "/", "%") and (_go_is_bool(expr.left) or _go_is_bool(expr.right)):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
             return f"{left_str} {op} {right_str}"
@@ -1927,12 +1925,12 @@ class GoBackend:
             left_is_rune = isinstance(expr.left, Var) and expr.left.typ == RUNE
             right_is_rune = isinstance(expr.right, Var) and expr.right.typ == RUNE
             if left_is_rune and isinstance(expr.right, StringLit) and len(expr.right.value) == 1:
-                left_str = self._wrap_prec(expr.left, op, False)
+                left_str = self._maybe_paren(expr.left, op, is_left=True)
                 right_str = self._emit_rune_literal(expr.right.value)
                 return f"{left_str} {op} {right_str}"
             if right_is_rune and isinstance(expr.left, StringLit) and len(expr.left.value) == 1:
                 left_str = self._emit_rune_literal(expr.left.value)
-                right_str = self._wrap_prec(expr.right, op, True)
+                right_str = self._maybe_paren(expr.right, op, is_left=False)
                 return f"{left_str} {op} {right_str}"
         # Handle comparisons with optional (pointer) types - dereference the pointer
         # Pattern: x > 0 where x is *int needs to become *x > 0
@@ -1950,8 +1948,8 @@ class GoBackend:
                 else (right_type.inner if isinstance(right_type, Optional) else None)
             )
             if left_inner in (INT, FLOAT) or right_inner in (INT, FLOAT):
-                left_str = self._wrap_prec(expr.left, op, False)
-                right_str = self._wrap_prec(expr.right, op, True)
+                left_str = self._maybe_paren(expr.left, op, is_left=True)
+                right_str = self._maybe_paren(expr.right, op, is_left=False)
                 if left_inner in (INT, FLOAT):
                     left_str = f"*{left_str}"
                 if right_inner in (INT, FLOAT):
@@ -1976,8 +1974,8 @@ class GoBackend:
         if op == "//":
             op = "/"
         # Standard binary operation with precedence handling
-        left = self._wrap_prec(expr.left, op, False)
-        right = self._wrap_prec(expr.right, op, True)
+        left = self._maybe_paren(expr.left, op, is_left=True)
+        right = self._maybe_paren(expr.right, op, is_left=False)
         return f"{left} {op} {right}"
 
     def _emit_rune_literal(self, char: str) -> str:

@@ -192,7 +192,7 @@ _C_RESERVED = frozenset(
 
 # C operator precedence (higher number = tighter binding).
 # From cppreference.com/w/c/language/operator_precedence
-_C_PREC: dict[str, int] = {
+_PRECEDENCE: dict[str, int] = {
     "||": 1,
     "&&": 2,
     "|": 3,
@@ -214,14 +214,14 @@ _C_PREC: dict[str, int] = {
 }
 
 
-def _c_prec(op: str) -> int:
-    return _C_PREC.get(op, 11)
+def _prec(op: str) -> int:
+    return _PRECEDENCE.get(op, 11)
 
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     """Determine if a child binary op needs parens inside a parent binary op."""
-    child_prec = _c_prec(child_op)
-    parent_prec = _c_prec(parent_op)
+    child_prec = _prec(child_op)
+    parent_prec = _prec(parent_op)
     if child_prec < parent_prec:
         return True
     if child_prec == parent_prec and not is_left:

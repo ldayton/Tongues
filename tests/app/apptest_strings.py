@@ -85,8 +85,8 @@ def test_string_contains() -> None:
     assert "o" in "hello"
     assert "" in "hello"  # empty string in any string
     assert "" in ""
-    assert not ("x" in "hello")
-    assert not ("Hello" in "hello")  # case sensitive
+    assert "x" not in "hello"
+    assert "Hello" not in "hello"  # case sensitive
 
 
 def test_string_upper_lower() -> None:

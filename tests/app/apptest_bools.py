@@ -24,8 +24,8 @@ def test_bool_string() -> None:
 
 
 def test_bool_int() -> None:
-    assert int(True) is 1
-    assert int(False) is 0
+    assert int(True) == 1
+    assert int(False) == 0
 
 
 def test_bool_ops() -> None:

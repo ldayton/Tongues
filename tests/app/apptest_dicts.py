@@ -55,14 +55,14 @@ def test_dict_contains() -> None:
     assert "a" in d
     assert "b" in d
     assert "c" in d
-    assert not ("d" in d)
+    assert "d" not in d
     assert "d" not in d
 
 
 def test_dict_contains_empty() -> None:
     """Membership in empty dict."""
     d: dict[str, int] = {}
-    assert not ("a" in d)
+    assert "a" not in d
     assert "a" not in d
 
 

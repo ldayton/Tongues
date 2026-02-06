@@ -33,8 +33,8 @@ def test_set_contains() -> None:
     assert 1 in s
     assert 3 in s
     assert 5 in s
-    assert not (0 in s)
-    assert not (6 in s)
+    assert 0 not in s
+    assert 6 not in s
     assert 0 not in s
     assert 6 not in s
 
@@ -42,7 +42,7 @@ def test_set_contains() -> None:
 def test_set_contains_empty() -> None:
     """Membership in empty set."""
     s: set[int] = set()
-    assert not (1 in s)
+    assert 1 not in s
     assert 1 not in s
 
 
