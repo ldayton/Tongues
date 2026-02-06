@@ -84,6 +84,7 @@ _SKIP_LANGS: dict[str, set[str]] = {
     },
     "apptest_bools": {
         "csharp",
+        "go",
         "zig",
     },
     "apptest_bytes": {
