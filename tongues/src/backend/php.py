@@ -1020,13 +1020,13 @@ class PhpBackend:
         if func == "int":
             arg_str = self._expr(args[0])
             # No parens for simple values
-            if args[0].__class__.__name__ in ("IntLit", "FloatLit", "Name"):
+            if isinstance(args[0], (IntLit, FloatLit, Var)):
                 return f"(int){arg_str}"
             return f"(int)({arg_str})"
         if func == "float":
             arg_str = self._expr(args[0])
             # No parens for simple values
-            if args[0].__class__.__name__ in ("IntLit", "FloatLit", "Name"):
+            if isinstance(args[0], (IntLit, FloatLit, Var)):
                 return f"(float){arg_str}"
             return f"(float)({arg_str})"
         if func == "round":
