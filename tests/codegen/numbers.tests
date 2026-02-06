@@ -667,7 +667,7 @@ true ? 1 : (false ? 2 : 3);
 --- perl
 2 ** 3 ** 2
 --- php
-2 ** (3 ** 2);
+2 ** 3 ** 2;
 ---
 
 === double negation
@@ -957,7 +957,7 @@ intdiv(-7, 3);
 --- perl
 1 + 2 << 3
 --- php
-(1 + 2) << 3;
+1 + 2 << 3;
 ---
 
 === hex lowercase

@@ -109,7 +109,7 @@ true ? true ? 1 : 2 : 3
 --- perl
 (1 ? (1 ? 1 : 2) : 3)
 --- php
-true ? (true ? 1 : 2) : 3;
+true ? true ? 1 : 2 : 3;
 ---
 
 === ternary with arithmetic
@@ -154,8 +154,9 @@ sub pick ($a, $b, $use_first) {
     return ($use_first ? $a : $b);
 }
 --- php
-function pick($a, $b, $use_first) {
-    return $use_first ? $a : $b;
+function pick(int $a, int $b, bool $useFirst): int
+{
+    return $useFirst ? $a : $b;
 }
 ---
 
@@ -280,8 +281,10 @@ sub check ($x) {
     return 0;
 }
 --- php
-function check($x) {
-    if ($x > 0) {
+function check(int $x): int
+{
+    if ($x > 0)
+    {
         return 1;
     }
     return 0;
@@ -335,10 +338,14 @@ sub check ($x) {
     }
 }
 --- php
-function check($x) {
-    if ($x > 0) {
+function check(int $x): int
+{
+    if ($x > 0)
+    {
         return 1;
-    } else {
+    }
+    else
+    {
         return -1;
     }
 }
@@ -403,13 +410,22 @@ sub classify ($x) {
     }
 }
 --- php
-function classify($x) {
-    if ($x > 0) {
+function classify(int $x): string
+{
+    if ($x > 0)
+    {
         return "positive";
-    } elseif ($x < 0) {
-        return "negative";
-    } else {
-        return "zero";
+    }
+    else
+    {
+        if ($x < 0)
+        {
+            return "negative";
+        }
+        else
+        {
+            return "zero";
+        }
     }
 }
 ---
@@ -497,17 +513,36 @@ sub grade ($score) {
     }
 }
 --- php
-function grade($score) {
-    if ($score >= 90) {
+function grade(int $score): string
+{
+    if ($score >= 90)
+    {
         return "A";
-    } elseif ($score >= 80) {
-        return "B";
-    } elseif ($score >= 70) {
-        return "C";
-    } elseif ($score >= 60) {
-        return "D";
-    } else {
-        return "F";
+    }
+    else
+    {
+        if ($score >= 80)
+        {
+            return "B";
+        }
+        else
+        {
+            if ($score >= 70)
+            {
+                return "C";
+            }
+            else
+            {
+                if ($score >= 60)
+                {
+                    return "D";
+                }
+                else
+                {
+                    return "F";
+                }
+            }
+        }
     }
 }
 ---
@@ -582,14 +617,21 @@ sub nested ($x, $y) {
     }
 }
 --- php
-function nested($x, $y) {
-    if ($x > 0) {
-        if ($y > 0) {
+function nested(int $x, int $y): int
+{
+    if ($x > 0)
+    {
+        if ($y > 0)
+        {
             return 1;
-        } else {
+        }
+        else
+        {
             return 2;
         }
-    } else {
+    }
+    else
+    {
         return 3;
     }
 }
@@ -636,8 +678,10 @@ sub both_positive ($x, $y) {
     return 0;
 }
 --- php
-function both_positive($x, $y) {
-    if ($x > 0 && $y > 0) {
+function bothPositive(int $x, int $y): bool
+{
+    if ($x > 0 && $y > 0)
+    {
         return true;
     }
     return false;
@@ -702,9 +746,12 @@ sub is_zero ($x) {
     return 0;
 }
 --- php
-function is_zero($x) {
-    if (!($x > 0)) {
-        if (!($x < 0)) {
+function isZero(int $x): bool
+{
+    if (!($x > 0))
+    {
+        if (!($x < 0))
+        {
             return true;
         }
     }
@@ -753,8 +800,10 @@ sub in_range ($x) {
     return 0;
 }
 --- php
-function in_range($x) {
-    if (0 < $x && $x < 10) {
+function inRange(int $x): bool
+{
+    if (0 < $x && $x < 10)
+    {
         return true;
     }
     return false;
@@ -821,12 +870,19 @@ sub clamp ($x) {
     return $result;
 }
 --- php
-function clamp($x) {
+function clamp(int $x): int
+{
     $result = $x;
-    if ($x < 0) {
+    if ($x < 0)
+    {
         $result = 0;
-    } elseif ($x > 100) {
-        $result = 100;
+    }
+    else
+    {
+        if ($x > 100)
+        {
+            $result = 100;
+        }
     }
     return $result;
 }
@@ -897,10 +953,13 @@ sub find_first_positive ($nums) {
     return -1;
 }
 --- php
-function find_first_positive($nums) {
+function findFirstPositive(?array $nums): int
+{
     $i = 0;
-    while ($i < count($nums)) {
-        if ($nums[$i] > 0) {
+    while ($i < count($nums))
+    {
+        if ($nums[$i] > 0)
+        {
             return $nums[$i];
         }
         $i = $i + 1;
@@ -993,11 +1052,14 @@ sub count_positive ($nums) {
     return $count;
 }
 --- php
-function count_positive($nums) {
+function countPositive(?array $nums): int
+{
     $count = 0;
     $i = 0;
-    while ($i < count($nums)) {
-        if ($nums[$i] <= 0) {
+    while ($i < count($nums))
+    {
+        if ($nums[$i] <= 0)
+        {
             $i = $i + 1;
             continue;
         }
@@ -1039,7 +1101,8 @@ sub pick_value ($flag) {
     return $x;
 }
 --- php
-function pick_value($flag) {
+function pickValue(bool $flag): int
+{
     $x = $flag ? 10 : 20;
     return $x;
 }
@@ -1108,10 +1171,14 @@ sub multi_check ($a, $b, $c) {
     return 0;
 }
 --- php
-function multi_check($a, $b, $c) {
-    if ($a > 0) {
-        if ($b > 0) {
-            if ($c > 0) {
+function multiCheck(int $a, int $b, int $c): bool
+{
+    if ($a > 0)
+    {
+        if ($b > 0)
+        {
+            if ($c > 0)
+            {
                 return true;
             }
         }
@@ -1178,11 +1245,14 @@ sub validate ($x) {
     return 1;
 }
 --- php
-function validate($x) {
-    if ($x < 0) {
+function validate(int $x): bool
+{
+    if ($x < 0)
+    {
         return false;
     }
-    if ($x > 100) {
+    if ($x > 100)
+    {
         return false;
     }
     return true;
@@ -1230,8 +1300,10 @@ sub process ($x) {
     return $x * 2;
 }
 --- php
-function process($x) {
-    if ($x === 0) {
+function process(int $x): int
+{
+    if ($x === 0)
+    {
         return 0;
     }
     return $x * 2;
@@ -1334,9 +1406,11 @@ sub maybe_double ($x, $do_it) {
     return $result;
 }
 --- php
-function maybe_double($x, $do_it) {
+function maybeDouble(int $x, bool $doIt): int
+{
     $result = $x;
-    if ($do_it) {
+    if ($doIt)
+    {
         $result = $x * 2;
     }
     return $result;
@@ -1384,8 +1458,10 @@ sub ordered ($a, $b, $c) {
     return 0;
 }
 --- php
-function ordered($a, $b, $c) {
-    if ($a < $b && $b < $c) {
+function ordered(int $a, int $b, int $c): bool
+{
+    if ($a < $b && $b < $c)
+    {
         return true;
     }
     return false;
@@ -1433,8 +1509,10 @@ sub all_equal ($a, $b, $c) {
     return 0;
 }
 --- php
-function all_equal($a, $b, $c) {
-    if ($a === $b && $b === $c) {
+function allEqual(int $a, int $b, int $c): bool
+{
+    if ($a === $b && $b === $c)
+    {
         return true;
     }
     return false;
