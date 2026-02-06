@@ -1471,25 +1471,65 @@ class JavaBackend:
                         return f"Math.round({x} * Math.pow(10, {n})) / Math.pow(10, {n})"
                     return f"Math.round({args_str})"
                 if func == "min" and len(args) == 2:
-                    a = _java_coerce_bool_to_int(self, args[0]) if _is_bool_type(args[0].typ) else self._expr(args[0])
-                    b = _java_coerce_bool_to_int(self, args[1]) if _is_bool_type(args[1].typ) else self._expr(args[1])
+                    a = (
+                        _java_coerce_bool_to_int(self, args[0])
+                        if _is_bool_type(args[0].typ)
+                        else self._expr(args[0])
+                    )
+                    b = (
+                        _java_coerce_bool_to_int(self, args[1])
+                        if _is_bool_type(args[1].typ)
+                        else self._expr(args[1])
+                    )
                     return f"Math.min({a}, {b})"
                 if func == "max" and len(args) == 2:
-                    a = _java_coerce_bool_to_int(self, args[0]) if _is_bool_type(args[0].typ) else self._expr(args[0])
-                    b = _java_coerce_bool_to_int(self, args[1]) if _is_bool_type(args[1].typ) else self._expr(args[1])
+                    a = (
+                        _java_coerce_bool_to_int(self, args[0])
+                        if _is_bool_type(args[0].typ)
+                        else self._expr(args[0])
+                    )
+                    b = (
+                        _java_coerce_bool_to_int(self, args[1])
+                        if _is_bool_type(args[1].typ)
+                        else self._expr(args[1])
+                    )
                     return f"Math.max({a}, {b})"
                 if func == "divmod" and len(args) == 2:
-                    a = _java_coerce_bool_to_int(self, args[0]) if _is_bool_type(args[0].typ) else self._expr(args[0])
-                    b = _java_coerce_bool_to_int(self, args[1]) if _is_bool_type(args[1].typ) else self._expr(args[1])
+                    a = (
+                        _java_coerce_bool_to_int(self, args[0])
+                        if _is_bool_type(args[0].typ)
+                        else self._expr(args[0])
+                    )
+                    b = (
+                        _java_coerce_bool_to_int(self, args[1])
+                        if _is_bool_type(args[1].typ)
+                        else self._expr(args[1])
+                    )
                     return f"new int[]{{{a} / {b}, {a} % {b}}}"
                 if func == "pow":
                     if len(args) == 2:
-                        a = _java_coerce_bool_to_int(self, args[0]) if _is_bool_type(args[0].typ) else self._expr(args[0])
-                        b = _java_coerce_bool_to_int(self, args[1]) if _is_bool_type(args[1].typ) else self._expr(args[1])
+                        a = (
+                            _java_coerce_bool_to_int(self, args[0])
+                            if _is_bool_type(args[0].typ)
+                            else self._expr(args[0])
+                        )
+                        b = (
+                            _java_coerce_bool_to_int(self, args[1])
+                            if _is_bool_type(args[1].typ)
+                            else self._expr(args[1])
+                        )
                         return f"(int)Math.pow({a}, {b})"
                     if len(args) == 3:
-                        base = _java_coerce_bool_to_int(self, args[0]) if _is_bool_type(args[0].typ) else self._expr(args[0])
-                        exp = _java_coerce_bool_to_int(self, args[1]) if _is_bool_type(args[1].typ) else self._expr(args[1])
+                        base = (
+                            _java_coerce_bool_to_int(self, args[0])
+                            if _is_bool_type(args[0].typ)
+                            else self._expr(args[0])
+                        )
+                        exp = (
+                            _java_coerce_bool_to_int(self, args[1])
+                            if _is_bool_type(args[1].typ)
+                            else self._expr(args[1])
+                        )
                         mod = self._expr(args[2])
                         return f"(int)Math.pow({base}, {exp}) % {mod}"
                 # Helper functions for Go pointer boxing - inline in Java
@@ -1577,10 +1617,29 @@ class JavaBackend:
                 return f"({left_str} {_binary_op(op)} {right_str})"
             # Arithmetic/comparison/shift ops with bool operands need int conversion
             case BinaryOp(op=op, left=left, right=right) if op in (
-                "+", "-", "*", "/", "%", "//", "<", ">", "<=", ">=", "<<", ">>"
+                "+",
+                "-",
+                "*",
+                "/",
+                "%",
+                "//",
+                "<",
+                ">",
+                "<=",
+                ">=",
+                "<<",
+                ">>",
             ) and (_is_bool_type(left.typ) or _is_bool_type(right.typ)):
-                left_str = _java_coerce_bool_to_int(self, left) if _is_bool_type(left.typ) else self._expr(left)
-                right_str = _java_coerce_bool_to_int(self, right) if _is_bool_type(right.typ) else self._expr(right)
+                left_str = (
+                    _java_coerce_bool_to_int(self, left)
+                    if _is_bool_type(left.typ)
+                    else self._expr(left)
+                )
+                right_str = (
+                    _java_coerce_bool_to_int(self, right)
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
                 java_op = _binary_op(op)
                 if op == "//":
                     return f"Math.floorDiv({left_str}, {right_str})"
@@ -1838,12 +1897,28 @@ class JavaBackend:
                     parts.append(f"{left_str} {java_op} {right_str}")
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
-                l = _java_coerce_bool_to_int(self, left) if _is_bool_type(left.typ) else self._expr(left)
-                r = _java_coerce_bool_to_int(self, right) if _is_bool_type(right.typ) else self._expr(right)
+                l = (
+                    _java_coerce_bool_to_int(self, left)
+                    if _is_bool_type(left.typ)
+                    else self._expr(left)
+                )
+                r = (
+                    _java_coerce_bool_to_int(self, right)
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
                 return f"Math.min({l}, {r})"
             case MaxExpr(left=left, right=right):
-                l = _java_coerce_bool_to_int(self, left) if _is_bool_type(left.typ) else self._expr(left)
-                r = _java_coerce_bool_to_int(self, right) if _is_bool_type(right.typ) else self._expr(right)
+                l = (
+                    _java_coerce_bool_to_int(self, left)
+                    if _is_bool_type(left.typ)
+                    else self._expr(left)
+                )
+                r = (
+                    _java_coerce_bool_to_int(self, right)
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
                 return f"Math.max({l}, {r})"
             case _:
                 return "null /* TODO: unknown expression */"

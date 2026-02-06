@@ -1282,11 +1282,21 @@ class PerlBackend:
                     return f"[int({a} / {b}), {a} % {b}]"
                 if func == "pow":
                     if len(args) == 2:
-                        base = self._bool_to_int(args[0]) if args[0].typ == BOOL else self._expr(args[0])
-                        exp = self._bool_to_int(args[1]) if args[1].typ == BOOL else self._expr(args[1])
+                        base = (
+                            self._bool_to_int(args[0])
+                            if args[0].typ == BOOL
+                            else self._expr(args[0])
+                        )
+                        exp = (
+                            self._bool_to_int(args[1])
+                            if args[1].typ == BOOL
+                            else self._expr(args[1])
+                        )
                         return f"{base} ** {exp}"
                     # pow(base, exp, mod)
-                    base = self._bool_to_int(args[0]) if args[0].typ == BOOL else self._expr(args[0])
+                    base = (
+                        self._bool_to_int(args[0]) if args[0].typ == BOOL else self._expr(args[0])
+                    )
                     exp = self._bool_to_int(args[1]) if args[1].typ == BOOL else self._expr(args[1])
                     mod = self._bool_to_int(args[2]) if args[2].typ == BOOL else self._expr(args[2])
                     return f"{base} ** {exp} % {mod}"
@@ -1474,7 +1484,23 @@ class PerlBackend:
                 left_is_bool = left.typ == BOOL
                 right_is_bool = right.typ == BOOL
                 # Bool-to-int conversion for arithmetic/bitwise/shift/comparison ops
-                if op in ("+", "-", "*", "/", "%", "//", "&", "|", "^", "<<", ">>", "<", ">", "<=", ">="):
+                if op in (
+                    "+",
+                    "-",
+                    "*",
+                    "/",
+                    "%",
+                    "//",
+                    "&",
+                    "|",
+                    "^",
+                    "<<",
+                    ">>",
+                    "<",
+                    ">",
+                    "<=",
+                    ">=",
+                ):
                     if left_is_bool or right_is_bool:
                         left_str = (
                             self._bool_to_int(left)

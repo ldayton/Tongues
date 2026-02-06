@@ -870,7 +870,9 @@ class PhpBackend:
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division uses intdiv() in PHP - coerce bools to int
                 left_str = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
-                right_str = f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                right_str = (
+                    f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                )
                 return f"intdiv({left_str}, {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 # String concatenation: + on strings becomes . in PHP
@@ -944,8 +946,12 @@ class PhpBackend:
                 has_bool = left.typ == BOOL or right.typ == BOOL
                 has_non_bool = left.typ != BOOL or right.typ != BOOL
                 if has_bool and has_non_bool:
-                    left_str = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
-                    right_str = f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                    left_str = (
+                        f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                    )
                     return f"min({left_str}, {right_str})"
                 return f"min({self._expr(left)}, {self._expr(right)})"
             case MaxExpr(left=left, right=right):
@@ -953,8 +959,12 @@ class PhpBackend:
                 has_bool = left.typ == BOOL or right.typ == BOOL
                 has_non_bool = left.typ != BOOL or right.typ != BOOL
                 if has_bool and has_non_bool:
-                    left_str = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
-                    right_str = f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                    left_str = (
+                        f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                    )
                     return f"max({left_str}, {right_str})"
                 return f"max({self._expr(left)}, {self._expr(right)})"
             case Cast(expr=inner, to_type=to_type):
@@ -1557,7 +1567,14 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
         return child_op in ("==", "===", "!=", "!==", "<", ">", "<=", ">=")
     # PHP 8+ forbids chained comparisons entirely (e.g., a !== 0 === true)
     if parent_op in ("===", "!==", "==", "!=") and child_op in (
-        "===", "!==", "==", "!=", "<", ">", "<=", ">="
+        "===",
+        "!==",
+        "==",
+        "!=",
+        "<",
+        ">",
+        "<=",
+        ">=",
     ):
         return True
     return False

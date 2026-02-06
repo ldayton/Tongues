@@ -854,7 +854,11 @@ class GoBackend:
             self._emit_tuple_pop(stmt)
             return
         # Special case: q, r = divmod(a, b) -> q, r = a/b, a%b
-        if isinstance(stmt.value, Call) and stmt.value.func == "divmod" and len(stmt.value.args) == 2:
+        if (
+            isinstance(stmt.value, Call)
+            and stmt.value.func == "divmod"
+            and len(stmt.value.args) == 2
+        ):
             self._emit_divmod(stmt)
             return
         targets = []
@@ -1961,7 +1965,9 @@ class GoBackend:
             right_str = _go_coerce_bool_to_int(self, expr.right)
             return f"{left_str} {op} {right_str}"
         # Bool coercion for arithmetic ops (// is floor division, becomes / in Go)
-        if op in ("+", "-", "*", "/", "//", "%") and (_go_is_bool(expr.left) or _go_is_bool(expr.right)):
+        if op in ("+", "-", "*", "/", "//", "%") and (
+            _go_is_bool(expr.left) or _go_is_bool(expr.right)
+        ):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
             actual_op = "/" if op == "//" else op

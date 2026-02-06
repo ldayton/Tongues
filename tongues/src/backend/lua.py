@@ -1205,14 +1205,12 @@ class LuaBackend:
                 return f"math.abs({arg_str})"
             case Call(func="min", args=args):
                 args_str = ", ".join(
-                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a)
-                    for a in args
+                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a) for a in args
                 )
                 return f"math.min({args_str})"
             case Call(func="max", args=args):
                 args_str = ", ".join(
-                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a)
-                    for a in args
+                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a) for a in args
                 )
                 return f"math.max({args_str})"
             case Call(func="round", args=[arg]):
@@ -1318,32 +1316,20 @@ class LuaBackend:
                     return f"{left_str} .. {right_str}"
                 left_is_bool = left.typ == BOOL
                 right_is_bool = right.typ == BOOL
-                # Check if expression returns int at runtime despite having BOOL type
-                def returns_int(expr: Expr) -> bool:
-                    if isinstance(expr, (MinExpr, MaxExpr)):
-                        return True
-                    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "//"):
-                        return True
-                    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
-                        return True
-                    return False
 
-                left_returns_int = returns_int(left)
-                right_returns_int = returns_int(right)
+                # Check if expression returns int at runtime despite having BOOL type
+                left_returns_int = _returns_int_in_lua(left)
+                right_returns_int = _returns_int_in_lua(right)
 
                 # Bool-int comparison: Lua's true ~= 1, so convert bool to int
                 if op in ("==", "!=") and _is_bool_int_compare(left, right):
                     if left_is_bool:
-                        left_str = (
-                            self._expr(left) if left_returns_int
-                            else self._bool_to_int(left)
-                        )
+                        left_str = self._expr(left) if left_returns_int else self._bool_to_int(left)
                     else:
                         left_str = self._maybe_paren(left, op, is_left=True)
                     if right_is_bool:
                         right_str = (
-                            self._expr(right) if right_returns_int
-                            else self._bool_to_int(right)
+                            self._expr(right) if right_returns_int else self._bool_to_int(right)
                         )
                     else:
                         right_str = self._maybe_paren(right, op, is_left=False)
@@ -1352,15 +1338,27 @@ class LuaBackend:
                 # Bool comparison where one side returns int at runtime
                 # (e.g., True + False == True) - convert both to int
                 # Note: left_returns_int might be True even if left_is_bool is False
-                if op in ("==", "!=") and (left_is_bool or right_is_bool or left_returns_int or right_returns_int):
+                if op in ("==", "!=") and (
+                    left_is_bool or right_is_bool or left_returns_int or right_returns_int
+                ):
                     if left_returns_int or right_returns_int:
                         left_str = (
-                            self._expr(left) if left_returns_int
-                            else (self._bool_to_int(left) if left_is_bool else self._maybe_paren(left, op, is_left=True))
+                            self._expr(left)
+                            if left_returns_int
+                            else (
+                                self._bool_to_int(left)
+                                if left_is_bool
+                                else self._maybe_paren(left, op, is_left=True)
+                            )
                         )
                         right_str = (
-                            self._expr(right) if right_returns_int
-                            else (self._bool_to_int(right) if right_is_bool else self._maybe_paren(right, op, is_left=False))
+                            self._expr(right)
+                            if right_returns_int
+                            else (
+                                self._bool_to_int(right)
+                                if right_is_bool
+                                else self._maybe_paren(right, op, is_left=False)
+                            )
                         )
                         return f"{left_str} {_binary_op(op)} {right_str}"
                 # Bool-bool comparison where one side might return int at runtime
@@ -1375,13 +1373,9 @@ class LuaBackend:
                     )
                     if left_returns_int or right_returns_int:
                         # Expressions that return int don't need wrapping
-                        left_str = (
-                            self._expr(left) if left_returns_int
-                            else self._bool_to_int(left)
-                        )
+                        left_str = self._expr(left) if left_returns_int else self._bool_to_int(left)
                         right_str = (
-                            self._expr(right) if right_returns_int
-                            else self._bool_to_int(right)
+                            self._expr(right) if right_returns_int else self._bool_to_int(right)
                         )
                         return f"{left_str} {_binary_op(op)} {right_str}"
                 # Lua bools don't support arithmetic
@@ -2019,6 +2013,17 @@ def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
     """True when one operand is bool and the other is int."""
     l, r = left.typ, right.typ
     return (l == BOOL and r == INT) or (l == INT and r == BOOL)
+
+
+def _returns_int_in_lua(expr: Expr) -> bool:
+    """True when expr returns int at runtime despite having BOOL type."""
+    if isinstance(expr, (MinExpr, MaxExpr)):
+        return True
+    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "//"):
+        return True
+    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+        return True
+    return False
 
 
 def _escape_lua_string(value: str) -> str:

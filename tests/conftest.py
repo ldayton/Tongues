@@ -15,25 +15,25 @@ from src.frontend.parse import parse
 from src.frontend.subset import verify as verify_subset
 from src.frontend.names import resolve_names
 from src.middleend import analyze
+from src.backend.c import CBackend
+from src.backend.csharp import CSharpBackend
+from src.backend.dart import DartBackend
 from src.backend.go import GoBackend
 from src.backend.java import JavaBackend
 from src.backend.javascript import JsBackend
 from src.backend.lua import LuaBackend
 from src.backend.perl import PerlBackend
+from src.backend.php import PhpBackend
 from src.backend.python import PythonBackend
 from src.backend.ruby import RubyBackend
+from src.backend.rust import RustBackend
+from src.backend.swift import SwiftBackend
 from src.backend.typescript import TsBackend
-from src.backend.csharp import CSharpBackend
-from src.backend.php import PhpBackend
+from src.backend.zig import ZigBackend
 
 # Skip specific (apptest, language) combinations that are known to fail.
 # Format: apptest_stem -> set of languages to skip
 _SKIP_LANGS: dict[str, set[str]] = {
-    "apptest_bools": {
-        "php",
-        "ruby",
-        "swift",
-    },
     "apptest_bytes": {
         "c",
         "dart",
@@ -204,7 +204,9 @@ OUT_DIR = APP_DIR / ".out"
 TONGUES_DIR = TESTS_DIR.parent / "tongues"
 
 BACKENDS = {
+    "c": CBackend,
     "csharp": CSharpBackend,
+    "dart": DartBackend,
     "go": GoBackend,
     "java": JavaBackend,
     "javascript": JsBackend,
@@ -213,7 +215,10 @@ BACKENDS = {
     "php": PhpBackend,
     "python": PythonBackend,
     "ruby": RubyBackend,
+    "rust": RustBackend,
+    "swift": SwiftBackend,
     "typescript": TsBackend,
+    "zig": ZigBackend,
 }
 
 
@@ -331,6 +336,11 @@ TARGETS: dict[str, Target] = {
         ext=".c",
         compile_cmd=["gcc", "-std=c11", "-o", "{out}", "{path}", "-lm"],
         format_cmd=["clang-format", "-i", "{path}"],
+    ),
+    "csharp": Target(
+        name="csharp",
+        ext=".cs",
+        compile_cmd=["mcs", "-out:{out}", "{path}"],
     ),
     "perl": Target(
         name="perl",

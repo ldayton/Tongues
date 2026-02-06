@@ -19,12 +19,27 @@ subset:
 test-codegen:
     uv run --directory tongues pytest ../tests/test_codegen.py -v
 
-# Run apptests (all languages)
-test-apptests:
-    uv run --directory tongues pytest ../tests/test_apptests.py -v
+# Run apptests for a specific language (or all if not specified)
+test-apptests lang="":
+    uv run --directory tongues pytest ../tests/test_apptests.py {{ if lang != "" { "--target " + lang } else { "" } }} -v
 
-# Run all transpiler tests
-test: test-codegen test-apptests
+# Run all transpiler tests (all languages)
+test: test-codegen \
+    (test-apptests "c") \
+    (test-apptests "csharp") \
+    (test-apptests "dart") \
+    (test-apptests "go") \
+    (test-apptests "java") \
+    (test-apptests "javascript") \
+    (test-apptests "lua") \
+    (test-apptests "perl") \
+    (test-apptests "php") \
+    (test-apptests "python") \
+    (test-apptests "ruby") \
+    (test-apptests "rust") \
+    (test-apptests "swift") \
+    (test-apptests "typescript") \
+    (test-apptests "zig")
 
 # Lint (--fix to apply changes)
 lint *ARGS:

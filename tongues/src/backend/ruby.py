@@ -1010,11 +1010,18 @@ class RubyBackend:
                     right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
-            case BinaryOp(op=op, left=left, right=right) if op in (
-                "==",
-                "!=",
-            ) and left.typ == BOOL and right.typ == BOOL and (
-                isinstance(left, (Call, MinExpr, MaxExpr)) or isinstance(right, (Call, MinExpr, MaxExpr))
+            case BinaryOp(op=op, left=left, right=right) if (
+                op
+                in (
+                    "==",
+                    "!=",
+                )
+                and left.typ == BOOL
+                and right.typ == BOOL
+                and (
+                    isinstance(left, (Call, MinExpr, MaxExpr))
+                    or isinstance(right, (Call, MinExpr, MaxExpr))
+                )
             ):
                 # MinExpr/MaxExpr with bool args already produce ints, compare directly
                 # Just coerce the BoolLit side to int, don't re-coerce the min/max result
@@ -1037,7 +1044,11 @@ class RubyBackend:
             ):
                 # Comparing any-typed expr (e.g., bool arithmetic) with bool: coerce bool side
                 left_str = self._expr(left)
-                right_str = self._coerce_bool_to_int(right, raw=True) if right.typ == BOOL else self._expr(right)
+                right_str = (
+                    self._coerce_bool_to_int(right, raw=True)
+                    if right.typ == BOOL
+                    else self._expr(right)
+                )
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
             case BinaryOp(op="**", left=left, right=right) if left.typ == BOOL or right.typ == BOOL:
@@ -1148,13 +1159,29 @@ class RubyBackend:
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
                 # Ruby can't compare bools, coerce to int
-                left_str = self._coerce_bool_to_int(left, raw=True) if left.typ == BOOL else self._expr(left)
-                right_str = self._coerce_bool_to_int(right, raw=True) if right.typ == BOOL else self._expr(right)
+                left_str = (
+                    self._coerce_bool_to_int(left, raw=True)
+                    if left.typ == BOOL
+                    else self._expr(left)
+                )
+                right_str = (
+                    self._coerce_bool_to_int(right, raw=True)
+                    if right.typ == BOOL
+                    else self._expr(right)
+                )
                 return f"[{left_str}, {right_str}].min"
             case MaxExpr(left=left, right=right):
                 # Ruby can't compare bools, coerce to int
-                left_str = self._coerce_bool_to_int(left, raw=True) if left.typ == BOOL else self._expr(left)
-                right_str = self._coerce_bool_to_int(right, raw=True) if right.typ == BOOL else self._expr(right)
+                left_str = (
+                    self._coerce_bool_to_int(left, raw=True)
+                    if left.typ == BOOL
+                    else self._expr(left)
+                )
+                right_str = (
+                    self._coerce_bool_to_int(right, raw=True)
+                    if right.typ == BOOL
+                    else self._expr(right)
+                )
                 return f"[{left_str}, {right_str}].max"
             case UnaryOp(op=op, operand=operand):
                 rb_op = _unary_op(op)

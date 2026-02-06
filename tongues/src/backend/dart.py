@@ -1372,7 +1372,9 @@ class DartBackend:
                         right_str = self._maybe_paren(right, op, is_left=False)
                 elif op in (">", "<", ">=", "<=") and (left_is_bool or right_is_bool):
                     left_str = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
-                    right_str = f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                    right_str = (
+                        f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                    )
                 # Dart bool bitwise ops require both operands to be the same type
                 elif op in ("&", "|", "^") and left_is_bool != right_is_bool:
                     left_str = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
@@ -1460,7 +1462,9 @@ class DartBackend:
                 return f"!({operand_str})"
             case UnaryOp(op=op, operand=operand):
                 operand_type = operand.typ
-                operand_is_bool = isinstance(operand_type, Primitive) and operand_type.kind == "bool"
+                operand_is_bool = (
+                    isinstance(operand_type, Primitive) and operand_type.kind == "bool"
+                )
                 # Dart bools don't support unary minus or bitwise NOT
                 if op in ("-", "~") and operand_is_bool:
                     return f"{op}({self._expr(operand)} ? 1 : 0)"
