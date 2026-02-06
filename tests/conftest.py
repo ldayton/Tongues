@@ -346,7 +346,9 @@ def executable(compiled: Path, target: Target) -> list[str]:
     return target.get_run_command(compiled)
 
 
-def transpile_code(source: str, target: str, bare: bool = False) -> tuple[str | None, str | None]:
+def transpile_code(
+    source: str, target: str, bare: bool = False
+) -> tuple[str | None, str | None]:
     """Transpile source to target language. Returns (output, error)."""
     ast_dict = parse(source)
     result = verify_subset(ast_dict)

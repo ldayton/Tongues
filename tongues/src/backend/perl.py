@@ -1179,7 +1179,7 @@ class PerlBackend:
                     val = self._expr(args[0])
                     prec_arg = args[1]
                     if isinstance(prec_arg, IntLit):
-                        mult = 10 ** prec_arg.value
+                        mult = 10**prec_arg.value
                         return f"int({val} * {mult} + 0.5) / {mult}"
                     prec = self._expr(prec_arg)
                     return f"int({val} * 10 ** {prec} + 0.5) / 10 ** {prec}"
@@ -1400,10 +1400,12 @@ class PerlBackend:
                 return f"{pl_op}{self._expr(operand)}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 # Don't wrap else ternary in parens - ternary is right-associative
-                else_str = self._expr_no_outer_paren(else_expr) if isinstance(else_expr, Ternary) else self._expr(else_expr)
-                return (
-                    f"({self._cond_expr(cond)} ? {self._expr(then_expr)} : {else_str})"
+                else_str = (
+                    self._expr_no_outer_paren(else_expr)
+                    if isinstance(else_expr, Ternary)
+                    else self._expr(else_expr)
                 )
+                return f"({self._cond_expr(cond)} ? {self._expr(then_expr)} : {else_str})"
             case Cast(expr=inner, to_type=to_type):
                 if to_type == Primitive(kind="string") and inner.typ == BOOL:
                     return f'({self._expr(inner)} ? "True" : "False")'
@@ -1660,7 +1662,11 @@ class PerlBackend:
         """Emit expression without outer parentheses (for nested ternaries)."""
         match expr:
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
-                else_str = self._expr_no_outer_paren(else_expr) if isinstance(else_expr, Ternary) else self._expr(else_expr)
+                else_str = (
+                    self._expr_no_outer_paren(else_expr)
+                    if isinstance(else_expr, Ternary)
+                    else self._expr(else_expr)
+                )
                 return f"{self._cond_expr(cond)} ? {self._expr(then_expr)} : {else_str}"
             case _:
                 return self._expr(expr)
