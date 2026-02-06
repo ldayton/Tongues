@@ -32,14 +32,11 @@ _SKIP_LANGS: dict[str, set[str]] = {
     "apptest_bools": {
         "dart",
         "go",
-        "java",
-        "javascript",
         "lua",
         "perl",
         "php",
         "ruby",
         "swift",
-        "typescript",
     },
     "apptest_bytes": {
         "c",

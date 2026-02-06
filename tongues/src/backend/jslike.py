@@ -949,9 +949,12 @@ class JsLikeBackend:
                     parts.append(f"{left_str} {js_op} {right_str}")
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
-                return f"Math.min({self._expr(left)}, {self._expr(right)})"
+                # Use ternary to preserve original value types (bools stay bools)
+                l, r = self._expr(left), self._expr(right)
+                return f"({l} <= {r} ? {l} : {r})"
             case MaxExpr(left=left, right=right):
-                return f"Math.max({self._expr(left)}, {self._expr(right)})"
+                l, r = self._expr(left), self._expr(right)
+                return f"({l} >= {r} ? {l} : {r})"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)
             case UnaryOp(op="*", operand=operand):
@@ -1498,9 +1501,11 @@ def _escape_regex_literal(s: str) -> str:
 
 
 def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
-    """True when one operand is bool and the other is int."""
+    """True when one operand is bool and the other is int or any."""
     l, r = left.typ, right.typ
-    return (l == BOOL and r == INT) or (l == INT and r == BOOL)
+    l_is_int_like = l == INT or (isinstance(l, InterfaceRef) and l.name == "any")
+    r_is_int_like = r == INT or (isinstance(r, InterfaceRef) and r.name == "any")
+    return (l == BOOL and r_is_int_like) or (l_is_int_like and r == BOOL)
 
 
 def _ends_with_return(body: list[Stmt]) -> bool:
