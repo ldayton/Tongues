@@ -513,7 +513,7 @@ class CSharpBackend:
             if cs_type == "object":
                 self._object_vars.add(name)
 
-    def _emit_else_body(self, else_body: list) -> None:
+    def _emit_else_body(self, else_body: list[Stmt]) -> None:
         """Emit else body, handling else-if chains."""
         if len(else_body) == 1 and isinstance(else_body[0], If):
             elif_stmt = else_body[0]
@@ -1784,16 +1784,27 @@ def _binary_op(op: str) -> str:
 
 # Operator precedence (higher = binds tighter)
 _OP_PRECEDENCE = {
-    "||": 1, "or": 1,
-    "&&": 2, "and": 2,
+    "||": 1,
+    "or": 1,
+    "&&": 2,
+    "and": 2,
     "|": 3,
     "^": 4,
     "&": 5,
-    "==": 6, "!=": 6,
-    "<": 7, "<=": 7, ">": 7, ">=": 7,
-    "<<": 8, ">>": 8,
-    "+": 9, "-": 9,
-    "*": 10, "/": 10, "%": 10, "//": 10,
+    "==": 6,
+    "!=": 6,
+    "<": 7,
+    "<=": 7,
+    ">": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+    "//": 10,
     "**": 11,
 }
 

@@ -1497,7 +1497,11 @@ class JavaBackend:
                     if len(args) == 2:
                         return f"Math.pow({args_str})"
                     if len(args) == 3:
-                        base, exp, mod = self._expr(args[0]), self._expr(args[1]), self._expr(args[2])
+                        base, exp, mod = (
+                            self._expr(args[0]),
+                            self._expr(args[1]),
+                            self._expr(args[2]),
+                        )
                         return f"(int)Math.pow({base}, {exp}) % {mod}"
                 # Helper functions for Go pointer boxing - inline in Java
                 if func == "_intPtr" or func == "_int_ptr":
@@ -2211,16 +2215,27 @@ def _binary_op(op: str) -> str:
 
 # Operator precedence (higher = binds tighter)
 _OP_PRECEDENCE = {
-    "||": 1, "or": 1,
-    "&&": 2, "and": 2,
+    "||": 1,
+    "or": 1,
+    "&&": 2,
+    "and": 2,
     "|": 3,
     "^": 4,
     "&": 5,
-    "==": 6, "!=": 6,
-    "<": 7, "<=": 7, ">": 7, ">=": 7,
-    "<<": 8, ">>": 8,
-    "+": 9, "-": 9,
-    "*": 10, "/": 10, "%": 10, "//": 10,
+    "==": 6,
+    "!=": 6,
+    "<": 7,
+    "<=": 7,
+    ">": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+    "//": 10,
     "**": 11,
 }
 
