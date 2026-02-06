@@ -1477,6 +1477,14 @@ class JavaBackend:
                 if func == "abs":
                     return f"Math.abs({args_str})"
                 if func == "round":
+                    if len(args) == 2:
+                        x = self._expr(args[0])
+                        # Compute multiplier directly if precision is a literal
+                        if isinstance(args[1], IntLit):
+                            mult = float(10 ** args[1].value)
+                            return f"Math.round({x} * {mult}) / {mult}"
+                        n = self._expr(args[1])
+                        return f"Math.round({x} * Math.pow(10, {n})) / Math.pow(10, {n})"
                     return f"Math.round({args_str})"
                 if func == "min":
                     return f"Math.min({args_str})"

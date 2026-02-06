@@ -1145,15 +1145,25 @@ class CSharpBackend:
             case BinaryOp(op=op, left=left, right=right):
                 left_str = self._expr(left)
                 right_str = self._expr(right)
-                # Wrap operands in parens based on precedence
-                if isinstance(left, Ternary):
-                    left_str = f"({left_str})"
-                elif isinstance(left, BinaryOp) and _needs_parens(left, op):
-                    left_str = f"({left_str})"
-                if isinstance(right, Ternary):
-                    right_str = f"({right_str})"
-                elif isinstance(right, BinaryOp) and _needs_parens(right, op):
-                    right_str = f"({right_str})"
+                # Convert bool to int for arithmetic operations (before precedence parens)
+                left_is_bool = op in ("+", "-", "*", "/", "%") and _is_bool_type(left.typ)
+                right_is_bool = op in ("+", "-", "*", "/", "%") and _is_bool_type(right.typ)
+                # Wrap operands in parens based on precedence (skip if converting to ternary)
+                if not left_is_bool:
+                    if isinstance(left, Ternary):
+                        left_str = f"({left_str})"
+                    elif isinstance(left, BinaryOp) and _needs_parens(left, op):
+                        left_str = f"({left_str})"
+                if not right_is_bool:
+                    if isinstance(right, Ternary):
+                        right_str = f"({right_str})"
+                    elif isinstance(right, BinaryOp) and _needs_parens(right, op):
+                        right_str = f"({right_str})"
+                # Apply bool-to-int conversion
+                if left_is_bool:
+                    left_str = f"({left_str} ? 1 : 0)"
+                if right_is_bool:
+                    right_str = f"({right_str} ? 1 : 0)"
                 cs_op = _binary_op(op)
                 # For ParseInt in comparisons, use uncasted long to avoid overflow
                 if cs_op in ("<", "<=", ">", ">=") and isinstance(left, ParseInt):
@@ -1797,3 +1807,7 @@ def _needs_parens(child: "BinaryOp", parent_op: str) -> bool:
 
 def _is_string_type(typ: Type) -> bool:
     return isinstance(typ, Primitive) and typ.kind in ("string", "rune")
+
+
+def _is_bool_type(typ: Type) -> bool:
+    return isinstance(typ, Primitive) and typ.kind == "bool"
