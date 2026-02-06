@@ -868,8 +868,10 @@ class PhpBackend:
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op="//", left=left, right=right):
-                # Floor division uses intdiv() in PHP
-                return f"intdiv({self._expr(left)}, {self._expr(right)})"
+                # Floor division uses intdiv() in PHP - coerce bools to int
+                left_str = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                right_str = f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                return f"intdiv({left_str}, {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 # String concatenation: + on strings becomes . in PHP
                 if op == "+" and (_is_string_type(left.typ) or _is_string_type(right.typ)):
@@ -1038,7 +1040,11 @@ class PhpBackend:
                 return f"round({self._expr(args[0])})"
             return f"round({args_str})"
         if func == "divmod":
-            a, b = self._expr(args[0]), self._expr(args[1])
+            # Coerce bools to int for intdiv() and %
+            a_expr = args[0]
+            b_expr = args[1]
+            a = f"({self._expr(a_expr)} ? 1 : 0)" if a_expr.typ == BOOL else self._expr(a_expr)
+            b = f"({self._expr(b_expr)} ? 1 : 0)" if b_expr.typ == BOOL else self._expr(b_expr)
             return f"[intdiv({a}, {b}), {a} % {b}]"
         if func == "pow":
             if len(args) == 2:
@@ -1502,4 +1508,9 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
         return True
     if child_prec == parent_prec and not is_left:
         return child_op in ("==", "===", "!=", "!==", "<", ">", "<=", ">=")
+    # PHP 8+ forbids chained comparisons entirely (e.g., a !== 0 === true)
+    if parent_op in ("===", "!==", "==", "!=") and child_op in (
+        "===", "!==", "==", "!=", "<", ">", "<=", ">="
+    ):
+        return True
     return False

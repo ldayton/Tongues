@@ -826,23 +826,47 @@ class RubyBackend:
                     return f"({inner}).to_f"
                 return f"{inner}.to_f"
             case Call(func="divmod", args=[a, b]):
-                inner = self._expr(a)
-                divisor = self._expr(b)
-                if isinstance(a, (BinaryOp, UnaryOp, Ternary)):
+                # Coerce bool operands to int
+                if a.typ == BOOL:
+                    inner = self._coerce_bool_to_int(a, raw=True)
+                else:
+                    inner = self._expr(a)
+                if b.typ == BOOL:
+                    divisor = self._coerce_bool_to_int(b, raw=True)
+                else:
+                    divisor = self._expr(b)
+                if isinstance(a, (BinaryOp, UnaryOp, Ternary)) and a.typ != BOOL:
                     return f"({inner}).divmod({divisor})"
-                return f"{inner}.divmod({divisor})"
+                return f"({inner}).divmod({divisor})"
             case Call(func="pow", args=[base, exp]):
-                base_str = self._expr(base)
-                exp_str = self._expr(exp)
-                if isinstance(base, (BinaryOp, UnaryOp, Ternary)):
-                    base_str = f"({base_str})"
+                # Coerce bool operands to int
+                if base.typ == BOOL:
+                    base_str = self._coerce_bool_to_int(base, raw=True)
+                else:
+                    base_str = self._expr(base)
+                    if isinstance(base, (BinaryOp, UnaryOp, Ternary)):
+                        base_str = f"({base_str})"
+                if exp.typ == BOOL:
+                    exp_str = self._coerce_bool_to_int(exp, raw=True)
+                else:
+                    exp_str = self._expr(exp)
                 return f"{base_str} ** {exp_str}"
             case Call(func="pow", args=[base, exp, mod]):
-                base_str = self._expr(base)
-                exp_str = self._expr(exp)
-                mod_str = self._expr(mod)
-                if isinstance(base, (BinaryOp, UnaryOp, Ternary)):
-                    base_str = f"({base_str})"
+                # Coerce bool operands to int
+                if base.typ == BOOL:
+                    base_str = self._coerce_bool_to_int(base, raw=True)
+                else:
+                    base_str = self._expr(base)
+                    if isinstance(base, (BinaryOp, UnaryOp, Ternary)):
+                        base_str = f"({base_str})"
+                if exp.typ == BOOL:
+                    exp_str = self._coerce_bool_to_int(exp, raw=True)
+                else:
+                    exp_str = self._expr(exp)
+                if mod.typ == BOOL:
+                    mod_str = self._coerce_bool_to_int(mod, raw=True)
+                else:
+                    mod_str = self._expr(mod)
                 return f"{base_str}.pow({exp_str}, {mod_str})"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
@@ -852,6 +876,10 @@ class RubyBackend:
                     return f"{_safe_name(func)}.call"
                 return f"{_safe_name(func)}({args_str})"
             case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+                # divmod on bool: coerce receiver to int
+                if method == "divmod" and obj.typ == BOOL:
+                    args_str = ", ".join(self._expr(a) for a in args)
+                    return f"({self._coerce_bool_to_int(obj, raw=True)}).divmod({args_str})"
                 # Python: "sep".join(iterable) -> Ruby: iterable.join("sep")
                 if method == "join" and len(args) == 1:
                     sep_str = self._expr(obj)
@@ -967,6 +995,17 @@ class RubyBackend:
                     right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
+            case BinaryOp(op="**", left=left, right=right) if left.typ == BOOL or right.typ == BOOL:
+                # Exponentiation with bool: coerce to int
+                if left.typ == BOOL:
+                    left_str = self._coerce_bool_to_int(left, raw=True)
+                else:
+                    left_str = self._maybe_paren(self._expr(left), left, "**", is_left=True)
+                if right.typ == BOOL:
+                    right_str = self._coerce_bool_to_int(right, raw=True)
+                else:
+                    right_str = self._maybe_paren(self._expr(right), right, "**", is_left=False)
+                return f"{left_str} ** {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "+",
                 "-",
@@ -1038,6 +1077,9 @@ class RubyBackend:
                 return f"[{self._expr(left)}, {self._expr(right)}].max"
             case UnaryOp(op=op, operand=operand):
                 rb_op = _unary_op(op)
+                # Unary minus on bool needs parens around the coercion
+                if op == "-" and operand.typ == BOOL:
+                    return f"-({self._coerce_bool_to_int(operand, raw=True)})"
                 # Handle not(truthy(int_expr)) -> (expr) == 0
                 # Python's `not (x & Y)` should be true when result is 0
                 if op == "!" and isinstance(operand, Truthy):
@@ -1065,6 +1107,9 @@ class RubyBackend:
                     and to_type.kind in ("int", "byte", "rune")
                     and inner.typ == BOOL
                 ):
+                    # Skip coercion if inner is unary minus - already produces int
+                    if isinstance(inner, UnaryOp) and inner.op == "-":
+                        return self._expr(inner)
                     return f"({self._expr(inner)} ? 1 : 0)"
                 if (
                     isinstance(to_type, Primitive)
@@ -1289,6 +1334,9 @@ class RubyBackend:
     def _coerce_bool_to_int(self, expr: Expr, raw: bool = False) -> str:
         """Coerce a bool expression to int for comparison with int."""
         if expr.typ == BOOL:
+            # Unary minus on bool already produces int via _expr, skip double coercion
+            if isinstance(expr, UnaryOp) and expr.op == "-":
+                return self._expr(expr)
             inner = self._expr(expr)
             # Ternary has lower precedence than arithmetic, so wrap in parens
             return f"({inner} ? 1 : 0)"
@@ -1434,6 +1482,9 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
         return True
     if child_prec == parent_prec and not is_left:
         return child_op in ("==", "!=", "<", ">", "<=", ">=")
+    # Chained comparisons: (a != 0) == true, not a != (0 == true)
+    if parent_op in ("==", "!=") and child_op in ("==", "!=", "<", ">", "<=", ">="):
+        return True
     return False
 
 
