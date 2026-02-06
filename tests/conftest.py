@@ -30,10 +30,6 @@ from src.backend.php import PhpBackend
 # Format: apptest_stem -> set of languages to skip
 _SKIP_LANGS: dict[str, set[str]] = {
     "apptest_bools": {
-        "dart",
-        "go",
-        "lua",
-        "perl",
         "php",
         "ruby",
         "swift",

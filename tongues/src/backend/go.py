@@ -108,8 +108,10 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
     MethodSig,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -403,6 +405,8 @@ class GoBackend:
             imports.append('"strconv"')
         if "strings." in body:
             imports.append('"strings"')
+        if "math.Pow(" in body:
+            imports.append('"math"')
         if any(
             f"_strIs{s}(" in body for s in ("Alnum", "Alpha", "Digit", "Space", "Upper", "Lower")
         ):
@@ -849,6 +853,10 @@ class GoBackend:
         if isinstance(stmt.value, MethodCall) and stmt.value.method == "pop":
             self._emit_tuple_pop(stmt)
             return
+        # Special case: q, r = divmod(a, b) -> q, r = a/b, a%b
+        if isinstance(stmt.value, Call) and stmt.value.func == "divmod" and len(stmt.value.args) == 2:
+            self._emit_divmod(stmt)
+            return
         targets = []
         unused_indices = stmt.unused_indices
         for i, t in enumerate(stmt.targets):
@@ -913,6 +921,29 @@ class GoBackend:
         else:
             for i, target in enumerate(targets):
                 self._line(f"{target} = _entry.F{i}")
+
+    def _emit_divmod(self, stmt: TupleAssign) -> None:
+        """Emit divmod unpacking: q, r = divmod(a, b) -> q = a/b; r = a%b"""
+        call = stmt.value
+        if not isinstance(call, Call):
+            return
+        a = _go_coerce_bool_to_int(self, call.args[0])
+        b = _go_coerce_bool_to_int(self, call.args[1])
+        targets = []
+        for t in stmt.targets:
+            if isinstance(t, VarLV) and t.name == "_":
+                targets.append("_")
+            elif isinstance(t, VarLV):
+                targets.append(go_to_camel(t.name))
+            else:
+                targets.append(self._emit_lvalue(t))
+        is_decl = stmt.is_declaration
+        op = ":=" if is_decl else "="
+        if len(targets) >= 1 and targets[0] != "_":
+            self._line(f"{targets[0]} {op} {a} / {b}")
+        if len(targets) >= 2 and targets[1] != "_":
+            # Second target always uses = since first already declared it
+            self._line(f"{targets[1]} {op} {a} % {b}")
 
     def _emit_lvalue_from_expr(self, expr: Expr) -> str:
         """Convert an expression to its lvalue form for assignment."""
@@ -1660,6 +1691,10 @@ class GoBackend:
             return self._emit_expr_CharClassify(expr)
         if isinstance(expr, TrimChars):
             return self._emit_expr_TrimChars(expr)
+        if isinstance(expr, MinExpr):
+            return self._emit_expr_MinExpr(expr)
+        if isinstance(expr, MaxExpr):
+            return self._emit_expr_MaxExpr(expr)
         return "/* TODO: unknown expression */"
 
     def _emit_expr_IntLit(self, expr: IntLit) -> str:
@@ -1770,6 +1805,22 @@ class GoBackend:
             start = self._emit_expr(expr.args[1])
             end = self._emit_expr(expr.args[2])
             return f"{lst}[{start}:{end}]"
+        # pow(base, exp) -> int(math.Pow(float64(base), float64(exp)))
+        if expr.func == "pow" and len(expr.args) >= 2:
+            base = _go_coerce_bool_to_int(self, expr.args[0])
+            exp = _go_coerce_bool_to_int(self, expr.args[1])
+            if len(expr.args) == 3:
+                mod = self._emit_expr(expr.args[2])
+                return f"int(math.Pow(float64({base}), float64({exp}))) % {mod}"
+            return f"int(math.Pow(float64({base}), float64({exp})))"
+        # abs(x) for bools -> _boolToInt(x) (since True=1, False=0, both non-negative)
+        if expr.func == "abs" and len(expr.args) == 1:
+            arg = expr.args[0]
+            if arg.typ == BOOL:
+                return f"_boolToInt({self._emit_expr(arg)})"
+            inner = self._emit_expr(arg)
+            # For int, use a conditional since Go's math.Abs is for floats
+            return f"func() int {{ if {inner} < 0 {{ return -{inner} }}; return {inner} }}()"
         # Go builtins and our helpers stay as-is
         if expr.func in (
             "append",
@@ -1909,13 +1960,19 @@ class GoBackend:
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
             return f"{left_str} {op} {right_str}"
-        # Bool coercion for arithmetic ops
-        if op in ("+", "-", "*", "/", "%") and (_go_is_bool(expr.left) or _go_is_bool(expr.right)):
+        # Bool coercion for arithmetic ops (// is floor division, becomes / in Go)
+        if op in ("+", "-", "*", "/", "//", "%") and (_go_is_bool(expr.left) or _go_is_bool(expr.right)):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
-            return f"{left_str} {op} {right_str}"
+            actual_op = "/" if op == "//" else op
+            return f"{left_str} {actual_op} {right_str}"
         # Go has no bitwise ops on bools — coerce any bool operand to int
         if op in ("|", "&", "^") and (expr.left.typ == BOOL or expr.right.typ == BOOL):
+            left_str = _go_coerce_bool_to_int(self, expr.left)
+            right_str = _go_coerce_bool_to_int(self, expr.right)
+            return f"({left_str} {op} {right_str})"
+        # Go requires integer operands for shift operators
+        if op in ("<<", ">>") and (expr.left.typ == BOOL or expr.right.typ == BOOL):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
             return f"({left_str} {op} {right_str})"
@@ -1932,6 +1989,11 @@ class GoBackend:
                 left_str = self._emit_rune_literal(expr.left.value)
                 right_str = self._maybe_paren(expr.right, op, is_left=False)
                 return f"{left_str} {op} {right_str}"
+        # Bool coercion for ordering comparisons (Go doesn't support <, >, <=, >= on bools)
+        if op in ("<", ">", "<=", ">=") and (_go_is_bool(expr.left) or _go_is_bool(expr.right)):
+            left_str = _go_coerce_bool_to_int(self, expr.left)
+            right_str = _go_coerce_bool_to_int(self, expr.right)
+            return f"{left_str} {op} {right_str}"
         # Handle comparisons with optional (pointer) types - dereference the pointer
         # Pattern: x > 0 where x is *int needs to become *x > 0
         if op in ("<", ">", "<=", ">="):
@@ -2039,6 +2101,12 @@ class GoBackend:
                 return f"_isNilInterfaceRef({inner})"
             return f"{inner} == nil"
         operand = self._emit_expr(expr.operand)
+        # Coerce bool to int for unary minus
+        if op == "-" and expr.operand.typ == BOOL:
+            return f"-_boolToInt({operand})"
+        # Coerce bool to int for bitwise NOT (Go's ^ requires integer operands)
+        if op == "^" and expr.operand.typ == BOOL:
+            return f"^_boolToInt({operand})"
         # Wrap complex operands in parens for ! operator
         if op == "!" and isinstance(expr.operand, (BinaryOp, UnaryOp, IsNil)):
             return f"{op}({operand})"
@@ -2163,6 +2231,30 @@ class GoBackend:
                 return f"strings.TrimSpace({s})"
         func_map = {"left": "TrimLeft", "right": "TrimRight", "both": "Trim"}
         return f"strings.{func_map[expr.mode]}({s}, {chars})"
+
+    def _emit_expr_MinExpr(self, expr: MinExpr) -> str:
+        left = self._emit_expr(expr.left)
+        right = self._emit_expr(expr.right)
+        left_is_bool = expr.left.typ == BOOL
+        right_is_bool = expr.right.typ == BOOL
+        if left_is_bool and right_is_bool:
+            return f"({left} && {right})"
+        if left_is_bool or right_is_bool:
+            left = _go_coerce_bool_to_int(self, expr.left)
+            right = _go_coerce_bool_to_int(self, expr.right)
+        return f"min({left}, {right})"
+
+    def _emit_expr_MaxExpr(self, expr: MaxExpr) -> str:
+        left = self._emit_expr(expr.left)
+        right = self._emit_expr(expr.right)
+        left_is_bool = expr.left.typ == BOOL
+        right_is_bool = expr.right.typ == BOOL
+        if left_is_bool and right_is_bool:
+            return f"({left} || {right})"
+        if left_is_bool or right_is_bool:
+            left = _go_coerce_bool_to_int(self, expr.left)
+            right = _go_coerce_bool_to_int(self, expr.right)
+        return f"max({left}, {right})"
 
     def _emit_expr_Len(self, expr: Len) -> str:
         inner = self._emit_expr(expr.expr)
@@ -2389,9 +2481,19 @@ def _go_is_bool(expr: Expr) -> bool:
     """True if this expression is genuinely bool in Go output.
 
     Bitwise ops on bools are coerced to int by the backend, so they're not bool in Go.
+    Unary minus on bools is also coerced to int.
+    MinExpr/MaxExpr with mixed bool/int operands return int, not bool.
     """
     if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "^"):
         return False
+    if isinstance(expr, UnaryOp) and expr.op == "-" and expr.operand.typ == BOOL:
+        return False
+    # min/max with mixed bool/int operands return int
+    if isinstance(expr, (MinExpr, MaxExpr)):
+        left_is_bool = expr.left.typ == BOOL
+        right_is_bool = expr.right.typ == BOOL
+        if left_is_bool != right_is_bool:
+            return False
     if isinstance(expr, Call) and expr.func == "bool":
         return True
     return expr.typ == BOOL
