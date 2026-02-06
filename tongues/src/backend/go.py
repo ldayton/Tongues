@@ -2042,6 +2042,9 @@ class GoBackend:
         # Wrap complex operands in parens for ! operator
         if op == "!" and isinstance(expr.operand, (BinaryOp, UnaryOp, IsNil)):
             return f"{op}({operand})"
+        # Wrap complex operands in parens for ^ (bitwise NOT) operator
+        if op == "^" and isinstance(expr.operand, (BinaryOp, Ternary)):
+            return f"{op}({operand})"
         return f"{op}{operand}"
 
     def _emit_expr_Ternary(self, expr: Ternary) -> str:
