@@ -1201,12 +1201,19 @@ class LuaBackend:
                 val = self._expr(arg)
                 return f"(({val}) == -1 and nil or ({val}))"
             case Call(func="abs", args=[arg]):
-                return f"math.abs({self._expr(arg)})"
+                arg_str = self._bool_to_int(arg) if arg.typ == BOOL else self._expr(arg)
+                return f"math.abs({arg_str})"
             case Call(func="min", args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
+                args_str = ", ".join(
+                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a)
+                    for a in args
+                )
                 return f"math.min({args_str})"
             case Call(func="max", args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
+                args_str = ", ".join(
+                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a)
+                    for a in args
+                )
                 return f"math.max({args_str})"
             case Call(func="round", args=[arg]):
                 inner = self._expr(arg)
@@ -1224,13 +1231,18 @@ class LuaBackend:
             case Call(func="float", args=[arg]):
                 return self._expr(arg)
             case Call(func="divmod", args=[a, b]):
-                a_str = self._expr(a)
-                b_str = self._expr(b)
+                a_str = self._bool_to_int(a) if a.typ == BOOL else self._expr(a)
+                b_str = self._bool_to_int(b) if b.typ == BOOL else self._expr(b)
                 return f"{{{a_str} // {b_str}, {a_str} % {b_str}}}"
             case Call(func="pow", args=[base, exp]):
-                return f"{self._expr(base)} ^ {self._expr(exp)}"
+                base_str = self._bool_to_int(base) if base.typ == BOOL else self._expr(base)
+                exp_str = self._bool_to_int(exp) if exp.typ == BOOL else self._expr(exp)
+                return f"{base_str} ^ {exp_str}"
             case Call(func="pow", args=[base, exp, mod]):
-                return f"{self._expr(base)} ^ {self._expr(exp)} % {self._expr(mod)}"
+                base_str = self._bool_to_int(base) if base.typ == BOOL else self._expr(base)
+                exp_str = self._bool_to_int(exp) if exp.typ == BOOL else self._expr(exp)
+                mod_str = self._bool_to_int(mod) if mod.typ == BOOL else self._expr(mod)
+                return f"{base_str} ^ {exp_str} % {mod_str}"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 if func == "range":
@@ -1239,7 +1251,16 @@ class LuaBackend:
                 if func == "bool":
                     if not args:
                         return "false"
-                    return f"({self._expr(args[0])} ~= 0)"
+                    arg = args[0]
+                    arg_type = arg.typ
+                    # Use type-appropriate truthiness check
+                    if isinstance(arg_type, Slice):
+                        return f"(#({self._expr(arg)}) > 0)"
+                    if isinstance(arg_type, (Map, Set)):
+                        return f"(next({self._expr(arg)}) ~= nil)"
+                    if isinstance(arg_type, Primitive) and arg_type.kind == "string":
+                        return f"(#{self._expr(arg)} > 0)"
+                    return f"({self._expr(arg)} ~= 0)"
                 if func == "repr":
                     if args and args[0].typ == BOOL:
                         return f'({self._expr(args[0])} and "True" or "False")'
@@ -1259,15 +1280,16 @@ class LuaBackend:
                 inner_type = e.typ
                 expr_str = self._expr(e)
                 # In Lua, only nil and false are falsy
-                if isinstance(inner_type, (Slice, Map)):
+                if isinstance(inner_type, Slice):
                     return f"(#({expr_str}) > 0)"
-                if isinstance(inner_type, Set):
+                if isinstance(inner_type, (Map, Set)):
+                    # Use next() for maps/sets since # doesn't count non-consecutive keys
                     return f"(next({expr_str}) ~= nil)"
                 if isinstance(inner_type, Optional):
                     inner = inner_type.inner
-                    if isinstance(inner, (Slice, Map)):
+                    if isinstance(inner, Slice):
                         return f"({expr_str} ~= nil and #({expr_str}) > 0)"
-                    if isinstance(inner, Set):
+                    if isinstance(inner, (Map, Set)):
                         return f"({expr_str} ~= nil and next({expr_str}) ~= nil)"
                     return f"({expr_str} ~= nil)"
                 if isinstance(inner_type, Pointer):
@@ -1296,19 +1318,72 @@ class LuaBackend:
                     return f"{left_str} .. {right_str}"
                 left_is_bool = left.typ == BOOL
                 right_is_bool = right.typ == BOOL
-                # Bool-int comparison: Lua's true ~= 1
+                # Check if expression returns int at runtime despite having BOOL type
+                def returns_int(expr: Expr) -> bool:
+                    if isinstance(expr, (MinExpr, MaxExpr)):
+                        return True
+                    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "//"):
+                        return True
+                    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+                        return True
+                    return False
+
+                left_returns_int = returns_int(left)
+                right_returns_int = returns_int(right)
+
+                # Bool-int comparison: Lua's true ~= 1, so convert bool to int
                 if op in ("==", "!=") and _is_bool_int_compare(left, right):
-                    left_str = (
-                        f"({self._expr(left)} and 1 or 0)"
-                        if left_is_bool
-                        else self._maybe_paren(left, op, is_left=True)
-                    )
-                    right_str = (
-                        f"({self._expr(right)} and 1 or 0)"
-                        if right_is_bool
-                        else self._maybe_paren(right, op, is_left=False)
-                    )
+                    if left_is_bool:
+                        left_str = (
+                            self._expr(left) if left_returns_int
+                            else self._bool_to_int(left)
+                        )
+                    else:
+                        left_str = self._maybe_paren(left, op, is_left=True)
+                    if right_is_bool:
+                        right_str = (
+                            self._expr(right) if right_returns_int
+                            else self._bool_to_int(right)
+                        )
+                    else:
+                        right_str = self._maybe_paren(right, op, is_left=False)
                     return f"{left_str} {_binary_op(op)} {right_str}"
+
+                # Bool comparison where one side returns int at runtime
+                # (e.g., True + False == True) - convert both to int
+                # Note: left_returns_int might be True even if left_is_bool is False
+                if op in ("==", "!=") and (left_is_bool or right_is_bool or left_returns_int or right_returns_int):
+                    if left_returns_int or right_returns_int:
+                        left_str = (
+                            self._expr(left) if left_returns_int
+                            else (self._bool_to_int(left) if left_is_bool else self._maybe_paren(left, op, is_left=True))
+                        )
+                        right_str = (
+                            self._expr(right) if right_returns_int
+                            else (self._bool_to_int(right) if right_is_bool else self._maybe_paren(right, op, is_left=False))
+                        )
+                        return f"{left_str} {_binary_op(op)} {right_str}"
+                # Bool-bool comparison where one side might return int at runtime
+                # (e.g., min(True, False) == False, True + False == True) - convert both
+                if op in ("==", "!=") and left_is_bool and right_is_bool:
+                    # Check if either side is an expression that returns int at runtime
+                    left_returns_int = isinstance(left, (MinExpr, MaxExpr)) or (
+                        isinstance(left, BinaryOp) and left.op in ("+", "-", "*", "/", "%", "//")
+                    )
+                    right_returns_int = isinstance(right, (MinExpr, MaxExpr)) or (
+                        isinstance(right, BinaryOp) and right.op in ("+", "-", "*", "/", "%", "//")
+                    )
+                    if left_returns_int or right_returns_int:
+                        # Expressions that return int don't need wrapping
+                        left_str = (
+                            self._expr(left) if left_returns_int
+                            else self._bool_to_int(left)
+                        )
+                        right_str = (
+                            self._expr(right) if right_returns_int
+                            else self._bool_to_int(right)
+                        )
+                        return f"{left_str} {_binary_op(op)} {right_str}"
                 # Lua bools don't support arithmetic
                 if op in ("+", "-", "*", "/", "%", "//") and (left_is_bool or right_is_bool):
                     left_str = (
@@ -1325,25 +1400,60 @@ class LuaBackend:
                 # Lua bitwise ops only work on numbers
                 if op in ("&", "|", "^") and (left_is_bool or right_is_bool):
                     left_str = (
-                        f"({self._expr(left)} and 1 or 0)"
+                        self._bool_to_int(left)
                         if left_is_bool
                         else self._maybe_paren(left, op, is_left=True)
                     )
                     right_str = (
-                        f"({self._expr(right)} and 1 or 0)"
+                        self._bool_to_int(right)
                         if right_is_bool
                         else self._maybe_paren(right, op, is_left=False)
                     )
                     return f"{left_str} {_binary_op(op)} {right_str}"
+                # Lua doesn't support comparison on booleans directly
+                if op in ("<", ">", "<=", ">=") and (left_is_bool or right_is_bool):
+                    left_str = (
+                        self._bool_to_int(left)
+                        if left_is_bool
+                        else self._maybe_paren(left, op, is_left=True)
+                    )
+                    right_str = (
+                        self._bool_to_int(right)
+                        if right_is_bool
+                        else self._maybe_paren(right, op, is_left=False)
+                    )
+                    return f"{left_str} {_binary_op(op)} {right_str}"
+                # Lua shift ops only work on numbers
+                if op == "<<" and (left_is_bool or right_is_bool):
+                    left_str = (
+                        self._bool_to_int(left)
+                        if left_is_bool
+                        else self._maybe_paren(left, op, is_left=True)
+                    )
+                    right_str = (
+                        self._bool_to_int(right)
+                        if right_is_bool
+                        else self._maybe_paren(right, op, is_left=False)
+                    )
+                    return f"{left_str} << {right_str}"
                 # Lua >> is logical right shift; use // for arithmetic right shift
                 # But for non-negative literals, we can use native >> for idiomatic code
                 if op == ">>":
-                    if isinstance(left, IntLit) and left.value >= 0:
-                        left_str = self._maybe_paren(left, ">>", is_left=True)
-                        right_str = self._maybe_paren(right, ">>", is_left=False)
-                        return f"{left_str} >> {right_str}"
+                    # Handle bool operands first
+                    left_for_shift = (
+                        self._bool_to_int(left)
+                        if left_is_bool
+                        else self._maybe_paren(left, ">>", is_left=True)
+                    )
+                    right_for_shift = (
+                        self._bool_to_int(right)
+                        if right_is_bool
+                        else self._maybe_paren(right, ">>", is_left=False)
+                    )
+                    if left_is_bool or (isinstance(left, IntLit) and left.value >= 0):
+                        return f"{left_for_shift} >> {right_for_shift}"
                     left_str = self._maybe_paren(left, "//", is_left=True)
-                    right_str = self._expr(right)
+                    right_str = self._bool_to_int(right) if right_is_bool else self._expr(right)
                     return f"{left_str} // (1 << {right_str})"
                 lua_op = _binary_op(op)
                 left_str = self._maybe_paren(left, op, is_left=True)
@@ -1351,6 +1461,10 @@ class LuaBackend:
                 return f"{left_str} {lua_op} {right_str}"
             case UnaryOp(op=op, operand=operand):
                 lua_op = _unary_op(op)
+                # Bool-to-int for unary - and ~ on booleans
+                if op in ("-", "~") and operand.typ == BOOL:
+                    operand_str = self._bool_to_int(operand)
+                    return f"{lua_op}{operand_str}"
                 operand_str = self._expr(operand)
                 if op == "!" and isinstance(operand, BinaryOp):
                     return f"{lua_op}({operand_str})"
@@ -1420,6 +1534,12 @@ class LuaBackend:
                     return f"({self._expr(inner)} ~= nil)"
                 return f"({self._expr(inner)} == nil)"
             case Len(expr=inner):
+                inner_type = inner.typ
+                # Use proper length calculation for maps
+                if isinstance(inner_type, (Map, Set)):
+                    # For maps/sets, count all keys using a helper pattern
+                    inner_str = self._expr(inner)
+                    return f"(function() local c = 0; for _ in pairs({inner_str}) do c = c + 1 end; return c end)()"
                 return f"#{self._expr(inner)}"
             case MakeSlice(element_type=element_type, length=length):
                 if length is not None:
@@ -1471,9 +1591,13 @@ class LuaBackend:
                     parts.append(f"{left_str} {lua_op} {right_str}")
                 return " and ".join(parts)
             case MinExpr(left=left, right=right):
-                return f"math.min({self._expr(left)}, {self._expr(right)})"
+                left_str = self._bool_to_int(left) if left.typ == BOOL else self._expr(left)
+                right_str = self._bool_to_int(right) if right.typ == BOOL else self._expr(right)
+                return f"math.min({left_str}, {right_str})"
             case MaxExpr(left=left, right=right):
-                return f"math.max({self._expr(left)}, {self._expr(right)})"
+                left_str = self._bool_to_int(left) if left.typ == BOOL else self._expr(left)
+                right_str = self._bool_to_int(right) if right.typ == BOOL else self._expr(right)
+                return f"math.max({left_str}, {right_str})"
             case _:
                 raise NotImplementedError("Unknown expression")
 
@@ -1773,6 +1897,22 @@ class LuaBackend:
                 return "{}"
             case _:
                 return "nil"
+
+    def _bool_to_int(self, expr: Expr) -> str:
+        """Convert boolean expression to int: (expr and 1 or 0)."""
+        if isinstance(expr, BoolLit):
+            return "1" if expr.value else "0"
+        # If already an IntLit, no conversion needed (frontend may fold -True to -1)
+        if isinstance(expr, IntLit):
+            return self._expr(expr)
+        # If it's a Cast to int, the cast handler already does the conversion
+        if isinstance(expr, Cast) and expr.to_type == Primitive(kind="int"):
+            return self._expr(expr)
+        # For UnaryOp on bool, the operator handler already converts
+        if isinstance(expr, UnaryOp) and expr.op in ("-", "~") and expr.operand.typ == BOOL:
+            return self._expr(expr)
+        inner = self._expr(expr)
+        return f"({inner} and 1 or 0)"
 
     def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
         """Wrap expression in parens if needed for operator precedence."""
