@@ -423,6 +423,7 @@ TARGETS: dict[str, Target] = {
         name="swift",
         ext=".swift",
         run_cmd=["swift", "{path}"],
+        format_cmd=["swiftformat", "{path}"],
     ),
     "zig": Target(
         name="zig",
