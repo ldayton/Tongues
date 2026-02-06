@@ -440,20 +440,6 @@ class JsBackend(JsLikeBackend):
 
     # --- Expressions ---
 
-    def _index_expr(self, obj: Expr, index: Expr, typ: Type | None) -> str:
-        obj_str = self._expr(obj)
-        idx_str = self._expr(index)
-        obj_type = obj.typ
-        if (
-            obj_type == STRING
-            and isinstance(typ, Primitive)
-            and typ.kind in ("int", "byte", "rune")
-        ):
-            return f"{obj_str}.charCodeAt({idx_str})"
-        if isinstance(obj_type, Map):
-            return f"{obj_str}.get({idx_str})"
-        return f"{obj_str}[{idx_str}]"
-
     def _slice_expr(
         self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
     ) -> str:
@@ -493,13 +479,6 @@ class JsBackend(JsLikeBackend):
         if _is_bytes_join(sep, arr):
             return f"arrJoin({self._expr(arr)}, {self._expr(sep)})"
         return f"{self._expr(arr)}.join({self._expr(sep)})"
-
-    def _map_get(self, obj: Expr, key: Expr, default: Expr | None) -> str:
-        obj_str = self._expr(obj)
-        key_str = self._expr(key)
-        if default is not None:
-            return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
-        return f"({obj_str}.get({key_str}) ?? null)"
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
         # Handle float to string with decimal preservation

@@ -21,6 +21,7 @@ from src.ir import (
     BOOL,
     INT,
     STRING,
+    VOID,
     Array,
     BinaryOp,
     BoolLit,
@@ -30,6 +31,7 @@ from src.ir import (
     Field,
     FloatLit,
     FuncType,
+    Function,
     Index,
     IntLit,
     InterfaceDef,
@@ -46,6 +48,7 @@ from src.ir import (
     Param,
     Pointer,
     Primitive,
+    Return,
     Set,
     SetLit,
     SliceExpr,
@@ -393,6 +396,12 @@ class TsBackend(JsLikeBackend):
     ) -> None:
         self._line(f"const {name}: {elem_type} = {iter_expr}[{index_name}];")
 
+    # --- Function body hooks ---
+
+    def _post_function_body(self, func: Function) -> None:
+        if _is_void_func(func):
+            self._line("return null;")
+
     # --- Exports ---
 
     def _emit_exports(self, symbols: list[str]) -> None:
@@ -454,6 +463,13 @@ class TsBackend(JsLikeBackend):
     # --- Cast ---
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
+        # str(None) -> "None"
+        if (
+            isinstance(inner, NilLit)
+            and isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+        ):
+            return '"None"'
         # float to int: use Math.trunc
         if (
             isinstance(to_type, Primitive)
@@ -550,6 +566,8 @@ class TsBackend(JsLikeBackend):
             case StructRef(name=name):
                 return _safe_name(name)
             case InterfaceRef(name=name):
+                if name == "None":
+                    return "null"
                 return _safe_name(name)
             case Union(name=name, variants=variants):
                 if name:
@@ -589,3 +607,12 @@ def _primitive_type(kind: str) -> str:
             return "void"
         case _:
             raise NotImplementedError(f"Unknown primitive: {kind}")
+
+
+def _is_void_func(func: Function) -> bool:
+    """Check if a function returns void/None and needs implicit return null."""
+    if func.ret != VOID:
+        return False
+    if func.body and isinstance(func.body[-1], Return):
+        return False
+    return True

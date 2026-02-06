@@ -1057,7 +1057,7 @@ class JsLikeBackend:
         return str(value)
 
     def _index_expr(self, obj: Expr, index: Expr, typ: Type | None) -> str:
-        """Emit index expression. Override for Map handling."""
+        """Emit index expression with Map handling."""
         obj_str = self._expr(obj)
         idx_str = self._expr(index)
         obj_type = obj.typ
@@ -1067,6 +1067,8 @@ class JsLikeBackend:
             and typ.kind in ("int", "byte", "rune")
         ):
             return f"{obj_str}.charCodeAt({idx_str})"
+        if isinstance(obj_type, Map):
+            return f"{obj_str}.get({idx_str})"
         return f"{obj_str}[{idx_str}]"
 
     def _slice_expr(
@@ -1121,11 +1123,12 @@ class JsLikeBackend:
         return f"{self._expr(arr)}.join({self._expr(sep)})"
 
     def _map_get(self, obj: Expr, key: Expr, default: Expr | None) -> str:
-        """Emit Map.get expression. Override for JS/TS differences."""
+        """Emit Map.get expression with proper null handling."""
         obj_str = self._expr(obj)
         key_str = self._expr(key)
         if default is not None:
-            return f"{obj_str}.get({key_str}) ?? {self._expr(default)}"
+            # Use ternary to distinguish null value from missing key
+            return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
         return f"({obj_str}.get({key_str}) ?? null)"
 
     def _method_call(self, obj: Expr, method: str, args: list[Expr], receiver_type: Type) -> str:
@@ -1228,6 +1231,13 @@ class JsLikeBackend:
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
         """Emit cast expression. Override for language-specific handling."""
+        # str(None) -> "None"
+        if (
+            isinstance(inner, NilLit)
+            and isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+        ):
+            return '"None"'
         if (
             isinstance(to_type, Primitive)
             and to_type.kind in ("int", "byte", "rune")

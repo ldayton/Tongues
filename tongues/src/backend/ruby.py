@@ -1093,8 +1093,7 @@ class RubyBackend:
                     return f"!!({expr_str})"
                 return f"!!{expr_str}"
             case BinaryOp(op="//", left=left, right=right):
-                # Floor division - use .div() for Python semantics (floor toward -inf)
-                # Ruby's / truncates toward zero, but .div() floors toward -inf
+                # Floor division - Ruby's / on integers truncates toward zero
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
@@ -1103,10 +1102,8 @@ class RubyBackend:
                     right_str = self._coerce_bool_to_int(right, raw=True)
                 else:
                     right_str = self._expr(right)
-                # Wrap left in parens if it's a complex expression
-                if isinstance(left, (BinaryOp, UnaryOp, Ternary)) and left.typ != BOOL:
-                    left_str = f"({left_str})"
-                return f"{left_str}.div({right_str})"
+                left_str = self._maybe_paren(left_str, left, "/", is_left=True)
+                return f"{left_str} / {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "==",
                 "!=",

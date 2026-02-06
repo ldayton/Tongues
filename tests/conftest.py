@@ -173,7 +173,6 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "php",
         "rust",
         "swift",
-        "typescript",
         "zig",
     },
     "apptest_sets": {
