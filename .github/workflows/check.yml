@@ -34,3 +34,13 @@ jobs:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
       - run: just test-apptests ${{ matrix.lang }}
+
+  check:
+    if: always()
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [[ "${{ needs.lint.result }}" != "success" || "${{ needs.test.result }}" != "success" ]]; then
+            exit 1
+          fi
