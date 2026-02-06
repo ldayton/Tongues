@@ -1231,6 +1231,9 @@ def lower_expr_Dict(
     # Infer key and value types from first entry if available
     key_type: "Type" = STRING
     value_type: "Type" = InterfaceRef("any")
+    if keys and keys[0]:
+        first_key = keys[0]
+        key_type = get_expr_type(first_key)
     if values and values[0]:
         first_val = values[0]
         value_type = get_expr_type(first_val)

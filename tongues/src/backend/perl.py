@@ -378,6 +378,7 @@ class PerlBackend:
         self.struct_fields: dict[str, list[tuple[str, Type]]] = {}  # Struct field info
         self._in_try_with_return: bool = False  # Flag for return-from-eval workaround
         self._needs_encode = False
+        self._needs_integer = False  # Track if bitwise ops require `use integer;`
 
     def emit(self, module: Module) -> str:
         """Emit Perl code from IR Module."""
@@ -386,6 +387,8 @@ class PerlBackend:
         self.constants = set()
         self._hoisted_vars = set()
         self._needs_encode = False
+        self._needs_integer = False
+        self._scan_for_bitwise(module)
         self._known_functions = {f.name for f in module.functions}
         for s in module.structs:
             for m in s.methods:
@@ -556,13 +559,104 @@ class PerlBackend:
             or module.enums
         )
 
+    def _scan_for_bitwise(self, module: Module) -> None:
+        """Scan module for bitwise operations to determine if `use integer;` is needed."""
+        for func in module.functions:
+            if self._body_has_bitwise(func.body):
+                self._needs_integer = True
+                return
+        for struct in module.structs:
+            for method in struct.methods:
+                if self._body_has_bitwise(method.body):
+                    self._needs_integer = True
+                    return
+        for stmt in module.statements:
+            if self._stmt_has_bitwise(stmt):
+                self._needs_integer = True
+                return
+
+    def _body_has_bitwise(self, body: list[Stmt]) -> bool:
+        """Check if body contains any bitwise operations."""
+        return any(self._stmt_has_bitwise(s) for s in body)
+
+    def _stmt_has_bitwise(self, stmt: Stmt) -> bool:
+        """Check if statement contains any bitwise operations."""
+        match stmt:
+            case ExprStmt(expr=expr):
+                return self._expr_has_bitwise(expr)
+            case Assert(test=test):
+                return self._expr_has_bitwise(test)
+            case VarDecl(value=value):
+                return value is not None and self._expr_has_bitwise(value)
+            case Assign(value=value):
+                return self._expr_has_bitwise(value)
+            case OpAssign(op=op, value=value):
+                return op in ("|", "&", "^", "<<", ">>") or self._expr_has_bitwise(value)
+            case Return(value=value):
+                return value is not None and self._expr_has_bitwise(value)
+            case If(cond=cond, then_body=then_body, else_body=else_body):
+                return (
+                    self._expr_has_bitwise(cond)
+                    or self._body_has_bitwise(then_body)
+                    or self._body_has_bitwise(else_body)
+                )
+            case While(cond=cond, body=body):
+                return self._expr_has_bitwise(cond) or self._body_has_bitwise(body)
+            case ForRange(body=body):
+                return self._body_has_bitwise(body)
+            case ForClassic(cond=cond, body=body):
+                return (
+                    cond is not None and self._expr_has_bitwise(cond)
+                ) or self._body_has_bitwise(body)
+            case Block(body=body):
+                return self._body_has_bitwise(body)
+            case TryCatch(body=body, catches=catches):
+                if self._body_has_bitwise(body):
+                    return True
+                return any(self._body_has_bitwise(c.body) for c in catches)
+            case Match(expr=expr, cases=cases, default=default):
+                if self._expr_has_bitwise(expr):
+                    return True
+                if any(self._body_has_bitwise(c.body) for c in cases):
+                    return True
+                return self._body_has_bitwise(default)
+            case _:
+                return False
+
+    def _expr_has_bitwise(self, expr: Expr) -> bool:
+        """Check if expression contains any bitwise operations."""
+        match expr:
+            case BinaryOp(op=op, left=left, right=right):
+                if op in ("|", "&", "^", "<<", ">>"):
+                    return True
+                return self._expr_has_bitwise(left) or self._expr_has_bitwise(right)
+            case UnaryOp(op=op, operand=operand):
+                if op == "~":
+                    return True
+                return self._expr_has_bitwise(operand)
+            case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
+                return (
+                    self._expr_has_bitwise(cond)
+                    or self._expr_has_bitwise(then_expr)
+                    or self._expr_has_bitwise(else_expr)
+                )
+            case Call(args=args):
+                return any(self._expr_has_bitwise(a) for a in args)
+            case MethodCall(obj=obj, args=args):
+                return self._expr_has_bitwise(obj) or any(self._expr_has_bitwise(a) for a in args)
+            case Index(obj=obj, index=index):
+                return self._expr_has_bitwise(obj) or self._expr_has_bitwise(index)
+            case Cast(expr=inner):
+                return self._expr_has_bitwise(inner)
+            case _:
+                return False
+
     def _emit_module(self, module: Module) -> None:
         needs_header = self._needs_header(module)
         if needs_header:
-            self._line("use strict;")
-            self._line("use warnings;")
-            self._line("use feature qw(signatures say);")
-            self._line("no warnings 'experimental::signatures';")
+            self._line("use v5.36;")
+        if self._needs_integer:
+            self._line("use integer;")
         self._import_insert_pos: int = len(self.lines)
         need_blank = needs_header
         if module.constants:
@@ -733,9 +827,9 @@ class PerlBackend:
                     isinstance(t, VarLV) and t.name in self._hoisted_vars for t in targets
                 )
                 if stmt.is_declaration and not any_hoisted:
-                    self._line(f"my ({lvalues}) = @{{{val}}};")
+                    self._line(f"my ({lvalues}) = {val};")
                 else:
-                    self._line(f"({lvalues}) = @{{{val}}};")
+                    self._line(f"({lvalues}) = {val};")
             case OpAssign(target=target, op=op, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
@@ -1164,7 +1258,9 @@ class PerlBackend:
                         return f'({self._expr(arg)} ? "True" : "False")'
                     return f'("" . {self._expr(arg)})'
                 if func == "abs":
-                    return f"abs({self._expr(args[0])})"
+                    arg = args[0]
+                    arg_str = self._bool_to_int(arg) if arg.typ == BOOL else self._expr(arg)
+                    return f"abs({arg_str})"
                 if func == "int":
                     return f"int({self._expr(args[0])})"
                 if func == "float":
@@ -1181,13 +1277,28 @@ class PerlBackend:
                     prec = self._expr(prec_arg)
                     return f"int({val} * 10 ** {prec} + 0.5) / 10 ** {prec}"
                 if func == "divmod":
-                    a, b = self._expr(args[0]), self._expr(args[1])
+                    a = self._bool_to_int(args[0]) if args[0].typ == BOOL else self._expr(args[0])
+                    b = self._bool_to_int(args[1]) if args[1].typ == BOOL else self._expr(args[1])
                     return f"(int({a} / {b}), {a} % {b})"
                 if func == "pow":
                     if len(args) == 2:
-                        return f"{self._expr(args[0])} ** {self._expr(args[1])}"
+                        base = (
+                            self._bool_to_int(args[0])
+                            if args[0].typ == BOOL
+                            else self._expr(args[0])
+                        )
+                        exp = (
+                            self._bool_to_int(args[1])
+                            if args[1].typ == BOOL
+                            else self._expr(args[1])
+                        )
+                        return f"{base} ** {exp}"
                     # pow(base, exp, mod)
-                    base, exp, mod = [self._expr(a) for a in args]
+                    base = (
+                        self._bool_to_int(args[0]) if args[0].typ == BOOL else self._expr(args[0])
+                    )
+                    exp = self._bool_to_int(args[1]) if args[1].typ == BOOL else self._expr(args[1])
+                    mod = self._bool_to_int(args[2]) if args[2].typ == BOOL else self._expr(args[2])
                     return f"{base} ** {exp} % {mod}"
                 args_str = ", ".join(self._expr(a) for a in args)
                 safe_func = _safe_name(func)
@@ -1342,6 +1453,9 @@ class PerlBackend:
                 inner_type = e.typ
                 if isinstance(inner_type, (Slice, Map, Set)):
                     if isinstance(inner_type, Map):
+                        # Empty MapLit: always false
+                        if isinstance(e, MapLit) and not e.entries:
+                            return "0"
                         return f"(scalar(keys %{{({self._expr(e)} // {{}})}}) > 0)"
                     return f"(scalar(@{{({self._expr(e)} // [])}}) > 0)"
                 if isinstance(inner_type, Optional):
@@ -1367,6 +1481,40 @@ class PerlBackend:
                 if op == "not in":
                     return self._containment_check(left, right, negated=True)
                 pl_op = _binary_op(op, left.typ, right.typ)
+                left_is_bool = left.typ == BOOL
+                right_is_bool = right.typ == BOOL
+
+                # Bool-to-int conversion for arithmetic/bitwise/shift/comparison ops
+                # Perl comparisons return 1/"" which coerce correctly, so use _maybe_paren
+                if op in (
+                    "+",
+                    "-",
+                    "*",
+                    "/",
+                    "%",
+                    "//",
+                    "&",
+                    "|",
+                    "^",
+                    "<<",
+                    ">>",
+                    "<",
+                    ">",
+                    "<=",
+                    ">=",
+                ):
+                    if left_is_bool or right_is_bool:
+                        left_str = (
+                            self._bool_to_int(left)
+                            if _perl_needs_bool_coerce(left)
+                            else self._maybe_paren(left, op, is_left=True)
+                        )
+                        right_str = (
+                            self._bool_to_int(right)
+                            if _perl_needs_bool_coerce(right)
+                            else self._maybe_paren(right, op, is_left=False)
+                        )
+                        return f"{left_str} {pl_op} {right_str}"
                 left_str = self._maybe_paren(left, op, is_left=True)
                 right_str = self._maybe_paren(right, op, is_left=False)
                 return f"{left_str} {pl_op} {right_str}"
@@ -1388,6 +1536,10 @@ class PerlBackend:
                 return f"({l} > {r} ? {l} : {r})"
             case UnaryOp(op=op, operand=operand):
                 pl_op = _unary_op(op)
+                # Bool-to-int for unary - and ~ on booleans
+                if op in ("-", "~") and operand.typ == BOOL:
+                    operand_str = self._bool_to_int(operand)
+                    return f"{pl_op}{operand_str}"
                 # Wrap binary ops in parens for unary operators
                 if op in ("!", "-", "~") and isinstance(operand, BinaryOp):
                     return f"{pl_op}({self._expr(operand)})"
@@ -1437,7 +1589,11 @@ class PerlBackend:
             case Len(expr=inner):
                 inner_type = inner.typ
                 if isinstance(inner_type, Map):
-                    return f"scalar(keys %{{{self._expr(inner)}}})"
+                    # Empty MapLit: return 0 directly to avoid invalid Perl syntax %{{}}
+                    if isinstance(inner, MapLit) and not inner.entries:
+                        return "0"
+                    inner_str = self._expr(inner)
+                    return f"scalar(keys %{{{inner_str}}})"
                 if isinstance(inner_type, Primitive) and inner_type.kind == "string":
                     return f"length({self._expr(inner)})"
                 return f"scalar(@{{{self._expr(inner)}}})"
@@ -1649,6 +1805,13 @@ class PerlBackend:
             case _:
                 return "undef"
 
+    def _bool_to_int(self, expr: Expr) -> str:
+        """Convert boolean expression to int: (expr ? 1 : 0)."""
+        if isinstance(expr, BoolLit):
+            return "1" if expr.value else "0"
+        inner = self._expr(expr)
+        return f"({inner} ? 1 : 0)"
+
     def _cond_expr(self, expr: Expr) -> str:
         """Emit a condition expression, wrapping in parens only if needed for ternary."""
         match expr:
@@ -1745,42 +1908,64 @@ def _unary_op(op: str) -> str:
             return op
 
 
+# Perl operator precedence (higher = binds tighter). See perlop.
 _PRECEDENCE = {
     "or": 1,
-    "||": 1,
+    "xor": 1,
     "and": 2,
-    "&&": 2,
-    "eq": 3,
-    "ne": 3,
-    "lt": 3,
-    "gt": 3,
-    "le": 3,
-    "ge": 3,
-    "==": 3,
-    "!=": 3,
-    "<": 3,
-    ">": 3,
-    "<=": 3,
-    ">=": 3,
-    ".": 4,
-    "+": 4,
-    "-": 4,
-    "*": 5,
-    "/": 5,
-    "%": 5,
-    "//": 6,  # Floor div becomes int() call - never needs parens
-    "**": 7,
+    "||": 3,
+    "&&": 4,
+    "|": 5,
+    "^": 5,
+    "&": 6,
+    "eq": 7,
+    "ne": 7,
+    "lt": 7,
+    "gt": 7,
+    "le": 7,
+    "ge": 7,
+    "==": 7,
+    "!=": 7,
+    "<": 7,
+    ">": 7,
+    "<=": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    ".": 9,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+    "//": 10,
+    "**": 11,
 }
+
+
+def _perl_needs_bool_coerce(expr: Expr) -> bool:
+    """True if expr needs explicit bool-to-int coercion in Perl."""
+    if expr.typ != BOOL:
+        return False
+    # Perl comparisons return 1/"" which coerce correctly in numeric context
+    if isinstance(expr, BinaryOp) and expr.op in ("<", ">", "<=", ">=", "==", "!="):
+        return False
+    return True
 
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     """Determine if a child binary op needs parens inside a parent binary op."""
+    comparison_ops = ("==", "!=", "<", ">", "<=", ">=", "eq", "ne", "lt", "gt", "le", "ge")
+    # In Perl, chained comparisons like `a != b == c` mean `a != b && b == c`.
+    # We need parentheses when a comparison is used as an operand of another comparison.
+    if child_op in comparison_ops and parent_op in comparison_ops:
+        return True
     child_prec = _PRECEDENCE.get(child_op, 0)
     parent_prec = _PRECEDENCE.get(parent_op, 0)
     if child_prec < parent_prec:
         return True
     if child_prec == parent_prec and not is_left:
-        return child_op in ("==", "!=", "<", ">", "<=", ">=", "eq", "ne", "lt", "gt", "le", "ge")
+        return child_op in comparison_ops
     return False
 
 

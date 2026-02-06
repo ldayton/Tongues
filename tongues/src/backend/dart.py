@@ -26,6 +26,7 @@ from src.ir import (
     Break,
     Call,
     Cast,
+    ChainedCompare,
     CharAt,
     CharClassify,
     CharLen,
@@ -68,7 +69,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     Module,
     NilLit,
     NoOp,
@@ -250,9 +253,13 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     parent_prec = _prec(parent_op)
     if child_prec < parent_prec:
         return True
+    # Dart doesn't allow chained comparisons like (a != b == c)
+    comparison_ops = ("==", "!=", "<", ">", "<=", ">=")
+    if child_op in comparison_ops and parent_op in comparison_ops:
+        return True
     if child_prec == parent_prec and not is_left:
         # Comparisons are non-associative
-        return child_op in ("==", "!=", "<", ">", "<=", ">=")
+        return child_op in comparison_ops
     return False
 
 
@@ -1353,16 +1360,21 @@ class DartBackend:
                 # Convert floor division to Dart's ~/
                 if op == "//":
                     op = "~/"
-                # Dart bools don't support arithmetic; cast to int
-                if op in ("+", "-", "*", "/", "%", "~/"):
+                # Dart bools don't support arithmetic, shifts, or ordered comparisons; cast to int
+                if op in ("+", "-", "*", "/", "%", "~/", "<<", ">>"):
                     if left_is_bool:
                         left_str = f"({self._expr(left)} ? 1 : 0)"
                     else:
-                        left_str = self._expr(left)
+                        left_str = self._maybe_paren(left, op, is_left=True)
                     if right_is_bool:
                         right_str = f"({self._expr(right)} ? 1 : 0)"
                     else:
-                        right_str = self._expr(right)
+                        right_str = self._maybe_paren(right, op, is_left=False)
+                elif op in (">", "<", ">=", "<=") and (left_is_bool or right_is_bool):
+                    left_str = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
+                    right_str = (
+                        f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                    )
                 # Dart bool bitwise ops require both operands to be the same type
                 elif op in ("&", "|", "^") and left_is_bool != right_is_bool:
                     left_str = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
@@ -1397,6 +1409,35 @@ class DartBackend:
                     if op == "<":
                         return f"({left_str}.compareTo({right_str}) < 0)"
                 return f"{left_str} {dart_op} {right_str}"
+            case MinExpr(left=left, right=right):
+                left_type = left.typ
+                right_type = right.typ
+                left_is_bool = isinstance(left_type, Primitive) and left_type.kind == "bool"
+                right_is_bool = isinstance(right_type, Primitive) and right_type.kind == "bool"
+                if left_is_bool or right_is_bool:
+                    l = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
+                    r = f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                else:
+                    l, r = self._expr(left), self._expr(right)
+                return f"({l} <= {r} ? {l} : {r})"
+            case MaxExpr(left=left, right=right):
+                left_type = left.typ
+                right_type = right.typ
+                left_is_bool = isinstance(left_type, Primitive) and left_type.kind == "bool"
+                right_is_bool = isinstance(right_type, Primitive) and right_type.kind == "bool"
+                if left_is_bool or right_is_bool:
+                    l = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
+                    r = f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                else:
+                    l, r = self._expr(left), self._expr(right)
+                return f"({l} >= {r} ? {l} : {r})"
+            case ChainedCompare(operands=operands, ops=ops):
+                parts = []
+                for i, op in enumerate(ops):
+                    left_str = self._expr(operands[i])
+                    right_str = self._expr(operands[i + 1])
+                    parts.append(f"{left_str} {op} {right_str}")
+                return "(" + " && ".join(parts) + ")"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)
             case UnaryOp(op="*", operand=operand):
@@ -1420,7 +1461,17 @@ class DartBackend:
                     return f"({operand_str}.isEmpty)"
                 return f"!({operand_str})"
             case UnaryOp(op=op, operand=operand):
-                return f"{op}{self._expr(operand)}"
+                operand_type = operand.typ
+                operand_is_bool = (
+                    isinstance(operand_type, Primitive) and operand_type.kind == "bool"
+                )
+                # Dart bools don't support unary minus or bitwise NOT
+                if op in ("-", "~") and operand_is_bool:
+                    return f"{op}({self._expr(operand)} ? 1 : 0)"
+                operand_str = self._expr(operand)
+                if isinstance(operand, (BinaryOp, Ternary)):
+                    operand_str = f"({operand_str})"
+                return f"{op}{operand_str}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
                 else_str = self._expr(else_expr)
                 if isinstance(else_expr, NilLit):
@@ -1618,7 +1669,27 @@ class DartBackend:
         if func == "chr":
             return f"String.fromCharCode({self._expr(args[0])})"
         if func == "abs":
-            return f"({self._expr(args[0])}).abs()"
+            arg = args[0]
+            arg_type = arg.typ
+            if isinstance(arg_type, Primitive) and arg_type.kind == "bool":
+                return f"({self._expr(arg)} ? 1 : 0)"  # abs(True)=1, abs(False)=0
+            return f"({self._expr(arg)}).abs()"
+        if func == "pow":
+            self._needed_imports.add("dart:math")
+            arg0, arg1 = args[0], args[1]
+            arg0_is_bool = isinstance(arg0.typ, Primitive) and arg0.typ.kind == "bool"
+            arg1_is_bool = isinstance(arg1.typ, Primitive) and arg1.typ.kind == "bool"
+            a0 = f"({self._expr(arg0)} ? 1 : 0)" if arg0_is_bool else self._expr(arg0)
+            a1 = f"({self._expr(arg1)} ? 1 : 0)" if arg1_is_bool else self._expr(arg1)
+            return f"pow({a0}, {a1}).toInt()"
+        if func == "divmod":
+            self._needed_helpers.add("divmod")
+            arg0, arg1 = args[0], args[1]
+            arg0_is_bool = isinstance(arg0.typ, Primitive) and arg0.typ.kind == "bool"
+            arg1_is_bool = isinstance(arg1.typ, Primitive) and arg1.typ.kind == "bool"
+            a0 = f"({self._expr(arg0)} ? 1 : 0)" if arg0_is_bool else self._expr(arg0)
+            a1 = f"({self._expr(arg1)} ? 1 : 0)" if arg1_is_bool else self._expr(arg1)
+            return f"divmod({a0}, {a1})"
         if func == "min":
             if len(args) == 2:
                 self._needed_helpers.add("_min")
@@ -1770,6 +1841,12 @@ class DartBackend:
         if isinstance(to_type, Primitive):
             if to_type.kind == "int":
                 if isinstance(inner_type, Primitive) and inner_type.kind == "bool":
+                    # UnaryOp('-' or '~') on bool already produces int
+                    if isinstance(inner, UnaryOp) and inner.op in ("-", "~"):
+                        return inner_str
+                    # MinExpr/MaxExpr with bool operands already produce int
+                    if isinstance(inner, (MinExpr, MaxExpr)):
+                        return inner_str
                     return f"({inner_str} ? 1 : 0)"
                 if isinstance(inner_type, Primitive) and inner_type.kind == "float":
                     return f"({inner_str}).toInt()"
@@ -2003,6 +2080,11 @@ class DartBackend:
                     return f"({self._expr(expr)})"
             case Ternary():
                 return f"({self._expr(expr)})"
+            case Truthy():
+                # Truthy produces a comparison like (x != 0) which needs parens
+                # when used with equality operators to avoid chained comparison errors
+                if parent_op in ("==", "!="):
+                    return f"({self._expr(expr)})"
         return self._expr(expr)
 
     def _emit_helpers(self) -> None:
@@ -2066,6 +2148,9 @@ class DartBackend:
             self._line("return _trimRight(_trimLeft(s, chars), chars);")
             self.indent -= 1
             self._line("}")
+        if "divmod" in self._needed_helpers:
+            self._line("")
+            self._line("(int, int) divmod(int a, int b) => (a ~/ b, a % b);")
 
 
 def _primitive_type(kind: str) -> str:
@@ -2111,16 +2196,50 @@ _DART_EXCEPTION_MAP: dict[str, str | None] = {
 def _dart_is_bool_in_dart(expr: Expr) -> bool:
     """True when *expr* produces bool in Dart, even if the IR type is INT."""
     if isinstance(expr.typ, Primitive) and expr.typ.kind == "bool":
+        # UnaryOp('-' or '~') on bool produces int in Dart, not bool
+        if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+            return False
+        # MinExpr/MaxExpr with bool operands produce int in Dart
+        if isinstance(expr, (MinExpr, MaxExpr)):
+            return False
+        # BinaryOp arithmetic on bools produces int in Dart
+        if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "~/"):
+            return False
         return True
     if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "^"):
         return _dart_is_bool_in_dart(expr.left) and _dart_is_bool_in_dart(expr.right)
     return False
 
 
+def _dart_is_int_in_dart(expr: Expr) -> bool:
+    """True when *expr* produces int in Dart, even if the IR type is bool."""
+    if isinstance(expr.typ, Primitive) and expr.typ.kind == "int":
+        return True
+    # UnaryOp('-' or '~') on bool produces int in Dart
+    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+        return isinstance(expr.operand.typ, Primitive) and expr.operand.typ.kind == "bool"
+    # BinaryOp arithmetic on bools produces int in Dart
+    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "~/"):
+        l_bool = isinstance(expr.left.typ, Primitive) and expr.left.typ.kind == "bool"
+        r_bool = isinstance(expr.right.typ, Primitive) and expr.right.typ.kind == "bool"
+        if l_bool or r_bool:
+            return True
+    # MinExpr/MaxExpr with any bool operand produces int in Dart
+    if isinstance(expr, MinExpr):
+        l_bool = isinstance(expr.left.typ, Primitive) and expr.left.typ.kind == "bool"
+        r_bool = isinstance(expr.right.typ, Primitive) and expr.right.typ.kind == "bool"
+        return l_bool or r_bool
+    if isinstance(expr, MaxExpr):
+        l_bool = isinstance(expr.left.typ, Primitive) and expr.left.typ.kind == "bool"
+        r_bool = isinstance(expr.right.typ, Primitive) and expr.right.typ.kind == "bool"
+        return l_bool or r_bool
+    return False
+
+
 def _dart_needs_bool_int_coerce(left: Expr, right: Expr) -> bool:
-    """True when one side is bool-in-Dart and the other is genuinely int."""
+    """True when one side is bool-in-Dart and the other is genuinely int-in-Dart."""
     l_bool = _dart_is_bool_in_dart(left)
     r_bool = _dart_is_bool_in_dart(right)
-    l_int = isinstance(left.typ, Primitive) and left.typ.kind == "int" and not l_bool
-    r_int = isinstance(right.typ, Primitive) and right.typ.kind == "int" and not r_bool
+    l_int = _dart_is_int_in_dart(left)
+    r_int = _dart_is_int_in_dart(right)
     return (l_bool and r_int) or (l_int and r_bool)

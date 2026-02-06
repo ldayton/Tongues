@@ -868,8 +868,12 @@ class PhpBackend:
             case BinaryOp(op="not in", left=left, right=right):
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op="//", left=left, right=right):
-                # Floor division uses intdiv() in PHP
-                return f"intdiv({self._expr(left)}, {self._expr(right)})"
+                # Floor division uses intdiv() in PHP - coerce bools to int
+                left_str = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                right_str = (
+                    f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                )
+                return f"intdiv({left_str}, {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 # String concatenation: + on strings becomes . in PHP
                 if op == "+" and (_is_string_type(left.typ) or _is_string_type(right.typ)):
@@ -878,6 +882,15 @@ class PhpBackend:
                     return f"{left_str} . {right_str}"
                 # Use loose equality when comparing bool with int
                 if op in ("==", "!=") and _is_bool_int_compare(left, right):
+                    loose_op = "==" if op == "==" else "!="
+                    left_str = self._maybe_paren(left, loose_op, is_left=True)
+                    right_str = self._maybe_paren(right, loose_op, is_left=False)
+                    return f"{left_str} {loose_op} {right_str}"
+                # Use loose equality when comparing any-typed expr with bool
+                if op in ("==", "!=") and (
+                    (isinstance(left.typ, InterfaceRef) and right.typ == BOOL)
+                    or (left.typ == BOOL and isinstance(right.typ, InterfaceRef))
+                ):
                     loose_op = "==" if op == "==" else "!="
                     left_str = self._maybe_paren(left, loose_op, is_left=True)
                     right_str = self._maybe_paren(right, loose_op, is_left=False)
@@ -901,6 +914,9 @@ class PhpBackend:
                     inner = f"({inner})"
                 return f"!{inner}"
             case UnaryOp(op=op, operand=operand):
+                # Bitwise NOT on bool needs coercion to int
+                if op == "~" and operand.typ == BOOL:
+                    return f"~({self._expr(operand)} ? 1 : 0)"
                 # Wrap binary ops in parens for unary operators
                 if op in ("-", "~") and isinstance(operand, BinaryOp):
                     return f"{op}({self._expr(operand)})"
@@ -926,8 +942,30 @@ class PhpBackend:
                     parts.append(f"{left_str} {php_op} {right_str}")
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
+                # Coerce bools to int when mixing with non-bool for correct numeric comparison
+                has_bool = left.typ == BOOL or right.typ == BOOL
+                has_non_bool = left.typ != BOOL or right.typ != BOOL
+                if has_bool and has_non_bool:
+                    left_str = (
+                        f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                    )
+                    return f"min({left_str}, {right_str})"
                 return f"min({self._expr(left)}, {self._expr(right)})"
             case MaxExpr(left=left, right=right):
+                # Coerce bools to int when mixing with non-bool for correct numeric comparison
+                has_bool = left.typ == BOOL or right.typ == BOOL
+                has_non_bool = left.typ != BOOL or right.typ != BOOL
+                if has_bool and has_non_bool:
+                    left_str = (
+                        f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                    )
+                    right_str = (
+                        f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                    )
+                    return f"max({left_str}, {right_str})"
                 return f"max({self._expr(left)}, {self._expr(right)})"
             case Cast(expr=inner, to_type=to_type):
                 return self._cast(inner, to_type)
@@ -1016,11 +1054,32 @@ class PhpBackend:
         if func == "chr":
             return f"mb_chr({self._expr(args[0])})"
         if func == "abs":
+            # Coerce bool to int for abs()
+            if args and args[0].typ == BOOL:
+                return f"abs(({self._expr(args[0])} ? 1 : 0))"
             return f"abs({args_str})"
         if func == "min":
-            return f"min({args_str})"
+            # Only coerce bools to int if there's a mix of bool and non-bool args
+            has_bool = any(a.typ == BOOL for a in args)
+            has_non_bool = any(a.typ != BOOL for a in args)
+            parts = []
+            for a in args:
+                if has_bool and has_non_bool and a.typ == BOOL:
+                    parts.append(f"({self._expr(a)} ? 1 : 0)")
+                else:
+                    parts.append(self._expr(a))
+            return f"min({', '.join(parts)})"
         if func == "max":
-            return f"max({args_str})"
+            # Only coerce bools to int if there's a mix of bool and non-bool args
+            has_bool = any(a.typ == BOOL for a in args)
+            has_non_bool = any(a.typ != BOOL for a in args)
+            parts = []
+            for a in args:
+                if has_bool and has_non_bool and a.typ == BOOL:
+                    parts.append(f"({self._expr(a)} ? 1 : 0)")
+                else:
+                    parts.append(self._expr(a))
+            return f"max({', '.join(parts)})"
         if func == "int":
             arg_str = self._expr(args[0])
             # No parens for simple values
@@ -1038,7 +1097,11 @@ class PhpBackend:
                 return f"round({self._expr(args[0])})"
             return f"round({args_str})"
         if func == "divmod":
-            a, b = self._expr(args[0]), self._expr(args[1])
+            # Coerce bools to int for intdiv() and %
+            a_expr = args[0]
+            b_expr = args[1]
+            a = f"({self._expr(a_expr)} ? 1 : 0)" if a_expr.typ == BOOL else self._expr(a_expr)
+            b = f"({self._expr(b_expr)} ? 1 : 0)" if b_expr.typ == BOOL else self._expr(b_expr)
             return f"[intdiv({a}, {b}), {a} % {b}]"
         if func == "pow":
             if len(args) == 2:
@@ -1502,4 +1565,16 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
         return True
     if child_prec == parent_prec and not is_left:
         return child_op in ("==", "===", "!=", "!==", "<", ">", "<=", ">=")
+    # PHP 8+ forbids chained comparisons entirely (e.g., a !== 0 === true)
+    if parent_op in ("===", "!==", "==", "!=") and child_op in (
+        "===",
+        "!==",
+        "==",
+        "!=",
+        "<",
+        ">",
+        "<=",
+        ">=",
+    ):
+        return True
     return False

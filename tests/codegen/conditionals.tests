@@ -195,7 +195,7 @@ int Pick(int a, int b, bool useFirst) {
   return useFirst ? a : b;
 }
 --- java
-int pick(int a, int b, boolean useFirst) {
+static int pick(int a, int b, boolean useFirst) {
   return useFirst ? a : b;
 }
 ---
@@ -357,7 +357,7 @@ int Check(int x) {
   return 0;
 }
 --- java
-int check(int x) {
+static int check(int x) {
   if (x > 0) {
     return 1;
   }
@@ -432,7 +432,7 @@ int Check(int x) {
   }
 }
 --- java
-int check(int x) {
+static int check(int x) {
   if (x > 0) {
     return 1;
   } else {
@@ -529,7 +529,7 @@ string Classify(int x) {
   }
 }
 --- java
-String classify(int x) {
+static String classify(int x) {
   if (x > 0) {
     return "positive";
   } else if (x < 0) {
@@ -670,7 +670,7 @@ string Grade(int score) {
   }
 }
 --- java
-String grade(int score) {
+static String grade(int score) {
   if (score >= 90) {
     return "A";
   } else if (score >= 80) {
@@ -786,7 +786,7 @@ int Nested(int x, int y) {
   }
 }
 --- java
-int nested(int x, int y) {
+static int nested(int x, int y) {
   if (x > 0) {
     if (y > 0) {
       return 1;
@@ -856,7 +856,7 @@ bool BothPositive(int x, int y) {
   return false;
 }
 --- java
-boolean bothPositive(int x, int y) {
+static boolean bothPositive(int x, int y) {
   if (x > 0 && y > 0) {
     return true;
   }
@@ -943,7 +943,7 @@ bool IsZero(int x) {
   return false;
 }
 --- java
-boolean isZero(int x) {
+static boolean isZero(int x) {
   if (!(x > 0)) {
     if (!(x < 0)) {
       return true;
@@ -1010,7 +1010,7 @@ bool InRange(int x) {
   return false;
 }
 --- java
-boolean inRange(int x) {
+static boolean inRange(int x) {
   if (0 < x && x < 10) {
     return true;
   }
@@ -1105,7 +1105,7 @@ int Clamp(int x) {
   return result;
 }
 --- java
-int clamp(int x) {
+static int clamp(int x) {
   int result = x;
   if (x < 0) {
     result = 0;
@@ -1206,7 +1206,7 @@ int FindFirstPositive(List<int> nums) {
   return -1;
 }
 --- java
-int findFirstPositive(List<Integer> nums) {
+static int findFirstPositive(List<Integer> nums) {
   int i = 0;
   while (i < nums.size()) {
     if (nums.get(i) > 0) {
@@ -1333,7 +1333,7 @@ int CountPositive(List<int> nums) {
   return count;
 }
 --- java
-int countPositive(List<Integer> nums) {
+static int countPositive(List<Integer> nums) {
   int count = 0;
   int i = 0;
   while (i < nums.size()) {
@@ -1390,7 +1390,7 @@ int PickValue(bool flag) {
   return x;
 }
 --- java
-int pickValue(boolean flag) {
+static int pickValue(boolean flag) {
   int x = flag ? 10 : 20;
   return x;
 }
@@ -1485,7 +1485,7 @@ bool MultiCheck(int a, int b, int c) {
   return false;
 }
 --- java
-boolean multiCheck(int a, int b, int c) {
+static boolean multiCheck(int a, int b, int c) {
   if (a > 0) {
     if (b > 0) {
       if (c > 0) {
@@ -1578,7 +1578,7 @@ bool Validate(int x) {
   return true;
 }
 --- java
-boolean validate(int x) {
+static boolean validate(int x) {
   if (x < 0) {
     return false;
   }
@@ -1646,7 +1646,7 @@ int Process(int x) {
   return x * 2;
 }
 --- java
-int process(int x) {
+static int process(int x) {
   if (x == 0) {
     return 0;
   }
@@ -1780,7 +1780,7 @@ int MaybeDouble(int x, bool doIt) {
   return result;
 }
 --- java
-int maybeDouble(int x, boolean doIt) {
+static int maybeDouble(int x, boolean doIt) {
   int result = x;
   if (doIt) {
     result = x * 2;
@@ -1846,7 +1846,7 @@ bool Ordered(int a, int b, int c) {
   return false;
 }
 --- java
-boolean ordered(int a, int b, int c) {
+static boolean ordered(int a, int b, int c) {
   if (a < b && b < c) {
     return true;
   }
@@ -1911,7 +1911,7 @@ bool AllEqual(int a, int b, int c) {
   return false;
 }
 --- java
-boolean allEqual(int a, int b, int c) {
+static boolean allEqual(int a, int b, int c) {
   if (a == b && b == c) {
     return true;
   }

@@ -717,7 +717,7 @@ class JavaBackend:
         name = to_camel(func.name)
         # Special case: _stringToBytes needs native implementation to avoid recursion
         if func.name == "_string_to_bytes":
-            self._line(f"{ret} {name}({params}) {{")
+            self._line(f"static {ret} {name}({params}) {{")
             self.indent += 1
             self._line("byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);")
             self._line("List<Byte> result = new ArrayList<>(bytes.length);")
@@ -728,7 +728,7 @@ class JavaBackend:
             return
         # Special case: _substring needs clamping to match Python slice semantics
         if func.name == "_substring":
-            self._line(f"{ret} {name}({params}) {{")
+            self._line(f"static {ret} {name}({params}) {{")
             self.indent += 1
             self._line("int len = s.length();")
             self._line("int clampedStart = Math.max(0, Math.min(start, len));")
@@ -737,7 +737,7 @@ class JavaBackend:
             self.indent -= 1
             self._line("}")
             return
-        self._line(f"{ret} {name}({params}) {{")
+        self._line(f"static {ret} {name}({params}) {{")
         self.indent += 1
         if not func.body:
             self._line('throw new UnsupportedOperationException("todo");')
@@ -868,6 +868,10 @@ class JavaBackend:
                             self._line(f"{lv} = {val_str}.f{i}();")
                 else:
                     # Fallback: treat as array index
+                    # divmod returns int[], so use int type instead of Object
+                    elem_type = "Object"
+                    if isinstance(value, Call) and value.func == "divmod":
+                        elem_type = "int"
                     for i, target in enumerate(targets):
                         lv = self._lvalue(target)
                         target_name = target.name if isinstance(target, VarLV) else None
@@ -875,7 +879,7 @@ class JavaBackend:
                         if (
                             is_decl or (target_name and target_name in new_targets)
                         ) and not is_hoisted:
-                            self._line(f"Object {lv} = {val_str}[{i}];")
+                            self._line(f"{elem_type} {lv} = {val_str}[{i}];")
                         else:
                             self._line(f"{lv} = {val_str}[{i}];")
             case NoOp():
@@ -1249,6 +1253,13 @@ class JavaBackend:
             else:
                 self._line(f"{lv} = {entry_var}.f{i}();")
 
+    def _bool_to_int(self, expr: Expr) -> str:
+        """Convert a boolean expression to int: (expr ? 1 : 0)."""
+        inner = self._expr(expr)
+        if isinstance(expr, (BoolLit, Var)):
+            return f"({inner} ? 1 : 0)"
+        return f"(({inner}) ? 1 : 0)"
+
     def _expr(self, expr: Expr) -> str:
         match expr:
             case IntLit(value=value, format=fmt):
@@ -1445,6 +1456,9 @@ class JavaBackend:
                 if func == "chr":
                     return f"new String(Character.toChars({self._expr(args[0])}))"
                 if func == "abs":
+                    arg = args[0] if args else None
+                    if arg and _is_bool_type(arg.typ):
+                        return _java_coerce_bool_to_int(self, arg)
                     return f"Math.abs({args_str})"
                 if func == "round":
                     if len(args) == 2:
@@ -1456,22 +1470,67 @@ class JavaBackend:
                         n = self._expr(args[1])
                         return f"Math.round({x} * Math.pow(10, {n})) / Math.pow(10, {n})"
                     return f"Math.round({args_str})"
-                if func == "min":
-                    return f"Math.min({args_str})"
-                if func == "max":
-                    return f"Math.max({args_str})"
+                if func == "min" and len(args) == 2:
+                    a = (
+                        _java_coerce_bool_to_int(self, args[0])
+                        if _is_bool_type(args[0].typ)
+                        else self._expr(args[0])
+                    )
+                    b = (
+                        _java_coerce_bool_to_int(self, args[1])
+                        if _is_bool_type(args[1].typ)
+                        else self._expr(args[1])
+                    )
+                    return f"Math.min({a}, {b})"
+                if func == "max" and len(args) == 2:
+                    a = (
+                        _java_coerce_bool_to_int(self, args[0])
+                        if _is_bool_type(args[0].typ)
+                        else self._expr(args[0])
+                    )
+                    b = (
+                        _java_coerce_bool_to_int(self, args[1])
+                        if _is_bool_type(args[1].typ)
+                        else self._expr(args[1])
+                    )
+                    return f"Math.max({a}, {b})"
                 if func == "divmod" and len(args) == 2:
-                    a, b = self._expr(args[0]), self._expr(args[1])
+                    a = (
+                        _java_coerce_bool_to_int(self, args[0])
+                        if _is_bool_type(args[0].typ)
+                        else self._expr(args[0])
+                    )
+                    b = (
+                        _java_coerce_bool_to_int(self, args[1])
+                        if _is_bool_type(args[1].typ)
+                        else self._expr(args[1])
+                    )
                     return f"new int[]{{{a} / {b}, {a} % {b}}}"
                 if func == "pow":
                     if len(args) == 2:
-                        return f"Math.pow({args_str})"
-                    if len(args) == 3:
-                        base, exp, mod = (
-                            self._expr(args[0]),
-                            self._expr(args[1]),
-                            self._expr(args[2]),
+                        a = (
+                            _java_coerce_bool_to_int(self, args[0])
+                            if _is_bool_type(args[0].typ)
+                            else self._expr(args[0])
                         )
+                        b = (
+                            _java_coerce_bool_to_int(self, args[1])
+                            if _is_bool_type(args[1].typ)
+                            else self._expr(args[1])
+                        )
+                        return f"(int)Math.pow({a}, {b})"
+                    if len(args) == 3:
+                        base = (
+                            _java_coerce_bool_to_int(self, args[0])
+                            if _is_bool_type(args[0].typ)
+                            else self._expr(args[0])
+                        )
+                        exp = (
+                            _java_coerce_bool_to_int(self, args[1])
+                            if _is_bool_type(args[1].typ)
+                            else self._expr(args[1])
+                        )
+                        mod = self._expr(args[2])
                         return f"(int)Math.pow({base}, {exp}) % {mod}"
                 # Helper functions for Go pointer boxing - inline in Java
                 if func == "_intPtr" or func == "_int_ptr":
@@ -1556,6 +1615,35 @@ class JavaBackend:
                 left_str = _java_coerce_bool_to_int(self, left)
                 right_str = _java_coerce_bool_to_int(self, right)
                 return f"({left_str} {_binary_op(op)} {right_str})"
+            # Arithmetic/comparison/shift ops with bool operands need int conversion
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "+",
+                "-",
+                "*",
+                "/",
+                "%",
+                "//",
+                "<",
+                ">",
+                "<=",
+                ">=",
+                "<<",
+                ">>",
+            ) and (_is_bool_type(left.typ) or _is_bool_type(right.typ)):
+                left_str = (
+                    _java_coerce_bool_to_int(self, left)
+                    if _is_bool_type(left.typ)
+                    else self._expr(left)
+                )
+                right_str = (
+                    _java_coerce_bool_to_int(self, right)
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
+                java_op = _binary_op(op)
+                if op == "//":
+                    return f"Math.floorDiv({left_str}, {right_str})"
+                return f"{left_str} {java_op} {right_str}"
             case BinaryOp(op=op, left=left, right=right):
                 java_op = _binary_op(op)
                 right_str = self._expr(right)
@@ -1661,6 +1749,10 @@ class JavaBackend:
                 if isinstance(operand, BinaryOp):
                     return f"!({self._expr(operand)})"
                 return f"!{self._expr(operand)}"
+            # Unary minus or bitwise NOT on boolean needs int conversion
+            case UnaryOp(op=op, operand=operand) if op in ("-", "~") and _is_bool_type(operand.typ):
+                inner = _java_coerce_bool_to_int(self, operand)
+                return f"{op}{inner}"
             case UnaryOp(op=op, operand=operand):
                 inner = self._expr(operand)
                 # Wrap binary ops in parens to ensure correct precedence
@@ -1805,9 +1897,29 @@ class JavaBackend:
                     parts.append(f"{left_str} {java_op} {right_str}")
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
-                return f"Math.min({self._expr(left)}, {self._expr(right)})"
+                l = (
+                    _java_coerce_bool_to_int(self, left)
+                    if _is_bool_type(left.typ)
+                    else self._expr(left)
+                )
+                r = (
+                    _java_coerce_bool_to_int(self, right)
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
+                return f"Math.min({l}, {r})"
             case MaxExpr(left=left, right=right):
-                return f"Math.max({self._expr(left)}, {self._expr(right)})"
+                l = (
+                    _java_coerce_bool_to_int(self, left)
+                    if _is_bool_type(left.typ)
+                    else self._expr(left)
+                )
+                r = (
+                    _java_coerce_bool_to_int(self, right)
+                    if _is_bool_type(right.typ)
+                    else self._expr(right)
+                )
+                return f"Math.max({l}, {r})"
             case _:
                 return "null /* TODO: unknown expression */"
 
@@ -2243,19 +2355,46 @@ def _is_bool_int_compare(left: Expr, right: Expr) -> bool:
     return (l == BOOL and r == INT) or (l == INT and r == BOOL)
 
 
+def _java_produces_int(expr: Expr) -> bool:
+    """True if this expression produces an int in Java (e.g., arithmetic on bools)."""
+    if expr.typ == INT:
+        return True
+    # Arithmetic on bools produces int
+    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "//"):
+        return True
+    # Unary - or ~ on bool produces int
+    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+        return True
+    # min/max calls produce int
+    if isinstance(expr, (MinExpr, MaxExpr)):
+        return True
+    if isinstance(expr, Call) and isinstance(expr.func, Var) and expr.func.name in ("min", "max"):
+        return True
+    return False
+
+
 def _java_needs_bool_int_coerce(left: Expr, right: Expr) -> bool:
     """True when one side is boolean in Java and the other is int."""
     lb = _java_is_bool_in_java(left)
     rb = _java_is_bool_in_java(right)
     if lb and rb:
         return False  # both boolean, Java == works fine
-    li = left.typ == INT and not lb
-    ri = right.typ == INT and not rb
+    li = (_java_produces_int(left) or left.typ == INT) and not lb
+    ri = (_java_produces_int(right) or right.typ == INT) and not rb
     return (lb and ri) or (li and rb)
 
 
 def _java_is_bool_in_java(expr: Expr) -> bool:
     """True if this expression produces a boolean in Java, even if IR type says INT."""
+    # UnaryOp with - or ~ on bool produces int, not bool
+    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+        return False
+    # MinExpr/MaxExpr produce int in Java (via Math.min/max)
+    if isinstance(expr, (MinExpr, MaxExpr)):
+        return False
+    # Arithmetic ops on bools produce int
+    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "//"):
+        return False
     if expr.typ == BOOL:
         return True
     if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "^"):
@@ -2273,6 +2412,10 @@ def _java_coerce_bool_to_int(backend: "JavaBackend", expr: Expr) -> str:
 def _is_string_type(typ: Type) -> bool:
     # Also treat rune as string since Java converts it to String via String.valueOf()
     return isinstance(typ, Primitive) and typ.kind in ("string", "rune")
+
+
+def _is_bool_type(typ: Type | None) -> bool:
+    return isinstance(typ, Primitive) and typ.kind == "bool"
 
 
 def _string_literal(value: str) -> str:

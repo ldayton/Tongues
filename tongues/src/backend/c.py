@@ -86,7 +86,9 @@ from src.ir import (
     MapLit,
     Match,
     MatchCase,
+    MaxExpr,
     MethodCall,
+    MinExpr,
     MethodSig,
     Module,
     NilLit,
@@ -1273,6 +1275,8 @@ class CBackend:
         elif isinstance(stmt, Raise):
             self._visit_expr_for_tuples(stmt.message)
             self._visit_expr_for_tuples(stmt.pos)
+        elif isinstance(stmt, Assert):
+            self._visit_expr_for_tuples(stmt.test)
 
     def _tuple_sig(self, typ: Tuple) -> str:
         """Generate a unique signature for a tuple type."""
@@ -1466,6 +1470,8 @@ class CBackend:
         elif isinstance(stmt, Raise):
             self._visit_expr_for_slices(stmt.message)
             self._visit_expr_for_slices(stmt.pos)
+        elif isinstance(stmt, Assert):
+            self._visit_expr_for_slices(stmt.test)
 
     def _slice_elem_sig(self, elem: Type) -> str:
         """Generate a unique signature for a slice element type."""
@@ -1645,6 +1651,8 @@ class CBackend:
         extra_includes: list[str] = []
         if "format" in needed:
             extra_includes.append("#include <stdarg.h>")
+        if "pow(" in code or "fabs(" in code:
+            extra_includes.append("#include <math.h>")
         if extra_includes:
             self.lines[self._include_pos : self._include_pos] = extra_includes
 
@@ -2204,6 +2212,33 @@ class CBackend:
                 else:
                     self._line(f"{target} = {tmp_name}.F{i};")
         else:
+            # Special case: divmod(a, b) unpacking
+            if (
+                isinstance(stmt.value, Call)
+                and stmt.value.func == "divmod"
+                and len(stmt.value.args) == 2
+                and len(stmt.targets) == 2
+            ):
+                a = self._emit_expr(stmt.value.args[0])
+                b = self._emit_expr(stmt.value.args[1])
+                if stmt.value.args[0].typ == BOOL:
+                    a = f"(int64_t){a}"
+                if stmt.value.args[1].typ == BOOL:
+                    b = f"(int64_t){b}"
+                for i, t in enumerate(stmt.targets):
+                    var_name = t.name if isinstance(t, VarLV) else None
+                    if not var_name or var_name == "_":
+                        continue
+                    target = self._emit_lvalue(t)
+                    already_declared = var_name in self._hoisted_vars if var_name else False
+                    op = "/" if i == 0 else "%"
+                    expr = f"({a}) {op} ({b})"
+                    if stmt.is_declaration and not already_declared:
+                        self._line(f"int64_t {target} = {expr};")
+                        self._hoisted_vars[var_name] = "int64_t"
+                    else:
+                        self._line(f"{target} = {expr};")
+                return
             # Fallback for non-tuple types - evaluate value once to avoid
             # side effects (e.g., --len from .pop()) being repeated
             value = self._emit_expr(stmt.value)
@@ -2932,6 +2967,10 @@ class CBackend:
             return self._emit_expr_TrimChars(expr)
         if isinstance(expr, AddrOf):
             return self._emit_expr_AddrOf(expr)
+        if isinstance(expr, MinExpr):
+            return self._emit_expr_MinExpr(expr)
+        if isinstance(expr, MaxExpr):
+            return self._emit_expr_MaxExpr(expr)
         return "/* TODO: unknown expr */"
 
     def _emit_expr_Var(self, expr: Var) -> str:
@@ -3067,6 +3106,37 @@ class CBackend:
             if expr.args:
                 return f"_int_to_str(g_arena, {self._emit_expr(expr.args[0])})"
             return '""'
+        if func == "abs":
+            if expr.args:
+                arg = self._emit_expr(expr.args[0])
+                if expr.args[0].typ == BOOL:
+                    return f"(int64_t){arg}"
+                if expr.args[0].typ == FLOAT:
+                    return f"fabs({arg})"
+                return f"llabs({arg})"
+            return "0"
+        if func == "pow" and len(expr.args) >= 2:
+            base = self._emit_expr(expr.args[0])
+            exp = self._emit_expr(expr.args[1])
+            # Cast bools to int64_t
+            if expr.args[0].typ == BOOL:
+                base = f"(int64_t){base}"
+            if expr.args[1].typ == BOOL:
+                exp = f"(int64_t){exp}"
+            if len(expr.args) == 3:
+                mod = self._emit_expr(expr.args[2])
+                return f"((int64_t)pow({base}, {exp}) % {mod})"
+            return f"(int64_t)pow({base}, {exp})"
+        if func == "divmod" and len(expr.args) == 2:
+            a = self._emit_expr(expr.args[0])
+            b = self._emit_expr(expr.args[1])
+            # Cast bools to int64_t
+            if expr.args[0].typ == BOOL:
+                a = f"(int64_t){a}"
+            if expr.args[1].typ == BOOL:
+                b = f"(int64_t){b}"
+            # Return tuple struct - need to get the tuple type signature
+            return f"((Tuple_int64_t_int64_t){{({a}) / ({b}), ({a}) % ({b})}})"
         # Special builtins
         # _int_ptr / _intPtr creates a pointer to an int value
         if func in ("_int_ptr", "_intPtr") and len(expr.args) == 1:
@@ -3473,7 +3543,8 @@ class CBackend:
         if isinstance(inner_type, Slice):
             return f"{inner}.len"
         if isinstance(inner_type, Map):
-            return f"{inner}.len"
+            # Map is StrMap * (pointer)
+            return f"{inner}->len"
         if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Map)):
             return f"{inner}->len"
         return f"strlen({inner})"
@@ -3754,8 +3825,11 @@ class CBackend:
             return f"({inner} != NULL && {inner}[0] != '\\0')"
         if inner_type == INT:
             return f"({inner} != 0)"
-        if isinstance(inner_type, (Slice, Map, Set)):
+        if isinstance(inner_type, Slice):
             return f"({inner}.len > 0)"
+        if isinstance(inner_type, (Map, Set)):
+            # Map/Set are pointers in C (StrMap *)
+            return f"({inner} != NULL && {inner}->len > 0)"
         if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Map, Set)):
             return f"({inner} != NULL && {inner}->len > 0)"
         return f"({inner} != NULL)"
@@ -3797,6 +3871,30 @@ class CBackend:
     def _emit_expr_AddrOf(self, expr: AddrOf) -> str:
         operand = self._emit_expr(expr.operand)
         return f"&{operand}"
+
+    def _emit_expr_MinExpr(self, expr: MinExpr) -> str:
+        left = self._emit_expr(expr.left)
+        right = self._emit_expr(expr.right)
+        # Cast bools to int64_t for comparison with ints
+        left_is_bool = expr.left.typ == BOOL
+        right_is_bool = expr.right.typ == BOOL
+        if left_is_bool and not right_is_bool:
+            left = f"(int64_t){left}"
+        if right_is_bool and not left_is_bool:
+            right = f"(int64_t){right}"
+        return f"(({left}) < ({right}) ? ({left}) : ({right}))"
+
+    def _emit_expr_MaxExpr(self, expr: MaxExpr) -> str:
+        left = self._emit_expr(expr.left)
+        right = self._emit_expr(expr.right)
+        # Cast bools to int64_t for comparison with ints
+        left_is_bool = expr.left.typ == BOOL
+        right_is_bool = expr.right.typ == BOOL
+        if left_is_bool and not right_is_bool:
+            left = f"(int64_t){left}"
+        if right_is_bool and not left_is_bool:
+            right = f"(int64_t){right}"
+        return f"(({left}) > ({right}) ? ({left}) : ({right}))"
 
     # ============================================================
     # LVALUE EMISSION
