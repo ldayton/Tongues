@@ -1,7 +1,4 @@
-"""Dart backend: IR → Dart code.
-
-TODO: _DART_PREC is defined but not yet integrated into BinaryOp emission.
-"""
+"""Dart backend: IR → Dart code."""
 
 from __future__ import annotations
 
@@ -245,6 +242,18 @@ _DART_PREC: dict[str, int] = {
 
 def _dart_prec(op: str) -> int:
     return _DART_PREC.get(op, 11)
+
+
+def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
+    """Determine if a child binary op needs parens inside a parent binary op."""
+    child_prec = _dart_prec(child_op)
+    parent_prec = _dart_prec(parent_op)
+    if child_prec < parent_prec:
+        return True
+    if child_prec == parent_prec and not is_left:
+        # Comparisons are non-associative
+        return child_op in ("==", "!=", "<", ">", "<=", ">=")
+    return False
 
 
 def _safe_name(name: str) -> str:
@@ -1368,8 +1377,8 @@ class DartBackend:
                     if _dart_is_bool_in_dart(right):
                         right_str = f"({right_str} ? 1 : 0)"
                 else:
-                    left_str = self._expr(left)
-                    right_str = self._expr(right)
+                    left_str = self._maybe_paren(left, op, is_left=True)
+                    right_str = self._maybe_paren(right, op, is_left=False)
                 dart_op = _binary_op(op)
                 # Handle string comparisons - Dart doesn't support >, <, >=, <= on strings
                 if (
@@ -1387,32 +1396,6 @@ class DartBackend:
                         return f"({left_str}.compareTo({right_str}) > 0)"
                     if op == "<":
                         return f"({left_str}.compareTo({right_str}) < 0)"
-                # Dart forbids chained comparisons
-                if dart_op in ("==", "!=", "<", ">", "<=", ">="):
-                    if isinstance(left, BinaryOp) and _binary_op(left.op) in (
-                        "==",
-                        "!=",
-                        "<",
-                        ">",
-                        "<=",
-                        ">=",
-                    ):
-                        left_str = f"({left_str})"
-                    if isinstance(right, BinaryOp) and _binary_op(right.op) in (
-                        "==",
-                        "!=",
-                        "<",
-                        ">",
-                        "<=",
-                        ">=",
-                    ):
-                        right_str = f"({right_str})"
-                # Add parens around || when inside && to preserve precedence
-                if dart_op == "&&":
-                    if isinstance(left, BinaryOp) and left.op == "||":
-                        left_str = f"({left_str})"
-                    if isinstance(right, BinaryOp) and right.op == "||":
-                        right_str = f"({right_str})"
                 return f"{left_str} {dart_op} {right_str}"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)
@@ -2010,6 +1993,17 @@ class DartBackend:
             case _:
                 # Cast null to dynamic for non-Optional types to bypass Dart null safety
                 return "null as dynamic"
+
+    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
+        """Wrap expression in parens if needed for operator precedence."""
+        match expr:
+            case BinaryOp(op=child_op):
+                dart_child_op = _binary_op(child_op) if child_op != "//" else "~/"
+                if _needs_parens(dart_child_op, parent_op, is_left):
+                    return f"({self._expr(expr)})"
+            case Ternary():
+                return f"({self._expr(expr)})"
+        return self._expr(expr)
 
     def _emit_helpers(self) -> None:
         """Emit only the helper functions actually referenced by generated code."""

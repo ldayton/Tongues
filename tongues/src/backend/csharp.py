@@ -1,7 +1,4 @@
-"""C# backend: IR → C# code.
-
-TODO: _CS_PREC is defined but not yet integrated into BinaryOp emission.
-"""
+"""C# backend: IR → C# code."""
 
 from __future__ import annotations
 
@@ -180,34 +177,6 @@ _CSHARP_RESERVED = frozenset(
 )
 
 # C# operator precedence (higher number = tighter binding).
-# From learn.microsoft.com/en-us/dotnet/csharp/language-reference/operators/
-# C# follows C-style precedence: bitwise ops bind looser than comparisons.
-_CS_PREC: dict[str, int] = {
-    "||": 1,
-    "&&": 2,
-    "|": 3,
-    "^": 4,
-    "&": 5,
-    "==": 6,
-    "!=": 6,
-    "<": 7,
-    "<=": 7,
-    ">": 7,
-    ">=": 7,
-    "<<": 8,
-    ">>": 8,
-    "+": 9,
-    "-": 9,
-    "*": 10,
-    "/": 10,
-    "%": 10,
-}
-
-
-def _cs_prec(op: str) -> int:
-    return _CS_PREC.get(op, 11)
-
-
 def _safe_name(name: str) -> str:
     """Escape C# reserved words with @ prefix."""
     result = to_camel(name)
@@ -1152,12 +1121,12 @@ class CSharpBackend:
                 if not left_is_bool:
                     if isinstance(left, Ternary):
                         left_str = f"({left_str})"
-                    elif isinstance(left, BinaryOp) and _needs_parens(left, op):
+                    elif isinstance(left, BinaryOp) and _needs_parens(left, op, is_left=True):
                         left_str = f"({left_str})"
                 if not right_is_bool:
                     if isinstance(right, Ternary):
                         right_str = f"({right_str})"
-                    elif isinstance(right, BinaryOp) and _needs_parens(right, op):
+                    elif isinstance(right, BinaryOp) and _needs_parens(right, op, is_left=False):
                         right_str = f"({right_str})"
                 # Apply bool-to-int conversion
                 if left_is_bool:
@@ -1809,11 +1778,16 @@ _OP_PRECEDENCE = {
 }
 
 
-def _needs_parens(child: "BinaryOp", parent_op: str) -> bool:
+def _needs_parens(child: "BinaryOp", parent_op: str, is_left: bool) -> bool:
     """Check if child binary op needs parens when used as operand of parent op."""
     child_prec = _OP_PRECEDENCE.get(child.op, 0)
     parent_prec = _OP_PRECEDENCE.get(parent_op, 0)
-    return child_prec < parent_prec
+    if child_prec < parent_prec:
+        return True
+    if child_prec == parent_prec and not is_left:
+        # Comparisons are non-associative
+        return child.op in ("==", "!=", "<", ">", "<=", ">=")
+    return False
 
 
 def _is_string_type(typ: Type) -> bool:

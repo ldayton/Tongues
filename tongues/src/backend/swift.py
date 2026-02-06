@@ -146,6 +146,10 @@ def _swift_prec(op: str) -> int:
     return _SWIFT_PREC.get(op, 10)
 
 
+def _is_comparison(op: str) -> bool:
+    return op in ("==", "!=", "<", "<=", ">", ">=")
+
+
 def _is_bool(expr: Expr) -> bool:
     """True if expression evaluates to Bool in Swift output.
 
@@ -228,6 +232,9 @@ class SwiftBackend(Emitter):
         """Emit expr, adding parens if its precedence requires it."""
         s = self._emit_expr(expr)
         if isinstance(expr, BinaryOp):
+            # Swift doesn't allow chained comparisons
+            if _is_comparison(parent_op) and _is_comparison(expr.op):
+                return f"({s})"
             child_prec = _swift_prec(expr.op)
             parent_prec = _swift_prec(parent_op)
             if is_right:

@@ -10,7 +10,6 @@ Error handling:
 - Global error state (parable_parse_error, parable_error_msg)
 - Parse functions return NULL on error
 
-TODO: _C_PREC is defined but not yet integrated into BinaryOp emission.
 """
 
 from __future__ import annotations
@@ -217,6 +216,18 @@ _C_PREC: dict[str, int] = {
 
 def _c_prec(op: str) -> int:
     return _C_PREC.get(op, 11)
+
+
+def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
+    """Determine if a child binary op needs parens inside a parent binary op."""
+    child_prec = _c_prec(child_op)
+    parent_prec = _c_prec(parent_op)
+    if child_prec < parent_prec:
+        return True
+    if child_prec == parent_prec and not is_left:
+        # Comparisons are non-associative
+        return child_op in ("==", "!=", "<", ">", "<=", ">=")
+    return False
 
 
 def _safe_name(name: str) -> str:
@@ -3231,6 +3242,15 @@ class CBackend:
         args = ", ".join(self._emit_expr(a) for a in expr.args)
         return f"{type_name}_{method}({args})"
 
+    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
+        """Wrap expression in parens if needed for operator precedence."""
+        if isinstance(expr, BinaryOp):
+            if _needs_parens(expr.op, parent_op, is_left):
+                return f"({self._emit_expr(expr)})"
+        elif isinstance(expr, Ternary):
+            return f"({self._emit_expr(expr)})"
+        return self._emit_expr(expr)
+
     def _emit_expr_BinaryOp(self, expr: BinaryOp) -> str:
         op = expr.op
         # Handle rune-to-char comparisons
@@ -3305,7 +3325,10 @@ class CBackend:
         # Floor division - C integer division already floors
         if op == "//":
             op = "/"
-        return f"({left} {op} {right})"
+        # Use precedence-aware emission for the general case
+        left = self._maybe_paren(expr.left, op, is_left=True)
+        right = self._maybe_paren(expr.right, op, is_left=False)
+        return f"{left} {op} {right}"
 
     def _emit_char_literal(self, char: str) -> str:
         """Emit a single character as a C character literal."""

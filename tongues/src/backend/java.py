@@ -1,7 +1,5 @@
 """Java backend: IR → Java code.
 
-TODO: _JAVA_PREC is defined but not yet integrated into BinaryOp emission.
-
 COMPENSATIONS FOR EARLIER STAGE DEFICIENCIES
 ============================================
 
@@ -145,35 +143,6 @@ _JAVA_STDLIB_CLASSES = frozenset(
         "Optional",
     }
 )
-
-# Java operator precedence (higher number = tighter binding).
-# From docs.oracle.com/javase/tutorial/java/nutsandbolts/operators.html
-# Java follows C-style precedence: bitwise ops bind looser than comparisons.
-_JAVA_PREC: dict[str, int] = {
-    "||": 1,
-    "&&": 2,
-    "|": 3,
-    "^": 4,
-    "&": 5,
-    "==": 6,
-    "!=": 6,
-    "<": 7,
-    "<=": 7,
-    ">": 7,
-    ">=": 7,
-    "<<": 8,
-    ">>": 8,
-    "+": 9,
-    "-": 9,
-    "*": 10,
-    "/": 10,
-    "%": 10,
-}
-
-
-def _java_prec(op: str) -> int:
-    return _JAVA_PREC.get(op, 11)
-
 
 def _java_safe_name(name: str) -> str:
     """Escape Java reserved words by appending underscore."""
@@ -1636,11 +1605,11 @@ class JavaBackend:
                 # Wrap operands in parens based on precedence
                 if isinstance(left, Ternary):
                     left_str = f"({left_str})"
-                elif isinstance(left, BinaryOp) and _needs_parens(left, op):
+                elif isinstance(left, BinaryOp) and _needs_parens(left, op, is_left=True):
                     left_str = f"({left_str})"
                 if isinstance(right, Ternary):
                     right_str = f"({right_str})"
-                elif isinstance(right, BinaryOp) and _needs_parens(right, op):
+                elif isinstance(right, BinaryOp) and _needs_parens(right, op, is_left=False):
                     right_str = f"({right_str})"
                 # String comparison needs .equals() or .compareTo()
                 if java_op == "==" and _is_string_type(left.typ):
@@ -2240,11 +2209,16 @@ _OP_PRECEDENCE = {
 }
 
 
-def _needs_parens(child: "BinaryOp", parent_op: str) -> bool:
+def _needs_parens(child: "BinaryOp", parent_op: str, is_left: bool) -> bool:
     """Check if child binary op needs parens when used as operand of parent op."""
     child_prec = _OP_PRECEDENCE.get(child.op, 0)
     parent_prec = _OP_PRECEDENCE.get(parent_op, 0)
-    return child_prec < parent_prec
+    if child_prec < parent_prec:
+        return True
+    if child_prec == parent_prec and not is_left:
+        # Comparisons are non-associative
+        return child.op in ("==", "!=", "<", ">", "<=", ">=")
+    return False
 
 
 _PYTHON_EXCEPTION_MAP = {
