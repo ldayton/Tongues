@@ -50,7 +50,7 @@ test-codegen:
         bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_codegen.py -v"
 
 # Run apptests in Docker for a language (image must have python+uv installed)
-test-apptests lang="python":
+test-apptests lang:
     docker build -t tongues-{{lang}} docker/{{lang}}
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
         bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_apptests.py --target {{lang}} -v"
