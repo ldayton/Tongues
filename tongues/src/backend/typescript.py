@@ -113,6 +113,27 @@ class TsBackend(JsLikeBackend):
         if ir_has_bytes_ops(module):
             self._emit_bytes_helpers()
             emitted = True
+        if ir_contains_call(module, "sum"):
+            self._line("function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }")
+            emitted = True
+        if ir_contains_call(module, "all"):
+            self._line("function all(arr: any[]): boolean { return arr.every(Boolean); }")
+            emitted = True
+        if ir_contains_call(module, "any"):
+            self._line("function any(arr: any[]): boolean { return arr.some(Boolean); }")
+            emitted = True
+        if ir_contains_call(module, "sorted"):
+            self._line("function sorted<T>(arr: T[], reverse?: boolean): T[] { const r = [...arr].sort((a, b) => a < b ? -1 : a > b ? 1 : 0); return reverse ? r.reverse() : r; }")
+            emitted = True
+        if ir_contains_call(module, "enumerate"):
+            self._line("function enumerate<T>(arr: T[]): [number, T][] { return arr.map((v, i) => [i, v]); }")
+            emitted = True
+        if ir_contains_call(module, "list"):
+            self._line("function list<T>(x: Iterable<T> | string): T[] { return typeof x === 'string' ? [...x] as unknown as T[] : [...x]; }")
+            emitted = True
+        if ir_contains_call(module, "zip"):
+            self._line("function zip<T>(...arrs: T[][]): T[][] { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }")
+            emitted = True
         return emitted
 
     def _emit_range_function(self) -> None:

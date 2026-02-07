@@ -873,9 +873,13 @@ class JsLikeBackend:
             case Call(func="abs", args=[arg]):
                 return f"Math.abs({self._expr(arg)})"
             case Call(func="min", args=args):
+                if len(args) == 1 and _is_array_type(args[0].typ):
+                    return f"Math.min(...{self._expr(args[0])})"
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Math.min({args_str})"
             case Call(func="max", args=args):
+                if len(args) == 1 and _is_array_type(args[0].typ):
+                    return f"Math.max(...{self._expr(args[0])})"
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Math.max({args_str})"
             case Call(func="round", args=[arg]):
@@ -898,6 +902,10 @@ class JsLikeBackend:
                 base_str = self._pow_base(base)
                 exp_str = self._pow_exp(exp)
                 return f"{base_str} ** {exp_str} % {self._expr(mod)}"
+            case Call(func="sorted", args=[arr], reverse=reverse):
+                if reverse:
+                    return f"[...{self._expr(arr)}].sort((a, b) => a < b ? 1 : a > b ? -1 : 0)"
+                return f"[...{self._expr(arr)}].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)"
             case Call(func=func, args=args):
                 return self._call_expr(func, args)
             case MethodCall(obj=obj, method="join", args=[arr], receiver_type=_):
@@ -938,8 +946,12 @@ class JsLikeBackend:
                 obj=obj, method="pop", args=[IntLit(value=0)], receiver_type=receiver_type
             ) if _is_array_type(receiver_type):
                 return f"{self._expr(obj)}.shift()"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
-                return self._method_call(obj, method, args, receiver_type)
+            case MethodCall(
+                obj=obj, method="pop", args=[idx], receiver_type=receiver_type
+            ) if _is_array_type(receiver_type):
+                return f"{self._expr(obj)}.splice({self._expr(idx)}, 1)[0]"
+            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse):
+                return self._method_call(obj, method, args, receiver_type, reverse=reverse)
             case StaticCall(on_type=on_type, method=method, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 type_name = self._type_name_for_check(on_type)
@@ -1147,7 +1159,9 @@ class JsLikeBackend:
             return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
         return f"({obj_str}.get({key_str}) ?? null)"
 
-    def _method_call(self, obj: Expr, method: str, args: list[Expr], receiver_type: Type) -> str:
+    def _method_call(
+        self, obj: Expr, method: str, args: list[Expr], receiver_type: Type, *, reverse: bool = False
+    ) -> str:
         """Emit method call with bytes handling."""
         # Handle bytes join (separator is obj, list is first arg)
         if method == "join" and len(args) == 1 and is_bytes_type(receiver_type):
@@ -1181,6 +1195,37 @@ class JsLikeBackend:
                 return f"arrSplit({obj_str}, {self._expr(args[0])})"
             if method == "replace" and len(args) == 2:
                 return f"arrReplace({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
+        # List/array methods not in JS
+        if _is_array_type(receiver_type):
+            obj_str = self._expr(obj)
+            if method == "insert" and len(args) == 2:
+                idx = self._expr(args[0])
+                val = self._expr(args[1])
+                return f"{obj_str}.splice({idx} < 0 ? {obj_str}.length + {idx} : {idx}, 0, {val})"
+            if method == "remove" and len(args) == 1:
+                val = self._expr(args[0])
+                return f"{obj_str}.splice({obj_str}.indexOf({val}), 1)"
+            if method == "clear" and len(args) == 0:
+                return f"{obj_str}.length = 0"
+            if method == "index" and len(args) >= 1:
+                val = self._expr(args[0])
+                if len(args) == 1:
+                    return f"{obj_str}.indexOf({val})"
+                start = self._expr(args[1])
+                if len(args) == 2:
+                    return f"{obj_str}.indexOf({val}, {start})"
+                end = self._expr(args[2])
+                return f"{obj_str}.slice(0, {end}).indexOf({val}, {start})"
+            if method == "count" and len(args) == 1:
+                val = self._expr(args[0])
+                return f"{obj_str}.filter(x => x === {val}).length"
+            if method == "sort" and len(args) == 0:
+                # JS sort with generic comparator, handle reverse, return null
+                if reverse:
+                    return f"({obj_str}.sort((a, b) => a < b ? 1 : a > b ? -1 : 0), null)"
+                return f"({obj_str}.sort((a, b) => a < b ? -1 : a > b ? 1 : 0), null)"
+            if method == "reverse" and len(args) == 0:
+                return f"({obj_str}.reverse(), null)"
         # Handle string.split() with no args - splits on whitespace, removes empties
         if receiver_type == STRING and method == "split" and len(args) == 0:
             return f"{self._expr(obj)}.trim().split(/\\s+/).filter(Boolean)"
@@ -1303,7 +1348,7 @@ class JsLikeBackend:
                 if is_bytes_type(left.typ):
                     return f"arrRepeat({left_str}, {right_str})"
                 return f"arrRepeat({right_str}, {left_str})"
-        # Handle list/array comparison
+        # Handle list/array comparison and ops
         if _is_array_type(left.typ) or _is_array_type(right.typ):
             left_str = self._expr(left)
             right_str = self._expr(right)
@@ -1311,6 +1356,12 @@ class JsLikeBackend:
                 return f"arrEq({left_str}, {right_str})"
             if op == "!=":
                 return f"!arrEq({left_str}, {right_str})"
+            if op == "+":
+                return f"[...{left_str}, ...{right_str}]"
+            if op == "*":
+                if _is_array_type(left.typ):
+                    return f"Array({right_str} > 0 ? {right_str} : 0).fill().flatMap(() => [...{left_str}])"
+                return f"Array({left_str} > 0 ? {left_str} : 0).fill().flatMap(() => [...{right_str}])"
         # Handle string repetition: "a" * 3 -> "a".repeat(3), negative -> ""
         if op == "*":
             if left.typ == STRING:
@@ -1552,6 +1603,14 @@ class JsLikeBackend:
                 return _camel(name)
             case FieldLV(obj=obj, field=field):
                 return f"{self._expr(obj)}.{_camel(field)}"
+            case IndexLV(obj=obj, index=IntLit(value=n)) if n < 0:
+                # Negative literal index - convert to length-based
+                obj_str = self._expr(obj)
+                return f"{obj_str}[{obj_str}.length - {-n}]"
+            case IndexLV(obj=obj, index=UnaryOp(op="-", operand=operand)):
+                # Negative dynamic index: -x -> arr[arr.length - x]
+                obj_str = self._expr(obj)
+                return f"{obj_str}[{obj_str}.length - {self._expr(operand)}]"
             case IndexLV(obj=obj, index=index):
                 return f"{self._expr(obj)}[{self._expr(index)}]"
             case DerefLV(ptr=ptr):
