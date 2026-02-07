@@ -1531,3 +1531,309 @@ if op == ">>":
 Lua's `>>` is a logical right shift (fills with zeros). Python's `>>` is arithmetic (preserves sign). Backend detects negative operands and emits `// (1 << n)` for correct arithmetic shift semantics.
 
 **Should be:** Lowering should emit distinct `ArithmeticRightShift` vs `LogicalRightShift` IR nodes, or inference should annotate with `is_known_non_negative`.
+
+---
+
+## Perl
+
+The Perl backend targets Perl 5.36+ with sigil-based variables, duck typing, and `eval {}` for exception handling.
+
+### 1. Bool-to-Int Casting
+
+**Location:** `perl.py:1483-1517` (BinaryOp), `perl.py:1540-1542` (UnaryOp), `perl.py:1256-1301` (Call for pow/abs/divmod)
+
+```python
+if op in ("+", "-", "*", "/", "%", "//", "&", "|", "^", "<<", ">>", "<", ">", "<=", ">="):
+    if left_is_bool or right_is_bool:
+        left_str = self._bool_to_int(left) if _perl_needs_bool_coerce(left) else ...
+```
+
+Multiple locations check if operands are bool and wrap with `(expr ? 1 : 0)`. This includes arithmetic, comparison, bitwise, and shift operations, as well as builtin calls (`pow`, `divmod`, `abs`).
+
+**Should be:** Inference or lowering should insert explicit `Cast(BOOL, INT)` nodes when bools flow into int-expecting operations.
+
+---
+
+### 2. Truthy Type Dispatch
+
+**Location:** `perl.py:1454-1472` (`Truthy` handling)
+
+```python
+if isinstance(inner_type, (Slice, Map, Set)):
+    if isinstance(inner_type, Map):
+        return f"(scalar(keys %{{({self._expr(e)} // {{}})}}) > 0)"
+    return f"(scalar(@{{({self._expr(e)} // [])}}) > 0)"
+if inner_type == Primitive(kind="string"):
+    return f"(length({self._expr(e)}) > 0)"
+return f"({self._expr(e)} ? 1 : 0)"
+```
+
+Backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks. Perl's truthiness (0, "", and undef are false) differs from Python's.
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `StringNonEmpty`, `SliceNonEmpty`, `MapNonEmpty`, `IsNotNil`, etc.
+
+---
+
+### 3. String Operator Detection
+
+**Location:** `perl.py:1871-1898` (`_binary_op`)
+
+```python
+is_string = _is_string_type(left_type) or (right_type is not None and _is_string_type(right_type))
+match op:
+    case "==" if is_string: return "eq"
+    case "!=" if is_string: return "ne"
+    case "<" if is_string: return "lt"
+    case "+" if is_string: return "."
+```
+
+Backend checks operand types to select Perl's string operators (`eq`, `ne`, `lt`, `gt`, `le`, `ge`, `.`) vs numeric operators (`==`, `!=`, `<`, `>`, `<=`, `>=`, `+`).
+
+**Should be:** Lowering should emit `StringCompare` IR nodes for string comparisons and `StringConcat` for string concatenation, distinct from primitive `BinaryOp`.
+
+---
+
+### 4. Collection Containment Dispatch
+
+**Location:** `perl.py:1696-1712` (`_containment_check`)
+
+```python
+if isinstance(container_type, Set):
+    return f"{neg}exists({container_str}->{{{item_str}}})"
+if isinstance(container_type, Map):
+    return f"{neg}exists({container_str}->{{{item_str}}})"
+if isinstance(container_type, Primitive) and container_type.kind == "string":
+    return f"(index({container_str}, {item_str}) >= 0)"
+# For arrays, use grep
+return f"(grep {{ $_ eq {item_str} }} @{{{container_str}}})"
+```
+
+Backend switches on container type to emit correct containment semantics. Sets/maps use `exists()`, strings use `index()`, and arrays require `grep`.
+
+**Should be:** Lowering should emit type-specific IR: `SetContains`, `MapContains`, `StringContains`, `SliceContains`.
+
+---
+
+### 5. Hoisted Variable Computation
+
+**Location:** `perl.py:420-517` (`_collect_undeclared_assigns`, `_collect_undeclared_info`)
+
+```python
+def _collect_undeclared_assigns(self, stmts: list[Stmt]) -> set[str]:
+    """Find variables that need pre-declaration at function scope.
+
+    In Perl, declarations inside control flow blocks (if/while/for) are block-scoped,
+    not visible to sibling blocks. We need to pre-declare vars that:
+    1. Have is_declaration=False assignments anywhere
+    2. Are assigned in TupleAssign where another target is hoisted
+    3. Are declared inside control flow AND declared at top level
+    """
+```
+
+The backend extensively traverses function bodies to compute which variables need pre-declaration. Perl's `my` inside blocks is block-scoped, unlike Python's function-scoped semantics.
+
+**Should be:** Middleend hoisting pass should compute complete hoisting requirements per language. Backend should simply read `func.hoisted_vars` annotation.
+
+---
+
+### 6. Try-Catch Return Propagation
+
+**Location:** `perl.py:519-549` (`_body_has_return`), `perl.py:1052-1119` (`_emit_try_catch`)
+
+```python
+has_return = self._body_has_return(body)
+if has_return:
+    self._line("my $_try_result;")
+    self._line("my $_try_returned = 0;")
+    # Wrap in labeled loop so 'last' can exit when returning
+    self._line("TRYBLOCK: for (1) {")
+    self._in_try_with_return = True
+...
+# Inside try body, transform return into flag pattern
+if self._in_try_with_return:
+    self._line(f"$_try_result = {self._expr(value)};")
+    self._line("$_try_returned = 1;")
+    self._line("last TRYBLOCK;")
+```
+
+Perl's `eval {}` block cannot use `return` to exit the enclosing function. Backend scans try bodies for returns and emits a flag-based workaround with labeled loops.
+
+**Should be:** Lowering could emit `TryCatch` with `body_has_return: bool` annotation, or middleend should annotate try blocks. Backend shouldn't need to scan for return statements.
+
+---
+
+### 7. Struct Field Collection
+
+**Location:** `perl.py:713` (`struct_fields`), `perl.py:1620-1638` (`StructLit` emission)
+
+```python
+self.struct_fields[struct.name] = [(f.name, f.typ) for f in struct.fields]
+...
+field_info = self.struct_fields.get(struct_name, [])
+if field_info:
+    ordered_args = []
+    for field_name, field_type in field_info:
+        if field_name in fields:
+            ordered_args.append(self._expr(fields[field_name]))
+```
+
+Backend collects struct field info to emit constructor arguments in correct order for Perl's positional constructors.
+
+**Should be:** `StructLit` IR node should already have fields in constructor parameter order, as determined by the fields phase.
+
+---
+
+### 8. Method Dispatch by Receiver Type
+
+**Location:** `perl.py:1314-1447` (`MethodCall` handling)
+
+The method implements a large dispatch table based on receiver type:
+- String methods: join, split, upper, lower, find, rfind, startswith, endswith, replace
+- Slice methods: append, extend, pop, copy
+- Map methods: get
+
+Each method has type-specific Perl implementations.
+
+**Should be:** Lowering should emit type-specific method IR: `StringJoin`, `StringSplit`, `SliceAppend`, `SlicePop`, `MapGet`, etc.
+
+---
+
+### 9. String Iteration Special Handling
+
+**Location:** `perl.py:963-1008` (`_emit_for_range`)
+
+```python
+if is_string:
+    if idx is not None and val is not None:
+        tmp = "_chars"
+        self._line(f"my @{tmp} = split(//, {iter_expr});")
+        self._line(f"for my ${idx} (0 .. $#{tmp}) {{")
+        self._line(f"my ${val} = ${tmp}[${idx}];")
+    elif val is not None:
+        self._line(f"for my ${val} (split(//, {iter_expr})) {{")
+```
+
+Python strings are character sequences; Perl strings are scalar values. Backend uses `split(//, $str)` to iterate over characters.
+
+**Should be:** Frontend should emit distinct IR nodes for character-based string operations (`CharAt`, `CharIter`). Currently ForRange must detect string type at emission time.
+
+---
+
+### 10. Bitwise Operations Detection
+
+**Location:** `perl.py:562-652` (`_scan_for_bitwise`, `_body_has_bitwise`, `_stmt_has_bitwise`, `_expr_has_bitwise`)
+
+```python
+def _scan_for_bitwise(self, module: Module) -> None:
+    """Scan module for bitwise operations to determine if `use integer;` is needed."""
+    for func in module.functions:
+        if self._body_has_bitwise(func.body):
+            self._needs_integer = True
+            return
+```
+
+Backend traverses the entire module (~90 lines of visitor code) to detect if any bitwise operations exist. Perl requires `use integer;` for correct integer bitwise semantics.
+
+**Should be:** A middleend pass should annotate `Module.uses_bitwise_ops: bool`, or lowering should emit distinct `BitwiseOp` IR nodes that backends can detect during emission.
+
+---
+
+### 11. Negative Index Pattern Detection
+
+**Location:** `perl.py:1714-1722` (`_negative_index`)
+
+```python
+def _negative_index(self, obj: Expr, index: Expr) -> str | None:
+    """Detect len(obj) - N and return -N as string, or None if no match."""
+    if not isinstance(index, BinaryOp) or index.op != "-":
+        return None
+    if not isinstance(index.left, Len) or not isinstance(index.right, IntLit):
+        return None
+    if self._expr(index.left.expr) != self._expr(obj):
+        return None
+    return f"-{index.right.value}"
+```
+
+Backend pattern-matches `len(obj) - N` expressions to emit Perl's native negative indexing (`$arr[-N]`).
+
+**Should be:** Lowering should detect this pattern and emit `Index(obj, NegativeIndex(N))` or `LastElement(obj, offset=N)` IR nodes.
+
+---
+
+### 12. Function and Constant Name Tracking
+
+**Location:** `perl.py:373-377`, `391-397`, `1168-1174`, `1303-1313`
+
+```python
+self._known_functions: set[str] = set()  # Module-level function names
+self.constants: set[str] = set()
+...
+if name in self._known_functions:
+    return f"\\&{_safe_name(name)}"
+if name in self.constants:
+    const_call = name.upper() + "()"
+    if self.current_package is not None:
+        return f"main::{const_call}"
+```
+
+Backend tracks known functions to emit correct reference syntax (`\&func` for function refs) and constants to emit with namespace qualifiers when inside packages.
+
+**Should be:** IR `Var` nodes should have `is_function_ref: bool` and `is_constant: bool` annotations, or `FuncRef` should always be used for function references (not `Var`).
+
+---
+
+### 13. Function Parameter Callable Detection
+
+**Location:** `perl.py:754-756`, `776`, `1306-1307`
+
+```python
+self._func_params = {p.name for p in func.params if isinstance(p.typ, FuncType)}
+...
+if func in self._func_params:
+    return f"${safe_func}->({args_str})"
+```
+
+Backend tracks which parameters have `FuncType` to emit correct call syntax. Perl function references stored in scalars need `$ref->()` call syntax.
+
+**Should be:** `Call` IR nodes should have a flag indicating when the callee is a function-typed variable vs a known function name, or lowering should emit `IndirectCall(var, args)` vs `Call(func_name, args)`.
+
+---
+
+### 14. Endswith Tuple Argument Expansion
+
+**Location:** `perl.py:1668-1679` (`_endswith_expr`)
+
+```python
+def _endswith_expr(self, obj_str: str, args: list[Expr]) -> str:
+    """Generate endswith check, handling tuple arguments."""
+    if len(args) == 1 and isinstance(args[0], TupleLit):
+        # Handle endswith with tuple: s.endswith((" ", "\n")) -> multiple checks
+        checks = []
+        for elem in args[0].elements:
+            suffix = self._expr(elem)
+            checks.append(f"(substr({obj_str}, -length({suffix})) eq {suffix})")
+        return "(" + " || ".join(checks) + ")"
+```
+
+Python's `str.endswith()` accepts a tuple of suffixes. Backend expands this into multiple checks at emission time.
+
+**Should be:** Lowering should detect tuple arguments to `endswith`/`startswith` and emit `StringEndsWithAny(string, suffixes)` IR nodes or expand to `BinaryOp("||", check1, check2, ...)`.
+
+---
+
+### 15. Regex Escaping in String Replace
+
+**Location:** `perl.py:1376-1385`, `1985-2047` (`_escape_perl_regex`, `_escape_perl_replacement`, `_escape_regex_charclass`)
+
+```python
+if isinstance(args[0], StringLit):
+    old_val = _escape_perl_regex(args[0].value)
+else:
+    old_val = self._expr(args[0])
+...
+return f"({obj_str} =~ s/{old_val}/{new_val}/gr)"
+```
+
+Backend implements ~60 lines of regex escaping logic to safely convert Python `str.replace()` to Perl's `s///` operator. Perl's replacement strings have different escaping rules than the pattern.
+
+**Should be:** Lowering should emit `StringReplace(string, pattern, replacement, literal=True)` with explicit semantics. Backends that use regex-based replacement (Perl, Ruby) can apply appropriate escaping; others use literal replacement APIs.
