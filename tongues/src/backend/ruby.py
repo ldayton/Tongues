@@ -514,13 +514,33 @@ class RubyBackend:
             case VarDecl(name=name, value=value):
                 safe = _safe_name(name)
                 if value is not None:
-                    val = self._expr(value)
-                    self._line(f"{safe} = {val}")
+                    # Python sort()/reverse() return None, Ruby sort!/reverse! return self
+                    if (
+                        isinstance(value, MethodCall)
+                        and value.method in ("sort", "reverse")
+                        and isinstance(value.receiver_type, Slice)
+                    ):
+                        # Execute the in-place operation, then assign nil
+                        self._line(self._expr(value))
+                        self._line(f"{safe} = nil")
+                    else:
+                        val = self._expr(value)
+                        self._line(f"{safe} = {val}")
                 else:
                     self._line(f"{safe} = nil")
             case Assign(target=target, value=value):
                 if isinstance(target, SliceLV):
                     self._emit_slice_assign(target, value)
+                # Python sort()/reverse() return None, Ruby sort!/reverse! return self
+                elif (
+                    isinstance(value, MethodCall)
+                    and value.method in ("sort", "reverse")
+                    and isinstance(value.receiver_type, Slice)
+                ):
+                    # Execute the in-place operation, then assign nil
+                    self._line(self._expr(value))
+                    lv = self._lvalue(target)
+                    self._line(f"{lv} = nil")
                 else:
                     lv = self._lvalue(target)
                     val = self._expr(value)
@@ -1048,13 +1068,13 @@ class RubyBackend:
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"_range({args_str})"
             case Call(func="zip", args=args):
-                # zip(a, b, ...) -> a.zip(b, ...).map { |x| x.compact.empty? ? nil : x }
-                # But simpler: first.zip(*rest)
+                # Python zip stops at shortest, Ruby pads with nil
+                # Use take_while to stop at first nil-containing tuple
                 if len(args) >= 1:
                     first = self._expr(args[0])
                     rest = ", ".join(self._expr(a) for a in args[1:])
                     if rest:
-                        return f"{first}.zip({rest})"
+                        return f"{first}.zip({rest}).take_while {{ |x| !x.include?(nil) }}"
                     return f"{first}.zip"
                 return "[]"
             case Call(func=func, args=args):
@@ -1112,23 +1132,50 @@ class RubyBackend:
                         default = self._expr(args[1])
                         return f"{obj_str}.fetch({key}, {default})"
                     return f"{obj_str}[{key}]"
-                # Python: list.pop(0) -> Ruby: list.shift
+                # Python: list.pop(i) -> Ruby: list.delete_at(i)
+                # Special case: pop(0) -> shift for efficiency
                 if method == "pop" and isinstance(receiver_type, Slice) and len(args) == 1:
+                    obj_str = self._expr(obj)
                     if isinstance(args[0], IntLit) and args[0].value == 0:
-                        obj_str = self._expr(obj)
                         return f"{obj_str}.shift"
+                    arg_str = self._expr(args[0])
+                    return f"{obj_str}.delete_at({arg_str})"
                 # Python: list.extend(string) -> Ruby: list.concat(string.chars)
                 if method == "extend" and isinstance(receiver_type, Slice) and len(args) == 1:
                     if args[0].typ == STRING:
                         obj_str = self._expr(obj)
                         arg_str = self._expr(args[0])
                         return f"{obj_str}.concat({arg_str}.chars)"
+                # Python: list.index(x, start) or list.index(x, start, end)
+                # Ruby's index doesn't support start/end, use slice + offset
+                if method == "index" and isinstance(receiver_type, Slice) and len(args) >= 2:
+                    obj_str = self._expr(obj)
+                    val_str = self._expr(args[0])
+                    start_str = self._expr(args[1])
+                    if len(args) == 3:
+                        end_str = self._expr(args[2])
+                        # slice[start...end].index(val) + start if found
+                        return f"(-> {{ _i = {obj_str}[{start_str}...{end_str}].index({val_str}); _i.nil? ? nil : _i + {start_str} }}).call"
+                    else:
+                        # slice[start..].index(val) + start if found
+                        return f"(-> {{ _i = {obj_str}[{start_str}..].index({val_str}); _i.nil? ? nil : _i + {start_str} }}).call"
                 # Python: list.remove(x) removes first occurrence
                 # Ruby: delete(x) removes ALL occurrences, so use delete_at(index(x))
                 if method == "remove" and isinstance(receiver_type, Slice) and len(args) == 1:
                     obj_str = self._expr(obj)
                     arg_str = self._expr(args[0])
                     return f"{obj_str}.delete_at({obj_str}.index({arg_str}))"
+                # Python: list.insert(i, x) - handle both positive and negative indices
+                # Ruby's insert(100, x) on a 5-element array pads with nil, Python clips
+                # Ruby's insert(-1, x) appends, Python inserts before last
+                if method == "insert" and isinstance(receiver_type, Slice) and len(args) == 2:
+                    obj_str = self._expr(obj)
+                    idx_str = self._expr(args[0])
+                    val_str = self._expr(args[1])
+                    # For all indices: clip to valid range [0, length]
+                    # Python insert(-n, x) = before index len-n (clamped to 0)
+                    # Python insert(n, x) where n > len = append (clamped to len)
+                    return f"(-> {{ _idx = {idx_str}; {obj_str}.insert([[_idx < 0 ? {obj_str}.length + _idx : _idx, 0].max, {obj_str}.length].min, {val_str}) }}).call"
                 # Python: str.replace("\\", "\\\\") needs special handling in Ruby
                 # because gsub's replacement string interprets \\ specially
                 if method == "replace" and len(args) == 2:
@@ -1339,6 +1386,14 @@ class RubyBackend:
                     or isinstance(right, (Call, MinExpr, MaxExpr))
                 )
             ):
+                # Ruby's all?/any? return actual booleans - compare directly, no coercion
+                left_is_all_any = isinstance(left, Call) and left.func in ("all", "any")
+                right_is_all_any = isinstance(right, Call) and right.func in ("all", "any")
+                if left_is_all_any or right_is_all_any:
+                    left_str = self._expr(left)
+                    right_str = self._expr(right)
+                    rb_op = _binary_op(op)
+                    return f"{left_str} {rb_op} {right_str}"
                 # MinExpr/MaxExpr with bool args already produce ints, compare directly
                 # Just coerce the BoolLit side to int, don't re-coerce the min/max result
                 if isinstance(left, (MinExpr, MaxExpr)):
@@ -1358,6 +1413,14 @@ class RubyBackend:
                 (isinstance(left.typ, InterfaceRef) and right.typ == BOOL)
                 or (left.typ == BOOL and isinstance(right.typ, InterfaceRef))
             ):
+                # Ruby's all?/any? return actual booleans - compare directly
+                left_is_all_any = isinstance(left, Call) and left.func in ("all", "any")
+                right_is_all_any = isinstance(right, Call) and right.func in ("all", "any")
+                if left_is_all_any or right_is_all_any:
+                    left_str = self._expr(left)
+                    right_str = self._expr(right)
+                    rb_op = _binary_op(op)
+                    return f"{left_str} {rb_op} {right_str}"
                 # Comparing any-typed expr (e.g., bool arithmetic) with bool: coerce bool side
                 left_str = self._expr(left)
                 right_str = (
@@ -1378,6 +1441,16 @@ class RubyBackend:
                 else:
                     right_str = self._maybe_paren(self._expr(right), right, "**", is_left=False)
                 return f"{left_str} ** {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if op in (
+                "<",
+                ">",
+                "<=",
+                ">=",
+            ) and isinstance(left.typ, Slice) and isinstance(right.typ, Slice):
+                # Ruby arrays don't have <, >, <=, >= - use <=> spaceship
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"(({left_str} <=> {right_str}) {op} 0)"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "<",
                 ">",
@@ -1418,6 +1491,21 @@ class RubyBackend:
                 return f"{right_str} * [{left_str}, 0].max"
             case BinaryOp(op="*", left=left, right=right) if (
                 left.typ == Primitive(kind="string") and right.typ == INT
+            ):
+                # Handle negative multiplier: [n, 0].max
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"{left_str} * [{right_str}, 0].max"
+            case BinaryOp(op="*", left=left, right=right) if (
+                left.typ == INT and isinstance(right.typ, Slice)
+            ):
+                # Ruby can't do int * array, swap to array * int
+                # Also handle negative: [n, 0].max for n < 0
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"{right_str} * [{left_str}, 0].max"
+            case BinaryOp(op="*", left=left, right=right) if (
+                isinstance(left.typ, Slice) and right.typ == INT
             ):
                 # Handle negative multiplier: [n, 0].max
                 left_str = self._expr(left)
@@ -1753,19 +1841,41 @@ class RubyBackend:
                 high_str = neg_idx
             else:
                 high_str = self._expr(high) if high else ""
-            # Reverse: step == -1
-            if step_val == "-1":
+            # Negative step: reverse direction
+            # step_val is the Ruby expression like "-1" or "-2"
+            if step_val.startswith("-"):
+                abs_step = step_val[1:]  # Remove the minus sign
                 if is_bytes:
                     if not low and not high:
-                        return f"TonguesBytes.new({obj_str}.data.reverse)"
-                    if high_str:
-                        return f"TonguesBytes.new({obj_str}[{low_str}...{high_str}].data.reverse)"
-                    return f"TonguesBytes.new({obj_str}[{low_str}..].data.reverse)"
+                        if abs_step == "1":
+                            return f"TonguesBytes.new({obj_str}.data.reverse)"
+                        return f"TonguesBytes.new({obj_str}.data.reverse.each_slice({abs_step}).map(&:first))"
+                    # arr[high:low:-step] - from high down to low+1
+                    if low and high:
+                        # Ruby: arr[(low+1)..high].reverse
+                        base = f"{obj_str}[({high_str} + 1)..{low_str}].data.reverse"
+                    elif low:
+                        base = f"{obj_str}[0..{low_str}].data.reverse"
+                    else:
+                        base = f"{obj_str}[({high_str} + 1)..].data.reverse"
+                    if abs_step == "1":
+                        return f"TonguesBytes.new({base})"
+                    return f"TonguesBytes.new({base}.each_slice({abs_step}).map(&:first))"
                 if not low and not high:
-                    return f"{obj_str}.reverse"
-                if high_str:
-                    return f"{obj_str}[{low_str}...{high_str}].reverse"
-                return f"{obj_str}[{low_str}..].reverse"
+                    if abs_step == "1":
+                        return f"{obj_str}.reverse"
+                    return f"{obj_str}.reverse.each_slice({abs_step}).map(&:first)"
+                # arr[high:low:-step] - from high down to low+1
+                if low and high:
+                    # Ruby: arr[(low+1)..high].reverse
+                    base = f"{obj_str}[({high_str} + 1)..{low_str}].reverse"
+                elif low:
+                    base = f"{obj_str}[0..{low_str}].reverse"
+                else:
+                    base = f"{obj_str}[({high_str} + 1)..].reverse"
+                if abs_step == "1":
+                    return base
+                return f"{base}.each_slice({abs_step}).map(&:first)"
             # Positive step: select every nth element
             is_string = obj.typ == Primitive(kind="string")
             if is_bytes:
@@ -1786,17 +1896,27 @@ class RubyBackend:
             if high_str:
                 return f"{obj_str}[{low_str}...{high_str}].each_slice({step_val}).map(&:first)"
             return f"{obj_str}[{low_str}..].each_slice({step_val}).map(&:first)"
+        clamp_low = False
         if low and (neg_idx := self._negative_index(obj, low)):
             low_str = neg_idx
+            clamp_low = True  # len(x) - N pattern needs clamping
         else:
             low_str = self._expr(low) if low else "0"
+            if low and self._is_negative_literal(low):
+                clamp_low = True
         if high and (neg_idx := self._negative_index(obj, high)):
             high_str = neg_idx
         else:
             high_str = self._expr(high) if high else ""
+        # Clamp negative start indices: Ruby returns nil if negative index goes past start
+        # Python clamps to 0, so items[-100:2] gives items[0:2]
+        if clamp_low:
+            low_str = f"[{low_str}, -{obj_str}.length].max"
+        # Ruby returns nil for out-of-bounds slices, Python returns []
+        # Use || [] to match Python semantics
         if high_str:
-            return f"{obj_str}[{low_str}...{high_str}]"
-        return f"{obj_str}[{low_str}..]"
+            return f"({obj_str}[{low_str}...{high_str}] || [])"
+        return f"({obj_str}[{low_str}..] || [])"
 
     def _negative_index(self, obj: Expr, index: Expr) -> str | None:
         """Detect len(obj) - N and return -N as string, or None if no match."""
@@ -1807,6 +1927,10 @@ class RubyBackend:
         if self._expr(index.left.expr) != self._expr(obj):
             return None
         return f"-{index.right.value}"
+
+    def _is_negative_literal(self, expr: Expr) -> bool:
+        """Check if expression is a negative integer literal."""
+        return isinstance(expr, UnaryOp) and expr.op == "-" and isinstance(expr.operand, IntLit)
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
         markers = {}
@@ -2023,6 +2147,9 @@ class RubyBackend:
             if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
                 if self._is_value_and_or(expr.left):
                     return self._expr(expr)
+            # Ruby's all?/any? return actual booleans, not 0/1 - don't coerce
+            if isinstance(expr, Call) and expr.func in ("all", "any"):
+                return self._expr(expr)
             inner = self._expr(expr)
             # Ternary has lower precedence than arithmetic, so wrap in parens
             return f"({inner} ? 1 : 0)"

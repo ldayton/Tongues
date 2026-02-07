@@ -155,7 +155,6 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "lua",
         "perl",
         "php",
-        "ruby",
         "rust",
         "swift",
         "typescript",
