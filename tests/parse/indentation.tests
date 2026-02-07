@@ -1,0 +1,149 @@
+=== unexpected indent at start
+ foo
+---
+error: indent
+---
+
+=== dedent mismatch
+def x():
+    1
+ 2
+---
+error: indent
+---
+
+=== indent increase mismatch
+def x():
+ 1
+  2
+---
+error: indent
+---
+
+=== missing indent after colon
+if 1:
+foo
+---
+error: indent
+---
+
+=== mixed tabs spaces
+def x():
+    a
+	b
+---
+error: indent
+---
+
+=== consistent indent
+def x():
+    if y:
+        z
+---
+ok
+---
+
+=== multiple dedents
+def x():
+    if y:
+        if z:
+            a
+b
+---
+ok
+---
+
+=== blank lines in suite
+def x():
+    a
+
+    b
+---
+ok
+---
+
+=== comment in suite
+def x():
+    # comment
+    a
+---
+ok
+---
+
+=== nested functions
+def x():
+    def y():
+        def z():
+            a
+---
+ok
+---
+
+=== class with methods
+class X:
+    def a(self):
+        pass
+    def b(self):
+        pass
+---
+ok
+---
+
+=== try blocks
+try:
+    a
+except:
+    b
+finally:
+    c
+---
+ok
+---
+
+=== if elif else
+if a:
+    b
+elif c:
+    d
+else:
+    e
+---
+ok
+---
+
+=== for else
+for x in y:
+    a
+else:
+    b
+---
+ok
+---
+
+=== while else
+while x:
+    a
+else:
+    b
+---
+ok
+---
+
+=== match cases
+match x:
+    case 1:
+        a
+    case 2:
+        b
+---
+ok
+---
+
+=== with in function
+def x():
+    with a:
+        b
+---
+ok
+---
+

@@ -1,0 +1,199 @@
+=== global after use
+def glob():
+    x = 3
+    x.z
+    global x
+---
+error: parse
+---
+
+=== global after assign
+def glob():
+    x = 3
+    global x
+---
+error: parse
+---
+
+=== global after reference
+def glob():
+    x
+    global x
+---
+error: parse
+---
+
+=== nonlocal after use
+def glob():
+    x = 3
+    x.z
+    nonlocal x
+---
+error: parse
+---
+
+=== nonlocal after assign
+def glob():
+    x = 3
+    nonlocal x
+---
+error: parse
+---
+
+=== nonlocal after reference
+def glob():
+    x
+    nonlocal x
+---
+error: parse
+---
+
+=== global after subscript annotation
+def glob():
+    x[0]: foo
+    global x
+---
+error: parse
+---
+
+=== global after attr annotation
+def glob():
+    x.a: foo
+    global x
+---
+error: parse
+---
+
+=== global after annotation
+def glob():
+    x: foo
+    global x
+---
+error: parse
+---
+
+=== global after annotated assign
+def glob():
+    x: foo = 5
+    global x
+---
+error: parse
+---
+
+=== global after annotated assign use
+def glob():
+    x: foo = 5
+    x
+    global x
+---
+error: parse
+---
+
+=== annotation after global
+def glob():
+    global x
+    x: foo = 3
+---
+error: parse
+---
+
+=== global param
+def glob(x):
+    global x
+---
+error: parse
+---
+
+=== nonlocal param
+def glob(x):
+    nonlocal x
+---
+error: parse
+---
+
+=== duplicate nonlocal
+def x():
+    a =3
+    def z():
+        nonlocal a
+        a = 3
+        nonlocal a
+---
+error: parse
+---
+
+=== global and nonlocal same
+def x():
+    a = 4
+    def y():
+        global a
+        nonlocal a
+---
+error: parse
+---
+
+=== nonlocal no binding
+def x():
+    nonlocal a
+---
+error: parse
+---
+
+=== nonlocal nested no binding
+def x():
+    def y():
+        nonlocal a
+---
+error: parse
+---
+
+=== nonlocal through global
+def x():
+    a = 4
+    def y():
+        global a
+        print(a)
+        def z():
+            nonlocal a
+---
+error: parse
+---
+
+=== nonlocal before assign
+def x(a):
+    def y():
+        a = 10
+        nonlocal a
+---
+error: parse
+---
+
+=== valid global
+def f():
+    global x
+    x = 1
+---
+ok
+---
+
+=== valid nonlocal
+def f():
+    x = 1
+    def g():
+        nonlocal x
+        x = 2
+---
+ok
+---
+
+=== valid nested nonlocal
+def f():
+    x = 1
+    def g():
+        def h():
+            nonlocal x
+            x = 2
+---
+ok
+---
+
