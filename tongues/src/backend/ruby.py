@@ -1,4 +1,10 @@
-"""Ruby backend: IR → Ruby code."""
+"""Ruby backend: IR → Ruby code.
+
+Known limitation: Dict key coercion (int/float/bool equivalence) only works for
+VarDecl initializers and direct Index access. Not covered: Assign, function args,
+return statements, dict methods (get/pop/setdefault), `in` operator, dict
+comprehensions, nested contexts. Proper fix requires frontend type propagation.
+"""
 
 from __future__ import annotations
 
