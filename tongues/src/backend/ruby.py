@@ -930,7 +930,7 @@ class RubyBackend:
                 return f"{inner}.abs"
             case Call(func="min", args=args):
                 # Single iterable arg: call .min directly
-                if len(args) == 1 and isinstance(args[0].typ, Slice):
+                if len(args) == 1 and isinstance(args[0].typ, (Slice, Tuple)):
                     return f"{self._expr(args[0])}.min"
                 # Ruby can't compare bools, always coerce to int
                 parts = []
@@ -942,7 +942,7 @@ class RubyBackend:
                 return f"[{', '.join(parts)}].min"
             case Call(func="max", args=args):
                 # Single iterable arg: call .max directly
-                if len(args) == 1 and isinstance(args[0].typ, Slice):
+                if len(args) == 1 and isinstance(args[0].typ, (Slice, Tuple)):
                     return f"{self._expr(args[0])}.max"
                 # Ruby can't compare bools, always coerce to int
                 parts = []
@@ -1062,6 +1062,14 @@ class RubyBackend:
                 if iterable.typ == STRING:
                     return f"{self._expr(iterable)}.chars"
                 return f"{self._expr(iterable)}.to_a"
+            case Call(func="tuple", args=[iterable]):
+                # tuple(x) -> x.to_a (Ruby uses arrays for tuples)
+                if iterable.typ == STRING:
+                    return f"{self._expr(iterable)}.chars"
+                return f"{self._expr(iterable)}.to_a"
+            case Call(func="tuple", args=[]):
+                # tuple() -> []
+                return "[]"
             case Call(func="range", args=args):
                 # range(stop), range(start, stop), range(start, stop, step)
                 self._needs_range_helper = True
@@ -1132,6 +1140,18 @@ class RubyBackend:
                         default = self._expr(args[1])
                         return f"{obj_str}.fetch({key}, {default})"
                     return f"{obj_str}[{key}]"
+                # Python: dict.items() -> Ruby: hash.to_a (returns [[k,v], ...])
+                if method == "items" and isinstance(receiver_type, Map) and len(args) == 0:
+                    obj_str = self._expr(obj)
+                    return f"{obj_str}.to_a"
+                # Python: dict.keys() -> Ruby: hash.keys
+                if method == "keys" and isinstance(receiver_type, Map) and len(args) == 0:
+                    obj_str = self._expr(obj)
+                    return f"{obj_str}.keys"
+                # Python: dict.values() -> Ruby: hash.values
+                if method == "values" and isinstance(receiver_type, Map) and len(args) == 0:
+                    obj_str = self._expr(obj)
+                    return f"{obj_str}.values"
                 # Python: list.pop(i) -> Ruby: list.delete_at(i)
                 # Special case: pop(0) -> shift for efficiency
                 if method == "pop" and isinstance(receiver_type, Slice) and len(args) == 1:
@@ -1148,7 +1168,11 @@ class RubyBackend:
                         return f"{obj_str}.concat({arg_str}.chars)"
                 # Python: list.index(x, start) or list.index(x, start, end)
                 # Ruby's index doesn't support start/end, use slice + offset
-                if method == "index" and isinstance(receiver_type, Slice) and len(args) >= 2:
+                if (
+                    method == "index"
+                    and isinstance(receiver_type, (Slice, Tuple))
+                    and len(args) >= 2
+                ):
                     obj_str = self._expr(obj)
                     val_str = self._expr(args[0])
                     start_str = self._expr(args[1])
@@ -1293,6 +1317,7 @@ class RubyBackend:
                 expr_str = self._expr(e)
                 if (
                     isinstance(inner_type, Slice)
+                    or isinstance(inner_type, Tuple)
                     or isinstance(inner_type, Map)
                     or isinstance(inner_type, Set)
                 ):
@@ -1449,8 +1474,8 @@ class RubyBackend:
                     "<=",
                     ">=",
                 )
-                and isinstance(left.typ, Slice)
-                and isinstance(right.typ, Slice)
+                and isinstance(left.typ, (Slice, Tuple))
+                and isinstance(right.typ, (Slice, Tuple))
             ):
                 # Ruby arrays don't have <, >, <=, >= - use <=> spaceship
                 left_str = self._expr(left)
@@ -1502,7 +1527,7 @@ class RubyBackend:
                 right_str = self._expr(right)
                 return f"{left_str} * [{right_str}, 0].max"
             case BinaryOp(op="*", left=left, right=right) if left.typ == INT and isinstance(
-                right.typ, Slice
+                right.typ, (Slice, Tuple)
             ):
                 # Ruby can't do int * array, swap to array * int
                 # Also handle negative: [n, 0].max for n < 0
@@ -1510,7 +1535,7 @@ class RubyBackend:
                 right_str = self._expr(right)
                 return f"{right_str} * [{left_str}, 0].max"
             case BinaryOp(op="*", left=left, right=right) if (
-                isinstance(left.typ, Slice) and right.typ == INT
+                isinstance(left.typ, (Slice, Tuple)) and right.typ == INT
             ):
                 # Handle negative multiplier: [n, 0].max
                 left_str = self._expr(left)
@@ -2014,6 +2039,9 @@ class RubyBackend:
             case StructRef(name=name):
                 return _safe_type_name(name)
             case InterfaceRef(name=name):
+                # tuple and list both map to Array in Ruby
+                if name in ("tuple", "list"):
+                    return "Array"
                 return _safe_type_name(name)
             case Primitive(kind="string"):
                 return "String"
@@ -2023,6 +2051,8 @@ class RubyBackend:
                 return "Float"
             case Primitive(kind="bool"):
                 return "TrueClass"
+            case Slice() | Tuple():
+                return "Array"
             case _:
                 return self._type(typ)
 
