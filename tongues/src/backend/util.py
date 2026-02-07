@@ -45,6 +45,7 @@ from src.ir import (
     Raise,
     Return,
     SentinelToOptional,
+    Set,
     SetComp,
     SetLit,
     Slice,
@@ -62,6 +63,7 @@ from src.ir import (
     Ternary,
     TrimChars,
     TryCatch,
+    Tuple,
     TupleAssign,
     TupleLit,
     Type,
@@ -1090,5 +1092,271 @@ def ir_contains_cast(module: Module, from_kind: str, to_kind: str) -> bool:
         for method in struct.methods:
             for stmt in method.body:
                 if _visit_stmt_for_cast(stmt, from_kind, to_kind):
+                    return True
+    return False
+
+
+def _is_tuple_set_type(typ: Type | None) -> bool:
+    """Check if type is a set with tuple elements."""
+    if typ is None:
+        return False
+    if isinstance(typ, Set) and isinstance(typ.element, Tuple):
+        return True
+    return False
+
+
+def _visit_expr_for_tuple_sets(expr: Expr | None) -> bool:
+    """Check if an expression involves sets with tuple elements."""
+    if expr is None:
+        return False
+    if isinstance(expr, SetLit) and isinstance(expr.element_type, Tuple):
+        return True
+    if isinstance(expr, SetComp) and isinstance(expr.element.typ, Tuple):
+        return True
+    if isinstance(expr, BinaryOp):
+        if expr.op in ("in", "not in"):
+            if _is_tuple_set_type(expr.right.typ):
+                return True
+        return _visit_expr_for_tuple_sets(expr.left) or _visit_expr_for_tuple_sets(expr.right)
+    if isinstance(expr, FieldAccess):
+        return _visit_expr_for_tuple_sets(expr.obj)
+    if isinstance(expr, Index):
+        return _visit_expr_for_tuple_sets(expr.obj) or _visit_expr_for_tuple_sets(expr.index)
+    if isinstance(expr, SliceExpr):
+        return (
+            _visit_expr_for_tuple_sets(expr.obj)
+            or _visit_expr_for_tuple_sets(expr.low)
+            or _visit_expr_for_tuple_sets(expr.high)
+            or _visit_expr_for_tuple_sets(expr.step)
+        )
+    if isinstance(expr, Call):
+        for arg in expr.args:
+            if _visit_expr_for_tuple_sets(arg):
+                return True
+        return False
+    if isinstance(expr, MethodCall):
+        if _visit_expr_for_tuple_sets(expr.obj):
+            return True
+        for arg in expr.args:
+            if _visit_expr_for_tuple_sets(arg):
+                return True
+        return False
+    if isinstance(expr, StaticCall):
+        for arg in expr.args:
+            if _visit_expr_for_tuple_sets(arg):
+                return True
+        return False
+    if isinstance(expr, UnaryOp):
+        return _visit_expr_for_tuple_sets(expr.operand)
+    if isinstance(expr, Ternary):
+        return (
+            _visit_expr_for_tuple_sets(expr.cond)
+            or _visit_expr_for_tuple_sets(expr.then_expr)
+            or _visit_expr_for_tuple_sets(expr.else_expr)
+        )
+    if isinstance(expr, Cast):
+        return _visit_expr_for_tuple_sets(expr.expr)
+    if isinstance(expr, TypeAssert):
+        return _visit_expr_for_tuple_sets(expr.expr)
+    if isinstance(expr, IsType):
+        return _visit_expr_for_tuple_sets(expr.expr)
+    if isinstance(expr, IsNil):
+        return _visit_expr_for_tuple_sets(expr.expr)
+    if isinstance(expr, Len):
+        return _visit_expr_for_tuple_sets(expr.expr)
+    if isinstance(expr, MakeSlice):
+        return _visit_expr_for_tuple_sets(expr.length) or _visit_expr_for_tuple_sets(expr.capacity)
+    if isinstance(expr, MakeMap):
+        return _visit_expr_for_tuple_sets(expr.capacity)
+    if isinstance(expr, SliceLit):
+        for elem in expr.elements:
+            if _visit_expr_for_tuple_sets(elem):
+                return True
+        return False
+    if isinstance(expr, MapLit):
+        for k, v in expr.entries:
+            if _visit_expr_for_tuple_sets(k) or _visit_expr_for_tuple_sets(v):
+                return True
+        return False
+    if isinstance(expr, TupleLit):
+        for elem in expr.elements:
+            if _visit_expr_for_tuple_sets(elem):
+                return True
+        return False
+    if isinstance(expr, StructLit):
+        for v in expr.fields.values():
+            if _visit_expr_for_tuple_sets(v):
+                return True
+        return False
+    if isinstance(expr, StringConcat):
+        for part in expr.parts:
+            if _visit_expr_for_tuple_sets(part):
+                return True
+        return False
+    if isinstance(expr, StringFormat):
+        for arg in expr.args:
+            if _visit_expr_for_tuple_sets(arg):
+                return True
+        return False
+    if isinstance(expr, Substring):
+        return (
+            _visit_expr_for_tuple_sets(expr.string)
+            or _visit_expr_for_tuple_sets(expr.start)
+            or _visit_expr_for_tuple_sets(expr.end)
+        )
+    if isinstance(expr, CharAt):
+        return _visit_expr_for_tuple_sets(expr.string) or _visit_expr_for_tuple_sets(expr.index)
+    if isinstance(expr, CharLen):
+        return _visit_expr_for_tuple_sets(expr.string)
+    if isinstance(expr, TrimChars):
+        return _visit_expr_for_tuple_sets(expr.string) or _visit_expr_for_tuple_sets(expr.chars)
+    if isinstance(expr, CharClassify):
+        return _visit_expr_for_tuple_sets(expr.char)
+    if isinstance(expr, ParseInt):
+        return _visit_expr_for_tuple_sets(expr.string)
+    if isinstance(expr, IntToStr):
+        return _visit_expr_for_tuple_sets(expr.value)
+    if isinstance(expr, SliceConvert):
+        return _visit_expr_for_tuple_sets(expr.expr)
+    if isinstance(expr, LastElement):
+        return _visit_expr_for_tuple_sets(expr.slice)
+    if isinstance(expr, SentinelToOptional):
+        return _visit_expr_for_tuple_sets(expr.value)
+    if isinstance(expr, ListComp):
+        if _visit_expr_for_tuple_sets(expr.element):
+            return True
+        for gen in expr.generators:
+            if _visit_expr_for_tuple_sets(gen.iterable):
+                return True
+            for cond in gen.conditions:
+                if _visit_expr_for_tuple_sets(cond):
+                    return True
+        return False
+    if isinstance(expr, DictComp):
+        if _visit_expr_for_tuple_sets(expr.key) or _visit_expr_for_tuple_sets(expr.value):
+            return True
+        for gen in expr.generators:
+            if _visit_expr_for_tuple_sets(gen.iterable):
+                return True
+            for cond in gen.conditions:
+                if _visit_expr_for_tuple_sets(cond):
+                    return True
+        return False
+    return False
+
+
+def _visit_stmt_for_tuple_sets(stmt: Stmt) -> bool:
+    """Check if a statement involves sets with tuple elements."""
+    if isinstance(stmt, VarDecl):
+        return _visit_expr_for_tuple_sets(stmt.value)
+    if isinstance(stmt, Assign):
+        return _visit_expr_for_tuple_sets(stmt.value)
+    if isinstance(stmt, TupleAssign):
+        return _visit_expr_for_tuple_sets(stmt.value)
+    if isinstance(stmt, OpAssign):
+        return _visit_expr_for_tuple_sets(stmt.value)
+    if isinstance(stmt, ExprStmt):
+        return _visit_expr_for_tuple_sets(stmt.expr)
+    if isinstance(stmt, Return):
+        return _visit_expr_for_tuple_sets(stmt.value)
+    if isinstance(stmt, If):
+        if _visit_expr_for_tuple_sets(stmt.cond):
+            return True
+        for s in stmt.then_body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        for s in stmt.else_body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        return False
+    if isinstance(stmt, TypeSwitch):
+        if _visit_expr_for_tuple_sets(stmt.expr):
+            return True
+        for case in stmt.cases:
+            for s in case.body:
+                if _visit_stmt_for_tuple_sets(s):
+                    return True
+        for s in stmt.default_body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        return False
+    if isinstance(stmt, Match):
+        if _visit_expr_for_tuple_sets(stmt.subject):
+            return True
+        for case in stmt.cases:
+            if _visit_expr_for_tuple_sets(case.guard):
+                return True
+            for s in case.body:
+                if _visit_stmt_for_tuple_sets(s):
+                    return True
+        return False
+    if isinstance(stmt, ForRange):
+        if _visit_expr_for_tuple_sets(stmt.iterable):
+            return True
+        for s in stmt.body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        return False
+    if isinstance(stmt, ForClassic):
+        if stmt.init is not None and _visit_stmt_for_tuple_sets(stmt.init):
+            return True
+        if _visit_expr_for_tuple_sets(stmt.cond):
+            return True
+        if stmt.post is not None and _visit_stmt_for_tuple_sets(stmt.post):
+            return True
+        for s in stmt.body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        return False
+    if isinstance(stmt, While):
+        if _visit_expr_for_tuple_sets(stmt.cond):
+            return True
+        for s in stmt.body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        return False
+    if isinstance(stmt, Block):
+        for s in stmt.body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        return False
+    if isinstance(stmt, TryCatch):
+        for s in stmt.body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        for clause in stmt.catches:
+            for s in clause.body:
+                if _visit_stmt_for_tuple_sets(s):
+                    return True
+        return False
+    if isinstance(stmt, Raise):
+        return _visit_expr_for_tuple_sets(stmt.exception)
+    if isinstance(stmt, Assert):
+        return _visit_expr_for_tuple_sets(stmt.test) or _visit_expr_for_tuple_sets(stmt.message)
+    if isinstance(stmt, SoftFail):
+        return _visit_expr_for_tuple_sets(stmt.msg)
+    if isinstance(stmt, Print):
+        for arg in stmt.args:
+            if _visit_expr_for_tuple_sets(arg):
+                return True
+        return False
+    if isinstance(stmt, EntryPoint):
+        for s in stmt.body:
+            if _visit_stmt_for_tuple_sets(s):
+                return True
+        return False
+    return False
+
+
+def ir_has_tuple_sets(module: Module) -> bool:
+    """Check if the module uses sets with tuple elements."""
+    for fn in module.functions:
+        for stmt in fn.body:
+            if _visit_stmt_for_tuple_sets(stmt):
+                return True
+    for struct in module.structs:
+        for method in struct.methods:
+            for stmt in method.body:
+                if _visit_stmt_for_tuple_sets(stmt):
                     return True
     return False

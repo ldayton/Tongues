@@ -1126,8 +1126,10 @@ class JsLikeBackend:
                     return "new Map()"
                 pairs = ", ".join(f"[{self._expr(k)}, {self._expr(v)}]" for k, v in entries)
                 return f"new Map([{pairs}])"
-            case SetLit(elements=elements):
+            case SetLit(element_type=element_type, elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
+                if isinstance(element_type, Tuple):
+                    return f"(function() {{ const s = new Set(); for (const t of [{elems}]) tupleSetAdd(s, t); return s; }})()"
                 return f"new Set([{elems}])"
             case StructLit(struct_name=struct_name, fields=fields):
                 return self._struct_lit(struct_name, fields)
@@ -1364,7 +1366,11 @@ class JsLikeBackend:
                 updates = []
                 for arg in args:
                     arg_str = self._expr(arg)
-                    updates.append(f"[...{arg_str}].forEach(x => {obj_str}.add(x))")
+                    # For dicts/Maps, update adds keys not key-value pairs
+                    if isinstance(arg.typ, Map):
+                        updates.append(f"[...{arg_str}.keys()].forEach(x => {obj_str}.add(x))")
+                    else:
+                        updates.append(f"[...{arg_str}].forEach(x => {obj_str}.add(x))")
                 return f"(({', '.join(updates)}), null)"
         # Handle string.split() with no args - splits on whitespace, removes empties
         if receiver_type == STRING and method == "split" and len(args) == 0:
@@ -1703,7 +1709,11 @@ class JsLikeBackend:
         container_str = self._expr(container)
         container_type = container.typ
         neg = "!" if negated else ""
-        if isinstance(container_type, (Set, Map)):
+        if isinstance(container_type, Set):
+            if isinstance(container_type.element, Tuple):
+                return f"{neg}tupleSetHas({container_str}, {item_str})"
+            return f"{neg}{container_str}.has({item_str})"
+        if isinstance(container_type, Map):
             return f"{neg}{container_str}.has({item_str})"
         if is_bytes_type(container_type):
             return f"{neg}arrContains({container_str}, {item_str})"

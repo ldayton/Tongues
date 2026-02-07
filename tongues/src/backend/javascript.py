@@ -16,7 +16,7 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _is_bytes_list_type,
 )
-from src.backend.util import ir_contains_call, ir_has_bytes_ops, is_bytes_type
+from src.backend.util import ir_contains_call, ir_has_bytes_ops, ir_has_tuple_sets, is_bytes_type
 from src.ir import (
     BOOL,
     FLOAT,
@@ -108,7 +108,7 @@ class JsBackend(JsLikeBackend):
                 "function bytes(x) { return Array.isArray(x) ? x.slice() : new Array(x).fill(0); }"
             )
             emitted = True
-        if ir_has_bytes_ops(module):
+        if ir_has_bytes_ops(module) or ir_contains_call(module, "sorted"):
             self._emit_bytes_helpers()
             emitted = True
         if ir_contains_call(module, "sum"):
@@ -142,7 +142,25 @@ class JsBackend(JsLikeBackend):
         if ir_contains_call(module, "set"):
             self._line("function set(x) { if (x === undefined) return new Set(); return new Set(x); }")
             emitted = True
+        if ir_has_tuple_sets(module):
+            self._emit_tuple_set_helpers()
+            emitted = True
         return emitted
+
+    def _emit_tuple_set_helpers(self) -> None:
+        """Emit helper functions for sets with tuple elements."""
+        self._line("function tupleSetAdd(s, t) {")
+        self.indent += 1
+        self._line("for (const x of s) if (arrEq(x, t)) return;")
+        self._line("s.add(t);")
+        self.indent -= 1
+        self._line("}")
+        self._line("function tupleSetHas(s, t) {")
+        self.indent += 1
+        self._line("for (const x of s) if (arrEq(x, t)) return true;")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_range_helper(self) -> None:
         self._line("function range(start, end, step) {")

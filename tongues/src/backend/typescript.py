@@ -16,7 +16,7 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _safe_name,
 )
-from src.backend.util import escape_string, ir_contains_call, ir_contains_cast, ir_has_bytes_ops
+from src.backend.util import escape_string, ir_contains_call, ir_contains_cast, ir_has_bytes_ops, ir_has_tuple_sets
 from src.ir import (
     BOOL,
     INT,
@@ -110,7 +110,7 @@ class TsBackend(JsLikeBackend):
                 "function bytes(x: number | number[]): number[] { return Array.isArray(x) ? x.slice() : new Array(x).fill(0); }"
             )
             emitted = True
-        if ir_has_bytes_ops(module):
+        if ir_has_bytes_ops(module) or ir_contains_call(module, "sorted"):
             self._emit_bytes_helpers()
             emitted = True
         if ir_contains_call(module, "sum"):
@@ -154,7 +154,25 @@ class TsBackend(JsLikeBackend):
                 "function set<T>(x?: Iterable<T>): Set<T> { if (x === undefined) return new Set<T>(); return new Set(x); }"
             )
             emitted = True
+        if ir_has_tuple_sets(module):
+            self._emit_tuple_set_helpers()
+            emitted = True
         return emitted
+
+    def _emit_tuple_set_helpers(self) -> None:
+        """Emit helper functions for sets with tuple elements."""
+        self._line("function tupleSetAdd<T extends any[]>(s: Set<T>, t: T): void {")
+        self.indent += 1
+        self._line("for (const x of s) if (arrEq(x, t)) return;")
+        self._line("s.add(t);")
+        self.indent -= 1
+        self._line("}")
+        self._line("function tupleSetHas<T extends any[]>(s: Set<T>, t: T): boolean {")
+        self.indent += 1
+        self._line("for (const x of s) if (arrEq(x, t)) return true;")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_range_function(self) -> None:
         self._line("function range(start: number, end?: number, step?: number): number[] {")
