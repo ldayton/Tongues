@@ -1092,6 +1092,18 @@ class RubyBackend:
                 if isinstance(e, BinaryOp):
                     return f"!!({expr_str})"
                 return f"!!{expr_str}"
+            case BinaryOp(op="&&", left=left_expr, right=right_expr) if self._is_value_and_or(left_expr):
+                # Python's `and` returns first falsy value or last value
+                # Ruby: python_truthy(x) ? y : x
+                left_val, left_str, cond = self._extract_and_or_value(left_expr)
+                right_str = self._and_or_operand(right_expr)
+                return f"({cond} ? {right_str} : {left_str})"
+            case BinaryOp(op="||", left=left_expr, right=right_expr) if self._is_value_and_or(left_expr):
+                # Python's `or` returns first truthy value or last value
+                # Ruby: python_truthy(x) ? x : y
+                left_val, left_str, cond = self._extract_and_or_value(left_expr)
+                right_str = self._and_or_operand(right_expr)
+                return f"({cond} ? {left_str} : {right_str})"
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - Ruby's / on integers truncates toward zero
                 if left.typ == BOOL:
@@ -1621,6 +1633,95 @@ class RubyBackend:
         """Emit a condition expression for ternary. In Ruby && and || have higher precedence than ?:."""
         return self._expr(expr)
 
+    def _python_truthy_check(self, expr: Expr) -> str:
+        """Emit a Python-style truthy check for an expression (for and/or semantics)."""
+        expr_str = self._expr(expr)
+        typ = expr.typ
+        if isinstance(typ, (Slice, Map, Set)):
+            return f"({expr_str} && !{expr_str}.empty?)"
+        if isinstance(typ, Optional):
+            inner = typ.inner
+            if isinstance(inner, (Slice, Map, Set)):
+                return f"({expr_str} && !{expr_str}.empty?)"
+            return f"!{expr_str}.nil?"
+        if isinstance(typ, Pointer):
+            return f"!{expr_str}.nil?"
+        if typ == Primitive(kind="string"):
+            return f"({expr_str} && !{expr_str}.empty?)"
+        if typ == INT:
+            return f"{expr_str} != 0"
+        if typ == FLOAT:
+            return f"{expr_str} != 0.0"
+        if typ == BOOL:
+            return expr_str
+        return f"!!{expr_str}"
+
+    def _is_value_and_or(self, expr: Expr) -> bool:
+        """Check if expression is a Truthy or value-returning and/or."""
+        if isinstance(expr, Truthy):
+            return True
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            return self._is_value_and_or(expr.left)
+        return False
+
+    def _extract_and_or_value(self, expr: Expr) -> tuple[Expr, str, str]:
+        """Extract value, value string, and truthy check from and/or operand."""
+        if isinstance(expr, Truthy):
+            val = expr.expr
+            val_str = self._expr(val)
+            cond = self._python_truthy_check(val)
+            return val, val_str, cond
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            # For chained and/or, the "value" is the whole expression
+            # and the truthy check is on that value
+            val_str = self._expr(expr)
+            # The truthy check needs to be on the result type
+            cond = self._python_truthy_check_str(val_str, expr.left)
+            return expr, val_str, cond
+        val_str = self._expr(expr)
+        cond = self._python_truthy_check(expr)
+        return expr, val_str, cond
+
+    def _python_truthy_check_str(self, expr_str: str, sample_expr: Expr) -> str:
+        """Generate truthy check when we have the string but need type info from a sample."""
+        # For chained and/or, infer type from the innermost Truthy
+        typ = self._get_innermost_type(sample_expr)
+        if isinstance(typ, (Slice, Map, Set)):
+            return f"({expr_str} && !{expr_str}.empty?)"
+        if isinstance(typ, Optional):
+            inner = typ.inner
+            if isinstance(inner, (Slice, Map, Set)):
+                return f"({expr_str} && !{expr_str}.empty?)"
+            return f"!{expr_str}.nil?"
+        if isinstance(typ, Pointer):
+            return f"!{expr_str}.nil?"
+        if typ == Primitive(kind="string"):
+            return f"({expr_str} && !{expr_str}.empty?)"
+        if typ == INT:
+            return f"{expr_str} != 0"
+        if typ == FLOAT:
+            return f"{expr_str} != 0.0"
+        if typ == BOOL:
+            return expr_str
+        return f"!!{expr_str}"
+
+    def _get_innermost_type(self, expr: Expr) -> "Type":
+        """Get the type of the innermost value in a chained and/or."""
+        if isinstance(expr, Truthy):
+            return expr.expr.typ
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            return self._get_innermost_type(expr.left)
+        return expr.typ
+
+    def _and_or_operand(self, expr: Expr) -> str:
+        """Extract value from and/or operand, handling nested Truthy and BinaryOp."""
+        if isinstance(expr, Truthy):
+            return self._expr(expr.expr)
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            # Nested and/or - recursively emit value-preserving code
+            return self._expr(expr)
+        return self._expr(expr)
+
     def _coerce_bool_to_int(self, expr: Expr, raw: bool = False) -> str:
         """Coerce a bool expression to int for comparison with int."""
         if expr.typ == BOOL:
@@ -1630,6 +1731,10 @@ class RubyBackend:
             # MinExpr/MaxExpr already produce int via _expr, skip double coercion
             if isinstance(expr, (MinExpr, MaxExpr)):
                 return self._expr(expr)
+            # BinaryOp with &&/|| and Truthy operands already preserves values
+            if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+                if self._is_value_and_or(expr.left):
+                    return self._expr(expr)
             inner = self._expr(expr)
             # Ternary has lower precedence than arithmetic, so wrap in parens
             return f"({inner} ? 1 : 0)"

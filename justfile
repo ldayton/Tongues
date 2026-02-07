@@ -55,6 +55,39 @@ test-apptests lang:
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
         bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_apptests.py --target {{lang}} -v"
 
+# Check if formatters are installed
+formatters:
+    #!/usr/bin/env bash
+    failed=0
+    printf "%-12s %-30s %s\n" "LANG" "FORMATTER" "STATUS"
+    printf "%-12s %-30s %s\n" "----" "---------" "------"
+    check() {
+        lang=$1; name=$2; cmd=$3
+        if eval "$cmd" >/dev/null 2>&1; then
+            status="✅"
+        else
+            status="❌"
+            failed=1
+        fi
+        printf "%-12s %-30s %s\n" "$lang" "$name" "$status"
+    }
+    check "c"          "clang-format"              "command -v clang-format"
+    check "csharp"     "csharpier"                 "command -v dotnet-csharpier || dotnet tool list -g | grep -q csharpier"
+    check "dart"       "dart format"               "command -v dart"
+    check "go"         "gofmt"                     "command -v gofmt"
+    check "java"       "google-java-format"        "test -f /usr/local/lib/google-java-format.jar"
+    check "javascript" "biome (via npx)"           "command -v npx"
+    check "lua"        "stylua"                    "command -v stylua"
+    check "perl"       "perltidy"                  "command -v perltidy"
+    check "php"        "php-cs-fixer"              "command -v php-cs-fixer"
+    check "python"     "ruff (via uvx)"            "command -v uvx"
+    check "ruby"       "rubocop"                   "command -v rubocop"
+    check "rust"       "rustfmt"                   "command -v rustfmt"
+    check "swift"      "swiftformat"               "command -v swiftformat"
+    check "typescript" "biome (via npx)"           "command -v npx"
+    check "zig"        "zig fmt"                   "command -v zig"
+    exit $failed
+
 # Check local runtime versions against Dockerfile expectations
 versions:
     #!/usr/bin/env bash
@@ -107,3 +140,19 @@ test: test-codegen \
     (test-apptests "swift") \
     (test-apptests "typescript") \
     (test-apptests "zig")
+
+# Run all tests locally (requires matching runtime versions)
+test-local: versions test-codegen-local
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
+        just test-apptests-local "$lang"
+    done
+
+# Run full check locally (requires matching runtime versions)
+check-local: versions fmt lint subset test-codegen-local
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
+        just test-apptests-local "$lang"
+    done

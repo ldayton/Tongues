@@ -883,9 +883,7 @@ class JsLikeBackend:
             case Call(func="int", args=[arg]):
                 return f"Math.trunc({self._expr(arg)})"
             case Call(func="divmod", args=[a, b]):
-                a_str = self._expr(a)
-                b_str = self._expr(b)
-                return f"[Math.floor({a_str} / {b_str}), (({a_str} % {b_str}) + {b_str}) % {b_str}]"
+                return f"[Math.floor({self._expr(a)} / {self._expr(b)}), {self._expr(a)} % {self._expr(b)}]"
             case Call(func="pow", args=[base, exp]):
                 base_str = self._pow_base(base)
                 return f"{base_str} ** {self._expr(exp)}"
@@ -944,11 +942,6 @@ class JsLikeBackend:
                 left_str = self._maybe_paren(left, "/", is_left=True)
                 right_str = self._maybe_paren(right, "/", is_left=False)
                 return f"Math.floor({left_str} / {right_str})"
-            case BinaryOp(op="%", left=left, right=right):
-                # Python modulo: result has same sign as divisor
-                left_str = self._maybe_paren(left, "%", is_left=True)
-                right_str = self._maybe_paren(right, "%", is_left=False)
-                return f"(({left_str} % {right_str}) + {right_str}) % {right_str}"
             case BinaryOp(op=op, left=left, right=right):
                 return self._binary_expr(op, left, right)
             case ChainedCompare(operands=operands, ops=ops):
