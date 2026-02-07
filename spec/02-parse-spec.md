@@ -6,6 +6,15 @@ Tokenize source code and parse into dict-based AST. Hand-written parser based on
 
 The tokenizer uses explicit `while i < len(...)` loops (no generators). The parser is a recursive descent parser producing dict-based AST nodes matching the structure of Python's `ast` module.
 
+## Errors
+
+| Condition           | Diagnostic                                      |
+| ------------------- | ----------------------------------------------- |
+| Unexpected token    | error: `unexpected token '{tok}' at line {n}`   |
+| Unterminated string | error: `unterminated string literal`            |
+| Invalid syntax      | error: `invalid syntax at line {n}, column {c}` |
+| Mismatched parens   | error: `unmatched '(' at line {n}`              |
+
 ## Postconditions
 
 Source code parsed to dict-based AST; structure matches `ast.parse()` output; all tokens consumed; syntax errors reported with line/column.

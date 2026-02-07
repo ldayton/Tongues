@@ -16,13 +16,15 @@ Infer ownership and region annotations for memory-safe code generation. Since ph
 
 ## Escape Analysis
 
-Escape analysis detects when borrowed references outlive their region:
+Escape analysis detects when borrowed references outlive their region.
 
-| Violation                    | Diagnostic                                                                   |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| Borrowed ref stored in field | Error: "cannot store borrowed `x` in field; use `.copy()` or take ownership" |
-| Borrowed ref returned        | Error: "reference to `x` escapes function scope"                             |
-| Borrowed ref in collection   | Error: "cannot add borrowed `x` to collection; transfer ownership or copy"   |
+## Errors
+
+| Condition                    | Diagnostic                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| Borrowed ref stored in field | error: `cannot store borrowed 'x' in field; use .copy() or take ownership` |
+| Borrowed ref returned        | error: `reference to 'x' escapes function scope`                           |
+| Borrowed ref in collection   | error: `cannot add borrowed 'x' to collection; transfer ownership or copy` |
 
 ## Ambiguous Ownership
 

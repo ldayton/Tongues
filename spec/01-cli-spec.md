@@ -51,6 +51,14 @@ This enables testing each phase independently and introspecting intermediate rep
 
 Files containing `tongues: skip` in the first 5 lines are skipped during `--stop-at subset`.
 
+## Errors
+
+| Condition      | Diagnostic                    |
+| -------------- | ----------------------------- |
+| Unknown target | error: `unknown target 'foo'` |
+| Unknown phase  | error: `unknown phase 'foo'`  |
+| Empty input    | error: `no input provided`    |
+
 ## Postconditions
 
 Source read from stdin; target language selected; pipeline invoked; output written to stdout or error reported to stderr with non-zero exit.

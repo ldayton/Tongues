@@ -4,6 +4,19 @@ Syntactic restrictions for transpilation to statically-typed languages. These ar
 
 See [08-inference-spec.md](08-inference-spec.md) for type-level invariants requiring inference.
 
+## Errors
+
+Subset violations are reported with the construct and reason:
+
+| Condition          | Diagnostic                                    |
+| ------------------ | --------------------------------------------- |
+| Banned construct   | error: `{construct} not allowed: {reason}`    |
+| Missing annotation | error: `missing type annotation for '{name}'` |
+| Invalid decorator  | error: `decorator '{name}' not allowed`       |
+| Banned builtin     | error: `builtin '{name}' not allowed`         |
+| Invalid import     | error: `import of '{module}' not allowed`     |
+| Mutable default    | error: `mutable default argument not allowed` |
+
 ---
 
 ## 1. Types & Annotations
