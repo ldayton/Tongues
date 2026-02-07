@@ -112,13 +112,13 @@ class JsBackend(JsLikeBackend):
             self._emit_bytes_helpers()
             emitted = True
         if ir_contains_call(module, "sum"):
-            self._line("function sum(arr) { return arr.reduce((a, b) => a + b, 0); }")
+            self._line("function sum(arr) { return [...arr].reduce((a, b) => a + b, 0); }")
             emitted = True
         if ir_contains_call(module, "all"):
-            self._line("function all(arr) { return arr.every(Boolean); }")
+            self._line("function all(arr) { return [...arr].every(Boolean); }")
             emitted = True
         if ir_contains_call(module, "any"):
-            self._line("function any(arr) { return arr.some(Boolean); }")
+            self._line("function any(arr) { return [...arr].some(Boolean); }")
             emitted = True
         if ir_contains_call(module, "sorted"):
             self._line(
@@ -126,7 +126,7 @@ class JsBackend(JsLikeBackend):
             )
             emitted = True
         if ir_contains_call(module, "enumerate"):
-            self._line("function enumerate(arr) { return arr.map((v, i) => [i, v]); }")
+            self._line("function enumerate(arr) { return [...arr].map((v, i) => [i, v]); }")
             emitted = True
         if ir_contains_call(module, "list"):
             self._line("function list(x) { return typeof x === 'string' ? [...x] : [...x]; }")
@@ -138,6 +138,9 @@ class JsBackend(JsLikeBackend):
             emitted = True
         if ir_contains_call(module, "tuple"):
             self._line("function tuple(x) { if (x === undefined) return []; return typeof x === 'string' ? [...x] : [...x]; }")
+            emitted = True
+        if ir_contains_call(module, "set"):
+            self._line("function set(x) { if (x === undefined) return new Set(); return new Set(x); }")
             emitted = True
         return emitted
 

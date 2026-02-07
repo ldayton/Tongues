@@ -555,6 +555,9 @@ class RubyBackend:
                 # list += string needs to convert string to chars
                 if op == "+" and value.typ == STRING:
                     self._line(f"{lv}.concat({val}.chars)")
+                # dict |= other_dict -> dict.merge!(other_dict)
+                elif op == "|" and isinstance(value.typ, Map):
+                    self._line(f"{lv}.merge!({val})")
                 else:
                     self._line(f"{lv} {op}= {val}")
             case NoOp():
@@ -691,7 +694,9 @@ class RubyBackend:
         is_enumerate = isinstance(iterable, Call) and iterable.func == "enumerate"
         # Use each_char for strings
         is_string = iterable.typ == Primitive(kind="string")
-        each_method = "each_char" if is_string else "each"
+        # For dict iteration with single variable, iterate over keys only
+        is_map = isinstance(iterable.typ, Map)
+        each_method = "each_char" if is_string else ("each_key" if is_map else "each")
         if idx is not None and val is not None:
             if is_enumerate:
                 # enumerate already produces [idx, val] pairs
@@ -932,6 +937,9 @@ class RubyBackend:
                 # Single iterable arg: call .min directly
                 if len(args) == 1 and isinstance(args[0].typ, (Slice, Tuple)):
                     return f"{self._expr(args[0])}.min"
+                # min(dict) returns min key
+                if len(args) == 1 and isinstance(args[0].typ, Map):
+                    return f"{self._expr(args[0])}.keys.min"
                 # Ruby can't compare bools, always coerce to int
                 parts = []
                 for a in args:
@@ -944,6 +952,9 @@ class RubyBackend:
                 # Single iterable arg: call .max directly
                 if len(args) == 1 and isinstance(args[0].typ, (Slice, Tuple)):
                     return f"{self._expr(args[0])}.max"
+                # max(dict) returns max key
+                if len(args) == 1 and isinstance(args[0].typ, Map):
+                    return f"{self._expr(args[0])}.keys.max"
                 # Ruby can't compare bools, always coerce to int
                 parts = []
                 for a in args:
@@ -1070,6 +1081,12 @@ class RubyBackend:
             case Call(func="tuple", args=[]):
                 # tuple() -> []
                 return "[]"
+            case Call(func="dict", args=[iterable]):
+                # dict(pairs) -> pairs.to_h
+                return f"{self._expr(iterable)}.to_h"
+            case Call(func="dict", args=[]):
+                # dict() -> {}
+                return "{}"
             case Call(func="range", args=args):
                 # range(stop), range(start, stop), range(start, stop, step)
                 self._needs_range_helper = True
@@ -1095,6 +1112,14 @@ class RubyBackend:
             case MethodCall(
                 obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
             ):
+                # Python: dict.fromkeys(keys) or dict.fromkeys(keys, default) (as MethodCall)
+                # Note: Python shares the same default value across all keys (mutable gotcha)
+                if isinstance(obj, Var) and obj.name == "dict" and method == "fromkeys":
+                    keys_str = self._expr(args[0])
+                    if len(args) == 2:
+                        default_str = self._expr(args[1])
+                        return f"(-> {{ _d = {default_str}; {keys_str}.map {{ |k| [k, _d] }}.to_h }}).call"
+                    return f"{keys_str}.map {{ |k| [k, nil] }}.to_h"
                 # Python: list.sort(reverse=True) -> Ruby: list.sort!.reverse!
                 if method == "sort" and reverse and isinstance(receiver_type, Slice):
                     obj_str = self._expr(obj)
@@ -1152,6 +1177,31 @@ class RubyBackend:
                 if method == "values" and isinstance(receiver_type, Map) and len(args) == 0:
                     obj_str = self._expr(obj)
                     return f"{obj_str}.values"
+                # Python: dict.copy() -> Ruby: hash.dup
+                if method == "copy" and isinstance(receiver_type, Map) and len(args) == 0:
+                    obj_str = self._expr(obj)
+                    return f"{obj_str}.dup"
+                # Python: dict.setdefault(key) or dict.setdefault(key, default)
+                if method == "setdefault" and isinstance(receiver_type, Map):
+                    obj_str = self._expr(obj)
+                    key_str = self._expr(args[0])
+                    if len(args) == 2:
+                        default_str = self._expr(args[1])
+                        return f"({obj_str}.key?({key_str}) ? {obj_str}[{key_str}] : {obj_str}[{key_str}] = {default_str})"
+                    return f"({obj_str}.key?({key_str}) ? {obj_str}[{key_str}] : {obj_str}[{key_str}] = nil)"
+                # Python: dict.popitem() -> Ruby: [k, v] = hash.shift (but returns last, not first)
+                # Ruby's shift returns first, Python's popitem returns last (LIFO)
+                if method == "popitem" and isinstance(receiver_type, Map) and len(args) == 0:
+                    obj_str = self._expr(obj)
+                    return f"(-> {{ _k = {obj_str}.keys.last; _v = {obj_str}.delete(_k); [_k, _v] }}).call"
+                # Python: dict.pop(key) or dict.pop(key, default)
+                if method == "pop" and isinstance(receiver_type, Map):
+                    obj_str = self._expr(obj)
+                    key_str = self._expr(args[0])
+                    if len(args) == 2:
+                        default_str = self._expr(args[1])
+                        return f"{obj_str}.delete({key_str}) {{ {default_str} }}"
+                    return f"{obj_str}.delete({key_str})"
                 # Python: list.pop(i) -> Ruby: list.delete_at(i)
                 # Special case: pop(0) -> shift for efficiency
                 if method == "pop" and isinstance(receiver_type, Slice) and len(args) == 1:
@@ -1309,6 +1359,18 @@ class RubyBackend:
                     return f"{obj_str}.{rb_method}({args_str})"
                 return f"{obj_str}.{rb_method}"
             case StaticCall(on_type=on_type, method=method, args=args):
+                # Python: dict.fromkeys(keys) or dict.fromkeys(keys, default)
+                # Note: Python shares the same default value across all keys (mutable gotcha)
+                if (
+                    method == "fromkeys"
+                    and isinstance(on_type, InterfaceRef)
+                    and on_type.name == "dict"
+                ):
+                    keys_str = self._expr(args[0])
+                    if len(args) == 2:
+                        default_str = self._expr(args[1])
+                        return f"(-> {{ _d = {default_str}; {keys_str}.map {{ |k| [k, _d] }}.to_h }}).call"
+                    return f"{keys_str}.map {{ |k| [k, nil] }}.to_h"
                 args_str = ", ".join(self._expr(a) for a in args)
                 type_name = self._type_name_for_check(on_type)
                 return f"{type_name}.{_safe_name(method)}({args_str})"
@@ -1562,6 +1624,11 @@ class RubyBackend:
                     right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
+            # Python: dict | dict -> Ruby: dict.merge(dict)
+            case BinaryOp(op="|", left=left, right=right) if isinstance(left.typ, Map):
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"{left_str}.merge({right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 if op == "in":
                     return f"{self._expr(right)}.include?({self._expr(left)})"
@@ -1597,7 +1664,13 @@ class RubyBackend:
                 rb_op = _binary_op(op)
                 left_str = self._maybe_paren_expr(left, op, is_left=True)
                 right_str = self._maybe_paren_expr(right, op, is_left=False)
-                return f"{left_str} {rb_op} {right_str}"
+                result = f"{left_str} {rb_op} {right_str}"
+                # If result type is Set (e.g., dict.keys() & dict.keys()), convert to Set
+                # NOTE: Requires correct type inference in frontend; currently dict view
+                # set operations are mis-typed, so this check doesn't trigger.
+                if isinstance(expr.typ, Set):
+                    return f"Set[*({result})]"
+                return result
             case ChainedCompare(operands=operands, ops=ops):
                 parts: list[str] = []
                 for i, op in enumerate(ops):

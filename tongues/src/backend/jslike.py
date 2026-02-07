@@ -388,6 +388,18 @@ class JsLikeBackend:
                 elif op == "*" and isinstance(target_type, Tuple):
                     # Tuple *= int creates new tuple (immutable)
                     self._line(f"{lv} = Array({val} > 0 ? {val} : 0).fill({lv}).flat();")
+                elif isinstance(target_type, Set) or isinstance(value.typ, Set):
+                    # Set augmented assignment operators
+                    if op == "|":
+                        self._line(f"for (const x of {val}) {lv}.add(x);")
+                    elif op == "&":
+                        self._line(f"for (const x of [...{lv}]) if (!{val}.has(x)) {lv}.delete(x);")
+                    elif op == "-":
+                        self._line(f"for (const x of {val}) {lv}.delete(x);")
+                    elif op == "^":
+                        self._line(f"for (const x of {val}) if ({lv}.has(x)) {lv}.delete(x); else {lv}.add(x);")
+                    else:
+                        self._line(f"{lv} {op}= {val};")
                 else:
                     self._line(f"{lv} {op}= {val};")
             case NoOp():
@@ -662,6 +674,9 @@ class JsLikeBackend:
         accumulator = self._expr(expr.obj)
         iter_expr = self._expr(iterable)
         transform = self._expr(transform_expr)
+        # Spread sets to arrays since Set doesn't have .map()
+        if _is_set_expr(iterable):
+            iter_expr = f"[...{iter_expr}]"
         self._line(f"{accumulator}.push(...{iter_expr}.map({_camel(value)} => {transform}));")
         return True
 
@@ -915,12 +930,12 @@ class JsLikeBackend:
             case Call(func="abs", args=[arg]):
                 return f"Math.abs({self._expr(arg)})"
             case Call(func="min", args=args):
-                if len(args) == 1 and _is_array_type(args[0].typ):
+                if len(args) == 1 and (_is_array_type(args[0].typ) or _is_set_expr(args[0])):
                     return f"Math.min(...{self._expr(args[0])})"
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Math.min({args_str})"
             case Call(func="max", args=args):
-                if len(args) == 1 and _is_array_type(args[0].typ):
+                if len(args) == 1 and (_is_array_type(args[0].typ) or _is_set_expr(args[0])):
                     return f"Math.max(...{self._expr(args[0])})"
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Math.max({args_str})"
@@ -1076,10 +1091,20 @@ class JsLikeBackend:
                 # Tuples and lists are both arrays in JS
                 if isinstance(tested_type, (Tuple, Slice, Array)):
                     return f"Array.isArray({self._expr(inner)})"
+                # isinstance(x, set) -> x instanceof Set
+                if isinstance(tested_type, Set):
+                    return f"{self._expr(inner)} instanceof Set"
+                # isinstance(x, dict) -> x instanceof Map
+                if isinstance(tested_type, Map):
+                    return f"{self._expr(inner)} instanceof Map"
                 # isinstance(x, tuple) or isinstance(x, list) -> Array.isArray
                 if isinstance(tested_type, (StructRef, InterfaceRef)):
                     if tested_type.name in ("tuple", "list"):
                         return f"Array.isArray({self._expr(inner)})"
+                    if tested_type.name == "set":
+                        return f"{self._expr(inner)} instanceof Set"
+                    if tested_type.name == "dict":
+                        return f"{self._expr(inner)} instanceof Map"
                 type_name = self._type_name_for_check(tested_type)
                 return f"{self._expr(inner)} instanceof {type_name}"
             case IsNil(expr=inner, negated=negated):
@@ -1295,6 +1320,52 @@ class JsLikeBackend:
                 return f"({obj_str}.sort((a, b) => a < b ? -1 : a > b ? 1 : 0), null)"
             if method == "reverse" and len(args) == 0:
                 return f"({obj_str}.reverse(), null)"
+        # Set methods
+        if isinstance(receiver_type, Set):
+            obj_str = self._expr(obj)
+            if method == "remove" and len(args) == 1:
+                return f"({obj_str}.delete({self._expr(args[0])}), null)"
+            if method == "discard" and len(args) == 1:
+                return f"({obj_str}.delete({self._expr(args[0])}), null)"
+            if method == "pop" and len(args) == 0:
+                return f"((v = {obj_str}.values().next().value), {obj_str}.delete(v), v)"
+            if method == "copy" and len(args) == 0:
+                return f"new Set({obj_str})"
+            if method == "union" and len(args) >= 1:
+                union_parts = [f"...{obj_str}"]
+                for arg in args:
+                    union_parts.append(f"...{self._expr(arg)}")
+                return f"new Set([{', '.join(union_parts)}])"
+            if method == "intersection" and len(args) >= 1:
+                result = f"[...{obj_str}]"
+                for arg in args:
+                    arg_str = self._expr(arg)
+                    result = f"{result}.filter(x => {arg_str}.has(x))"
+                return f"new Set({result})"
+            if method == "difference" and len(args) >= 1:
+                result = f"[...{obj_str}]"
+                for arg in args:
+                    arg_str = self._expr(arg)
+                    result = f"{result}.filter(x => !{arg_str}.has(x))"
+                return f"new Set({result})"
+            if method == "symmetric_difference" and len(args) == 1:
+                other = self._expr(args[0])
+                return f"new Set([...{obj_str}].filter(x => !{other}.has(x)).concat([...{other}].filter(x => !{obj_str}.has(x))))"
+            if method == "issubset" and len(args) == 1:
+                other = self._expr(args[0])
+                return f"[...{obj_str}].every(x => {other}.has(x))"
+            if method == "issuperset" and len(args) == 1:
+                other = self._expr(args[0])
+                return f"[...{other}].every(x => {obj_str}.has(x))"
+            if method == "isdisjoint" and len(args) == 1:
+                other = self._expr(args[0])
+                return f"![...{obj_str}].some(x => {other}.has(x))"
+            if method == "update" and len(args) >= 1:
+                updates = []
+                for arg in args:
+                    arg_str = self._expr(arg)
+                    updates.append(f"[...{arg_str}].forEach(x => {obj_str}.add(x))")
+                return f"(({', '.join(updates)}), null)"
         # Handle string.split() with no args - splits on whitespace, removes empties
         if receiver_type == STRING and method == "split" and len(args) == 0:
             return f"{self._expr(obj)}.trim().split(/\\s+/).filter(Boolean)"
@@ -1371,11 +1442,13 @@ class JsLikeBackend:
     def _truthy_expr(self, e: Expr) -> str:
         inner_str = self._expr(e)
         inner_type = e.typ
-        if isinstance(inner_type, (Map, Set)):
+        if isinstance(inner_type, Map) or _is_set_expr(e):
             return f"({inner_str}.size > 0)"
         if isinstance(inner_type, (Slice, Tuple, Array)) or inner_type == STRING:
             return f"({inner_str}.length > 0)"
-        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Map, Set)):
+        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Map):
+            return f"({inner_str} != null && {inner_str}.size > 0)"
+        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Set):
             return f"({inner_str} != null && {inner_str}.size > 0)"
         if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Tuple, Array)):
             return f"({inner_str} != null && {inner_str}.length > 0)"
@@ -1431,6 +1504,34 @@ class JsLikeBackend:
                 if _is_array_type(left.typ):
                     return f"Array({right_str} > 0 ? {right_str} : 0).fill({left_str}).flat()"
                 return f"Array({left_str} > 0 ? {left_str} : 0).fill({right_str}).flat()"
+        # Handle Set comparison and operators
+        # For equality, both sides must be sets; otherwise use default comparison
+        if _is_set_expr(left) and _is_set_expr(right):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "==":
+                return f"(({left_str}.size === {right_str}.size) && [...{left_str}].every(x => {right_str}.has(x)))"
+            if op == "!=":
+                return f"!(({left_str}.size === {right_str}.size) && [...{left_str}].every(x => {right_str}.has(x)))"
+        if _is_set_expr(left) or _is_set_expr(right):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "|":
+                return f"new Set([...{left_str}, ...{right_str}])"
+            if op == "&":
+                return f"new Set([...{left_str}].filter(x => {right_str}.has(x)))"
+            if op == "-":
+                return f"new Set([...{left_str}].filter(x => !{right_str}.has(x)))"
+            if op == "^":
+                return f"new Set([...{left_str}].filter(x => !{right_str}.has(x)).concat([...{right_str}].filter(x => !{left_str}.has(x))))"
+            if op == "<=":
+                return f"[...{left_str}].every(x => {right_str}.has(x))"
+            if op == "<":
+                return f"({left_str}.size < {right_str}.size && [...{left_str}].every(x => {right_str}.has(x)))"
+            if op == ">=":
+                return f"[...{right_str}].every(x => {left_str}.has(x))"
+            if op == ">":
+                return f"({left_str}.size > {right_str}.size && [...{right_str}].every(x => {left_str}.has(x)))"
         # Handle string repetition: "a" * 3 -> "a".repeat(3), negative -> ""
         if op == "*":
             if left.typ == STRING:
@@ -1520,7 +1621,7 @@ class JsLikeBackend:
 
     def _len_expr(self, inner: Expr) -> str:
         inner_type = inner.typ
-        if isinstance(inner_type, (Map, Set)):
+        if isinstance(inner_type, Map) or _is_set_expr(inner):
             return f"{self._expr(inner)}.size"
         # Use spread for strings to properly count code points (emoji support)
         if inner_type == STRING:
@@ -1789,6 +1890,23 @@ def _is_array_type(typ: Type) -> bool:
         return True
     if isinstance(typ, Pointer) and isinstance(typ.target, (Slice, Array, Tuple)):
         return True
+    return False
+
+
+def _is_set_expr(expr: Expr) -> bool:
+    """Check if expression is a set (by type or by being a set() call or set operator)."""
+    if isinstance(expr.typ, Set):
+        return True
+    if isinstance(expr, Call) and expr.func == "set":
+        return True
+    # Set binary operators produce sets
+    if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "-", "^"):
+        if _is_set_expr(expr.left) or _is_set_expr(expr.right):
+            return True
+    # Set methods that return sets
+    if isinstance(expr, MethodCall) and isinstance(expr.receiver_type, Set):
+        if expr.method in ("copy", "union", "intersection", "difference", "symmetric_difference"):
+            return True
     return False
 
 

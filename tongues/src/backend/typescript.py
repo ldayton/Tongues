@@ -115,14 +115,14 @@ class TsBackend(JsLikeBackend):
             emitted = True
         if ir_contains_call(module, "sum"):
             self._line(
-                "function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }"
+                "function sum(arr: Iterable<number>): number { return [...arr].reduce((a, b) => a + b, 0); }"
             )
             emitted = True
         if ir_contains_call(module, "all"):
-            self._line("function all(arr: any[]): boolean { return arr.every(Boolean); }")
+            self._line("function all(arr: Iterable<any>): boolean { return [...arr].every(Boolean); }")
             emitted = True
         if ir_contains_call(module, "any"):
-            self._line("function any(arr: any[]): boolean { return arr.some(Boolean); }")
+            self._line("function any(arr: Iterable<any>): boolean { return [...arr].some(Boolean); }")
             emitted = True
         if ir_contains_call(module, "sorted"):
             self._line(
@@ -131,7 +131,7 @@ class TsBackend(JsLikeBackend):
             emitted = True
         if ir_contains_call(module, "enumerate"):
             self._line(
-                "function enumerate<T>(arr: T[]): [number, T][] { return arr.map((v, i) => [i, v]); }"
+                "function enumerate<T>(arr: Iterable<T>): [number, T][] { return [...arr].map((v, i) => [i, v]); }"
             )
             emitted = True
         if ir_contains_call(module, "list"):
@@ -147,6 +147,11 @@ class TsBackend(JsLikeBackend):
         if ir_contains_call(module, "tuple"):
             self._line(
                 "function tuple<T>(x?: Iterable<T> | string): T[] { if (x === undefined) return []; return typeof x === 'string' ? [...x] as unknown as T[] : [...x]; }"
+            )
+            emitted = True
+        if ir_contains_call(module, "set"):
+            self._line(
+                "function set<T>(x?: Iterable<T>): Set<T> { if (x === undefined) return new Set<T>(); return new Set(x); }"
             )
             emitted = True
         return emitted
