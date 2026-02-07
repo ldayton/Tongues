@@ -1837,3 +1837,619 @@ return f"({obj_str} =~ s/{old_val}/{new_val}/gr)"
 Backend implements ~60 lines of regex escaping logic to safely convert Python `str.replace()` to Perl's `s///` operator. Perl's replacement strings have different escaping rules than the pattern.
 
 **Should be:** Lowering should emit `StringReplace(string, pattern, replacement, literal=True)` with explicit semantics. Backends that use regex-based replacement (Perl, Ruby) can apply appropriate escaping; others use literal replacement APIs.
+
+---
+
+## Python
+
+The Python backend is the cleanest of all backends because the source language matches the target language. No semantic gaps need bridging—Python constructs map directly to Python constructs. The backend performs no compensations for frontend or middleend deficiencies.
+
+### Uncompensated Deficiencies (Non-Idiomatic Output)
+
+These are not compensations but areas where the output could be more idiomatic if frontend/middleend did additional work:
+
+#### 1. `_intPtr` Helper Function
+
+**Location:** `python.py:295-297`
+
+```python
+def _intPtr(val: int) -> int | None:
+    return None if val == -1 else val
+```
+
+The backend emits a module-level helper function for sentinel-to-optional conversion instead of inlining the ternary expression at each use site.
+
+**Should be:** Lowering could inline `None if val == -1 else val` at each call site, or frontend could emit `SentinelToOptional` nodes that backends can inline or emit as helpers based on target language idioms.
+
+---
+
+#### 2. Pointer/Optional Type Conflation
+
+**Location:** `python.py:1032-1033`
+
+```python
+case Pointer(target=target):
+    return self._type(target)
+```
+
+`Pointer(StructRef("X"))` renders as `X` but should be `X | None` when the field is nullable. Example: `word: Word = None` should be `word: Word | None = None`. Approximately 50 fields in typical codebases are affected.
+
+**Should be:** Inference should distinguish `Pointer` (non-nullable reference) from `Optional(Pointer)` (nullable reference). Currently both use `Pointer` and backends must guess from context whether to emit nullable syntax.
+
+---
+
+### Not Compensations (Idiomatic Transforms)
+
+The Python backend performs several pattern transformations that improve output quality but aren't compensating for deficiencies—they're optimizations that preserve Python idioms:
+
+1. **Negative index folding** (`python.py:956-965`): Detects `len(obj) - N` and emits `-N`
+2. **Tuple unpacking fold** (`python.py:578-612`): Converts `for _item in xs; a = _item[0]; b = _item[1]` to `for a, b in xs`
+3. **Range pattern detection** (`python.py:1212-1254`): Converts `for i := 0; i < len(x); i++` to `for i in range(len(x))`
+
+These are acceptable backend optimizations rather than compensations for missing frontend analysis.
+
+---
+
+## PHP
+
+### 1. Bool-to-Int Casting
+
+**Location:** `php.py:871-876` (floor div), `php.py:917-919` (bitwise NOT), `php.py:1057-1060` (abs), `php.py:1061-1082` (min/max), `php.py:1099-1105` (divmod), `php.py:1454-1457` (arithmetic ops)
+
+```python
+if op == "//" and (left.typ == BOOL or right.typ == BOOL):
+    left_str = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+```
+
+Multiple locations check if operands have `BOOL` type and insert ternary conversion (`? 1 : 0`) when bool values are used in:
+- Floor division (`intdiv()`)
+- Bitwise NOT (`~`)
+- `abs()`, `min()`, `max()`, `divmod()`, `pow()` calls
+- `MinExpr` and `MaxExpr` when mixed with non-bool
+
+**Should be:** Inference or lowering should insert explicit `Cast(BOOL, INT)` nodes when bools flow into int-expecting operations.
+
+---
+
+### 2. Truthy Type Dispatch
+
+**Location:** `php.py:853-865` (`Truthy` handling)
+
+```python
+if _is_string_type(inner_type):
+    return f"({inner_str} !== '')"
+if isinstance(inner_type, (Slice, Map, Set)):
+    return f"(count({inner_str}) > 0)"
+if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Map, Set)):
+    return f"({inner_str} !== null && count({inner_str}) > 0)"
+if isinstance(inner_type, Primitive) and inner_type.kind == "int":
+    return f"({inner_str} !== 0)"
+return f"({inner_str} !== null)"
+```
+
+The backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks. PHP's truthiness semantics differ from Python's (e.g., `0` and `""` are falsy in PHP).
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `StringNonEmpty`, `SliceNonEmpty`, `IntNonZero`, `IsNotNil`, etc.
+
+---
+
+### 3. String Operator Detection
+
+**Location:** `php.py:497-498` (OpAssign), `php.py:877-882` (BinaryOp +), `php.py:1490-1506` (`_binary_op`)
+
+```python
+if op == "+" and (_is_string_type(left.typ) or _is_string_type(right.typ)):
+    return f"{left_str} . {right_str}"
+```
+
+The backend checks operand types to select PHP's string concatenation operator (`.`) vs numeric addition (`+`). Also changes `+=` to `.=` for string augmented assignment.
+
+**Should be:** Lowering should emit `StringConcat(parts)` IR nodes for string concatenation, distinct from `BinaryOp("+")` for numeric addition.
+
+---
+
+### 4. Collection Containment Dispatch
+
+**Location:** `php.py:1237-1248` (`_containment_check`)
+
+```python
+if isinstance(container_type, Set):
+    return f"{neg}isset({container_str}[{item_str}])"
+if isinstance(container_type, Map):
+    return f"{neg}array_key_exists({item_str}, {container_str})"
+if isinstance(container_type, Primitive) and container_type.kind == "string":
+    return f"({neg}str_contains({container_str}, {item_str}))"
+return f"{neg}in_array({item_str}, {container_str}, true)"
+```
+
+The backend switches on container type to emit correct containment semantics (sets use `isset()`, maps use `array_key_exists()`, strings use `str_contains()`, arrays use `in_array()`).
+
+**Should be:** Lowering should emit type-specific IR: `SetContains`, `MapContains`, `StringContains`, `SliceContains`.
+
+---
+
+### 5. Struct Literal Field Ordering
+
+**Location:** `php.py:246-260` (`_collect_struct_fields`), `php.py:1298-1317` (`_struct_lit`)
+
+```python
+field_info = self.sorted_struct_fields.get(struct_name, [])
+if field_info:
+    ordered_args = []
+    for field_name, field_type in field_info:
+        if field_name in fields:
+            ordered_args.append(self._expr(fields[field_name]))
+```
+
+The backend collects struct field info (sorting required fields before optional) to emit constructor arguments in correct order for PHP's positional constructors.
+
+**Should be:** `StructLit` IR node should already have fields in constructor parameter order, as determined by the fields phase.
+
+---
+
+### 6. Method Dispatch by Receiver Type
+
+**Location:** `php.py:1118-1213` (`_method_call`)
+
+The method implements a large dispatch table based on receiver type:
+- Slice methods: `append`, `pop`, `copy`, `decode`, `extend`, `remove`, `clear`, `insert`
+- String methods: `startswith`, `endswith`, `find`, `rfind`, `replace`, `split`, `join`, `lower`, `upper`
+- Map methods: `get`
+
+Each method has type-specific PHP implementations (e.g., `array_push()` vs `str_starts_with()`).
+
+**Should be:** Lowering should emit type-specific method IR: `SliceAppend`, `SlicePop`, `StringStartsWith`, `StringJoin`, `MapGet`, etc.
+
+---
+
+### 7. Bool-Int Comparison Detection
+
+**Location:** `php.py:884-897`
+
+```python
+# Use loose equality when comparing bool with int
+if op in ("==", "!=") and _is_bool_int_compare(left, right):
+    loose_op = "==" if op == "==" else "!="
+    return f"{left_str} {loose_op} {right_str}"
+# Use loose equality when comparing any-typed expr with bool
+if op in ("==", "!=") and (isinstance(left.typ, InterfaceRef) and right.typ == BOOL) ...
+```
+
+PHP's strict equality (`===`) treats `true !== 1`. The backend detects bool/int comparisons and uses loose equality (`==`) to match Python semantics where `True == 1`.
+
+**Should be:** Inference should annotate comparisons between bool and int with `use_loose_equality: bool`, or lowering should emit `LooseEquals` IR nodes when bool/int mixing is detected.
+
+---
+
+### 8. Ternary Nested Parentheses
+
+**Location:** `php.py:927-935` (Ternary), `php.py:1440-1445` (`_cond_expr`)
+
+```python
+# Wrap logical ops in condition since || has lower precedence than ?:
+cond_str = self._cond_expr(cond)
+# PHP 8+ requires parens for nested ternaries
+if isinstance(else_expr, Ternary):
+    else_str = f"({self._expr(else_expr)})"
+```
+
+PHP 8+ requires parentheses for nested ternaries (associativity changed). The backend detects nested `Ternary` nodes and wraps them, also wrapping `||` conditions due to precedence issues.
+
+**Should be:** Lowering could emit `Ternary` with an annotation for required parenthesization, or middleend could flatten chained ternaries into explicit `if-else` form.
+
+---
+
+### 9. String Find/Rfind Return Value Conversion
+
+**Location:** `php.py:1152-1157`, `1197-1202`
+
+```python
+if method == "find":
+    return f"(mb_strpos({obj_str}, {args_str}) === false ? -1 : mb_strpos({obj_str}, {args_str}))"
+```
+
+PHP's `mb_strpos()` returns `false` when not found; Python's `str.find()` returns `-1`. The backend emits a conditional to convert.
+
+**Should be:** Lowering should emit `StringFind(string, needle, not_found_sentinel=-1)` with explicit return-value semantics that backends can implement appropriately.
+
+---
+
+### 10. UnaryOp Negation Special Cases
+
+**Location:** `php.py:902-926`
+
+```python
+case UnaryOp(op="!", operand=operand):
+    operand_type = operand.typ
+    if isinstance(operand_type, Primitive) and operand_type.kind == "int":
+        return f"({self._expr(operand)} === 0)"
+    if isinstance(operand_type, (InterfaceRef, StructRef, Pointer)):
+        return f"({self._expr(operand)} === null)"
+```
+
+The backend checks operand types for `!` to emit type-appropriate falsiness checks: `=== 0` for int, `=== null` for objects (PHP's `!` operator has different semantics than Python's `not`).
+
+**Should be:** Lowering should emit `Falsy(expr)` or specialize `UnaryOp("!")` into type-specific IR based on operand type.
+
+---
+
+### 11. String Iteration Special Handling
+
+**Location:** `php.py:651-709` (`_emit_for_range`)
+
+```python
+is_string = isinstance(iter_type, Primitive) and iter_type.kind == "string"
+if is_string:
+    if value is not None and index is not None:
+        self._line(f"for (${idx} = 0; ${idx} < mb_strlen({iter_expr}); ${idx}++)")
+        self._line(f"${val} = mb_substr({iter_expr}, ${idx}, 1);")
+```
+
+Python strings are character sequences; PHP strings are byte sequences. The backend uses `mb_strlen`/`mb_substr`/`mb_str_split` for all string iteration to handle Unicode correctly.
+
+**Should be:** Frontend should emit distinct IR nodes for character-based string iteration. `ForRange` could carry `is_string_iter: bool` annotation, or lowering should emit `ForStringChars(string, index, value, body)`.
+
+---
+
+### 12. Pop Return Value at Index
+
+**Location:** `php.py:1124-1130`
+
+```python
+if method == "pop":
+    if not args:
+        return f"array_pop({obj_str})"
+    idx = self._expr(args[0])
+    if idx == "0":
+        return f"array_shift({obj_str})"
+    return f"array_splice({obj_str}, {idx}, 1)[0]"
+```
+
+Python's `list.pop(i)` removes and returns element at index `i`. PHP's `array_pop()` only pops from end. The backend pattern-matches index arguments to emit `array_shift()` for index 0 or `array_splice(...)[0]` for arbitrary indices.
+
+**Should be:** Lowering should emit `ListPop(list, index)` IR node with explicit semantics, rather than relying on backends to pattern-match `MethodCall("pop")`.
+
+---
+
+### 13. Bytes/String Conversion
+
+**Location:** `php.py:1134-1136` (bytes.decode), `php.py:1253-1260` (bytes cast), `php.py:1274-1281` (str from bytes)
+
+```python
+if method == "decode":
+    return f"UConverter::transcode(pack('C*', ...{obj_str}), 'UTF-8', 'UTF-8')"
+```
+
+The backend implements Python's `bytes.decode()` and `str(bytes)` using `UConverter::transcode()` for proper UTF-8 handling with replacement characters.
+
+**Should be:** Lowering should emit `BytesDecode(bytes_expr, encoding, errors)` IR nodes for bytes-to-string conversion.
+
+---
+
+### 14. Endswith Tuple Argument Expansion
+
+**Location:** `php.py:1146-1151`, `1189-1194`
+
+```python
+if method == "endswith":
+    if args and isinstance(args[0], TupleLit):
+        checks = " || ".join(
+            f"str_ends_with({obj_str}, {self._expr(e)})" for e in args[0].elements
+        )
+        return f"({checks})"
+```
+
+Python's `str.endswith()` accepts a tuple of suffixes. The backend expands this into multiple `str_ends_with()` checks joined with `||`.
+
+**Should be:** Lowering should detect tuple arguments to `endswith`/`startswith` and emit `StringEndsWithAny(string, suffixes)` IR nodes or expand to `BinaryOp("||", check1, check2, ...)`.
+
+---
+
+## Ruby
+
+### 1. Bool-to-Int Casting
+
+**Location:** `ruby.py:950-951` (abs), `964-970` (min), `980-985` (max), `1018-1028` (divmod), `1031-1061` (pow), `1543-1557` (floor div), `1562-1605` (bool comparisons), `1630-1640` (exponent), `1656-1671` (ordered comparisons), `1672-1685` (shifts), `1716-1736` (arithmetic), `1799-1824` (MinExpr/MaxExpr), `1825-1832` (UnaryOp)
+
+```python
+if left.typ == BOOL:
+    left_str = self._coerce_bool_to_int(left, raw=True)
+# produces: "(expr ? 1 : 0)"
+```
+
+Multiple locations check if operands have `BOOL` type and insert ternary conversion (`? 1 : 0`) when bool values are used in:
+- Arithmetic operators (+, -, *, /, %, //)
+- Comparison operators (<, >, <=, >=, ==, !=)
+- Bitwise operators (&, |, ^)
+- Shift operators (<<, >>)
+- Exponentiation (**)
+- Unary operators (-, ~)
+- Built-in functions (min, max, abs, pow, divmod)
+- MinExpr/MaxExpr nodes
+
+**Should be:** Inference or lowering should insert explicit `Cast(BOOL, INT)` nodes when bools flow into int-expecting operations.
+
+---
+
+### 2. Truthy Type Dispatch
+
+**Location:** `ruby.py:1476-1525` (`Truthy` handling)
+
+```python
+if isinstance(inner_type, Slice) or isinstance(inner_type, Map) or isinstance(inner_type, Set):
+    return f"({expr_str} && !{expr_str}.empty?)"
+if inner_type == INT:
+    return f"{expr_str} != 0"
+if inner_type == FLOAT:
+    return f"{expr_str} != 0.0"
+```
+
+The backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks. Ruby's truthiness semantics (only `nil` and `false` are falsy) differ significantly from Python's.
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `StringNonEmpty`, `SliceNonEmpty`, `IntNonZero`, `FloatNonZero`, `IsNotNil`, etc.
+
+---
+
+### 3. Map Key Type Coercion (Python Key Equivalence)
+
+**Location:** `ruby.py:2197-2240` (`_coerce_map_key`), `ruby.py:1-7` (acknowledged limitation in docstring)
+
+```python
+# BOOL variable → INT
+if map_key == "int" and key_typ == "bool":
+    return f"({key_code} ? 1 : 0)"
+# FLOAT variable → INT
+if map_key == "int" and key_typ == "float":
+    return f"({key_code}).to_i"
+```
+
+Python treats `True==1` and `False==0` as equivalent dict keys. Ruby `Hash` treats them as different. The backend coerces keys at runtime based on declared map key type. The docstring explicitly notes this only works in VarDecl initializers and direct Index/method access—not in Assign, function args, return statements, or comprehensions.
+
+**Should be:** Inference should track Python's key equivalence semantics, and lowering should emit explicit `CoerceMapKey(expr, target_key_type)` nodes when key types don't match the map's declared key type.
+
+---
+
+### 4. Collection Containment Dispatch
+
+**Location:** `ruby.py:1743-1746` (`in` operator in BinaryOp)
+
+```python
+if op == "in":
+    return f"{self._expr(right)}.include?({self._expr(left)})"
+```
+
+The backend uses Ruby's `.include?` method for all containment checks. While Ruby's method works across types, the emission is uniform rather than type-specialized.
+
+**Should be:** Lowering should emit type-specific IR: `SetContains`, `MapContains`, `SliceContains`, `StringContains`.
+
+---
+
+### 5. String Split Semantics
+
+**Location:** `ruby.py:1377-1404` (`split` and `rsplit` method handling)
+
+```python
+if len(args) == 1:
+    # Ruby returns [] for "".split(x), Python returns [""]
+    return f'({obj_str}.empty? ? [""] : {obj_str}.split(Regexp.new(Regexp.escape({arg_str})), -1))'
+else:
+    # Python maxsplit=0 means no splits, Ruby limit=1 means no splits
+    # Python maxsplit=n means n splits (n+1 parts), Ruby limit=n+1
+    return f'({obj_str}.empty? ? [""] : {obj_str}.split(Regexp.new(Regexp.escape({sep_str})), {maxsplit_str} == 0 ? 1 : {maxsplit_str} + 1))'
+```
+
+The backend emits complex patterns to match Python's `split()` behavior:
+- Empty string handling (`"".split(x)` returns `[""]` in Python, `[]` in Ruby)
+- Maxsplit argument semantics (Python's maxsplit is splits count, Ruby's limit is parts count)
+- Regex escaping for literal pattern matching
+
+**Should be:** Lowering should emit `StringSplit(string, sep, maxsplit)` with explicit Python semantics, or a `PythonSplit` IR node distinct from `SimpleSplit`.
+
+---
+
+### 6. Method Dispatch by Receiver Type
+
+**Location:** `ruby.py:1142-1459` (`MethodCall` handling)
+
+The method implements a large dispatch table based on receiver type:
+- String methods: join, split, rsplit, startswith, endswith, find, rfind, replace, count, isupper, islower, title, zfill, splitlines, expandtabs, casefold, format, removeprefix, removesuffix
+- Slice methods: pop, extend, index, remove, insert, sort
+- Map methods: get, items, keys, values, copy, setdefault, popitem, pop
+- Set methods: remove, discard, pop, copy, issubset, issuperset, isdisjoint, update, symmetric_difference, union, intersection, difference
+
+Each method has type-specific Ruby implementations.
+
+**Should be:** Lowering should emit type-specific method IR: `StringJoin`, `StringSplit`, `SliceAppend`, `SlicePop`, `MapGet`, `SetAdd`, etc.
+
+---
+
+### 7. Negative Index Pattern Detection
+
+**Location:** `ruby.py:2170-2178` (`_negative_index`)
+
+```python
+def _negative_index(self, obj: Expr, index: Expr) -> str | None:
+    """Detect len(obj) - N and return -N as string, or None if no match."""
+    if not isinstance(index, BinaryOp) or index.op != "-":
+        return None
+    if not isinstance(index.left, Len) or not isinstance(index.right, IntLit):
+        return None
+    if self._expr(index.left.expr) != self._expr(obj):
+        return None
+    return f"-{index.right.value}"
+```
+
+The backend pattern-matches `len(obj) - N` expressions to emit Ruby's native negative indexing (`arr[-N]`).
+
+**Should be:** Lowering should detect this pattern and emit `Index(obj, NegativeIndex(N))` or `LastElement(obj, offset=N)` IR nodes.
+
+---
+
+### 8. And/Or Value Preservation
+
+**Location:** `ruby.py:1526-1541` (value-returning and/or), `2390-2454` (helper methods)
+
+```python
+case BinaryOp(op="&&", left=left_expr, right=right_expr) if self._is_value_and_or(left_expr):
+    # Python's `and` returns first falsy value or last value
+    # Ruby: python_truthy(x) ? y : x
+    left_val, left_str, cond = self._extract_and_or_value(left_expr)
+    right_str = self._and_or_operand(right_expr)
+    return f"({cond} ? {right_str} : {left_str})"
+```
+
+Python's `and`/`or` operators return actual values, not just booleans. The backend implements complex logic to preserve these semantics, including truthy checks for different types and chained operations.
+
+**Should be:** Lowering should emit distinct `PythonAnd(left, right)` and `PythonOr(left, right)` IR nodes that explicitly return values, separate from `BinaryOp("&&")` which returns boolean.
+
+---
+
+### 9. Array Comparison Operators
+
+**Location:** `ruby.py:1641-1655`
+
+```python
+case BinaryOp(op=op, left=left, right=right) if op in ("<", ">", "<=", ">=") and isinstance(left.typ, (Slice, Tuple)):
+    # Ruby arrays don't have <, >, <=, >= - use <=> spaceship
+    left_str = self._expr(left)
+    right_str = self._expr(right)
+    return f"(({left_str} <=> {right_str}) {op} 0)"
+```
+
+Ruby arrays don't support `<`, `>`, `<=`, `>=` operators directly. The backend uses the spaceship operator `<=>` and compares the result to 0.
+
+**Should be:** Lowering should emit `ArrayCompare(left, right, op)` IR nodes for array ordering comparisons, distinct from primitive `BinaryOp`.
+
+---
+
+### 10. Slice Bounds Clamping
+
+**Location:** `ruby.py:2077-2168` (`_slice_expr`)
+
+```python
+# Clamp negative start indices: Ruby returns nil if negative index goes past start
+# Python clamps to 0, so items[-100:2] gives items[0:2]
+if clamp_low:
+    low_str = f"[{low_str}, -{obj_str}.length].max"
+# Ruby returns nil for out-of-bounds slices, Python returns []
+# Use || [] to match Python semantics
+return f"({obj_str}[{low_str}...{high_str}] || [])"
+```
+
+The backend implements extensive logic to match Python's slice semantics:
+- Clamping negative indices that exceed sequence length
+- Returning empty array instead of nil for out-of-bounds slices
+- Handling step parameters with reverse iteration
+- Different semantics for bytes vs arrays vs strings
+
+**Should be:** Lowering should emit `Substring` or `SliceExpr` with explicit semantics flag (`clamp=True`, `empty_on_oob=True`), or emit the bounds-checking wrapper at lowering time.
+
+---
+
+### 11. String/Array Multiplication with Negative
+
+**Location:** `ruby.py:1686-1715`
+
+```python
+case BinaryOp(op="*", left=left, right=right) if left.typ == Primitive(kind="string") and right.typ == INT:
+    # Handle negative multiplier: [n, 0].max
+    left_str = self._expr(left)
+    right_str = self._expr(right)
+    return f"{left_str} * [{right_str}, 0].max"
+```
+
+Python returns empty string/array for negative multipliers; Ruby raises an error. The backend clamps the multiplier to 0. Also handles `int * string` order reversal (Ruby requires string on left).
+
+**Should be:** Lowering should emit `StringRepeat(string, count)` or `ArrayRepeat(array, count)` IR nodes with explicit clamping semantics.
+
+---
+
+### 12. Dict View Set Operations
+
+**Location:** `ruby.py:1782-1789`, `2533-2539`
+
+```python
+# Detect set operations on dict views (keys/items/values)
+# These return arrays in Ruby but sets in Python
+if op in ("&", "|", "-", "^") and (_is_dict_view(left) or _is_dict_view(right)):
+    self._needs_set = True
+    left_set = f"Set[*{left_str}]" if _is_dict_view(left) else left_str
+    right_set = f"Set[*{right_str}]" if _is_dict_view(right) else right_str
+    return f"{left_set} {rb_op} {right_set}"
+```
+
+Python dict views (`.keys()`, `.values()`, `.items()`) support set operations. The backend detects view expressions and wraps them in `Set[]` for set operators.
+
+**Should be:** Lowering should convert dict view expressions to explicit set types when used in set operations, or emit `DictKeysView`, `DictValuesView`, `DictItemsView` IR nodes with set-compatible semantics.
+
+---
+
+### 13. Find/Rfind Return Value Conversion
+
+**Location:** `ruby.py:1365-1369` (rfind), `ruby.py:1747-1773` (find == -1 pattern)
+
+```python
+# Python: s.rfind(x) returns -1 if not found, Ruby rindex returns nil
+if method == "rfind" and receiver_type == STRING:
+    return f"({obj_str}.rindex({arg_str}) || -1)"
+# Python: s.find(x) == -1 -> Ruby: s.index(x).nil?
+if op in ("==", "!="):
+    if find_expr is not None:
+        if op == "==":
+            return f"{obj_str}.index({args_str}).nil?"
+```
+
+The backend converts between Ruby's `nil` and Python's `-1` for find operations, and optimizes the common `find(x) == -1` pattern to use `.nil?`.
+
+**Should be:** Lowering should emit `StringFind(string, needle, not_found_sentinel=-1)` with explicit return-value semantics.
+
+---
+
+### 14. List Insert Index Handling
+
+**Location:** `ruby.py:1341-1351`
+
+```python
+# Ruby's insert(100, x) on a 5-element array pads with nil, Python clips
+# Ruby's insert(-1, x) appends, Python inserts before last
+return f"(-> {{ _idx = {idx_str}; {obj_str}.insert([[_idx < 0 ? {obj_str}.length + _idx : _idx, 0].max, {obj_str}.length].min, {val_str}) }}).call"
+```
+
+The backend emits complex index clamping logic for `list.insert()` because Ruby and Python have different out-of-bounds behavior.
+
+**Should be:** Lowering should emit `ListInsert(list, index, value, clamp=True)` with explicit clamping semantics.
+
+---
+
+### 15. Range Helper for Negative Step
+
+**Location:** `ruby.py:354-357`, `1120-1124`
+
+```python
+helper = "def _range(start, stop = nil, step = 1); stop.nil? ? (0...start).step(step).to_a : (step > 0 ? (start...stop).step(step).to_a : (stop + 1..start).step(-step).to_a.reverse); end"
+...
+return f"_range({args_str})"
+```
+
+The backend emits a helper function to handle `range(start, stop, step)` with negative steps. Ruby ranges don't natively support negative stepping.
+
+**Should be:** Lowering should emit `Range(start, stop, step)` with a flag indicating negative step handling, or expand negative-step ranges into explicit iteration patterns during lowering.
+
+---
+
+### 16. Endswith/Startswith Tuple Argument Expansion
+
+**Location:** `ruby.py:1183-1189`
+
+```python
+if method in ("startswith", "endswith") and len(args) == 1:
+    if isinstance(args[0], TupleLit):
+        obj_str = self._expr(obj)
+        unpacked = ", ".join(self._expr(e) for e in args[0].elements)
+        rb_method = _method_name(method, receiver_type)
+        return f"{obj_str}.{rb_method}({unpacked})"
+```
+
+Python's `str.endswith()` accepts a tuple of suffixes. Ruby's `end_with?` accepts multiple arguments. The backend unpacks the tuple for multi-argument call.
+
+**Should be:** Lowering should detect tuple arguments to `endswith`/`startswith` and emit `StringEndsWithAny(string, suffixes)` IR nodes or unpack to multi-argument form during lowering.
