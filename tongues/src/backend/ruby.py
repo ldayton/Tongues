@@ -7,6 +7,7 @@ from src.ir import (
     BOOL,
     FLOAT,
     INT,
+    STRING,
     Array,
     Assert,
     Assign,
@@ -810,13 +811,15 @@ class RubyBackend:
                 return f"{self._expr(v)}.to_s"
             case CharClassify(kind=kind, char=char):
                 char_expr = self._expr(char)
+                # Python semantics: isupper/islower require at least one cased char,
+                # and all cased chars match the case. Non-cased chars (digits, etc) are ignored.
                 method_map = {
                     "digit": f"({char_expr}).match?(/\\A\\d+\\z/)",
                     "alpha": f"({char_expr}).match?(/\\A[[:alpha:]]+\\z/)",
                     "alnum": f"({char_expr}).match?(/\\A[[:alnum:]]+\\z/)",
                     "space": f"({char_expr}).match?(/\\A\\s+\\z/)",
-                    "upper": f"({char_expr}).match?(/\\A[[:upper:]]+\\z/)",
-                    "lower": f"({char_expr}).match?(/\\A[[:lower:]]+\\z/)",
+                    "upper": f"(({char_expr}).match?(/[[:alpha:]]/) && {char_expr} == {char_expr}.upcase)",
+                    "lower": f"(({char_expr}).match?(/[[:alpha:]]/) && {char_expr} == {char_expr}.downcase)",
                 }
                 return method_map[kind]
             case TrimChars(string=s, chars=chars, mode=mode):
@@ -855,8 +858,9 @@ class RubyBackend:
             case Call(func="repr", args=[arg]) if arg.typ == BOOL:
                 return f'({self._expr(arg)} ? "True" : "False")'
             case Call(func="repr", args=[arg]) if arg.typ == Primitive(kind="string"):
-                # Python repr uses single quotes, Ruby inspect uses double quotes
-                return f'"\'" + {self._expr(arg)} + "\'"'
+                # Python repr uses single quotes, or double if string contains single quote
+                arg_str = self._expr(arg)
+                return f'({arg_str}.include?("\'") ? \'"\' + {arg_str} + \'"\' : "\'" + {arg_str} + "\'")'
             case Call(func="repr", args=[arg]) if isinstance(arg, NilLit):
                 return '"None"'
             case Call(func="repr", args=[arg]):
@@ -1042,6 +1046,93 @@ class RubyBackend:
                             pat_escaped = pattern.replace("\\", "\\\\").replace('"', '\\"')
                             repl_escaped = replacement.replace("\\", "\\\\").replace('"', '\\"')
                             return f'{obj_str}.gsub("{pat_escaped}") {{ "{repl_escaped}" }}'
+                # Python: s.rfind(x) returns -1 if not found, Ruby rindex returns nil
+                if method == "rfind" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    arg_str = self._expr(args[0])
+                    return f"({obj_str}.rindex({arg_str}) || -1)"
+                # Python: s.count(sub) counts non-overlapping substrings
+                # Ruby's count counts characters, so use scan
+                if method == "count" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    arg_str = self._expr(args[0])
+                    return f"{obj_str}.scan(Regexp.escape({arg_str})).size"
+                # Python: s.split(sep, maxsplit) vs Ruby: s.split(sep, limit)
+                # Python maxsplit=n gives n+1 parts, Ruby limit=n gives n parts
+                if method == "split" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    if len(args) == 0:
+                        # Python split() splits on whitespace and removes empty strings
+                        return f"{obj_str}.split"
+                    elif len(args) == 1:
+                        arg_str = self._expr(args[0])
+                        # Ruby's split(" ") collapses whitespace like Python's split()
+                        # Use Regexp.new to convert string to regex for consistent behavior
+                        # Ruby returns [] for "".split(x), Python returns [""]
+                        return f'({obj_str}.empty? ? [""] : {obj_str}.split(Regexp.new(Regexp.escape({arg_str})), -1))'
+                    else:
+                        sep_str = self._expr(args[0])
+                        maxsplit_str = self._expr(args[1])
+                        # Python maxsplit=0 means no splits, Ruby limit=1 means no splits
+                        # Python maxsplit=n means n splits (n+1 parts), Ruby limit=n+1
+                        return f'({obj_str}.empty? ? [""] : {obj_str}.split(Regexp.new(Regexp.escape({sep_str})), {maxsplit_str} == 0 ? 1 : {maxsplit_str} + 1))'
+                # Python: s.rsplit(sep, maxsplit) - split from right
+                if method == "rsplit" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    if len(args) == 1:
+                        arg_str = self._expr(args[0])
+                        return f"{obj_str}.split({arg_str}, -1)"
+                    else:
+                        sep_str = self._expr(args[0])
+                        maxsplit_str = self._expr(args[1])
+                        return f"{obj_str}.reverse.split({sep_str}, {maxsplit_str} == 0 ? 1 : {maxsplit_str} + 1).map(&:reverse).reverse"
+                # Python: s.isupper() - has at least one cased char, all cased are upper
+                if method == "isupper" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    return f"({obj_str}.match?(/[[:alpha:]]/) && {obj_str} == {obj_str}.upcase)"
+                # Python: s.islower() - has at least one cased char, all cased are lower
+                if method == "islower" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    return f"({obj_str}.match?(/[[:alpha:]]/) && {obj_str} == {obj_str}.downcase)"
+                # Python: s.title() - titlecase each word (first char upper, rest lower)
+                if method == "title" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    return f"{obj_str}.gsub(/\\b\\w+/) {{ |w| w.capitalize }}"
+                # Python: s.zfill(width) - zero-pad, preserving sign
+                if method == "zfill" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    width_str = self._expr(args[0])
+                    return f'(({obj_str}[0] == "-" || {obj_str}[0] == "+") ? {obj_str}[0] + {obj_str}[1..].rjust({width_str} - 1, "0") : {obj_str}.rjust({width_str}, "0"))'
+                # Python: s.splitlines() - split on line boundaries
+                if method == "splitlines" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    return f'{obj_str}.split(/\\r?\\n/, -1).tap {{ |a| a.pop if a.last == "" }}'
+                # Python: s.expandtabs(tabsize) - column-aware tab expansion
+                if method == "expandtabs" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    tabsize = "8" if len(args) == 0 else self._expr(args[0])
+                    # Column-aware: tab expands to next multiple of tabsize
+                    return f'(-> {{ _ts = {tabsize}; _col = 0; {obj_str}.chars.map {{ |c| c == "\\t" ? (" " * (_ts - _col % _ts)).tap {{ _col = 0 }} : c.tap {{ _col = c == "\\n" ? 0 : _col + 1 }} }}.join }}).call'
+                # Python: s.casefold() - aggressive lowercase for caseless matching
+                if method == "casefold" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    return f"{obj_str}.downcase"
+                # Python: s.format(*args) - string formatting (renamed to format_ in IR)
+                if method in ("format", "format_") and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    format_args = ", ".join(self._expr(a) for a in args)
+                    # Use a lambda to create the args array once
+                    return f"(-> {{ _args = [{format_args}]; {obj_str}.gsub(/\\{{(\\d*)\\}}/) {{ |m| m =~ /\\{{(\\d+)\\}}/ ? _args[$1.to_i].to_s : _args.shift.to_s }} }}).call"
+                # Python: s.removeprefix(prefix)
+                if method == "removeprefix" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    prefix_str = self._expr(args[0])
+                    return f"{obj_str}.delete_prefix({prefix_str})"
+                # Python: s.removesuffix(suffix)
+                if method == "removesuffix" and receiver_type == STRING:
+                    obj_str = self._expr(obj)
+                    suffix_str = self._expr(args[0])
+                    return f"{obj_str}.delete_suffix({suffix_str})"
                 args_str = ", ".join(self._expr(a) for a in args)
                 rb_method = _method_name(method, receiver_type)
                 obj_str = self._expr(obj)
@@ -1092,6 +1183,22 @@ class RubyBackend:
                 if isinstance(e, BinaryOp):
                     return f"!!({expr_str})"
                 return f"!!{expr_str}"
+            case BinaryOp(op="&&", left=left_expr, right=right_expr) if self._is_value_and_or(
+                left_expr
+            ):
+                # Python's `and` returns first falsy value or last value
+                # Ruby: python_truthy(x) ? y : x
+                left_val, left_str, cond = self._extract_and_or_value(left_expr)
+                right_str = self._and_or_operand(right_expr)
+                return f"({cond} ? {right_str} : {left_str})"
+            case BinaryOp(op="||", left=left_expr, right=right_expr) if self._is_value_and_or(
+                left_expr
+            ):
+                # Python's `or` returns first truthy value or last value
+                # Ruby: python_truthy(x) ? x : y
+                left_val, left_str, cond = self._extract_and_or_value(left_expr)
+                right_str = self._and_or_operand(right_expr)
+                return f"({cond} ? {left_str} : {right_str})"
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - Ruby's / on integers truncates toward zero
                 if left.typ == BOOL:
@@ -1201,6 +1308,21 @@ class RubyBackend:
                 else:
                     right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
                 return f"{left_str} {op} {right_str}"
+            case BinaryOp(op="*", left=left, right=right) if (
+                left.typ == INT and right.typ == Primitive(kind="string")
+            ):
+                # Ruby can't do int * string, swap to string * int
+                # Also handle negative: [s, 0].max for n < 0
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"{right_str} * [{left_str}, 0].max"
+            case BinaryOp(op="*", left=left, right=right) if (
+                left.typ == Primitive(kind="string") and right.typ == INT
+            ):
+                # Handle negative multiplier: [n, 0].max
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"{left_str} * [{right_str}, 0].max"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "+",
                 "-",
@@ -1475,12 +1597,20 @@ class RubyBackend:
                     return f"{obj_str}[{low_str}...{high_str}].reverse"
                 return f"{obj_str}[{low_str}..].reverse"
             # Positive step: select every nth element
+            is_string = obj.typ == Primitive(kind="string")
             if is_bytes:
                 if not low and not high:
                     return f"TonguesBytes.new({obj_str}.data.each_slice({step_val}).map(&:first))"
                 if high_str:
                     return f"TonguesBytes.new({obj_str}[{low_str}...{high_str}].data.each_slice({step_val}).map(&:first))"
                 return f"TonguesBytes.new({obj_str}[{low_str}..].data.each_slice({step_val}).map(&:first))"
+            if is_string:
+                # For strings, convert to chars, slice, then join back
+                if not low and not high:
+                    return f"{obj_str}.chars.each_slice({step_val}).map(&:first).join"
+                if high_str:
+                    return f"{obj_str}[{low_str}...{high_str}].chars.each_slice({step_val}).map(&:first).join"
+                return f"{obj_str}[{low_str}..].chars.each_slice({step_val}).map(&:first).join"
             if not low and not high:
                 return f"{obj_str}.each_slice({step_val}).map(&:first)"
             if high_str:
@@ -1621,6 +1751,95 @@ class RubyBackend:
         """Emit a condition expression for ternary. In Ruby && and || have higher precedence than ?:."""
         return self._expr(expr)
 
+    def _python_truthy_check(self, expr: Expr) -> str:
+        """Emit a Python-style truthy check for an expression (for and/or semantics)."""
+        expr_str = self._expr(expr)
+        typ = expr.typ
+        if isinstance(typ, (Slice, Map, Set)):
+            return f"({expr_str} && !{expr_str}.empty?)"
+        if isinstance(typ, Optional):
+            inner = typ.inner
+            if isinstance(inner, (Slice, Map, Set)):
+                return f"({expr_str} && !{expr_str}.empty?)"
+            return f"!{expr_str}.nil?"
+        if isinstance(typ, Pointer):
+            return f"!{expr_str}.nil?"
+        if typ == Primitive(kind="string"):
+            return f"({expr_str} && !{expr_str}.empty?)"
+        if typ == INT:
+            return f"{expr_str} != 0"
+        if typ == FLOAT:
+            return f"{expr_str} != 0.0"
+        if typ == BOOL:
+            return expr_str
+        return f"!!{expr_str}"
+
+    def _is_value_and_or(self, expr: Expr) -> bool:
+        """Check if expression is a Truthy or value-returning and/or."""
+        if isinstance(expr, Truthy):
+            return True
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            return self._is_value_and_or(expr.left)
+        return False
+
+    def _extract_and_or_value(self, expr: Expr) -> tuple[Expr, str, str]:
+        """Extract value, value string, and truthy check from and/or operand."""
+        if isinstance(expr, Truthy):
+            val = expr.expr
+            val_str = self._expr(val)
+            cond = self._python_truthy_check(val)
+            return val, val_str, cond
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            # For chained and/or, the "value" is the whole expression
+            # and the truthy check is on that value
+            val_str = self._expr(expr)
+            # The truthy check needs to be on the result type
+            cond = self._python_truthy_check_str(val_str, expr.left)
+            return expr, val_str, cond
+        val_str = self._expr(expr)
+        cond = self._python_truthy_check(expr)
+        return expr, val_str, cond
+
+    def _python_truthy_check_str(self, expr_str: str, sample_expr: Expr) -> str:
+        """Generate truthy check when we have the string but need type info from a sample."""
+        # For chained and/or, infer type from the innermost Truthy
+        typ = self._get_innermost_type(sample_expr)
+        if isinstance(typ, (Slice, Map, Set)):
+            return f"({expr_str} && !{expr_str}.empty?)"
+        if isinstance(typ, Optional):
+            inner = typ.inner
+            if isinstance(inner, (Slice, Map, Set)):
+                return f"({expr_str} && !{expr_str}.empty?)"
+            return f"!{expr_str}.nil?"
+        if isinstance(typ, Pointer):
+            return f"!{expr_str}.nil?"
+        if typ == Primitive(kind="string"):
+            return f"({expr_str} && !{expr_str}.empty?)"
+        if typ == INT:
+            return f"{expr_str} != 0"
+        if typ == FLOAT:
+            return f"{expr_str} != 0.0"
+        if typ == BOOL:
+            return expr_str
+        return f"!!{expr_str}"
+
+    def _get_innermost_type(self, expr: Expr) -> "Type":
+        """Get the type of the innermost value in a chained and/or."""
+        if isinstance(expr, Truthy):
+            return expr.expr.typ
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            return self._get_innermost_type(expr.left)
+        return expr.typ
+
+    def _and_or_operand(self, expr: Expr) -> str:
+        """Extract value from and/or operand, handling nested Truthy and BinaryOp."""
+        if isinstance(expr, Truthy):
+            return self._expr(expr.expr)
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            # Nested and/or - recursively emit value-preserving code
+            return self._expr(expr)
+        return self._expr(expr)
+
     def _coerce_bool_to_int(self, expr: Expr, raw: bool = False) -> str:
         """Coerce a bool expression to int for comparison with int."""
         if expr.typ == BOOL:
@@ -1630,6 +1849,10 @@ class RubyBackend:
             # MinExpr/MaxExpr already produce int via _expr, skip double coercion
             if isinstance(expr, (MinExpr, MaxExpr)):
                 return self._expr(expr)
+            # BinaryOp with &&/|| and Truthy operands already preserves values
+            if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+                if self._is_value_and_or(expr.left):
+                    return self._expr(expr)
             inner = self._expr(expr)
             # Ternary has lower precedence than arithmetic, so wrap in parens
             return f"({inner} ? 1 : 0)"
@@ -1712,7 +1935,7 @@ def _method_name(method: str, receiver_type: Type) -> str:
     if method == "replace":
         return "gsub"
     # upper/lower for strings only (bytes have their own upper/lower methods)
-    if receiver_type == Primitive(kind="string"):
+    if receiver_type == STRING:
         if method == "upper":
             return "upcase"
         if method == "lower":

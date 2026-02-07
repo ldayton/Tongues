@@ -25,9 +25,9 @@ _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
     "python": (["python3", "--version"], r"3\.12"),
     "ruby": (["ruby", "--version"], r"ruby 3\."),
     "rust": (["rustc", "--version"], r"1\.75"),
-    "swift": (["swift", "--version"], r"5\.9"),
+    "swift": (["xcrun", "swift", "--version"], r"6\."),
     "typescript": (["tsc", "--version"], r"5\.3"),
-    "zig": (["zig", "version"], r"0\.11"),
+    "zig": (["zig", "version"], r"0\.14"),
 }
 
 
@@ -92,12 +92,10 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "dart",
         "go",
         "java",
-        "javascript",
         "lua",
         "perl",
         "php",
         "swift",
-        "typescript",
         "zig",
     },
     "apptest_dicts": {
@@ -218,7 +216,6 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "lua",
         "perl",
         "php",
-        "ruby",
         "rust",
         "swift",
         "typescript",
@@ -349,7 +346,7 @@ TARGETS: dict[str, Target] = {
         format_cmd=[
             "java",
             "-jar",
-            "/usr/local/lib/google-java-format.jar",
+            "/opt/java-tools/google-java-format.jar",
             "-i",
             "{path}",
         ],
@@ -406,7 +403,7 @@ TARGETS: dict[str, Target] = {
     "swift": Target(
         name="swift",
         ext=".swift",
-        run_cmd=["swift", "{path}"],
+        run_cmd=["xcrun", "swift", "{path}"],
         format_cmd=["swiftformat", "{path}"],
     ),
     "zig": Target(
@@ -555,24 +552,10 @@ def pytest_generate_tests(metafunc):
                 for tid, inp, lang, exp, has_exp in tests
                 if lang in target_filter
             ]
-        params = []
-        for test_id, input_code, lang, expected, has_explicit in tests:
-            version_ok, version_msg = _check_version(lang)
-            if not version_ok and not ignore_version:
-                params.append(
-                    pytest.param(
-                        input_code,
-                        lang,
-                        expected,
-                        has_explicit,
-                        id=test_id,
-                        marks=pytest.mark.skip(reason=f"wrong version: {version_msg}"),
-                    )
-                )
-            else:
-                params.append(
-                    pytest.param(input_code, lang, expected, has_explicit, id=test_id)
-                )
+        params = [
+            pytest.param(input_code, lang, expected, has_explicit, id=test_id)
+            for test_id, input_code, lang, expected, has_explicit in tests
+        ]
         metafunc.parametrize(
             "codegen_input,codegen_lang,codegen_expected,codegen_has_explicit", params
         )
@@ -605,13 +588,15 @@ def transpiled(apptest: Path, target: Target, output_path: Path) -> Path:
 
 @pytest.fixture
 def formatted(transpiled: Path, target: Target) -> Path:
-    """Apply language formatter (optional, no-fail)."""
+    """Apply language formatter (fails if formatter not found)."""
     fmt_cmd = target.get_format_command(transpiled)
     if fmt_cmd:
         try:
             subprocess.run(fmt_cmd, capture_output=True, timeout=30)
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass  # Formatting is optional
+        except FileNotFoundError:
+            pytest.fail(f"Formatter not found: {fmt_cmd[0]}")
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"Formatter timed out: {fmt_cmd[0]}")
     return transpiled
 
 

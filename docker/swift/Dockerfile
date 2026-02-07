@@ -1,5 +1,5 @@
-FROM swift:5.9
-RUN swift --version | head -1 | grep -q "5\.9"
+FROM swift:6.0
+RUN swift --version | head -1 | grep -q "6\."
 RUN apt-get update && apt-get install -y curl unzip \
     && rm -rf /var/lib/apt/lists/* \
     && curl -LsSf https://astral.sh/uv/install.sh | sh

@@ -857,6 +857,8 @@ class JsLikeBackend:
                 return '"None"'
             case Call(func="repr", args=[arg]) if arg.typ == BOOL:
                 return f'({self._expr(arg)} ? "True" : "False")'
+            case Call(func="repr", args=[arg]) if arg.typ == STRING:
+                return f'"\'" + {self._expr(arg)} + "\'"'
             case Call(func="repr", args=[arg]):
                 return f"String({self._expr(arg)})"
             case Call(func="bool", args=args):
@@ -883,9 +885,11 @@ class JsLikeBackend:
             case Call(func="divmod", args=[a, b]):
                 return f"[Math.floor({self._expr(a)} / {self._expr(b)}), {self._expr(a)} % {self._expr(b)}]"
             case Call(func="pow", args=[base, exp]):
-                return f"{self._expr(base)} ** {self._expr(exp)}"
+                base_str = self._pow_base(base)
+                return f"{base_str} ** {self._expr(exp)}"
             case Call(func="pow", args=[base, exp, mod]):
-                return f"{self._expr(base)} ** {self._expr(exp)} % {self._expr(mod)}"
+                base_str = self._pow_base(base)
+                return f"{base_str} ** {self._expr(exp)} % {self._expr(mod)}"
             case Call(func=func, args=args):
                 return self._call_expr(func, args)
             case MethodCall(obj=obj, method="join", args=[arr], receiver_type=_):
@@ -1066,7 +1070,7 @@ class JsLikeBackend:
             and isinstance(typ, Primitive)
             and typ.kind in ("int", "byte", "rune")
         ):
-            return f"{obj_str}.charCodeAt({idx_str})"
+            return f"{obj_str}.codePointAt({idx_str})"
         if isinstance(obj_type, Map):
             return f"{obj_str}.get({idx_str})"
         return f"{obj_str}[{idx_str}]"
@@ -1386,6 +1390,17 @@ class JsLikeBackend:
             return inner
         needs_parens = child_prec < parent_prec or (child_prec == parent_prec and not is_left)
         return f"({inner})" if needs_parens else inner
+
+    def _pow_base(self, base: Expr) -> str:
+        """Wrap pow() base in parens if needed (JS requires parens for unary before **)."""
+        base_str = self._expr(base)
+        if isinstance(base, UnaryOp):
+            return f"({base_str})"
+        if isinstance(base, IntLit) and base.value < 0:
+            return f"({base_str})"
+        if isinstance(base, FloatLit) and base.value < 0:
+            return f"({base_str})"
+        return base_str
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
         result = template

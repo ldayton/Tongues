@@ -1130,12 +1130,12 @@ class ZigBackend(Emitter):
             if args[1].typ == BOOL:
                 exp = f"@as(u6, @intFromBool({exp}))"
             return f"std.math.pow(i64, {base}, {exp})"
-        # abs(x) - use std.math.absInt for Zig 0.11 compatibility
+        # abs(x) - use @abs builtin (Zig 0.13+)
         if func == "abs" and len(args) == 1:
             x = self._emit_expr(args[0])
             if args[0].typ == BOOL:
                 x = f"@as(i64, @intFromBool({x}))"
-            return f"(std.math.absInt({x}) catch 0)"
+            return f"@abs({x})"
         # bytes() constructor
         if func == "bytes":
             if len(args) == 0:
@@ -1370,7 +1370,6 @@ class ZigBackend(Emitter):
         # But not for bytes slices which are []const u8, not ArrayList
         if isinstance(expr.receiver_type, Slice) and not is_bytes_slice:
             if method == "append":
-                # ArrayList.append requires allocator in Zig 0.15+
                 arg = args[0]
                 return f"{obj}.append(std.heap.page_allocator, {arg}) catch unreachable"
             if method == "pop":
