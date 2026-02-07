@@ -2743,3 +2743,179 @@ if method == "pop":
 Python's `dict.pop(key)` removes and returns the value. Rust's HashMap has `.remove()` which returns `Option<V>`. The backend emits `.unwrap()` or `.unwrap_or(default)` based on argument count.
 
 **Should be:** Lowering should emit `MapPop(map, key, default?)` IR node with explicit return-value semantics.
+
+---
+
+## Swift
+
+### 1. Bool-to-Int Casting
+
+**Location:** `swift.py:162-188` (`_is_bool`, `_needs_bool_int_coerce`), `swift.py:529-572` (BinaryOp), `swift.py:596-600` (UnaryOp), `swift.py:642-643` (int builtin), `swift.py:649-650` (abs), `swift.py:656-665` (pow, divmod), `swift.py:753-770` (MinExpr/MaxExpr)
+
+```python
+def _is_bool(expr: Expr) -> bool:
+    """True if expression evaluates to Bool in Swift output."""
+    ...
+if _needs_bool_int_coerce(expr.left, expr.right):
+    left = self._coerce_bool_to_int(expr.left)
+    right = self._coerce_bool_to_int(expr.right)
+# produces: "(expr ? 1 : 0)"
+```
+
+Multiple locations check `_is_bool()` and insert ternary conversion (`? 1 : 0`) when bool values are used in:
+- Comparison operations with mixed bool/int (`True == 1`)
+- Arithmetic operators (+, -, *, /, %)
+- Shift operators (<<, >>)
+- Ordered comparisons (<, >, <=, >=) with bool operands
+- Bitwise operators (&, |, ^) — Swift doesn't support bitwise ops on Bool
+- Unary operators (-, ~) on bools
+- Built-in functions (int, abs, pow, divmod)
+- MinExpr/MaxExpr nodes
+
+**Should be:** Inference or lowering should insert explicit `Cast(BOOL, INT)` nodes when bools flow into int-expecting operations.
+
+---
+
+### 2. Truthy Type Dispatch
+
+**Location:** `swift.py:727-740` (`_emit_Truthy`)
+
+```python
+if inner_type == STRING:
+    return f"!{inner}.isEmpty"
+if inner_type == INT:
+    if isinstance(expr.expr, BinaryOp):
+        return f"(({inner}) != 0)"
+    return f"({inner} != 0)"
+if isinstance(inner_type, Slice):
+    return f"!{inner}.isEmpty"
+if isinstance(inner_type, Optional):
+    return f"({inner} != nil)"
+return f"({inner} != nil)"
+```
+
+The backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks. Swift's boolean context requires explicit comparisons.
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `StringNonEmpty`, `SliceNonEmpty`, `IntNonZero`, `IsNotNil`, etc.
+
+---
+
+### 3. String Concatenation Flattening
+
+**Location:** `swift.py:526-527`, `swift.py:577-594` (`_emit_string_add`, `_flatten_string_add`)
+
+```python
+if op == "+" and expr.typ == STRING:
+    return self._emit_string_add(expr)
+...
+def _emit_string_add(self, expr: BinaryOp) -> str:
+    """Flatten chained string + into a single interpolation."""
+    parts: list[Expr] = []
+    self._flatten_string_add(expr, parts)
+    segments = []
+    for p in parts:
+        if isinstance(p, StringLit):
+            segments.append(escape_string(p.value))
+        else:
+            segments.append(f"\\({self._emit_expr(p)})")
+    return '"' + "".join(segments) + '"'
+```
+
+The backend checks if operands are strings and flattens chained `+` operations into Swift string interpolation syntax (`"\(expr)"`).
+
+**Should be:** Lowering should emit `StringConcat(parts)` IR nodes for string concatenation, distinct from `BinaryOp("+")` for numeric addition.
+
+---
+
+### 4. Chained Comparison Expansion
+
+**Location:** `swift.py:773-779` (`_emit_ChainedCompare`)
+
+```python
+def _emit_ChainedCompare(self, expr: ChainedCompare) -> str:
+    parts = []
+    for i, op in enumerate(expr.ops):
+        left_str = self._emit_expr(expr.operands[i])
+        right_str = self._emit_expr(expr.operands[i + 1])
+        parts.append(f"{left_str} {op} {right_str}")
+    return "(" + " && ".join(parts) + ")"
+```
+
+Swift doesn't support chained comparisons like `a < b < c`. The backend expands to `(a < b && b < c)`. The IR already has a `ChainedCompare` node, but the backend must still do the expansion.
+
+**Should be:** This is acceptable backend behavior since `ChainedCompare` explicitly represents the construct. However, lowering could emit `BinaryOp("&&", ...)` for backends that don't support chained comparisons.
+
+---
+
+### 5. Entrypoint Function Renaming
+
+**Location:** `swift.py:218-222` (`_fn_name`), `swift.py:208`
+
+```python
+def _fn_name(self, name: str) -> str:
+    """Map IR function name to Swift function name."""
+    if name == self._entrypoint_fn:
+        return f"_{name}"
+    return self._safe(name)
+...
+self.line(f"exit(Int32(_{module.entrypoint.function_name}()))")
+```
+
+The backend prefixes the entrypoint function with `_` because Swift's module-level `exit()` call is emitted after function definitions. Using the original name would conflict with the function being called.
+
+**Should be:** Lowering could emit the entrypoint pattern with a unique name, or the IR could specify a separate `main_wrapper` function for targets that need this pattern.
+
+---
+
+### 6. Bitwise Operations on Bools Return Bool
+
+**Location:** `swift.py:561-572`
+
+```python
+if op in ("|", "&", "^"):
+    l_bool = _is_bool(expr.left)
+    r_bool = _is_bool(expr.right)
+    if l_bool and r_bool:
+        # Both bools: convert to int, do bitwise, convert result back
+        left = self._coerce_bool_to_int(expr.left)
+        right = self._coerce_bool_to_int(expr.right)
+        return f"(({left} {op} {right}) != 0)"
+    if l_bool or r_bool:
+        left = self._coerce_bool_to_int(expr.left)
+        right = self._coerce_bool_to_int(expr.right)
+        return f"({left} {op} {right})"
+```
+
+When both operands are bool, the result should be bool (matching Python's `True & False == False`). The backend converts to int, performs the bitwise op, and converts back with `!= 0`.
+
+**Should be:** Inference should recognize bool-on-bool bitwise ops as returning bool, and lowering should emit `BitwiseBoolOp(left, right, op)` IR nodes with explicit return-type semantics.
+
+---
+
+### 7. Bool-Preserving Expression Detection
+
+**Location:** `swift.py:162-183` (`_is_bool` helper)
+
+```python
+def _is_bool(expr: Expr) -> bool:
+    """True if expression evaluates to Bool in Swift output."""
+    if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "^"):
+        return expr.left.typ == BOOL and expr.right.typ == BOOL
+    if isinstance(expr, Call) and expr.func == "bool":
+        return True
+    if expr.typ != BOOL:
+        return False
+    # MinExpr/MaxExpr with any bool operand produces Int
+    if isinstance(expr, (MinExpr, MaxExpr)):
+        if expr.left.typ == BOOL or expr.right.typ == BOOL:
+            return False
+    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+        return False
+    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "//", "<<", ">>"):
+        return False
+    return True
+```
+
+The backend implements ~20 lines of logic to track whether an expression evaluates to `Bool` vs `Int` in Swift output, handling edge cases where IR type is `BOOL` but Swift expression yields Int (e.g., `min(True, 1)`).
+
+**Should be:** Inference should track the actual output type of expressions after language-specific coercion, or lowering should emit explicit casts. Currently the IR `typ` field doesn't account for language-specific type system differences.
