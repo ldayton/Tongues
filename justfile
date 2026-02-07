@@ -124,7 +124,7 @@ versions:
     check "rust"       "1.75"    "rustc --version | grep -oE '[0-9]+\.[0-9]+'"
     check "swift"      "5.9"     "swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+'"
     check "typescript" "5.3"     "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "zig"        "0.11"    "zig version | grep -oE '[0-9]+\.[0-9]+'"
+    check "zig"        "0.15"    "zig version | grep -oE '[0-9]+\.[0-9]+'"
     exit $failed
 
 # Run all tests in Docker
