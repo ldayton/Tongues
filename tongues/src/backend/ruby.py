@@ -1261,19 +1261,24 @@ class RubyBackend:
                     # Python: set.update(*others) -> Ruby: merge (but Ruby only takes one arg)
                     # Handle special cases: string iterates chars, dict iterates keys
                     if method == "update":
-
-                        def _merge_arg(a: Expr) -> str:
+                        if len(args) == 1:
+                            a = args[0]
                             arg_str = self._expr(a)
                             if a.typ == STRING:
-                                return f"{arg_str}.chars"
-                            if isinstance(a.typ, Map):
-                                return f"{arg_str}.keys"
-                            return arg_str
-
-                        if len(args) == 1:
-                            return f"{obj_str}.merge({_merge_arg(args[0])})"
+                                arg_str = f"{arg_str}.chars"
+                            elif isinstance(a.typ, Map):
+                                arg_str = f"{arg_str}.keys"
+                            return f"{obj_str}.merge({arg_str})"
                         # Multiple args: chain merge calls
-                        merges = ".merge(" + ").merge(".join(_merge_arg(a) for a in args) + ")"
+                        parts: list[str] = []
+                        for a in args:
+                            arg_str = self._expr(a)
+                            if a.typ == STRING:
+                                arg_str = f"{arg_str}.chars"
+                            elif isinstance(a.typ, Map):
+                                arg_str = f"{arg_str}.keys"
+                            parts.append(arg_str)
+                        merges = ".merge(" + ").merge(".join(parts) + ")"
                         return f"{obj_str}{merges}"
                     # Python: set.symmetric_difference(other) -> Ruby: ^
                     if method == "symmetric_difference" and len(args) == 1:
@@ -1777,9 +1782,7 @@ class RubyBackend:
                 # Detect set operations on dict views (keys/items/values)
                 # These return arrays in Ruby but sets in Python
                 # Convert to Sets first since Ruby arrays don't have ^ operator
-                if op in ("&", "|", "-", "^") and (
-                    _is_dict_view(left) or _is_dict_view(right)
-                ):
+                if op in ("&", "|", "-", "^") and (_is_dict_view(left) or _is_dict_view(right)):
                     self._needs_set = True
                     left_set = f"Set[*{left_str}]" if _is_dict_view(left) else left_str
                     right_set = f"Set[*{right_str}]" if _is_dict_view(right) else right_str

@@ -402,7 +402,9 @@ class JsLikeBackend:
                     elif op == "-":
                         self._line(f"for (const x of {val}) {lv}.delete(x);")
                     elif op == "^":
-                        self._line(f"for (const x of {val}) if ({lv}.has(x)) {lv}.delete(x); else {lv}.add(x);")
+                        self._line(
+                            f"for (const x of {val}) if ({lv}.has(x)) {lv}.delete(x); else {lv}.add(x);"
+                        )
                     else:
                         self._line(f"{lv} {op}= {val};")
                 elif isinstance(target_type, Map) or isinstance(value.typ, Map):
@@ -972,13 +974,15 @@ class JsLikeBackend:
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Math.max({args_str})"
             case Call(func="round", args=[arg]):
-                return f"round({self._expr(arg)})"
+                return f"bankersRound({self._expr(arg)})"
             case Call(func="round", args=[arg, ndigits]):
-                return f"round({self._expr(arg)}, {self._expr(ndigits)})"
+                return f"bankersRound({self._expr(arg)}, {self._expr(ndigits)})"
             case Call(func="int", args=[arg]):
                 return f"Math.trunc({self._expr(arg)})"
             case Call(func="divmod", args=[a, b]):
                 a_str, b_str = self._expr(a), self._expr(b)
+                if self._is_known_non_negative(a):
+                    return f"[Math.floor({a_str} / {b_str}), {a_str} % {b_str}]"
                 return f"[Math.floor({a_str} / {b_str}), (({a_str} % {b_str}) + {b_str}) % {b_str}]"
             case Call(func="pow", args=[base, exp]):
                 base_str = self._pow_base(base)
@@ -1012,25 +1016,25 @@ class JsLikeBackend:
                 obj=obj, method="get", args=[key, default], receiver_type=receiver_type
             ) if isinstance(receiver_type, Map):
                 return self._map_get(obj, key, default, receiver_type.key)
-            case MethodCall(
-                obj=obj, method="items", args=[], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
+            case MethodCall(obj=obj, method="items", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
                 return f"[...{self._expr(obj)}.entries()]"
-            case MethodCall(
-                obj=obj, method="keys", args=[], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
+            case MethodCall(obj=obj, method="keys", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
                 return f"[...{self._expr(obj)}.keys()]"
-            case MethodCall(
-                obj=obj, method="values", args=[], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
+            case MethodCall(obj=obj, method="values", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
                 return f"[...{self._expr(obj)}.values()]"
-            case MethodCall(
-                obj=obj, method="copy", args=[], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
+            case MethodCall(obj=obj, method="copy", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
                 return f"new Map({self._expr(obj)})"
-            case MethodCall(
-                obj=obj, method="pop", args=[key], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
+            case MethodCall(obj=obj, method="pop", args=[key], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
                 obj_str = self._expr(obj)
                 key_str = self._coerce_map_key(receiver_type.key, key)
                 return f"((v = {obj_str}.get({key_str})), {obj_str}.delete({key_str}), v)"
@@ -1054,18 +1058,18 @@ class JsLikeBackend:
                 key_str = self._coerce_map_key(receiver_type.key, key)
                 default_str = self._expr(default)
                 return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : ({obj_str}.set({key_str}, {default_str}), {default_str}))"
-            case MethodCall(
-                obj=obj, method="update", args=args, receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map) and len(args) >= 1:
+            case MethodCall(obj=obj, method="update", args=args, receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map) and len(args) >= 1
+            ):
                 obj_str = self._expr(obj)
                 updates = []
                 for arg in args:
                     arg_str = self._expr(arg)
                     updates.append(f"{arg_str}.forEach((v, k) => {obj_str}.set(k, v))")
                 return f"(({', '.join(updates)}), null)"
-            case MethodCall(
-                obj=obj, method="popitem", args=[], receiver_type=receiver_type
-            ) if isinstance(receiver_type, Map):
+            case MethodCall(obj=obj, method="popitem", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
                 obj_str = self._expr(obj)
                 return f"((e = [...{obj_str}.entries()].pop()), {obj_str}.delete(e[0]), e)"
             case MethodCall(
@@ -1425,7 +1429,6 @@ class JsLikeBackend:
         method: str,
         args: list[Expr],
         receiver_type: Type,
-        *,
         reverse: bool = False,
     ) -> str:
         """Emit method call with bytes handling."""
@@ -1634,6 +1637,20 @@ class JsLikeBackend:
             return f"({inner_str} !== 0)"
         return f"({inner_str} != null)"
 
+    def _is_known_non_negative(self, expr: Expr) -> bool:
+        """Check if expression is known to be non-negative at compile time."""
+        if isinstance(expr, IntLit):
+            return expr.value >= 0
+        if isinstance(expr, FloatLit):
+            return expr.value >= 0
+        # Len always returns non-negative
+        if isinstance(expr, Len):
+            return True
+        # Absolute value is always non-negative
+        if isinstance(expr, Call) and expr.func == "abs":
+            return True
+        return False
+
     def _is_value_and_or(self, expr: Expr) -> bool:
         """Check if expression is a Truthy or value-returning and/or."""
         if isinstance(expr, Truthy):
@@ -1811,10 +1828,13 @@ class JsLikeBackend:
             if right.typ == STRING:
                 n = self._expr(left)
                 return f"{self._expr(right)}.repeat(Math.max(0, {n}))"
-        # Python modulo semantics: result has sign of divisor
+        # Python modulo semantics: result has sign of divisor (differs from JS only for negative dividend)
         if op == "%":
             left_str = self._maybe_paren(left, op, is_left=True)
             right_str = self._maybe_paren(right, op, is_left=False)
+            # Only need Python semantics if left operand might be negative
+            if self._is_known_non_negative(left):
+                return f"{left_str} % {right_str}"
             return f"(({left_str} % {right_str}) + {right_str}) % {right_str}"
         js_op = _binary_op(op)
         if op in ("==", "!=") and _is_bool_int_compare(left, right):

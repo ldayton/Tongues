@@ -1157,9 +1157,9 @@ Math.pow(2, -1);
 === modulo negative
 -7 % 3
 --- javascript
--7 % 3;
+((-7 % 3) + 3) % 3;
 --- typescript
--7 % 3;
+((-7 % 3) + 3) % 3;
 --- ruby
 -7 % 3
 --- lua
@@ -2271,9 +2271,9 @@ float(42)
 === round call
 round(3.7)
 --- javascript
-Math.round(3.7);
+bankersRound(3.7);
 --- typescript
-Math.round(3.7);
+bankersRound(3.7);
 --- ruby
 3.7.round
 --- lua
@@ -2291,9 +2291,9 @@ Math.round(3.7);
 === round with precision
 round(3.14159, 2)
 --- javascript
-Math.round(3.14159 * 100) / 100;
+bankersRound(3.14159, 2);
 --- typescript
-Math.round(3.14159 * 100) / 100;
+bankersRound(3.14159, 2);
 --- ruby
 3.14159.round(2)
 --- lua

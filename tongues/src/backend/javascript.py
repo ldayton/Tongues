@@ -16,7 +16,13 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _is_bytes_list_type,
 )
-from src.backend.util import ir_contains_call, ir_has_bytes_ops, ir_has_tuple_maps, ir_has_tuple_sets, is_bytes_type
+from src.backend.util import (
+    ir_contains_call,
+    ir_has_bytes_ops,
+    ir_has_tuple_maps,
+    ir_has_tuple_sets,
+    is_bytes_type,
+)
 from src.ir import (
     BOOL,
     FLOAT,
@@ -138,10 +144,14 @@ class JsBackend(JsLikeBackend):
             )
             emitted = True
         if ir_contains_call(module, "tuple"):
-            self._line("function tuple(x) { if (x === undefined) return []; return typeof x === 'string' ? [...x] : [...x]; }")
+            self._line(
+                "function tuple(x) { if (x === undefined) return []; return typeof x === 'string' ? [...x] : [...x]; }"
+            )
             emitted = True
         if ir_contains_call(module, "set"):
-            self._line("function set(x) { if (x === undefined) return new Set(); return new Set(x); }")
+            self._line(
+                "function set(x) { if (x === undefined) return new Set(); return new Set(x); }"
+            )
             emitted = True
         if ir_has_tuple_sets(module):
             self._emit_tuple_set_helpers()
@@ -150,7 +160,9 @@ class JsBackend(JsLikeBackend):
             self._emit_tuple_map_helpers()
             emitted = True
         if ir_contains_call(module, "dict"):
-            self._line("function dict(x) { if (x === undefined) return new Map(); return new Map(x); }")
+            self._line(
+                "function dict(x) { if (x === undefined) return new Map(); return new Map(x); }"
+            )
             emitted = True
         if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
             self._emit_map_helpers()
@@ -196,7 +208,9 @@ class JsBackend(JsLikeBackend):
         self.indent += 1
         self._line("if (!b.has(k)) return false;")
         self._line("const bv = b.get(k);")
-        self._line("if (Array.isArray(v) && Array.isArray(bv)) { if (!arrEq(v, bv)) return false; }")
+        self._line(
+            "if (Array.isArray(v) && Array.isArray(bv)) { if (!arrEq(v, bv)) return false; }"
+        )
         self._line("else if (v !== bv) return false;")
         self.indent -= 1
         self._line("}")
@@ -224,7 +238,7 @@ class JsBackend(JsLikeBackend):
         self._line("}")
 
     def _emit_round_helper(self) -> None:
-        self._line("function round(x, n) {")
+        self._line("function bankersRound(x, n) {")
         self.indent += 1
         self._line("if (n === undefined) {")
         self.indent += 1

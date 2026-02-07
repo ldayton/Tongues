@@ -16,7 +16,14 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _safe_name,
 )
-from src.backend.util import escape_string, ir_contains_call, ir_contains_cast, ir_has_bytes_ops, ir_has_tuple_maps, ir_has_tuple_sets
+from src.backend.util import (
+    escape_string,
+    ir_contains_call,
+    ir_contains_cast,
+    ir_has_bytes_ops,
+    ir_has_tuple_maps,
+    ir_has_tuple_sets,
+)
 from src.ir import (
     BOOL,
     INT,
@@ -122,10 +129,14 @@ class TsBackend(JsLikeBackend):
             )
             emitted = True
         if ir_contains_call(module, "all"):
-            self._line("function all(arr: Iterable<any>): boolean { return [...arr].every(Boolean); }")
+            self._line(
+                "function all(arr: Iterable<any>): boolean { return [...arr].every(Boolean); }"
+            )
             emitted = True
         if ir_contains_call(module, "any"):
-            self._line("function any(arr: Iterable<any>): boolean { return [...arr].some(Boolean); }")
+            self._line(
+                "function any(arr: Iterable<any>): boolean { return [...arr].some(Boolean); }"
+            )
             emitted = True
         if ir_contains_call(module, "sorted"):
             self._line(
@@ -164,7 +175,9 @@ class TsBackend(JsLikeBackend):
             self._emit_tuple_map_helpers()
             emitted = True
         if ir_contains_call(module, "dict"):
-            self._line("function dict<K, V>(x?: [K, V][]): Map<K, V> { if (x === undefined) return new Map<K, V>(); return new Map(x); }")
+            self._line(
+                "function dict<K, V>(x?: [K, V][]): Map<K, V> { if (x === undefined) return new Map<K, V>(); return new Map(x); }"
+            )
             emitted = True
         if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
             self._emit_map_helpers()
@@ -213,7 +226,9 @@ class TsBackend(JsLikeBackend):
         self.indent += 1
         self._line("if (!b.has(k)) return false;")
         self._line("const bv = b.get(k);")
-        self._line("if (Array.isArray(v) && Array.isArray(bv)) { if (!arrEq(v as any, bv as any)) return false; }")
+        self._line(
+            "if (Array.isArray(v) && Array.isArray(bv)) { if (!arrEq(v as any, bv as any)) return false; }"
+        )
         self._line("else if (v !== bv) return false;")
         self.indent -= 1
         self._line("}")
@@ -223,7 +238,7 @@ class TsBackend(JsLikeBackend):
 
     def _emit_round_helper(self) -> None:
         """Emit Python-compatible round function with banker's rounding."""
-        self._line("function round(x: number, n?: number): number {")
+        self._line("function bankersRound(x: number, n?: number): number {")
         self.indent += 1
         self._line("if (n === undefined) {")
         self.indent += 1
