@@ -986,14 +986,14 @@ class RubyBackend:
             case Call(func="round", args=[arg]):
                 inner = self._expr(arg)
                 if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
-                    return f"({inner}).round"
-                return f"{inner}.round"
+                    return f"({inner}).round(half: :even)"
+                return f"{inner}.round(half: :even)"
             case Call(func="round", args=[arg, precision]):
                 inner = self._expr(arg)
                 prec = self._expr(precision)
                 if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
-                    return f"({inner}).round({prec})"
-                return f"{inner}.round({prec})"
+                    return f"({inner}).round({prec}, half: :even)"
+                return f"{inner}.round({prec}, half: :even)"
             case Call(func="int", args=[arg]):
                 inner = self._expr(arg)
                 if isinstance(arg, (BinaryOp, UnaryOp, Ternary)):
