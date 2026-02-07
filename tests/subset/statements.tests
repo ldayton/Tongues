@@ -1,0 +1,545 @@
+=== if statement allowed
+def f(x: int) -> int:
+    if x > 0:
+        return 1
+    return 0
+---
+ok
+---
+
+=== if else allowed
+def f(x: int) -> int:
+    if x > 0:
+        return 1
+    else:
+        return 0
+---
+ok
+---
+
+=== if elif else allowed
+def f(x: int) -> int:
+    if x > 0:
+        return 1
+    elif x < 0:
+        return -1
+    else:
+        return 0
+---
+ok
+---
+
+=== multiple elif allowed
+def f(x: int) -> str:
+    if x == 1:
+        return "one"
+    elif x == 2:
+        return "two"
+    elif x == 3:
+        return "three"
+    elif x == 4:
+        return "four"
+    else:
+        return "other"
+---
+ok
+---
+
+=== nested if allowed
+def f(x: int, y: int) -> int:
+    if x > 0:
+        if y > 0:
+            return 1
+        return 2
+    return 0
+---
+ok
+---
+
+=== for loop allowed
+def f(xs: list[int]) -> int:
+    total: int = 0
+    for x in xs:
+        total += x
+    return total
+---
+ok
+---
+
+=== for with range allowed
+def f(n: int) -> int:
+    total: int = 0
+    for i in range(n):
+        total += i
+    return total
+---
+ok
+---
+
+=== for with range start stop allowed
+def f(a: int, b: int) -> int:
+    total: int = 0
+    for i in range(a, b):
+        total += i
+    return total
+---
+ok
+---
+
+=== for with range step allowed
+def f(n: int) -> int:
+    total: int = 0
+    for i in range(0, n, 2):
+        total += i
+    return total
+---
+ok
+---
+
+=== nested for loops allowed
+def f(xs: list[list[int]]) -> int:
+    total: int = 0
+    for row in xs:
+        for x in row:
+            total += x
+    return total
+---
+ok
+---
+
+=== while loop allowed
+def f(n: int) -> int:
+    i: int = 0
+    while i < n:
+        i += 1
+    return i
+---
+ok
+---
+
+=== while with condition variable allowed
+def f() -> int:
+    running: bool = True
+    count: int = 0
+    while running:
+        count += 1
+        if count >= 10:
+            running = False
+    return count
+---
+ok
+---
+
+=== break in for loop allowed
+def f(xs: list[int]) -> int:
+    for x in xs:
+        if x < 0:
+            break
+    return 0
+---
+ok
+---
+
+=== break in while loop allowed
+def f() -> int:
+    i: int = 0
+    while True:
+        i += 1
+        if i >= 10:
+            break
+    return i
+---
+ok
+---
+
+=== continue in for loop allowed
+def f(xs: list[int]) -> int:
+    total: int = 0
+    for x in xs:
+        if x < 0:
+            continue
+        total += x
+    return total
+---
+ok
+---
+
+=== continue in while loop allowed
+def f(n: int) -> int:
+    total: int = 0
+    i: int = 0
+    while i < n:
+        i += 1
+        if i % 2 == 0:
+            continue
+        total += i
+    return total
+---
+ok
+---
+
+=== try except allowed
+def f(s: str) -> int:
+    try:
+        return int(s)
+    except ValueError:
+        return 0
+---
+ok
+---
+
+=== try except with variable allowed
+def f(s: str) -> str:
+    try:
+        return str(int(s))
+    except ValueError as e:
+        return str(e)
+---
+ok
+---
+
+=== try multiple except allowed
+def f(s: str) -> int:
+    try:
+        return int(s)
+    except ValueError:
+        return -1
+    except TypeError:
+        return -2
+---
+ok
+---
+
+=== try except finally allowed
+def f(s: str) -> int:
+    result: int = 0
+    try:
+        result = int(s)
+    except ValueError:
+        result = -1
+    finally:
+        pass
+    return result
+---
+ok
+---
+
+=== try finally without except allowed
+def f() -> int:
+    x: int = 0
+    try:
+        x = 1
+    finally:
+        x = 2
+    return x
+---
+ok
+---
+
+=== raise exception allowed
+def f(x: int) -> int:
+    if x < 0:
+        raise ValueError("negative")
+    return x
+---
+ok
+---
+
+=== raise without argument in except allowed
+def f(s: str) -> int:
+    try:
+        return int(s)
+    except ValueError:
+        raise
+---
+ok
+---
+
+=== raise from allowed
+def f(s: str) -> int:
+    try:
+        return int(s)
+    except ValueError as e:
+        raise RuntimeError("parse failed") from e
+---
+ok
+---
+
+=== match case with literals allowed
+def f(x: int) -> str:
+    match x:
+        case 1:
+            return "one"
+        case 2:
+            return "two"
+        case _:
+            return "other"
+---
+ok
+---
+
+=== match case with type patterns allowed
+def f(x: int | str) -> str:
+    match x:
+        case int():
+            return "int"
+        case str():
+            return "str"
+---
+ok
+---
+
+=== match case with capture allowed
+def f(x: int | str) -> str:
+    match x:
+        case int() as n:
+            return str(n)
+        case str() as s:
+            return s
+---
+ok
+---
+
+=== match case with or pattern allowed
+def f(x: int) -> str:
+    match x:
+        case 1 | 2 | 3:
+            return "small"
+        case _:
+            return "large"
+---
+ok
+---
+
+=== match case with guard allowed
+def f(x: int) -> str:
+    match x:
+        case n if n > 0:
+            return "positive"
+        case n if n < 0:
+            return "negative"
+        case _:
+            return "zero"
+---
+ok
+---
+
+=== match case with sequence pattern allowed
+def f(xs: list[int]) -> int:
+    match xs:
+        case []:
+            return 0
+        case [x]:
+            return x
+        case [x, y]:
+            return x + y
+        case _:
+            return -1
+---
+ok
+---
+
+=== pass statement allowed
+def f() -> None:
+    pass
+---
+ok
+---
+
+=== with statement not allowed
+def f() -> None:
+    with open("file.txt") as f:
+        pass
+---
+error: with
+---
+
+=== for else not allowed
+def f(xs: list[int]) -> int:
+    for x in xs:
+        if x < 0:
+            break
+    else:
+        return 1
+    return 0
+---
+error: else
+---
+
+=== while else not allowed
+def f(n: int) -> int:
+    i: int = 0
+    while i < n:
+        i += 1
+    else:
+        return 1
+    return 0
+---
+error: else
+---
+
+=== try else not allowed
+def f(s: str) -> int:
+    try:
+        x: int = int(s)
+    except ValueError:
+        return -1
+    else:
+        return x
+    return 0
+---
+error: else
+---
+
+=== bare except not allowed
+def f(s: str) -> int:
+    try:
+        return int(s)
+    except:
+        return 0
+---
+error: except
+---
+
+=== except Exception allowed
+def f(s: str) -> int:
+    try:
+        return int(s)
+    except Exception:
+        return 0
+---
+ok
+---
+
+=== async def not allowed
+async def f() -> int:
+    return 1
+---
+error: async
+---
+
+=== await not allowed
+import asyncio
+async def f() -> int:
+    await asyncio.sleep(1)
+    return 1
+---
+error: async
+---
+
+=== async for not allowed
+async def f(xs: list[int]) -> int:
+    total: int = 0
+    async for x in xs:
+        total += x
+    return total
+---
+error: async
+---
+
+=== async with not allowed
+async def f() -> None:
+    async with open("file.txt") as f:
+        pass
+---
+error: async
+---
+
+=== assert statement allowed
+def f(x: int) -> int:
+    assert x > 0
+    return x
+---
+ok
+---
+
+=== assert with message allowed
+def f(x: int) -> int:
+    assert x > 0, "must be positive"
+    return x
+---
+ok
+---
+
+=== return without value allowed
+def f(x: int) -> None:
+    if x < 0:
+        return
+    print(x)
+---
+ok
+---
+
+=== multiple return paths allowed
+def f(x: int) -> int:
+    if x < 0:
+        return -1
+    if x == 0:
+        return 0
+    return 1
+---
+ok
+---
+
+=== tuple except types allowed
+def f(s: str) -> int:
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return 0
+---
+ok
+---
+
+=== nested try allowed
+def f(s: str) -> int:
+    try:
+        try:
+            return int(s)
+        except ValueError:
+            return -1
+    except Exception:
+        return -2
+---
+ok
+---
+
+=== except with base exception allowed
+def f() -> int:
+    try:
+        return 1
+    except BaseException:
+        return 0
+---
+ok
+---
+
+=== nested match allowed
+def f(x: int, y: int) -> str:
+    match x:
+        case 1:
+            match y:
+                case 1:
+                    return "1,1"
+                case _:
+                    return "1,other"
+        case _:
+            return "other"
+---
+ok
+---
+
+=== match in loop allowed
+def f(xs: list[int]) -> int:
+    total: int = 0
+    for x in xs:
+        match x:
+            case n if n > 0:
+                total += n
+            case _:
+                pass
+    return total
+---
+ok
+---
+
