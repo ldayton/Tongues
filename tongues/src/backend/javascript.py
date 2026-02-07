@@ -291,7 +291,7 @@ class JsBackend(JsLikeBackend):
         self._line("let r = [];")
         self._line("if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }")
         self._line("else { for (let i = lo; i > hi; i += step) r.push(a[i]); }")
-        self._line("return r;")
+        self._line("return typeof a === 'string' ? r.join('') : r;")
         self.indent -= 1
         self._line("}")
         self._line("function deepArrEq(a, b) {")

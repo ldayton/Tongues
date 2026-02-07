@@ -915,6 +915,10 @@ class JsLikeBackend:
             case MethodCall(
                 obj=obj, method="replace", args=[StringLit(value=old_str), new], receiver_type=_
             ):
+                if old_str == "":
+                    # Empty string replacement: "ab".replace("", "-") -> "-a-b-"
+                    new_str = self._expr(new)
+                    return f"({new_str} + {self._expr(obj)}.split('').join({new_str}) + {new_str})"
                 escaped = _escape_regex_literal(old_str)
                 return f"{self._expr(obj)}.replace(/{escaped}/g, {self._expr(new)})"
             case MethodCall(
@@ -1171,6 +1175,9 @@ class JsLikeBackend:
                 return f"arrSplit({obj_str}, {self._expr(args[0])})"
             if method == "replace" and len(args) == 2:
                 return f"arrReplace({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
+        # Handle string.split() with no args - splits on whitespace, removes empties
+        if receiver_type == STRING and method == "split" and len(args) == 0:
+            return f"{self._expr(obj)}.trim().split(/\\s+/).filter(Boolean)"
         args_str = ", ".join(self._expr(a) for a in args)
         js_method = _method_name(method, receiver_type)
         return f"{self._expr(obj)}.{js_method}({args_str})"
@@ -1224,6 +1231,20 @@ class JsLikeBackend:
                 if is_bytes_type(left.typ):
                     return f"arrRepeat({left_str}, {right_str})"
                 return f"arrRepeat({right_str}, {left_str})"
+        # Handle list/array comparison
+        if _is_array_type(left.typ) or _is_array_type(right.typ):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "==":
+                return f"arrEq({left_str}, {right_str})"
+            if op == "!=":
+                return f"!arrEq({left_str}, {right_str})"
+        # Handle string repetition: "a" * 3 -> "a".repeat(3)
+        if op == "*":
+            if left.typ == STRING:
+                return f"{self._expr(left)}.repeat({self._expr(right)})"
+            if right.typ == STRING:
+                return f"{self._expr(right)}.repeat({self._expr(left)})"
         js_op = _binary_op(op)
         if op in ("==", "!=") and _is_bool_int_compare(left, right):
             js_op = op
