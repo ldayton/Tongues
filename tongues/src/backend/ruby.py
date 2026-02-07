@@ -1761,10 +1761,19 @@ class RubyBackend:
                 right_str = self._maybe_paren_expr(right, op, is_left=False)
                 result = f"{left_str} {rb_op} {right_str}"
                 # If result type is Set (e.g., dict.keys() & dict.keys()), convert to Set
-                # NOTE: Requires correct type inference in frontend; currently dict view
-                # set operations are mis-typed, so this check doesn't trigger.
                 if isinstance(expr.typ, Set):
+                    self._needs_set = True
                     return f"Set[*({result})]"
+                # Detect set operations on dict views (keys/items/values)
+                # These return arrays in Ruby but sets in Python
+                # Convert to Sets first since Ruby arrays don't have ^ operator
+                if op in ("&", "|", "-", "^") and (
+                    _is_dict_view(left) or _is_dict_view(right)
+                ):
+                    self._needs_set = True
+                    left_set = f"Set[*{left_str}]" if _is_dict_view(left) else left_str
+                    right_set = f"Set[*{right_str}]" if _is_dict_view(right) else right_str
+                    return f"{left_set} {rb_op} {right_set}"
                 return result
             case ChainedCompare(operands=operands, ops=ops):
                 parts: list[str] = []
@@ -2440,6 +2449,15 @@ def _primitive_type(kind: str) -> str:
             return "NilClass"
         case _:
             return "Object"
+
+
+def _is_dict_view(expr: Expr) -> bool:
+    """Check if expression is a dict view (keys/items/values on a Map)."""
+    if isinstance(expr, MethodCall):
+        if expr.method in ("keys", "values", "items"):
+            if isinstance(expr.receiver_type, Map):
+                return True
+    return False
 
 
 def _method_name(method: str, receiver_type: Type) -> str:
