@@ -144,6 +144,11 @@ class TsBackend(JsLikeBackend):
                 "function zip<T>(...arrs: T[][]): T[][] { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }"
             )
             emitted = True
+        if ir_contains_call(module, "tuple"):
+            self._line(
+                "function tuple<T>(x?: Iterable<T> | string): T[] { if (x === undefined) return []; return typeof x === 'string' ? [...x] as unknown as T[] : [...x]; }"
+            )
+            emitted = True
         return emitted
 
     def _emit_range_function(self) -> None:

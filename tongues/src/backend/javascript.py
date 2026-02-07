@@ -136,6 +136,9 @@ class JsBackend(JsLikeBackend):
                 "function zip(...arrs) { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }"
             )
             emitted = True
+        if ir_contains_call(module, "tuple"):
+            self._line("function tuple(x) { if (x === undefined) return []; return typeof x === 'string' ? [...x] : [...x]; }")
+            emitted = True
         return emitted
 
     def _emit_range_helper(self) -> None:

@@ -117,6 +117,7 @@ class JsLikeBackend:
         self.current_struct: str | None = None
         self.struct_fields: dict[str, list[str]] = {}
         self._struct_field_count: dict[str, int] = {}
+        self._var_types: dict[str, Type] = {}
 
     def emit(self, module: Module) -> str:
         """Emit code from IR Module."""
@@ -124,6 +125,7 @@ class JsLikeBackend:
         self.lines = []
         self.struct_fields = {}
         self._struct_field_count = {}
+        self._var_types = {}
         for struct in module.structs:
             self.struct_fields[struct.name] = [f.name for f in struct.fields]
             self._struct_field_count[struct.name] = len(struct.fields)
@@ -345,6 +347,8 @@ class JsLikeBackend:
         self._hoisted_vars_hook(stmt)
         match stmt:
             case VarDecl(name=name, typ=typ, value=value):
+                if typ is not None:
+                    self._var_types[name] = typ
                 self._var_decl(name, typ, value)
             case Assign(target=target, value=value):
                 if isinstance(target, SliceLV):
@@ -365,13 +369,25 @@ class JsLikeBackend:
             case OpAssign(target=target, op=op, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
-                # For array += iterable, use push instead of + which concatenates strings
+                # Get target type for tuple vs list distinction
+                target_type = None
+                if isinstance(target, VarLV):
+                    target_type = self._var_types.get(target.name)
+                # For list/array += iterable, use push (mutates)
+                # For tuple += iterable, use concatenation (immutable, reassigns)
                 if op == "+" and (
                     _is_array_type(value.typ)
                     or value.typ == STRING
                     or (isinstance(value, Call) and value.func == "range")
                 ):
-                    self._line(f"{lv}.push(...{val});")
+                    # Tuples are immutable - use concatenation, not push
+                    if isinstance(value.typ, Tuple) or isinstance(target_type, Tuple):
+                        self._line(f"{lv} = [...{lv}, ...{val}];")
+                    else:
+                        self._line(f"{lv}.push(...{val});")
+                elif op == "*" and isinstance(target_type, Tuple):
+                    # Tuple *= int creates new tuple (immutable)
+                    self._line(f"{lv} = Array({val} > 0 ? {val} : 0).fill({lv}).flat();")
                 else:
                     self._line(f"{lv} {op}= {val};")
             case NoOp():
@@ -953,6 +969,18 @@ class JsLikeBackend:
             ) if isinstance(receiver_type, Map):
                 return self._map_get(obj, key, default)
             case MethodCall(
+                obj=obj, method="items", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                return f"[...{self._expr(obj)}.entries()]"
+            case MethodCall(
+                obj=obj, method="keys", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                return f"[...{self._expr(obj)}.keys()]"
+            case MethodCall(
+                obj=obj, method="values", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                return f"[...{self._expr(obj)}.values()]"
+            case MethodCall(
                 obj=obj, method="replace", args=[StringLit(value=old_str), new], receiver_type=_
             ):
                 if old_str == "":
@@ -1045,6 +1073,13 @@ class JsLikeBackend:
                 if isinstance(tested_type, Primitive):
                     js_typeof = _typeof_check(tested_type.kind)
                     return f"typeof {self._expr(inner)} === '{js_typeof}'"
+                # Tuples and lists are both arrays in JS
+                if isinstance(tested_type, (Tuple, Slice, Array)):
+                    return f"Array.isArray({self._expr(inner)})"
+                # isinstance(x, tuple) or isinstance(x, list) -> Array.isArray
+                if isinstance(tested_type, (StructRef, InterfaceRef)):
+                    if tested_type.name in ("tuple", "list"):
+                        return f"Array.isArray({self._expr(inner)})"
                 type_name = self._type_name_for_check(tested_type)
                 return f"{self._expr(inner)} instanceof {type_name}"
             case IsNil(expr=inner, negated=negated):
@@ -1338,11 +1373,11 @@ class JsLikeBackend:
         inner_type = e.typ
         if isinstance(inner_type, (Map, Set)):
             return f"({inner_str}.size > 0)"
-        if isinstance(inner_type, Slice) or inner_type == STRING:
+        if isinstance(inner_type, (Slice, Tuple, Array)) or inner_type == STRING:
             return f"({inner_str}.length > 0)"
         if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Map, Set)):
             return f"({inner_str} != null && {inner_str}.size > 0)"
-        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Slice):
+        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Tuple, Array)):
             return f"({inner_str} != null && {inner_str}.length > 0)"
         if inner_type == INT or (isinstance(inner_type, Primitive) and inner_type.kind == "float"):
             if isinstance(e, BinaryOp):
