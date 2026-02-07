@@ -37,7 +37,7 @@ Tongues supports these target languages:
 
 | Phase | Stage     | Module          | Description                                         |
 | :---: | --------- | --------------- | --------------------------------------------------- |
-|   1   | cli       | `cli.py`        | Parse arguments, read input, invoke pipeline        |
+|   1   | cli       | `tongues.py`    | Parse arguments, read input, invoke pipeline        |
 |   2   | frontend  | `parse.py`      | Tokenize and parse source; produce dict-based AST   |
 |   3   | frontend  | `subset.py`     | Reject unsupported Python features early            |
 |   4   | frontend  | `names.py`      | Scope analysis and name binding                     |

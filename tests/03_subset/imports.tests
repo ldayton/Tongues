@@ -144,12 +144,12 @@ from .sub import thing
 ok
 ---
 
-=== import os not allowed
+=== import os allowed
 import os
-def f() -> str:
-    return os.getcwd()
+def f() -> str | None:
+    return os.getenv("HOME")
 ---
-error: import
+ok
 ---
 
 === import json not allowed
@@ -160,12 +160,12 @@ def f(s: str) -> object:
 error: import
 ---
 
-=== import re not allowed
+=== import re allowed
 import re
 def f(s: str) -> bool:
     return re.match("a", s) is not None
 ---
-error: import
+ok
 ---
 
 === import math not allowed

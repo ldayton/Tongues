@@ -204,6 +204,7 @@ ALLOWED_STDLIB: set[str] = {
     "typing",
     "collections.abc",
     "dataclasses",
+    "os",
     "re",
 }
 

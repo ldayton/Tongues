@@ -2,7 +2,7 @@
 
 Syntactic restrictions for transpilation to statically-typed languages. These are checkable from AST structure alone (phase 3).
 
-See [typecheck-spec.md](../09_inference/_typecheck-spec.md) for type-level invariants requiring inference.
+See [08-inference-spec.md](08-inference-spec.md) for type-level invariants requiring inference.
 
 ---
 
@@ -13,22 +13,24 @@ See [typecheck-spec.md](../09_inference/_typecheck-spec.md) for type-level invar
 | Type       | Syntax                                 | Notes                                          |
 | ---------- | -------------------------------------- | ---------------------------------------------- |
 | Primitives | `int`, `float`, `str`, `bool`, `bytes` | `bytes` for binary I/O                         |
-| Optional   | `T \| None`                            | Nullable types                                 |
-| Union      | `A \| B \| C`                          | Discriminated by type or `.kind` field         |
-| List       | `list[T]`                              | Bare `list` banned                             |
-| Dict       | `dict[K, V]`                           | Bare `dict` banned                             |
-| Set        | `set[T]`                               | Bare `set` banned                              |
-| Tuple      | `tuple[A, B, C]`                       | Fixed-length, heterogeneous                    |
+| Object     | `object`                               | Base type; narrow with `isinstance()` to use   |
+| Optional   | `T \| None`, `Optional[T]`             | Nullable types                                 |
+| Union      | `A \| B \| C`, `Union[A, B, C]`        | Discriminated by type or `.kind` field         |
+| List       | `list[T]`, `List[T]`                   | Bare `list` banned                             |
+| Dict       | `dict[K, V]`, `Dict[K, V]`             | Bare `dict` banned                             |
+| Set        | `set[T]`, `Set[T]`                     | Bare `set` banned                              |
+| Tuple      | `tuple[A, B, C]`, `Tuple[A, B, C]`     | Fixed-length, heterogeneous                    |
+| Tuple      | `tuple[T, ...]`                        | Variable-length, homogeneous                   |
 | Callable   | `Callable[[A, B], R]`                  | Function types; bound methods include receiver |
 
 ### Restrictions
 
-| Restriction                         | Rationale                           |
-| ----------------------------------- | ----------------------------------- |
-| All annotations required            | Static typing for transpilation     |
-| No bare `list`/`dict`/`set`/`tuple` | Element types must be known         |
-| No `Any`                            | Defeats static typing               |
-| No `TypeVar`                        | No generics; monomorphic types only |
+| Restriction                         | Rationale                             |
+| ----------------------------------- | ------------------------------------- |
+| All annotations required            | Static typing for transpilation       |
+| No bare `list`/`dict`/`set`/`tuple` | Element types must be known           |
+| No `Any`                            | Use `object` + `isinstance()` instead |
+| No `TypeVar`                        | No generics; monomorphic types only   |
 
 ```python
 # Allowed
@@ -39,9 +41,15 @@ opt: int | None = None
 result: int | str = parse(s)           # union
 handler: Callable[[int], str] = func   # callable
 
+# object requires isinstance() to use
+def show(x: object) -> str:
+    if isinstance(x, int):
+        return str(x * 2)      # x is int here
+    return repr(x)
+
 # Not allowed
 x: list = []        # bare collection
-x: Any = foo()      # Any type
+x: Any = foo()      # Any type (no checking)
 ```
 
 ---
@@ -138,24 +146,21 @@ The walrus operator `:=` is allowed and scopes to the enclosing function (not th
 `range(n)`, `range(a, b)`, `range(a, b, step)` — reusable sequence with known length
 
 ### Eager Context Only
-Must appear in for-loop header or eager consumer. Enforcement requires type checking (see [typecheck-spec.md](../09_inference/_typecheck-spec.md#6-iterator-escape)).
+Must appear in for-loop header or eager consumer. Enforcement requires type checking (see [08-inference-spec.md](08-inference-spec.md#6-iterator-escape)).
 
 | Function                                  | Rationale                   |
 | ----------------------------------------- | --------------------------- |
 | `enumerate(xs)`, `enumerate(xs, start=n)` | Returns single-use iterator |
 | `zip(xs, ys)`                             | Returns single-use iterator |
-| `reversed(xs)`                            | Returns single-use iterator |
 
 ```python
 # Allowed — immediately consumed
 for i, x in enumerate(xs): ...
 list(zip(xs, ys))
-[x for x in reversed(xs)]
 
 # Not allowed — iterator escapes
 e = enumerate(xs)      # assigned
 return zip(xs, ys)     # returned
-foo(reversed(xs))      # passed to unknown consumer
 ```
 
 ### Comprehensions
@@ -167,7 +172,7 @@ foo(reversed(xs))      # passed to unknown consumer
 | Dict comprehension | `{k: v for k,v in xs}` | Always eager |
 
 ### Generator Expressions
-Allowed only as immediate argument to eager consumers. Enforcement requires type checking (see [typecheck-spec.md](../09_inference/_typecheck-spec.md#5-generator-expression-consumers)).
+Allowed only as immediate argument to eager consumers. Enforcement requires type checking (see [08-inference-spec.md](08-inference-spec.md#5-generator-expression-consumers)).
 
 | Consumer      | Example                      |
 | ------------- | ---------------------------- |
@@ -238,6 +243,10 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 | `memoryview`                               | Low-level memory access                         |
 | `complex`                                  | Adds type complexity; rarely needed             |
 | `aiter`, `anext`                           | Async iteration not supported                   |
+| `reversed`                                 | Returns iterator; use slice `xs[::-1]` instead  |
+| `breakpoint`                               | Debugger invocation                             |
+| `help`                                     | Interactive help system                         |
+| `exit`, `quit`                             | Use `sys.exit()` instead                        |
 
 ### Restricted Arguments
 
@@ -273,11 +282,14 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 
 ## 9. Imports
 
-| Allowed                             | Not Allowed                 | Rationale                             |
-| ----------------------------------- | --------------------------- | ------------------------------------- |
-| `from typing import ...`            | `import foo` (except `sys`) | Code must be self-contained           |
-| `from dataclasses import dataclass` | external packages           | No external dependencies              |
-| `from collections.abc import ...`   |                             |                                       |
-| `from __future__ import ...`        |                             |                                       |
-| `from . import module`              |                             |                                       |
-| `import sys`                        |                             | Required for stdin/stdout/stderr/argv |
+| Allowed                             | Not Allowed          | Rationale                      |
+| ----------------------------------- | -------------------- | ------------------------------ |
+| `from typing import ...`            | other stdlib         | Code must be self-contained    |
+| `from dataclasses import dataclass` | external packages    | No external dependencies       |
+| `from collections.abc import ...`   | `from X import *`    | Star imports obscure bindings  |
+| `from __future__ import ...`        | `import X as Y`      | Module aliases obscure origins |
+| `from X import Y as Z`              | imports in functions | Top-level only                 |
+| `from . import module`              |                      |                                |
+| `import sys`                        |                      | stdin/stdout/stderr/argv       |
+| `import os`                         |                      | `os.getenv()`                  |
+| `import re`                         |                      | Regular expressions            |
