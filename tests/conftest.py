@@ -47,26 +47,26 @@ def _check_version(lang: str) -> tuple[bool, str]:
         return False, f"{cmd[0]} timed out"
 
 
-from src.frontend import Frontend
-from src.frontend.parse import parse
-from src.frontend.subset import verify as verify_subset
-from src.frontend.names import resolve_names
-from src.middleend import analyze
-from src.backend.c import CBackend
-from src.backend.csharp import CSharpBackend
-from src.backend.dart import DartBackend
-from src.backend.go import GoBackend
-from src.backend.java import JavaBackend
-from src.backend.javascript import JsBackend
-from src.backend.lua import LuaBackend
-from src.backend.perl import PerlBackend
-from src.backend.php import PhpBackend
-from src.backend.python import PythonBackend
-from src.backend.ruby import RubyBackend
-from src.backend.rust import RustBackend
-from src.backend.swift import SwiftBackend
-from src.backend.typescript import TsBackend
-from src.backend.zig import ZigBackend
+from tongues.src.frontend import Frontend
+from tongues.src.frontend.parse import parse
+from tongues.src.frontend.subset import verify as verify_subset
+from tongues.src.frontend.names import resolve_names
+from tongues.src.middleend import analyze
+from tongues.src.backend.c import CBackend
+from tongues.src.backend.csharp import CSharpBackend
+from tongues.src.backend.dart import DartBackend
+from tongues.src.backend.go import GoBackend
+from tongues.src.backend.java import JavaBackend
+from tongues.src.backend.javascript import JsBackend
+from tongues.src.backend.lua import LuaBackend
+from tongues.src.backend.perl import PerlBackend
+from tongues.src.backend.php import PhpBackend
+from tongues.src.backend.python import PythonBackend
+from tongues.src.backend.ruby import RubyBackend
+from tongues.src.backend.rust import RustBackend
+from tongues.src.backend.swift import SwiftBackend
+from tongues.src.backend.typescript import TsBackend
+from tongues.src.backend.zig import ZigBackend
 
 # Skip specific (apptest, language) combinations that are known to fail.
 # Format: apptest_stem -> set of languages to skip

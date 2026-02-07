@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
 
-from src.frontend.parse import parse, ParseError
+from tongues.src.frontend.parse import parse, ParseError
 
 PARSE_DIR = Path(__file__).parent / "02_parse"
 

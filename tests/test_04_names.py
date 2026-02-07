@@ -8,8 +8,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
 
-from src.frontend.parse import parse
-from src.frontend.names import resolve_names
+from tongues.src.frontend.parse import parse
+from tongues.src.frontend.names import resolve_names
 
 NAMES_DIR = Path(__file__).parent / "04_names"
 

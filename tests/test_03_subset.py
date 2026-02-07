@@ -8,8 +8,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
 
-from src.frontend.parse import parse
-from src.frontend.subset import verify as verify_subset
+from tongues.src.frontend.parse import parse
+from tongues.src.frontend.subset import verify as verify_subset
 
 SUBSET_DIR = Path(__file__).parent / "03_subset"
 
