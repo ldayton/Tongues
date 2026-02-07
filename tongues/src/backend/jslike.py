@@ -857,6 +857,8 @@ class JsLikeBackend:
                 return '"None"'
             case Call(func="repr", args=[arg]) if arg.typ == BOOL:
                 return f'({self._expr(arg)} ? "True" : "False")'
+            case Call(func="repr", args=[arg]) if arg.typ == STRING:
+                return f'"\'" + {self._expr(arg)} + "\'"'
             case Call(func="repr", args=[arg]):
                 return f"String({self._expr(arg)})"
             case Call(func="bool", args=args):
@@ -1066,7 +1068,7 @@ class JsLikeBackend:
             and isinstance(typ, Primitive)
             and typ.kind in ("int", "byte", "rune")
         ):
-            return f"{obj_str}.charCodeAt({idx_str})"
+            return f"{obj_str}.codePointAt({idx_str})"
         if isinstance(obj_type, Map):
             return f"{obj_str}.get({idx_str})"
         return f"{obj_str}[{idx_str}]"

@@ -92,12 +92,10 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "dart",
         "go",
         "java",
-        "javascript",
         "lua",
         "perl",
         "php",
         "swift",
-        "typescript",
         "zig",
     },
     "apptest_dicts": {
