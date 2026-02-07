@@ -400,6 +400,10 @@ class JsLikeBackend:
                         self._line(f"for (const x of {val}) if ({lv}.has(x)) {lv}.delete(x); else {lv}.add(x);")
                     else:
                         self._line(f"{lv} {op}= {val};")
+                elif isinstance(target_type, Map) or isinstance(value.typ, Map):
+                    # Map augmented assignment operators
+                    if op == "|":
+                        self._line(f"{val}.forEach((v, k) => {lv}.set(k, v));")
                 else:
                     self._line(f"{lv} {op}= {val};")
             case NoOp():
@@ -632,7 +636,11 @@ class JsLikeBackend:
 
     def _emit_for_of(self, value: str, iter_expr: str, iter_type: Type | None) -> None:
         """Emit for-of loop header. Override for TS type casting."""
-        self._line(f"for (const {_camel(value)} of {iter_expr}) {{")
+        # Iterating over Map yields keys (like Python dict)
+        if isinstance(iter_type, Map):
+            self._line(f"for (const {_camel(value)} of {iter_expr}.keys()) {{")
+        else:
+            self._line(f"for (const {_camel(value)} of {iter_expr}) {{")
 
     def _emit_for_tuple_destructure(
         self, index: str, value: str, iter_expr: str, iter_type: Type | None
@@ -677,6 +685,9 @@ class JsLikeBackend:
         # Spread sets to arrays since Set doesn't have .map()
         if _is_set_expr(iterable):
             iter_expr = f"[...{iter_expr}]"
+        # Map iteration yields keys
+        elif isinstance(iterable.typ, Map):
+            iter_expr = f"[...{iter_expr}.keys()]"
         self._line(f"{accumulator}.push(...{iter_expr}.map({_camel(value)} => {transform}));")
         return True
 
@@ -996,6 +1007,50 @@ class JsLikeBackend:
             ) if isinstance(receiver_type, Map):
                 return f"[...{self._expr(obj)}.values()]"
             case MethodCall(
+                obj=obj, method="copy", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                return f"new Map({self._expr(obj)})"
+            case MethodCall(
+                obj=obj, method="pop", args=[key], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                key_str = self._expr(key)
+                return f"((v = {obj_str}.get({key_str})), {obj_str}.delete({key_str}), v)"
+            case MethodCall(
+                obj=obj, method="pop", args=[key, default], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                key_str = self._expr(key)
+                default_str = self._expr(default)
+                return f"({obj_str}.has({key_str}) ? ((v = {obj_str}.get({key_str})), {obj_str}.delete({key_str}), v) : {default_str})"
+            case MethodCall(
+                obj=obj, method="setdefault", args=[key], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                key_str = self._expr(key)
+                return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : ({obj_str}.set({key_str}, null), null))"
+            case MethodCall(
+                obj=obj, method="setdefault", args=[key, default], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                key_str = self._expr(key)
+                default_str = self._expr(default)
+                return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : ({obj_str}.set({key_str}, {default_str}), {default_str}))"
+            case MethodCall(
+                obj=obj, method="update", args=args, receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map) and len(args) >= 1:
+                obj_str = self._expr(obj)
+                updates = []
+                for arg in args:
+                    arg_str = self._expr(arg)
+                    updates.append(f"{arg_str}.forEach((v, k) => {obj_str}.set(k, v))")
+                return f"(({', '.join(updates)}), null)"
+            case MethodCall(
+                obj=obj, method="popitem", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                return f"((e = [...{obj_str}.entries()].pop()), {obj_str}.delete(e[0]), e)"
+            case MethodCall(
                 obj=obj, method="replace", args=[StringLit(value=old_str), new], receiver_type=_
             ):
                 if old_str == "":
@@ -1186,6 +1241,8 @@ class JsLikeBackend:
         ):
             return f"{obj_str}.codePointAt({idx_str})"
         if isinstance(obj_type, Map):
+            if isinstance(obj_type.key, Tuple):
+                return f"tupleMapGet({obj_str}, {idx_str})"
             return f"{obj_str}.get({idx_str})"
         return f"{obj_str}[{idx_str}]"
 
@@ -1538,6 +1595,21 @@ class JsLikeBackend:
                 return f"[...{right_str}].every(x => {left_str}.has(x))"
             if op == ">":
                 return f"({left_str}.size > {right_str}.size && [...{right_str}].every(x => {left_str}.has(x)))"
+        # Handle Map comparison and merge operators
+        if _is_map_expr(left) and _is_map_expr(right):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "==":
+                return f"mapEq({left_str}, {right_str})"
+            if op == "!=":
+                return f"!mapEq({left_str}, {right_str})"
+            if op == "|":
+                return f"new Map([...{left_str}, ...{right_str}])"
+        if _is_map_expr(left) or _is_map_expr(right):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "|":
+                return f"new Map([...{left_str}, ...{right_str}])"
         # Handle string repetition: "a" * 3 -> "a".repeat(3), negative -> ""
         if op == "*":
             if left.typ == STRING:
@@ -1714,9 +1786,15 @@ class JsLikeBackend:
                 return f"{neg}tupleSetHas({container_str}, {item_str})"
             return f"{neg}{container_str}.has({item_str})"
         if isinstance(container_type, Map):
+            if isinstance(container_type.key, Tuple):
+                return f"{neg}tupleMapHas({container_str}, {item_str})"
             return f"{neg}{container_str}.has({item_str})"
         if is_bytes_type(container_type):
             return f"{neg}arrContains({container_str}, {item_str})"
+        # Tuple in list of tuples needs value-based comparison
+        if isinstance(item.typ, Tuple) and isinstance(container_type, (Slice, Array)):
+            if isinstance(container_type.element, Tuple):
+                return f"{neg}{container_str}.some(x => arrEq(x, {item_str}))"
         return f"{neg}{container_str}.includes({item_str})"
 
     def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
@@ -1916,6 +1994,23 @@ def _is_set_expr(expr: Expr) -> bool:
     # Set methods that return sets
     if isinstance(expr, MethodCall) and isinstance(expr.receiver_type, Set):
         if expr.method in ("copy", "union", "intersection", "difference", "symmetric_difference"):
+            return True
+    return False
+
+
+def _is_map_expr(expr: Expr) -> bool:
+    """Check if expression is a map/dict (by type or by being a dict() call or merge operator)."""
+    if isinstance(expr.typ, Map):
+        return True
+    if isinstance(expr, Call) and expr.func == "dict":
+        return True
+    # Map merge operator produces maps
+    if isinstance(expr, BinaryOp) and expr.op == "|":
+        if _is_map_expr(expr.left) or _is_map_expr(expr.right):
+            return True
+    # Map methods that return maps
+    if isinstance(expr, MethodCall) and isinstance(expr.receiver_type, Map):
+        if expr.method == "copy":
             return True
     return False
 

@@ -16,13 +16,14 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _safe_name,
 )
-from src.backend.util import escape_string, ir_contains_call, ir_contains_cast, ir_has_bytes_ops, ir_has_tuple_sets
+from src.backend.util import escape_string, ir_contains_call, ir_contains_cast, ir_has_bytes_ops, ir_has_tuple_maps, ir_has_tuple_sets
 from src.ir import (
     BOOL,
     INT,
     STRING,
     VOID,
     Array,
+    Assign,
     BinaryOp,
     BoolLit,
     Call,
@@ -33,6 +34,7 @@ from src.ir import (
     FuncType,
     Function,
     Index,
+    IndexLV,
     IntLit,
     InterfaceDef,
     Len,
@@ -54,6 +56,7 @@ from src.ir import (
     SliceExpr,
     SliceLit,
     StaticCall,
+    Stmt,
     StringConcat,
     StringFormat,
     StringLit,
@@ -157,6 +160,15 @@ class TsBackend(JsLikeBackend):
         if ir_has_tuple_sets(module):
             self._emit_tuple_set_helpers()
             emitted = True
+        if ir_has_tuple_maps(module):
+            self._emit_tuple_map_helpers()
+            emitted = True
+        if ir_contains_call(module, "dict"):
+            self._line("function dict<K, V>(x?: [K, V][]): Map<K, V> { if (x === undefined) return new Map<K, V>(); return new Map(x); }")
+            emitted = True
+        if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
+            self._emit_map_helpers()
+            emitted = True
         return emitted
 
     def _emit_tuple_set_helpers(self) -> None:
@@ -171,6 +183,38 @@ class TsBackend(JsLikeBackend):
         self.indent += 1
         self._line("for (const x of s) if (arrEq(x, t)) return true;")
         self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_tuple_map_helpers(self) -> None:
+        """Emit helper functions for maps with tuple keys."""
+        self._line("function tupleMapGet<K extends any[], V>(m: Map<K, V>, k: K): V | undefined {")
+        self.indent += 1
+        self._line("for (const [key, val] of m) if (arrEq(key, k)) return val;")
+        self._line("return undefined;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function tupleMapHas<K extends any[]>(m: Map<K, any>, k: K): boolean {")
+        self.indent += 1
+        self._line("for (const [key] of m) if (arrEq(key, k)) return true;")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_map_helpers(self) -> None:
+        """Emit helper functions for map operations."""
+        self._line("function mapEq<K, V>(a: Map<K, V>, b: Map<K, V>): boolean {")
+        self.indent += 1
+        self._line("if (a.size !== b.size) return false;")
+        self._line("for (const [k, v] of a) {")
+        self.indent += 1
+        self._line("if (!b.has(k)) return false;")
+        self._line("const bv = b.get(k);")
+        self._line("if (Array.isArray(v) && Array.isArray(bv)) { if (!arrEq(v as any, bv as any)) return false; }")
+        self._line("else if (v !== bv) return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return true;")
         self.indent -= 1
         self._line("}")
 
@@ -370,6 +414,20 @@ class TsBackend(JsLikeBackend):
         self._line("return true;")
         self.indent -= 1
         self._line("}")
+
+    # --- Statement override for Map assignment ---
+
+    def _emit_stmt(self, stmt: Stmt) -> None:
+        # Handle Map assignment specially
+        match stmt:
+            case Assign(target=LValue() as target, value=value):
+                if isinstance(target, IndexLV) and isinstance(target.obj.typ, Map):
+                    obj_str = self._expr(target.obj)
+                    idx_str = self._expr(target.index)
+                    val = self._expr(value)
+                    self._line(f"{obj_str}.set({idx_str}, {val});")
+                    return
+        super()._emit_stmt(stmt)
 
     # --- Interface and Field ---
 

@@ -16,7 +16,7 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _is_bytes_list_type,
 )
-from src.backend.util import ir_contains_call, ir_has_bytes_ops, ir_has_tuple_sets, is_bytes_type
+from src.backend.util import ir_contains_call, ir_has_bytes_ops, ir_has_tuple_maps, ir_has_tuple_sets, is_bytes_type
 from src.ir import (
     BOOL,
     FLOAT,
@@ -145,6 +145,15 @@ class JsBackend(JsLikeBackend):
         if ir_has_tuple_sets(module):
             self._emit_tuple_set_helpers()
             emitted = True
+        if ir_has_tuple_maps(module):
+            self._emit_tuple_map_helpers()
+            emitted = True
+        if ir_contains_call(module, "dict"):
+            self._line("function dict(x) { if (x === undefined) return new Map(); return new Map(x); }")
+            emitted = True
+        if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
+            self._emit_map_helpers()
+            emitted = True
         return emitted
 
     def _emit_tuple_set_helpers(self) -> None:
@@ -159,6 +168,38 @@ class JsBackend(JsLikeBackend):
         self.indent += 1
         self._line("for (const x of s) if (arrEq(x, t)) return true;")
         self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_tuple_map_helpers(self) -> None:
+        """Emit helper functions for maps with tuple keys."""
+        self._line("function tupleMapGet(m, k) {")
+        self.indent += 1
+        self._line("for (const [key, val] of m) if (arrEq(key, k)) return val;")
+        self._line("return undefined;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function tupleMapHas(m, k) {")
+        self.indent += 1
+        self._line("for (const [key] of m) if (arrEq(key, k)) return true;")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_map_helpers(self) -> None:
+        """Emit helper functions for map operations."""
+        self._line("function mapEq(a, b) {")
+        self.indent += 1
+        self._line("if (a.size !== b.size) return false;")
+        self._line("for (const [k, v] of a) {")
+        self.indent += 1
+        self._line("if (!b.has(k)) return false;")
+        self._line("const bv = b.get(k);")
+        self._line("if (Array.isArray(v) && Array.isArray(bv)) { if (!arrEq(v, bv)) return false; }")
+        self._line("else if (v !== bv) return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return true;")
         self.indent -= 1
         self._line("}")
 
