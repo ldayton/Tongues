@@ -68,13 +68,13 @@ docker-build lang:
 test-codegen:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_15_codegen.py -v"
+        uvx pytest tests/test_15_codegen.py -v
 
 # Run apptests in Docker for a language (image must have python+uv installed)
 test-apptests lang:
     docker build -t tongues-{{lang}} docker/{{lang}}
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
-        bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_15_app.py --target {{lang}} -v"
+        uvx pytest tests/test_15_app.py --target {{lang}} -v
 
 # Check if formatters are installed
 formatters:
