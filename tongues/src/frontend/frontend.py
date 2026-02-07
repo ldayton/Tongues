@@ -443,7 +443,7 @@ class Frontend:
         )
         return ctx, dispatch
 
-    def _lower_expr_as_bool(self, node: ASTNode) -> "ir.Expr":
+    def _lower_expr_as_bool(self, node: ASTNode) -> "ir.Expr":  # noqa: F821
         """Lower expression used in boolean context, adding truthy checks as needed."""
         return lowering.lower_expr_as_bool(
             node,
@@ -455,7 +455,7 @@ class Frontend:
             self.symbols,
         )
 
-    def _lower_expr(self, node: ASTNode) -> "ir.Expr":
+    def _lower_expr(self, node: ASTNode) -> "ir.Expr":  # noqa: F821
         """Lower a Python expression to IR."""
         ctx, dispatch = self._make_ctx_and_dispatch()
         return lowering.lower_expr(node, ctx, dispatch)
@@ -474,7 +474,7 @@ class Frontend:
 
     def _lower_expr_List(
         self, node: ASTNode, expected_type: Type | None = None
-    ) -> "ir.Expr":
+    ) -> "ir.Expr":  # noqa: F821
         return lowering.lower_expr_List(
             node,
             self._lower_expr,
@@ -482,12 +482,12 @@ class Frontend:
             expected_type,
         )
 
-    def _lower_stmt(self, node: ASTNode) -> "ir.Stmt":
+    def _lower_stmt(self, node: ASTNode) -> "ir.Stmt":  # noqa: F821
         """Lower a Python statement to IR."""
         ctx, dispatch = self._make_ctx_and_dispatch()
         return lowering.lower_stmt(node, ctx, dispatch)
 
-    def _lower_stmts(self, stmts: list[ASTNode]) -> list["ir.Stmt"]:
+    def _lower_stmts(self, stmts: list[ASTNode]) -> list["ir.Stmt"]:  # noqa: F821
         """Lower a list of statements."""
         return [self._lower_stmt(s) for s in stmts]
 
@@ -509,6 +509,6 @@ class Frontend:
         self._current_catch_var = var
         return saved
 
-    def _lower_lvalue(self, node: ASTNode) -> "ir.LValue":
+    def _lower_lvalue(self, node: ASTNode) -> "ir.LValue":  # noqa: F821
         """Lower an expression to an LValue."""
         return lowering.lower_lvalue(node, self._lower_expr)

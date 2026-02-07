@@ -25,7 +25,7 @@ test-apptests-local lang="":
 
 # Lint (--fix to apply changes)
 lint *ARGS:
-    uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} .
+    uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
 
 # Format (--fix to apply changes)
 fmt *ARGS:

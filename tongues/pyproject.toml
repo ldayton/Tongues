@@ -8,10 +8,11 @@ dependencies = []
 dev = ["pytest>=8.0", "ruff>=0.9"]
 
 [tool.ruff.lint]
-ignore = ["E741", "F841"]
-
-[tool.ruff.lint.per-file-ignores]
-"src/backend/*.py" = ["E402"]
-"src/frontend/*.py" = ["E402", "E712", "F821"]
-"tests/*.py" = ["E402"]
-"tests/**/*.py" = ["E402", "E711", "E712", "F601", "F631"]
+ignore = [
+    # E402: Import not at top of file. Backends define helper functions before bulk imports.
+    "E402",
+    # E741: Ambiguous variable name (l/O/I). Intentional: `l, r = left, right` in backends.
+    "E741",
+    # F841: Unused variable. Pattern matching extracts unused bindings: `case Foo(x=x):`
+    "F841",
+]

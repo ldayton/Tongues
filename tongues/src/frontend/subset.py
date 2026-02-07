@@ -314,7 +314,7 @@ def is_allowed_dataclass_args(keywords: list[ASTNode]) -> bool:
         if arg not in allowed:
             return False
         value = kw.get("value", {})
-        if value.get("_type") != "Constant" or value.get("value") != True:
+        if value.get("_type") != "Constant" or value.get("value") != True:  # noqa: E712
             return False
         i += 1
     return True
