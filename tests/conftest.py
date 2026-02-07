@@ -660,7 +660,9 @@ def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
 
 # --- Summary table support ---
 
-_apptest_results: dict[str, dict[str, tuple[int, int]]] = {}  # {lang: {test: (passed, total)}}
+_apptest_results: dict[
+    str, dict[str, tuple[int, int]]
+] = {}  # {lang: {test: (passed, total)}}
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -701,7 +703,9 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         return
     terminalreporter.write_sep("=", "Apptest Summary")
     # Collect all tests across languages
-    all_tests = sorted({t for lang_results in _apptest_results.values() for t in lang_results})
+    all_tests = sorted(
+        {t for lang_results in _apptest_results.values() for t in lang_results}
+    )
     langs = sorted(_apptest_results.keys())
     # Print header
     header = f"{'Test':<20}" + "".join(f"{lang:<15}" for lang in langs)

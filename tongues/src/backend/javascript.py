@@ -121,7 +121,9 @@ class JsBackend(JsLikeBackend):
             self._line("function any(arr) { return arr.some(Boolean); }")
             emitted = True
         if ir_contains_call(module, "sorted"):
-            self._line("function sorted(arr, reverse) { let r = [...arr].sort((a, b) => a < b ? -1 : a > b ? 1 : 0); return reverse ? r.reverse() : r; }")
+            self._line(
+                "function sorted(arr, reverse) { let r = [...arr].sort((a, b) => a < b ? -1 : a > b ? 1 : 0); return reverse ? r.reverse() : r; }"
+            )
             emitted = True
         if ir_contains_call(module, "enumerate"):
             self._line("function enumerate(arr) { return arr.map((v, i) => [i, v]); }")
@@ -130,7 +132,9 @@ class JsBackend(JsLikeBackend):
             self._line("function list(x) { return typeof x === 'string' ? [...x] : [...x]; }")
             emitted = True
         if ir_contains_call(module, "zip"):
-            self._line("function zip(...arrs) { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }")
+            self._line(
+                "function zip(...arrs) { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }"
+            )
             emitted = True
         return emitted
 
@@ -177,7 +181,9 @@ class JsBackend(JsLikeBackend):
         self._line("if (a.length !== b.length) return false;")
         self._line("for (let i = 0; i < a.length; i++) {")
         self.indent += 1
-        self._line("if (Array.isArray(a[i]) && Array.isArray(b[i])) { if (!arrEq(a[i], b[i])) return false; }")
+        self._line(
+            "if (Array.isArray(a[i]) && Array.isArray(b[i])) { if (!arrEq(a[i], b[i])) return false; }"
+        )
         self._line("else if (a[i] !== b[i]) return false;")
         self.indent -= 1
         self._line("}")

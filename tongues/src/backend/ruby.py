@@ -1441,12 +1441,17 @@ class RubyBackend:
                 else:
                     right_str = self._maybe_paren(self._expr(right), right, "**", is_left=False)
                 return f"{left_str} ** {right_str}"
-            case BinaryOp(op=op, left=left, right=right) if op in (
-                "<",
-                ">",
-                "<=",
-                ">=",
-            ) and isinstance(left.typ, Slice) and isinstance(right.typ, Slice):
+            case BinaryOp(op=op, left=left, right=right) if (
+                op
+                in (
+                    "<",
+                    ">",
+                    "<=",
+                    ">=",
+                )
+                and isinstance(left.typ, Slice)
+                and isinstance(right.typ, Slice)
+            ):
                 # Ruby arrays don't have <, >, <=, >= - use <=> spaceship
                 left_str = self._expr(left)
                 right_str = self._expr(right)
@@ -1496,8 +1501,8 @@ class RubyBackend:
                 left_str = self._expr(left)
                 right_str = self._expr(right)
                 return f"{left_str} * [{right_str}, 0].max"
-            case BinaryOp(op="*", left=left, right=right) if (
-                left.typ == INT and isinstance(right.typ, Slice)
+            case BinaryOp(op="*", left=left, right=right) if left.typ == INT and isinstance(
+                right.typ, Slice
             ):
                 # Ruby can't do int * array, swap to array * int
                 # Also handle negative: [n, 0].max for n < 0

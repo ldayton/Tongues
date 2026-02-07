@@ -972,11 +972,13 @@ class JsLikeBackend:
                 obj=obj, method="pop", args=[IntLit(value=0)], receiver_type=receiver_type
             ) if _is_array_type(receiver_type):
                 return f"{self._expr(obj)}.shift()"
-            case MethodCall(
-                obj=obj, method="pop", args=[idx], receiver_type=receiver_type
-            ) if _is_array_type(receiver_type):
+            case MethodCall(obj=obj, method="pop", args=[idx], receiver_type=receiver_type) if (
+                _is_array_type(receiver_type)
+            ):
                 return f"{self._expr(obj)}.splice({self._expr(idx)}, 1)[0]"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
+            ):
                 return self._method_call(obj, method, args, receiver_type, reverse=reverse)
             case StaticCall(on_type=on_type, method=method, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
@@ -1186,7 +1188,13 @@ class JsLikeBackend:
         return f"({obj_str}.get({key_str}) ?? null)"
 
     def _method_call(
-        self, obj: Expr, method: str, args: list[Expr], receiver_type: Type, *, reverse: bool = False
+        self,
+        obj: Expr,
+        method: str,
+        args: list[Expr],
+        receiver_type: Type,
+        *,
+        reverse: bool = False,
     ) -> str:
         """Emit method call with bytes handling."""
         # Handle bytes join (separator is obj, list is first arg)
