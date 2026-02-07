@@ -9,8 +9,6 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
-
 # Required versions for each language runtime (must match Dockerfiles)
 _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
     "c": (["gcc", "--version"], r"gcc.* 13\."),
