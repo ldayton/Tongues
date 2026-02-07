@@ -2,7 +2,7 @@
 
 Syntactic restrictions for transpilation to statically-typed languages. These are checkable from AST structure alone (phase 3).
 
-See [typecheck-spec.md](../typecheck/typecheck-spec.md) for type-level invariants requiring inference.
+See [typecheck-spec.md](../09_inference/_typecheck-spec.md) for type-level invariants requiring inference.
 
 ---
 
@@ -138,7 +138,7 @@ The walrus operator `:=` is allowed and scopes to the enclosing function (not th
 `range(n)`, `range(a, b)`, `range(a, b, step)` — reusable sequence with known length
 
 ### Eager Context Only
-Must appear in for-loop header or eager consumer. Enforcement requires type checking (see [typecheck-spec.md](../typecheck/typecheck-spec.md#6-iterator-escape)).
+Must appear in for-loop header or eager consumer. Enforcement requires type checking (see [typecheck-spec.md](../09_inference/_typecheck-spec.md#6-iterator-escape)).
 
 | Function                                  | Rationale                   |
 | ----------------------------------------- | --------------------------- |
@@ -167,7 +167,7 @@ foo(reversed(xs))      # passed to unknown consumer
 | Dict comprehension | `{k: v for k,v in xs}` | Always eager |
 
 ### Generator Expressions
-Allowed only as immediate argument to eager consumers. Enforcement requires type checking (see [typecheck-spec.md](../typecheck/typecheck-spec.md#5-generator-expression-consumers)).
+Allowed only as immediate argument to eager consumers. Enforcement requires type checking (see [typecheck-spec.md](../09_inference/_typecheck-spec.md#5-generator-expression-consumers)).
 
 | Consumer      | Example                      |
 | ------------- | ---------------------------- |

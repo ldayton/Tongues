@@ -2,7 +2,7 @@
 
 This document describes the type system enforced during phases 5–8. It requires knowing the types of expressions and cannot be checked from AST structure alone.
 
-See [subset-spec.md](../subset/subset-spec.md) for syntactic restrictions checkable on the AST.
+See [subset-spec.md](../03_subset/_subset-spec.md) for syntactic restrictions checkable on the AST.
 
 ---
 

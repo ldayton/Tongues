@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
 from src.frontend.parse import parse
 from src.frontend.subset import verify as verify_subset
 
-SUBSET_DIR = Path(__file__).parent / "subset"
+SUBSET_DIR = Path(__file__).parent / "03_subset"
 
 
 def parse_subset_file(path: Path) -> list[tuple[str, str, str]]:

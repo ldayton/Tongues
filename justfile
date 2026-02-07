@@ -17,11 +17,11 @@ subset:
 
 # Run codegen tests locally
 test-codegen-local:
-    uv run --directory tongues pytest ../tests/test_codegen.py -v
+    uv run --directory tongues pytest ../tests/test_15_codegen.py -v
 
 # Run apptests locally for a specific language (or all if not specified)
 test-apptests-local lang="":
-    uv run --directory tongues pytest ../tests/test_apptests.py {{ if lang != "" { "--target " + lang } else { "" } }} -v
+    uv run --directory tongues pytest ../tests/test_15_app.py {{ if lang != "" { "--target " + lang } else { "" } }} -v
 
 # Lint (--fix to apply changes)
 lint *ARGS:
@@ -68,13 +68,13 @@ docker-build lang:
 test-codegen:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_codegen.py -v"
+        bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_15_codegen.py -v"
 
 # Run apptests in Docker for a language (image must have python+uv installed)
 test-apptests lang:
     docker build -t tongues-{{lang}} docker/{{lang}}
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
-        bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_apptests.py --target {{lang}} -v"
+        bash -c "rm -rf tongues/.venv && uv run --directory tongues pytest ../tests/test_15_app.py --target {{lang}} -v"
 
 # Check if formatters are installed
 formatters:

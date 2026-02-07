@@ -218,8 +218,8 @@ _SKIP_LANGS: dict[str, set[str]] = {
 }
 
 TESTS_DIR = Path(__file__).parent
-APP_DIR = TESTS_DIR / "app"
-CODEGEN_DIR = TESTS_DIR / "codegen"
+APP_DIR = TESTS_DIR / "15_app"
+CODEGEN_DIR = TESTS_DIR / "15_codegen"
 OUT_DIR = APP_DIR / ".out"
 TONGUES_DIR = TESTS_DIR.parent / "tongues"
 
