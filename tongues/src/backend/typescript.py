@@ -278,15 +278,15 @@ class TsBackend(JsLikeBackend):
         self.indent -= 1
         self._line("}")
         self._line(
-            "function arrStep(a: number[], lo: number | null, hi: number | null, step: number): number[] {"
+            "function arrStep<T extends any[] | string>(a: T, lo: number | null, hi: number | null, step: number): T {"
         )
         self.indent += 1
         self._line("if (lo === null) lo = step > 0 ? 0 : a.length - 1;")
         self._line("if (hi === null) hi = step > 0 ? a.length : -1;")
-        self._line("const r: number[] = [];")
+        self._line("const r: any[] = [];")
         self._line("if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }")
         self._line("else { for (let i = lo; i > hi; i += step) r.push(a[i]); }")
-        self._line("return r;")
+        self._line("return (typeof a === 'string' ? r.join('') : r) as T;")
         self.indent -= 1
         self._line("}")
         self._line("function deepArrEq(a: number[][], b: number[][]): boolean {")

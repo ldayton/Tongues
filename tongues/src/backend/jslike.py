@@ -837,15 +837,19 @@ class JsLikeBackend:
             case IntToStr(value=v):
                 return f"String({self._expr(v)})"
             case CharClassify(kind=kind, char=char):
+                char_str = self._expr(char)
+                # Python's isupper/islower: has at least one cased char, all cased are upper/lower
+                if kind == "upper":
+                    return f"(/[A-Z]/.test({char_str}) && !/[a-z]/.test({char_str}))"
+                if kind == "lower":
+                    return f"(/[a-z]/.test({char_str}) && !/[A-Z]/.test({char_str}))"
                 regex_map = {
                     "digit": r"/^\d+$/",
                     "alpha": r"/^[a-zA-Z]+$/",
                     "alnum": r"/^[a-zA-Z0-9]+$/",
                     "space": r"/^\s+$/",
-                    "upper": r"/^[A-Z]+$/",
-                    "lower": r"/^[a-z]+$/",
                 }
-                return f"{regex_map[kind]}.test({self._expr(char)})"
+                return f"{regex_map[kind]}.test({char_str})"
             case TrimChars(string=s, chars=chars, mode=mode):
                 return self._trim_chars(s, chars, mode)
             case Call(func="_intPtr", args=[arg]):
@@ -858,7 +862,9 @@ class JsLikeBackend:
             case Call(func="repr", args=[arg]) if arg.typ == BOOL:
                 return f'({self._expr(arg)} ? "True" : "False")'
             case Call(func="repr", args=[arg]) if arg.typ == STRING:
-                return f'"\'" + {self._expr(arg)} + "\'"'
+                inner = self._expr(arg)
+                # Python uses double quotes if string contains single but not double
+                return f"({inner}.includes(\"'\") && !{inner}.includes('\"') ? '\"' + {inner} + '\"' : \"'\" + {inner} + \"'\")"
             case Call(func="repr", args=[arg]):
                 return f"String({self._expr(arg)})"
             case Call(func="bool", args=args):
@@ -1178,6 +1184,72 @@ class JsLikeBackend:
         # Handle string.split() with no args - splits on whitespace, removes empties
         if receiver_type == STRING and method == "split" and len(args) == 0:
             return f"{self._expr(obj)}.trim().split(/\\s+/).filter(Boolean)"
+        # Handle string.split(sep, maxsplit) - Python splits at most maxsplit times
+        if receiver_type == STRING and method == "split" and len(args) == 2:
+            obj_str = self._expr(obj)
+            sep = self._expr(args[0])
+            maxsplit = self._expr(args[1])
+            return f"((m = {maxsplit}) === 0 ? [{obj_str}] : (p = {obj_str}.split({sep}), m >= p.length - 1 ? p : [...p.slice(0, m), p.slice(m).join({sep})]))"
+        # Handle string.rsplit(sep, maxsplit) - splits from right
+        if receiver_type == STRING and method == "rsplit" and len(args) == 2:
+            obj_str = self._expr(obj)
+            sep = self._expr(args[0])
+            maxsplit = self._expr(args[1])
+            return f"((m = {maxsplit}) === 0 ? [{obj_str}] : (p = {obj_str}.split({sep}), m >= p.length - 1 ? p : [p.slice(0, -m).join({sep}), ...p.slice(-m)]))"
+        # String methods not in JS
+        if receiver_type == STRING:
+            obj_str = self._expr(obj)
+            if method == "count" and len(args) == 1:
+                arg = args[0]
+                if isinstance(arg, StringLit) and arg.value == "":
+                    # count("") returns len + 1
+                    return f"({obj_str}.length + 1)"
+                sub = self._expr(arg)
+                return f"({obj_str}.split({sub}).length - 1)"
+            if method == "capitalize" and len(args) == 0:
+                return f"({obj_str}.charAt(0).toUpperCase() + {obj_str}.slice(1).toLowerCase())"
+            if method == "title" and len(args) == 0:
+                return f"{obj_str}.toLowerCase().replace(/\\b\\w/g, c => c.toUpperCase())"
+            if method == "swapcase" and len(args) == 0:
+                return f"{obj_str}.split('').map(c => c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase()).join('')"
+            if method == "casefold" and len(args) == 0:
+                return f"{obj_str}.toLowerCase()"
+            if method == "removeprefix" and len(args) == 1:
+                prefix = self._expr(args[0])
+                return f"({obj_str}.startsWith({prefix}) ? {obj_str}.slice({prefix}.length) : {obj_str})"
+            if method == "removesuffix" and len(args) == 1:
+                suffix = self._expr(args[0])
+                return f"({obj_str}.endsWith({suffix}) ? {obj_str}.slice(0, -{suffix}.length) : {obj_str})"
+            if method == "zfill" and len(args) == 1:
+                width = self._expr(args[0])
+                return f"(((s = {obj_str})[0] === '-' || s[0] === '+') ? s[0] + s.slice(1).padStart({width} - 1, '0') : s.padStart({width}, '0'))"
+            if method == "center" and len(args) >= 1:
+                width = self._expr(args[0])
+                fill = self._expr(args[1]) if len(args) > 1 else "' '"
+                return f"{obj_str}.padStart(Math.floor(({width} + {obj_str}.length) / 2), {fill}).padEnd({width}, {fill})"
+            if method == "ljust" and len(args) >= 1:
+                width = self._expr(args[0])
+                fill = self._expr(args[1]) if len(args) > 1 else "' '"
+                return f"{obj_str}.padEnd({width}, {fill})"
+            if method == "rjust" and len(args) >= 1:
+                width = self._expr(args[0])
+                fill = self._expr(args[1]) if len(args) > 1 else "' '"
+                return f"{obj_str}.padStart({width}, {fill})"
+            if method == "splitlines" and len(args) == 0:
+                return f"((a = {obj_str}.split(/\\r\\n|\\r|\\n/)), a.length && a[a.length - 1] === '' ? a.slice(0, -1) : a)"
+            if method == "expandtabs" and len(args) <= 1:
+                tabsize = self._expr(args[0]) if len(args) == 1 else "8"
+                # Column-aware tab expansion: each tab goes to next multiple of tabsize
+                return f"((t = {tabsize}, r = '', c = 0) => {{ for (let x of {obj_str}) {{ if (x === '\\t') {{ const sp = t - (c % t); r += ' '.repeat(sp); c += sp; }} else {{ r += x; c++; }} }} return r; }})()"
+            if method == "partition" and len(args) == 1:
+                sep = self._expr(args[0])
+                return f"((i = {obj_str}.indexOf({sep})) === -1 ? [{obj_str}, '', ''] : [{obj_str}.slice(0, i), {sep}, {obj_str}.slice(i + {sep}.length)])"
+            if method == "rpartition" and len(args) == 1:
+                sep = self._expr(args[0])
+                return f"((i = {obj_str}.lastIndexOf({sep})) === -1 ? ['', '', {obj_str}] : [{obj_str}.slice(0, i), {sep}, {obj_str}.slice(i + {sep}.length)])"
+            if method == "format" and len(args) > 0:
+                args_list = ", ".join(self._expr(a) for a in args)
+                return f"((a = [{args_list}], i = 0) => {obj_str}.replace(/\\{{(\\d*)\\}}/g, (_, n) => a[n === '' ? i++ : +n]))()"
         args_str = ", ".join(self._expr(a) for a in args)
         js_method = _method_name(method, receiver_type)
         return f"{self._expr(obj)}.{js_method}({args_str})"
@@ -1239,12 +1311,14 @@ class JsLikeBackend:
                 return f"arrEq({left_str}, {right_str})"
             if op == "!=":
                 return f"!arrEq({left_str}, {right_str})"
-        # Handle string repetition: "a" * 3 -> "a".repeat(3)
+        # Handle string repetition: "a" * 3 -> "a".repeat(3), negative -> ""
         if op == "*":
             if left.typ == STRING:
-                return f"{self._expr(left)}.repeat({self._expr(right)})"
+                n = self._expr(right)
+                return f"{self._expr(left)}.repeat(Math.max(0, {n}))"
             if right.typ == STRING:
-                return f"{self._expr(right)}.repeat({self._expr(left)})"
+                n = self._expr(left)
+                return f"{self._expr(right)}.repeat(Math.max(0, {n}))"
         js_op = _binary_op(op)
         if op in ("==", "!=") and _is_bool_int_compare(left, right):
             js_op = op
@@ -1328,6 +1402,9 @@ class JsLikeBackend:
         inner_type = inner.typ
         if isinstance(inner_type, (Map, Set)):
             return f"{self._expr(inner)}.size"
+        # Use spread for strings to properly count code points (emoji support)
+        if inner_type == STRING:
+            return f"[...{self._expr(inner)}].length"
         return f"{self._expr(inner)}.length"
 
     def _struct_lit(self, struct_name: str, fields: dict[str, Expr]) -> str:
@@ -1579,10 +1656,10 @@ _STRING_METHOD_MAP = {
 
 
 def _is_array_type(typ: Type) -> bool:
-    """Check if type is an array/slice type, possibly wrapped in Pointer."""
-    if isinstance(typ, (Slice, Array)):
+    """Check if type is an array/slice/tuple type, possibly wrapped in Pointer."""
+    if isinstance(typ, (Slice, Array, Tuple)):
         return True
-    if isinstance(typ, Pointer) and isinstance(typ.target, (Slice, Array)):
+    if isinstance(typ, Pointer) and isinstance(typ.target, (Slice, Array, Tuple)):
         return True
     return False
 
