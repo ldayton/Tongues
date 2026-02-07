@@ -1291,3 +1291,243 @@ if abs(value) > 9007199254740991:
 The backend emits BigInt literals for integers exceeding JS's safe integer range. However, operations mixing BigInt and Number fail at runtime. The backend doesn't track BigInt contamination through expressions.
 
 **Should be:** Inference should track which expressions may exceed safe integer range and emit `BigInt` type annotations, with explicit `BigIntToNumber` / `NumberToBigInt` conversions at boundaries. Currently only literal detection is implemented.
+
+---
+
+## Lua
+
+The Lua backend targets Lua 5.4+ with some compatibility considerations for Lua 5.1. Key language differences include 1-based indexing, classes via metatables, and no native `continue` statement.
+
+### 1. 1-Based Indexing Adjustment
+
+**Location:** `lua.py:1157-1168` (Index), `lua.py:1787-1803` (SliceExpr), `lua.py:1844-1853` (IndexLV lvalue), `lua.py:919-932` (ForRange)
+
+```python
+if isinstance(obj_type, (Slice, Array)):
+    return f"{obj_str}[{idx_str} + 1]"
+...
+# In ForRange, convert to 0-based index
+self._line(f"{idx} = {idx} - 1")
+```
+
+The backend adds `+ 1` to all array/slice/string indices at access time to convert from Python's 0-based to Lua's 1-based indexing. For enumeration loops, it also subtracts 1 from the index variable to return to Python semantics.
+
+**Should be:** Lowering should emit explicit `Index1Based(obj, idx)` IR nodes or add an `index_base: int` annotation to Index nodes, rather than having every backend handle the adjustment independently.
+
+---
+
+### 2. Bool-to-Int Conversion
+
+**Location:** `lua.py:1203-1243` (Call handling for min/max/abs/pow/divmod), `lua.py:1317-1451` (BinaryOp arithmetic/comparison/bitwise/shift), `lua.py:1456-1461` (UnaryOp), `lua.py:1587-1594` (MinExpr/MaxExpr), `lua.py:1895-1909` (`_bool_to_int` helper)
+
+```python
+# Lua bools don't support arithmetic
+if op in ("+", "-", "*", "/", "%", "//") and (left_is_bool or right_is_bool):
+    left_str = f"({self._expr(left)} and 1 or 0)" if left_is_bool else ...
+```
+
+Extensive code checks if operands have `BOOL` type and wraps them with `(expr and 1 or 0)`. This pattern appears in:
+- Arithmetic operators (+, -, *, /, %, //)
+- Comparison operators (<, >, <=, >=, ==, !=)
+- Bitwise operators (&, |, ^)
+- Shift operators (<<, >>)
+- Unary operators (-, ~)
+- Built-in functions (min, max, abs, pow, divmod)
+
+**Should be:** Inference should insert explicit `Cast(BOOL, INT)` nodes when bools flow into arithmetic, bitwise, or comparison operations that require numeric operands.
+
+---
+
+### 3. Truthy Type Dispatch
+
+**Location:** `lua.py:1277-1304` (Truthy handling)
+
+```python
+if isinstance(inner_type, Slice):
+    return f"(#({expr_str}) > 0)"
+if isinstance(inner_type, (Map, Set)):
+    return f"(next({expr_str}) ~= nil)"
+if inner_type == Primitive(kind="int"):
+    return f"({expr_str} ~= 0)"
+```
+
+Backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks. Lua's truthiness semantics (only `nil` and `false` are falsy) differ from Python's.
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `SliceNonEmpty`, `MapNonEmpty`, `IntNonZero`, etc.
+
+---
+
+### 4. Containment Check Dispatch
+
+**Location:** `lua.py:1618-1632` (`_containment_check`)
+
+```python
+if isinstance(container_type, Set):
+    self._needed_helpers.add("_set_contains")
+    return f"{neg}_set_contains({container_str}, {item_str})"
+if isinstance(container_type, Map):
+    return f"({neg}({container_str}[{item_str}] ~= nil))"
+if isinstance(container_type, Primitive) and container_type.kind == "string":
+    return f"({neg}(string.find({container_str}, {item_str}, 1, true) ~= nil))"
+# Array/Slice - need to search
+return f"({neg}(function() for _, v in ipairs(...) ... end)())"
+```
+
+Backend switches on container type to emit correct containment semantics. Sets use a helper, maps use `[key] ~= nil`, strings use `string.find`, and arrays require an IIFE loop.
+
+**Should be:** Lowering should emit type-specific IR: `SetContains`, `MapContains`, `StringContains`, `SliceContains`.
+
+---
+
+### 5. Hoisted Variable Computation
+
+**Location:** `lua.py:349-395` (`_collect_assigned_vars`), `lua.py:620-641` (`_emit_function`), `lua.py:643-669` (`_emit_method`)
+
+```python
+def _emit_function(self, func: Function) -> None:
+    all_vars = self._collect_assigned_vars(func.body)
+    param_names = {p.name for p in func.params}
+    local_vars = all_vars - param_names - {"_"}
+    self._hoisted_vars = set(local_vars)
+    ...
+    if local_vars:
+        self._line(f"local {', '.join(_safe_name(v) for v in sorted(local_vars))}")
+```
+
+Backend traverses the entire function body recursively to collect all assigned variable names, then emits `local` declarations at function start. Lua requires variables to be declared before use.
+
+**Should be:** Middleend hoisting pass should compute `func.hoisted_vars`. Backend should simply read this annotation instead of recomputing it.
+
+---
+
+### 6. Continue Statement Transformation
+
+**Location:** `lua.py:224-270` (`_scan_for_continue`), `lua.py:236-310` (`_body_has_continue`, `_body_has_direct_continue`), `lua.py:772-774`, `937-938`, `960-961`, `976-977` (label emission)
+
+```python
+case Continue(label=_):
+    self._line("goto continue")
+...
+if has_continue:
+    self._line("::continue::")
+```
+
+Backend scans all function bodies for `continue` statements and emits `goto continue` with `::continue::` labels at loop ends. Lua 5.1 doesn't have `continue`; Lua 5.2+ supports `goto`.
+
+**Should be:** A middleend pass should annotate loops with `has_continue: bool`, or transform loops containing `continue` into a form that doesn't require labels. Backend shouldn't need to scan for continue statements.
+
+---
+
+### 7. Try-Catch Return Propagation
+
+**Location:** `lua.py:983-1065` (`_emit_try_catch`)
+
+```python
+has_return = self._body_has_return(body)
+self._line("local _ok, _err = pcall(function()")
+...
+if has_return:
+    self._line("if _ok then return _err end")
+```
+
+Backend wraps try body in `pcall(function() ... end)`, scans for return statements, and emits `if _ok then return _err end` to propagate successful returns. This requires analyzing the try body at emission time.
+
+**Should be:** Lowering could emit a more explicit `TryCatchReturn(body, catches)` node, or middleend should annotate TryCatch with `body_has_return: bool`.
+
+---
+
+### 8. Ternary Falsy Guard
+
+**Location:** `lua.py:1482-1494` (Ternary), `lua.py:1598-1608` (`_could_be_falsy`)
+
+```python
+if self._could_be_falsy(then_expr):
+    return f"(function() if {cond_str} then return {then_str} else return {else_str} end end)()"
+return f"({cond_str} and {then_str} or {else_str})"
+```
+
+Lua's `cond and a or b` idiom fails when `a` evaluates to `false` or `nil`. Backend checks if the then-branch could be falsy (boolean false, nil, or optional type) and emits a function wrapper instead.
+
+**Should be:** Inference should annotate expressions with `could_be_falsy: bool`, or lowering should emit distinct IR: `SafeTernary(cond, then, else)` when then-branch needs protection.
+
+---
+
+### 9. Map/Set Length Calculation
+
+**Location:** `lua.py:1531-1537` (Len)
+
+```python
+if isinstance(inner_type, (Map, Set)):
+    inner_str = self._expr(inner)
+    return f"(function() local c = 0; for _ in pairs({inner_str}) do c = c + 1 end; return c end)()"
+```
+
+Lua's `#` operator only counts consecutive integer keys starting from 1. For maps/sets (which use arbitrary keys), backend emits an IIFE that iterates with `pairs()` and counts.
+
+**Should be:** Lowering should emit `MapLen(expr)`, `SetLen(expr)` IR nodes distinct from `Len(expr)` for arrays/slices.
+
+---
+
+### 10. String Concatenation Operator
+
+**Location:** `lua.py:698-703` (OpAssign), `lua.py:1310-1316` (BinaryOp)
+
+```python
+if op == "+" and (self._is_string_type(left.typ) or self._is_string_type(right.typ)):
+    return f"{left_str} .. {right_str}"
+```
+
+Backend detects string types in binary `+` operations and changes the operator to `..` (Lua's string concatenation operator).
+
+**Should be:** Lowering should emit `StringConcat(parts)` IR for all string concatenation, not `BinaryOp("+", str, str)`.
+
+---
+
+### 11. Method Call Type Dispatch
+
+**Location:** `lua.py:1634-1785` (`_method_call`)
+
+The method implements a large dispatch table based on receiver type:
+- String methods: join, split, lower, upper, find, rfind, startswith, endswith, replace, strip, etc.
+- Slice methods: append, extend, copy, pop
+- Map methods: get
+- Set methods: add, contains
+
+Each method has type-specific Lua implementations.
+
+**Should be:** Lowering should emit type-specific method IR: `StringJoin`, `StringSplit`, `SliceAppend`, `SlicePop`, `MapGet`, `SetAdd`, etc.
+
+---
+
+### 12. Expression Statement Parenthesis Guard
+
+**Location:** `lua.py:707-715` (ExprStmt)
+
+```python
+if e.startswith("(") and self._needs_paren_guard:
+    self._line(";" + e)
+else:
+    self._line(e)
+self._needs_paren_guard = True
+```
+
+Lua has an ambiguous grammar: `f()\n(g)()` could be parsed as `f()(g)()` (calling f's result with g as argument). Backend tracks when the previous statement could be misinterpreted and prefixes expression statements starting with `(` with `;`.
+
+**Should be:** This is a Lua-specific syntax quirk. A middleend pass could mark statements needing guards, but this is arguably acceptable as backend-only logic.
+
+---
+
+### 13. Right Shift Semantics
+
+**Location:** `lua.py:1434-1451`
+
+```python
+if op == ">>":
+    if left_is_bool or (isinstance(left, IntLit) and left.value >= 0):
+        return f"{left_for_shift} >> {right_for_shift}"
+    return f"{left_str} // (1 << {right_str})"
+```
+
+Lua's `>>` is a logical right shift (fills with zeros). Python's `>>` is arithmetic (preserves sign). Backend detects negative operands and emits `// (1 << n)` for correct arithmetic shift semantics.
+
+**Should be:** Lowering should emit distinct `ArithmeticRightShift` vs `LogicalRightShift` IR nodes, or inference should annotate with `is_known_non_negative`.
