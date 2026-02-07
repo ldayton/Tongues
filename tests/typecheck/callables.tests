@@ -1,0 +1,233 @@
+=== function with correct signature allowed
+from typing import Callable
+def add(a: int, b: int) -> int:
+    return a + b
+def use(f: Callable[[int, int], int]) -> int:
+    return f(1, 2)
+def main() -> int:
+    return use(add)
+---
+ok
+---
+
+=== callable parameter allowed
+from typing import Callable
+def apply(f: Callable[[int], str], x: int) -> str:
+    return f(x)
+---
+ok
+---
+
+=== callable with no args allowed
+from typing import Callable
+def run(f: Callable[[], int]) -> int:
+    return f()
+---
+ok
+---
+
+=== callable returning none allowed
+from typing import Callable
+def execute(f: Callable[[int], None], x: int) -> None:
+    f(x)
+---
+ok
+---
+
+=== passing str as callable allowed
+from typing import Callable
+def apply(f: Callable[[int], str], x: int) -> str:
+    return f(x)
+def main() -> str:
+    return apply(str, 42)
+---
+ok
+---
+
+=== passing len as callable allowed
+from typing import Callable
+def apply(f: Callable[[str], int], s: str) -> int:
+    return f(s)
+def main() -> int:
+    return apply(len, "hello")
+---
+ok
+---
+
+=== bound method as callable allowed
+from typing import Callable
+class Counter:
+    def __init__(self) -> None:
+        self.value: int = 0
+    def increment(self, n: int) -> int:
+        self.value += n
+        return self.value
+def apply(f: Callable[[int], int], x: int) -> int:
+    return f(x)
+def main() -> int:
+    c: Counter = Counter()
+    return apply(c.increment, 5)
+---
+ok
+---
+
+=== callable stored in variable allowed
+from typing import Callable
+def add(a: int, b: int) -> int:
+    return a + b
+def main() -> int:
+    f: Callable[[int, int], int] = add
+    return f(1, 2)
+---
+ok
+---
+
+=== callable in list allowed
+from typing import Callable
+def add(a: int, b: int) -> int:
+    return a + b
+def sub(a: int, b: int) -> int:
+    return a - b
+def main() -> int:
+    ops: list[Callable[[int, int], int]] = [add, sub]
+    return ops[0](1, 2)
+---
+ok
+---
+
+=== callable returned from function allowed
+from typing import Callable
+def add(a: int, b: int) -> int:
+    return a + b
+def get_op() -> Callable[[int, int], int]:
+    return add
+def main() -> int:
+    f: Callable[[int, int], int] = get_op()
+    return f(1, 2)
+---
+ok
+---
+
+=== callable with optional return allowed
+from typing import Callable
+def maybe(f: Callable[[int], int | None], x: int) -> int:
+    result: int | None = f(x)
+    if result is None:
+        return 0
+    return result
+---
+ok
+---
+
+=== callable as dict value allowed
+from typing import Callable
+def add(a: int, b: int) -> int:
+    return a + b
+def main() -> int:
+    ops: dict[str, Callable[[int, int], int]] = {"add": add}
+    return ops["add"](1, 2)
+---
+ok
+---
+
+=== higher order function returning callable allowed
+from typing import Callable
+def make_adder(n: int) -> Callable[[int], int]:
+    def adder(x: int) -> int:
+        return x + n
+    return adder
+---
+error: nested
+---
+
+=== wrong argument type not allowed
+from typing import Callable
+def apply(f: Callable[[int], str], x: int) -> str:
+    return f(x)
+def main() -> str:
+    return apply(len, 42)
+---
+error: type
+---
+
+=== wrong return type not allowed
+from typing import Callable
+def apply(f: Callable[[int], str], x: int) -> str:
+    return f(x)
+def double(x: int) -> int:
+    return x * 2
+def main() -> str:
+    return apply(double, 42)
+---
+error: type
+---
+
+=== wrong arity not allowed
+from typing import Callable
+def apply(f: Callable[[int], str], x: int) -> str:
+    return f(x)
+def add(a: int, b: int) -> str:
+    return str(a + b)
+def main() -> str:
+    return apply(add, 42)
+---
+error: type
+---
+
+=== calling with wrong arg type not allowed
+from typing import Callable
+def apply(f: Callable[[int], str], x: int) -> str:
+    return f(x)
+def main() -> str:
+    return apply(str, "hello")
+---
+error: type
+---
+
+=== method reference preserves self binding
+class Parser:
+    def parse(self, s: str) -> int:
+        return len(s)
+def main() -> int:
+    p: Parser = Parser()
+    return p.parse("hello")
+---
+ok
+---
+
+=== unbound method not directly callable
+class Parser:
+    def parse(self, s: str) -> int:
+        return len(s)
+def main() -> int:
+    return Parser.parse("hello")
+---
+error: self
+---
+
+=== callable field allowed
+from typing import Callable
+from dataclasses import dataclass
+@dataclass
+class Handler:
+    callback: Callable[[int], str]
+def main() -> str:
+    h: Handler = Handler(callback=str)
+    return h.callback(42)
+---
+ok
+---
+
+=== callable with union arg allowed
+from typing import Callable
+def apply(f: Callable[[int | str], int], x: int) -> int:
+    return f(x)
+def length(x: int | str) -> int:
+    if isinstance(x, str):
+        return len(x)
+    return x
+def main() -> int:
+    return apply(length, 42)
+---
+ok
+---
