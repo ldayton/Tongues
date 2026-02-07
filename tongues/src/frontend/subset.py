@@ -222,7 +222,12 @@ def get_children(node: ASTNode) -> list[ASTNode]:
     i = 0
     while i < len(keys):
         key = keys[i]
-        if key.startswith("_") or key in ("lineno", "col_offset", "end_lineno", "end_col_offset"):
+        if key.startswith("_") or key in (
+            "lineno",
+            "col_offset",
+            "end_lineno",
+            "end_col_offset",
+        ):
             i += 1
             continue
         val = node[key]
@@ -595,14 +600,20 @@ class Verifier:
             i += 1
         # Check nested function
         if self.in_function:
-            self.error(node, "function", "nested function '" + name + "': define at module level")
+            self.error(
+                node,
+                "function",
+                "nested function '" + name + "': define at module level",
+            )
         # Check dunder methods
         if name.startswith("__") and name.endswith("__"):
             if name not in ALLOWED_DUNDERS:
                 self.error(
                     node,
                     "function",
-                    "dunder method " + name + ": only __init__/__new__/__repr__ allowed",
+                    "dunder method "
+                    + name
+                    + ": only __init__/__new__/__repr__ allowed",
                 )
         # Check *args and **kwargs
         args_node = node.get("args", {})
@@ -613,14 +624,20 @@ class Verifier:
         # Check return type (except __init__, __new__)
         if name not in ("__init__", "__new__"):
             if node.get("returns") is None:
-                self.error(node, "types", "missing return type: def " + name + "() -> ...")
+                self.error(
+                    node, "types", "missing return type: def " + name + "() -> ..."
+                )
         # Check return type bare collection
         returns = node.get("returns")
         if returns is not None and is_bare_collection(returns):
             self.error(
                 node,
                 "types",
-                "bare " + returns.get("id", "") + ": " + name + "() return needs type parameter",
+                "bare "
+                + returns.get("id", "")
+                + ": "
+                + name
+                + "() return needs type parameter",
             )
         # Check parameter types
         args_list = args_node.get("args", [])
@@ -636,7 +653,11 @@ class Verifier:
                 j += 1
                 continue
             if annotation is None:
-                self.error(node, "types", "missing param type: " + arg_name + " in " + name + "()")
+                self.error(
+                    node,
+                    "types",
+                    "missing param type: " + arg_name + " in " + name + "()",
+                )
             else:
                 self.annotated_params.add(arg_name)
                 if is_bare_collection(annotation):
@@ -670,7 +691,9 @@ class Verifier:
             d_type = d.get("_type", "")
             if d_type in ("List", "Dict", "Set"):
                 self.error(
-                    node, "function", "mutable default argument: use None and initialize in body"
+                    node,
+                    "function",
+                    "mutable default argument: use None and initialize in body",
                 )
             elif d_type == "Lambda":
                 self.error(node, "function", "lambda: use named function instead")
@@ -767,7 +790,9 @@ class Verifier:
             and not self.in_eager_consumer
         ):
             self.error(
-                node, "builtin", func_name + "() only allowed in for-loop header or eager consumer"
+                node,
+                "builtin",
+                func_name + "() only allowed in for-loop header or eager consumer",
             )
         # Check if this is an eager consumer (for generator expressions)
         is_eager = func_name is not None and func_name in EAGER_CONSUMERS
@@ -781,7 +806,9 @@ class Verifier:
         while i < len(args):
             arg = args[i]
             if arg.get("_type") == "Starred":
-                self.error(node, "expression", "*args in call: unpack arguments explicitly")
+                self.error(
+                    node, "expression", "*args in call: unpack arguments explicitly"
+                )
                 break
             i += 1
         # Check **kwargs in call
@@ -790,7 +817,9 @@ class Verifier:
         while j < len(keywords):
             kw = keywords[j]
             if kw.get("arg") is None:
-                self.error(node, "expression", "**kwargs in call: pass arguments explicitly")
+                self.error(
+                    node, "expression", "**kwargs in call: pass arguments explicitly"
+                )
                 break
             j += 1
         # Visit children
@@ -826,9 +855,13 @@ class Verifier:
             op_type = op.get("_type", "")
             if op_type in ("Is", "IsNot"):
                 if is_constant(left) and is_constant(comparator):
-                    self.error(node, "reflection", "is/is not: cannot compare two literals")
+                    self.error(
+                        node, "reflection", "is/is not: cannot compare two literals"
+                    )
                 elif not is_constant(left) and not is_constant(comparator):
-                    self.error(node, "reflection", "is/is not: requires a literal on one side")
+                    self.error(
+                        node, "reflection", "is/is not: requires a literal on one side"
+                    )
             left = comparator
             i += 1
         # Visit children
@@ -857,7 +890,9 @@ class Verifier:
                 var_name = value.get("id", "")
                 if var_name not in self.guarded_vars:
                     self.error(
-                        node, "expression", "tuple unpack from variable: unpack directly from call"
+                        node,
+                        "expression",
+                        "tuple unpack from variable: unpack directly from call",
                     )
         # Check unannotated field assigns in class
         if self.in_class:
@@ -871,7 +906,10 @@ class Verifier:
                         if field_name not in self.annotated_fields:
                             # Skip if value is annotated param
                             val_name = get_name_id(value)
-                            if val_name is not None and val_name in self.annotated_params:
+                            if (
+                                val_name is not None
+                                and val_name in self.annotated_params
+                            ):
                                 self.annotated_fields.add(field_name)
                             elif is_obvious_literal(value):
                                 self.annotated_fields.add(field_name)
@@ -902,7 +940,11 @@ class Verifier:
             self.error(
                 node,
                 "types",
-                "bare " + annotation.get("id", "") + ": " + target_name + " needs type parameter",
+                "bare "
+                + annotation.get("id", "")
+                + ": "
+                + target_name
+                + " needs type parameter",
             )
         # Visit children
         self.visit(target)
@@ -966,7 +1008,9 @@ class Verifier:
         """Check yield - allowed only in for-loop body (structural recursion)."""
         if not self.in_for_body:
             self.error(
-                node, "generator", "yield only allowed in for-loop body (structural recursion)"
+                node,
+                "generator",
+                "yield only allowed in for-loop body (structural recursion)",
             )
         # Visit the yielded value
         value = node.get("value")
@@ -977,7 +1021,9 @@ class Verifier:
         """Check yield from - allowed only in for-loop body (structural recursion)."""
         if not self.in_for_body:
             self.error(
-                node, "generator", "yield from only allowed in for-loop body (structural recursion)"
+                node,
+                "generator",
+                "yield from only allowed in for-loop body (structural recursion)",
             )
         # Visit the yielded value
         value = node.get("value")
@@ -1156,7 +1202,9 @@ class Verifier:
                     self.error(
                         node,
                         "string",
-                        "surrogate code point U+" + hex_str + " not allowed in string literal",
+                        "surrogate code point U+"
+                        + hex_str
+                        + " not allowed in string literal",
                     )
                 i += 1
 

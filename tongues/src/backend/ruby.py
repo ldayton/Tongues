@@ -426,7 +426,9 @@ class RubyBackend:
             return
         if struct.is_exception:
             base = (
-                _safe_type_name(struct.embedded_type) if struct.embedded_type else "StandardError"
+                _safe_type_name(struct.embedded_type)
+                if struct.embedded_type
+                else "StandardError"
             )
             self._line(f"class {_safe_type_name(struct.name)} < {base}")
         else:
@@ -625,14 +627,18 @@ class RubyBackend:
                 reraise=reraise,
             ):
                 self._emit_try_catch(body, catches, reraise)
-            case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
+            case Raise(
+                error_type=error_type, message=message, pos=pos, reraise_var=reraise_var
+            ):
                 if reraise_var:
                     self._line(f"raise {reraise_var}")
                 else:
                     msg = self._expr(message)
                     if pos is not None:
                         pos_expr = self._expr(pos)
-                        self._line(f"raise {error_type}.new(message: {msg}, pos: {pos_expr})")
+                        self._line(
+                            f"raise {error_type}.new(message: {msg}, pos: {pos_expr})"
+                        )
                     else:
                         self._line(f"raise {error_type}.new(message: {msg})")
             case SoftFail():
@@ -666,7 +672,9 @@ class RubyBackend:
             self.indent -= 1
         self._line("end")
 
-    def _emit_match(self, expr: Expr, cases: list[MatchCase], default: list[Stmt]) -> None:
+    def _emit_match(
+        self, expr: Expr, cases: list[MatchCase], default: list[Stmt]
+    ) -> None:
         self._line(f"case {self._expr(expr)}")
         for case in cases:
             patterns = ", ".join(self._expr(p) for p in case.patterns)
@@ -738,7 +746,9 @@ class RubyBackend:
     ) -> None:
         if (range_info := _extract_range_pattern(init, cond, post)) is not None:
             var_name, iterable_expr = range_info
-            self._line(f"(0...{self._expr(iterable_expr)}.length).each do |{_safe_name(var_name)}|")
+            self._line(
+                f"(0...{self._expr(iterable_expr)}.length).each do |{_safe_name(var_name)}|"
+            )
             self.indent += 1
             if _is_empty_body(body):
                 self._line("nil")
@@ -892,11 +902,14 @@ class RubyBackend:
                 method_map = {"left": "lstrip", "right": "rstrip", "both": "strip"}
                 s_expr = self._expr(s)
                 # Check if operating on bytes
-                is_bytes = isinstance(s.typ, Slice) and s.typ.element == Primitive(kind="byte")
+                is_bytes = isinstance(s.typ, Slice) and s.typ.element == Primitive(
+                    kind="byte"
+                )
                 if is_bytes:
                     # Use TonguesBytes strip methods
                     if isinstance(chars, SliceLit) and all(
-                        isinstance(e, IntLit) and e.value in (32, 9, 10, 13) for e in chars.elements
+                        isinstance(e, IntLit) and e.value in (32, 9, 10, 13)
+                        for e in chars.elements
                     ):
                         # Default whitespace - use simple strip/lstrip/rstrip
                         return f"{s_expr}.{method_map[mode]}"
@@ -1129,7 +1142,9 @@ class RubyBackend:
                     first = self._expr(args[0])
                     rest = ", ".join(self._expr(a) for a in args[1:])
                     if rest:
-                        return f"{first}.zip({rest}).take_while {{ |x| !x.include?(nil) }}"
+                        return (
+                            f"{first}.zip({rest}).take_while {{ |x| !x.include?(nil) }}"
+                        )
                     return f"{first}.zip"
                 return "[]"
             case Call(func=func, args=args):
@@ -1140,7 +1155,11 @@ class RubyBackend:
                     return f"{_safe_name(func)}.call"
                 return f"{_safe_name(func)}({args_str})"
             case MethodCall(
-                obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
+                obj=obj,
+                method=method,
+                args=args,
+                receiver_type=receiver_type,
+                reverse=reverse,
             ):
                 # Python: dict.fromkeys(keys) or dict.fromkeys(keys, default) (as MethodCall)
                 # Note: Python shares the same default value across all keys (mutable gotcha)
@@ -1196,19 +1215,35 @@ class RubyBackend:
                         return f"{obj_str}.fetch({key}, {default})"
                     return f"{obj_str}[{key}]"
                 # Python: dict.items() -> Ruby: hash.to_a (returns [[k,v], ...])
-                if method == "items" and isinstance(receiver_type, Map) and len(args) == 0:
+                if (
+                    method == "items"
+                    and isinstance(receiver_type, Map)
+                    and len(args) == 0
+                ):
                     obj_str = self._expr(obj)
                     return f"{obj_str}.to_a"
                 # Python: dict.keys() -> Ruby: hash.keys
-                if method == "keys" and isinstance(receiver_type, Map) and len(args) == 0:
+                if (
+                    method == "keys"
+                    and isinstance(receiver_type, Map)
+                    and len(args) == 0
+                ):
                     obj_str = self._expr(obj)
                     return f"{obj_str}.keys"
                 # Python: dict.values() -> Ruby: hash.values
-                if method == "values" and isinstance(receiver_type, Map) and len(args) == 0:
+                if (
+                    method == "values"
+                    and isinstance(receiver_type, Map)
+                    and len(args) == 0
+                ):
                     obj_str = self._expr(obj)
                     return f"{obj_str}.values"
                 # Python: dict.copy() -> Ruby: hash.dup
-                if method == "copy" and isinstance(receiver_type, Map) and len(args) == 0:
+                if (
+                    method == "copy"
+                    and isinstance(receiver_type, Map)
+                    and len(args) == 0
+                ):
                     obj_str = self._expr(obj)
                     return f"{obj_str}.dup"
                 # Python: dict.setdefault(key) or dict.setdefault(key, default)
@@ -1221,7 +1256,11 @@ class RubyBackend:
                     return f"({obj_str}.key?({key_str}) ? {obj_str}[{key_str}] : {obj_str}[{key_str}] = nil)"
                 # Python: dict.popitem() -> Ruby: [k, v] = hash.shift (but returns last, not first)
                 # Ruby's shift returns first, Python's popitem returns last (LIFO)
-                if method == "popitem" and isinstance(receiver_type, Map) and len(args) == 0:
+                if (
+                    method == "popitem"
+                    and isinstance(receiver_type, Map)
+                    and len(args) == 0
+                ):
                     obj_str = self._expr(obj)
                     return f"(-> {{ _k = {obj_str}.keys.last; _v = {obj_str}.delete(_k); [_k, _v] }}).call"
                 # Python: dict.pop(key) or dict.pop(key, default)
@@ -1303,14 +1342,22 @@ class RubyBackend:
                         return " - ".join(parts)
                 # Python: list.pop(i) -> Ruby: list.delete_at(i)
                 # Special case: pop(0) -> shift for efficiency
-                if method == "pop" and isinstance(receiver_type, Slice) and len(args) == 1:
+                if (
+                    method == "pop"
+                    and isinstance(receiver_type, Slice)
+                    and len(args) == 1
+                ):
                     obj_str = self._expr(obj)
                     if isinstance(args[0], IntLit) and args[0].value == 0:
                         return f"{obj_str}.shift"
                     arg_str = self._expr(args[0])
                     return f"{obj_str}.delete_at({arg_str})"
                 # Python: list.extend(string) -> Ruby: list.concat(string.chars)
-                if method == "extend" and isinstance(receiver_type, Slice) and len(args) == 1:
+                if (
+                    method == "extend"
+                    and isinstance(receiver_type, Slice)
+                    and len(args) == 1
+                ):
                     if args[0].typ == STRING:
                         obj_str = self._expr(obj)
                         arg_str = self._expr(args[0])
@@ -1334,14 +1381,22 @@ class RubyBackend:
                         return f"(-> {{ _i = {obj_str}[{start_str}..].index({val_str}); _i.nil? ? nil : _i + {start_str} }}).call"
                 # Python: list.remove(x) removes first occurrence
                 # Ruby: delete(x) removes ALL occurrences, so use delete_at(index(x))
-                if method == "remove" and isinstance(receiver_type, Slice) and len(args) == 1:
+                if (
+                    method == "remove"
+                    and isinstance(receiver_type, Slice)
+                    and len(args) == 1
+                ):
                     obj_str = self._expr(obj)
                     arg_str = self._expr(args[0])
                     return f"{obj_str}.delete_at({obj_str}.index({arg_str}))"
                 # Python: list.insert(i, x) - handle both positive and negative indices
                 # Ruby's insert(100, x) on a 5-element array pads with nil, Python clips
                 # Ruby's insert(-1, x) appends, Python inserts before last
-                if method == "insert" and isinstance(receiver_type, Slice) and len(args) == 2:
+                if (
+                    method == "insert"
+                    and isinstance(receiver_type, Slice)
+                    and len(args) == 2
+                ):
                     obj_str = self._expr(obj)
                     idx_str = self._expr(args[0])
                     val_str = self._expr(args[1])
@@ -1352,15 +1407,21 @@ class RubyBackend:
                 # Python: str.replace("\\", "\\\\") needs special handling in Ruby
                 # because gsub's replacement string interprets \\ specially
                 if method == "replace" and len(args) == 2:
-                    if isinstance(args[0], StringLit) and isinstance(args[1], StringLit):
+                    if isinstance(args[0], StringLit) and isinstance(
+                        args[1], StringLit
+                    ):
                         pattern = args[0].value
                         replacement = args[1].value
                         # When escaping backslashes, use block form to avoid gsub quirks
                         if "\\" in pattern or "\\" in replacement:
                             obj_str = self._expr(obj)
                             # Escape for Ruby string literal
-                            pat_escaped = pattern.replace("\\", "\\\\").replace('"', '\\"')
-                            repl_escaped = replacement.replace("\\", "\\\\").replace('"', '\\"')
+                            pat_escaped = pattern.replace("\\", "\\\\").replace(
+                                '"', '\\"'
+                            )
+                            repl_escaped = replacement.replace("\\", "\\\\").replace(
+                                '"', '\\"'
+                            )
                             return f'{obj_str}.gsub("{pat_escaped}") {{ "{repl_escaped}" }}'
                 # Python: s.rfind(x) returns -1 if not found, Ruby rindex returns nil
                 if method == "rfind" and receiver_type == STRING:
@@ -1523,16 +1584,16 @@ class RubyBackend:
                 if isinstance(e, BinaryOp):
                     return f"!!({expr_str})"
                 return f"!!{expr_str}"
-            case BinaryOp(op="&&", left=left_expr, right=right_expr) if self._is_value_and_or(
-                left_expr
+            case BinaryOp(op="&&", left=left_expr, right=right_expr) if (
+                self._is_value_and_or(left_expr)
             ):
                 # Python's `and` returns first falsy value or last value
                 # Ruby: python_truthy(x) ? y : x
                 left_val, left_str, cond = self._extract_and_or_value(left_expr)
                 right_str = self._and_or_operand(right_expr)
                 return f"({cond} ? {right_str} : {left_str})"
-            case BinaryOp(op="||", left=left_expr, right=right_expr) if self._is_value_and_or(
-                left_expr
+            case BinaryOp(op="||", left=left_expr, right=right_expr) if (
+                self._is_value_and_or(left_expr)
             ):
                 # Python's `or` returns first truthy value or last value
                 # Ruby: python_truthy(x) ? x : y
@@ -1563,11 +1624,15 @@ class RubyBackend:
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
-                    left_str = self._maybe_paren(self._expr(left), left, op, is_left=True)
+                    left_str = self._maybe_paren(
+                        self._expr(left), left, op, is_left=True
+                    )
                 if right.typ == BOOL:
                     right_str = self._coerce_bool_to_int(right, raw=True)
                 else:
-                    right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
+                    right_str = self._maybe_paren(
+                        self._expr(right), right, op, is_left=False
+                    )
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
             case BinaryOp(op=op, left=left, right=right) if (
@@ -1585,7 +1650,10 @@ class RubyBackend:
             ):
                 # Ruby's all?/any? return actual booleans - compare directly, no coercion
                 left_is_all_any = isinstance(left, Call) and left.func in ("all", "any")
-                right_is_all_any = isinstance(right, Call) and right.func in ("all", "any")
+                right_is_all_any = isinstance(right, Call) and right.func in (
+                    "all",
+                    "any",
+                )
                 if left_is_all_any or right_is_all_any:
                     left_str = self._expr(left)
                     right_str = self._expr(right)
@@ -1612,7 +1680,10 @@ class RubyBackend:
             ):
                 # Ruby's all?/any? return actual booleans - compare directly
                 left_is_all_any = isinstance(left, Call) and left.func in ("all", "any")
-                right_is_all_any = isinstance(right, Call) and right.func in ("all", "any")
+                right_is_all_any = isinstance(right, Call) and right.func in (
+                    "all",
+                    "any",
+                )
                 if left_is_all_any or right_is_all_any:
                     left_str = self._expr(left)
                     right_str = self._expr(right)
@@ -1627,16 +1698,22 @@ class RubyBackend:
                 )
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
-            case BinaryOp(op="**", left=left, right=right) if left.typ == BOOL or right.typ == BOOL:
+            case BinaryOp(op="**", left=left, right=right) if (
+                left.typ == BOOL or right.typ == BOOL
+            ):
                 # Exponentiation with bool: coerce to int
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
-                    left_str = self._maybe_paren(self._expr(left), left, "**", is_left=True)
+                    left_str = self._maybe_paren(
+                        self._expr(left), left, "**", is_left=True
+                    )
                 if right.typ == BOOL:
                     right_str = self._coerce_bool_to_int(right, raw=True)
                 else:
-                    right_str = self._maybe_paren(self._expr(right), right, "**", is_left=False)
+                    right_str = self._maybe_paren(
+                        self._expr(right), right, "**", is_left=False
+                    )
                 return f"{left_str} ** {right_str}"
             case BinaryOp(op=op, left=left, right=right) if (
                 op
@@ -1663,11 +1740,15 @@ class RubyBackend:
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
-                    left_str = self._maybe_paren(self._expr(left), left, op, is_left=True)
+                    left_str = self._maybe_paren(
+                        self._expr(left), left, op, is_left=True
+                    )
                 if right.typ == BOOL:
                     right_str = self._coerce_bool_to_int(right, raw=True)
                 else:
-                    right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
+                    right_str = self._maybe_paren(
+                        self._expr(right), right, op, is_left=False
+                    )
                 return f"{left_str} {op} {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "<<",
@@ -1677,11 +1758,15 @@ class RubyBackend:
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
-                    left_str = self._maybe_paren(self._expr(left), left, op, is_left=True)
+                    left_str = self._maybe_paren(
+                        self._expr(left), left, op, is_left=True
+                    )
                 if right.typ == BOOL:
                     right_str = self._coerce_bool_to_int(right, raw=True)
                 else:
-                    right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
+                    right_str = self._maybe_paren(
+                        self._expr(right), right, op, is_left=False
+                    )
                 return f"{left_str} {op} {right_str}"
             case BinaryOp(op="*", left=left, right=right) if (
                 left.typ == INT and right.typ == Primitive(kind="string")
@@ -1698,8 +1783,8 @@ class RubyBackend:
                 left_str = self._expr(left)
                 right_str = self._expr(right)
                 return f"{left_str} * [{right_str}, 0].max"
-            case BinaryOp(op="*", left=left, right=right) if left.typ == INT and isinstance(
-                right.typ, (Slice, Tuple)
+            case BinaryOp(op="*", left=left, right=right) if (
+                left.typ == INT and isinstance(right.typ, (Slice, Tuple))
             ):
                 # Ruby can't do int * array, swap to array * int
                 # Also handle negative: [n, 0].max for n < 0
@@ -1727,11 +1812,15 @@ class RubyBackend:
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
-                    left_str = self._maybe_paren(self._expr(left), left, op, is_left=True)
+                    left_str = self._maybe_paren(
+                        self._expr(left), left, op, is_left=True
+                    )
                 if right.typ == BOOL:
                     right_str = self._coerce_bool_to_int(right, raw=True)
                 else:
-                    right_str = self._maybe_paren(self._expr(right), right, op, is_left=False)
+                    right_str = self._maybe_paren(
+                        self._expr(right), right, op, is_left=False
+                    )
                 rb_op = _binary_op(op)
                 return f"{left_str} {rb_op} {right_str}"
             # Python: dict | dict -> Ruby: dict.merge(dict)
@@ -1782,10 +1871,14 @@ class RubyBackend:
                 # Detect set operations on dict views (keys/items/values)
                 # These return arrays in Ruby but sets in Python
                 # Convert to Sets first since Ruby arrays don't have ^ operator
-                if op in ("&", "|", "-", "^") and (_is_dict_view(left) or _is_dict_view(right)):
+                if op in ("&", "|", "-", "^") and (
+                    _is_dict_view(left) or _is_dict_view(right)
+                ):
                     self._needs_set = True
                     left_set = f"Set[*{left_str}]" if _is_dict_view(left) else left_str
-                    right_set = f"Set[*{right_str}]" if _is_dict_view(right) else right_str
+                    right_set = (
+                        f"Set[*{right_str}]" if _is_dict_view(right) else right_str
+                    )
                     return f"{left_set} {rb_op} {right_set}"
                 return result
             case ChainedCompare(operands=operands, ops=ops):
@@ -1873,9 +1966,7 @@ class RubyBackend:
                     return f"- {operand_str}"
                 return f"{rb_op}{operand_str}"
             case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
-                return (
-                    f"{self._cond_expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)}"
-                )
+                return f"{self._cond_expr(cond)} ? {self._expr(then_expr)} : {self._expr(else_expr)}"
             case Cast(expr=inner, to_type=to_type):
                 if (
                     isinstance(to_type, Primitive)
@@ -1899,12 +1990,14 @@ class RubyBackend:
                     if inner.typ.element == Primitive(kind="byte"):
                         # TonguesBytes has .to_s method
                         return f"{self._expr(inner)}.to_s"
-                    return (
-                        f"{self._expr(inner)}.pack('C*').force_encoding('UTF-8').scrub(\"\\uFFFD\")"
-                    )
-                if to_type == Primitive(kind="string") and inner.typ == Primitive(kind="rune"):
+                    return f"{self._expr(inner)}.pack('C*').force_encoding('UTF-8').scrub(\"\\uFFFD\")"
+                if to_type == Primitive(kind="string") and inner.typ == Primitive(
+                    kind="rune"
+                ):
                     return f"[{self._expr(inner)}].pack('U')"
-                if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
+                if isinstance(to_type, Slice) and to_type.element == Primitive(
+                    kind="byte"
+                ):
                     self._needs_bytes = True
                     return f"TonguesBytes.from_str({self._expr(inner)})"
                 if to_type == Primitive(kind="int") and inner.typ in (
@@ -1989,8 +2082,12 @@ class RubyBackend:
                 elems = ", ".join(self._expr(e) for e in elements)
                 return f"Set[{elems}]"
             case StructLit(struct_name=struct_name, fields=fields):
-                non_none = [(k, v) for k, v in fields.items() if not isinstance(v, NilLit)]
-                args = ", ".join(f"{_safe_name(k)}: {self._expr(v)}" for k, v in non_none)
+                non_none = [
+                    (k, v) for k, v in fields.items() if not isinstance(v, NilLit)
+                ]
+                args = ", ".join(
+                    f"{_safe_name(k)}: {self._expr(v)}" for k, v in non_none
+                )
                 return f"{_safe_type_name(struct_name)}.new({args})"
             case TupleLit(elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
@@ -2028,7 +2125,9 @@ class RubyBackend:
         body = "; ".join(body_lines)
         return f"(-> {{ {body} }}).call"
 
-    def _dict_comp(self, key: Expr, value: Expr, generators: list[CompGenerator]) -> str:
+    def _dict_comp(
+        self, key: Expr, value: Expr, generators: list[CompGenerator]
+    ) -> str:
         """Emit dict comprehension as Ruby lambda IIFE."""
         body_lines: list[str] = ["_result = {}"]
         body_stmt = f"_result[{self._expr(key)}] = {self._expr(value)}"
@@ -2078,7 +2177,9 @@ class RubyBackend:
         self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
     ) -> str:
         obj_str = self._expr(obj)
-        is_bytes = isinstance(obj.typ, Slice) and obj.typ.element == Primitive(kind="byte")
+        is_bytes = isinstance(obj.typ, Slice) and obj.typ.element == Primitive(
+            kind="byte"
+        )
         # Handle step (e.g., arr[::2] or arr[::-1])
         if step is not None:
             step_val = self._expr(step)
@@ -2109,7 +2210,9 @@ class RubyBackend:
                         base = f"{obj_str}[({high_str} + 1)..].data.reverse"
                     if abs_step == "1":
                         return f"TonguesBytes.new({base})"
-                    return f"TonguesBytes.new({base}.each_slice({abs_step}).map(&:first))"
+                    return (
+                        f"TonguesBytes.new({base}.each_slice({abs_step}).map(&:first))"
+                    )
                 if not low and not high:
                     if abs_step == "1":
                         return f"{obj_str}.reverse"
@@ -2179,7 +2282,11 @@ class RubyBackend:
 
     def _is_negative_literal(self, expr: Expr) -> bool:
         """Check if expression is a negative integer literal."""
-        return isinstance(expr, UnaryOp) and expr.op == "-" and isinstance(expr.operand, IntLit)
+        return (
+            isinstance(expr, UnaryOp)
+            and expr.op == "-"
+            and isinstance(expr.operand, IntLit)
+        )
 
     def _emit_map_lit_coerced(self, value: Expr, target_type: Type) -> str:
         """Emit expression, coercing MapLit keys if target type differs from literal type."""

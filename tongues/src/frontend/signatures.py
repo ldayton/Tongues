@@ -80,7 +80,10 @@ def extract_func_info(
                 default_value = callbacks.lower_expr(defaults[default_idx])
         params.append(
             ParamInfo(
-                name=arg.get("arg"), typ=typ, has_default=has_default, default_value=default_value
+                name=arg.get("arg"),
+                typ=typ,
+                has_default=has_default,
+                default_value=default_value,
             )
         )
     return_type = VOID
@@ -111,7 +114,14 @@ def collect_class_methods(
             info.methods[stmt.get("name")] = func_info
     # Build method-to-struct mapping for Node subclasses
     if info.is_node:
-        excluded_methods = {"to_sexp", "kind", "__init__", "__repr__", "ToSexp", "GetKind"}
+        excluded_methods = {
+            "to_sexp",
+            "kind",
+            "__init__",
+            "__repr__",
+            "ToSexp",
+            "GetKind",
+        }
         for method_name in info.methods:
             if method_name not in excluded_methods:
                 symbols.method_to_structs[method_name] = info.name

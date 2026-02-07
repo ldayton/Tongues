@@ -197,7 +197,12 @@ def get_children(node: ASTNode) -> list[ASTNode]:
     i = 0
     while i < len(keys):
         key = keys[i]
-        if key.startswith("_") or key in ("lineno", "col_offset", "end_lineno", "end_col_offset"):
+        if key.startswith("_") or key in (
+            "lineno",
+            "col_offset",
+            "end_lineno",
+            "end_col_offset",
+        ):
             i += 1
             continue
         val = node[key]
@@ -315,7 +320,10 @@ class NameResolver:
                     self.error(
                         stmt,
                         "redefinition",
-                        "'" + name + "' already defined at line " + str(existing.lineno),
+                        "'"
+                        + name
+                        + "' already defined at line "
+                        + str(existing.lineno),
                     )
                 else:
                     bases: list[str] = []
@@ -323,7 +331,9 @@ class NameResolver:
                         base_name = self._get_base_name(base)
                         if base_name:
                             bases.append(base_name)
-                    info = NameInfo(name, "class", "module", lineno, col, "", "", bases=bases)
+                    info = NameInfo(
+                        name, "class", "module", lineno, col, "", "", bases=bases
+                    )
                     self.result.table.add_module(info)
             elif node_type == "FunctionDef":
                 name = stmt.get("name", "")
@@ -332,7 +342,10 @@ class NameResolver:
                     self.error(
                         stmt,
                         "redefinition",
-                        "'" + name + "' already defined at line " + str(existing.lineno),
+                        "'"
+                        + name
+                        + "' already defined at line "
+                        + str(existing.lineno),
                     )
                 else:
                     info = NameInfo(name, "function", "module", lineno, col, "", "")
@@ -348,10 +361,14 @@ class NameResolver:
                         existing = self.result.table.get_module(name)
                         if existing is None:
                             if is_all_caps(name):
-                                info = NameInfo(name, "constant", "module", lineno, col, "", "")
+                                info = NameInfo(
+                                    name, "constant", "module", lineno, col, "", ""
+                                )
                                 self.result.table.add_module(info)
                             elif is_type_alias(name, value):
-                                info = NameInfo(name, "type_alias", "module", lineno, col, "", "")
+                                info = NameInfo(
+                                    name, "type_alias", "module", lineno, col, "", ""
+                                )
                                 self.result.table.add_module(info)
                     j += 1
             elif node_type == "AnnAssign":
@@ -374,7 +391,9 @@ class NameResolver:
                         import_name = alias.get("name", "")
                         bound_name = asname if asname is not None else import_name
                         if bound_name != "":
-                            info = NameInfo(bound_name, "import", "module", lineno, col, "", "")
+                            info = NameInfo(
+                                bound_name, "import", "module", lineno, col, "", ""
+                            )
                             self.result.table.add_module(info)
                     j += 1
             elif node_type == "ImportFrom":
@@ -389,7 +408,9 @@ class NameResolver:
                         import_name = alias.get("name", "")
                         bound_name = asname if asname is not None else import_name
                         if bound_name != "" and bound_name != "*":
-                            info = NameInfo(bound_name, "import", "module", lineno, col, "", "")
+                            info = NameInfo(
+                                bound_name, "import", "module", lineno, col, "", ""
+                            )
                             self.result.table.add_module(info)
                     j += 1
             elif node_type == "If":
@@ -408,7 +429,9 @@ class NameResolver:
                                 if isinstance(alias, dict):
                                     asname = alias.get("asname")
                                     import_name = alias.get("name", "")
-                                    bound_name = asname if asname is not None else import_name
+                                    bound_name = (
+                                        asname if asname is not None else import_name
+                                    )
                                     if bound_name != "" and bound_name != "*":
                                         if_lineno = if_stmt.get("lineno", 0)
                                         if_col = if_stmt.get("col_offset", 0)
@@ -487,11 +510,15 @@ class NameResolver:
                         value_node = target.get("value", {})
                         if get_name_id(value_node) == "self":
                             attr = target.get("attr", "")
-                            existing = self.result.table.get_class_member(class_name, attr)
+                            existing = self.result.table.get_class_member(
+                                class_name, attr
+                            )
                             if existing is None:
                                 lineno = node.get("lineno", 0)
                                 col = node.get("col_offset", 0)
-                                info = NameInfo(attr, "field", "class", lineno, col, class_name, "")
+                                info = NameInfo(
+                                    attr, "field", "class", lineno, col, class_name, ""
+                                )
                                 self.result.table.add_class_member(class_name, info)
                     k += 1
             elif node_type == "AnnAssign":
@@ -504,7 +531,9 @@ class NameResolver:
                         if existing is None:
                             lineno = node.get("lineno", 0)
                             col = node.get("col_offset", 0)
-                            info = NameInfo(attr, "field", "class", lineno, col, class_name, "")
+                            info = NameInfo(
+                                attr, "field", "class", lineno, col, class_name, ""
+                            )
                             self.result.table.add_class_member(class_name, info)
             # Add children for If, While, etc.
             children = get_children(node)
@@ -543,7 +572,9 @@ class NameResolver:
                 self.process_function(stmt, class_name, func_name)
             i += 1
 
-    def process_function(self, func_node: ASTNode, class_name: str, func_name: str) -> None:
+    def process_function(
+        self, func_node: ASTNode, class_name: str, func_name: str
+    ) -> None:
         """Process a function: collect params/locals, then resolve references."""
         self.current_class = class_name
         self.current_func = func_name
@@ -558,14 +589,20 @@ class NameResolver:
             col = arg.get("col_offset", 0)
             # Add self/cls without shadowing warning
             if i == 0 and arg_name in ("self", "cls"):
-                info = NameInfo(arg_name, "parameter", "local", lineno, col, class_name, func_name)
+                info = NameInfo(
+                    arg_name, "parameter", "local", lineno, col, class_name, func_name
+                )
                 self.result.table.add_local(class_name, func_name, info)
                 i += 1
                 continue
             # Warn if parameter shadows a builtin
             if arg_name in ALLOWED_BUILTINS:
-                self.warning(arg, "shadowing", "parameter '" + arg_name + "' shadows builtin")
-            info = NameInfo(arg_name, "parameter", "local", lineno, col, class_name, func_name)
+                self.warning(
+                    arg, "shadowing", "parameter '" + arg_name + "' shadows builtin"
+                )
+            info = NameInfo(
+                arg_name, "parameter", "local", lineno, col, class_name, func_name
+            )
             self.result.table.add_local(class_name, func_name, info)
             i += 1
         # Collect local variables from body
@@ -604,7 +641,13 @@ class NameResolver:
                         lineno = node.get("lineno", 0)
                         col = node.get("col_offset", 0)
                         info = NameInfo(
-                            name, "variable", "local", lineno, col, class_name, func_name
+                            name,
+                            "variable",
+                            "local",
+                            lineno,
+                            col,
+                            class_name,
+                            func_name,
                         )
                         self.result.table.add_local(class_name, func_name, info)
             elif node_type == "For":
@@ -613,12 +656,20 @@ class NameResolver:
             elif node_type == "ExceptHandler":
                 exc_name = node.get("name")
                 if exc_name is not None:
-                    existing = self.result.table.get_local(class_name, func_name, exc_name)
+                    existing = self.result.table.get_local(
+                        class_name, func_name, exc_name
+                    )
                     if existing is None:
                         lineno = node.get("lineno", 0)
                         col = node.get("col_offset", 0)
                         info = NameInfo(
-                            exc_name, "variable", "local", lineno, col, class_name, func_name
+                            exc_name,
+                            "variable",
+                            "local",
+                            lineno,
+                            col,
+                            class_name,
+                            func_name,
                         )
                         self.result.table.add_local(class_name, func_name, info)
             elif node_type == "ImportFrom":
@@ -679,7 +730,13 @@ class NameResolver:
                         lineno = node.get("lineno", 0)
                         col = node.get("col_offset", 0)
                         info = NameInfo(
-                            name, "variable", "local", lineno, col, class_name, func_name
+                            name,
+                            "variable",
+                            "local",
+                            lineno,
+                            col,
+                            class_name,
+                            func_name,
                         )
                         self.result.table.add_local(class_name, func_name, info)
             # Add children (skip nested FunctionDef - shouldn't exist per Phase 3)
@@ -703,7 +760,9 @@ class NameResolver:
             if existing is None:
                 lineno = stmt.get("lineno", 0)
                 col = stmt.get("col_offset", 0)
-                info = NameInfo(name, "variable", "local", lineno, col, class_name, func_name)
+                info = NameInfo(
+                    name, "variable", "local", lineno, col, class_name, func_name
+                )
                 self.result.table.add_local(class_name, func_name, info)
         elif target_type == "Tuple" or target_type == "List":
             elts = target.get("elts", [])
@@ -726,7 +785,9 @@ class NameResolver:
                 if existing is None:
                     lineno = pattern.get("lineno", 0)
                     col = pattern.get("col_offset", 0)
-                    info = NameInfo(name, "variable", "local", lineno, col, class_name, func_name)
+                    info = NameInfo(
+                        name, "variable", "local", lineno, col, class_name, func_name
+                    )
                     self.result.table.add_local(class_name, func_name, info)
             inner = pattern.get("pattern")
             if inner is not None:
@@ -759,7 +820,9 @@ class NameResolver:
                 if existing is None:
                     lineno = pattern.get("lineno", 0)
                     col = pattern.get("col_offset", 0)
-                    info = NameInfo(rest, "variable", "local", lineno, col, class_name, func_name)
+                    info = NameInfo(
+                        rest, "variable", "local", lineno, col, class_name, func_name
+                    )
                     self.result.table.add_local(class_name, func_name, info)
         elif pattern_type == "MatchSequence":
             # MatchSequence(patterns=[])
@@ -776,7 +839,9 @@ class NameResolver:
                 if existing is None:
                     lineno = pattern.get("lineno", 0)
                     col = pattern.get("col_offset", 0)
-                    info = NameInfo(name, "variable", "local", lineno, col, class_name, func_name)
+                    info = NameInfo(
+                        name, "variable", "local", lineno, col, class_name, func_name
+                    )
                     self.result.table.add_local(class_name, func_name, info)
         elif pattern_type == "MatchOr":
             # MatchOr(patterns=[]) - all alternatives should bind same names
@@ -803,7 +868,9 @@ class NameResolver:
                 if ctx_type == "Load":
                     name = node.get("id", "")
                     if not self.resolve_name(name, class_name, func_name):
-                        self.error(node, "undefined", "name '" + name + "' is not defined")
+                        self.error(
+                            node, "undefined", "name '" + name + "' is not defined"
+                        )
             # Add children (skip nested FunctionDef)
             children = get_children(node)
             m = 0

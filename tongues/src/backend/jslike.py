@@ -188,7 +188,9 @@ class JsLikeBackend:
         """Emit assignment that is a declaration."""
         raise NotImplementedError
 
-    def _tuple_assign_decl(self, lvalues: str, value: Expr, value_type: Type | None) -> None:
+    def _tuple_assign_decl(
+        self, lvalues: str, value: Expr, value_type: Type | None
+    ) -> None:
         """Emit tuple assignment that is a declaration."""
         raise NotImplementedError
 
@@ -392,13 +394,17 @@ class JsLikeBackend:
                         self._line(f"{lv}.push(...{val});")
                 elif op == "*" and isinstance(target_type, Tuple):
                     # Tuple *= int creates new tuple (immutable)
-                    self._line(f"{lv} = Array({val} > 0 ? {val} : 0).fill({lv}).flat();")
+                    self._line(
+                        f"{lv} = Array({val} > 0 ? {val} : 0).fill({lv}).flat();"
+                    )
                 elif isinstance(target_type, Set) or isinstance(value.typ, Set):
                     # Set augmented assignment operators
                     if op == "|":
                         self._line(f"for (const x of {val}) {lv}.add(x);")
                     elif op == "&":
-                        self._line(f"for (const x of [...{lv}]) if (!{val}.has(x)) {lv}.delete(x);")
+                        self._line(
+                            f"for (const x of [...{lv}]) if (!{val}.has(x)) {lv}.delete(x);"
+                        )
                     elif op == "-":
                         self._line(f"for (const x of {val}) {lv}.delete(x);")
                     elif op == "^":
@@ -425,9 +431,13 @@ class JsLikeBackend:
             case Assert(test=test, message=message):
                 cond_str = self._expr(test)
                 if message is not None:
-                    self._line(f"if (!({cond_str})) {{ throw new Error({self._expr(message)}); }}")
+                    self._line(
+                        f"if (!({cond_str})) {{ throw new Error({self._expr(message)}); }}"
+                    )
                 else:
-                    self._line(f'if (!({cond_str})) {{ throw new Error("Assertion failed"); }}')
+                    self._line(
+                        f'if (!({cond_str})) {{ throw new Error("Assertion failed"); }}'
+                    )
             case EntryPoint(function_name=function_name):
                 self._line(f"process.exitCode = {_camel(function_name)}();")
             case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
@@ -469,7 +479,9 @@ class JsLikeBackend:
                     self._emit_stmt(s)
             case TryCatch(body=body, catches=catches, reraise=reraise):
                 self._emit_try_catch(body, catches, reraise)
-            case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
+            case Raise(
+                error_type=error_type, message=message, pos=pos, reraise_var=reraise_var
+            ):
                 self._emit_raise(error_type, message, pos, reraise_var)
             case SoftFail():
                 self._line("return null;")
@@ -498,12 +510,18 @@ class JsLikeBackend:
             p = self._expr(pos)
             if isinstance(message, StringLit):
                 msg_val = (
-                    message.value.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+                    message.value.replace("\\", "\\\\")
+                    .replace("`", "\\`")
+                    .replace("$", "\\$")
                 )
-                self._line(f"throw new {error_type}(`{msg_val} at position ${{{p}}}`, {p})")
+                self._line(
+                    f"throw new {error_type}(`{msg_val} at position ${{{p}}}`, {p})"
+                )
             else:
                 msg = self._expr(message)
-                self._line(f"throw new {error_type}(`${{{msg}}} at position ${{{p}}}`, {p})")
+                self._line(
+                    f"throw new {error_type}(`${{{msg}}} at position ${{{p}}}`, {p})"
+                )
 
     def _emit_slice_assign(self, target: SliceLV, value: Expr) -> None:
         """Emit slice assignment: arr[lo:hi] = value -> splice."""
@@ -512,7 +530,9 @@ class JsLikeBackend:
         low = self._expr(target.low) if target.low else "0"
         if target.high is None:
             # arr[lo:] = value -> splice from lo to end
-            self._line(f"{obj_str}.splice({low}, {obj_str}.length - {low}, ...{val_str});")
+            self._line(
+                f"{obj_str}.splice({low}, {obj_str}.length - {low}, ...{val_str});"
+            )
         else:
             high = self._expr(target.high)
             # arr[lo:hi] = value -> splice(lo, hi - lo, ...value)
@@ -573,7 +593,9 @@ class JsLikeBackend:
         """Emit binding in type switch case. Override for TS type annotation."""
         self._line(f"const {binding_name} = {var};")
 
-    def _emit_match(self, expr: Expr, cases: list[MatchCase], default: list[Stmt]) -> None:
+    def _emit_match(
+        self, expr: Expr, cases: list[MatchCase], default: list[Stmt]
+    ) -> None:
         self._line(f"switch ({self._expr(expr)}) {{")
         self.indent += 1
         for case in cases:
@@ -623,7 +645,10 @@ class JsLikeBackend:
                 )
                 self.indent += 1
                 self._for_value_decl(
-                    _camel(value), iter_expr, _camel(index), self._element_type_str(iter_type)
+                    _camel(value),
+                    iter_expr,
+                    _camel(index),
+                    self._element_type_str(iter_type),
                 )
         elif value is not None:
             self._emit_for_of(value, iter_expr, iter_type)
@@ -695,7 +720,9 @@ class JsLikeBackend:
         # Map iteration yields keys
         elif isinstance(iterable.typ, Map):
             iter_expr = f"[...{iter_expr}.keys()]"
-        self._line(f"{accumulator}.push(...{iter_expr}.map({_camel(value)} => {transform}));")
+        self._line(
+            f"{accumulator}.push(...{iter_expr}.map({_camel(value)} => {transform}));"
+        )
         return True
 
     def _expr_uses_var(self, expr: Expr, var_name: str) -> bool:
@@ -995,7 +1022,9 @@ class JsLikeBackend:
             case Call(func="sorted", args=[arr], reverse=reverse):
                 if reverse:
                     return f"[...{self._expr(arr)}].sort((a, b) => a < b ? 1 : a > b ? -1 : 0)"
-                return f"[...{self._expr(arr)}].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)"
+                return (
+                    f"[...{self._expr(arr)}].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)"
+                )
             case Call(func=func, args=args):
                 return self._call_expr(func, args)
             case MethodCall(obj=obj, method="join", args=[arr], receiver_type=_):
@@ -1004,40 +1033,42 @@ class JsLikeBackend:
                 obj=obj, method="extend", args=[other], receiver_type=receiver_type
             ) if _is_array_type(receiver_type):
                 return f"{self._expr(obj)}.push(...{self._expr(other)})"
-            case MethodCall(obj=obj, method="copy", args=[], receiver_type=receiver_type) if (
-                _is_array_type(receiver_type)
-            ):
+            case MethodCall(
+                obj=obj, method="copy", args=[], receiver_type=receiver_type
+            ) if _is_array_type(receiver_type):
                 return f"{self._expr(obj)}.slice()"
-            case MethodCall(obj=obj, method="get", args=[key], receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map)
-            ):
+            case MethodCall(
+                obj=obj, method="get", args=[key], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
                 return self._map_get(obj, key, None, receiver_type.key)
             case MethodCall(
                 obj=obj, method="get", args=[key, default], receiver_type=receiver_type
             ) if isinstance(receiver_type, Map):
                 return self._map_get(obj, key, default, receiver_type.key)
-            case MethodCall(obj=obj, method="items", args=[], receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map)
-            ):
+            case MethodCall(
+                obj=obj, method="items", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
                 return f"[...{self._expr(obj)}.entries()]"
-            case MethodCall(obj=obj, method="keys", args=[], receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map)
-            ):
+            case MethodCall(
+                obj=obj, method="keys", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
                 return f"[...{self._expr(obj)}.keys()]"
-            case MethodCall(obj=obj, method="values", args=[], receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map)
-            ):
+            case MethodCall(
+                obj=obj, method="values", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
                 return f"[...{self._expr(obj)}.values()]"
-            case MethodCall(obj=obj, method="copy", args=[], receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map)
-            ):
+            case MethodCall(
+                obj=obj, method="copy", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
                 return f"new Map({self._expr(obj)})"
-            case MethodCall(obj=obj, method="pop", args=[key], receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map)
-            ):
+            case MethodCall(
+                obj=obj, method="pop", args=[key], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
                 obj_str = self._expr(obj)
                 key_str = self._coerce_map_key(receiver_type.key, key)
-                return f"((v = {obj_str}.get({key_str})), {obj_str}.delete({key_str}), v)"
+                return (
+                    f"((v = {obj_str}.get({key_str})), {obj_str}.delete({key_str}), v)"
+                )
             case MethodCall(
                 obj=obj, method="pop", args=[key, default], receiver_type=receiver_type
             ) if isinstance(receiver_type, Map):
@@ -1052,28 +1083,36 @@ class JsLikeBackend:
                 key_str = self._coerce_map_key(receiver_type.key, key)
                 return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : ({obj_str}.set({key_str}, null), null))"
             case MethodCall(
-                obj=obj, method="setdefault", args=[key, default], receiver_type=receiver_type
+                obj=obj,
+                method="setdefault",
+                args=[key, default],
+                receiver_type=receiver_type,
             ) if isinstance(receiver_type, Map):
                 obj_str = self._expr(obj)
                 key_str = self._coerce_map_key(receiver_type.key, key)
                 default_str = self._expr(default)
                 return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : ({obj_str}.set({key_str}, {default_str}), {default_str}))"
-            case MethodCall(obj=obj, method="update", args=args, receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map) and len(args) >= 1
-            ):
+            case MethodCall(
+                obj=obj, method="update", args=args, receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map) and len(args) >= 1:
                 obj_str = self._expr(obj)
                 updates = []
                 for arg in args:
                     arg_str = self._expr(arg)
                     updates.append(f"{arg_str}.forEach((v, k) => {obj_str}.set(k, v))")
                 return f"(({', '.join(updates)}), null)"
-            case MethodCall(obj=obj, method="popitem", args=[], receiver_type=receiver_type) if (
-                isinstance(receiver_type, Map)
-            ):
-                obj_str = self._expr(obj)
-                return f"((e = [...{obj_str}.entries()].pop()), {obj_str}.delete(e[0]), e)"
             case MethodCall(
-                obj=obj, method="replace", args=[StringLit(value=old_str), new], receiver_type=_
+                obj=obj, method="popitem", args=[], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                return (
+                    f"((e = [...{obj_str}.entries()].pop()), {obj_str}.delete(e[0]), e)"
+                )
+            case MethodCall(
+                obj=obj,
+                method="replace",
+                args=[StringLit(value=old_str), new],
+                receiver_type=_,
             ):
                 if old_str == "":
                     # Empty string replacement: "ab".replace("", "-") -> "-a-b-"
@@ -1082,19 +1121,25 @@ class JsLikeBackend:
                 escaped = _escape_regex_literal(old_str)
                 return f"{self._expr(obj)}.replace(/{escaped}/g, {self._expr(new)})"
             case MethodCall(
-                obj=obj, method=method, args=[TupleLit(elements=elements)], receiver_type=_
+                obj=obj,
+                method=method,
+                args=[TupleLit(elements=elements)],
+                receiver_type=_,
             ) if method in ("startswith", "endswith"):
                 js_method = "startsWith" if method == "startswith" else "endsWith"
                 obj_str = self._expr(obj)
                 checks = [f"{obj_str}.{js_method}({self._expr(e)})" for e in elements]
                 return f"({' || '.join(checks)})"
             case MethodCall(
-                obj=obj, method="pop", args=[IntLit(value=0)], receiver_type=receiver_type
+                obj=obj,
+                method="pop",
+                args=[IntLit(value=0)],
+                receiver_type=receiver_type,
             ) if _is_array_type(receiver_type):
                 return f"{self._expr(obj)}.shift()"
-            case MethodCall(obj=obj, method="pop", args=[idx], receiver_type=receiver_type) if (
-                _is_array_type(receiver_type)
-            ):
+            case MethodCall(
+                obj=obj, method="pop", args=[idx], receiver_type=receiver_type
+            ) if _is_array_type(receiver_type):
                 return f"{self._expr(obj)}.splice({self._expr(idx)}, 1)[0]"
             case MethodCall(obj=obj, method="fromkeys", args=args) if (
                 isinstance(obj, Var) and obj.name == "dict"
@@ -1106,11 +1151,17 @@ class JsLikeBackend:
                     return f"((_v) => new Map([...{keys_str}].map(k => [k, _v])))({val_str})"
                 return f"new Map([...{keys_str}].map(k => [k, null]))"
             case MethodCall(
-                obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
+                obj=obj,
+                method=method,
+                args=args,
+                receiver_type=receiver_type,
+                reverse=reverse,
             ):
-                return self._method_call(obj, method, args, receiver_type, reverse=reverse)
-            case StaticCall(on_type=on_type, method="fromkeys", args=args) if isinstance(
-                on_type, Map
+                return self._method_call(
+                    obj, method, args, receiver_type, reverse=reverse
+                )
+            case StaticCall(on_type=on_type, method="fromkeys", args=args) if (
+                isinstance(on_type, Map)
             ):
                 keys_str = self._expr(args[0])
                 if len(args) >= 2:
@@ -1131,15 +1182,15 @@ class JsLikeBackend:
                 left_str = self._maybe_paren(left, "/", is_left=True)
                 right_str = self._maybe_paren(right, "/", is_left=False)
                 return f"Math.floor({left_str} / {right_str})"
-            case BinaryOp(op="&&", left=left_expr, right=right_expr) if self._is_value_and_or(
-                left_expr
+            case BinaryOp(op="&&", left=left_expr, right=right_expr) if (
+                self._is_value_and_or(left_expr)
             ):
                 # Python's `and` returns first falsy value or last value
                 _, left_str, cond = self._extract_and_or_value(left_expr)
                 right_str = self._and_or_operand(right_expr)
                 return f"({cond} ? {right_str} : {left_str})"
-            case BinaryOp(op="||", left=left_expr, right=right_expr) if self._is_value_and_or(
-                left_expr
+            case BinaryOp(op="||", left=left_expr, right=right_expr) if (
+                self._is_value_and_or(left_expr)
             ):
                 # Python's `or` returns first truthy value or last value
                 _, left_str, cond = self._extract_and_or_value(left_expr)
@@ -1157,13 +1208,29 @@ class JsLikeBackend:
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
                 # Coerce bools to ints so Math.min returns number, not bool
-                l = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
-                r = f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                l = (
+                    f"({self._expr(left)} ? 1 : 0)"
+                    if left.typ == BOOL
+                    else self._expr(left)
+                )
+                r = (
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if right.typ == BOOL
+                    else self._expr(right)
+                )
                 return f"Math.min({l}, {r})"
             case MaxExpr(left=left, right=right):
                 # Coerce bools to ints so Math.max returns number, not bool
-                l = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
-                r = f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                l = (
+                    f"({self._expr(left)} ? 1 : 0)"
+                    if left.typ == BOOL
+                    else self._expr(left)
+                )
+                r = (
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if right.typ == BOOL
+                    else self._expr(right)
+                )
                 return f"Math.max({l}, {r})"
             case UnaryOp(op="&", operand=operand):
                 return self._expr(operand)
@@ -1382,7 +1449,9 @@ class JsLikeBackend:
         if isinstance(chars, StringLit) and chars.value == " \t\n\r":
             method_map = {"left": "trimStart", "right": "trimEnd", "both": "trim"}
             return f"{s_str}.{method_map[mode]}()"
-        escaped = _escape_regex_class(chars.value) if isinstance(chars, StringLit) else "..."
+        escaped = (
+            _escape_regex_class(chars.value) if isinstance(chars, StringLit) else "..."
+        )
         if mode == "left":
             return f"{s_str}.replace(/^[{escaped}]+/, '')"
         elif mode == "right":
@@ -1414,7 +1483,9 @@ class JsLikeBackend:
         )
         return f"new Map([{pairs}])"
 
-    def _map_get(self, obj: Expr, key: Expr, default: Expr | None, key_type: Type) -> str:
+    def _map_get(
+        self, obj: Expr, key: Expr, default: Expr | None, key_type: Type
+    ) -> str:
         """Emit Map.get expression with proper null handling."""
         obj_str = self._expr(obj)
         key_str = self._coerce_map_key(key_type, key)
@@ -1491,7 +1562,9 @@ class JsLikeBackend:
             if method == "sort" and len(args) == 0:
                 # JS sort with generic comparator, handle reverse, return null
                 if reverse:
-                    return f"({obj_str}.sort((a, b) => a < b ? 1 : a > b ? -1 : 0), null)"
+                    return (
+                        f"({obj_str}.sort((a, b) => a < b ? 1 : a > b ? -1 : 0), null)"
+                    )
                 return f"({obj_str}.sort((a, b) => a < b ? -1 : a > b ? 1 : 0), null)"
             if method == "reverse" and len(args) == 0:
                 return f"({obj_str}.reverse(), null)"
@@ -1503,7 +1576,9 @@ class JsLikeBackend:
             if method == "discard" and len(args) == 1:
                 return f"({obj_str}.delete({self._expr(args[0])}), null)"
             if method == "pop" and len(args) == 0:
-                return f"((v = {obj_str}.values().next().value), {obj_str}.delete(v), v)"
+                return (
+                    f"((v = {obj_str}.values().next().value), {obj_str}.delete(v), v)"
+                )
             if method == "copy" and len(args) == 0:
                 return f"new Set({obj_str})"
             if method == "union" and len(args) >= 1:
@@ -1541,7 +1616,9 @@ class JsLikeBackend:
                     arg_str = self._expr(arg)
                     # For dicts/Maps, update adds keys not key-value pairs
                     if isinstance(arg.typ, Map):
-                        updates.append(f"[...{arg_str}.keys()].forEach(x => {obj_str}.add(x))")
+                        updates.append(
+                            f"[...{arg_str}.keys()].forEach(x => {obj_str}.add(x))"
+                        )
                     else:
                         updates.append(f"[...{arg_str}].forEach(x => {obj_str}.add(x))")
                 return f"(({', '.join(updates)}), null)"
@@ -1573,7 +1650,9 @@ class JsLikeBackend:
             if method == "capitalize" and len(args) == 0:
                 return f"({obj_str}.charAt(0).toUpperCase() + {obj_str}.slice(1).toLowerCase())"
             if method == "title" and len(args) == 0:
-                return f"{obj_str}.toLowerCase().replace(/\\b\\w/g, c => c.toUpperCase())"
+                return (
+                    f"{obj_str}.toLowerCase().replace(/\\b\\w/g, c => c.toUpperCase())"
+                )
             if method == "swapcase" and len(args) == 0:
                 return f"{obj_str}.split('').map(c => c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase()).join('')"
             if method == "casefold" and len(args) == 0:
@@ -1629,9 +1708,13 @@ class JsLikeBackend:
             return f"({inner_str} != null && {inner_str}.size > 0)"
         if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Set):
             return f"({inner_str} != null && {inner_str}.size > 0)"
-        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Tuple, Array)):
+        if isinstance(inner_type, Optional) and isinstance(
+            inner_type.inner, (Slice, Tuple, Array)
+        ):
             return f"({inner_str} != null && {inner_str}.length > 0)"
-        if inner_type == INT or (isinstance(inner_type, Primitive) and inner_type.kind == "float"):
+        if inner_type == INT or (
+            isinstance(inner_type, Primitive) and inner_type.kind == "float"
+        ):
             if isinstance(e, BinaryOp):
                 return f"(({inner_str}) !== 0)"
             return f"({inner_str} !== 0)"
@@ -1748,7 +1831,9 @@ class JsLikeBackend:
             if op == "*":
                 if _is_array_type(left.typ):
                     return f"Array({right_str} > 0 ? {right_str} : 0).fill({left_str}).flat()"
-                return f"Array({left_str} > 0 ? {left_str} : 0).fill({right_str}).flat()"
+                return (
+                    f"Array({left_str} > 0 ? {left_str} : 0).fill({right_str}).flat()"
+                )
         # Handle Set comparison and operators
         # For equality, both sides must be sets; otherwise use default comparison
         if _is_set_expr(left) and _is_set_expr(right):
@@ -1875,7 +1960,11 @@ class JsLikeBackend:
             and inner.typ == BOOL
         ):
             return f"Number({self._expr(inner)})"
-        if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == BOOL:
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+            and inner.typ == BOOL
+        ):
             return f'({self._expr(inner)} ? "True" : "False")'
         if (
             isinstance(to_type, Slice)
@@ -1955,7 +2044,9 @@ class JsLikeBackend:
         body = " ".join(body_lines)
         return f"(() => {{ {body} }})()"
 
-    def _dict_comp(self, key: Expr, value: Expr, generators: list[CompGenerator]) -> str:
+    def _dict_comp(
+        self, key: Expr, value: Expr, generators: list[CompGenerator]
+    ) -> str:
         """Emit dict comprehension as IIFE with nested loops."""
         result_var = "_result"
         body_lines: list[str] = [f"const {result_var} = new Map();"]
@@ -1986,7 +2077,9 @@ class JsLikeBackend:
                 target = _camel(target_name)
             lines.append(f"for (const {target} of {iter_expr}) {{")
         else:
-            targets = ", ".join("_unused" if t == "_" else _camel(t) for t in gen.targets)
+            targets = ", ".join(
+                "_unused" if t == "_" else _camel(t) for t in gen.targets
+            )
             lines.append(f"for (const [{targets}] of {iter_expr}) {{")
         for cond in gen.conditions:
             lines.append(f"if (!({self._expr(cond)})) continue;")
@@ -2029,7 +2122,9 @@ class JsLikeBackend:
         parent_prec = _prec(parent_op)
         if parent_op == "**" and expr.op == "**" and not is_left:
             return inner
-        needs_parens = child_prec < parent_prec or (child_prec == parent_prec and not is_left)
+        needs_parens = child_prec < parent_prec or (
+            child_prec == parent_prec and not is_left
+        )
         return f"({inner})" if needs_parens else inner
 
     def _pow_base(self, base: Expr) -> str:
@@ -2054,7 +2149,11 @@ class JsLikeBackend:
         result = template
         for i, arg in enumerate(args):
             if isinstance(arg, StringLit):
-                val = arg.value.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+                val = (
+                    arg.value.replace("\\", "\\\\")
+                    .replace("`", "\\`")
+                    .replace("$", "\\$")
+                )
                 result = result.replace(f"{{{i}}}", val, 1)
             else:
                 result = result.replace(f"{{{i}}}", f"${{{self._expr(arg)}}}", 1)
@@ -2065,7 +2164,11 @@ class JsLikeBackend:
             arg = args[arg_idx]
             arg_idx += 1
             if isinstance(arg, StringLit):
-                val = arg.value.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+                val = (
+                    arg.value.replace("\\", "\\\\")
+                    .replace("`", "\\`")
+                    .replace("$", "\\$")
+                )
                 result = result.replace("%v", val, 1)
             else:
                 result = result.replace("%v", f"${{{self._expr(arg)}}}", 1)
@@ -2244,7 +2347,13 @@ def _is_set_expr(expr: Expr) -> bool:
             return True
     # Set methods that return sets
     if isinstance(expr, MethodCall) and isinstance(expr.receiver_type, Set):
-        if expr.method in ("copy", "union", "intersection", "difference", "symmetric_difference"):
+        if expr.method in (
+            "copy",
+            "union",
+            "intersection",
+            "difference",
+            "symmetric_difference",
+        ):
             return True
     return False
 

@@ -95,7 +95,9 @@ def analyze_ownership(module: Module) -> OwnershipInfo:
     return info
 
 
-def _analyze_function(func: Function, info: OwnershipInfo, struct_name: str | None) -> None:
+def _analyze_function(
+    func: Function, info: OwnershipInfo, struct_name: str | None
+) -> None:
     """Analyze a single function for ownership and escapes."""
     ctx = OwnershipContext(current_struct=struct_name)
     for param in func.params:
@@ -205,7 +207,9 @@ def _analyze_stmt(stmt: Stmt, ctx: OwnershipContext, info: OwnershipInfo) -> Non
             _analyze_stmt(s, ctx, info)
 
 
-def _analyze_expr(expr: Expr, ctx: OwnershipContext, info: OwnershipInfo, escaping: bool) -> None:
+def _analyze_expr(
+    expr: Expr, ctx: OwnershipContext, info: OwnershipInfo, escaping: bool
+) -> None:
     """Analyze an expression, optionally marking it as escaping."""
     if escaping:
         ownership = _infer_expr_ownership(expr, ctx)
@@ -381,7 +385,9 @@ def _check_collection_escape(
             info.escaping_vars.add(value.name)
 
 
-def _check_return_escape(value: Expr, ctx: OwnershipContext, info: OwnershipInfo) -> None:
+def _check_return_escape(
+    value: Expr, ctx: OwnershipContext, info: OwnershipInfo
+) -> None:
     """Check if returning causes a borrowed value to escape."""
     ownership = _infer_expr_ownership(value, ctx)
     if ownership == "borrowed":

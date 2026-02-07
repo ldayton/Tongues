@@ -329,7 +329,11 @@ class PhpBackend:
         self.current_class = struct.name
         extends_clause = ""
         if struct.is_exception:
-            parent = _safe_pascal(struct.embedded_type) if struct.embedded_type else "Exception"
+            parent = (
+                _safe_pascal(struct.embedded_type)
+                if struct.embedded_type
+                else "Exception"
+            )
             extends_clause = f" extends {parent}"
         elif struct.implements:
             impl_names = ", ".join(_safe_pascal(i) for i in struct.implements)
@@ -339,7 +343,9 @@ class PhpBackend:
         self.indent += 1
         # Skip 'message' field for exceptions since it's inherited from Exception
         fields_to_emit = [
-            f for f in struct.fields if not (struct.is_exception and f.name == "message")
+            f
+            for f in struct.fields
+            if not (struct.is_exception and f.name == "message")
         ]
         for fld in fields_to_emit:
             self._emit_field(fld)
@@ -413,7 +419,9 @@ class PhpBackend:
 
     def _emit_function(self, func: Function) -> None:
         self._hoisted_vars = set()
-        self._callable_params = {p.name for p in func.params if isinstance(p.typ, FuncType)}
+        self._callable_params = {
+            p.name for p in func.params if isinstance(p.typ, FuncType)
+        }
         params = self._params(func.params)
         ret = self._param_type(func.ret)
         name = _safe_name(func.name)
@@ -430,7 +438,9 @@ class PhpBackend:
 
     def _emit_method(self, func: Function) -> None:
         self._hoisted_vars = set()
-        self._callable_params = {p.name for p in func.params if isinstance(p.typ, FuncType)}
+        self._callable_params = {
+            p.name for p in func.params if isinstance(p.typ, FuncType)
+        }
         params = self._params(func.params)
         ret = self._param_type(func.ret)
         name = _safe_name(func.name)
@@ -512,7 +522,9 @@ class PhpBackend:
                 cond_str = self._expr(test)
                 if message is not None:
                     msg = self._expr(message)
-                    self._line(f"if (!({cond_str})) {{ throw new \\AssertionError({msg}); }}")
+                    self._line(
+                        f"if (!({cond_str})) {{ throw new \\AssertionError({msg}); }}"
+                    )
                 else:
                     self._line(
                         f'if (!({cond_str})) {{ throw new \\AssertionError("assertion failed"); }}'
@@ -575,7 +587,9 @@ class PhpBackend:
                 reraise=_,
             ):
                 self._emit_try_catch(stmt)
-            case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
+            case Raise(
+                error_type=error_type, message=message, pos=pos, reraise_var=reraise_var
+            ):
                 if reraise_var:
                     self._line(f"throw ${reraise_var};")
                 else:
@@ -660,7 +674,9 @@ class PhpBackend:
             idx = _safe_name(index)
             val = _safe_name(value)
             if is_string:
-                self._line(f"for (${idx} = 0; ${idx} < mb_strlen({iter_expr}); ${idx}++)")
+                self._line(
+                    f"for (${idx} = 0; ${idx} < mb_strlen({iter_expr}); ${idx}++)"
+                )
                 self._line("{")
                 self.indent += 1
                 self._line(f"${val} = mb_substr({iter_expr}, ${idx}, 1);")
@@ -687,7 +703,9 @@ class PhpBackend:
         elif index is not None:
             idx = _safe_name(index)
             if is_string:
-                self._line(f"for (${idx} = 0; ${idx} < mb_strlen({iter_expr}); ${idx}++)")
+                self._line(
+                    f"for (${idx} = 0; ${idx} < mb_strlen({iter_expr}); ${idx}++)"
+                )
             else:
                 self._line(f"for (${idx} = 0; ${idx} < count({iter_expr}); ${idx}++)")
             self._line("{")
@@ -788,7 +806,9 @@ class PhpBackend:
                 if name == self.receiver_name:
                     return "$this"
                 if name.isupper() or (
-                    name[0].isupper() and "_" in name and name.split("_", 1)[1].isupper()
+                    name[0].isupper()
+                    and "_" in name
+                    and name.split("_", 1)[1].isupper()
                 ):
                     return to_screaming_snake(name)
                 if name in self._function_names:
@@ -843,7 +863,9 @@ class PhpBackend:
                     return f"trim({s_str}, {chars_str})"
             case Call(func=func, args=args):
                 return self._call(func, args)
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type
+            ):
                 return self._method_call(obj, method, args, receiver_type)
             case StaticCall(on_type=on_type, method=method, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
@@ -869,14 +891,22 @@ class PhpBackend:
                 return self._containment_check(left, right, negated=True)
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division uses intdiv() in PHP - coerce bools to int
-                left_str = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                left_str = (
+                    f"({self._expr(left)} ? 1 : 0)"
+                    if left.typ == BOOL
+                    else self._expr(left)
+                )
                 right_str = (
-                    f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if right.typ == BOOL
+                    else self._expr(right)
                 )
                 return f"intdiv({left_str}, {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 # String concatenation: + on strings becomes . in PHP
-                if op == "+" and (_is_string_type(left.typ) or _is_string_type(right.typ)):
+                if op == "+" and (
+                    _is_string_type(left.typ) or _is_string_type(right.typ)
+                ):
                     left_str = self._maybe_paren(left, ".", is_left=True)
                     right_str = self._maybe_paren(right, ".", is_left=False)
                     return f"{left_str} . {right_str}"
@@ -947,10 +977,14 @@ class PhpBackend:
                 has_non_bool = left.typ != BOOL or right.typ != BOOL
                 if has_bool and has_non_bool:
                     left_str = (
-                        f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                        f"({self._expr(left)} ? 1 : 0)"
+                        if left.typ == BOOL
+                        else self._expr(left)
                     )
                     right_str = (
-                        f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                        f"({self._expr(right)} ? 1 : 0)"
+                        if right.typ == BOOL
+                        else self._expr(right)
                     )
                     return f"min({left_str}, {right_str})"
                 return f"min({self._expr(left)}, {self._expr(right)})"
@@ -960,10 +994,14 @@ class PhpBackend:
                 has_non_bool = left.typ != BOOL or right.typ != BOOL
                 if has_bool and has_non_bool:
                     left_str = (
-                        f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+                        f"({self._expr(left)} ? 1 : 0)"
+                        if left.typ == BOOL
+                        else self._expr(left)
                     )
                     right_str = (
-                        f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+                        f"({self._expr(right)} ? 1 : 0)"
+                        if right.typ == BOOL
+                        else self._expr(right)
                     )
                     return f"max({left_str}, {right_str})"
                 return f"max({self._expr(left)}, {self._expr(right)})"
@@ -995,14 +1033,18 @@ class PhpBackend:
             case MapLit(entries=entries, key_type=key_type, value_type=value_type):
                 if not entries:
                     return "[]"
-                pairs = ", ".join(f"{self._expr(k)} => {self._expr(v)}" for k, v in entries)
+                pairs = ", ".join(
+                    f"{self._expr(k)} => {self._expr(v)}" for k, v in entries
+                )
                 return f"[{pairs}]"
             case SetLit(elements=elements, element_type=element_type):
                 if not elements:
                     return "[]"
                 elems = ", ".join(f"{self._expr(e)} => true" for e in elements)
                 return f"[{elems}]"
-            case StructLit(struct_name=struct_name, fields=fields, embedded_value=embedded_value):
+            case StructLit(
+                struct_name=struct_name, fields=fields, embedded_value=embedded_value
+            ):
                 return self._struct_lit(struct_name, fields, embedded_value)
             case TupleLit(elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
@@ -1100,8 +1142,16 @@ class PhpBackend:
             # Coerce bools to int for intdiv() and %
             a_expr = args[0]
             b_expr = args[1]
-            a = f"({self._expr(a_expr)} ? 1 : 0)" if a_expr.typ == BOOL else self._expr(a_expr)
-            b = f"({self._expr(b_expr)} ? 1 : 0)" if b_expr.typ == BOOL else self._expr(b_expr)
+            a = (
+                f"({self._expr(a_expr)} ? 1 : 0)"
+                if a_expr.typ == BOOL
+                else self._expr(a_expr)
+            )
+            b = (
+                f"({self._expr(b_expr)} ? 1 : 0)"
+                if b_expr.typ == BOOL
+                else self._expr(b_expr)
+            )
             return f"[intdiv({a}, {b}), {a} % {b}]"
         if func == "pow":
             if len(args) == 2:
@@ -1115,7 +1165,9 @@ class PhpBackend:
             return f"${safe_func}({args_str})"
         return f"{safe_func}({args_str})"
 
-    def _method_call(self, obj: Expr, method: str, args: list[Expr], receiver_type: Type) -> str:
+    def _method_call(
+        self, obj: Expr, method: str, args: list[Expr], receiver_type: Type
+    ) -> str:
         args_str = ", ".join(self._expr(a) for a in args)
         obj_str = self._expr(obj)
         if isinstance(receiver_type, Slice):
@@ -1133,7 +1185,9 @@ class PhpBackend:
             if method == "decode":
                 # bytearray.decode("utf-8", errors="replace") -> UConverter::transcode
                 # UConverter replaces invalid UTF-8 bytes with U+FFFD replacement char
-                return f"UConverter::transcode(pack('C*', ...{obj_str}), 'UTF-8', 'UTF-8')"
+                return (
+                    f"UConverter::transcode(pack('C*', ...{obj_str}), 'UTF-8', 'UTF-8')"
+                )
         if isinstance(receiver_type, Primitive) and receiver_type.kind == "string":
             if method == "startswith":
                 if len(args) == 1:
@@ -1145,7 +1199,8 @@ class PhpBackend:
             if method == "endswith":
                 if args and isinstance(args[0], TupleLit):
                     checks = " || ".join(
-                        f"str_ends_with({obj_str}, {self._expr(e)})" for e in args[0].elements
+                        f"str_ends_with({obj_str}, {self._expr(e)})"
+                        for e in args[0].elements
                     )
                     return f"({checks})"
                 return f"str_ends_with({obj_str}, {args_str})"
@@ -1188,7 +1243,8 @@ class PhpBackend:
         if method == "endswith":
             if args and isinstance(args[0], TupleLit):
                 checks = " || ".join(
-                    f"str_ends_with({obj_str}, {self._expr(e)})" for e in args[0].elements
+                    f"str_ends_with({obj_str}, {self._expr(e)})"
+                    for e in args[0].elements
                 )
                 return f"({checks})"
             return f"str_ends_with({obj_str}, {args_str})"
@@ -1201,7 +1257,9 @@ class PhpBackend:
             # mb_strrpos returns false when not found, but Python rfind() returns -1
             return f"(mb_strrpos({obj_str}, {args_str}) === false ? -1 : mb_strrpos({obj_str}, {args_str}))"
         if method == "replace":
-            return f"str_replace({self._expr(args[0])}, {self._expr(args[1])}, {obj_str})"
+            return (
+                f"str_replace({self._expr(args[0])}, {self._expr(args[1])}, {obj_str})"
+            )
         if method == "split":
             return f"explode({args_str}, {obj_str})"
         if method == "join":
@@ -1262,7 +1320,10 @@ class PhpBackend:
             if to_type.kind == "int":
                 # Casting byte/rune to int: use mb_ord to get Unicode code point
                 inner_type = inner.typ
-                if isinstance(inner_type, Primitive) and inner_type.kind in ("byte", "rune"):
+                if isinstance(inner_type, Primitive) and inner_type.kind in (
+                    "byte",
+                    "rune",
+                ):
                     return f"mb_ord({inner_str})"
                 return f"(int){inner_str}"
             if to_type.kind == "float":
@@ -1276,9 +1337,7 @@ class PhpBackend:
                 if isinstance(inner_type, Slice):
                     elem = inner_type.element
                     if isinstance(elem, Primitive) and elem.kind == "byte":
-                        return (
-                            f"UConverter::transcode(pack('C*', ...{inner_str}), 'UTF-8', 'UTF-8')"
-                        )
+                        return f"UConverter::transcode(pack('C*', ...{inner_str}), 'UTF-8', 'UTF-8')"
                 if isinstance(inner_type, Primitive) and inner_type.kind == "rune":
                     return f"mb_chr({inner_str})"
                 return f"(string)({inner_str})"

@@ -119,7 +119,9 @@ class JsBackend(JsLikeBackend):
             self._emit_bytes_helpers()
             emitted = True
         if ir_contains_call(module, "sum"):
-            self._line("function sum(arr) { return [...arr].reduce((a, b) => a + b, 0); }")
+            self._line(
+                "function sum(arr) { return [...arr].reduce((a, b) => a + b, 0); }"
+            )
             emitted = True
         if ir_contains_call(module, "all"):
             self._line("function all(arr) { return [...arr].every(Boolean); }")
@@ -133,10 +135,14 @@ class JsBackend(JsLikeBackend):
             )
             emitted = True
         if ir_contains_call(module, "enumerate"):
-            self._line("function enumerate(arr) { return [...arr].map((v, i) => [i, v]); }")
+            self._line(
+                "function enumerate(arr) { return [...arr].map((v, i) => [i, v]); }"
+            )
             emitted = True
         if ir_contains_call(module, "list"):
-            self._line("function list(x) { return typeof x === 'string' ? [...x] : [...x]; }")
+            self._line(
+                "function list(x) { return typeof x === 'string' ? [...x] : [...x]; }"
+            )
             emitted = True
         if ir_contains_call(module, "zip"):
             self._line(
@@ -164,7 +170,11 @@ class JsBackend(JsLikeBackend):
                 "function dict(x) { if (x === undefined) return new Map(); return new Map(x); }"
             )
             emitted = True
-        if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
+        if (
+            ir_has_bytes_ops(module)
+            or ir_has_tuple_sets(module)
+            or ir_has_tuple_maps(module)
+        ):
             self._emit_map_helpers()
             emitted = True
         return emitted
@@ -292,7 +302,9 @@ class JsBackend(JsLikeBackend):
         self._line("if (n.length === 0) return true;")
         self._line("outer: for (let i = 0; i <= h.length - n.length; i++) {")
         self.indent += 1
-        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;")
+        self._line(
+            "for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;"
+        )
         self._line("return true;")
         self.indent -= 1
         self._line("}")
@@ -304,7 +316,9 @@ class JsBackend(JsLikeBackend):
         self._line("if (n.length === 0) return 0;")
         self._line("outer: for (let i = 0; i <= h.length - n.length; i++) {")
         self.indent += 1
-        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;")
+        self._line(
+            "for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;"
+        )
         self._line("return i;")
         self.indent -= 1
         self._line("}")
@@ -318,7 +332,9 @@ class JsBackend(JsLikeBackend):
         self._line("while (i <= h.length - n.length) {")
         self.indent += 1
         self._line("let m = true;")
-        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) { m = false; break; }")
+        self._line(
+            "for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) { m = false; break; }"
+        )
         self._line("if (m) { c++; i += n.length; } else { i++; }")
         self.indent -= 1
         self._line("}")
@@ -328,7 +344,9 @@ class JsBackend(JsLikeBackend):
         self._line("function arrStartsWith(a, p) {")
         self.indent += 1
         self._line("if (p.length > a.length) return false;")
-        self._line("for (let i = 0; i < p.length; i++) if (a[i] !== p[i]) return false;")
+        self._line(
+            "for (let i = 0; i < p.length; i++) if (a[i] !== p[i]) return false;"
+        )
         self._line("return true;")
         self.indent -= 1
         self._line("}")
@@ -336,12 +354,18 @@ class JsBackend(JsLikeBackend):
         self.indent += 1
         self._line("if (s.length > a.length) return false;")
         self._line("let o = a.length - s.length;")
-        self._line("for (let i = 0; i < s.length; i++) if (a[o+i] !== s[i]) return false;")
+        self._line(
+            "for (let i = 0; i < s.length; i++) if (a[o+i] !== s[i]) return false;"
+        )
         self._line("return true;")
         self.indent -= 1
         self._line("}")
-        self._line("function arrUpper(a) { return a.map(b => b >= 97 && b <= 122 ? b - 32 : b); }")
-        self._line("function arrLower(a) { return a.map(b => b >= 65 && b <= 90 ? b + 32 : b); }")
+        self._line(
+            "function arrUpper(a) { return a.map(b => b >= 97 && b <= 122 ? b - 32 : b); }"
+        )
+        self._line(
+            "function arrLower(a) { return a.map(b => b >= 65 && b <= 90 ? b + 32 : b); }"
+        )
         self._line("function arrStrip(a, cs) {")
         self.indent += 1
         self._line("let s = 0, e = a.length;")
@@ -352,7 +376,9 @@ class JsBackend(JsLikeBackend):
         self._line("}")
         self._line("function arrLstrip(a, cs) {")
         self.indent += 1
-        self._line("let s = 0; while (s < a.length && cs.includes(a[s])) s++; return a.slice(s);")
+        self._line(
+            "let s = 0; while (s < a.length && cs.includes(a[s])) s++; return a.slice(s);"
+        )
         self.indent -= 1
         self._line("}")
         self._line("function arrRstrip(a, cs) {")
@@ -379,7 +405,9 @@ class JsBackend(JsLikeBackend):
         self.indent += 1
         self._line("if (arrs.length === 0) return [];")
         self._line("let r = arrs[0].slice();")
-        self._line("for (let i = 1; i < arrs.length; i++) { r.push(...sep); r.push(...arrs[i]); }")
+        self._line(
+            "for (let i = 1; i < arrs.length; i++) { r.push(...sep); r.push(...arrs[i]); }"
+        )
         self._line("return r;")
         self.indent -= 1
         self._line("}")
@@ -389,7 +417,9 @@ class JsBackend(JsLikeBackend):
         self._line("let r = [], i = 0;")
         self._line("while (i < a.length) {")
         self.indent += 1
-        self._line("if (arrStartsWith(a.slice(i), old)) { r.push(...nw); i += old.length; }")
+        self._line(
+            "if (arrStartsWith(a.slice(i), old)) { r.push(...nw); i += old.length; }"
+        )
         self._line("else { r.push(a[i]); i++; }")
         self.indent -= 1
         self._line("}")
@@ -401,7 +431,9 @@ class JsBackend(JsLikeBackend):
         self._line("if (lo === null) lo = step > 0 ? 0 : a.length - 1;")
         self._line("if (hi === null) hi = step > 0 ? a.length : -1;")
         self._line("let r = [];")
-        self._line("if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }")
+        self._line(
+            "if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }"
+        )
         self._line("else { for (let i = lo; i > hi; i += step) r.push(a[i]); }")
         self._line("return typeof a === 'string' ? r.join('') : r;")
         self.indent -= 1
@@ -458,7 +490,9 @@ class JsBackend(JsLikeBackend):
         val = self._expr(value)
         self._line(f"let {lv} = {val};")
 
-    def _tuple_assign_decl(self, lvalues: str, value: Expr, value_type: Type | None) -> None:
+    def _tuple_assign_decl(
+        self, lvalues: str, value: Expr, value_type: Type | None
+    ) -> None:
         val = self._expr(value)
         self._line(f"let [{lvalues}] = {val};")
 
@@ -517,7 +551,9 @@ class JsBackend(JsLikeBackend):
                 # Nested map: if target.obj is an Index on a Map with Map value type
                 if isinstance(target, IndexLV) and isinstance(target.obj, Index):
                     outer_obj = target.obj.obj
-                    if isinstance(outer_obj.typ, Map) and isinstance(outer_obj.typ.value, Map):
+                    if isinstance(outer_obj.typ, Map) and isinstance(
+                        outer_obj.typ.value, Map
+                    ):
                         inner_map_type = outer_obj.typ.value
                         obj_str = self._expr(target.obj)
                         idx_str = self._coerce_map_key(inner_map_type.key, target.index)
@@ -542,7 +578,8 @@ class JsBackend(JsLikeBackend):
                 lvalues = ", ".join(self._lvalue(t) for t in targets)
                 val = self._expr(value)
                 all_hoisted = all(
-                    isinstance(t, VarLV) and t.name in self._hoisted_vars for t in targets
+                    isinstance(t, VarLV) and t.name in self._hoisted_vars
+                    for t in targets
                 )
                 if stmt.is_declaration and not all_hoisted:
                     self._line(f"let [{lvalues}] = {val};")
@@ -609,7 +646,11 @@ class JsBackend(JsLikeBackend):
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
         # Handle float to string with decimal preservation
-        if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == FLOAT:
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+            and inner.typ == FLOAT
+        ):
             inner_str = self._expr(inner)
             return f"(Number.isInteger({inner_str}) ? {inner_str}.toFixed(1) : String({inner_str}))"
         # Handle None to string

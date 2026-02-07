@@ -87,7 +87,9 @@ def test_parse(parse_input: str, parse_expected: str):
     elif parse_expected.startswith("error:"):
         expected_msg = parse_expected[6:].strip()
         if parse_succeeded:
-            pytest.fail(f"Expected error containing '{expected_msg}', but parsing succeeded")
+            pytest.fail(
+                f"Expected error containing '{expected_msg}', but parsing succeeded"
+            )
         # If we expected an error and got one, that's a pass
         # Optionally check if error message contains expected substring
         if expected_msg and parse_error:

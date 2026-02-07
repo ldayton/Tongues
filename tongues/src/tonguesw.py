@@ -26,7 +26,9 @@ def should_skip_file(source: str) -> bool:
     return False
 
 
-def resolve_import(importing_file: str, module: str, level: int, project_root: str) -> str | None:
+def resolve_import(
+    importing_file: str, module: str, level: int, project_root: str
+) -> str | None:
     """Resolve an import to a file path."""
     if level > 0:
         dir_path = os.path.dirname(importing_file)

@@ -192,7 +192,9 @@ class ZigBackend(Emitter):
         self.lines: list[str] = []
         self.indent = 0
         self._func_names = {f.name for f in module.functions}
-        self._entrypoint_fn = module.entrypoint.function_name if module.entrypoint else None
+        self._entrypoint_fn = (
+            module.entrypoint.function_name if module.entrypoint else None
+        )
         self._needs_panic_handler = False
         body_lines: list[str] = []
         for func in module.functions:
@@ -344,13 +346,17 @@ class ZigBackend(Emitter):
         """Emit helper for replace() method."""
         self.line("var _replace_buf: [4096]u8 = undefined;")
         self.line("")
-        self.line("fn _replace(src: []const u8, old: []const u8, new: []const u8) []const u8 {")
+        self.line(
+            "fn _replace(src: []const u8, old: []const u8, new: []const u8) []const u8 {"
+        )
         self.indent += 1
         self.line("var pos: usize = 0;")
         self.line("var i: usize = 0;")
         self.line("while (i < src.len) {")
         self.indent += 1
-        self.line("if (i + old.len <= src.len and std.mem.eql(u8, src[i..][0..old.len], old)) {")
+        self.line(
+            "if (i + old.len <= src.len and std.mem.eql(u8, src[i..][0..old.len], old)) {"
+        )
         self.indent += 1
         self.line("@memcpy(_replace_buf[pos..][0..new.len], new);")
         self.line("pos += new.len;")
@@ -568,7 +574,9 @@ class ZigBackend(Emitter):
     # ── functions ────────────────────────────────────────────
 
     def _emit_function(self, func: Function) -> None:
-        params = ", ".join(f"{self._safe(p.name)}: {self._param_type(p)}" for p in func.params)
+        params = ", ".join(
+            f"{self._safe(p.name)}: {self._param_type(p)}" for p in func.params
+        )
         name = self._fn_name(func.name)
         ret = self._type_to_zig(func.ret)
         self.line(f"fn {name}({params}) {ret} {{")
@@ -793,7 +801,11 @@ class ZigBackend(Emitter):
             return "{d}", self._emit_expr(expr.value)
         if isinstance(expr, StringLit):
             return escape_string(expr.value), ""
-        if isinstance(expr, BinaryOp) and expr.op == "+" and self._is_string_type(expr.typ):
+        if (
+            isinstance(expr, BinaryOp)
+            and expr.op == "+"
+            and self._is_string_type(expr.typ)
+        ):
             # Flatten string concatenation
             parts: list[Expr] = []
             self._flatten_string_add(expr, parts)
@@ -910,8 +922,12 @@ class ZigBackend(Emitter):
             return self._emit_string_add(expr)
         # Check for split result comparison (needs special handling)
         if op in ("==", "!="):
-            left_is_split = isinstance(expr.left, MethodCall) and expr.left.method == "split"
-            right_is_split = isinstance(expr.right, MethodCall) and expr.right.method == "split"
+            left_is_split = (
+                isinstance(expr.left, MethodCall) and expr.left.method == "split"
+            )
+            right_is_split = (
+                isinstance(expr.right, MethodCall) and expr.right.method == "split"
+            )
             if left_is_split or right_is_split:
                 left = self._emit_expr(expr.left)
                 right = self._emit_expr(expr.right)
@@ -974,12 +990,16 @@ class ZigBackend(Emitter):
                     string = self._emit_expr(expr.right)
                 return f"_repeat({string}, @intCast({count}))"
         # Bool arithmetic: True + True → @as(i64, @intFromBool(true)) + ...
-        if op in ("+", "-", "*", "/", "%") and (_is_bool(expr.left) or _is_bool(expr.right)):
+        if op in ("+", "-", "*", "/", "%") and (
+            _is_bool(expr.left) or _is_bool(expr.right)
+        ):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
         # Bool comparison (>, <, >=, <=): convert to int
-        if op in (">", "<", ">=", "<=") and (_is_bool(expr.left) or _is_bool(expr.right)):
+        if op in (">", "<", ">=", "<=") and (
+            _is_bool(expr.left) or _is_bool(expr.right)
+        ):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
@@ -1194,7 +1214,10 @@ class ZigBackend(Emitter):
 
     def _emit_SliceLit(self, expr: SliceLit) -> str:
         # Check if this is a bytes slice (slice of byte)
-        if isinstance(expr.element_type, Primitive) and expr.element_type.kind == "byte":
+        if (
+            isinstance(expr.element_type, Primitive)
+            and expr.element_type.kind == "byte"
+        ):
             # Emit as string literal with escape sequences
             chars = []
             for e in expr.elements:
@@ -1281,7 +1304,10 @@ class ZigBackend(Emitter):
         inner_typ = expr.expr.typ
         is_arraylist = (
             isinstance(inner_typ, Slice)
-            and not (isinstance(inner_typ.element, Primitive) and inner_typ.element.kind == "byte")
+            and not (
+                isinstance(inner_typ.element, Primitive)
+                and inner_typ.element.kind == "byte"
+            )
             and not isinstance(expr.expr, (SliceLit, TupleLit))
         )
         if is_arraylist:
@@ -1427,7 +1453,9 @@ class ZigBackend(Emitter):
             if method == "replace":
                 self._needs_replace_helper = True
                 return f"_replace({obj}, {args[0]}, {args[1]})"
-        raise NotImplementedError(f"Zig MethodCall: {expr.method} on {expr.receiver_type}")
+        raise NotImplementedError(
+            f"Zig MethodCall: {expr.method} on {expr.receiver_type}"
+        )
 
     def _emit_TrimChars(self, expr: TrimChars) -> str:
         """Emit trim operations (strip/lstrip/rstrip)."""
@@ -1467,5 +1495,7 @@ class ZigBackend(Emitter):
             "<<",
             ">>",
         ):
-            return self._is_comptime_int(expr.left) and self._is_comptime_int(expr.right)
+            return self._is_comptime_int(expr.left) and self._is_comptime_int(
+                expr.right
+            )
         return False

@@ -45,7 +45,9 @@ def contains_return(stmts: list[Stmt]) -> bool:
             if contains_return(stmt.body):
                 return True
         elif isinstance(stmt, TryCatch):
-            if contains_return(stmt.body) or any(contains_return(c.body) for c in stmt.catches):
+            if contains_return(stmt.body) or any(
+                contains_return(c.body) for c in stmt.catches
+            ):
                 return True
         elif isinstance(stmt, Match):
             for case in stmt.cases:
@@ -75,7 +77,9 @@ def always_returns(stmts: list[Stmt]) -> bool:
             if all_return and always_returns(stmt.default):
                 return True
         if isinstance(stmt, TryCatch):
-            if always_returns(stmt.body) and all(always_returns(c.body) for c in stmt.catches):
+            if always_returns(stmt.body) and all(
+                always_returns(c.body) for c in stmt.catches
+            ):
                 return True
         if isinstance(stmt, Block):
             if always_returns(stmt.body):
@@ -95,9 +99,9 @@ def _function_needs_named_returns(stmts: list[Stmt]) -> bool:
                 if _function_needs_named_returns(clause.body):
                     return True
         elif isinstance(stmt, If):
-            if _function_needs_named_returns(stmt.then_body) or _function_needs_named_returns(
-                stmt.else_body
-            ):
+            if _function_needs_named_returns(
+                stmt.then_body
+            ) or _function_needs_named_returns(stmt.else_body):
                 return True
         elif isinstance(stmt, While):
             if _function_needs_named_returns(stmt.body):

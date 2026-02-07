@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from src.backend.util import escape_string as _escape_string_generic, to_camel, to_pascal
+from src.backend.util import (
+    escape_string as _escape_string_generic,
+    to_camel,
+    to_pascal,
+)
 
 
 def escape_string(value: str) -> str:
@@ -339,7 +343,9 @@ class DartBackend:
             self.lines.append("")
 
     def _emit_module(self, module: Module) -> None:
-        self._entrypoint_name = module.entrypoint.function_name if module.entrypoint else None
+        self._entrypoint_name = (
+            module.entrypoint.function_name if module.entrypoint else None
+        )
         # Disable strict null safety checks for transpiled code
         self._line("// ignore_for_file: unnecessary_null_comparison")
         self._line("// ignore_for_file: unnecessary_non_null_assertion")
@@ -407,7 +413,9 @@ class DartBackend:
         """Emit Dart enum declaration."""
         name = _safe_pascal(enum_def.name)
         # Check if all variants have int or no explicit values
-        all_int = all(v.value is None or isinstance(v.value, int) for v in enum_def.variants)
+        all_int = all(
+            v.value is None or isinstance(v.value, int) for v in enum_def.variants
+        )
         if all_int:
             # Simple enum
             self._line(f"enum {name} {{")
@@ -519,7 +527,9 @@ class DartBackend:
         for f in struct.fields:
             typ = self._type(f.typ)
             # Make struct/pointer types nullable, interface types dynamic (to allow null)
-            if isinstance(f.typ, (Pointer, StructRef)) and not isinstance(f.typ, Optional):
+            if isinstance(f.typ, (Pointer, StructRef)) and not isinstance(
+                f.typ, Optional
+            ):
                 param_parts.append(f"{typ}? {_safe_name(f.name)}")
             elif isinstance(f.typ, InterfaceRef):
                 # Use dynamic for interface types since Python allows None even without Optional
@@ -536,11 +546,17 @@ class DartBackend:
         for f in struct.fields:
             param_name = _safe_name(f.name)
             # Assign with null check bypass for nullable params to late fields
-            if isinstance(f.typ, (Pointer, StructRef)) and not isinstance(f.typ, Optional):
-                self._line(f"if ({param_name} != null) this.{param_name} = {param_name};")
+            if isinstance(f.typ, (Pointer, StructRef)) and not isinstance(
+                f.typ, Optional
+            ):
+                self._line(
+                    f"if ({param_name} != null) this.{param_name} = {param_name};"
+                )
             elif isinstance(f.typ, InterfaceRef):
                 # For interface types (dynamic param), only assign if non-null
-                self._line(f"if ({param_name} != null) this.{param_name} = {param_name};")
+                self._line(
+                    f"if ({param_name} != null) this.{param_name} = {param_name};"
+                )
             else:
                 self._line(f"this.{param_name} = {param_name};")
         self.indent -= 1
@@ -567,7 +583,9 @@ class DartBackend:
                 if isinstance(stmt.value, NilLit):
                     if isinstance(stmt.target, VarLV):
                         null_vars.add(stmt.target.name)
-                elif isinstance(stmt.value, Cast) and isinstance(stmt.value.expr, NilLit):
+                elif isinstance(stmt.value, Cast) and isinstance(
+                    stmt.value.expr, NilLit
+                ):
                     # Handles: result = null as dynamic
                     if isinstance(stmt.target, VarLV):
                         null_vars.add(stmt.target.name)
@@ -577,7 +595,9 @@ class DartBackend:
                 else_vars = null_vars.copy()
                 if self._check_null_return(stmt.then_body, then_vars):
                     return True
-                if stmt.else_body and self._check_null_return(stmt.else_body, else_vars):
+                if stmt.else_body and self._check_null_return(
+                    stmt.else_body, else_vars
+                ):
                     return True
                 # Variables assigned null in either branch could be null
                 null_vars.update(then_vars)
@@ -602,7 +622,11 @@ class DartBackend:
         ret = self._type(func.ret)
         # Use dynamic return type if function has return null statements
         # This avoids cascading nullable type errors while allowing null returns
-        if func.body and self._has_null_return(func.body) and not isinstance(func.ret, Optional):
+        if (
+            func.body
+            and self._has_null_return(func.body)
+            and not isinstance(func.ret, Optional)
+        ):
             ret = "dynamic"
         name = _safe_name(func.name)
         if func.name == self._entrypoint_name:
@@ -629,7 +653,11 @@ class DartBackend:
         ret = self._type(func.ret)
         name = _safe_name(func.name)
         # Use dynamic return type if method has return null statements
-        if func.body and self._has_null_return(func.body) and not isinstance(func.ret, Optional):
+        if (
+            func.body
+            and self._has_null_return(func.body)
+            and not isinstance(func.ret, Optional)
+        ):
             ret = "dynamic"
             self._nullable_methods.add(name)
         if func.receiver:
@@ -656,7 +684,9 @@ class DartBackend:
         """Check if a type is a reference type that could be null during control flow."""
         if isinstance(typ, (StructRef, InterfaceRef)):
             return True
-        if isinstance(typ, Pointer) and isinstance(typ.target, (StructRef, InterfaceRef)):
+        if isinstance(typ, Pointer) and isinstance(
+            typ.target, (StructRef, InterfaceRef)
+        ):
             return True
         if isinstance(typ, Optional):
             return self._is_nullable_reference_type(typ.inner)
@@ -693,7 +723,9 @@ class DartBackend:
                 self._declared_vars.add(name)
                 # For Optional types initialized to null, use late keyword
                 # This allows Dart to treat the variable as non-nullable after assignment
-                if isinstance(typ, Optional) and (value is None or isinstance(value, NilLit)):
+                if isinstance(typ, Optional) and (
+                    value is None or isinstance(value, NilLit)
+                ):
                     inner_type = self._type(typ.inner)
                     self._line(f"late {inner_type} {var_name};")
                 elif isinstance(value, NilLit):
@@ -704,7 +736,9 @@ class DartBackend:
                     dart_type = self._type(typ)
                     val = self._expr(value)
                     # If value is Ternary with NilLit else branch, make variable nullable
-                    if isinstance(value, Ternary) and isinstance(value.else_expr, NilLit):
+                    if isinstance(value, Ternary) and isinstance(
+                        value.else_expr, NilLit
+                    ):
                         self._line(f"{dart_type}? {var_name} = {val};")
                     else:
                         self._line(f"{dart_type} {var_name} = {val}; ")
@@ -727,18 +761,28 @@ class DartBackend:
                     target_name = target.name if isinstance(target, VarLV) else None
                     is_hoisted = target_name and target_name in self._hoisted_vars
                     if stmt.is_declaration and not is_hoisted:
-                        decl_type = stmt.decl_typ if stmt.decl_typ is not None else value.typ
+                        decl_type = (
+                            stmt.decl_typ if stmt.decl_typ is not None else value.typ
+                        )
                         # For Optional types initialized to nil, use late keyword
-                        if isinstance(decl_type, Optional) and isinstance(value, NilLit):
+                        if isinstance(decl_type, Optional) and isinstance(
+                            value, NilLit
+                        ):
                             inner_type = self._type(decl_type.inner)
                             self._line(f"late {inner_type} {lv};")
                         elif isinstance(value, NilLit):
                             # Non-Optional type but NilLit value - make nullable for Dart
-                            dart_type = self._type(decl_type) if decl_type else "dynamic"
+                            dart_type = (
+                                self._type(decl_type) if decl_type else "dynamic"
+                            )
                             self._line(f"{dart_type}? {lv} = null;")
-                        elif isinstance(value, Ternary) and isinstance(value.else_expr, NilLit):
+                        elif isinstance(value, Ternary) and isinstance(
+                            value.else_expr, NilLit
+                        ):
                             # Ternary with null else branch - make nullable
-                            dart_type = self._type(decl_type) if decl_type else "dynamic"
+                            dart_type = (
+                                self._type(decl_type) if decl_type else "dynamic"
+                            )
                             self._line(f"{dart_type}? {lv} = {val};")
                         else:
                             # Check if value is a call to a nullable method - use dynamic to avoid type errors
@@ -753,7 +797,9 @@ class DartBackend:
                             ):
                                 self._line(f"dynamic {lv} = {val};")
                             else:
-                                dart_type = self._type(decl_type) if decl_type else "dynamic"
+                                dart_type = (
+                                    self._type(decl_type) if decl_type else "dynamic"
+                                )
                                 self._line(f"{dart_type} {lv} = {val}; ")
                         if target_name:
                             self._declared_vars.add(target_name)
@@ -878,7 +924,9 @@ class DartBackend:
                 reraise=_,
             ):
                 self._emit_try_catch(stmt)
-            case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
+            case Raise(
+                error_type=error_type, message=message, pos=pos, reraise_var=reraise_var
+            ):
                 if reraise_var:
                     self._line("rethrow;")
                 else:
@@ -924,7 +972,9 @@ class DartBackend:
                 is_new = is_decl or (target_name and target_name in new_targets)
                 lv = self._lvalue(target)
                 accessor = f"{temp_var}.${i + 1}"
-                elem_type = value_type.elements[i] if i < len(value_type.elements) else None
+                elem_type = (
+                    value_type.elements[i] if i < len(value_type.elements) else None
+                )
                 if is_hoisted or not is_new:
                     self._line(f"{lv} = {accessor};")
                 else:
@@ -942,7 +992,9 @@ class DartBackend:
                 lv = self._lvalue(target)
                 target_name = target.name if isinstance(target, VarLV) else None
                 is_hoisted = target_name and target_name in self._hoisted_vars
-                if (is_decl or (target_name and target_name in new_targets)) and not is_hoisted:
+                if (
+                    is_decl or (target_name and target_name in new_targets)
+                ) and not is_hoisted:
                     self._line(f"var {lv} = {temp_var}.${i + 1};")
                     if target_name:
                         self._declared_vars.add(target_name)
@@ -976,7 +1028,9 @@ class DartBackend:
                 field_type = self._type(elem_type.elements[i])
             else:
                 field_type = "dynamic"
-            if (is_decl or (target_name and target_name in new_targets)) and not is_hoisted:
+            if (
+                is_decl or (target_name and target_name in new_targets)
+            ) and not is_hoisted:
                 self._line(f"{field_type} {lv} = {accessor};")
                 if target_name:
                     self._declared_vars.add(target_name)
@@ -1098,14 +1152,18 @@ class DartBackend:
             val = _safe_name(value)
             val_hoisted = value in self._hoisted_vars
             if is_string:
-                self._line(f"for (int {idx} = 0; {idx} < {iter_expr}.length; {idx}++) {{")
+                self._line(
+                    f"for (int {idx} = 0; {idx} < {iter_expr}.length; {idx}++) {{"
+                )
                 self.indent += 1
                 if val_hoisted:
                     self._line(f"{val} = {iter_expr}[{idx}];")
                 else:
                     self._line(f"var {val} = {iter_expr}[{idx}];")
             else:
-                self._line(f"for (int {idx} = 0; {idx} < {iter_expr}.length; {idx}++) {{")
+                self._line(
+                    f"for (int {idx} = 0; {idx} < {iter_expr}.length; {idx}++) {{"
+                )
                 self.indent += 1
                 elem_type = self._element_type(iter_type)
                 if val_hoisted:
@@ -1180,7 +1238,9 @@ class DartBackend:
             case VarDecl(name=name, typ=typ, value=value):
                 var_name = _safe_name(name)
                 # For Optional types initialized to null in inline context, use inner type
-                if isinstance(typ, Optional) and (value is None or isinstance(value, NilLit)):
+                if isinstance(typ, Optional) and (
+                    value is None or isinstance(value, NilLit)
+                ):
                     inner_type = self._type(typ.inner)
                     return f"late {inner_type} {var_name}"
                 dart_type = self._type(typ)
@@ -1257,7 +1317,11 @@ class DartBackend:
                     obj_str = f"{obj_str}!"
                     obj_type = obj_type.inner
                 # Handle tuple field access (F0, F1 -> $1, $2)
-                if isinstance(obj_type, Tuple) and field.startswith("F") and field[1:].isdigit():
+                if (
+                    isinstance(obj_type, Tuple)
+                    and field.startswith("F")
+                    and field[1:].isdigit()
+                ):
                     idx = int(field[1:]) + 1
                     return f"{obj_str}.${idx}"
                 return f"{obj_str}.{_safe_name(field)}"
@@ -1292,7 +1356,9 @@ class DartBackend:
                     "upper": r"RegExp(r'^[A-Z]+$')",
                     "lower": r"RegExp(r'^[a-z]+$')",
                 }
-                return f"({char_str}.isNotEmpty && {regex_map[kind]}.hasMatch({char_str}))"
+                return (
+                    f"({char_str}.isNotEmpty && {regex_map[kind]}.hasMatch({char_str}))"
+                )
             case TrimChars(string=s, chars=chars, mode=mode):
                 s_str = self._expr(s)
                 # Dart's built-in trim removes ALL whitespace (space, tab, newline, etc.)
@@ -1321,7 +1387,9 @@ class DartBackend:
                     return f"_trimBoth({s_str}, {chars_str})"
             case Call(func=func, args=args):
                 return self._call(func, args)
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type
+            ):
                 return self._method_call(obj, method, args, receiver_type)
             case StaticCall(on_type=on_type, method=method, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
@@ -1355,8 +1423,12 @@ class DartBackend:
             case BinaryOp(op=op, left=left, right=right):
                 left_type = left.typ
                 right_type = right.typ
-                left_is_bool = isinstance(left_type, Primitive) and left_type.kind == "bool"
-                right_is_bool = isinstance(right_type, Primitive) and right_type.kind == "bool"
+                left_is_bool = (
+                    isinstance(left_type, Primitive) and left_type.kind == "bool"
+                )
+                right_is_bool = (
+                    isinstance(right_type, Primitive) and right_type.kind == "bool"
+                )
                 # Convert floor division to Dart's ~/
                 if op == "//":
                     op = "~/"
@@ -1371,15 +1443,27 @@ class DartBackend:
                     else:
                         right_str = self._maybe_paren(right, op, is_left=False)
                 elif op in (">", "<", ">=", "<=") and (left_is_bool or right_is_bool):
-                    left_str = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
+                    left_str = (
+                        f"({self._expr(left)} ? 1 : 0)"
+                        if left_is_bool
+                        else self._expr(left)
+                    )
                     right_str = (
-                        f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                        f"({self._expr(right)} ? 1 : 0)"
+                        if right_is_bool
+                        else self._expr(right)
                     )
                 # Dart bool bitwise ops require both operands to be the same type
                 elif op in ("&", "|", "^") and left_is_bool != right_is_bool:
-                    left_str = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
+                    left_str = (
+                        f"({self._expr(left)} ? 1 : 0)"
+                        if left_is_bool
+                        else self._expr(left)
+                    )
                     right_str = (
-                        f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                        f"({self._expr(right)} ? 1 : 0)"
+                        if right_is_bool
+                        else self._expr(right)
                     )
                 elif op in ("==", "!=") and _dart_needs_bool_int_coerce(left, right):
                     left_str = self._expr(left)
@@ -1412,22 +1496,46 @@ class DartBackend:
             case MinExpr(left=left, right=right):
                 left_type = left.typ
                 right_type = right.typ
-                left_is_bool = isinstance(left_type, Primitive) and left_type.kind == "bool"
-                right_is_bool = isinstance(right_type, Primitive) and right_type.kind == "bool"
+                left_is_bool = (
+                    isinstance(left_type, Primitive) and left_type.kind == "bool"
+                )
+                right_is_bool = (
+                    isinstance(right_type, Primitive) and right_type.kind == "bool"
+                )
                 if left_is_bool or right_is_bool:
-                    l = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
-                    r = f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                    l = (
+                        f"({self._expr(left)} ? 1 : 0)"
+                        if left_is_bool
+                        else self._expr(left)
+                    )
+                    r = (
+                        f"({self._expr(right)} ? 1 : 0)"
+                        if right_is_bool
+                        else self._expr(right)
+                    )
                 else:
                     l, r = self._expr(left), self._expr(right)
                 return f"({l} <= {r} ? {l} : {r})"
             case MaxExpr(left=left, right=right):
                 left_type = left.typ
                 right_type = right.typ
-                left_is_bool = isinstance(left_type, Primitive) and left_type.kind == "bool"
-                right_is_bool = isinstance(right_type, Primitive) and right_type.kind == "bool"
+                left_is_bool = (
+                    isinstance(left_type, Primitive) and left_type.kind == "bool"
+                )
+                right_is_bool = (
+                    isinstance(right_type, Primitive) and right_type.kind == "bool"
+                )
                 if left_is_bool or right_is_bool:
-                    l = f"({self._expr(left)} ? 1 : 0)" if left_is_bool else self._expr(left)
-                    r = f"({self._expr(right)} ? 1 : 0)" if right_is_bool else self._expr(right)
+                    l = (
+                        f"({self._expr(left)} ? 1 : 0)"
+                        if left_is_bool
+                        else self._expr(left)
+                    )
+                    r = (
+                        f"({self._expr(right)} ? 1 : 0)"
+                        if right_is_bool
+                        else self._expr(right)
+                    )
                 else:
                     l, r = self._expr(left), self._expr(right)
                 return f"({l} >= {r} ? {l} : {r})"
@@ -1526,7 +1634,9 @@ class DartBackend:
                 vt = self._type(value_type)
                 if not entries:
                     return f"<{kt}, {vt}>{{}}"
-                pairs = ", ".join(f"{self._expr(k)}: {self._expr(v)}" for k, v in entries)
+                pairs = ", ".join(
+                    f"{self._expr(k)}: {self._expr(v)}" for k, v in entries
+                )
                 return f"<{kt}, {vt}>{{{pairs}}}"
             case SetLit(elements=elements, element_type=element_type):
                 elem_type = self._type(element_type)
@@ -1534,7 +1644,9 @@ class DartBackend:
                     return f"<{elem_type}>{{}}"
                 elems = ", ".join(self._expr(e) for e in elements)
                 return f"<{elem_type}>{{{elems}}}"
-            case StructLit(struct_name=struct_name, fields=fields, embedded_value=embedded_value):
+            case StructLit(
+                struct_name=struct_name, fields=fields, embedded_value=embedded_value
+            ):
                 return self._struct_lit(struct_name, fields, embedded_value)
             case TupleLit(elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
@@ -1590,7 +1702,9 @@ class DartBackend:
             case ReadAll():
                 # Read all from stdin
                 return "stdin.readAsStringSync()"
-            case ListComp(element=element, target=target, iterable=iterable, condition=condition):
+            case ListComp(
+                element=element, target=target, iterable=iterable, condition=condition
+            ):
                 iter_str = self._expr(iterable)
                 elem_str = self._expr(element)
                 var = _safe_name(target)
@@ -1598,7 +1712,9 @@ class DartBackend:
                     cond_str = self._expr(condition)
                     return f"{iter_str}.where(({var}) => {cond_str}).map(({var}) => {elem_str}).toList()"
                 return f"{iter_str}.map(({var}) => {elem_str}).toList()"
-            case SetComp(element=element, target=target, iterable=iterable, condition=condition):
+            case SetComp(
+                element=element, target=target, iterable=iterable, condition=condition
+            ):
                 iter_str = self._expr(iterable)
                 elem_str = self._expr(element)
                 var = _safe_name(target)
@@ -1607,7 +1723,11 @@ class DartBackend:
                     return f"{iter_str}.where(({var}) => {cond_str}).map(({var}) => {elem_str}).toSet()"
                 return f"{iter_str}.map(({var}) => {elem_str}).toSet()"
             case DictComp(
-                key=key, value=value, target=target, iterable=iterable, condition=condition
+                key=key,
+                value=value,
+                target=target,
+                iterable=iterable,
+                condition=condition,
             ):
                 iter_str = self._expr(iterable)
                 key_str = self._expr(key)
@@ -1637,7 +1757,11 @@ class DartBackend:
         if func == "int" and len(args) == 2:
             return f"int.parse({self._expr(args[0])}, radix: {self._expr(args[1])})"
         if func == "str":
-            if args and isinstance(args[0].typ, Primitive) and args[0].typ.kind == "bool":
+            if (
+                args
+                and isinstance(args[0].typ, Primitive)
+                and args[0].typ.kind == "bool"
+            ):
                 return f'({self._expr(args[0])} ? "True" : "False")'
             if args and isinstance(args[0].typ, Slice):
                 elem_type = args[0].typ.element
@@ -1645,7 +1769,11 @@ class DartBackend:
                     return f"String.fromCharCodes({self._expr(args[0])})"
             return f"({self._expr(args[0])}).toString()"
         if func == "repr":
-            if args and isinstance(args[0].typ, Primitive) and args[0].typ.kind == "bool":
+            if (
+                args
+                and isinstance(args[0].typ, Primitive)
+                and args[0].typ.kind == "bool"
+            ):
                 return f'({self._expr(args[0])} ? "True" : "False")'
             return f"({self._expr(args[0])}).toString()"
         if func == "len":
@@ -1706,7 +1834,9 @@ class DartBackend:
             return f"{_safe_name(func)}({args_str})"
         return f"{_safe_name(func)}({args_str})"
 
-    def _method_call(self, obj: Expr, method: str, args: list[Expr], receiver_type: Type) -> str:
+    def _method_call(
+        self, obj: Expr, method: str, args: list[Expr], receiver_type: Type
+    ) -> str:
         # Add ! only for Optional field accesses (Dart can't promote public fields)
         # Local variables are promoted by Dart's flow analysis after null checks
         arg_parts: list[str] = []
@@ -1748,7 +1878,9 @@ class DartBackend:
                 return f"{obj_str}.startsWith({args_str})"
             if method == "endswith":
                 if args and isinstance(args[0], TupleLit):
-                    checks = [f"{obj_str}.endsWith({self._expr(e)})" for e in args[0].elements]
+                    checks = [
+                        f"{obj_str}.endsWith({self._expr(e)})" for e in args[0].elements
+                    ]
                     return "(" + " || ".join(checks) + ")"
                 return f"{obj_str}.endsWith({args_str})"
             if method == "find":
@@ -1782,7 +1914,9 @@ class DartBackend:
             return f"{obj_str}.insert({args_str})"
         if method == "endswith":
             if args and isinstance(args[0], TupleLit):
-                checks = [f"{obj_str}.endsWith({self._expr(e)})" for e in args[0].elements]
+                checks = [
+                    f"{obj_str}.endsWith({self._expr(e)})" for e in args[0].elements
+                ]
                 return "(" + " || ".join(checks) + ")"
             return f"{obj_str}.endsWith({args_str})"
         if method == "startswith":
@@ -1903,7 +2037,11 @@ class DartBackend:
         # Handle {0}, {1} style placeholders
         for i, arg in enumerate(args):
             if isinstance(arg, StringLit):
-                val = arg.value.replace("\\", "\\\\").replace("$", r"\$").replace('"', r"\"")
+                val = (
+                    arg.value.replace("\\", "\\\\")
+                    .replace("$", r"\$")
+                    .replace('"', r"\"")
+                )
                 result = result.replace(f"{{{i}}}", val, 1)
             else:
                 result = result.replace(f"{{{i}}}", f"${{{self._expr(arg)}}}", 1)
@@ -1915,7 +2053,11 @@ class DartBackend:
             arg = args[arg_idx]
             arg_idx += 1
             if isinstance(arg, StringLit):
-                val = arg.value.replace("\\", "\\\\").replace("$", r"\$").replace('"', r"\"")
+                val = (
+                    arg.value.replace("\\", "\\\\")
+                    .replace("$", r"\$")
+                    .replace('"', r"\"")
+                )
                 result = result.replace("%v", val, 1)
             else:
                 result = result.replace("%v", f"${{{self._expr(arg)}}}", 1)
@@ -1934,7 +2076,9 @@ class DartBackend:
                     if isinstance(field_val, NilLit) and isinstance(field_type, Slice):
                         elem = self._type(field_type.element)
                         ordered_args.append(f"<{elem}>[]")
-                    elif isinstance(field_val, NilLit) and not isinstance(field_type, Optional):
+                    elif isinstance(field_val, NilLit) and not isinstance(
+                        field_type, Optional
+                    ):
                         # Null for non-Optional field - cast to dynamic for Dart null safety
                         ordered_args.append("null as dynamic")
                     else:
@@ -1944,7 +2088,9 @@ class DartBackend:
             return f"{safe_name}({', '.join(ordered_args)})"
         elif embedded_value is not None:
             if isinstance(embedded_value, StructLit):
-                parent_args = ", ".join(self._expr(v) for v in embedded_value.fields.values())
+                parent_args = ", ".join(
+                    self._expr(v) for v in embedded_value.fields.values()
+                )
                 return f"{safe_name}({parent_args})"
             return f"{safe_name}({self._expr(embedded_value)})"
         elif not fields:
@@ -2217,7 +2363,9 @@ def _dart_is_int_in_dart(expr: Expr) -> bool:
         return True
     # UnaryOp('-' or '~') on bool produces int in Dart
     if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
-        return isinstance(expr.operand.typ, Primitive) and expr.operand.typ.kind == "bool"
+        return (
+            isinstance(expr.operand.typ, Primitive) and expr.operand.typ.kind == "bool"
+        )
     # BinaryOp arithmetic on bools produces int in Dart
     if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "~/"):
         l_bool = isinstance(expr.left.typ, Primitive) and expr.left.typ.kind == "bool"

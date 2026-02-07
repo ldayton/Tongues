@@ -78,7 +78,9 @@ def _analyze_initial_value_in_stmts(stmts: list[Stmt]) -> None:
     """Analyze statements for VarDecls with unused initial values."""
     for i, stmt in enumerate(stmts):
         if isinstance(stmt, VarDecl) and stmt.value is not None:
-            stmt.initial_value_unused = _is_written_before_read(stmt.name, stmts[i + 1 :])
+            stmt.initial_value_unused = _is_written_before_read(
+                stmt.name, stmts[i + 1 :]
+            )
         # Recurse into nested structures
         if isinstance(stmt, If):
             _analyze_initial_value_in_stmts(stmt.then_body)
@@ -352,17 +354,23 @@ def _expr_reads(name: str, expr: Expr | None) -> bool:
     # Comprehensions
     if isinstance(expr, ListComp):
         for gen in expr.generators:
-            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+            if _expr_reads(name, gen.iterable) or any(
+                _expr_reads(name, c) for c in gen.conditions
+            ):
                 return True
         return _expr_reads(name, expr.element)
     if isinstance(expr, SetComp):
         for gen in expr.generators:
-            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+            if _expr_reads(name, gen.iterable) or any(
+                _expr_reads(name, c) for c in gen.conditions
+            ):
                 return True
         return _expr_reads(name, expr.element)
     if isinstance(expr, DictComp):
         for gen in expr.generators:
-            if _expr_reads(name, gen.iterable) or any(_expr_reads(name, c) for c in gen.conditions):
+            if _expr_reads(name, gen.iterable) or any(
+                _expr_reads(name, c) for c in gen.conditions
+            ):
                 return True
         return _expr_reads(name, expr.key) or _expr_reads(name, expr.value)
     return False

@@ -283,7 +283,9 @@ def _scope_mark_reassigned(ctx: _ScopeContext, name: str) -> None:
 
 
 def _scope_is_new_declaration(
-    ctx: _ScopeContext, lv: VarLV | IndexLV | FieldLV | DerefLV, local_assigned: set[str]
+    ctx: _ScopeContext,
+    lv: VarLV | IndexLV | FieldLV | DerefLV,
+    local_assigned: set[str],
 ) -> bool:
     """Check if this lvalue represents a first assignment to a variable."""
     if isinstance(lv, VarLV):
@@ -291,7 +293,9 @@ def _scope_is_new_declaration(
     return False
 
 
-def _scope_check_lvalue(ctx: _ScopeContext, lv: VarLV | IndexLV | FieldLV | DerefLV) -> None:
+def _scope_check_lvalue(
+    ctx: _ScopeContext, lv: VarLV | IndexLV | FieldLV | DerefLV
+) -> None:
     """Mark the base variable of an lvalue as modified."""
     if isinstance(lv, VarLV):
         _scope_mark_reassigned(ctx, lv.name)
@@ -328,7 +332,9 @@ def _scope_check_stmt(ctx: _ScopeContext, stmt: Stmt, local_assigned: set[str]) 
         if stmt.value:
             _scope_check_expr(ctx, stmt.value)
     elif isinstance(stmt, Assign):
-        stmt.is_declaration = _scope_is_new_declaration(ctx, stmt.target, local_assigned)
+        stmt.is_declaration = _scope_is_new_declaration(
+            ctx, stmt.target, local_assigned
+        )
         if isinstance(stmt.target, VarLV) and stmt.is_declaration:
             local_assigned.add(stmt.target.name)
             stmt.is_reassigned = False

@@ -178,7 +178,16 @@ def _is_bool(expr: Expr) -> bool:
             return False
     if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
         return False
-    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", "/", "%", "//", "<<", ">>"):
+    if isinstance(expr, BinaryOp) and expr.op in (
+        "+",
+        "-",
+        "*",
+        "/",
+        "%",
+        "//",
+        "<<",
+        ">>",
+    ):
         return False
     return True
 
@@ -199,7 +208,9 @@ class SwiftBackend(Emitter):
         self.lines: list[str] = []
         self.indent = 0
         self._func_names = {f.name for f in module.functions}
-        self._entrypoint_fn = module.entrypoint.function_name if module.entrypoint else None
+        self._entrypoint_fn = (
+            module.entrypoint.function_name if module.entrypoint else None
+        )
         self.line("import Foundation")
         self.line("")
         for func in module.functions:
@@ -268,7 +279,9 @@ class SwiftBackend(Emitter):
     # ── functions ────────────────────────────────────────────
 
     def _emit_function(self, func: Function) -> None:
-        params = ", ".join(f"_ {self._safe(p.name)}: {self._param_type(p)}" for p in func.params)
+        params = ", ".join(
+            f"_ {self._safe(p.name)}: {self._param_type(p)}" for p in func.params
+        )
         name = self._fn_name(func.name)
         if func.ret == VOID:
             self.line(f"func {name}({params}) {{")
@@ -534,7 +547,9 @@ class SwiftBackend(Emitter):
         if op == "//":
             op = "/"
         # Bool arithmetic: True + True → (true ? 1 : 0) + (true ? 1 : 0)
-        if op in ("+", "-", "*", "/", "%") and (_is_bool(expr.left) or _is_bool(expr.right)):
+        if op in ("+", "-", "*", "/", "%") and (
+            _is_bool(expr.left) or _is_bool(expr.right)
+        ):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             # Need proper precedence for nested operations
@@ -553,7 +568,9 @@ class SwiftBackend(Emitter):
                 right = self._maybe_paren(expr.right, op, is_left=False)
             return f"{left} {op} {right}"
         # Ordered comparisons with bools
-        if op in (">", "<", ">=", "<=") and (_is_bool(expr.left) or _is_bool(expr.right)):
+        if op in (">", "<", ">=", "<=") and (
+            _is_bool(expr.left) or _is_bool(expr.right)
+        ):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
@@ -654,14 +671,30 @@ class SwiftBackend(Emitter):
         # pow() - Swift uses Foundation's pow() which returns Double
         if func == "pow" and len(args) == 2:
             arg0, arg1 = args[0], args[1]
-            a0 = self._coerce_bool_to_int(arg0) if _is_bool(arg0) else self._emit_expr(arg0)
-            a1 = self._coerce_bool_to_int(arg1) if _is_bool(arg1) else self._emit_expr(arg1)
+            a0 = (
+                self._coerce_bool_to_int(arg0)
+                if _is_bool(arg0)
+                else self._emit_expr(arg0)
+            )
+            a1 = (
+                self._coerce_bool_to_int(arg1)
+                if _is_bool(arg1)
+                else self._emit_expr(arg1)
+            )
             return f"Int(pow(Double({a0}), Double({a1})))"
         # divmod()
         if func == "divmod" and len(args) == 2:
             arg0, arg1 = args[0], args[1]
-            a0 = self._coerce_bool_to_int(arg0) if _is_bool(arg0) else self._emit_expr(arg0)
-            a1 = self._coerce_bool_to_int(arg1) if _is_bool(arg1) else self._emit_expr(arg1)
+            a0 = (
+                self._coerce_bool_to_int(arg0)
+                if _is_bool(arg0)
+                else self._emit_expr(arg0)
+            )
+            a1 = (
+                self._coerce_bool_to_int(arg1)
+                if _is_bool(arg1)
+                else self._emit_expr(arg1)
+            )
             return f"({a0} / {a1}, {a0} % {a1})"
         # Known module-level function
         name = self._fn_name(func) if func in self._func_names else self._safe(func)
@@ -788,5 +821,7 @@ class SwiftBackend(Emitter):
             key_type = self._type_to_swift(expr.key_type)
             val_type = self._type_to_swift(expr.value_type)
             return f"[{key_type}: {val_type}]()"
-        pairs = ", ".join(f"{self._emit_expr(k)}: {self._emit_expr(v)}" for k, v in expr.entries)
+        pairs = ", ".join(
+            f"{self._emit_expr(k)}: {self._emit_expr(v)}" for k, v in expr.entries
+        )
         return f"[{pairs}]"

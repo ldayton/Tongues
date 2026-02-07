@@ -128,7 +128,9 @@ def build_constructor(
             continue
         arg_annotation = arg.get("annotation")
         py_type = callbacks.annotation_to_str(arg_annotation) if arg_annotation else ""
-        typ = callbacks.py_type_to_ir(py_type, False) if py_type else InterfaceRef("any")
+        typ = (
+            callbacks.py_type_to_ir(py_type, False) if py_type else InterfaceRef("any")
+        )
         params.append(Param(name=arg_name, typ=typ, loc=loc_unknown()))
         param_types[arg_name] = typ
     # Handle default arguments
@@ -143,9 +145,14 @@ def build_constructor(
     callbacks.setup_context(class_name, None)
     # Collect variable types and build type context
     init_body = init_ast.get("body", [])
-    var_types, tuple_vars, sentinel_ints, optional_strings, list_element_unions, unified_to_node = (
-        callbacks.collect_var_types(init_body)
-    )
+    (
+        var_types,
+        tuple_vars,
+        sentinel_ints,
+        optional_strings,
+        list_element_unions,
+        unified_to_node,
+    ) = callbacks.collect_var_types(init_body)
     var_types.update(param_types)
     var_types["self"] = Pointer(StructRef(class_name))
     type_ctx = TypeContext(
@@ -176,12 +183,16 @@ def build_constructor(
     self_init.is_declaration = True
     body.append(self_init)
     # Lower __init__ body with type context (excluding any "return" statements which are implicit in __init__)
-    init_body_lowered = callbacks.setup_and_lower_stmts(class_name, None, type_ctx, init_body)
+    init_body_lowered = callbacks.setup_and_lower_stmts(
+        class_name, None, type_ctx, init_body
+    )
     body.extend(init_body_lowered)
     # Return self
     body.append(
         ir.Return(
-            value=ir.Var(name="self", typ=Pointer(StructRef(class_name)), loc=loc_unknown()),
+            value=ir.Var(
+                name="self", typ=Pointer(StructRef(class_name)), loc=loc_unknown()
+            ),
             loc=loc_unknown(),
         )
     )
@@ -210,7 +221,11 @@ def build_method_shell(
     params = []
     if func_info:
         for p in func_info.params:
-            params.append(Param(name=p.name, typ=p.typ, default=p.default_value, loc=loc_unknown()))
+            params.append(
+                Param(
+                    name=p.name, typ=p.typ, default=p.default_value, loc=loc_unknown()
+                )
+            )
     body: list["ir.Stmt"] = []
     if with_body:
         # Set up context first (needed by collect_var_types)
@@ -251,7 +266,9 @@ def build_method_shell(
             list_element_unions=list_element_unions,
             unified_to_node=unified_to_node,
         )
-        body = callbacks.setup_and_lower_stmts(class_name, func_info, type_ctx, node_body)
+        body = callbacks.setup_and_lower_stmts(
+            class_name, func_info, type_ctx, node_body
+        )
     return Function(
         name=node_name,
         params=params,
@@ -280,7 +297,11 @@ def build_function_shell(
     params = []
     if func_info:
         for p in func_info.params:
-            params.append(Param(name=p.name, typ=p.typ, default=p.default_value, loc=loc_unknown()))
+            params.append(
+                Param(
+                    name=p.name, typ=p.typ, default=p.default_value, loc=loc_unknown()
+                )
+            )
     body: list["ir.Stmt"] = []
     if with_body:
         # Set up context first (needed by collect_var_types) - empty class name for functions
@@ -319,7 +340,9 @@ def build_function_shell(
             list_element_unions=list_element_unions,
             unified_to_node=unified_to_node,
         )
-        body = callbacks.setup_and_lower_stmts("", func_info, type_ctx, node.get("body", []))
+        body = callbacks.setup_and_lower_stmts(
+            "", func_info, type_ctx, node.get("body", [])
+        )
     return Function(
         name=node_name,
         params=params,
@@ -554,7 +577,11 @@ def build_module(
             # Skip module docstring (first Expr if it's a string constant)
             if i == 0:
                 val = node.get("value")
-                if val and is_type(val, ["Constant"]) and isinstance(val.get("value"), str):
+                if (
+                    val
+                    and is_type(val, ["Constant"])
+                    and isinstance(val.get("value"), str)
+                ):
                     continue
             expr = callbacks.lower_expr(node.get("value"))
             module.statements.append(ExprStmt(expr=expr))

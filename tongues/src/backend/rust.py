@@ -229,7 +229,9 @@ class RustBackend(Emitter):
         self.indent = 0
         self._func_names = {f.name for f in module.functions}
         self._needs_catch_unwind = False
-        self._entrypoint_fn = module.entrypoint.function_name if module.entrypoint else None
+        self._entrypoint_fn = (
+            module.entrypoint.function_name if module.entrypoint else None
+        )
         body_lines: list[str] = []
         for func in module.functions:
             self._emit_function(func)
@@ -242,7 +244,9 @@ class RustBackend(Emitter):
         if module.entrypoint is not None:
             self.line("fn main() {")
             self.indent += 1
-            self.line(f"std::process::exit(_{module.entrypoint.function_name}() as i32);")
+            self.line(
+                f"std::process::exit(_{module.entrypoint.function_name}() as i32);"
+            )
             self.indent -= 1
             self.line("}")
         return self.output() + "\n"
@@ -326,7 +330,9 @@ class RustBackend(Emitter):
     # ── functions ────────────────────────────────────────────
 
     def _emit_function(self, func: Function) -> None:
-        params = ", ".join(f"{self._safe(p.name)}: {self._param_type(p)}" for p in func.params)
+        params = ", ".join(
+            f"{self._safe(p.name)}: {self._param_type(p)}" for p in func.params
+        )
         name = self._fn_name(func.name)
         if func.ret == VOID:
             self.line(f"fn {name}({params}) {{")
@@ -388,7 +394,11 @@ class RustBackend(Emitter):
         mut = "mut " if s.mutable else ""
         if s.value is not None:
             # Special handling for empty MapLit - use VarDecl type
-            if isinstance(s.value, MapLit) and isinstance(s.typ, Map) and not s.value.entries:
+            if (
+                isinstance(s.value, MapLit)
+                and isinstance(s.typ, Map)
+                and not s.value.entries
+            ):
                 typ = self._type_to_rust(s.typ)
                 self.line(f"let {mut}{name}: {typ} = std::collections::HashMap::new();")
                 return
@@ -512,7 +522,9 @@ class RustBackend(Emitter):
         var = self._safe(catch.var) if catch.var else "_e"
         self.line("if let Err(_panic_val) = _result {")
         self.indent += 1
-        self.line(f"let {var}: String = if let Some(s) = _panic_val.downcast_ref::<String>() {{")
+        self.line(
+            f"let {var}: String = if let Some(s) = _panic_val.downcast_ref::<String>() {{"
+        )
         self.indent += 1
         self.line("s.clone()")
         self.indent -= 1
@@ -692,7 +704,9 @@ class RustBackend(Emitter):
                 "keys",
                 "items",
             )
-            right_is_keys = isinstance(expr.right, MethodCall) and expr.right.method in (
+            right_is_keys = isinstance(
+                expr.right, MethodCall
+            ) and expr.right.method in (
                 "keys",
                 "items",
             )
@@ -700,8 +714,12 @@ class RustBackend(Emitter):
                 left = self._emit_expr(expr.left)
                 right = self._emit_expr(expr.right)
                 # Convert to HashSet and apply set operation
-                left_set = f"{left}.into_iter().collect::<std::collections::HashSet<_>>()"
-                right_set = f"{right}.into_iter().collect::<std::collections::HashSet<_>>()"
+                left_set = (
+                    f"{left}.into_iter().collect::<std::collections::HashSet<_>>()"
+                )
+                right_set = (
+                    f"{right}.into_iter().collect::<std::collections::HashSet<_>>()"
+                )
                 if op == "&":
                     return f"{left_set}.intersection(&{right_set}).cloned().collect::<std::collections::HashSet<_>>()"
                 if op == "|":
@@ -818,7 +836,9 @@ class RustBackend(Emitter):
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
         # Bool arithmetic: True + True → (true as i64) + (true as i64)
-        if op in ("+", "-", "*", "/", "%") and (_is_bool(expr.left) or _is_bool(expr.right)):
+        if op in ("+", "-", "*", "/", "%") and (
+            _is_bool(expr.left) or _is_bool(expr.right)
+        ):
             left = self._coerce_bool_to_int(expr.left)
             right = self._coerce_bool_to_int(expr.right)
             return f"{left} {op} {right}"
@@ -885,7 +905,10 @@ class RustBackend(Emitter):
         if expr.op == "*":
             # Dereference - skip for map.get() with default, as unwrap_or already unwraps
             if isinstance(expr.operand, MethodCall):
-                if isinstance(expr.operand.receiver_type, Map) and expr.operand.method == "get":
+                if (
+                    isinstance(expr.operand.receiver_type, Map)
+                    and expr.operand.method == "get"
+                ):
                     if len(expr.operand.args) >= 2:
                         # .get(key, default) already returns unwrapped value
                         return operand
@@ -1051,8 +1074,13 @@ class RustBackend(Emitter):
     def _emit_MapLit(self, expr: MapLit) -> str:
         if not expr.entries:
             # For empty maps, if type is 'any', use placeholder types
-            is_any_key = isinstance(expr.key_type, InterfaceRef) and expr.key_type.name == "any"
-            is_any_val = isinstance(expr.value_type, InterfaceRef) and expr.value_type.name == "any"
+            is_any_key = (
+                isinstance(expr.key_type, InterfaceRef) and expr.key_type.name == "any"
+            )
+            is_any_val = (
+                isinstance(expr.value_type, InterfaceRef)
+                and expr.value_type.name == "any"
+            )
             if is_any_key and is_any_val:
                 # Use () as placeholder - works for comparison with other empty maps
                 return "std::collections::HashMap::<(), ()>::new()"
@@ -1065,7 +1093,9 @@ class RustBackend(Emitter):
             key_type = self._type_to_rust(expr.key_type)
             val_type = self._type_to_rust(expr.value_type)
             return f"std::collections::HashMap::<{key_type}, {val_type}>::new()"
-        pairs = ", ".join(f"({self._emit_expr(k)}, {self._emit_expr(v)})" for k, v in expr.entries)
+        pairs = ", ".join(
+            f"({self._emit_expr(k)}, {self._emit_expr(v)})" for k, v in expr.entries
+        )
         return f"std::collections::HashMap::from([{pairs}])"
 
     def _emit_MapLit_with_optional(self, expr: MapLit, opt_type: Optional) -> str:
@@ -1123,7 +1153,11 @@ class RustBackend(Emitter):
 
     def _emit_MethodCall(self, expr: MethodCall) -> str:
         # Handle dict.fromkeys() class method
-        if isinstance(expr.obj, Var) and expr.obj.name == "dict" and expr.method == "fromkeys":
+        if (
+            isinstance(expr.obj, Var)
+            and expr.obj.name == "dict"
+            and expr.method == "fromkeys"
+        ):
             keys = self._emit_expr(expr.args[0])
             if len(expr.args) >= 2:
                 value = self._emit_expr(expr.args[1])

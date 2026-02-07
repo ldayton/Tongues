@@ -209,7 +209,9 @@ _PYTHON_BUILTINS = frozenset(
 )
 
 # Builtin types that have static methods (don't rename when used as method receiver)
-_BUILTIN_TYPES = frozenset({"dict", "list", "set", "tuple", "str", "int", "float", "bool", "bytes"})
+_BUILTIN_TYPES = frozenset(
+    {"dict", "list", "set", "tuple", "str", "int", "float", "bool", "bytes"}
+)
 
 
 def _safe_name(name: str) -> str:
@@ -249,7 +251,9 @@ class PythonBackend:
     def _emit_module(self, module: Module) -> None:
         needs_protocol = bool(module.interfaces)
         needs_intptr = ir_contains_call(module, "_intPtr")
-        needs_dataclass = any(_struct_is_emitted(s) and not s.is_exception for s in module.structs)
+        needs_dataclass = any(
+            _struct_is_emitted(s) and not s.is_exception for s in module.structs
+        )
         needs_field = any(
             _struct_is_emitted(s)
             and any(
@@ -499,7 +503,9 @@ class PythonBackend:
                     self._line(f"assert {self._expr(test)}, {self._expr(message)}")
                 else:
                     self._line(f"assert {self._expr(test)}")
-            case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
+            case Raise(
+                error_type=error_type, message=message, pos=pos, reraise_var=reraise_var
+            ):
                 if reraise_var:
                     self._line(f"raise {reraise_var}")
                 else:
@@ -538,7 +544,9 @@ class PythonBackend:
                 self._emit_stmt(s)
             self.indent -= 1
 
-    def _emit_match(self, expr: Expr, cases: list[MatchCase], default: list[Stmt]) -> None:
+    def _emit_match(
+        self, expr: Expr, cases: list[MatchCase], default: list[Stmt]
+    ) -> None:
         self._line(f"match {self._expr(expr)}:")
         self.indent += 1
         for case in cases:
@@ -590,7 +598,10 @@ class PythonBackend:
                 if not isinstance(stmt.value, FieldAccess):
                     break
                 field_access = stmt.value
-                if not isinstance(field_access.obj, Var) or field_access.obj.name != value:
+                if (
+                    not isinstance(field_access.obj, Var)
+                    or field_access.obj.name != value
+                ):
                     break
                 field = field_access.field
                 if not (field.startswith("F") and field[1:].isdigit()):
@@ -639,7 +650,9 @@ class PythonBackend:
         # Check for simple iteration pattern: for i := 0; i < len(x); i++
         if (range_info := _extract_range_pattern(init, cond, post)) is not None:
             var_name, iterable_expr = range_info
-            self._line(f"for {_safe_name(var_name)} in range(len({self._expr(iterable_expr)})):")
+            self._line(
+                f"for {_safe_name(var_name)} in range(len({self._expr(iterable_expr)})):"
+            )
             self.indent += 1
             if _is_empty_body(body):
                 self._line("pass")
@@ -676,7 +689,9 @@ class PythonBackend:
         self.indent -= 1
         for clause in catches:
             var = _safe_name(clause.var) if clause.var else "_e"
-            exc_type = clause.typ.name if isinstance(clause.typ, StructRef) else "Exception"
+            exc_type = (
+                clause.typ.name if isinstance(clause.typ, StructRef) else "Exception"
+            )
             self._line(f"except {exc_type} as {var}:")
             self.indent += 1
             if _is_empty_body(clause.body) and not reraise:
@@ -777,7 +792,11 @@ class PythonBackend:
                     return f"{func}(reverse=True)"
                 return f"{func}({args_str})"
             case MethodCall(
-                obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
+                obj=obj,
+                method=method,
+                args=args,
+                receiver_type=receiver_type,
+                reverse=reverse,
             ):
                 args_str = ", ".join(self._expr(a) for a in args)
                 py_method = _method_name(method, receiver_type)
@@ -833,15 +852,21 @@ class PythonBackend:
             case Cast(expr=inner, to_type=to_type):
                 # Cast from list[int] (bytearray) to string needs bytes().decode()
                 if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
-                    return f'bytes({self._expr(inner)}).decode("utf-8", errors="replace")'
+                    return (
+                        f'bytes({self._expr(inner)}).decode("utf-8", errors="replace")'
+                    )
                 # Cast from rune to string is chr() in Python
-                if to_type == Primitive(kind="string") and inner.typ == Primitive(kind="rune"):
+                if to_type == Primitive(kind="string") and inner.typ == Primitive(
+                    kind="rune"
+                ):
                     return f"chr({self._expr(inner)})"
                 # Cast to string is str() in Python
                 if to_type == Primitive(kind="string"):
                     return f"str({self._expr(inner)})"
                 # Cast from string to []byte is .encode() in Python
-                if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
+                if isinstance(to_type, Slice) and to_type.element == Primitive(
+                    kind="byte"
+                ):
                     return f'{self._expr(inner)}.encode("utf-8")'
                 # Cast from string/char/byte to int is ord() in Python
                 if to_type == Primitive(kind="int") and inner.typ in (
@@ -851,7 +876,9 @@ class PythonBackend:
                 ):
                     return f"ord({self._expr(inner)})"
                 # Cast from float to int needs int() in Python
-                if to_type == Primitive(kind="int") and inner.typ == Primitive(kind="float"):
+                if to_type == Primitive(kind="int") and inner.typ == Primitive(
+                    kind="float"
+                ):
                     return f"int({self._expr(inner)})"
                 # Cast to float needs float() in Python
                 if to_type == Primitive(kind="float"):
@@ -885,7 +912,9 @@ class PythonBackend:
             case MapLit(entries=entries):
                 if not entries:
                     return "{}"
-                pairs = ", ".join(f"{self._expr(k)}: {self._expr(v)}" for k, v in entries)
+                pairs = ", ".join(
+                    f"{self._expr(k)}: {self._expr(v)}" for k, v in entries
+                )
                 return f"{{{pairs}}}"
             case SetLit(elements=elements):
                 if not elements:
@@ -906,7 +935,9 @@ class PythonBackend:
                 return f"{{{k}: {v} {gen_parts}}}"
             case StructLit(struct_name=struct_name, fields=fields):
                 # Skip None fields to use dataclass defaults
-                non_none = [(k, v) for k, v in fields.items() if not isinstance(v, NilLit)]
+                non_none = [
+                    (k, v) for k, v in fields.items() if not isinstance(v, NilLit)
+                ]
                 args = ", ".join(f"{k}={self._expr(v)}" for k, v in non_none)
                 return f"{struct_name}({args})"
             case TupleLit(elements=elements):

@@ -89,8 +89,6 @@ def test_typecheck(typecheck_input: str, typecheck_expected: str):
         if result_ok:
             pytest.fail(f"Expected error containing '{expected_msg}', got ok")
         if expected_msg.lower() not in error_msg.lower():
-            pytest.fail(
-                f"Expected error containing '{expected_msg}', got: {error_msg}"
-            )
+            pytest.fail(f"Expected error containing '{expected_msg}', got: {error_msg}")
     else:
         pytest.fail(f"Unknown expected format: {typecheck_expected}")

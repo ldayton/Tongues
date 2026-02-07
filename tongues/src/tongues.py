@@ -186,7 +186,10 @@ def main() -> int:
     target, verify, verify_path = parse_args()
     if verify:
         if verify_path is not None:
-            print("error: --verify PATH requires cli.py (file I/O not in subset)", file=sys.stderr)
+            print(
+                "error: --verify PATH requires cli.py (file I/O not in subset)",
+                file=sys.stderr,
+            )
             return 1
         return run_verify_stdin()
     return run_transpile(target)
