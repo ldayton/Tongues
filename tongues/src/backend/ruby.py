@@ -1200,7 +1200,8 @@ class RubyBackend:
                 right_str = self._and_or_operand(right_expr)
                 return f"({cond} ? {left_str} : {right_str})"
             case BinaryOp(op="//", left=left, right=right):
-                # Floor division - Ruby's / on integers truncates toward zero
+                # Floor division - Ruby's / on integers floors toward -inf
+                # For floats, we need (a / b).floor.to_f to match Python semantics
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
@@ -1210,6 +1211,9 @@ class RubyBackend:
                 else:
                     right_str = self._expr(right)
                 left_str = self._maybe_paren(left_str, left, "/", is_left=True)
+                right_str = self._maybe_paren(right_str, right, "/", is_left=False)
+                if left.typ == FLOAT or right.typ == FLOAT:
+                    return f"({left_str} / {right_str}).floor.to_f"
                 return f"{left_str} / {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "==",
