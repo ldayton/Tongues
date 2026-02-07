@@ -69,6 +69,20 @@ A field is const if assigned a string literal directly and not reassigned elsewh
 
 Used for discriminated union narrowing. Field name is typically `kind` but any name works.
 
+### Kind Field Generation
+
+For structs in a class hierarchy, `const_fields["kind"]` is always populated:
+
+| Class                         | const_fields["kind"]      |
+| ----------------------------- | ------------------------- |
+| `self.kind = "add"`           | `"add"` (explicit)        |
+| No kind field, class `Add`    | `"add"` (from PascalCase) |
+| No kind field, class `IfStmt` | `"if-stmt"` (kebab-case)  |
+
+The naming convention converts PascalCase to kebab-case: `BinaryOp` → `"binary-op"`, `ForRange` → `"for-range"`.
+
+This ensures backends can always emit discriminator values without computing the conversion themselves. The hierarchy root (base class) does not get a kind value.
+
 ## Conditional and Computed Fields
 
 | Pattern               | Behavior                      |

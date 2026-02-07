@@ -22,29 +22,31 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 
 ### Statements
 
-| Python                       | IR Output                                  |
-| ---------------------------- | ------------------------------------------ |
-| `if cond:`                   | `If(cond, then_body, else_body)`           |
-| `if isinstance(x, T):` chain | `TypeSwitch(expr, binding, cases)` ³       |
-| `match x:`                   | `Match(expr, cases, default)`              |
-| `for x in items:`            | `ForRange(index, value, iterable, body)`   |
-| `for i in range(n):`         | `ForClassic(init, cond, post, body)`       |
-| `for i in range(a, b):`      | `ForClassic(init, cond, post, body)`       |
-| `while cond:`                | `While(cond, body)`                        |
-| `try: ... except E as e:`    | `TryCatch(body, catches)`                  |
-| `raise E(msg, pos)`          | `Raise(error_type, message, pos)`          |
-| `return expr`                | `Return(value)`                            |
-| `x = expr`                   | `Assign(target, value)` or `VarDecl`       |
-| `a, b = expr`                | `TupleAssign(targets, value)`              |
-| `x += n`                     | `OpAssign(target, op, value)`              |
-| `assert cond`                | `Assert(test, message)`                    |
-| `print(x)`                   | `Print(value, newline=True, stderr=False)` |
-| `print(x, end="")`           | `Print(value, newline=False)`              |
-| `print(x, file=sys.stderr)`  | `Print(value, stderr=True)`                |
-| `pass`                       | `NoOp()` or omit                           |
-| `if __name__ == "__main__":` | `EntryPoint(function_name)`                |
+| Python                       | IR Output                                    |
+| ---------------------------- | -------------------------------------------- |
+| `if cond:`                   | `If(cond, then_body, else_body)`             |
+| `if isinstance(x, T):` chain | `TypeSwitch(expr, binding, cases)` ³         |
+| `match x:`                   | `Match(expr, cases, default)`                |
+| `for x in items:`            | `ForRange(index, value, iterable, body)`     |
+| `for i in range(n):`         | `ForClassic(init, cond, post, body)`         |
+| `for i in range(a, b):`      | `ForClassic(init, cond, post, body)`         |
+| `while cond:`                | `While(cond, body)`                          |
+| `try: ... except E as e:`    | `TryCatch(body, catches, catch_unreachable)` |
+| `raise E(msg, pos)`          | `Raise(error_type, message, pos)`            |
+| `return expr`                | `Return(value)`                              |
+| `x = expr`                   | `Assign(target, value)` or `VarDecl`         |
+| `a, b = expr`                | `TupleAssign(targets, value)`                |
+| `x += n`                     | `OpAssign(target, op, value)`                |
+| `assert cond`                | `Assert(test, message)`                      |
+| `print(x)`                   | `Print(value, newline=True, stderr=False)`   |
+| `print(x, end="")`           | `Print(value, newline=False)`                |
+| `print(x, file=sys.stderr)`  | `Print(value, stderr=True)`                  |
+| `pass`                       | `NoOp()` or omit                             |
+| `if __name__ == "__main__":` | `EntryPoint(function_name)`                  |
 
 ³ Each `TypeSwitch` case includes `narrowed_binding` name for targets requiring new bindings (e.g., `nodeExpr` for case `Expr`).
+
+`TryCatch.catch_unreachable` is `True` for panic-based languages (Zig) where exceptions don't exist and catch blocks are emitted as dead code for structural compatibility.
 
 ### Expressions
 
@@ -61,7 +63,7 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 | `a < b < c`            | `ChainedCompare(operands, ops)`         |
 | `-x`, `not x`, `~x`    | `UnaryOp(op, operand)`                  |
 | `x and y`, `x or y`    | `BinaryOp("&&", ...)`, `BinaryOp("      |  | ", ...)` |
-| `a if cond else b`     | `Ternary(cond, then_expr, else_expr)`   |
+| `a if cond else b`     | `Ternary(cond, then_expr, else_expr)` ⁶ |
 | `f(args)`              | `Call(func, args)`                      |
 | `obj.method(args)`     | `MethodCall(obj, method, args)`         |
 | `obj.method` (no call) | `FuncRef(name, obj)` with receiver type |
@@ -80,6 +82,8 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 ¹ `StructLit.fields` ordered per `init_params` from Phase 6.
 
 ² Bool operands in arithmetic emit `Cast(BOOL, INT)` wrapper per Phase 8.
+
+⁶ `Ternary` has optional flags: `needs_iife=True` for languages without ternary operator (Go), `needs_parens=True` for nested ternary disambiguation (PHP 8+), `then_may_be_falsy=True` when `a and b or c` idiom fails (Lua).
 
 ### Builtins
 
@@ -110,47 +114,144 @@ Truthy tests are specialized by type for unambiguous backend emission:
 
 Generic `Truthy(expr)` is only emitted when type is unknown (e.g., `object`).
 
+### Falsiness
+
+The `not` operator on non-bool types emits `Falsy(expr)`, specialized by type:
+
+| Context         | IR Output                    |
+| --------------- | ---------------------------- |
+| `not bool_expr` | `UnaryOp("!", expr)`         |
+| `not optional`  | `IsNil(expr, negated=False)` |
+| `not string`    | `StringEmpty(expr)`          |
+| `not list`      | `SliceEmpty(expr)`           |
+| `not dict`      | `MapEmpty(expr)`             |
+| `not set`       | `SetEmpty(expr)`             |
+| `not int`       | `BinaryOp("==", expr, 0)`    |
+
+### IsNil vs IsEmpty
+
+`IsNil` tests for null/None. `IsEmpty` tests for zero-length. For non-nullable collections, these are distinct:
+
+| Expression          | Type (non-nullable) | IR Output        |
+| ------------------- | ------------------- | ---------------- |
+| `if xs:`            | `list[int]`         | `SliceNonEmpty`  |
+| `if xs is not None` | `list[int]`         | `BoolLit(True)`  |
+| `if xs:`            | `list[int] \| None` | error: ambiguous |
+
+For nullable collections, explicit checks are required.
+
 ### String Operations
 
-| Python                | IR Output                                  |
-| --------------------- | ------------------------------------------ |
-| `s[i]`                | `CharAt(string, index)`                    |
-| `len(s)` (char count) | `CharLen(string)`                          |
-| `s[a:b]`              | `Substring(string, low, high, clamp=True)` |
-| `s1 + s2`             | `StringConcat(parts)`                      |
-| `s1 == s2`, `s1 < s2` | `StringCompare(left, right, op)`           |
-| `f"{x}..."`           | `StringFormat(template, args)`             |
-| `s.strip(chars)`      | `TrimChars(string, chars, mode="both")`    |
-| `s.lstrip(chars)`     | `TrimChars(string, chars, mode="left")`    |
-| `s.rstrip(chars)`     | `TrimChars(string, chars, mode="right")`   |
-| `c.isalnum()`         | `CharClassify(kind="alnum", char)`         |
-| `c.isdigit()`         | `CharClassify(kind="digit", char)`         |
-| `c.isalpha()`         | `CharClassify(kind="alpha", char)`         |
-| `c.isspace()`         | `CharClassify(kind="space", char)`         |
-| `c.isupper()`         | `CharClassify(kind="upper", char)`         |
-| `c.islower()`         | `CharClassify(kind="lower", char)`         |
+| Python                     | IR Output                                            |
+| -------------------------- | ---------------------------------------------------- |
+| `s[i]`                     | `CharAt(string, index)`                              |
+| `len(s)` (char count)      | `CharLen(string)`                                    |
+| `s[a:b]`                   | `Substring(string, low, high, clamp=True)`           |
+| `s1 + s2`                  | `StringConcat(parts)`                                |
+| `s1 == s2`, `s1 < s2`      | `StringCompare(left, right, op)`                     |
+| `f"{x}..."`                | `StringFormat(template, args)`                       |
+| `s.find(sub)`              | `StringFind(string, needle, not_found=-1)`           |
+| `s.rfind(sub)`             | `StringRfind(string, needle, not_found=-1)`          |
+| `s.split(sep)`             | `StringSplit(string, sep, maxsplit, whitespace)`     |
+| `s.split()`                | `StringSplit(string, None, -1, whitespace=True)`     |
+| `s.replace(old, new)`      | `StringReplace(string, pattern, repl, literal=True)` |
+| `s.endswith(x)`            | `StringEndsWith(string, suffix)`                     |
+| `s.endswith((a, b))`       | `StringEndsWithAny(string, suffixes)`                |
+| `s.startswith(x)`          | `StringStartsWith(string, prefix)`                   |
+| `s.startswith((a, b))`     | `StringStartsWithAny(string, prefixes)`              |
+| `s * n`                    | `StringRepeat(string, count, clamp_negative=True)`   |
+| `s.strip(chars)`           | `TrimChars(string, chars, mode="both")`              |
+| `s.lstrip(chars)`          | `TrimChars(string, chars, mode="left")`              |
+| `s.rstrip(chars)`          | `TrimChars(string, chars, mode="right")`             |
+| `c.isalnum()`              | `CharClassify(kind="alnum", char)`                   |
+| `c.isdigit()`              | `CharClassify(kind="digit", char)`                   |
+| `c.isalpha()`              | `CharClassify(kind="alpha", char)`                   |
+| `c.isspace()`              | `CharClassify(kind="space", char)`                   |
+| `c.isupper()`              | `CharClassify(kind="upper", char)`                   |
+| `c.islower()`              | `CharClassify(kind="lower", char)`                   |
+| `for i, c in enumerate(s)` | `ForStringChars(string, index, value, body)`         |
+
+The `literal` flag on `StringReplace` indicates the pattern should be treated as literal text, not a regex. Backends using regex-based replacement (Perl, Ruby) apply appropriate escaping.
+
+### Bytes Operations
+
+| Python               | IR Output                               |
+| -------------------- | --------------------------------------- |
+| `b.decode()`         | `BytesDecode(bytes, encoding="utf8")`   |
+| `b.decode("latin1")` | `BytesDecode(bytes, encoding)`          |
+| `s.encode()`         | `StringEncode(string, encoding="utf8")` |
+| `str(b)`             | `BytesDecode(bytes, encoding="utf8")`   |
+| `bytes(s, "utf8")`   | `StringEncode(string, encoding)`        |
 
 ### Collection Operations
 
-| Python             | IR Output                           |
-| ------------------ | ----------------------------------- |
-| `x in set_`        | `SetContains(set, element)`         |
-| `x in map_`        | `MapContains(map, key)`             |
-| `x in list_`       | `SliceContains(slice, element)`     |
-| `x in string`      | `StringContains(string, substring)` |
-| `list_.pop()`      | `ListPop(list, index=None)`         |
-| `list_.pop(i)`     | `ListPop(list, index)`              |
-| `list_.append(x)`  | `SliceAppend(slice, element)`       |
-| `list_.extend(xs)` | `SliceExtend(slice, elements)`      |
-| `map_.get(k)`      | `MapGet(map, key, default=None)`    |
-| `map_.get(k, d)`   | `MapGet(map, key, default)`         |
-| `set_.add(x)`      | `SetAdd(set, element)`              |
-| `d.keys()`         | `DictKeys(map)`                     |
-| `d.values()`       | `DictValues(map)`                   |
-| `d.items()`        | `DictItems(map)`                    |
-| `d.keys() & other` | `SetOp(DictKeys(d), other, op="&")` |
+| Python              | IR Output                                        |
+| ------------------- | ------------------------------------------------ |
+| `x in set_`         | `SetContains(set, element)`                      |
+| `x in map_`         | `MapContains(map, key)`                          |
+| `x in list_`        | `SliceContains(slice, element)`                  |
+| `x in string`       | `StringContains(string, substring)`              |
+| `x in tuple_set`    | `TupleSetContains(set, element)`                 |
+| `tuple_map[k]`      | `TupleMapGet(map, key)`                          |
+| `len(list_)`        | `Len(slice)`                                     |
+| `len(map_)`         | `MapLen(map)`                                    |
+| `len(set_)`         | `SetLen(set)`                                    |
+| `list_.pop()`       | `ListPop(list, index=None)`                      |
+| `list_.pop(i)`      | `ListPop(list, index)`                           |
+| `list_.append(x)`   | `SliceAppend(slice, element)`                    |
+| `list_.extend(xs)`  | `SliceExtend(slice, elements)`                   |
+| `list_.insert(i,x)` | `ListInsert(list, index, val, clamp=True)`       |
+| `list_ * n`         | `ArrayRepeat(array, count, clamp_negative=True)` |
+| `map_.get(k)`       | `MapGet(map, key, default=None)`                 |
+| `map_.get(k, d)`    | `MapGet(map, key, default)`                      |
+| `map1 \| map2`      | `MapMerge(left, right)`                          |
+| `map1 \|= map2`     | `MapMergeInPlace(target, value)`                 |
+| `set_.add(x)`       | `SetAdd(set, element)`                           |
+| `d.keys()`          | `DictKeys(map)`                                  |
+| `d.values()`        | `DictValues(map)`                                |
+| `d.items()`         | `DictItems(map)`                                 |
+| `d.keys() & other`  | `SetOp(DictKeys(d), other, op="&")`              |
+| `list1 == list2`    | `ArrayEquals(left, right)`                       |
+| `map1 == map2`      | `MapEquals(left, right)`                         |
+| `set1 == set2`      | `SetEquals(left, right)`                         |
+| `list1 < list2`     | `ArrayCompare(left, right, op)`                  |
 
 Dict views (`DictKeys`, `DictValues`, `DictItems`) support set operations when used with `&`, `|`, `-`, `^`.
+
+`TupleSetContains` and `TupleMapGet` are emitted when sets/maps contain tuple elements/keys, since these require value equality rather than reference equality.
+
+`MapLen` and `SetLen` are distinct from `Len` because some languages (Lua) require iteration to compute map/set length.
+
+`ListInsert` with `clamp=True` indicates out-of-bounds indices are clamped to valid range (Python semantics) rather than raising errors.
+
+### Arithmetic Operations
+
+| Python        | IR Output                             |
+| ------------- | ------------------------------------- |
+| `a // b`      | `FloorDiv(left, right)`               |
+| `a / b` (int) | `FloorDiv(left, right)`               |
+| `a % b`       | `PythonMod(left, right)`              |
+| `divmod(a,b)` | `DivMod(left, right)`                 |
+| `a >> b`      | `ArithmeticShiftRight(left, right)` ⁴ |
+| `a << b`      | `BinaryOp("<<", left, right)`         |
+
+⁴ Python's `>>` is arithmetic (sign-preserving). Some languages have logical right shift. `ArithmeticShiftRight` emits `// (1 << n)` or equivalent for correct semantics.
+
+`FloorDiv` is distinct from `BinaryOp("/")` because Python's `//` always floors toward negative infinity, while many languages truncate toward zero.
+
+`PythonMod` emits `((a % b) + b) % b` for languages where `%` has different sign behavior. Backends may optimize when operands are known non-negative.
+
+`DivMod` returns a tuple of `(quotient, remainder)`. Backends may inline as `TupleLit(a // b, a % b)` or use native divmod operations.
+
+### Boolean Operations
+
+| Python    | IR Output                          |
+| --------- | ---------------------------------- |
+| `a and b` | `PythonAnd(left, right)` ⁵         |
+| `a or b`  | `PythonOr(left, right)` ⁵          |
+| `not x`   | `UnaryOp("!", operand)` or `Falsy` |
+
+⁵ Python's `and`/`or` return values, not booleans: `x and y` returns `x` if falsy, else `y`. `PythonAnd` and `PythonOr` preserve these semantics. When both operands are `bool` and result is used as `bool`, backends may emit native `&&`/`||`.
 
 ### I/O
 
@@ -168,14 +269,26 @@ Dict views (`DictKeys`, `DictValues`, `DictItems`) support set operations when u
 
 ### Declarations
 
-| Python                  | IR Output                           |
-| ----------------------- | ----------------------------------- |
-| `class Foo:`            | `Struct(name, fields, methods)`     |
-| `class Foo(Base):`      | `Struct` with `implements=[Base]`   |
-| `class E(Exception):`   | `Struct` with `is_exception=True`   |
-| `def f(x: int) -> str:` | `Function(name, params, ret, body)` |
-| `def m(self, x):`       | `Function` with `receiver`          |
-| `X = 42` (module level) | `Constant(name, typ, value)`        |
+| Python                  | IR Output                             |
+| ----------------------- | ------------------------------------- |
+| `class Foo:`            | `Struct(name, fields, methods)`       |
+| `class Foo(Base):`      | `Struct` with `implements=[Base]`     |
+| `class E(Exception):`   | `Struct` with `is_exception=True`     |
+| `def f(x: int) -> str:` | `Function(name, params, ret, body)`   |
+| `def m(self, x):`       | `Function` with `receiver`            |
+| `X = 42` (module level) | `Constant(name, typ, value)`          |
+| `f` (function as value) | `FuncRef(name, needs_boxing=True)` ⁷  |
+| `obj.method` (no call)  | `FuncRef(name, receiver, bound=True)` |
+
+⁷ `needs_boxing` indicates the function reference is used as a first-class value (assigned, passed, returned) and may need wrapping (e.g., `(Action)` cast in C#).
+
+### Entrypoint
+
+| Python                       | IR Output                                  |
+| ---------------------------- | ------------------------------------------ |
+| `if __name__ == "__main__":` | `EntryPoint(function_name, internal_name)` |
+
+The `internal_name` field (e.g., `_main`) is used when the target language requires a wrapper function. Swift and Zig emit `_{name}` internally to avoid conflicts with the language's `main` convention.
 
 ### Special Patterns
 
@@ -183,11 +296,27 @@ Dict views (`DictKeys`, `DictValues`, `DictItems`) support set operations when u
 | --------------------------------- | ------------------------------------------- |
 | `xs[-1]`                          | `LastElement(sequence)`                     |
 | `xs[len(xs) - n]`                 | `LastElement(sequence, offset=n)`           |
+| `xs[i]` (Lua target)              | `Index(obj, index, base=1)`                 |
 | `&expr` (address-of)              | `AddrOf(operand)`                           |
 | Sentinel int `== None`            | `BinaryOp("==", expr, IntLit(sentinel))`    |
 | `x if sentinel else None`         | `SentinelToOptional(expr, sentinel)`        |
 | `[]T` to `[]Interface` conversion | `SliceConvert(source, target_element_type)` |
 | Struct assigned to interface var  | `InterfaceCast(expr, target_interface)`     |
+| `d[k1][k2]` (nested dict)         | `NestedMapIndex(outer, k1, k2)`             |
+| `d[k].append(x)` (mutate value)   | `MutableMapAccess(map, key)` + method       |
+| Empty `{}` with known type        | `MapLit(key_type, value_type, [])`          |
+| Empty `[]` with known type        | `SliceLit(element_type, [])`                |
+| Empty `set()` with known type     | `SetLit(element_type, [])`                  |
+| `range(n)`                        | `Range(0, n, 1)`                            |
+| `range(a, b, -1)`                 | `Range(a, b, -1, negative_step=True)`       |
+
+The `base` field on `Index` is `0` by default; set to `1` for 1-indexed languages (Lua). Lowering adds the annotation; backends adjust accordingly.
+
+`NestedMapIndex` handles chained dictionary access where the outer access needs `.get_mut()` (Rust) or similar mutable access patterns.
+
+`MutableMapAccess` is emitted when a dict value is accessed and then mutated (e.g., `d[k].append(x)`). This enables backends to use mutable reference patterns.
+
+Empty collection literals carry explicit element types to enable turbofish syntax (Rust) or explicit type parameters where inference fails.
 
 ---
 
@@ -246,11 +375,18 @@ After lowering, these properties hold:
 
 **Semantics**
 - Truthy tests emit type-specific nodes (`StringNonEmpty`, `SliceNonEmpty`, etc.), not expanded comparisons
+- Falsy tests emit type-specific nodes (`StringEmpty`, `SliceEmpty`, etc.) or `Falsy` for unknown types
 - Constructors emit `StructLit` with all fields, not field-by-field assignment
 - Bound method references have `FuncType.receiver` set
 - Character operations use semantic nodes (`CharAt`, `CharLen`, `Substring`)
 - Struct-to-interface assignments emit `InterfaceCast`
 - Collection methods emit type-specific IR (`SliceAppend`, `MapGet`, `SetContains`, etc.)
+- Collection length uses `MapLen`/`SetLen` for maps/sets, `Len` for slices
+- String operations emit semantic nodes (`StringFind`, `StringSplit`, `StringReplace`, etc.)
+- Arithmetic uses `FloorDiv`, `PythonMod`, `ArithmeticShiftRight` for Python-specific semantics
+- Boolean `and`/`or` emit `PythonAnd`/`PythonOr` when value-returning behavior is needed
+- Empty collections carry explicit element types for type inference in target languages
+- Tuple-element collections use `TupleSetContains`/`TupleMapGet` for value equality
 
 **Annotations not yet set** (added by middleend):
 - `is_reassigned`, `is_modified`, `is_unused` on variables/params
@@ -282,8 +418,9 @@ IR Module complete with:
 - `constants`: Module-level constant bindings
 - `enums`: Enumeration definitions (if any)
 - `exports`: Public API declarations
-- `entrypoint`: Main function marker (if `if __name__ == "__main__"` present)
+- `entrypoint`: Main function marker with `internal_name` (if `if __name__ == "__main__"` present)
 - `used_tuple_types`: Set of tuple signatures for backends needing type definitions (C, Java)
+- `used_slice_types`: Set of slice element types for backends needing type definitions (C)
 
 All IR nodes typed. No AST remnants. Ready for middleend annotation passes.
 

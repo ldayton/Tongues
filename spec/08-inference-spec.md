@@ -23,7 +23,7 @@ See [03-subset-spec.md](03-subset-spec.md) for syntactic restrictions checkable 
 | `int`   | Arbitrary-precision integers | `INT`             |
 | `float` | IEEE 754 double-precision    | `FLOAT`           |
 | `str`   | Unicode strings              | `STRING`          |
-| `bytes` | Byte sequences               | `Slice(BYTE)`     |
+| `bytes` | Byte sequences               | `BYTES`           |
 | `bool`  | `True`, `False`              | `BOOL`            |
 
 ### Compound Types
@@ -100,6 +100,17 @@ The expression `e` produces type `T` without external guidance.
 
 ² For strings, `s[i]` yields `str` (a single Unicode code point), not a byte. Lowering emits `CharAt`.
 
+### Large Integer Detection
+
+Integer literals exceeding JavaScript's safe integer range (2⁵³-1) are annotated with `is_large_int: True`. This enables backends to emit BigInt literals or equivalent representations:
+
+```python
+x = 9007199254740992  # is_large_int=True, exceeds 2^53-1
+y = 1000              # is_large_int=False
+```
+
+Expressions involving large integers propagate the annotation when the result may exceed safe range.
+
 ### Checking (Γ ⊢ e ⇐ T)
 
 The expression `e` is verified against expected type `T`.
@@ -165,6 +176,20 @@ else:
 ```
 
 If branches assign incompatible types, the variable's type is the least upper bound or an error is reported.
+
+### Coercion Result Types
+
+When coercions change the result type, expressions are annotated with `output_type` to track the actual emitted type distinct from the source type:
+
+| Expression      | Source Type | Output Type | Reason                            |
+| --------------- | ----------- | ----------- | --------------------------------- |
+| `min(True, 1)`  | `bool`      | `int`       | Mixed bool/int yields int         |
+| `max(False, 0)` | `bool`      | `int`       | Mixed bool/int yields int         |
+| `True & False`  | `bool`      | `bool`      | Bool-only bitwise preserves bool  |
+| `True & 1`      | `bool`      | `int`       | Mixed bool/int bitwise yields int |
+| `-True`         | `bool`      | `int`       | Unary minus on bool yields int    |
+
+Backends use `output_type` to determine whether the result needs bool-preserving emission (e.g., `!= 0` to convert back to bool).
 
 ---
 
@@ -322,6 +347,32 @@ if found:
 return result               # returns "" if not found
 ```
 
+### Interface Field Widening
+
+When `None` flows into a field typed as `InterfaceRef` (without explicit `| None`), inference widens the field type to `Optional(InterfaceRef)`:
+
+```python
+@dataclass
+class Parser:
+    current: Token      # declared non-optional
+
+p = Parser(current=None)  # None flows in → widen to Optional(Token)
+```
+
+This accommodates Python code that passes `None` without explicit optional annotation. Backends emit nullable types for widened fields.
+
+### Any-Typed Assignment Specialization
+
+When assigning a concrete literal to an `any`-typed variable, inference specializes to the concrete type to avoid boxing overhead:
+
+```python
+def process(x: object) -> None:
+    y = 42          # y: int (not object), avoids boxing
+    z = "hello"     # z: str (not object)
+```
+
+The specialization applies only to literals; variable-to-variable assignments preserve the declared type.
+
 ---
 
 ## 7. Class Hierarchy and Polymorphism
@@ -376,6 +427,20 @@ Struct references distinguish nullable from non-nullable:
 ³ Interface references are implicitly nullable (can hold nil for any variant).
 
 Fields and parameters annotated `Foo` (without `| None`) are non-nullable. Assignment of `None` to a non-nullable field is a type error. Backends emit `T` vs `T?` / `T | null` based on this distinction.
+
+### Typed Nil vs Nil Interface
+
+Some languages (notably Go) distinguish a nil interface from an interface holding a typed nil pointer. Inference tracks `may_be_typed_nil` for expressions that could hold a concrete type's nil:
+
+```python
+def get_node() -> Node | None:
+    if condition:
+        return None        # nil interface
+    expr: Expr | None = None
+    return expr            # typed nil (Expr's nil wrapped in Node interface)
+```
+
+Backends needing this distinction (Go) emit reflection-based nil checks for `may_be_typed_nil` expressions.
 
 ---
 
@@ -470,6 +535,20 @@ This prevents unsound mutations:
 ```python
 animals.append(Cat())  # would corrupt dogs list
 ```
+
+### Comparison Semantics
+
+Python treats `True == 1` and `False == 0` as equal. Some target languages use strict equality where `true !== 1`. Comparisons between bool and int are annotated with `use_loose_equality: True`:
+
+```python
+x: bool = True
+if x == 1:      # use_loose_equality=True
+    ...
+if x == True:   # use_loose_equality=False (same types)
+    ...
+```
+
+Backends emit loose equality operators (`==` in PHP) or explicit coercion based on this annotation.
 
 ---
 
