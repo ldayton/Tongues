@@ -981,7 +981,7 @@ class JsLikeBackend:
                 return f"Math.trunc({self._expr(arg)})"
             case Call(func="divmod", args=[a, b]):
                 a_str, b_str = self._expr(a), self._expr(b)
-                if self._is_known_non_negative(a):
+                if self._is_known_non_negative(a) and self._is_known_non_negative(b):
                     return f"[Math.floor({a_str} / {b_str}), {a_str} % {b_str}]"
                 return f"[Math.floor({a_str} / {b_str}), (({a_str} % {b_str}) + {b_str}) % {b_str}]"
             case Call(func="pow", args=[base, exp]):
@@ -1828,12 +1828,12 @@ class JsLikeBackend:
             if right.typ == STRING:
                 n = self._expr(left)
                 return f"{self._expr(right)}.repeat(Math.max(0, {n}))"
-        # Python modulo semantics: result has sign of divisor (differs from JS only for negative dividend)
+        # Python modulo semantics: result has sign of divisor (differs from JS)
         if op == "%":
             left_str = self._maybe_paren(left, op, is_left=True)
             right_str = self._maybe_paren(right, op, is_left=False)
-            # Only need Python semantics if left operand might be negative
-            if self._is_known_non_negative(left):
+            # Only need Python semantics if either operand might be negative
+            if self._is_known_non_negative(left) and self._is_known_non_negative(right):
                 return f"{left_str} % {right_str}"
             return f"(({left_str} % {right_str}) + {right_str}) % {right_str}"
         js_op = _binary_op(op)
