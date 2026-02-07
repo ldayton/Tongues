@@ -191,7 +191,7 @@ function pick(int $a, int $b, bool $useFirst): int
     return $useFirst ? $a : $b;
 }
 --- csharp
-int Pick(int a, int b, bool useFirst) {
+public static int Pick(int a, int b, bool useFirst) {
   return useFirst ? a : b;
 }
 --- java
@@ -350,7 +350,7 @@ function check(int $x): int
     return 0;
 }
 --- csharp
-int Check(int x) {
+public static int Check(int x) {
   if (x > 0) {
     return 1;
   }
@@ -424,7 +424,7 @@ function check(int $x): int
     }
 }
 --- csharp
-int Check(int x) {
+public static int Check(int x) {
   if (x > 0) {
     return 1;
   } else {
@@ -519,7 +519,7 @@ function classify(int $x): string
     }
 }
 --- csharp
-string Classify(int x) {
+public static string Classify(int x) {
   if (x > 0) {
     return "positive";
   } else if (x < 0) {
@@ -656,7 +656,7 @@ function grade(int $score): string
     }
 }
 --- csharp
-string Grade(int score) {
+public static string Grade(int score) {
   if (score >= 90) {
     return "A";
   } else if (score >= 80) {
@@ -774,7 +774,7 @@ function nested(int $x, int $y): int
     }
 }
 --- csharp
-int Nested(int x, int y) {
+public static int Nested(int x, int y) {
   if (x > 0) {
     if (y > 0) {
       return 1;
@@ -849,7 +849,7 @@ function bothPositive(int $x, int $y): bool
     return false;
 }
 --- csharp
-bool BothPositive(int x, int y) {
+public static bool BothPositive(int x, int y) {
   if (x > 0 && y > 0) {
     return true;
   }
@@ -934,7 +934,7 @@ function isZero(int $x): bool
     return false;
 }
 --- csharp
-bool IsZero(int x) {
+public static bool IsZero(int x) {
   if (!(x > 0)) {
     if (!(x < 0)) {
       return true;
@@ -1003,7 +1003,7 @@ function inRange(int $x): bool
     return false;
 }
 --- csharp
-bool InRange(int x) {
+public static bool InRange(int x) {
   if (0 < x && x < 10) {
     return true;
   }
@@ -1095,7 +1095,7 @@ function clamp(int $x): int
     return $result;
 }
 --- csharp
-int Clamp(int x) {
+public static int Clamp(int x) {
   int result = x;
   if (x < 0) {
     result = 0;
@@ -1195,7 +1195,7 @@ function findFirstPositive(?array $nums): int
     return -1;
 }
 --- csharp
-int FindFirstPositive(List<int> nums) {
+public static int FindFirstPositive(List<int> nums) {
   int i = 0;
   while (i < nums.Count) {
     if (nums[i] > 0) {
@@ -1319,7 +1319,7 @@ function countPositive(?array $nums): int
     return $count;
 }
 --- csharp
-int CountPositive(List<int> nums) {
+public static int CountPositive(List<int> nums) {
   int count = 0;
   int i = 0;
   while (i < nums.Count) {
@@ -1385,7 +1385,7 @@ function pickValue(bool $flag): int
     return $x;
 }
 --- csharp
-int PickValue(bool flag) {
+public static int PickValue(bool flag) {
   int x = flag ? 10 : 20;
   return x;
 }
@@ -1474,7 +1474,7 @@ function multiCheck(int $a, int $b, int $c): bool
     return false;
 }
 --- csharp
-bool MultiCheck(int a, int b, int c) {
+public static bool MultiCheck(int a, int b, int c) {
   if (a > 0) {
     if (b > 0) {
       if (c > 0) {
@@ -1568,7 +1568,7 @@ function validate(int $x): bool
     return true;
 }
 --- csharp
-bool Validate(int x) {
+public static bool Validate(int x) {
   if (x < 0) {
     return false;
   }
@@ -1639,7 +1639,7 @@ function process(int $x): int
     return $x * 2;
 }
 --- csharp
-int Process(int x) {
+public static int Process(int x) {
   if (x == 0) {
     return 0;
   }
@@ -1772,7 +1772,7 @@ function maybeDouble(int $x, bool $doIt): int
     return $result;
 }
 --- csharp
-int MaybeDouble(int x, bool doIt) {
+public static int MaybeDouble(int x, bool doIt) {
   int result = x;
   if (doIt) {
     result = x * 2;
@@ -1839,7 +1839,7 @@ function ordered(int $a, int $b, int $c): bool
     return false;
 }
 --- csharp
-bool Ordered(int a, int b, int c) {
+public static bool Ordered(int a, int b, int c) {
   if (a < b && b < c) {
     return true;
   }
@@ -1904,7 +1904,7 @@ function allEqual(int $a, int $b, int $c): bool
     return false;
 }
 --- csharp
-bool AllEqual(int a, int b, int c) {
+public static bool AllEqual(int a, int b, int c) {
   if (a == b && b == c) {
     return true;
   }

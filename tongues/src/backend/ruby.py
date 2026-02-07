@@ -811,13 +811,15 @@ class RubyBackend:
                 return f"{self._expr(v)}.to_s"
             case CharClassify(kind=kind, char=char):
                 char_expr = self._expr(char)
+                # Python semantics: isupper/islower require at least one cased char,
+                # and all cased chars match the case. Non-cased chars (digits, etc) are ignored.
                 method_map = {
                     "digit": f"({char_expr}).match?(/\\A\\d+\\z/)",
                     "alpha": f"({char_expr}).match?(/\\A[[:alpha:]]+\\z/)",
                     "alnum": f"({char_expr}).match?(/\\A[[:alnum:]]+\\z/)",
                     "space": f"({char_expr}).match?(/\\A\\s+\\z/)",
-                    "upper": f"({char_expr}).match?(/\\A[[:upper:]]+\\z/)",
-                    "lower": f"({char_expr}).match?(/\\A[[:lower:]]+\\z/)",
+                    "upper": f"(({char_expr}).match?(/[[:alpha:]]/) && {char_expr} == {char_expr}.upcase)",
+                    "lower": f"(({char_expr}).match?(/[[:alpha:]]/) && {char_expr} == {char_expr}.downcase)",
                 }
                 return method_map[kind]
             case TrimChars(string=s, chars=chars, mode=mode):
@@ -1064,14 +1066,16 @@ class RubyBackend:
                         return f"{obj_str}.split"
                     elif len(args) == 1:
                         arg_str = self._expr(args[0])
+                        # Ruby's split(" ") collapses whitespace like Python's split()
+                        # Use Regexp.new to convert string to regex for consistent behavior
                         # Ruby returns [] for "".split(x), Python returns [""]
-                        return f"({obj_str}.empty? ? [\"\"] : {obj_str}.split({arg_str}, -1))"
+                        return f"({obj_str}.empty? ? [\"\"] : {obj_str}.split(Regexp.new(Regexp.escape({arg_str})), -1))"
                     else:
                         sep_str = self._expr(args[0])
                         maxsplit_str = self._expr(args[1])
                         # Python maxsplit=0 means no splits, Ruby limit=1 means no splits
                         # Python maxsplit=n means n splits (n+1 parts), Ruby limit=n+1
-                        return f"({obj_str}.empty? ? [\"\"] : {obj_str}.split({sep_str}, {maxsplit_str} == 0 ? 1 : {maxsplit_str} + 1))"
+                        return f"({obj_str}.empty? ? [\"\"] : {obj_str}.split(Regexp.new(Regexp.escape({sep_str})), {maxsplit_str} == 0 ? 1 : {maxsplit_str} + 1))"
                 # Python: s.rsplit(sep, maxsplit) - split from right
                 if method == "rsplit" and receiver_type == STRING:
                     obj_str = self._expr(obj)
@@ -1090,10 +1094,10 @@ class RubyBackend:
                 if method == "islower" and receiver_type == STRING:
                     obj_str = self._expr(obj)
                     return f"({obj_str}.match?(/[[:alpha:]]/) && {obj_str} == {obj_str}.downcase)"
-                # Python: s.title() - titlecase each word
+                # Python: s.title() - titlecase each word (first char upper, rest lower)
                 if method == "title" and receiver_type == STRING:
                     obj_str = self._expr(obj)
-                    return f"{obj_str}.gsub(/\\b\\w/) {{ |c| c.upcase }}"
+                    return f'{obj_str}.gsub(/\\b\\w+/) {{ |w| w.capitalize }}'
                 # Python: s.zfill(width) - zero-pad, preserving sign
                 if method == "zfill" and receiver_type == STRING:
                     obj_str = self._expr(obj)
@@ -1103,13 +1107,12 @@ class RubyBackend:
                 if method == "splitlines" and receiver_type == STRING:
                     obj_str = self._expr(obj)
                     return f'{obj_str}.split(/\\r?\\n/, -1).tap {{ |a| a.pop if a.last == "" }}'
-                # Python: s.expandtabs(tabsize) - expand tabs
+                # Python: s.expandtabs(tabsize) - column-aware tab expansion
                 if method == "expandtabs" and receiver_type == STRING:
                     obj_str = self._expr(obj)
-                    if len(args) == 0:
-                        return f'{obj_str}.gsub("\\t", " " * 8)'
-                    tabsize_str = self._expr(args[0])
-                    return f'{obj_str}.gsub("\\t", " " * {tabsize_str})'
+                    tabsize = "8" if len(args) == 0 else self._expr(args[0])
+                    # Column-aware: tab expands to next multiple of tabsize
+                    return f'(-> {{ _ts = {tabsize}; _col = 0; {obj_str}.chars.map {{ |c| c == "\\t" ? (" " * (_ts - _col % _ts)).tap {{ _col = 0 }} : c.tap {{ _col = c == "\\n" ? 0 : _col + 1 }} }}.join }}).call'
                 # Python: s.casefold() - aggressive lowercase for caseless matching
                 if method == "casefold" and receiver_type == STRING:
                     obj_str = self._expr(obj)
