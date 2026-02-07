@@ -35,10 +35,10 @@ The transpiler currently supports these target languages, although output isn't 
 | PHP        | PHP 8.3      | Prototype |
 | Python     | CPython 3.12 | Prototype |
 | Ruby       | Ruby 3.2     | Prototype |
+| Rust       | Rust 1.75    | Prototype |
+| Swift      | Swift 5.9    | Prototype |
 | Typescript | tsc 5.3      | Prototype |
-| Swift      | Swift 5.9    | WIP       |
-| Rust       | Rust 1.75    | WIP       |
-| Zig        | Zig 0.11     | WIP       |
+| Zig        | Zig 0.15     | Prototype |
 
 We target language versions from ~3 years ago. New enough for modern idioms, old enough to be everywhere—LTS distros, corporate environments, CI images. No bleeding-edge features, no legacy baggage.
 
