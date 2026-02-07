@@ -2919,3 +2919,283 @@ def _is_bool(expr: Expr) -> bool:
 The backend implements ~20 lines of logic to track whether an expression evaluates to `Bool` vs `Int` in Swift output, handling edge cases where IR type is `BOOL` but Swift expression yields Int (e.g., `min(True, 1)`).
 
 **Should be:** Inference should track the actual output type of expressions after language-specific coercion, or lowering should emit explicit casts. Currently the IR `typ` field doesn't account for language-specific type system differences.
+
+---
+
+## Zig
+
+The Zig backend targets Zig 0.14+. Key language differences include strict comptime/runtime distinction, no implicit coercions, and explicit error handling (no exceptions).
+
+---
+
+### 1. Bool-to-Int Coercion Tracking
+
+**Location:** `zig.py:158-172` (`_is_bool`, `_needs_bool_int_coerce`), `zig.py:1444-1450` (`_coerce_bool_to_int`)
+
+```python
+def _is_bool(expr: Expr) -> bool:
+    """True if expression evaluates to bool in Zig."""
+    if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "^"):
+        return expr.left.typ == BOOL and expr.right.typ == BOOL
+    if isinstance(expr, Call) and expr.func == "bool":
+        return True
+    if isinstance(expr, (MinExpr, MaxExpr)):
+        return expr.left.typ == BOOL and expr.right.typ == BOOL
+    return expr.typ == BOOL
+```
+
+The backend tracks whether expressions evaluate to `bool` in Zig output to emit correct coercions. This is ~40 lines of analysis duplicating type inference logic.
+
+**Should be:** Inference should annotate expressions with their actual output type after language coercions, or lowering should emit explicit `BoolToInt` cast nodes when bools are used in arithmetic contexts.
+
+---
+
+### 2. Comptime Integer Detection
+
+**Location:** `zig.py:1452-1471` (`_is_comptime_int`)
+
+```python
+def _is_comptime_int(self, expr: Expr) -> bool:
+    """Check if expression is a compile-time integer (needs cast for bitwise ops)."""
+    if isinstance(expr, IntLit):
+        return True
+    if isinstance(expr, UnaryOp) and expr.op in ("-", "~"):
+        return self._is_comptime_int(expr.operand)
+    if isinstance(expr, BinaryOp) and expr.op in ("+", "-", "*", ...):
+        return self._is_comptime_int(expr.left) and self._is_comptime_int(expr.right)
+    return False
+```
+
+Zig distinguishes `comptime_int` (unbounded, compile-time known) from runtime integers. Bitwise operations like `~` on comptime_int fail without explicit cast to `i64`. The backend recursively detects comptime expressions.
+
+**Should be:** Lowering should track constexpr status and emit `ConstInt` vs `RuntimeInt` distinctions, or add an `is_comptime` annotation to expressions that fold to compile-time constants.
+
+---
+
+### 3. Floor Division Emission
+
+**Location:** `zig.py:885-902`
+
+```python
+if op == "//":
+    left = self._maybe_paren(expr.left, op, is_left=True)
+    right = self._maybe_paren(expr.right, op, is_left=False)
+    return f"@divFloor({left}, {right})"
+if op == "/" and expr.typ == INT:
+    return f"@divFloor({left}, {right})"
+```
+
+Python's `//` is floor division; Zig has no operator for this, requiring `@divFloor()`. The backend also converts `/` on integers to floor division to match Python semantics.
+
+**Should be:** Lowering should emit `FloorDiv(left, right)` IR nodes distinct from `BinaryOp("/")`, making the semantic intent explicit.
+
+---
+
+### 4. Arithmetic Right Shift
+
+**Location:** `zig.py:998-1002`
+
+```python
+if op == ">>":
+    left = self._maybe_paren(expr.left, ">>", is_left=True)
+    right = self._emit_expr(expr.right)
+    return f"std.math.shr(i64, {left}, {right})"
+```
+
+Zig's `>>` has inconsistent comptime vs runtime behavior for signed integers. The backend uses `std.math.shr` for consistent arithmetic right shift semantics matching Python.
+
+**Should be:** Lowering should emit `ArithmeticShiftRight` IR nodes for signed integers, distinct from `LogicalShiftRight`, making the semantic intent explicit for backends.
+
+---
+
+### 5. Bitwise Operations on Bools
+
+**Location:** `zig.py:1004-1019`
+
+```python
+if op in ("|", "&", "^"):
+    l_bool = _is_bool(expr.left)
+    r_bool = _is_bool(expr.right)
+    if l_bool and r_bool:
+        zig_op = {"&": "and", "|": "or", "^": "!="}[op]
+        return f"{left} {zig_op} {right}"
+    if l_bool or r_bool:
+        left = self._coerce_bool_to_int(expr.left)
+        right = self._coerce_bool_to_int(expr.right)
+        return f"({left} {op} {right})"
+```
+
+Python allows `True & 1` (mixed bool/int bitwise). Zig requires explicit coercion. The backend converts bools to int for mixed operations, and uses logical operators for bool-on-bool.
+
+**Should be:** Inference should recognize mixed bool/int operations and lowering should emit explicit `BoolToInt` casts, or emit `BitwiseBoolOp` for bool-only operations.
+
+---
+
+### 6. String/Bytes Comparison
+
+**Location:** `zig.py:924-957`
+
+```python
+if op in ("==", "!=") and (left_is_sb or right_is_sb):
+    left = self._emit_expr(expr.left)
+    right = self._emit_expr(expr.right)
+    cmp = f"std.mem.eql(u8, {left}, {right})"
+    ...
+if op in ("<", "<=", ">", ">=") and self._is_string_or_bytes_expr(expr.left):
+    order = f"std.mem.order(u8, {left}, {right})"
+```
+
+Zig slices can't be compared with `==`; must use `std.mem.eql()`. The backend detects string/bytes types and emits appropriate comparisons.
+
+**Should be:** Lowering should emit `StringEquals`, `BytesEquals`, `StringCompare` IR nodes for string comparisons, distinct from `BinaryOp("==")` for primitives.
+
+---
+
+### 7. String Concatenation
+
+**Location:** `zig.py:904-910`, `zig.py:1025-1055` (`_emit_string_add`, `_flatten_string_add`)
+
+```python
+if op == "+" and self._is_string_or_bytes_type(expr.typ):
+    return self._emit_string_add(expr)
+...
+def _emit_string_add(self, expr: BinaryOp) -> str:
+    parts: list[Expr] = []
+    self._flatten_string_add(expr, parts)
+    args = " ++ ".join(self._emit_expr(p) for p in parts)
+    return args
+```
+
+The backend flattens chained `BinaryOp("+")` on strings into Zig's `++` concatenation operator.
+
+**Should be:** Lowering should emit `StringConcat(parts)` IR nodes for string concatenation. The IR has this node type, but `BinaryOp("+")` is still used for strings in some contexts.
+
+---
+
+### 8. Helper Function Generation
+
+**Location:** `zig.py:256-451` (step slice, upper/lower, join, replace, count, repeat, split helpers)
+
+The backend generates ~200 lines of Zig helper functions for operations Zig doesn't natively support:
+
+| Helper                 | Python operation         | Lines |
+| ---------------------- | ------------------------ | ----- |
+| `_stepSlice`           | `s[::step]`, `s[::-1]`   | 30    |
+| `_toUpper`, `_toLower` | `s.upper()`, `s.lower()` | 25    |
+| `_join`                | `sep.join(items)`        | 20    |
+| `_replace`             | `s.replace(old, new)`    | 25    |
+| `_count`               | `s.count(sub)`           | 20    |
+| `_repeat`              | `s * n`                  | 15    |
+| `_split`, `_splitEql`  | `s.split(sep)`           | 35    |
+
+**Should be:** The middleend should compute which helper functions are needed per module (`Module.needs_step_slice`, etc.) based on IR node analysis. Currently each backend independently tracks these via flags like `_needs_step_slice_helper`.
+
+---
+
+### 9. Entrypoint Function Renaming
+
+**Location:** `zig.py:511-515` (`_fn_name`), `zig.py:221-231`
+
+```python
+def _fn_name(self, name: str) -> str:
+    if name == self._entrypoint_fn:
+        return f"_{name}"
+    return self._safe(name)
+...
+self.line(f"const code = _{module.entrypoint.function_name}();")
+```
+
+The backend prefixes entrypoint functions with `_` to avoid naming conflicts with Zig's `pub fn main()`.
+
+**Should be:** The IR `EntryPoint` could specify a distinct wrapper name, or lowering could emit the entrypoint pattern with a unique internal name.
+
+---
+
+### 10. Try/Catch as Dead Code
+
+**Location:** `zig.py:720-746` (`_emit_TryCatch`)
+
+```python
+def _emit_TryCatch(self, s: TryCatch) -> None:
+    """Emit try/catch - Zig doesn't have exceptions..."""
+    for st in s.body:
+        self._emit_stmt(st)
+    if s.catches:
+        self.line("if (false) {")  # Dead code for Zig's mutation analysis
+        ...
+```
+
+Zig uses error unions and panics, not exceptions. The backend emits catch blocks as dead code wrapped in `if (false)` to satisfy Zig's variable mutation analysis while preserving Python semantics structurally.
+
+**Should be:** A middleend pass could identify try/catch blocks that only catch assertion errors and annotate them as `catch_is_unreachable`. Alternatively, lowering could emit target-specific error handling IR for panic-based languages.
+
+---
+
+### 11. Bytes Type Detection
+
+**Location:** `zig.py:460-510` (`_is_string_type`, `_is_bytes_type`, `_is_string_or_bytes_type`, `_is_string_expr`, `_might_be_bytes`)
+
+```python
+def _is_bytes_type(self, typ: "type | object") -> bool:
+    if isinstance(typ, Slice) and isinstance(typ.element, Primitive) and typ.element.kind == "byte":
+        return True
+    if isinstance(typ, Primitive) and typ.kind == "bytes":
+        return True
+    return False
+```
+
+The backend has ~50 lines of type predicates to distinguish strings vs bytes vs byte slices. Zig represents all as `[]const u8`.
+
+**Should be:** The IR type system should distinguish `STRING` (Unicode text) from `BYTES` (binary data) more clearly, possibly with a single `Bytes` IR type rather than `Slice(BYTE)`.
+
+---
+
+### 12. Bool Arithmetic Coercion
+
+**Location:** `zig.py:977-996`
+
+```python
+if op in ("+", "-", "*", "/", "%") and (_is_bool(expr.left) or _is_bool(expr.right)):
+    left = self._coerce_bool_to_int(expr.left)
+    right = self._coerce_bool_to_int(expr.right)
+    return f"{left} {op} {right}"
+```
+
+Python allows `True + 1` (bool coerces to int). Zig requires explicit conversion. The backend detects bool operands in arithmetic and coerces.
+
+**Should be:** Lowering should emit explicit `BoolToInt` cast nodes when bools appear in arithmetic expressions, making the coercion explicit in IR.
+
+---
+
+### 13. Split Result Comparison
+
+**Location:** `zig.py:913-921`
+
+```python
+if op in ("==", "!="):
+    left_is_split = isinstance(expr.left, MethodCall) and expr.left.method == "split"
+    if left_is_split or right_is_split:
+        cmp = f"_splitEql({left}, {right})"
+```
+
+The backend detects comparisons involving `split()` results and uses a custom equality helper because Zig's split returns a struct that can't be directly compared.
+
+**Should be:** Lowering should emit `SplitResult` type annotations and `SplitEquals` IR nodes, or the split helper should return a comparable type.
+
+---
+
+### 14. ArrayList vs Slice Type Mapping
+
+**Location:** `zig.py:529-533` (`_type_to_zig`), `zig.py:1277-1310` (len/index handling)
+
+```python
+if isinstance(typ, Slice):
+    if isinstance(typ.element, Primitive) and typ.element.kind == "byte":
+        return "[]const u8"  # bytes stay as slices
+    inner = self._type_to_zig(typ.element)
+    return f"std.ArrayList({inner})"  # lists become ArrayList
+```
+
+IR `Slice` maps to Zig `ArrayList` for mutability, but bytes stay as `[]const u8`. The backend then handles `.items.len` vs `.len` and `.items[i]` vs `[i]` differently.
+
+**Should be:** The IR should distinguish `MutableSlice` (Python list) from `ImmutableSlice` (Python tuple, bytes), allowing backends to choose representations without type-sniffing.
