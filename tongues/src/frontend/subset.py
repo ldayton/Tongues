@@ -603,8 +603,10 @@ class Verifier:
                     "function",
                     "dunder method " + name + ": only __init__/__new__/__repr__ allowed",
                 )
-        # Check **kwargs
+        # Check *args and **kwargs
         args_node = node.get("args", {})
+        if args_node.get("vararg") is not None:
+            self.error(node, "function", "*args: use explicit parameters")
         if args_node.get("kwarg") is not None:
             self.error(node, "function", "**kwargs: use explicit parameters")
         # Check return type (except __init__, __new__)
@@ -669,7 +671,8 @@ class Verifier:
                 self.error(
                     node, "function", "mutable default argument: use None and initialize in body"
                 )
-                break
+            elif d_type == "Lambda":
+                self.error(node, "function", "lambda: use named function instead")
             k += 1
         # Visit body
         old_in_function = self.in_function

@@ -1,0 +1,270 @@
+=== nested function not allowed
+def outer() -> int:
+    def inner() -> int:
+        return 1
+    return inner()
+---
+error: nested function
+---
+
+=== nested function with parameters
+def outer(x: int) -> int:
+    def inner(y: int) -> int:
+        return x + y
+    return inner(1)
+---
+error: nested function
+---
+
+=== lambda not allowed
+f = lambda x: x + 1
+---
+error: lambda
+---
+
+=== lambda in expression
+def f(items: list[int]) -> list[int]:
+    return sorted(items, key=lambda x: -x)
+---
+error: lambda
+---
+
+=== lambda as default not allowed
+def f(fn: object = lambda: 1) -> object:
+    return fn
+---
+error: lambda
+---
+
+=== *args in definition not allowed
+def f(*args: int) -> int:
+    return 0
+---
+error: *args
+---
+
+=== **kwargs in definition not allowed
+def f(**kwargs: int) -> int:
+    return 0
+---
+error: **kwargs
+---
+
+=== *args and **kwargs in definition not allowed
+def f(*args: int, **kwargs: str) -> None:
+    pass
+---
+error: *args
+---
+
+=== starred args in call not allowed
+def f(a: int, b: int) -> int:
+    return a + b
+def g() -> int:
+    items: list[int] = [1, 2]
+    return f(*items)
+---
+error: *args in call
+---
+
+=== kwargs in call not allowed
+def f(a: int, b: int) -> int:
+    return a + b
+def g() -> int:
+    d: dict[str, int] = {"a": 1, "b": 2}
+    return f(**d)
+---
+error: **kwargs in call
+---
+
+=== global not allowed
+x: int = 1
+def f() -> None:
+    global x
+    x = 2
+---
+error: global
+---
+
+=== nonlocal not allowed
+def outer() -> int:
+    x: int = 1
+    def inner() -> None:
+        nonlocal x
+        x = 2
+    inner()
+    return x
+---
+error: nested function
+---
+
+=== simple function allowed
+def add(a: int, b: int) -> int:
+    return a + b
+---
+ok
+---
+
+=== function with default allowed
+def greet(name: str = "world") -> str:
+    return "hello " + name
+---
+ok
+---
+
+=== function with none default allowed
+def process(items: list[int] | None = None) -> list[int]:
+    if items is None:
+        return []
+    return items
+---
+ok
+---
+
+=== method allowed
+class Counter:
+    def __init__(self) -> None:
+        self.count: int = 0
+    def increment(self) -> None:
+        self.count = self.count + 1
+---
+ok
+---
+
+=== keyword argument in call allowed
+def f(a: int, b: int) -> int:
+    return a + b
+def g() -> int:
+    return f(a=1, b=2)
+---
+ok
+---
+
+=== positional and keyword args allowed
+def f(a: int, b: int, c: int) -> int:
+    return a + b + c
+def g() -> int:
+    return f(1, b=2, c=3)
+---
+ok
+---
+
+=== recursive function allowed
+def factorial(n: int) -> int:
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+---
+ok
+---
+
+=== mutually recursive functions allowed
+def is_even(n: int) -> bool:
+    if n == 0:
+        return True
+    return is_odd(n - 1)
+def is_odd(n: int) -> bool:
+    if n == 0:
+        return False
+    return is_even(n - 1)
+---
+ok
+---
+
+=== async def not allowed
+async def fetch() -> str:
+    return "data"
+---
+error: async
+---
+
+=== await not allowed
+async def fetch() -> str:
+    return "data"
+async def main() -> None:
+    result = await fetch()
+---
+error: async
+---
+
+=== positional-only parameter allowed
+def f(x: int, /) -> int:
+    return x
+---
+ok
+---
+
+=== keyword-only parameter allowed
+def f(*, x: int) -> int:
+    return x
+---
+ok
+---
+
+=== keyword-only after regular params allowed
+def f(a: int, *, b: int) -> int:
+    return a + b
+---
+ok
+---
+
+=== missing return type annotation not allowed
+def f(x: int):
+    return x
+---
+error: return type
+---
+
+=== missing parameter type annotation not allowed
+def f(x) -> int:
+    return x
+---
+error: missing param type
+---
+
+=== arbitrary decorator not allowed
+def my_decorator(f: object) -> object:
+    return f
+@my_decorator
+def f() -> int:
+    return 1
+---
+error: decorator
+---
+
+=== multiple decorators not allowed
+def dec1(f: object) -> object:
+    return f
+def dec2(f: object) -> object:
+    return f
+@dec1
+@dec2
+def f() -> int:
+    return 1
+---
+error: decorator
+---
+
+=== generator yield in for loop allowed
+def items(xs: list[int]) -> object:
+    for x in xs:
+        yield x
+---
+ok
+---
+
+=== generator yield outside for loop not allowed
+def items() -> object:
+    yield 1
+    yield 2
+---
+error: yield only allowed in for-loop
+---
+
+=== generator yield from allowed
+def flatten(nested: list[list[int]]) -> object:
+    for inner in nested:
+        yield from inner
+---
+ok
+---
