@@ -2,6 +2,11 @@
 
 Shared logic for JS and TS code generation. Subclasses override hooks
 for type annotations and language-specific features.
+
+Known limitation: Dict key coercion (int/float/bool equivalence) only works for
+VarDecl initializers and direct Index/method access. Not covered: Assign, function
+args, return statements, dict comprehensions, nested contexts. Proper fix requires
+frontend type propagation.
 """
 
 from __future__ import annotations

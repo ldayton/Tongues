@@ -527,7 +527,11 @@ class TsBackend(JsLikeBackend):
     def _var_decl(self, name: str, typ: Type | None, value: Expr | None) -> None:
         ts_type = self._type(typ) if typ else "any"
         if value is not None:
-            val = self._expr(value)
+            # Use declared type for MapLit key coercion (Python key equivalence)
+            if typ is not None and isinstance(typ, Map):
+                val = self._emit_map_lit_coerced(value, typ)
+            else:
+                val = self._expr(value)
             self._line(f"let {_camel(name)}: {ts_type} = {val};")
         else:
             self._line(f"let {_camel(name)}: {ts_type};")
