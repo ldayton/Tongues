@@ -886,10 +886,12 @@ class JsLikeBackend:
                 return f"[Math.floor({self._expr(a)} / {self._expr(b)}), {self._expr(a)} % {self._expr(b)}]"
             case Call(func="pow", args=[base, exp]):
                 base_str = self._pow_base(base)
-                return f"{base_str} ** {self._expr(exp)}"
+                exp_str = self._pow_exp(exp)
+                return f"{base_str} ** {exp_str}"
             case Call(func="pow", args=[base, exp, mod]):
                 base_str = self._pow_base(base)
-                return f"{base_str} ** {self._expr(exp)} % {self._expr(mod)}"
+                exp_str = self._pow_exp(exp)
+                return f"{base_str} ** {exp_str} % {self._expr(mod)}"
             case Call(func=func, args=args):
                 return self._call_expr(func, args)
             case MethodCall(obj=obj, method="join", args=[arr], receiver_type=_):
@@ -1235,6 +1237,19 @@ class JsLikeBackend:
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
         """Emit cast expression. Override for language-specific handling."""
+        # float(string) with special values
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "float"
+            and isinstance(inner, StringLit)
+        ):
+            if inner.value == "inf" or inner.value == "Infinity":
+                return "Infinity"
+            if inner.value == "-inf" or inner.value == "-Infinity":
+                return "-Infinity"
+            if inner.value.lower() == "nan":
+                return "NaN"
+            return f"parseFloat({self._expr(inner)})"
         # str(None) -> "None"
         if (
             isinstance(inner, NilLit)
@@ -1401,6 +1416,13 @@ class JsLikeBackend:
         if isinstance(base, FloatLit) and base.value < 0:
             return f"({base_str})"
         return base_str
+
+    def _pow_exp(self, exp: Expr) -> str:
+        """Wrap pow() exponent in parens if it's a binary op (precedence issues)."""
+        exp_str = self._expr(exp)
+        if isinstance(exp, BinaryOp):
+            return f"({exp_str})"
+        return exp_str
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
         result = template

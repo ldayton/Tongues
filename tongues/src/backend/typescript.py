@@ -349,6 +349,14 @@ class TsBackend(JsLikeBackend):
         # Handle float() with int/float literals - just output the number
         if func == "float" and len(args) == 1:
             arg = args[0]
+            if isinstance(arg, StringLit):
+                if arg.value == "nan":
+                    return "NaN"
+                if arg.value == "inf" or arg.value == "Infinity":
+                    return "Infinity"
+                if arg.value == "-inf" or arg.value == "-Infinity":
+                    return "-Infinity"
+                return f"parseFloat({self._expr(arg)})"
             if isinstance(arg, IntLit):
                 return str(arg.value)
             if isinstance(arg, FloatLit):
@@ -463,6 +471,19 @@ class TsBackend(JsLikeBackend):
     # --- Cast ---
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
+        # float(string) with special values
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "float"
+            and isinstance(inner, StringLit)
+        ):
+            if inner.value == "inf" or inner.value == "Infinity":
+                return "Infinity"
+            if inner.value == "-inf" or inner.value == "-Infinity":
+                return "-Infinity"
+            if inner.value.lower() == "nan":
+                return "NaN"
+            return f"parseFloat({self._expr(inner)})"
         # str(None) -> "None"
         if (
             isinstance(inner, NilLit)
@@ -524,6 +545,15 @@ class TsBackend(JsLikeBackend):
             and inner.typ.kind in ("rune", "int")
         ):
             return f"String.fromCodePoint({self._expr(inner)})"
+        # float to string with decimal preservation
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+            and isinstance(inner.typ, Primitive)
+            and inner.typ.kind == "float"
+        ):
+            inner_str = self._expr(inner)
+            return f"(Number.isInteger({inner_str}) ? ({inner_str}).toFixed(1) : String({inner_str}))"
         if isinstance(to_type, Primitive) and to_type.kind == "string":
             return f"String({self._expr(inner)})"
         # Use 'as unknown as' for type conversions
