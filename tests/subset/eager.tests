@@ -1,0 +1,226 @@
+=== range in for loop allowed
+def f() -> int:
+    total: int = 0
+    for i in range(10):
+        total = total + i
+    return total
+---
+ok
+---
+
+=== range assigned allowed
+def f() -> object:
+    r = range(10)
+    return r
+---
+ok
+---
+
+=== range in list allowed
+def f() -> list[int]:
+    return list(range(10))
+---
+ok
+---
+
+=== range returned allowed
+def f() -> object:
+    return range(10)
+---
+ok
+---
+
+=== range in arbitrary call allowed
+def consume(r: object) -> None:
+    pass
+def f() -> None:
+    consume(range(10))
+---
+ok
+---
+
+=== enumerate in for loop allowed
+def f(xs: list[int]) -> int:
+    total: int = 0
+    for i, x in enumerate(xs):
+        total = total + i + x
+    return total
+---
+ok
+---
+
+=== enumerate in list allowed
+def f(xs: list[int]) -> list[tuple[int, int]]:
+    return list(enumerate(xs))
+---
+ok
+---
+
+=== enumerate in tuple allowed
+def f(xs: list[int]) -> tuple[tuple[int, int], ...]:
+    return tuple(enumerate(xs))
+---
+ok
+---
+
+=== enumerate in dict allowed
+def f(xs: list[str]) -> dict[int, str]:
+    return dict(enumerate(xs))
+---
+ok
+---
+
+=== enumerate in list comprehension allowed
+def f(xs: list[int]) -> list[int]:
+    return [i + x for i, x in enumerate(xs)]
+---
+ok
+---
+
+=== enumerate assigned not allowed
+def f(xs: list[int]) -> object:
+    e = enumerate(xs)
+    return e
+---
+error: enumerate
+---
+
+=== enumerate returned not allowed
+def f(xs: list[int]) -> object:
+    return enumerate(xs)
+---
+error: enumerate
+---
+
+=== enumerate in arbitrary call not allowed
+def consume(e: object) -> None:
+    pass
+def f(xs: list[int]) -> None:
+    consume(enumerate(xs))
+---
+error: enumerate
+---
+
+=== zip in for loop allowed
+def f(xs: list[int], ys: list[int]) -> int:
+    total: int = 0
+    for x, y in zip(xs, ys):
+        total = total + x + y
+    return total
+---
+ok
+---
+
+=== zip in list allowed
+def f(xs: list[int], ys: list[int]) -> list[tuple[int, int]]:
+    return list(zip(xs, ys))
+---
+ok
+---
+
+=== zip in tuple allowed
+def f(xs: list[int], ys: list[int]) -> tuple[tuple[int, int], ...]:
+    return tuple(zip(xs, ys))
+---
+ok
+---
+
+=== zip in dict allowed
+def f(ks: list[str], vs: list[int]) -> dict[str, int]:
+    return dict(zip(ks, vs))
+---
+ok
+---
+
+=== zip in list comprehension allowed
+def f(xs: list[int], ys: list[int]) -> list[int]:
+    return [x + y for x, y in zip(xs, ys)]
+---
+ok
+---
+
+=== zip assigned not allowed
+def f(xs: list[int], ys: list[int]) -> object:
+    z = zip(xs, ys)
+    return z
+---
+error: zip
+---
+
+=== zip returned not allowed
+def f(xs: list[int], ys: list[int]) -> object:
+    return zip(xs, ys)
+---
+error: zip
+---
+
+=== zip in arbitrary call not allowed
+def consume(z: object) -> None:
+    pass
+def f(xs: list[int], ys: list[int]) -> None:
+    consume(zip(xs, ys))
+---
+error: zip
+---
+
+=== reversed in for loop allowed
+def f(xs: list[int]) -> int:
+    total: int = 0
+    for x in reversed(xs):
+        total = total + x
+    return total
+---
+ok
+---
+
+=== reversed in list allowed
+def f(xs: list[int]) -> list[int]:
+    return list(reversed(xs))
+---
+ok
+---
+
+=== reversed in tuple allowed
+def f(xs: list[int]) -> tuple[int, ...]:
+    return tuple(reversed(xs))
+---
+ok
+---
+
+=== reversed in sorted allowed
+def f(xs: list[int]) -> list[int]:
+    return sorted(reversed(xs))
+---
+ok
+---
+
+=== reversed in list comprehension allowed
+def f(xs: list[int]) -> list[int]:
+    return [x * 2 for x in reversed(xs)]
+---
+ok
+---
+
+=== reversed assigned not allowed
+def f(xs: list[int]) -> object:
+    r = reversed(xs)
+    return r
+---
+error: reversed
+---
+
+=== reversed returned not allowed
+def f(xs: list[int]) -> object:
+    return reversed(xs)
+---
+error: reversed
+---
+
+=== reversed in arbitrary call not allowed
+def consume(r: object) -> None:
+    pass
+def f(xs: list[int]) -> None:
+    consume(reversed(xs))
+---
+error: reversed
+---

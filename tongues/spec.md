@@ -135,128 +135,22 @@ The restricted subset eliminates major parsing pain points:
 
 #### Phase 3: `frontend/subset.py`
 
-Reject unsupported Python features early. If verification passes, downstream phases can assume:
+Reject unsupported Python features early. The subset trades dynamic flexibility for compile-time guarantees: all types are known, all calls resolve statically, all ownership is inferrable.
 
-| Invariant                 | What it enables                                               |
-| ------------------------- | ------------------------------------------------------------- |
-| No dynamic dispatch       | Call graph is static; all calls resolve at compile time       |
-| No runtime introspection  | No `getattr`/`setattr`/`__dict__` — field access is static    |
-| No closures               | No nested functions — all functions are top-level or methods  |
-| Eager iteration only      | Comprehensions and generators must be statically eager        |
-| All types annotated       | Signatures have types; inference only needed for locals       |
-| No bare collections       | `list[T]` not `list` — element types always known             |
-| Single inheritance        | Class hierarchy is a tree, not a DAG                          |
-| `@dataclass` only         | No arbitrary decorators; `@dataclass` (no args) allowed       |
-| No mutable defaults       | Default args are immutable; no shared-state bugs              |
-| Static imports            | Only `typing`, `__future__`, `collections.abc`, `dataclasses` |
-| No back-references        | Fields cannot reference their container (no cycles)           |
-| No borrowed field storage | Parameters cannot be stored in fields without copy            |
-| Immutable string params   | String parameters are borrowed; copy if storing               |
+**Philosophy:** Every restriction exists to enable static analysis or simplify transpilation. If a feature can't be checked at compile time or doesn't map cleanly to target languages, it's excluded.
 
-**Allowed built-in functions:**
+| Invariant                | What it enables                                         |
+| ------------------------ | ------------------------------------------------------- |
+| No dynamic dispatch      | Call graph is static; all calls resolve at compile time |
+| No runtime introspection | Field access is static; no `getattr`/`__dict__`         |
+| No closures              | All functions are top-level or methods                  |
+| All types annotated      | Signatures have types; inference only for locals        |
+| Single inheritance       | Class hierarchy is a tree, not a DAG                    |
+| Eager iteration only     | Comprehensions and generators are statically eager      |
 
-| Category    | Functions                                                    |
-| ----------- | ------------------------------------------------------------ |
-| Math        | `abs`, `min`, `max`, `sum`, `round`, `divmod`, `pow`         |
-| Conversion  | `int`, `float`, `str`, `bool`, `bytes`, `chr`, `ord`         |
-| Collections | `list`, `dict`, `set`, `tuple`, `frozenset`, `len`, `sorted` |
-| Type check  | `isinstance`                                                 |
-| Iteration   | `range`, `enumerate`, `zip`                                  |
-| Formatting  | `repr`, `ascii`, `bin`, `hex`, `oct`                         |
-| Boolean     | `all`, `any`                                                 |
-| Other       | `slice`, `super`, `object`                                   |
+For the complete subset specification including allowed builtins, methods, I/O, and detailed restrictions, see [**tests/subset/subset-spec.md**](../tests/subset/subset-spec.md).
 
-**Allowed methods:**
-
-| Type   | Methods                                                                                                                                                                                         |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `str`  | `join`, `split`, `strip`, `lstrip`, `rstrip`, `lower`, `upper`, `startswith`, `endswith`, `replace`, `find`, `rfind`, `count`, `isalnum`, `isalpha`, `isdigit`, `isspace`, `isupper`, `islower` |
-| `list` | `append`, `extend`, `pop`, `insert`, `remove`, `copy`, `clear`, `index`, `count`, `reverse`, `sort`                                                                                             |
-| `dict` | `get`, `keys`, `values`, `items`, `pop`, `setdefault`, `update`, `clear`, `copy`                                                                                                                |
-| `set`  | `add`, `remove`, `discard`, `pop`, `clear`, `copy`, `union`, `intersection`, `difference`, `issubset`, `issuperset`                                                                             |
-
-**Allowed I/O:**
-
-| Category      | Constructs                                                                           |
-| ------------- | ------------------------------------------------------------------------------------ |
-| Output        | `print(x)`, `print(x, end='')`, `print(x, file=sys.stderr)`                          |
-| Input text    | `sys.stdin.readline()`, `sys.stdin.read()`                                           |
-| Input binary  | `sys.stdin.buffer.read()`, `sys.stdin.buffer.read(n)`, `sys.stdin.buffer.readline()` |
-| Output binary | `sys.stdout.buffer.write(b)`, `sys.stderr.buffer.write(b)`                           |
-| Arguments     | `sys.argv`                                                                           |
-| Environment   | `os.getenv(name)`, `os.getenv(name, default)`                                        |
-
-**Eager iteration constructs:**
-
-Iteration constructs are allowed when statically analyzable as eager (non-lazy). No generator functions, no lazy pipelines, no infinite sequences.
-
-| Construct          | Allowed                | Notes                    |
-| ------------------ | ---------------------- | ------------------------ |
-| List comprehension | `[expr for x in iter]` | Always eager             |
-| Set comprehension  | `{expr for x in iter}` | Always eager             |
-| Dict comprehension | `{k: v for x in iter}` | Always eager             |
-| Generator function | `yield`, `yield from`  | Structural recursion only |
-
-**Generator expressions** — allowed only as immediate argument to eager consumers:
-
-| Consumer     | Example                     |
-| ------------ | --------------------------- |
-| `tuple()`    | `tuple(x for x in iter)`    |
-| `list()`     | `list(x for x in iter)`     |
-| `set()`      | `set(x for x in iter)`      |
-| `any()`      | `any(p(x) for x in iter)`   |
-| `all()`      | `all(p(x) for x in iter)`   |
-| `sum()`      | `sum(x for x in iter)`      |
-| `min()`      | `min(x for x in iter)`      |
-| `max()`      | `max(x for x in iter)`      |
-| `sorted()`   | `sorted(x for x in iter)`   |
-| `str.join()` | `",".join(s for s in iter)` |
-
-Not allowed: `g = (x for x in iter)` (assigned), `foo(x for x in iter)` (unknown consumer), `return (x for x in iter)` (returned).
-
-**enumerate / zip** — allowed only in for-loop headers or eager consumers:
-
-| Allowed                        | Not allowed              |
-| ------------------------------ | ------------------------ |
-| `for i, x in enumerate(iter):` | `e = enumerate(iter)`    |
-| `for a, b in zip(xs, ys):`     | `foo(zip(xs, ys))`       |
-| `list(enumerate(iter))`        | `return enumerate(iter)` |
-
-**Structural recursion** — `yield`/`yield from` allowed for tree traversal:
-
-| Allowed | Not allowed |
-|---------|-------------|
-| `for x in items: yield x` | `while True: yield next()` |
-| `yield from traverse(node.children)` | `yield from infinite_stream()` |
-
-Structural recursion over acyclic data is statically provable as finite. The subset guarantees no back-references, so recursion depth is bounded by tree depth.
-
-**Tuple unpacking** — from call result or guarded variable:
-
-| Allowed                      | Not allowed            |
-| ---------------------------- | ---------------------- |
-| `a, b = func()`              | `a, b = some_var`      |
-| `x = func(); if x: a, b = x` | `x = func(); a, b = x` |
-
-Unpacking from a variable is allowed only when the variable is the condition of an enclosing `if` statement and the unpack occurs in the then-branch. This proves the variable is non-None when the tuple contains an optional result.
-
-**Dataclasses:**
-
-The `@dataclass` decorator is allowed with limited arguments:
-- `@dataclass` - no arguments (default eq=True)
-- `@dataclass(eq=True)` - explicit equality generation
-- `@dataclass(unsafe_hash=True)` - hash generation for use as dict keys
-- `@dataclass(kw_only=True)` - keyword-only fields
-
-Not allowed: `frozen=True` (immutability cannot be guaranteed in target languages), `order=True`, `field()` options.
-
-| Allowed                         | Not allowed                             |
-| ------------------------------- | --------------------------------------- |
-| `@dataclass`                    | `@dataclass(frozen=True)`               |
-| `@dataclass(unsafe_hash=True)`  | `@dataclass(order=True)`                |
-| `x: int = 0`                    | `x: list = field(default_factory=list)` |
-
-**Postconditions:** AST conforms to Tongues subset; all invariants above hold; rejected programs produce clear error messages with source locations.
+**Postconditions:** AST conforms to Tongues subset; all invariants hold; rejected programs produce clear error messages with source locations.
 
 #### Phase 4: `frontend/names.py`
 
