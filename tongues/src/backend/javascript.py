@@ -175,7 +175,12 @@ class JsBackend(JsLikeBackend):
         self._line("function arrEq(a, b) {")
         self.indent += 1
         self._line("if (a.length !== b.length) return false;")
-        self._line("for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;")
+        self._line("for (let i = 0; i < a.length; i++) {")
+        self.indent += 1
+        self._line("if (Array.isArray(a[i]) && Array.isArray(b[i])) { if (!arrEq(a[i], b[i])) return false; }")
+        self._line("else if (a[i] !== b[i]) return false;")
+        self.indent -= 1
+        self._line("}")
         self._line("return true;")
         self.indent -= 1
         self._line("}")

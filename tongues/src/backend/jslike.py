@@ -365,7 +365,15 @@ class JsLikeBackend:
             case OpAssign(target=target, op=op, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
-                self._line(f"{lv} {op}= {val};")
+                # For array += iterable, use push instead of + which concatenates strings
+                if op == "+" and (
+                    _is_array_type(value.typ)
+                    or value.typ == STRING
+                    or (isinstance(value, Call) and value.func == "range")
+                ):
+                    self._line(f"{lv}.push(...{val});")
+                else:
+                    self._line(f"{lv} {op}= {val};")
             case NoOp():
                 pass
             case ExprStmt(expr=expr):
@@ -559,13 +567,25 @@ class JsLikeBackend:
         iter_expr = self._expr(iterable)
         iter_type = iterable.typ
         if index is not None and value is not None:
-            self._line(
-                f"for (var {_camel(index)} = 0; {_camel(index)} < {iter_expr}.length; {_camel(index)}++) {{"
-            )
-            self.indent += 1
-            self._for_value_decl(
-                _camel(value), iter_expr, _camel(index), self._element_type_str(iter_type)
-            )
+            # Check if iterating over tuples (like enumerate returns)
+            elem_type = None
+            if isinstance(iter_type, (Slice, Array)):
+                elem_type = iter_type.element
+            # Also check if it's an enumerate call (returns tuples)
+            is_enumerate = isinstance(iterable, Call) and iterable.func == "enumerate"
+            if isinstance(elem_type, Tuple) or is_enumerate:
+                # Destructure: for (const [i, v] of iterable)
+                self._emit_for_tuple_destructure(index, value, iter_expr, iter_type)
+                self.indent += 1
+            else:
+                # Classic: for (var i = 0; i < length; i++) { v = items[i] }
+                self._line(
+                    f"for (var {_camel(index)} = 0; {_camel(index)} < {iter_expr}.length; {_camel(index)}++) {{"
+                )
+                self.indent += 1
+                self._for_value_decl(
+                    _camel(value), iter_expr, _camel(index), self._element_type_str(iter_type)
+                )
         elif value is not None:
             self._emit_for_of(value, iter_expr, iter_type)
             self.indent += 1
@@ -585,6 +605,12 @@ class JsLikeBackend:
     def _emit_for_of(self, value: str, iter_expr: str, iter_type: Type | None) -> None:
         """Emit for-of loop header. Override for TS type casting."""
         self._line(f"for (const {_camel(value)} of {iter_expr}) {{")
+
+    def _emit_for_tuple_destructure(
+        self, index: str, value: str, iter_expr: str, iter_type: Type | None
+    ) -> None:
+        """Emit for-of with tuple destructuring. Override for TS types."""
+        self._line(f"for (const [{_camel(index)}, {_camel(value)}] of {iter_expr}) {{")
 
     def _element_type_str(self, typ: Type | None) -> str:
         """Get element type string for loop variable. Override for TS."""
@@ -1360,8 +1386,8 @@ class JsLikeBackend:
                 return f"[...{left_str}, ...{right_str}]"
             if op == "*":
                 if _is_array_type(left.typ):
-                    return f"Array({right_str} > 0 ? {right_str} : 0).fill().flatMap(() => [...{left_str}])"
-                return f"Array({left_str} > 0 ? {left_str} : 0).fill().flatMap(() => [...{right_str}])"
+                    return f"Array({right_str} > 0 ? {right_str} : 0).fill({left_str}).flat()"
+                return f"Array({left_str} > 0 ? {left_str} : 0).fill({right_str}).flat()"
         # Handle string repetition: "a" * 3 -> "a".repeat(3), negative -> ""
         if op == "*":
             if left.typ == STRING:

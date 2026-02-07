@@ -157,10 +157,15 @@ class TsBackend(JsLikeBackend):
 
     def _emit_bytes_helpers(self) -> None:
         """Emit helper functions for byte array operations."""
-        self._line("function arrEq(a: number[], b: number[]): boolean {")
+        self._line("function arrEq(a: any[], b: any[]): boolean {")
         self.indent += 1
         self._line("if (a.length !== b.length) return false;")
-        self._line("for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;")
+        self._line("for (let i = 0; i < a.length; i++) {")
+        self.indent += 1
+        self._line("if (Array.isArray(a[i]) && Array.isArray(b[i])) { if (!arrEq(a[i], b[i])) return false; }")
+        self._line("else if (a[i] !== b[i]) return false;")
+        self.indent -= 1
+        self._line("}")
         self._line("return true;")
         self.indent -= 1
         self._line("}")
