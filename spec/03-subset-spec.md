@@ -1,6 +1,8 @@
-# Tongues Python Subset
+# Phase 3: Subset
 
-Syntactic restrictions for transpilation to statically-typed languages. These are checkable from AST structure alone (phase 3).
+**Module:** `frontend/subset.py`
+
+Syntactic restrictions for transpilation to statically-typed languages. These are checkable from AST structure alone.
 
 See [08-inference-spec.md](08-inference-spec.md) for type-level invariants requiring inference.
 

@@ -4,6 +4,10 @@
 
 Build a symbol table mapping names to their declarations. Since phase 3 guarantees no nested functions and no `global`/`nonlocal`, scoping is simple.
 
+## Inputs
+
+- **AST**: dict-based AST from Phase 2
+
 ## Scopes
 
 | Scope   | Contains                                                                   |

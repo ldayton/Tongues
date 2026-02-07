@@ -1,10 +1,18 @@
 # Phase 8: Inference
 
-**Module:** `frontend/inference.py`, `frontend/type_inference.py`
+**Module:** `frontend/inference.py` (entry point), `frontend/type_inference.py` (helpers)
 
 Bidirectional type inference with flow-sensitive narrowing. Computes types for all expressions, infers local variable types from assignments, and enforces type safety constraints that require knowing expression types.
 
 See [03-subset-spec.md](03-subset-spec.md) for syntactic restrictions checkable on AST structure alone.
+
+## Inputs
+
+- **AST**: dict-based AST from Phase 2
+- **NameTable**: from Phase 4 (for name resolution)
+- **SigTable**: from Phase 5 (for function/method signatures)
+- **FieldTable**: from Phase 6 (for field types)
+- **SubtypeRel**: from Phase 7 (for subtype checks, hierarchy_root)
 
 ## 1. Type Language
 
@@ -578,6 +586,18 @@ Without narrowing, only operations valid for all types are allowed (essentially 
 | Unknown type                | error: `unknown type 'Foo'`                                |
 
 ---
+
+## Output: TypedAST
+
+The TypedAST is the input dict-AST with type annotations added:
+
+| Node type           | Added field      | Contents                               |
+| ------------------- | ---------------- | -------------------------------------- |
+| All expressions     | `_type`          | IR type (e.g., `INT`, `Slice(STRING)`) |
+| Variable references | `_resolved`      | Declaration kind from NameTable        |
+| Narrowed uses       | `_narrowed_type` | More precise type after guards         |
+
+Structure otherwise identical to Phase 2 output. Subsequent phases can traverse the same AST and read type information from `_type` fields.
 
 ## Postconditions
 

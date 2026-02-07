@@ -2,7 +2,12 @@
 
 **Module:** `frontend/signatures.py`
 
-Collect function and method signatures. Parse type annotations into internal representations and validate arity.
+Collect function and method signatures. Parse type annotations into IR types and validate arity.
+
+## Inputs
+
+- **AST**: dict-based AST from Phase 2
+- **NameTable**: from Phase 4 (for resolving type names)
 
 ## Signature Collection
 
@@ -36,7 +41,7 @@ Only literal defaults allowed (enforced by subset phase).
 
 ## Self Parameter
 
-For methods, `self` is not stored in `params`. Its type is `ClassRef(receiver_type)` and available via the `receiver_type` field.
+For methods, `self` is not stored in `params`. Its type is `StructRef(receiver_type)` and available via the `receiver_type` field.
 
 ## Forward References
 
@@ -44,27 +49,32 @@ Type names resolved against the module's class definitions. Forward references a
 
 ## Type Representation
 
-| Python Annotation     | Internal Representation                                       |
-| --------------------- | ------------------------------------------------------------- |
-| `int`                 | `Primitive("int")`                                            |
-| `list[int]`           | `Generic("list", [Primitive("int")])`                         |
-| `dict[str, int]`      | `Generic("dict", [Primitive("str"), Primitive("int")])`       |
-| `tuple[int, str]`     | `Tuple([Primitive("int"), Primitive("str")], variadic=False)` |
-| `tuple[int, ...]`     | `Tuple([Primitive("int")], variadic=True)`                    |
-| `A \| B`              | `Union([A, B])`                                               |
-| `T \| None`           | `Union([T, NoneType])`                                        |
-| `Callable[[A, B], R]` | `Callable(params=[A, B], ret=R)`                              |
-| `ClassName`           | `ClassRef("ClassName")`                                       |
+Python annotations are parsed directly into IR types (see Type System in 00-tongues-spec):
+
+| Python Annotation     | IR Type                                                   |
+| --------------------- | --------------------------------------------------------- |
+| `int`                 | `INT`                                                     |
+| `str`                 | `STRING`                                                  |
+| `bool`                | `BOOL`                                                    |
+| `float`               | `FLOAT`                                                   |
+| `bytes`               | `BYTES`                                                   |
+| `list[T]`             | `Slice(T)`                                                |
+| `dict[K, V]`          | `Map(K, V)`                                               |
+| `set[T]`              | `Set(T)`                                                  |
+| `tuple[A, B, C]`      | `Tuple(A, B, C)`                                          |
+| `tuple[T, ...]`       | `Tuple(T, variadic=True)`                                 |
+| `A \| B`              | `Optional(A)` if B is None, else union via `InterfaceRef` |
+| `Callable[[A, B], R]` | `FuncType(params=(A, B), ret=R)`                          |
+| `ClassName`           | `StructRef("ClassName")`                                  |
 
 ## Type Normalization
 
-| Input            | Normalized Form                |
-| ---------------- | ------------------------------ |
-| `Optional[T]`    | `Union([T, NoneType])`         |
-| `Union[A, B]`    | `Union([A, B])`                |
-| `A \| B`         | `Union([A, B])`                |
-| `Union[A, A]`    | `A` (deduplicated)             |
-| `Union[A, B, C]` | `Union([A, B, C])` (flattened) |
+| Input         | Normalized Form                           |
+| ------------- | ----------------------------------------- |
+| `Optional[T]` | `Optional(T)`                             |
+| `T \| None`   | `Optional(T)`                             |
+| `A \| B`      | `InterfaceRef` if common base, else error |
+| `Union[A, A]` | `A` (deduplicated)                        |
 
 ## Type Arity
 

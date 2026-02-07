@@ -35,45 +35,65 @@ Tongues supports these target languages:
 
 ## Pipeline Overview
 
-| Phase | Stage     | Module          | Description                                         |
-| :---: | --------- | --------------- | --------------------------------------------------- |
-|   1   | cli       | `tongues.py`    | Parse arguments, read input, invoke pipeline        |
-|   2   | frontend  | `parse.py`      | Tokenize and parse source; produce dict-based AST   |
-|   3   | frontend  | `subset.py`     | Reject unsupported Python features early            |
-|   4   | frontend  | `names.py`      | Scope analysis and name binding                     |
-|   5   | frontend  | `signatures.py` | Type syntax parsing and kind checking               |
-|   6   | frontend  | `fields.py`     | Dataflow over `__init__`; infer field types         |
-|   7   | frontend  | `hierarchy.py`  | Class hierarchy; subtyping relations                |
-|   8   | frontend  | `inference.py`  | Bidirectional type inference (↑synth / ↓check)      |
-|   9   | frontend  | `lowering.py`   | Type-directed elaboration to IR                     |
-|  10   | middleend | `scope.py`      | Variable declarations, reassignments, modifications |
-|  11   | middleend | `returns.py`    | Return pattern analysis                             |
-|  12   | middleend | `liveness.py`   | Unused values, catch vars, bindings                 |
-|  13   | middleend | `hoisting.py`   | Variables needing hoisting for Go emission          |
-|  14   | middleend | `ownership.py`  | Ownership inference and escape analysis             |
-|  15   | backend   | `<lang>.py`     | Emit target language source from annotated IR       |
+| Phase | Stage     | Module                   | Description                                         |
+| :---: | --------- | ------------------------ | --------------------------------------------------- |
+|   1   | cli       | `tongues.py`             | Parse arguments, read input, invoke pipeline        |
+|   2   | frontend  | `frontend/parse.py`      | Tokenize and parse source; produce dict-based AST   |
+|   3   | frontend  | `frontend/subset.py`     | Reject unsupported Python features early            |
+|   4   | frontend  | `frontend/names.py`      | Scope analysis and name binding                     |
+|   5   | frontend  | `frontend/signatures.py` | Type syntax parsing and kind checking               |
+|   6   | frontend  | `frontend/fields.py`     | Dataflow over `__init__`; infer field types         |
+|   7   | frontend  | `frontend/hierarchy.py`  | Class hierarchy; subtyping relations                |
+|   8   | frontend  | `frontend/inference.py`  | Bidirectional type inference (↑synth / ↓check)      |
+|   9   | frontend  | `frontend/lowering.py`   | Type-directed elaboration to IR                     |
+|  10   | middleend | `middleend/scope.py`     | Variable declarations, reassignments, modifications |
+|  11   | middleend | `middleend/returns.py`   | Return pattern analysis                             |
+|  12   | middleend | `middleend/liveness.py`  | Unused values, catch vars, bindings                 |
+|  13   | middleend | `middleend/hoisting.py`  | Variables needing hoisting for Go emission          |
+|  14   | middleend | `middleend/ownership.py` | Ownership inference and escape analysis             |
+|  15   | backend   | `backend/<lang>.py`      | Emit target language source from annotated IR       |
+
+## Type System
+
+All phases from 5 onward use these IR types:
+
+| Type                                             | Meaning                        |
+| ------------------------------------------------ | ------------------------------ |
+| `INT`, `STRING`, `BOOL`, `FLOAT`, `BYTE`, `VOID` | Primitives                     |
+| `Slice(T)`                                       | Growable list of T             |
+| `Map(K, V)`                                      | Dictionary                     |
+| `Set(T)`                                         | Unordered unique collection    |
+| `Tuple(T1, T2, ...)`                             | Fixed heterogeneous sequence   |
+| `Optional(T)`                                    | Nullable T                     |
+| `Pointer(T)`                                     | Reference to T                 |
+| `StructRef(name)`                                | Reference to class by name     |
+| `InterfaceRef(name)`                             | Reference to interface by name |
+| `Union(variants)`                                | Discriminated union            |
+| `FuncType(params, ret)`                          | Callable                       |
+
+Phase 5 parses Python annotations directly into these types. See `ir.py` for full definitions.
 
 ## Frontend Summary
 
-| Module          | Knows types? | Knows IR? | Output                                |
-| --------------- | :----------: | :-------: | ------------------------------------- |
-| `parse.py`      |      no      |    no     | dict-based AST                        |
-| `subset.py`     |      no      |    no     | (rejects bad input or passes through) |
-| `names.py`      |      no      |    no     | NameTable { name → kind }             |
-| `signatures.py` | yes (parse)  |    no     | SigTable { func → (params, ret) }     |
-| `fields.py`     | yes (infer)  |    no     | FieldTable { class → [(name, type)] } |
-| `hierarchy.py`  |  yes (sub)   |    no     | SubtypeRel { class → ancestors }      |
-| `inference.py`  | yes (bidir)  |    no     | TypedAST (↑synth / ↓check / narrow)   |
-| `lowering.py`   | yes (narrow) |    yes    | IR Module                             |
+| Module                   | Knows types? | Knows IR? | Output                                |
+| ------------------------ | :----------: | :-------: | ------------------------------------- |
+| `frontend/parse.py`      |      no      |    no     | dict-based AST                        |
+| `frontend/subset.py`     |      no      |    no     | (rejects bad input or passes through) |
+| `frontend/names.py`      |      no      |    no     | NameTable { name → kind }             |
+| `frontend/signatures.py` | yes (parse)  |    yes    | SigTable { func → FuncInfo }          |
+| `frontend/fields.py`     | yes (infer)  |    yes    | FieldTable { class → ClassFields }    |
+| `frontend/hierarchy.py`  |  yes (sub)   |    no     | SubtypeRel { class → ancestors }      |
+| `frontend/inference.py`  | yes (bidir)  |    no     | TypedAST (annotated dict-AST)         |
+| `frontend/lowering.py`   | yes (narrow) |    yes    | IR Module                             |
 
 ## Middleend Summary
 
 Read-only analysis passes that annotate IR nodes in place. No transformations—just computing properties needed for code generation.
 
-| Module         | Depends on     | Annotations added                                                                              |
-| -------------- | -------------- | ---------------------------------------------------------------------------------------------- |
-| `scope.py`     | —              | `is_reassigned`, `is_modified`, `is_unused`, `is_declaration`, `is_interface`, `narrowed_type` |
-| `returns.py`   | —              | `needs_named_returns`                                                                          |
-| `liveness.py`  | scope, returns | `initial_value_unused`, `catch_var_unused`, `binding_unused`                                   |
-| `hoisting.py`  | scope, returns | `hoisted_vars`, `rune_vars`                                                                    |
-| `ownership.py` | scope          | `ownership`, `region`, `escapes`                                                               |
+| Module                   | Depends on     | Annotations added                                                                              |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------------------- |
+| `middleend/scope.py`     | —              | `is_reassigned`, `is_modified`, `is_unused`, `is_declaration`, `is_interface`, `narrowed_type` |
+| `middleend/returns.py`   | —              | `needs_named_returns`                                                                          |
+| `middleend/liveness.py`  | scope, returns | `initial_value_unused`, `catch_var_unused`, `binding_unused`                                   |
+| `middleend/hoisting.py`  | scope, returns | `hoisted_vars`, `rune_vars`                                                                    |
+| `middleend/ownership.py` | scope          | `ownership`, `region`, `escapes`                                                               |

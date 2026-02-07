@@ -4,6 +4,11 @@
 
 Collect field types from class definitions. Fields are declared in class bodies (dataclass style) or assigned in `__init__`.
 
+## Inputs
+
+- **AST**: dict-based AST from Phase 2
+- **SigTable**: from Phase 5 (for parameter types in `self.x = param`)
+
 ## Field Patterns
 
 | Pattern                  | Inference                                     |

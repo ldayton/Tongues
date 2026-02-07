@@ -4,6 +4,13 @@
 
 Transform typed AST into language-agnostic IR. Lowering reads types computed by Phase 8, tracks narrowing context as it traverses control flow, and emits IR nodes that map directly to target language constructs.
 
+## Inputs
+
+- **TypedAST**: from Phase 8 (dict-AST with `_type` annotations)
+- **FieldTable**: from Phase 6 (for const_fields, field types)
+- **SubtypeRel**: from Phase 7 (for hierarchy_root, ancestor chains)
+- **SigTable**: from Phase 5 (for function signatures)
+
 ## Goals
 
 - **Semantic completeness**: Every source operation has an IR representation
@@ -141,13 +148,13 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 
 Lowering tracks type narrowing as it traverses control flow. Types from Phase 8 are primary; on-demand narrowing handles patterns requiring flow context.
 
-| Pattern                    | Mechanism                                           |
-| -------------------------- | --------------------------------------------------- |
-| `isinstance(x, T)`         | Pre-computed in Phase 8, read from `_expr_type`     |
-| `x.kind == "value"`        | `kind_to_class` mapping built from dataclass fields |
-| `k = x.kind; if k == "v":` | `kind_source_vars` tracks alias to original         |
-| `x.body.kind == "value"`   | `narrowed_attr_paths` for nested access             |
-| `if x is not None:`        | Tracked per-scope, reset at merge points            |
+| Pattern                    | Mechanism                                                 |
+| -------------------------- | --------------------------------------------------------- |
+| `isinstance(x, T)`         | Pre-computed in Phase 8, read from `_expr_type`           |
+| `x.kind == "value"`        | `kind_to_class` mapping built from const_fields (Phase 6) |
+| `k = x.kind; if k == "v":` | `kind_source_vars` tracks alias to original               |
+| `x.body.kind == "value"`   | `narrowed_attr_paths` for nested access                   |
+| `if x is not None:`        | Tracked per-scope, reset at merge points                  |
 
 ### Context State
 

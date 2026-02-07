@@ -4,6 +4,11 @@
 
 Build the inheritance tree and compute subtyping relations. Since phase 3 guarantees single inheritance, the hierarchy is a tree—no diamond problem, no ambiguity.
 
+## Inputs
+
+- **AST**: dict-based AST from Phase 2 (class definitions with bases)
+- **NameTable**: from Phase 4 (for resolving base class names)
+
 ## Subtype Relation
 
 Inheritance implies subtyping. For every class, compute its ancestor chain:
