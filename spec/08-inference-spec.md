@@ -23,7 +23,7 @@ See [03-subset-spec.md](03-subset-spec.md) for syntactic restrictions checkable 
 | `int`   | Arbitrary-precision integers | `INT`             |
 | `float` | IEEE 754 double-precision    | `FLOAT`           |
 | `str`   | Unicode strings              | `STRING`          |
-| `bytes` | Byte sequences               | `BYTES`           |
+| `bytes` | Byte sequences               | `BYTE`            |
 | `bool`  | `True`, `False`              | `BOOL`            |
 
 ### Compound Types

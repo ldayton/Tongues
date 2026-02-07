@@ -62,7 +62,7 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 | `a + b`, `a - b`, etc. | `BinaryOp(op, left, right)` ²           |
 | `a < b < c`            | `ChainedCompare(operands, ops)`         |
 | `-x`, `not x`, `~x`    | `UnaryOp(op, operand)`                  |
-| `x and y`, `x or y`    | `BinaryOp("&&", ...)`, `BinaryOp("      |  | ", ...)` |
+| `x and y`, `x or y`    | `PythonAnd`, `PythonOr` ⁵               |
 | `a if cond else b`     | `Ternary(cond, then_expr, else_expr)` ⁶ |
 | `f(args)`              | `Call(func, args)`                      |
 | `obj.method(args)`     | `MethodCall(obj, method, args)`         |
@@ -126,7 +126,9 @@ The `not` operator on non-bool types emits `Falsy(expr)`, specialized by type:
 | `not list`      | `SliceEmpty(expr)`           |
 | `not dict`      | `MapEmpty(expr)`             |
 | `not set`       | `SetEmpty(expr)`             |
-| `not int`       | `BinaryOp("==", expr, 0)`    |
+| `not int`       | `BinaryOp("==", expr, 0)` ⁸  |
+
+⁸ Explicit `not int` is allowed and emits a zero comparison, even though implicit `if int:` is rejected by Phase 8. The distinction: `not x` is an explicit boolean coercion; `if x:` for int is ambiguous intent (is zero a sentinel or valid data?).
 
 ### IsNil vs IsEmpty
 
@@ -326,7 +328,7 @@ Lowering tracks type narrowing as it traverses control flow. Types from Phase 8 
 
 | Pattern                    | Mechanism                                                 |
 | -------------------------- | --------------------------------------------------------- |
-| `isinstance(x, T)`         | Pre-computed in Phase 8, read from `_expr_type`           |
+| `isinstance(x, T)`         | Pre-computed in Phase 8, read from `_type`                |
 | `x.kind == "value"`        | `kind_to_class` mapping built from const_fields (Phase 6) |
 | `k = x.kind; if k == "v":` | `kind_source_vars` tracks alias to original               |
 | `x.body.kind == "value"`   | `narrowed_attr_paths` for nested access                   |
