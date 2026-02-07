@@ -346,7 +346,7 @@ TARGETS: dict[str, Target] = {
         format_cmd=[
             "java",
             "-jar",
-            "/usr/local/lib/google-java-format.jar",
+            "/opt/java-tools/google-java-format.jar",
             "-i",
             "{path}",
         ],
@@ -602,13 +602,15 @@ def transpiled(apptest: Path, target: Target, output_path: Path) -> Path:
 
 @pytest.fixture
 def formatted(transpiled: Path, target: Target) -> Path:
-    """Apply language formatter (optional, no-fail)."""
+    """Apply language formatter (fails if formatter not found)."""
     fmt_cmd = target.get_format_command(transpiled)
     if fmt_cmd:
         try:
             subprocess.run(fmt_cmd, capture_output=True, timeout=30)
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass  # Formatting is optional
+        except FileNotFoundError:
+            pytest.fail(f"Formatter not found: {fmt_cmd[0]}")
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"Formatter timed out: {fmt_cmd[0]}")
     return transpiled
 
 

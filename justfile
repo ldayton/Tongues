@@ -75,7 +75,7 @@ formatters:
     check "csharp"     "csharpier"                 "command -v dotnet-csharpier || dotnet tool list -g | grep -q csharpier"
     check "dart"       "dart format"               "command -v dart"
     check "go"         "gofmt"                     "command -v gofmt"
-    check "java"       "google-java-format"        "test -f /usr/local/lib/google-java-format.jar"
+    check "java"       "google-java-format"        "test -f /opt/java-tools/google-java-format.jar"
     check "javascript" "biome (via npx)"           "command -v npx"
     check "lua"        "stylua"                    "command -v stylua"
     check "perl"       "perltidy"                  "command -v perltidy"
