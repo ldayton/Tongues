@@ -296,6 +296,15 @@ def test_float_round_basic() -> None:
     assert round(-1.6) == -2
 
 
+def test_float_round_half_even() -> None:
+    """round() uses banker's rounding (round half to even)."""
+    assert round(0.5) == 0
+    assert round(1.5) == 2
+    assert round(2.5) == 2
+    assert round(3.5) == 4
+    assert round(4.5) == 4
+
+
 def test_float_round_ndigits() -> None:
     """round() with ndigits."""
     # Use values that round clearly (not .5)
@@ -417,6 +426,7 @@ def main() -> int:
         ("test_float_pow", test_float_pow),
         ("test_float_pow_special", test_float_pow_special),
         ("test_float_round_basic", test_float_round_basic),
+        ("test_float_round_half_even", test_float_round_half_even),
         ("test_float_round_ndigits", test_float_round_ndigits),
         ("test_float_round_integers", test_float_round_integers),
         ("test_float_min_max", test_float_min_max),

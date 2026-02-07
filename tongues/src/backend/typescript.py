@@ -16,13 +16,21 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _safe_name,
 )
-from src.backend.util import escape_string, ir_contains_call, ir_contains_cast, ir_has_bytes_ops
+from src.backend.util import (
+    escape_string,
+    ir_contains_call,
+    ir_contains_cast,
+    ir_has_bytes_ops,
+    ir_has_tuple_maps,
+    ir_has_tuple_sets,
+)
 from src.ir import (
     BOOL,
     INT,
     STRING,
     VOID,
     Array,
+    Assign,
     BinaryOp,
     BoolLit,
     Call,
@@ -33,6 +41,7 @@ from src.ir import (
     FuncType,
     Function,
     Index,
+    IndexLV,
     IntLit,
     InterfaceDef,
     Len,
@@ -54,6 +63,7 @@ from src.ir import (
     SliceExpr,
     SliceLit,
     StaticCall,
+    Stmt,
     StringConcat,
     StringFormat,
     StringLit,
@@ -110,19 +120,23 @@ class TsBackend(JsLikeBackend):
                 "function bytes(x: number | number[]): number[] { return Array.isArray(x) ? x.slice() : new Array(x).fill(0); }"
             )
             emitted = True
-        if ir_has_bytes_ops(module):
+        if ir_has_bytes_ops(module) or ir_contains_call(module, "sorted"):
             self._emit_bytes_helpers()
             emitted = True
         if ir_contains_call(module, "sum"):
             self._line(
-                "function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }"
+                "function sum(arr: Iterable<number>): number { return [...arr].reduce((a, b) => a + b, 0); }"
             )
             emitted = True
         if ir_contains_call(module, "all"):
-            self._line("function all(arr: any[]): boolean { return arr.every(Boolean); }")
+            self._line(
+                "function all(arr: Iterable<any>): boolean { return [...arr].every(Boolean); }"
+            )
             emitted = True
         if ir_contains_call(module, "any"):
-            self._line("function any(arr: any[]): boolean { return arr.some(Boolean); }")
+            self._line(
+                "function any(arr: Iterable<any>): boolean { return [...arr].some(Boolean); }"
+            )
             emitted = True
         if ir_contains_call(module, "sorted"):
             self._line(
@@ -131,7 +145,7 @@ class TsBackend(JsLikeBackend):
             emitted = True
         if ir_contains_call(module, "enumerate"):
             self._line(
-                "function enumerate<T>(arr: T[]): [number, T][] { return arr.map((v, i) => [i, v]); }"
+                "function enumerate<T>(arr: Iterable<T>): [number, T][] { return [...arr].map((v, i) => [i, v]); }"
             )
             emitted = True
         if ir_contains_call(module, "list"):
@@ -144,7 +158,101 @@ class TsBackend(JsLikeBackend):
                 "function zip<T>(...arrs: T[][]): T[][] { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }"
             )
             emitted = True
+        if ir_contains_call(module, "tuple"):
+            self._line(
+                "function tuple<T>(x?: Iterable<T> | string): T[] { if (x === undefined) return []; return typeof x === 'string' ? [...x] as unknown as T[] : [...x]; }"
+            )
+            emitted = True
+        if ir_contains_call(module, "set"):
+            self._line(
+                "function set<T>(x?: Iterable<T>): Set<T> { if (x === undefined) return new Set<T>(); return new Set(x); }"
+            )
+            emitted = True
+        if ir_has_tuple_sets(module):
+            self._emit_tuple_set_helpers()
+            emitted = True
+        if ir_has_tuple_maps(module):
+            self._emit_tuple_map_helpers()
+            emitted = True
+        if ir_contains_call(module, "dict"):
+            self._line(
+                "function dict<K, V>(x?: [K, V][]): Map<K, V> { if (x === undefined) return new Map<K, V>(); return new Map(x); }"
+            )
+            emitted = True
+        if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
+            self._emit_map_helpers()
+            emitted = True
+        if ir_contains_call(module, "round"):
+            self._emit_round_helper()
+            emitted = True
         return emitted
+
+    def _emit_tuple_set_helpers(self) -> None:
+        """Emit helper functions for sets with tuple elements."""
+        self._line("function tupleSetAdd<T extends any[]>(s: Set<T>, t: T): void {")
+        self.indent += 1
+        self._line("for (const x of s) if (arrEq(x, t)) return;")
+        self._line("s.add(t);")
+        self.indent -= 1
+        self._line("}")
+        self._line("function tupleSetHas<T extends any[]>(s: Set<T>, t: T): boolean {")
+        self.indent += 1
+        self._line("for (const x of s) if (arrEq(x, t)) return true;")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_tuple_map_helpers(self) -> None:
+        """Emit helper functions for maps with tuple keys."""
+        self._line("function tupleMapGet<K extends any[], V>(m: Map<K, V>, k: K): V | undefined {")
+        self.indent += 1
+        self._line("for (const [key, val] of m) if (arrEq(key, k)) return val;")
+        self._line("return undefined;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function tupleMapHas<K extends any[]>(m: Map<K, any>, k: K): boolean {")
+        self.indent += 1
+        self._line("for (const [key] of m) if (arrEq(key, k)) return true;")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_map_helpers(self) -> None:
+        """Emit helper functions for map operations."""
+        self._line("function mapEq<K, V>(a: Map<K, V>, b: Map<K, V>): boolean {")
+        self.indent += 1
+        self._line("if (a.size !== b.size) return false;")
+        self._line("for (const [k, v] of a) {")
+        self.indent += 1
+        self._line("if (!b.has(k)) return false;")
+        self._line("const bv = b.get(k);")
+        self._line(
+            "if (Array.isArray(v) && Array.isArray(bv)) { if (!arrEq(v as any, bv as any)) return false; }"
+        )
+        self._line("else if (v !== bv) return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_round_helper(self) -> None:
+        """Emit Python-compatible round function with banker's rounding."""
+        self._line("function bankersRound(x: number, n?: number): number {")
+        self.indent += 1
+        self._line("if (n === undefined) {")
+        self.indent += 1
+        self._line("let f = Math.floor(x), c = Math.ceil(x);")
+        self._line("if (Math.abs(x - f) === 0.5) return f % 2 === 0 ? f : c;")
+        self._line("return Math.round(x);")
+        self.indent -= 1
+        self._line("}")
+        self._line("let m = Math.pow(10, n), v = x * m;")
+        self._line("let f = Math.floor(v), c = Math.ceil(v);")
+        self._line("if (Math.abs(v - f) === 0.5) return (f % 2 === 0 ? f : c) / m;")
+        self._line("return Math.round(v) / m;")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_range_function(self) -> None:
         self._line("function range(start: number, end?: number, step?: number): number[] {")
@@ -343,6 +451,31 @@ class TsBackend(JsLikeBackend):
         self.indent -= 1
         self._line("}")
 
+    # --- Statement override for Map assignment ---
+
+    def _emit_stmt(self, stmt: Stmt) -> None:
+        # Handle Map assignment specially
+        match stmt:
+            case Assign(target=LValue() as target, value=value):
+                if isinstance(target, IndexLV) and isinstance(target.obj.typ, Map):
+                    map_type = target.obj.typ
+                    obj_str = self._expr(target.obj)
+                    idx_str = self._coerce_map_key(map_type.key, target.index)
+                    val = self._expr(value)
+                    self._line(f"{obj_str}.set({idx_str}, {val});")
+                    return
+                # Nested map: if target.obj is an Index on a Map with Map value type
+                if isinstance(target, IndexLV) and isinstance(target.obj, Index):
+                    outer_obj = target.obj.obj
+                    if isinstance(outer_obj.typ, Map) and isinstance(outer_obj.typ.value, Map):
+                        inner_map_type = outer_obj.typ.value
+                        obj_str = self._expr(target.obj)
+                        idx_str = self._coerce_map_key(inner_map_type.key, target.index)
+                        val = self._expr(value)
+                        self._line(f"{obj_str}.set({idx_str}, {val});")
+                        return
+        super()._emit_stmt(stmt)
+
     # --- Interface and Field ---
 
     def _emit_interface(self, iface: InterfaceDef) -> None:
@@ -409,7 +542,11 @@ class TsBackend(JsLikeBackend):
     def _var_decl(self, name: str, typ: Type | None, value: Expr | None) -> None:
         ts_type = self._type(typ) if typ else "any"
         if value is not None:
-            val = self._expr(value)
+            # Use declared type for MapLit key coercion (Python key equivalence)
+            if typ is not None and isinstance(typ, Map):
+                val = self._emit_map_lit_coerced(value, typ)
+            else:
+                val = self._expr(value)
             self._line(f"let {_camel(name)}: {ts_type} = {val};")
         else:
             self._line(f"let {_camel(name)}: {ts_type};")

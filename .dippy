@@ -13,6 +13,7 @@ allow go
 allow java
 allow javac
 allow node
+allow npx tsx
 allow perl
 allow php
 allow python

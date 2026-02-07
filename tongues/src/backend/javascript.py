@@ -16,7 +16,13 @@ from src.backend.jslike import (
     _is_bool_int_compare,
     _is_bytes_list_type,
 )
-from src.backend.util import ir_contains_call, ir_has_bytes_ops, is_bytes_type
+from src.backend.util import (
+    ir_contains_call,
+    ir_has_bytes_ops,
+    ir_has_tuple_maps,
+    ir_has_tuple_sets,
+    is_bytes_type,
+)
 from src.ir import (
     BOOL,
     FLOAT,
@@ -31,6 +37,7 @@ from src.ir import (
     Expr,
     Function,
     If,
+    Index,
     IndexLV,
     IntLit,
     InterfaceDef,
@@ -108,17 +115,17 @@ class JsBackend(JsLikeBackend):
                 "function bytes(x) { return Array.isArray(x) ? x.slice() : new Array(x).fill(0); }"
             )
             emitted = True
-        if ir_has_bytes_ops(module):
+        if ir_has_bytes_ops(module) or ir_contains_call(module, "sorted"):
             self._emit_bytes_helpers()
             emitted = True
         if ir_contains_call(module, "sum"):
-            self._line("function sum(arr) { return arr.reduce((a, b) => a + b, 0); }")
+            self._line("function sum(arr) { return [...arr].reduce((a, b) => a + b, 0); }")
             emitted = True
         if ir_contains_call(module, "all"):
-            self._line("function all(arr) { return arr.every(Boolean); }")
+            self._line("function all(arr) { return [...arr].every(Boolean); }")
             emitted = True
         if ir_contains_call(module, "any"):
-            self._line("function any(arr) { return arr.some(Boolean); }")
+            self._line("function any(arr) { return [...arr].some(Boolean); }")
             emitted = True
         if ir_contains_call(module, "sorted"):
             self._line(
@@ -126,7 +133,7 @@ class JsBackend(JsLikeBackend):
             )
             emitted = True
         if ir_contains_call(module, "enumerate"):
-            self._line("function enumerate(arr) { return arr.map((v, i) => [i, v]); }")
+            self._line("function enumerate(arr) { return [...arr].map((v, i) => [i, v]); }")
             emitted = True
         if ir_contains_call(module, "list"):
             self._line("function list(x) { return typeof x === 'string' ? [...x] : [...x]; }")
@@ -136,7 +143,80 @@ class JsBackend(JsLikeBackend):
                 "function zip(...arrs) { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }"
             )
             emitted = True
+        if ir_contains_call(module, "tuple"):
+            self._line(
+                "function tuple(x) { if (x === undefined) return []; return typeof x === 'string' ? [...x] : [...x]; }"
+            )
+            emitted = True
+        if ir_contains_call(module, "set"):
+            self._line(
+                "function set(x) { if (x === undefined) return new Set(); return new Set(x); }"
+            )
+            emitted = True
+        if ir_has_tuple_sets(module):
+            self._emit_tuple_set_helpers()
+            emitted = True
+        if ir_has_tuple_maps(module):
+            self._emit_tuple_map_helpers()
+            emitted = True
+        if ir_contains_call(module, "dict"):
+            self._line(
+                "function dict(x) { if (x === undefined) return new Map(); return new Map(x); }"
+            )
+            emitted = True
+        if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
+            self._emit_map_helpers()
+            emitted = True
         return emitted
+
+    def _emit_tuple_set_helpers(self) -> None:
+        """Emit helper functions for sets with tuple elements."""
+        self._line("function tupleSetAdd(s, t) {")
+        self.indent += 1
+        self._line("for (const x of s) if (arrEq(x, t)) return;")
+        self._line("s.add(t);")
+        self.indent -= 1
+        self._line("}")
+        self._line("function tupleSetHas(s, t) {")
+        self.indent += 1
+        self._line("for (const x of s) if (arrEq(x, t)) return true;")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_tuple_map_helpers(self) -> None:
+        """Emit helper functions for maps with tuple keys."""
+        self._line("function tupleMapGet(m, k) {")
+        self.indent += 1
+        self._line("for (const [key, val] of m) if (arrEq(key, k)) return val;")
+        self._line("return undefined;")
+        self.indent -= 1
+        self._line("}")
+        self._line("function tupleMapHas(m, k) {")
+        self.indent += 1
+        self._line("for (const [key] of m) if (arrEq(key, k)) return true;")
+        self._line("return false;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_map_helpers(self) -> None:
+        """Emit helper functions for map operations."""
+        self._line("function mapEq(a, b) {")
+        self.indent += 1
+        self._line("if (a.size !== b.size) return false;")
+        self._line("for (const [k, v] of a) {")
+        self.indent += 1
+        self._line("if (!b.has(k)) return false;")
+        self._line("const bv = b.get(k);")
+        self._line(
+            "if (Array.isArray(v) && Array.isArray(bv)) { if (!arrEq(v, bv)) return false; }"
+        )
+        self._line("else if (v !== bv) return false;")
+        self.indent -= 1
+        self._line("}")
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_range_helper(self) -> None:
         self._line("function range(start, end, step) {")
@@ -158,7 +238,7 @@ class JsBackend(JsLikeBackend):
         self._line("}")
 
     def _emit_round_helper(self) -> None:
-        self._line("function round(x, n) {")
+        self._line("function bankersRound(x, n) {")
         self.indent += 1
         self._line("if (n === undefined) {")
         self.indent += 1
@@ -365,7 +445,11 @@ class JsBackend(JsLikeBackend):
 
     def _var_decl(self, name: str, typ: Type | None, value: Expr | None) -> None:
         if value is not None:
-            val = self._expr(value)
+            # Use declared type for MapLit key coercion (Python key equivalence)
+            if typ is not None and isinstance(typ, Map):
+                val = self._emit_map_lit_coerced(value, typ)
+            else:
+                val = self._expr(value)
             self._line(f"let {_camel(name)} = {val};")
         else:
             self._line(f"let {_camel(name)};")
@@ -424,11 +508,22 @@ class JsBackend(JsLikeBackend):
         match stmt:
             case Assign(target=LValue() as target, value=value):
                 if isinstance(target, IndexLV) and isinstance(target.obj.typ, Map):
+                    map_type = target.obj.typ
                     obj_str = self._expr(target.obj)
-                    idx_str = self._expr(target.index)
+                    idx_str = self._coerce_map_key(map_type.key, target.index)
                     val = self._expr(value)
                     self._line(f"{obj_str}.set({idx_str}, {val});")
                     return
+                # Nested map: if target.obj is an Index on a Map with Map value type
+                if isinstance(target, IndexLV) and isinstance(target.obj, Index):
+                    outer_obj = target.obj.obj
+                    if isinstance(outer_obj.typ, Map) and isinstance(outer_obj.typ.value, Map):
+                        inner_map_type = outer_obj.typ.value
+                        obj_str = self._expr(target.obj)
+                        idx_str = self._coerce_map_key(inner_map_type.key, target.index)
+                        val = self._expr(value)
+                        self._line(f"{obj_str}.set({idx_str}, {val});")
+                        return
                 # Check if variable was hoisted
                 if isinstance(target, VarLV):
                     var_name = target.name

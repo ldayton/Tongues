@@ -50,6 +50,14 @@ uv run --directory tongues pytest ../tests/test_apptests.py [OPTIONS]
 | `--ignore-skips`   | Run tests in the known-failure skip list               |
 | `--summary`        | Print a summary table of apptest pass/fail counts      |
 
+### Language Test Summary
+
+To get a summary table of apptest status for specific languages:
+
+```bash
+uv run --directory tongues pytest ../tests/test_apptests.py --target javascript --target typescript --target ruby --ignore-skips --summary
+```
+
 ## CI
 
 CI runs `just check` (fmt, lint, subset, test-codegen, then test-apptests for all languages).

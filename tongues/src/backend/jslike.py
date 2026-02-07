@@ -2,6 +2,11 @@
 
 Shared logic for JS and TS code generation. Subclasses override hooks
 for type annotations and language-specific features.
+
+Known limitation: Dict key coercion (int/float/bool equivalence) only works for
+VarDecl initializers and direct Index/method access. Not covered: Assign, function
+args, return statements, dict comprehensions, nested contexts. Proper fix requires
+frontend type propagation.
 """
 
 from __future__ import annotations
@@ -117,6 +122,7 @@ class JsLikeBackend:
         self.current_struct: str | None = None
         self.struct_fields: dict[str, list[str]] = {}
         self._struct_field_count: dict[str, int] = {}
+        self._var_types: dict[str, Type] = {}
 
     def emit(self, module: Module) -> str:
         """Emit code from IR Module."""
@@ -124,6 +130,7 @@ class JsLikeBackend:
         self.lines = []
         self.struct_fields = {}
         self._struct_field_count = {}
+        self._var_types = {}
         for struct in module.structs:
             self.struct_fields[struct.name] = [f.name for f in struct.fields]
             self._struct_field_count[struct.name] = len(struct.fields)
@@ -345,6 +352,8 @@ class JsLikeBackend:
         self._hoisted_vars_hook(stmt)
         match stmt:
             case VarDecl(name=name, typ=typ, value=value):
+                if typ is not None:
+                    self._var_types[name] = typ
                 self._var_decl(name, typ, value)
             case Assign(target=target, value=value):
                 if isinstance(target, SliceLV):
@@ -365,13 +374,43 @@ class JsLikeBackend:
             case OpAssign(target=target, op=op, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
-                # For array += iterable, use push instead of + which concatenates strings
+                # Get target type for tuple vs list distinction
+                target_type = None
+                if isinstance(target, VarLV):
+                    target_type = self._var_types.get(target.name)
+                # For list/array += iterable, use push (mutates)
+                # For tuple += iterable, use concatenation (immutable, reassigns)
                 if op == "+" and (
                     _is_array_type(value.typ)
                     or value.typ == STRING
                     or (isinstance(value, Call) and value.func == "range")
                 ):
-                    self._line(f"{lv}.push(...{val});")
+                    # Tuples are immutable - use concatenation, not push
+                    if isinstance(value.typ, Tuple) or isinstance(target_type, Tuple):
+                        self._line(f"{lv} = [...{lv}, ...{val}];")
+                    else:
+                        self._line(f"{lv}.push(...{val});")
+                elif op == "*" and isinstance(target_type, Tuple):
+                    # Tuple *= int creates new tuple (immutable)
+                    self._line(f"{lv} = Array({val} > 0 ? {val} : 0).fill({lv}).flat();")
+                elif isinstance(target_type, Set) or isinstance(value.typ, Set):
+                    # Set augmented assignment operators
+                    if op == "|":
+                        self._line(f"for (const x of {val}) {lv}.add(x);")
+                    elif op == "&":
+                        self._line(f"for (const x of [...{lv}]) if (!{val}.has(x)) {lv}.delete(x);")
+                    elif op == "-":
+                        self._line(f"for (const x of {val}) {lv}.delete(x);")
+                    elif op == "^":
+                        self._line(
+                            f"for (const x of {val}) if ({lv}.has(x)) {lv}.delete(x); else {lv}.add(x);"
+                        )
+                    else:
+                        self._line(f"{lv} {op}= {val};")
+                elif isinstance(target_type, Map) or isinstance(value.typ, Map):
+                    # Map augmented assignment operators
+                    if op == "|":
+                        self._line(f"{val}.forEach((v, k) => {lv}.set(k, v));")
                 else:
                     self._line(f"{lv} {op}= {val};")
             case NoOp():
@@ -604,7 +643,11 @@ class JsLikeBackend:
 
     def _emit_for_of(self, value: str, iter_expr: str, iter_type: Type | None) -> None:
         """Emit for-of loop header. Override for TS type casting."""
-        self._line(f"for (const {_camel(value)} of {iter_expr}) {{")
+        # Iterating over Map yields keys (like Python dict)
+        if isinstance(iter_type, Map):
+            self._line(f"for (const {_camel(value)} of {iter_expr}.keys()) {{")
+        else:
+            self._line(f"for (const {_camel(value)} of {iter_expr}) {{")
 
     def _emit_for_tuple_destructure(
         self, index: str, value: str, iter_expr: str, iter_type: Type | None
@@ -646,6 +689,12 @@ class JsLikeBackend:
         accumulator = self._expr(expr.obj)
         iter_expr = self._expr(iterable)
         transform = self._expr(transform_expr)
+        # Spread sets to arrays since Set doesn't have .map()
+        if _is_set_expr(iterable):
+            iter_expr = f"[...{iter_expr}]"
+        # Map iteration yields keys
+        elif isinstance(iterable.typ, Map):
+            iter_expr = f"[...{iter_expr}.keys()]"
         self._line(f"{accumulator}.push(...{iter_expr}.map({_camel(value)} => {transform}));")
         return True
 
@@ -899,27 +948,42 @@ class JsLikeBackend:
             case Call(func="abs", args=[arg]):
                 return f"Math.abs({self._expr(arg)})"
             case Call(func="min", args=args):
-                if len(args) == 1 and _is_array_type(args[0].typ):
-                    return f"Math.min(...{self._expr(args[0])})"
+                if len(args) == 1:
+                    arg = args[0]
+                    if isinstance(arg.typ, Map):
+                        return f"[...{self._expr(arg)}.keys()].reduce((a, b) => a < b ? a : b)"
+                    if _is_array_type(arg.typ) or _is_set_expr(arg):
+                        arg_str = self._expr(arg)
+                        # Use reduce for string arrays (d.keys() etc)
+                        if isinstance(arg.typ, Slice) and arg.typ.element == STRING:
+                            return f"[...{arg_str}].reduce((a, b) => a < b ? a : b)"
+                        return f"Math.min(...{arg_str})"
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Math.min({args_str})"
             case Call(func="max", args=args):
-                if len(args) == 1 and _is_array_type(args[0].typ):
-                    return f"Math.max(...{self._expr(args[0])})"
+                if len(args) == 1:
+                    arg = args[0]
+                    if isinstance(arg.typ, Map):
+                        return f"[...{self._expr(arg)}.keys()].reduce((a, b) => a > b ? a : b)"
+                    if _is_array_type(arg.typ) or _is_set_expr(arg):
+                        arg_str = self._expr(arg)
+                        # Use reduce for string arrays (d.keys() etc)
+                        if isinstance(arg.typ, Slice) and arg.typ.element == STRING:
+                            return f"[...{arg_str}].reduce((a, b) => a > b ? a : b)"
+                        return f"Math.max(...{arg_str})"
                 args_str = ", ".join(self._expr(a) for a in args)
                 return f"Math.max({args_str})"
             case Call(func="round", args=[arg]):
-                return f"Math.round({self._expr(arg)})"
-            case Call(func="round", args=[arg, IntLit(value=n)]):
-                mult = 10**n
-                return f"Math.round({self._expr(arg)} * {mult}) / {mult}"
-            case Call(func="round", args=[arg, precision]):
-                prec = self._expr(precision)
-                return f"Math.round({self._expr(arg)} * 10 ** {prec}) / 10 ** {prec}"
+                return f"bankersRound({self._expr(arg)})"
+            case Call(func="round", args=[arg, ndigits]):
+                return f"bankersRound({self._expr(arg)}, {self._expr(ndigits)})"
             case Call(func="int", args=[arg]):
                 return f"Math.trunc({self._expr(arg)})"
             case Call(func="divmod", args=[a, b]):
-                return f"[Math.floor({self._expr(a)} / {self._expr(b)}), {self._expr(a)} % {self._expr(b)}]"
+                a_str, b_str = self._expr(a), self._expr(b)
+                if self._is_known_non_negative(a) and self._is_known_non_negative(b):
+                    return f"[Math.floor({a_str} / {b_str}), {a_str} % {b_str}]"
+                return f"[Math.floor({a_str} / {b_str}), (({a_str} % {b_str}) + {b_str}) % {b_str}]"
             case Call(func="pow", args=[base, exp]):
                 base_str = self._pow_base(base)
                 exp_str = self._pow_exp(exp)
@@ -947,11 +1011,67 @@ class JsLikeBackend:
             case MethodCall(obj=obj, method="get", args=[key], receiver_type=receiver_type) if (
                 isinstance(receiver_type, Map)
             ):
-                return self._map_get(obj, key, None)
+                return self._map_get(obj, key, None, receiver_type.key)
             case MethodCall(
                 obj=obj, method="get", args=[key, default], receiver_type=receiver_type
             ) if isinstance(receiver_type, Map):
-                return self._map_get(obj, key, default)
+                return self._map_get(obj, key, default, receiver_type.key)
+            case MethodCall(obj=obj, method="items", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
+                return f"[...{self._expr(obj)}.entries()]"
+            case MethodCall(obj=obj, method="keys", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
+                return f"[...{self._expr(obj)}.keys()]"
+            case MethodCall(obj=obj, method="values", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
+                return f"[...{self._expr(obj)}.values()]"
+            case MethodCall(obj=obj, method="copy", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
+                return f"new Map({self._expr(obj)})"
+            case MethodCall(obj=obj, method="pop", args=[key], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
+                obj_str = self._expr(obj)
+                key_str = self._coerce_map_key(receiver_type.key, key)
+                return f"((v = {obj_str}.get({key_str})), {obj_str}.delete({key_str}), v)"
+            case MethodCall(
+                obj=obj, method="pop", args=[key, default], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                key_str = self._coerce_map_key(receiver_type.key, key)
+                default_str = self._expr(default)
+                return f"({obj_str}.has({key_str}) ? ((v = {obj_str}.get({key_str})), {obj_str}.delete({key_str}), v) : {default_str})"
+            case MethodCall(
+                obj=obj, method="setdefault", args=[key], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                key_str = self._coerce_map_key(receiver_type.key, key)
+                return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : ({obj_str}.set({key_str}, null), null))"
+            case MethodCall(
+                obj=obj, method="setdefault", args=[key, default], receiver_type=receiver_type
+            ) if isinstance(receiver_type, Map):
+                obj_str = self._expr(obj)
+                key_str = self._coerce_map_key(receiver_type.key, key)
+                default_str = self._expr(default)
+                return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : ({obj_str}.set({key_str}, {default_str}), {default_str}))"
+            case MethodCall(obj=obj, method="update", args=args, receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map) and len(args) >= 1
+            ):
+                obj_str = self._expr(obj)
+                updates = []
+                for arg in args:
+                    arg_str = self._expr(arg)
+                    updates.append(f"{arg_str}.forEach((v, k) => {obj_str}.set(k, v))")
+                return f"(({', '.join(updates)}), null)"
+            case MethodCall(obj=obj, method="popitem", args=[], receiver_type=receiver_type) if (
+                isinstance(receiver_type, Map)
+            ):
+                obj_str = self._expr(obj)
+                return f"((e = [...{obj_str}.entries()].pop()), {obj_str}.delete(e[0]), e)"
             case MethodCall(
                 obj=obj, method="replace", args=[StringLit(value=old_str), new], receiver_type=_
             ):
@@ -976,10 +1096,27 @@ class JsLikeBackend:
                 _is_array_type(receiver_type)
             ):
                 return f"{self._expr(obj)}.splice({self._expr(idx)}, 1)[0]"
+            case MethodCall(obj=obj, method="fromkeys", args=args) if (
+                isinstance(obj, Var) and obj.name == "dict"
+            ):
+                keys_str = self._expr(args[0])
+                if len(args) >= 2:
+                    val_str = self._expr(args[1])
+                    # Python shares the same value object across all keys (mutable gotcha)
+                    return f"((_v) => new Map([...{keys_str}].map(k => [k, _v])))({val_str})"
+                return f"new Map([...{keys_str}].map(k => [k, null]))"
             case MethodCall(
                 obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
             ):
                 return self._method_call(obj, method, args, receiver_type, reverse=reverse)
+            case StaticCall(on_type=on_type, method="fromkeys", args=args) if isinstance(
+                on_type, Map
+            ):
+                keys_str = self._expr(args[0])
+                if len(args) >= 2:
+                    val_str = self._expr(args[1])
+                    return f"((_v) => new Map([...{keys_str}].map(k => [k, _v])))({val_str})"
+                return f"new Map([...{keys_str}].map(k => [k, null]))"
             case StaticCall(on_type=on_type, method=method, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 type_name = self._type_name_for_check(on_type)
@@ -994,6 +1131,20 @@ class JsLikeBackend:
                 left_str = self._maybe_paren(left, "/", is_left=True)
                 right_str = self._maybe_paren(right, "/", is_left=False)
                 return f"Math.floor({left_str} / {right_str})"
+            case BinaryOp(op="&&", left=left_expr, right=right_expr) if self._is_value_and_or(
+                left_expr
+            ):
+                # Python's `and` returns first falsy value or last value
+                _, left_str, cond = self._extract_and_or_value(left_expr)
+                right_str = self._and_or_operand(right_expr)
+                return f"({cond} ? {right_str} : {left_str})"
+            case BinaryOp(op="||", left=left_expr, right=right_expr) if self._is_value_and_or(
+                left_expr
+            ):
+                # Python's `or` returns first truthy value or last value
+                _, left_str, cond = self._extract_and_or_value(left_expr)
+                right_str = self._and_or_operand(right_expr)
+                return f"({cond} ? {left_str} : {right_str})"
             case BinaryOp(op=op, left=left, right=right):
                 return self._binary_expr(op, left, right)
             case ChainedCompare(operands=operands, ops=ops):
@@ -1045,6 +1196,23 @@ class JsLikeBackend:
                 if isinstance(tested_type, Primitive):
                     js_typeof = _typeof_check(tested_type.kind)
                     return f"typeof {self._expr(inner)} === '{js_typeof}'"
+                # Tuples and lists are both arrays in JS
+                if isinstance(tested_type, (Tuple, Slice, Array)):
+                    return f"Array.isArray({self._expr(inner)})"
+                # isinstance(x, set) -> x instanceof Set
+                if isinstance(tested_type, Set):
+                    return f"{self._expr(inner)} instanceof Set"
+                # isinstance(x, dict) -> x instanceof Map
+                if isinstance(tested_type, Map):
+                    return f"{self._expr(inner)} instanceof Map"
+                # isinstance(x, tuple) or isinstance(x, list) -> Array.isArray
+                if isinstance(tested_type, (StructRef, InterfaceRef)):
+                    if tested_type.name in ("tuple", "list"):
+                        return f"Array.isArray({self._expr(inner)})"
+                    if tested_type.name == "set":
+                        return f"{self._expr(inner)} instanceof Set"
+                    if tested_type.name == "dict":
+                        return f"{self._expr(inner)} instanceof Map"
                 type_name = self._type_name_for_check(tested_type)
                 return f"{self._expr(inner)} instanceof {type_name}"
             case IsNil(expr=inner, negated=negated):
@@ -1061,13 +1229,20 @@ class JsLikeBackend:
             case SliceLit(elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
                 return f"[{elems}]"
-            case MapLit(entries=entries):
+            case MapLit(entries=entries) as ml:
                 if not entries:
                     return "new Map()"
-                pairs = ", ".join(f"[{self._expr(k)}, {self._expr(v)}]" for k, v in entries)
+                # Use ml.typ.key for coercion (from annotation, not inference)
+                map_key_type = ml.typ.key if isinstance(ml.typ, Map) else ml.key_type
+                pairs = ", ".join(
+                    f"[{self._coerce_map_key(map_key_type, k)}, {self._expr(v)}]"
+                    for k, v in entries
+                )
                 return f"new Map([{pairs}])"
-            case SetLit(elements=elements):
+            case SetLit(element_type=element_type, elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
+                if isinstance(element_type, Tuple):
+                    return f"(function() {{ const s = new Set(); for (const t of [{elems}]) tupleSetAdd(s, t); return s; }})()"
                 return f"new Set([{elems}])"
             case StructLit(struct_name=struct_name, fields=fields):
                 return self._struct_lit(struct_name, fields)
@@ -1112,20 +1287,68 @@ class JsLikeBackend:
             return f"{value:g}".replace("e+", "e")
         return str(value)
 
+    def _coerce_map_key(self, map_key_type: Type, key: Expr) -> str:
+        """Coerce key to match map's declared key type (Python key equivalence).
+
+        In Python, True==1 and False==0 as dict keys. JS Map treats them as different.
+        This coerces bool keys to int when the map's key type is int.
+        """
+        if not isinstance(map_key_type, Primitive):
+            return self._expr(key)
+        map_key = map_key_type.kind
+        # Handle literals by checking node type
+        if isinstance(key, BoolLit):
+            if map_key == "int":
+                return "1" if key.value else "0"
+            if map_key == "float":
+                return "1.0" if key.value else "0.0"
+        elif isinstance(key, IntLit):
+            if map_key == "float":
+                return f"{key.value}.0"
+        elif isinstance(key, FloatLit):
+            if map_key == "int" and key.value == int(key.value):
+                return str(int(key.value))
+        # For non-literals, check key.typ for coercion
+        key_code = self._expr(key)
+        if not isinstance(key.typ, Primitive):
+            return key_code
+        key_typ = key.typ.kind
+        if map_key == key_typ:
+            return key_code
+        # BOOL variable → INT
+        if map_key == "int" and key_typ == "bool":
+            return f"({key_code} ? 1 : 0)"
+        # FLOAT variable → INT
+        if map_key == "int" and key_typ == "float":
+            return f"Math.trunc({key_code})"
+        # INT variable → FLOAT (JS already treats these the same)
+        # BOOL variable → FLOAT
+        if map_key == "float" and key_typ == "bool":
+            return f"({key_code} ? 1.0 : 0.0)"
+        return key_code
+
     def _index_expr(self, obj: Expr, index: Expr, typ: Type | None) -> str:
         """Emit index expression with Map handling."""
         obj_str = self._expr(obj)
-        idx_str = self._expr(index)
         obj_type = obj.typ
         if (
             obj_type == STRING
             and isinstance(typ, Primitive)
             and typ.kind in ("int", "byte", "rune")
         ):
-            return f"{obj_str}.codePointAt({idx_str})"
+            return f"{obj_str}.codePointAt({self._expr(index)})"
         if isinstance(obj_type, Map):
+            if isinstance(obj_type.key, Tuple):
+                return f"tupleMapGet({obj_str}, {self._expr(index)})"
+            idx_str = self._coerce_map_key(obj_type.key, index)
             return f"{obj_str}.get({idx_str})"
-        return f"{obj_str}[{idx_str}]"
+        # Nested map access: if indexing result of another Map index, use .get()
+        if isinstance(obj, Index) and isinstance(obj.obj.typ, Map):
+            value_type = obj.obj.typ.value
+            if isinstance(value_type, Map):
+                idx_str = self._coerce_map_key(value_type.key, index)
+                return f"{obj_str}.get({idx_str})"
+        return f"{obj_str}[{self._expr(index)}]"
 
     def _slice_expr(
         self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
@@ -1178,10 +1401,23 @@ class JsLikeBackend:
             return f"arrJoin({self._expr(arr)}, {self._expr(sep)})"
         return f"{self._expr(arr)}.join({self._expr(sep)})"
 
-    def _map_get(self, obj: Expr, key: Expr, default: Expr | None) -> str:
+    def _emit_map_lit_coerced(self, value: Expr, target_type: Type) -> str:
+        """Emit expression, coercing MapLit keys if target type differs from literal type."""
+        if not isinstance(value, MapLit) or not isinstance(target_type, Map):
+            return self._expr(value)
+        # Use target type's key type for coercion (from annotation, not literal inference)
+        if not value.entries:
+            return "new Map()"
+        pairs = ", ".join(
+            f"[{self._coerce_map_key(target_type.key, k)}, {self._expr(v)}]"
+            for k, v in value.entries
+        )
+        return f"new Map([{pairs}])"
+
+    def _map_get(self, obj: Expr, key: Expr, default: Expr | None, key_type: Type) -> str:
         """Emit Map.get expression with proper null handling."""
         obj_str = self._expr(obj)
-        key_str = self._expr(key)
+        key_str = self._coerce_map_key(key_type, key)
         if default is not None:
             # Use ternary to distinguish null value from missing key
             return f"({obj_str}.has({key_str}) ? {obj_str}.get({key_str}) : {self._expr(default)})"
@@ -1193,7 +1429,6 @@ class JsLikeBackend:
         method: str,
         args: list[Expr],
         receiver_type: Type,
-        *,
         reverse: bool = False,
     ) -> str:
         """Emit method call with bytes handling."""
@@ -1260,6 +1495,56 @@ class JsLikeBackend:
                 return f"({obj_str}.sort((a, b) => a < b ? -1 : a > b ? 1 : 0), null)"
             if method == "reverse" and len(args) == 0:
                 return f"({obj_str}.reverse(), null)"
+        # Set methods
+        if isinstance(receiver_type, Set):
+            obj_str = self._expr(obj)
+            if method == "remove" and len(args) == 1:
+                return f"({obj_str}.delete({self._expr(args[0])}), null)"
+            if method == "discard" and len(args) == 1:
+                return f"({obj_str}.delete({self._expr(args[0])}), null)"
+            if method == "pop" and len(args) == 0:
+                return f"((v = {obj_str}.values().next().value), {obj_str}.delete(v), v)"
+            if method == "copy" and len(args) == 0:
+                return f"new Set({obj_str})"
+            if method == "union" and len(args) >= 1:
+                union_parts = [f"...{obj_str}"]
+                for arg in args:
+                    union_parts.append(f"...{self._expr(arg)}")
+                return f"new Set([{', '.join(union_parts)}])"
+            if method == "intersection" and len(args) >= 1:
+                result = f"[...{obj_str}]"
+                for arg in args:
+                    arg_str = self._expr(arg)
+                    result = f"{result}.filter(x => {arg_str}.has(x))"
+                return f"new Set({result})"
+            if method == "difference" and len(args) >= 1:
+                result = f"[...{obj_str}]"
+                for arg in args:
+                    arg_str = self._expr(arg)
+                    result = f"{result}.filter(x => !{arg_str}.has(x))"
+                return f"new Set({result})"
+            if method == "symmetric_difference" and len(args) == 1:
+                other = self._expr(args[0])
+                return f"new Set([...{obj_str}].filter(x => !{other}.has(x)).concat([...{other}].filter(x => !{obj_str}.has(x))))"
+            if method == "issubset" and len(args) == 1:
+                other = self._expr(args[0])
+                return f"[...{obj_str}].every(x => {other}.has(x))"
+            if method == "issuperset" and len(args) == 1:
+                other = self._expr(args[0])
+                return f"[...{other}].every(x => {obj_str}.has(x))"
+            if method == "isdisjoint" and len(args) == 1:
+                other = self._expr(args[0])
+                return f"![...{obj_str}].some(x => {other}.has(x))"
+            if method == "update" and len(args) >= 1:
+                updates = []
+                for arg in args:
+                    arg_str = self._expr(arg)
+                    # For dicts/Maps, update adds keys not key-value pairs
+                    if isinstance(arg.typ, Map):
+                        updates.append(f"[...{arg_str}.keys()].forEach(x => {obj_str}.add(x))")
+                    else:
+                        updates.append(f"[...{arg_str}].forEach(x => {obj_str}.add(x))")
+                return f"(({', '.join(updates)}), null)"
         # Handle string.split() with no args - splits on whitespace, removes empties
         if receiver_type == STRING and method == "split" and len(args) == 0:
             return f"{self._expr(obj)}.trim().split(/\\s+/).filter(Boolean)"
@@ -1336,19 +1621,87 @@ class JsLikeBackend:
     def _truthy_expr(self, e: Expr) -> str:
         inner_str = self._expr(e)
         inner_type = e.typ
-        if isinstance(inner_type, (Map, Set)):
+        if isinstance(inner_type, Map) or _is_set_expr(e):
             return f"({inner_str}.size > 0)"
-        if isinstance(inner_type, Slice) or inner_type == STRING:
+        if isinstance(inner_type, (Slice, Tuple, Array)) or inner_type == STRING:
             return f"({inner_str}.length > 0)"
-        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Map, Set)):
+        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Map):
             return f"({inner_str} != null && {inner_str}.size > 0)"
-        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Slice):
+        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, Set):
+            return f"({inner_str} != null && {inner_str}.size > 0)"
+        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Tuple, Array)):
             return f"({inner_str} != null && {inner_str}.length > 0)"
         if inner_type == INT or (isinstance(inner_type, Primitive) and inner_type.kind == "float"):
             if isinstance(e, BinaryOp):
                 return f"(({inner_str}) !== 0)"
             return f"({inner_str} !== 0)"
         return f"({inner_str} != null)"
+
+    def _is_known_non_negative(self, expr: Expr) -> bool:
+        """Check if expression is known to be non-negative at compile time."""
+        if isinstance(expr, IntLit):
+            return expr.value >= 0
+        if isinstance(expr, FloatLit):
+            return expr.value >= 0
+        # Len always returns non-negative
+        if isinstance(expr, Len):
+            return True
+        # Absolute value is always non-negative
+        if isinstance(expr, Call) and expr.func == "abs":
+            return True
+        return False
+
+    def _is_value_and_or(self, expr: Expr) -> bool:
+        """Check if expression is a Truthy or value-returning and/or."""
+        if isinstance(expr, Truthy):
+            return True
+        if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
+            return self._is_value_and_or(expr.left)
+        return False
+
+    def _js_truthy_check(self, expr_str: str, typ: Type) -> str:
+        """Generate JS truthy check for a given type."""
+        if isinstance(typ, (Slice, Tuple, Array)):
+            return f"{expr_str}.length > 0"
+        if isinstance(typ, Map) or isinstance(typ, Set):
+            return f"{expr_str}.size > 0"
+        if isinstance(typ, Optional):
+            return f"{expr_str} != null"
+        if typ == STRING:
+            return f"{expr_str}.length > 0"
+        if typ == INT or (isinstance(typ, Primitive) and typ.kind == "float"):
+            return f"{expr_str} !== 0"
+        return f"!!{expr_str}"
+
+    def _extract_and_or_value(self, expr: Expr) -> tuple[Expr, str, str]:
+        """Extract value, value string, and truthy check from and/or operand."""
+        if isinstance(expr, Truthy):
+            val = expr.expr
+            val_str = self._expr(val)
+            cond = self._js_truthy_check(val_str, val.typ)
+            return val, val_str, cond
+        val_str = self._expr(expr)
+        cond = self._js_truthy_check(val_str, expr.typ)
+        return expr, val_str, cond
+
+    def _and_or_operand(self, expr: Expr) -> str:
+        """Extract value from and/or operand, handling Truthy wrapper."""
+        if isinstance(expr, Truthy):
+            return self._expr(expr.expr)
+        return self._expr(expr)
+
+    def _set_operand(self, expr: Expr) -> str:
+        """Emit set operand, wrapping dict views in Sets and handling tuple elements."""
+        expr_str = self._expr(expr)
+        if _is_tuple_set_expr(expr):
+            # Sets with tuple elements already use tupleSetAdd in their construction
+            # Dict items views need wrapping
+            if _is_dict_items_view(expr):
+                return f"(function() {{ const s = new Set(); for (const t of {expr_str}) tupleSetAdd(s, t); return s; }})()"
+            return expr_str
+        if _is_dict_view_expr(expr):
+            return f"new Set({expr_str})"
+        return expr_str
 
     def _binary_expr(self, op: str, left: Expr, right: Expr) -> str:
         """Emit binary expression with bytes handling."""
@@ -1396,6 +1749,77 @@ class JsLikeBackend:
                 if _is_array_type(left.typ):
                     return f"Array({right_str} > 0 ? {right_str} : 0).fill({left_str}).flat()"
                 return f"Array({left_str} > 0 ? {left_str} : 0).fill({right_str}).flat()"
+        # Handle Set comparison and operators
+        # For equality, both sides must be sets; otherwise use default comparison
+        if _is_set_expr(left) and _is_set_expr(right):
+            is_tuple_set = _is_tuple_set_expr(left) or _is_tuple_set_expr(right)
+            if is_tuple_set:
+                left_str = self._set_operand(left)  # Use _set_operand for consistency
+                right_str = self._set_operand(right)
+                if op == "==":
+                    return f"(({left_str}.size === {right_str}.size) && [...{left_str}].every(x => tupleSetHas({right_str}, x)))"
+                if op == "!=":
+                    return f"!(({left_str}.size === {right_str}.size) && [...{left_str}].every(x => tupleSetHas({right_str}, x)))"
+            else:
+                left_str = self._set_operand(left)
+                right_str = self._set_operand(right)
+                if op == "==":
+                    return f"(({left_str}.size === {right_str}.size) && [...{left_str}].every(x => {right_str}.has(x)))"
+                if op == "!=":
+                    return f"!(({left_str}.size === {right_str}.size) && [...{left_str}].every(x => {right_str}.has(x)))"
+        if _is_set_expr(left) or _is_set_expr(right):
+            # Use tuple-aware operations for dict items views
+            is_tuple_set = _is_tuple_set_expr(left) or _is_tuple_set_expr(right)
+            left_str = self._set_operand(left)
+            right_str = self._set_operand(right)
+            if is_tuple_set:
+                if op == "|":
+                    return f"(function() {{ const s = new Set(); for (const t of [...{left_str}, ...{right_str}]) tupleSetAdd(s, t); return s; }})()"
+                if op == "&":
+                    return f"(function() {{ const s = new Set(); for (const t of [...{left_str}]) if (tupleSetHas({right_str}, t)) tupleSetAdd(s, t); return s; }})()"
+                if op == "-":
+                    return f"(function() {{ const s = new Set(); for (const t of [...{left_str}]) if (!tupleSetHas({right_str}, t)) tupleSetAdd(s, t); return s; }})()"
+                if op == "^":
+                    return f"(function() {{ const s = new Set(); for (const t of [...{left_str}]) if (!tupleSetHas({right_str}, t)) tupleSetAdd(s, t); for (const t of [...{right_str}]) if (!tupleSetHas({left_str}, t)) tupleSetAdd(s, t); return s; }})()"
+                if op == "<=":
+                    return f"[...{left_str}].every(x => tupleSetHas({right_str}, x))"
+                if op == "<":
+                    return f"({left_str}.size < {right_str}.size && [...{left_str}].every(x => tupleSetHas({right_str}, x)))"
+                if op == ">=":
+                    return f"[...{right_str}].every(x => tupleSetHas({left_str}, x))"
+                if op == ">":
+                    return f"({left_str}.size > {right_str}.size && [...{right_str}].every(x => tupleSetHas({left_str}, x)))"
+            if op == "|":
+                return f"new Set([...{left_str}, ...{right_str}])"
+            if op == "&":
+                return f"new Set([...{left_str}].filter(x => {right_str}.has(x)))"
+            if op == "-":
+                return f"new Set([...{left_str}].filter(x => !{right_str}.has(x)))"
+            if op == "^":
+                return f"new Set([...{left_str}].filter(x => !{right_str}.has(x)).concat([...{right_str}].filter(x => !{left_str}.has(x))))"
+            if op == "<=":
+                return f"[...{left_str}].every(x => {right_str}.has(x))"
+            if op == "<":
+                return f"({left_str}.size < {right_str}.size && [...{left_str}].every(x => {right_str}.has(x)))"
+            if op == ">=":
+                return f"[...{right_str}].every(x => {left_str}.has(x))"
+            if op == ">":
+                return f"({left_str}.size > {right_str}.size && [...{right_str}].every(x => {left_str}.has(x)))"
+        # Handle Map comparison and merge operators
+        if _is_map_expr(left) and _is_map_expr(right):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "==":
+                return f"mapEq({left_str}, {right_str})"
+            if op == "!=":
+                return f"!mapEq({left_str}, {right_str})"
+            if op == "|":
+                return f"new Map([...{left_str}, ...{right_str}])"
+        if _is_map_expr(left) or _is_map_expr(right):
+            left_str = self._expr(left)
+            right_str = self._expr(right)
+            if op == "|":
+                return f"new Map([...{left_str}, ...{right_str}])"
         # Handle string repetition: "a" * 3 -> "a".repeat(3), negative -> ""
         if op == "*":
             if left.typ == STRING:
@@ -1404,6 +1828,14 @@ class JsLikeBackend:
             if right.typ == STRING:
                 n = self._expr(left)
                 return f"{self._expr(right)}.repeat(Math.max(0, {n}))"
+        # Python modulo semantics: result has sign of divisor (differs from JS)
+        if op == "%":
+            left_str = self._maybe_paren(left, op, is_left=True)
+            right_str = self._maybe_paren(right, op, is_left=False)
+            # Only need Python semantics if either operand might be negative
+            if self._is_known_non_negative(left) and self._is_known_non_negative(right):
+                return f"{left_str} % {right_str}"
+            return f"(({left_str} % {right_str}) + {right_str}) % {right_str}"
         js_op = _binary_op(op)
         if op in ("==", "!=") and _is_bool_int_compare(left, right):
             js_op = op
@@ -1485,7 +1917,7 @@ class JsLikeBackend:
 
     def _len_expr(self, inner: Expr) -> str:
         inner_type = inner.typ
-        if isinstance(inner_type, (Map, Set)):
+        if isinstance(inner_type, Map) or _is_set_expr(inner):
             return f"{self._expr(inner)}.size"
         # Use spread for strings to properly count code points (emoji support)
         if inner_type == STRING:
@@ -1567,10 +1999,21 @@ class JsLikeBackend:
         container_str = self._expr(container)
         container_type = container.typ
         neg = "!" if negated else ""
-        if isinstance(container_type, (Set, Map)):
+        if isinstance(container_type, Set):
+            if isinstance(container_type.element, Tuple):
+                return f"{neg}tupleSetHas({container_str}, {item_str})"
             return f"{neg}{container_str}.has({item_str})"
+        if isinstance(container_type, Map):
+            if isinstance(container_type.key, Tuple):
+                return f"{neg}tupleMapHas({container_str}, {item_str})"
+            coerced_key = self._coerce_map_key(container_type.key, item)
+            return f"{neg}{container_str}.has({coerced_key})"
         if is_bytes_type(container_type):
             return f"{neg}arrContains({container_str}, {item_str})"
+        # Tuple in list of tuples needs value-based comparison
+        if isinstance(item.typ, Tuple) and isinstance(container_type, (Slice, Array)):
+            if isinstance(container_type.element, Tuple):
+                return f"{neg}{container_str}.some(x => arrEq(x, {item_str}))"
         return f"{neg}{container_str}.includes({item_str})"
 
     def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
@@ -1754,6 +2197,76 @@ def _is_array_type(typ: Type) -> bool:
         return True
     if isinstance(typ, Pointer) and isinstance(typ.target, (Slice, Array, Tuple)):
         return True
+    return False
+
+
+def _is_dict_view_expr(expr: Expr) -> bool:
+    """Check if expression is a dict view (keys or items method on a Map)."""
+    if isinstance(expr, MethodCall) and isinstance(expr.receiver_type, Map):
+        if expr.method in ("keys", "items"):
+            return True
+    return False
+
+
+def _is_dict_items_view(expr: Expr) -> bool:
+    """Check if expression is specifically a dict items view (has tuple elements)."""
+    if isinstance(expr, MethodCall) and isinstance(expr.receiver_type, Map):
+        if expr.method == "items":
+            return True
+    return False
+
+
+def _is_tuple_set_expr(expr: Expr) -> bool:
+    """Check if expression is a set with tuple elements (needs tuple-aware comparison)."""
+    if _is_dict_items_view(expr):
+        return True
+    # SetLit with tuple elements
+    if isinstance(expr, SetLit) and isinstance(expr.element_type, Tuple):
+        return True
+    # Set with tuple element type
+    if isinstance(expr.typ, Set) and isinstance(expr.typ.element, Tuple):
+        return True
+    return False
+
+
+def _is_set_expr(expr: Expr) -> bool:
+    """Check if expression is a set (by type or by being a set() call or set operator)."""
+    if isinstance(expr.typ, Set):
+        return True
+    if isinstance(expr, Call) and expr.func == "set":
+        return True
+    # Dict view methods (keys, items) behave like sets for set operations
+    if _is_dict_view_expr(expr):
+        return True
+    # Set binary operators produce sets
+    if isinstance(expr, BinaryOp) and expr.op in ("|", "&", "-", "^"):
+        if _is_set_expr(expr.left) or _is_set_expr(expr.right):
+            return True
+    # Set methods that return sets
+    if isinstance(expr, MethodCall) and isinstance(expr.receiver_type, Set):
+        if expr.method in ("copy", "union", "intersection", "difference", "symmetric_difference"):
+            return True
+    return False
+
+
+def _is_map_expr(expr: Expr) -> bool:
+    """Check if expression is a map/dict (by type or by being a dict() call or merge operator)."""
+    if isinstance(expr.typ, Map):
+        return True
+    if isinstance(expr, Call) and expr.func == "dict":
+        return True
+    # Nested map access: d["key"] where d is Map with Map value type
+    if isinstance(expr, Index) and isinstance(expr.obj.typ, Map):
+        if isinstance(expr.obj.typ.value, Map):
+            return True
+    # Map merge operator produces maps
+    if isinstance(expr, BinaryOp) and expr.op == "|":
+        if _is_map_expr(expr.left) or _is_map_expr(expr.right):
+            return True
+    # Map methods that return maps
+    if isinstance(expr, MethodCall) and isinstance(expr.receiver_type, Map):
+        if expr.method == "copy":
+            return True
     return False
 
 
