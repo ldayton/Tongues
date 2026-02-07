@@ -883,11 +883,15 @@ class JsLikeBackend:
             case Call(func="int", args=[arg]):
                 return f"Math.trunc({self._expr(arg)})"
             case Call(func="divmod", args=[a, b]):
-                return f"[Math.floor({self._expr(a)} / {self._expr(b)}), {self._expr(a)} % {self._expr(b)}]"
+                a_str = self._expr(a)
+                b_str = self._expr(b)
+                return f"[Math.floor({a_str} / {b_str}), (({a_str} % {b_str}) + {b_str}) % {b_str}]"
             case Call(func="pow", args=[base, exp]):
-                return f"{self._expr(base)} ** {self._expr(exp)}"
+                base_str = self._pow_base(base)
+                return f"{base_str} ** {self._expr(exp)}"
             case Call(func="pow", args=[base, exp, mod]):
-                return f"{self._expr(base)} ** {self._expr(exp)} % {self._expr(mod)}"
+                base_str = self._pow_base(base)
+                return f"{base_str} ** {self._expr(exp)} % {self._expr(mod)}"
             case Call(func=func, args=args):
                 return self._call_expr(func, args)
             case MethodCall(obj=obj, method="join", args=[arr], receiver_type=_):
@@ -940,6 +944,11 @@ class JsLikeBackend:
                 left_str = self._maybe_paren(left, "/", is_left=True)
                 right_str = self._maybe_paren(right, "/", is_left=False)
                 return f"Math.floor({left_str} / {right_str})"
+            case BinaryOp(op="%", left=left, right=right):
+                # Python modulo: result has same sign as divisor
+                left_str = self._maybe_paren(left, "%", is_left=True)
+                right_str = self._maybe_paren(right, "%", is_left=False)
+                return f"(({left_str} % {right_str}) + {right_str}) % {right_str}"
             case BinaryOp(op=op, left=left, right=right):
                 return self._binary_expr(op, left, right)
             case ChainedCompare(operands=operands, ops=ops):
@@ -1388,6 +1397,17 @@ class JsLikeBackend:
             return inner
         needs_parens = child_prec < parent_prec or (child_prec == parent_prec and not is_left)
         return f"({inner})" if needs_parens else inner
+
+    def _pow_base(self, base: Expr) -> str:
+        """Wrap pow() base in parens if needed (JS requires parens for unary before **)."""
+        base_str = self._expr(base)
+        if isinstance(base, UnaryOp):
+            return f"({base_str})"
+        if isinstance(base, IntLit) and base.value < 0:
+            return f"({base_str})"
+        if isinstance(base, FloatLit) and base.value < 0:
+            return f"({base_str})"
+        return base_str
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
         result = template
