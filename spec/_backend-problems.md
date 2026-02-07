@@ -651,3 +651,643 @@ def _emit_hoisted_vars(self, stmt: ...) -> None:
 The backend inspects hoisted variable types to determine whether to use `dynamic` (for reference types that may be null during control flow) or a typed declaration with default value.
 
 **Should be:** The hoisting middleend pass should compute whether each hoisted variable needs nullable typing based on control flow analysis, attaching a `needs_nullable: bool` annotation.
+
+---
+
+## Java
+
+### 1. Bool-to-Int Casting
+
+**Location:** `java.py:1256-1261`, `1473-1534`, `1597-1646`, `1753-1755`, `1899-1921`, `2041-2047`, `2405-2409`
+
+```python
+def _java_coerce_bool_to_int(backend: "JavaBackend", expr: Expr) -> str:
+    if _java_is_bool_in_java(expr):
+        return f"({backend._expr(expr)} ? 1 : 0)"
+    return backend._expr(expr)
+```
+
+Multiple locations check `_is_bool_type()` or `_java_is_bool_in_java()` and insert ternary conversion (`? 1 : 0`) when bool values are used in arithmetic, bitwise, shift, comparison, or power operations. This includes `BinaryOp`, `MinExpr`, `MaxExpr`, `UnaryOp`, and builtin calls like `pow`, `divmod`, `abs`, `min`, `max`.
+
+**Should be:** Inference or lowering should insert explicit `Cast(BOOL, INT)` nodes when bools flow into int-expecting operations.
+
+---
+
+### 2. String Comparison Detection
+
+**Location:** `java.py:1703-1715`
+
+```python
+if java_op == "==" and _is_string_type(left.typ):
+    return f"{left_str}.equals({right_str})"
+if java_op == "<" and _is_string_type(left.typ):
+    return f"({left_str}.compareTo({right_str}) < 0)"
+```
+
+The backend checks operand types to determine whether to use `.equals()` vs `==` for string equality and `.compareTo()` for ordering comparisons.
+
+**Should be:** Lowering should emit `StringCompare` IR nodes for string comparisons, distinct from primitive `BinaryOp`.
+
+---
+
+### 3. Truthy Type Dispatch
+
+**Location:** `java.py:1559-1573`
+
+```python
+if _is_string_type(inner_type) or isinstance(inner_type, (Slice, Map, Set)):
+    return f"(!{inner_str}.isEmpty())"
+if inner_type == Primitive(kind="int"):
+    return f"({inner_str} != 0)"
+return f"({inner_str} != null)"
+```
+
+The backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks.
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `StringNonEmpty`, `SliceNonEmpty`, `IsNotNil`, etc.
+
+---
+
+### 4. Collection Containment Dispatch
+
+**Location:** `java.py:2016-2033`
+
+```python
+if isinstance(container_type, Set):
+    return f"{neg}{container_str}.contains({item_str})"
+if isinstance(container_type, Map):
+    return f"{neg}{container_str}.containsKey({item_str})"
+if isinstance(container_type, Primitive) and container_type.kind == "string":
+    return f"{container_str}.indexOf({item_str}) != -1"
+```
+
+The backend switches on container type to emit the correct containment method.
+
+**Should be:** Lowering should emit type-specific IR: `SetContains`, `MapContains`, `SliceContains`, `StringContains`.
+
+---
+
+### 5. Struct Literal Field Ordering
+
+**Location:** `java.py:1851-1877`
+
+```python
+field_info = self.struct_fields.get(struct_name, [])
+if field_info:
+    ordered_args = []
+    for field_name, field_type in field_info:
+        if field_name in fields:
+            ordered_args.append(self._expr(fields[field_name]))
+```
+
+The backend looks up struct field order from `_collect_struct_fields` to emit constructor arguments in the correct order for Java positional constructors.
+
+**Should be:** `StructLit` IR node should already have fields in constructor parameter order, as determined by the fields phase.
+
+---
+
+### 6. Interface Method Dispatch
+
+**Location:** `java.py:502-505`, `1986-1994`
+
+```python
+self._method_to_interface: dict[str, str] = {}
+for iface in module.interfaces:
+    for m in iface.methods:
+        self._method_to_interface[to_camel(m.name)] = iface.name
+...
+if self._type(obj.typ) == "Object":
+    if camel_method in self._method_to_interface:
+        iface_name = self._method_to_interface[camel_method]
+        return f"(({_java_safe_class(iface_name)}) {obj_str}).{camel_method}({args_str})"
+```
+
+The backend builds a mapping from method names to interfaces, then uses it to cast `Object`-typed receivers when calling interface methods.
+
+**Should be:** Lowering should emit explicit `InterfaceCast` nodes when methods are called on variables that need interface narrowing, or `MethodCall` should carry the required interface type.
+
+---
+
+### 7. Substring Bounds Clamping
+
+**Location:** `java.py:729-738`
+
+```python
+if func.name == "_substring":
+    self._line(f"static {ret} {name}({params}) {{")
+    self._line("int clampedStart = Math.max(0, Math.min(start, len));")
+    self._line("int clampedEnd = Math.max(clampedStart, Math.min(end, len));")
+    self._line("return s.substring(clampedStart, clampedEnd);")
+```
+
+The backend special-cases `_substring` to emit clamping logic that matches Python slice semantics (out-of-bounds indices are clamped, not errors).
+
+**Should be:** Lowering should emit `Substring` with explicit semantics flag (`clamp=True`), or emit the bounds-checking wrapper at lowering time.
+
+---
+
+### 8. Tuple Type Collection
+
+**Location:** `java.py:259-460` (`_java_register_tuple`, `_java_visit_type`, `_java_visit_expr`, `_java_visit_stmt`)
+
+The backend manually traverses the entire IR module to collect all tuple types, building a dictionary of tuple signatures to record names for emission. This requires ~200 lines of visitor code duplicating AST traversal logic.
+
+**Should be:** A middleend pass that computes `Module.used_tuple_types` as a set of tuple signatures.
+
+---
+
+### 9. Pop Return Value Handling
+
+**Location:** `java.py:834-838`, `1213-1254`
+
+```python
+case TupleAssign(targets=targets, value=value) if (
+    isinstance(value, MethodCall) and value.method == "pop"
+):
+    self._emit_tuple_pop(stmt)
+```
+
+The backend pattern-matches `TupleAssign` with `MethodCall("pop")` to emit a special sequence: fetch element, remove from list, then unpack tuple fields. Java's `List.remove()` returns the removed element, but this requires temp variable handling.
+
+**Should be:** Lowering should emit a `ListPop(list, index)` IR node with explicit return-value semantics, or expand the pattern into `VarDecl` + `ListRemove` + `TupleAssign` from temp.
+
+---
+
+### 10. Type Switch Binding Renaming
+
+**Location:** `java.py:1008-1022`
+
+```python
+narrowed_name = f"{bind_name}{type_name.replace('Node', '')}"
+self._type_switch_binding_rename[binding] = narrowed_name
+...
+self._line(f"{keyword} ({bind_name} instanceof {type_name} {narrowed_name}) {{")
+```
+
+The backend tracks binding renames for Java 16+ pattern matching syntax (`instanceof TypeName varName`) which creates new bindings rather than narrowing the original variable.
+
+**Should be:** Lowering should emit `TypeSwitch` with per-case binding names suitable for the target language, or a middleend pass should compute narrowed binding names.
+
+---
+
+### 11. BytesDecode/StringToBytes Conversion
+
+**Location:** `java.py:699-707`, `1419-1423`, `1964-1966`, `2062-2088`
+
+```python
+if method == "decode":
+    self._needs_bytes_helper = True
+    return f"ParableFunctions._bytesToString({obj_str})"
+```
+
+The backend emits helper functions `_bytesToString` and `_stringToBytes` and routes `bytes.decode()` calls and `str(bytes)` conversions to them.
+
+**Should be:** Lowering should emit `BytesDecode(bytes_expr, encoding)` and `StringEncode(str_expr, encoding)` IR nodes for bytes/string conversion.
+
+---
+
+### 12. Char vs String Single-Character Optimization
+
+**Location:** `java.py:1673-1691`
+
+```python
+if java_op in ("==", "!=") and isinstance(right, StringLit) and len(right.value) == 1:
+    inner_left = left.expr if isinstance(left, Cast) else left
+    if isinstance(inner_left, Index):
+        obj_type = inner_left.obj.typ
+        if isinstance(obj_type, Primitive) and obj_type.kind == "string":
+            return f"{obj_str}.charAt({idx_str}) == {char_lit}"
+```
+
+The backend detects comparisons between string indexing and single-character string literals, emitting character literal comparisons (`charAt(i) == 'c'`) instead of string comparisons.
+
+**Should be:** Inference should normalize single-char string comparisons to char comparisons, or lowering should emit `CharCompare` nodes.
+
+---
+
+### Uncompensated: Char vs String Representation
+
+The dominant uncompensated issue is Python's single-type `str` vs Java's `char`/`String` duality. Python has only strings; Java distinguishes `char` (primitive) from `String` (object). The backend now detects single-char string comparisons but many patterns remain:
+
+**Consequences:**
+- ~175 remaining `String.valueOf()` calls for character-to-string contexts
+- Helper predicates take String instead of char: `_isWhitespace(String)` should be `Character.isWhitespace(char)` (~356 helper call sites)
+- `CharClassify` uses string-based pattern instead of direct char: `s.chars().allMatch(Character::isDigit)` instead of `Character.isDigit(c)`
+
+**Should be:** Frontend/middleend should track character vs string semantics, emitting `char` type for single-character literals and `charAt()` results, with primitive `==` for char comparisons.
+
+---
+
+## Go
+
+### 1. Hoisted Variable Tuple Type Inference
+
+**Location:** `go.py:1099`, `2464-2471`
+
+```python
+ret_type = self._infer_tuple_element_type(name, stmt, self._current_return_type)
+...
+def _infer_tuple_element_type(self, var_name: str, stmt: If, ret_type: Tuple) -> Type | None:
+    """Infer which tuple element a variable corresponds to by scanning returns."""
+    pos = _scan_for_return_position(stmt.then_body, var_name)
+```
+
+The backend scans return statements to infer hoisted variable types when the function returns a tuple. It matches variable names in `return` tuple literals to determine their position and type.
+
+**Should be:** The middleend hoisting pass should annotate `hoisted_vars` with complete type information, never leaving `typ=None` for variables that can be inferred from return position analysis.
+
+---
+
+### 2. String Character Indexing Helpers
+
+**Location:** `go.py:567-612`, `1762-1781`, `2270`
+
+```python
+("_runeAt(", """func _runeAt(s string, i int) string { ... }"""),
+("_runeLen(", """func _runeLen(s string) int { ... }"""),
+("_Substring(", """func _Substring(s string, start int, end int) string { ... }"""),
+...
+return f"_runeAt({obj}, {idx})"
+```
+
+Python strings are character sequences; Go strings are byte sequences. The backend emits `_runeAt`, `_runeLen`, and `_Substring` helper calls for all string indexing/slicing operations to match Python semantics.
+
+**Should be:** Frontend should emit distinct IR nodes for character-based string operations (`CharAt`, `CharLen`, `Substring`) vs byte-based operations. Currently all string indexing emits `Index` nodes without semantic distinction.
+
+---
+
+### 3. Interface Nil Check Reflection
+
+**Location:** `go.py:557-564`, `2174-2186`
+
+```python
+("_isNilInterfaceRef(", """func _isNilInterfaceRef(i interface{}) bool {
+    if i == nil { return true }
+    v := reflect.ValueOf(i)
+    return v.Kind() == reflect.Ptr && v.IsNil()
+}"""),
+...
+if isinstance(expr.expr.typ, InterfaceRef):
+    return f"_isNilInterfaceRef({inner})"
+```
+
+Go requires reflection to correctly check if an interface value contains a typed nil pointer. The backend conservatively emits `_isNilInterfaceRef()` for all interface nil checks.
+
+**Should be:** Middleend could track when expressions are definitely `interface{}` vs typed nil pointers, allowing direct `== nil` comparison in simple cases. Many nil checks are on freshly assigned interface values where the concrete type is known.
+
+---
+
+### 4. Type Switch Binding Name Extraction
+
+**Location:** `go.py:1482-1485`, `1544`, `1560-1568`
+
+```python
+narrowed_name = f"{binding}{self._extract_type_suffix(go_type)}"
+...
+def _extract_type_suffix(self, go_type: str) -> str:
+    for prefix in ("Arith", "Cond", ""):
+        if name.startswith(prefix) and len(name) > len(prefix):
+            return name[len(prefix):]
+```
+
+The backend uses hardcoded prefixes ("Arith", "Cond") to extract type suffixes for type switch binding names. These are Parable-specific naming conventions for arithmetic/conditional expression types.
+
+**Should be:** Frontend should emit type-agnostic IR for narrowed bindings. `TypeSwitch` cases should carry explicit narrowed binding names rather than relying on backend string manipulation.
+
+---
+
+### 5. IIFE Ternary Expansion
+
+**Location:** `go.py:2124-2137`
+
+```python
+def _emit_expr_Ternary(self, expr: Ternary) -> str:
+    # Go doesn't have ternary, emit as IIFE
+    ...
+    return f"func() {go_type} {{ if {cond} {{ return {then_expr} }} else {{ return {else_expr} }} }}()"
+```
+
+Go lacks a ternary operator. The backend emits immediately-invoked function expressions (IIFEs) for all `Ternary` nodes.
+
+**Should be:** Frontend could emit `Ternary` with a flag indicating if/else expansion is acceptable, or middleend could lift ternaries to variable assignments when used in statement context. The IIFE pattern is non-idiomatic and adds runtime overhead.
+
+---
+
+### 6. ParseInt Helper Wrapper
+
+**Location:** `go.py:534-538`, `2350`
+
+```python
+("_parseInt(", """func _parseInt(s string, base int) int {
+    n, _ := strconv.ParseInt(s, base, 64)
+    return int(n)
+}"""),
+...
+return f"_parseInt({self._emit_expr(expr.string)}, {self._emit_expr(expr.base)})"
+```
+
+The backend emits a helper that silently ignores parse errors, matching Python's `int()` behavior. Go's `strconv.ParseInt` returns `(int64, error)`.
+
+**Should be:** Lowering should emit a `ParseInt` node with explicit error-handling semantics (ignore, panic, or return optional), letting backends choose appropriate inline patterns vs helpers.
+
+---
+
+### 7. Integer Pointer Helper
+
+**Location:** `go.py:495-501`
+
+```python
+("_intPtr(", """func _intPtr(val int) *int {
+    if val == -1 { return nil }
+    return &val
+}"""),
+```
+
+The backend emits a helper to convert sentinel integer values (-1) to nil pointers for `Optional[int]` fields.
+
+**Should be:** Lowering should emit explicit `SentinelToOptional(expr, sentinel_value)` nodes. The sentinel value (-1) should be determined by type analysis in middleend, not hardcoded in backend helpers.
+
+---
+
+### 8. Truthy Type Dispatch
+
+**Location:** `go.py:2188-2202`
+
+```python
+def _emit_expr_Truthy(self, expr: Truthy) -> str:
+    inner_type = expr.expr.typ
+    if inner_type == STRING:
+        return f"(len({inner}) > 0)"
+    if isinstance(inner_type, (Slice, Map, Set)):
+        return f"(len({inner}) > 0)"
+    return f"({inner} != nil)"
+```
+
+The backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks.
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `StringNonEmpty`, `SliceNonEmpty`, `IsNotNil`, etc.
+
+---
+
+### Uncompensated: String vs []rune Representation
+
+The dominant uncompensated issue is Go's string/rune duality. Python strings are character sequences; Go strings are UTF-8 byte sequences. The backend defensively emits `_runeAt`/`_runeLen`/`_Substring` helpers for all string operations, but idiomatic Go would:
+
+1. Analyze string usage patterns in frontend/middleend
+2. Type variables as `[]rune` when indexed by character (e.g., lexer source)
+3. Convert once at scope entry: `runes := []rune(source)`
+4. Use direct indexing: `runes[i]` instead of `_runeAt(source, i)`
+
+**Consequences:**
+- ~100 while-style loops (`for i < n`) instead of `for i, c := range runes`
+- ~60 helper predicates take `string` instead of `rune`: `_strIsDigit(string)` should be `unicode.IsDigit(rune)` with direct rune comparisons
+
+**Should be:** Frontend/middleend should analyze string access patterns and emit `[]rune` type for variables that are character-indexed, with explicit `StringToRunes` conversion at declaration.
+
+---
+
+## JavaScript / TypeScript
+
+The JS and TS backends share a common base in `jslike.py`. TypeScript extends JavaScript with type annotations but inherits all the compensations.
+
+### 1. Bool-to-Int Casting
+
+**Location:** `jslike.py:1159-1166` (MinExpr/MaxExpr), `jslike.py:987-994` (pow base/exp)
+
+```python
+l = f"({self._expr(left)} ? 1 : 0)" if left.typ == BOOL else self._expr(left)
+r = f"({self._expr(right)} ? 1 : 0)" if right.typ == BOOL else self._expr(right)
+return f"Math.min({l}, {r})"
+```
+
+Multiple locations check if operands are `BOOL` and insert ternary conversion (`? 1 : 0`) when bool values flow into `Math.min`, `Math.max`, or power operations.
+
+**Should be:** Inference or lowering should insert explicit `Cast(BOOL, INT)` nodes when bools flow into int-expecting operations.
+
+---
+
+### 2. Truthy Type Dispatch
+
+**Location:** `jslike.py:1621-1638` (`_truthy_expr`)
+
+```python
+if isinstance(inner_type, Map) or _is_set_expr(e):
+    return f"({inner_str}.size > 0)"
+if isinstance(inner_type, (Slice, Tuple, Array)) or inner_type == STRING:
+    return f"({inner_str}.length > 0)"
+```
+
+The backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks (`.size > 0`, `.length > 0`, `!= null`).
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `StringNonEmpty`, `SliceNonEmpty`, `MapNonEmpty`, `IsNotNil`, etc.
+
+---
+
+### 3. Map Key Type Coercion (Python Key Equivalence)
+
+**Location:** `jslike.py:1290-1328` (`_coerce_map_key`), `jslike.py:7-9` (acknowledged limitation in docstring)
+
+```python
+# BOOL variable → INT
+if map_key == "int" and key_typ == "bool":
+    return f"({key_code} ? 1 : 0)"
+# FLOAT variable → INT
+if map_key == "int" and key_typ == "float":
+    return f"Math.trunc({key_code})"
+```
+
+Python treats `True==1` and `False==0` as equivalent dict keys. JS `Map` treats them as different. The backend coerces keys at runtime based on declared map key type. The docstring explicitly notes this only works in VarDecl initializers and direct Index/method access—not in Assign, function args, return statements, or comprehensions.
+
+**Should be:** Inference should track Python's key equivalence semantics, and lowering should emit explicit `CoerceMapKey(expr, target_key_type)` nodes when key types don't match the map's declared key type.
+
+---
+
+### 4. String Length Character Counting
+
+**Location:** `jslike.py:1922-1925` (`_len_expr`)
+
+```python
+if inner_type == STRING:
+    return f"[...{self._expr(inner)}].length"
+```
+
+Python's `len()` on strings counts Unicode code points. JavaScript's `.length` counts UTF-16 code units (emoji are 2). The backend spreads strings into arrays to count correctly.
+
+**Should be:** Lowering should emit `CharLen(string)` IR nodes for character-based length, distinct from byte-based `Len()`. The spec mentions `CharLen` but the backend is compensating for its incomplete use.
+
+---
+
+### 5. Python Modulo Semantics
+
+**Location:** `jslike.py:1831-1838`
+
+```python
+if op == "%":
+    if self._is_known_non_negative(left) and self._is_known_non_negative(right):
+        return f"{left_str} % {right_str}"
+    return f"(({left_str} % {right_str}) + {right_str}) % {right_str}"
+```
+
+Python modulo returns a result with the sign of the divisor; JS modulo returns a result with the sign of the dividend. The backend wraps modulo with `((a % b) + b) % b` unless it can prove both operands are non-negative.
+
+**Should be:** Lowering should emit `PythonMod` vs `CMod` IR nodes, or a middleend pass should annotate expressions with `is_known_non_negative` based on dataflow analysis.
+
+---
+
+### 6. Collection Containment Dispatch
+
+**Location:** `jslike.py:1996-2017` (`_containment_check`)
+
+```python
+if isinstance(container_type, Set):
+    return f"{neg}{container_str}.has({item_str})"
+if isinstance(container_type, Map):
+    coerced_key = self._coerce_map_key(container_type.key, item)
+    return f"{neg}{container_str}.has({coerced_key})"
+if is_bytes_type(container_type):
+    return f"{neg}arrContains({container_str}, {item_str})"
+```
+
+The backend switches on container type to emit the correct containment method (`.has()`, `.includes()`, `arrContains()`).
+
+**Should be:** Lowering should emit type-specific IR: `SetContains`, `MapContains`, `SliceContains`, `StringContains`, `BytesContains`.
+
+---
+
+### 7. Set/Map Operations with Tuple Elements
+
+**Location:** `jslike.py:1341-1350` (tuple-key map index), `jslike.py:1756-1791` (tuple-element set binary ops), `jslike.py:2003-2008` (tuple containment)
+
+```python
+if isinstance(obj_type.key, Tuple):
+    return f"tupleMapGet({obj_str}, {self._expr(index)})"
+...
+if _is_tuple_set_expr(left) or _is_tuple_set_expr(right):
+    return f"[...{left_str}].every(x => tupleSetHas({right_str}, x))"
+```
+
+JS `Set` and `Map` use reference equality; Python uses value equality. The backend emits helper function calls (`tupleSetHas`, `tupleSetAdd`, `tupleMapGet`, `tupleMapHas`) when sets/maps contain tuple elements/keys.
+
+**Should be:** Inference should annotate sets/maps containing non-primitive types with `needs_value_equality: true`, and lowering should emit distinct IR nodes (`TupleSetContains`, `TupleMapGet`) or generate the helper calls during lowering.
+
+---
+
+### 8. Tuple vs List Mutation Semantics
+
+**Location:** `jslike.py:383-395` (OpAssign handling)
+
+```python
+if isinstance(value.typ, Tuple) or isinstance(target_type, Tuple):
+    self._line(f"{lv} = [...{lv}, ...{val}];")
+else:
+    self._line(f"{lv}.push(...{val});")
+```
+
+Python tuples are immutable; `+=` creates a new tuple. Python lists are mutable; `+=` modifies in place. The backend checks if the target is a `Tuple` type to use concatenation instead of `.push()`.
+
+**Should be:** Lowering should distinguish tuple vs list augmented assignment, emitting `TupleConcat` (returns new tuple) vs `ListExtend` (mutates in place) IR nodes.
+
+---
+
+### 9. Dict View Set Operations
+
+**Location:** `jslike.py:1693-1704` (`_set_operand`), `jslike.py:1770-1807`
+
+```python
+if _is_dict_items_view(expr):
+    return f"(function() {{ const s = new Set(); for (const t of {expr_str}) tupleSetAdd(s, t); return s; }})()"
+if _is_dict_view_expr(expr):
+    return f"new Set({expr_str})"
+```
+
+Python dict views (`.keys()`, `.values()`, `.items()`) support set operations. The backend detects view expressions and wraps them appropriately for set operators.
+
+**Should be:** Lowering should convert dict view expressions to explicit set types when used in set operations, or emit `DictKeysView`, `DictValuesView`, `DictItemsView` IR nodes with set-compatible interfaces.
+
+---
+
+### 10. Hoisted Variable Tracking (JS only)
+
+**Location:** `javascript.py:499-504` (`_hoisted_vars_hook`), `javascript.py:637-655` (`_get_hoisted_vars`)
+
+```python
+def _hoisted_vars_hook(self, stmt: Stmt) -> None:
+    hoisted = _get_hoisted_vars(stmt)
+    for name, _ in hoisted:
+        js_name = _camel(name)
+        if name not in self._hoisted_vars:
+            self._line(f"var {js_name};")
+            self._hoisted_vars.add(name)
+```
+
+JavaScript's block scoping with `let` differs from Python's function scoping. The JS backend tracks hoisted variables and emits `var` declarations at function scope, reading the middleend's `hoisted_vars` annotation but doing additional bookkeeping.
+
+**Should be:** The middleend hoisting pass should compute complete hoisting requirements. The backend should only need to read `stmt.hoisted_vars` and emit declarations, without tracking state in `_hoisted_vars`.
+
+---
+
+### 11. Implicit Return Null for Void Functions
+
+**Location:** `javascript.py:494-497` (`_post_function_body`), `typescript.py:584-586`
+
+```python
+def _post_function_body(self, func: Function) -> None:
+    if _is_void_func(func):
+        self._line("return null;")
+```
+
+Python functions return `None` implicitly. The backend checks if a function returns `VOID` and has no explicit `Return` statement, adding `return null;` for JavaScript.
+
+**Should be:** Lowering should add explicit `Return(NilLit)` at the end of void functions when there's no explicit return, or middleend should add a `needs_implicit_return: bool` annotation.
+
+---
+
+### 12. Array/Map/Set Comparison
+
+**Location:** `jslike.py:1739-1768` (array comparison), `jslike.py:1809-1822` (map comparison)
+
+```python
+if _is_array_type(left.typ) or _is_array_type(right.typ):
+    if op == "==":
+        return f"arrEq({left_str}, {right_str})"
+if _is_map_expr(left) and _is_map_expr(right):
+    if op == "==":
+        return f"mapEq({left_str}, {right_str})"
+```
+
+Python uses value equality for collections; JS uses reference equality. The backend emits helper function calls (`arrEq`, `mapEq`) for collection comparisons.
+
+**Should be:** Lowering should emit `ArrayEquals`, `MapEquals`, `SetEquals` IR nodes for collection comparisons, distinct from `BinaryOp("==")` for primitives.
+
+---
+
+### 13. String Split Semantics
+
+**Location:** `jslike.py:1549-1562`
+
+```python
+if receiver_type == STRING and method == "split" and len(args) == 0:
+    return f"{self._expr(obj)}.trim().split(/\\s+/).filter(Boolean)"
+if receiver_type == STRING and method == "split" and len(args) == 2:
+    # Python splits at most maxsplit times
+    return f"((m = {maxsplit}) === 0 ? [{obj_str}] : ...)"
+```
+
+Python `str.split()` with no args splits on whitespace and removes empties. Python `str.split(sep, maxsplit)` limits splits. JS `.split()` differs in both behaviors.
+
+**Should be:** Lowering should emit `StringSplitWhitespace()` for no-arg split and `StringSplit(sep, maxsplit)` with explicit semantics, rather than relying on backends to pattern-match `MethodCall("split")`.
+
+---
+
+### Uncompensated: BigInt for Large Integers
+
+**Location:** `jslike.py:1281-1282`
+
+```python
+if abs(value) > 9007199254740991:
+    return f"{value}n"
+```
+
+The backend emits BigInt literals for integers exceeding JS's safe integer range. However, operations mixing BigInt and Number fail at runtime. The backend doesn't track BigInt contamination through expressions.
+
+**Should be:** Inference should track which expressions may exceed safe integer range and emit `BigInt` type annotations, with explicit `BigIntToNumber` / `NumberToBigInt` conversions at boundaries. Currently only literal detection is implemented.
