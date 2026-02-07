@@ -169,6 +169,9 @@ class TsBackend(JsLikeBackend):
         if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
             self._emit_map_helpers()
             emitted = True
+        if ir_contains_call(module, "round"):
+            self._emit_round_helper()
+            emitted = True
         return emitted
 
     def _emit_tuple_set_helpers(self) -> None:
@@ -215,6 +218,24 @@ class TsBackend(JsLikeBackend):
         self.indent -= 1
         self._line("}")
         self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_round_helper(self) -> None:
+        """Emit Python-compatible round function with banker's rounding."""
+        self._line("function round(x: number, n?: number): number {")
+        self.indent += 1
+        self._line("if (n === undefined) {")
+        self.indent += 1
+        self._line("let f = Math.floor(x), c = Math.ceil(x);")
+        self._line("if (Math.abs(x - f) === 0.5) return f % 2 === 0 ? f : c;")
+        self._line("return Math.round(x);")
+        self.indent -= 1
+        self._line("}")
+        self._line("let m = Math.pow(10, n), v = x * m;")
+        self._line("let f = Math.floor(v), c = Math.ceil(v);")
+        self._line("if (Math.abs(v - f) === 0.5) return (f % 2 === 0 ? f : c) / m;")
+        self._line("return Math.round(v) / m;")
         self.indent -= 1
         self._line("}")
 
@@ -422,11 +443,22 @@ class TsBackend(JsLikeBackend):
         match stmt:
             case Assign(target=LValue() as target, value=value):
                 if isinstance(target, IndexLV) and isinstance(target.obj.typ, Map):
+                    map_type = target.obj.typ
                     obj_str = self._expr(target.obj)
-                    idx_str = self._expr(target.index)
+                    idx_str = self._coerce_map_key(map_type.key, target.index)
                     val = self._expr(value)
                     self._line(f"{obj_str}.set({idx_str}, {val});")
                     return
+                # Nested map: if target.obj is an Index on a Map with Map value type
+                if isinstance(target, IndexLV) and isinstance(target.obj, Index):
+                    outer_obj = target.obj.obj
+                    if isinstance(outer_obj.typ, Map) and isinstance(outer_obj.typ.value, Map):
+                        inner_map_type = outer_obj.typ.value
+                        obj_str = self._expr(target.obj)
+                        idx_str = self._coerce_map_key(inner_map_type.key, target.index)
+                        val = self._expr(value)
+                        self._line(f"{obj_str}.set({idx_str}, {val});")
+                        return
         super()._emit_stmt(stmt)
 
     # --- Interface and Field ---

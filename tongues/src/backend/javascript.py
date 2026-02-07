@@ -31,6 +31,7 @@ from src.ir import (
     Expr,
     Function,
     If,
+    Index,
     IndexLV,
     IntLit,
     InterfaceDef,
@@ -489,11 +490,22 @@ class JsBackend(JsLikeBackend):
         match stmt:
             case Assign(target=LValue() as target, value=value):
                 if isinstance(target, IndexLV) and isinstance(target.obj.typ, Map):
+                    map_type = target.obj.typ
                     obj_str = self._expr(target.obj)
-                    idx_str = self._expr(target.index)
+                    idx_str = self._coerce_map_key(map_type.key, target.index)
                     val = self._expr(value)
                     self._line(f"{obj_str}.set({idx_str}, {val});")
                     return
+                # Nested map: if target.obj is an Index on a Map with Map value type
+                if isinstance(target, IndexLV) and isinstance(target.obj, Index):
+                    outer_obj = target.obj.obj
+                    if isinstance(outer_obj.typ, Map) and isinstance(outer_obj.typ.value, Map):
+                        inner_map_type = outer_obj.typ.value
+                        obj_str = self._expr(target.obj)
+                        idx_str = self._coerce_map_key(inner_map_type.key, target.index)
+                        val = self._expr(value)
+                        self._line(f"{obj_str}.set({idx_str}, {val});")
+                        return
                 # Check if variable was hoisted
                 if isinstance(target, VarLV):
                     var_name = target.name
