@@ -511,7 +511,7 @@ class RubyBackend:
 
     def _emit_stmt(self, stmt: Stmt) -> None:
         match stmt:
-            case VarDecl(name=name, value=value):
+            case VarDecl(name=name, typ=decl_typ, value=value):
                 safe = _safe_name(name)
                 if value is not None:
                     # Python sort()/reverse() return None, Ruby sort!/reverse! return self
@@ -524,7 +524,8 @@ class RubyBackend:
                         self._line(self._expr(value))
                         self._line(f"{safe} = nil")
                     else:
-                        val = self._expr(value)
+                        # Emit MapLit with coerced keys if target type differs from literal type
+                        val = self._emit_map_lit_coerced(value, decl_typ)
                         self._line(f"{safe} = {val}")
                 else:
                     self._line(f"{safe} = nil")
@@ -855,6 +856,9 @@ class RubyBackend:
             case Index(obj=obj, index=index):
                 if neg_idx := self._negative_index(obj, index):
                     return f"{self._expr(obj)}[{neg_idx}]"
+                if isinstance(obj.typ, Map):
+                    key_code = self._coerce_map_key(obj.typ.key, index)
+                    return f"{self._expr(obj)}[{key_code}]"
                 return f"{self._expr(obj)}[{self._expr(index)}]"
             case SliceExpr(obj=obj, low=low, high=high, step=step):
                 return self._slice_expr(obj, low, high, step)
@@ -1959,10 +1963,15 @@ class RubyBackend:
                     self._needs_bytes = True
                     return f"TonguesBytes.new([{elems}])"
                 return f"[{elems}]"
-            case MapLit(entries=entries):
+            case MapLit(entries=entries) as ml:
                 if not entries:
                     return "{}"
-                pairs = ", ".join(f"{self._expr(k)} => {self._expr(v)}" for k, v in entries)
+                # Use expr.typ.key for coercion (may be same as key_type if no context)
+                map_key_type = ml.typ.key if isinstance(ml.typ, Map) else ml.key_type
+                pairs = ", ".join(
+                    f"{self._coerce_map_key(map_key_type, k)} => {self._expr(v)}"
+                    for k, v in entries
+                )
                 return f"{{{pairs}}}"
             case SetLit(elements=elements):
                 self._needs_set = True
@@ -2163,6 +2172,64 @@ class RubyBackend:
         """Check if expression is a negative integer literal."""
         return isinstance(expr, UnaryOp) and expr.op == "-" and isinstance(expr.operand, IntLit)
 
+    def _emit_map_lit_coerced(self, value: Expr, target_type: Type) -> str:
+        """Emit expression, coercing MapLit keys if target type differs from literal type."""
+        if not isinstance(value, MapLit) or not isinstance(target_type, Map):
+            return self._expr(value)
+        # Use target type's key type for coercion (from annotation, not literal inference)
+        if not value.entries:
+            return "{}"
+        pairs = ", ".join(
+            f"{self._coerce_map_key(target_type.key, k)} => {self._expr(v)}"
+            for k, v in value.entries
+        )
+        return f"{{{pairs}}}"
+
+    def _coerce_map_key(self, map_key_type: Type, key: Expr) -> str:
+        """Emit key expression, coercing to match map key type if needed.
+
+        Python treats 1, 1.0, and True as equivalent dict keys (same hash).
+        Ruby doesn't, so we coerce keys to match the map's declared key type.
+
+        For literals, we detect the actual value type from the node class since
+        the frontend may have already set key.typ to match the map's key type.
+        """
+        if not isinstance(map_key_type, Primitive):
+            return self._expr(key)
+        map_key = map_key_type.kind
+        # Handle literals by checking node type (frontend sets typ to match map)
+        if isinstance(key, BoolLit):
+            if map_key == "int":
+                return "1" if key.value else "0"
+            if map_key == "float":
+                return "1.0" if key.value else "0.0"
+        elif isinstance(key, IntLit):
+            if map_key == "float":
+                return f"{key.value}.0"
+        elif isinstance(key, FloatLit):
+            if map_key == "int" and key.value == int(key.value):
+                return str(int(key.value))
+        # For non-literals, check key.typ for coercion
+        key_code = self._expr(key)
+        if not isinstance(key.typ, Primitive):
+            return key_code
+        key_typ = key.typ.kind
+        if map_key == key_typ:
+            return key_code
+        # BOOL variable → INT
+        if map_key == "int" and key_typ == "bool":
+            return f"({key_code} ? 1 : 0)"
+        # FLOAT variable → INT
+        if map_key == "int" and key_typ == "float":
+            return f"({key_code}).to_i"
+        # INT variable → FLOAT
+        if map_key == "float" and key_typ == "int":
+            return f"({key_code}).to_f"
+        # BOOL variable → FLOAT
+        if map_key == "float" and key_typ == "bool":
+            return f"({key_code} ? 1.0 : 0.0)"
+        return key_code
+
     def _format_string(self, template: str, args: list[Expr]) -> str:
         markers = {}
         result = template
@@ -2198,6 +2265,9 @@ class RubyBackend:
             case IndexLV(obj=obj, index=index):
                 if neg_idx := self._negative_index(obj, index):
                     return f"{self._expr(obj)}[{neg_idx}]"
+                if isinstance(obj.typ, Map):
+                    key_code = self._coerce_map_key(obj.typ.key, index)
+                    return f"{self._expr(obj)}[{key_code}]"
                 return f"{self._expr(obj)}[{self._expr(index)}]"
             case DerefLV(ptr=ptr):
                 return self._expr(ptr)
