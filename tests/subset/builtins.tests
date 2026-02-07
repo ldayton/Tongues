@@ -268,21 +268,6 @@ def f(xs: list[int]) -> list[tuple[int, int]]:
 ok
 ---
 
-=== enumerate assigned not allowed
-def f(xs: list[int]) -> object:
-    e = enumerate(xs)
-    return e
----
-error: enumerate
----
-
-=== enumerate returned not allowed
-def f(xs: list[int]) -> object:
-    return enumerate(xs)
----
-error: enumerate
----
-
 === zip in for loop allowed
 def f(xs: list[int], ys: list[int]) -> int:
     total: int = 0
@@ -298,21 +283,6 @@ def f(xs: list[int], ys: list[int]) -> list[tuple[int, int]]:
     return list(zip(xs, ys))
 ---
 ok
----
-
-=== zip assigned not allowed
-def f(xs: list[int], ys: list[int]) -> object:
-    z = zip(xs, ys)
-    return z
----
-error: zip
----
-
-=== zip returned not allowed
-def f(xs: list[int], ys: list[int]) -> object:
-    return zip(xs, ys)
----
-error: zip
 ---
 
 === type not allowed
@@ -442,13 +412,6 @@ def f(xs: list[int]) -> object:
 error: filter
 ---
 
-=== reversed not allowed
-def f(xs: list[int]) -> object:
-    return reversed(xs)
----
-error: reversed
----
-
 === open not allowed
 def f() -> object:
     return open("file.txt")
@@ -531,30 +494,6 @@ def f(xs: list[str]) -> str:
     return ",".join(s.upper() for s in xs)
 ---
 ok
----
-
-=== generator expression assigned not allowed
-def f(xs: list[int]) -> object:
-    g = (x * 2 for x in xs)
-    return g
----
-error: generator expression
----
-
-=== generator expression returned not allowed
-def f(xs: list[int]) -> object:
-    return (x * 2 for x in xs)
----
-error: generator expression
----
-
-=== generator expression in arbitrary call not allowed
-def consume(g: object) -> None:
-    pass
-def f(xs: list[int]) -> None:
-    consume(x * 2 for x in xs)
----
-error: generator expression
 ---
 
 === min with key not allowed

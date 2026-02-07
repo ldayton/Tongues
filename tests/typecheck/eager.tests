@@ -224,3 +224,97 @@ def f(xs: list[int]) -> None:
 ---
 error: reversed
 ---
+
+=== generator expression in list allowed
+def f(xs: list[int]) -> list[int]:
+    return list(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in tuple allowed
+def f(xs: list[int]) -> tuple[int, ...]:
+    return tuple(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in set allowed
+def f(xs: list[int]) -> set[int]:
+    return set(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in sum allowed
+def f(xs: list[int]) -> int:
+    return sum(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in any allowed
+def f(xs: list[int]) -> bool:
+    return any(x > 0 for x in xs)
+---
+ok
+---
+
+=== generator expression in all allowed
+def f(xs: list[int]) -> bool:
+    return all(x > 0 for x in xs)
+---
+ok
+---
+
+=== generator expression in min allowed
+def f(xs: list[int]) -> int:
+    return min(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in max allowed
+def f(xs: list[int]) -> int:
+    return max(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in sorted allowed
+def f(xs: list[int]) -> list[int]:
+    return sorted(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in join allowed
+def f(xs: list[str]) -> str:
+    return ",".join(s.upper() for s in xs)
+---
+ok
+---
+
+=== generator expression assigned not allowed
+def f(xs: list[int]) -> object:
+    g = (x * 2 for x in xs)
+    return g
+---
+error: generator expression
+---
+
+=== generator expression returned not allowed
+def f(xs: list[int]) -> object:
+    return (x * 2 for x in xs)
+---
+error: generator expression
+---
+
+=== generator expression in arbitrary call not allowed
+def consume(g: object) -> None:
+    pass
+def f(xs: list[int]) -> None:
+    consume(x * 2 for x in xs)
+---
+error: generator expression
+---

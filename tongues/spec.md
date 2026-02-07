@@ -148,7 +148,7 @@ Reject unsupported Python features early. The subset trades dynamic flexibility 
 | Single inheritance       | Class hierarchy is a tree, not a DAG                    |
 | Eager iteration only     | Comprehensions and generators are statically eager      |
 
-For the complete subset specification including allowed builtins, methods, I/O, and detailed restrictions, see [**tests/subset/subset-spec.md**](../tests/subset/subset-spec.md).
+For syntactic restrictions (builtins, methods, I/O), see [**tests/subset/subset-spec.md**](../tests/subset/subset-spec.md). For type-level invariants enforced during inference, see [**tests/typecheck/typecheck-spec.md**](../tests/typecheck/typecheck-spec.md).
 
 **Postconditions:** AST conforms to Tongues subset; all invariants hold; rejected programs produce clear error messages with source locations.
 

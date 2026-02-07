@@ -1,6 +1,8 @@
 # Tongues Python Subset
 
-A restricted Python subset for transpilation to statically-typed languages.
+Syntactic restrictions for transpilation to statically-typed languages. These are checkable from AST structure alone (phase 3).
+
+See [typecheck-spec.md](../typecheck/typecheck-spec.md) for type-level invariants requiring inference.
 
 ---
 
@@ -103,39 +105,6 @@ Exception multiple inheritance allowed: `class E(Base, Exception)` (marker only)
 
 The walrus operator `:=` is allowed and scopes to the enclosing function (not the comprehension).
 
-### Type Narrowing
-
-Type is refined based on control flow:
-
-| Pattern                      | Narrowing                             |
-| ---------------------------- | ------------------------------------- |
-| `isinstance(x, T)`           | `x` narrows to `T` in then-branch     |
-| `if x:` where `x: T \| None` | `x` narrows to `T` in then-branch     |
-| `x.kind == "value"`          | `x` narrows to variant with that kind |
-| `if x is None: return`       | `x` narrows to `T` after guard        |
-
-### Truthiness
-
-Which types can be tested with `if x:`:
-
-| Type        | Pattern     | Meaning      |
-| ----------- | ----------- | ------------ |
-| `bool`      | `if flag:`  | Boolean test |
-| `T \| None` | `if node:`  | Not None     |
-| `list[T]`   | `if items:` | Non-empty    |
-| `str`       | `if s:`     | Non-empty    |
-
-Ambiguous types like `list[T] | None` require explicit checks (`if x is not None`, `if len(x) > 0`).
-
-### Tuple Unpacking
-
-| Allowed                    | Not Allowed            | Rationale                      |
-| -------------------------- | ---------------------- | ------------------------------ |
-| `a, b = func()`            | `a, b = some_var`      | Must unpack from call result   |
-| `if x := func(): a, b = x` | `x = func(); a, b = x` | Variable must be guarded by if |
-
-Unpacking from a variable allowed only when guarded by enclosing `if` (proves non-None).
-
 ### F-Strings
 
 | Allowed  | Not Allowed  | Rationale                |
@@ -169,7 +138,7 @@ Unpacking from a variable allowed only when guarded by enclosing `if` (proves no
 `range(n)`, `range(a, b)`, `range(a, b, step)` — reusable sequence with known length
 
 ### Eager Context Only
-Must appear in for-loop header or eager consumer:
+Must appear in for-loop header or eager consumer. Enforcement requires type checking (see [typecheck-spec.md](../typecheck/typecheck-spec.md#6-iterator-escape)).
 
 | Function                                  | Rationale                   |
 | ----------------------------------------- | --------------------------- |
@@ -198,7 +167,7 @@ foo(reversed(xs))      # passed to unknown consumer
 | Dict comprehension | `{k: v for k,v in xs}` | Always eager |
 
 ### Generator Expressions
-Allowed only as immediate argument to eager consumers:
+Allowed only as immediate argument to eager consumers. Enforcement requires type checking (see [typecheck-spec.md](../typecheck/typecheck-spec.md#5-generator-expression-consumers)).
 
 | Consumer      | Example                      |
 | ------------- | ---------------------------- |
