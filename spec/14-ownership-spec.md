@@ -18,6 +18,19 @@ Infer ownership and region annotations for memory-safe code generation. Since ph
 
 Escape analysis detects when borrowed references outlive their region.
 
+### String Escape Handling
+
+In languages where strings are pointers (C), escaping strings must be copied:
+
+| Context                    | Annotation        | C Backend Behavior      |
+| -------------------------- | ----------------- | ----------------------- |
+| String assigned to field   | `escapes = True`  | `strdup(s)`             |
+| String returned from func  | `escapes = True`  | `strdup(s)` if borrowed |
+| String added to collection | `escapes = True`  | `strdup(s)`             |
+| String used locally only   | `escapes = False` | no copy needed          |
+
+The `Expr.escapes` annotation guides backends on when defensive copies are required.
+
 ## Errors
 
 | Condition                    | Diagnostic                                                                 |

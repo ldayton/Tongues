@@ -7,7 +7,7 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 ## Inputs
 
 - **TypedAST**: from Phase 8 (dict-AST with `_type` annotations)
-- **FieldTable**: from Phase 6 (for const_fields, field types)
+- **FieldTable**: from Phase 6 (for const_fields, field types, init_params)
 - **SubtypeRel**: from Phase 7 (for hierarchy_root, ancestor chains)
 - **SigTable**: from Phase 5 (for function signatures)
 
@@ -25,7 +25,7 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 | Python                       | IR Output                                  |
 | ---------------------------- | ------------------------------------------ |
 | `if cond:`                   | `If(cond, then_body, else_body)`           |
-| `if isinstance(x, T):` chain | `TypeSwitch(expr, binding, cases)`         |
+| `if isinstance(x, T):` chain | `TypeSwitch(expr, binding, cases)` ³       |
 | `match x:`                   | `Match(expr, cases, default)`              |
 | `for x in items:`            | `ForRange(index, value, iterable, body)`   |
 | `for i in range(n):`         | `ForClassic(init, cond, post, body)`       |
@@ -44,6 +44,8 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 | `pass`                       | `NoOp()` or omit                           |
 | `if __name__ == "__main__":` | `EntryPoint(function_name)`                |
 
+³ Each `TypeSwitch` case includes `narrowed_binding` name for targets requiring new bindings (e.g., `nodeExpr` for case `Expr`).
+
 ### Expressions
 
 | Python                 | IR Output                               |
@@ -55,7 +57,7 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 | `obj.field`            | `FieldAccess(obj, field)`               |
 | `obj[i]`               | `Index(obj, index)`                     |
 | `obj[a:b]`             | `SliceExpr(obj, low, high, step)`       |
-| `a + b`, `a - b`, etc. | `BinaryOp(op, left, right)`             |
+| `a + b`, `a - b`, etc. | `BinaryOp(op, left, right)` ²           |
 | `a < b < c`            | `ChainedCompare(operands, ops)`         |
 | `-x`, `not x`, `~x`    | `UnaryOp(op, operand)`                  |
 | `x and y`, `x or y`    | `BinaryOp("&&", ...)`, `BinaryOp("      |  | ", ...)` |
@@ -70,10 +72,14 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 | `{a, b, c}`            | `SetLit(element_type, elements)`        |
 | `{k: v, ...}`          | `MapLit(key_type, value_type, entries)` |
 | `(a, b, c)`            | `TupleLit(elements)`                    |
-| `ClassName(args)`      | `StructLit(struct_name, fields)`        |
+| `ClassName(args)`      | `StructLit(struct_name, fields)` ¹      |
 | `[x for x in xs]`      | `ListComp(element, generators)`         |
 | `{x for x in xs}`      | `SetComp(element, generators)`          |
 | `{k: v for ...}`       | `DictComp(key, value, generators)`      |
+
+¹ `StructLit.fields` ordered per `init_params` from Phase 6.
+
+² Bool operands in arithmetic emit `Cast(BOOL, INT)` wrapper per Phase 8.
 
 ### Builtins
 
@@ -88,24 +94,63 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 | `chr(n)`                 | `Cast(expr, STRING)`     |
 | `ord(c)`                 | `Cast(expr, INT)`        |
 
+### Truthiness
+
+Truthy tests are specialized by type for unambiguous backend emission:
+
+| Context                   | IR Output                   |
+| ------------------------- | --------------------------- |
+| `if bool_expr:`           | condition used directly     |
+| `if optional_expr:`       | `IsNil(expr, negated=True)` |
+| `if string_expr:`         | `StringNonEmpty(expr)`      |
+| `if list_expr:`           | `SliceNonEmpty(expr)`       |
+| `if dict_expr:`           | `MapNonEmpty(expr)`         |
+| `if set_expr:`            | `SetNonEmpty(expr)`         |
+| `if int_expr:` (rejected) | error: ambiguous truthiness |
+
+Generic `Truthy(expr)` is only emitted when type is unknown (e.g., `object`).
+
 ### String Operations
 
-| Python                | IR Output                                |
-| --------------------- | ---------------------------------------- |
-| `s[i]`                | `CharAt(string, index)`                  |
-| `len(s)` (char count) | `CharLen(string)`                        |
-| `s[a:b]`              | `Substring(string, low, high)`           |
-| `s1 + s2`             | `StringConcat(parts)`                    |
-| `f"{x}..."`           | `StringFormat(template, args)`           |
-| `s.strip(chars)`      | `TrimChars(string, chars, mode="both")`  |
-| `s.lstrip(chars)`     | `TrimChars(string, chars, mode="left")`  |
-| `s.rstrip(chars)`     | `TrimChars(string, chars, mode="right")` |
-| `c.isalnum()`         | `CharClassify(kind="alnum", char)`       |
-| `c.isdigit()`         | `CharClassify(kind="digit", char)`       |
-| `c.isalpha()`         | `CharClassify(kind="alpha", char)`       |
-| `c.isspace()`         | `CharClassify(kind="space", char)`       |
-| `c.isupper()`         | `CharClassify(kind="upper", char)`       |
-| `c.islower()`         | `CharClassify(kind="lower", char)`       |
+| Python                | IR Output                                  |
+| --------------------- | ------------------------------------------ |
+| `s[i]`                | `CharAt(string, index)`                    |
+| `len(s)` (char count) | `CharLen(string)`                          |
+| `s[a:b]`              | `Substring(string, low, high, clamp=True)` |
+| `s1 + s2`             | `StringConcat(parts)`                      |
+| `s1 == s2`, `s1 < s2` | `StringCompare(left, right, op)`           |
+| `f"{x}..."`           | `StringFormat(template, args)`             |
+| `s.strip(chars)`      | `TrimChars(string, chars, mode="both")`    |
+| `s.lstrip(chars)`     | `TrimChars(string, chars, mode="left")`    |
+| `s.rstrip(chars)`     | `TrimChars(string, chars, mode="right")`   |
+| `c.isalnum()`         | `CharClassify(kind="alnum", char)`         |
+| `c.isdigit()`         | `CharClassify(kind="digit", char)`         |
+| `c.isalpha()`         | `CharClassify(kind="alpha", char)`         |
+| `c.isspace()`         | `CharClassify(kind="space", char)`         |
+| `c.isupper()`         | `CharClassify(kind="upper", char)`         |
+| `c.islower()`         | `CharClassify(kind="lower", char)`         |
+
+### Collection Operations
+
+| Python             | IR Output                           |
+| ------------------ | ----------------------------------- |
+| `x in set_`        | `SetContains(set, element)`         |
+| `x in map_`        | `MapContains(map, key)`             |
+| `x in list_`       | `SliceContains(slice, element)`     |
+| `x in string`      | `StringContains(string, substring)` |
+| `list_.pop()`      | `ListPop(list, index=None)`         |
+| `list_.pop(i)`     | `ListPop(list, index)`              |
+| `list_.append(x)`  | `SliceAppend(slice, element)`       |
+| `list_.extend(xs)` | `SliceExtend(slice, elements)`      |
+| `map_.get(k)`      | `MapGet(map, key, default=None)`    |
+| `map_.get(k, d)`   | `MapGet(map, key, default)`         |
+| `set_.add(x)`      | `SetAdd(set, element)`              |
+| `d.keys()`         | `DictKeys(map)`                     |
+| `d.values()`       | `DictValues(map)`                   |
+| `d.items()`        | `DictItems(map)`                    |
+| `d.keys() & other` | `SetOp(DictKeys(d), other, op="&")` |
+
+Dict views (`DictKeys`, `DictValues`, `DictItems`) support set operations when used with `&`, `|`, `-`, `^`.
 
 ### I/O
 
@@ -137,10 +182,12 @@ Transform typed AST into language-agnostic IR. Lowering reads types computed by 
 | Python                            | IR Output                                   |
 | --------------------------------- | ------------------------------------------- |
 | `xs[-1]`                          | `LastElement(sequence)`                     |
+| `xs[len(xs) - n]`                 | `LastElement(sequence, offset=n)`           |
 | `&expr` (address-of)              | `AddrOf(operand)`                           |
 | Sentinel int `== None`            | `BinaryOp("==", expr, IntLit(sentinel))`    |
 | `x if sentinel else None`         | `SentinelToOptional(expr, sentinel)`        |
 | `[]T` to `[]Interface` conversion | `SliceConvert(source, target_element_type)` |
+| Struct assigned to interface var  | `InterfaceCast(expr, target_interface)`     |
 
 ---
 
@@ -198,10 +245,12 @@ After lowering, these properties hold:
 - Exception structs have `is_exception=True` and optional `embedded_type`
 
 **Semantics**
-- Truthy tests emit `Truthy(expr)`, not expanded comparisons
+- Truthy tests emit type-specific nodes (`StringNonEmpty`, `SliceNonEmpty`, etc.), not expanded comparisons
 - Constructors emit `StructLit` with all fields, not field-by-field assignment
 - Bound method references have `FuncType.receiver` set
 - Character operations use semantic nodes (`CharAt`, `CharLen`, `Substring`)
+- Struct-to-interface assignments emit `InterfaceCast`
+- Collection methods emit type-specific IR (`SliceAppend`, `MapGet`, `SetContains`, etc.)
 
 **Annotations not yet set** (added by middleend):
 - `is_reassigned`, `is_modified`, `is_unused` on variables/params
@@ -234,6 +283,7 @@ IR Module complete with:
 - `enums`: Enumeration definitions (if any)
 - `exports`: Public API declarations
 - `entrypoint`: Main function marker (if `if __name__ == "__main__"` present)
+- `used_tuple_types`: Set of tuple signatures for backends needing type definitions (C, Java)
 
 All IR nodes typed. No AST remnants. Ready for middleend annotation passes.
 

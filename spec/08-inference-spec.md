@@ -90,11 +90,15 @@ The expression `e` produces type `T` without external guidance.
 | `x` (variable)  | lookup `x` in Γ                  |
 | `obj.field`     | field type from class definition |
 | `f(args...)`    | return type of `f`               |
-| `xs[i]`         | element type of `xs`             |
+| `xs[i]`         | element type of `xs` ²           |
 | `[a, b, c]`     | `list[T]` where T = common type  |
-| `x + y` (arith) | `int` or `float`                 |
+| `x + y` (arith) | `int` or `float` ¹               |
 | `x == y`        | `bool`                           |
 | `x and y`       | `bool`                           |
+
+¹ Bool operands in arithmetic coerce to int: `True + 1` yields `int`. Lowering emits `Cast(BOOL, INT)`.
+
+² For strings, `s[i]` yields `str` (a single Unicode code point), not a byte. Lowering emits `CharAt`.
 
 ### Checking (Γ ⊢ e ⇐ T)
 
@@ -359,6 +363,20 @@ def make_expr() -> Expr:           # returns Pointer(StructRef("Expr"))
 e: Node = make_expr()              # e: InterfaceRef("Node")
 ```
 
+### Pointer Nullability
+
+Struct references distinguish nullable from non-nullable:
+
+| Python Type   | IR Type                      | Nullable |
+| ------------- | ---------------------------- | -------- |
+| `Foo`         | `Pointer(StructRef("Foo"))`  | no       |
+| `Foo \| None` | `Optional(StructRef("Foo"))` | yes      |
+| `Node` (root) | `InterfaceRef("Node")`       | yes ³    |
+
+³ Interface references are implicitly nullable (can hold nil for any variant).
+
+Fields and parameters annotated `Foo` (without `| None`) are non-nullable. Assignment of `None` to a non-nullable field is a type error. Backends emit `T` vs `T?` / `T | null` based on this distinction.
+
 ---
 
 ## 8. Tuple Types and Unpacking
@@ -426,6 +444,18 @@ d: dict[str, int] = {}
 d["key"] = 42     # OK
 d[42] = "value"   # ERROR: key must be str, value must be int
 ```
+
+### Dict Key Equivalence
+
+Python treats `True == 1` and `False == 0` as equivalent dict keys:
+
+```python
+d: dict[int, str] = {1: "one"}
+d[True]   # returns "one" (True == 1)
+d[False]  # KeyError (no key 0)
+```
+
+For `dict[int, V]`, bool keys coerce to int. Lowering emits `CoerceMapKey(key, target_key_type)` when key type differs from declared map key type.
 
 ### Invariance
 
