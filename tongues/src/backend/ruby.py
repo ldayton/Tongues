@@ -20,8 +20,10 @@ from src.ir import (
     ChainedCompare,
     CharClassify,
     CatchClause,
+    CompGenerator,
     Constant,
     Continue,
+    DictComp,
     DerefLV,
     EntryPoint,
     Expr,
@@ -45,6 +47,7 @@ from src.ir import (
     IsNil,
     IsType,
     Len,
+    ListComp,
     LValue,
     MakeMap,
     MakeSlice,
@@ -68,11 +71,13 @@ from src.ir import (
     Receiver,
     Return,
     Set,
+    SetComp,
     SetLit,
     Slice,
     SliceConvert,
     SliceExpr,
     SliceLit,
+    SliceLV,
     SoftFail,
     StaticCall,
     Stmt,
@@ -313,6 +318,8 @@ class RubyBackend:
         self._known_functions: set[str] = set()
         self._needs_set = False
         self._needs_bytes = False
+        self._needs_truthy_helper = False
+        self._needs_range_helper = False
 
     def emit(self, module: Module) -> str:
         """Emit Ruby code from IR Module."""
@@ -320,6 +327,8 @@ class RubyBackend:
         self.lines = []
         self._needs_set = False
         self._needs_bytes = False
+        self._needs_truthy_helper = False
+        self._needs_range_helper = False
         self._emit_module(module)
         insert_pos = self._import_insert_pos
         if self._needs_set:
@@ -330,6 +339,16 @@ class RubyBackend:
             for i, line in enumerate(_BYTES_CLASS.strip().split("\n")):
                 self.lines.insert(insert_pos + i, line)
             self.lines.insert(insert_pos + len(_BYTES_CLASS.strip().split("\n")), "")
+            insert_pos += len(_BYTES_CLASS.strip().split("\n")) + 1
+        if self._needs_truthy_helper:
+            helper = "def _truthy(v); v.is_a?(Numeric) ? v != 0 : (v.respond_to?(:empty?) ? !v.empty? : !!v); end"
+            self.lines.insert(insert_pos, helper)
+            self.lines.insert(insert_pos + 1, "")
+            insert_pos += 2
+        if self._needs_range_helper:
+            helper = "def _range(start, stop = nil, step = 1); stop.nil? ? (0...start).step(step).to_a : (step > 0 ? (start...stop).step(step).to_a : (stop + 1..start).step(-step).to_a.reverse); end"
+            self.lines.insert(insert_pos, helper)
+            self.lines.insert(insert_pos + 1, "")
         return "\n".join(self.lines)
 
     def _line(self, text: str = "") -> None:
@@ -500,9 +519,12 @@ class RubyBackend:
                 else:
                     self._line(f"{safe} = nil")
             case Assign(target=target, value=value):
-                lv = self._lvalue(target)
-                val = self._expr(value)
-                self._line(f"{lv} = {val}")
+                if isinstance(target, SliceLV):
+                    self._emit_slice_assign(target, value)
+                else:
+                    lv = self._lvalue(target)
+                    val = self._expr(value)
+                    self._line(f"{lv} = {val}")
             case TupleAssign(targets=targets, value=value):
                 lvalues = ", ".join(self._lvalue(t) for t in targets)
                 val = self._expr(value)
@@ -510,7 +532,11 @@ class RubyBackend:
             case OpAssign(target=target, op=op, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
-                self._line(f"{lv} {op}= {val}")
+                # list += string needs to convert string to chars
+                if op == "+" and value.typ == STRING:
+                    self._line(f"{lv}.concat({val}.chars)")
+                else:
+                    self._line(f"{lv} {op}= {val}")
             case NoOp():
                 pass
             case ExprStmt(expr=expr):
@@ -641,11 +667,16 @@ class RubyBackend:
             iter_expr = f"({iter_expr} || [])"
         idx = _safe_name(index) if index else None
         val = _safe_name(value) if value else None
+        # Check if iterable is enumerate() call - unpack [i, v] pairs directly
+        is_enumerate = isinstance(iterable, Call) and iterable.func == "enumerate"
         # Use each_char for strings
         is_string = iterable.typ == Primitive(kind="string")
         each_method = "each_char" if is_string else "each"
         if idx is not None and val is not None:
-            if is_string:
+            if is_enumerate:
+                # enumerate already produces [idx, val] pairs
+                self._line(f"{iter_expr}.each do |({idx}, {val})|")
+            elif is_string:
                 self._line(f"{iter_expr}.{each_method}.with_index do |{val}, {idx}|")
             else:
                 self._line(f"{iter_expr}.each_with_index do |{val}, {idx}|")
@@ -878,6 +909,9 @@ class RubyBackend:
                     return f"({inner}).abs"
                 return f"{inner}.abs"
             case Call(func="min", args=args):
+                # Single iterable arg: call .min directly
+                if len(args) == 1 and isinstance(args[0].typ, Slice):
+                    return f"{self._expr(args[0])}.min"
                 # Ruby can't compare bools, always coerce to int
                 parts = []
                 for a in args:
@@ -887,6 +921,9 @@ class RubyBackend:
                         parts.append(self._expr(a))
                 return f"[{', '.join(parts)}].min"
             case Call(func="max", args=args):
+                # Single iterable arg: call .max directly
+                if len(args) == 1 and isinstance(args[0].typ, Slice):
+                    return f"{self._expr(args[0])}.max"
                 # Ruby can't compare bools, always coerce to int
                 parts = []
                 for a in args:
@@ -979,6 +1016,47 @@ class RubyBackend:
                 # bytes(n) -> TonguesBytes.zeros(n)
                 self._needs_bytes = True
                 return f"TonguesBytes.zeros({self._expr(arg)})"
+            case Call(func="enumerate", args=[iterable]):
+                # enumerate(x) -> x.each_with_index.to_a (gives [[v0,0], [v1,1]...])
+                # But Python gives [(0,v0), (1,v1)...] so we need to swap
+                return f"{self._expr(iterable)}.each_with_index.map {{ |v, i| [i, v] }}"
+            case Call(func="sum", args=[iterable]):
+                # sum(x) -> x.sum
+                return f"{self._expr(iterable)}.sum"
+            case Call(func="sorted", args=[iterable], reverse=True):
+                # sorted(x, reverse=True) -> x.sort.reverse
+                return f"{self._expr(iterable)}.sort.reverse"
+            case Call(func="sorted", args=[iterable]):
+                # sorted(x) -> x.sort
+                return f"{self._expr(iterable)}.sort"
+            case Call(func="all", args=[iterable]):
+                # all(x) -> x.all? { |v| python_truthy(v) }
+                self._needs_truthy_helper = True
+                return f"{self._expr(iterable)}.all? {{ |v| _truthy(v) }}"
+            case Call(func="any", args=[iterable]):
+                # any(x) -> x.any? { |v| python_truthy(v) }
+                self._needs_truthy_helper = True
+                return f"{self._expr(iterable)}.any? {{ |v| _truthy(v) }}"
+            case Call(func="list", args=[iterable]):
+                # list(x) -> x.to_a, but list(string) -> string.chars
+                if iterable.typ == STRING:
+                    return f"{self._expr(iterable)}.chars"
+                return f"{self._expr(iterable)}.to_a"
+            case Call(func="range", args=args):
+                # range(stop), range(start, stop), range(start, stop, step)
+                self._needs_range_helper = True
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"_range({args_str})"
+            case Call(func="zip", args=args):
+                # zip(a, b, ...) -> a.zip(b, ...).map { |x| x.compact.empty? ? nil : x }
+                # But simpler: first.zip(*rest)
+                if len(args) >= 1:
+                    first = self._expr(args[0])
+                    rest = ", ".join(self._expr(a) for a in args[1:])
+                    if rest:
+                        return f"{first}.zip({rest})"
+                    return f"{first}.zip"
+                return "[]"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 if func not in self._known_functions:
@@ -986,7 +1064,13 @@ class RubyBackend:
                         return f"{_safe_name(func)}.call({args_str})"
                     return f"{_safe_name(func)}.call"
                 return f"{_safe_name(func)}({args_str})"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
+            ):
+                # Python: list.sort(reverse=True) -> Ruby: list.sort!.reverse!
+                if method == "sort" and reverse and isinstance(receiver_type, Slice):
+                    obj_str = self._expr(obj)
+                    return f"{obj_str}.sort!.reverse!"
                 # divmod on bool: coerce receiver to int
                 if method == "divmod" and obj.typ == BOOL:
                     args_str = ", ".join(self._expr(a) for a in args)
@@ -1033,6 +1117,18 @@ class RubyBackend:
                     if isinstance(args[0], IntLit) and args[0].value == 0:
                         obj_str = self._expr(obj)
                         return f"{obj_str}.shift"
+                # Python: list.extend(string) -> Ruby: list.concat(string.chars)
+                if method == "extend" and isinstance(receiver_type, Slice) and len(args) == 1:
+                    if args[0].typ == STRING:
+                        obj_str = self._expr(obj)
+                        arg_str = self._expr(args[0])
+                        return f"{obj_str}.concat({arg_str}.chars)"
+                # Python: list.remove(x) removes first occurrence
+                # Ruby: delete(x) removes ALL occurrences, so use delete_at(index(x))
+                if method == "remove" and isinstance(receiver_type, Slice) and len(args) == 1:
+                    obj_str = self._expr(obj)
+                    arg_str = self._expr(args[0])
+                    return f"{obj_str}.delete_at({obj_str}.index({arg_str}))"
                 # Python: str.replace("\\", "\\\\") needs special handling in Ruby
                 # because gsub's replacement string interprets \\ specially
                 if method == "replace" and len(args) == 2:
@@ -1568,8 +1664,78 @@ class RubyBackend:
                 return self._format_string(template, args)
             case SliceConvert(source=source):
                 return self._expr(source)
+            case ListComp(element=element, generators=generators):
+                return self._list_comp(element, generators)
+            case SetComp(element=element, generators=generators):
+                return self._set_comp(element, generators)
+            case DictComp(key=key, value=value, generators=generators):
+                return self._dict_comp(key, value, generators)
             case _:
                 raise NotImplementedError("Unknown expression")
+
+    def _list_comp(self, element: Expr, generators: list[CompGenerator]) -> str:
+        """Emit list comprehension as Ruby lambda IIFE."""
+        body_lines: list[str] = ["_result = []"]
+        body_stmt = f"_result << {self._expr(element)}"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
+        body_lines.append("_result")
+        body = "; ".join(body_lines)
+        return f"(-> {{ {body} }}).call"
+
+    def _set_comp(self, element: Expr, generators: list[CompGenerator]) -> str:
+        """Emit set comprehension as Ruby lambda IIFE."""
+        body_lines: list[str] = ["_result = Set.new"]
+        body_stmt = f"_result << {self._expr(element)}"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
+        body_lines.append("_result")
+        body = "; ".join(body_lines)
+        return f"(-> {{ {body} }}).call"
+
+    def _dict_comp(self, key: Expr, value: Expr, generators: list[CompGenerator]) -> str:
+        """Emit dict comprehension as Ruby lambda IIFE."""
+        body_lines: list[str] = ["_result = {}"]
+        body_stmt = f"_result[{self._expr(key)}] = {self._expr(value)}"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
+        body_lines.append("_result")
+        body = "; ".join(body_lines)
+        return f"(-> {{ {body} }}).call"
+
+    def _emit_comp_loops(
+        self,
+        generators: list[CompGenerator],
+        idx: int,
+        lines: list[str],
+        body_stmt: str,
+    ) -> None:
+        """Recursively emit nested loops for comprehension generators."""
+        if idx >= len(generators):
+            lines.append(body_stmt)
+            return
+        gen = generators[idx]
+        iter_expr = self._expr(gen.iterable)
+        if len(gen.targets) == 1:
+            target = _safe_name(gen.targets[0])
+            lines.append(f"{iter_expr}.each {{ |{target}|")
+        else:
+            targets = ", ".join(_safe_name(t) for t in gen.targets)
+            lines.append(f"{iter_expr}.each {{ |({targets})|")
+        for cond in gen.conditions:
+            lines.append(f"next unless {self._expr(cond)}")
+        self._emit_comp_loops(generators, idx + 1, lines, body_stmt)
+        lines.append("}")
+
+    def _emit_slice_assign(self, target: SliceLV, value: Expr) -> None:
+        """Emit slice assignment: arr[lo:hi] = value."""
+        obj_str = self._expr(target.obj)
+        val_str = self._expr(value)
+        low = self._expr(target.low) if target.low else "0"
+        if target.high is None:
+            # arr[lo:] = value -> arr[lo..] = value
+            self._line(f"{obj_str}[{low}..] = {val_str}")
+        else:
+            high = self._expr(target.high)
+            # arr[lo:hi] = value -> arr[lo...hi] = value (exclusive end)
+            self._line(f"{obj_str}[{low}...{high}] = {val_str}")
 
     def _slice_expr(
         self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
@@ -1927,6 +2093,12 @@ def _method_name(method: str, receiver_type: Type) -> str:
             return "dup"
         if method == "extend":
             return "concat"
+        # remove is handled specially in _expr (delete_at + index)
+        # Python's in-place sort/reverse -> Ruby's bang methods
+        if method == "sort":
+            return "sort!"
+        if method == "reverse":
+            return "reverse!"
     # Python string methods to Ruby
     if method == "startswith":
         return "start_with?"
