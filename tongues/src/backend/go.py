@@ -57,7 +57,7 @@ from __future__ import annotations
 
 from re import sub as re_sub
 
-from src.backend.util import GO_RESERVED, escape_string, go_to_camel, go_to_pascal
+from src.backend.util import escape_string, go_to_camel, go_to_pascal
 from src.ir import (
     BOOL,
     BYTE,
@@ -82,7 +82,6 @@ from src.ir import (
     EntryPoint,
     Expr,
     ExprStmt,
-    Field,
     FieldAccess,
     FieldLV,
     FloatLit,
@@ -107,22 +106,18 @@ from src.ir import (
     Map,
     MapLit,
     Match,
-    MatchCase,
     MaxExpr,
     MethodCall,
-    MethodSig,
     MinExpr,
     Module,
     NilLit,
     NoOp,
     OpAssign,
     Optional,
-    Param,
     ParseInt,
     Pointer,
     Primitive,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,
@@ -149,7 +144,6 @@ from src.ir import (
     Tuple,
     Type,
     TypeAssert,
-    TypeCase,
     TypeSwitch,
     UnaryOp,
     Union,
@@ -228,7 +222,10 @@ def _check_uses_interface_methods_expr(
         return False
     if isinstance(expr, MethodCall):
         if isinstance(expr.obj, Var) and expr.obj.name == binding:
-            if expr.method in interface_methods or go_to_pascal(expr.method) in interface_methods:
+            if (
+                expr.method in interface_methods
+                or go_to_pascal(expr.method) in interface_methods
+            ):
                 return True
         if _check_uses_interface_methods_expr(expr.obj, binding, interface_methods):
             return True
@@ -240,12 +237,18 @@ def _check_uses_interface_methods_expr(
             expr.left, binding, interface_methods
         ) or _check_uses_interface_methods_expr(expr.right, binding, interface_methods)
     if isinstance(expr, UnaryOp):
-        return _check_uses_interface_methods_expr(expr.operand, binding, interface_methods)
+        return _check_uses_interface_methods_expr(
+            expr.operand, binding, interface_methods
+        )
     if isinstance(expr, Ternary):
         return (
             _check_uses_interface_methods_expr(expr.cond, binding, interface_methods)
-            or _check_uses_interface_methods_expr(expr.then_expr, binding, interface_methods)
-            or _check_uses_interface_methods_expr(expr.else_expr, binding, interface_methods)
+            or _check_uses_interface_methods_expr(
+                expr.then_expr, binding, interface_methods
+            )
+            or _check_uses_interface_methods_expr(
+                expr.else_expr, binding, interface_methods
+            )
         )
     if isinstance(expr, (Cast, TypeAssert, IsNil, IsType)):
         return _check_uses_interface_methods_expr(expr.expr, binding, interface_methods)
@@ -271,11 +274,15 @@ def _check_uses_interface_methods_stmt(
 ) -> bool:
     """Check if stmt uses interface methods on the binding variable."""
     if isinstance(stmt, (Assign, OpAssign)):
-        return _check_uses_interface_methods_expr(stmt.value, binding, interface_methods)
+        return _check_uses_interface_methods_expr(
+            stmt.value, binding, interface_methods
+        )
     if isinstance(stmt, ExprStmt):
         return _check_uses_interface_methods_expr(stmt.expr, binding, interface_methods)
     if isinstance(stmt, Return) and stmt.value:
-        return _check_uses_interface_methods_expr(stmt.value, binding, interface_methods)
+        return _check_uses_interface_methods_expr(
+            stmt.value, binding, interface_methods
+        )
     if isinstance(stmt, If):
         if _check_uses_interface_methods_expr(stmt.cond, binding, interface_methods):
             return True
@@ -311,14 +318,24 @@ class GoBackend:
         self._receiver_name: str = ""  # Current method receiver name
         self._tuple_vars: dict[str, Tuple] = {}  # Track tuple-typed variables
         self._hoisted_in_try: set[str] = set()  # Variables hoisted from try blocks
-        self._type_switch_binding_rename: dict[str, str] = {}  # Maps binding name to narrowed name
-        self._named_returns: list[str] | None = None  # Named return param names (when needed)
+        self._type_switch_binding_rename: dict[
+            str, str
+        ] = {}  # Maps binding name to narrowed name
+        self._named_returns: list[str] | None = (
+            None  # Named return param names (when needed)
+        )
         self._in_catch_body: bool = False  # Whether we're inside a TryCatch catch body
         self._current_return_type: Type = VOID  # Current function's return type
-        self._interface_methods: set[str] = set()  # All interface method names (for Node assertion)
-        self._interface_field_getters: dict[str, str] = {}  # (iface, field) -> getter method
+        self._interface_methods: set[str] = (
+            set()
+        )  # All interface method names (for Node assertion)
+        self._interface_field_getters: dict[
+            str, str
+        ] = {}  # (iface, field) -> getter method
         self._method_to_interface: dict[str, str] = {}  # method name -> interface name
-        self._struct_names: set[str] = set()  # All struct names (for error type detection)
+        self._struct_names: set[str] = (
+            set()
+        )  # All struct names (for error type detection)
 
     def emit(self, module: Module) -> str:
         """Emit Go code from IR Module."""
@@ -408,7 +425,8 @@ class GoBackend:
         if "math.Pow(" in body:
             imports.append('"math"')
         if any(
-            f"_strIs{s}(" in body for s in ("Alnum", "Alpha", "Digit", "Space", "Upper", "Lower")
+            f"_strIs{s}(" in body
+            for s in ("Alnum", "Alpha", "Digit", "Space", "Upper", "Lower")
         ):
             imports.append('"unicode"')
         if "_runeAt(" in body or "_runeLen(" in body or "_Substring(" in body:
@@ -692,7 +710,9 @@ class GoBackend:
         self._current_return_type = func.ret
         self._named_returns = None
         self._in_catch_body = False
-        params = ", ".join(f"{go_to_camel(p.name)} {self._type_to_go(p.typ)}" for p in func.params)
+        params = ", ".join(
+            f"{go_to_camel(p.name)} {self._type_to_go(p.typ)}" for p in func.params
+        )
         # Check if we need named return parameters (for TryCatch with catch-body returns)
         needs_named_returns = func.needs_named_returns
         if needs_named_returns and func.ret != VOID:
@@ -776,7 +796,11 @@ class GoBackend:
 
     def _emit_stmt_Assert(self, stmt: Assert) -> None:
         test = self._emit_expr(stmt.test)
-        msg = self._emit_expr(stmt.message) if stmt.message is not None else '"assertion failed"'
+        msg = (
+            self._emit_expr(stmt.message)
+            if stmt.message is not None
+            else '"assertion failed"'
+        )
         self._line(f"if !({test}) {{")
         self.indent += 1
         self._line(f"panic(AssertionError({msg}))")
@@ -820,7 +844,10 @@ class GoBackend:
         target = self._emit_lvalue(stmt.target)
         if stmt.is_declaration:
             # Check if this var was hoisted - use = instead of :=
-            is_hoisted = isinstance(stmt.target, VarLV) and stmt.target.name in self._hoisted_in_try
+            is_hoisted = (
+                isinstance(stmt.target, VarLV)
+                and stmt.target.name in self._hoisted_in_try
+            )
             # Check if there's a declaration type override
             decl_typ = stmt.decl_typ
             # nil assignments need explicit var type (Go's nil is untyped)
@@ -879,11 +906,14 @@ class GoBackend:
         new_targets = stmt.new_targets
         # Check if ANY target was hoisted - those use = instead of :=
         any_hoisted = any(
-            isinstance(t, VarLV) and t.name in self._hoisted_in_try for t in stmt.targets
+            isinstance(t, VarLV) and t.name in self._hoisted_in_try
+            for t in stmt.targets
         )
         # Go's := handles mixed declarations - if ANY target is new (and not hoisted), use :=
         has_new_unhoisted = any(
-            isinstance(t, VarLV) and t.name in new_targets and t.name not in self._hoisted_in_try
+            isinstance(t, VarLV)
+            and t.name in new_targets
+            and t.name not in self._hoisted_in_try
             for t in stmt.targets
         )
         if is_decl and not any_hoisted:
@@ -975,7 +1005,11 @@ class GoBackend:
 
     def _emit_stmt_ExprStmt(self, stmt: ExprStmt) -> None:
         # Special handling for append - needs to be an assignment in Go
-        if isinstance(stmt.expr, MethodCall) and stmt.expr.method == "append" and stmt.expr.args:
+        if (
+            isinstance(stmt.expr, MethodCall)
+            and stmt.expr.method == "append"
+            and stmt.expr.args
+        ):
             obj = self._emit_expr(stmt.expr.obj)
             arg = self._emit_expr(stmt.expr.args[0])
             arg_type = stmt.expr.args[0].typ
@@ -1006,7 +1040,11 @@ class GoBackend:
                 self._line(f"{obj} = append({obj}, {arg})")
             return
         # Special handling for extend - needs to be an assignment in Go
-        if isinstance(stmt.expr, MethodCall) and stmt.expr.method == "extend" and stmt.expr.args:
+        if (
+            isinstance(stmt.expr, MethodCall)
+            and stmt.expr.method == "extend"
+            and stmt.expr.args
+        ):
             obj = self._emit_expr(stmt.expr.obj)
             arg = self._emit_expr(stmt.expr.args[0])
             # Check if receiver is a pointer to slice - need to dereference
@@ -1019,7 +1057,11 @@ class GoBackend:
             return
         # Special handling for pop() as statement - truncates the slice
         # Only handle if receiver is a slice type (not a struct with a Pop method)
-        if isinstance(stmt.expr, MethodCall) and stmt.expr.method == "pop" and not stmt.expr.args:
+        if (
+            isinstance(stmt.expr, MethodCall)
+            and stmt.expr.method == "pop"
+            and not stmt.expr.args
+        ):
             recv_type = stmt.expr.receiver_type
             # Check if receiver is a pointer to slice
             if isinstance(recv_type, Pointer) and isinstance(recv_type.target, Slice):
@@ -1096,7 +1138,9 @@ class GoBackend:
                 if isinstance(self._current_return_type, Tuple):
                     # For tuple returns, check if variable is returned in a known position
                     # Common pattern: return node, text -> text is second element (string)
-                    ret_type = self._infer_tuple_element_type(name, stmt, self._current_return_type)
+                    ret_type = self._infer_tuple_element_type(
+                        name, stmt, self._current_return_type
+                    )
                     if ret_type:
                         type_str = self._type_to_go(ret_type)
                 # Don't override interface{} with non-tuple return type - the var might not
@@ -1389,7 +1433,9 @@ class GoBackend:
     def _uses_interface_methods(self, stmts: list[Stmt], binding: str) -> bool:
         """Check if binding variable is used with interface methods in statements."""
         for stmt in stmts:
-            if _check_uses_interface_methods_stmt(stmt, binding, self._interface_methods):
+            if _check_uses_interface_methods_stmt(
+                stmt, binding, self._interface_methods
+            ):
                 return True
         return False
 
@@ -1429,9 +1475,9 @@ class GoBackend:
                 if method in self._method_to_interface:
                     return self._method_to_interface[method]
         if isinstance(expr, BinaryOp):
-            return self._find_interface_in_expr(expr.left, binding) or self._find_interface_in_expr(
-                expr.right, binding
-            )
+            return self._find_interface_in_expr(
+                expr.left, binding
+            ) or self._find_interface_in_expr(expr.right, binding)
         if isinstance(expr, Ternary):
             return (
                 self._find_interface_in_expr(expr.cond, binding)
@@ -1870,9 +1916,14 @@ class GoBackend:
                 arg_type = expr.args[0].typ
                 elem_type = expr.receiver_type.element
                 needs_deref = False
-                if isinstance(arg_type, Pointer) and isinstance(arg_type.target, StructRef):
+                if isinstance(arg_type, Pointer) and isinstance(
+                    arg_type.target, StructRef
+                ):
                     # Check if element is StructRef with same name
-                    if isinstance(elem_type, StructRef) and arg_type.target.name == elem_type.name:
+                    if (
+                        isinstance(elem_type, StructRef)
+                        and arg_type.target.name == elem_type.name
+                    ):
                         needs_deref = True
                     # Or element is Interface with same name (Node interface)
                     elif (
@@ -1898,7 +1949,8 @@ class GoBackend:
             arg_node = expr.args[0]
             if isinstance(arg_node, TupleLit):
                 parts = [
-                    f"strings.HasPrefix({obj}, {self._emit_expr(e)})" for e in arg_node.elements
+                    f"strings.HasPrefix({obj}, {self._emit_expr(e)})"
+                    for e in arg_node.elements
                 ]
                 return " || ".join(parts)
             arg = self._emit_expr(arg_node)
@@ -1912,7 +1964,8 @@ class GoBackend:
             arg_node = expr.args[0]
             if isinstance(arg_node, TupleLit):
                 parts = [
-                    f"strings.HasSuffix({obj}, {self._emit_expr(e)})" for e in arg_node.elements
+                    f"strings.HasSuffix({obj}, {self._emit_expr(e)})"
+                    for e in arg_node.elements
                 ]
                 return " || ".join(parts)
             arg = self._emit_expr(arg_node)
@@ -1941,7 +1994,11 @@ class GoBackend:
             arg = self._emit_expr(expr.args[0])
             return f"strings.LastIndex({obj}, {arg})"
         # Handle dict.get(key, default) -> _mapGet(dict, key, default) or direct index
-        if method == "get" and isinstance(expr.receiver_type, Map) and len(expr.args) >= 1:
+        if (
+            method == "get"
+            and isinstance(expr.receiver_type, Map)
+            and len(expr.args) >= 1
+        ):
             key = self._emit_expr(expr.args[0])
             if len(expr.args) >= 2:
                 default = self._emit_expr(expr.args[1])
@@ -1987,16 +2044,26 @@ class GoBackend:
         if op in ("==", "!="):
             left_is_rune = isinstance(expr.left, Var) and expr.left.typ == RUNE
             right_is_rune = isinstance(expr.right, Var) and expr.right.typ == RUNE
-            if left_is_rune and isinstance(expr.right, StringLit) and len(expr.right.value) == 1:
+            if (
+                left_is_rune
+                and isinstance(expr.right, StringLit)
+                and len(expr.right.value) == 1
+            ):
                 left_str = self._maybe_paren(expr.left, op, is_left=True)
                 right_str = self._emit_rune_literal(expr.right.value)
                 return f"{left_str} {op} {right_str}"
-            if right_is_rune and isinstance(expr.left, StringLit) and len(expr.left.value) == 1:
+            if (
+                right_is_rune
+                and isinstance(expr.left, StringLit)
+                and len(expr.left.value) == 1
+            ):
                 left_str = self._emit_rune_literal(expr.left.value)
                 right_str = self._maybe_paren(expr.right, op, is_left=False)
                 return f"{left_str} {op} {right_str}"
         # Bool coercion for ordering comparisons (Go doesn't support <, >, <=, >= on bools)
-        if op in ("<", ">", "<=", ">=") and (_go_is_bool(expr.left) or _go_is_bool(expr.right)):
+        if op in ("<", ">", "<=", ">=") and (
+            _go_is_bool(expr.left) or _go_is_bool(expr.right)
+        ):
             left_str = _go_coerce_bool_to_int(self, expr.left)
             right_str = _go_coerce_bool_to_int(self, expr.right)
             return f"{left_str} {op} {right_str}"
@@ -2076,14 +2143,25 @@ class GoBackend:
                 arg_node = expr.operand.args[0]
                 if isinstance(arg_node, TupleLit):
                     obj = self._emit_expr(expr.operand.obj)
-                    func = "strings.HasSuffix" if method == "endswith" else "strings.HasPrefix"
-                    parts = [f"!{func}({obj}, {self._emit_expr(e)})" for e in arg_node.elements]
+                    func = (
+                        "strings.HasSuffix"
+                        if method == "endswith"
+                        else "strings.HasPrefix"
+                    )
+                    parts = [
+                        f"!{func}({obj}, {self._emit_expr(e)})"
+                        for e in arg_node.elements
+                    ]
                     return " && ".join(parts)
         # Simplify negated comparisons to avoid double negatives
         if op == "!" and isinstance(expr.operand, BinaryOp):
             inner = expr.operand
             # !(x != "") -> x == ""
-            if inner.op == "!=" and isinstance(inner.right, StringLit) and inner.right.value == "":
+            if (
+                inner.op == "!="
+                and isinstance(inner.right, StringLit)
+                and inner.right.value == ""
+            ):
                 return f'{self._emit_expr(inner.left)} == ""'
             # !(len(x) > 0) -> len(x) == 0
             if (
@@ -2094,7 +2172,11 @@ class GoBackend:
             ):
                 return f"len({self._emit_expr(inner.left.expr)}) == 0"
             # !((x & Y) != 0) -> (x & Y) == 0
-            if inner.op == "!=" and isinstance(inner.right, IntLit) and inner.right.value == 0:
+            if (
+                inner.op == "!="
+                and isinstance(inner.right, IntLit)
+                and inner.right.value == 0
+            ):
                 return f"({self._emit_expr(inner.left)}) == 0"
         # Remove double negation: !!x -> x
         if op == "!" and isinstance(expr.operand, UnaryOp) and expr.operand.op == "!":
@@ -2158,7 +2240,9 @@ class GoBackend:
         # If inner is a concrete struct pointer and we're asserting TO an interface,
         # skip the assertion (Go implicitly converts concrete types to interfaces)
         inner_type = expr.expr.typ
-        is_concrete = isinstance(inner_type, Pointer) and isinstance(inner_type.target, StructRef)
+        is_concrete = isinstance(inner_type, Pointer) and isinstance(
+            inner_type.target, StructRef
+        )
         asserting_to_interface = isinstance(expr.asserted, InterfaceRef)
         if is_concrete and asserting_to_interface:
             # Concrete struct pointer to interface - no assertion needed
@@ -2197,7 +2281,9 @@ class GoBackend:
             return f"({inner} != 0)"
         if isinstance(inner_type, (Slice, Map, Set)):
             return f"(len({inner}) > 0)"
-        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Map, Set)):
+        if isinstance(inner_type, Optional) and isinstance(
+            inner_type.inner, (Slice, Map, Set)
+        ):
             return f"(len({inner}) > 0)"
         return f"({inner} != nil)"
 
@@ -2294,7 +2380,9 @@ class GoBackend:
     def _emit_expr_MapLit(self, expr: MapLit) -> str:
         key_type = self._type_to_go(expr.key_type)
         val_type = self._type_to_go(expr.value_type)
-        entries = ", ".join(f"{self._emit_expr(k)}: {self._emit_expr(v)}" for k, v in expr.entries)
+        entries = ", ".join(
+            f"{self._emit_expr(k)}: {self._emit_expr(v)}" for k, v in expr.entries
+        )
         return f"map[{key_type}]{val_type}{{{entries}}}"
 
     def _emit_expr_SetLit(self, expr: SetLit) -> str:
@@ -2329,7 +2417,9 @@ class GoBackend:
         elements = ", ".join(self._emit_expr(e) for e in expr.elements)
         if len(expr.elements) == 2:
             return f"struct{{F0 interface{{}}; F1 interface{{}}}}{{{elements}}}"
-        fields = ", ".join(f"F{i}: {self._emit_expr(e)}" for i, e in enumerate(expr.elements))
+        fields = ", ".join(
+            f"F{i}: {self._emit_expr(e)}" for i, e in enumerate(expr.elements)
+        )
         return f"struct{{}}{{{fields}}}"
 
     def _emit_expr_StringConcat(self, expr: StringConcat) -> str:
@@ -2347,7 +2437,9 @@ class GoBackend:
 
     def _emit_expr_ParseInt(self, expr: ParseInt) -> str:
         # Go's strconv.ParseInt returns (int64, error), so use helper to handle error
-        return f"_parseInt({self._emit_expr(expr.string)}, {self._emit_expr(expr.base)})"
+        return (
+            f"_parseInt({self._emit_expr(expr.string)}, {self._emit_expr(expr.base)})"
+        )
 
     def _emit_expr_IntToStr(self, expr: IntToStr) -> str:
         return f"strconv.Itoa({self._emit_expr(expr.value)})"
@@ -2424,7 +2516,9 @@ class GoBackend:
             return f"map[{self._type_to_go(typ.element)}]struct{{}}"
         if isinstance(typ, Tuple):
             # Go doesn't have tuple types for variables; use struct for storage
-            fields = "; ".join(f"F{i} {self._type_to_go(e)}" for i, e in enumerate(typ.elements))
+            fields = "; ".join(
+                f"F{i} {self._type_to_go(e)}" for i, e in enumerate(typ.elements)
+            )
             return f"struct{{ {fields} }}"
         if isinstance(typ, Pointer):
             return f"*{self._type_to_go(typ.target)}"
@@ -2461,7 +2555,9 @@ class GoBackend:
             return "string"
         return "interface{}"
 
-    def _infer_tuple_element_type(self, var_name: str, stmt: If, ret_type: Tuple) -> Type | None:
+    def _infer_tuple_element_type(
+        self, var_name: str, stmt: If, ret_type: Tuple
+    ) -> Type | None:
         """Infer which tuple element a variable corresponds to by scanning returns."""
         pos = _scan_for_return_position(stmt.then_body, var_name)
         if pos is None:

@@ -1,0 +1,268 @@
+=== isinstance narrows to subtype
+class Animal:
+    pass
+class Dog(Animal):
+    def bark(self) -> str:
+        return "woof"
+def f(a: Animal) -> str:
+    if isinstance(a, Dog):
+        return a.bark()
+    return "unknown"
+---
+ok
+---
+
+=== isinstance with int narrows union
+def f(x: int | str) -> int:
+    if isinstance(x, int):
+        return x + 1
+    return len(x)
+---
+ok
+---
+
+=== isinstance with str narrows union
+def f(x: int | str) -> int:
+    if isinstance(x, str):
+        return len(x)
+    return x + 1
+---
+ok
+---
+
+=== isinstance in else branch narrows to remaining
+def f(x: int | str) -> int:
+    if isinstance(x, int):
+        return x
+    return len(x)
+---
+ok
+---
+
+=== is None narrows optional
+def f(x: int | None) -> int:
+    if x is None:
+        return 0
+    return x + 1
+---
+ok
+---
+
+=== is not None narrows optional
+def f(x: int | None) -> int:
+    if x is not None:
+        return x + 1
+    return 0
+---
+ok
+---
+
+=== early return narrows remainder
+def f(x: int | None) -> int:
+    if x is None:
+        return 0
+    return x + 1
+---
+ok
+---
+
+=== early return with isinstance
+class Animal:
+    pass
+class Dog(Animal):
+    def bark(self) -> str:
+        return "woof"
+def f(a: Animal) -> str:
+    if not isinstance(a, Dog):
+        return "not a dog"
+    return a.bark()
+---
+ok
+---
+
+=== truthiness narrows optional in then branch
+def f(x: int | None) -> int:
+    if x:
+        return x + 1
+    return 0
+---
+ok
+---
+
+=== kind field discriminates union
+from dataclasses import dataclass
+@dataclass
+class Add:
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Sub:
+    kind: str
+    left: int
+    right: int
+def eval(node: Add | Sub) -> int:
+    if node.kind == "add":
+        return node.left + node.right
+    return node.left - node.right
+---
+ok
+---
+
+=== nested isinstance narrowing
+def f(x: int | str | None) -> int:
+    if x is None:
+        return 0
+    if isinstance(x, int):
+        return x
+    return len(x)
+---
+ok
+---
+
+=== isinstance with multiple types
+def f(x: int | str | float) -> str:
+    if isinstance(x, int):
+        return "int"
+    if isinstance(x, str):
+        return "str"
+    return "float"
+---
+ok
+---
+
+=== narrowing in while condition
+def f(xs: list[int | None]) -> int:
+    total: int = 0
+    for x in xs:
+        if x is not None:
+            total += x
+    return total
+---
+ok
+---
+
+=== optional field access after guard
+from dataclasses import dataclass
+@dataclass
+class Node:
+    value: int
+    next: "Node | None"
+def sum_list(n: Node | None) -> int:
+    if n is None:
+        return 0
+    return n.value + sum_list(n.next)
+---
+ok
+---
+
+=== chained optional access with guards
+from dataclasses import dataclass
+@dataclass
+class Node:
+    value: int
+    left: "Node | None"
+    right: "Node | None"
+def depth(n: Node | None) -> int:
+    if n is None:
+        return 0
+    left_depth: int = 0
+    right_depth: int = 0
+    if n.left is not None:
+        left_depth = depth(n.left)
+    if n.right is not None:
+        right_depth = depth(n.right)
+    if left_depth > right_depth:
+        return 1 + left_depth
+    return 1 + right_depth
+---
+ok
+---
+
+=== unnarrowed optional access fails
+def f(x: int | None) -> int:
+    return x + 1
+---
+error: None
+---
+
+=== unnarrowed union access fails
+def f(x: int | str) -> int:
+    return x + 1
+---
+error: str
+---
+
+=== wrong branch uses unnarrowed type
+def f(x: int | None) -> int:
+    if x is None:
+        return x + 1
+    return 0
+---
+error: None
+---
+
+=== isinstance does not narrow else for non-exhaustive
+class Animal:
+    pass
+class Dog(Animal):
+    def bark(self) -> str:
+        return "woof"
+class Cat(Animal):
+    def meow(self) -> str:
+        return "meow"
+def f(a: Animal) -> str:
+    if isinstance(a, Dog):
+        return a.bark()
+    return a.meow()
+---
+error: meow
+---
+
+=== narrowing resets after branch merges
+def f(x: int | None, flag: bool) -> int:
+    if flag:
+        if x is not None:
+            y: int = x
+    return x + 1
+---
+error: None
+---
+
+=== walrus with isinstance narrows
+def f(items: list[object]) -> list[int]:
+    result: list[int] = []
+    for item in items:
+        if isinstance(item, int):
+            result.append(item)
+    return result
+---
+ok
+---
+
+=== multiple guards narrow progressively
+def f(x: int | str | None) -> int:
+    if x is None:
+        return -1
+    if isinstance(x, str):
+        return len(x)
+    return x
+---
+ok
+---
+
+=== assert isinstance narrows
+def f(x: object) -> int:
+    assert isinstance(x, int)
+    return x + 1
+---
+ok
+---
+
+=== assert is not None narrows
+def f(x: int | None) -> int:
+    assert x is not None
+    return x + 1
+---
+ok
+---

@@ -23,7 +23,6 @@ from ..ir import (
     Map,
     Optional,
     Pointer,
-    Set,
     Slice,
     STRING,
     StructRef,
@@ -120,7 +119,9 @@ def is_isinstance_call(node: ASTNode) -> tuple[str, str] | None:
     return (args[0].get("id"), args[1].get("id"))
 
 
-def is_kind_check(node: ASTNode, kind_to_class: dict[str, str]) -> tuple[str, str] | None:
+def is_kind_check(
+    node: ASTNode, kind_to_class: dict[str, str]
+) -> tuple[str, str] | None:
     """Check if node is x.kind == "typename". Returns (var_name, class_name) or None."""
     if not is_type(node, ["Compare"]):
         return None
@@ -140,7 +141,9 @@ def is_kind_check(node: ASTNode, kind_to_class: dict[str, str]) -> tuple[str, st
     var_name = left_value.get("id")
     # Check for string constant on right side
     comparator = comparators[0]
-    if not is_type(comparator, ["Constant"]) or not isinstance(comparator.get("value"), str):
+    if not is_type(comparator, ["Constant"]) or not isinstance(
+        comparator.get("value"), str
+    ):
         return None
     kind_value = comparator.get("value")
     # Map kind string to class name
@@ -263,7 +266,9 @@ def get_attr_path(node: ASTNode) -> tuple[str, ...] | None:
     """Extract attribute path as tuple (e.g., node.body -> ("node", "body"))."""
     if is_type(node, ["Name"]):
         return (node.get("id"),)
-    elif is_type(node, ["Attribute"]) and is_type(node.get("value"), ["Name", "Attribute"]):
+    elif is_type(node, ["Attribute"]) and is_type(
+        node.get("value"), ["Name", "Attribute"]
+    ):
         base = get_attr_path(node.get("value"))
         if base:
             return base + (node.get("attr"),)
@@ -314,7 +319,11 @@ def infer_attr_chain_type(
         return InterfaceRef("any")
     if is_type(node, ["Attribute"]):
         obj_type = infer_attr_chain_type(
-            node.get("value", {}), var_types, symbols, current_class_name, current_func_info
+            node.get("value", {}),
+            var_types,
+            symbols,
+            current_class_name,
+            current_func_info,
         )
         struct_name = extract_struct_name(obj_type)
         if struct_name and struct_name in symbols.structs:
@@ -416,7 +425,9 @@ def collect_branch_var_types(
                     elif value_id in branch_vars:
                         branch_vars[var_name] = branch_vars[value_id]
                 # Method calls (e.g., x.to_sexp() returns STRING)
-                elif is_type(value, ["Call"]) and is_type(value.get("func"), ["Attribute"]):
+                elif is_type(value, ["Call"]) and is_type(
+                    value.get("func"), ["Attribute"]
+                ):
                     method = value.get("func", {}).get("attr")
                     if method in (
                         "to_sexp",
@@ -476,12 +487,16 @@ def infer_element_type_from_append_arg(
                 obj_type = var_types[arg_value.get("id")]
                 struct_name = callbacks.extract_struct_name(obj_type)
                 if struct_name and struct_name in symbols.structs:
-                    field_info = symbols.structs[struct_name].fields.get(arg.get("attr"))
+                    field_info = symbols.structs[struct_name].fields.get(
+                        arg.get("attr")
+                    )
                     if field_info:
                         return field_info.typ
     # Subscript: container[i] -> infer element type from container
     if is_type(arg, ["Subscript"]):
-        container_type = callbacks.infer_container_type_from_ast(arg.get("value"), var_types)
+        container_type = callbacks.infer_container_type_from_ast(
+            arg.get("value"), var_types
+        )
         if container_type == STRING:
             return STRING  # string[i] in Python returns a string
         if isinstance(container_type, Slice):
@@ -537,7 +552,11 @@ def infer_element_type_from_append_arg(
         if func_name in symbols.structs:
             info = symbols.structs[func_name]
             if info.is_node:
-                return InterfaceRef(hierarchy_root) if hierarchy_root else InterfaceRef("any")
+                return (
+                    InterfaceRef(hierarchy_root)
+                    if hierarchy_root
+                    else InterfaceRef("any")
+                )
             return Pointer(StructRef(func_name))
         # Function return types
         if func_name in symbols.functions:
@@ -560,7 +579,9 @@ def infer_element_type_from_append_arg(
         # (can't use _infer_expr_type_from_ast here - _type_ctx not set yet)
         if is_type(func_value, ["Name"]) and func_value.get("id") == "self":
             if current_class_name and current_class_name in symbols.structs:
-                method_info = symbols.structs[current_class_name].methods.get(method_name)
+                method_info = symbols.structs[current_class_name].methods.get(
+                    method_name
+                )
                 if method_info:
                     return method_info.return_type
         # Handle other obj.method() calls via var_types lookup
@@ -582,7 +603,9 @@ def collect_var_types(
     node_types: set[str],
     callbacks: InferenceCallbacks,
     hierarchy_root: str | None = None,
-) -> tuple[dict[str, "Type"], dict[str, list[str]], set[str], set[str], dict[str, list[str]]]:
+) -> tuple[
+    dict[str, "Type"], dict[str, list[str]], set[str], set[str], dict[str, list[str]]
+]:
     """Pre-scan function body to collect variable types, tuple var mappings, sentinel ints, and optional strings."""
     var_types: dict[str, "Type"] = {}
     tuple_vars: dict[str, list[str]] = {}
@@ -624,7 +647,9 @@ def collect_var_types(
                                 vars_all_types[var_name].append(p.typ.ret)
                                 break
                 # String method calls: x = "".join(...), etc.
-                elif is_type(value, ["Call"]) and is_type(value.get("func"), ["Attribute"]):
+                elif is_type(value, ["Call"]) and is_type(
+                    value.get("func"), ["Attribute"]
+                ):
                     func = value.get("func", {})
                     method = func.get("attr")
                     if method in (
@@ -644,7 +669,9 @@ def collect_var_types(
                         and func.get("value", {}).get("id") == "self"
                     ):
                         if current_class_name and current_class_name in symbols.structs:
-                            method_info = symbols.structs[current_class_name].methods.get(method)
+                            method_info = symbols.structs[
+                                current_class_name
+                            ].methods.get(method)
                             if method_info:
                                 vars_all_types[var_name].append(method_info.return_type)
                 # Assignment from known variable: varfd = varname
@@ -663,8 +690,12 @@ def collect_var_types(
             vars_concrete_type[var_name] = unique_types[0]
         else:
             # Multiple types - check if all are Node-related (handles Optional wrappers)
-            hierarchy_root_iface = InterfaceRef(hierarchy_root) if hierarchy_root else None
-            hierarchy_root_struct = StructRef(hierarchy_root) if hierarchy_root else None
+            hierarchy_root_iface = (
+                InterfaceRef(hierarchy_root) if hierarchy_root else None
+            )
+            hierarchy_root_struct = (
+                StructRef(hierarchy_root) if hierarchy_root else None
+            )
             all_node = hierarchy_root and all(
                 (inner := (t.inner if isinstance(t, Optional) else t))
                 and (
@@ -712,7 +743,9 @@ def collect_var_types(
                 elts = target.get("elts", [])
                 if is_type(elts[1], ["Name"]):
                     loop_var = elts[1].get("id")
-                    iterable_type = callbacks.infer_iterable_type(stmt.get("iter"), var_types)
+                    iterable_type = callbacks.infer_iterable_type(
+                        stmt.get("iter"), var_types
+                    )
                     if isinstance(iterable_type, Slice):
                         var_types[loop_var] = iterable_type.element
     # Second pass: infer variable types from assignments (runs first to populate var_types)
@@ -744,14 +777,20 @@ def collect_var_types(
             value = stmt.get("value", {})
             if is_type(value, ["Name"]):
                 var_name = value.get("id")
-                if current_func_info and isinstance(current_func_info.return_type, Slice):
+                if current_func_info and isinstance(
+                    current_func_info.return_type, Slice
+                ):
                     var_types[var_name] = current_func_info.return_type
         # Infer from field assignments: self.field = var -> var has field's type
         if is_type(stmt, ["Assign"]) and len(stmt.get("targets", [])) == 1:
             target = stmt.get("targets", [])[0]
             value = stmt.get("value", {})
-            if is_type(target, ["Attribute"]) and is_type(target.get("value"), ["Name"]):
-                if target.get("value", {}).get("id") == "self" and is_type(value, ["Name"]):
+            if is_type(target, ["Attribute"]) and is_type(
+                target.get("value"), ["Name"]
+            ):
+                if target.get("value", {}).get("id") == "self" and is_type(
+                    value, ["Name"]
+                ):
                     var_name = value.get("id")
                     field_name = target.get("attr")
                     # Look up field type from current class
@@ -801,9 +840,9 @@ def collect_var_types(
                         var_types[var_name] = INT
                     elif op_t == "Add":
                         # Could be int or string - check operands
-                        if callbacks.is_len_call(value.get("left")) or callbacks.is_len_call(
-                            value.get("right")
-                        ):
+                        if callbacks.is_len_call(
+                            value.get("left")
+                        ) or callbacks.is_len_call(value.get("right")):
                             var_types[var_name] = INT
                 # Infer from list/dict literals - infer element type from first element if constant
                 elif is_type(value, ["List"]):
@@ -812,7 +851,9 @@ def collect_var_types(
                         elt_value = elts[0].get("value")
                         if isinstance(elt_value, str):
                             var_types[var_name] = Slice(STRING)
-                        elif isinstance(elt_value, int) and not isinstance(elt_value, bool):
+                        elif isinstance(elt_value, int) and not isinstance(
+                            elt_value, bool
+                        ):
                             var_types[var_name] = Slice(INT)
                         else:
                             var_types[var_name] = Slice(InterfaceRef("any"))
@@ -866,16 +907,18 @@ def collect_var_types(
                             if attr_value.get("id") == "self" and current_class_name:
                                 struct_info = symbols.structs.get(current_class_name)
                                 if struct_info:
-                                    field_info = struct_info.fields.get(attr.get("attr"))
+                                    field_info = struct_info.fields.get(
+                                        attr.get("attr")
+                                    )
                                     if field_info:
                                         container_type = field_info.typ
                             elif attr_value.get("id") in var_types:
                                 obj_type = var_types[attr_value.get("id")]
                                 struct_name = callbacks.extract_struct_name(obj_type)
                                 if struct_name and struct_name in symbols.structs:
-                                    field_info = symbols.structs[struct_name].fields.get(
-                                        attr.get("attr")
-                                    )
+                                    field_info = symbols.structs[
+                                        struct_name
+                                    ].fields.get(attr.get("attr"))
                                     if field_info:
                                         container_type = field_info.typ
                     if container_type == STRING:
@@ -896,7 +939,9 @@ def collect_var_types(
                             if 0 <= idx and idx < len(container_type.elements):
                                 var_types[var_name] = container_type.elements[idx]
                 # Infer from method calls: var = obj.method() -> method return type
-                elif is_type(value, ["Call"]) and is_type(value.get("func"), ["Attribute"]):
+                elif is_type(value, ["Call"]) and is_type(
+                    value.get("func"), ["Attribute"]
+                ):
                     func = value.get("func", {})
                     method_name = func.get("attr")
                     obj_type: "Type" = InterfaceRef("any")
@@ -936,7 +981,9 @@ def collect_var_types(
                             continue
                     struct_name = callbacks.extract_struct_name(obj_type)
                     if struct_name and struct_name in symbols.structs:
-                        method_info = symbols.structs[struct_name].methods.get(method_name)
+                        method_info = symbols.structs[struct_name].methods.get(
+                            method_name
+                        )
                         if method_info:
                             var_types[var_name] = method_info.return_type
         # Handle tuple unpacking: a, b = func() where func returns tuple
@@ -955,7 +1002,9 @@ def collect_var_types(
                 ret_type = callbacks.infer_call_return_type(value)
                 if isinstance(ret_type, Tuple) and len(ret_type.elements) > 1:
                     base_name = target.get("id")
-                    synthetic_names = [f"{base_name}{i}" for i in range(len(ret_type.elements))]
+                    synthetic_names = [
+                        f"{base_name}{i}" for i in range(len(ret_type.elements))
+                    ]
                     tuple_vars[base_name] = synthetic_names
                     for i, elem_type in enumerate(ret_type.elements):
                         var_types[f"{base_name}{i}"] = elem_type
@@ -967,14 +1016,18 @@ def collect_var_types(
                         var_types[target.get("id")] = Pointer(StructRef(class_name))
                     # Handle free function calls: var = func()
                     elif class_name in symbols.functions:
-                        var_types[target.get("id")] = symbols.functions[class_name].return_type
+                        var_types[target.get("id")] = symbols.functions[
+                            class_name
+                        ].return_type
                     # Handle builtin calls: bytearray(), list(), dict(), etc.
                     elif class_name == "bytearray":
                         var_types[target.get("id")] = Slice(BYTE)
                     elif class_name == "list":
                         var_types[target.get("id")] = Slice(InterfaceRef("any"))
                     elif class_name == "dict":
-                        var_types[target.get("id")] = Map(InterfaceRef("any"), InterfaceRef("any"))
+                        var_types[target.get("id")] = Map(
+                            InterfaceRef("any"), InterfaceRef("any")
+                        )
                     # Handle callable parameter calls and other cases: use infer_call_return_type result
                     elif ret_type != InterfaceRef("any"):
                         var_types[target.get("id")] = ret_type
@@ -1018,7 +1071,9 @@ def collect_var_types(
                 checked_var, struct_name = kind_check
                 # Look for append calls in the body
                 for body_stmt in stmt.get("body", []):
-                    if is_type(body_stmt, ["Expr"]) and is_type(body_stmt.get("value"), ["Call"]):
+                    if is_type(body_stmt, ["Expr"]) and is_type(
+                        body_stmt.get("value"), ["Call"]
+                    ):
                         call = body_stmt.get("value", {})
                         func = call.get("func", {})
                         call_args = call.get("args", [])
@@ -1242,7 +1297,9 @@ def _process_expr_stmts(
             _compute_expr_in_stmt(stmt, local_var_types, ctx)
 
 
-def _process_expr_if(stmt: ASTNode, local_var_types: dict[str, "Type"], ctx: _ExprTypeCtx) -> None:
+def _process_expr_if(
+    stmt: ASTNode, local_var_types: dict[str, "Type"], ctx: _ExprTypeCtx
+) -> None:
     """Process if statement with type narrowing for isinstance/kind checks."""
     test = stmt.get("test", {})
     body = stmt.get("body", [])

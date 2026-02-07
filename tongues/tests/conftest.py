@@ -9,7 +9,29 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
+# Add tongues directory to path for src imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.frontend import Frontend  # noqa: E402
+from src.frontend.parse import parse  # noqa: E402
+from src.frontend.subset import verify as verify_subset  # noqa: E402
+from src.frontend.names import resolve_names  # noqa: E402
+from src.middleend import analyze  # noqa: E402
+from src.backend.c import CBackend  # noqa: E402
+from src.backend.csharp import CSharpBackend  # noqa: E402
+from src.backend.dart import DartBackend  # noqa: E402
+from src.backend.go import GoBackend  # noqa: E402
+from src.backend.java import JavaBackend  # noqa: E402
+from src.backend.javascript import JsBackend  # noqa: E402
+from src.backend.lua import LuaBackend  # noqa: E402
+from src.backend.perl import PerlBackend  # noqa: E402
+from src.backend.php import PhpBackend  # noqa: E402
+from src.backend.python import PythonBackend  # noqa: E402
+from src.backend.ruby import RubyBackend  # noqa: E402
+from src.backend.rust import RustBackend  # noqa: E402
+from src.backend.swift import SwiftBackend  # noqa: E402
+from src.backend.typescript import TsBackend  # noqa: E402
+from src.backend.zig import ZigBackend  # noqa: E402
 
 # Required versions for each language runtime (must match Dockerfiles)
 _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
@@ -48,27 +70,6 @@ def _check_version(lang: str) -> tuple[bool, str]:
     except subprocess.TimeoutExpired:
         return False, f"{cmd[0]} timed out"
 
-
-from src.frontend import Frontend
-from src.frontend.parse import parse
-from src.frontend.subset import verify as verify_subset
-from src.frontend.names import resolve_names
-from src.middleend import analyze
-from src.backend.c import CBackend
-from src.backend.csharp import CSharpBackend
-from src.backend.dart import DartBackend
-from src.backend.go import GoBackend
-from src.backend.java import JavaBackend
-from src.backend.javascript import JsBackend
-from src.backend.lua import LuaBackend
-from src.backend.perl import PerlBackend
-from src.backend.php import PhpBackend
-from src.backend.python import PythonBackend
-from src.backend.ruby import RubyBackend
-from src.backend.rust import RustBackend
-from src.backend.swift import SwiftBackend
-from src.backend.typescript import TsBackend
-from src.backend.zig import ZigBackend
 
 # Skip specific (apptest, language) combinations that are known to fail.
 # Format: apptest_stem -> set of languages to skip
@@ -218,10 +219,10 @@ _SKIP_LANGS: dict[str, set[str]] = {
 }
 
 TESTS_DIR = Path(__file__).parent
-APP_DIR = TESTS_DIR / "app"
-CODEGEN_DIR = TESTS_DIR / "codegen"
+APP_DIR = TESTS_DIR / "15_app"
+CODEGEN_DIR = TESTS_DIR / "15_codegen"
 OUT_DIR = APP_DIR / ".out"
-TONGUES_DIR = TESTS_DIR.parent / "tongues"
+TONGUES_DIR = TESTS_DIR.parent
 
 BACKENDS = {
     "c": CBackend,

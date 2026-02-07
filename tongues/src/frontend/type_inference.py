@@ -153,7 +153,9 @@ def parse_callable_type(
     if len(parts) >= 2:
         args_str = parts[0]
         ret_type = parts[-1]
-        ret = py_type_to_ir(ret_type, symbols, node_types, concrete_nodes, hierarchy_root)
+        ret = py_type_to_ir(
+            ret_type, symbols, node_types, concrete_nodes, hierarchy_root
+        )
         # Handle empty args list "[]"
         if args_str == "[]":
             return FuncType(params=(), ret=ret)
@@ -162,7 +164,9 @@ def parse_callable_type(
             args_inner = args_str[1:-1]
             if args_inner:
                 param_types = tuple(
-                    py_type_to_ir(a.strip(), symbols, node_types, concrete_nodes, hierarchy_root)
+                    py_type_to_ir(
+                        a.strip(), symbols, node_types, concrete_nodes, hierarchy_root
+                    )
                     for a in args_inner.split(",")
                 )
                 return FuncType(params=param_types, ret=ret)
@@ -198,13 +202,19 @@ def py_type_to_ir(
         if len(parts) > 1:
             parts = [p for p in parts if p != "None"]
             if len(parts) == 1:
-                inner = py_type_to_ir(parts[0], symbols, node_types, concrete_nodes, hierarchy_root)
+                inner = py_type_to_ir(
+                    parts[0], symbols, node_types, concrete_nodes, hierarchy_root
+                )
                 # For Node | None when not using concrete types, use Node interface (nilable)
                 if not concrete_nodes and (
                     (hierarchy_root and parts[0] == hierarchy_root)
                     or is_node_subclass(parts[0], symbols, hierarchy_root)
                 ):
-                    return InterfaceRef(hierarchy_root) if hierarchy_root else InterfaceRef("any")
+                    return (
+                        InterfaceRef(hierarchy_root)
+                        if hierarchy_root
+                        else InterfaceRef("any")
+                    )
                 # For str | None, just use string (empty string represents None)
                 if inner == STRING:
                     return STRING
@@ -214,12 +224,18 @@ def py_type_to_ir(
                 return Optional(inner)
             # If all parts are Node subclasses, return Node interface (nilable)
             if all(is_node_subclass(p, symbols, hierarchy_root) for p in parts):
-                return InterfaceRef(hierarchy_root) if hierarchy_root else InterfaceRef("any")
+                return (
+                    InterfaceRef(hierarchy_root)
+                    if hierarchy_root
+                    else InterfaceRef("any")
+                )
             return InterfaceRef("any")
     # Handle list[X]
     if py_type.startswith("list["):
         inner = py_type[5:-1]
-        inner_type = py_type_to_ir(inner, symbols, node_types, concrete_nodes, hierarchy_root)
+        inner_type = py_type_to_ir(
+            inner, symbols, node_types, concrete_nodes, hierarchy_root
+        )
         # Auto-wrap struct refs in Pointer for slice elements (Go slices need pointers for mutability)
         # InterfaceRef stays unwrapped (interfaces are already reference types)
         if isinstance(inner_type, StructRef):
@@ -231,31 +247,42 @@ def py_type_to_ir(
         parts = split_type_args(inner)
         if len(parts) == 2:
             return Map(
-                py_type_to_ir(parts[0], symbols, node_types, concrete_nodes, hierarchy_root),
-                py_type_to_ir(parts[1], symbols, node_types, concrete_nodes, hierarchy_root),
+                py_type_to_ir(
+                    parts[0], symbols, node_types, concrete_nodes, hierarchy_root
+                ),
+                py_type_to_ir(
+                    parts[1], symbols, node_types, concrete_nodes, hierarchy_root
+                ),
             )
     # Handle set[X]
     if py_type.startswith("set["):
         inner = py_type[4:-1]
-        return Set(py_type_to_ir(inner, symbols, node_types, concrete_nodes, hierarchy_root))
+        return Set(
+            py_type_to_ir(inner, symbols, node_types, concrete_nodes, hierarchy_root)
+        )
     # Handle tuple[...] - parse element types for typed tuples
     if py_type.startswith("tuple["):
         inner = py_type[6:-1]
         parts = split_type_args(inner)
         elements = tuple(
-            py_type_to_ir(p, symbols, node_types, concrete_nodes, hierarchy_root) for p in parts
+            py_type_to_ir(p, symbols, node_types, concrete_nodes, hierarchy_root)
+            for p in parts
         )
         return Tuple(elements)
     # Handle Callable
     if py_type.startswith("Callable["):
-        return parse_callable_type(py_type, concrete_nodes, symbols, node_types, hierarchy_root)
+        return parse_callable_type(
+            py_type, concrete_nodes, symbols, node_types, hierarchy_root
+        )
     # Handle class names
     if py_type in symbols.structs:
         info = symbols.structs[py_type]
         if info.is_node or (hierarchy_root and py_type == hierarchy_root):
             if concrete_nodes and (not hierarchy_root or py_type != hierarchy_root):
                 return Pointer(StructRef(py_type))
-            return InterfaceRef(hierarchy_root) if hierarchy_root else InterfaceRef("any")
+            return (
+                InterfaceRef(hierarchy_root) if hierarchy_root else InterfaceRef("any")
+            )
         return Pointer(StructRef(py_type))
     # Known internal types
     if py_type in ("Token", "QuoteState", "ParseContext", "Lexer", "Parser"):
@@ -293,10 +320,14 @@ def py_return_type_to_ir(
         if len(parts) > 1:
             parts = [p for p in parts if p != "None"]
             if len(parts) == 1:
-                return py_return_type_to_ir(parts[0], symbols, node_types, hierarchy_root)
+                return py_return_type_to_ir(
+                    parts[0], symbols, node_types, hierarchy_root
+                )
             # Check if all parts are Node subclasses -> return Node interface
             if all(p in node_types for p in parts):
-                return StructRef(hierarchy_root) if hierarchy_root else StructRef("Node")
+                return (
+                    StructRef(hierarchy_root) if hierarchy_root else StructRef("Node")
+                )
             return InterfaceRef("any")
     # Handle tuple[...] specially for return types
     if py_type.startswith("tuple["):
@@ -304,7 +335,11 @@ def py_return_type_to_ir(
         parts = split_type_args(inner)
         elements = tuple(
             py_type_to_ir(
-                p, symbols, node_types, concrete_nodes=True, hierarchy_root=hierarchy_root
+                p,
+                symbols,
+                node_types,
+                concrete_nodes=True,
+                hierarchy_root=hierarchy_root,
             )
             for p in parts
         )
@@ -342,14 +377,21 @@ def infer_type_from_value(
         if elts:
             return Slice(
                 infer_type_from_value(
-                    elts[0], param_types, symbols, node_types, hierarchy_root, concrete_nodes
+                    elts[0],
+                    param_types,
+                    symbols,
+                    node_types,
+                    hierarchy_root,
+                    concrete_nodes,
                 )
             )
         return Slice(InterfaceRef("any"))
     elif node_t == "Dict":
         values = node.get("values", [])
         if values and all(
-            isinstance(v, dict) and v.get("_type") == "Constant" and isinstance(v.get("value"), str)
+            isinstance(v, dict)
+            and v.get("_type") == "Constant"
+            and isinstance(v.get("value"), str)
             for v in values
         ):
             return Map(STRING, STRING)
@@ -377,7 +419,11 @@ def infer_type_from_value(
             if func_name in symbols.structs:
                 info = symbols.structs[func_name]
                 if info.is_node:
-                    return InterfaceRef(hierarchy_root) if hierarchy_root else InterfaceRef("any")
+                    return (
+                        InterfaceRef(hierarchy_root)
+                        if hierarchy_root
+                        else InterfaceRef("any")
+                    )
                 return Pointer(StructRef(func_name))
             if func_name == "QuoteState":
                 return Pointer(StructRef("QuoteState"))
@@ -466,7 +512,9 @@ def infer_container_type_from_ast(
                 obj_type = var_types[value_id]
                 struct_name = extract_struct_name(obj_type)
                 if struct_name and struct_name in symbols.structs:
-                    field_info = symbols.structs[struct_name].fields.get(node.get("attr"))
+                    field_info = symbols.structs[struct_name].fields.get(
+                        node.get("attr")
+                    )
                     if field_info:
                         return field_info.typ
     return InterfaceRef("any")
@@ -1000,7 +1048,12 @@ def coerce(
         for i, elem in enumerate(expr.elements):
             if i < len(to_type.elements):
                 elem_from_type = synthesize_type(
-                    elem, type_ctx, current_func_info, symbols, node_types, hierarchy_root
+                    elem,
+                    type_ctx,
+                    current_func_info,
+                    symbols,
+                    node_types,
+                    hierarchy_root,
                 )
                 new_elements.append(
                     coerce(

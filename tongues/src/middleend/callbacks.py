@@ -36,14 +36,18 @@ def analyze_callbacks(module: Module) -> None:
 
 
 def _scan_stmts(
-    stmts: list[Stmt], func_params: dict[str, list[Param]], current_struct: str | None = None
+    stmts: list[Stmt],
+    func_params: dict[str, list[Param]],
+    current_struct: str | None = None,
 ) -> None:
     """Scan statements for call sites with FuncRef arguments."""
     for stmt in stmts:
         _scan_stmt(stmt, func_params, current_struct)
 
 
-def _scan_stmt(stmt: Stmt, func_params: dict[str, list[Param]], current_struct: str | None) -> None:
+def _scan_stmt(
+    stmt: Stmt, func_params: dict[str, list[Param]], current_struct: str | None
+) -> None:
     """Scan a statement for call sites with FuncRef arguments."""
     from src.ir import (
         Assign,
@@ -112,7 +116,9 @@ def _scan_stmt(stmt: Stmt, func_params: dict[str, list[Param]], current_struct: 
         _scan_stmts(stmt.default, func_params, current_struct)
 
 
-def _scan_expr(expr: Expr, func_params: dict[str, list[Param]], current_struct: str | None) -> None:
+def _scan_expr(
+    expr: Expr, func_params: dict[str, list[Param]], current_struct: str | None
+) -> None:
     """Scan an expression for call sites with FuncRef arguments."""
     from src.ir import (
         AddrOf,
@@ -161,7 +167,10 @@ def _scan_expr(expr: Expr, func_params: dict[str, list[Param]], current_struct: 
                         params = func_params[key]
                         if i < len(params):
                             param = params[i]
-                            if isinstance(param.typ, FuncType) and param.typ.receiver is None:
+                            if (
+                                isinstance(param.typ, FuncType)
+                                and param.typ.receiver is None
+                            ):
                                 # Update parameter's FuncType to include receiver
                                 param.typ = FuncType(
                                     params=param.typ.params,
@@ -183,7 +192,10 @@ def _scan_expr(expr: Expr, func_params: dict[str, list[Param]], current_struct: 
                         params = func_params[expr.func]
                         if i < len(params):
                             param = params[i]
-                            if isinstance(param.typ, FuncType) and param.typ.receiver is None:
+                            if (
+                                isinstance(param.typ, FuncType)
+                                and param.typ.receiver is None
+                            ):
                                 param.typ = FuncType(
                                     params=param.typ.params,
                                     ret=param.typ.ret,

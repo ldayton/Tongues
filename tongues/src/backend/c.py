@@ -60,7 +60,6 @@ from src.ir import (
     EntryPoint,
     Expr,
     ExprStmt,
-    Field,
     FieldAccess,
     FieldLV,
     FloatLit,
@@ -85,23 +84,18 @@ from src.ir import (
     Map,
     MapLit,
     Match,
-    MatchCase,
     MaxExpr,
     MethodCall,
     MinExpr,
-    MethodSig,
     Module,
     NilLit,
     NoOp,
     OpAssign,
     Optional,
-    Ownership,
-    Param,
     ParseInt,
     Pointer,
     Primitive,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,
@@ -128,7 +122,6 @@ from src.ir import (
     TupleLit,
     Type,
     TypeAssert,
-    TypeCase,
     TypeSwitch,
     UnaryOp,
     Union,
@@ -1011,15 +1004,23 @@ class CBackend:
         self._slice_types: set[str] = set()  # Track unique slice element type names
         self._struct_fields: dict[str, list[tuple[str, Type]]] = {}
         self._interface_vars: set[str] = set()  # Variables declared as interface types
-        self._constant_names: set[str] = set()  # Module-level constants (need uppercase)
-        self._constant_set_values: dict[str, SetLit] = {}  # Set constant values for membership
+        self._constant_names: set[str] = (
+            set()
+        )  # Module-level constants (need uppercase)
+        self._constant_set_values: dict[
+            str, SetLit
+        ] = {}  # Set constant values for membership
         self._temp_counter: int = 0  # Counter for generating unique temp names
-        self._function_sigs: dict[str, list[Type]] = {}  # Function name -> parameter types
+        self._function_sigs: dict[
+            str, list[Type]
+        ] = {}  # Function name -> parameter types
         self._rvalue_temps: list[
             tuple[str, str, str]
         ] = []  # List of (struct_name, field_name, temp_name)
         self._deferred_constants: list[Constant] = []  # Constants needing runtime init
-        self._try_catch_labels: list[str] = []  # Stack of goto labels for try-with-catch
+        self._try_catch_labels: list[
+            str
+        ] = []  # Stack of goto labels for try-with-catch
         self._try_label_counter: int = 0
         self._entrypoint_func: str = ""  # Original name of the entrypoint function
         self._function_names: set[str] = set()  # All module-level function names
@@ -1032,7 +1033,9 @@ class CBackend:
         self._struct_names = {s.name for s in module.structs}
         self._interface_names = {i.name for i in module.interfaces}
         self._kind_cache: dict[str, str] = {
-            s.name: s.const_fields["kind"] for s in module.structs if "kind" in s.const_fields
+            s.name: s.const_fields["kind"]
+            for s in module.structs
+            if "kind" in s.const_fields
         }
         self._tuple_types: dict[str, Tuple] = {}
         self._slice_types = set()
@@ -1043,7 +1046,9 @@ class CBackend:
             if isinstance(c.value, SetLit):
                 self._constant_set_values[c.name] = c.value
         self._function_names = {func.name for func in module.functions}
-        self._entrypoint_func = module.entrypoint.function_name if module.entrypoint else ""
+        self._entrypoint_func = (
+            module.entrypoint.function_name if module.entrypoint else ""
+        )
         self._collect_struct_fields(module)
         self._collect_function_sigs(module)
         self._collect_tuple_types(module)
@@ -1073,7 +1078,7 @@ class CBackend:
         self._finalize_helpers()
         if self._entrypoint_func:
             ep = self._ep_func_name(self._entrypoint_func)
-            self._line(f"int main(void) {{")
+            self._line("int main(void) {")
             self.indent += 1
             self._line("init();")
             self._line(f"return (int){ep}();")
@@ -1537,7 +1542,9 @@ class CBackend:
         self._line("")
         # Emit string join helper if we have Vec_Str
         if "Str" in self._slice_types:
-            self._line("static char *_str_join(Arena *a, const char *sep, Vec_Str vec) {")
+            self._line(
+                "static char *_str_join(Arena *a, const char *sep, Vec_Str vec) {"
+            )
             self._line('    if (vec.len == 0) return arena_strdup(a, "");')
             self._line("    size_t sep_len = strlen(sep);")
             self._line("    size_t total = 0;")
@@ -1662,9 +1669,13 @@ class CBackend:
             return
         self._line("// === Forward declarations ===")
         for iface in module.interfaces:
-            self._line(f"typedef struct {_type_name(iface.name)} {_type_name(iface.name)};")
+            self._line(
+                f"typedef struct {_type_name(iface.name)} {_type_name(iface.name)};"
+            )
         for struct in module.structs:
-            self._line(f"typedef struct {_type_name(struct.name)} {_type_name(struct.name)};")
+            self._line(
+                f"typedef struct {_type_name(struct.name)} {_type_name(struct.name)};"
+            )
         self._line("")
 
     def _emit_kind_constants(self, module: Module) -> None:
@@ -1879,7 +1890,9 @@ class CBackend:
                 emitted.add(method_name)
                 ret_type = self._type_to_c(method.ret)
                 recv_type = f"{_type_name(struct.name)} *"
-                recv_name = _safe_name(method.receiver.name if method.receiver else "self")
+                recv_name = _safe_name(
+                    method.receiver.name if method.receiver else "self"
+                )
                 params = [f"{recv_type}{recv_name}"]
                 for p in method.params:
                     params.append(self._param_with_type(p.typ, _safe_name(p.name)))
@@ -1904,7 +1917,9 @@ class CBackend:
                 self._callback_params.add(p.name)
         ret_type = self._type_to_c(func.ret)
         name = self._ep_func_name(func.name)
-        params = ", ".join(self._param_with_type(p.typ, _safe_name(p.name)) for p in func.params)
+        params = ", ".join(
+            self._param_with_type(p.typ, _safe_name(p.name)) for p in func.params
+        )
         if not params:
             params = "void"
         self._line(f"static {ret_type} {name}({params}) {{")
@@ -2040,13 +2055,19 @@ class CBackend:
             if stmt.value:
                 val = self._emit_expr(stmt.value)
                 # Cast if assigning struct pointer to interface type (but not primitives or "any")
-                if isinstance(stmt.typ, InterfaceRef) and stmt.typ.name != "any" and stmt.value.typ:
+                if (
+                    isinstance(stmt.typ, InterfaceRef)
+                    and stmt.typ.name != "any"
+                    and stmt.value.typ
+                ):
                     value_typ = stmt.value.typ
                     if isinstance(value_typ, (StructRef, Pointer)) and not isinstance(
                         value_typ, Primitive
                     ):
                         val = f"({c_type}){val}"
-                    elif isinstance(value_typ, InterfaceRef) and value_typ.name != "any":
+                    elif (
+                        isinstance(value_typ, InterfaceRef) and value_typ.name != "any"
+                    ):
                         val = f"({c_type}){val}"
                 self._line(f"{name} = {val};{ownership_comment}")
             # else: no-op, already initialized
@@ -2054,7 +2075,11 @@ class CBackend:
         if stmt.value:
             val = self._emit_expr(stmt.value)
             # Cast if assigning struct pointer to interface type (but not primitives or "any")
-            if isinstance(stmt.typ, InterfaceRef) and stmt.typ.name != "any" and stmt.value.typ:
+            if (
+                isinstance(stmt.typ, InterfaceRef)
+                and stmt.typ.name != "any"
+                and stmt.value.typ
+            ):
                 value_typ = stmt.value.typ
                 if isinstance(value_typ, (StructRef, Pointer)) and not isinstance(
                     value_typ, Primitive
@@ -2156,7 +2181,8 @@ class CBackend:
         if (
             already_declared
             and not is_hoisted
-            and self._hoisted_vars.get(var_name) in ("int64_t", "int32_t", "int", "bool")
+            and self._hoisted_vars.get(var_name)
+            in ("int64_t", "int32_t", "int", "bool")
             and (
                 c_type in ("int64_t", "int32_t", "int", "bool", "Any *", "void *")
                 or c_type.startswith("Any")
@@ -2190,7 +2216,9 @@ class CBackend:
                     else "void *"
                 )
                 already_declared = var_name in self._hoisted_vars if var_name else False
-                is_hoisted = already_declared and self._hoisted_vars.get(var_name) == field_type
+                is_hoisted = (
+                    already_declared and self._hoisted_vars.get(var_name) == field_type
+                )
                 needs_decl = (stmt.is_declaration and not is_hoisted) or (
                     var_name is not None and not already_declared
                 )
@@ -2198,9 +2226,11 @@ class CBackend:
                 if (
                     already_declared
                     and not is_hoisted
-                    and self._hoisted_vars.get(var_name) in ("int64_t", "int32_t", "int", "bool")
+                    and self._hoisted_vars.get(var_name)
+                    in ("int64_t", "int32_t", "int", "bool")
                     and (
-                        field_type in ("int64_t", "int32_t", "int", "bool", "Any *", "void *")
+                        field_type
+                        in ("int64_t", "int32_t", "int", "bool", "Any *", "void *")
                         or field_type.startswith("Any")
                     )
                 ):
@@ -2230,7 +2260,9 @@ class CBackend:
                     if not var_name or var_name == "_":
                         continue
                     target = self._emit_lvalue(t)
-                    already_declared = var_name in self._hoisted_vars if var_name else False
+                    already_declared = (
+                        var_name in self._hoisted_vars if var_name else False
+                    )
                     op = "/" if i == 0 else "%"
                     expr = f"({a}) {op} ({b})"
                     if stmt.is_declaration and not already_declared:
@@ -2263,7 +2295,9 @@ class CBackend:
                 var_name = t.name if isinstance(t, VarLV) else None
                 target = self._emit_lvalue(t)
                 already_declared = var_name in self._hoisted_vars if var_name else False
-                is_hoisted = already_declared and self._hoisted_vars.get(var_name) == "void *"
+                is_hoisted = (
+                    already_declared and self._hoisted_vars.get(var_name) == "void *"
+                )
                 needs_decl = (stmt.is_declaration and not is_hoisted) or (
                     var_name is not None and not already_declared
                 )
@@ -2288,7 +2322,11 @@ class CBackend:
 
     def _emit_stmt_ExprStmt(self, stmt: ExprStmt) -> None:
         # Handle append specially
-        if isinstance(stmt.expr, MethodCall) and stmt.expr.method == "append" and stmt.expr.args:
+        if (
+            isinstance(stmt.expr, MethodCall)
+            and stmt.expr.method == "append"
+            and stmt.expr.args
+        ):
             obj = self._emit_expr(stmt.expr.obj)
             arg_expr = stmt.expr.args[0]
             arg = self._emit_expr(arg_expr)
@@ -2333,7 +2371,9 @@ class CBackend:
                 ret_type = self._current_return_type
                 val_type = stmt.value.typ
                 if isinstance(ret_type, InterfaceRef):
-                    if isinstance(val_type, StructRef) or isinstance(val_type, InterfaceRef):
+                    if isinstance(val_type, StructRef) or isinstance(
+                        val_type, InterfaceRef
+                    ):
                         ret_c_type = self._type_to_c(ret_type)
                         val = f"({ret_c_type}){val}"
                 self._line(f"return {val};")
@@ -2459,7 +2499,9 @@ class CBackend:
             isinstance(iter_type, Primitive) and iter_type.kind == "string"
         ):
             # Iterate over characters
-            self._line(f"for (int {idx} = 0; {idx} < _rune_len({iterable}); {idx}++) {{")
+            self._line(
+                f"for (int {idx} = 0; {idx} < _rune_len({iterable}); {idx}++) {{"
+            )
             self.indent += 1
             if stmt.value:
                 self._line(f"int32_t {val} = _rune_at({iterable}, {idx});")
@@ -2571,7 +2613,9 @@ class CBackend:
             self.indent += 1
             # Declare catch variable as copy of error message before clearing
             catch_var = (
-                _safe_name(stmt.catches[0].var) if stmt.catches and stmt.catches[0].var else "_err"
+                _safe_name(stmt.catches[0].var)
+                if stmt.catches and stmt.catches[0].var
+                else "_err"
             )
             self._line(f"const char *{catch_var} = arena_strdup(g_arena, g_error_msg);")
             self._line("g_error = 0;")
@@ -2625,7 +2669,8 @@ class CBackend:
             sig = self._tuple_sig(ret)
             zeros = ", ".join(
                 "0"
-                if isinstance(e, Primitive) and e.kind in ("int", "bool", "float", "byte", "rune")
+                if isinstance(e, Primitive)
+                and e.kind in ("int", "bool", "float", "byte", "rune")
                 else "NULL"
                 for e in ret.elements
             )
@@ -2676,7 +2721,9 @@ class CBackend:
                     result.extend(self._collect_stmt_hoisted_vars(s))
         return result
 
-    def _collect_case_declarations(self, stmts: list[Stmt]) -> list[tuple[str, Type | None]]:
+    def _collect_case_declarations(
+        self, stmts: list[Stmt]
+    ) -> list[tuple[str, Type | None]]:
         """Collect all variable declarations from switch case statements.
 
         This collects Assigns and TupleAssigns with is_declaration=True, which need
@@ -2794,7 +2841,9 @@ class CBackend:
         # Note: Don't restore _hoisted_vars - let hoisted vars persist at function level
         # to avoid redeclaration of variables used across multiple TypeSwitches
 
-    def _emit_type_switch_with_primitives(self, stmt: TypeSwitch, expr: str, binding: str) -> None:
+    def _emit_type_switch_with_primitives(
+        self, stmt: TypeSwitch, expr: str, binding: str
+    ) -> None:
         """Emit a TypeSwitch that includes primitive type cases as if-else chain."""
         # If binding equals expr, we need a temp to avoid shadowing issues
         switch_expr = expr
@@ -2818,7 +2867,9 @@ class CBackend:
             else:
                 type_name = self._type_to_c(case.typ).rstrip(" *")
                 kind_str = self._struct_name_to_kind(type_name)
-                cond = f'strcmp((({type_name} *){switch_expr})->kind, "{kind_str}") == 0'
+                cond = (
+                    f'strcmp((({type_name} *){switch_expr})->kind, "{kind_str}") == 0'
+                )
                 kwd = "if" if first else "} else if"
                 self._line(f"{kwd} ({cond}) {{")
                 self.indent += 1
@@ -3176,7 +3227,10 @@ class CBackend:
                     param_c_type = self._type_to_c(param_type)
                     if isinstance(arg_type, StructRef):
                         arg_str = f"({param_c_type}){arg_str}"
-                    elif isinstance(arg_type, InterfaceRef) and arg_type.name == param_type.name:
+                    elif (
+                        isinstance(arg_type, InterfaceRef)
+                        and arg_type.name == param_type.name
+                    ):
                         # Same interface, but C code might have concrete type - cast to be safe
                         arg_str = f"({param_c_type}){arg_str}"
                 # Add & when passing Slice value to Optional(Slice) parameter
@@ -3192,8 +3246,12 @@ class CBackend:
         args = ", ".join(arg_list)
         # Variable callable — cast to function pointer
         if func not in self._function_sigs and func not in self._callback_params:
-            ret_c = self._type_to_c(expr.typ) if expr.typ and expr.typ != VOID else "void"
-            param_types_c = [self._type_to_c(a.typ) for a in expr.args] if expr.args else ["void"]
+            ret_c = (
+                self._type_to_c(expr.typ) if expr.typ and expr.typ != VOID else "void"
+            )
+            param_types_c = (
+                [self._type_to_c(a.typ) for a in expr.args] if expr.args else ["void"]
+            )
             fp_params = ", ".join(param_types_c)
             if args:
                 return f"(({ret_c} (*)({fp_params})){func_name})({args})"
@@ -3214,7 +3272,8 @@ class CBackend:
             # Handle tuple of prefixes: s.startswith(("a", "b")) -> (starts_with || starts_with)
             if isinstance(expr.args[0], TupleLit):
                 checks = [
-                    f"_str_startswith({obj}, {self._emit_expr(e)})" for e in expr.args[0].elements
+                    f"_str_startswith({obj}, {self._emit_expr(e)})"
+                    for e in expr.args[0].elements
                 ]
                 return "(" + " || ".join(checks) + ")"
             if len(expr.args) >= 2:
@@ -3224,7 +3283,8 @@ class CBackend:
             # Handle tuple of suffixes: s.endswith(("a", "b")) -> (ends_with || ends_with)
             if isinstance(expr.args[0], TupleLit):
                 checks = [
-                    f"_str_endswith({obj}, {self._emit_expr(e)})" for e in expr.args[0].elements
+                    f"_str_endswith({obj}, {self._emit_expr(e)})"
+                    for e in expr.args[0].elements
                 ]
                 return "(" + " || ".join(checks) + ")"
             return f"_str_endswith({obj}, {args_expr[0]})"
@@ -3326,11 +3386,19 @@ class CBackend:
         # Handle rune-to-char comparisons
         left_is_rune = expr.left.typ == RUNE
         right_is_rune = expr.right.typ == RUNE
-        if left_is_rune and isinstance(expr.right, StringLit) and len(expr.right.value) == 1:
+        if (
+            left_is_rune
+            and isinstance(expr.right, StringLit)
+            and len(expr.right.value) == 1
+        ):
             left = self._emit_expr(expr.left)
             right = self._emit_char_literal(expr.right.value)
             return f"({left} {op} {right})"
-        if right_is_rune and isinstance(expr.left, StringLit) and len(expr.left.value) == 1:
+        if (
+            right_is_rune
+            and isinstance(expr.left, StringLit)
+            and len(expr.left.value) == 1
+        ):
             left = self._emit_char_literal(expr.left.value)
             right = self._emit_expr(expr.right)
             return f"({left} {op} {right})"
@@ -3355,15 +3423,23 @@ class CBackend:
             return f"({left} {op} {right}[0])"
         left = self._emit_expr(expr.left)
         right = self._emit_expr(expr.right)
-        left_is_str = isinstance(expr.left.typ, Primitive) and expr.left.typ.kind == "string"
-        right_is_str = isinstance(expr.right.typ, Primitive) and expr.right.typ.kind == "string"
+        left_is_str = (
+            isinstance(expr.left.typ, Primitive) and expr.left.typ.kind == "string"
+        )
+        right_is_str = (
+            isinstance(expr.right.typ, Primitive) and expr.right.typ.kind == "string"
+        )
         # Also treat StringLit as string - covers comparison with 'any' typed variables
         left_is_strlit = isinstance(expr.left, StringLit)
         right_is_strlit = isinstance(expr.right, StringLit)
         # String comparison - use strcmp if either is a string
-        if op == "==" and (left_is_str or right_is_str or left_is_strlit or right_is_strlit):
+        if op == "==" and (
+            left_is_str or right_is_str or left_is_strlit or right_is_strlit
+        ):
             return f"(strcmp({left}, {right}) == 0)"
-        if op == "!=" and (left_is_str or right_is_str or left_is_strlit or right_is_strlit):
+        if op == "!=" and (
+            left_is_str or right_is_str or left_is_strlit or right_is_strlit
+        ):
             return f"(strcmp({left}, {right}) != 0)"
         # String relational comparison (compare first char if single-char literals involved)
         if op in (">=", "<=", ">", "<") and left_is_str and right_is_str:
@@ -3545,7 +3621,9 @@ class CBackend:
         if isinstance(inner_type, Map):
             # Map is StrMap * (pointer)
             return f"{inner}->len"
-        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Map)):
+        if isinstance(inner_type, Optional) and isinstance(
+            inner_type.inner, (Slice, Map)
+        ):
             return f"{inner}->len"
         return f"strlen({inner})"
 
@@ -3555,7 +3633,9 @@ class CBackend:
         return f"((Vec_{sig}){{NULL, 0, 0}})"
 
     def _emit_expr_MakeMap(self, expr: MakeMap) -> str:
-        is_int = isinstance(expr.value_type, Primitive) and expr.value_type.kind == "int"
+        is_int = (
+            isinstance(expr.value_type, Primitive) and expr.value_type.kind == "int"
+        )
         return f"_strmap_new(g_arena, 16, {'true' if is_int else 'false'})"
 
     def _emit_expr_SliceLit(self, expr: SliceLit) -> str:
@@ -3571,19 +3651,25 @@ class CBackend:
         return f"({{ {elem_type} *_slc = ({elem_type} *)arena_alloc(g_arena, {n} * sizeof({elem_type})); {assigns}; ({vec_type}){{_slc, {n}, {n}}}; }})"
 
     def _emit_expr_MapLit(self, expr: MapLit) -> str:
-        is_int = isinstance(expr.value_type, Primitive) and expr.value_type.kind == "int"
+        is_int = (
+            isinstance(expr.value_type, Primitive) and expr.value_type.kind == "int"
+        )
         n = len(expr.entries)
         cap = max(n, 4)
         alloc = f"_strmap_new(g_arena, {cap}, {'true' if is_int else 'false'})"
         setter = "_strmap_set_int" if is_int else "_strmap_set_str"
         tmp = self._temp_name("_map")
         sets = "; ".join(
-            f"{setter}({tmp}, {self._emit_expr(k)}, {self._emit_expr(v)})" for k, v in expr.entries
+            f"{setter}({tmp}, {self._emit_expr(k)}, {self._emit_expr(v)})"
+            for k, v in expr.entries
         )
         return f"({{ StrMap *{tmp} = {alloc}; {sets}; {tmp}; }})"
 
     def _emit_expr_SetLit(self, expr: SetLit) -> str:
-        if isinstance(expr.element_type, Primitive) and expr.element_type.kind == "string":
+        if (
+            isinstance(expr.element_type, Primitive)
+            and expr.element_type.kind == "string"
+        ):
             elems = ", ".join(self._emit_expr(e) for e in expr.elements)
             return f"(const char *[]){{{elems}, NULL}}"
         return "NULL"
@@ -3657,7 +3743,9 @@ class CBackend:
         from_elem = from_type.element
         to_elem = to_type.element
         # Different struct/interface element types need cast
-        if isinstance(from_elem, StructRef) and isinstance(to_elem, (StructRef, InterfaceRef)):
+        if isinstance(from_elem, StructRef) and isinstance(
+            to_elem, (StructRef, InterfaceRef)
+        ):
             return from_elem.name != to_elem.name
         if isinstance(from_elem, InterfaceRef) and isinstance(to_elem, InterfaceRef):
             return from_elem.name != to_elem.name
@@ -3667,7 +3755,9 @@ class CBackend:
         """Check if expression is an lvalue (can take address of)."""
         return isinstance(expr, (Var, FieldAccess, Index, DerefLV))
 
-    def _get_rvalue_temp(self, struct_name: str, field_name: str) -> tuple[str, bool] | None:
+    def _get_rvalue_temp(
+        self, struct_name: str, field_name: str
+    ) -> tuple[str, bool] | None:
         """Get temp var name and is_pointer flag for an rvalue field, if one was created."""
         for i, entry in enumerate(self._rvalue_temps):
             sn, fn, temp = entry[0], entry[1], entry[2]
@@ -3707,7 +3797,9 @@ class CBackend:
                                 f"{vec_type} *{tmp_name} = ({tmp_name}_v.cap == (size_t)-1) ? NULL "
                                 f": ({vec_type} *)arena_alloc(g_arena, sizeof({vec_type}));"
                             )
-                            self._line(f"if ({tmp_name} != NULL) *{tmp_name} = {tmp_name}_v;")
+                            self._line(
+                                f"if ({tmp_name} != NULL) *{tmp_name} = {tmp_name}_v;"
+                            )
                             # Store tmp_name directly (it's already a pointer)
                             self._rvalue_temps.append(
                                 (name, fname, tmp_name, True)
@@ -3770,10 +3862,14 @@ class CBackend:
                 source_is_struct = False
                 if isinstance(actual_type, StructRef):
                     source_is_struct = True
-                elif isinstance(actual_type, Pointer) and isinstance(actual_type.target, StructRef):
+                elif isinstance(actual_type, Pointer) and isinstance(
+                    actual_type.target, StructRef
+                ):
                     source_is_struct = True
                 elif isinstance(actual_type, InterfaceRef):
-                    source_is_struct = True  # Also cast interface to interface (for consistency)
+                    source_is_struct = (
+                        True  # Also cast interface to interface (for consistency)
+                    )
                 elif isinstance(actual_type, Optional) and isinstance(
                     actual_type.inner, InterfaceRef
                 ):
@@ -3830,7 +3926,9 @@ class CBackend:
         if isinstance(inner_type, (Map, Set)):
             # Map/Set are pointers in C (StrMap *)
             return f"({inner} != NULL && {inner}->len > 0)"
-        if isinstance(inner_type, Optional) and isinstance(inner_type.inner, (Slice, Map, Set)):
+        if isinstance(inner_type, Optional) and isinstance(
+            inner_type.inner, (Slice, Map, Set)
+        ):
             return f"({inner} != NULL && {inner}->len > 0)"
         return f"({inner} != NULL)"
 
@@ -4044,7 +4142,9 @@ class CBackend:
                     else:
                         self._line(f"{concrete_method}({', '.join(call_args)});")
                     self.indent -= 1
-                    first = True  # Keep first=True since we're using if-else, not switch
+                    first = (
+                        True  # Keep first=True since we're using if-else, not switch
+                    )
                     first = False
                 # Default case
                 if first:

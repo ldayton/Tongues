@@ -175,7 +175,9 @@ def is_isinstance_call(node: ASTNode) -> tuple[str, str] | None:
     return inference.is_isinstance_call(node)
 
 
-def is_kind_check(node: ASTNode, kind_to_class: dict[str, str]) -> tuple[str, str] | None:
+def is_kind_check(
+    node: ASTNode, kind_to_class: dict[str, str]
+) -> tuple[str, str] | None:
     """Check if node is x.kind == "typename". Returns (var_name, class_name) or None."""
     return inference.is_kind_check(node, kind_to_class)
 
@@ -354,7 +356,9 @@ def merge_keyword_args_for_func(
     return result
 
 
-def fill_default_args_for_func(func_info: "FuncInfo", args: list["ir.Expr"]) -> list["ir.Expr"]:
+def fill_default_args_for_func(
+    func_info: "FuncInfo", args: list["ir.Expr"]
+) -> list["ir.Expr"]:
     """Fill in missing arguments with default values for free functions with optional params."""
     n_expected = len(func_info.params)
     if len(args) >= n_expected:
@@ -558,7 +562,9 @@ def coerce_sentinel_to_ptr(
                 var_name = orig_args[i].get("id")
                 if var_name in sentinel_ints:
                     # Wrap in _intPtr() call
-                    result[i] = ir.Call(func="_intPtr", args=[arg], typ=param.typ, loc=arg.loc)
+                    result[i] = ir.Call(
+                        func="_intPtr", args=[arg], typ=param.typ, loc=arg.loc
+                    )
     return result
 
 
@@ -621,9 +627,14 @@ def lower_expr_Constant(node: ASTNode, source: str = "") -> "ir.Expr":
         return ir.StringLit(value=value, typ=STRING, loc=loc_from_node(node))
     if isinstance(value, bytes):
         # Convert bytes to SliceLit of byte values
-        elements = [ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node)) for b in value]
+        elements = [
+            ir.IntLit(value=b, typ=BYTE, loc=loc_from_node(node)) for b in value
+        ]
         return ir.SliceLit(
-            element_type=BYTE, elements=elements, typ=Slice(BYTE), loc=loc_from_node(node)
+            element_type=BYTE,
+            elements=elements,
+            typ=Slice(BYTE),
+            loc=loc_from_node(node),
         )
     if value is None:
         return ir.NilLit(typ=InterfaceRef("any"), loc=loc_from_node(node))
@@ -654,7 +665,9 @@ def lower_expr_Name(
             typ = type_ctx.var_types.get(syn_name, InterfaceRef("any"))
             elements.append(ir.Var(name=syn_name, typ=typ, loc=loc_from_node(node)))
             elem_types.append(typ)
-        return ir.TupleLit(elements=elements, typ=Tuple(tuple(elem_types)), loc=loc_from_node(node))
+        return ir.TupleLit(
+            elements=elements, typ=Tuple(tuple(elem_types)), loc=loc_from_node(node)
+        )
     # Look up variable type from context, or constants for module-level constants
     var_type = type_ctx.var_types.get(node_id)
     if var_type is None:
@@ -686,14 +699,25 @@ def lower_expr_Attribute(
     # If accessing field on a narrowed variable, wrap in TypeAssert
     if is_type(node_value, ["Name"]) and node_value.get("id") in type_ctx.narrowed_vars:
         var_type = type_ctx.var_types.get(node_value.get("id"))
-        if var_type and isinstance(var_type, Pointer) and isinstance(var_type.target, StructRef):
+        if (
+            var_type
+            and isinstance(var_type, Pointer)
+            and isinstance(var_type.target, StructRef)
+        ):
             obj = ir.TypeAssert(
-                expr=obj, asserted=var_type, safe=True, typ=var_type, loc=loc_from_node(node_value)
+                expr=obj,
+                asserted=var_type,
+                safe=True,
+                typ=var_type,
+                loc=loc_from_node(node_value),
             )
     # Check if accessing a field on a Node-typed expression that isn't in the interface
     # Node interface only has Kind() method, so any other field needs a type assertion
     obj_type = obj.typ
-    if type_inference.is_node_interface_type(obj_type, hierarchy_root) and node_attr != "kind":
+    if (
+        type_inference.is_node_interface_type(obj_type, hierarchy_root)
+        and node_attr != "kind"
+    ):
         # Look up which struct types have this field
         if node_attr in node_field_types:
             struct_names = node_field_types[node_attr]
@@ -725,7 +749,10 @@ def lower_expr_Attribute(
     # Infer field type for self.field accesses
     field_type: "Type" = InterfaceRef("any")
     # Node interface field types (kind is defined as string)
-    if type_inference.is_node_interface_type(obj_type, hierarchy_root) and node_attr == "kind":
+    if (
+        type_inference.is_node_interface_type(obj_type, hierarchy_root)
+        and node_attr == "kind"
+    ):
         field_type = STRING
     elif is_type(node_value, ["Name"]) and node_value.get("id") == "self":
         if current_class_name in symbols.structs:
@@ -744,7 +771,9 @@ def lower_expr_Attribute(
                     captures=True,
                     receiver=receiver_type,
                 )
-                return ir.FuncRef(name=node_attr, obj=obj, typ=func_type, loc=loc_from_node(node))
+                return ir.FuncRef(
+                    name=node_attr, obj=obj, typ=func_type, loc=loc_from_node(node)
+                )
     # Also look up field type from the asserted struct type
     if isinstance(obj, ir.TypeAssert):
         asserted = obj.asserted
@@ -765,7 +794,9 @@ def lower_expr_Attribute(
             field_info = symbols.structs[struct_name].fields.get(node_attr)
             if field_info:
                 field_type = field_info.typ
-    return ir.FieldAccess(obj=obj, field=node_attr, typ=field_type, loc=loc_from_node(node))
+    return ir.FieldAccess(
+        obj=obj, field=node_attr, typ=field_type, loc=loc_from_node(node)
+    )
 
 
 def lower_expr_Subscript(
@@ -794,15 +825,28 @@ def lower_expr_Subscript(
         slice_lower = node_slice.get("lower")
         slice_upper = node_slice.get("upper")
         slice_step = node_slice.get("step")
-        low = convert_negative_index(slice_lower, obj, node, lower_expr) if slice_lower else None
-        high = convert_negative_index(slice_upper, obj, node, lower_expr) if slice_upper else None
+        low = (
+            convert_negative_index(slice_lower, obj, node, lower_expr)
+            if slice_lower
+            else None
+        )
+        high = (
+            convert_negative_index(slice_upper, obj, node, lower_expr)
+            if slice_upper
+            else None
+        )
         step = lower_expr(slice_step) if slice_step else None
         # Slicing preserves type - string slice is still string, slice of slice is still slice
         slice_type: "Type" = get_expr_type(node_value)
         if slice_type == InterfaceRef("any"):
             slice_type = obj.typ
         return ir.SliceExpr(
-            obj=obj, low=low, high=high, step=step, typ=slice_type, loc=loc_from_node(node)
+            obj=obj,
+            low=low,
+            high=high,
+            step=step,
+            typ=slice_type,
+            loc=loc_from_node(node),
         )
     idx = convert_negative_index(node_slice, obj, node, lower_expr)
     # Infer element type from slice type
@@ -830,7 +874,9 @@ def lower_expr_Subscript(
     if not is_string and obj.typ == STRING:
         is_string = True
     if is_string:
-        return ir.Cast(expr=index_expr, to_type=STRING, typ=STRING, loc=loc_from_node(node))
+        return ir.Cast(
+            expr=index_expr, to_type=STRING, typ=STRING, loc=loc_from_node(node)
+        )
     return index_expr
 
 
@@ -862,7 +908,9 @@ def lower_expr_BinOp(
             result_type = STRING
         elif left_type == INT or right_type == INT:
             result_type = INT
-    return ir.BinaryOp(op=op, left=left, right=right, typ=result_type, loc=loc_from_node(node))
+    return ir.BinaryOp(
+        op=op, left=left, right=right, typ=result_type, loc=loc_from_node(node)
+    )
 
 
 def get_sentinel_value(
@@ -896,7 +944,10 @@ def is_sentinel_int(
     sentinel_int_fields: dict[tuple[str, str], int],
 ) -> bool:
     """Check if an expression is a sentinel int (uses a sentinel value for None)."""
-    return get_sentinel_value(node, type_ctx, current_class_name, sentinel_int_fields) is not None
+    return (
+        get_sentinel_value(node, type_ctx, current_class_name, sentinel_int_fields)
+        is not None
+    )
 
 
 def lower_expr_Compare(
@@ -938,9 +989,13 @@ def lower_expr_Compare(
                         loc=loc_from_node(node),
                     )
                 # Plain string - use IsNil (will always be False)
-                return ir.IsNil(expr=left, negated=False, typ=BOOL, loc=loc_from_node(node))
+                return ir.IsNil(
+                    expr=left, negated=False, typ=BOOL, loc=loc_from_node(node)
+                )
             if left_type == BOOL:
-                return ir.UnaryOp(op="!", operand=left, typ=BOOL, loc=loc_from_node(node))
+                return ir.UnaryOp(
+                    op="!", operand=left, typ=BOOL, loc=loc_from_node(node)
+                )
             # For sentinel ints, compare to the sentinel value
             sentinel = get_sentinel_value(
                 node_left, type_ctx, current_class_name, sentinel_int_fields
@@ -974,7 +1029,9 @@ def lower_expr_Compare(
                         loc=loc_from_node(node),
                     )
                 # Plain string - use IsNil (will always be True)
-                return ir.IsNil(expr=left, negated=True, typ=BOOL, loc=loc_from_node(node))
+                return ir.IsNil(
+                    expr=left, negated=True, typ=BOOL, loc=loc_from_node(node)
+                )
             if left_type == BOOL:
                 return left  # bool is its own truthy value
             # For sentinel ints, compare to the sentinel value
@@ -997,7 +1054,10 @@ def lower_expr_Compare(
             and comparators[0].get("value") is None
         ):
             # Check for optional string first
-            if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+            if (
+                is_type(node_left, ["Name"])
+                and node_left.get("id") in type_ctx.optional_strings
+            ):
                 return ir.BinaryOp(
                     op="==",
                     left=left,
@@ -1022,7 +1082,10 @@ def lower_expr_Compare(
             and comparators[0].get("value") is None
         ):
             # Check for optional string first
-            if is_type(node_left, ["Name"]) and node_left.get("id") in type_ctx.optional_strings:
+            if (
+                is_type(node_left, ["Name"])
+                and node_left.get("id") in type_ctx.optional_strings
+            ):
                 return ir.BinaryOp(
                     op="!=",
                     left=left,
@@ -1064,7 +1127,11 @@ def lower_expr_Compare(
                         loc=loc_from_node(node),
                     )
                     result = ir.BinaryOp(
-                        op=join_op, left=result, right=cmp, typ=BOOL, loc=loc_from_node(node)
+                        op=join_op,
+                        left=result,
+                        right=cmp,
+                        typ=BOOL,
+                        loc=loc_from_node(node),
                     )
                 return result
             return ir.BoolLit(value=not negated, typ=BOOL, loc=loc_from_node(node))
@@ -1072,27 +1139,51 @@ def lower_expr_Compare(
         left_type = get_expr_type(node_left)
         right_type = get_expr_type(comparators[0])
         if left_type == STRING and isinstance(right_type, (Optional, Pointer)):
-            inner = right_type.inner if isinstance(right_type, Optional) else right_type.target
+            inner = (
+                right_type.inner
+                if isinstance(right_type, Optional)
+                else right_type.target
+            )
             if inner == STRING:
-                right = ir.UnaryOp(op="*", operand=right, typ=STRING, loc=loc_from_node(node))
+                right = ir.UnaryOp(
+                    op="*", operand=right, typ=STRING, loc=loc_from_node(node)
+                )
         elif right_type == STRING and isinstance(left_type, (Optional, Pointer)):
-            inner = left_type.inner if isinstance(left_type, Optional) else left_type.target
+            inner = (
+                left_type.inner if isinstance(left_type, Optional) else left_type.target
+            )
             if inner == STRING:
-                left = ir.UnaryOp(op="*", operand=left, typ=STRING, loc=loc_from_node(node))
+                left = ir.UnaryOp(
+                    op="*", operand=left, typ=STRING, loc=loc_from_node(node)
+                )
         # Handle int vs pointer/optional int comparison: dereference the pointer side
         elif left_type == INT and isinstance(right_type, (Optional, Pointer)):
-            inner = right_type.inner if isinstance(right_type, Optional) else right_type.target
+            inner = (
+                right_type.inner
+                if isinstance(right_type, Optional)
+                else right_type.target
+            )
             if inner == INT:
-                right = ir.UnaryOp(op="*", operand=right, typ=INT, loc=loc_from_node(node))
+                right = ir.UnaryOp(
+                    op="*", operand=right, typ=INT, loc=loc_from_node(node)
+                )
         elif right_type == INT and isinstance(left_type, (Optional, Pointer)):
-            inner = left_type.inner if isinstance(left_type, Optional) else left_type.target
+            inner = (
+                left_type.inner if isinstance(left_type, Optional) else left_type.target
+            )
             if inner == INT:
-                left = ir.UnaryOp(op="*", operand=left, typ=INT, loc=loc_from_node(node))
-        return ir.BinaryOp(op=op, left=left, right=right, typ=BOOL, loc=loc_from_node(node))
+                left = ir.UnaryOp(
+                    op="*", operand=left, typ=INT, loc=loc_from_node(node)
+                )
+        return ir.BinaryOp(
+            op=op, left=left, right=right, typ=BOOL, loc=loc_from_node(node)
+        )
     # Chain comparisons - preserve as ChainedCompare IR node
     operands = [lower_expr(node_left)] + [lower_expr(comp) for comp in comparators]
     op_strs = [cmpop_to_str(op) for op in ops]
-    return ir.ChainedCompare(operands=operands, ops=op_strs, typ=BOOL, loc=loc_from_node(node))
+    return ir.ChainedCompare(
+        operands=operands, ops=op_strs, typ=BOOL, loc=loc_from_node(node)
+    )
 
 
 def lower_expr_BoolOp(
@@ -1108,7 +1199,9 @@ def lower_expr_BoolOp(
     result = lower_expr_as_bool(values[0])
     for val in values[1:]:
         right = lower_expr_as_bool(val)
-        result = ir.BinaryOp(op=op, left=result, right=right, typ=BOOL, loc=loc_from_node(node))
+        result = ir.BinaryOp(
+            op=op, left=result, right=right, typ=BOOL, loc=loc_from_node(node)
+        )
     return result
 
 
@@ -1131,7 +1224,9 @@ def lower_expr_UnaryOp(
     if is_type(node_op, ["Invert"]):
         return ir.UnaryOp(op=op, operand=operand, typ=INT, loc=loc_from_node(node))
     # For USub/UAdd, propagate operand type
-    result_type = operand.typ if operand.typ != InterfaceRef("any") else get_expr_type(node)
+    result_type = (
+        operand.typ if operand.typ != InterfaceRef("any") else get_expr_type(node)
+    )
     return ir.UnaryOp(op=op, operand=operand, typ=result_type, loc=loc_from_node(node))
 
 
@@ -1209,8 +1304,12 @@ def lower_list_call_with_expected_type(
         obj=arg,
         method="copy",
         args=[],
-        receiver_type=source_type if isinstance(source_type, Slice) else Slice(InterfaceRef("any")),
-        typ=source_type if isinstance(source_type, Slice) else Slice(InterfaceRef("any")),
+        receiver_type=source_type
+        if isinstance(source_type, Slice)
+        else Slice(InterfaceRef("any")),
+        typ=source_type
+        if isinstance(source_type, Slice)
+        else Slice(InterfaceRef("any")),
         loc=loc_from_node(node),
     )
 
@@ -1261,7 +1360,9 @@ def lower_expr_JoinedStr(
             template_parts.append("%v")
             args.append(lower_expr(part.get("value")))
     template = "".join(template_parts)
-    return StringFormat(template=template, args=args, typ=STRING, loc=loc_from_node(node))
+    return StringFormat(
+        template=template, args=args, typ=STRING, loc=loc_from_node(node)
+    )
 
 
 def lower_expr_Tuple(
@@ -1289,7 +1390,10 @@ def lower_expr_Set(
     # Infer element type from first element
     elem_type = elements[0].typ if elements else STRING
     return ir.SetLit(
-        element_type=elem_type, elements=elements, typ=Set(elem_type), loc=loc_from_node(node)
+        element_type=elem_type,
+        elements=elements,
+        typ=Set(elem_type),
+        loc=loc_from_node(node),
     )
 
 
@@ -1334,7 +1438,9 @@ def lower_expr_as_bool(
                 type_ctx.narrowed_vars.add(var_name)
         for val in values[1:]:
             right = lower_expr_as_bool_self(val)
-            result = ir.BinaryOp(op=op, left=result, right=right, typ=BOOL, loc=loc_from_node(node))
+            result = ir.BinaryOp(
+                op=op, left=result, right=right, typ=BOOL, loc=loc_from_node(node)
+            )
         # Restore narrowed type and tracking
         if narrowed_var is not None:
             if narrowed_old_type is not None:
@@ -1401,7 +1507,9 @@ def lower_expr_as_bool(
     if isinstance(expr_type, (Slice, Map, Set, Tuple)):
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
     # Optional(Slice/Map/Set/Tuple) truthy check (nil slice has len 0)
-    if isinstance(expr_type, Optional) and isinstance(expr_type.inner, (Slice, Map, Set, Tuple)):
+    if isinstance(expr_type, Optional) and isinstance(
+        expr_type.inner, (Slice, Map, Set, Tuple)
+    ):
         return ir.Truthy(expr=expr, typ=BOOL, loc=loc_from_node(node))
     # Interface truthy check: x != nil
     if isinstance(expr_type, InterfaceRef):
@@ -1599,7 +1707,9 @@ def lower_stmt_Assert(
 
     test_node = node.get("test")
     msg_node = node.get("msg")
-    test = lower_expr_as_bool(test_node) if test_node else ir.BoolLit(value=True, typ=BOOL)
+    test = (
+        lower_expr_as_bool(test_node) if test_node else ir.BoolLit(value=True, typ=BOOL)
+    )
     message = lower_expr(msg_node) if msg_node else None
     return ir.Assert(test=test, message=message, loc=loc_from_node(node))
 
@@ -1633,7 +1743,11 @@ def lower_stmt_Raise(
         if is_type(exc, ["Call"]) and is_type(exc_func, ["Name"]):
             error_type = exc_func.get("id")
             exc_args = exc.get("args", [])
-            msg = lower_expr(exc_args[0]) if exc_args else ir.StringLit(value="", typ=STRING)
+            msg = (
+                lower_expr(exc_args[0])
+                if exc_args
+                else ir.StringLit(value="", typ=STRING)
+            )
             # Check for pos kwarg
             pos = ir.IntLit(value=0, typ=INT)
             if len(exc_args) > 1:
@@ -1644,7 +1758,9 @@ def lower_stmt_Raise(
                     if kw.get("arg") == "pos":
                         pos = lower_expr(kw.get("value"))
                         break
-            return ir.Raise(error_type=error_type, message=msg, pos=pos, loc=loc_from_node(node))
+            return ir.Raise(
+                error_type=error_type, message=msg, pos=pos, loc=loc_from_node(node)
+            )
     return ir.Raise(
         error_type="Error",
         message=ir.StringLit(value="", typ=STRING),
@@ -1694,21 +1810,30 @@ def lower_expr_Call(
             if is_type(inner_func, ["Name"]) and inner_func.get("id") == "chr":
                 # chr(n).encode("utf-8") -> cast to []byte
                 chr_arg = dispatch.lower_expr(inner_call.get("args", [])[0])
-                rune_cast = ir.Cast(expr=chr_arg, to_type=RUNE, typ=RUNE, loc=loc_from_node(node))
+                rune_cast = ir.Cast(
+                    expr=chr_arg, to_type=RUNE, typ=RUNE, loc=loc_from_node(node)
+                )
                 str_cast = ir.Cast(
                     expr=rune_cast, to_type=STRING, typ=STRING, loc=loc_from_node(node)
                 )
                 return ir.Cast(
-                    expr=str_cast, to_type=Slice(BYTE), typ=Slice(BYTE), loc=loc_from_node(node)
+                    expr=str_cast,
+                    to_type=Slice(BYTE),
+                    typ=Slice(BYTE),
+                    loc=loc_from_node(node),
                 )
         # Handle str.encode("utf-8") -> []byte(str)
         if method == "encode":
             obj = dispatch.lower_expr(func_value)
-            return ir.Cast(expr=obj, to_type=Slice(BYTE), typ=Slice(BYTE), loc=loc_from_node(node))
+            return ir.Cast(
+                expr=obj, to_type=Slice(BYTE), typ=Slice(BYTE), loc=loc_from_node(node)
+            )
         # Handle bytes.decode("utf-8") -> string(bytes)
         if method == "decode":
             obj = dispatch.lower_expr(func_value)
-            return ir.Cast(expr=obj, to_type=STRING, typ=STRING, loc=loc_from_node(node))
+            return ir.Cast(
+                expr=obj, to_type=STRING, typ=STRING, loc=loc_from_node(node)
+            )
         obj = dispatch.lower_expr(func_value)
         # Handle Python list methods that need special Go treatment
         if method == "append" and args:
@@ -1727,7 +1852,9 @@ def lower_expr_Call(
                 # Check if arg is int-typed (via pre-computed _expr_type or lowered type)
                 arg_ast_type = get_expr_type(node_args[0])
                 if arg_ast_type == INT or arg.typ == INT:
-                    coerced_args = [ir.Cast(expr=arg, to_type=BYTE, typ=BYTE, loc=arg.loc)]
+                    coerced_args = [
+                        ir.Cast(expr=arg, to_type=BYTE, typ=BYTE, loc=arg.loc)
+                    ]
             # list.append(x) -> append(list, x) in Go (handled via MethodCall for now)
             return ir.MethodCall(
                 obj=obj,
@@ -1781,7 +1908,9 @@ def lower_expr_Call(
                         loc=loc_from_node(node),
                     )
                 else:
-                    chars = ir.StringLit(value=" \t\n\r", typ=STRING, loc=loc_from_node(node))
+                    chars = ir.StringLit(
+                        value=" \t\n\r", typ=STRING, loc=loc_from_node(node)
+                    )
             # Result type matches input type
             result_type = obj_type if obj_type == Slice(BYTE) else STRING
             return ir.TrimChars(
@@ -1896,7 +2025,9 @@ def lower_expr_Call(
                     loc=loc_from_node(node),
                 )
             # Default: assume pointer/optional, check != nil
-            return ir.IsNil(expr=args[0], negated=True, typ=BOOL, loc=loc_from_node(node))
+            return ir.IsNil(
+                expr=args[0], negated=True, typ=BOOL, loc=loc_from_node(node)
+            )
         # Check for list() copy/conversion
         if func_name == "list" and args:
             source_type = args[0].typ
@@ -1942,7 +2073,9 @@ def lower_expr_Call(
             )
         # Check for int(s, base) conversion
         if func_name == "int" and len(args) == 2:
-            return ir.ParseInt(string=args[0], base=args[1], typ=INT, loc=loc_from_node(node))
+            return ir.ParseInt(
+                string=args[0], base=args[1], typ=INT, loc=loc_from_node(node)
+            )
         # Check for int(s) - string to int conversion
         if func_name == "int" and len(args) == 1:
             arg_type = get_expr_type(node_args[0])
@@ -1956,10 +2089,14 @@ def lower_expr_Call(
                 )
             else:
                 # Already numeric: just cast to int
-                return ir.Cast(expr=args[0], to_type=INT, typ=INT, loc=loc_from_node(node))
+                return ir.Cast(
+                    expr=args[0], to_type=INT, typ=INT, loc=loc_from_node(node)
+                )
         # Check for float(x) - numeric conversion to float
         if func_name == "float" and len(args) == 1:
-            return ir.Cast(expr=args[0], to_type=FLOAT, typ=FLOAT, loc=loc_from_node(node))
+            return ir.Cast(
+                expr=args[0], to_type=FLOAT, typ=FLOAT, loc=loc_from_node(node)
+            )
         # Check for str(n) - int to string conversion
         if func_name == "str" and len(args) == 1:
             arg_type = get_expr_type(node_args[0])
@@ -1970,14 +2107,22 @@ def lower_expr_Call(
                 return ir.IntToStr(value=args[0], typ=STRING, loc=loc_from_node(node))
             # Handle *int or Optional[int] - dereference first
             if isinstance(arg_type, (Optional, Pointer)):
-                inner = arg_type.inner if isinstance(arg_type, Optional) else arg_type.target
+                inner = (
+                    arg_type.inner
+                    if isinstance(arg_type, Optional)
+                    else arg_type.target
+                )
                 if inner == INT:
                     deref_arg = ir.UnaryOp(
                         op="*", operand=args[0], typ=INT, loc=loc_from_node(node)
                     )
-                    return ir.IntToStr(value=deref_arg, typ=STRING, loc=loc_from_node(node))
+                    return ir.IntToStr(
+                        value=deref_arg, typ=STRING, loc=loc_from_node(node)
+                    )
             # Already string or convert via fmt
-            return ir.Cast(expr=args[0], to_type=STRING, typ=STRING, loc=loc_from_node(node))
+            return ir.Cast(
+                expr=args[0], to_type=STRING, typ=STRING, loc=loc_from_node(node)
+            )
         # Check for ord(c) -> int(c[0]) (get Unicode code point)
         if func_name == "ord" and len(args) == 1:
             # ord(c) -> cast the first character to int
@@ -1985,31 +2130,50 @@ def lower_expr_Call(
             arg_type = get_expr_type(node_args[0])
             if arg_type in (BYTE, RUNE):
                 # Already a byte/rune: just cast to int
-                return ir.Cast(expr=args[0], to_type=INT, typ=INT, loc=loc_from_node(node))
+                return ir.Cast(
+                    expr=args[0], to_type=INT, typ=INT, loc=loc_from_node(node)
+                )
             else:
                 # String or unknown: index to get first byte, then cast to int
-                indexed = ir.Index(obj=args[0], index=ir.IntLit(value=0, typ=INT), typ=BYTE)
-                return ir.Cast(expr=indexed, to_type=INT, typ=INT, loc=loc_from_node(node))
+                indexed = ir.Index(
+                    obj=args[0], index=ir.IntLit(value=0, typ=INT), typ=BYTE
+                )
+                return ir.Cast(
+                    expr=indexed, to_type=INT, typ=INT, loc=loc_from_node(node)
+                )
         # Check for chr(n) -> string(rune(n))
         if func_name == "chr" and len(args) == 1:
-            rune_cast = ir.Cast(expr=args[0], to_type=RUNE, typ=RUNE, loc=loc_from_node(node))
-            return ir.Cast(expr=rune_cast, to_type=STRING, typ=STRING, loc=loc_from_node(node))
+            rune_cast = ir.Cast(
+                expr=args[0], to_type=RUNE, typ=RUNE, loc=loc_from_node(node)
+            )
+            return ir.Cast(
+                expr=rune_cast, to_type=STRING, typ=STRING, loc=loc_from_node(node)
+            )
         # Check for max(a, b) -> MaxExpr
         if func_name == "max" and len(args) == 2:
             result_type = get_expr_type(node_args[0])
-            return ir.MaxExpr(left=args[0], right=args[1], typ=result_type, loc=loc_from_node(node))
+            return ir.MaxExpr(
+                left=args[0], right=args[1], typ=result_type, loc=loc_from_node(node)
+            )
         # Check for min(a, b) -> MinExpr
         if func_name == "min" and len(args) == 2:
             result_type = get_expr_type(node_args[0])
-            return ir.MinExpr(left=args[0], right=args[1], typ=result_type, loc=loc_from_node(node))
+            return ir.MinExpr(
+                left=args[0], right=args[1], typ=result_type, loc=loc_from_node(node)
+            )
         # Check for isinstance(x, Type) -> IsType expression
         if func_name == "isinstance" and len(node_args) == 2:
             expr = dispatch.lower_expr(node_args[0])
             if is_type(node_args[1], ["Name"]):
                 type_name = node_args[1].get("id")
-                tested_type = resolve_type_name(type_name, type_inference.TYPE_MAP, ctx.symbols)
+                tested_type = resolve_type_name(
+                    type_name, type_inference.TYPE_MAP, ctx.symbols
+                )
                 return ir.IsType(
-                    expr=expr, tested_type=tested_type, typ=BOOL, loc=loc_from_node(node)
+                    expr=expr,
+                    tested_type=tested_type,
+                    typ=BOOL,
+                    loc=loc_from_node(node),
                 )
         # Check for constructor calls (class names)
         if func_name in ctx.symbols.structs:
@@ -2027,7 +2191,9 @@ def lower_expr_Call(
                 for i, arg_ast in enumerate(node_args):
                     if i < n_params:
                         param_name = struct_info.init_params[i]
-                        field_name = struct_info.param_to_field.get(param_name, param_name)
+                        field_name = struct_info.param_to_field.get(
+                            param_name, param_name
+                        )
                         field_info = struct_info.fields.get(field_name)
                         expected_type = field_info.typ if field_info else None
                         if isinstance(expected_type, Pointer) and isinstance(
@@ -2035,7 +2201,9 @@ def lower_expr_Call(
                         ):
                             expected_type = expected_type.target
                         if is_type(arg_ast, ["List"]):
-                            ctor_args[i] = dispatch.lower_expr_List(arg_ast, expected_type)
+                            ctor_args[i] = dispatch.lower_expr_List(
+                                arg_ast, expected_type
+                            )
                         elif (
                             is_type(arg_ast, ["Call"])
                             and is_type(arg_ast.get("func"), ["Name"])
@@ -2053,7 +2221,9 @@ def lower_expr_Call(
                     if kw_arg and kw_arg in param_indices:
                         idx = param_indices[kw_arg]
                         param_name = struct_info.init_params[idx]
-                        field_name = struct_info.param_to_field.get(param_name, param_name)
+                        field_name = struct_info.param_to_field.get(
+                            param_name, param_name
+                        )
                         field_info = struct_info.fields.get(field_name)
                         expected_type = field_info.typ if field_info else None
                         if isinstance(expected_type, Pointer) and isinstance(
@@ -2062,7 +2232,9 @@ def lower_expr_Call(
                             expected_type = expected_type.target
                         kw_value = kw.get("value")
                         if is_type(kw_value, ["List"]):
-                            ctor_args[idx] = dispatch.lower_expr_List(kw_value, expected_type)
+                            ctor_args[idx] = dispatch.lower_expr_List(
+                                kw_value, expected_type
+                            )
                         elif (
                             is_type(kw_value, ["Call"])
                             and is_type(kw_value.get("func"), ["Name"])
@@ -2078,10 +2250,16 @@ def lower_expr_Call(
                 for i in range(n_params):
                     if ctor_args[i] is None:
                         param_name = struct_info.init_params[i]
-                        field_name = struct_info.param_to_field.get(param_name, param_name)
+                        field_name = struct_info.param_to_field.get(
+                            param_name, param_name
+                        )
                         field_info = struct_info.fields.get(field_name)
-                        field_type = field_info.typ if field_info else InterfaceRef("any")
-                        ctor_args[i] = make_default_value(field_type, loc_from_node(node))
+                        field_type = (
+                            field_info.typ if field_info else InterfaceRef("any")
+                        )
+                        ctor_args[i] = make_default_value(
+                            field_type, loc_from_node(node)
+                        )
                 return ir.Call(
                     func=f"New{func_name}",
                     args=ctor_args,  # type: ignore
@@ -2105,7 +2283,9 @@ def lower_expr_Call(
                         expected_type = expected_type.target
                     # Re-lower list args with expected type context
                     if is_type(arg_ast, ["List"]):
-                        fields[field_name] = dispatch.lower_expr_List(arg_ast, expected_type)
+                        fields[field_name] = dispatch.lower_expr_List(
+                            arg_ast, expected_type
+                        )
                     else:
                         fields[field_name] = args[i]
             # Handle keyword arguments for struct literals
@@ -2124,7 +2304,9 @@ def lower_expr_Call(
                             expected_type = expected_type.target
                         kw_value = kw.get("value")
                         if is_type(kw_value, ["List"]):
-                            fields[field_name] = dispatch.lower_expr_List(kw_value, expected_type)
+                            fields[field_name] = dispatch.lower_expr_List(
+                                kw_value, expected_type
+                            )
                         elif (
                             is_type(kw_value, ["Call"])
                             and is_type(kw_value.get("func"), ["Name"])
@@ -2162,7 +2344,11 @@ def lower_expr_Call(
             # Add type assertions for interface{} -> Node coercion
             args = coerce_args_to_node(func_info, args, ctx.hierarchy_root)
         return ir.Call(
-            func=func_name, args=args, reverse=reverse, typ=ret_type, loc=loc_from_node(node)
+            func=func_name,
+            args=args,
+            reverse=reverse,
+            typ=ret_type,
+            loc=loc_from_node(node),
         )
     return ir.Var(name="TODO_Call", typ=InterfaceRef("any"))
 
@@ -2216,15 +2402,21 @@ def lower_stmt_Assign(
             if isinstance(ret_type, TupleType) and len(ret_type.elements) > 1:
                 # Generate synthetic variable names and track for later index access
                 base_name = target.get("id")
-                synthetic_names = [f"{base_name}{i}" for i in range(len(ret_type.elements))]
+                synthetic_names = [
+                    f"{base_name}{i}" for i in range(len(ret_type.elements))
+                ]
                 type_ctx.tuple_vars[base_name] = synthetic_names
                 # Also track types of synthetic vars
                 for i, syn_name in enumerate(synthetic_names):
                     type_ctx.var_types[syn_name] = ret_type.elements[i]
                 targets = []
                 for i in range(len(ret_type.elements)):
-                    targets.append(ir.VarLV(name=f"{base_name}{i}", loc=loc_from_node(target)))
-                return ir.TupleAssign(targets=targets, value=value, loc=loc_from_node(node))
+                    targets.append(
+                        ir.VarLV(name=f"{base_name}{i}", loc=loc_from_node(target))
+                    )
+                return ir.TupleAssign(
+                    targets=targets, value=value, loc=loc_from_node(node)
+                )
         # Handle simple pop: var = list.pop() -> var = list[len(list)-1]; list = list[:len(list)-1]
         if is_type(target, ["Name"]) and is_type(node_value, ["Call"]):
             node_value_func = node_value.get("func")
@@ -2250,11 +2442,15 @@ def lower_stmt_Assign(
                         body=[
                             ir.Assign(
                                 target=lval,
-                                value=ir.Index(obj=obj, index=len_minus_1, typ=elem_type),
+                                value=ir.Index(
+                                    obj=obj, index=len_minus_1, typ=elem_type
+                                ),
                             ),
                             ir.Assign(
                                 target=obj_lval,
-                                value=ir.SliceExpr(obj=obj, high=len_minus_1, typ=obj_type),
+                                value=ir.SliceExpr(
+                                    obj=obj, high=len_minus_1, typ=obj_type
+                                ),
                             ),
                         ],
                         loc=loc_from_node(node),
@@ -2265,14 +2461,22 @@ def lower_stmt_Assign(
         target_elts = target.get("elts", [])
         if is_type(target, ["Tuple"]) and len(target_elts) >= 2:
             # Tuple unpacking from method call: a, b, c = obj.method()
-            node_value_func = node_value.get("func") if is_type(node_value, ["Call"]) else None
-            if is_type(node_value, ["Call"]) and is_type(node_value_func, ["Attribute"]):
+            node_value_func = (
+                node_value.get("func") if is_type(node_value, ["Call"]) else None
+            )
+            if is_type(node_value, ["Call"]) and is_type(
+                node_value_func, ["Attribute"]
+            ):
                 lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
-                return ir.TupleAssign(targets=lvalues, value=value, loc=loc_from_node(node))
+                return ir.TupleAssign(
+                    targets=lvalues, value=value, loc=loc_from_node(node)
+                )
             # General tuple unpacking for function calls: a, b, c = func()
             if is_type(node_value, ["Call"]):
                 lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
-                return ir.TupleAssign(targets=lvalues, value=value, loc=loc_from_node(node))
+                return ir.TupleAssign(
+                    targets=lvalues, value=value, loc=loc_from_node(node)
+                )
             # Tuple unpacking from index: a, b, c = list[idx] where list is []Tuple
             if is_type(node_value, ["Subscript"]):
                 # Infer tuple element type from the list's type
@@ -2284,7 +2488,9 @@ def lower_stmt_Assign(
                     var_name = node_value_value.get("id")
                     if var_name in type_ctx.var_types:
                         list_type = type_ctx.var_types[var_name]
-                        if isinstance(list_type, Slice) and isinstance(list_type.element, Tuple):
+                        if isinstance(list_type, Slice) and isinstance(
+                            list_type.element, Tuple
+                        ):
                             entry_type = list_type.element
                 # Get field types from entry_type
                 field_types = [
@@ -2300,30 +2506,40 @@ def lower_stmt_Assign(
                     if is_type(target_elt, ["Name"]):
                         type_ctx.var_types[target_elt.get("id")] = field_types[i]
                 # Build block with VarDecl and field accesses
-                body: list[ir.Stmt] = [ir.VarDecl(name="_entry", typ=entry_type, value=value)]
+                body: list[ir.Stmt] = [
+                    ir.VarDecl(name="_entry", typ=entry_type, value=value)
+                ]
                 for i, lval in enumerate(lvalues):
                     body.append(
                         ir.Assign(
                             target=lval,
-                            value=ir.FieldAccess(obj=entry_var, field=f"F{i}", typ=field_types[i]),
+                            value=ir.FieldAccess(
+                                obj=entry_var, field=f"F{i}", typ=field_types[i]
+                            ),
                         )
                     )
                 return ir.Block(body=body, loc=loc_from_node(node))
             # Tuple unpacking from tuple literal: a, b = x, y
-            node_value_elts = node_value.get("elts", []) if is_type(node_value, ["Tuple"]) else []
-            if is_type(node_value, ["Tuple"]) and len(node_value_elts) == len(target_elts):
+            node_value_elts = (
+                node_value.get("elts", []) if is_type(node_value, ["Tuple"]) else []
+            )
+            if is_type(node_value, ["Tuple"]) and len(node_value_elts) == len(
+                target_elts
+            ):
                 lvalues = [dispatch.lower_lvalue(t) for t in target_elts]
                 values = [dispatch.lower_expr(v) for v in node_value_elts]
                 # Update var_types for all targets
                 for i, target_elt in enumerate(target_elts):
                     if is_type(target_elt, ["Name"]):
-                        type_ctx.var_types[target_elt.get("id")] = type_inference.synthesize_type(
-                            values[i],
-                            type_ctx,
-                            ctx.current_func_info,
-                            ctx.symbols,
-                            ctx.node_types,
-                            ctx.hierarchy_root,
+                        type_ctx.var_types[target_elt.get("id")] = (
+                            type_inference.synthesize_type(
+                                values[i],
+                                type_ctx,
+                                ctx.current_func_info,
+                                ctx.symbols,
+                                ctx.node_types,
+                                ctx.hierarchy_root,
+                            )
                         )
                 # Create TupleLit from RHS values and use TupleAssign for correct swap semantics
                 elem_types = tuple(
@@ -2338,7 +2554,9 @@ def lower_stmt_Assign(
                     for v in values
                 )
                 tuple_lit = ir.TupleLit(elements=values, typ=Tuple(elem_types))
-                return ir.TupleAssign(targets=lvalues, value=tuple_lit, loc=loc_from_node(node))
+                return ir.TupleAssign(
+                    targets=lvalues, value=tuple_lit, loc=loc_from_node(node)
+                )
         # Track variable type dynamically for later use in nested scopes
         # Coerce value to target type if known
         target_id = target.get("id") if is_type(target, ["Name"]) else None
@@ -2421,7 +2639,9 @@ def lower_stmt_Assign(
             if is_type(node_value_value, ["Name"]):
                 list_var = node_value_value.get("id")
                 if list_var in type_ctx.list_element_unions:
-                    type_ctx.union_types[target_id] = type_ctx.list_element_unions[list_var]
+                    type_ctx.union_types[target_id] = type_ctx.list_element_unions[
+                        list_var
+                    ]
                     # Also reset var_types to Node so union_types logic is used for field access
                     type_ctx.var_types[target_id] = (
                         InterfaceRef(ctx.hierarchy_root)
@@ -2522,7 +2742,12 @@ def lower_stmt_AnnAssign(
             value = dispatch.lower_expr(node_value)
         # Coerce value to expected type
         from_type = type_inference.synthesize_type(
-            value, type_ctx, ctx.current_func_info, ctx.symbols, ctx.node_types, ctx.hierarchy_root
+            value,
+            type_ctx,
+            ctx.current_func_info,
+            ctx.symbols,
+            ctx.node_types,
+            ctx.hierarchy_root,
         )
         value = type_inference.coerce(
             value,
@@ -2539,7 +2764,9 @@ def lower_stmt_AnnAssign(
     if is_type(node_target, ["Name"]):
         # Update type context with declared type (overrides any earlier inference)
         type_ctx.var_types[node_target.get("id")] = typ
-        return ir.VarDecl(name=node_target.get("id"), typ=typ, value=value, loc=loc_from_node(node))
+        return ir.VarDecl(
+            name=node_target.get("id"), typ=typ, value=value, loc=loc_from_node(node)
+        )
     # Attribute target - treat as assignment
     lval = dispatch.lower_lvalue(node_target)
     if value:
@@ -2666,7 +2893,9 @@ def lower_stmt_If(
     # Check for isinstance in compound AND condition for type narrowing
     isinstance_in_and = extract_isinstance_from_and(node_test)
     # Check for kind-based type narrowing (kind == "value" or node.kind == "value")
-    kind_check = extract_kind_check(node_test, ctx.kind_to_struct, ctx.type_ctx.kind_source_vars)
+    kind_check = extract_kind_check(
+        node_test, ctx.kind_to_struct, ctx.type_ctx.kind_source_vars
+    )
     narrowed_var = None
     old_type = None
     was_already_narrowed = False
@@ -2696,7 +2925,9 @@ def lower_stmt_If(
         if not was_already_narrowed:
             type_ctx.narrowed_vars.discard(narrowed_var)
     else_body = dispatch.lower_stmts(node_orelse) if node_orelse else []
-    return ir.If(cond=cond, then_body=then_body, else_body=else_body, loc=loc_from_node(node))
+    return ir.If(
+        cond=cond, then_body=then_body, else_body=else_body, loc=loc_from_node(node)
+    )
 
 
 def _is_range_call(
@@ -2713,7 +2944,11 @@ def _is_range_call(
         return None
     args = node.get("args", [])
     if len(args) == 1:
-        return (ir.IntLit(value=0, typ=INT), lower_expr(args[0]), ir.IntLit(value=1, typ=INT))
+        return (
+            ir.IntLit(value=0, typ=INT),
+            lower_expr(args[0]),
+            ir.IntLit(value=1, typ=INT),
+        )
     elif len(args) == 2:
         return (lower_expr(args[0]), lower_expr(args[1]), ir.IntLit(value=1, typ=INT))
     elif len(args) == 3:
@@ -2749,7 +2984,9 @@ def lower_stmt_For(
             # Set loop variable type for body lowering
             type_ctx.var_types[var_name] = INT
             init = ir.VarDecl(name=var_name, typ=INT, value=start, loc=loc)
-            cond = ir.BinaryOp(op=cmp_op, left=ir.Var(name=var_name, typ=INT), right=end, typ=BOOL)
+            cond = ir.BinaryOp(
+                op=cmp_op, left=ir.Var(name=var_name, typ=INT), right=end, typ=BOOL
+            )
             post = ir.OpAssign(target=ir.VarLV(name=var_name), op="+", value=step)
             body = dispatch.lower_stmts(node_body)
             return ir.ForClassic(init=init, cond=cond, post=post, body=body, loc=loc)
@@ -2763,7 +3000,9 @@ def lower_stmt_For(
     # Dereference Pointer(Slice) or Optional(Slice) for range
     inner_slice = get_inner_slice(iterable_type)
     if inner_slice is not None:
-        iterable = ir.UnaryOp(op="*", operand=iterable, typ=inner_slice, loc=iterable.loc)
+        iterable = ir.UnaryOp(
+            op="*", operand=iterable, typ=inner_slice, loc=iterable.loc
+        )
         iterable_type = inner_slice
     # Determine index and value names
     index = None
@@ -2782,7 +3021,9 @@ def lower_stmt_For(
             iterable_union_types = type_ctx.list_element_unions[iter_name]
             # When iterating a list with union types, element type is Node
             elem_type = (
-                InterfaceRef(ctx.hierarchy_root) if ctx.hierarchy_root else InterfaceRef("any")
+                InterfaceRef(ctx.hierarchy_root)
+                if ctx.hierarchy_root
+                else InterfaceRef("any")
             )
     if is_type(node_target, ["Name"]):
         target_id = node_target.get("id")
@@ -2827,7 +3068,9 @@ def lower_stmt_For(
                         loc=loc,
                     )
                     unpack_stmts.append(
-                        ir.Assign(target=ir.VarLV(name=var_name), value=field_access, loc=loc)
+                        ir.Assign(
+                            target=ir.VarLV(name=var_name), value=field_access, loc=loc
+                        )
                     )
                 return ir.ForRange(
                     index=None,
@@ -2910,10 +3153,18 @@ def lower_lvalue(
         obj = lower_expr(node.get("value"))
         node_slice = node.get("slice")
         if is_type(node_slice, ["Slice"]):
-            low = lower_expr(node_slice.get("lower")) if node_slice.get("lower") else None
-            high = lower_expr(node_slice.get("upper")) if node_slice.get("upper") else None
-            step = lower_expr(node_slice.get("step")) if node_slice.get("step") else None
-            return ir.SliceLV(obj=obj, low=low, high=high, step=step, loc=loc_from_node(node))
+            low = (
+                lower_expr(node_slice.get("lower")) if node_slice.get("lower") else None
+            )
+            high = (
+                lower_expr(node_slice.get("upper")) if node_slice.get("upper") else None
+            )
+            step = (
+                lower_expr(node_slice.get("step")) if node_slice.get("step") else None
+            )
+            return ir.SliceLV(
+                obj=obj, low=low, high=high, step=step, loc=loc_from_node(node)
+            )
         idx = lower_expr(node_slice)
         return ir.IndexLV(obj=obj, index=idx, loc=loc_from_node(node))
     return ir.VarLV(name="_unknown_lvalue", loc=loc_from_node(node))
@@ -3063,7 +3314,9 @@ def _lower_generators(
         iterable = d.lower_expr(gen.get("iter"))
         conditions = [d.lower_expr(if_node) for if_node in gen.get("ifs", [])]
         result.append(
-            ir.CompGenerator(targets=target_names, iterable=iterable, conditions=conditions)
+            ir.CompGenerator(
+                targets=target_names, iterable=iterable, conditions=conditions
+            )
         )
     return result
 
@@ -3081,7 +3334,9 @@ def _lower_expr_ListComp_dispatch(
     element = d.lower_expr(node.get("elt"))
     elem_type = get_expr_type(node.get("elt"))
     loc = loc_from_node(node)
-    return ir.ListComp(element=element, generators=ir_generators, typ=Slice(elem_type), loc=loc)
+    return ir.ListComp(
+        element=element, generators=ir_generators, typ=Slice(elem_type), loc=loc
+    )
 
 
 def _lower_expr_SetComp_dispatch(
@@ -3097,7 +3352,9 @@ def _lower_expr_SetComp_dispatch(
     element = d.lower_expr(node.get("elt"))
     elem_type = get_expr_type(node.get("elt"))
     loc = loc_from_node(node)
-    return ir.SetComp(element=element, generators=ir_generators, typ=Set(elem_type), loc=loc)
+    return ir.SetComp(
+        element=element, generators=ir_generators, typ=Set(elem_type), loc=loc
+    )
 
 
 def _lower_expr_DictComp_dispatch(
@@ -3116,7 +3373,11 @@ def _lower_expr_DictComp_dispatch(
     value_type = get_expr_type(node.get("value"))
     loc = loc_from_node(node)
     return ir.DictComp(
-        key=key, value=value, generators=ir_generators, typ=Map(key_type, value_type), loc=loc
+        key=key,
+        value=value,
+        generators=ir_generators,
+        typ=Map(key_type, value_type),
+        loc=loc,
     )
 
 
@@ -3133,10 +3394,14 @@ def _lower_expr_GeneratorExp_dispatch(
     element = d.lower_expr(node.get("elt"))
     elem_type = get_expr_type(node.get("elt"))
     loc = loc_from_node(node)
-    return ir.ListComp(element=element, generators=ir_generators, typ=Slice(elem_type), loc=loc)
+    return ir.ListComp(
+        element=element, generators=ir_generators, typ=Slice(elem_type), loc=loc
+    )
 
 
-EXPR_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch"], "ir.Expr"]] = {
+EXPR_HANDLERS: dict[
+    str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch"], "ir.Expr"]
+] = {
     "Constant": _lower_expr_Constant_dispatch,
     "Name": _lower_expr_Name_dispatch,
     "Attribute": _lower_expr_Attribute_dispatch,
@@ -3159,7 +3424,9 @@ EXPR_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch
 }
 
 
-def lower_expr(node: ASTNode, ctx: "FrontendContext", dispatch: "LoweringDispatch") -> "ir.Expr":
+def lower_expr(
+    node: ASTNode, ctx: "FrontendContext", dispatch: "LoweringDispatch"
+) -> "ir.Expr":
     """Lower a Python expression to IR using dispatch table."""
     from .. import ir
 
@@ -3235,7 +3502,9 @@ def _lower_stmt_Try_dispatch(
     return lower_stmt_Try(node, ctx, d, d.set_catch_var)
 
 
-STMT_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch"], "ir.Stmt"]] = {
+STMT_HANDLERS: dict[
+    str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch"], "ir.Stmt"]
+] = {
     "Expr": _lower_stmt_Expr_dispatch,
     "Assign": lower_stmt_Assign,  # Already has (node, ctx, dispatch) signature
     "AnnAssign": lower_stmt_AnnAssign,  # Already has (node, ctx, dispatch) signature
@@ -3254,7 +3523,9 @@ STMT_HANDLERS: dict[str, Callable[[ASTNode, "FrontendContext", "LoweringDispatch
 }
 
 
-def lower_stmt(node: ASTNode, ctx: "FrontendContext", dispatch: "LoweringDispatch") -> "ir.Stmt":
+def lower_stmt(
+    node: ASTNode, ctx: "FrontendContext", dispatch: "LoweringDispatch"
+) -> "ir.Stmt":
     """Lower a Python statement to IR using dispatch table."""
     from .. import ir
 
@@ -3262,7 +3533,9 @@ def lower_stmt(node: ASTNode, ctx: "FrontendContext", dispatch: "LoweringDispatc
     if handler:
         return handler(node, ctx, dispatch)
     return ir.ExprStmt(
-        expr=ir.Var(name=f"TODO_{node.get('_type', 'unknown')}", typ=InterfaceRef("any"))
+        expr=ir.Var(
+            name=f"TODO_{node.get('_type', 'unknown')}", typ=InterfaceRef("any")
+        )
     )
 
 

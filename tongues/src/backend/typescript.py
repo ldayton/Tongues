@@ -12,12 +12,9 @@ from __future__ import annotations
 from src.backend.jslike import (
     JsLikeBackend,
     _camel,
-    _is_array_type,
-    _is_bool_int_compare,
     _safe_name,
 )
 from src.backend.util import (
-    escape_string,
     ir_contains_call,
     ir_contains_cast,
     ir_has_bytes_ops,
@@ -26,15 +23,10 @@ from src.backend.util import (
 )
 from src.ir import (
     BOOL,
-    INT,
     STRING,
     VOID,
     Array,
     Assign,
-    BinaryOp,
-    BoolLit,
-    Call,
-    Cast,
     Expr,
     Field,
     FloatLit,
@@ -44,13 +36,8 @@ from src.ir import (
     IndexLV,
     IntLit,
     InterfaceDef,
-    Len,
     LValue,
-    MakeMap,
-    MakeSlice,
     Map,
-    MapLit,
-    MethodCall,
     Module,
     NilLit,
     Optional,
@@ -59,28 +46,16 @@ from src.ir import (
     Primitive,
     Return,
     Set,
-    SetLit,
-    SliceExpr,
-    SliceLit,
-    StaticCall,
     Stmt,
-    StringConcat,
-    StringFormat,
     StringLit,
     StringSlice,
     Struct,
-    StructLit,
     StructRef,
     InterfaceRef,
     Tuple,
     TupleAssign,
-    TupleLit,
     Type,
-    TypeAssert,
     Union,
-    UnaryOp,
-    Var,
-    Ternary,
     Slice,
 )
 
@@ -108,9 +83,15 @@ class TsBackend(JsLikeBackend):
 
     def _emit_preamble(self, module: Module) -> bool:
         emitted = False
-        if ir_contains_cast(module, "byte", "string") or ir_contains_cast(module, "string", "byte"):
-            self._line("declare var TextEncoder: { new(): { encode(s: string): Uint8Array } };")
-            self._line("declare var TextDecoder: { new(): { decode(b: Uint8Array): string } };")
+        if ir_contains_cast(module, "byte", "string") or ir_contains_cast(
+            module, "string", "byte"
+        ):
+            self._line(
+                "declare var TextEncoder: { new(): { encode(s: string): Uint8Array } };"
+            )
+            self._line(
+                "declare var TextDecoder: { new(): { decode(b: Uint8Array): string } };"
+            )
             emitted = True
         if ir_contains_call(module, "range"):
             self._emit_range_function()
@@ -179,7 +160,11 @@ class TsBackend(JsLikeBackend):
                 "function dict<K, V>(x?: [K, V][]): Map<K, V> { if (x === undefined) return new Map<K, V>(); return new Map(x); }"
             )
             emitted = True
-        if ir_has_bytes_ops(module) or ir_has_tuple_sets(module) or ir_has_tuple_maps(module):
+        if (
+            ir_has_bytes_ops(module)
+            or ir_has_tuple_sets(module)
+            or ir_has_tuple_maps(module)
+        ):
             self._emit_map_helpers()
             emitted = True
         if ir_contains_call(module, "round"):
@@ -204,13 +189,17 @@ class TsBackend(JsLikeBackend):
 
     def _emit_tuple_map_helpers(self) -> None:
         """Emit helper functions for maps with tuple keys."""
-        self._line("function tupleMapGet<K extends any[], V>(m: Map<K, V>, k: K): V | undefined {")
+        self._line(
+            "function tupleMapGet<K extends any[], V>(m: Map<K, V>, k: K): V | undefined {"
+        )
         self.indent += 1
         self._line("for (const [key, val] of m) if (arrEq(key, k)) return val;")
         self._line("return undefined;")
         self.indent -= 1
         self._line("}")
-        self._line("function tupleMapHas<K extends any[]>(m: Map<K, any>, k: K): boolean {")
+        self._line(
+            "function tupleMapHas<K extends any[]>(m: Map<K, any>, k: K): boolean {"
+        )
         self.indent += 1
         self._line("for (const [key] of m) if (arrEq(key, k)) return true;")
         self._line("return false;")
@@ -255,7 +244,9 @@ class TsBackend(JsLikeBackend):
         self._line("}")
 
     def _emit_range_function(self) -> None:
-        self._line("function range(start: number, end?: number, step?: number): number[] {")
+        self._line(
+            "function range(start: number, end?: number, step?: number): number[] {"
+        )
         self.indent += 1
         self._line("if (end === undefined) { end = start; start = 0; }")
         self._line("if (step === undefined) { step = 1; }")
@@ -305,7 +296,9 @@ class TsBackend(JsLikeBackend):
         )
         self._line("function arrRepeat(a: number[], n: number): number[] {")
         self.indent += 1
-        self._line("const r: number[] = []; for (let i = 0; i < n; i++) r.push(...a); return r;")
+        self._line(
+            "const r: number[] = []; for (let i = 0; i < n; i++) r.push(...a); return r;"
+        )
         self.indent -= 1
         self._line("}")
         self._line("function arrContains(h: number[], n: number[]): boolean {")
@@ -313,7 +306,9 @@ class TsBackend(JsLikeBackend):
         self._line("if (n.length === 0) return true;")
         self._line("outer: for (let i = 0; i <= h.length - n.length; i++) {")
         self.indent += 1
-        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;")
+        self._line(
+            "for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;"
+        )
         self._line("return true;")
         self.indent -= 1
         self._line("}")
@@ -325,7 +320,9 @@ class TsBackend(JsLikeBackend):
         self._line("if (n.length === 0) return 0;")
         self._line("outer: for (let i = 0; i <= h.length - n.length; i++) {")
         self.indent += 1
-        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;")
+        self._line(
+            "for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) continue outer;"
+        )
         self._line("return i;")
         self.indent -= 1
         self._line("}")
@@ -339,7 +336,9 @@ class TsBackend(JsLikeBackend):
         self._line("while (i <= h.length - n.length) {")
         self.indent += 1
         self._line("let m = true;")
-        self._line("for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) { m = false; break; }")
+        self._line(
+            "for (let j = 0; j < n.length; j++) if (h[i+j] !== n[j]) { m = false; break; }"
+        )
         self._line("if (m) { c++; i += n.length; } else { i++; }")
         self.indent -= 1
         self._line("}")
@@ -349,7 +348,9 @@ class TsBackend(JsLikeBackend):
         self._line("function arrStartsWith(a: number[], p: number[]): boolean {")
         self.indent += 1
         self._line("if (p.length > a.length) return false;")
-        self._line("for (let i = 0; i < p.length; i++) if (a[i] !== p[i]) return false;")
+        self._line(
+            "for (let i = 0; i < p.length; i++) if (a[i] !== p[i]) return false;"
+        )
         self._line("return true;")
         self.indent -= 1
         self._line("}")
@@ -357,7 +358,9 @@ class TsBackend(JsLikeBackend):
         self.indent += 1
         self._line("if (s.length > a.length) return false;")
         self._line("const o = a.length - s.length;")
-        self._line("for (let i = 0; i < s.length; i++) if (a[o+i] !== s[i]) return false;")
+        self._line(
+            "for (let i = 0; i < s.length; i++) if (a[o+i] !== s[i]) return false;"
+        )
         self._line("return true;")
         self.indent -= 1
         self._line("}")
@@ -377,7 +380,9 @@ class TsBackend(JsLikeBackend):
         self._line("}")
         self._line("function arrLstrip(a: number[], cs: number[]): number[] {")
         self.indent += 1
-        self._line("let s = 0; while (s < a.length && cs.includes(a[s])) s++; return a.slice(s);")
+        self._line(
+            "let s = 0; while (s < a.length && cs.includes(a[s])) s++; return a.slice(s);"
+        )
         self.indent -= 1
         self._line("}")
         self._line("function arrRstrip(a: number[], cs: number[]): number[] {")
@@ -405,18 +410,24 @@ class TsBackend(JsLikeBackend):
         self.indent += 1
         self._line("if (arrs.length === 0) return [];")
         self._line("const r = arrs[0].slice();")
-        self._line("for (let i = 1; i < arrs.length; i++) { r.push(...sep); r.push(...arrs[i]); }")
+        self._line(
+            "for (let i = 1; i < arrs.length; i++) { r.push(...sep); r.push(...arrs[i]); }"
+        )
         self._line("return r;")
         self.indent -= 1
         self._line("}")
-        self._line("function arrReplace(a: number[], old: number[], nw: number[]): number[] {")
+        self._line(
+            "function arrReplace(a: number[], old: number[], nw: number[]): number[] {"
+        )
         self.indent += 1
         self._line("if (old.length === 0) return a.slice();")
         self._line("const r: number[] = [];")
         self._line("let i = 0;")
         self._line("while (i < a.length) {")
         self.indent += 1
-        self._line("if (arrStartsWith(a.slice(i), old)) { r.push(...nw); i += old.length; }")
+        self._line(
+            "if (arrStartsWith(a.slice(i), old)) { r.push(...nw); i += old.length; }"
+        )
         self._line("else { r.push(a[i]); i++; }")
         self.indent -= 1
         self._line("}")
@@ -430,7 +441,9 @@ class TsBackend(JsLikeBackend):
         self._line("if (lo === null) lo = step > 0 ? 0 : a.length - 1;")
         self._line("if (hi === null) hi = step > 0 ? a.length : -1;")
         self._line("const r: any[] = [];")
-        self._line("if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }")
+        self._line(
+            "if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }"
+        )
         self._line("else { for (let i = lo; i > hi; i += step) r.push(a[i]); }")
         self._line("return (typeof a === 'string' ? r.join('') : r) as T;")
         self.indent -= 1
@@ -467,7 +480,9 @@ class TsBackend(JsLikeBackend):
                 # Nested map: if target.obj is an Index on a Map with Map value type
                 if isinstance(target, IndexLV) and isinstance(target.obj, Index):
                     outer_obj = target.obj.obj
-                    if isinstance(outer_obj.typ, Map) and isinstance(outer_obj.typ.value, Map):
+                    if isinstance(outer_obj.typ, Map) and isinstance(
+                        outer_obj.typ.value, Map
+                    ):
                         inner_map_type = outer_obj.typ.value
                         obj_str = self._expr(target.obj)
                         idx_str = self._coerce_map_key(inner_map_type.key, target.index)
@@ -556,7 +571,9 @@ class TsBackend(JsLikeBackend):
         ts_type = self._type(value.typ) if value.typ else "any"
         self._line(f"let {lv}: {ts_type} = {val};")
 
-    def _tuple_assign_decl(self, lvalues: str, value: Expr, value_type: Type | None) -> None:
+    def _tuple_assign_decl(
+        self, lvalues: str, value: Expr, value_type: Type | None
+    ) -> None:
         val = self._expr(value)
         if isinstance(value_type, Tuple) and value_type.elements:
             elem_types = ", ".join(self._type(t) for t in value_type.elements)
@@ -605,7 +622,9 @@ class TsBackend(JsLikeBackend):
         if is_string or elem_type == "any":
             self._line(f"for (const {_camel(value)} of {iter_expr}) {{")
         else:
-            self._line(f"for (const {_camel(value)} of {iter_expr} as {elem_type}[]) {{")
+            self._line(
+                f"for (const {_camel(value)} of {iter_expr} as {elem_type}[]) {{"
+            )
 
     def _element_type_str(self, typ: Type | None) -> str:
         if typ is None:
@@ -680,7 +699,11 @@ class TsBackend(JsLikeBackend):
             and inner.typ == BOOL
         ):
             return f"Number({self._expr(inner)})"
-        if isinstance(to_type, Primitive) and to_type.kind == "string" and inner.typ == BOOL:
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+            and inner.typ == BOOL
+        ):
             return f'({self._expr(inner)} ? "True" : "False")'
         ts_type = self._type(to_type)
         from_type = self._type(inner.typ)
@@ -728,9 +751,7 @@ class TsBackend(JsLikeBackend):
             and inner.typ.kind == "float"
         ):
             inner_str = self._expr(inner)
-            return (
-                f"(Number.isInteger({inner_str}) ? ({inner_str}).toFixed(1) : String({inner_str}))"
-            )
+            return f"(Number.isInteger({inner_str}) ? ({inner_str}).toFixed(1) : String({inner_str}))"
         if isinstance(to_type, Primitive) and to_type.kind == "string":
             return f"String({self._expr(inner)})"
         # Use 'as unknown as' for type conversions
@@ -782,7 +803,9 @@ class TsBackend(JsLikeBackend):
                 parts = " | ".join(self._type(v) for v in variants)
                 return f"({parts})"
             case FuncType(params=params, ret=ret):
-                params_str = ", ".join(f"p{i}: {self._type(p)}" for i, p in enumerate(params))
+                params_str = ", ".join(
+                    f"p{i}: {self._type(p)}" for i, p in enumerate(params)
+                )
                 return f"(({params_str}) => {self._type(ret)})"
             case StringSlice():
                 return "string"

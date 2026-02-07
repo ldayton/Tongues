@@ -33,12 +33,16 @@ def find_hierarchy_root(symbols: SymbolTable) -> str | None:
             if base != "Exception" and not is_exception_subclass(base, symbols):
                 used_as_base.add(base)
     roots = [
-        n for n in used_as_base if symbols.structs.get(n) and len(symbols.structs[n].bases) == 0
+        n
+        for n in used_as_base
+        if symbols.structs.get(n) and len(symbols.structs[n].bases) == 0
     ]
     return roots[0] if len(roots) == 1 else None
 
 
-def is_node_subclass(name: str, symbols: SymbolTable, hierarchy_root: str | None = None) -> bool:
+def is_node_subclass(
+    name: str, symbols: SymbolTable, hierarchy_root: str | None = None
+) -> bool:
     """Check if a class is a Node subclass (directly or transitively)."""
     if hierarchy_root is None:
         hierarchy_root = find_hierarchy_root(symbols)

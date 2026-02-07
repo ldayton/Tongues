@@ -28,12 +28,16 @@ class CollectionCallbacks:
     lower_expr: Callable[[ASTNode], "ir.Expr"]
     infer_type_from_value: Callable[[ASTNode, dict[str, str]], "Type"] | None = None
     extract_struct_name: Callable[["Type"], str | None] | None = None
-    infer_container_type_from_ast: Callable[[ASTNode, dict[str, "Type"]], "Type"] | None = None
+    infer_container_type_from_ast: (
+        Callable[[ASTNode, dict[str, "Type"]], "Type"] | None
+    ) = None
     is_len_call: Callable[[ASTNode], bool] | None = None
     is_kind_check: Callable[[ASTNode], tuple[str, str] | None] | None = None
     infer_call_return_type: Callable[[ASTNode], "Type"] | None = None
     infer_iterable_type: Callable[[ASTNode, dict[str, "Type"]], "Type"] | None = None
-    infer_element_type_from_append_arg: Callable[[ASTNode, dict[str, "Type"]], "Type"] | None = None
+    infer_element_type_from_append_arg: (
+        Callable[[ASTNode, dict[str, "Type"]], "Type"] | None
+    ) = None
 
 
 def build_kind_mapping(
@@ -72,7 +76,9 @@ def collect_constants(tree: ASTNode, symbols: SymbolTable) -> None:
                     target = stmt.get("targets", [])[0]
                     if is_type(target, ["Name"]) and target.get("id", "").isupper():
                         value = stmt.get("value", {})
-                        if is_type(value, ["Constant"]) and isinstance(value.get("value"), int):
+                        if is_type(value, ["Constant"]) and isinstance(
+                            value.get("value"), int
+                        ):
                             # Store as ClassName_CONST_NAME
                             const_name = f"{node.get('name')}_{target.get('id')}"
                             symbols.constants[const_name] = INT

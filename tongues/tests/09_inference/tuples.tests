@@ -1,0 +1,236 @@
+=== tuple literal allowed
+def f() -> tuple[int, str]:
+    return (1, "hello")
+---
+ok
+---
+
+=== tuple with three elements allowed
+def f() -> tuple[int, str, bool]:
+    return (1, "hello", True)
+---
+ok
+---
+
+=== tuple indexing allowed
+def f(t: tuple[int, str]) -> int:
+    return t[0]
+---
+ok
+---
+
+=== tuple second element access allowed
+def f(t: tuple[int, str]) -> str:
+    return t[1]
+---
+ok
+---
+
+=== unpack from literal allowed
+def f() -> int:
+    a, b = (1, 2)
+    return a + b
+---
+ok
+---
+
+=== unpack from function call allowed
+def get_pair() -> tuple[int, str]:
+    return (1, "hello")
+def f() -> int:
+    a, b = get_pair()
+    return a
+---
+ok
+---
+
+=== unpack three elements allowed
+def get_triple() -> tuple[int, str, bool]:
+    return (1, "hello", True)
+def f() -> int:
+    a, b, c = get_triple()
+    return a
+---
+ok
+---
+
+=== unpack in for loop allowed
+def f(items: list[tuple[int, str]]) -> int:
+    total: int = 0
+    for a, b in items:
+        total += a
+    return total
+---
+ok
+---
+
+=== unpack from enumerate allowed
+def f(xs: list[str]) -> int:
+    total: int = 0
+    for i, x in enumerate(xs):
+        total += i
+    return total
+---
+ok
+---
+
+=== unpack from zip allowed
+def f(xs: list[int], ys: list[str]) -> int:
+    total: int = 0
+    for x, y in zip(xs, ys):
+        total += x
+    return total
+---
+ok
+---
+
+=== unpack from dict items allowed
+def f(d: dict[str, int]) -> int:
+    total: int = 0
+    for k, v in d.items():
+        total += v
+    return total
+---
+ok
+---
+
+=== guarded unpack with walrus allowed
+def maybe_pair() -> tuple[int, str] | None:
+    return (1, "hello")
+def f() -> int:
+    if (t := maybe_pair()):
+        a, b = t
+        return a
+    return 0
+---
+ok
+---
+
+=== guarded unpack with is not None allowed
+def maybe_pair() -> tuple[int, str] | None:
+    return (1, "hello")
+def f() -> int:
+    t: tuple[int, str] | None = maybe_pair()
+    if t is not None:
+        a, b = t
+        return a
+    return 0
+---
+ok
+---
+
+=== nested tuple unpack allowed
+def f() -> int:
+    (a, b), c = ((1, 2), 3)
+    return a + b + c
+---
+ok
+---
+
+=== tuple as function argument allowed
+def process(t: tuple[int, str]) -> int:
+    return t[0]
+def f() -> int:
+    return process((1, "hello"))
+---
+ok
+---
+
+=== tuple in list allowed
+def f() -> list[tuple[int, str]]:
+    return [(1, "a"), (2, "b")]
+---
+ok
+---
+
+=== return tuple from expression allowed
+def f(x: int, y: str) -> tuple[int, str]:
+    return (x, y)
+---
+ok
+---
+
+=== swap with tuple allowed
+def f(a: int, b: int) -> tuple[int, int]:
+    a, b = b, a
+    return (a, b)
+---
+ok
+---
+
+=== divmod returns tuple allowed
+def f(a: int, b: int) -> int:
+    q, r = divmod(a, b)
+    return q
+---
+ok
+---
+
+=== unpack from unguarded variable not allowed
+def maybe_pair() -> tuple[int, str] | None:
+    return (1, "hello")
+def f() -> int:
+    t: tuple[int, str] | None = maybe_pair()
+    a, b = t
+    return a
+---
+error: unpack
+---
+
+=== unpack wrong count not allowed
+def get_pair() -> tuple[int, str]:
+    return (1, "hello")
+def f() -> int:
+    a, b, c = get_pair()
+    return a
+---
+error: unpack
+---
+
+=== unpack too few not allowed
+def get_triple() -> tuple[int, str, bool]:
+    return (1, "hello", True)
+def f() -> int:
+    a, b = get_triple()
+    return a
+---
+error: unpack
+---
+
+=== tuple index out of bounds not allowed
+def f(t: tuple[int, str]) -> bool:
+    return t[2]
+---
+error: index
+---
+
+=== tuple wrong element type not allowed
+def f() -> tuple[int, str]:
+    return (1, 2)
+---
+error: type
+---
+
+=== homogeneous tuple indexing allowed
+def f(t: tuple[int, ...]) -> int:
+    return t[0]
+---
+ok
+---
+
+=== homogeneous tuple iteration allowed
+def f(t: tuple[int, ...]) -> int:
+    total: int = 0
+    for x in t:
+        total += x
+    return total
+---
+ok
+---
+
+=== homogeneous tuple from list allowed
+def f(xs: list[int]) -> tuple[int, ...]:
+    return tuple(xs)
+---
+ok
+---

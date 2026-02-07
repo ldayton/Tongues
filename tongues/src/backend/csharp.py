@@ -45,7 +45,6 @@ from src.ir import (
     Map,
     MapLit,
     Match,
-    MatchCase,
     MaxExpr,
     MethodCall,
     MinExpr,
@@ -83,7 +82,6 @@ from src.ir import (
     TupleLit,
     Type,
     TypeAssert,
-    TypeCase,
     TypeSwitch,
     UnaryOp,
     Union,
@@ -218,7 +216,9 @@ class CSharpBackend:
         self.current_class: str = ""
         self.struct_fields: dict[str, list[tuple[str, Type]]] = {}
         self._hoisted_vars: set[str] = set()
-        self._declared_vars: set[str] = set()  # All variables declared in current function
+        self._declared_vars: set[str] = (
+            set()
+        )  # All variables declared in current function
         self._object_vars: set[str] = set()  # Variables declared with object type
         self._module_name: str = ""
         self._interface_names: set[str] = set()
@@ -390,7 +390,9 @@ class CSharpBackend:
             elif struct.is_exception:
                 self._line(f"public {class_name}(string message) : base(message) {{ }}")
             return
-        params = ", ".join(f"{self._type(f.typ)} {_safe_name(f.name)}" for f in struct.fields)
+        params = ", ".join(
+            f"{self._type(f.typ)} {_safe_name(f.name)}" for f in struct.fields
+        )
         if struct.is_exception and not struct.embedded_type:
             # Base exception class - needs to call Exception base
             self._line(f"public {class_name}({params}) : base(message)")
@@ -547,7 +549,9 @@ class CSharpBackend:
                     is_new_var = target_name and target_name not in self._declared_vars
                     if (stmt.is_declaration or is_new_var) and not is_hoisted:
                         # Prefer decl_typ (unified type from frontend) over value.typ
-                        decl_type = stmt.decl_typ if stmt.decl_typ is not None else value.typ
+                        decl_type = (
+                            stmt.decl_typ if stmt.decl_typ is not None else value.typ
+                        )
                         cs_type = self._type(decl_type) if decl_type else "object"
                         self._line(f"{cs_type} {lv} = {val};")
                         if target_name:
@@ -658,7 +662,9 @@ class CSharpBackend:
                 reraise=_,
             ):
                 self._emit_try_catch(stmt)
-            case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
+            case Raise(
+                error_type=error_type, message=message, pos=pos, reraise_var=reraise_var
+            ):
                 if reraise_var:
                     self._line("throw;")
                 else:
@@ -689,7 +695,9 @@ class CSharpBackend:
                     decls.append(_safe_name(target_name))
                 else:
                     # New variable, need to declare with type
-                    elem_type = value_type.elements[i] if i < len(value_type.elements) else None
+                    elem_type = (
+                        value_type.elements[i] if i < len(value_type.elements) else None
+                    )
                     cs_type = self._type(elem_type) if elem_type else "var"
                     decls.append(f"{cs_type} {_safe_name(target_name)}")
             self._line(f"({', '.join(decls)}) = {val_str};")
@@ -703,7 +711,9 @@ class CSharpBackend:
                 lv = self._lvalue(target)
                 target_name = target.name if isinstance(target, VarLV) else None
                 is_hoisted = target_name and target_name in self._hoisted_vars
-                if (is_decl or (target_name and target_name in new_targets)) and not is_hoisted:
+                if (
+                    is_decl or (target_name and target_name in new_targets)
+                ) and not is_hoisted:
                     self._line(f"var {lv} = {tuple_var}.Item{i + 1};")
                 else:
                     self._line(f"{lv} = {tuple_var}.Item{i + 1};")
@@ -747,7 +757,9 @@ class CSharpBackend:
                 field_type = self._type(elem_type.elements[i])
             else:
                 field_type = "object"
-            if (is_decl or (target_name and target_name in new_targets)) and not is_hoisted:
+            if (
+                is_decl or (target_name and target_name in new_targets)
+            ) and not is_hoisted:
                 self._line(f"{field_type} {lv} = {entry_var}.Item{i + 1};")
             else:
                 self._line(f"{lv} = {entry_var}.Item{i + 1};")
@@ -981,7 +993,9 @@ class CSharpBackend:
         self.indent -= 1
         self._line("}")
         for clause in stmt.catches:
-            exc_type = clause.typ.name if isinstance(clause.typ, StructRef) else "Exception"
+            exc_type = (
+                clause.typ.name if isinstance(clause.typ, StructRef) else "Exception"
+            )
             if clause.var:
                 var = _safe_name(clause.var)
                 self._line(f"catch ({exc_type} {var})")
@@ -1037,7 +1051,9 @@ class CSharpBackend:
                 if name == self.receiver_name:
                     return "this"
                 if name.isupper() or (
-                    name[0].isupper() and "_" in name and name.split("_", 1)[1].isupper()
+                    name[0].isupper()
+                    and "_" in name
+                    and name.split("_", 1)[1].isupper()
                 ):
                     return f"Constants.{to_screaming_snake(name)}"
                 # Function references use PascalCase and need Action cast for boxing
@@ -1047,7 +1063,11 @@ class CSharpBackend:
             case FieldAccess(obj=obj, field=field):
                 obj_str = self._expr(obj)
                 # Handle tuple field access (F0, F1 -> Item1, Item2)
-                if isinstance(obj.typ, Tuple) and field.startswith("F") and field[1:].isdigit():
+                if (
+                    isinstance(obj.typ, Tuple)
+                    and field.startswith("F")
+                    and field[1:].isdigit()
+                ):
                     idx = int(field[1:]) + 1
                     return f"{obj_str}.Item{idx}"
                 return f"{obj_str}.{_safe_pascal(field)}"
@@ -1104,7 +1124,9 @@ class CSharpBackend:
                     return f"{s_str}.Trim({chars_str}.ToCharArray())"
             case Call(func=func, args=args):
                 return self._call(func, args)
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type
+            ):
                 return self._method_call(obj, method, args, receiver_type)
             case StaticCall(on_type=on_type, method=method, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
@@ -1131,7 +1153,9 @@ class CSharpBackend:
             case BinaryOp(op="//", left=left, right=right):
                 # Floor division - C# integer division already floors
                 left_str = (
-                    f"({self._expr(left)} ? 1 : 0)" if _is_bool_type(left.typ) else self._expr(left)
+                    f"({self._expr(left)} ? 1 : 0)"
+                    if _is_bool_type(left.typ)
+                    else self._expr(left)
                 )
                 right_str = (
                     f"({self._expr(right)} ? 1 : 0)"
@@ -1142,7 +1166,9 @@ class CSharpBackend:
             case BinaryOp(op="**", left=left, right=right):
                 # Power operator - C# uses Math.Pow
                 left_str = (
-                    f"({self._expr(left)} ? 1 : 0)" if _is_bool_type(left.typ) else self._expr(left)
+                    f"({self._expr(left)} ? 1 : 0)"
+                    if _is_bool_type(left.typ)
+                    else self._expr(left)
                 )
                 right_str = (
                     f"({self._expr(right)} ? 1 : 0)"
@@ -1164,24 +1190,40 @@ class CSharpBackend:
                     left_eff_bool = _is_bool_type(left.typ) or _is_bool_call(left)
                     right_eff_bool = _is_bool_type(right.typ) or _is_bool_call(right)
                     # For ordering comparisons on bools, convert both to int
-                    if op in ("<", "<=", ">", ">=") and left_eff_bool and right_eff_bool:
-                        left_is_bool = _is_bool_type(left.typ) and not _already_converted(left)
-                        right_is_bool = _is_bool_type(right.typ) and not _already_converted(right)
+                    if (
+                        op in ("<", "<=", ">", ">=")
+                        and left_eff_bool
+                        and right_eff_bool
+                    ):
+                        left_is_bool = _is_bool_type(
+                            left.typ
+                        ) and not _already_converted(left)
+                        right_is_bool = _is_bool_type(
+                            right.typ
+                        ) and not _already_converted(right)
                     # For mixed int/bool comparisons, convert the bool side
                     elif left_eff_bool and not right_eff_bool:
-                        left_is_bool = _is_bool_type(left.typ) and not _already_converted(left)
+                        left_is_bool = _is_bool_type(
+                            left.typ
+                        ) and not _already_converted(left)
                     elif right_eff_bool and not left_eff_bool:
-                        right_is_bool = _is_bool_type(right.typ) and not _already_converted(right)
+                        right_is_bool = _is_bool_type(
+                            right.typ
+                        ) and not _already_converted(right)
                 # Wrap operands in parens based on precedence (skip if converting to ternary)
                 if not left_is_bool:
                     if isinstance(left, Ternary):
                         left_str = f"({left_str})"
-                    elif isinstance(left, BinaryOp) and _needs_parens(left.op, op, is_left=True):
+                    elif isinstance(left, BinaryOp) and _needs_parens(
+                        left.op, op, is_left=True
+                    ):
                         left_str = f"({left_str})"
                 if not right_is_bool:
                     if isinstance(right, Ternary):
                         right_str = f"({right_str})"
-                    elif isinstance(right, BinaryOp) and _needs_parens(right.op, op, is_left=False):
+                    elif isinstance(right, BinaryOp) and _needs_parens(
+                        right.op, op, is_left=False
+                    ):
                         right_str = f"({right_str})"
                 # Apply bool-to-int conversion
                 if left_is_bool:
@@ -1191,9 +1233,7 @@ class CSharpBackend:
                 cs_op = _binary_op(op)
                 # For ParseInt in comparisons, use uncasted long to avoid overflow
                 if cs_op in ("<", "<=", ">", ">=") and isinstance(left, ParseInt):
-                    left_str = (
-                        f"Convert.ToInt64({self._expr(left.string)}, {self._expr(left.base)})"
-                    )
+                    left_str = f"Convert.ToInt64({self._expr(left.string)}, {self._expr(left.base)})"
                 # Cast object-typed variables to string in string comparisons
                 if cs_op in ("==", "!="):
                     if _is_string_type(left.typ) and self._is_object_var(right):
@@ -1314,7 +1354,9 @@ class CSharpBackend:
                 vt = self._type(value_type)
                 if not entries:
                     return f"new Dictionary<{kt}, {vt}>()"
-                pairs = ", ".join(f"{{ {self._expr(k)}, {self._expr(v)} }}" for k, v in entries)
+                pairs = ", ".join(
+                    f"{{ {self._expr(k)}, {self._expr(v)} }}" for k, v in entries
+                )
                 return f"new Dictionary<{kt}, {vt}> {{ {pairs} }}"
             case SetLit(elements=elements, element_type=element_type):
                 elem_type = self._type(element_type)
@@ -1322,7 +1364,9 @@ class CSharpBackend:
                     return f"new HashSet<{elem_type}>()"
                 elems = ", ".join(self._expr(e) for e in elements)
                 return f"new HashSet<{elem_type}> {{ {elems} }}"
-            case StructLit(struct_name=struct_name, fields=fields, embedded_value=embedded_value):
+            case StructLit(
+                struct_name=struct_name, fields=fields, embedded_value=embedded_value
+            ):
                 return self._struct_lit(struct_name, fields, embedded_value)
             case TupleLit(elements=elements):
                 elems = ", ".join(self._expr(e) for e in elements)
@@ -1340,20 +1384,38 @@ class CSharpBackend:
                     parts.append(f"{left_str} {cs_op} {right_str}")
                 return " && ".join(parts)
             case MinExpr(left=left, right=right):
-                left_bool, right_bool = _is_bool_type(left.typ), _is_bool_type(right.typ)
+                left_bool, right_bool = (
+                    _is_bool_type(left.typ),
+                    _is_bool_type(right.typ),
+                )
                 if left_bool and right_bool:
                     # min of two bools: result is bool (both must be true for true)
                     return f"({self._expr(left)} && {self._expr(right)})"
-                left_str = f"({self._expr(left)} ? 1 : 0)" if left_bool else self._expr(left)
-                right_str = f"({self._expr(right)} ? 1 : 0)" if right_bool else self._expr(right)
+                left_str = (
+                    f"({self._expr(left)} ? 1 : 0)" if left_bool else self._expr(left)
+                )
+                right_str = (
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if right_bool
+                    else self._expr(right)
+                )
                 return f"Math.Min({left_str}, {right_str})"
             case MaxExpr(left=left, right=right):
-                left_bool, right_bool = _is_bool_type(left.typ), _is_bool_type(right.typ)
+                left_bool, right_bool = (
+                    _is_bool_type(left.typ),
+                    _is_bool_type(right.typ),
+                )
                 if left_bool and right_bool:
                     # max of two bools: result is bool (either being true is enough)
                     return f"({self._expr(left)} || {self._expr(right)})"
-                left_str = f"({self._expr(left)} ? 1 : 0)" if left_bool else self._expr(left)
-                right_str = f"({self._expr(right)} ? 1 : 0)" if right_bool else self._expr(right)
+                left_str = (
+                    f"({self._expr(left)} ? 1 : 0)" if left_bool else self._expr(left)
+                )
+                right_str = (
+                    f"({self._expr(right)} ? 1 : 0)"
+                    if right_bool
+                    else self._expr(right)
+                )
                 return f"Math.Max({left_str}, {right_str})"
             case _:
                 return "null /* TODO: unknown expression */"
@@ -1475,7 +1537,9 @@ class CSharpBackend:
         func_class = to_pascal(self._module_name) + "Functions"
         return f"{func_class}.{_safe_pascal(func)}({args_str})"
 
-    def _method_call(self, obj: Expr, method: str, args: list[Expr], receiver_type: Type) -> str:
+    def _method_call(
+        self, obj: Expr, method: str, args: list[Expr], receiver_type: Type
+    ) -> str:
         args_str = ", ".join(self._expr(a) for a in args)
         obj_str = self._expr(obj)
         if isinstance(receiver_type, Slice):
@@ -1517,9 +1581,7 @@ class CSharpBackend:
                     prefix = self._expr(args[0])
                     pos = self._expr(args[1])
                     # Use ordinal comparison to match Python/Java behavior
-                    return (
-                        f"({obj_str}.IndexOf({prefix}, {pos}, StringComparison.Ordinal) == {pos})"
-                    )
+                    return f"({obj_str}.IndexOf({prefix}, {pos}, StringComparison.Ordinal) == {pos})"
                 return f"{obj_str}.StartsWith({args_str}, StringComparison.Ordinal)"
             if method == "endswith":
                 # Handle tuple argument: str.endswith((" ", "\n")) -> multiple checks
@@ -1564,7 +1626,9 @@ class CSharpBackend:
         if method == "endswith":
             # Handle tuple argument: str.endswith((" ", "\n")) -> multiple checks
             if args and isinstance(args[0], TupleLit):
-                checks = [f"{obj_str}.EndsWith({self._expr(e)})" for e in args[0].elements]
+                checks = [
+                    f"{obj_str}.EndsWith({self._expr(e)})" for e in args[0].elements
+                ]
                 return "(" + " || ".join(checks) + ")"
             return f"{obj_str}.EndsWith({args_str})"
         if method == "startswith":
@@ -1714,7 +1778,9 @@ class CSharpBackend:
         elif embedded_value is not None:
             # Child exception class with no additional fields - forward parent args
             if isinstance(embedded_value, StructLit):
-                parent_args = ", ".join(self._expr(v) for v in embedded_value.fields.values())
+                parent_args = ", ".join(
+                    self._expr(v) for v in embedded_value.fields.values()
+                )
                 return f"new {struct_name}({parent_args})"
             return f"new {struct_name}({self._expr(embedded_value)})"
         elif not fields:
@@ -1929,7 +1995,11 @@ def _is_bool_type(typ: Type) -> bool:
 def _already_converted(e: Expr) -> bool:
     """Check if expression already produces int from bool (skip double conversion)."""
     # UnaryOp with -, +, ~ on bool already produces int
-    if isinstance(e, UnaryOp) and e.op in ("-", "+", "~") and _is_bool_type(e.operand.typ):
+    if (
+        isinstance(e, UnaryOp)
+        and e.op in ("-", "+", "~")
+        and _is_bool_type(e.operand.typ)
+    ):
         return True
     # MinExpr/MaxExpr with mixed bool/int already produces int
     if isinstance(e, (MinExpr, MaxExpr)):

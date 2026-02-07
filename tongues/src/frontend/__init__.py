@@ -6,7 +6,7 @@ from .parse import ParseError, parse
 from .subset import VerifyResult, Violation, verify
 
 
-def compile(source: str) -> "Module":
+def compile(source: str) -> "Module":  # noqa: F821
     """Frontend pipeline: source → IR Module. Orchestrates phases 2-9."""
     # Phase 2: Parse to dict-based AST
     ast_dict = parse(source)  # validates syntax

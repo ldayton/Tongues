@@ -10,7 +10,7 @@ Key differences from other backends:
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, to_snake, to_screaming_snake
+from src.backend.util import to_snake, to_screaming_snake
 from src.ir import (
     BOOL,
     INT,
@@ -33,14 +33,12 @@ from src.ir import (
     EntryPoint,
     Expr,
     ExprStmt,
-    Field,
     FieldAccess,
     FieldLV,
     FloatLit,
     ForClassic,
     ForRange,
     FuncRef,
-    FuncType,
     Function,
     If,
     Index,
@@ -73,7 +71,6 @@ from src.ir import (
     Primitive,
     Print,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,
@@ -93,7 +90,6 @@ from src.ir import (
     Ternary,
     TrimChars,
     TryCatch,
-    Tuple,
     TupleAssign,
     Truthy,
     TupleLit,
@@ -197,7 +193,9 @@ class LuaBackend:
         self._has_continue = False  # Track if we need continue helper
         self._needed_helpers: set[str] = set()
         self._hoisted_vars: set[str] = set()  # Variables already declared via hoisting
-        self._needs_paren_guard = False  # Track if ; needed before ( to prevent ambiguity
+        self._needs_paren_guard = (
+            False  # Track if ; needed before ( to prevent ambiguity
+        )
 
     def emit(self, module: Module) -> str:
         """Emit Lua code from IR Module."""
@@ -275,9 +273,9 @@ class LuaBackend:
             if isinstance(stmt, Continue):
                 return True
             if isinstance(stmt, If):
-                if self._body_has_direct_continue(stmt.then_body) or self._body_has_direct_continue(
-                    stmt.else_body
-                ):
+                if self._body_has_direct_continue(
+                    stmt.then_body
+                ) or self._body_has_direct_continue(stmt.else_body):
                     return True
             elif isinstance(stmt, Block):
                 if self._body_has_direct_continue(stmt.body):
@@ -315,7 +313,9 @@ class LuaBackend:
             if isinstance(stmt, Return) and stmt.value is not None:
                 return True
             if isinstance(stmt, If):
-                if self._body_has_return(stmt.then_body) or self._body_has_return(stmt.else_body):
+                if self._body_has_return(stmt.then_body) or self._body_has_return(
+                    stmt.else_body
+                ):
                     return True
             elif isinstance(stmt, (While, ForRange)):
                 if self._body_has_return(stmt.body):
@@ -721,9 +721,13 @@ class LuaBackend:
             case Assert(test=test, message=message):
                 cond_str = self._expr(test)
                 if message is not None:
-                    self._line(f"if not ({cond_str}) then error({self._expr(message)}) end")
+                    self._line(
+                        f"if not ({cond_str}) then error({self._expr(message)}) end"
+                    )
                 else:
-                    self._line(f'if not ({cond_str}) then error("assertion failed") end')
+                    self._line(
+                        f'if not ({cond_str}) then error("assertion failed") end'
+                    )
             case EntryPoint():
                 pass
             case If(
@@ -852,36 +856,50 @@ class LuaBackend:
         match typ:
             case Primitive(kind="string"):
                 return f"type({var}) == 'string'"
-            case Primitive(kind="int") | Primitive(kind="float") | Primitive(kind="byte"):
+            case (
+                Primitive(kind="int") | Primitive(kind="float") | Primitive(kind="byte")
+            ):
                 return f"type({var}) == 'number'"
             case Primitive(kind="bool"):
                 return f"type({var}) == 'boolean'"
             case StructRef(name=name):
                 type_name = _safe_type_name(name)
-                return f"(type({var}) == 'table' and getmetatable({var}) == {type_name})"
+                return (
+                    f"(type({var}) == 'table' and getmetatable({var}) == {type_name})"
+                )
             case InterfaceRef(name=name):
                 type_name = _safe_type_name(name)
-                return f"(type({var}) == 'table' and getmetatable({var}) == {type_name})"
+                return (
+                    f"(type({var}) == 'table' and getmetatable({var}) == {type_name})"
+                )
             case Pointer(target=target):
                 return self._type_check(var, target)
             case Optional(inner=inner):
                 return self._type_check(var, inner)
             case Union(name=name):
                 type_name = _safe_type_name(name)
-                return f"(type({var}) == 'table' and getmetatable({var}) == {type_name})"
+                return (
+                    f"(type({var}) == 'table' and getmetatable({var}) == {type_name})"
+                )
             case Struct(name=name):
                 type_name = _safe_type_name(name)
-                return f"(type({var}) == 'table' and getmetatable({var}) == {type_name})"
+                return (
+                    f"(type({var}) == 'table' and getmetatable({var}) == {type_name})"
+                )
             case _:
                 return f"type({var}) == 'table'"
 
-    def _emit_match(self, expr: Expr, cases: list[MatchCase], default: list[Stmt]) -> None:
+    def _emit_match(
+        self, expr: Expr, cases: list[MatchCase], default: list[Stmt]
+    ) -> None:
         var = self._expr(expr)
         # Use local variable to avoid re-evaluating expression
         self._line(f"local _match_val = {var}")
         for i, case in enumerate(cases):
             keyword = "if" if i == 0 else "elseif"
-            patterns = " or ".join(f"_match_val == {self._expr(p)}" for p in case.patterns)
+            patterns = " or ".join(
+                f"_match_val == {self._expr(p)}" for p in case.patterns
+            )
             self._line(f"{keyword} {patterns} then")
             self.indent += 1
             if _is_empty_body(case.body):
@@ -1205,12 +1223,14 @@ class LuaBackend:
                 return f"math.abs({arg_str})"
             case Call(func="min", args=args):
                 args_str = ", ".join(
-                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a) for a in args
+                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a)
+                    for a in args
                 )
                 return f"math.min({args_str})"
             case Call(func="max", args=args):
                 args_str = ", ".join(
-                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a) for a in args
+                    self._bool_to_int(a) if a.typ == BOOL else self._expr(a)
+                    for a in args
                 )
                 return f"math.max({args_str})"
             case Call(func="round", args=[arg]):
@@ -1233,11 +1253,15 @@ class LuaBackend:
                 b_str = self._bool_to_int(b) if b.typ == BOOL else self._expr(b)
                 return f"{{{a_str} // {b_str}, {a_str} % {b_str}}}"
             case Call(func="pow", args=[base, exp]):
-                base_str = self._bool_to_int(base) if base.typ == BOOL else self._expr(base)
+                base_str = (
+                    self._bool_to_int(base) if base.typ == BOOL else self._expr(base)
+                )
                 exp_str = self._bool_to_int(exp) if exp.typ == BOOL else self._expr(exp)
                 return f"{base_str} ^ {exp_str}"
             case Call(func="pow", args=[base, exp, mod]):
-                base_str = self._bool_to_int(base) if base.typ == BOOL else self._expr(base)
+                base_str = (
+                    self._bool_to_int(base) if base.typ == BOOL else self._expr(base)
+                )
                 exp_str = self._bool_to_int(exp) if exp.typ == BOOL else self._expr(exp)
                 mod_str = self._bool_to_int(mod) if mod.typ == BOOL else self._expr(mod)
                 return f"{base_str} ^ {exp_str} % {mod_str}"
@@ -1268,7 +1292,9 @@ class LuaBackend:
                         return f'({self._expr(args[0])} and "True" or "False")'
                     return f"tostring({self._expr(args[0])})"
                 return f"{_safe_name(func)}({args_str})"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type
+            ):
                 return self._method_call(obj, method, args, receiver_type)
             case StaticCall(on_type=on_type, method=method, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
@@ -1324,12 +1350,18 @@ class LuaBackend:
                 # Bool-int comparison: Lua's true ~= 1, so convert bool to int
                 if op in ("==", "!=") and _is_bool_int_compare(left, right):
                     if left_is_bool:
-                        left_str = self._expr(left) if left_returns_int else self._bool_to_int(left)
+                        left_str = (
+                            self._expr(left)
+                            if left_returns_int
+                            else self._bool_to_int(left)
+                        )
                     else:
                         left_str = self._maybe_paren(left, op, is_left=True)
                     if right_is_bool:
                         right_str = (
-                            self._expr(right) if right_returns_int else self._bool_to_int(right)
+                            self._expr(right)
+                            if right_returns_int
+                            else self._bool_to_int(right)
                         )
                     else:
                         right_str = self._maybe_paren(right, op, is_left=False)
@@ -1339,7 +1371,10 @@ class LuaBackend:
                 # (e.g., True + False == True) - convert both to int
                 # Note: left_returns_int might be True even if left_is_bool is False
                 if op in ("==", "!=") and (
-                    left_is_bool or right_is_bool or left_returns_int or right_returns_int
+                    left_is_bool
+                    or right_is_bool
+                    or left_returns_int
+                    or right_returns_int
                 ):
                     if left_returns_int or right_returns_int:
                         left_str = (
@@ -1366,20 +1401,30 @@ class LuaBackend:
                 if op in ("==", "!=") and left_is_bool and right_is_bool:
                     # Check if either side is an expression that returns int at runtime
                     left_returns_int = isinstance(left, (MinExpr, MaxExpr)) or (
-                        isinstance(left, BinaryOp) and left.op in ("+", "-", "*", "/", "%", "//")
+                        isinstance(left, BinaryOp)
+                        and left.op in ("+", "-", "*", "/", "%", "//")
                     )
                     right_returns_int = isinstance(right, (MinExpr, MaxExpr)) or (
-                        isinstance(right, BinaryOp) and right.op in ("+", "-", "*", "/", "%", "//")
+                        isinstance(right, BinaryOp)
+                        and right.op in ("+", "-", "*", "/", "%", "//")
                     )
                     if left_returns_int or right_returns_int:
                         # Expressions that return int don't need wrapping
-                        left_str = self._expr(left) if left_returns_int else self._bool_to_int(left)
+                        left_str = (
+                            self._expr(left)
+                            if left_returns_int
+                            else self._bool_to_int(left)
+                        )
                         right_str = (
-                            self._expr(right) if right_returns_int else self._bool_to_int(right)
+                            self._expr(right)
+                            if right_returns_int
+                            else self._bool_to_int(right)
                         )
                         return f"{left_str} {_binary_op(op)} {right_str}"
                 # Lua bools don't support arithmetic
-                if op in ("+", "-", "*", "/", "%", "//") and (left_is_bool or right_is_bool):
+                if op in ("+", "-", "*", "/", "%", "//") and (
+                    left_is_bool or right_is_bool
+                ):
                     left_str = (
                         f"({self._expr(left)} and 1 or 0)"
                         if left_is_bool
@@ -1447,7 +1492,9 @@ class LuaBackend:
                     if left_is_bool or (isinstance(left, IntLit) and left.value >= 0):
                         return f"{left_for_shift} >> {right_for_shift}"
                     left_str = self._maybe_paren(left, "//", is_left=True)
-                    right_str = self._bool_to_int(right) if right_is_bool else self._expr(right)
+                    right_str = (
+                        self._bool_to_int(right) if right_is_bool else self._expr(right)
+                    )
                     return f"{left_str} // (1 << {right_str})"
                 lua_op = _binary_op(op)
                 left_str = self._maybe_paren(left, op, is_left=True)
@@ -1515,7 +1562,9 @@ class LuaBackend:
                     if inner_type == Primitive(kind="rune"):
                         return f"utf8.char({inner_str})"
                     return f"tostring({inner_str})"
-                if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
+                if isinstance(to_type, Slice) and to_type.element == Primitive(
+                    kind="byte"
+                ):
                     return f"({{string.byte({inner_str}, 1, -1)}})"
                 return inner_str
             case TypeAssert(expr=inner):
@@ -1548,7 +1597,9 @@ class LuaBackend:
             case MapLit(entries=entries):
                 if not entries:
                     return "{}"
-                pairs = ", ".join(f"[{self._expr(k)}] = {self._expr(v)}" for k, v in entries)
+                pairs = ", ".join(
+                    f"[{self._expr(k)}] = {self._expr(v)}" for k, v in entries
+                )
                 return f"{{{pairs}}}"
             case SetLit(elements=elements):
                 if not elements:
@@ -1585,12 +1636,20 @@ class LuaBackend:
                     parts.append(f"{left_str} {lua_op} {right_str}")
                 return " and ".join(parts)
             case MinExpr(left=left, right=right):
-                left_str = self._bool_to_int(left) if left.typ == BOOL else self._expr(left)
-                right_str = self._bool_to_int(right) if right.typ == BOOL else self._expr(right)
+                left_str = (
+                    self._bool_to_int(left) if left.typ == BOOL else self._expr(left)
+                )
+                right_str = (
+                    self._bool_to_int(right) if right.typ == BOOL else self._expr(right)
+                )
                 return f"math.min({left_str}, {right_str})"
             case MaxExpr(left=left, right=right):
-                left_str = self._bool_to_int(left) if left.typ == BOOL else self._expr(left)
-                right_str = self._bool_to_int(right) if right.typ == BOOL else self._expr(right)
+                left_str = (
+                    self._bool_to_int(left) if left.typ == BOOL else self._expr(left)
+                )
+                right_str = (
+                    self._bool_to_int(right) if right.typ == BOOL else self._expr(right)
+                )
                 return f"math.max({left_str}, {right_str})"
             case _:
                 raise NotImplementedError("Unknown expression")
@@ -1631,7 +1690,9 @@ class LuaBackend:
         # Array/Slice - need to search
         return f"({neg}(function() for _, v in ipairs({container_str}) do if v == {item_str} then return true end end return false end)())"
 
-    def _method_call(self, obj: Expr, method: str, args: list[Expr], receiver_type: Type) -> str:
+    def _method_call(
+        self, obj: Expr, method: str, args: list[Expr], receiver_type: Type
+    ) -> str:
         """Handle method calls with proper Lua idioms."""
         obj_str = self._expr(obj)
         args_str = ", ".join(self._expr(a) for a in args)
@@ -1692,7 +1753,11 @@ class LuaBackend:
             if method == "copy":
                 return f"(function() local t = {{}}; for i, v in ipairs({obj_str}) do t[i] = v end; return t end)()"
             if method == "pop":
-                if len(args) == 1 and isinstance(args[0], IntLit) and args[0].value == 0:
+                if (
+                    len(args) == 1
+                    and isinstance(args[0], IntLit)
+                    and args[0].value == 0
+                ):
                     return f"table.remove({obj_str}, 1)"
                 if len(args) == 0:
                     return f"table.remove({obj_str})"
@@ -1730,7 +1795,9 @@ class LuaBackend:
             prefix = self._expr(args[0])
             if len(args) == 2:
                 pos = self._expr(args[1])
-                return f"(string.sub({obj_str}, {pos} + 1, {pos} + #{prefix}) == {prefix})"
+                return (
+                    f"(string.sub({obj_str}, {pos} + 1, {pos} + #{prefix}) == {prefix})"
+                )
             return f"(string.sub({obj_str}, 1, #{prefix}) == {prefix})"
         if method == "lower":
             return f"string.lower({obj_str})"
@@ -1757,7 +1824,9 @@ class LuaBackend:
             return f"(string.gsub({obj_str}, '^[' .. {chars} .. ']+', ''))"
         if method == "strip":
             if len(args) == 0:
-                return f"(string.gsub((string.gsub({obj_str}, '^%s+', '')), '%s+$', ''))"
+                return (
+                    f"(string.gsub((string.gsub({obj_str}, '^%s+', '')), '%s+$', ''))"
+                )
             chars = self._expr(args[0])
             return f"(string.gsub((string.gsub({obj_str}, '^[' .. {chars} .. ']+', '')), '[' .. {chars} .. ']+$', ''))"
         if method == "replace" and len(args) == 2:
@@ -1768,7 +1837,9 @@ class LuaBackend:
             self._needed_helpers.add("_string_find")
             if len(args) == 1:
                 return f"_string_find({obj_str}, {self._expr(args[0])})"
-            return f"_string_find({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
+            return (
+                f"_string_find({obj_str}, {self._expr(args[0])}, {self._expr(args[1])})"
+            )
         if method == "rfind" and len(args) >= 1:
             self._needed_helpers.add("_string_rfind")
             return f"_string_rfind({obj_str}, {self._expr(args[0])})"
@@ -1903,7 +1974,11 @@ class LuaBackend:
         if isinstance(expr, Cast) and expr.to_type == Primitive(kind="int"):
             return self._expr(expr)
         # For UnaryOp on bool, the operator handler already converts
-        if isinstance(expr, UnaryOp) and expr.op in ("-", "~") and expr.operand.typ == BOOL:
+        if (
+            isinstance(expr, UnaryOp)
+            and expr.op in ("-", "~")
+            and expr.operand.typ == BOOL
+        ):
             return self._expr(expr)
         inner = self._expr(expr)
         return f"({inner} and 1 or 0)"

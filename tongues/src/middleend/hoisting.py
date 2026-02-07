@@ -61,9 +61,13 @@ def _vars_first_assigned_in(
                 name = stmt.target.name
                 if name not in already_declared:
                     # Prefer decl_typ (unified type from frontend) over value.typ
-                    new_type = stmt.decl_typ if stmt.decl_typ is not None else stmt.value.typ
+                    new_type = (
+                        stmt.decl_typ if stmt.decl_typ is not None else stmt.value.typ
+                    )
                     if name in result:
-                        result[name] = join_types(result[name], new_type, hierarchy_root)
+                        result[name] = join_types(
+                            result[name], new_type, hierarchy_root
+                        )
                     else:
                         result[name] = new_type
         elif isinstance(stmt, TupleAssign) and stmt.is_declaration:
@@ -84,12 +88,16 @@ def _vars_first_assigned_in(
             branch_declared = already_declared | set(result.keys())
             _merge_var_types(
                 result,
-                _vars_first_assigned_in(stmt.then_body, branch_declared, hierarchy_root),
+                _vars_first_assigned_in(
+                    stmt.then_body, branch_declared, hierarchy_root
+                ),
                 hierarchy_root,
             )
             _merge_var_types(
                 result,
-                _vars_first_assigned_in(stmt.else_body, branch_declared, hierarchy_root),
+                _vars_first_assigned_in(
+                    stmt.else_body, branch_declared, hierarchy_root
+                ),
                 hierarchy_root,
             )
         elif isinstance(stmt, While):
@@ -135,7 +143,9 @@ def _vars_first_assigned_in(
             for clause in stmt.catches:
                 _merge_var_types(
                     result,
-                    _vars_first_assigned_in(clause.body, branch_declared, hierarchy_root),
+                    _vars_first_assigned_in(
+                        clause.body, branch_declared, hierarchy_root
+                    ),
                     hierarchy_root,
                 )
     return result
@@ -172,7 +182,8 @@ def _collect_conflicting_loop_vars(
                 if isinstance(stmt.iterable.typ, Slice):
                     elem_type = stmt.iterable.typ.element
                 elif (
-                    isinstance(stmt.iterable.typ, Primitive) and stmt.iterable.typ.kind == "string"
+                    isinstance(stmt.iterable.typ, Primitive)
+                    and stmt.iterable.typ.kind == "string"
                 ):
                     elem_type = Primitive("string")
                 result.append((stmt.value, elem_type))
@@ -180,8 +191,12 @@ def _collect_conflicting_loop_vars(
                 result.append((stmt.index, Primitive("int")))
             result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
         elif isinstance(stmt, If):
-            result.extend(_collect_conflicting_loop_vars(stmt.then_body, all_func_assigned))
-            result.extend(_collect_conflicting_loop_vars(stmt.else_body, all_func_assigned))
+            result.extend(
+                _collect_conflicting_loop_vars(stmt.then_body, all_func_assigned)
+            )
+            result.extend(
+                _collect_conflicting_loop_vars(stmt.else_body, all_func_assigned)
+            )
         elif isinstance(stmt, While):
             result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
         elif isinstance(stmt, ForClassic):
@@ -191,11 +206,17 @@ def _collect_conflicting_loop_vars(
         elif isinstance(stmt, TryCatch):
             result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
             for clause in stmt.catches:
-                result.extend(_collect_conflicting_loop_vars(clause.body, all_func_assigned))
+                result.extend(
+                    _collect_conflicting_loop_vars(clause.body, all_func_assigned)
+                )
         elif isinstance(stmt, (Match, TypeSwitch)):
             for case in stmt.cases:
-                result.extend(_collect_conflicting_loop_vars(case.body, all_func_assigned))
-            result.extend(_collect_conflicting_loop_vars(stmt.default, all_func_assigned))
+                result.extend(
+                    _collect_conflicting_loop_vars(case.body, all_func_assigned)
+                )
+            result.extend(
+                _collect_conflicting_loop_vars(stmt.default, all_func_assigned)
+            )
     return result
 
 
@@ -215,14 +236,20 @@ def _analyze_stmts(
             catch_stmts: list[Stmt] = []
             for clause in stmt.catches:
                 catch_stmts.extend(clause.body)
-            inner_new = _vars_first_assigned_in(stmt.body + catch_stmts, declared, hierarchy_root)
+            inner_new = _vars_first_assigned_in(
+                stmt.body + catch_stmts, declared, hierarchy_root
+            )
             used_after = _collect_used_vars(stmts[i + 1 :])
             needs_hoisting = _filter_hoisted_vars(inner_new, used_after)
             stmt.hoisted_vars = needs_hoisting
             _update_declared_from_hoisted(declared, needs_hoisting)
-            _analyze_stmts(func_name, stmt.body, declared, all_func_assigned, hierarchy_root)
+            _analyze_stmts(
+                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
+            )
             for clause in stmt.catches:
-                _analyze_stmts(func_name, clause.body, declared, all_func_assigned, hierarchy_root)
+                _analyze_stmts(
+                    func_name, clause.body, declared, all_func_assigned, hierarchy_root
+                )
         elif isinstance(stmt, If):
             inner_new = _vars_first_assigned_in(
                 stmt.then_body + stmt.else_body, declared, hierarchy_root
@@ -239,9 +266,15 @@ def _analyze_stmts(
             stmt.hoisted_vars = needs_hoisting
             _update_declared_from_hoisted(declared, needs_hoisting)
             if stmt.init:
-                _analyze_stmts(func_name, [stmt.init], declared, all_func_assigned, hierarchy_root)
-            _analyze_stmts(func_name, stmt.then_body, declared, all_func_assigned, hierarchy_root)
-            _analyze_stmts(func_name, stmt.else_body, declared, all_func_assigned, hierarchy_root)
+                _analyze_stmts(
+                    func_name, [stmt.init], declared, all_func_assigned, hierarchy_root
+                )
+            _analyze_stmts(
+                func_name, stmt.then_body, declared, all_func_assigned, hierarchy_root
+            )
+            _analyze_stmts(
+                func_name, stmt.else_body, declared, all_func_assigned, hierarchy_root
+            )
         elif isinstance(stmt, VarDecl):
             declared.add(stmt.name)
         elif isinstance(stmt, Assign) and stmt.is_declaration:
@@ -256,13 +289,17 @@ def _analyze_stmts(
             used_after = _collect_used_vars(stmts[i + 1 :])
             needs_hoisting = _filter_hoisted_vars(inner_new, used_after)
             # Also hoist ForRange loop variables that conflict with function-level assignments
-            loop_var_conflicts = _collect_conflicting_loop_vars(stmt.body, all_func_assigned)
+            loop_var_conflicts = _collect_conflicting_loop_vars(
+                stmt.body, all_func_assigned
+            )
             for var_tuple in loop_var_conflicts:
                 if var_tuple not in needs_hoisting:
                     needs_hoisting.append(var_tuple)
             stmt.hoisted_vars = needs_hoisting
             _update_declared_from_hoisted(declared, needs_hoisting)
-            _analyze_stmts(func_name, stmt.body, declared, all_func_assigned, hierarchy_root)
+            _analyze_stmts(
+                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
+            )
         elif isinstance(stmt, ForRange):
             inner_new = _vars_first_assigned_in(stmt.body, declared, hierarchy_root)
             used_after = _collect_used_vars(stmts[i + 1 :])
@@ -271,13 +308,21 @@ def _analyze_stmts(
             # by _collect_conflicting_loop_vars
             stmt.hoisted_vars = needs_hoisting
             _update_declared_from_hoisted(declared, needs_hoisting)
-            _analyze_stmts(func_name, stmt.body, declared, all_func_assigned, hierarchy_root)
+            _analyze_stmts(
+                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
+            )
         elif isinstance(stmt, ForClassic):
             if stmt.init:
-                _analyze_stmts(func_name, [stmt.init], declared, all_func_assigned, hierarchy_root)
-            _analyze_stmts(func_name, stmt.body, declared, all_func_assigned, hierarchy_root)
+                _analyze_stmts(
+                    func_name, [stmt.init], declared, all_func_assigned, hierarchy_root
+                )
+            _analyze_stmts(
+                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
+            )
         elif isinstance(stmt, Block):
-            _analyze_stmts(func_name, stmt.body, declared, all_func_assigned, hierarchy_root)
+            _analyze_stmts(
+                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
+            )
         elif isinstance(stmt, (Match, TypeSwitch)):
             non_returning_stmts: list[Stmt] = []
             all_case_stmts: list[Stmt] = []
@@ -288,9 +333,13 @@ def _analyze_stmts(
             all_case_stmts.extend(stmt.default)
             if not always_returns(stmt.default):
                 non_returning_stmts.extend(stmt.default)
-            inner_new = _vars_first_assigned_in(non_returning_stmts, declared, hierarchy_root)
+            inner_new = _vars_first_assigned_in(
+                non_returning_stmts, declared, hierarchy_root
+            )
             # Also get all assignments in ALL case bodies (including returning ones)
-            all_inner = _vars_first_assigned_in(all_case_stmts, declared, hierarchy_root)
+            all_inner = _vars_first_assigned_in(
+                all_case_stmts, declared, hierarchy_root
+            )
             used_after = _collect_used_vars(stmts[i + 1 :])
             assigned_after = _collect_assigned_vars(stmts[i + 1 :])
             needs_hoisting: list[tuple[str, Type | None]] = []
@@ -303,15 +352,21 @@ def _analyze_stmts(
                 if name in assigned_after and (name, typ) not in needs_hoisting:
                     needs_hoisting.append((name, typ))
             # Also hoist ForRange loop variables that conflict with function-level assignments
-            loop_var_conflicts = _collect_conflicting_loop_vars(all_case_stmts, all_func_assigned)
+            loop_var_conflicts = _collect_conflicting_loop_vars(
+                all_case_stmts, all_func_assigned
+            )
             for var_tuple in loop_var_conflicts:
                 if var_tuple not in needs_hoisting:
                     needs_hoisting.append(var_tuple)
             stmt.hoisted_vars = needs_hoisting
             _update_declared_from_hoisted(declared, needs_hoisting)
             for case in stmt.cases:
-                _analyze_stmts(func_name, case.body, declared, all_func_assigned, hierarchy_root)
-            _analyze_stmts(func_name, stmt.default, declared, all_func_assigned, hierarchy_root)
+                _analyze_stmts(
+                    func_name, case.body, declared, all_func_assigned, hierarchy_root
+                )
+            _analyze_stmts(
+                func_name, stmt.default, declared, all_func_assigned, hierarchy_root
+            )
 
 
 def _analyze_hoisting(func: Function, hierarchy_root: str | None = None) -> None:
@@ -325,4 +380,6 @@ def _analyze_hoisting(func: Function, hierarchy_root: str | None = None) -> None
             func_declared.add(stmt.name)
     # Collect ALL variables assigned anywhere in the function
     all_func_assigned = _collect_assigned_vars(func.body)
-    _analyze_stmts(func_name, func.body, func_declared, all_func_assigned, hierarchy_root)
+    _analyze_stmts(
+        func_name, func.body, func_declared, all_func_assigned, hierarchy_root
+    )

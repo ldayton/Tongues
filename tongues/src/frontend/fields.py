@@ -26,7 +26,9 @@ def collect_init_fields(
         if arg.get("arg") != "self":
             info.init_params.append(arg.get("arg"))
             if arg.get("annotation"):
-                param_types[arg.get("arg")] = callbacks.annotation_to_str(arg.get("annotation"))
+                param_types[arg.get("arg")] = callbacks.annotation_to_str(
+                    arg.get("annotation")
+                )
     # Track whether __init__ has computed initializations
     has_computed_init = False
     for stmt in dict_walk(init):
@@ -47,7 +49,9 @@ def collect_init_fields(
                 # Check if value is computed (not just a param reference)
                 value = stmt.get("value")
                 if value is not None:
-                    if not (is_type(value, ["Name"]) and value.get("id") in info.init_params):
+                    if not (
+                        is_type(value, ["Name"]) and value.get("id") in info.init_params
+                    ):
                         has_computed_init = True
         elif is_type(stmt, ["Assign"]):
             for target in stmt.get("targets", []):
@@ -81,7 +85,13 @@ def collect_init_fields(
                         )
     # Flag if constructor is needed - only for structs that critically need it
     # (Parser, Lexer need computed Length, nested constructors, back-references)
-    NEEDS_CONSTRUCTOR = {"Parser", "Lexer", "ContextStack", "QuoteState", "ParseContext"}
+    NEEDS_CONSTRUCTOR = {
+        "Parser",
+        "Lexer",
+        "ContextStack",
+        "QuoteState",
+        "ParseContext",
+    }
     if has_computed_init and info.name in NEEDS_CONSTRUCTOR:
         info.needs_constructor = True
 
@@ -99,8 +109,12 @@ def collect_class_fields(
             target = stmt.get("target", {})
             field_name = target.get("id")
             py_type = callbacks.annotation_to_str(stmt.get("annotation"))
-            typ = callbacks.py_type_to_ir(py_type, True)  # concrete_nodes=True for struct fields
-            info.fields[field_name] = FieldInfo(name=field_name, typ=typ, py_name=field_name)
+            typ = callbacks.py_type_to_ir(
+                py_type, True
+            )  # concrete_nodes=True for struct fields
+            info.fields[field_name] = FieldInfo(
+                name=field_name, typ=typ, py_name=field_name
+            )
     # Collect fields from __init__
     for stmt in node.get("body", []):
         if is_type(stmt, ["FunctionDef"]) and stmt.get("name") == "__init__":

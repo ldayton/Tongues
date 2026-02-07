@@ -3,7 +3,9 @@
 from src.ir import InterfaceRef, Pointer, StructRef, Type
 
 
-def join_types(t1: Type | None, t2: Type | None, hierarchy_root: str | None = None) -> Type | None:
+def join_types(
+    t1: Type | None, t2: Type | None, hierarchy_root: str | None = None
+) -> Type | None:
     """Compute joined type for variables assigned in multiple branches.
 
     For hoisting variables assigned in multiple branches:
@@ -30,9 +32,17 @@ def join_types(t1: Type | None, t2: Type | None, hierarchy_root: str | None = No
                 return InterfaceRef(hierarchy_root)
             return InterfaceRef("any")
     # Prefer named interface over "any" (nil gets typed as InterfaceRef("any"))
-    if isinstance(t1, InterfaceRef) and t1.name == "any" and isinstance(t2, InterfaceRef):
+    if (
+        isinstance(t1, InterfaceRef)
+        and t1.name == "any"
+        and isinstance(t2, InterfaceRef)
+    ):
         return t2
-    if isinstance(t2, InterfaceRef) and t2.name == "any" and isinstance(t1, InterfaceRef):
+    if (
+        isinstance(t2, InterfaceRef)
+        and t2.name == "any"
+        and isinstance(t1, InterfaceRef)
+    ):
         return t1
     # Prefer any concrete type over InterfaceRef("any")
     if isinstance(t1, InterfaceRef) and t1.name == "any":

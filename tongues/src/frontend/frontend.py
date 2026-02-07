@@ -56,7 +56,9 @@ class Frontend:
         self._current_func_info: FuncInfo | None = None
         self._current_class_name: str = ""
         self._type_ctx: TypeContext = TypeContext()
-        self._current_catch_var: str | None = None  # track catch variable for raise e pattern
+        self._current_catch_var: str | None = (
+            None  # track catch variable for raise e pattern
+        )
         # Auto-generated kind -> struct mappings (built from class const_fields)
         self._kind_to_struct: dict[str, str] = {}
         self._kind_to_class: dict[str, str] = {}
@@ -70,7 +72,10 @@ class Frontend:
                 self.symbols.structs[name] = StructInfo(name=name, bases=info.bases)
 
     def transpile(
-        self, source: str, tree: ASTNode | None = None, name_result: NameResult | None = None
+        self,
+        source: str,
+        tree: ASTNode | None = None,
+        name_result: NameResult | None = None,
     ) -> Module:
         """Parse Python source and produce IR Module."""
         from .names import resolve_names
@@ -89,7 +94,9 @@ class Frontend:
         # Pass 4: Collect struct fields
         self._collect_fields(tree)
         # Pass 4b: Build kind -> struct mapping from const_fields
-        collection.build_kind_mapping(self.symbols, self._kind_to_struct, self._kind_to_class)
+        collection.build_kind_mapping(
+            self.symbols, self._kind_to_struct, self._kind_to_class
+        )
         # Pass 5: Collect module-level constants
         collection.collect_constants(tree, self.symbols)
         # Build IR Module
@@ -108,7 +115,9 @@ class Frontend:
             lower_expr=self._lower_expr,
         )
 
-    def _make_collection_callbacks_with_inference(self) -> collection.CollectionCallbacks:
+    def _make_collection_callbacks_with_inference(
+        self,
+    ) -> collection.CollectionCallbacks:
         """Create CollectionCallbacks with type inference support."""
         cb = self._make_collection_callbacks_basic()
         cb.infer_type_from_value = self._infer_type_from_value
@@ -116,11 +125,15 @@ class Frontend:
 
     def _collect_signatures(self, tree: ASTNode) -> None:
         """Pass 3: Collect function and method signatures."""
-        signatures.collect_signatures(tree, self.symbols, self._make_collection_callbacks_basic())
+        signatures.collect_signatures(
+            tree, self.symbols, self._make_collection_callbacks_basic()
+        )
 
     def _collect_fields(self, tree: ASTNode) -> None:
         """Pass 4: Collect struct fields from class definitions."""
-        fields.collect_fields(tree, self.symbols, self._make_collection_callbacks_with_inference())
+        fields.collect_fields(
+            tree, self.symbols, self._make_collection_callbacks_with_inference()
+        )
 
     def _build_module(self, tree: ASTNode) -> Module:
         """Build IR Module from collected symbols."""
@@ -137,7 +150,9 @@ class Frontend:
             setup_context=self._setup_context,
             setup_and_lower_stmts=self._setup_and_lower_stmts,
         )
-        return builders.build_module(tree, self.symbols, callbacks, self._hierarchy.hierarchy_root)
+        return builders.build_module(
+            tree, self.symbols, callbacks, self._hierarchy.hierarchy_root
+        )
 
     def _setup_context(self, class_name: str, func_info: FuncInfo | None) -> None:
         """Set up class context for var type collection."""
@@ -146,7 +161,9 @@ class Frontend:
 
     def _extract_union_struct_names(self, py_type: str) -> list[str]:
         """Extract struct names from union type annotation."""
-        return type_inference.extract_union_struct_names(py_type, self._hierarchy.node_types)
+        return type_inference.extract_union_struct_names(
+            py_type, self._hierarchy.node_types
+        )
 
     def _setup_and_lower_stmts(
         self,
@@ -223,10 +240,15 @@ class Frontend:
     def _py_return_type_to_ir(self, py_type: str) -> Type:
         """Convert Python return type to IR, handling tuples as multiple returns."""
         return type_inference.py_return_type_to_ir(
-            py_type, self.symbols, self._hierarchy.node_types, self._hierarchy.hierarchy_root
+            py_type,
+            self.symbols,
+            self._hierarchy.node_types,
+            self._hierarchy.hierarchy_root,
         )
 
-    def _infer_type_from_value(self, node: ASTNode, param_types: dict[str, str]) -> Type:
+    def _infer_type_from_value(
+        self, node: ASTNode, param_types: dict[str, str]
+    ) -> Type:
         """Infer IR type from an expression."""
         return type_inference.infer_type_from_value(
             node,
@@ -238,7 +260,9 @@ class Frontend:
 
     def _collect_var_types(
         self, stmts: list[ASTNode]
-    ) -> tuple[dict[str, Type], dict[str, list[str]], set[str], set[str], dict[str, list[str]]]:
+    ) -> tuple[
+        dict[str, Type], dict[str, list[str]], set[str], set[str], dict[str, list[str]]
+    ]:
         """Pre-scan function body to collect variable types, tuple var mappings, sentinel ints, and optional strings."""
         cb = inference.InferenceCallbacks(
             annotation_to_str=self._annotation_to_str,
@@ -266,7 +290,9 @@ class Frontend:
             node, var_types, self._current_class_name, self.symbols
         )
 
-    def _infer_element_type_from_append_arg(self, arg: ASTNode, var_types: dict[str, Type]) -> Type:
+    def _infer_element_type_from_append_arg(
+        self, arg: ASTNode, var_types: dict[str, Type]
+    ) -> Type:
         """Infer slice element type from what's being appended."""
         cb = inference.InferenceCallbacks(
             annotation_to_str=self._annotation_to_str,
@@ -279,13 +305,24 @@ class Frontend:
             infer_iterable_type=self._infer_iterable_type,
         )
         return inference.infer_element_type_from_append_arg(
-            arg, var_types, self.symbols, self._current_class_name, self._current_func_info, cb
+            arg,
+            var_types,
+            self.symbols,
+            self._current_class_name,
+            self._current_func_info,
+            cb,
         )
 
-    def _infer_container_type_from_ast(self, node: ASTNode, var_types: dict[str, Type]) -> Type:
+    def _infer_container_type_from_ast(
+        self, node: ASTNode, var_types: dict[str, Type]
+    ) -> Type:
         """Infer the type of a container expression from AST."""
         return type_inference.infer_container_type_from_ast(
-            node, self.symbols, self._current_class_name, self._current_func_info, var_types
+            node,
+            self.symbols,
+            self._current_class_name,
+            self._current_func_info,
+            var_types,
         )
 
     def _merge_keyword_args(
@@ -301,7 +338,9 @@ class Frontend:
             type_inference.extract_struct_name,
         )
 
-    def _fill_default_args(self, obj_type: Type, method: str, args: list[Expr]) -> list[Expr]:
+    def _fill_default_args(
+        self, obj_type: Type, method: str, args: list[Expr]
+    ) -> list[Expr]:
         return lowering.fill_default_args(
             obj_type, method, args, self.symbols, type_inference.extract_struct_name
         )
@@ -309,7 +348,9 @@ class Frontend:
     def _merge_keyword_args_for_func(
         self, func_info: FuncInfo, args: list[Expr], node: ASTNode
     ) -> list[Expr]:
-        return lowering.merge_keyword_args_for_func(func_info, args, node, self._lower_expr)
+        return lowering.merge_keyword_args_for_func(
+            func_info, args, node, self._lower_expr
+        )
 
     def _add_address_of_for_ptr_params(
         self, obj_type: Type, method: str, args: list[Expr], orig_args: list[ASTNode]
@@ -338,7 +379,9 @@ class Frontend:
     def _deref_for_func_slice_params(
         self, func_name: str, args: list[Expr], orig_args: list[ASTNode]
     ) -> list[Expr]:
-        return lowering.deref_for_func_slice_params(func_name, args, orig_args, self.symbols)
+        return lowering.deref_for_func_slice_params(
+            func_name, args, orig_args, self.symbols
+        )
 
     def _coerce_sentinel_to_ptr(
         self, obj_type: Type, method: str, args: list[Expr], orig_args: list[Expr]
@@ -400,7 +443,7 @@ class Frontend:
         )
         return ctx, dispatch
 
-    def _lower_expr_as_bool(self, node: ASTNode) -> "ir.Expr":
+    def _lower_expr_as_bool(self, node: ASTNode) -> "ir.Expr":  # noqa: F821
         """Lower expression used in boolean context, adding truthy checks as needed."""
         return lowering.lower_expr_as_bool(
             node,
@@ -412,7 +455,7 @@ class Frontend:
             self.symbols,
         )
 
-    def _lower_expr(self, node: ASTNode) -> "ir.Expr":
+    def _lower_expr(self, node: ASTNode) -> "ir.Expr":  # noqa: F821
         """Lower a Python expression to IR."""
         ctx, dispatch = self._make_ctx_and_dispatch()
         return lowering.lower_expr(node, ctx, dispatch)
@@ -429,7 +472,9 @@ class Frontend:
             self._hierarchy.hierarchy_root,
         )
 
-    def _lower_expr_List(self, node: ASTNode, expected_type: Type | None = None) -> "ir.Expr":
+    def _lower_expr_List(
+        self, node: ASTNode, expected_type: Type | None = None
+    ) -> "ir.Expr":  # noqa: F821
         return lowering.lower_expr_List(
             node,
             self._lower_expr,
@@ -437,12 +482,12 @@ class Frontend:
             expected_type,
         )
 
-    def _lower_stmt(self, node: ASTNode) -> "ir.Stmt":
+    def _lower_stmt(self, node: ASTNode) -> "ir.Stmt":  # noqa: F821
         """Lower a Python statement to IR."""
         ctx, dispatch = self._make_ctx_and_dispatch()
         return lowering.lower_stmt(node, ctx, dispatch)
 
-    def _lower_stmts(self, stmts: list[ASTNode]) -> list["ir.Stmt"]:
+    def _lower_stmts(self, stmts: list[ASTNode]) -> list["ir.Stmt"]:  # noqa: F821
         """Lower a list of statements."""
         return [self._lower_stmt(s) for s in stmts]
 
@@ -464,6 +509,6 @@ class Frontend:
         self._current_catch_var = var
         return saved
 
-    def _lower_lvalue(self, node: ASTNode) -> "ir.LValue":
+    def _lower_lvalue(self, node: ASTNode) -> "ir.LValue":  # noqa: F821
         """Lower an expression to an LValue."""
         return lowering.lower_lvalue(node, self._lower_expr)

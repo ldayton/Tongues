@@ -22,7 +22,6 @@ from src.ir import (
     FieldAccess,
     ForClassic,
     ForRange,
-    Function,
     If,
     Index,
     IntToStr,
@@ -36,7 +35,6 @@ from src.ir import (
     Map,
     MapLit,
     Match,
-    MatchCase,
     MethodCall,
     Module,
     OpAssign,
@@ -58,7 +56,6 @@ from src.ir import (
     Stmt,
     StringConcat,
     StringFormat,
-    Struct,
     StructLit,
     Substring,
     Ternary,
@@ -69,7 +66,6 @@ from src.ir import (
     TupleLit,
     Type,
     TypeAssert,
-    TypeCase,
     TypeSwitch,
     UnaryOp,
     VarDecl,
@@ -230,7 +226,9 @@ def _visit_expr_for_call(expr: Expr | None, func: str) -> bool:
     if isinstance(expr, FieldAccess):
         return _visit_expr_for_call(expr.obj, func)
     if isinstance(expr, Index):
-        return _visit_expr_for_call(expr.obj, func) or _visit_expr_for_call(expr.index, func)
+        return _visit_expr_for_call(expr.obj, func) or _visit_expr_for_call(
+            expr.index, func
+        )
     if isinstance(expr, SliceExpr):
         return (
             _visit_expr_for_call(expr.obj, func)
@@ -256,7 +254,9 @@ def _visit_expr_for_call(expr: Expr | None, func: str) -> bool:
                 return True
         return False
     if isinstance(expr, BinaryOp):
-        return _visit_expr_for_call(expr.left, func) or _visit_expr_for_call(expr.right, func)
+        return _visit_expr_for_call(expr.left, func) or _visit_expr_for_call(
+            expr.right, func
+        )
     if isinstance(expr, UnaryOp):
         return _visit_expr_for_call(expr.operand, func)
     if isinstance(expr, Ternary):
@@ -276,7 +276,9 @@ def _visit_expr_for_call(expr: Expr | None, func: str) -> bool:
     if isinstance(expr, Len):
         return _visit_expr_for_call(expr.expr, func)
     if isinstance(expr, MakeSlice):
-        return _visit_expr_for_call(expr.length, func) or _visit_expr_for_call(expr.capacity, func)
+        return _visit_expr_for_call(expr.length, func) or _visit_expr_for_call(
+            expr.capacity, func
+        )
     if isinstance(expr, MakeMap):
         return _visit_expr_for_call(expr.capacity, func)
     if isinstance(expr, SliceLit):
@@ -321,11 +323,15 @@ def _visit_expr_for_call(expr: Expr | None, func: str) -> bool:
             or _visit_expr_for_call(expr.end, func)
         )
     if isinstance(expr, CharAt):
-        return _visit_expr_for_call(expr.string, func) or _visit_expr_for_call(expr.index, func)
+        return _visit_expr_for_call(expr.string, func) or _visit_expr_for_call(
+            expr.index, func
+        )
     if isinstance(expr, CharLen):
         return _visit_expr_for_call(expr.string, func)
     if isinstance(expr, TrimChars):
-        return _visit_expr_for_call(expr.string, func) or _visit_expr_for_call(expr.chars, func)
+        return _visit_expr_for_call(expr.string, func) or _visit_expr_for_call(
+            expr.chars, func
+        )
     if isinstance(expr, CharClassify):
         return _visit_expr_for_call(expr.char, func)
     if isinstance(expr, ParseInt):
@@ -353,7 +359,9 @@ def _visit_expr_for_call(expr: Expr | None, func: str) -> bool:
                 return True
         return False
     if isinstance(expr, DictComp):
-        if _visit_expr_for_call(expr.key, func) or _visit_expr_for_call(expr.value, func):
+        if _visit_expr_for_call(expr.key, func) or _visit_expr_for_call(
+            expr.value, func
+        ):
             return True
         for gen in expr.generators:
             if _visit_generator_for_call(gen, func):
@@ -459,7 +467,9 @@ def _visit_stmt_for_call(stmt: Stmt, func: str) -> bool:
     if isinstance(stmt, Raise):
         return _visit_expr_for_call(stmt.exception, func)
     if isinstance(stmt, Assert):
-        return _visit_expr_for_call(stmt.test, func) or _visit_expr_for_call(stmt.message, func)
+        return _visit_expr_for_call(stmt.test, func) or _visit_expr_for_call(
+            stmt.message, func
+        )
     if isinstance(stmt, SoftFail):
         return _visit_expr_for_call(stmt.msg, func)
     if isinstance(stmt, Print):
@@ -510,7 +520,9 @@ def _visit_expr_for_bytes_ops(expr: Expr | None) -> bool:
         if expr.op in ("==", "!=", "<", "<=", ">", ">=", "+", "*", "in", "not in"):
             if is_bytes_type(expr.left.typ) or is_bytes_type(expr.right.typ):
                 return True
-        return _visit_expr_for_bytes_ops(expr.left) or _visit_expr_for_bytes_ops(expr.right)
+        return _visit_expr_for_bytes_ops(expr.left) or _visit_expr_for_bytes_ops(
+            expr.right
+        )
     # Check for TrimChars with bytes
     if isinstance(expr, TrimChars) and is_bytes_type(expr.string.typ):
         return True
@@ -546,7 +558,9 @@ def _visit_expr_for_bytes_ops(expr: Expr | None) -> bool:
     if isinstance(expr, FieldAccess):
         return _visit_expr_for_bytes_ops(expr.obj)
     if isinstance(expr, Index):
-        return _visit_expr_for_bytes_ops(expr.obj) or _visit_expr_for_bytes_ops(expr.index)
+        return _visit_expr_for_bytes_ops(expr.obj) or _visit_expr_for_bytes_ops(
+            expr.index
+        )
     if isinstance(expr, SliceExpr):
         return (
             _visit_expr_for_bytes_ops(expr.obj)
@@ -583,7 +597,9 @@ def _visit_expr_for_bytes_ops(expr: Expr | None) -> bool:
     if isinstance(expr, Len):
         return _visit_expr_for_bytes_ops(expr.expr)
     if isinstance(expr, MakeSlice):
-        return _visit_expr_for_bytes_ops(expr.length) or _visit_expr_for_bytes_ops(expr.capacity)
+        return _visit_expr_for_bytes_ops(expr.length) or _visit_expr_for_bytes_ops(
+            expr.capacity
+        )
     if isinstance(expr, MakeMap):
         return _visit_expr_for_bytes_ops(expr.capacity)
     if isinstance(expr, SliceLit):
@@ -622,7 +638,9 @@ def _visit_expr_for_bytes_ops(expr: Expr | None) -> bool:
                 return True
         return False
     if isinstance(expr, TrimChars):
-        return _visit_expr_for_bytes_ops(expr.string) or _visit_expr_for_bytes_ops(expr.chars)
+        return _visit_expr_for_bytes_ops(expr.string) or _visit_expr_for_bytes_ops(
+            expr.chars
+        )
     if isinstance(expr, Substring):
         return (
             _visit_expr_for_bytes_ops(expr.string)
@@ -630,7 +648,9 @@ def _visit_expr_for_bytes_ops(expr: Expr | None) -> bool:
             or _visit_expr_for_bytes_ops(expr.end)
         )
     if isinstance(expr, CharAt):
-        return _visit_expr_for_bytes_ops(expr.string) or _visit_expr_for_bytes_ops(expr.index)
+        return _visit_expr_for_bytes_ops(expr.string) or _visit_expr_for_bytes_ops(
+            expr.index
+        )
     if isinstance(expr, CharLen):
         return _visit_expr_for_bytes_ops(expr.string)
     if isinstance(expr, CharClassify):
@@ -765,7 +785,9 @@ def _visit_stmt_for_bytes_ops(stmt: Stmt) -> bool:
     if isinstance(stmt, Raise):
         return _visit_expr_for_bytes_ops(stmt.exception)
     if isinstance(stmt, Assert):
-        return _visit_expr_for_bytes_ops(stmt.test) or _visit_expr_for_bytes_ops(stmt.message)
+        return _visit_expr_for_bytes_ops(stmt.test) or _visit_expr_for_bytes_ops(
+            stmt.message
+        )
     if isinstance(stmt, SoftFail):
         return _visit_expr_for_bytes_ops(stmt.msg)
     if isinstance(stmt, Print):
@@ -823,9 +845,9 @@ def _visit_expr_for_cast(expr: Expr | None, from_kind: str, to_kind: str) -> boo
     if isinstance(expr, FieldAccess):
         return _visit_expr_for_cast(expr.obj, from_kind, to_kind)
     if isinstance(expr, Index):
-        return _visit_expr_for_cast(expr.obj, from_kind, to_kind) or _visit_expr_for_cast(
-            expr.index, from_kind, to_kind
-        )
+        return _visit_expr_for_cast(
+            expr.obj, from_kind, to_kind
+        ) or _visit_expr_for_cast(expr.index, from_kind, to_kind)
     if isinstance(expr, SliceExpr):
         return (
             _visit_expr_for_cast(expr.obj, from_kind, to_kind)
@@ -851,9 +873,9 @@ def _visit_expr_for_cast(expr: Expr | None, from_kind: str, to_kind: str) -> boo
                 return True
         return False
     if isinstance(expr, BinaryOp):
-        return _visit_expr_for_cast(expr.left, from_kind, to_kind) or _visit_expr_for_cast(
-            expr.right, from_kind, to_kind
-        )
+        return _visit_expr_for_cast(
+            expr.left, from_kind, to_kind
+        ) or _visit_expr_for_cast(expr.right, from_kind, to_kind)
     if isinstance(expr, UnaryOp):
         return _visit_expr_for_cast(expr.operand, from_kind, to_kind)
     if isinstance(expr, Ternary):
@@ -871,9 +893,9 @@ def _visit_expr_for_cast(expr: Expr | None, from_kind: str, to_kind: str) -> boo
     if isinstance(expr, Len):
         return _visit_expr_for_cast(expr.expr, from_kind, to_kind)
     if isinstance(expr, MakeSlice):
-        return _visit_expr_for_cast(expr.length, from_kind, to_kind) or _visit_expr_for_cast(
-            expr.capacity, from_kind, to_kind
-        )
+        return _visit_expr_for_cast(
+            expr.length, from_kind, to_kind
+        ) or _visit_expr_for_cast(expr.capacity, from_kind, to_kind)
     if isinstance(expr, MakeMap):
         return _visit_expr_for_cast(expr.capacity, from_kind, to_kind)
     if isinstance(expr, SliceLit):
@@ -920,15 +942,15 @@ def _visit_expr_for_cast(expr: Expr | None, from_kind: str, to_kind: str) -> boo
             or _visit_expr_for_cast(expr.end, from_kind, to_kind)
         )
     if isinstance(expr, CharAt):
-        return _visit_expr_for_cast(expr.string, from_kind, to_kind) or _visit_expr_for_cast(
-            expr.index, from_kind, to_kind
-        )
+        return _visit_expr_for_cast(
+            expr.string, from_kind, to_kind
+        ) or _visit_expr_for_cast(expr.index, from_kind, to_kind)
     if isinstance(expr, CharLen):
         return _visit_expr_for_cast(expr.string, from_kind, to_kind)
     if isinstance(expr, TrimChars):
-        return _visit_expr_for_cast(expr.string, from_kind, to_kind) or _visit_expr_for_cast(
-            expr.chars, from_kind, to_kind
-        )
+        return _visit_expr_for_cast(
+            expr.string, from_kind, to_kind
+        ) or _visit_expr_for_cast(expr.chars, from_kind, to_kind)
     if isinstance(expr, CharClassify):
         return _visit_expr_for_cast(expr.char, from_kind, to_kind)
     if isinstance(expr, ParseInt):
@@ -1029,11 +1051,15 @@ def _visit_stmt_for_cast(stmt: Stmt, from_kind: str, to_kind: str) -> bool:
                 return True
         return False
     if isinstance(stmt, ForClassic):
-        if stmt.init is not None and _visit_stmt_for_cast(stmt.init, from_kind, to_kind):
+        if stmt.init is not None and _visit_stmt_for_cast(
+            stmt.init, from_kind, to_kind
+        ):
             return True
         if _visit_expr_for_cast(stmt.cond, from_kind, to_kind):
             return True
-        if stmt.post is not None and _visit_stmt_for_cast(stmt.post, from_kind, to_kind):
+        if stmt.post is not None and _visit_stmt_for_cast(
+            stmt.post, from_kind, to_kind
+        ):
             return True
         for s in stmt.body:
             if _visit_stmt_for_cast(s, from_kind, to_kind):
@@ -1063,9 +1089,9 @@ def _visit_stmt_for_cast(stmt: Stmt, from_kind: str, to_kind: str) -> bool:
     if isinstance(stmt, Raise):
         return _visit_expr_for_cast(stmt.exception, from_kind, to_kind)
     if isinstance(stmt, Assert):
-        return _visit_expr_for_cast(stmt.test, from_kind, to_kind) or _visit_expr_for_cast(
-            stmt.message, from_kind, to_kind
-        )
+        return _visit_expr_for_cast(
+            stmt.test, from_kind, to_kind
+        ) or _visit_expr_for_cast(stmt.message, from_kind, to_kind)
     if isinstance(stmt, SoftFail):
         return _visit_expr_for_cast(stmt.msg, from_kind, to_kind)
     if isinstance(stmt, Print):
@@ -1118,11 +1144,15 @@ def _visit_expr_for_tuple_sets(expr: Expr | None) -> bool:
         if expr.op in ("in", "not in"):
             if _is_tuple_set_type(expr.right.typ):
                 return True
-        return _visit_expr_for_tuple_sets(expr.left) or _visit_expr_for_tuple_sets(expr.right)
+        return _visit_expr_for_tuple_sets(expr.left) or _visit_expr_for_tuple_sets(
+            expr.right
+        )
     if isinstance(expr, FieldAccess):
         return _visit_expr_for_tuple_sets(expr.obj)
     if isinstance(expr, Index):
-        return _visit_expr_for_tuple_sets(expr.obj) or _visit_expr_for_tuple_sets(expr.index)
+        return _visit_expr_for_tuple_sets(expr.obj) or _visit_expr_for_tuple_sets(
+            expr.index
+        )
     if isinstance(expr, SliceExpr):
         return (
             _visit_expr_for_tuple_sets(expr.obj)
@@ -1166,7 +1196,9 @@ def _visit_expr_for_tuple_sets(expr: Expr | None) -> bool:
     if isinstance(expr, Len):
         return _visit_expr_for_tuple_sets(expr.expr)
     if isinstance(expr, MakeSlice):
-        return _visit_expr_for_tuple_sets(expr.length) or _visit_expr_for_tuple_sets(expr.capacity)
+        return _visit_expr_for_tuple_sets(expr.length) or _visit_expr_for_tuple_sets(
+            expr.capacity
+        )
     if isinstance(expr, MakeMap):
         return _visit_expr_for_tuple_sets(expr.capacity)
     if isinstance(expr, SliceLit):
@@ -1206,11 +1238,15 @@ def _visit_expr_for_tuple_sets(expr: Expr | None) -> bool:
             or _visit_expr_for_tuple_sets(expr.end)
         )
     if isinstance(expr, CharAt):
-        return _visit_expr_for_tuple_sets(expr.string) or _visit_expr_for_tuple_sets(expr.index)
+        return _visit_expr_for_tuple_sets(expr.string) or _visit_expr_for_tuple_sets(
+            expr.index
+        )
     if isinstance(expr, CharLen):
         return _visit_expr_for_tuple_sets(expr.string)
     if isinstance(expr, TrimChars):
-        return _visit_expr_for_tuple_sets(expr.string) or _visit_expr_for_tuple_sets(expr.chars)
+        return _visit_expr_for_tuple_sets(expr.string) or _visit_expr_for_tuple_sets(
+            expr.chars
+        )
     if isinstance(expr, CharClassify):
         return _visit_expr_for_tuple_sets(expr.char)
     if isinstance(expr, ParseInt):
@@ -1234,7 +1270,9 @@ def _visit_expr_for_tuple_sets(expr: Expr | None) -> bool:
                     return True
         return False
     if isinstance(expr, DictComp):
-        if _visit_expr_for_tuple_sets(expr.key) or _visit_expr_for_tuple_sets(expr.value):
+        if _visit_expr_for_tuple_sets(expr.key) or _visit_expr_for_tuple_sets(
+            expr.value
+        ):
             return True
         for gen in expr.generators:
             if _visit_expr_for_tuple_sets(gen.iterable):
@@ -1333,7 +1371,9 @@ def _visit_stmt_for_tuple_sets(stmt: Stmt) -> bool:
     if isinstance(stmt, Raise):
         return _visit_expr_for_tuple_sets(stmt.exception)
     if isinstance(stmt, Assert):
-        return _visit_expr_for_tuple_sets(stmt.test) or _visit_expr_for_tuple_sets(stmt.message)
+        return _visit_expr_for_tuple_sets(stmt.test) or _visit_expr_for_tuple_sets(
+            stmt.message
+        )
     if isinstance(stmt, SoftFail):
         return _visit_expr_for_tuple_sets(stmt.msg)
     if isinstance(stmt, Print):
@@ -1386,7 +1426,9 @@ def _visit_expr_for_tuple_maps(expr: Expr | None) -> bool:
         if expr.op in ("in", "not in"):
             if _is_tuple_map_type(expr.right.typ):
                 return True
-        return _visit_expr_for_tuple_maps(expr.left) or _visit_expr_for_tuple_maps(expr.right)
+        return _visit_expr_for_tuple_maps(expr.left) or _visit_expr_for_tuple_maps(
+            expr.right
+        )
     if isinstance(expr, FieldAccess):
         return _visit_expr_for_tuple_maps(expr.obj)
     if isinstance(expr, SliceExpr):
@@ -1432,7 +1474,9 @@ def _visit_expr_for_tuple_maps(expr: Expr | None) -> bool:
     if isinstance(expr, Len):
         return _visit_expr_for_tuple_maps(expr.expr)
     if isinstance(expr, MakeSlice):
-        return _visit_expr_for_tuple_maps(expr.length) or _visit_expr_for_tuple_maps(expr.capacity)
+        return _visit_expr_for_tuple_maps(expr.length) or _visit_expr_for_tuple_maps(
+            expr.capacity
+        )
     if isinstance(expr, MakeMap):
         return _visit_expr_for_tuple_maps(expr.capacity)
     if isinstance(expr, SliceLit):
@@ -1467,11 +1511,15 @@ def _visit_expr_for_tuple_maps(expr: Expr | None) -> bool:
             or _visit_expr_for_tuple_maps(expr.end)
         )
     if isinstance(expr, CharAt):
-        return _visit_expr_for_tuple_maps(expr.string) or _visit_expr_for_tuple_maps(expr.index)
+        return _visit_expr_for_tuple_maps(expr.string) or _visit_expr_for_tuple_maps(
+            expr.index
+        )
     if isinstance(expr, CharLen):
         return _visit_expr_for_tuple_maps(expr.string)
     if isinstance(expr, TrimChars):
-        return _visit_expr_for_tuple_maps(expr.string) or _visit_expr_for_tuple_maps(expr.chars)
+        return _visit_expr_for_tuple_maps(expr.string) or _visit_expr_for_tuple_maps(
+            expr.chars
+        )
     if isinstance(expr, CharClassify):
         return _visit_expr_for_tuple_maps(expr.char)
     if isinstance(expr, ParseInt):
@@ -1495,7 +1543,9 @@ def _visit_expr_for_tuple_maps(expr: Expr | None) -> bool:
                     return True
         return False
     if isinstance(expr, DictComp):
-        if _visit_expr_for_tuple_maps(expr.key) or _visit_expr_for_tuple_maps(expr.value):
+        if _visit_expr_for_tuple_maps(expr.key) or _visit_expr_for_tuple_maps(
+            expr.value
+        ):
             return True
         for gen in expr.generators:
             if _visit_expr_for_tuple_maps(gen.iterable):
@@ -1594,7 +1644,9 @@ def _visit_stmt_for_tuple_maps(stmt: Stmt) -> bool:
     if isinstance(stmt, Raise):
         return _visit_expr_for_tuple_maps(stmt.exception)
     if isinstance(stmt, Assert):
-        return _visit_expr_for_tuple_maps(stmt.test) or _visit_expr_for_tuple_maps(stmt.message)
+        return _visit_expr_for_tuple_maps(stmt.test) or _visit_expr_for_tuple_maps(
+            stmt.message
+        )
     if isinstance(stmt, SoftFail):
         return _visit_expr_for_tuple_maps(stmt.msg)
     if isinstance(stmt, Print):

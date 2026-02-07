@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, to_snake
+from src.backend.util import to_snake
 from src.ir import (
     BOOL,
     Array,
@@ -63,7 +63,6 @@ from src.ir import (
     Print,
     Primitive,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,
@@ -445,7 +444,9 @@ class PerlBackend:
         # Collect all vars that need pre-declaration
         needs_predecl: set[str] = set()
         declared_in_control_flow: set[str] = set()
-        self._collect_undeclared_info(stmts, needs_predecl, declared_in_control_flow, False)
+        self._collect_undeclared_info(
+            stmts, needs_predecl, declared_in_control_flow, False
+        )
         # Vars declared both inside control flow AND at top level need pre-declaration
         # because the inner hoisting will prevent the outer `my`
         needs_predecl.update(top_level_declared & declared_in_control_flow)
@@ -471,7 +472,9 @@ class PerlBackend:
             match stmt:
                 case Assign(target=VarLV(name=name)) if not stmt.is_declaration:
                     needs_predecl.add(name)
-                case Assign(target=VarLV(name=name)) if stmt.is_declaration and in_control_flow:
+                case Assign(target=VarLV(name=name)) if (
+                    stmt.is_declaration and in_control_flow
+                ):
                     declared_in_cf.add(name)
                     needs_predecl.add(name)
                 case TupleAssign(targets=targets):
@@ -482,19 +485,35 @@ class PerlBackend:
                                 declared_in_cf.add(t.name)
                 case If(then_body=then_body, else_body=else_body, init=init):
                     if init:
-                        self._collect_undeclared_info([init], needs_predecl, declared_in_cf, True)
-                    self._collect_undeclared_info(then_body, needs_predecl, declared_in_cf, True)
-                    self._collect_undeclared_info(else_body, needs_predecl, declared_in_cf, True)
+                        self._collect_undeclared_info(
+                            [init], needs_predecl, declared_in_cf, True
+                        )
+                    self._collect_undeclared_info(
+                        then_body, needs_predecl, declared_in_cf, True
+                    )
+                    self._collect_undeclared_info(
+                        else_body, needs_predecl, declared_in_cf, True
+                    )
                 case While(body=body):
-                    self._collect_undeclared_info(body, needs_predecl, declared_in_cf, True)
+                    self._collect_undeclared_info(
+                        body, needs_predecl, declared_in_cf, True
+                    )
                 case ForRange(body=body):
-                    self._collect_undeclared_info(body, needs_predecl, declared_in_cf, True)
+                    self._collect_undeclared_info(
+                        body, needs_predecl, declared_in_cf, True
+                    )
                 case ForClassic(body=body, init=init):
                     if init:
-                        self._collect_undeclared_info([init], needs_predecl, declared_in_cf, True)
-                    self._collect_undeclared_info(body, needs_predecl, declared_in_cf, True)
+                        self._collect_undeclared_info(
+                            [init], needs_predecl, declared_in_cf, True
+                        )
+                    self._collect_undeclared_info(
+                        body, needs_predecl, declared_in_cf, True
+                    )
                 case TryCatch(body=body, catches=catches):
-                    self._collect_undeclared_info(body, needs_predecl, declared_in_cf, True)
+                    self._collect_undeclared_info(
+                        body, needs_predecl, declared_in_cf, True
+                    )
                     for clause in catches:
                         self._collect_undeclared_info(
                             clause.body, needs_predecl, declared_in_cf, True
@@ -504,13 +523,17 @@ class PerlBackend:
                         self._collect_undeclared_info(
                             case.body, needs_predecl, declared_in_cf, True
                         )
-                    self._collect_undeclared_info(default, needs_predecl, declared_in_cf, True)
+                    self._collect_undeclared_info(
+                        default, needs_predecl, declared_in_cf, True
+                    )
                 case TypeSwitch(cases=cases, default=default):
                     for case in cases:
                         self._collect_undeclared_info(
                             case.body, needs_predecl, declared_in_cf, True
                         )
-                    self._collect_undeclared_info(default, needs_predecl, declared_in_cf, True)
+                    self._collect_undeclared_info(
+                        default, needs_predecl, declared_in_cf, True
+                    )
                 case Block(body=body):
                     self._collect_undeclared_info(
                         body, needs_predecl, declared_in_cf, in_control_flow
@@ -523,7 +546,9 @@ class PerlBackend:
                 return True
             match stmt:
                 case If(then_body=then_body, else_body=else_body):
-                    if self._body_has_return(then_body) or self._body_has_return(else_body):
+                    if self._body_has_return(then_body) or self._body_has_return(
+                        else_body
+                    ):
                         return True
                 case While(body=body) | ForRange(body=body) | ForClassic(body=body):
                     if self._body_has_return(body):
@@ -591,7 +616,9 @@ class PerlBackend:
             case Assign(value=value):
                 return self._expr_has_bitwise(value)
             case OpAssign(op=op, value=value):
-                return op in ("|", "&", "^", "<<", ">>") or self._expr_has_bitwise(value)
+                return op in ("|", "&", "^", "<<", ">>") or self._expr_has_bitwise(
+                    value
+                )
             case Return(value=value):
                 return value is not None and self._expr_has_bitwise(value)
             case If(cond=cond, then_body=then_body, else_body=else_body):
@@ -643,7 +670,9 @@ class PerlBackend:
             case Call(args=args):
                 return any(self._expr_has_bitwise(a) for a in args)
             case MethodCall(obj=obj, args=args):
-                return self._expr_has_bitwise(obj) or any(self._expr_has_bitwise(a) for a in args)
+                return self._expr_has_bitwise(obj) or any(
+                    self._expr_has_bitwise(a) for a in args
+                )
             case Index(obj=obj, index=index):
                 return self._expr_has_bitwise(obj) or self._expr_has_bitwise(index)
             case Cast(expr=inner):
@@ -824,7 +853,8 @@ class PerlBackend:
                 lvalues = ", ".join(self._lvalue(t) for t in targets)
                 val = self._expr(value)
                 any_hoisted = any(
-                    isinstance(t, VarLV) and t.name in self._hoisted_vars for t in targets
+                    isinstance(t, VarLV) and t.name in self._hoisted_vars
+                    for t in targets
                 )
                 if stmt.is_declaration and not any_hoisted:
                     self._line(f"my ({lvalues}) = {val};")
@@ -901,7 +931,9 @@ class PerlBackend:
             ):
                 self._emit_hoisted_vars(stmt)
                 self._emit_try_catch(body, catches, reraise)
-            case Raise(error_type=error_type, message=message, pos=pos, reraise_var=reraise_var):
+            case Raise(
+                error_type=error_type, message=message, pos=pos, reraise_var=reraise_var
+            ):
                 if reraise_var:
                     self._line(f"die ${reraise_var};")
                 else:
@@ -942,10 +974,14 @@ class PerlBackend:
             self.indent -= 1
         self._line("}")
 
-    def _emit_match(self, expr: Expr, cases: list[MatchCase], default: list[Stmt]) -> None:
+    def _emit_match(
+        self, expr: Expr, cases: list[MatchCase], default: list[Stmt]
+    ) -> None:
         expr_str = self._expr(expr)
         for i, case in enumerate(cases):
-            patterns = " || ".join(f"{expr_str} eq {self._expr(p)}" for p in case.patterns)
+            patterns = " || ".join(
+                f"{expr_str} eq {self._expr(p)}" for p in case.patterns
+            )
             keyword = "if" if i == 0 else "} elsif"
             self._line(f"{keyword} ({patterns}) {{")
             self.indent += 1
@@ -1017,7 +1053,9 @@ class PerlBackend:
         if (range_info := _extract_range_pattern(init, cond, post)) is not None:
             var_name, iterable_expr = range_info
             iter_str = self._expr(iterable_expr)
-            self._line(f"for my ${_safe_name(var_name)} (0 .. scalar(@{{{iter_str}}}) - 1) {{")
+            self._line(
+                f"for my ${_safe_name(var_name)} (0 .. scalar(@{{{iter_str}}}) - 1) {{"
+            )
             self.indent += 1
             for s in body:
                 self._emit_stmt(s)
@@ -1091,7 +1129,9 @@ class PerlBackend:
             typed_clauses = [c for c in catches[:-1] if isinstance(c.typ, StructRef)]
             if typed_clauses:
                 for i, clause in enumerate(typed_clauses):
-                    type_name = clause.typ.name if isinstance(clause.typ, StructRef) else ""
+                    type_name = (
+                        clause.typ.name if isinstance(clause.typ, StructRef) else ""
+                    )
                     keyword = "if" if i == 0 else "} elsif"
                     self._line(f"{keyword} (ref($_e) eq '{type_name}') {{")
                     self.indent += 1
@@ -1259,7 +1299,9 @@ class PerlBackend:
                     return f'("" . {self._expr(arg)})'
                 if func == "abs":
                     arg = args[0]
-                    arg_str = self._bool_to_int(arg) if arg.typ == BOOL else self._expr(arg)
+                    arg_str = (
+                        self._bool_to_int(arg) if arg.typ == BOOL else self._expr(arg)
+                    )
                     return f"abs({arg_str})"
                 if func == "int":
                     return f"int({self._expr(args[0])})"
@@ -1277,8 +1319,16 @@ class PerlBackend:
                     prec = self._expr(prec_arg)
                     return f"int({val} * 10 ** {prec} + 0.5) / 10 ** {prec}"
                 if func == "divmod":
-                    a = self._bool_to_int(args[0]) if args[0].typ == BOOL else self._expr(args[0])
-                    b = self._bool_to_int(args[1]) if args[1].typ == BOOL else self._expr(args[1])
+                    a = (
+                        self._bool_to_int(args[0])
+                        if args[0].typ == BOOL
+                        else self._expr(args[0])
+                    )
+                    b = (
+                        self._bool_to_int(args[1])
+                        if args[1].typ == BOOL
+                        else self._expr(args[1])
+                    )
                     return f"(int({a} / {b}), {a} % {b})"
                 if func == "pow":
                     if len(args) == 2:
@@ -1295,10 +1345,20 @@ class PerlBackend:
                         return f"{base} ** {exp}"
                     # pow(base, exp, mod)
                     base = (
-                        self._bool_to_int(args[0]) if args[0].typ == BOOL else self._expr(args[0])
+                        self._bool_to_int(args[0])
+                        if args[0].typ == BOOL
+                        else self._expr(args[0])
                     )
-                    exp = self._bool_to_int(args[1]) if args[1].typ == BOOL else self._expr(args[1])
-                    mod = self._bool_to_int(args[2]) if args[2].typ == BOOL else self._expr(args[2])
+                    exp = (
+                        self._bool_to_int(args[1])
+                        if args[1].typ == BOOL
+                        else self._expr(args[1])
+                    )
+                    mod = (
+                        self._bool_to_int(args[2])
+                        if args[2].typ == BOOL
+                        else self._expr(args[2])
+                    )
                     return f"{base} ** {exp} % {mod}"
                 args_str = ", ".join(self._expr(a) for a in args)
                 safe_func = _safe_name(func)
@@ -1311,7 +1371,9 @@ class PerlBackend:
                     return f"{safe_func}({args_str})"
                 # Coderef variable call
                 return f"${safe_func}->({args_str})"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type
+            ):
                 args_str = ", ".join(self._expr(a) for a in args)
                 obj_str = self._expr(obj)
                 if isinstance(obj, (BinaryOp, UnaryOp, Ternary)):
@@ -1337,7 +1399,11 @@ class PerlBackend:
                     if not args:
                         return f"pop(@{{{obj_str}}})"
                     # pop(0) -> shift (remove from front)
-                    if len(args) == 1 and isinstance(args[0], IntLit) and args[0].value == 0:
+                    if (
+                        len(args) == 1
+                        and isinstance(args[0], IntLit)
+                        and args[0].value == 0
+                    ):
                         return f"shift(@{{{obj_str}}})"
                 if method == "copy" and isinstance(inner_type, (Slice, Array)):
                     return f"[@{{{obj_str}}}]"
@@ -1437,7 +1503,11 @@ class PerlBackend:
                         if not args:
                             return f"pop(@{{{obj_str}}})"
                         # pop(0) -> shift (remove from front)
-                        if len(args) == 1 and isinstance(args[0], IntLit) and args[0].value == 0:
+                        if (
+                            len(args) == 1
+                            and isinstance(args[0], IntLit)
+                            and args[0].value == 0
+                        ):
                             return f"shift(@{{{obj_str}}})"
                     if method == "copy":
                         return f"[@{{{obj_str}}}]"
@@ -1554,27 +1624,39 @@ class PerlBackend:
                     if isinstance(else_expr, Ternary)
                     else self._expr(else_expr)
                 )
-                return f"({self._cond_expr(cond)} ? {self._expr(then_expr)} : {else_str})"
+                return (
+                    f"({self._cond_expr(cond)} ? {self._expr(then_expr)} : {else_str})"
+                )
             case Cast(expr=inner, to_type=to_type):
                 if to_type == Primitive(kind="string") and inner.typ == BOOL:
                     return f'({self._expr(inner)} ? "True" : "False")'
                 if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
                     self._needs_encode = True
                     return f'Encode::encode("UTF-8", Encode::decode("UTF-8", pack("C*", @{{{self._expr(inner)}}}), Encode::FB_DEFAULT))'
-                if to_type == Primitive(kind="string") and inner.typ == Primitive(kind="rune"):
+                if to_type == Primitive(kind="string") and inner.typ == Primitive(
+                    kind="rune"
+                ):
                     return f"chr({self._expr(inner)})"
-                if isinstance(to_type, Slice) and to_type.element == Primitive(kind="byte"):
+                if isinstance(to_type, Slice) and to_type.element == Primitive(
+                    kind="byte"
+                ):
                     self._needs_encode = True
-                    return f"[unpack('C*', Encode::encode('UTF-8', {self._expr(inner)}))]"
+                    return (
+                        f"[unpack('C*', Encode::encode('UTF-8', {self._expr(inner)}))]"
+                    )
                 if to_type == Primitive(kind="int") and inner.typ in (
                     Primitive(kind="string"),
                     Primitive(kind="byte"),
                     Primitive(kind="rune"),
                 ):
                     return f"ord({self._expr(inner)})"
-                if to_type == Primitive(kind="int") and inner.typ == Primitive(kind="float"):
+                if to_type == Primitive(kind="int") and inner.typ == Primitive(
+                    kind="float"
+                ):
                     return f"int({self._expr(inner)})"
-                if to_type == Primitive(kind="float") and inner.typ == Primitive(kind="int"):
+                if to_type == Primitive(kind="float") and inner.typ == Primitive(
+                    kind="int"
+                ):
                     return self._expr(inner)
                 return self._expr(inner)
             case TypeAssert(expr=inner):
@@ -1610,7 +1692,9 @@ class PerlBackend:
             case MapLit(entries=entries):
                 if not entries:
                     return "{}"
-                pairs = ", ".join(f"{self._expr(k)} => {self._expr(v)}" for k, v in entries)
+                pairs = ", ".join(
+                    f"{self._expr(k)} => {self._expr(v)}" for k, v in entries
+                )
                 return f"{{{pairs}}}"
             case SetLit(elements=elements):
                 if not elements:
@@ -1625,7 +1709,9 @@ class PerlBackend:
                     for field_name, field_type in field_info:
                         if field_name in fields:
                             field_val = fields[field_name]
-                            if isinstance(field_val, NilLit) and isinstance(field_type, Slice):
+                            if isinstance(field_val, NilLit) and isinstance(
+                                field_type, Slice
+                            ):
                                 ordered_args.append("[]")
                             else:
                                 ordered_args.append(self._expr(field_val))
@@ -1955,7 +2041,20 @@ def _perl_needs_bool_coerce(expr: Expr) -> bool:
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     """Determine if a child binary op needs parens inside a parent binary op."""
-    comparison_ops = ("==", "!=", "<", ">", "<=", ">=", "eq", "ne", "lt", "gt", "le", "ge")
+    comparison_ops = (
+        "==",
+        "!=",
+        "<",
+        ">",
+        "<=",
+        ">=",
+        "eq",
+        "ne",
+        "lt",
+        "gt",
+        "le",
+        "ge",
+    )
     # In Perl, chained comparisons like `a != b == c` mean `a != b && b == c`.
     # We need parentheses when a comparison is used as an operand of another comparison.
     if child_op in comparison_ops and parent_op in comparison_ops:
