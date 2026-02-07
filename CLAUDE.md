@@ -40,7 +40,7 @@ just versions
 Run pytest directly for finer control:
 
 ```bash
-uv run --directory tongues pytest ../tests/test_apptests.py [OPTIONS]
+uv run --directory tongues pytest ../tests/test_15_app.py [OPTIONS]
 ```
 
 | Flag               | Description                                            |
@@ -55,7 +55,7 @@ uv run --directory tongues pytest ../tests/test_apptests.py [OPTIONS]
 To get a summary table of apptest status for specific languages:
 
 ```bash
-uv run --directory tongues pytest ../tests/test_apptests.py --target javascript --target typescript --target ruby --ignore-skips --summary
+uv run --directory tongues pytest ../tests/test_15_app.py --target javascript --target typescript --target ruby --ignore-skips --summary
 ```
 
 ## CI
