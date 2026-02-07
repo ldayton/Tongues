@@ -31,9 +31,13 @@ lint *ARGS:
 fmt *ARGS:
     uvx ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
 
-check: fmt lint subset test-codegen
+check:
     #!/usr/bin/env bash
     failed=0
+    just fmt || failed=1
+    just lint || failed=1
+    just subset || failed=1
+    just test-codegen || failed=1
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests "$lang" || failed=1
     done
@@ -142,17 +146,26 @@ test: test-codegen \
     (test-apptests "zig")
 
 # Run all tests locally (requires matching runtime versions)
-test-local: versions test-codegen-local
+test-local:
     #!/usr/bin/env bash
-    set -euo pipefail
+    failed=0
+    just versions || failed=1
+    just test-codegen-local || failed=1
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        just test-apptests-local "$lang"
+        just test-apptests-local "$lang" || failed=1
     done
+    exit $failed
 
 # Run full check locally (requires matching runtime versions)
-check-local: versions fmt lint subset test-codegen-local
+check-local:
     #!/usr/bin/env bash
-    set -euo pipefail
+    failed=0
+    just versions || failed=1
+    just fmt || failed=1
+    just lint || failed=1
+    just subset || failed=1
+    just test-codegen-local || failed=1
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        just test-apptests-local "$lang"
+        just test-apptests-local "$lang" || failed=1
     done
+    exit $failed

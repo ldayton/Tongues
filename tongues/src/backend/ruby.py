@@ -1069,13 +1069,13 @@ class RubyBackend:
                         # Ruby's split(" ") collapses whitespace like Python's split()
                         # Use Regexp.new to convert string to regex for consistent behavior
                         # Ruby returns [] for "".split(x), Python returns [""]
-                        return f"({obj_str}.empty? ? [\"\"] : {obj_str}.split(Regexp.new(Regexp.escape({arg_str})), -1))"
+                        return f'({obj_str}.empty? ? [""] : {obj_str}.split(Regexp.new(Regexp.escape({arg_str})), -1))'
                     else:
                         sep_str = self._expr(args[0])
                         maxsplit_str = self._expr(args[1])
                         # Python maxsplit=0 means no splits, Ruby limit=1 means no splits
                         # Python maxsplit=n means n splits (n+1 parts), Ruby limit=n+1
-                        return f"({obj_str}.empty? ? [\"\"] : {obj_str}.split(Regexp.new(Regexp.escape({sep_str})), {maxsplit_str} == 0 ? 1 : {maxsplit_str} + 1))"
+                        return f'({obj_str}.empty? ? [""] : {obj_str}.split(Regexp.new(Regexp.escape({sep_str})), {maxsplit_str} == 0 ? 1 : {maxsplit_str} + 1))'
                 # Python: s.rsplit(sep, maxsplit) - split from right
                 if method == "rsplit" and receiver_type == STRING:
                     obj_str = self._expr(obj)
@@ -1097,7 +1097,7 @@ class RubyBackend:
                 # Python: s.title() - titlecase each word (first char upper, rest lower)
                 if method == "title" and receiver_type == STRING:
                     obj_str = self._expr(obj)
-                    return f'{obj_str}.gsub(/\\b\\w+/) {{ |w| w.capitalize }}'
+                    return f"{obj_str}.gsub(/\\b\\w+/) {{ |w| w.capitalize }}"
                 # Python: s.zfill(width) - zero-pad, preserving sign
                 if method == "zfill" and receiver_type == STRING:
                     obj_str = self._expr(obj)
