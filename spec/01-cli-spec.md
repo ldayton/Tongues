@@ -32,18 +32,26 @@ File redirection is handled by the shell; the transpiler itself only uses stdin/
 
 The `--stop-at` flag halts the pipeline after the specified phase and outputs the intermediate representation:
 
-| Phase        | Output                                |
-| ------------ | ------------------------------------- |
-| `parse`      | Dict-based AST as JSON                |
-| `subset`     | Exit 0 if valid, exit 1 with errors   |
-| `names`      | NameTable as JSON                     |
-| `signatures` | SigTable as JSON                      |
-| `fields`     | FieldTable as JSON                    |
-| `hierarchy`  | SubtypeRel as JSON                    |
-| `inference`  | TypedAST as JSON                      |
-| `lowering`   | IR Module as JSON                     |
-| `analyze`    | Annotated IR as JSON                  |
-| (omitted)    | Full transpile to `--target` language |
+| Phase        | Output Format                                  |
+| ------------ | ---------------------------------------------- |
+| `parse`      | JSON: `{"type": "Module", "body": [...]}`      |
+| `subset`     | Nothing (validation only)                      |
+| `names`      | JSON: `{"names": {...}, "scopes": [...]}`      |
+| `signatures` | JSON: `{"functions": {...}, "methods": {...}}` |
+| `fields`     | JSON: `{"classes": {...}}`                     |
+| `hierarchy`  | JSON: `{"ancestors": {...}, "root": ...}`      |
+| `inference`  | JSON: typed AST                                |
+| `lowering`   | JSON: IR module                                |
+| `analyze`    | JSON: annotated IR                             |
+| (omitted)    | Target language source code                    |
+
+`--stop-at` halts after the named phase completes successfully. If any phase fails, the pipeline stops at the failure point regardless of `--stop-at`:
+
+| Scenario                           | Behavior                      |
+| ---------------------------------- | ----------------------------- |
+| `--stop-at inference`, parse fails | Exit 1, parse error to stderr |
+| `--stop-at subset`, subset passes  | Exit 0, no output             |
+| `--stop-at parse`, parse succeeds  | Exit 0, AST JSON to stdout    |
 
 This enables testing each phase independently and introspecting intermediate representations.
 
@@ -51,13 +59,32 @@ This enables testing each phase independently and introspecting intermediate rep
 
 Files containing `tongues: skip` in the first 5 lines are skipped during `--stop-at subset`.
 
+## Exit Codes
+
+| Code | Meaning                                                               |
+| ---- | --------------------------------------------------------------------- |
+| 0    | Success                                                               |
+| 1    | Compilation error (parse failure, subset violation, type error, etc.) |
+| 2    | Usage error (unknown flag, unknown target, unknown phase)             |
+
+## Input Handling
+
+| Input               | Behavior                                |
+| ------------------- | --------------------------------------- |
+| Zero bytes          | error: `no input provided`, exit 2      |
+| Whitespace only     | Passed to parser (may fail at parse)    |
+| Invalid UTF-8       | error: `invalid utf-8 in input`, exit 1 |
+| No trailing newline | Accepted                                |
+
 ## Errors
 
-| Condition      | Diagnostic                    |
-| -------------- | ----------------------------- |
-| Unknown target | error: `unknown target 'foo'` |
-| Unknown phase  | error: `unknown phase 'foo'`  |
-| Empty input    | error: `no input provided`    |
+| Condition      | Diagnostic                      | Exit |
+| -------------- | ------------------------------- | ---- |
+| Unknown target | error: `unknown target 'foo'`   | 2    |
+| Unknown phase  | error: `unknown phase 'foo'`    | 2    |
+| Unknown flag   | error: `unknown flag 'foo'`     | 2    |
+| Empty input    | error: `no input provided`      | 2    |
+| Invalid UTF-8  | error: `invalid utf-8 in input` | 1    |
 
 ## Postconditions
 
