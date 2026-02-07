@@ -36,7 +36,7 @@ The transpiler currently supports these target languages, although output isn't 
 | Python     | CPython 3.12 | Prototype |
 | Ruby       | Ruby 3.2     | Prototype |
 | Rust       | Rust 1.75    | Prototype |
-| Swift      | Swift 5.9    | Prototype |
+| Swift      | Swift 6.0    | Prototype |
 | Typescript | tsc 5.3      | Prototype |
 | Zig        | Zig 0.14     | Prototype |
 

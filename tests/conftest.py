@@ -25,7 +25,7 @@ _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
     "python": (["python3", "--version"], r"3\.12"),
     "ruby": (["ruby", "--version"], r"ruby 3\."),
     "rust": (["rustc", "--version"], r"1\.75"),
-    "swift": (["swift", "--version"], r"5\.9"),
+    "swift": (["xcrun", "swift", "--version"], r"6\."),
     "typescript": (["tsc", "--version"], r"5\.3"),
     "zig": (["zig", "version"], r"0\.14"),
 }
@@ -403,7 +403,7 @@ TARGETS: dict[str, Target] = {
     "swift": Target(
         name="swift",
         ext=".swift",
-        run_cmd=["swift", "{path}"],
+        run_cmd=["xcrun", "swift", "{path}"],
         format_cmd=["swiftformat", "{path}"],
     ),
     "zig": Target(
