@@ -38,7 +38,7 @@ The transpiler currently supports these target languages, although output isn't 
 | Rust       | Rust 1.75    | Prototype |
 | Swift      | Swift 5.9    | Prototype |
 | Typescript | tsc 5.3      | Prototype |
-| Zig        | Zig 0.15     | Prototype |
+| Zig        | Zig 0.14     | Prototype |
 
 We target language versions from ~3 years ago. New enough for modern idioms, old enough to be everywhere—LTS distros, corporate environments, CI images. No bleeding-edge features, no legacy baggage.
 

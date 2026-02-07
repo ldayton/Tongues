@@ -33,14 +33,31 @@ fmt *ARGS:
 
 check:
     #!/usr/bin/env bash
+    declare -A results
     failed=0
-    just fmt || failed=1
-    just lint || failed=1
-    just subset || failed=1
-    just test-codegen || failed=1
+    just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
+    just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
+    just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
+    just test-codegen && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        just test-apptests "$lang" || failed=1
+        just test-apptests "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
     done
+    echo ""
+    echo "══════════════════════════════════════"
+    echo "           CHECK SUMMARY"
+    echo "══════════════════════════════════════"
+    printf "%-12s %s\n" "TARGET" "STATUS"
+    printf "%-12s %s\n" "──────" "──────"
+    for t in fmt lint subset codegen; do
+        printf "%-12s %s\n" "$t" "${results[$t]}"
+    done
+    echo "──────────── ──────"
+    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
+        printf "%-12s %s\n" "$lang" "${results[$lang]}"
+    done
+    echo "══════════════════════════════════════"
+    if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
+    echo "══════════════════════════════════════"
     exit $failed
 
 # Build Docker image for a language
@@ -124,7 +141,7 @@ versions:
     check "rust"       "1.75"    "rustc --version | grep -oE '[0-9]+\.[0-9]+'"
     check "swift"      "5.9"     "swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+'"
     check "typescript" "5.3"     "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "zig"        "0.15"    "zig version | grep -oE '[0-9]+\.[0-9]+'"
+    check "zig"        "0.14"    "zig version | grep -oE '[0-9]+\.[0-9]+'"
     exit $failed
 
 # Run all tests in Docker
@@ -148,24 +165,58 @@ test: test-codegen \
 # Run all tests locally (requires matching runtime versions)
 test-local:
     #!/usr/bin/env bash
+    declare -A results
     failed=0
-    just versions || failed=1
-    just test-codegen-local || failed=1
+    just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
+    just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        just test-apptests-local "$lang" || failed=1
+        just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
     done
+    echo ""
+    echo "══════════════════════════════════════"
+    echo "         TEST-LOCAL SUMMARY"
+    echo "══════════════════════════════════════"
+    printf "%-12s %s\n" "TARGET" "STATUS"
+    printf "%-12s %s\n" "──────" "──────"
+    for t in versions codegen; do
+        printf "%-12s %s\n" "$t" "${results[$t]}"
+    done
+    echo "──────────── ──────"
+    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
+        printf "%-12s %s\n" "$lang" "${results[$lang]}"
+    done
+    echo "══════════════════════════════════════"
+    if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
+    echo "══════════════════════════════════════"
     exit $failed
 
 # Run full check locally (requires matching runtime versions)
 check-local:
     #!/usr/bin/env bash
+    declare -A results
     failed=0
-    just versions || failed=1
-    just fmt || failed=1
-    just lint || failed=1
-    just subset || failed=1
-    just test-codegen-local || failed=1
+    just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
+    just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
+    just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
+    just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
+    just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        just test-apptests-local "$lang" || failed=1
+        just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
     done
+    echo ""
+    echo "══════════════════════════════════════"
+    echo "        CHECK-LOCAL SUMMARY"
+    echo "══════════════════════════════════════"
+    printf "%-12s %s\n" "TARGET" "STATUS"
+    printf "%-12s %s\n" "──────" "──────"
+    for t in versions fmt lint subset codegen; do
+        printf "%-12s %s\n" "$t" "${results[$t]}"
+    done
+    echo "──────────── ──────"
+    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
+        printf "%-12s %s\n" "$lang" "${results[$lang]}"
+    done
+    echo "══════════════════════════════════════"
+    if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
+    echo "══════════════════════════════════════"
     exit $failed

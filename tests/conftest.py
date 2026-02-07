@@ -27,7 +27,7 @@ _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
     "rust": (["rustc", "--version"], r"1\.75"),
     "swift": (["swift", "--version"], r"5\.9"),
     "typescript": (["tsc", "--version"], r"5\.3"),
-    "zig": (["zig", "version"], r"0\.15"),
+    "zig": (["zig", "version"], r"0\.14"),
 }
 
 

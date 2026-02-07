@@ -1370,7 +1370,6 @@ class ZigBackend(Emitter):
         # But not for bytes slices which are []const u8, not ArrayList
         if isinstance(expr.receiver_type, Slice) and not is_bytes_slice:
             if method == "append":
-                # ArrayList.append requires allocator in Zig 0.15+
                 arg = args[0]
                 return f"{obj}.append(std.heap.page_allocator, {arg}) catch unreachable"
             if method == "pop":
