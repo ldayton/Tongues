@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, to_snake
+from src.backend.util import to_snake
 from src.ir import (
     BOOL,
     Array,
@@ -63,7 +63,6 @@ from src.ir import (
     Print,
     Primitive,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,

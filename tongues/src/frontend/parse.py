@@ -3,8 +3,6 @@
 Written in the Tongues subset with no external dependencies.
 """
 
-from typing import Callable
-
 # Type aliases
 ASTNode = dict[str, object]
 

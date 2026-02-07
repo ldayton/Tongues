@@ -105,7 +105,6 @@ from src.ir import (
     NilLit,
     DictComp,
     ListComp,
-    CompGenerator,
     FloatLit,
     SetLit,
     Set,
@@ -1238,7 +1237,7 @@ class RustBackend(Emitter):
             if method == "update":
                 # Check if updating with empty dict - no-op
                 if isinstance(expr.args[0], MapLit) and not expr.args[0].entries:
-                    return f"()"  # No-op in Rust
+                    return "()"  # No-op in Rust
                 other = self._emit_expr(expr.args[0])
                 return f"{obj}.extend({other})"
             if method == "clear":

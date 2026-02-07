@@ -220,7 +220,6 @@ from src.ir import (
     Pointer,
     Primitive,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,

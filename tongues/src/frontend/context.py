@@ -9,7 +9,7 @@ from .ast_compat import ASTNode
 
 if TYPE_CHECKING:
     from .. import ir
-    from ..ir import FuncInfo, Loc, SymbolTable, Type
+    from ..ir import FuncInfo, SymbolTable, Type
 
 
 @dataclass

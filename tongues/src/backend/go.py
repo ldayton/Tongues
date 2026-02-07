@@ -57,7 +57,7 @@ from __future__ import annotations
 
 from re import sub as re_sub
 
-from src.backend.util import GO_RESERVED, escape_string, go_to_camel, go_to_pascal
+from src.backend.util import escape_string, go_to_camel, go_to_pascal
 from src.ir import (
     BOOL,
     BYTE,
@@ -82,7 +82,6 @@ from src.ir import (
     EntryPoint,
     Expr,
     ExprStmt,
-    Field,
     FieldAccess,
     FieldLV,
     FloatLit,
@@ -107,22 +106,18 @@ from src.ir import (
     Map,
     MapLit,
     Match,
-    MatchCase,
     MaxExpr,
     MethodCall,
-    MethodSig,
     MinExpr,
     Module,
     NilLit,
     NoOp,
     OpAssign,
     Optional,
-    Param,
     ParseInt,
     Pointer,
     Primitive,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,
@@ -149,7 +144,6 @@ from src.ir import (
     Tuple,
     Type,
     TypeAssert,
-    TypeCase,
     TypeSwitch,
     UnaryOp,
     Union,

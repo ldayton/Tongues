@@ -60,7 +60,6 @@ from src.ir import (
     EntryPoint,
     Expr,
     ExprStmt,
-    Field,
     FieldAccess,
     FieldLV,
     FloatLit,
@@ -85,23 +84,18 @@ from src.ir import (
     Map,
     MapLit,
     Match,
-    MatchCase,
     MaxExpr,
     MethodCall,
     MinExpr,
-    MethodSig,
     Module,
     NilLit,
     NoOp,
     OpAssign,
     Optional,
-    Ownership,
-    Param,
     ParseInt,
     Pointer,
     Primitive,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,
@@ -128,7 +122,6 @@ from src.ir import (
     TupleLit,
     Type,
     TypeAssert,
-    TypeCase,
     TypeSwitch,
     UnaryOp,
     Union,
@@ -1085,7 +1078,7 @@ class CBackend:
         self._finalize_helpers()
         if self._entrypoint_func:
             ep = self._ep_func_name(self._entrypoint_func)
-            self._line(f"int main(void) {{")
+            self._line("int main(void) {")
             self.indent += 1
             self._line("init();")
             self._line(f"return (int){ep}();")

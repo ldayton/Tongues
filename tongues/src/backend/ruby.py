@@ -74,7 +74,6 @@ from src.ir import (
     Pointer,
     Primitive,
     Raise,
-    Receiver,
     Return,
     Set,
     SetComp,
@@ -2395,7 +2394,7 @@ class RubyBackend:
             case Primitive(kind=kind):
                 return _primitive_type(kind)
             case Slice(element=element):
-                return f"Array"
+                return "Array"
             case Array(element=element, size=size):
                 return "Array"
             case Map(key=key, value=value):

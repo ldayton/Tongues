@@ -11,9 +11,7 @@ from .frontend.parse import parse
 from .frontend.subset import (
     verify as verify_subset,
     extract_imports,
-    ImportInfo,
     ProjectVerifyResult,
-    VerifyResult,
 )
 
 

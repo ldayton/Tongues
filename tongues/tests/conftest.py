@@ -9,6 +9,30 @@ from pathlib import Path
 
 import pytest
 
+# Add tongues directory to path for src imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.frontend import Frontend  # noqa: E402
+from src.frontend.parse import parse  # noqa: E402
+from src.frontend.subset import verify as verify_subset  # noqa: E402
+from src.frontend.names import resolve_names  # noqa: E402
+from src.middleend import analyze  # noqa: E402
+from src.backend.c import CBackend  # noqa: E402
+from src.backend.csharp import CSharpBackend  # noqa: E402
+from src.backend.dart import DartBackend  # noqa: E402
+from src.backend.go import GoBackend  # noqa: E402
+from src.backend.java import JavaBackend  # noqa: E402
+from src.backend.javascript import JsBackend  # noqa: E402
+from src.backend.lua import LuaBackend  # noqa: E402
+from src.backend.perl import PerlBackend  # noqa: E402
+from src.backend.php import PhpBackend  # noqa: E402
+from src.backend.python import PythonBackend  # noqa: E402
+from src.backend.ruby import RubyBackend  # noqa: E402
+from src.backend.rust import RustBackend  # noqa: E402
+from src.backend.swift import SwiftBackend  # noqa: E402
+from src.backend.typescript import TsBackend  # noqa: E402
+from src.backend.zig import ZigBackend  # noqa: E402
+
 # Required versions for each language runtime (must match Dockerfiles)
 _VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
     "c": (["gcc", "--version"], r"gcc.* 13\."),
@@ -46,27 +70,6 @@ def _check_version(lang: str) -> tuple[bool, str]:
     except subprocess.TimeoutExpired:
         return False, f"{cmd[0]} timed out"
 
-
-from tongues.src.frontend import Frontend
-from tongues.src.frontend.parse import parse
-from tongues.src.frontend.subset import verify as verify_subset
-from tongues.src.frontend.names import resolve_names
-from tongues.src.middleend import analyze
-from tongues.src.backend.c import CBackend
-from tongues.src.backend.csharp import CSharpBackend
-from tongues.src.backend.dart import DartBackend
-from tongues.src.backend.go import GoBackend
-from tongues.src.backend.java import JavaBackend
-from tongues.src.backend.javascript import JsBackend
-from tongues.src.backend.lua import LuaBackend
-from tongues.src.backend.perl import PerlBackend
-from tongues.src.backend.php import PhpBackend
-from tongues.src.backend.python import PythonBackend
-from tongues.src.backend.ruby import RubyBackend
-from tongues.src.backend.rust import RustBackend
-from tongues.src.backend.swift import SwiftBackend
-from tongues.src.backend.typescript import TsBackend
-from tongues.src.backend.zig import ZigBackend
 
 # Skip specific (apptest, language) combinations that are known to fail.
 # Format: apptest_stem -> set of languages to skip
@@ -219,7 +222,7 @@ TESTS_DIR = Path(__file__).parent
 APP_DIR = TESTS_DIR / "15_app"
 CODEGEN_DIR = TESTS_DIR / "15_codegen"
 OUT_DIR = APP_DIR / ".out"
-TONGUES_DIR = TESTS_DIR.parent / "tongues"
+TONGUES_DIR = TESTS_DIR.parent
 
 BACKENDS = {
     "c": CBackend,

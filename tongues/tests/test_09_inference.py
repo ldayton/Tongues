@@ -4,11 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
-
-from tongues.src.frontend import compile, ParseError
+from src.frontend import compile, ParseError
 
 TYPECHECK_DIR = Path(__file__).parent / "09_inference"
 

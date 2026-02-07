@@ -10,7 +10,7 @@ Key differences from other backends:
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, to_snake, to_screaming_snake
+from src.backend.util import to_snake, to_screaming_snake
 from src.ir import (
     BOOL,
     INT,
@@ -33,14 +33,12 @@ from src.ir import (
     EntryPoint,
     Expr,
     ExprStmt,
-    Field,
     FieldAccess,
     FieldLV,
     FloatLit,
     ForClassic,
     ForRange,
     FuncRef,
-    FuncType,
     Function,
     If,
     Index,
@@ -73,7 +71,6 @@ from src.ir import (
     Primitive,
     Print,
     Raise,
-    Receiver,
     Return,
     Set,
     SetLit,
@@ -93,7 +90,6 @@ from src.ir import (
     Ternary,
     TrimChars,
     TryCatch,
-    Tuple,
     TupleAssign,
     Truthy,
     TupleLit,

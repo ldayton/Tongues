@@ -4,11 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "tongues"))
-
-from tongues.src.frontend.parse import parse, ParseError
+from src.frontend.parse import parse, ParseError
 
 PARSE_DIR = Path(__file__).parent / "02_parse"
 
@@ -71,7 +67,7 @@ def pytest_generate_tests(metafunc):
 def test_parse(parse_input: str, parse_expected: str):
     """Verify parser produces expected result."""
     try:
-        ast_dict = parse(parse_input)
+        parse(parse_input)
         parse_succeeded = True
         parse_error = None
     except ParseError as e:

@@ -6,7 +6,7 @@ subset:
     set -euo pipefail
     cd tongues
     failed=0
-    for f in $(find src -name '*.py') tests/run_tests.py; do
+    for f in $(find src -name '*.py'); do
         if ! uv run python -m src.tongues --verify < "$f" 2>/dev/null; then
             echo "FAIL: $f"
             uv run python -m src.tongues --verify < "$f" 2>&1 | head -5
@@ -17,19 +17,19 @@ subset:
 
 # Run codegen tests locally
 test-codegen-local:
-    uv run --directory tongues pytest ../tests/test_15_codegen.py -v
+    uv run --directory tongues pytest tests/test_15_codegen.py -v
 
 # Run apptests locally for a specific language (or all if not specified)
 test-apptests-local lang="":
-    uv run --directory tongues pytest ../tests/test_15_app.py {{ if lang != "" { "--target " + lang } else { "" } }} -v
+    uv run --directory tongues pytest tests/test_15_app.py {{ if lang != "" { "--target " + lang } else { "" } }} -v
 
 # Lint (--fix to apply changes)
 lint *ARGS:
-    uvx ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} tongues/
+    uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} .
 
 # Format (--fix to apply changes)
 fmt *ARGS:
-    uvx ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
+    uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
 
 check:
     #!/usr/bin/env bash
@@ -68,13 +68,13 @@ docker-build lang:
 test-codegen:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tests pytest test_15_codegen.py -v
+        uv run --directory tongues pytest tests/test_15_codegen.py -v
 
 # Run apptests in Docker for a language (image must have python+uv installed)
 test-apptests lang:
     docker build -t tongues-{{lang}} docker/{{lang}}
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
-        uv run --directory tests pytest test_15_app.py --target {{lang}} -v
+        uv run --directory tongues pytest tests/test_15_app.py --target {{lang}} -v
 
 # Check if formatters are installed
 formatters:

@@ -35,7 +35,6 @@ from src.ir import (
     IntToStr,
     IsNil,
     Len,
-    Map,
     MapLit,
     MaxExpr,
     MinExpr,

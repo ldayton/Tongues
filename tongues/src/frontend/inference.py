@@ -23,7 +23,6 @@ from ..ir import (
     Map,
     Optional,
     Pointer,
-    Set,
     Slice,
     STRING,
     StructRef,

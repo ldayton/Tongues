@@ -5,7 +5,6 @@ from __future__ import annotations
 from src.backend.util import (
     escape_string as _escape_string_generic,
     to_camel,
-    to_pascal,
 )
 
 
@@ -18,8 +17,6 @@ def escape_string(value: str) -> str:
 
 
 from src.ir import (
-    BOOL,
-    INT,
     Args,
     Array,
     Assert,
@@ -41,7 +38,6 @@ from src.ir import (
     DictComp,
     EntryPoint,
     Enum,
-    EnumVariant,
     Expr,
     ExprStmt,
     Field,
@@ -72,7 +68,6 @@ from src.ir import (
     Map,
     MapLit,
     Match,
-    MatchCase,
     MaxExpr,
     MethodCall,
     MinExpr,
@@ -117,7 +112,6 @@ from src.ir import (
     TupleLit,
     Type,
     TypeAssert,
-    TypeCase,
     TypeSwitch,
     UnaryOp,
     Union,
