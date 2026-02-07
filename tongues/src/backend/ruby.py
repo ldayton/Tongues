@@ -924,6 +924,16 @@ class RubyBackend:
             case Call(func="bool", args=[]):
                 return "false"
             case Call(func="bool", args=[arg]):
+                # Handle collection types - Ruby's !! doesn't check emptiness
+                arg_type = arg.typ
+                if isinstance(arg_type, (Slice, Tuple, Map, Set)):
+                    return f"({self._expr(arg)}.length != 0)"
+                if arg_type == STRING:
+                    return f"!{self._expr(arg)}.empty?"
+                if arg_type == INT:
+                    return f"({self._expr(arg)} != 0)"
+                if arg_type == FLOAT:
+                    return f"({self._expr(arg)} != 0.0)"
                 return f"!!{self._expr(arg)}"
             case Call(func="abs", args=[arg]):
                 # Coerce bool to int for abs()
@@ -935,7 +945,7 @@ class RubyBackend:
                 return f"{inner}.abs"
             case Call(func="min", args=args):
                 # Single iterable arg: call .min directly
-                if len(args) == 1 and isinstance(args[0].typ, (Slice, Tuple)):
+                if len(args) == 1 and isinstance(args[0].typ, (Slice, Tuple, Set)):
                     return f"{self._expr(args[0])}.min"
                 # min(dict) returns min key
                 if len(args) == 1 and isinstance(args[0].typ, Map):
@@ -950,7 +960,7 @@ class RubyBackend:
                 return f"[{', '.join(parts)}].min"
             case Call(func="max", args=args):
                 # Single iterable arg: call .max directly
-                if len(args) == 1 and isinstance(args[0].typ, (Slice, Tuple)):
+                if len(args) == 1 and isinstance(args[0].typ, (Slice, Tuple, Set)):
                     return f"{self._expr(args[0])}.max"
                 # max(dict) returns max key
                 if len(args) == 1 and isinstance(args[0].typ, Map):
@@ -1087,6 +1097,16 @@ class RubyBackend:
             case Call(func="dict", args=[]):
                 # dict() -> {}
                 return "{}"
+            case Call(func="set", args=[iterable]):
+                # set(x) -> Set.new(x.to_a)
+                self._needs_set = True
+                if iterable.typ == STRING:
+                    return f"Set.new({self._expr(iterable)}.chars)"
+                return f"Set.new({self._expr(iterable)}.to_a)"
+            case Call(func="set", args=[]):
+                # set() -> Set.new
+                self._needs_set = True
+                return "Set.new"
             case Call(func="range", args=args):
                 # range(stop), range(start, stop), range(start, stop, step)
                 self._needs_range_helper = True
@@ -1202,6 +1222,70 @@ class RubyBackend:
                         default_str = self._expr(args[1])
                         return f"{obj_str}.delete({key_str}) {{ {default_str} }}"
                     return f"{obj_str}.delete({key_str})"
+                # Set methods
+                if isinstance(receiver_type, Set):
+                    obj_str = self._expr(obj)
+                    # Python: set.remove(x) raises KeyError if not found
+                    # Ruby: delete doesn't raise, so we check first
+                    if method == "remove" and len(args) == 1:
+                        arg_str = self._expr(args[0])
+                        return f"(raise 'KeyError' unless {obj_str}.include?({arg_str}); {obj_str}.delete({arg_str}))"
+                    # Python: set.discard(x) doesn't raise
+                    if method == "discard" and len(args) == 1:
+                        return f"{obj_str}.delete({self._expr(args[0])})"
+                    # Python: set.pop() removes and returns arbitrary element
+                    if method == "pop" and len(args) == 0:
+                        return f"(-> {{ _e = {obj_str}.first; {obj_str}.delete(_e); _e }}).call"
+                    # Python: set.copy() -> Ruby: dup
+                    if method == "copy" and len(args) == 0:
+                        return f"{obj_str}.dup"
+                    # Python: set.issubset(other) -> Ruby: subset?
+                    if method == "issubset" and len(args) == 1:
+                        return f"{obj_str}.subset?({self._expr(args[0])})"
+                    # Python: set.issuperset(other) -> Ruby: superset?
+                    if method == "issuperset" and len(args) == 1:
+                        return f"{obj_str}.superset?({self._expr(args[0])})"
+                    # Python: set.isdisjoint(other) -> Ruby: disjoint?
+                    if method == "isdisjoint" and len(args) == 1:
+                        return f"{obj_str}.disjoint?({self._expr(args[0])})"
+                    # Python: set.update(*others) -> Ruby: merge (but Ruby only takes one arg)
+                    # Handle special cases: string iterates chars, dict iterates keys
+                    if method == "update":
+
+                        def _merge_arg(a: Expr) -> str:
+                            arg_str = self._expr(a)
+                            if a.typ == STRING:
+                                return f"{arg_str}.chars"
+                            if isinstance(a.typ, Map):
+                                return f"{arg_str}.keys"
+                            return arg_str
+
+                        if len(args) == 1:
+                            return f"{obj_str}.merge({_merge_arg(args[0])})"
+                        # Multiple args: chain merge calls
+                        merges = ".merge(" + ").merge(".join(_merge_arg(a) for a in args) + ")"
+                        return f"{obj_str}{merges}"
+                    # Python: set.symmetric_difference(other) -> Ruby: ^
+                    if method == "symmetric_difference" and len(args) == 1:
+                        return f"{obj_str} ^ {self._expr(args[0])}"
+                    # Python: set.union(*others) - Ruby only takes one arg
+                    if method == "union":
+                        if len(args) == 1:
+                            return f"{obj_str}.union({self._expr(args[0])})"
+                        parts = [obj_str] + [self._expr(a) for a in args]
+                        return " | ".join(parts)
+                    # Python: set.intersection(*others) - Ruby only takes one arg
+                    if method == "intersection":
+                        if len(args) == 1:
+                            return f"{obj_str}.intersection({self._expr(args[0])})"
+                        parts = [obj_str] + [self._expr(a) for a in args]
+                        return " & ".join(parts)
+                    # Python: set.difference(*others) - Ruby only takes one arg
+                    if method == "difference":
+                        if len(args) == 1:
+                            return f"{obj_str}.difference({self._expr(args[0])})"
+                        parts = [obj_str] + [self._expr(a) for a in args]
+                        return " - ".join(parts)
                 # Python: list.pop(i) -> Ruby: list.delete_at(i)
                 # Special case: pop(0) -> shift for efficiency
                 if method == "pop" and isinstance(receiver_type, Slice) and len(args) == 1:
@@ -1383,6 +1467,17 @@ class RubyBackend:
                     or isinstance(inner_type, Map)
                     or isinstance(inner_type, Set)
                 ):
+                    return f"({expr_str} && !{expr_str}.empty?)"
+                # InterfaceRef for collection types (e.g., set(), list(), dict())
+                if isinstance(inner_type, InterfaceRef) and inner_type.name in (
+                    "set",
+                    "list",
+                    "dict",
+                    "tuple",
+                ):
+                    return f"({expr_str} && !{expr_str}.empty?)"
+                # Check for builtin calls like set(), list(), dict()
+                if isinstance(e, Call) and e.func in ("set", "list", "dict", "tuple"):
                     return f"({expr_str} && !{expr_str}.empty?)"
                 if isinstance(inner_type, Optional):
                     inner = inner_type.inner
@@ -1713,16 +1808,40 @@ class RubyBackend:
                 # Bitwise NOT on bool needs coercion to int
                 if op == "~" and operand.typ == BOOL:
                     return f"~({self._coerce_bool_to_int(operand, raw=True)})"
-                # Handle not(truthy(int_expr)) -> (expr) == 0
-                # Python's `not (x & Y)` should be true when result is 0
-                # Always wrap in parens so nested negations work: !(1 == 0)
+                # Handle not(truthy(expr)) for various types
                 if op == "!" and isinstance(operand, Truthy):
                     inner = operand.expr
-                    if inner.typ == Primitive(kind="int"):
-                        inner_str = self._expr(inner)
+                    inner_type = inner.typ
+                    inner_str = self._expr(inner)
+                    # not(truthy(collection)) -> collection.empty?
+                    if isinstance(inner_type, (Slice, Tuple, Map, Set)):
+                        return f"{inner_str}.empty?"
+                    # InterfaceRef for collection types
+                    if isinstance(inner_type, InterfaceRef) and inner_type.name in (
+                        "set",
+                        "list",
+                        "dict",
+                        "tuple",
+                    ):
+                        return f"{inner_str}.empty?"
+                    # Check for builtin calls like set(), list(), dict()
+                    if isinstance(inner, Call) and inner.func in (
+                        "set",
+                        "list",
+                        "dict",
+                        "tuple",
+                    ):
+                        return f"{inner_str}.empty?"
+                    if inner_type == STRING:
+                        return f"{inner_str}.empty?"
+                    # not(truthy(int)) -> expr == 0
+                    if inner_type == Primitive(kind="int"):
                         if isinstance(inner, BinaryOp):
                             return f"(({inner_str}) == 0)"
                         return f"({inner_str} == 0)"
+                    # not(truthy(float)) -> expr == 0.0
+                    if inner_type == FLOAT:
+                        return f"({inner_str} == 0.0)"
                 # Wrap BinaryOp in parens for all unary operators
                 if isinstance(operand, BinaryOp):
                     return f"{rb_op}({self._expr(operand)})"
@@ -2115,6 +2234,10 @@ class RubyBackend:
                 # tuple and list both map to Array in Ruby
                 if name in ("tuple", "list"):
                     return "Array"
+                if name == "dict":
+                    return "Hash"
+                if name == "set":
+                    return "Set"
                 return _safe_type_name(name)
             case Primitive(kind="string"):
                 return "String"
