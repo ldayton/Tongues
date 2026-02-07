@@ -552,24 +552,10 @@ def pytest_generate_tests(metafunc):
                 for tid, inp, lang, exp, has_exp in tests
                 if lang in target_filter
             ]
-        params = []
-        for test_id, input_code, lang, expected, has_explicit in tests:
-            version_ok, version_msg = _check_version(lang)
-            if not version_ok and not ignore_version:
-                params.append(
-                    pytest.param(
-                        input_code,
-                        lang,
-                        expected,
-                        has_explicit,
-                        id=test_id,
-                        marks=pytest.mark.skip(reason=f"wrong version: {version_msg}"),
-                    )
-                )
-            else:
-                params.append(
-                    pytest.param(input_code, lang, expected, has_explicit, id=test_id)
-                )
+        params = [
+            pytest.param(input_code, lang, expected, has_explicit, id=test_id)
+            for test_id, input_code, lang, expected, has_explicit in tests
+        ]
         metafunc.parametrize(
             "codegen_input,codegen_lang,codegen_expected,codegen_has_explicit", params
         )
