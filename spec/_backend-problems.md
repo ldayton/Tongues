@@ -2453,3 +2453,293 @@ if method in ("startswith", "endswith") and len(args) == 1:
 Python's `str.endswith()` accepts a tuple of suffixes. Ruby's `end_with?` accepts multiple arguments. The backend unpacks the tuple for multi-argument call.
 
 **Should be:** Lowering should detect tuple arguments to `endswith`/`startswith` and emit `StringEndsWithAny(string, suffixes)` IR nodes or unpack to multi-argument form during lowering.
+
+---
+
+## Rust
+
+### 1. Bool-to-Int Casting
+
+**Location:** `rust.py:201-216` (`_is_bool`, `_needs_bool_int_coerce`), `rust.py:627-642` (MinExpr/MaxExpr), `rust.py:814-842` (BinaryOp arithmetic/comparison/bitwise), `rust.py:862-884` (UnaryOp), `rust.py:925` (int from bool), `rust.py:934-951` (abs/pow with bool), `rust.py:957-961` (divmod), `rust.py:1246-1249` (`_coerce_bool_to_int`)
+
+```python
+if _needs_bool_int_coerce(expr.left, expr.right):
+    left = f"({self._emit_expr(expr.left)} as i64)"
+```
+
+Multiple locations check if operands have `BOOL` type and insert `as i64` casts when bool values are used in:
+- Arithmetic operators (+, -, *, /, %)
+- Comparison operators (<, >, <=, >=, ==, !=) when mixed with int
+- Bitwise operators (&, |, ^) when mixed with int
+- Shift operators (<<, >>)
+- Unary operators (-, ~)
+- Built-in functions (min, max, abs, pow, divmod)
+- MinExpr/MaxExpr nodes
+
+**Should be:** Inference or lowering should insert explicit `Cast(BOOL, INT)` nodes when bools flow into int-expecting operations.
+
+---
+
+### 2. Truthy Type Dispatch
+
+**Location:** `rust.py:1251-1271` (`_emit_Truthy`)
+
+```python
+if isinstance(inner_type, Map):
+    return f"!{inner}.is_empty()"
+if isinstance(inner_type, Slice):
+    return f"!{inner}.is_empty()"
+if inner_type == STRING:
+    return f"!{inner}.is_empty()"
+if inner_type == INT:
+    return f"({inner} != 0)"
+```
+
+The backend switches on the inner type of `Truthy` nodes to emit type-appropriate truthiness checks (`.is_empty()` for collections/strings, `!= 0` for int, direct value for bool).
+
+**Should be:** Lowering should specialize `Truthy` into type-specific IR: `StringNonEmpty`, `SliceNonEmpty`, `MapNonEmpty`, `IntNonZero`, etc.
+
+---
+
+### 3. Collection Containment Dispatch
+
+**Location:** `rust.py:714-740` (BinaryOp "in" and "not in")
+
+```python
+if isinstance(right_type, Map):
+    return f"{right}.contains_key(&{left})"
+if isinstance(right_type, Set):
+    return f"{right}.contains(&{left})"
+if isinstance(right_type, Slice):
+    return f"{right}.contains(&{left})"
+if right_type == STRING:
+    return f"{right}.contains({left})"
+```
+
+The backend switches on container type to emit correct containment method (`.contains_key(&)` for Map, `.contains(&)` for Set/Slice, `.contains()` for String).
+
+**Should be:** Lowering should emit type-specific IR: `SetContains`, `MapContains`, `SliceContains`, `StringContains`.
+
+---
+
+### 4. String Concatenation Detection
+
+**Location:** `rust.py:810-811`, `847-860` (`_emit_string_add`, `_flatten_string_add`)
+
+```python
+if op == "+" and expr.typ == STRING:
+    return self._emit_string_add(expr)
+...
+def _emit_string_add(self, expr: BinaryOp) -> str:
+    parts: list[Expr] = []
+    self._flatten_string_add(expr, parts)
+    return f'format!("{placeholders}", {args})'
+```
+
+Rust's `&str + &str` doesn't work directly. The backend checks if operands are strings and emits `format!()` macro calls, flattening chained string concatenation into a single call.
+
+**Should be:** Lowering should emit `StringConcat(parts)` IR nodes for string concatenation, distinct from `BinaryOp("+")` for numeric addition.
+
+---
+
+### 5. Empty Collection Type Annotation
+
+**Location:** `rust.py:391-394` (VarDecl empty MapLit), `rust.py:404-407` (VarDecl Slice/Map/Set), `rust.py:1043-1069` (MapLit emission), `rust.py:745-763` (comparison with empty MapLit)
+
+```python
+# Empty map in VarDecl needs explicit type
+if isinstance(s.value, MapLit) and isinstance(s.typ, Map) and not s.value.entries:
+    typ = self._type_to_rust(s.typ)
+    self.line(f"let {mut}{name}: {typ} = std::collections::HashMap::new();")
+...
+# Comparison with empty map needs turbofish syntax
+return f"{left} {op} std::collections::HashMap::<{key_type}, {val_type}>::new()"
+```
+
+Rust requires explicit type annotations for empty collections. The backend inspects `VarDecl.typ` and emits turbofish annotations (`HashMap::<K, V>::new()`), and handles empty MapLit in comparisons specially.
+
+**Should be:** Lowering should emit typed empty collection literals with explicit element types, or empty collections should carry their inferred type annotation from inference.
+
+---
+
+### 6. Dict View Set Operations
+
+**Location:** `rust.py:690-712`
+
+```python
+if left_is_keys and right_is_keys:
+    left_set = f"{left}.into_iter().collect::<std::collections::HashSet<_>>()"
+    right_set = f"{right}.into_iter().collect::<std::collections::HashSet<_>>()"
+    if op == "&":
+        return f"{left_set}.intersection(&{right_set}).cloned().collect::<std::collections::HashSet<_>>()"
+```
+
+The backend detects set operations (`&`, `|`, `^`, `-`) on dict `.keys()` or `.items()` views and converts them to HashSet operations.
+
+**Should be:** Lowering should convert dict view expressions to explicit set types when used in set operations, or emit `DictKeysView`, `DictItemsView` IR nodes with set-compatible semantics.
+
+---
+
+### 7. Map Optional Value Handling
+
+**Location:** `rust.py:396-402` (VarDecl with Optional values), `rust.py:1071-1083` (`_emit_MapLit_with_optional`), `rust.py:1176-1183` (get with default on Optional-valued map)
+
+```python
+if isinstance(s.typ, Map) and isinstance(s.typ.value, Optional):
+    val = self._emit_MapLit_with_optional(s.value, s.typ.value)
+...
+def _emit_MapLit_with_optional(self, expr: MapLit, opt_type: Optional) -> str:
+    # Wrap non-None values in Some()
+    if isinstance(v, NilLit):
+        val = "None"
+    else:
+        val = f"Some({self._emit_expr(v)})"
+```
+
+When a map has `Optional` value type, the backend wraps non-None values in `Some()` during MapLit emission, and adjusts `get()` with default to also wrap in `Some()`.
+
+**Should be:** Lowering should emit explicit `Some(value)` wrappers when assigning to Optional-typed map values, rather than relying on backends to detect this pattern.
+
+---
+
+### 8. Optional Comparison Wrapping
+
+**Location:** `rust.py:765-808` (BinaryOp == and != with map.get())
+
+```python
+# Check if either side is a MethodCall returning Option (get without default)
+if left_returns_option and not right_returns_option:
+    return f"{left} {op} Some({right})"
+if right_returns_option and not left_returns_option:
+    return f"Some({left}) {op} {right}"
+```
+
+The backend detects comparisons where one side is a `map.get()` result (which returns `Option<V>` in Rust) and wraps the other side in `Some()` to make types compatible.
+
+**Should be:** Inference should track Option-typed expressions, and lowering should emit explicit `Some(expr)` wrappers or `OptionEquals(opt_expr, value)` IR nodes.
+
+---
+
+### 9. Method Dispatch by Receiver Type
+
+**Location:** `rust.py:1124-1225` (`_emit_MethodCall`)
+
+The method implements a large dispatch table based on receiver type:
+- String methods: upper, lower, strip, lstrip, rstrip, startswith, endswith, find, replace, split, join
+- Map methods: get, keys, values, items, pop, setdefault, update, clear, copy, popitem
+- Slice methods: append (→ push)
+
+Each method has type-specific Rust implementations.
+
+**Should be:** Lowering should emit type-specific method IR: `StringUpper`, `StringSplit`, `SliceAppend`, `MapGet`, `MapPop`, etc.
+
+---
+
+### 10. IsNil for Map.get() Results
+
+**Location:** `rust.py:1272-1286` (`_emit_IsNil`)
+
+```python
+if isinstance(expr.expr, MethodCall) and expr.expr.method == "get":
+    obj = self._emit_expr(expr.expr.obj)
+    key = self._emit_expr(expr.expr.args[0])
+    if expr.negated:
+        return f"{obj}.get(&{key}).is_some()"
+    return f"{obj}.get(&{key}).is_none()"
+```
+
+The backend special-cases `IsNil` when the inner expression is a `map.get()` call, emitting `.is_none()`/`.is_some()` on the raw get result rather than the emitted expression (which would have `.copied()` appended).
+
+**Should be:** Lowering should distinguish `IsNil` (null check) from `IsEmpty` and emit appropriate IR. `map.get()` should have explicit Optional-returning semantics in IR.
+
+---
+
+### 11. Dict Merge Operator
+
+**Location:** `rust.py:441-443` (OpAssign |=), `rust.py:679-688` (BinaryOp |)
+
+```python
+# Dict merge operator |= uses extend
+if s.op == "|" and isinstance(s.value.typ, Map):
+    self.line(f"{target}.extend({val}.iter().map(|(k, v)| (k.clone(), *v)));")
+...
+# Dict merge operator |
+if op == "|" and isinstance(expr.left.typ, Map):
+    return f"{{ let mut m = {left}.clone(); m.extend({right}.iter().map(|(k, v)| (k.clone(), *v))); m }}"
+```
+
+The backend detects the `|` and `|=` operators on Map types and emits Rust-specific merge patterns using `.extend()` and cloning.
+
+**Should be:** Lowering should emit `MapMerge(left, right)` and `MapMergeInPlace(target, value)` IR nodes for dict merge operations.
+
+---
+
+### 12. Dict.fromkeys() Static Call
+
+**Location:** `rust.py:1126-1132` (MethodCall on dict), `rust.py:1336-1350` (`_emit_StaticCall`)
+
+```python
+if isinstance(expr.obj, Var) and expr.obj.name == "dict" and expr.method == "fromkeys":
+    return f"{keys}.iter().map(|k| (k.clone(), {value}.clone())).collect::<std::collections::HashMap<_, _>>()"
+...
+if isinstance(expr.on_type, Map) and method == "fromkeys":
+    return f"{keys}.iter().map(|k| (k.clone(), {value})).collect::<std::collections::HashMap<_, _>>()"
+```
+
+The backend special-cases `dict.fromkeys()` as both a MethodCall on a `dict` Var and a StaticCall on Map type, emitting iterator-based construction.
+
+**Should be:** Lowering should emit `MapFromKeys(keys, default_value)` IR node for this pattern.
+
+---
+
+### 13. Mutable Dict Value Access
+
+**Location:** `rust.py:1135-1140` (MethodCall append on dict value)
+
+```python
+if isinstance(expr.obj, Index) and isinstance(expr.obj.obj.typ, Map):
+    if isinstance(expr.receiver_type, Slice) and expr.method == "append":
+        return f"{dict_var}.get_mut(&{key}).unwrap().push({val})"
+```
+
+When calling mutating methods (like `append`) on a dict value (`d[key].append(x)`), the backend detects this pattern and uses `.get_mut()` instead of `.get()` to obtain a mutable reference.
+
+**Should be:** Lowering should emit `MutableDictAccess(dict, key)` when the result will be mutated, or annotate `Index` nodes with `mutable_access: bool`.
+
+---
+
+### 14. Nested Dict Index Access
+
+**Location:** `rust.py:569-576` (IndexLV for nested maps), `rust.py:1095-1102` (Index for nested maps)
+
+```python
+# Nested map indexing - need get_mut for mutable access to inner map
+if isinstance(lv.obj, Index) and isinstance(lv.obj.obj.typ, Map):
+    inner_map = lv.obj.obj.typ
+    if isinstance(inner_map.value, Map):
+        return f"*{outer_obj}.get_mut(&{outer_key}).unwrap().entry({idx}).or_insert(Default::default())"
+```
+
+The backend detects nested dict access (`d[k1][k2]`) and emits appropriate `.get_mut()` chains for Rust's ownership system.
+
+**Should be:** Lowering should emit `NestedMapIndex(outer_map, outer_key, inner_key)` or annotate `Index` nodes with nesting depth information.
+
+---
+
+### 15. Pop Return Value at Index
+
+**Location:** `rust.py:1191-1196` (map.pop)
+
+```python
+if method == "pop":
+    key = self._emit_expr(expr.args[0])
+    if len(expr.args) == 1:
+        return f"{obj}.remove(&{key}).unwrap()"
+    else:
+        default = self._emit_expr(expr.args[1])
+        return f"{obj}.remove(&{key}).unwrap_or({default})"
+```
+
+Python's `dict.pop(key)` removes and returns the value. Rust's HashMap has `.remove()` which returns `Option<V>`. The backend emits `.unwrap()` or `.unwrap_or(default)` based on argument count.
+
+**Should be:** Lowering should emit `MapPop(map, key, default?)` IR node with explicit return-value semantics.
