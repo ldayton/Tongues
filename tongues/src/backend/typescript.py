@@ -113,6 +113,37 @@ class TsBackend(JsLikeBackend):
         if ir_has_bytes_ops(module):
             self._emit_bytes_helpers()
             emitted = True
+        if ir_contains_call(module, "sum"):
+            self._line(
+                "function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }"
+            )
+            emitted = True
+        if ir_contains_call(module, "all"):
+            self._line("function all(arr: any[]): boolean { return arr.every(Boolean); }")
+            emitted = True
+        if ir_contains_call(module, "any"):
+            self._line("function any(arr: any[]): boolean { return arr.some(Boolean); }")
+            emitted = True
+        if ir_contains_call(module, "sorted"):
+            self._line(
+                "function sorted<T>(arr: T[], reverse?: boolean): T[] { const r = [...arr].sort((a, b) => a < b ? -1 : a > b ? 1 : 0); return reverse ? r.reverse() : r; }"
+            )
+            emitted = True
+        if ir_contains_call(module, "enumerate"):
+            self._line(
+                "function enumerate<T>(arr: T[]): [number, T][] { return arr.map((v, i) => [i, v]); }"
+            )
+            emitted = True
+        if ir_contains_call(module, "list"):
+            self._line(
+                "function list<T>(x: Iterable<T> | string): T[] { return typeof x === 'string' ? [...x] as unknown as T[] : [...x]; }"
+            )
+            emitted = True
+        if ir_contains_call(module, "zip"):
+            self._line(
+                "function zip<T>(...arrs: T[][]): T[][] { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }"
+            )
+            emitted = True
         return emitted
 
     def _emit_range_function(self) -> None:
@@ -136,10 +167,17 @@ class TsBackend(JsLikeBackend):
 
     def _emit_bytes_helpers(self) -> None:
         """Emit helper functions for byte array operations."""
-        self._line("function arrEq(a: number[], b: number[]): boolean {")
+        self._line("function arrEq(a: any[], b: any[]): boolean {")
         self.indent += 1
         self._line("if (a.length !== b.length) return false;")
-        self._line("for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;")
+        self._line("for (let i = 0; i < a.length; i++) {")
+        self.indent += 1
+        self._line(
+            "if (Array.isArray(a[i]) && Array.isArray(b[i])) { if (!arrEq(a[i], b[i])) return false; }"
+        )
+        self._line("else if (a[i] !== b[i]) return false;")
+        self.indent -= 1
+        self._line("}")
         self._line("return true;")
         self.indent -= 1
         self._line("}")
@@ -278,15 +316,15 @@ class TsBackend(JsLikeBackend):
         self.indent -= 1
         self._line("}")
         self._line(
-            "function arrStep(a: number[], lo: number | null, hi: number | null, step: number): number[] {"
+            "function arrStep<T extends any[] | string>(a: T, lo: number | null, hi: number | null, step: number): T {"
         )
         self.indent += 1
         self._line("if (lo === null) lo = step > 0 ? 0 : a.length - 1;")
         self._line("if (hi === null) hi = step > 0 ? a.length : -1;")
-        self._line("const r: number[] = [];")
+        self._line("const r: any[] = [];")
         self._line("if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }")
         self._line("else { for (let i = lo; i > hi; i += step) r.push(a[i]); }")
-        self._line("return r;")
+        self._line("return (typeof a === 'string' ? r.join('') : r) as T;")
         self.indent -= 1
         self._line("}")
         self._line("function deepArrEq(a: number[][], b: number[][]): boolean {")
@@ -349,6 +387,14 @@ class TsBackend(JsLikeBackend):
         # Handle float() with int/float literals - just output the number
         if func == "float" and len(args) == 1:
             arg = args[0]
+            if isinstance(arg, StringLit):
+                if arg.value == "nan":
+                    return "NaN"
+                if arg.value == "inf" or arg.value == "Infinity":
+                    return "Infinity"
+                if arg.value == "-inf" or arg.value == "-Infinity":
+                    return "-Infinity"
+                return f"parseFloat({self._expr(arg)})"
             if isinstance(arg, IntLit):
                 return str(arg.value)
             if isinstance(arg, FloatLit):
@@ -463,6 +509,19 @@ class TsBackend(JsLikeBackend):
     # --- Cast ---
 
     def _cast_expr(self, inner: Expr, to_type: Type) -> str:
+        # float(string) with special values
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "float"
+            and isinstance(inner, StringLit)
+        ):
+            if inner.value == "inf" or inner.value == "Infinity":
+                return "Infinity"
+            if inner.value == "-inf" or inner.value == "-Infinity":
+                return "-Infinity"
+            if inner.value.lower() == "nan":
+                return "NaN"
+            return f"parseFloat({self._expr(inner)})"
         # str(None) -> "None"
         if (
             isinstance(inner, NilLit)
@@ -524,6 +583,17 @@ class TsBackend(JsLikeBackend):
             and inner.typ.kind in ("rune", "int")
         ):
             return f"String.fromCodePoint({self._expr(inner)})"
+        # float to string with decimal preservation
+        if (
+            isinstance(to_type, Primitive)
+            and to_type.kind == "string"
+            and isinstance(inner.typ, Primitive)
+            and inner.typ.kind == "float"
+        ):
+            inner_str = self._expr(inner)
+            return (
+                f"(Number.isInteger({inner_str}) ? ({inner_str}).toFixed(1) : String({inner_str}))"
+            )
         if isinstance(to_type, Primitive) and to_type.kind == "string":
             return f"String({self._expr(inner)})"
         # Use 'as unknown as' for type conversions

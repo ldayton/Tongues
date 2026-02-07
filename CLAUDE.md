@@ -48,6 +48,7 @@ uv run --directory tongues pytest ../tests/test_apptests.py [OPTIONS]
 | `--target <lang>`  | Run only specified target(s), repeatable               |
 | `--ignore-version` | Skip version checks, use whatever runtime is available |
 | `--ignore-skips`   | Run tests in the known-failure skip list               |
+| `--summary`        | Print a summary table of apptest pass/fail counts      |
 
 ## CI
 

@@ -20,8 +20,10 @@ from src.ir import (
     ChainedCompare,
     CharClassify,
     CatchClause,
+    CompGenerator,
     Constant,
     Continue,
+    DictComp,
     DerefLV,
     EntryPoint,
     Expr,
@@ -45,6 +47,7 @@ from src.ir import (
     IsNil,
     IsType,
     Len,
+    ListComp,
     LValue,
     MakeMap,
     MakeSlice,
@@ -68,11 +71,13 @@ from src.ir import (
     Receiver,
     Return,
     Set,
+    SetComp,
     SetLit,
     Slice,
     SliceConvert,
     SliceExpr,
     SliceLit,
+    SliceLV,
     SoftFail,
     StaticCall,
     Stmt,
@@ -313,6 +318,8 @@ class RubyBackend:
         self._known_functions: set[str] = set()
         self._needs_set = False
         self._needs_bytes = False
+        self._needs_truthy_helper = False
+        self._needs_range_helper = False
 
     def emit(self, module: Module) -> str:
         """Emit Ruby code from IR Module."""
@@ -320,6 +327,8 @@ class RubyBackend:
         self.lines = []
         self._needs_set = False
         self._needs_bytes = False
+        self._needs_truthy_helper = False
+        self._needs_range_helper = False
         self._emit_module(module)
         insert_pos = self._import_insert_pos
         if self._needs_set:
@@ -330,6 +339,16 @@ class RubyBackend:
             for i, line in enumerate(_BYTES_CLASS.strip().split("\n")):
                 self.lines.insert(insert_pos + i, line)
             self.lines.insert(insert_pos + len(_BYTES_CLASS.strip().split("\n")), "")
+            insert_pos += len(_BYTES_CLASS.strip().split("\n")) + 1
+        if self._needs_truthy_helper:
+            helper = "def _truthy(v); v.is_a?(Numeric) ? v != 0 : (v.respond_to?(:empty?) ? !v.empty? : !!v); end"
+            self.lines.insert(insert_pos, helper)
+            self.lines.insert(insert_pos + 1, "")
+            insert_pos += 2
+        if self._needs_range_helper:
+            helper = "def _range(start, stop = nil, step = 1); stop.nil? ? (0...start).step(step).to_a : (step > 0 ? (start...stop).step(step).to_a : (stop + 1..start).step(-step).to_a.reverse); end"
+            self.lines.insert(insert_pos, helper)
+            self.lines.insert(insert_pos + 1, "")
         return "\n".join(self.lines)
 
     def _line(self, text: str = "") -> None:
@@ -495,14 +514,37 @@ class RubyBackend:
             case VarDecl(name=name, value=value):
                 safe = _safe_name(name)
                 if value is not None:
-                    val = self._expr(value)
-                    self._line(f"{safe} = {val}")
+                    # Python sort()/reverse() return None, Ruby sort!/reverse! return self
+                    if (
+                        isinstance(value, MethodCall)
+                        and value.method in ("sort", "reverse")
+                        and isinstance(value.receiver_type, Slice)
+                    ):
+                        # Execute the in-place operation, then assign nil
+                        self._line(self._expr(value))
+                        self._line(f"{safe} = nil")
+                    else:
+                        val = self._expr(value)
+                        self._line(f"{safe} = {val}")
                 else:
                     self._line(f"{safe} = nil")
             case Assign(target=target, value=value):
-                lv = self._lvalue(target)
-                val = self._expr(value)
-                self._line(f"{lv} = {val}")
+                if isinstance(target, SliceLV):
+                    self._emit_slice_assign(target, value)
+                # Python sort()/reverse() return None, Ruby sort!/reverse! return self
+                elif (
+                    isinstance(value, MethodCall)
+                    and value.method in ("sort", "reverse")
+                    and isinstance(value.receiver_type, Slice)
+                ):
+                    # Execute the in-place operation, then assign nil
+                    self._line(self._expr(value))
+                    lv = self._lvalue(target)
+                    self._line(f"{lv} = nil")
+                else:
+                    lv = self._lvalue(target)
+                    val = self._expr(value)
+                    self._line(f"{lv} = {val}")
             case TupleAssign(targets=targets, value=value):
                 lvalues = ", ".join(self._lvalue(t) for t in targets)
                 val = self._expr(value)
@@ -510,7 +552,11 @@ class RubyBackend:
             case OpAssign(target=target, op=op, value=value):
                 lv = self._lvalue(target)
                 val = self._expr(value)
-                self._line(f"{lv} {op}= {val}")
+                # list += string needs to convert string to chars
+                if op == "+" and value.typ == STRING:
+                    self._line(f"{lv}.concat({val}.chars)")
+                else:
+                    self._line(f"{lv} {op}= {val}")
             case NoOp():
                 pass
             case ExprStmt(expr=expr):
@@ -641,11 +687,16 @@ class RubyBackend:
             iter_expr = f"({iter_expr} || [])"
         idx = _safe_name(index) if index else None
         val = _safe_name(value) if value else None
+        # Check if iterable is enumerate() call - unpack [i, v] pairs directly
+        is_enumerate = isinstance(iterable, Call) and iterable.func == "enumerate"
         # Use each_char for strings
         is_string = iterable.typ == Primitive(kind="string")
         each_method = "each_char" if is_string else "each"
         if idx is not None and val is not None:
-            if is_string:
+            if is_enumerate:
+                # enumerate already produces [idx, val] pairs
+                self._line(f"{iter_expr}.each do |({idx}, {val})|")
+            elif is_string:
                 self._line(f"{iter_expr}.{each_method}.with_index do |{val}, {idx}|")
             else:
                 self._line(f"{iter_expr}.each_with_index do |{val}, {idx}|")
@@ -878,6 +929,9 @@ class RubyBackend:
                     return f"({inner}).abs"
                 return f"{inner}.abs"
             case Call(func="min", args=args):
+                # Single iterable arg: call .min directly
+                if len(args) == 1 and isinstance(args[0].typ, Slice):
+                    return f"{self._expr(args[0])}.min"
                 # Ruby can't compare bools, always coerce to int
                 parts = []
                 for a in args:
@@ -887,6 +941,9 @@ class RubyBackend:
                         parts.append(self._expr(a))
                 return f"[{', '.join(parts)}].min"
             case Call(func="max", args=args):
+                # Single iterable arg: call .max directly
+                if len(args) == 1 and isinstance(args[0].typ, Slice):
+                    return f"{self._expr(args[0])}.max"
                 # Ruby can't compare bools, always coerce to int
                 parts = []
                 for a in args:
@@ -979,6 +1036,47 @@ class RubyBackend:
                 # bytes(n) -> TonguesBytes.zeros(n)
                 self._needs_bytes = True
                 return f"TonguesBytes.zeros({self._expr(arg)})"
+            case Call(func="enumerate", args=[iterable]):
+                # enumerate(x) -> x.each_with_index.to_a (gives [[v0,0], [v1,1]...])
+                # But Python gives [(0,v0), (1,v1)...] so we need to swap
+                return f"{self._expr(iterable)}.each_with_index.map {{ |v, i| [i, v] }}"
+            case Call(func="sum", args=[iterable]):
+                # sum(x) -> x.sum
+                return f"{self._expr(iterable)}.sum"
+            case Call(func="sorted", args=[iterable], reverse=True):
+                # sorted(x, reverse=True) -> x.sort.reverse
+                return f"{self._expr(iterable)}.sort.reverse"
+            case Call(func="sorted", args=[iterable]):
+                # sorted(x) -> x.sort
+                return f"{self._expr(iterable)}.sort"
+            case Call(func="all", args=[iterable]):
+                # all(x) -> x.all? { |v| python_truthy(v) }
+                self._needs_truthy_helper = True
+                return f"{self._expr(iterable)}.all? {{ |v| _truthy(v) }}"
+            case Call(func="any", args=[iterable]):
+                # any(x) -> x.any? { |v| python_truthy(v) }
+                self._needs_truthy_helper = True
+                return f"{self._expr(iterable)}.any? {{ |v| _truthy(v) }}"
+            case Call(func="list", args=[iterable]):
+                # list(x) -> x.to_a, but list(string) -> string.chars
+                if iterable.typ == STRING:
+                    return f"{self._expr(iterable)}.chars"
+                return f"{self._expr(iterable)}.to_a"
+            case Call(func="range", args=args):
+                # range(stop), range(start, stop), range(start, stop, step)
+                self._needs_range_helper = True
+                args_str = ", ".join(self._expr(a) for a in args)
+                return f"_range({args_str})"
+            case Call(func="zip", args=args):
+                # Python zip stops at shortest, Ruby pads with nil
+                # Use take_while to stop at first nil-containing tuple
+                if len(args) >= 1:
+                    first = self._expr(args[0])
+                    rest = ", ".join(self._expr(a) for a in args[1:])
+                    if rest:
+                        return f"{first}.zip({rest}).take_while {{ |x| !x.include?(nil) }}"
+                    return f"{first}.zip"
+                return "[]"
             case Call(func=func, args=args):
                 args_str = ", ".join(self._expr(a) for a in args)
                 if func not in self._known_functions:
@@ -986,7 +1084,13 @@ class RubyBackend:
                         return f"{_safe_name(func)}.call({args_str})"
                     return f"{_safe_name(func)}.call"
                 return f"{_safe_name(func)}({args_str})"
-            case MethodCall(obj=obj, method=method, args=args, receiver_type=receiver_type):
+            case MethodCall(
+                obj=obj, method=method, args=args, receiver_type=receiver_type, reverse=reverse
+            ):
+                # Python: list.sort(reverse=True) -> Ruby: list.sort!.reverse!
+                if method == "sort" and reverse and isinstance(receiver_type, Slice):
+                    obj_str = self._expr(obj)
+                    return f"{obj_str}.sort!.reverse!"
                 # divmod on bool: coerce receiver to int
                 if method == "divmod" and obj.typ == BOOL:
                     args_str = ", ".join(self._expr(a) for a in args)
@@ -1028,11 +1132,50 @@ class RubyBackend:
                         default = self._expr(args[1])
                         return f"{obj_str}.fetch({key}, {default})"
                     return f"{obj_str}[{key}]"
-                # Python: list.pop(0) -> Ruby: list.shift
+                # Python: list.pop(i) -> Ruby: list.delete_at(i)
+                # Special case: pop(0) -> shift for efficiency
                 if method == "pop" and isinstance(receiver_type, Slice) and len(args) == 1:
+                    obj_str = self._expr(obj)
                     if isinstance(args[0], IntLit) and args[0].value == 0:
-                        obj_str = self._expr(obj)
                         return f"{obj_str}.shift"
+                    arg_str = self._expr(args[0])
+                    return f"{obj_str}.delete_at({arg_str})"
+                # Python: list.extend(string) -> Ruby: list.concat(string.chars)
+                if method == "extend" and isinstance(receiver_type, Slice) and len(args) == 1:
+                    if args[0].typ == STRING:
+                        obj_str = self._expr(obj)
+                        arg_str = self._expr(args[0])
+                        return f"{obj_str}.concat({arg_str}.chars)"
+                # Python: list.index(x, start) or list.index(x, start, end)
+                # Ruby's index doesn't support start/end, use slice + offset
+                if method == "index" and isinstance(receiver_type, Slice) and len(args) >= 2:
+                    obj_str = self._expr(obj)
+                    val_str = self._expr(args[0])
+                    start_str = self._expr(args[1])
+                    if len(args) == 3:
+                        end_str = self._expr(args[2])
+                        # slice[start...end].index(val) + start if found
+                        return f"(-> {{ _i = {obj_str}[{start_str}...{end_str}].index({val_str}); _i.nil? ? nil : _i + {start_str} }}).call"
+                    else:
+                        # slice[start..].index(val) + start if found
+                        return f"(-> {{ _i = {obj_str}[{start_str}..].index({val_str}); _i.nil? ? nil : _i + {start_str} }}).call"
+                # Python: list.remove(x) removes first occurrence
+                # Ruby: delete(x) removes ALL occurrences, so use delete_at(index(x))
+                if method == "remove" and isinstance(receiver_type, Slice) and len(args) == 1:
+                    obj_str = self._expr(obj)
+                    arg_str = self._expr(args[0])
+                    return f"{obj_str}.delete_at({obj_str}.index({arg_str}))"
+                # Python: list.insert(i, x) - handle both positive and negative indices
+                # Ruby's insert(100, x) on a 5-element array pads with nil, Python clips
+                # Ruby's insert(-1, x) appends, Python inserts before last
+                if method == "insert" and isinstance(receiver_type, Slice) and len(args) == 2:
+                    obj_str = self._expr(obj)
+                    idx_str = self._expr(args[0])
+                    val_str = self._expr(args[1])
+                    # For all indices: clip to valid range [0, length]
+                    # Python insert(-n, x) = before index len-n (clamped to 0)
+                    # Python insert(n, x) where n > len = append (clamped to len)
+                    return f"(-> {{ _idx = {idx_str}; {obj_str}.insert([[_idx < 0 ? {obj_str}.length + _idx : _idx, 0].max, {obj_str}.length].min, {val_str}) }}).call"
                 # Python: str.replace("\\", "\\\\") needs special handling in Ruby
                 # because gsub's replacement string interprets \\ specially
                 if method == "replace" and len(args) == 2:
@@ -1200,7 +1343,8 @@ class RubyBackend:
                 right_str = self._and_or_operand(right_expr)
                 return f"({cond} ? {left_str} : {right_str})"
             case BinaryOp(op="//", left=left, right=right):
-                # Floor division - Ruby's / on integers truncates toward zero
+                # Floor division - Ruby's / on integers floors toward -inf
+                # For floats, we need (a / b).floor.to_f to match Python semantics
                 if left.typ == BOOL:
                     left_str = self._coerce_bool_to_int(left, raw=True)
                 else:
@@ -1210,6 +1354,9 @@ class RubyBackend:
                 else:
                     right_str = self._expr(right)
                 left_str = self._maybe_paren(left_str, left, "/", is_left=True)
+                right_str = self._maybe_paren(right_str, right, "/", is_left=False)
+                if left.typ == FLOAT or right.typ == FLOAT:
+                    return f"({left_str} / {right_str}).floor.to_f"
                 return f"{left_str} / {right_str}"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "==",
@@ -1239,6 +1386,14 @@ class RubyBackend:
                     or isinstance(right, (Call, MinExpr, MaxExpr))
                 )
             ):
+                # Ruby's all?/any? return actual booleans - compare directly, no coercion
+                left_is_all_any = isinstance(left, Call) and left.func in ("all", "any")
+                right_is_all_any = isinstance(right, Call) and right.func in ("all", "any")
+                if left_is_all_any or right_is_all_any:
+                    left_str = self._expr(left)
+                    right_str = self._expr(right)
+                    rb_op = _binary_op(op)
+                    return f"{left_str} {rb_op} {right_str}"
                 # MinExpr/MaxExpr with bool args already produce ints, compare directly
                 # Just coerce the BoolLit side to int, don't re-coerce the min/max result
                 if isinstance(left, (MinExpr, MaxExpr)):
@@ -1258,6 +1413,14 @@ class RubyBackend:
                 (isinstance(left.typ, InterfaceRef) and right.typ == BOOL)
                 or (left.typ == BOOL and isinstance(right.typ, InterfaceRef))
             ):
+                # Ruby's all?/any? return actual booleans - compare directly
+                left_is_all_any = isinstance(left, Call) and left.func in ("all", "any")
+                right_is_all_any = isinstance(right, Call) and right.func in ("all", "any")
+                if left_is_all_any or right_is_all_any:
+                    left_str = self._expr(left)
+                    right_str = self._expr(right)
+                    rb_op = _binary_op(op)
+                    return f"{left_str} {rb_op} {right_str}"
                 # Comparing any-typed expr (e.g., bool arithmetic) with bool: coerce bool side
                 left_str = self._expr(left)
                 right_str = (
@@ -1278,6 +1441,21 @@ class RubyBackend:
                 else:
                     right_str = self._maybe_paren(self._expr(right), right, "**", is_left=False)
                 return f"{left_str} ** {right_str}"
+            case BinaryOp(op=op, left=left, right=right) if (
+                op
+                in (
+                    "<",
+                    ">",
+                    "<=",
+                    ">=",
+                )
+                and isinstance(left.typ, Slice)
+                and isinstance(right.typ, Slice)
+            ):
+                # Ruby arrays don't have <, >, <=, >= - use <=> spaceship
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"(({left_str} <=> {right_str}) {op} 0)"
             case BinaryOp(op=op, left=left, right=right) if op in (
                 "<",
                 ">",
@@ -1318,6 +1496,21 @@ class RubyBackend:
                 return f"{right_str} * [{left_str}, 0].max"
             case BinaryOp(op="*", left=left, right=right) if (
                 left.typ == Primitive(kind="string") and right.typ == INT
+            ):
+                # Handle negative multiplier: [n, 0].max
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"{left_str} * [{right_str}, 0].max"
+            case BinaryOp(op="*", left=left, right=right) if left.typ == INT and isinstance(
+                right.typ, Slice
+            ):
+                # Ruby can't do int * array, swap to array * int
+                # Also handle negative: [n, 0].max for n < 0
+                left_str = self._expr(left)
+                right_str = self._expr(right)
+                return f"{right_str} * [{left_str}, 0].max"
+            case BinaryOp(op="*", left=left, right=right) if (
+                isinstance(left.typ, Slice) and right.typ == INT
             ):
                 # Handle negative multiplier: [n, 0].max
                 left_str = self._expr(left)
@@ -1564,8 +1757,78 @@ class RubyBackend:
                 return self._format_string(template, args)
             case SliceConvert(source=source):
                 return self._expr(source)
+            case ListComp(element=element, generators=generators):
+                return self._list_comp(element, generators)
+            case SetComp(element=element, generators=generators):
+                return self._set_comp(element, generators)
+            case DictComp(key=key, value=value, generators=generators):
+                return self._dict_comp(key, value, generators)
             case _:
                 raise NotImplementedError("Unknown expression")
+
+    def _list_comp(self, element: Expr, generators: list[CompGenerator]) -> str:
+        """Emit list comprehension as Ruby lambda IIFE."""
+        body_lines: list[str] = ["_result = []"]
+        body_stmt = f"_result << {self._expr(element)}"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
+        body_lines.append("_result")
+        body = "; ".join(body_lines)
+        return f"(-> {{ {body} }}).call"
+
+    def _set_comp(self, element: Expr, generators: list[CompGenerator]) -> str:
+        """Emit set comprehension as Ruby lambda IIFE."""
+        body_lines: list[str] = ["_result = Set.new"]
+        body_stmt = f"_result << {self._expr(element)}"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
+        body_lines.append("_result")
+        body = "; ".join(body_lines)
+        return f"(-> {{ {body} }}).call"
+
+    def _dict_comp(self, key: Expr, value: Expr, generators: list[CompGenerator]) -> str:
+        """Emit dict comprehension as Ruby lambda IIFE."""
+        body_lines: list[str] = ["_result = {}"]
+        body_stmt = f"_result[{self._expr(key)}] = {self._expr(value)}"
+        self._emit_comp_loops(generators, 0, body_lines, body_stmt)
+        body_lines.append("_result")
+        body = "; ".join(body_lines)
+        return f"(-> {{ {body} }}).call"
+
+    def _emit_comp_loops(
+        self,
+        generators: list[CompGenerator],
+        idx: int,
+        lines: list[str],
+        body_stmt: str,
+    ) -> None:
+        """Recursively emit nested loops for comprehension generators."""
+        if idx >= len(generators):
+            lines.append(body_stmt)
+            return
+        gen = generators[idx]
+        iter_expr = self._expr(gen.iterable)
+        if len(gen.targets) == 1:
+            target = _safe_name(gen.targets[0])
+            lines.append(f"{iter_expr}.each {{ |{target}|")
+        else:
+            targets = ", ".join(_safe_name(t) for t in gen.targets)
+            lines.append(f"{iter_expr}.each {{ |({targets})|")
+        for cond in gen.conditions:
+            lines.append(f"next unless {self._expr(cond)}")
+        self._emit_comp_loops(generators, idx + 1, lines, body_stmt)
+        lines.append("}")
+
+    def _emit_slice_assign(self, target: SliceLV, value: Expr) -> None:
+        """Emit slice assignment: arr[lo:hi] = value."""
+        obj_str = self._expr(target.obj)
+        val_str = self._expr(value)
+        low = self._expr(target.low) if target.low else "0"
+        if target.high is None:
+            # arr[lo:] = value -> arr[lo..] = value
+            self._line(f"{obj_str}[{low}..] = {val_str}")
+        else:
+            high = self._expr(target.high)
+            # arr[lo:hi] = value -> arr[lo...hi] = value (exclusive end)
+            self._line(f"{obj_str}[{low}...{high}] = {val_str}")
 
     def _slice_expr(
         self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
@@ -1583,19 +1846,41 @@ class RubyBackend:
                 high_str = neg_idx
             else:
                 high_str = self._expr(high) if high else ""
-            # Reverse: step == -1
-            if step_val == "-1":
+            # Negative step: reverse direction
+            # step_val is the Ruby expression like "-1" or "-2"
+            if step_val.startswith("-"):
+                abs_step = step_val[1:]  # Remove the minus sign
                 if is_bytes:
                     if not low and not high:
-                        return f"TonguesBytes.new({obj_str}.data.reverse)"
-                    if high_str:
-                        return f"TonguesBytes.new({obj_str}[{low_str}...{high_str}].data.reverse)"
-                    return f"TonguesBytes.new({obj_str}[{low_str}..].data.reverse)"
+                        if abs_step == "1":
+                            return f"TonguesBytes.new({obj_str}.data.reverse)"
+                        return f"TonguesBytes.new({obj_str}.data.reverse.each_slice({abs_step}).map(&:first))"
+                    # arr[high:low:-step] - from high down to low+1
+                    if low and high:
+                        # Ruby: arr[(low+1)..high].reverse
+                        base = f"{obj_str}[({high_str} + 1)..{low_str}].data.reverse"
+                    elif low:
+                        base = f"{obj_str}[0..{low_str}].data.reverse"
+                    else:
+                        base = f"{obj_str}[({high_str} + 1)..].data.reverse"
+                    if abs_step == "1":
+                        return f"TonguesBytes.new({base})"
+                    return f"TonguesBytes.new({base}.each_slice({abs_step}).map(&:first))"
                 if not low and not high:
-                    return f"{obj_str}.reverse"
-                if high_str:
-                    return f"{obj_str}[{low_str}...{high_str}].reverse"
-                return f"{obj_str}[{low_str}..].reverse"
+                    if abs_step == "1":
+                        return f"{obj_str}.reverse"
+                    return f"{obj_str}.reverse.each_slice({abs_step}).map(&:first)"
+                # arr[high:low:-step] - from high down to low+1
+                if low and high:
+                    # Ruby: arr[(low+1)..high].reverse
+                    base = f"{obj_str}[({high_str} + 1)..{low_str}].reverse"
+                elif low:
+                    base = f"{obj_str}[0..{low_str}].reverse"
+                else:
+                    base = f"{obj_str}[({high_str} + 1)..].reverse"
+                if abs_step == "1":
+                    return base
+                return f"{base}.each_slice({abs_step}).map(&:first)"
             # Positive step: select every nth element
             is_string = obj.typ == Primitive(kind="string")
             if is_bytes:
@@ -1616,17 +1901,27 @@ class RubyBackend:
             if high_str:
                 return f"{obj_str}[{low_str}...{high_str}].each_slice({step_val}).map(&:first)"
             return f"{obj_str}[{low_str}..].each_slice({step_val}).map(&:first)"
+        clamp_low = False
         if low and (neg_idx := self._negative_index(obj, low)):
             low_str = neg_idx
+            clamp_low = True  # len(x) - N pattern needs clamping
         else:
             low_str = self._expr(low) if low else "0"
+            if low and self._is_negative_literal(low):
+                clamp_low = True
         if high and (neg_idx := self._negative_index(obj, high)):
             high_str = neg_idx
         else:
             high_str = self._expr(high) if high else ""
+        # Clamp negative start indices: Ruby returns nil if negative index goes past start
+        # Python clamps to 0, so items[-100:2] gives items[0:2]
+        if clamp_low:
+            low_str = f"[{low_str}, -{obj_str}.length].max"
+        # Ruby returns nil for out-of-bounds slices, Python returns []
+        # Use || [] to match Python semantics
         if high_str:
-            return f"{obj_str}[{low_str}...{high_str}]"
-        return f"{obj_str}[{low_str}..]"
+            return f"({obj_str}[{low_str}...{high_str}] || [])"
+        return f"({obj_str}[{low_str}..] || [])"
 
     def _negative_index(self, obj: Expr, index: Expr) -> str | None:
         """Detect len(obj) - N and return -N as string, or None if no match."""
@@ -1637,6 +1932,10 @@ class RubyBackend:
         if self._expr(index.left.expr) != self._expr(obj):
             return None
         return f"-{index.right.value}"
+
+    def _is_negative_literal(self, expr: Expr) -> bool:
+        """Check if expression is a negative integer literal."""
+        return isinstance(expr, UnaryOp) and expr.op == "-" and isinstance(expr.operand, IntLit)
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
         markers = {}
@@ -1853,6 +2152,9 @@ class RubyBackend:
             if isinstance(expr, BinaryOp) and expr.op in ("&&", "||"):
                 if self._is_value_and_or(expr.left):
                     return self._expr(expr)
+            # Ruby's all?/any? return actual booleans, not 0/1 - don't coerce
+            if isinstance(expr, Call) and expr.func in ("all", "any"):
+                return self._expr(expr)
             inner = self._expr(expr)
             # Ternary has lower precedence than arithmetic, so wrap in parens
             return f"({inner} ? 1 : 0)"
@@ -1923,6 +2225,12 @@ def _method_name(method: str, receiver_type: Type) -> str:
             return "dup"
         if method == "extend":
             return "concat"
+        # remove is handled specially in _expr (delete_at + index)
+        # Python's in-place sort/reverse -> Ruby's bang methods
+        if method == "sort":
+            return "sort!"
+        if method == "reverse":
+            return "reverse!"
     # Python string methods to Ruby
     if method == "startswith":
         return "start_with?"

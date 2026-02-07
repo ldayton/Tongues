@@ -151,14 +151,11 @@ _SKIP_LANGS: dict[str, set[str]] = {
         "dart",
         "go",
         "java",
-        "javascript",
         "lua",
         "perl",
         "php",
-        "ruby",
         "rust",
         "swift",
-        "typescript",
         "zig",
     },
     "apptest_none": {
@@ -479,7 +476,7 @@ def discover_codegen_tests() -> list[tuple[str, str, str, str, bool]]:
 
 
 def pytest_addoption(parser):
-    """Add --target, --ignore-version, and --ignore-skips options."""
+    """Add --target, --ignore-version, --ignore-skips, and --summary options."""
     parser.addoption(
         "--target",
         action="append",
@@ -497,6 +494,12 @@ def pytest_addoption(parser):
         action="store_true",
         default=False,
         help="Run tests even if they are in the known-failure skip list",
+    )
+    parser.addoption(
+        "--summary",
+        action="store_true",
+        default=False,
+        help="Print a summary table of apptest results",
     )
 
 
@@ -653,3 +656,72 @@ def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
     if output is None:
         pytest.fail("No output from transpiler")
     return output
+
+
+# --- Summary table support ---
+
+_apptest_results: dict[
+    str, dict[str, tuple[int, int]]
+] = {}  # {lang: {test: (passed, total)}}
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Capture apptest results for summary table."""
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call" or "apptest" not in item.fixturenames:
+        return
+    # Extract lang/test from nodeid like "test_apptests.py::test_apptest[javascript/apptest_strings]"
+    if "[" not in item.nodeid:
+        return
+    test_id = item.nodeid.split("[")[1].rstrip("]")
+    if "/" not in test_id:
+        return
+    lang, test_name = test_id.split("/", 1)
+    if lang not in _apptest_results:
+        _apptest_results[lang] = {}
+    # Parse PASS/FAIL counts from output
+    output = ""
+    if report.failed and report.longrepr:
+        output = str(report.longrepr)
+    passed = output.count("PASS test_")
+    failed = output.count("FAIL test_")
+    total = passed + failed
+    if total == 0 and report.passed:
+        # Fully passing test - count from source file
+        apptest_file = APP_DIR / f"{test_name}.py"
+        if apptest_file.exists():
+            total = apptest_file.read_text().count("\ndef test_")
+            passed = total
+    _apptest_results[lang][test_name] = (passed, total)
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Print summary table if --summary flag is set."""
+    if not config.getoption("summary") or not _apptest_results:
+        return
+    terminalreporter.write_sep("=", "Apptest Summary")
+    # Collect all tests across languages
+    all_tests = sorted(
+        {t for lang_results in _apptest_results.values() for t in lang_results}
+    )
+    langs = sorted(_apptest_results.keys())
+    # Print header
+    header = f"{'Test':<20}" + "".join(f"{lang:<15}" for lang in langs)
+    terminalreporter.write_line(header)
+    terminalreporter.write_line("-" * len(header))
+    # Print rows
+    for test in all_tests:
+        row = f"{test:<20}"
+        for lang in langs:
+            if test in _apptest_results.get(lang, {}):
+                passed, total = _apptest_results[lang][test]
+                if passed == total and total > 0:
+                    cell = f"✅ {passed}/{total}"
+                else:
+                    cell = f"❌ {passed}/{total}"
+            else:
+                cell = "-"
+            row += f"{cell:<15}"
+        terminalreporter.write_line(row)

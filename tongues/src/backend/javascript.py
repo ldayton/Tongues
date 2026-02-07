@@ -111,6 +111,31 @@ class JsBackend(JsLikeBackend):
         if ir_has_bytes_ops(module):
             self._emit_bytes_helpers()
             emitted = True
+        if ir_contains_call(module, "sum"):
+            self._line("function sum(arr) { return arr.reduce((a, b) => a + b, 0); }")
+            emitted = True
+        if ir_contains_call(module, "all"):
+            self._line("function all(arr) { return arr.every(Boolean); }")
+            emitted = True
+        if ir_contains_call(module, "any"):
+            self._line("function any(arr) { return arr.some(Boolean); }")
+            emitted = True
+        if ir_contains_call(module, "sorted"):
+            self._line(
+                "function sorted(arr, reverse) { let r = [...arr].sort((a, b) => a < b ? -1 : a > b ? 1 : 0); return reverse ? r.reverse() : r; }"
+            )
+            emitted = True
+        if ir_contains_call(module, "enumerate"):
+            self._line("function enumerate(arr) { return arr.map((v, i) => [i, v]); }")
+            emitted = True
+        if ir_contains_call(module, "list"):
+            self._line("function list(x) { return typeof x === 'string' ? [...x] : [...x]; }")
+            emitted = True
+        if ir_contains_call(module, "zip"):
+            self._line(
+                "function zip(...arrs) { const len = Math.min(...arrs.map(a => a.length)); return Array.from({length: len}, (_, i) => arrs.map(a => a[i])); }"
+            )
+            emitted = True
         return emitted
 
     def _emit_range_helper(self) -> None:
@@ -154,7 +179,14 @@ class JsBackend(JsLikeBackend):
         self._line("function arrEq(a, b) {")
         self.indent += 1
         self._line("if (a.length !== b.length) return false;")
-        self._line("for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;")
+        self._line("for (let i = 0; i < a.length; i++) {")
+        self.indent += 1
+        self._line(
+            "if (Array.isArray(a[i]) && Array.isArray(b[i])) { if (!arrEq(a[i], b[i])) return false; }"
+        )
+        self._line("else if (a[i] !== b[i]) return false;")
+        self.indent -= 1
+        self._line("}")
         self._line("return true;")
         self.indent -= 1
         self._line("}")
@@ -291,7 +323,7 @@ class JsBackend(JsLikeBackend):
         self._line("let r = [];")
         self._line("if (step > 0) { for (let i = lo; i < hi; i += step) r.push(a[i]); }")
         self._line("else { for (let i = lo; i > hi; i += step) r.push(a[i]); }")
-        self._line("return r;")
+        self._line("return typeof a === 'string' ? r.join('') : r;")
         self.indent -= 1
         self._line("}")
         self._line("function deepArrEq(a, b) {")
