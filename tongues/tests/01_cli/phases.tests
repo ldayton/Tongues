@@ -1,0 +1,94 @@
+=== stop-at parse
+args: --stop-at parse
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "_type"
+stdout-contains: "Module"
+---
+
+=== stop-at subset
+args: --stop-at subset
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-empty: true
+---
+
+=== stop-at names
+args: --stop-at names
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "names"
+---
+
+=== stop-at signatures
+args: --stop-at signatures
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "functions"
+---
+
+=== stop-at fields
+args: --stop-at fields
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "classes"
+---
+
+=== stop-at hierarchy
+args: --stop-at hierarchy
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "ancestors"
+---
+
+=== stop-at inference
+args: --stop-at inference
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+---
+
+=== stop-at lowering
+args: --stop-at lowering
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+---
+
+=== stop-at analyze
+args: --stop-at analyze
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+---
+
+=== early phase failure stops pipeline
+args: --stop-at inference
+def (
+---
+exit: 1
+---
+
+=== subset pass no output
+args: --stop-at subset
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-empty: true
+---

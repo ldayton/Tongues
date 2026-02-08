@@ -1,0 +1,31 @@
+=== zero bytes
+args:
+---
+exit: 2
+stderr: error: no input provided
+---
+
+=== whitespace only goes to parser
+args:
+
+
+
+---
+exit-not: 2
+---
+
+=== no trailing newline
+args: --target python
+def f(x: int) -> int:
+    return x
+---
+exit: 0
+---
+
+=== invalid utf-8 two byte
+args:
+stdin-bytes: c3 28
+---
+exit: 1
+stderr: error: invalid utf-8 in input
+---

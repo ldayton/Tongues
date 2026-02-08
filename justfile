@@ -7,6 +7,7 @@ subset:
     cd tongues
     failed=0
     for f in $(find src -name '*.py'); do
+        [ ! -s "$f" ] && continue
         if ! uv run python -m src.tongues --stop-at subset < "$f" 2>/dev/null; then
             echo "FAIL: $f"
             uv run python -m src.tongues --stop-at subset < "$f" 2>&1 | head -5

@@ -111,6 +111,7 @@ from .ir import (
     SymbolTable,
     Ternary,
     TrimChars,
+    TryCatch,
     Truthy,
     Tuple,
     TupleAssign,
@@ -395,7 +396,11 @@ def _serialize_type(obj: Type) -> dict[str, object]:
     if isinstance(obj, Array):
         return {"_type": "Array", "element": serialize(obj.element), "size": obj.size}
     if isinstance(obj, Map):
-        return {"_type": "Map", "key": serialize(obj.key), "value": serialize(obj.value)}
+        return {
+            "_type": "Map",
+            "key": serialize(obj.key),
+            "value": serialize(obj.value),
+        }
     if isinstance(obj, Set):
         return {"_type": "Set", "element": serialize(obj.element)}
     if isinstance(obj, Tuple):

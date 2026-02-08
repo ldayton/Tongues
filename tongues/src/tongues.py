@@ -283,7 +283,9 @@ def run_pipeline(target: str, stop_at: str | None) -> int:
     try:
         ast_dict = parse(source)
     except ParseError as e:
-        print("error:" + str(e.lineno) + ":" + str(e.col) + ": " + e.msg, file=sys.stderr)
+        print(
+            "error:" + str(e.lineno) + ":" + str(e.col) + ": " + e.msg, file=sys.stderr
+        )
         return 1
     if stop_at == "parse":
         print(to_json(ast_dict))
