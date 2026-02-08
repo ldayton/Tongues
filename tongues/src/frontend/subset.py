@@ -166,6 +166,8 @@ BANNED_BUILTINS: set[str] = {
     "classmethod",
     "property",
     "complex",
+    "aiter",
+    "anext",
     "TypeVar",
 }
 
