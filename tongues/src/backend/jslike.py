@@ -1351,7 +1351,7 @@ class JsLikeBackend:
 
     def _float_lit(self, value: float, fmt: str | None) -> str:
         if fmt == "exp":
-            return f"{value:g}".replace("e+", "e")
+            return ("%g" % value).replace("e+", "e")
         return str(value)
 
     def _coerce_map_key(self, map_key_type: Type, key: Expr) -> str:

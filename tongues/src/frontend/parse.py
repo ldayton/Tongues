@@ -176,6 +176,7 @@ def tokenize(source: str) -> list[Token]:
 
     # Track if we're inside brackets (no INDENT/DEDENT inside)
     bracket_depth = 0
+    bracket_stack: list[tuple[str, int]] = []
 
     while lineno <= num_lines:
         line = lines[lineno - 1]
@@ -319,8 +320,11 @@ def tokenize(source: str) -> list[Token]:
                 tokens.append(Token(TK_OP, c, lineno, col))
                 if c == "(" or c == "[" or c == "{":
                     bracket_depth += 1
+                    bracket_stack.append((c, lineno))
                 elif c == ")" or c == "]" or c == "}":
                     bracket_depth -= 1
+                    if len(bracket_stack) > 0:
+                        bracket_stack.pop()
                 col += 1
                 continue
 
@@ -333,6 +337,16 @@ def tokenize(source: str) -> list[Token]:
             tokens.append(Token(TK_NEWLINE, "\n", lineno, line_len))
 
         lineno += 1
+
+    # Check for unmatched brackets
+    if len(bracket_stack) > 0:
+        open_bracket = bracket_stack[0][0]
+        open_line = bracket_stack[0][1]
+        raise ParseError(
+            "unmatched '" + open_bracket + "' at line " + str(open_line),
+            open_line,
+            0,
+        )
 
     # Emit remaining DEDENTs
     while len(indent_stack) > 1:
@@ -350,8 +364,11 @@ def scan_string(
     start_col = col
     start_lineno = lineno
 
-    # Skip prefix
+    # Skip prefix, detect raw
+    is_raw = False
     while col < len(line) and line[col] in "rRbBfFuU":
+        if line[col] in "rR":
+            is_raw = True
         col += 1
 
     # Get quote character
@@ -375,8 +392,12 @@ def scan_string(
             while col < len(current_line):
                 c = current_line[col]
                 if c == "\\" and col + 1 < len(current_line):
-                    col += 2
-                    continue
+                    if is_raw and current_line[col + 1] == quote:
+                        col += 2
+                        continue
+                    if not is_raw:
+                        col += 2
+                        continue
                 if (
                     c == quote
                     and col + 2 < len(current_line)
@@ -395,15 +416,37 @@ def scan_string(
             # Move to next line for triple-quoted strings
             current_lineno += 1
             if current_lineno > len(lines):
-                raise ParseError("unterminated string", start_lineno, start_col)
+                raise ParseError("unterminated string literal", start_lineno, start_col)
             current_line = current_line + "\n" + lines[current_lineno - 1]
         else:
             # Look for single quote end
             while col < len(current_line):
                 c = current_line[col]
                 if c == "\\":
-                    col += 2
-                    continue
+                    if is_raw:
+                        if (
+                            col + 1 < len(current_line)
+                            and current_line[col + 1] == quote
+                        ):
+                            col += 2
+                            continue
+                    else:
+                        if col + 1 >= len(current_line):
+                            # Line continuation in string literal
+                            current_lineno += 1
+                            if current_lineno > len(lines):
+                                raise ParseError(
+                                    "unterminated string literal",
+                                    start_lineno,
+                                    start_col,
+                                )
+                            current_line = (
+                                current_line + "\n" + lines[current_lineno - 1]
+                            )
+                            col += 2
+                            continue
+                        col += 2
+                        continue
                 if c == quote:
                     col += 1
                     value = current_line[value_start:col]
@@ -414,9 +457,11 @@ def scan_string(
                         current_line,
                     )
                 if c == "\n":
-                    raise ParseError("unterminated string", start_lineno, start_col)
+                    raise ParseError(
+                        "unterminated string literal", start_lineno, start_col
+                    )
                 col += 1
-            raise ParseError("unterminated string", start_lineno, start_col)
+            raise ParseError("unterminated string literal", start_lineno, start_col)
 
 
 def scan_number(line: str, col: int, lineno: int) -> tuple[Token, int]:
@@ -478,6 +523,15 @@ class Parser:
     def __init__(self, tokens: list[Token]):
         self.tokens: list[Token] = tokens
         self.pos: int = 0
+        self.func_depth: int = 0
+        self.loop_depth: int = 0
+        self.async_depth: int = 0
+        self.func_has_yield: bool = False
+        self.class_depth: int = 0
+        self.comp_depth: int = 0
+        self.comp_iter_depth: int = 0
+        self.comp_target_names: list[set[str]] = []
+        self.in_class_comp: bool = False
 
     def current(self) -> Token:
         """Get current token."""
@@ -542,10 +596,16 @@ class Parser:
             if tok.value == type_or_value:
                 return self.advance()
         raise ParseError(
-            "expected " + type_or_value + ", got " + tok.type + " " + repr(tok.value),
+            "invalid syntax at line " + str(tok.lineno) + ", column " + str(tok.col),
             tok.lineno,
             tok.col,
         )
+
+    def prev_token(self) -> Token:
+        """Get the previously consumed token."""
+        if self.pos > 0:
+            return self.tokens[self.pos - 1]
+        return self.tokens[0]
 
     def expect_op(self, value: str) -> Token:
         """Consume operator token with given value."""
@@ -553,7 +613,7 @@ class Parser:
         if tok.type == TK_OP and tok.value == value:
             return self.advance()
         raise ParseError(
-            "expected '" + value + "', got " + tok.type + " " + repr(tok.value),
+            "invalid syntax at line " + str(tok.lineno) + ", column " + str(tok.col),
             tok.lineno,
             tok.col,
         )
@@ -567,6 +627,29 @@ class Parser:
         """Create parse error at current position."""
         tok = self.current()
         return ParseError(msg, tok.lineno, tok.col)
+
+    def check_walrus_scope(self, target: ASTNode) -> None:
+        """Check walrus operator scope restrictions in comprehensions."""
+        if self.comp_iter_depth > 0:
+            raise self.error(
+                "assignment expression cannot be used in a comprehension iterable expression"
+            )
+        if self.in_class_comp:
+            raise self.error(
+                "assignment expression within a comprehension cannot be used in a class body"
+            )
+        if self.comp_depth > 0 and len(self.comp_target_names) > 0:
+            name = target.get("id") if isinstance(target, dict) else None
+            if isinstance(name, str):
+                i = 0
+                while i < len(self.comp_target_names):
+                    if name in self.comp_target_names[i]:
+                        raise self.error(
+                            "assignment expression cannot rebind comprehension iteration variable '"
+                            + name
+                            + "'"
+                        )
+                    i += 1
 
     def is_match_statement(self) -> bool:
         """Check if current 'match' token starts a match statement (soft keyword check)."""
@@ -594,6 +677,52 @@ class Parser:
             pos += 1
         return False
 
+    def is_type_statement(self) -> bool:
+        """Check if current 'type' token starts a type alias statement (soft keyword check)."""
+        pos = self.pos + 1
+        if pos >= len(self.tokens):
+            return False
+        if self.tokens[pos].type != TK_NAME:
+            return False
+        pos += 1
+        depth = 0
+        while pos < len(self.tokens):
+            tok = self.tokens[pos]
+            if tok.type == TK_OP:
+                if tok.value in "([{":
+                    depth += 1
+                elif tok.value in ")]}":
+                    depth -= 1
+                elif depth == 0 and tok.value == "=":
+                    return True
+            elif tok.type == TK_NEWLINE and depth == 0:
+                return False
+            pos += 1
+        return False
+
+    def parse_type_alias_stmt(self) -> ASTNode:
+        """Parse type alias statement: type Name[params] = value."""
+        tok = self.advance()  # consume 'type' soft keyword
+        name_tok = self.expect(TK_NAME)
+        name_node = make_node(
+            "Name",
+            name_tok.lineno,
+            name_tok.col,
+            {"id": name_tok.value, "ctx": {"_type": "Store"}},
+        )
+        end_from_token(name_node, name_tok)
+        type_params = self.parse_type_params()
+        self.expect_op("=")
+        value = self.parse_test()
+        node = make_node(
+            "TypeAlias",
+            tok.lineno,
+            tok.col,
+            {"name": name_node, "type_params": type_params, "value": value},
+        )
+        end_from_node(node, value)
+        return node
+
     # --- Module parsing ---
 
     def parse_module(self) -> ASTNode:
@@ -612,9 +741,12 @@ class Parser:
                 else:
                     body.append(stmt)
             self.skip_newlines()
-        return make_node(
+        node = make_node(
             "Module", tok.lineno, tok.col, {"body": body, "type_ignores": []}
         )
+        if len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     # --- Statement parsing ---
 
@@ -644,6 +776,10 @@ class Parser:
         if tok.type == TK_NAME and tok.value == "match":
             if self.is_match_statement():
                 return self.parse_match_stmt()
+        # 'type' is a soft keyword - only a type alias if followed by NAME then '=' or '['
+        if tok.type == TK_NAME and tok.value == "type":
+            if self.is_type_statement():
+                return self.parse_type_alias_stmt()
         if tok.type == TK_OP and tok.value == "@":
             return self.parse_decorated()
 
@@ -679,13 +815,17 @@ class Parser:
             return self.parse_raise_stmt()
         if tok.value == "pass":
             self.advance()
-            return make_node("Pass", tok.lineno, tok.col)
+            return end_from_token(make_node("Pass", tok.lineno, tok.col), tok)
         if tok.value == "break":
+            if self.loop_depth == 0:
+                raise self.error("'break' outside loop")
             self.advance()
-            return make_node("Break", tok.lineno, tok.col)
+            return end_from_token(make_node("Break", tok.lineno, tok.col), tok)
         if tok.value == "continue":
+            if self.loop_depth == 0:
+                raise self.error("'continue' outside loop")
             self.advance()
-            return make_node("Continue", tok.lineno, tok.col)
+            return end_from_token(make_node("Continue", tok.lineno, tok.col), tok)
         if tok.value == "import":
             return self.parse_import_stmt()
         if tok.value == "from":
@@ -706,6 +846,8 @@ class Parser:
 
     def parse_return_stmt(self) -> ASTNode:
         """Parse return statement."""
+        if self.func_depth == 0:
+            raise self.error("'return' outside function")
         tok = self.expect("return")
         value: ASTNode | None = None
         if (
@@ -714,7 +856,14 @@ class Parser:
             and not self.match(TK_ENDMARKER)
         ):
             value = self.parse_testlist_star_expr()
-        return make_node("Return", tok.lineno, tok.col, {"value": value})
+            if isinstance(value, dict) and value.get("_type") == "Starred":
+                raise self.error("starred expression is not allowed here")
+        node = make_node("Return", tok.lineno, tok.col, {"value": value})
+        if value is not None:
+            end_from_node(node, value)
+        else:
+            end_from_token(node, tok)
+        return node
 
     def parse_raise_stmt(self) -> ASTNode:
         """Parse raise statement."""
@@ -730,13 +879,22 @@ class Parser:
             if self.match("from"):
                 self.advance()
                 cause = self.parse_test()
-        return make_node("Raise", tok.lineno, tok.col, {"exc": exc, "cause": cause})
+        node = make_node("Raise", tok.lineno, tok.col, {"exc": exc, "cause": cause})
+        if cause is not None:
+            end_from_node(node, cause)
+        elif exc is not None:
+            end_from_node(node, exc)
+        else:
+            end_from_token(node, tok)
+        return node
 
     def parse_import_stmt(self) -> ASTNode:
         """Parse import statement."""
         tok = self.expect("import")
         names = self.parse_dotted_as_names()
-        return make_node("Import", tok.lineno, tok.col, {"names": names})
+        node = make_node("Import", tok.lineno, tok.col, {"names": names})
+        end_from_token(node, self.prev_token())
+        return node
 
     def parse_from_import_stmt(self) -> ASTNode:
         """Parse from ... import statement."""
@@ -757,6 +915,8 @@ class Parser:
 
         names: list[ASTNode] = []
         if self.match_op("*"):
+            if self.func_depth > 0:
+                raise self.error("import * only allowed at module level")
             self.advance()
             names.append({"_type": "alias", "name": "*", "asname": None})
         elif self.match_op("("):
@@ -765,13 +925,44 @@ class Parser:
             self.expect_op(")")
         else:
             names = self.parse_import_as_names()
+            if self.prev_token().type == TK_OP and self.prev_token().value == ",":
+                raise self.error("trailing comma not allowed without parentheses")
 
-        return make_node(
+        if module == "__future__":
+            _FUTURE_FEATURES: set[str] = {
+                "nested_scopes",
+                "generators",
+                "division",
+                "absolute_import",
+                "with_statement",
+                "print_function",
+                "unicode_literals",
+                "barry_as_FLUFL",
+                "generator_stop",
+                "annotations",
+            }
+            i = 0
+            while i < len(names):
+                nm = names[i]
+                if isinstance(nm, dict):
+                    fname = nm.get("name")
+                    if isinstance(fname, str):
+                        if fname == "braces":
+                            raise self.error("not a chance")
+                        if fname not in _FUTURE_FEATURES:
+                            raise self.error(
+                                "future feature " + fname + " is not defined"
+                            )
+                i += 1
+
+        node = make_node(
             "ImportFrom",
             tok.lineno,
             tok.col,
             {"module": module, "names": names, "level": level},
         )
+        end_from_token(node, self.prev_token())
+        return node
 
     def parse_dotted_name(self) -> str:
         """Parse dotted name like a.b.c."""
@@ -831,14 +1022,24 @@ class Parser:
         if self.match_op(","):
             self.advance()
             msg = self.parse_test()
-        return make_node("Assert", tok.lineno, tok.col, {"test": test, "msg": msg})
+        node = make_node("Assert", tok.lineno, tok.col, {"test": test, "msg": msg})
+        if msg is not None:
+            end_from_node(node, msg)
+        else:
+            end_from_node(node, test)
+        return node
 
     def parse_del_stmt(self) -> ASTNode:
         """Parse del statement."""
         tok = self.expect("del")
         targets = self.parse_exprlist()
         set_context_list(targets, "Del")
-        return make_node("Delete", tok.lineno, tok.col, {"targets": targets})
+        node = make_node("Delete", tok.lineno, tok.col, {"targets": targets})
+        if len(targets) > 0:
+            end_from_node(node, targets[len(targets) - 1])
+        else:
+            end_from_token(node, tok)
+        return node
 
     def parse_global_stmt(self) -> ASTNode:
         """Parse global statement."""
@@ -848,31 +1049,46 @@ class Parser:
         while self.match_op(","):
             self.advance()
             names.append(self.expect(TK_NAME).value)
-        return make_node("Global", tok.lineno, tok.col, {"names": names})
+        node = make_node("Global", tok.lineno, tok.col, {"names": names})
+        end_from_token(node, self.prev_token())
+        return node
 
     def parse_nonlocal_stmt(self) -> ASTNode:
         """Parse nonlocal statement."""
+        if self.func_depth == 0:
+            raise self.error("nonlocal declaration not allowed at module level")
         tok = self.expect("nonlocal")
         names: list[str] = []
         names.append(self.expect(TK_NAME).value)
         while self.match_op(","):
             self.advance()
             names.append(self.expect(TK_NAME).value)
-        return make_node("Nonlocal", tok.lineno, tok.col, {"names": names})
+        node = make_node("Nonlocal", tok.lineno, tok.col, {"names": names})
+        end_from_token(node, self.prev_token())
+        return node
 
     def parse_yield_stmt(self) -> ASTNode:
         """Parse yield statement as Expr(Yield(...))."""
         tok = self.current()
         yield_expr = self.parse_yield_expr()
-        return make_node("Expr", tok.lineno, tok.col, {"value": yield_expr})
+        return end_from_node(
+            make_node("Expr", tok.lineno, tok.col, {"value": yield_expr}), yield_expr
+        )
 
     def parse_yield_expr(self) -> ASTNode:
         """Parse yield expression."""
+        if self.func_depth == 0:
+            raise self.error("'yield' outside function")
         tok = self.expect("yield")
         if self.match("from"):
+            if self.async_depth > 0:
+                raise self.error("'yield from' inside async function")
             self.advance()
             value = self.parse_test()
-            return make_node("YieldFrom", tok.lineno, tok.col, {"value": value})
+            self.func_has_yield = True
+            return end_from_node(
+                make_node("YieldFrom", tok.lineno, tok.col, {"value": value}), value
+            )
         value: ASTNode | None = None
         if (
             not self.match(TK_NEWLINE)
@@ -881,7 +1097,15 @@ class Parser:
             and not self.match(TK_ENDMARKER)
         ):
             value = self.parse_testlist_star_expr()
-        return make_node("Yield", tok.lineno, tok.col, {"value": value})
+            if isinstance(value, dict) and value.get("_type") == "Starred":
+                raise self.error("starred expression is not allowed here")
+        self.func_has_yield = True
+        node = make_node("Yield", tok.lineno, tok.col, {"value": value})
+        if value is not None:
+            end_from_node(node, value)
+        else:
+            end_from_token(node, tok)
+        return node
 
     def parse_expr_stmt(self) -> ASTNode | None:
         """Parse expression statement (may be assignment)."""
@@ -896,9 +1120,18 @@ class Parser:
         if self.match_op(":="):
             self.advance()
             value = self.parse_test()
-            set_context(target, "Store")
-            return make_node(
-                "NamedExpr", tok.lineno, tok.col, {"target": target, "value": value}
+            validate_target(target, "Store", False, True, False)
+            self.check_walrus_scope(target)
+            if "ctx" in target:
+                target["ctx"] = {"_type": "Store"}
+            return end_from_node(
+                make_node(
+                    "NamedExpr",
+                    tok.lineno,
+                    tok.col,
+                    {"target": target, "value": value},
+                ),
+                value,
             )
 
         # Check for annotated assignment
@@ -909,11 +1142,15 @@ class Parser:
             if self.match_op("="):
                 self.advance()
                 value = self.parse_testlist_star_expr()
-            set_context(target, "Store")
+                if isinstance(value, dict) and value.get("_type") == "Starred":
+                    raise self.error("starred expression is not allowed here")
+            validate_target(target, "Store", False, False, True)
+            if "ctx" in target:
+                target["ctx"] = {"_type": "Store"}
             simple = 1
             if target.get("_type") != "Name":
                 simple = 0
-            return make_node(
+            node = make_node(
                 "AnnAssign",
                 tok.lineno,
                 tok.col,
@@ -924,6 +1161,11 @@ class Parser:
                     "simple": simple,
                 },
             )
+            if value is not None:
+                end_from_node(node, value)
+            else:
+                end_from_node(node, annotation)
+            return node
 
         # Check for augmented assignment
         aug_ops = [
@@ -946,13 +1188,18 @@ class Parser:
             if self.match_op(aug_ops[i]):
                 op_tok = self.advance()
                 value = self.parse_testlist_star_expr()
-                set_context(target, "Store")
+                validate_target(target, "Store", True, False, False)
+                if "ctx" in target:
+                    target["ctx"] = {"_type": "Store"}
                 op = augassign_op(op_tok.value)
-                return make_node(
-                    "AugAssign",
-                    tok.lineno,
-                    tok.col,
-                    {"target": target, "op": op, "value": value},
+                return end_from_node(
+                    make_node(
+                        "AugAssign",
+                        tok.lineno,
+                        tok.col,
+                        {"target": target, "op": op, "value": value},
+                    ),
+                    value,
                 )
             i += 1
 
@@ -965,32 +1212,134 @@ class Parser:
                 targets.append(next_expr)
             # Last one is the value
             value = targets.pop()
-            # Set context on targets
+            # Validate starred in value (RHS)
+            if isinstance(value, dict) and value.get("_type") == "Starred":
+                raise self.error("starred expression is not allowed here")
+            # Validate starred in targets
             j = 0
             while j < len(targets):
+                t = targets[j]
+                if isinstance(t, dict):
+                    tt = t.get("_type")
+                    if tt == "Starred":
+                        raise self.error(
+                            "starred assignment target must be in a list or tuple"
+                        )
+                    if tt in ("Tuple", "List"):
+                        telts = t.get("elts")
+                        if isinstance(telts, list):
+                            star_count = 0
+                            si = 0
+                            while si < len(telts):
+                                if (
+                                    isinstance(telts[si], dict)
+                                    and telts[si].get("_type") == "Starred"
+                                ):
+                                    star_count += 1
+                                si += 1
+                            if star_count > 1:
+                                raise self.error(
+                                    "multiple starred expressions in assignment"
+                                )
                 set_context(targets[j], "Store")
                 j += 1
-            return make_node(
-                "Assign", tok.lineno, tok.col, {"targets": targets, "value": value}
+            return end_from_node(
+                make_node(
+                    "Assign", tok.lineno, tok.col, {"targets": targets, "value": value}
+                ),
+                value,
             )
 
         # Just an expression
-        return make_node("Expr", tok.lineno, tok.col, {"value": target})
+        if isinstance(target, dict) and target.get("_type") == "Starred":
+            raise self.error("starred expression is not allowed here")
+        return end_from_node(
+            make_node("Expr", tok.lineno, tok.col, {"value": target}), target
+        )
 
     # --- Compound statements ---
 
-    def parse_funcdef(self) -> ASTNode:
+    def parse_type_params(self) -> list[ASTNode]:
+        """Parse PEP 695 type parameter list: [T, U, *Ts, **P]."""
+        if not self.match_op("["):
+            return []
+        self.advance()
+        params: list[ASTNode] = []
+        while not self.match_op("]"):
+            if self.match_op(","):
+                self.advance()
+                continue
+            tok = self.current()
+            if self.match_op("**"):
+                self.advance()
+                name_tok = self.expect(TK_NAME)
+                node = make_node(
+                    "ParamSpec",
+                    tok.lineno,
+                    tok.col,
+                    {"name": name_tok.value, "default_value": None},
+                )
+                end_from_token(node, name_tok)
+            elif self.match_op("*"):
+                self.advance()
+                name_tok = self.expect(TK_NAME)
+                node = make_node(
+                    "TypeVarTuple",
+                    tok.lineno,
+                    tok.col,
+                    {"name": name_tok.value, "default_value": None},
+                )
+                end_from_token(node, name_tok)
+            else:
+                name_tok = self.expect(TK_NAME)
+                bound: ASTNode | None = None
+                if self.match_op(":"):
+                    self.advance()
+                    bound = self.parse_test()
+                node = make_node(
+                    "TypeVar",
+                    tok.lineno,
+                    tok.col,
+                    {"name": name_tok.value, "bound": bound, "default_value": None},
+                )
+                end_from_token(node, name_tok)
+            if self.match_op("="):
+                self.advance()
+                default = self.parse_test()
+                node["default_value"] = default
+                end_from_node(node, default)
+            params.append(node)
+        self.expect_op("]")
+        return params
+
+    def parse_funcdef(self, is_async: bool = False) -> ASTNode:
         """Parse function definition."""
         tok = self.expect("def")
         name = self.expect(TK_NAME).value
+        type_params = self.parse_type_params()
         params = self.parse_parameters()
         returns: ASTNode | None = None
         if self.match_op("->"):
             self.advance()
             returns = self.parse_test()
         self.expect_op(":")
+        saved_func_depth = self.func_depth
+        saved_loop_depth = self.loop_depth
+        saved_async_depth = self.async_depth
+        saved_has_yield = self.func_has_yield
+        self.func_depth = self.func_depth + 1
+        self.loop_depth = 0
+        self.async_depth = 1 if is_async else 0
+        self.func_has_yield = False
         body = self.parse_suite()
-        return make_node(
+        func_had_yield = self.func_has_yield
+        if is_async and func_had_yield:
+            _check_async_generator_return(body, tok)
+        self.func_depth = saved_func_depth
+        self.loop_depth = saved_loop_depth
+        self.async_depth = saved_async_depth
+        self.func_has_yield = saved_has_yield
+        node = make_node(
             "FunctionDef",
             tok.lineno,
             tok.col,
@@ -1000,15 +1349,18 @@ class Parser:
                 "body": body,
                 "decorator_list": [],
                 "returns": returns,
-                "type_params": [],
+                "type_params": type_params,
             },
         )
+        if len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     def parse_async_stmt(self) -> ASTNode:
         """Parse async statement (async def, async for, async with)."""
         tok = self.expect("async")
         if self.match("def"):
-            func = self.parse_funcdef()
+            func = self.parse_funcdef(is_async=True)
             func["_type"] = "AsyncFunctionDef"
             func["lineno"] = tok.lineno
             func["col_offset"] = tok.col
@@ -1047,6 +1399,9 @@ class Parser:
         vararg: ASTNode | None = None
         kwarg: ASTNode | None = None
         in_kwonly = False
+        has_default = False
+        seen_names: set[str] = set()
+        bare_star = False
 
         while not self.match_op(")"):
             if self.match_op(","):
@@ -1058,6 +1413,7 @@ class Parser:
                 self.advance()
                 posonlyargs = args[:]
                 args = []
+                has_default = False
                 continue
 
             # *args or bare *
@@ -1066,16 +1422,34 @@ class Parser:
                 in_kwonly = True
                 if self.match(TK_NAME):
                     vararg = self.parse_arg()
+                    pname = vararg.get("arg")
+                    if isinstance(pname, str):
+                        if pname in seen_names:
+                            raise self.error("duplicate argument '" + pname + "'")
+                        seen_names.add(pname)
+                    bare_star = False
+                else:
+                    bare_star = True
                 continue
 
             # **kwargs
             if self.match_op("**"):
                 self.advance()
                 kwarg = self.parse_arg()
+                pname = kwarg.get("arg")
+                if isinstance(pname, str):
+                    if pname in seen_names:
+                        raise self.error("duplicate argument '" + pname + "'")
+                    seen_names.add(pname)
                 continue
 
             # Regular argument
             arg = self.parse_arg()
+            pname = arg.get("arg")
+            if isinstance(pname, str):
+                if pname in seen_names:
+                    raise self.error("duplicate argument '" + pname + "'")
+                seen_names.add(pname)
             default: ASTNode | None = None
             if self.match_op("="):
                 self.advance()
@@ -1085,9 +1459,16 @@ class Parser:
                 kwonlyargs.append(arg)
                 kw_defaults.append(default)
             else:
+                if default is not None:
+                    has_default = True
+                elif has_default:
+                    raise self.error("non-default argument follows default argument")
                 args.append(arg)
                 if default is not None:
                     defaults.append(default)
+
+        if bare_star and len(kwonlyargs) == 0:
+            raise self.error("named arguments must follow bare *")
 
         return {
             "_type": "arguments",
@@ -1122,6 +1503,7 @@ class Parser:
         """Parse class definition."""
         tok = self.expect("class")
         name = self.expect(TK_NAME).value
+        type_params = self.parse_type_params()
         bases: list[ASTNode] = []
         keywords: list[ASTNode] = []
         if self.match_op("("):
@@ -1129,9 +1511,17 @@ class Parser:
             if not self.match_op(")"):
                 bases, keywords = self.parse_arglist()
             self.expect_op(")")
+            i = 0
+            while i < len(bases):
+                b = bases[i]
+                if isinstance(b, dict) and b.get("_type") == "GeneratorExp":
+                    raise self.error("cannot use generator expression in class bases")
+                i += 1
         self.expect_op(":")
+        self.class_depth += 1
         body = self.parse_suite()
-        return make_node(
+        self.class_depth -= 1
+        node = make_node(
             "ClassDef",
             tok.lineno,
             tok.col,
@@ -1141,16 +1531,19 @@ class Parser:
                 "keywords": keywords,
                 "body": body,
                 "decorator_list": [],
-                "type_params": [],
+                "type_params": type_params,
             },
         )
+        if len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     def parse_decorated(self) -> ASTNode:
         """Parse decorated function or class."""
         decorators: list[ASTNode] = []
         while self.match_op("@"):
             tok = self.advance()
-            decorator = self.parse_test()
+            decorator = self.parse_namedexpr_test()
             decorators.append(decorator)
             self.skip_newlines()
 
@@ -1201,9 +1594,13 @@ class Parser:
             self.expect_op(":")
             orelse = self.parse_suite()
 
-        return make_node(
+        node = make_node(
             "If", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
         )
+        last = orelse if len(orelse) > 0 else body
+        if len(last) > 0:
+            end_from_node(node, last[len(last) - 1])
+        return node
 
     def parse_elif(self) -> ASTNode:
         """Parse elif as nested If."""
@@ -1222,16 +1619,22 @@ class Parser:
             self.expect_op(":")
             orelse = self.parse_suite()
 
-        return make_node(
+        node = make_node(
             "If", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
         )
+        last = orelse if len(orelse) > 0 else body
+        if len(last) > 0:
+            end_from_node(node, last[len(last) - 1])
+        return node
 
     def parse_while_stmt(self) -> ASTNode:
         """Parse while statement."""
         tok = self.expect("while")
         test = self.parse_namedexpr_test()
         self.expect_op(":")
+        self.loop_depth += 1
         body = self.parse_suite()
+        self.loop_depth -= 1
         orelse: list[ASTNode] = []
 
         self.skip_newlines()
@@ -1240,19 +1643,27 @@ class Parser:
             self.expect_op(":")
             orelse = self.parse_suite()
 
-        return make_node(
+        node = make_node(
             "While", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
         )
+        last = orelse if len(orelse) > 0 else body
+        if len(last) > 0:
+            end_from_node(node, last[len(last) - 1])
+        return node
 
     def parse_for_stmt(self) -> ASTNode:
         """Parse for statement."""
         tok = self.expect("for")
         target = self.parse_target_list()
+        if isinstance(target, dict) and target.get("_type") == "Starred":
+            raise self.error("starred assignment target must be in a list or tuple")
         set_context(target, "Store")
         self.expect("in")
         iter_expr = self.parse_testlist_star_expr()
         self.expect_op(":")
+        self.loop_depth += 1
         body = self.parse_suite()
+        self.loop_depth -= 1
         orelse: list[ASTNode] = []
 
         self.skip_newlines()
@@ -1261,12 +1672,16 @@ class Parser:
             self.expect_op(":")
             orelse = self.parse_suite()
 
-        return make_node(
+        node = make_node(
             "For",
             tok.lineno,
             tok.col,
             {"target": target, "iter": iter_expr, "body": body, "orelse": orelse},
         )
+        last = orelse if len(orelse) > 0 else body
+        if len(last) > 0:
+            end_from_node(node, last[len(last) - 1])
+        return node
 
     def parse_try_stmt(self) -> ASTNode:
         """Parse try statement."""
@@ -1300,14 +1715,15 @@ class Parser:
 
             self.expect_op(":")
             handler_body = self.parse_suite()
-            handlers.append(
-                make_node(
-                    "ExceptHandler",
-                    handler_tok.lineno,
-                    handler_tok.col,
-                    {"type": exc_type, "name": exc_name, "body": handler_body},
-                )
+            handler_node = make_node(
+                "ExceptHandler",
+                handler_tok.lineno,
+                handler_tok.col,
+                {"type": exc_type, "name": exc_name, "body": handler_body},
             )
+            if len(handler_body) > 0:
+                end_from_node(handler_node, handler_body[len(handler_body) - 1])
+            handlers.append(handler_node)
             self.skip_newlines()
 
         # Parse else
@@ -1324,7 +1740,7 @@ class Parser:
             finalbody = self.parse_suite()
 
         type_name = "TryStar" if is_star else "Try"
-        return make_node(
+        node = make_node(
             type_name,
             tok.lineno,
             tok.col,
@@ -1335,6 +1751,15 @@ class Parser:
                 "finalbody": finalbody,
             },
         )
+        if len(finalbody) > 0:
+            end_from_node(node, finalbody[len(finalbody) - 1])
+        elif len(orelse) > 0:
+            end_from_node(node, orelse[len(orelse) - 1])
+        elif len(handlers) > 0:
+            end_from_node(node, handlers[len(handlers) - 1])
+        elif len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     def parse_with_stmt(self) -> ASTNode:
         """Parse with statement."""
@@ -1349,7 +1774,10 @@ class Parser:
 
         self.expect_op(":")
         body = self.parse_suite()
-        return make_node("With", tok.lineno, tok.col, {"items": items, "body": body})
+        node = make_node("With", tok.lineno, tok.col, {"items": items, "body": body})
+        if len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     def parse_with_item(self) -> ASTNode:
         """Parse a single with item."""
@@ -1379,9 +1807,15 @@ class Parser:
             self.skip_newlines()
 
         self.expect(TK_DEDENT)
-        return make_node(
+        node = make_node(
             "Match", tok.lineno, tok.col, {"subject": subject, "cases": cases}
         )
+        if len(cases) > 0:
+            last_case = cases[len(cases) - 1]
+            case_body = last_case.get("body")
+            if isinstance(case_body, list) and len(case_body) > 0:
+                end_from_node(node, case_body[len(case_body) - 1])
+        return node
 
     def parse_case(self) -> ASTNode:
         """Parse a case clause."""
@@ -1445,11 +1879,14 @@ class Parser:
             self.advance()
             num_tok = self.expect(TK_NUMBER)
             const = make_constant_from_token(num_tok)
-            neg = make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "USub"}, "operand": const},
+            neg = end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "USub"}, "operand": const},
+                ),
+                const,
             )
             return {"_type": "MatchValue", "value": neg}
 
@@ -1467,19 +1904,29 @@ class Parser:
             # Check if it's an attribute pattern (MatchValue with dotted name)
             if "." in name:
                 parts = name.split(".")
-                result: ASTNode = make_node(
-                    "Name",
-                    tok.lineno,
-                    tok.col,
-                    {"id": parts[0], "ctx": {"_type": "Load"}},
+                result: ASTNode = end_from_token(
+                    make_node(
+                        "Name",
+                        tok.lineno,
+                        tok.col,
+                        {"id": parts[0], "ctx": {"_type": "Load"}},
+                    ),
+                    self.prev_token(),
                 )
                 i = 1
                 while i < len(parts):
-                    result = make_node(
-                        "Attribute",
-                        tok.lineno,
-                        tok.col,
-                        {"value": result, "attr": parts[i], "ctx": {"_type": "Load"}},
+                    result = end_from_token(
+                        make_node(
+                            "Attribute",
+                            tok.lineno,
+                            tok.col,
+                            {
+                                "value": result,
+                                "attr": parts[i],
+                                "ctx": {"_type": "Load"},
+                            },
+                        ),
+                        self.prev_token(),
                     )
                     i += 1
                 return {"_type": "MatchValue", "value": result}
@@ -1496,7 +1943,9 @@ class Parser:
         if self.match_op("{"):
             return self.parse_mapping_pattern()
 
-        raise self.error("unexpected token in pattern: " + tok.value)
+        raise self.error(
+            "unexpected token '" + tok.value + "' at line " + str(tok.lineno)
+        )
 
     def parse_dotted_name_for_pattern(self) -> str:
         """Parse dotted name for pattern matching."""
@@ -1531,16 +1980,22 @@ class Parser:
 
         # Build class reference
         parts = name.split(".")
-        cls: ASTNode = make_node(
-            "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+        cls: ASTNode = end_from_token(
+            make_node(
+                "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+            ),
+            tok,
         )
         i = 1
         while i < len(parts):
-            cls = make_node(
-                "Attribute",
-                tok.lineno,
-                tok.col,
-                {"value": cls, "attr": parts[i], "ctx": {"_type": "Load"}},
+            cls = end_from_token(
+                make_node(
+                    "Attribute",
+                    tok.lineno,
+                    tok.col,
+                    {"value": cls, "attr": parts[i], "ctx": {"_type": "Load"}},
+                ),
+                tok,
             )
             i += 1
 
@@ -1634,33 +2089,48 @@ class Parser:
         if tok.value in ("None", "True", "False"):
             self.advance()
             if tok.value == "None":
-                return make_node("Constant", tok.lineno, tok.col, {"value": None})
+                return end_from_token(
+                    make_node("Constant", tok.lineno, tok.col, {"value": None}), tok
+                )
             if tok.value == "True":
-                return make_node("Constant", tok.lineno, tok.col, {"value": True})
-            return make_node("Constant", tok.lineno, tok.col, {"value": False})
+                return end_from_token(
+                    make_node("Constant", tok.lineno, tok.col, {"value": True}), tok
+                )
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": False}), tok
+            )
         if self.match_op("-"):
             self.advance()
             num_tok = self.expect(TK_NUMBER)
             const = make_constant_from_token(num_tok)
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "USub"}, "operand": const},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "USub"}, "operand": const},
+                ),
+                const,
             )
         # Dotted name for attribute
         name = self.parse_dotted_name_for_pattern()
         parts = name.split(".")
-        result: ASTNode = make_node(
-            "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+        result: ASTNode = end_from_token(
+            make_node(
+                "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+            ),
+            self.prev_token(),
         )
         i = 1
         while i < len(parts):
-            result = make_node(
-                "Attribute",
-                tok.lineno,
-                tok.col,
-                {"value": result, "attr": parts[i], "ctx": {"_type": "Load"}},
+            result = end_from_token(
+                make_node(
+                    "Attribute",
+                    tok.lineno,
+                    tok.col,
+                    {"value": result, "attr": parts[i], "ctx": {"_type": "Load"}},
+                ),
+                self.prev_token(),
             )
             i += 1
         return result
@@ -1706,9 +2176,18 @@ class Parser:
         if self.match_op(":="):
             self.advance()
             value = self.parse_test()
-            set_context(expr, "Store")
-            return make_node(
-                "NamedExpr", tok.lineno, tok.col, {"target": expr, "value": value}
+            validate_target(expr, "Store", False, True, False)
+            self.check_walrus_scope(expr)
+            if "ctx" in expr:
+                expr["ctx"] = {"_type": "Store"}
+            return end_from_node(
+                make_node(
+                    "NamedExpr",
+                    tok.lineno,
+                    tok.col,
+                    {"target": expr, "value": value},
+                ),
+                value,
             )
         return expr
 
@@ -1729,11 +2208,14 @@ class Parser:
             condition = self.parse_or_test()
             self.expect("else")
             orelse = self.parse_test()
-            return make_node(
-                "IfExp",
-                tok.lineno,
-                tok.col,
-                {"test": condition, "body": expr, "orelse": orelse},
+            return end_from_node(
+                make_node(
+                    "IfExp",
+                    tok.lineno,
+                    tok.col,
+                    {"test": condition, "body": expr, "orelse": orelse},
+                ),
+                orelse,
             )
 
         return expr
@@ -1746,7 +2228,10 @@ class Parser:
             params = self.parse_varargslist()
         self.expect_op(":")
         body = self.parse_test()
-        return make_node("Lambda", tok.lineno, tok.col, {"args": params, "body": body})
+        return end_from_node(
+            make_node("Lambda", tok.lineno, tok.col, {"args": params, "body": body}),
+            body,
+        )
 
     def parse_varargslist(self) -> ASTNode:
         """Parse lambda argument list (no type annotations)."""
@@ -1758,6 +2243,7 @@ class Parser:
         vararg: ASTNode | None = None
         kwarg: ASTNode | None = None
         in_kwonly = False
+        has_default = False
 
         while not self.match_op(":"):
             if self.match_op(","):
@@ -1768,6 +2254,7 @@ class Parser:
                 self.advance()
                 posonlyargs = args[:]
                 args = []
+                has_default = False
                 continue
 
             if self.match_op("*"):
@@ -1819,6 +2306,10 @@ class Parser:
                 kwonlyargs.append(arg)
                 kw_defaults.append(default)
             else:
+                if default is not None:
+                    has_default = True
+                elif has_default:
+                    raise self.error("non-default argument follows default argument")
                 args.append(arg)
                 if default is not None:
                     defaults.append(default)
@@ -1844,8 +2335,11 @@ class Parser:
             values.append(self.parse_and_test())
         if len(values) == 1:
             return values[0]
-        return make_node(
-            "BoolOp", tok.lineno, tok.col, {"op": {"_type": "Or"}, "values": values}
+        return end_from_node(
+            make_node(
+                "BoolOp", tok.lineno, tok.col, {"op": {"_type": "Or"}, "values": values}
+            ),
+            values[len(values) - 1],
         )
 
     def parse_and_test(self) -> ASTNode:
@@ -1858,8 +2352,14 @@ class Parser:
             values.append(self.parse_not_test())
         if len(values) == 1:
             return values[0]
-        return make_node(
-            "BoolOp", tok.lineno, tok.col, {"op": {"_type": "And"}, "values": values}
+        return end_from_node(
+            make_node(
+                "BoolOp",
+                tok.lineno,
+                tok.col,
+                {"op": {"_type": "And"}, "values": values},
+            ),
+            values[len(values) - 1],
         )
 
     def parse_not_test(self) -> ASTNode:
@@ -1868,11 +2368,14 @@ class Parser:
         if self.match("not"):
             self.advance()
             operand = self.parse_not_test()
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "Not"}, "operand": operand},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "Not"}, "operand": operand},
+                ),
+                operand,
             )
         return self.parse_comparison()
 
@@ -1892,11 +2395,14 @@ class Parser:
 
         if len(ops) == 0:
             return left
-        return make_node(
-            "Compare",
-            tok.lineno,
-            tok.col,
-            {"left": left, "ops": ops, "comparators": comparators},
+        return end_from_node(
+            make_node(
+                "Compare",
+                tok.lineno,
+                tok.col,
+                {"left": left, "ops": ops, "comparators": comparators},
+            ),
+            comparators[len(comparators) - 1],
         )
 
     def parse_comp_op(self) -> ASTNode | None:
@@ -1942,11 +2448,14 @@ class Parser:
         while self.match_op("|"):
             self.advance()
             right = self.parse_xor_expr()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": "BitOr"}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": "BitOr"}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -1957,11 +2466,14 @@ class Parser:
         while self.match_op("^"):
             self.advance()
             right = self.parse_and_expr()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": "BitXor"}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": "BitXor"}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -1972,11 +2484,14 @@ class Parser:
         while self.match_op("&"):
             self.advance()
             right = self.parse_shift_expr()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": "BitAnd"}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": "BitAnd"}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -1988,11 +2503,14 @@ class Parser:
             op_tok = self.advance()
             op_type = "LShift" if op_tok.value == "<<" else "RShift"
             right = self.parse_arith_expr()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": op_type}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": op_type}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -2004,11 +2522,14 @@ class Parser:
             op_tok = self.advance()
             op_type = "Add" if op_tok.value == "+" else "Sub"
             right = self.parse_term()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": op_type}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": op_type}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -2032,11 +2553,14 @@ class Parser:
                 break
             self.advance()
             right = self.parse_factor()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": op_type}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": op_type}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -2046,29 +2570,38 @@ class Parser:
         if self.match_op("+"):
             self.advance()
             operand = self.parse_factor()
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "UAdd"}, "operand": operand},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "UAdd"}, "operand": operand},
+                ),
+                operand,
             )
         if self.match_op("-"):
             self.advance()
             operand = self.parse_factor()
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "USub"}, "operand": operand},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "USub"}, "operand": operand},
+                ),
+                operand,
             )
         if self.match_op("~"):
             self.advance()
             operand = self.parse_factor()
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "Invert"}, "operand": operand},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "Invert"}, "operand": operand},
+                ),
+                operand,
             )
         return self.parse_power()
 
@@ -2079,11 +2612,14 @@ class Parser:
         if self.match_op("**"):
             self.advance()
             exp = self.parse_factor()
-            return make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": base, "op": {"_type": "Pow"}, "right": exp},
+            return end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": base, "op": {"_type": "Pow"}, "right": exp},
+                ),
+                exp,
             )
         return base
 
@@ -2091,9 +2627,13 @@ class Parser:
         """Parse await_expr: ['await'] atom_expr."""
         tok = self.current()
         if self.match("await"):
+            if self.async_depth == 0:
+                raise self.error("'await' outside async function")
             self.advance()
             value = self.parse_atom_expr()
-            return make_node("Await", tok.lineno, tok.col, {"value": value})
+            return end_from_node(
+                make_node("Await", tok.lineno, tok.col, {"value": value}), value
+            )
         return self.parse_atom_expr()
 
     def parse_atom_expr(self) -> ASTNode:
@@ -2119,18 +2659,24 @@ class Parser:
         if not self.match_op(")"):
             args, keywords = self.parse_arglist()
 
-        self.expect_op(")")
-        return make_node(
-            "Call",
-            tok.lineno,
-            tok.col,
-            {"func": func, "args": args, "keywords": keywords},
+        close = self.expect_op(")")
+        return end_from_token(
+            make_node(
+                "Call",
+                tok.lineno,
+                tok.col,
+                {"func": func, "args": args, "keywords": keywords},
+            ),
+            close,
         )
 
     def parse_arglist(self) -> tuple[list[ASTNode], list[ASTNode]]:
         """Parse argument list."""
         args: list[ASTNode] = []
         keywords: list[ASTNode] = []
+        has_keyword = False
+        has_kwargs = False
+        seen_keywords: set[str] = set()
 
         while not self.match_op(")"):
             if self.match_op(","):
@@ -2142,18 +2688,26 @@ class Parser:
                 self.advance()
                 value = self.parse_test()
                 keywords.append({"_type": "keyword", "arg": None, "value": value})
+                has_kwargs = True
                 continue
 
             # *args
             if self.match_op("*"):
-                self.advance()
+                if has_kwargs:
+                    raise self.error(
+                        "iterable argument unpacking follows keyword argument unpacking"
+                    )
+                star_tok = self.advance()
                 value = self.parse_test()
                 args.append(
-                    make_node(
-                        "Starred",
-                        self.current().lineno,
-                        self.current().col,
-                        {"value": value, "ctx": {"_type": "Load"}},
+                    end_from_node(
+                        make_node(
+                            "Starred",
+                            star_tok.lineno,
+                            star_tok.col,
+                            {"value": value, "ctx": {"_type": "Load"}},
+                        ),
+                        value,
                     )
                 )
                 continue
@@ -2163,8 +2717,20 @@ class Parser:
                 name = self.expect(TK_NAME).value
                 self.expect_op("=")
                 value = self.parse_test()
+                if name in seen_keywords:
+                    raise self.error("keyword argument repeated: " + name)
+                seen_keywords.add(name)
                 keywords.append({"_type": "keyword", "arg": name, "value": value})
+                has_keyword = True
                 continue
+
+            # Positional after keyword/kwargs is an error
+            if has_kwargs:
+                raise self.error(
+                    "positional argument follows keyword argument unpacking"
+                )
+            if has_keyword:
+                raise self.error("positional argument follows keyword argument")
 
             # Positional argument (may include comprehension)
             arg = self.parse_test()
@@ -2172,12 +2738,18 @@ class Parser:
             # Check for comprehension making this a generator expression
             if self.match("for"):
                 generators = self.parse_comp_for()
-                arg = make_node(
-                    "GeneratorExp",
-                    arg.get("lineno", 1),
-                    arg.get("col_offset", 0),
-                    {"elt": arg, "generators": generators},
+                _check_comp_walrus([arg], generators, self.class_depth > 0)
+                arg = end_from_token(
+                    make_node(
+                        "GeneratorExp",
+                        arg.get("lineno", 1),
+                        arg.get("col_offset", 0),
+                        {"elt": arg, "generators": generators},
+                    ),
+                    self.prev_token(),
                 )
+                if len(args) > 0 or not self.match_op(")"):
+                    raise self.error("generator expression must be parenthesized")
 
             args.append(arg)
 
@@ -2186,6 +2758,13 @@ class Parser:
     def parse_comp_for(self) -> list[ASTNode]:
         """Parse comprehension for clause(s)."""
         generators: list[ASTNode] = []
+        saved_comp_depth = self.comp_depth
+        saved_in_class_comp = self.in_class_comp
+        self.comp_depth += 1
+        target_names: set[str] = set()
+        self.comp_target_names.append(target_names)
+        if self.class_depth > 0 and saved_comp_depth == 0:
+            self.in_class_comp = True
         while self.match("for") or self.match("async"):
             is_async = 0
             if self.match("async"):
@@ -2193,9 +2772,14 @@ class Parser:
                 is_async = 1
             self.expect("for")
             target = self.parse_target_list()
+            if isinstance(target, dict) and target.get("_type") == "Starred":
+                raise self.error("starred assignment target must be in a list or tuple")
             set_context(target, "Store")
+            _collect_names(target, target_names)
             self.expect("in")
+            self.comp_iter_depth += 1
             iter_expr = self.parse_or_test()
+            self.comp_iter_depth -= 1
             ifs: list[ASTNode] = []
             while self.match("if"):
                 self.advance()
@@ -2209,6 +2793,9 @@ class Parser:
                     "is_async": is_async,
                 }
             )
+        self.comp_target_names.pop()
+        self.comp_depth = saved_comp_depth
+        self.in_class_comp = saved_in_class_comp
         return generators
 
     def parse_target_list(self) -> ASTNode:
@@ -2223,8 +2810,11 @@ class Parser:
             items.append(self.parse_target())
         if len(items) == 1:
             return items[0]
-        return make_node(
-            "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+        return end_from_node(
+            make_node(
+                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+            ),
+            items[len(items) - 1],
         )
 
     def parse_target(self) -> ASTNode:
@@ -2233,9 +2823,15 @@ class Parser:
         if self.match_op("("):
             self.advance()
             if self.match_op(")"):
-                self.advance()
-                return make_node(
-                    "Tuple", tok.lineno, tok.col, {"elts": [], "ctx": {"_type": "Load"}}
+                close = self.advance()
+                return end_from_token(
+                    make_node(
+                        "Tuple",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": [], "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
             inner = self.parse_target_list()
             self.expect_op(")")
@@ -2243,9 +2839,15 @@ class Parser:
         if self.match_op("["):
             self.advance()
             if self.match_op("]"):
-                self.advance()
-                return make_node(
-                    "List", tok.lineno, tok.col, {"elts": [], "ctx": {"_type": "Load"}}
+                close = self.advance()
+                return end_from_token(
+                    make_node(
+                        "List",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": [], "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
             items: list[ASTNode] = []
             items.append(self.parse_target())
@@ -2254,18 +2856,27 @@ class Parser:
                 if self.match_op("]"):
                     break
                 items.append(self.parse_target())
-            self.expect_op("]")
-            return make_node(
-                "List", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+            close = self.expect_op("]")
+            return end_from_token(
+                make_node(
+                    "List",
+                    tok.lineno,
+                    tok.col,
+                    {"elts": items, "ctx": {"_type": "Load"}},
+                ),
+                close,
             )
         if self.match_op("*"):
             star_tok = self.advance()
             value = self.parse_target()
-            return make_node(
-                "Starred",
-                star_tok.lineno,
-                star_tok.col,
-                {"value": value, "ctx": {"_type": "Load"}},
+            return end_from_node(
+                make_node(
+                    "Starred",
+                    star_tok.lineno,
+                    star_tok.col,
+                    {"value": value, "ctx": {"_type": "Load"}},
+                ),
+                value,
             )
         # Name with optional attribute/subscript
         base = self.parse_atom()
@@ -2282,12 +2893,15 @@ class Parser:
         """Parse subscript trailer."""
         tok = self.expect_op("[")
         slice_node = self.parse_subscript_inner()
-        self.expect_op("]")
-        return make_node(
-            "Subscript",
-            tok.lineno,
-            tok.col,
-            {"value": value, "slice": slice_node, "ctx": {"_type": "Load"}},
+        close = self.expect_op("]")
+        return end_from_token(
+            make_node(
+                "Subscript",
+                tok.lineno,
+                tok.col,
+                {"value": value, "slice": slice_node, "ctx": {"_type": "Load"}},
+            ),
+            close,
         )
 
     def parse_subscript_inner(self) -> ASTNode:
@@ -2301,11 +2915,14 @@ class Parser:
             items.append(self.parse_subscript_item())
         if len(items) == 1:
             return items[0]
-        return make_node(
-            "Tuple",
-            self.current().lineno,
-            self.current().col,
-            {"elts": items, "ctx": {"_type": "Load"}},
+        return end_from_node(
+            make_node(
+                "Tuple",
+                self.current().lineno,
+                self.current().col,
+                {"elts": items, "ctx": {"_type": "Load"}},
+            ),
+            items[len(items) - 1],
         )
 
     def parse_subscript_item(self) -> ASTNode:
@@ -2334,19 +2951,31 @@ class Parser:
             if not self.match_op(",") and not self.match_op("]"):
                 step = self.parse_test()
 
-        return make_node(
+        node = make_node(
             "Slice", tok.lineno, tok.col, {"lower": lower, "upper": upper, "step": step}
         )
+        if step is not None:
+            end_from_node(node, step)
+        elif upper is not None:
+            end_from_node(node, upper)
+        elif lower is not None:
+            end_from_token(node, self.prev_token())
+        else:
+            end_from_token(node, self.prev_token())
+        return node
 
     def parse_attribute(self, value: ASTNode) -> ASTNode:
         """Parse attribute access trailer."""
         tok = self.expect_op(".")
-        name = self.expect(TK_NAME).value
-        return make_node(
-            "Attribute",
-            tok.lineno,
-            tok.col,
-            {"value": value, "attr": name, "ctx": {"_type": "Load"}},
+        name_tok = self.expect(TK_NAME)
+        return end_from_token(
+            make_node(
+                "Attribute",
+                tok.lineno,
+                tok.col,
+                {"value": value, "attr": name_tok.value, "ctx": {"_type": "Load"}},
+            ),
+            name_tok,
         )
 
     def parse_atom(self) -> ASTNode:
@@ -2357,9 +2986,15 @@ class Parser:
         if self.match_op("("):
             self.advance()
             if self.match_op(")"):
-                self.advance()
-                return make_node(
-                    "Tuple", tok.lineno, tok.col, {"elts": [], "ctx": {"_type": "Load"}}
+                close = self.advance()
+                return end_from_token(
+                    make_node(
+                        "Tuple",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": [], "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
 
             # Check for yield
@@ -2374,22 +3009,36 @@ class Parser:
             if self.match_op(":="):
                 self.advance()
                 value = self.parse_test()
-                set_context(first, "Store")
-                named_expr = make_node(
-                    "NamedExpr", tok.lineno, tok.col, {"target": first, "value": value}
+                validate_target(first, "Store", False, True, False)
+                self.check_walrus_scope(first)
+                if "ctx" in first:
+                    first["ctx"] = {"_type": "Store"}
+                first = end_from_node(
+                    make_node(
+                        "NamedExpr",
+                        tok.lineno,
+                        tok.col,
+                        {"target": first, "value": value},
+                    ),
+                    value,
                 )
-                self.expect_op(")")
-                return named_expr
+                if self.match_op(")"):
+                    self.advance()
+                    return first
 
             # Generator expression
             if self.match("for"):
                 generators = self.parse_comp_for()
-                self.expect_op(")")
-                return make_node(
-                    "GeneratorExp",
-                    tok.lineno,
-                    tok.col,
-                    {"elt": first, "generators": generators},
+                _check_comp_walrus([first], generators, self.class_depth > 0)
+                close = self.expect_op(")")
+                return end_from_token(
+                    make_node(
+                        "GeneratorExp",
+                        tok.lineno,
+                        tok.col,
+                        {"elt": first, "generators": generators},
+                    ),
+                    close,
                 )
 
             # Tuple or single expression
@@ -2400,14 +3049,19 @@ class Parser:
                     if self.match_op(")"):
                         break
                     elts.append(self.parse_testlist_star_expr_item())
-                self.expect_op(")")
-                return make_node(
-                    "Tuple",
-                    tok.lineno,
-                    tok.col,
-                    {"elts": elts, "ctx": {"_type": "Load"}},
+                close = self.expect_op(")")
+                return end_from_token(
+                    make_node(
+                        "Tuple",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": elts, "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
 
+            if isinstance(first, dict) and first.get("_type") == "Starred":
+                raise self.error("starred expression is not allowed here")
             self.expect_op(")")
             return first
 
@@ -2415,22 +3069,36 @@ class Parser:
         if self.match_op("["):
             self.advance()
             if self.match_op("]"):
-                self.advance()
-                return make_node(
-                    "List", tok.lineno, tok.col, {"elts": [], "ctx": {"_type": "Load"}}
+                close = self.advance()
+                return end_from_token(
+                    make_node(
+                        "List",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": [], "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
 
             first = self.parse_testlist_star_expr_item()
 
             # List comprehension
             if self.match("for"):
+                if isinstance(first, dict) and first.get("_type") == "Starred":
+                    raise self.error(
+                        "iterable unpacking cannot be used in comprehension"
+                    )
                 generators = self.parse_comp_for()
-                self.expect_op("]")
-                return make_node(
-                    "ListComp",
-                    tok.lineno,
-                    tok.col,
-                    {"elt": first, "generators": generators},
+                _check_comp_walrus([first], generators, self.class_depth > 0)
+                close = self.expect_op("]")
+                return end_from_token(
+                    make_node(
+                        "ListComp",
+                        tok.lineno,
+                        tok.col,
+                        {"elt": first, "generators": generators},
+                    ),
+                    close,
                 )
 
             # Regular list
@@ -2440,9 +3108,15 @@ class Parser:
                 if self.match_op("]"):
                     break
                 elts.append(self.parse_testlist_star_expr_item())
-            self.expect_op("]")
-            return make_node(
-                "List", tok.lineno, tok.col, {"elts": elts, "ctx": {"_type": "Load"}}
+            close = self.expect_op("]")
+            return end_from_token(
+                make_node(
+                    "List",
+                    tok.lineno,
+                    tok.col,
+                    {"elts": elts, "ctx": {"_type": "Load"}},
+                ),
+                close,
             )
 
         # Dict or set
@@ -2452,11 +3126,14 @@ class Parser:
         # Name
         if self.match(TK_NAME):
             name_tok = self.advance()
-            return make_node(
-                "Name",
-                name_tok.lineno,
-                name_tok.col,
-                {"id": name_tok.value, "ctx": {"_type": "Load"}},
+            return end_from_token(
+                make_node(
+                    "Name",
+                    name_tok.lineno,
+                    name_tok.col,
+                    {"id": name_tok.value, "ctx": {"_type": "Load"}},
+                ),
+                name_tok,
             )
 
         # Number
@@ -2471,28 +3148,41 @@ class Parser:
         # None, True, False
         if self.match("None"):
             self.advance()
-            return make_node("Constant", tok.lineno, tok.col, {"value": None})
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": None}), tok
+            )
         if self.match("True"):
             self.advance()
-            return make_node("Constant", tok.lineno, tok.col, {"value": True})
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": True}), tok
+            )
         if self.match("False"):
             self.advance()
-            return make_node("Constant", tok.lineno, tok.col, {"value": False})
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": False}), tok
+            )
 
         # Ellipsis
         if self.match_op("..."):
             self.advance()
-            return make_node("Constant", tok.lineno, tok.col, {"value": ...})
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": ...}), tok
+            )
 
-        raise self.error("unexpected token: " + tok.type + " " + repr(tok.value))
+        raise self.error(
+            "unexpected token '" + tok.value + "' at line " + str(tok.lineno)
+        )
 
     def parse_dict_or_set(self) -> ASTNode:
         """Parse dict or set literal."""
         tok = self.expect_op("{")
 
         if self.match_op("}"):
-            self.advance()
-            return make_node("Dict", tok.lineno, tok.col, {"keys": [], "values": []})
+            close = self.advance()
+            return end_from_token(
+                make_node("Dict", tok.lineno, tok.col, {"keys": [], "values": []}),
+                close,
+            )
 
         # Check first item to determine if dict or set
         first = self.parse_dict_or_set_item()
@@ -2508,12 +3198,22 @@ class Parser:
             # Check for dict comprehension
             if first[0] is not None and self.match("for"):
                 generators = self.parse_comp_for()
-                self.expect_op("}")
-                return make_node(
-                    "DictComp",
-                    tok.lineno,
-                    tok.col,
-                    {"key": first[0], "value": first[1], "generators": generators},
+                _check_comp_walrus(
+                    [first[0], first[1]], generators, self.class_depth > 0
+                )
+                close = self.expect_op("}")
+                return end_from_token(
+                    make_node(
+                        "DictComp",
+                        tok.lineno,
+                        tok.col,
+                        {
+                            "key": first[0],
+                            "value": first[1],
+                            "generators": generators,
+                        },
+                    ),
+                    close,
                 )
 
             while self.match_op(","):
@@ -2528,9 +3228,12 @@ class Parser:
                     # Mixing dict unpacking
                     keys.append(None)
                     values.append(item)
-            self.expect_op("}")
-            return make_node(
-                "Dict", tok.lineno, tok.col, {"keys": keys, "values": values}
+            close = self.expect_op("}")
+            return end_from_token(
+                make_node(
+                    "Dict", tok.lineno, tok.col, {"keys": keys, "values": values}
+                ),
+                close,
             )
 
         # Set
@@ -2539,9 +3242,16 @@ class Parser:
         # Check for set comprehension
         if self.match("for"):
             generators = self.parse_comp_for()
-            self.expect_op("}")
-            return make_node(
-                "SetComp", tok.lineno, tok.col, {"elt": first, "generators": generators}
+            _check_comp_walrus([first], generators, self.class_depth > 0)
+            close = self.expect_op("}")
+            return end_from_token(
+                make_node(
+                    "SetComp",
+                    tok.lineno,
+                    tok.col,
+                    {"elt": first, "generators": generators},
+                ),
+                close,
             )
 
         while self.match_op(","):
@@ -2552,8 +3262,10 @@ class Parser:
             if isinstance(item, tuple):
                 raise self.error("cannot mix dict and set syntax")
             elts.append(item)
-        self.expect_op("}")
-        return make_node("Set", tok.lineno, tok.col, {"elts": elts})
+        close = self.expect_op("}")
+        return end_from_token(
+            make_node("Set", tok.lineno, tok.col, {"elts": elts}), close
+        )
 
     def parse_dict_or_set_item(self) -> ASTNode | tuple[ASTNode | None, ASTNode]:
         """Parse a dict or set item. Returns tuple for dict, ASTNode for set."""
@@ -2581,20 +3293,27 @@ class Parser:
         while self.match(TK_STRING):
             strings.append(self.advance())
 
-        # Check for f-strings - look for f/F prefix before the quote
+        # Check for f-strings and string/bytes mixing
         has_fstring = False
+        has_bytes = False
+        has_str = False
         i = 0
         while i < len(strings):
             val = strings[i].value
-            # Find the quote position to extract prefix
             quote_pos = 0
             while quote_pos < len(val) and val[quote_pos] not in "\"'":
                 quote_pos += 1
             prefix = val[:quote_pos].lower()
             if "f" in prefix:
                 has_fstring = True
-                break
+                has_str = True
+            elif "b" in prefix:
+                has_bytes = True
+            else:
+                has_str = True
             i += 1
+        if has_bytes and (has_str or has_fstring):
+            raise self.error("cannot mix bytes and nonbytes literals")
 
         if has_fstring:
             # Parse f-string content to extract literal parts and {expr} parts
@@ -2608,20 +3327,31 @@ class Parser:
                     values.append(fstring_values[k])
                     k += 1
                 j += 1
-            return make_node("JoinedStr", tok.lineno, tok.col, {"values": values})
+            last_str = strings[len(strings) - 1]
+            return end_from_token(
+                make_node("JoinedStr", tok.lineno, tok.col, {"values": values}),
+                last_str,
+            )
 
         # Regular strings - concatenate
-        combined = parse_string_value(strings[0].value)
+        combined = parse_string_value(
+            strings[0].value, strings[0].lineno, strings[0].col
+        )
         k = 1
         while k < len(strings):
-            next_val = parse_string_value(strings[k].value)
+            next_val = parse_string_value(
+                strings[k].value, strings[k].lineno, strings[k].col
+            )
             if isinstance(combined, str) and isinstance(next_val, str):
                 combined = combined + next_val
             elif isinstance(combined, bytes) and isinstance(next_val, bytes):
                 combined = combined + next_val
             k += 1
 
-        return make_node("Constant", tok.lineno, tok.col, {"value": combined})
+        last_str = strings[len(strings) - 1]
+        return end_from_token(
+            make_node("Constant", tok.lineno, tok.col, {"value": combined}), last_str
+        )
 
     def parse_testlist_star_expr(self) -> ASTNode:
         """Parse testlist_star_expr: (test|star_expr) (',' (test|star_expr))* [',']."""
@@ -2639,8 +3369,11 @@ class Parser:
 
         if len(items) == 1 and not has_comma:
             return items[0]
-        return make_node(
-            "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+        return end_from_node(
+            make_node(
+                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+            ),
+            items[len(items) - 1],
         )
 
     def parse_testlist_star_expr_item(self) -> ASTNode:
@@ -2648,11 +3381,14 @@ class Parser:
         if self.match_op("*"):
             tok = self.advance()
             value = self.parse_test()
-            return make_node(
-                "Starred",
-                tok.lineno,
-                tok.col,
-                {"value": value, "ctx": {"_type": "Load"}},
+            return end_from_node(
+                make_node(
+                    "Starred",
+                    tok.lineno,
+                    tok.col,
+                    {"value": value, "ctx": {"_type": "Load"}},
+                ),
+                value,
             )
         return self.parse_test()
 
@@ -2673,8 +3409,11 @@ class Parser:
         items = self.parse_exprlist()
         if len(items) == 1:
             return items[0]
-        return make_node(
-            "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+        return end_from_node(
+            make_node(
+                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+            ),
+            items[len(items) - 1],
         )
 
     def is_end_of_testlist(self) -> bool:
@@ -2713,6 +3452,20 @@ def make_node(
     return result
 
 
+def end_from_token(node: ASTNode, tok: Token) -> ASTNode:
+    """Set end position from a token."""
+    node["end_lineno"] = tok.lineno
+    node["end_col_offset"] = tok.col + len(tok.value)
+    return node
+
+
+def end_from_node(node: ASTNode, child: ASTNode) -> ASTNode:
+    """Set end position from a child node."""
+    node["end_lineno"] = child.get("end_lineno", node.get("lineno", 1))
+    node["end_col_offset"] = child.get("end_col_offset", node.get("col_offset", 0))
+    return node
+
+
 def make_arguments() -> ASTNode:
     """Create empty arguments node."""
     return {
@@ -2732,7 +3485,7 @@ def make_constant_from_token(tok: Token) -> ASTNode:
     if tok.type == TK_NUMBER:
         value = parse_number_value(tok.value)
     else:
-        value = parse_string_value(tok.value)
+        value = parse_string_value(tok.value, tok.lineno, tok.col)
     node = make_node("Constant", tok.lineno, tok.col, {"value": value})
     node["end_col_offset"] = tok.col + len(tok.value)
     return node
@@ -2742,7 +3495,7 @@ def parse_number_value(s: str) -> int | float:
     """Parse a number literal string to value."""
     s = s.replace("_", "")
     if s.endswith(("j", "J")):
-        raise ValueError("complex numbers not supported in subset")
+        return float(s[:-1])
     if "." in s or (
         "e" in s.lower() and not s.startswith(("0x", "0X", "0b", "0B", "0o", "0O"))
     ):
@@ -2750,7 +3503,7 @@ def parse_number_value(s: str) -> int | float:
     return int(s, 0)
 
 
-def parse_string_value(s: str) -> str | bytes:
+def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str | bytes:
     """Parse a string literal to its value."""
     # Handle prefixes
     prefix = ""
@@ -2767,18 +3520,35 @@ def parse_string_value(s: str) -> str | bytes:
     else:
         content = s[i + 1 : -1]
 
+    is_bytes = "b" in prefix
+
+    # Validate bytes literal content
+    if is_bytes and "r" not in prefix:
+        j = 0
+        while j < len(content):
+            if content[j] == "\\" and j + 1 < len(content):
+                j += 2
+                continue
+            if ord(content[j]) > 127:
+                raise ParseError(
+                    "bytes can only contain ASCII literal characters", lineno, col
+                )
+            j += 1
+
     # Handle raw strings
     if "r" in prefix:
-        if "b" in prefix:
+        if is_bytes:
             return content.encode("latin-1")
         return content
 
     # Process escape sequences
-    result = process_escapes(content, "b" in prefix)
+    result = process_escapes(content, is_bytes, lineno, col)
     return result
 
 
-def process_escapes(s: str, is_bytes: bool) -> str | bytes:
+def process_escapes(
+    s: str, is_bytes: bool, lineno: int = 1, col: int = 0
+) -> str | bytes:
     """Process escape sequences in string."""
     result: list[str] = []
     i = 0
@@ -2813,30 +3583,48 @@ def process_escapes(s: str, is_bytes: bool) -> str | bytes:
             elif next_c == "0":
                 result.append("\0")
                 i += 2
-            elif next_c == "x" and i + 3 < len(s):
+            elif next_c == "x":
+                if i + 3 >= len(s):
+                    raise ParseError("invalid \\x escape", lineno, col)
                 hex_val = s[i + 2 : i + 4]
                 try:
                     result.append(chr(int(hex_val, 16)))
                     i += 4
                 except ValueError:
-                    result.append(c)
-                    i += 1
-            elif next_c == "u" and not is_bytes and i + 5 < len(s):
+                    raise ParseError("invalid \\x escape", lineno, col)
+            elif next_c == "u" and not is_bytes:
+                if i + 5 >= len(s):
+                    raise ParseError("invalid \\u escape", lineno, col)
                 hex_val = s[i + 2 : i + 6]
                 try:
                     result.append(chr(int(hex_val, 16)))
                     i += 6
                 except ValueError:
-                    result.append(c)
-                    i += 1
-            elif next_c == "U" and not is_bytes and i + 9 < len(s):
+                    raise ParseError("invalid \\u escape", lineno, col)
+            elif next_c == "U" and not is_bytes:
+                if i + 9 >= len(s):
+                    raise ParseError("invalid \\U escape", lineno, col)
                 hex_val = s[i + 2 : i + 10]
                 try:
-                    result.append(chr(int(hex_val, 16)))
+                    code_point = int(hex_val, 16)
+                    if code_point > 0x10FFFF:
+                        raise ParseError("invalid \\U escape", lineno, col)
+                    result.append(chr(code_point))
                     i += 10
                 except ValueError:
-                    result.append(c)
-                    i += 1
+                    raise ParseError("invalid \\U escape", lineno, col)
+            elif next_c == "N" and not is_bytes:
+                if i + 2 >= len(s) or s[i + 2] != "{":
+                    raise ParseError("invalid \\N escape", lineno, col)
+                close_brace = s.find("}", i + 3)
+                if close_brace == -1:
+                    raise ParseError("invalid \\N escape", lineno, col)
+                name = s[i + 3 : close_brace]
+                if len(name) == 0:
+                    raise ParseError("invalid \\N escape: empty name", lineno, col)
+                # Accept the name without resolving — would need unicodedata
+                result.append("\\N{" + name + "}")
+                i = close_brace + 1
             elif next_c == "\n":
                 # Line continuation
                 i += 2
@@ -2853,14 +3641,201 @@ def process_escapes(s: str, is_bytes: bool) -> str | bytes:
     return combined
 
 
+def _fstring_find_expr_end(
+    content: str, start: int, lineno: int, col: int
+) -> tuple[str, str, str, int]:
+    """Extract expression, conversion, and format_spec from f-string {expr}.
+    Returns (expr_str, conversion, format_spec_str, end_pos).
+    end_pos points past the closing }.
+    """
+    i = start
+    length = len(content)
+    depth = 1
+    bracket_depth = 0
+    expr_parts: list[str] = []
+    conversion = ""
+    format_spec = ""
+    in_format = False
+    format_depth = 0
+
+    while i < length and depth > 0:
+        ch = content[i]
+        if ch == "\\":
+            raise ParseError(
+                "f-string expression part cannot include a backslash", lineno, col
+            )
+        if ch in "\"'":
+            # Skip string literal inside expression
+            quote = ch
+            triple = False
+            if i + 2 < length and content[i + 1] == quote and content[i + 2] == quote:
+                triple = True
+            if triple:
+                end_q = content.find(quote + quote + quote, i + 3)
+                if end_q == -1:
+                    raise ParseError(
+                        "unterminated string in f-string expression", lineno, col
+                    )
+                substr = content[i : end_q + 3]
+                if not in_format:
+                    expr_parts.append(substr)
+                else:
+                    format_spec = format_spec + substr
+                i = end_q + 3
+                continue
+            else:
+                j = i + 1
+                while j < length and content[j] != quote:
+                    if content[j] == "\\":
+                        raise ParseError(
+                            "f-string expression part cannot include a backslash",
+                            lineno,
+                            col,
+                        )
+                    j += 1
+                if j >= length:
+                    raise ParseError(
+                        "unterminated string in f-string expression", lineno, col
+                    )
+                substr = content[i : j + 1]
+                if not in_format:
+                    expr_parts.append(substr)
+                else:
+                    format_spec = format_spec + substr
+                i = j + 1
+                continue
+        if ch == "#":
+            raise ParseError("f-string expression part cannot include '#'", lineno, col)
+        if not in_format:
+            if ch in "([":
+                bracket_depth += 1
+                expr_parts.append(ch)
+                i += 1
+                continue
+            if ch in ")]":
+                bracket_depth -= 1
+                expr_parts.append(ch)
+                i += 1
+                continue
+            if ch == "{":
+                depth += 1
+                expr_parts.append(ch)
+                i += 1
+                continue
+            if ch == "}":
+                depth -= 1
+                if depth == 0:
+                    i += 1
+                    break
+                expr_parts.append(ch)
+                i += 1
+                continue
+            if ch == "!" and depth == 1 and bracket_depth == 0:
+                # Conversion specifier - peek ahead
+                if i + 1 < length and content[i + 1] in "sra":
+                    if i + 2 < length and content[i + 2] in ":}":
+                        conversion = content[i + 1]
+                        i += 2
+                        if i < length and content[i] == ":":
+                            in_format = True
+                            format_depth = depth
+                            i += 1
+                        elif i < length and content[i] == "}":
+                            depth -= 1
+                            i += 1
+                            break
+                        continue
+                    elif i + 2 >= length:
+                        conversion = content[i + 1]
+                        i += 2
+                        continue
+                # Invalid conversion: !{ or !<invalid>
+                if i + 1 < length and content[i + 1] == "{":
+                    raise ParseError("f-string: expecting '}'", lineno, col)
+                if i + 1 < length and content[i + 1] not in "sra":
+                    if i + 1 < length and content[i + 1] == "}":
+                        raise ParseError(
+                            "f-string: missing conversion character", lineno, col
+                        )
+                    raise ParseError(
+                        "f-string: invalid conversion character", lineno, col
+                    )
+                expr_parts.append(ch)
+                i += 1
+                continue
+            if ch == "=" and depth == 1 and bracket_depth == 0:
+                # Debug format: {expr=} or {expr=!s} or {expr=:fmt}
+                if i + 1 < length and content[i + 1] == "!":
+                    # {expr=!conv}
+                    if i + 2 < length and content[i + 2] in "sra":
+                        if i + 3 < length and content[i + 3] in ":}":
+                            conversion = content[i + 2]
+                            i += 3
+                            if i < length and content[i] == ":":
+                                in_format = True
+                                format_depth = depth
+                                i += 1
+                            elif i < length and content[i] == "}":
+                                depth -= 1
+                                i += 1
+                                break
+                            continue
+                    # Invalid: {expr=!{...}} or {expr=!b}
+                    if i + 2 < length and content[i + 2] == "{":
+                        raise ParseError("f-string: expecting '}'", lineno, col)
+                    raise ParseError(
+                        "f-string: invalid conversion character", lineno, col
+                    )
+                if i + 1 < length and content[i + 1] == ":":
+                    # {expr=:fmt}
+                    i += 2
+                    in_format = True
+                    format_depth = depth
+                    continue
+                if i + 1 < length and content[i + 1] == "}":
+                    # {expr=}
+                    i += 2
+                    depth -= 1
+                    break
+                # Just an = inside expression (e.g. == comparison)
+                expr_parts.append(ch)
+                i += 1
+                continue
+            if ch == ":" and depth == 1 and bracket_depth == 0:
+                in_format = True
+                format_depth = depth
+                i += 1
+                continue
+            expr_parts.append(ch)
+            i += 1
+        else:
+            # Inside format spec
+            if ch == "{":
+                depth += 1
+                format_spec = format_spec + ch
+                i += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    i += 1
+                    break
+                format_spec = format_spec + ch
+                i += 1
+            else:
+                format_spec = format_spec + ch
+                i += 1
+
+    expr_str = "".join(expr_parts)
+    return (expr_str, conversion, format_spec, i)
+
+
 def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
     """Parse f-string token to list of Constant and FormattedValue nodes."""
-    # Extract prefix and content
     prefix_end = 0
     while prefix_end < len(token_value) and token_value[prefix_end] not in "\"'":
         prefix_end += 1
-    quote_char = token_value[prefix_end]
-    # Check for triple quotes
+    prefix = token_value[:prefix_end].lower()
+    is_raw = "r" in prefix
     if token_value[prefix_end : prefix_end + 3] in ('"""', "'''"):
         content = token_value[prefix_end + 3 : -3]
     else:
@@ -2870,7 +3845,6 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
     current_str = ""
     while i < len(content):
         c = content[i]
-        # Escaped brace
         if c == "{" and i + 1 < len(content) and content[i + 1] == "{":
             current_str = current_str + "{"
             i += 2
@@ -2879,52 +3853,64 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
             current_str = current_str + "}"
             i += 2
             continue
-        # Start of expression
+        if c == "}":
+            raise ParseError("f-string: single '}' is not allowed", lineno, col)
         if c == "{":
-            # Flush current string
             if len(current_str) > 0:
-                processed = process_escapes(current_str, False)
-                values.append(make_node("Constant", lineno, col, {"value": processed}))
+                if is_raw:
+                    values.append(
+                        make_node("Constant", lineno, col, {"value": current_str})
+                    )
+                else:
+                    processed = process_escapes(current_str, False, lineno, col)
+                    values.append(
+                        make_node("Constant", lineno, col, {"value": processed})
+                    )
                 current_str = ""
-            # Find matching }
-            brace_depth = 1
-            expr_start = i + 1
-            j = expr_start
-            while j < len(content) and brace_depth > 0:
-                ch = content[j]
-                if ch == "{":
-                    brace_depth += 1
-                elif ch == "}":
-                    brace_depth -= 1
-                elif ch in "\"'":
-                    # Skip string literal
-                    quote = ch
-                    j += 1
-                    while j < len(content) and content[j] != quote:
-                        if content[j] == "\\":
-                            j += 1
-                        j += 1
-                j += 1
-            expr_str = content[expr_start : j - 1]
-            # Parse the expression
+            expr_str, conversion, format_spec_str, new_i = _fstring_find_expr_end(
+                content, i + 1, lineno, col
+            )
+            expr_str = expr_str.strip()
+            if len(expr_str) == 0:
+                raise ParseError("f-string: empty expression not allowed", lineno, col)
+            # Check for semicolons in expression
+            if ";" in expr_str:
+                raise ParseError(
+                    "f-string expression part cannot include ';'", lineno, col
+                )
             expr_node = parse_fstring_expr(expr_str, lineno, col)
+            conv_int = -1
+            if conversion == "s":
+                conv_int = ord("s")
+            elif conversion == "r":
+                conv_int = ord("r")
+            elif conversion == "a":
+                conv_int = ord("a")
+            fmt_spec: ASTNode | None = None
+            if len(format_spec_str) > 0:
+                # Parse format spec as nested f-string content
+                fmt_values = parse_fstring("f'" + format_spec_str + "'", lineno, col)
+                if len(fmt_values) > 0:
+                    fmt_spec = make_node(
+                        "JoinedStr", lineno, col, {"values": fmt_values}
+                    )
             fmt_value = make_node(
                 "FormattedValue",
                 lineno,
                 col,
-                {"value": expr_node, "conversion": -1, "format_spec": None},
+                {"value": expr_node, "conversion": conv_int, "format_spec": fmt_spec},
             )
-
             values.append(fmt_value)
-            i = j
+            i = new_i
             continue
-        # Regular character
         current_str = current_str + c
         i += 1
-    # Flush remaining string
     if len(current_str) > 0:
-        processed = process_escapes(current_str, False)
-        values.append(make_node("Constant", lineno, col, {"value": processed}))
+        if is_raw:
+            values.append(make_node("Constant", lineno, col, {"value": current_str}))
+        else:
+            processed = process_escapes(current_str, False, lineno, col)
+            values.append(make_node("Constant", lineno, col, {"value": processed}))
     return values
 
 
@@ -2932,7 +3918,12 @@ def parse_fstring_expr(expr_str: str, lineno: int, col: int) -> ASTNode:
     """Parse expression inside f-string {expr}."""
     tokens = tokenize(expr_str)
     parser = Parser(tokens)
-    return parser.parse_test()
+    result = parser.parse_testlist_star_expr()
+    if isinstance(result, dict) and result.get("_type") == "Starred":
+        raise ParseError(
+            "f-string: starred expression is not allowed here", lineno, col
+        )
+    return result
 
 
 def augassign_op(op_str: str) -> ASTNode:
@@ -2958,10 +3949,247 @@ def augassign_op(op_str: str) -> ASTNode:
     return {"_type": type_name}
 
 
+def _collect_names(node: ASTNode, names: set[str]) -> None:
+    """Collect Name.id values from an assignment target."""
+    if not isinstance(node, dict):
+        return
+    ntype = node.get("_type")
+    if ntype == "Name":
+        nid = node.get("id")
+        if isinstance(nid, str):
+            names.add(nid)
+    elif ntype in ("Tuple", "List"):
+        elts = node.get("elts")
+        if isinstance(elts, list):
+            i = 0
+            while i < len(elts):
+                _collect_names(elts[i], names)
+                i += 1
+    elif ntype == "Starred":
+        value = node.get("value")
+        if isinstance(value, dict):
+            _collect_names(value, names)
+
+
+def _find_named_exprs(node: ASTNode, results: list[ASTNode]) -> None:
+    """Walk AST node to find all NamedExpr nodes."""
+    if not isinstance(node, dict):
+        return
+    if node.get("_type") == "NamedExpr":
+        results.append(node)
+    for v in node.values():
+        if isinstance(v, dict):
+            _find_named_exprs(v, results)
+        elif isinstance(v, list):
+            i = 0
+            while i < len(v):
+                item = v[i]
+                if isinstance(item, dict):
+                    _find_named_exprs(item, results)
+                i += 1
+
+
+def _check_comp_walrus(
+    elts: list[ASTNode],
+    generators: list[ASTNode],
+    in_class_comp: bool,
+) -> None:
+    """Validate walrus operators in comprehension elements and conditions."""
+    target_names: set[str] = set()
+    i = 0
+    while i < len(generators):
+        gen = generators[i]
+        if isinstance(gen, dict):
+            target = gen.get("target")
+            if isinstance(target, dict):
+                _collect_names(target, target_names)
+        i += 1
+    named_exprs: list[ASTNode] = []
+    i = 0
+    while i < len(elts):
+        _find_named_exprs(elts[i], named_exprs)
+        i += 1
+    i = 0
+    while i < len(generators):
+        gen = generators[i]
+        if isinstance(gen, dict):
+            ifs = gen.get("ifs")
+            if isinstance(ifs, list):
+                j = 0
+                while j < len(ifs):
+                    _find_named_exprs(ifs[j], named_exprs)
+                    j += 1
+        i += 1
+    i = 0
+    while i < len(named_exprs):
+        ne = named_exprs[i]
+        if in_class_comp:
+            lineno = ne.get("lineno", 1)
+            col = ne.get("col_offset", 0)
+            raise ParseError(
+                "assignment expression within a comprehension cannot be used in a class body",
+                lineno,
+                col,
+            )
+        target = ne.get("target")
+        if isinstance(target, dict) and target.get("_type") == "Name":
+            name = target.get("id")
+            if isinstance(name, str) and name in target_names:
+                lineno = ne.get("lineno", 1)
+                col = ne.get("col_offset", 0)
+                raise ParseError(
+                    "assignment expression cannot rebind comprehension iteration variable '"
+                    + name
+                    + "'",
+                    lineno,
+                    col,
+                )
+        i += 1
+
+
+def _check_async_generator_return(body: list[ASTNode], func_tok: Token) -> None:
+    """Check that an async generator doesn't have 'return value'."""
+    i = 0
+    while i < len(body):
+        stmt = body[i]
+        if isinstance(stmt, dict):
+            stype = stmt.get("_type")
+            if stype == "Return" and stmt.get("value") is not None:
+                lineno = stmt.get("lineno", func_tok.lineno)
+                col = stmt.get("col_offset", func_tok.col)
+                if not isinstance(lineno, int):
+                    lineno = func_tok.lineno
+                if not isinstance(col, int):
+                    col = func_tok.col
+                raise ParseError("'return' with value in async generator", lineno, col)
+            if stype in ("If", "While"):
+                _check_async_generator_return_list(stmt.get("body"), func_tok)
+                _check_async_generator_return_list(stmt.get("orelse"), func_tok)
+            elif stype in ("For", "AsyncFor"):
+                _check_async_generator_return_list(stmt.get("body"), func_tok)
+                _check_async_generator_return_list(stmt.get("orelse"), func_tok)
+            elif stype in ("Try", "TryStar"):
+                _check_async_generator_return_list(stmt.get("body"), func_tok)
+                _check_async_generator_return_list(stmt.get("orelse"), func_tok)
+                _check_async_generator_return_list(stmt.get("finalbody"), func_tok)
+                handlers = stmt.get("handlers")
+                if isinstance(handlers, list):
+                    j = 0
+                    while j < len(handlers):
+                        h = handlers[j]
+                        if isinstance(h, dict):
+                            _check_async_generator_return_list(h.get("body"), func_tok)
+                        j += 1
+            elif stype in ("With", "AsyncWith"):
+                _check_async_generator_return_list(stmt.get("body"), func_tok)
+        i += 1
+
+
+def _check_async_generator_return_list(body: object, func_tok: Token) -> None:
+    if isinstance(body, list):
+        _check_async_generator_return(body, func_tok)
+
+
+INVALID_TARGET_TYPES: set[str] = {
+    "Constant",
+    "BoolOp",
+    "BinOp",
+    "UnaryOp",
+    "Compare",
+    "Lambda",
+    "IfExp",
+    "ListComp",
+    "SetComp",
+    "DictComp",
+    "GeneratorExp",
+    "Call",
+    "JoinedStr",
+    "FormattedValue",
+    "Await",
+    "Yield",
+    "YieldFrom",
+    "Dict",
+    "Set",
+}
+
+
+def _node_error(node: ASTNode, msg: str) -> ParseError:
+    """Create ParseError from an AST node's position."""
+    lineno = node.get("lineno", 1)
+    col = node.get("col_offset", 0)
+    if not isinstance(lineno, int):
+        lineno = 1
+    if not isinstance(col, int):
+        col = 0
+    return ParseError(msg, lineno, col)
+
+
+def _is_debug_name(node: ASTNode) -> bool:
+    return node.get("_type") == "Name" and node.get("id") == "__debug__"
+
+
+def validate_target(
+    node: ASTNode,
+    ctx: str,
+    is_augassign: bool,
+    is_namedexpr: bool,
+    is_annotation: bool,
+) -> None:
+    """Validate that node is a legal assignment/del target."""
+    if not isinstance(node, dict):
+        return
+    node_type = node.get("_type")
+    if node_type is None:
+        return
+    if _is_debug_name(node):
+        raise _node_error(node, "cannot assign to __debug__")
+    if is_namedexpr:
+        if node_type in INVALID_TARGET_TYPES:
+            raise _node_error(
+                node, "cannot use assignment expression with " + str(node_type)
+            )
+        if node_type in ("Attribute", "Subscript"):
+            raise _node_error(
+                node, "cannot use assignment expression with " + str(node_type)
+            )
+        if node_type in ("Starred", "Tuple", "List", "Set", "Dict"):
+            raise _node_error(
+                node, "cannot use assignment expression with " + str(node_type)
+            )
+        return
+    if is_annotation:
+        if node_type not in ("Name", "Attribute", "Subscript"):
+            raise _node_error(
+                node, "only single target (not " + str(node_type) + ") can be annotated"
+            )
+        return
+    if is_augassign:
+        if node_type not in ("Name", "Attribute", "Subscript"):
+            raise _node_error(node, "illegal expression for augmented assignment")
+        return
+    if node_type in INVALID_TARGET_TYPES:
+        raise _node_error(node, "cannot assign to " + str(node_type))
+    if ctx == "Del":
+        if node_type == "Starred":
+            raise _node_error(node, "cannot use starred expression in del")
+    if node_type in ("Tuple", "List"):
+        elts = node.get("elts")
+        if elts is not None and isinstance(elts, list):
+            i = 0
+            while i < len(elts):
+                validate_target(elts[i], ctx, False, False, False)
+                i += 1
+    elif node_type == "Starred":
+        value = node.get("value")
+        if value is not None and isinstance(value, dict):
+            validate_target(value, ctx, False, False, False)
+
+
 def set_context(node: ASTNode, ctx_name: str) -> None:
     """Set the context of a node (Load, Store, Del)."""
     if not isinstance(node, dict):
         return
+    validate_target(node, ctx_name, False, False, False)
     if "ctx" in node:
         node["ctx"] = {"_type": ctx_name}
     node_type = node.get("_type")

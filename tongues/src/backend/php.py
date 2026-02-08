@@ -1487,7 +1487,7 @@ class PhpBackend:
     def _float_lit(self, value: float, fmt: str | None) -> str:
         """Format float literal, preserving scientific notation."""
         if fmt == "exp":
-            return f"{value:g}".replace("e+", "e")
+            return ("%g" % value).replace("e+", "e")
         s = str(value)
         if "." not in s and "e" not in s.lower():
             return s + ".0"

@@ -1,10 +1,20 @@
 """Pytest-based parser tests."""
 
+import signal
 from pathlib import Path
 
 import pytest
 
 from src.frontend.parse import parse, ParseError
+
+PARSE_TIMEOUT = 5
+
+
+def _timeout_handler(signum, frame):
+    raise TimeoutError("parse() timed out")
+
+
+signal.signal(signal.SIGALRM, _timeout_handler)
 
 PARSE_DIR = Path(__file__).parent / "02_parse"
 
@@ -67,6 +77,7 @@ def pytest_generate_tests(metafunc):
 def test_parse(parse_input: str, parse_expected: str):
     """Verify parser produces expected result."""
     try:
+        signal.alarm(PARSE_TIMEOUT)
         parse(parse_input)
         parse_succeeded = True
         parse_error = None
@@ -76,6 +87,8 @@ def test_parse(parse_input: str, parse_expected: str):
     except Exception as e:
         parse_succeeded = False
         parse_error = e
+    finally:
+        signal.alarm(0)
 
     if parse_expected == "ok":
         if not parse_succeeded:

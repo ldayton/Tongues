@@ -1122,13 +1122,13 @@ class LuaBackend:
         match expr:
             case IntLit(value=value, format=fmt):
                 if fmt == "hex":
-                    return f"0x{value:x}"
+                    return "0x" + ("%x" % value)
                 # Lua doesn't support octal or binary literals, use decimal
                 return str(value)
             case FloatLit(value=value, format=fmt):
                 if fmt == "exp":
                     # Format as scientific notation, clean up the result
-                    s = f"{value:e}"
+                    s = "%e" % value
                     mantissa, exp = s.split("e")
                     # Clean up exponent: e+10 -> e10, e-05 -> e-5
                     exp_sign = exp[0] if exp[0] in "+-" else ""

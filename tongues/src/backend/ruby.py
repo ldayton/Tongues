@@ -2595,7 +2595,7 @@ class RubyBackend:
     def _float_lit(self, value: float, fmt: str | None) -> str:
         """Format float literal, preserving scientific notation."""
         if fmt == "exp":
-            return f"{value:g}".replace("e+", "e")
+            return ("%g" % value).replace("e+", "e")
         return str(value)
 
     def _maybe_paren(self, text: str, expr: Expr, parent_op: str, is_left: bool) -> str:

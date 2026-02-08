@@ -1014,14 +1014,14 @@ class CSharpBackend:
         match expr:
             case IntLit(value=value, format=fmt):
                 if fmt == "hex":
-                    return f"0x{value:x}"
+                    return "0x" + ("%x" % value)
                 if fmt == "bin":
-                    return f"0b{value:b}"
+                    return "0b" + bin(value)[2:]
                 # C# doesn't have octal literals, use decimal
                 return str(value)
             case FloatLit(value=value, format=fmt):
                 if fmt == "exp":
-                    s = f"{value:e}"
+                    s = "%e" % value
                     mantissa, exp = s.split("e")
                     exp_sign = exp[0] if exp[0] in "+-" else ""
                     exp_val = exp.lstrip("+-").lstrip("0") or "0"
