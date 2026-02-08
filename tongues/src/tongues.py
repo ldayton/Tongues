@@ -5,10 +5,17 @@ from __future__ import annotations
 import sys
 
 from .frontend import Frontend
-from .frontend.parse import parse
+from .frontend.parse import parse, ParseError
 from .frontend.subset import verify as verify_subset
 from .frontend.names import NameInfo, NameTable, resolve_names
 from .middleend import analyze
+from .serialize import (
+    serialize as ir_serialize,
+    signatures_to_dict,
+    fields_to_dict,
+    hierarchy_to_dict,
+    module_to_dict,
+)
 from .backend.c import CBackend
 from .backend.go import GoBackend
 from .backend.java import JavaBackend
@@ -182,6 +189,9 @@ def to_json(obj: object) -> str:
     return _to_json(obj, 2, 0)
 
 
+# --- Name table serialization ---
+
+
 def _name_info_to_dict(info: NameInfo) -> dict[str, object]:
     """Convert a NameInfo to a serializable dict."""
     d: dict[str, object] = {
@@ -200,48 +210,48 @@ def _name_info_to_dict(info: NameInfo) -> dict[str, object]:
 
 
 def _name_table_to_dict(table: NameTable) -> dict[str, object]:
-    """Convert a NameTable to a serializable dict."""
-    module: dict[str, object] = {}
+    """Convert a NameTable to spec-compliant format: {"names": {...}, "scopes": [...]}."""
+    names: dict[str, object] = {}
     keys = list(table.module_names.keys())
     i = 0
     while i < len(keys):
         name = keys[i]
-        module[name] = _name_info_to_dict(table.module_names[name])
+        names[name] = _name_info_to_dict(table.module_names[name])
         i += 1
-    classes: dict[str, object] = {}
+    scopes: list[object] = []
     ckeys = list(table.class_names.keys())
     i = 0
     while i < len(ckeys):
         cname = ckeys[i]
-        members: dict[str, object] = {}
+        scope_names: dict[str, object] = {}
         mkeys = list(table.class_names[cname].keys())
         j = 0
         while j < len(mkeys):
             mname = mkeys[j]
-            members[mname] = _name_info_to_dict(table.class_names[cname][mname])
+            scope_names[mname] = _name_info_to_dict(table.class_names[cname][mname])
             j += 1
-        classes[cname] = members
+        scopes.append({"scope": cname, "names": scope_names})
         i += 1
-    locals_: dict[str, object] = {}
     lkeys = list(table.local_names.keys())
     i = 0
     while i < len(lkeys):
         lkey = lkeys[i]
-        scope_key = str(lkey[0]) + ":" + str(lkey[1])
-        scope_names: dict[str, object] = {}
+        if str(lkey[0]) != "":
+            scope_key = str(lkey[0]) + ":" + str(lkey[1])
+        else:
+            scope_key = str(lkey[1])
+        scope_names = {}
         skeys = list(table.local_names[lkey].keys())
         j = 0
         while j < len(skeys):
             sname = skeys[j]
             scope_names[sname] = _name_info_to_dict(table.local_names[lkey][sname])
             j += 1
-        locals_[scope_key] = scope_names
+        scopes.append({"scope": scope_key, "names": scope_names})
         i += 1
-    result: dict[str, object] = {"module": module}
-    if len(classes) > 0:
-        result["classes"] = classes
-    if len(locals_) > 0:
-        result["locals"] = locals_
+    result: dict[str, object] = {"names": names}
+    if len(scopes) > 0:
+        result["scopes"] = scopes
     return result
 
 
@@ -265,14 +275,16 @@ def run_pipeline(target: str, stop_at: str | None) -> int:
     if err != 0:
         return err
     if len(source) == 0:
-        if stop_at is not None:
-            return 0
         print("error: no input provided", file=sys.stderr)
         return 2
     if stop_at == "subset" and should_skip_file(source):
         return 0
     # Phase 2: Parse
-    ast_dict = parse(source)
+    try:
+        ast_dict = parse(source)
+    except ParseError as e:
+        print("error:" + str(e.lineno) + ":" + str(e.col) + ": " + e.msg, file=sys.stderr)
+        return 1
     if stop_at == "parse":
         print(to_json(ast_dict))
         return 0
@@ -291,31 +303,66 @@ def run_pipeline(target: str, stop_at: str | None) -> int:
         _print_errors(errors)
         return 1
     if stop_at == "names":
-        print(to_json({"names": _name_table_to_dict(name_result.table)}))
+        print(to_json(_name_table_to_dict(name_result.table)))
         return 0
-    # Phases 5-9 not yet individually stoppable
-    if stop_at is not None and stop_at != "analyze":
-        print(
-            "error: --stop-at '" + stop_at + "' not yet implemented",
-            file=sys.stderr,
-        )
-        return 1
-    # Full pipeline
+    # Phases 5+: Frontend (phased execution)
     fe = Frontend()
-    module = fe.transpile(source, ast_dict, name_result=name_result)
-    analyze(module)
-    if stop_at == "analyze":
-        print(
-            "error: --stop-at 'analyze' not yet implemented",
-            file=sys.stderr,
-        )
+    try:
+        fe.init_from_names(source, name_result)
+    except Exception as e:
+        print("error: " + str(e), file=sys.stderr)
         return 1
-    backend_cls = BACKENDS.get(target)
-    if backend_cls is None:
-        print("error: unknown target '" + target + "'", file=sys.stderr)
-        return 2
+    # Phase 5: Signatures
+    try:
+        fe.collect_sigs(ast_dict)
+    except Exception as e:
+        print("error: " + str(e), file=sys.stderr)
+        return 1
+    if stop_at == "signatures":
+        print(to_json(signatures_to_dict(fe.symbols)))
+        return 0
+    # Phase 6: Fields
+    try:
+        fe.collect_flds(ast_dict)
+    except Exception as e:
+        print("error: " + str(e), file=sys.stderr)
+        return 1
+    if stop_at == "fields":
+        print(to_json(fields_to_dict(fe.symbols)))
+        return 0
+    # Phase 7: Hierarchy (computed during init_from_names)
+    if stop_at == "hierarchy":
+        print(to_json(hierarchy_to_dict(fe.symbols, fe.get_hierarchy_root())))
+        return 0
+    # Phases 8-9: Inference + Lowering
+    try:
+        module = fe.build_ir(ast_dict)
+    except Exception as e:
+        print("error: " + str(e), file=sys.stderr)
+        return 1
+    if stop_at == "inference":
+        print(to_json(ir_serialize(ast_dict)))
+        return 0
+    if stop_at == "lowering":
+        print(to_json(module_to_dict(module)))
+        return 0
+    # Phases 10-14: Analyze
+    try:
+        analyze(module)
+    except Exception as e:
+        print("error: " + str(e), file=sys.stderr)
+        return 1
+    if stop_at == "analyze":
+        print(to_json(module_to_dict(module)))
+        return 0
+    # Phase 15: Backend
+    backend_cls = BACKENDS[target]
     be = backend_cls()
-    code = be.emit(module)
+    try:
+        code = be.emit(module)
+    except Exception as e:
+        print("error: " + str(e), file=sys.stderr)
+        return 1
     print(code)
     return 0
 
@@ -349,7 +396,7 @@ def parse_args() -> tuple[str, str | None]:
     if stop_at is not None and stop_at not in PHASES:
         print("error: unknown phase '" + stop_at + "'", file=sys.stderr)
         sys.exit(2)
-    if stop_at is None and target not in BACKENDS:
+    if target not in BACKENDS:
         print("error: unknown target '" + target + "'", file=sys.stderr)
         sys.exit(2)
     return (target, stop_at)

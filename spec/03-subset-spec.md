@@ -297,6 +297,8 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 
 ## 9. Imports
 
+Every module in the program's import graph must be subset-compliant. The transpiler must be able to resolve all types, names, and signatures across the full program — a file that imports from a non-subset module cannot be transpiled.
+
 | Allowed                             | Not Allowed          | Rationale                      |
 | ----------------------------------- | -------------------- | ------------------------------ |
 | `from typing import ...`            | other stdlib         | Code must be self-contained    |
