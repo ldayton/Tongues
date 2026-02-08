@@ -192,6 +192,14 @@ def f() -> object:
 error: import
 ---
 
+=== from sys import not allowed
+from sys import argv
+def f() -> list[str]:
+    return argv
+---
+error: import
+---
+
 === from os import path not allowed
 from os import path
 def f(p: str) -> str:
@@ -299,6 +307,22 @@ ok
 import os
 def f() -> str:
     return os.getenv("HOME", "/tmp")
+---
+ok
+---
+
+=== sys.stdin.buffer.read with size allowed
+import sys
+def f() -> bytes:
+    return sys.stdin.buffer.read(1024)
+---
+ok
+---
+
+=== sys.stdin.buffer.readline allowed
+import sys
+def f() -> bytes:
+    return sys.stdin.buffer.readline()
 ---
 ok
 ---

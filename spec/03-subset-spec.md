@@ -232,6 +232,8 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 
 ### Allowed Methods
 
+Enforcement requires type information; verified during type inference (see [08-inference-spec.md](08-inference-spec.md)).
+
 | Type   | Methods                                                                                                                                                                                         |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `str`  | `join`, `split`, `strip`, `lstrip`, `rstrip`, `lower`, `upper`, `startswith`, `endswith`, `replace`, `find`, `rfind`, `count`, `isalnum`, `isalpha`, `isdigit`, `isspace`, `isupper`, `islower` |

@@ -461,6 +461,20 @@ def f() -> object:
 error: complex
 ---
 
+=== aiter not allowed
+def f(xs: list[int]) -> object:
+    return aiter(xs)
+---
+error: aiter
+---
+
+=== anext not allowed
+def f(xs: list[int]) -> object:
+    return anext(xs)
+---
+error: anext
+---
+
 === generator expression in list allowed
 def f(xs: list[int]) -> list[int]:
     return list(x * 2 for x in xs)
@@ -689,4 +703,27 @@ def f(xs: list[int], ys: list[int]) -> object:
     return zip(xs, ys)
 ---
 error: zip
+---
+
+=== generator expression assigned not allowed
+def f(xs: list[int]) -> None:
+    g = (x * 2 for x in xs)
+---
+error: generator
+---
+
+=== generator expression returned not allowed
+def f(xs: list[int]) -> object:
+    return (x * 2 for x in xs)
+---
+error: generator
+---
+
+=== generator expression in non-eager call not allowed
+def foo(x: object) -> None:
+    pass
+def f(xs: list[int]) -> None:
+    foo(x * 2 for x in xs)
+---
+error: generator
 ---
