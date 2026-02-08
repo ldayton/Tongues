@@ -6,10 +6,33 @@ def add(a: int, b: int) -> int:
 exit: 0
 ---
 
-=== compilation error
+=== compilation error parse failure
 args:
 def f(x) -> int:
     return x
+---
+exit: 1
+---
+
+=== compilation error subset violation
+args:
+f = lambda x: x + 1
+---
+exit: 1
+---
+
+=== compilation error type error
+args:
+def f(x) -> int:
+    return x
+---
+exit: 1
+---
+
+=== compilation error names undefined
+args:
+def f(x: int) -> int:
+    return y
 ---
 exit: 1
 ---

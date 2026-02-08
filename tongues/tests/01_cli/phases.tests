@@ -24,15 +24,20 @@ def add(a: int, b: int) -> int:
 ---
 exit: 0
 stdout-contains: "names"
+stdout-contains: "scopes"
 ---
 
 === stop-at signatures
 args: --stop-at signatures
+class Foo:
+    def bar(self, x: int) -> int:
+        return x
 def add(a: int, b: int) -> int:
     return a + b
 ---
 exit: 0
 stdout-contains: "functions"
+stdout-contains: "methods"
 ---
 
 === stop-at fields
@@ -51,6 +56,7 @@ def add(a: int, b: int) -> int:
 ---
 exit: 0
 stdout-contains: "ancestors"
+stdout-contains: "root"
 ---
 
 === stop-at inference
@@ -59,6 +65,8 @@ def add(a: int, b: int) -> int:
     return a + b
 ---
 exit: 0
+stdout-contains: "_type"
+stdout-contains: "Module"
 ---
 
 === stop-at lowering
@@ -67,6 +75,9 @@ def add(a: int, b: int) -> int:
     return a + b
 ---
 exit: 0
+stdout-contains: "_type"
+stdout-contains: "Module"
+stdout-contains: "functions"
 ---
 
 === stop-at analyze
@@ -75,13 +86,34 @@ def add(a: int, b: int) -> int:
     return a + b
 ---
 exit: 0
+stdout-contains: "_type"
+stdout-contains: "Module"
+stdout-contains: "functions"
 ---
 
-=== early phase failure stops pipeline
+=== early failure parse error stops pipeline
 args: --stop-at inference
 def (
 ---
 exit: 1
+stdout-empty: true
+---
+
+=== early failure subset violation stops pipeline
+args: --stop-at lowering
+f = lambda x: x + 1
+---
+exit: 1
+stdout-empty: true
+---
+
+=== early failure names error stops pipeline
+args: --stop-at analyze
+def f(x: int) -> int:
+    return y
+---
+exit: 1
+stdout-empty: true
 ---
 
 === subset pass no output

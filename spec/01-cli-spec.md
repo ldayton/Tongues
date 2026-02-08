@@ -34,7 +34,7 @@ The `--stop-at` flag halts the pipeline after the specified phase and outputs th
 
 | Phase        | Output Format                                  |
 | ------------ | ---------------------------------------------- |
-| `parse`      | JSON: `{"type": "Module", "body": [...]}`      |
+| `parse`      | JSON: `{"_type": "Module", "body": [...]}`     |
 | `subset`     | Nothing (validation only)                      |
 | `names`      | JSON: `{"names": {...}, "scopes": [...]}`      |
 | `signatures` | JSON: `{"functions": {...}, "methods": {...}}` |
