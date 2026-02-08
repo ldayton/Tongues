@@ -138,11 +138,22 @@ class Frontend:
         cb.infer_type_from_value = self._infer_type_from_value
         return cb
 
+    def _py_type_to_ir_strict(self, py_type: str, concrete_nodes: bool = False) -> Type:
+        """Convert Python type string to IR Type with unknown-type validation."""
+        return type_inference.py_type_to_ir(
+            py_type,
+            self.symbols,
+            self._hierarchy.node_types,
+            concrete_nodes,
+            self._hierarchy.hierarchy_root,
+            strict=True,
+        )
+
     def _collect_signatures(self, tree: ASTNode) -> None:
         """Pass 3: Collect function and method signatures."""
-        signatures.collect_signatures(
-            tree, self.symbols, self._make_collection_callbacks_basic()
-        )
+        cb = self._make_collection_callbacks_basic()
+        cb.py_type_to_ir = self._py_type_to_ir_strict
+        signatures.collect_signatures(tree, self.symbols, cb)
 
     def _collect_fields(self, tree: ASTNode) -> None:
         """Pass 4: Collect struct fields from class definitions."""
