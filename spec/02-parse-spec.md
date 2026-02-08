@@ -19,15 +19,14 @@ Node types, field names, and nesting follow `ast.parse()` output — `FunctionDe
 
 ### Divergences from `ast`
 
-| Area               | `ast` module                                                                                     | Rationale                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| Representation     | Object instances; type via `__class__.__name__`                                                  | Plain dicts for subset compatibility              |
-| End positions      | Precise `end_lineno`/`end_col_offset`                                                            | Matches `ast` (except f-string internals)         |
-| `type_comment`     | On `Assign`, `For`, `With`, `FunctionDef`, `arg`, etc.                                           | Omitted; dropped with all other comments          |
-| `Constant.kind`    | `"u"` for unicode literals                                                                       | Omitted; Python 2 legacy, no-op in Python 3      |
-| Module modes       | `Expression`, `Interactive`, `FunctionType`                                                      | Only `Module` mode needed; no eval/REPL/stubs     |
-| Type parameters    | `TypeAlias`, `TypeVar`, `TypeVarTuple`, `ParamSpec`                                              | Parsed; subset rejects (PEP 695)                  |
-| `\N{name}` escapes | Resolved to character at parse time                                                              | Accepted syntactically; not resolved (no `unicodedata` import in self-contained parser) |
+| Area               | `ast` module                                           | Rationale                                                                               |
+| ------------------ | ------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Representation     | Object instances; type via `__class__.__name__`        | Plain dicts for subset compatibility                                                    |
+| End positions      | Precise `end_lineno`/`end_col_offset`                  | Matches `ast` (except f-string internals)                                               |
+| `type_comment`     | On `Assign`, `For`, `With`, `FunctionDef`, `arg`, etc. | Omitted; dropped with all other comments                                                |
+| `Constant.kind`    | `"u"` for unicode literals                             | Omitted; Python 2 legacy, no-op in Python 3                                             |
+| Module modes       | `Expression`, `Interactive`, `FunctionType`            | Only `Module` mode needed; no eval/REPL/stubs                                           |
+| `\N{name}` escapes | Resolved to character at parse time                    | Accepted syntactically; not resolved (no `unicodedata` import in self-contained parser) |
 
 ## Errors
 
