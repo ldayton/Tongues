@@ -50,6 +50,12 @@ ok
 === raw with quote
 r"hello\"
 ---
+error: parse
+---
+
+=== raw escaped quote in middle
+r"\""
+---
 ok
 ---
 

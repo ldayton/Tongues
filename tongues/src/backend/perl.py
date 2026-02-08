@@ -1942,7 +1942,7 @@ class PerlBackend:
     def _float_lit(self, value: float, fmt: str | None) -> str:
         """Format float literal, preserving scientific notation."""
         if fmt == "exp":
-            return f"{value:g}".replace("e+", "e")
+            return ("%g" % value).replace("e+", "e")
         return str(value)
 
 
@@ -2096,7 +2096,7 @@ def _escape_perl_regex(s: str) -> str:
             result.append("\\r")
         elif ord(ch) < 32 or ord(ch) > 126:
             # Use \x{XX} for control chars and non-ASCII
-            result.append(f"\\x{{{ord(ch):02x}}}")
+            result.append("\\x{" + ("%02x" % ord(ch)) + "}")
         else:
             result.append(ch)
     return "".join(result)
@@ -2121,7 +2121,7 @@ def _escape_perl_replacement(s: str) -> str:
             result.append("\\r")
         elif ord(ch) < 32 or ord(ch) > 126:
             # Use \x{XX} for control chars and non-ASCII
-            result.append(f"\\x{{{ord(ch):02x}}}")
+            result.append("\\x{" + ("%02x" % ord(ch)) + "}")
         else:
             result.append(ch)
     return "".join(result)
@@ -2140,7 +2140,7 @@ def _escape_regex_charclass(s: str) -> str:
         elif ch == "\r":
             result.append("\\r")
         elif ord(ch) < 32 or ord(ch) > 126:
-            result.append(f"\\x{{{ord(ch):02x}}}")
+            result.append("\\x{" + ("%02x" % ord(ch)) + "}")
         else:
             result.append(ch)
     return "".join(result)

@@ -441,7 +441,9 @@ def scan_string(
                         current_line,
                     )
                 if c == "\n":
-                    raise ParseError("unterminated string literal", start_lineno, start_col)
+                    raise ParseError(
+                        "unterminated string literal", start_lineno, start_col
+                    )
                 col += 1
             raise ParseError("unterminated string literal", start_lineno, start_col)
 
@@ -578,10 +580,7 @@ class Parser:
             if tok.value == type_or_value:
                 return self.advance()
         raise ParseError(
-            "invalid syntax at line "
-            + str(tok.lineno)
-            + ", column "
-            + str(tok.col),
+            "invalid syntax at line " + str(tok.lineno) + ", column " + str(tok.col),
             tok.lineno,
             tok.col,
         )
@@ -598,10 +597,7 @@ class Parser:
         if tok.type == TK_OP and tok.value == value:
             return self.advance()
         raise ParseError(
-            "invalid syntax at line "
-            + str(tok.lineno)
-            + ", column "
-            + str(tok.col),
+            "invalid syntax at line " + str(tok.lineno) + ", column " + str(tok.col),
             tok.lineno,
             tok.col,
         )
@@ -619,9 +615,13 @@ class Parser:
     def check_walrus_scope(self, target: ASTNode) -> None:
         """Check walrus operator scope restrictions in comprehensions."""
         if self.comp_iter_depth > 0:
-            raise self.error("assignment expression cannot be used in a comprehension iterable expression")
+            raise self.error(
+                "assignment expression cannot be used in a comprehension iterable expression"
+            )
         if self.in_class_comp:
-            raise self.error("assignment expression within a comprehension cannot be used in a class body")
+            raise self.error(
+                "assignment expression within a comprehension cannot be used in a class body"
+            )
         if self.comp_depth > 0 and len(self.comp_target_names) > 0:
             name = target.get("id") if isinstance(target, dict) else None
             if isinstance(name, str):
@@ -1206,18 +1206,25 @@ class Parser:
                 if isinstance(t, dict):
                     tt = t.get("_type")
                     if tt == "Starred":
-                        raise self.error("starred assignment target must be in a list or tuple")
+                        raise self.error(
+                            "starred assignment target must be in a list or tuple"
+                        )
                     if tt in ("Tuple", "List"):
                         telts = t.get("elts")
                         if isinstance(telts, list):
                             star_count = 0
                             si = 0
                             while si < len(telts):
-                                if isinstance(telts[si], dict) and telts[si].get("_type") == "Starred":
+                                if (
+                                    isinstance(telts[si], dict)
+                                    and telts[si].get("_type") == "Starred"
+                                ):
                                     star_count += 1
                                 si += 1
                             if star_count > 1:
-                                raise self.error("multiple starred expressions in assignment")
+                                raise self.error(
+                                    "multiple starred expressions in assignment"
+                                )
                 set_context(targets[j], "Store")
                 j += 1
             return end_from_node(
@@ -2669,7 +2676,9 @@ class Parser:
             # *args
             if self.match_op("*"):
                 if has_kwargs:
-                    raise self.error("iterable argument unpacking follows keyword argument unpacking")
+                    raise self.error(
+                        "iterable argument unpacking follows keyword argument unpacking"
+                    )
                 star_tok = self.advance()
                 value = self.parse_test()
                 args.append(
@@ -2699,7 +2708,9 @@ class Parser:
 
             # Positional after keyword/kwargs is an error
             if has_kwargs:
-                raise self.error("positional argument follows keyword argument unpacking")
+                raise self.error(
+                    "positional argument follows keyword argument unpacking"
+                )
             if has_keyword:
                 raise self.error("positional argument follows keyword argument")
 
@@ -2720,9 +2731,7 @@ class Parser:
                     self.prev_token(),
                 )
                 if len(args) > 0 or not self.match_op(")"):
-                    raise self.error(
-                        "generator expression must be parenthesized"
-                    )
+                    raise self.error("generator expression must be parenthesized")
 
             args.append(arg)
 
@@ -3058,7 +3067,9 @@ class Parser:
             # List comprehension
             if self.match("for"):
                 if isinstance(first, dict) and first.get("_type") == "Starred":
-                    raise self.error("iterable unpacking cannot be used in comprehension")
+                    raise self.error(
+                        "iterable unpacking cannot be used in comprehension"
+                    )
                 generators = self.parse_comp_for()
                 _check_comp_walrus([first], generators, self.class_depth > 0)
                 close = self.expect_op("]")
@@ -3167,7 +3178,9 @@ class Parser:
             # Check for dict comprehension
             if first[0] is not None and self.match("for"):
                 generators = self.parse_comp_for()
-                _check_comp_walrus([first[0], first[1]], generators, self.class_depth > 0)
+                _check_comp_walrus(
+                    [first[0], first[1]], generators, self.class_depth > 0
+                )
                 close = self.expect_op("}")
                 return end_from_token(
                     make_node(
@@ -3301,10 +3314,14 @@ class Parser:
             )
 
         # Regular strings - concatenate
-        combined = parse_string_value(strings[0].value, strings[0].lineno, strings[0].col)
+        combined = parse_string_value(
+            strings[0].value, strings[0].lineno, strings[0].col
+        )
         k = 1
         while k < len(strings):
-            next_val = parse_string_value(strings[k].value, strings[k].lineno, strings[k].col)
+            next_val = parse_string_value(
+                strings[k].value, strings[k].lineno, strings[k].col
+            )
             if isinstance(combined, str) and isinstance(next_val, str):
                 combined = combined + next_val
             elif isinstance(combined, bytes) and isinstance(next_val, bytes):
@@ -3493,7 +3510,9 @@ def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str | bytes:
                 j += 2
                 continue
             if ord(content[j]) > 127:
-                raise ParseError("bytes can only contain ASCII literal characters", lineno, col)
+                raise ParseError(
+                    "bytes can only contain ASCII literal characters", lineno, col
+                )
             j += 1
 
     # Handle raw strings
@@ -3507,7 +3526,9 @@ def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str | bytes:
     return result
 
 
-def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> str | bytes:
+def process_escapes(
+    s: str, is_bytes: bool, lineno: int = 1, col: int = 0
+) -> str | bytes:
     """Process escape sequences in string."""
     result: list[str] = []
     i = 0
@@ -3610,6 +3631,7 @@ def _fstring_find_expr_end(
     i = start
     length = len(content)
     depth = 1
+    bracket_depth = 0
     expr_parts: list[str] = []
     conversion = ""
     format_spec = ""
@@ -3619,7 +3641,9 @@ def _fstring_find_expr_end(
     while i < length and depth > 0:
         ch = content[i]
         if ch == "\\":
-            raise ParseError("f-string expression part cannot include a backslash", lineno, col)
+            raise ParseError(
+                "f-string expression part cannot include a backslash", lineno, col
+            )
         if ch in "\"'":
             # Skip string literal inside expression
             quote = ch
@@ -3629,7 +3653,9 @@ def _fstring_find_expr_end(
             if triple:
                 end_q = content.find(quote + quote + quote, i + 3)
                 if end_q == -1:
-                    raise ParseError("unterminated string in f-string expression", lineno, col)
+                    raise ParseError(
+                        "unterminated string in f-string expression", lineno, col
+                    )
                 substr = content[i : end_q + 3]
                 if not in_format:
                     expr_parts.append(substr)
@@ -3642,11 +3668,15 @@ def _fstring_find_expr_end(
                 while j < length and content[j] != quote:
                     if content[j] == "\\":
                         raise ParseError(
-                            "f-string expression part cannot include a backslash", lineno, col
+                            "f-string expression part cannot include a backslash",
+                            lineno,
+                            col,
                         )
                     j += 1
                 if j >= length:
-                    raise ParseError("unterminated string in f-string expression", lineno, col)
+                    raise ParseError(
+                        "unterminated string in f-string expression", lineno, col
+                    )
                 substr = content[i : j + 1]
                 if not in_format:
                     expr_parts.append(substr)
@@ -3657,6 +3687,16 @@ def _fstring_find_expr_end(
         if ch == "#":
             raise ParseError("f-string expression part cannot include '#'", lineno, col)
         if not in_format:
+            if ch in "([":
+                bracket_depth += 1
+                expr_parts.append(ch)
+                i += 1
+                continue
+            if ch in ")]":
+                bracket_depth -= 1
+                expr_parts.append(ch)
+                i += 1
+                continue
             if ch == "{":
                 depth += 1
                 expr_parts.append(ch)
@@ -3670,7 +3710,7 @@ def _fstring_find_expr_end(
                 expr_parts.append(ch)
                 i += 1
                 continue
-            if ch == "!" and depth == 1:
+            if ch == "!" and depth == 1 and bracket_depth == 0:
                 # Conversion specifier - peek ahead
                 if i + 1 < length and content[i + 1] in "sra":
                     if i + 2 < length and content[i + 2] in ":}":
@@ -3703,7 +3743,7 @@ def _fstring_find_expr_end(
                 expr_parts.append(ch)
                 i += 1
                 continue
-            if ch == "=" and depth == 1:
+            if ch == "=" and depth == 1 and bracket_depth == 0:
                 # Debug format: {expr=} or {expr=!s} or {expr=:fmt}
                 if i + 1 < length and content[i + 1] == "!":
                     # {expr=!conv}
@@ -3741,7 +3781,7 @@ def _fstring_find_expr_end(
                 expr_parts.append(ch)
                 i += 1
                 continue
-            if ch == ":" and depth == 1:
+            if ch == ":" and depth == 1 and bracket_depth == 0:
                 in_format = True
                 format_depth = depth
                 i += 1
@@ -3798,10 +3838,14 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
         if c == "{":
             if len(current_str) > 0:
                 if is_raw:
-                    values.append(make_node("Constant", lineno, col, {"value": current_str}))
+                    values.append(
+                        make_node("Constant", lineno, col, {"value": current_str})
+                    )
                 else:
                     processed = process_escapes(current_str, False, lineno, col)
-                    values.append(make_node("Constant", lineno, col, {"value": processed}))
+                    values.append(
+                        make_node("Constant", lineno, col, {"value": processed})
+                    )
                 current_str = ""
             expr_str, conversion, format_spec_str, new_i = _fstring_find_expr_end(
                 content, i + 1, lineno, col
@@ -3825,9 +3869,7 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
             fmt_spec: ASTNode | None = None
             if len(format_spec_str) > 0:
                 # Parse format spec as nested f-string content
-                fmt_values = parse_fstring(
-                    "f'" + format_spec_str + "'", lineno, col
-                )
+                fmt_values = parse_fstring("f'" + format_spec_str + "'", lineno, col)
                 if len(fmt_values) > 0:
                     fmt_spec = make_node(
                         "JoinedStr", lineno, col, {"values": fmt_values}
@@ -3858,7 +3900,9 @@ def parse_fstring_expr(expr_str: str, lineno: int, col: int) -> ASTNode:
     parser = Parser(tokens)
     result = parser.parse_testlist_star_expr()
     if isinstance(result, dict) and result.get("_type") == "Starred":
-        raise ParseError("f-string: starred expression is not allowed here", lineno, col)
+        raise ParseError(
+            "f-string: starred expression is not allowed here", lineno, col
+        )
     return result
 
 
@@ -4021,9 +4065,7 @@ def _check_async_generator_return(body: list[ASTNode], func_tok: Token) -> None:
         i += 1
 
 
-def _check_async_generator_return_list(
-    body: object, func_tok: Token
-) -> None:
+def _check_async_generator_return_list(body: object, func_tok: Token) -> None:
     if isinstance(body, list):
         _check_async_generator_return(body, func_tok)
 
@@ -4083,15 +4125,23 @@ def validate_target(
         raise _node_error(node, "cannot assign to __debug__")
     if is_namedexpr:
         if node_type in INVALID_TARGET_TYPES:
-            raise _node_error(node, "cannot use assignment expression with " + str(node_type))
+            raise _node_error(
+                node, "cannot use assignment expression with " + str(node_type)
+            )
         if node_type in ("Attribute", "Subscript"):
-            raise _node_error(node, "cannot use assignment expression with " + str(node_type))
+            raise _node_error(
+                node, "cannot use assignment expression with " + str(node_type)
+            )
         if node_type in ("Starred", "Tuple", "List", "Set", "Dict"):
-            raise _node_error(node, "cannot use assignment expression with " + str(node_type))
+            raise _node_error(
+                node, "cannot use assignment expression with " + str(node_type)
+            )
         return
     if is_annotation:
         if node_type not in ("Name", "Attribute", "Subscript"):
-            raise _node_error(node, "only single target (not " + str(node_type) + ") can be annotated")
+            raise _node_error(
+                node, "only single target (not " + str(node_type) + ") can be annotated"
+            )
         return
     if is_augassign:
         if node_type not in ("Name", "Attribute", "Subscript"):
