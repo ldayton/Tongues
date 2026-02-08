@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 from .ast_compat import ASTNode
@@ -12,22 +12,36 @@ if TYPE_CHECKING:
     from ..ir import FuncInfo, SymbolTable, Type
 
 
-@dataclass
 class TypeContext:
     """Context for bidirectional type inference (Pierce & Turner style)."""
 
-    expected: Type | None = None
-    var_types: dict[str, Type] = field(default_factory=dict)
-    return_type: Type | None = None
-    tuple_vars: dict[str, list[str]] = field(default_factory=dict)
-    sentinel_ints: set[str] = field(default_factory=set)
-    optional_strings: set[str] = field(default_factory=set)
-    narrowed_vars: set[str] = field(default_factory=set)
-    kind_source_vars: dict[str, str] = field(default_factory=dict)
-    union_types: dict[str, list[str]] = field(default_factory=dict)
-    list_element_unions: dict[str, list[str]] = field(default_factory=dict)
-    narrowed_attr_paths: dict[tuple[str, ...], str] = field(default_factory=dict)
-    unified_to_node: set[str] = field(default_factory=set)
+    def __init__(
+        self,
+        expected: Type | None = None,
+        var_types: dict[str, Type] | None = None,
+        return_type: Type | None = None,
+        tuple_vars: dict[str, list[str]] | None = None,
+        sentinel_ints: set[str] | None = None,
+        optional_strings: set[str] | None = None,
+        narrowed_vars: set[str] | None = None,
+        kind_source_vars: dict[str, str] | None = None,
+        union_types: dict[str, list[str]] | None = None,
+        list_element_unions: dict[str, list[str]] | None = None,
+        narrowed_attr_paths: dict[tuple[str, ...], str] | None = None,
+        unified_to_node: set[str] | None = None,
+    ) -> None:
+        self.expected: Type | None = expected
+        self.return_type: Type | None = return_type
+        self.var_types: dict[str, Type] = var_types if var_types is not None else {}
+        self.tuple_vars: dict[str, list[str]] = tuple_vars if tuple_vars is not None else {}
+        self.sentinel_ints: set[str] = sentinel_ints if sentinel_ints is not None else set()
+        self.optional_strings: set[str] = optional_strings if optional_strings is not None else set()
+        self.narrowed_vars: set[str] = narrowed_vars if narrowed_vars is not None else set()
+        self.kind_source_vars: dict[str, str] = kind_source_vars if kind_source_vars is not None else {}
+        self.union_types: dict[str, list[str]] = union_types if union_types is not None else {}
+        self.list_element_unions: dict[str, list[str]] = list_element_unions if list_element_unions is not None else {}
+        self.narrowed_attr_paths: dict[tuple[str, ...], str] = narrowed_attr_paths if narrowed_attr_paths is not None else {}
+        self.unified_to_node: set[str] = unified_to_node if unified_to_node is not None else set()
 
 
 @dataclass

@@ -317,14 +317,14 @@ class RubyBackend:
     """Emit Ruby code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
         self._known_functions: set[str] = set()
-        self._needs_set = False
-        self._needs_bytes = False
-        self._needs_truthy_helper = False
-        self._needs_range_helper = False
+        self._needs_set: bool = False
+        self._needs_bytes: bool = False
+        self._needs_truthy_helper: bool = False
+        self._needs_range_helper: bool = False
 
     def emit(self, module: Module) -> str:
         """Emit Ruby code from IR Module."""

@@ -11,7 +11,7 @@ Frontend produces fully-typed IR. Middleend annotates IR in place. Backend emits
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 
@@ -65,6 +65,9 @@ class Loc:
 def loc_unknown() -> Loc:
     """Factory for unknown source location."""
     return Loc(0, 0, 0, 0)
+
+
+LOC_UNKNOWN = Loc(0, 0, 0, 0)
 
 
 # ============================================================
@@ -394,7 +397,6 @@ StringSlice = STRING  # Backward compat: was separate type, maps to string
 # ============================================================
 
 
-@dataclass
 class Module:
     """A complete transpilation unit.
 
@@ -404,20 +406,20 @@ class Module:
     - No circular struct dependencies (fields don't form cycles)
     """
 
-    name: str
-    doc: str | None = None
-    structs: list[Struct] = field(default_factory=list)
-    interfaces: list[InterfaceDef] = field(default_factory=list)
-    functions: list[Function] = field(default_factory=list)
-    constants: list[Constant] = field(default_factory=list)
-    enums: list[Enum] = field(default_factory=list)
-    exports: list[Export] = field(default_factory=list)
-    statements: list[Stmt] = field(default_factory=list)
-    hierarchy_root: str | None = None  # Root interface for Node-like class hierarchies
-    entrypoint: EntryPoint | None = None
+    def __init__(self, name: str) -> None:
+        self.name: str = name
+        self.doc: str | None = None
+        self.structs: list[Struct] = []
+        self.interfaces: list[InterfaceDef] = []
+        self.functions: list[Function] = []
+        self.constants: list[Constant] = []
+        self.enums: list[Enum] = []
+        self.exports: list[Export] = []
+        self.statements: list[Stmt] = []
+        self.hierarchy_root: str | None = None
+        self.entrypoint: EntryPoint | None = None
 
 
-@dataclass
 class Struct:
     """Struct/class definition.
 
@@ -428,15 +430,27 @@ class Struct:
     - If is_exception, may have embedded_type for inheritance chain
     """
 
-    name: str
-    doc: str | None = None
-    fields: list[Field] = field(default_factory=list)
-    methods: list[Function] = field(default_factory=list)
-    implements: list[str] = field(default_factory=list)
-    loc: Loc = field(default_factory=loc_unknown)
-    is_exception: bool = False
-    embedded_type: str | None = None  # Exception inheritance
-    const_fields: dict[str, str] = field(default_factory=dict)
+    def __init__(
+        self,
+        name: str,
+        doc: str | None = None,
+        fields: list[Field] | None = None,
+        methods: list[Function] | None = None,
+        implements: list[str] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+        is_exception: bool = False,
+        embedded_type: str | None = None,
+        const_fields: dict[str, str] | None = None,
+    ) -> None:
+        self.name: str = name
+        self.doc: str | None = doc
+        self.fields: list[Field] = fields if fields is not None else []
+        self.methods: list[Function] = methods if methods is not None else []
+        self.implements: list[str] = implements if implements is not None else []
+        self.loc: Loc = loc
+        self.is_exception: bool = is_exception
+        self.embedded_type: str | None = embedded_type
+        self.const_fields: dict[str, str] = const_fields if const_fields is not None else {}
 
 
 @dataclass
@@ -455,12 +469,11 @@ class Field:
     name: str
     typ: Type
     default: Expr | None = None
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
     # Ownership annotations (phase 14)
     ownership: Ownership = "owned"
 
 
-@dataclass
 class InterfaceDef:
     """Interface definition.
 
@@ -471,10 +484,17 @@ class InterfaceDef:
     - fields contains discriminant fields for tagged unions (e.g., kind: string)
     """
 
-    name: str
-    methods: list[MethodSig] = field(default_factory=list)
-    fields: list[Field] = field(default_factory=list)  # Discriminant fields
-    loc: Loc = field(default_factory=loc_unknown)
+    def __init__(
+        self,
+        name: str,
+        methods: list[MethodSig] | None = None,
+        fields: list[Field] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        self.name: str = name
+        self.methods: list[MethodSig] = methods if methods is not None else []
+        self.fields: list[Field] = fields if fields is not None else []
+        self.loc: Loc = loc
 
 
 @dataclass
@@ -484,7 +504,7 @@ class MethodSig:
     name: str
     params: list[Param]
     ret: Type
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
 @dataclass
@@ -507,7 +527,7 @@ class Enum:
 
     name: str
     variants: list[EnumVariant]
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
 @dataclass
@@ -516,7 +536,7 @@ class EnumVariant:
 
     name: str
     value: int | str | None = None  # None = auto-assign
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
 @dataclass
@@ -528,10 +548,9 @@ class Export:
 
     name: str
     kind: Literal["function", "struct", "constant", "interface", "enum"]
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
-@dataclass
 class Function:
     """Function or method definition.
 
@@ -545,17 +564,29 @@ class Function:
     - rune_vars: Variables needing []rune conversion at scope entry (Go)
     """
 
-    name: str
-    params: list[Param]
-    ret: Type
-    body: list[Stmt]
-    doc: str | None = None
-    receiver: Receiver | None = None
-    fallible: bool = False  # Can raise/panic
-    loc: Loc = field(default_factory=loc_unknown)
-    # Middleend annotations
-    needs_named_returns: bool = False
-    rune_vars: list[str] = field(default_factory=list)
+    def __init__(
+        self,
+        name: str,
+        params: list[Param],
+        ret: Type,
+        body: list[Stmt],
+        doc: str | None = None,
+        receiver: Receiver | None = None,
+        fallible: bool = False,
+        loc: Loc = LOC_UNKNOWN,
+        needs_named_returns: bool = False,
+        rune_vars: list[str] | None = None,
+    ) -> None:
+        self.name: str = name
+        self.params: list[Param] = params
+        self.ret: Type = ret
+        self.body: list[Stmt] = body
+        self.doc: str | None = doc
+        self.receiver: Receiver | None = receiver
+        self.fallible: bool = fallible
+        self.loc: Loc = loc
+        self.needs_named_returns: bool = needs_named_returns
+        self.rune_vars: list[str] = rune_vars if rune_vars is not None else []
 
 
 @dataclass
@@ -590,7 +621,7 @@ class Param:
     typ: Type
     default: Expr | None = None
     mutable: bool = False  # Rust: mut
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
     # Middleend annotations
     is_modified: bool = False
     is_unused: bool = False
@@ -610,7 +641,7 @@ class Constant:
     name: str
     typ: Type
     value: Expr
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
 # ============================================================
@@ -622,7 +653,7 @@ class Constant:
 class Stmt:
     """Base for all statements. Abstract."""
 
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
 @dataclass
@@ -689,7 +720,6 @@ class Assign(Stmt):
     decl_typ: "Type | None" = None
 
 
-@dataclass
 class TupleAssign(Stmt):
     """Multi-value assignment: a, b = expr
 
@@ -703,12 +733,21 @@ class TupleAssign(Stmt):
     - unused_indices: Which targets are never used (for _ placeholders)
     """
 
-    targets: list[LValue]
-    value: Expr
-    # Middleend annotations
-    is_declaration: bool = False
-    unused_indices: list[int] = field(default_factory=list)
-    new_targets: list[str] = field(default_factory=list)
+    def __init__(
+        self,
+        targets: list[LValue],
+        value: Expr,
+        is_declaration: bool = False,
+        unused_indices: list[int] | None = None,
+        new_targets: list[str] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        super().__init__(loc=loc)
+        self.targets: list[LValue] = targets
+        self.value: Expr = value
+        self.is_declaration: bool = is_declaration
+        self.unused_indices: list[int] = unused_indices if unused_indices is not None else []
+        self.new_targets: list[str] = new_targets if new_targets is not None else []
 
 
 @dataclass
@@ -749,7 +788,6 @@ class Return(Stmt):
     value: Expr | None = None
 
 
-@dataclass
 class If(Stmt):
     """Conditional statement.
 
@@ -765,15 +803,23 @@ class If(Stmt):
     - hoisted_vars: Variables first assigned in branches, used after (Go)
     """
 
-    cond: Expr
-    then_body: list[Stmt]
-    else_body: list[Stmt] = field(default_factory=list)
-    init: VarDecl | None = None
-    # Middleend annotations
-    hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
+    def __init__(
+        self,
+        cond: Expr,
+        then_body: list[Stmt],
+        else_body: list[Stmt] | None = None,
+        init: VarDecl | None = None,
+        hoisted_vars: list[tuple[str, Type]] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        super().__init__(loc=loc)
+        self.cond: Expr = cond
+        self.then_body: list[Stmt] = then_body
+        self.else_body: list[Stmt] = else_body if else_body is not None else []
+        self.init: VarDecl | None = init
+        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
 
 
-@dataclass
 class TypeSwitch(Stmt):
     """Switch on runtime type.
 
@@ -796,14 +842,25 @@ class TypeSwitch(Stmt):
     - hoisted_vars: Variables needing hoisting
     """
 
-    expr: Expr
-    binding: str
-    cases: list[TypeCase] = field(default_factory=list)
-    default: list[Stmt] = field(default_factory=list)
-    # Middleend annotations
-    binding_unused: bool = False
-    binding_reassigned: bool = False
-    hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
+    def __init__(
+        self,
+        expr: Expr,
+        binding: str,
+        cases: list[TypeCase] | None = None,
+        default: list[Stmt] | None = None,
+        binding_unused: bool = False,
+        binding_reassigned: bool = False,
+        hoisted_vars: list[tuple[str, Type]] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        super().__init__(loc=loc)
+        self.expr: Expr = expr
+        self.binding: str = binding
+        self.cases: list[TypeCase] = cases if cases is not None else []
+        self.default: list[Stmt] = default if default is not None else []
+        self.binding_unused: bool = binding_unused
+        self.binding_reassigned: bool = binding_reassigned
+        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
 
 
 @dataclass
@@ -816,10 +873,9 @@ class TypeCase:
 
     typ: Type
     body: list[Stmt]
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
-@dataclass
 class Match(Stmt):
     """Value matching (switch/case on values).
 
@@ -836,11 +892,19 @@ class Match(Stmt):
     - hoisted_vars: Variables needing hoisting
     """
 
-    expr: Expr
-    cases: list[MatchCase] = field(default_factory=list)
-    default: list[Stmt] = field(default_factory=list)
-    # Middleend annotations
-    hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
+    def __init__(
+        self,
+        expr: Expr,
+        cases: list[MatchCase] | None = None,
+        default: list[Stmt] | None = None,
+        hoisted_vars: list[tuple[str, Type]] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        super().__init__(loc=loc)
+        self.expr: Expr = expr
+        self.cases: list[MatchCase] = cases if cases is not None else []
+        self.default: list[Stmt] = default if default is not None else []
+        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
 
 
 @dataclass
@@ -854,10 +918,9 @@ class MatchCase:
 
     patterns: list[Expr]
     body: list[Stmt]
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
-@dataclass
 class ForRange(Stmt):
     """Iterate over collection.
 
@@ -879,15 +942,23 @@ class ForRange(Stmt):
     - hoisted_vars: Variables needing hoisting
     """
 
-    index: str | None
-    value: str | None
-    iterable: Expr
-    body: list[Stmt]
-    # Middleend annotations
-    hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
+    def __init__(
+        self,
+        index: str | None,
+        value: str | None,
+        iterable: Expr,
+        body: list[Stmt],
+        hoisted_vars: list[tuple[str, Type]] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        super().__init__(loc=loc)
+        self.index: str | None = index
+        self.value: str | None = value
+        self.iterable: Expr = iterable
+        self.body: list[Stmt] = body
+        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
 
 
-@dataclass
 class ForClassic(Stmt):
     """C-style for loop: for (init; cond; post) body
 
@@ -901,15 +972,23 @@ class ForClassic(Stmt):
     - hoisted_vars: Variables needing hoisting
     """
 
-    init: Stmt | None
-    cond: Expr | None
-    post: Stmt | None
-    body: list[Stmt]
-    # Middleend annotations
-    hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
+    def __init__(
+        self,
+        init: Stmt | None,
+        cond: Expr | None,
+        post: Stmt | None,
+        body: list[Stmt],
+        hoisted_vars: list[tuple[str, Type]] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        super().__init__(loc=loc)
+        self.init: Stmt | None = init
+        self.cond: Expr | None = cond
+        self.post: Stmt | None = post
+        self.body: list[Stmt] = body
+        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
 
 
-@dataclass
 class While(Stmt):
     """While loop.
 
@@ -922,10 +1001,17 @@ class While(Stmt):
     - hoisted_vars: Variables needing hoisting
     """
 
-    cond: Expr
-    body: list[Stmt]
-    # Middleend annotations
-    hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
+    def __init__(
+        self,
+        cond: Expr,
+        body: list[Stmt],
+        hoisted_vars: list[tuple[str, Type]] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        super().__init__(loc=loc)
+        self.cond: Expr = cond
+        self.body: list[Stmt] = body
+        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
 
 
 @dataclass
@@ -973,7 +1059,6 @@ class CatchClause:
     body: list[Stmt]
 
 
-@dataclass
 class TryCatch(Stmt):
     """Exception handling.
 
@@ -995,13 +1080,23 @@ class TryCatch(Stmt):
     - hoisted_vars: Variables needing hoisting
     """
 
-    body: list[Stmt]
-    catches: list[CatchClause] = field(default_factory=list)
-    reraise: bool = False
-    # Middleend annotations
-    has_returns: bool = False
-    has_catch_returns: bool = False
-    hoisted_vars: list[tuple[str, Type]] = field(default_factory=list)
+    def __init__(
+        self,
+        body: list[Stmt],
+        catches: list[CatchClause] | None = None,
+        reraise: bool = False,
+        has_returns: bool = False,
+        has_catch_returns: bool = False,
+        hoisted_vars: list[tuple[str, Type]] | None = None,
+        loc: Loc = LOC_UNKNOWN,
+    ) -> None:
+        super().__init__(loc=loc)
+        self.body: list[Stmt] = body
+        self.catches: list[CatchClause] = catches if catches is not None else []
+        self.reraise: bool = reraise
+        self.has_returns: bool = has_returns
+        self.has_catch_returns: bool = has_catch_returns
+        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
 
 
 @dataclass
@@ -1124,7 +1219,7 @@ class Expr:
     """
 
     typ: Type
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
     # Middleend annotations
     is_interface: bool = False
     narrowed_type: Type | None = None
@@ -2283,16 +2378,21 @@ class GetEnv(Expr):
 # --- Comprehensions ---
 
 
-@dataclass
 class CompGenerator:
     """Single generator clause in a comprehension.
 
     Represents `for x, y in items if cond1 if cond2`.
     """
 
-    targets: list[str]
-    iterable: Expr
-    conditions: list[Expr] = field(default_factory=list)
+    def __init__(
+        self,
+        targets: list[str],
+        iterable: Expr,
+        conditions: list[Expr] | None = None,
+    ) -> None:
+        self.targets: list[str] = targets
+        self.iterable: Expr = iterable
+        self.conditions: list[Expr] = conditions if conditions is not None else []
 
 
 @dataclass
@@ -2359,7 +2459,7 @@ class DictComp(Expr):
 class LValue:
     """Base for assignment targets. Abstract."""
 
-    loc: Loc = field(default_factory=loc_unknown)
+    loc: Loc = LOC_UNKNOWN
 
 
 @dataclass
@@ -2410,45 +2510,52 @@ class DerefLV(LValue):
 # ============================================================
 
 
-@dataclass
 class SymbolTable:
     """Symbol information collected by frontend."""
 
-    structs: dict[str, StructInfo] = field(default_factory=dict)
-    functions: dict[str, FuncInfo] = field(default_factory=dict)
-    constants: dict[str, Type] = field(default_factory=dict)
-    # Maps field_name -> list of struct names that have this field (for Node subclasses)
-    field_to_structs: dict[str, list[str]] = field(default_factory=dict)
-    # Maps method_name -> struct name that has this method (for Node subclasses)
-    method_to_structs: dict[str, str] = field(default_factory=dict)
+    def __init__(self) -> None:
+        self.structs: dict[str, StructInfo] = {}
+        self.functions: dict[str, FuncInfo] = {}
+        self.constants: dict[str, Type] = {}
+        self.field_to_structs: dict[str, list[str]] = {}
+        self.method_to_structs: dict[str, str] = {}
 
 
-@dataclass
 class OwnershipInfo:
     """Ownership analysis results for a module (phase 14)."""
 
-    # Variables that escape their scope
-    escaping_vars: set[str] = field(default_factory=set)
-    # Variables with ambiguous ownership (need runtime management)
-    shared_vars: set[str] = field(default_factory=set)
-    # Back-reference fields in structs: struct_name -> [field_names]
-    weak_fields: dict[str, list[str]] = field(default_factory=dict)
+    def __init__(self) -> None:
+        self.escaping_vars: set[str] = set()
+        self.shared_vars: set[str] = set()
+        self.weak_fields: dict[str, list[str]] = {}
 
 
-@dataclass
 class StructInfo:
     """Metadata about a struct."""
 
-    name: str
-    fields: dict[str, FieldInfo] = field(default_factory=dict)
-    methods: dict[str, FuncInfo] = field(default_factory=dict)
-    is_node: bool = False  # Implements Node interface
-    is_exception: bool = False  # Inherits from Exception
-    bases: list[str] = field(default_factory=list)
-    init_params: list[str] = field(default_factory=list)
-    param_to_field: dict[str, str] = field(default_factory=dict)
-    needs_constructor: bool = False  # __init__ has computed values
-    const_fields: dict[str, str] = field(default_factory=dict)
+    def __init__(
+        self,
+        name: str,
+        fields: dict[str, FieldInfo] | None = None,
+        methods: dict[str, FuncInfo] | None = None,
+        is_node: bool = False,
+        is_exception: bool = False,
+        bases: list[str] | None = None,
+        init_params: list[str] | None = None,
+        param_to_field: dict[str, str] | None = None,
+        needs_constructor: bool = False,
+        const_fields: dict[str, str] | None = None,
+    ) -> None:
+        self.name: str = name
+        self.fields: dict[str, FieldInfo] = fields if fields is not None else {}
+        self.methods: dict[str, FuncInfo] = methods if methods is not None else {}
+        self.is_node: bool = is_node
+        self.is_exception: bool = is_exception
+        self.bases: list[str] = bases if bases is not None else []
+        self.init_params: list[str] = init_params if init_params is not None else []
+        self.param_to_field: dict[str, str] = param_to_field if param_to_field is not None else {}
+        self.needs_constructor: bool = needs_constructor
+        self.const_fields: dict[str, str] = const_fields if const_fields is not None else {}
 
 
 @dataclass
@@ -2460,15 +2567,22 @@ class FieldInfo:
     py_name: str = ""
 
 
-@dataclass
 class FuncInfo:
     """Metadata about a function or method."""
 
-    name: str
-    params: list[ParamInfo] = field(default_factory=list)
-    return_type: Type = VOID
-    is_method: bool = False
-    receiver_type: str = ""
+    def __init__(
+        self,
+        name: str,
+        params: list[ParamInfo] | None = None,
+        return_type: Type = VOID,
+        is_method: bool = False,
+        receiver_type: str = "",
+    ) -> None:
+        self.name: str = name
+        self.params: list[ParamInfo] = params if params is not None else []
+        self.return_type: Type = return_type
+        self.is_method: bool = is_method
+        self.receiver_type: str = receiver_type
 
 
 @dataclass

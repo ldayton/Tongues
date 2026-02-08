@@ -14,7 +14,7 @@ Error handling:
 
 from __future__ import annotations
 
-from re import sub as re_sub
+import re
 
 from src.backend.util import to_snake
 
@@ -991,7 +991,7 @@ class CBackend:
     """Emit C11 code from IR Module."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self._receiver_name: str = ""
         self._receiver_type: str = ""
@@ -3897,7 +3897,7 @@ class CBackend:
     def _emit_expr_StringFormat(self, expr: StringFormat) -> str:
         args_list = [self._emit_expr(a) for a in expr.args]
         # Convert {0}, {1} to %s, etc.
-        template = re_sub(r"\{(\d+)\}", "%s", expr.template)
+        template = re.sub(r"\{(\d+)\}", "%s", expr.template)
         escaped = escape_string_c(template)
         if args_list:
             args_str = ", ".join(args_list)

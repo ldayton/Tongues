@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from src.backend.util import escape_string, to_camel, to_pascal, to_screaming_snake
 from src.ir import (
     Array,
@@ -210,7 +212,7 @@ class CSharpBackend:
     """Emit C# code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
         self.current_class: str = ""
@@ -222,9 +224,9 @@ class CSharpBackend:
         self._object_vars: set[str] = set()  # Variables declared with object type
         self._module_name: str = ""
         self._interface_names: set[str] = set()
-        self.temp_counter = 0
+        self.temp_counter: int = 0
         self._type_switch_binding_rename: dict[str, str] = {}
-        self._loop_temp_counter = 0
+        self._loop_temp_counter: int = 0
         self._func_params: set[str] = set()
         self._func_vars: set[str] = set()  # Local variables with function types
         self._current_break_flag: str | None = None
@@ -1740,12 +1742,10 @@ class CSharpBackend:
         return f"(({cs_type}){inner_str})"
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
-        from re import sub as re_sub
-
         # First escape all literal { and } as {{ and }}
         result = template.replace("{", "{{").replace("}", "}}")
         # Then convert {0}, {1} back to single braces (they got doubled to {{0}}, {{1}})
-        result = re_sub(r"\{\{(\d+)\}\}", r"{\1}", result)
+        result = re.sub(r"\{\{(\d+)\}\}", r"{\1}", result)
         # Convert %v placeholders to {0}, {1}, {2}, etc.
         idx = 0
         while "%v" in result:

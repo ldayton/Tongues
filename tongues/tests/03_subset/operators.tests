@@ -124,6 +124,20 @@ def f(x: int) -> bool:
 error: is
 ---
 
+=== is True allowed
+def f(x: bool) -> bool:
+    return x is True
+---
+ok
+---
+
+=== is False allowed
+def f(x: bool) -> bool:
+    return x is False
+---
+ok
+---
+
 === is comparing two variables not allowed
 class Foo:
     pass
@@ -547,4 +561,11 @@ def f(s: str) -> str:
     return s.strip().lower()
 ---
 ok
+---
+
+=== surrogate code point in string not allowed
+def f() -> str:
+    return "\ud800"
+---
+error: surrogate
 ---

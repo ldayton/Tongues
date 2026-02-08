@@ -200,14 +200,6 @@ def f(p: str) -> str:
 error: import
 ---
 
-=== from json import loads not allowed
-from json import loads
-def f(s: str) -> object:
-    return loads(s)
----
-error: import
----
-
 === from re import match not allowed
 from re import match
 def f(s: str) -> bool:
@@ -228,14 +220,6 @@ error: import
 import requests
 def f(url: str) -> object:
     return requests.get(url)
----
-error: import
----
-
-=== from external package not allowed
-from pandas import DataFrame
-def f() -> object:
-    return DataFrame()
 ---
 error: import
 ---
@@ -264,17 +248,57 @@ def f(x: Optional[int]) -> int:
 error: import
 ---
 
-=== import inside function not allowed
-def f() -> int:
-    import sys
-    return len(sys.argv)
----
-error: import
----
-
 === no imports needed for builtins
 def f(xs: list[int]) -> int:
     return len(xs)
+---
+ok
+---
+
+=== sys.stdin.readline allowed
+import sys
+def f() -> str:
+    return sys.stdin.readline()
+---
+ok
+---
+
+=== sys.stdin.read allowed
+import sys
+def f() -> str:
+    return sys.stdin.read()
+---
+ok
+---
+
+=== sys.stdin.buffer.read allowed
+import sys
+def f() -> bytes:
+    return sys.stdin.buffer.read()
+---
+ok
+---
+
+=== sys.stdout.buffer.write allowed
+import sys
+def f(b: bytes) -> None:
+    sys.stdout.buffer.write(b)
+---
+ok
+---
+
+=== sys.stderr.buffer.write allowed
+import sys
+def f(b: bytes) -> None:
+    sys.stderr.buffer.write(b)
+---
+ok
+---
+
+=== os.getenv with default allowed
+import os
+def f() -> str:
+    return os.getenv("HOME", "/tmp")
 ---
 ok
 ---

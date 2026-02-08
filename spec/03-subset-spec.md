@@ -297,16 +297,31 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 
 ## 9. Imports
 
-Every module in the program's import graph must be subset-compliant. The transpiler must be able to resolve all types, names, and signatures across the full program — a file that imports from a non-subset module cannot be transpiled.
+Every module in the program's import graph must be subset-compliant. The transpiler resolves all imports and verifies that every imported module is either a project file or an allowed stdlib module.
 
-| Allowed                             | Not Allowed          | Rationale                      |
-| ----------------------------------- | -------------------- | ------------------------------ |
-| `from typing import ...`            | other stdlib         | Code must be self-contained    |
-| `from dataclasses import dataclass` | external packages    | No external dependencies       |
-| `from collections.abc import ...`   | `from X import *`    | Star imports obscure bindings  |
-| `from __future__ import ...`        | `import X as Y`      | Module aliases obscure origins |
-| `from X import Y as Z`              | imports in functions | Top-level only                 |
-| `from . import module`              |                      |                                |
-| `import sys`                        |                      | stdin/stdout/stderr/argv       |
-| `import os`                         |                      | `os.getenv()`                  |
-| `import re`                         |                      | Regular expressions            |
+### Syntactic rules (subset checker)
+
+| Allowed                | Not Allowed       | Rationale                      |
+| ---------------------- | ----------------- | ------------------------------ |
+| `from X import Y`      | `from X import *` | Star imports obscure bindings  |
+| `from X import Y as Z` | `import X as Y`   | Module aliases obscure origins |
+| `from . import module` |                   |                                |
+| `import sys`           |                   | stdin/stdout/stderr/argv       |
+| `import os`            |                   | `os.getenv()`                  |
+| `import re`            |                   | Regular expressions            |
+
+Bare `import` is restricted to `sys`, `os`, and `re`. These modules have built-in transpiler support and must be used via their module namespace (e.g., `sys.argv`, `os.getenv()`, `re.match()`), so `from sys/os/re import ...` is not allowed.
+
+All other `from` imports are syntactically valid. Whether they resolve is a semantic question handled by import resolution.
+
+### Semantic rules (import resolution)
+
+Every import must resolve to one of:
+
+| Source                | Examples                                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Project file          | `from .module import X`, `from mypackage import Y`                                                                                     |
+| Allowed stdlib module | `from typing import ...`, `from dataclasses import dataclass`, `from collections.abc import ...`, `from __future__ import annotations` |
+| Allowed bare import   | `import sys`, `import os`, `import re`                                                                                                 |
+
+Imports that do not resolve — other stdlib modules, external packages — are errors at this phase, not at subset checking.

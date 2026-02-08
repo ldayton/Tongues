@@ -366,7 +366,7 @@ class PerlBackend:
     """Emit Perl code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
         self.current_package: str | None = None
@@ -376,8 +376,8 @@ class PerlBackend:
         self._known_functions: set[str] = set()  # Module-level function names
         self.struct_fields: dict[str, list[tuple[str, Type]]] = {}  # Struct field info
         self._in_try_with_return: bool = False  # Flag for return-from-eval workaround
-        self._needs_encode = False
-        self._needs_integer = False  # Track if bitwise ops require `use integer;`
+        self._needs_encode: bool = False
+        self._needs_integer: bool = False  # Track if bitwise ops require `use integer;`
 
     def emit(self, module: Module) -> str:
         """Emit Perl code from IR Module."""

@@ -55,7 +55,7 @@ Middleend deficiencies (should be fixed in middleend.py):
 
 from __future__ import annotations
 
-from re import sub as re_sub
+import re
 
 from src.backend.util import escape_string, go_to_camel, go_to_pascal
 from src.ir import (
@@ -314,7 +314,7 @@ class GoBackend:
 
     def __init__(self) -> None:
         self.output: list[str] = []
-        self.indent = 0
+        self.indent: int = 0
         self._receiver_name: str = ""  # Current method receiver name
         self._tuple_vars: dict[str, Tuple] = {}  # Track tuple-typed variables
         self._hoisted_in_try: set[str] = set()  # Variables hoisted from try blocks
@@ -2429,7 +2429,7 @@ class GoBackend:
     def _emit_expr_StringFormat(self, expr: StringFormat) -> str:
         args = ", ".join(self._emit_expr(a) for a in expr.args)
         # Convert Python-style {0}, {1} placeholders to Go-style %v
-        template = re_sub(r"\{(\d+)\}", "%v", expr.template)
+        template = re.sub(r"\{(\d+)\}", "%v", expr.template)
         escaped = escape_string(template)
         if args:
             return f'fmt.Sprintf("{escaped}", {args})'

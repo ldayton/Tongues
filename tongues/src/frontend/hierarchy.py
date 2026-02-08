@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -56,13 +55,13 @@ def is_node_subclass(
     return any(is_node_subclass(base, symbols, hierarchy_root) for base in info.bases)
 
 
-@dataclass
 class SubtypeRel:
     """Pre-computed subtype relations for efficient lookups."""
 
-    hierarchy_root: str | None = None
-    node_types: set[str] = field(default_factory=set)
-    exception_types: set[str] = field(default_factory=set)
+    def __init__(self, hierarchy_root: str | None = None) -> None:
+        self.hierarchy_root: str | None = hierarchy_root
+        self.node_types: set[str] = set()
+        self.exception_types: set[str] = set()
 
     def is_node(self, name: str) -> bool:
         return name in self.node_types

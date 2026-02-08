@@ -21,15 +21,18 @@ from ..ir import (
     Param,
     Pointer,
     Receiver,
+    Return,
     STRING,
+    Stmt,
     Struct,
+    StructLit,
     StructRef,
+    Var,
     VOID,
     loc_unknown,
 )
 
 if TYPE_CHECKING:
-    from .. import ir
     from ..ir import FuncInfo, StructInfo, SymbolTable, Type
     from .context import TypeContext
 
@@ -61,42 +64,39 @@ def build_forwarding_constructor(
     symbols: "SymbolTable",
 ) -> Function:
     """Build a forwarding constructor for exception subclasses with no __init__."""
-    from .. import ir
-
     # Get parent class info to copy its parameters
-    parent_info = symbols.structs.get(parent_class)
+    parent_info: StructInfo | None = symbols.structs.get(parent_class)
     if not parent_info:
         raise ValueError(f"Unknown parent class: {parent_class}")
     # Build parameters from parent's __init__ params
     params: list[Param] = []
     for param_name in parent_info.init_params:
         # Get from parent's field type
-        typ = INT  # Default
-        field_info = parent_info.fields.get(param_name)
+        typ: Type = INT
+        field_info: Field | None = parent_info.fields.get(param_name)
         if field_info:
             typ = field_info.typ
         params.append(Param(name=param_name, typ=typ, loc=loc_unknown()))
     # Build body: return &ClassName{ParentClass{...}}
-    # Use StructLit with embedded type
-    body: list[ir.Stmt] = []
+    body: list[Stmt] = []
     # Create parent struct literal
-    parent_lit = ir.StructLit(
+    parent_lit: StructLit = StructLit(
         struct_name=parent_class,
         fields={
-            param_name: ir.Var(name=param_name, typ=params[i].typ)
+            param_name: Var(name=param_name, typ=params[i].typ)
             for i, param_name in enumerate(parent_info.init_params)
         },
         typ=StructRef(parent_class),
     )
     # Create struct with embedded parent - typ=Pointer makes backend emit &
-    struct_lit = ir.StructLit(
+    struct_lit: StructLit = StructLit(
         struct_name=class_name,
         fields={},
         typ=Pointer(StructRef(class_name)),
         embedded_value=parent_lit,
     )
     # Return pointer to struct
-    ret = ir.Return(value=struct_lit)
+    ret: Return = Return(value=struct_lit)
     body.append(ret)
     return Function(
         name=f"New{class_name}",

@@ -55,6 +55,8 @@ Backend deficiencies (Java-specific, fixable in java.py):
 
 from __future__ import annotations
 
+import re
+
 from src.backend.util import escape_string, to_camel, to_pascal, to_screaming_snake
 
 # Java reserved words that need escaping
@@ -464,14 +466,14 @@ class JavaBackend:
     """Emit Java code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
         self.current_class: str = ""
         self.tuple_records: dict[
             tuple[str, ...], str
         ] = {}  # tuple signature -> record name
-        self.tuple_counter = 0
+        self.tuple_counter: int = 0
         self.optional_tuples: set[tuple[str, ...]] = (
             set()
         )  # (T, bool) patterns -> use Optional<T>
@@ -492,8 +494,8 @@ class JavaBackend:
         self._module_name: str = ""  # Current module name
         self._method_to_interface: dict[str, str] = {}  # method name -> interface name
         self._known_functions: set[str] = set()  # top-level function names
-        self._needs_function_import = False
-        self._needs_bytes_helper = False
+        self._needs_function_import: bool = False
+        self._needs_bytes_helper: bool = False
 
     def emit(self, module: Module) -> str:
         """Emit Java code from IR Module."""
@@ -2183,10 +2185,8 @@ class JavaBackend:
         return f"(({java_type}) {inner_str})"
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
-        from re import sub as re_sub
-
         # Convert {0}, {1}, etc. to %s
-        result = re_sub(r"\{\d+\}", "%s", template)
+        result = re.sub(r"\{\d+\}", "%s", template)
         result = result.replace("%v", "%s")
         escaped = (
             result.replace("\\", "\\\\")

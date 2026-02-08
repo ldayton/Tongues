@@ -18,8 +18,6 @@ Annotations added:
     OwnershipInfo: Module-level summary of escape analysis results
 """
 
-from dataclasses import dataclass, field
-
 from src.ir import (
     Assign,
     BinaryOp,
@@ -74,14 +72,14 @@ from src.ir import (
 )
 
 
-@dataclass
 class OwnershipContext:
     """Context for ownership analysis within a function."""
 
-    var_ownership: dict[str, Ownership] = field(default_factory=dict)
-    params: set[str] = field(default_factory=set)
-    escaping: set[str] = field(default_factory=set)
-    current_struct: str | None = None
+    def __init__(self, current_struct: str | None = None) -> None:
+        self.var_ownership: dict[str, Ownership] = {}
+        self.params: set[str] = set()
+        self.escaping: set[str] = set()
+        self.current_struct: str | None = current_struct
 
 
 def analyze_ownership(module: Module) -> OwnershipInfo:

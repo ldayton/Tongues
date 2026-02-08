@@ -178,19 +178,19 @@ class ZigBackend(Emitter):
         super().__init__()
         self._func_names: set[str] = set()
         self._entrypoint_fn: str | None = None
-        self._needs_panic_handler = False
-        self._needs_step_slice_helper = False
-        self._needs_upper_lower_helper = False
-        self._needs_join_helper = False
-        self._needs_replace_helper = False
-        self._needs_count_helper = False
-        self._needs_repeat_helper = False
-        self._needs_split_helper = False
-        self._tmp_counter = 0
+        self._needs_panic_handler: bool = False
+        self._needs_step_slice_helper: bool = False
+        self._needs_upper_lower_helper: bool = False
+        self._needs_join_helper: bool = False
+        self._needs_replace_helper: bool = False
+        self._needs_count_helper: bool = False
+        self._needs_repeat_helper: bool = False
+        self._needs_split_helper: bool = False
+        self._tmp_counter: int = 0
 
     def emit(self, module: Module) -> str:
         self.lines: list[str] = []
-        self.indent = 0
+        self.indent: int = 0
         self._func_names = {f.name for f in module.functions}
         self._entrypoint_fn = (
             module.entrypoint.function_name if module.entrypoint else None

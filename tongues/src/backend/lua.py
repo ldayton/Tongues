@@ -186,14 +186,14 @@ class LuaBackend:
     """Emit Lua code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
         self.struct_fields: dict[str, list[str]] = {}  # struct name -> [field_names]
-        self._has_continue = False  # Track if we need continue helper
+        self._has_continue: bool = False  # Track if we need continue helper
         self._needed_helpers: set[str] = set()
         self._hoisted_vars: set[str] = set()  # Variables already declared via hoisting
-        self._needs_paren_guard = (
+        self._needs_paren_guard: bool = (
             False  # Track if ; needed before ( to prevent ambiguity
         )
 

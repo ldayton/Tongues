@@ -220,12 +220,12 @@ class RustBackend(Emitter):
     def __init__(self) -> None:
         super().__init__()
         self._func_names: set[str] = set()
-        self._needs_catch_unwind = False
+        self._needs_catch_unwind: bool = False
         self._entrypoint_fn: str | None = None
 
     def emit(self, module: Module) -> str:
         self.lines: list[str] = []
-        self.indent = 0
+        self.indent: int = 0
         self._func_names = {f.name for f in module.functions}
         self._needs_catch_unwind = False
         self._entrypoint_fn = (

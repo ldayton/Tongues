@@ -166,6 +166,7 @@ BANNED_BUILTINS: set[str] = {
     "classmethod",
     "property",
     "complex",
+    "TypeVar",
 }
 
 # Node types that are completely banned
@@ -197,19 +198,22 @@ EAGER_CONSUMERS: set[str] = {
     "sorted",
 }
 
-# Allowed stdlib imports (for typing and dataclasses)
-# Internal imports (relative or within the project) are always allowed
-ALLOWED_STDLIB: set[str] = {
-    "__future__",
-    "typing",
-    "collections.abc",
-    "dataclasses",
-    "os",
-    "re",
+# Type names that are banned
+BANNED_TYPE_NAMES: set[str] = {"Any"}
+
+# Modules that can only be imported as `import X`, not `from X import ...`
+IMPORT_ONLY_MODULES: set[str] = {"sys", "os", "re"}
+
+# Restricted builtin keyword arguments: {func_name: {banned_kwarg_names}}
+RESTRICTED_KWARGS: dict[str, set[str]] = {
+    "min": {"key", "default"},
+    "max": {"key", "default"},
+    "sorted": {"key"},
+    "print": {"sep"},
 }
 
 # Bare collection types that need type parameters
-BARE_COLLECTION_TYPES: set[str] = {"list", "dict", "set", "tuple"}
+BARE_COLLECTION_TYPES: set[str] = {"list", "dict", "set", "tuple", "frozenset"}
 
 # Allowed dunder methods
 ALLOWED_DUNDERS: set[str] = {"__init__", "__new__", "__repr__"}
@@ -271,6 +275,14 @@ def is_none_constant(node: ASTNode) -> bool:
     if node.get("_type") != "Constant":
         return False
     return node.get("value") is None
+
+
+def is_singleton_constant(node: ASTNode) -> bool:
+    """Check if node is a None/True/False singleton constant."""
+    if node.get("_type") != "Constant":
+        return False
+    val = node.get("value")
+    return val is None or val is True or val is False
 
 
 def is_constant(node: ASTNode) -> bool:
@@ -364,6 +376,7 @@ class Verifier:
         self.function_name: str = ""
         self.annotated_params: set[str] = set()
         self.annotated_fields: set[str] = set()
+        self.annotated_locals: set[str] = set()
         # Context flags for eager iteration
         self.in_eager_consumer: bool = False
         self.in_for_iter: bool = False
@@ -440,6 +453,8 @@ class Verifier:
             self.visit_SetComp(node)
         elif node_type == "DictComp":
             self.visit_DictComp(node)
+        elif node_type == "Name":
+            self.visit_Name(node)
         elif node_type == "Yield":
             self.visit_Yield(node)
         elif node_type == "YieldFrom":
@@ -627,25 +642,44 @@ class Verifier:
                 self.error(
                     node, "types", "missing return type: def " + name + "() -> ..."
                 )
-        # Check return type bare collection
+        # Check return type bare collection and visit return annotation
         returns = node.get("returns")
-        if returns is not None and is_bare_collection(returns):
-            self.error(
-                node,
-                "types",
-                "bare "
-                + returns.get("id", "")
-                + ": "
-                + name
-                + "() return needs type parameter",
-            )
+        if returns is not None:
+            if is_bare_collection(returns):
+                self.error(
+                    node,
+                    "types",
+                    "bare "
+                    + returns.get("id", "")
+                    + ": "
+                    + name
+                    + "() return needs type parameter",
+                )
+            self.visit(returns)
         # Check parameter types
         args_list = args_node.get("args", [])
+        # Also check keyword-only args
+        kwonlyargs = args_node.get("kwonlyargs", [])
+        # Also check positional-only args
+        posonlyargs = args_node.get("posonlyargs", [])
+        all_args: list[ASTNode] = []
+        ai = 0
+        while ai < len(posonlyargs):
+            all_args.append(posonlyargs[ai])
+            ai += 1
+        ai = 0
+        while ai < len(args_list):
+            all_args.append(args_list[ai])
+            ai += 1
+        ai = 0
+        while ai < len(kwonlyargs):
+            all_args.append(kwonlyargs[ai])
+            ai += 1
         old_annotated = self.annotated_params
         self.annotated_params = set()
         j = 0
-        while j < len(args_list):
-            arg = args_list[j]
+        while j < len(all_args):
+            arg = all_args[j]
             arg_name = arg.get("arg", "")
             annotation = arg.get("annotation")
             # Skip self/cls first param
@@ -660,6 +694,7 @@ class Verifier:
                 )
             else:
                 self.annotated_params.add(arg_name)
+                self.visit(annotation)
                 if is_bare_collection(annotation):
                     self.error(
                         node,
@@ -701,8 +736,10 @@ class Verifier:
         # Visit body
         old_in_function = self.in_function
         old_function_name = self.function_name
+        old_annotated_locals = self.annotated_locals
         self.in_function = True
         self.function_name = name
+        self.annotated_locals = set()
         body = node.get("body", [])
         m = 0
         while m < len(body):
@@ -711,6 +748,7 @@ class Verifier:
         self.in_function = old_in_function
         self.function_name = old_function_name
         self.annotated_params = old_annotated
+        self.annotated_locals = old_annotated_locals
 
     def visit_ClassDef(self, node: ASTNode) -> None:
         """Check class definition constraints."""
@@ -800,8 +838,42 @@ class Verifier:
         if not is_eager and isinstance(func, dict) and func.get("_type") == "Attribute":
             if func.get("attr") == "join":
                 is_eager = True
-        # Check *args in call
+        # Check restricted keyword arguments (min/max key/default, sorted key, print sep)
+        keywords = node.get("keywords", [])
+        if func_name is not None and func_name in RESTRICTED_KWARGS:
+            banned_kwargs = RESTRICTED_KWARGS[func_name]
+            j = 0
+            while j < len(keywords):
+                kw = keywords[j]
+                kw_arg = kw.get("arg")
+                if kw_arg is not None and kw_arg in banned_kwargs:
+                    self.error(
+                        node,
+                        "builtin",
+                        func_name + "() does not allow " + kw_arg + "= argument",
+                    )
+                j += 1
+        # Check print: only one positional argument
         args = node.get("args", [])
+        if func_name == "print" and len(args) > 1:
+            self.error(
+                node,
+                "builtin",
+                "print() takes one value; use f-string or str concatenation",
+            )
+        # Check field(default_factory=...)
+        if func_name == "field":
+            j = 0
+            while j < len(keywords):
+                kw = keywords[j]
+                if kw.get("arg") == "default_factory":
+                    self.error(
+                        node,
+                        "class",
+                        "field(default_factory=...) not allowed: use simple defaults",
+                    )
+                j += 1
+        # Check *args in call
         i = 0
         while i < len(args):
             arg = args[i]
@@ -812,7 +884,6 @@ class Verifier:
                 break
             i += 1
         # Check **kwargs in call
-        keywords = node.get("keywords", [])
         j = 0
         while j < len(keywords):
             kw = keywords[j]
@@ -845,8 +916,7 @@ class Verifier:
         """Check comparison constraints."""
         ops = node.get("ops", [])
         comparators = node.get("comparators", [])
-        # Chained comparisons like (a < b < c) are allowed - lowered to (a < b) and (b < c)
-        # Check is/is not with non-None
+        # Check is/is not — only allowed with None/True/False singletons
         left = node.get("left", {})
         i = 0
         while i < len(ops):
@@ -854,13 +924,13 @@ class Verifier:
             comparator = comparators[i]
             op_type = op.get("_type", "")
             if op_type in ("Is", "IsNot"):
-                if is_constant(left) and is_constant(comparator):
+                if not is_singleton_constant(left) and not is_singleton_constant(
+                    comparator
+                ):
                     self.error(
-                        node, "reflection", "is/is not: cannot compare two literals"
-                    )
-                elif not is_constant(left) and not is_constant(comparator):
-                    self.error(
-                        node, "reflection", "is/is not: requires a literal on one side"
+                        node,
+                        "reflection",
+                        "is/is not only allowed with None/True/False",
                     )
             left = comparator
             i += 1
@@ -911,8 +981,6 @@ class Verifier:
                                 and val_name in self.annotated_params
                             ):
                                 self.annotated_fields.add(field_name)
-                            elif is_obvious_literal(value):
-                                self.annotated_fields.add(field_name)
                             else:
                                 self.error(
                                     node,
@@ -934,6 +1002,11 @@ class Verifier:
         """Check annotated assignment constraints."""
         annotation = node.get("annotation")
         target = node.get("target", {})
+        # Track annotated local variables
+        if self.in_function and target.get("_type") == "Name":
+            target_name = target.get("id")
+            if target_name is not None:
+                self.annotated_locals.add(target_name)
         # Check bare collection
         if is_bare_collection(annotation):
             target_name = target.get("id", "?")
@@ -1003,6 +1076,16 @@ class Verifier:
         while j < len(orelse):
             self.visit(orelse[j])
             j += 1
+
+    def visit_Name(self, node: ASTNode) -> None:
+        """Check for banned type names like Any."""
+        name_id = node.get("id", "")
+        if name_id in BANNED_TYPE_NAMES:
+            self.error(
+                node,
+                "types",
+                name_id + " is not allowed: use object + isinstance() instead",
+            )
 
     def visit_Yield(self, node: ASTNode) -> None:
         """Check yield - allowed only in for-loop body (structural recursion)."""
@@ -1122,14 +1205,21 @@ class Verifier:
             i += 1
 
     def visit_Import(self, node: ASTNode) -> None:
-        """Check import constraints. Only 'import sys' allowed for I/O."""
+        """Check import constraints. Only 'import sys/os/re' allowed."""
         names = node.get("names", [])
         i = 0
         while i < len(names):
             alias = names[i]
             if isinstance(alias, dict):
                 name = alias.get("name", "")
-                if name != "sys":
+                asname = alias.get("asname")
+                if asname is not None:
+                    self.error(
+                        node,
+                        "import",
+                        "import " + name + " as " + str(asname) + ": module aliases not allowed",
+                    )
+                elif name not in IMPORT_ONLY_MODULES:
                     self.error(
                         node,
                         "import",
@@ -1138,11 +1228,16 @@ class Verifier:
             i += 1
 
     def visit_ImportFrom(self, node: ASTNode) -> None:
-        """Check from import constraints.
-
-        Relative imports and imports within the project are allowed.
-        Only typing-related stdlib imports are allowed for external modules.
-        """
+        """Check from-import syntax: no stars, no from sys/os/re."""
+        # Check for star imports
+        import_names = node.get("names", [])
+        i = 0
+        while i < len(import_names):
+            alias = import_names[i]
+            if isinstance(alias, dict) and alias.get("name") == "*":
+                self.error(node, "import", "star import: import names explicitly")
+                return
+            i += 1
         level = node.get("level", 0)
         if level > 0:
             return
@@ -1150,8 +1245,15 @@ class Verifier:
         if module is None:
             return
         top_module = module.split(".")[0]
-        if top_module in ALLOWED_STDLIB:
+        # sys/os/re can only be used with `import X`, not `from X import ...`
+        if top_module in IMPORT_ONLY_MODULES:
+            self.error(
+                node,
+                "import",
+                "from " + module + " import: use 'import " + top_module + "' instead",
+            )
             return
+        # All other from-imports (internal project, other stdlib) are allowed
 
     def visit_Attribute(self, node: ASTNode) -> None:
         """Check attribute access constraints."""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from re import sub as re_sub
+import re
 
 from src.ir import (
     Assign,
@@ -151,8 +151,8 @@ def to_snake(name: str) -> str:
         name = name[1:]
     if "_" in name or name.islower():
         return name.lower()
-    s1 = re_sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
-    return re_sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+    s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
 
 def to_camel(name: str) -> str:
@@ -200,7 +200,7 @@ class Emitter:
     """Base class for code emitters with indentation tracking."""
 
     def __init__(self, indent_str: str = "    ") -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self._indent_str = indent_str
 
