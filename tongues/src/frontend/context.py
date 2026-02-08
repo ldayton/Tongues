@@ -33,15 +33,33 @@ class TypeContext:
         self.expected: Type | None = expected
         self.return_type: Type | None = return_type
         self.var_types: dict[str, Type] = var_types if var_types is not None else {}
-        self.tuple_vars: dict[str, list[str]] = tuple_vars if tuple_vars is not None else {}
-        self.sentinel_ints: set[str] = sentinel_ints if sentinel_ints is not None else set()
-        self.optional_strings: set[str] = optional_strings if optional_strings is not None else set()
-        self.narrowed_vars: set[str] = narrowed_vars if narrowed_vars is not None else set()
-        self.kind_source_vars: dict[str, str] = kind_source_vars if kind_source_vars is not None else {}
-        self.union_types: dict[str, list[str]] = union_types if union_types is not None else {}
-        self.list_element_unions: dict[str, list[str]] = list_element_unions if list_element_unions is not None else {}
-        self.narrowed_attr_paths: dict[tuple[str, ...], str] = narrowed_attr_paths if narrowed_attr_paths is not None else {}
-        self.unified_to_node: set[str] = unified_to_node if unified_to_node is not None else set()
+        self.tuple_vars: dict[str, list[str]] = (
+            tuple_vars if tuple_vars is not None else {}
+        )
+        self.sentinel_ints: set[str] = (
+            sentinel_ints if sentinel_ints is not None else set()
+        )
+        self.optional_strings: set[str] = (
+            optional_strings if optional_strings is not None else set()
+        )
+        self.narrowed_vars: set[str] = (
+            narrowed_vars if narrowed_vars is not None else set()
+        )
+        self.kind_source_vars: dict[str, str] = (
+            kind_source_vars if kind_source_vars is not None else {}
+        )
+        self.union_types: dict[str, list[str]] = (
+            union_types if union_types is not None else {}
+        )
+        self.list_element_unions: dict[str, list[str]] = (
+            list_element_unions if list_element_unions is not None else {}
+        )
+        self.narrowed_attr_paths: dict[tuple[str, ...], str] = (
+            narrowed_attr_paths if narrowed_attr_paths is not None else {}
+        )
+        self.unified_to_node: set[str] = (
+            unified_to_node if unified_to_node is not None else set()
+        )
 
 
 @dataclass

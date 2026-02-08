@@ -1217,7 +1217,11 @@ class Verifier:
                     self.error(
                         node,
                         "import",
-                        "import " + name + " as " + str(asname) + ": module aliases not allowed",
+                        "import "
+                        + name
+                        + " as "
+                        + str(asname)
+                        + ": module aliases not allowed",
                     )
                 elif name not in IMPORT_ONLY_MODULES:
                     self.error(

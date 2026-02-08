@@ -450,7 +450,9 @@ class Struct:
         self.loc: Loc = loc
         self.is_exception: bool = is_exception
         self.embedded_type: str | None = embedded_type
-        self.const_fields: dict[str, str] = const_fields if const_fields is not None else {}
+        self.const_fields: dict[str, str] = (
+            const_fields if const_fields is not None else {}
+        )
 
 
 @dataclass
@@ -746,7 +748,9 @@ class TupleAssign(Stmt):
         self.targets: list[LValue] = targets
         self.value: Expr = value
         self.is_declaration: bool = is_declaration
-        self.unused_indices: list[int] = unused_indices if unused_indices is not None else []
+        self.unused_indices: list[int] = (
+            unused_indices if unused_indices is not None else []
+        )
         self.new_targets: list[str] = new_targets if new_targets is not None else []
 
 
@@ -817,7 +821,9 @@ class If(Stmt):
         self.then_body: list[Stmt] = then_body
         self.else_body: list[Stmt] = else_body if else_body is not None else []
         self.init: VarDecl | None = init
-        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
+        self.hoisted_vars: list[tuple[str, Type]] = (
+            hoisted_vars if hoisted_vars is not None else []
+        )
 
 
 class TypeSwitch(Stmt):
@@ -860,7 +866,9 @@ class TypeSwitch(Stmt):
         self.default: list[Stmt] = default if default is not None else []
         self.binding_unused: bool = binding_unused
         self.binding_reassigned: bool = binding_reassigned
-        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
+        self.hoisted_vars: list[tuple[str, Type]] = (
+            hoisted_vars if hoisted_vars is not None else []
+        )
 
 
 @dataclass
@@ -904,7 +912,9 @@ class Match(Stmt):
         self.expr: Expr = expr
         self.cases: list[MatchCase] = cases if cases is not None else []
         self.default: list[Stmt] = default if default is not None else []
-        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
+        self.hoisted_vars: list[tuple[str, Type]] = (
+            hoisted_vars if hoisted_vars is not None else []
+        )
 
 
 @dataclass
@@ -956,7 +966,9 @@ class ForRange(Stmt):
         self.value: str | None = value
         self.iterable: Expr = iterable
         self.body: list[Stmt] = body
-        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
+        self.hoisted_vars: list[tuple[str, Type]] = (
+            hoisted_vars if hoisted_vars is not None else []
+        )
 
 
 class ForClassic(Stmt):
@@ -986,7 +998,9 @@ class ForClassic(Stmt):
         self.cond: Expr | None = cond
         self.post: Stmt | None = post
         self.body: list[Stmt] = body
-        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
+        self.hoisted_vars: list[tuple[str, Type]] = (
+            hoisted_vars if hoisted_vars is not None else []
+        )
 
 
 class While(Stmt):
@@ -1011,7 +1025,9 @@ class While(Stmt):
         super().__init__(loc=loc)
         self.cond: Expr = cond
         self.body: list[Stmt] = body
-        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
+        self.hoisted_vars: list[tuple[str, Type]] = (
+            hoisted_vars if hoisted_vars is not None else []
+        )
 
 
 @dataclass
@@ -1096,7 +1112,9 @@ class TryCatch(Stmt):
         self.reraise: bool = reraise
         self.has_returns: bool = has_returns
         self.has_catch_returns: bool = has_catch_returns
-        self.hoisted_vars: list[tuple[str, Type]] = hoisted_vars if hoisted_vars is not None else []
+        self.hoisted_vars: list[tuple[str, Type]] = (
+            hoisted_vars if hoisted_vars is not None else []
+        )
 
 
 @dataclass
@@ -2553,9 +2571,13 @@ class StructInfo:
         self.is_exception: bool = is_exception
         self.bases: list[str] = bases if bases is not None else []
         self.init_params: list[str] = init_params if init_params is not None else []
-        self.param_to_field: dict[str, str] = param_to_field if param_to_field is not None else {}
+        self.param_to_field: dict[str, str] = (
+            param_to_field if param_to_field is not None else {}
+        )
         self.needs_constructor: bool = needs_constructor
-        self.const_fields: dict[str, str] = const_fields if const_fields is not None else {}
+        self.const_fields: dict[str, str] = (
+            const_fields if const_fields is not None else {}
+        )
 
 
 @dataclass

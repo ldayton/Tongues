@@ -832,7 +832,9 @@ def fields_to_dict(symbols: SymbolTable) -> dict[str, object]:
     """Serialize fields phase output: {"classes": {...}}."""
     classes: dict[str, object] = {}
     for name, struct in symbols.structs.items():
-        fields: dict[str, object] = {fname: serialize(finfo) for fname, finfo in struct.fields.items()}
+        fields: dict[str, object] = {
+            fname: serialize(finfo) for fname, finfo in struct.fields.items()
+        }
         classes[name] = {
             "fields": fields,
             "init_params": struct.init_params,
