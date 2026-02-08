@@ -7,7 +7,7 @@ import sys
 from .frontend import Frontend
 from .frontend.parse import parse
 from .frontend.subset import verify as verify_subset
-from .frontend.names import resolve_names
+from .frontend.names import NameInfo, NameTable, resolve_names
 from .middleend import analyze
 from .backend.c import CBackend
 from .backend.go import GoBackend
@@ -60,13 +60,26 @@ BACKENDS: dict[
     "zig": ZigBackend,
 }
 
+PHASES: list[str] = [
+    "parse",
+    "subset",
+    "names",
+    "signatures",
+    "fields",
+    "hierarchy",
+    "inference",
+    "lowering",
+    "analyze",
+]
+
 USAGE: str = """\
-tongues [OPTIONS] < input.py > output.go
+tongues [OPTIONS] < input.py
 
 Options:
-  --target TARGET   Output language: c, csharp, dart, go, java, javascript, lua, perl, php, python, ruby, rust, swift, typescript, zig
-  --verify [PATH]   Check subset compliance only, no codegen
-                    PATH can be a file or directory (reads stdin if omitted)
+  --target TARGET   Output language: c, csharp, dart, go, java, javascript,
+                    lua, perl, php, python, ruby, rust, swift, typescript, zig
+  --stop-at PHASE   Stop after phase: parse, subset, names, signatures,
+                    fields, hierarchy, inference, lowering, analyze
   --help            Show this help message
 """
 
@@ -82,78 +95,236 @@ def should_skip_file(source: str) -> bool:
     return False
 
 
-def run_verify_stdin() -> int:
-    """Verify source from stdin. Returns exit code."""
-    source = sys.stdin.read()
-    if should_skip_file(source):
+def read_source() -> tuple[str, int]:
+    """Read source from stdin with validation. Returns (source, exit_code) where exit_code 0 means OK."""
+    raw = sys.stdin.buffer.read()
+    if len(raw) > 0:
+        try:
+            source = raw.decode("utf-8")
+        except ValueError:
+            print("error: invalid utf-8 in input", file=sys.stderr)
+            return ("", 1)
+        return (source, 0)
+    return ("", 0)
+
+
+# --- JSON serialization (subset-compliant, no json module) ---
+
+
+def _json_escape(s: str) -> str:
+    """Escape a string for JSON output."""
+    result: list[str] = []
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c == "\\":
+            result.append("\\\\")
+        elif c == '"':
+            result.append('\\"')
+        elif c == "\n":
+            result.append("\\n")
+        elif c == "\r":
+            result.append("\\r")
+        elif c == "\t":
+            result.append("\\t")
+        else:
+            result.append(c)
+        i += 1
+    return "".join(result)
+
+
+def _to_json(obj: object, indent: int, level: int) -> str:
+    """Recursively serialize an object to JSON string."""
+    if obj is None:
+        return "null"
+    if isinstance(obj, bool):
+        if obj:
+            return "true"
+        return "false"
+    if isinstance(obj, int):
+        return str(obj)
+    if isinstance(obj, float):
+        return str(obj)
+    if isinstance(obj, str):
+        return '"' + _json_escape(obj) + '"'
+    if isinstance(obj, list):
+        if len(obj) == 0:
+            return "[]"
+        parts: list[str] = []
+        pad = " " * (indent * (level + 1))
+        pad_close = " " * (indent * level)
+        i = 0
+        while i < len(obj):
+            parts.append(pad + _to_json(obj[i], indent, level + 1))
+            i += 1
+        return "[\n" + ",\n".join(parts) + "\n" + pad_close + "]"
+    if isinstance(obj, dict):
+        if len(obj) == 0:
+            return "{}"
+        parts = []
+        pad = " " * (indent * (level + 1))
+        pad_close = " " * (indent * level)
+        keys = list(obj.keys())
+        i = 0
+        while i < len(keys):
+            k = keys[i]
+            v = obj[k]
+            key_str = '"' + _json_escape(str(k)) + '"'
+            val_str = _to_json(v, indent, level + 1)
+            parts.append(pad + key_str + ": " + val_str)
+            i += 1
+        return "{\n" + ",\n".join(parts) + "\n" + pad_close + "}"
+    return '"<unserializable>"'
+
+
+def to_json(obj: object) -> str:
+    """Serialize object to pretty-printed JSON."""
+    return _to_json(obj, 2, 0)
+
+
+def _name_info_to_dict(info: NameInfo) -> dict[str, object]:
+    """Convert a NameInfo to a serializable dict."""
+    d: dict[str, object] = {
+        "kind": info.kind,
+        "scope": info.scope,
+        "lineno": info.lineno,
+        "col": info.col,
+    }
+    if info.decl_class != "":
+        d["decl_class"] = info.decl_class
+    if info.decl_func != "":
+        d["decl_func"] = info.decl_func
+    if len(info.bases) > 0:
+        d["bases"] = info.bases
+    return d
+
+
+def _name_table_to_dict(table: NameTable) -> dict[str, object]:
+    """Convert a NameTable to a serializable dict."""
+    module: dict[str, object] = {}
+    keys = list(table.module_names.keys())
+    i = 0
+    while i < len(keys):
+        name = keys[i]
+        module[name] = _name_info_to_dict(table.module_names[name])
+        i += 1
+    classes: dict[str, object] = {}
+    ckeys = list(table.class_names.keys())
+    i = 0
+    while i < len(ckeys):
+        cname = ckeys[i]
+        members: dict[str, object] = {}
+        mkeys = list(table.class_names[cname].keys())
+        j = 0
+        while j < len(mkeys):
+            mname = mkeys[j]
+            members[mname] = _name_info_to_dict(table.class_names[cname][mname])
+            j += 1
+        classes[cname] = members
+        i += 1
+    locals_: dict[str, object] = {}
+    lkeys = list(table.local_names.keys())
+    i = 0
+    while i < len(lkeys):
+        lkey = lkeys[i]
+        scope_key = str(lkey[0]) + ":" + str(lkey[1])
+        scope_names: dict[str, object] = {}
+        skeys = list(table.local_names[lkey].keys())
+        j = 0
+        while j < len(skeys):
+            sname = skeys[j]
+            scope_names[sname] = _name_info_to_dict(table.local_names[lkey][sname])
+            j += 1
+        locals_[scope_key] = scope_names
+        i += 1
+    result: dict[str, object] = {"module": module}
+    if len(classes) > 0:
+        result["classes"] = classes
+    if len(locals_) > 0:
+        result["locals"] = locals_
+    return result
+
+
+# --- Error reporting ---
+
+
+def _print_errors(errors: list[object]) -> None:
+    """Print a list of error objects to stderr."""
+    i = 0
+    while i < len(errors):
+        print(str(errors[i]), file=sys.stderr)
+        i += 1
+
+
+# --- Pipeline ---
+
+
+def run_pipeline(target: str, stop_at: str | None) -> int:
+    """Run the transpilation pipeline, optionally stopping at a phase."""
+    source, err = read_source()
+    if err != 0:
+        return err
+    if len(source) == 0:
+        if stop_at is not None:
+            return 0
+        print("error: no input provided", file=sys.stderr)
+        return 2
+    if stop_at == "subset" and should_skip_file(source):
         return 0
+    # Phase 2: Parse
     ast_dict = parse(source)
+    if stop_at == "parse":
+        print(to_json(ast_dict))
+        return 0
+    # Phase 3: Subset
     result = verify_subset(ast_dict)
     errors = result.errors()
     if len(errors) > 0:
-        i = 0
-        while i < len(errors):
-            e = errors[i]
-            print(str(e), file=sys.stderr)
-            i += 1
+        _print_errors(errors)
         return 1
+    if stop_at == "subset":
+        return 0
+    # Phase 4: Names
     name_result = resolve_names(ast_dict)
     errors = name_result.errors()
     if len(errors) > 0:
-        i = 0
-        while i < len(errors):
-            e = errors[i]
-            print(str(e), file=sys.stderr)
-            i += 1
+        _print_errors(errors)
         return 1
-    return 0
-
-
-def run_transpile(target: str) -> int:
-    """Transpile source from stdin to target language. Returns exit code."""
-    source = sys.stdin.read()
-    ast_dict = parse(source)
-    result = verify_subset(ast_dict)
-    errors = result.errors()
-    if len(errors) > 0:
-        i = 0
-        while i < len(errors):
-            e = errors[i]
-            print(str(e), file=sys.stderr)
-            i += 1
+    if stop_at == "names":
+        print(to_json({"names": _name_table_to_dict(name_result.table)}))
+        return 0
+    # Phases 5-9 not yet individually stoppable
+    if stop_at is not None and stop_at != "analyze":
+        print(
+            "error: --stop-at '" + stop_at + "' not yet implemented",
+            file=sys.stderr,
+        )
         return 1
-    name_result = resolve_names(ast_dict)
-    errors = name_result.errors()
-    if len(errors) > 0:
-        i = 0
-        while i < len(errors):
-            e = errors[i]
-            print(str(e), file=sys.stderr)
-            i += 1
-        return 1
+    # Full pipeline
     fe = Frontend()
     module = fe.transpile(source, ast_dict, name_result=name_result)
     analyze(module)
+    if stop_at == "analyze":
+        print(
+            "error: --stop-at 'analyze' not yet implemented",
+            file=sys.stderr,
+        )
+        return 1
     backend_cls = BACKENDS.get(target)
     if backend_cls is None:
-        print("error: unknown target: " + target, file=sys.stderr)
-        return 1
+        print("error: unknown target '" + target + "'", file=sys.stderr)
+        return 2
     be = backend_cls()
     code = be.emit(module)
     print(code)
     return 0
 
 
-def parse_args() -> tuple[str, bool, str | None]:
-    """Parse command-line arguments.
-
-    Returns:
-        (target, verify_mode, verify_path) where verify_path is None for stdin mode
-    """
+def parse_args() -> tuple[str, str | None]:
+    """Parse command-line arguments. Returns (target, stop_at)."""
     args = sys.argv[1:]
     target = "go"
-    verify = False
-    verify_path: str | None = None
+    stop_at: str | None = None
     i = 0
     while i < len(args):
         arg = args[i]
@@ -163,36 +334,31 @@ def parse_args() -> tuple[str, bool, str | None]:
         elif arg == "--target":
             if i + 1 >= len(args):
                 print("error: --target requires an argument", file=sys.stderr)
-                sys.exit(1)
+                sys.exit(2)
             target = args[i + 1]
             i += 2
-        elif arg == "--verify":
-            verify = True
-            i += 1
-            if i < len(args) and not args[i].startswith("-"):
-                verify_path = args[i]
-                i += 1
+        elif arg == "--stop-at":
+            if i + 1 >= len(args):
+                print("error: --stop-at requires an argument", file=sys.stderr)
+                sys.exit(2)
+            stop_at = args[i + 1]
+            i += 2
         else:
-            print("error: unknown option: " + arg, file=sys.stderr)
-            sys.exit(1)
-    if target not in BACKENDS:
-        print("error: unknown target: " + target, file=sys.stderr)
-        sys.exit(1)
-    return (target, verify, verify_path)
+            print("error: unknown flag '" + arg + "'", file=sys.stderr)
+            sys.exit(2)
+    if stop_at is not None and stop_at not in PHASES:
+        print("error: unknown phase '" + stop_at + "'", file=sys.stderr)
+        sys.exit(2)
+    if stop_at is None and target not in BACKENDS:
+        print("error: unknown target '" + target + "'", file=sys.stderr)
+        sys.exit(2)
+    return (target, stop_at)
 
 
 def main() -> int:
-    """Main entry point for stdin-only mode."""
-    target, verify, verify_path = parse_args()
-    if verify:
-        if verify_path is not None:
-            print(
-                "error: --verify PATH requires cli.py (file I/O not in subset)",
-                file=sys.stderr,
-            )
-            return 1
-        return run_verify_stdin()
-    return run_transpile(target)
+    """Main entry point."""
+    target, stop_at = parse_args()
+    return run_pipeline(target, stop_at)
 
 
 if __name__ == "__main__":
