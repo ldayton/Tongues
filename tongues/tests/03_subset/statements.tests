@@ -543,3 +543,24 @@ def f(xs: list[int]) -> int:
 ok
 ---
 
+=== list comprehension allowed
+def f(xs: list[int]) -> list[int]:
+    return [x * 2 for x in xs]
+---
+ok
+---
+
+=== set comprehension allowed
+def f(xs: list[int]) -> set[int]:
+    return {x * 2 for x in xs}
+---
+ok
+---
+
+=== dict comprehension allowed
+def f(xs: list[str]) -> dict[str, int]:
+    return {x: len(x) for x in xs}
+---
+ok
+---
+

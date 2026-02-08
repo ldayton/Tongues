@@ -461,6 +461,20 @@ def f() -> object:
 error: complex
 ---
 
+=== aiter not allowed
+def f(xs: list[int]) -> object:
+    return aiter(xs)
+---
+error: aiter
+---
+
+=== anext not allowed
+def f(xs: list[int]) -> object:
+    return anext(xs)
+---
+error: anext
+---
+
 === generator expression in list allowed
 def f(xs: list[int]) -> list[int]:
     return list(x * 2 for x in xs)
@@ -550,4 +564,166 @@ def f() -> None:
     print("hello", sep=",")
 ---
 error: sep
+---
+
+=== print with file allowed
+import sys
+def f() -> None:
+    print("error", file=sys.stderr)
+---
+ok
+---
+
+=== reversed not allowed
+def f(xs: list[int]) -> object:
+    return reversed(xs)
+---
+error: reversed
+---
+
+=== breakpoint not allowed
+def f() -> None:
+    breakpoint()
+---
+error: breakpoint
+---
+
+=== help not allowed
+def f() -> None:
+    help(int)
+---
+error: help
+---
+
+=== exit not allowed
+def f() -> None:
+    exit(0)
+---
+error: exit
+---
+
+=== quit not allowed
+def f() -> None:
+    quit(0)
+---
+error: quit
+---
+
+=== __import__ not allowed
+def f(name: str) -> object:
+    return __import__(name)
+---
+error: __import__
+---
+
+=== generator expression in tuple allowed
+def f(xs: list[int]) -> tuple[int, ...]:
+    return tuple(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in set allowed
+def f(xs: list[int]) -> set[int]:
+    return set(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in frozenset allowed
+def f(xs: list[int]) -> frozenset[int]:
+    return frozenset(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in dict allowed
+def f(xs: list[str]) -> dict[str, int]:
+    return dict((x, len(x)) for x in xs)
+---
+ok
+---
+
+=== generator expression in min allowed
+def f(xs: list[int]) -> int:
+    return min(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in max allowed
+def f(xs: list[int]) -> int:
+    return max(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in sorted allowed
+def f(xs: list[int]) -> list[int]:
+    return sorted(x * 2 for x in xs)
+---
+ok
+---
+
+=== enumerate with start in for loop allowed
+def f(xs: list[str]) -> int:
+    total: int = 0
+    for i, x in enumerate(xs, start=1):
+        total += i
+    return total
+---
+ok
+---
+
+=== enumerate assigned not allowed
+def f(xs: list[int]) -> object:
+    e = enumerate(xs)
+    return e
+---
+error: enumerate
+---
+
+=== enumerate returned not allowed
+def f(xs: list[int]) -> object:
+    return enumerate(xs)
+---
+error: enumerate
+---
+
+=== zip assigned not allowed
+def f(xs: list[int], ys: list[int]) -> object:
+    z = zip(xs, ys)
+    return z
+---
+error: zip
+---
+
+=== zip returned not allowed
+def f(xs: list[int], ys: list[int]) -> object:
+    return zip(xs, ys)
+---
+error: zip
+---
+
+=== generator expression assigned not allowed
+def f(xs: list[int]) -> None:
+    g = (x * 2 for x in xs)
+---
+error: generator
+---
+
+=== generator expression returned not allowed
+def f(xs: list[int]) -> object:
+    return (x * 2 for x in xs)
+---
+error: generator
+---
+
+=== generator expression in non-eager call not allowed
+def foo(x: object) -> None:
+    pass
+def f(xs: list[int]) -> None:
+    foo(x * 2 for x in xs)
+---
+error: generator
 ---

@@ -76,7 +76,7 @@ def test_names(names_input: str, names_expected: str):
 
     result = resolve_names(ast_dict)
     errors = result.errors()
-    warnings = result.warnings()
+    warnings = result.warnings
 
     if names_expected == "ok":
         if errors:

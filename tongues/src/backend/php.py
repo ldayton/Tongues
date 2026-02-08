@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from src.backend.util import to_camel, to_pascal, to_screaming_snake
 from src.ir import (
     BOOL,
@@ -218,7 +220,7 @@ class PhpBackend:
     """Emit PHP 8.1+ code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
         self.current_class: str = ""
@@ -1342,9 +1344,7 @@ class PhpBackend:
         return inner_str
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
-        from re import sub as re_sub
-
-        result = re_sub(r"\{(\d+)\}", r"%s", template)
+        result = re.sub(r"\{(\d+)\}", r"%s", template)
         result = result.replace("%v", "%s")
         escaped = _escape_php_string(result)
         args_str = ", ".join(self._expr(a) for a in args)

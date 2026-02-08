@@ -285,7 +285,7 @@ class DartBackend:
     """Emit Dart code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
         self.current_class: str = ""
@@ -294,11 +294,11 @@ class DartBackend:
         self._declared_vars: set[str] = set()
         self._module_name: str = ""
         self._interface_names: set[str] = set()
-        self.temp_counter = 0
+        self.temp_counter: int = 0
         # Track methods that can return null (have dynamic return type)
         self._nullable_methods: set[str] = set()
         self._type_switch_binding_rename: dict[str, str] = {}
-        self._loop_temp_counter = 0
+        self._loop_temp_counter: int = 0
         self._func_params: set[str] = set()
         self._needed_helpers: set[str] = set()
         self._needed_imports: set[str] = set()

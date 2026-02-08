@@ -205,7 +205,7 @@ class SwiftBackend(Emitter):
 
     def emit(self, module: Module) -> str:
         self.lines: list[str] = []
-        self.indent = 0
+        self.indent: int = 0
         self._func_names = {f.name for f in module.functions}
         self._entrypoint_fn = (
             module.entrypoint.function_name if module.entrypoint else None

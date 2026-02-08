@@ -230,7 +230,7 @@ class PythonBackend:
     """Emit Python code from IR."""
 
     def __init__(self) -> None:
-        self.indent = 0
+        self.indent: int = 0
         self.lines: list[str] = []
         self.receiver_name: str | None = None
 

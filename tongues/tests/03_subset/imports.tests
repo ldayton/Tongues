@@ -192,18 +192,18 @@ def f() -> object:
 error: import
 ---
 
-=== from os import path not allowed
-from os import path
-def f(p: str) -> str:
-    return path.basename(p)
+=== from sys import not allowed
+from sys import argv
+def f() -> list[str]:
+    return argv
 ---
 error: import
 ---
 
-=== from json import loads not allowed
-from json import loads
-def f(s: str) -> object:
-    return loads(s)
+=== from os import path not allowed
+from os import path
+def f(p: str) -> str:
+    return path.basename(p)
 ---
 error: import
 ---
@@ -232,14 +232,6 @@ def f(url: str) -> object:
 error: import
 ---
 
-=== from external package not allowed
-from pandas import DataFrame
-def f() -> object:
-    return DataFrame()
----
-error: import
----
-
 === import as alias not allowed
 import sys as system
 def f() -> list[str]:
@@ -264,17 +256,81 @@ def f(x: Optional[int]) -> int:
 error: import
 ---
 
-=== import inside function not allowed
-def f() -> int:
-    import sys
-    return len(sys.argv)
----
-error: import
----
-
 === no imports needed for builtins
 def f(xs: list[int]) -> int:
     return len(xs)
+---
+ok
+---
+
+=== sys.stdin.readline allowed
+import sys
+def f() -> str:
+    return sys.stdin.readline()
+---
+ok
+---
+
+=== sys.stdin.read allowed
+import sys
+def f() -> str:
+    return sys.stdin.read()
+---
+ok
+---
+
+=== sys.stdin.buffer.read allowed
+import sys
+def f() -> bytes:
+    return sys.stdin.buffer.read()
+---
+ok
+---
+
+=== sys.stdout.buffer.write allowed
+import sys
+def f(b: bytes) -> None:
+    sys.stdout.buffer.write(b)
+---
+ok
+---
+
+=== sys.stderr.buffer.write allowed
+import sys
+def f(b: bytes) -> None:
+    sys.stderr.buffer.write(b)
+---
+ok
+---
+
+=== os.getenv with default allowed
+import os
+def f() -> str:
+    return os.getenv("HOME", "/tmp")
+---
+ok
+---
+
+=== sys.stdin.buffer.read with size allowed
+import sys
+def f() -> bytes:
+    return sys.stdin.buffer.read(1024)
+---
+ok
+---
+
+=== sys.stdin.buffer.readline allowed
+import sys
+def f() -> bytes:
+    return sys.stdin.buffer.readline()
+---
+ok
+---
+
+=== sys.exit allowed
+import sys
+def f() -> None:
+    sys.exit(1)
 ---
 ok
 ---

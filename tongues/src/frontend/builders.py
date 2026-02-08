@@ -21,16 +21,19 @@ from ..ir import (
     Param,
     Pointer,
     Receiver,
+    Return,
     STRING,
+    Stmt,
     Struct,
+    StructLit,
     StructRef,
+    Var,
     VOID,
     loc_unknown,
 )
 
 if TYPE_CHECKING:
-    from .. import ir
-    from ..ir import FuncInfo, StructInfo, SymbolTable, Type
+    from ..ir import Expr, FuncInfo, StructInfo, SymbolTable, Type
     from .context import TypeContext
 
 
@@ -41,8 +44,8 @@ class BuilderCallbacks:
     annotation_to_str: Callable[[ASTNode | None], str]
     py_type_to_ir: Callable[[str, bool], "Type"]
     py_return_type_to_ir: Callable[[str], "Type"]
-    lower_expr: Callable[[ASTNode], "ir.Expr"]
-    lower_stmts: Callable[[list[ASTNode]], list["ir.Stmt"]]
+    lower_expr: Callable[[ASTNode], "Expr"]
+    lower_stmts: Callable[[list[ASTNode]], list["Stmt"]]
     collect_var_types: Callable[[list[ASTNode]], tuple[dict, dict, set, set, dict]]
     is_exception_subclass: Callable[[str], bool]
     extract_union_struct_names: Callable[[str], list[str]]
@@ -51,7 +54,7 @@ class BuilderCallbacks:
     setup_context: Callable[[str, "FuncInfo | None"], None]
     # Combined callback: set up type context then lower statements
     setup_and_lower_stmts: Callable[
-        [str, "FuncInfo | None", "TypeContext", list[ASTNode]], list["ir.Stmt"]
+        [str, "FuncInfo | None", "TypeContext", list[ASTNode]], list["Stmt"]
     ]
 
 
@@ -61,42 +64,39 @@ def build_forwarding_constructor(
     symbols: "SymbolTable",
 ) -> Function:
     """Build a forwarding constructor for exception subclasses with no __init__."""
-    from .. import ir
-
     # Get parent class info to copy its parameters
-    parent_info = symbols.structs.get(parent_class)
+    parent_info: StructInfo | None = symbols.structs.get(parent_class)
     if not parent_info:
         raise ValueError(f"Unknown parent class: {parent_class}")
     # Build parameters from parent's __init__ params
     params: list[Param] = []
     for param_name in parent_info.init_params:
         # Get from parent's field type
-        typ = INT  # Default
-        field_info = parent_info.fields.get(param_name)
+        typ: Type = INT
+        field_info: Field | None = parent_info.fields.get(param_name)
         if field_info:
             typ = field_info.typ
         params.append(Param(name=param_name, typ=typ, loc=loc_unknown()))
     # Build body: return &ClassName{ParentClass{...}}
-    # Use StructLit with embedded type
-    body: list[ir.Stmt] = []
+    body: list[Stmt] = []
     # Create parent struct literal
-    parent_lit = ir.StructLit(
+    parent_lit: StructLit = StructLit(
         struct_name=parent_class,
         fields={
-            param_name: ir.Var(name=param_name, typ=params[i].typ)
+            param_name: Var(name=param_name, typ=params[i].typ)
             for i, param_name in enumerate(parent_info.init_params)
         },
         typ=StructRef(parent_class),
     )
     # Create struct with embedded parent - typ=Pointer makes backend emit &
-    struct_lit = ir.StructLit(
+    struct_lit: StructLit = StructLit(
         struct_name=class_name,
         fields={},
         typ=Pointer(StructRef(class_name)),
         embedded_value=parent_lit,
     )
     # Return pointer to struct
-    ret = ir.Return(value=struct_lit)
+    ret: Return = Return(value=struct_lit)
     body.append(ret)
     return Function(
         name=f"New{class_name}",
@@ -226,7 +226,7 @@ def build_method_shell(
                     name=p.name, typ=p.typ, default=p.default_value, loc=loc_unknown()
                 )
             )
-    body: list["ir.Stmt"] = []
+    body: list["Stmt"] = []
     if with_body:
         # Set up context first (needed by collect_var_types)
         callbacks.setup_context(class_name, func_info)
@@ -302,7 +302,7 @@ def build_function_shell(
                     name=p.name, typ=p.typ, default=p.default_value, loc=loc_unknown()
                 )
             )
-    body: list["ir.Stmt"] = []
+    body: list["Stmt"] = []
     if with_body:
         # Set up context first (needed by collect_var_types) - empty class name for functions
         callbacks.setup_context("", func_info)

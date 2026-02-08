@@ -34,18 +34,19 @@ Subset violations are reported with the construct and reason:
 | List       | `list[T]`, `List[T]`                   | Bare `list` banned                             |
 | Dict       | `dict[K, V]`, `Dict[K, V]`             | Bare `dict` banned                             |
 | Set        | `set[T]`, `Set[T]`                     | Bare `set` banned                              |
+| Frozenset  | `frozenset[T]`                         | Effectively a set; immutability up to backend  |
 | Tuple      | `tuple[A, B, C]`, `Tuple[A, B, C]`     | Fixed-length, heterogeneous                    |
 | Tuple      | `tuple[T, ...]`                        | Variable-length, homogeneous                   |
 | Callable   | `Callable[[A, B], R]`                  | Function types; bound methods include receiver |
 
 ### Restrictions
 
-| Restriction                         | Rationale                             |
-| ----------------------------------- | ------------------------------------- |
-| All annotations required            | Static typing for transpilation       |
-| No bare `list`/`dict`/`set`/`tuple` | Element types must be known           |
-| No `Any`                            | Use `object` + `isinstance()` instead |
-| No `TypeVar`                        | No generics; monomorphic types only   |
+| Restriction                                     | Rationale                             |
+| ----------------------------------------------- | ------------------------------------- |
+| All annotations required                        | Static typing for transpilation       |
+| No bare `list`/`dict`/`set`/`tuple`/`frozenset` | Element types must be known           |
+| No `Any`                                        | Use `object` + `isinstance()` instead |
+| No `TypeVar`                                    | No generics; monomorphic types only   |
 
 ```python
 # Allowed
@@ -75,6 +76,7 @@ x: Any = foo()      # Any type (no checking)
 | --------------------------------- | -------------------- | ---------------------------------------------- |
 | `def f(a: int, b: int) -> int`    | `def f(*args)`       | Static arity required for type checking        |
 | `def f(a: int = 0) -> int`        | `def f(**kwargs)`    | Static parameter names required                |
+|                                   | `f(*xs)`, `f(**d)`   | Static arity required at call sites too        |
 | `def f(a: int, /, b: int) -> int` | `lambda x: x`        | All functions must be named for static binding |
 | `def f(*, a: int) -> int`         | nested functions     | No closures; flat function namespace           |
 | recursive functions               | `global`, `nonlocal` | Two-level scoping only (module + local)        |
@@ -110,13 +112,13 @@ Exception multiple inheritance allowed: `class E(Base, Exception)` (marker only)
 
 ## 4. Operators & Expressions
 
-| Allowed              | Not Allowed                   | Rationale                                      |
-| -------------------- | ----------------------------- | ---------------------------------------------- |
-| `x == y`             | `x is y` (except `x is None`) | Identity vs equality; `is` only for None check |
-| `x is None`          | `x is not y` (except None)    | Same as above                                  |
-| `x in xs`            | `del x`                       | Reassign or let go out of scope                |
-| `a < b < c` (chains) |                               |                                                |
-| `x += 1`             |                               |                                                |
+| Allowed                    | Not Allowed                       | Rationale                            |
+| -------------------------- | --------------------------------- | ------------------------------------ |
+| `x == y`                   | `x is y` (neither side a literal) | `is` only when one side is a literal |
+| `x is None`/`True`/`False` | `x is not y` (neither a literal)  | Same as above                        |
+| `x in xs`, `x not in xs`   | `del x`                           | Reassign or let go out of scope      |
+| `a < b < c` (chains)       |                                   |                                      |
+| `x += 1`                   |                                   |                                      |
 
 ### Walrus Operator
 
@@ -145,13 +147,17 @@ The walrus operator `:=` is allowed and scopes to the enclosing function (not th
 
 ## 5. Statements & Control Flow
 
-| Allowed                      | Not Allowed         | Rationale                              |
-| ---------------------------- | ------------------- | -------------------------------------- |
-| `if`/`elif`/`else`           | `with` statement    | Context managers need runtime protocol |
-| `for`/`while`                | loop `else` clause  | Unusual semantics; use flag variable   |
-| `try`/`except`/`finally`     | `try` `else` clause | Move else code after try block         |
-| `match`/`case`               | bare `except:`      | Must specify exception type            |
-| `raise`, `break`, `continue` | `async`/`await`     | Requires runtime scheduler             |
+| Allowed                  | Not Allowed         | Rationale                              |
+| ------------------------ | ------------------- | -------------------------------------- |
+| `if`/`elif`/`else`       | `with` statement    | Context managers need runtime protocol |
+| `for`/`while`            | loop `else` clause  | Unusual semantics; use flag variable   |
+| `try`/`except`/`finally` | `try` `else` clause | Move else code after try block         |
+| `match`/`case`           | bare `except:`      | Must specify exception type            |
+| `raise`, `raise from`    | `async`/`await`     | Requires runtime scheduler             |
+| `break`, `continue`      |                     |                                        |
+| `assert`, `pass`         |                     |                                        |
+
+`assert expr` evaluates the expression and aborts if falsy — raising `AssertionError` in targets with exceptions, or terminating the program otherwise. The optional message form `assert expr, msg` is allowed. Used primarily for test assertions.
 
 ---
 
@@ -232,6 +238,8 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 
 ### Allowed Methods
 
+Enforcement requires type information; verified during type inference (see [08-inference-spec.md](08-inference-spec.md)).
+
 | Type   | Methods                                                                                                                                                                                         |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `str`  | `join`, `split`, `strip`, `lstrip`, `rstrip`, `lower`, `upper`, `startswith`, `endswith`, `replace`, `find`, `rfind`, `count`, `isalnum`, `isalpha`, `isdigit`, `isspace`, `isupper`, `islower` |
@@ -290,6 +298,7 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 | `sys.stdout.buffer.write(b)`  | Binary output          |
 | `sys.stderr.buffer.write(b)`  | Binary error output    |
 | `sys.argv`                    | Command-line arguments |
+| `sys.exit(code)`              | Process exit           |
 | `os.getenv(name)`             | Environment variables  |
 | `os.getenv(name, default)`    | With default           |
 
@@ -297,16 +306,31 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 
 ## 9. Imports
 
-Every module in the program's import graph must be subset-compliant. The transpiler must be able to resolve all types, names, and signatures across the full program — a file that imports from a non-subset module cannot be transpiled.
+Every module in the program's import graph must be subset-compliant. The transpiler resolves all imports and verifies that every imported module is either a project file or an allowed stdlib module.
 
-| Allowed                             | Not Allowed          | Rationale                      |
-| ----------------------------------- | -------------------- | ------------------------------ |
-| `from typing import ...`            | other stdlib         | Code must be self-contained    |
-| `from dataclasses import dataclass` | external packages    | No external dependencies       |
-| `from collections.abc import ...`   | `from X import *`    | Star imports obscure bindings  |
-| `from __future__ import ...`        | `import X as Y`      | Module aliases obscure origins |
-| `from X import Y as Z`              | imports in functions | Top-level only                 |
-| `from . import module`              |                      |                                |
-| `import sys`                        |                      | stdin/stdout/stderr/argv       |
-| `import os`                         |                      | `os.getenv()`                  |
-| `import re`                         |                      | Regular expressions            |
+### Syntactic rules (subset checker)
+
+| Allowed                | Not Allowed       | Rationale                      |
+| ---------------------- | ----------------- | ------------------------------ |
+| `from X import Y`      | `from X import *` | Star imports obscure bindings  |
+| `from X import Y as Z` | `import X as Y`   | Module aliases obscure origins |
+| `from . import module` |                   |                                |
+| `import sys`           |                   | stdin/stdout/stderr/argv       |
+| `import os`            |                   | `os.getenv()`                  |
+| `import re`            |                   | Regular expressions            |
+
+Bare `import` is restricted to `sys`, `os`, and `re`. These modules have built-in transpiler support and must be used via their module namespace (e.g., `sys.argv`, `os.getenv()`, `re.match()`), so `from sys/os/re import ...` is not allowed.
+
+All other `from` imports are syntactically valid. Whether they resolve is a semantic question handled by import resolution.
+
+### Semantic rules (import resolution)
+
+Every import must resolve to one of:
+
+| Source                | Examples                                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Project file          | `from .module import X`, `from mypackage import Y`                                                                                     |
+| Allowed stdlib module | `from typing import ...`, `from dataclasses import dataclass`, `from collections.abc import ...`, `from __future__ import annotations` |
+| Allowed bare import   | `import sys`, `import os`, `import re`                                                                                                 |
+
+Imports that do not resolve — other stdlib modules, external packages — are errors at this phase, not at subset checking.

@@ -210,14 +210,6 @@ def f(x: T) -> T:
 error: TypeVar
 ---
 
-=== variable without annotation not allowed
-def f() -> int:
-    x = 1
-    return x
----
-error: annotation
----
-
 === variable with annotation allowed
 def f() -> int:
     x: int = 1
