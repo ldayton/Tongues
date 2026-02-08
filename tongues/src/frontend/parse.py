@@ -1936,7 +1936,9 @@ class Parser:
         if self.match_op("{"):
             return self.parse_mapping_pattern()
 
-        raise self.error("unexpected token '" + tok.value + "'")
+        raise self.error(
+            "unexpected token '" + tok.value + "' at line " + str(tok.lineno)
+        )
 
     def parse_dotted_name_for_pattern(self) -> str:
         """Parse dotted name for pattern matching."""
@@ -3160,7 +3162,9 @@ class Parser:
                 make_node("Constant", tok.lineno, tok.col, {"value": ...}), tok
             )
 
-        raise self.error("unexpected token '" + tok.value + "'")
+        raise self.error(
+            "unexpected token '" + tok.value + "' at line " + str(tok.lineno)
+        )
 
     def parse_dict_or_set(self) -> ASTNode:
         """Parse dict or set literal."""
