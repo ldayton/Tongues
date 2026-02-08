@@ -738,7 +738,7 @@ class PythonBackend:
                 return str(value)
             case FloatLit(value=value, format=fmt):
                 if fmt == "exp":
-                    return f"{value:g}"
+                    return "%g" % value
                 return str(value)
             case StringLit(value=value):
                 return _string_literal(value)

@@ -391,9 +391,13 @@ def scan_string(
             # Look for triple quote end
             while col < len(current_line):
                 c = current_line[col]
-                if c == "\\" and col + 1 < len(current_line) and not is_raw:
-                    col += 2
-                    continue
+                if c == "\\" and col + 1 < len(current_line):
+                    if is_raw and current_line[col + 1] == quote:
+                        col += 2
+                        continue
+                    if not is_raw:
+                        col += 2
+                        continue
                 if (
                     c == quote
                     and col + 2 < len(current_line)
@@ -418,19 +422,24 @@ def scan_string(
             # Look for single quote end
             while col < len(current_line):
                 c = current_line[col]
-                if c == "\\" and not is_raw:
-                    if col + 1 >= len(current_line):
-                        # Line continuation in string literal
-                        current_lineno += 1
-                        if current_lineno > len(lines):
-                            raise ParseError(
-                                "unterminated string literal", start_lineno, start_col
-                            )
-                        current_line = current_line + "\n" + lines[current_lineno - 1]
+                if c == "\\":
+                    if is_raw:
+                        if col + 1 < len(current_line) and current_line[col + 1] == quote:
+                            col += 2
+                            continue
+                    else:
+                        if col + 1 >= len(current_line):
+                            # Line continuation in string literal
+                            current_lineno += 1
+                            if current_lineno > len(lines):
+                                raise ParseError(
+                                    "unterminated string literal", start_lineno, start_col
+                                )
+                            current_line = current_line + "\n" + lines[current_lineno - 1]
+                            col += 2
+                            continue
                         col += 2
                         continue
-                    col += 2
-                    continue
                 if c == quote:
                     col += 1
                     value = current_line[value_start:col]

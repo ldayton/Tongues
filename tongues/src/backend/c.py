@@ -3491,7 +3491,7 @@ class CBackend:
         if char == '"':
             return "'\"'"
         if ord(char) < 32 or ord(char) > 126:
-            return f"'\\x{ord(char):02x}'"
+            return "'\\x" + ("%02x" % ord(char)) + "'"
         return f"'{char}'"
 
     def _emit_set_membership(self, left: str, right_expr: Expr, negated: bool) -> str:

@@ -31,12 +31,12 @@ def escape_string_rust(value: str) -> str:
         elif code < 32 or code == 127:
             # Control characters: use \x or \u{} format
             if code < 256:
-                result.append(f"\\x{code:02x}")
+                result.append("\\x" + ("%02x" % code))
             else:
-                result.append(f"\\u{{{code:04x}}}")
+                result.append("\\u{" + ("%04x" % code) + "}")
         elif code > 127:
             # Non-ASCII: use \u{} for safety
-            result.append(f"\\u{{{code:04x}}}")
+            result.append("\\u{" + ("%04x" % code) + "}")
         else:
             result.append(ch)
     return "".join(result)

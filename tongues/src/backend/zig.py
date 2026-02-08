@@ -1227,7 +1227,7 @@ class ZigBackend(Emitter):
                     if 32 <= val < 127 and chr(val) not in ('"', "\\"):
                         chars.append(chr(val))
                     else:
-                        chars.append(f"\\x{val:02x}")
+                        chars.append("\\x" + ("%02x" % val))
                 else:
                     # Non-literal, fall back to array
                     elements = ", ".join(self._emit_expr(e) for e in expr.elements)

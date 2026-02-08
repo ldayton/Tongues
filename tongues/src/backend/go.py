@@ -2129,7 +2129,7 @@ class GoBackend:
             return "'\"'"
         # Control characters and special bytes
         if ord(char) < 32 or ord(char) > 126:
-            return f"'\\x{ord(char):02x}'"
+            return "'\\x" + ("%02x" % ord(char)) + "'"
         return f"'{char}'"
 
     def _emit_expr_UnaryOp(self, expr: UnaryOp) -> str:
