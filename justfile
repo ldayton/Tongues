@@ -16,6 +16,14 @@ subset:
     done
     exit $failed
 
+# Run CLI tests locally
+test-cli-local:
+    uv run --directory tongues pytest tests/test_01_cli.py -v
+
+# Run parse tests locally
+test-parse-local:
+    uv run --directory tongues pytest tests/test_02_parse.py -v
+
 # Run codegen tests locally
 test-codegen-local:
     uv run --directory tongues pytest tests/test_15_codegen.py -v
@@ -39,6 +47,8 @@ check:
     just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
     just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
     just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
+    just test-cli && results[cli]=✅ || { results[cli]=❌; failed=1; }
+    just test-parse && results[parse]=✅ || { results[parse]=❌; failed=1; }
     just test-codegen && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -49,7 +59,7 @@ check:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in fmt lint subset codegen; do
+    for t in fmt lint subset cli parse codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -64,6 +74,18 @@ check:
 # Build Docker image for a language
 docker-build lang:
     docker build -t tongues-{{lang}} docker/{{lang}}
+
+# Run CLI tests in Docker
+test-cli:
+    docker build -t tongues-python docker/python
+    docker run --rm -v "$(pwd):/workspace" tongues-python \
+        uv run --directory tongues pytest tests/test_01_cli.py -v
+
+# Run parse tests in Docker
+test-parse:
+    docker build -t tongues-python docker/python
+    docker run --rm -v "$(pwd):/workspace" tongues-python \
+        uv run --directory tongues pytest tests/test_02_parse.py -v
 
 # Run codegen tests in Docker (uses python image)
 test-codegen:
@@ -169,6 +191,8 @@ test-local:
     declare -A results
     failed=0
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
+    just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
+    just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -179,7 +203,7 @@ test-local:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in versions codegen; do
+    for t in versions cli parse codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -200,6 +224,8 @@ check-local:
     just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
     just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
     just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
+    just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
+    just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -210,7 +236,7 @@ check-local:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in versions fmt lint subset codegen; do
+    for t in versions fmt lint subset cli parse codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
