@@ -424,7 +424,10 @@ def scan_string(
                 c = current_line[col]
                 if c == "\\":
                     if is_raw:
-                        if col + 1 < len(current_line) and current_line[col + 1] == quote:
+                        if (
+                            col + 1 < len(current_line)
+                            and current_line[col + 1] == quote
+                        ):
                             col += 2
                             continue
                     else:
@@ -433,9 +436,13 @@ def scan_string(
                             current_lineno += 1
                             if current_lineno > len(lines):
                                 raise ParseError(
-                                    "unterminated string literal", start_lineno, start_col
+                                    "unterminated string literal",
+                                    start_lineno,
+                                    start_col,
                                 )
-                            current_line = current_line + "\n" + lines[current_lineno - 1]
+                            current_line = (
+                                current_line + "\n" + lines[current_lineno - 1]
+                            )
                             col += 2
                             continue
                         col += 2
