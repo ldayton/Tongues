@@ -564,6 +564,12 @@ class Parser:
             tok.col,
         )
 
+    def prev_token(self) -> Token:
+        """Get the previously consumed token."""
+        if self.pos > 0:
+            return self.tokens[self.pos - 1]
+        return self.tokens[0]
+
     def expect_op(self, value: str) -> Token:
         """Consume operator token with given value."""
         tok = self.current()
@@ -632,9 +638,12 @@ class Parser:
                 else:
                     body.append(stmt)
             self.skip_newlines()
-        return make_node(
+        node = make_node(
             "Module", tok.lineno, tok.col, {"body": body, "type_ignores": []}
         )
+        if len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     # --- Statement parsing ---
 
@@ -699,13 +708,13 @@ class Parser:
             return self.parse_raise_stmt()
         if tok.value == "pass":
             self.advance()
-            return make_node("Pass", tok.lineno, tok.col)
+            return end_from_token(make_node("Pass", tok.lineno, tok.col), tok)
         if tok.value == "break":
             self.advance()
-            return make_node("Break", tok.lineno, tok.col)
+            return end_from_token(make_node("Break", tok.lineno, tok.col), tok)
         if tok.value == "continue":
             self.advance()
-            return make_node("Continue", tok.lineno, tok.col)
+            return end_from_token(make_node("Continue", tok.lineno, tok.col), tok)
         if tok.value == "import":
             return self.parse_import_stmt()
         if tok.value == "from":
@@ -734,7 +743,12 @@ class Parser:
             and not self.match(TK_ENDMARKER)
         ):
             value = self.parse_testlist_star_expr()
-        return make_node("Return", tok.lineno, tok.col, {"value": value})
+        node = make_node("Return", tok.lineno, tok.col, {"value": value})
+        if value is not None:
+            end_from_node(node, value)
+        else:
+            end_from_token(node, tok)
+        return node
 
     def parse_raise_stmt(self) -> ASTNode:
         """Parse raise statement."""
@@ -750,13 +764,22 @@ class Parser:
             if self.match("from"):
                 self.advance()
                 cause = self.parse_test()
-        return make_node("Raise", tok.lineno, tok.col, {"exc": exc, "cause": cause})
+        node = make_node("Raise", tok.lineno, tok.col, {"exc": exc, "cause": cause})
+        if cause is not None:
+            end_from_node(node, cause)
+        elif exc is not None:
+            end_from_node(node, exc)
+        else:
+            end_from_token(node, tok)
+        return node
 
     def parse_import_stmt(self) -> ASTNode:
         """Parse import statement."""
         tok = self.expect("import")
         names = self.parse_dotted_as_names()
-        return make_node("Import", tok.lineno, tok.col, {"names": names})
+        node = make_node("Import", tok.lineno, tok.col, {"names": names})
+        end_from_token(node, self.prev_token())
+        return node
 
     def parse_from_import_stmt(self) -> ASTNode:
         """Parse from ... import statement."""
@@ -786,12 +809,14 @@ class Parser:
         else:
             names = self.parse_import_as_names()
 
-        return make_node(
+        node = make_node(
             "ImportFrom",
             tok.lineno,
             tok.col,
             {"module": module, "names": names, "level": level},
         )
+        end_from_token(node, self.prev_token())
+        return node
 
     def parse_dotted_name(self) -> str:
         """Parse dotted name like a.b.c."""
@@ -851,14 +876,24 @@ class Parser:
         if self.match_op(","):
             self.advance()
             msg = self.parse_test()
-        return make_node("Assert", tok.lineno, tok.col, {"test": test, "msg": msg})
+        node = make_node("Assert", tok.lineno, tok.col, {"test": test, "msg": msg})
+        if msg is not None:
+            end_from_node(node, msg)
+        else:
+            end_from_node(node, test)
+        return node
 
     def parse_del_stmt(self) -> ASTNode:
         """Parse del statement."""
         tok = self.expect("del")
         targets = self.parse_exprlist()
         set_context_list(targets, "Del")
-        return make_node("Delete", tok.lineno, tok.col, {"targets": targets})
+        node = make_node("Delete", tok.lineno, tok.col, {"targets": targets})
+        if len(targets) > 0:
+            end_from_node(node, targets[len(targets) - 1])
+        else:
+            end_from_token(node, tok)
+        return node
 
     def parse_global_stmt(self) -> ASTNode:
         """Parse global statement."""
@@ -868,7 +903,9 @@ class Parser:
         while self.match_op(","):
             self.advance()
             names.append(self.expect(TK_NAME).value)
-        return make_node("Global", tok.lineno, tok.col, {"names": names})
+        node = make_node("Global", tok.lineno, tok.col, {"names": names})
+        end_from_token(node, self.prev_token())
+        return node
 
     def parse_nonlocal_stmt(self) -> ASTNode:
         """Parse nonlocal statement."""
@@ -878,13 +915,17 @@ class Parser:
         while self.match_op(","):
             self.advance()
             names.append(self.expect(TK_NAME).value)
-        return make_node("Nonlocal", tok.lineno, tok.col, {"names": names})
+        node = make_node("Nonlocal", tok.lineno, tok.col, {"names": names})
+        end_from_token(node, self.prev_token())
+        return node
 
     def parse_yield_stmt(self) -> ASTNode:
         """Parse yield statement as Expr(Yield(...))."""
         tok = self.current()
         yield_expr = self.parse_yield_expr()
-        return make_node("Expr", tok.lineno, tok.col, {"value": yield_expr})
+        return end_from_node(
+            make_node("Expr", tok.lineno, tok.col, {"value": yield_expr}), yield_expr
+        )
 
     def parse_yield_expr(self) -> ASTNode:
         """Parse yield expression."""
@@ -892,7 +933,9 @@ class Parser:
         if self.match("from"):
             self.advance()
             value = self.parse_test()
-            return make_node("YieldFrom", tok.lineno, tok.col, {"value": value})
+            return end_from_node(
+                make_node("YieldFrom", tok.lineno, tok.col, {"value": value}), value
+            )
         value: ASTNode | None = None
         if (
             not self.match(TK_NEWLINE)
@@ -901,7 +944,12 @@ class Parser:
             and not self.match(TK_ENDMARKER)
         ):
             value = self.parse_testlist_star_expr()
-        return make_node("Yield", tok.lineno, tok.col, {"value": value})
+        node = make_node("Yield", tok.lineno, tok.col, {"value": value})
+        if value is not None:
+            end_from_node(node, value)
+        else:
+            end_from_token(node, tok)
+        return node
 
     def parse_expr_stmt(self) -> ASTNode | None:
         """Parse expression statement (may be assignment)."""
@@ -917,8 +965,14 @@ class Parser:
             self.advance()
             value = self.parse_test()
             set_context(target, "Store")
-            return make_node(
-                "NamedExpr", tok.lineno, tok.col, {"target": target, "value": value}
+            return end_from_node(
+                make_node(
+                    "NamedExpr",
+                    tok.lineno,
+                    tok.col,
+                    {"target": target, "value": value},
+                ),
+                value,
             )
 
         # Check for annotated assignment
@@ -933,7 +987,7 @@ class Parser:
             simple = 1
             if target.get("_type") != "Name":
                 simple = 0
-            return make_node(
+            node = make_node(
                 "AnnAssign",
                 tok.lineno,
                 tok.col,
@@ -944,6 +998,11 @@ class Parser:
                     "simple": simple,
                 },
             )
+            if value is not None:
+                end_from_node(node, value)
+            else:
+                end_from_node(node, annotation)
+            return node
 
         # Check for augmented assignment
         aug_ops = [
@@ -968,11 +1027,14 @@ class Parser:
                 value = self.parse_testlist_star_expr()
                 set_context(target, "Store")
                 op = augassign_op(op_tok.value)
-                return make_node(
-                    "AugAssign",
-                    tok.lineno,
-                    tok.col,
-                    {"target": target, "op": op, "value": value},
+                return end_from_node(
+                    make_node(
+                        "AugAssign",
+                        tok.lineno,
+                        tok.col,
+                        {"target": target, "op": op, "value": value},
+                    ),
+                    value,
                 )
             i += 1
 
@@ -990,12 +1052,17 @@ class Parser:
             while j < len(targets):
                 set_context(targets[j], "Store")
                 j += 1
-            return make_node(
-                "Assign", tok.lineno, tok.col, {"targets": targets, "value": value}
+            return end_from_node(
+                make_node(
+                    "Assign", tok.lineno, tok.col, {"targets": targets, "value": value}
+                ),
+                value,
             )
 
         # Just an expression
-        return make_node("Expr", tok.lineno, tok.col, {"value": target})
+        return end_from_node(
+            make_node("Expr", tok.lineno, tok.col, {"value": target}), target
+        )
 
     # --- Compound statements ---
 
@@ -1010,7 +1077,7 @@ class Parser:
             returns = self.parse_test()
         self.expect_op(":")
         body = self.parse_suite()
-        return make_node(
+        node = make_node(
             "FunctionDef",
             tok.lineno,
             tok.col,
@@ -1023,6 +1090,9 @@ class Parser:
                 "type_params": [],
             },
         )
+        if len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     def parse_async_stmt(self) -> ASTNode:
         """Parse async statement (async def, async for, async with)."""
@@ -1151,7 +1221,7 @@ class Parser:
             self.expect_op(")")
         self.expect_op(":")
         body = self.parse_suite()
-        return make_node(
+        node = make_node(
             "ClassDef",
             tok.lineno,
             tok.col,
@@ -1164,6 +1234,9 @@ class Parser:
                 "type_params": [],
             },
         )
+        if len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     def parse_decorated(self) -> ASTNode:
         """Parse decorated function or class."""
@@ -1221,9 +1294,13 @@ class Parser:
             self.expect_op(":")
             orelse = self.parse_suite()
 
-        return make_node(
+        node = make_node(
             "If", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
         )
+        last = orelse if len(orelse) > 0 else body
+        if len(last) > 0:
+            end_from_node(node, last[len(last) - 1])
+        return node
 
     def parse_elif(self) -> ASTNode:
         """Parse elif as nested If."""
@@ -1242,9 +1319,13 @@ class Parser:
             self.expect_op(":")
             orelse = self.parse_suite()
 
-        return make_node(
+        node = make_node(
             "If", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
         )
+        last = orelse if len(orelse) > 0 else body
+        if len(last) > 0:
+            end_from_node(node, last[len(last) - 1])
+        return node
 
     def parse_while_stmt(self) -> ASTNode:
         """Parse while statement."""
@@ -1260,9 +1341,13 @@ class Parser:
             self.expect_op(":")
             orelse = self.parse_suite()
 
-        return make_node(
+        node = make_node(
             "While", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
         )
+        last = orelse if len(orelse) > 0 else body
+        if len(last) > 0:
+            end_from_node(node, last[len(last) - 1])
+        return node
 
     def parse_for_stmt(self) -> ASTNode:
         """Parse for statement."""
@@ -1281,12 +1366,16 @@ class Parser:
             self.expect_op(":")
             orelse = self.parse_suite()
 
-        return make_node(
+        node = make_node(
             "For",
             tok.lineno,
             tok.col,
             {"target": target, "iter": iter_expr, "body": body, "orelse": orelse},
         )
+        last = orelse if len(orelse) > 0 else body
+        if len(last) > 0:
+            end_from_node(node, last[len(last) - 1])
+        return node
 
     def parse_try_stmt(self) -> ASTNode:
         """Parse try statement."""
@@ -1320,14 +1409,15 @@ class Parser:
 
             self.expect_op(":")
             handler_body = self.parse_suite()
-            handlers.append(
-                make_node(
-                    "ExceptHandler",
-                    handler_tok.lineno,
-                    handler_tok.col,
-                    {"type": exc_type, "name": exc_name, "body": handler_body},
-                )
+            handler_node = make_node(
+                "ExceptHandler",
+                handler_tok.lineno,
+                handler_tok.col,
+                {"type": exc_type, "name": exc_name, "body": handler_body},
             )
+            if len(handler_body) > 0:
+                end_from_node(handler_node, handler_body[len(handler_body) - 1])
+            handlers.append(handler_node)
             self.skip_newlines()
 
         # Parse else
@@ -1344,7 +1434,7 @@ class Parser:
             finalbody = self.parse_suite()
 
         type_name = "TryStar" if is_star else "Try"
-        return make_node(
+        node = make_node(
             type_name,
             tok.lineno,
             tok.col,
@@ -1355,6 +1445,15 @@ class Parser:
                 "finalbody": finalbody,
             },
         )
+        if len(finalbody) > 0:
+            end_from_node(node, finalbody[len(finalbody) - 1])
+        elif len(orelse) > 0:
+            end_from_node(node, orelse[len(orelse) - 1])
+        elif len(handlers) > 0:
+            end_from_node(node, handlers[len(handlers) - 1])
+        elif len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     def parse_with_stmt(self) -> ASTNode:
         """Parse with statement."""
@@ -1369,7 +1468,10 @@ class Parser:
 
         self.expect_op(":")
         body = self.parse_suite()
-        return make_node("With", tok.lineno, tok.col, {"items": items, "body": body})
+        node = make_node("With", tok.lineno, tok.col, {"items": items, "body": body})
+        if len(body) > 0:
+            end_from_node(node, body[len(body) - 1])
+        return node
 
     def parse_with_item(self) -> ASTNode:
         """Parse a single with item."""
@@ -1399,9 +1501,15 @@ class Parser:
             self.skip_newlines()
 
         self.expect(TK_DEDENT)
-        return make_node(
+        node = make_node(
             "Match", tok.lineno, tok.col, {"subject": subject, "cases": cases}
         )
+        if len(cases) > 0:
+            last_case = cases[len(cases) - 1]
+            case_body = last_case.get("body")
+            if isinstance(case_body, list) and len(case_body) > 0:
+                end_from_node(node, case_body[len(case_body) - 1])
+        return node
 
     def parse_case(self) -> ASTNode:
         """Parse a case clause."""
@@ -1465,11 +1573,14 @@ class Parser:
             self.advance()
             num_tok = self.expect(TK_NUMBER)
             const = make_constant_from_token(num_tok)
-            neg = make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "USub"}, "operand": const},
+            neg = end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "USub"}, "operand": const},
+                ),
+                const,
             )
             return {"_type": "MatchValue", "value": neg}
 
@@ -1487,19 +1598,29 @@ class Parser:
             # Check if it's an attribute pattern (MatchValue with dotted name)
             if "." in name:
                 parts = name.split(".")
-                result: ASTNode = make_node(
-                    "Name",
-                    tok.lineno,
-                    tok.col,
-                    {"id": parts[0], "ctx": {"_type": "Load"}},
+                result: ASTNode = end_from_token(
+                    make_node(
+                        "Name",
+                        tok.lineno,
+                        tok.col,
+                        {"id": parts[0], "ctx": {"_type": "Load"}},
+                    ),
+                    self.prev_token(),
                 )
                 i = 1
                 while i < len(parts):
-                    result = make_node(
-                        "Attribute",
-                        tok.lineno,
-                        tok.col,
-                        {"value": result, "attr": parts[i], "ctx": {"_type": "Load"}},
+                    result = end_from_token(
+                        make_node(
+                            "Attribute",
+                            tok.lineno,
+                            tok.col,
+                            {
+                                "value": result,
+                                "attr": parts[i],
+                                "ctx": {"_type": "Load"},
+                            },
+                        ),
+                        self.prev_token(),
                     )
                     i += 1
                 return {"_type": "MatchValue", "value": result}
@@ -1551,16 +1672,22 @@ class Parser:
 
         # Build class reference
         parts = name.split(".")
-        cls: ASTNode = make_node(
-            "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+        cls: ASTNode = end_from_token(
+            make_node(
+                "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+            ),
+            tok,
         )
         i = 1
         while i < len(parts):
-            cls = make_node(
-                "Attribute",
-                tok.lineno,
-                tok.col,
-                {"value": cls, "attr": parts[i], "ctx": {"_type": "Load"}},
+            cls = end_from_token(
+                make_node(
+                    "Attribute",
+                    tok.lineno,
+                    tok.col,
+                    {"value": cls, "attr": parts[i], "ctx": {"_type": "Load"}},
+                ),
+                tok,
             )
             i += 1
 
@@ -1654,33 +1781,48 @@ class Parser:
         if tok.value in ("None", "True", "False"):
             self.advance()
             if tok.value == "None":
-                return make_node("Constant", tok.lineno, tok.col, {"value": None})
+                return end_from_token(
+                    make_node("Constant", tok.lineno, tok.col, {"value": None}), tok
+                )
             if tok.value == "True":
-                return make_node("Constant", tok.lineno, tok.col, {"value": True})
-            return make_node("Constant", tok.lineno, tok.col, {"value": False})
+                return end_from_token(
+                    make_node("Constant", tok.lineno, tok.col, {"value": True}), tok
+                )
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": False}), tok
+            )
         if self.match_op("-"):
             self.advance()
             num_tok = self.expect(TK_NUMBER)
             const = make_constant_from_token(num_tok)
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "USub"}, "operand": const},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "USub"}, "operand": const},
+                ),
+                const,
             )
         # Dotted name for attribute
         name = self.parse_dotted_name_for_pattern()
         parts = name.split(".")
-        result: ASTNode = make_node(
-            "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+        result: ASTNode = end_from_token(
+            make_node(
+                "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+            ),
+            self.prev_token(),
         )
         i = 1
         while i < len(parts):
-            result = make_node(
-                "Attribute",
-                tok.lineno,
-                tok.col,
-                {"value": result, "attr": parts[i], "ctx": {"_type": "Load"}},
+            result = end_from_token(
+                make_node(
+                    "Attribute",
+                    tok.lineno,
+                    tok.col,
+                    {"value": result, "attr": parts[i], "ctx": {"_type": "Load"}},
+                ),
+                self.prev_token(),
             )
             i += 1
         return result
@@ -1727,8 +1869,14 @@ class Parser:
             self.advance()
             value = self.parse_test()
             set_context(expr, "Store")
-            return make_node(
-                "NamedExpr", tok.lineno, tok.col, {"target": expr, "value": value}
+            return end_from_node(
+                make_node(
+                    "NamedExpr",
+                    tok.lineno,
+                    tok.col,
+                    {"target": expr, "value": value},
+                ),
+                value,
             )
         return expr
 
@@ -1749,11 +1897,14 @@ class Parser:
             condition = self.parse_or_test()
             self.expect("else")
             orelse = self.parse_test()
-            return make_node(
-                "IfExp",
-                tok.lineno,
-                tok.col,
-                {"test": condition, "body": expr, "orelse": orelse},
+            return end_from_node(
+                make_node(
+                    "IfExp",
+                    tok.lineno,
+                    tok.col,
+                    {"test": condition, "body": expr, "orelse": orelse},
+                ),
+                orelse,
             )
 
         return expr
@@ -1766,7 +1917,10 @@ class Parser:
             params = self.parse_varargslist()
         self.expect_op(":")
         body = self.parse_test()
-        return make_node("Lambda", tok.lineno, tok.col, {"args": params, "body": body})
+        return end_from_node(
+            make_node("Lambda", tok.lineno, tok.col, {"args": params, "body": body}),
+            body,
+        )
 
     def parse_varargslist(self) -> ASTNode:
         """Parse lambda argument list (no type annotations)."""
@@ -1864,8 +2018,11 @@ class Parser:
             values.append(self.parse_and_test())
         if len(values) == 1:
             return values[0]
-        return make_node(
-            "BoolOp", tok.lineno, tok.col, {"op": {"_type": "Or"}, "values": values}
+        return end_from_node(
+            make_node(
+                "BoolOp", tok.lineno, tok.col, {"op": {"_type": "Or"}, "values": values}
+            ),
+            values[len(values) - 1],
         )
 
     def parse_and_test(self) -> ASTNode:
@@ -1878,8 +2035,14 @@ class Parser:
             values.append(self.parse_not_test())
         if len(values) == 1:
             return values[0]
-        return make_node(
-            "BoolOp", tok.lineno, tok.col, {"op": {"_type": "And"}, "values": values}
+        return end_from_node(
+            make_node(
+                "BoolOp",
+                tok.lineno,
+                tok.col,
+                {"op": {"_type": "And"}, "values": values},
+            ),
+            values[len(values) - 1],
         )
 
     def parse_not_test(self) -> ASTNode:
@@ -1888,11 +2051,14 @@ class Parser:
         if self.match("not"):
             self.advance()
             operand = self.parse_not_test()
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "Not"}, "operand": operand},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "Not"}, "operand": operand},
+                ),
+                operand,
             )
         return self.parse_comparison()
 
@@ -1912,11 +2078,14 @@ class Parser:
 
         if len(ops) == 0:
             return left
-        return make_node(
-            "Compare",
-            tok.lineno,
-            tok.col,
-            {"left": left, "ops": ops, "comparators": comparators},
+        return end_from_node(
+            make_node(
+                "Compare",
+                tok.lineno,
+                tok.col,
+                {"left": left, "ops": ops, "comparators": comparators},
+            ),
+            comparators[len(comparators) - 1],
         )
 
     def parse_comp_op(self) -> ASTNode | None:
@@ -1962,11 +2131,14 @@ class Parser:
         while self.match_op("|"):
             self.advance()
             right = self.parse_xor_expr()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": "BitOr"}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": "BitOr"}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -1977,11 +2149,14 @@ class Parser:
         while self.match_op("^"):
             self.advance()
             right = self.parse_and_expr()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": "BitXor"}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": "BitXor"}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -1992,11 +2167,14 @@ class Parser:
         while self.match_op("&"):
             self.advance()
             right = self.parse_shift_expr()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": "BitAnd"}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": "BitAnd"}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -2008,11 +2186,14 @@ class Parser:
             op_tok = self.advance()
             op_type = "LShift" if op_tok.value == "<<" else "RShift"
             right = self.parse_arith_expr()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": op_type}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": op_type}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -2024,11 +2205,14 @@ class Parser:
             op_tok = self.advance()
             op_type = "Add" if op_tok.value == "+" else "Sub"
             right = self.parse_term()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": op_type}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": op_type}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -2052,11 +2236,14 @@ class Parser:
                 break
             self.advance()
             right = self.parse_factor()
-            left = make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": left, "op": {"_type": op_type}, "right": right},
+            left = end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": left, "op": {"_type": op_type}, "right": right},
+                ),
+                right,
             )
         return left
 
@@ -2066,29 +2253,38 @@ class Parser:
         if self.match_op("+"):
             self.advance()
             operand = self.parse_factor()
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "UAdd"}, "operand": operand},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "UAdd"}, "operand": operand},
+                ),
+                operand,
             )
         if self.match_op("-"):
             self.advance()
             operand = self.parse_factor()
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "USub"}, "operand": operand},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "USub"}, "operand": operand},
+                ),
+                operand,
             )
         if self.match_op("~"):
             self.advance()
             operand = self.parse_factor()
-            return make_node(
-                "UnaryOp",
-                tok.lineno,
-                tok.col,
-                {"op": {"_type": "Invert"}, "operand": operand},
+            return end_from_node(
+                make_node(
+                    "UnaryOp",
+                    tok.lineno,
+                    tok.col,
+                    {"op": {"_type": "Invert"}, "operand": operand},
+                ),
+                operand,
             )
         return self.parse_power()
 
@@ -2099,11 +2295,14 @@ class Parser:
         if self.match_op("**"):
             self.advance()
             exp = self.parse_factor()
-            return make_node(
-                "BinOp",
-                tok.lineno,
-                tok.col,
-                {"left": base, "op": {"_type": "Pow"}, "right": exp},
+            return end_from_node(
+                make_node(
+                    "BinOp",
+                    tok.lineno,
+                    tok.col,
+                    {"left": base, "op": {"_type": "Pow"}, "right": exp},
+                ),
+                exp,
             )
         return base
 
@@ -2113,7 +2312,9 @@ class Parser:
         if self.match("await"):
             self.advance()
             value = self.parse_atom_expr()
-            return make_node("Await", tok.lineno, tok.col, {"value": value})
+            return end_from_node(
+                make_node("Await", tok.lineno, tok.col, {"value": value}), value
+            )
         return self.parse_atom_expr()
 
     def parse_atom_expr(self) -> ASTNode:
@@ -2139,12 +2340,15 @@ class Parser:
         if not self.match_op(")"):
             args, keywords = self.parse_arglist()
 
-        self.expect_op(")")
-        return make_node(
-            "Call",
-            tok.lineno,
-            tok.col,
-            {"func": func, "args": args, "keywords": keywords},
+        close = self.expect_op(")")
+        return end_from_token(
+            make_node(
+                "Call",
+                tok.lineno,
+                tok.col,
+                {"func": func, "args": args, "keywords": keywords},
+            ),
+            close,
         )
 
     def parse_arglist(self) -> tuple[list[ASTNode], list[ASTNode]]:
@@ -2166,14 +2370,17 @@ class Parser:
 
             # *args
             if self.match_op("*"):
-                self.advance()
+                star_tok = self.advance()
                 value = self.parse_test()
                 args.append(
-                    make_node(
-                        "Starred",
-                        self.current().lineno,
-                        self.current().col,
-                        {"value": value, "ctx": {"_type": "Load"}},
+                    end_from_node(
+                        make_node(
+                            "Starred",
+                            star_tok.lineno,
+                            star_tok.col,
+                            {"value": value, "ctx": {"_type": "Load"}},
+                        ),
+                        value,
                     )
                 )
                 continue
@@ -2192,11 +2399,14 @@ class Parser:
             # Check for comprehension making this a generator expression
             if self.match("for"):
                 generators = self.parse_comp_for()
-                arg = make_node(
-                    "GeneratorExp",
-                    arg.get("lineno", 1),
-                    arg.get("col_offset", 0),
-                    {"elt": arg, "generators": generators},
+                arg = end_from_token(
+                    make_node(
+                        "GeneratorExp",
+                        arg.get("lineno", 1),
+                        arg.get("col_offset", 0),
+                        {"elt": arg, "generators": generators},
+                    ),
+                    self.prev_token(),
                 )
 
             args.append(arg)
@@ -2243,8 +2453,11 @@ class Parser:
             items.append(self.parse_target())
         if len(items) == 1:
             return items[0]
-        return make_node(
-            "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+        return end_from_node(
+            make_node(
+                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+            ),
+            items[len(items) - 1],
         )
 
     def parse_target(self) -> ASTNode:
@@ -2253,9 +2466,15 @@ class Parser:
         if self.match_op("("):
             self.advance()
             if self.match_op(")"):
-                self.advance()
-                return make_node(
-                    "Tuple", tok.lineno, tok.col, {"elts": [], "ctx": {"_type": "Load"}}
+                close = self.advance()
+                return end_from_token(
+                    make_node(
+                        "Tuple",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": [], "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
             inner = self.parse_target_list()
             self.expect_op(")")
@@ -2263,9 +2482,15 @@ class Parser:
         if self.match_op("["):
             self.advance()
             if self.match_op("]"):
-                self.advance()
-                return make_node(
-                    "List", tok.lineno, tok.col, {"elts": [], "ctx": {"_type": "Load"}}
+                close = self.advance()
+                return end_from_token(
+                    make_node(
+                        "List",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": [], "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
             items: list[ASTNode] = []
             items.append(self.parse_target())
@@ -2274,18 +2499,27 @@ class Parser:
                 if self.match_op("]"):
                     break
                 items.append(self.parse_target())
-            self.expect_op("]")
-            return make_node(
-                "List", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+            close = self.expect_op("]")
+            return end_from_token(
+                make_node(
+                    "List",
+                    tok.lineno,
+                    tok.col,
+                    {"elts": items, "ctx": {"_type": "Load"}},
+                ),
+                close,
             )
         if self.match_op("*"):
             star_tok = self.advance()
             value = self.parse_target()
-            return make_node(
-                "Starred",
-                star_tok.lineno,
-                star_tok.col,
-                {"value": value, "ctx": {"_type": "Load"}},
+            return end_from_node(
+                make_node(
+                    "Starred",
+                    star_tok.lineno,
+                    star_tok.col,
+                    {"value": value, "ctx": {"_type": "Load"}},
+                ),
+                value,
             )
         # Name with optional attribute/subscript
         base = self.parse_atom()
@@ -2302,12 +2536,15 @@ class Parser:
         """Parse subscript trailer."""
         tok = self.expect_op("[")
         slice_node = self.parse_subscript_inner()
-        self.expect_op("]")
-        return make_node(
-            "Subscript",
-            tok.lineno,
-            tok.col,
-            {"value": value, "slice": slice_node, "ctx": {"_type": "Load"}},
+        close = self.expect_op("]")
+        return end_from_token(
+            make_node(
+                "Subscript",
+                tok.lineno,
+                tok.col,
+                {"value": value, "slice": slice_node, "ctx": {"_type": "Load"}},
+            ),
+            close,
         )
 
     def parse_subscript_inner(self) -> ASTNode:
@@ -2321,11 +2558,14 @@ class Parser:
             items.append(self.parse_subscript_item())
         if len(items) == 1:
             return items[0]
-        return make_node(
-            "Tuple",
-            self.current().lineno,
-            self.current().col,
-            {"elts": items, "ctx": {"_type": "Load"}},
+        return end_from_node(
+            make_node(
+                "Tuple",
+                self.current().lineno,
+                self.current().col,
+                {"elts": items, "ctx": {"_type": "Load"}},
+            ),
+            items[len(items) - 1],
         )
 
     def parse_subscript_item(self) -> ASTNode:
@@ -2354,19 +2594,31 @@ class Parser:
             if not self.match_op(",") and not self.match_op("]"):
                 step = self.parse_test()
 
-        return make_node(
+        node = make_node(
             "Slice", tok.lineno, tok.col, {"lower": lower, "upper": upper, "step": step}
         )
+        if step is not None:
+            end_from_node(node, step)
+        elif upper is not None:
+            end_from_node(node, upper)
+        elif lower is not None:
+            end_from_token(node, self.prev_token())
+        else:
+            end_from_token(node, self.prev_token())
+        return node
 
     def parse_attribute(self, value: ASTNode) -> ASTNode:
         """Parse attribute access trailer."""
         tok = self.expect_op(".")
-        name = self.expect(TK_NAME).value
-        return make_node(
-            "Attribute",
-            tok.lineno,
-            tok.col,
-            {"value": value, "attr": name, "ctx": {"_type": "Load"}},
+        name_tok = self.expect(TK_NAME)
+        return end_from_token(
+            make_node(
+                "Attribute",
+                tok.lineno,
+                tok.col,
+                {"value": value, "attr": name_tok.value, "ctx": {"_type": "Load"}},
+            ),
+            name_tok,
         )
 
     def parse_atom(self) -> ASTNode:
@@ -2377,9 +2629,15 @@ class Parser:
         if self.match_op("("):
             self.advance()
             if self.match_op(")"):
-                self.advance()
-                return make_node(
-                    "Tuple", tok.lineno, tok.col, {"elts": [], "ctx": {"_type": "Load"}}
+                close = self.advance()
+                return end_from_token(
+                    make_node(
+                        "Tuple",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": [], "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
 
             # Check for yield
@@ -2395,8 +2653,14 @@ class Parser:
                 self.advance()
                 value = self.parse_test()
                 set_context(first, "Store")
-                named_expr = make_node(
-                    "NamedExpr", tok.lineno, tok.col, {"target": first, "value": value}
+                named_expr = end_from_node(
+                    make_node(
+                        "NamedExpr",
+                        tok.lineno,
+                        tok.col,
+                        {"target": first, "value": value},
+                    ),
+                    value,
                 )
                 self.expect_op(")")
                 return named_expr
@@ -2404,12 +2668,15 @@ class Parser:
             # Generator expression
             if self.match("for"):
                 generators = self.parse_comp_for()
-                self.expect_op(")")
-                return make_node(
-                    "GeneratorExp",
-                    tok.lineno,
-                    tok.col,
-                    {"elt": first, "generators": generators},
+                close = self.expect_op(")")
+                return end_from_token(
+                    make_node(
+                        "GeneratorExp",
+                        tok.lineno,
+                        tok.col,
+                        {"elt": first, "generators": generators},
+                    ),
+                    close,
                 )
 
             # Tuple or single expression
@@ -2420,12 +2687,15 @@ class Parser:
                     if self.match_op(")"):
                         break
                     elts.append(self.parse_testlist_star_expr_item())
-                self.expect_op(")")
-                return make_node(
-                    "Tuple",
-                    tok.lineno,
-                    tok.col,
-                    {"elts": elts, "ctx": {"_type": "Load"}},
+                close = self.expect_op(")")
+                return end_from_token(
+                    make_node(
+                        "Tuple",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": elts, "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
 
             self.expect_op(")")
@@ -2435,9 +2705,15 @@ class Parser:
         if self.match_op("["):
             self.advance()
             if self.match_op("]"):
-                self.advance()
-                return make_node(
-                    "List", tok.lineno, tok.col, {"elts": [], "ctx": {"_type": "Load"}}
+                close = self.advance()
+                return end_from_token(
+                    make_node(
+                        "List",
+                        tok.lineno,
+                        tok.col,
+                        {"elts": [], "ctx": {"_type": "Load"}},
+                    ),
+                    close,
                 )
 
             first = self.parse_testlist_star_expr_item()
@@ -2445,12 +2721,15 @@ class Parser:
             # List comprehension
             if self.match("for"):
                 generators = self.parse_comp_for()
-                self.expect_op("]")
-                return make_node(
-                    "ListComp",
-                    tok.lineno,
-                    tok.col,
-                    {"elt": first, "generators": generators},
+                close = self.expect_op("]")
+                return end_from_token(
+                    make_node(
+                        "ListComp",
+                        tok.lineno,
+                        tok.col,
+                        {"elt": first, "generators": generators},
+                    ),
+                    close,
                 )
 
             # Regular list
@@ -2460,9 +2739,15 @@ class Parser:
                 if self.match_op("]"):
                     break
                 elts.append(self.parse_testlist_star_expr_item())
-            self.expect_op("]")
-            return make_node(
-                "List", tok.lineno, tok.col, {"elts": elts, "ctx": {"_type": "Load"}}
+            close = self.expect_op("]")
+            return end_from_token(
+                make_node(
+                    "List",
+                    tok.lineno,
+                    tok.col,
+                    {"elts": elts, "ctx": {"_type": "Load"}},
+                ),
+                close,
             )
 
         # Dict or set
@@ -2472,11 +2757,14 @@ class Parser:
         # Name
         if self.match(TK_NAME):
             name_tok = self.advance()
-            return make_node(
-                "Name",
-                name_tok.lineno,
-                name_tok.col,
-                {"id": name_tok.value, "ctx": {"_type": "Load"}},
+            return end_from_token(
+                make_node(
+                    "Name",
+                    name_tok.lineno,
+                    name_tok.col,
+                    {"id": name_tok.value, "ctx": {"_type": "Load"}},
+                ),
+                name_tok,
             )
 
         # Number
@@ -2491,18 +2779,26 @@ class Parser:
         # None, True, False
         if self.match("None"):
             self.advance()
-            return make_node("Constant", tok.lineno, tok.col, {"value": None})
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": None}), tok
+            )
         if self.match("True"):
             self.advance()
-            return make_node("Constant", tok.lineno, tok.col, {"value": True})
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": True}), tok
+            )
         if self.match("False"):
             self.advance()
-            return make_node("Constant", tok.lineno, tok.col, {"value": False})
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": False}), tok
+            )
 
         # Ellipsis
         if self.match_op("..."):
             self.advance()
-            return make_node("Constant", tok.lineno, tok.col, {"value": ...})
+            return end_from_token(
+                make_node("Constant", tok.lineno, tok.col, {"value": ...}), tok
+            )
 
         raise self.error("unexpected token '" + tok.value + "'")
 
@@ -2511,8 +2807,11 @@ class Parser:
         tok = self.expect_op("{")
 
         if self.match_op("}"):
-            self.advance()
-            return make_node("Dict", tok.lineno, tok.col, {"keys": [], "values": []})
+            close = self.advance()
+            return end_from_token(
+                make_node("Dict", tok.lineno, tok.col, {"keys": [], "values": []}),
+                close,
+            )
 
         # Check first item to determine if dict or set
         first = self.parse_dict_or_set_item()
@@ -2528,12 +2827,19 @@ class Parser:
             # Check for dict comprehension
             if first[0] is not None and self.match("for"):
                 generators = self.parse_comp_for()
-                self.expect_op("}")
-                return make_node(
-                    "DictComp",
-                    tok.lineno,
-                    tok.col,
-                    {"key": first[0], "value": first[1], "generators": generators},
+                close = self.expect_op("}")
+                return end_from_token(
+                    make_node(
+                        "DictComp",
+                        tok.lineno,
+                        tok.col,
+                        {
+                            "key": first[0],
+                            "value": first[1],
+                            "generators": generators,
+                        },
+                    ),
+                    close,
                 )
 
             while self.match_op(","):
@@ -2548,9 +2854,12 @@ class Parser:
                     # Mixing dict unpacking
                     keys.append(None)
                     values.append(item)
-            self.expect_op("}")
-            return make_node(
-                "Dict", tok.lineno, tok.col, {"keys": keys, "values": values}
+            close = self.expect_op("}")
+            return end_from_token(
+                make_node(
+                    "Dict", tok.lineno, tok.col, {"keys": keys, "values": values}
+                ),
+                close,
             )
 
         # Set
@@ -2559,9 +2868,15 @@ class Parser:
         # Check for set comprehension
         if self.match("for"):
             generators = self.parse_comp_for()
-            self.expect_op("}")
-            return make_node(
-                "SetComp", tok.lineno, tok.col, {"elt": first, "generators": generators}
+            close = self.expect_op("}")
+            return end_from_token(
+                make_node(
+                    "SetComp",
+                    tok.lineno,
+                    tok.col,
+                    {"elt": first, "generators": generators},
+                ),
+                close,
             )
 
         while self.match_op(","):
@@ -2572,8 +2887,10 @@ class Parser:
             if isinstance(item, tuple):
                 raise self.error("cannot mix dict and set syntax")
             elts.append(item)
-        self.expect_op("}")
-        return make_node("Set", tok.lineno, tok.col, {"elts": elts})
+        close = self.expect_op("}")
+        return end_from_token(
+            make_node("Set", tok.lineno, tok.col, {"elts": elts}), close
+        )
 
     def parse_dict_or_set_item(self) -> ASTNode | tuple[ASTNode | None, ASTNode]:
         """Parse a dict or set item. Returns tuple for dict, ASTNode for set."""
@@ -2628,7 +2945,11 @@ class Parser:
                     values.append(fstring_values[k])
                     k += 1
                 j += 1
-            return make_node("JoinedStr", tok.lineno, tok.col, {"values": values})
+            last_str = strings[len(strings) - 1]
+            return end_from_token(
+                make_node("JoinedStr", tok.lineno, tok.col, {"values": values}),
+                last_str,
+            )
 
         # Regular strings - concatenate
         combined = parse_string_value(strings[0].value)
@@ -2641,7 +2962,10 @@ class Parser:
                 combined = combined + next_val
             k += 1
 
-        return make_node("Constant", tok.lineno, tok.col, {"value": combined})
+        last_str = strings[len(strings) - 1]
+        return end_from_token(
+            make_node("Constant", tok.lineno, tok.col, {"value": combined}), last_str
+        )
 
     def parse_testlist_star_expr(self) -> ASTNode:
         """Parse testlist_star_expr: (test|star_expr) (',' (test|star_expr))* [',']."""
@@ -2659,8 +2983,11 @@ class Parser:
 
         if len(items) == 1 and not has_comma:
             return items[0]
-        return make_node(
-            "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+        return end_from_node(
+            make_node(
+                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+            ),
+            items[len(items) - 1],
         )
 
     def parse_testlist_star_expr_item(self) -> ASTNode:
@@ -2668,11 +2995,14 @@ class Parser:
         if self.match_op("*"):
             tok = self.advance()
             value = self.parse_test()
-            return make_node(
-                "Starred",
-                tok.lineno,
-                tok.col,
-                {"value": value, "ctx": {"_type": "Load"}},
+            return end_from_node(
+                make_node(
+                    "Starred",
+                    tok.lineno,
+                    tok.col,
+                    {"value": value, "ctx": {"_type": "Load"}},
+                ),
+                value,
             )
         return self.parse_test()
 
@@ -2693,8 +3023,11 @@ class Parser:
         items = self.parse_exprlist()
         if len(items) == 1:
             return items[0]
-        return make_node(
-            "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+        return end_from_node(
+            make_node(
+                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+            ),
+            items[len(items) - 1],
         )
 
     def is_end_of_testlist(self) -> bool:
@@ -2731,6 +3064,20 @@ def make_node(
             result[key] = fields[key]
             i += 1
     return result
+
+
+def end_from_token(node: ASTNode, tok: Token) -> ASTNode:
+    """Set end position from a token."""
+    node["end_lineno"] = tok.lineno
+    node["end_col_offset"] = tok.col + len(tok.value)
+    return node
+
+
+def end_from_node(node: ASTNode, child: ASTNode) -> ASTNode:
+    """Set end position from a child node."""
+    node["end_lineno"] = child.get("end_lineno", node.get("lineno", 1))
+    node["end_col_offset"] = child.get("end_col_offset", node.get("col_offset", 0))
+    return node
 
 
 def make_arguments() -> ASTNode:
