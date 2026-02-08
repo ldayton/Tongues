@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just test-cli-local test-parse-local test-codegen-local
+      - run: just test-cli-local test-parse-local test-subset-local test-codegen-local
 
   test:
     runs-on: ubuntu-latest
