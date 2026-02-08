@@ -176,6 +176,7 @@ def tokenize(source: str) -> list[Token]:
 
     # Track if we're inside brackets (no INDENT/DEDENT inside)
     bracket_depth = 0
+    bracket_stack: list[tuple[str, int]] = []
 
     while lineno <= num_lines:
         line = lines[lineno - 1]
@@ -319,8 +320,11 @@ def tokenize(source: str) -> list[Token]:
                 tokens.append(Token(TK_OP, c, lineno, col))
                 if c == "(" or c == "[" or c == "{":
                     bracket_depth += 1
+                    bracket_stack.append((c, lineno))
                 elif c == ")" or c == "]" or c == "}":
                     bracket_depth -= 1
+                    if len(bracket_stack) > 0:
+                        bracket_stack.pop()
                 col += 1
                 continue
 
@@ -333,6 +337,16 @@ def tokenize(source: str) -> list[Token]:
             tokens.append(Token(TK_NEWLINE, "\n", lineno, line_len))
 
         lineno += 1
+
+    # Check for unmatched brackets
+    if len(bracket_stack) > 0:
+        open_bracket = bracket_stack[0][0]
+        open_line = bracket_stack[0][1]
+        raise ParseError(
+            "unmatched '" + open_bracket + "' at line " + str(open_line),
+            open_line,
+            0,
+        )
 
     # Emit remaining DEDENTs
     while len(indent_stack) > 1:
@@ -395,7 +409,7 @@ def scan_string(
             # Move to next line for triple-quoted strings
             current_lineno += 1
             if current_lineno > len(lines):
-                raise ParseError("unterminated string", start_lineno, start_col)
+                raise ParseError("unterminated string literal", start_lineno, start_col)
             current_line = current_line + "\n" + lines[current_lineno - 1]
         else:
             # Look for single quote end
@@ -414,9 +428,9 @@ def scan_string(
                         current_line,
                     )
                 if c == "\n":
-                    raise ParseError("unterminated string", start_lineno, start_col)
+                    raise ParseError("unterminated string literal", start_lineno, start_col)
                 col += 1
-            raise ParseError("unterminated string", start_lineno, start_col)
+            raise ParseError("unterminated string literal", start_lineno, start_col)
 
 
 def scan_number(line: str, col: int, lineno: int) -> tuple[Token, int]:
@@ -542,7 +556,10 @@ class Parser:
             if tok.value == type_or_value:
                 return self.advance()
         raise ParseError(
-            "expected " + type_or_value + ", got " + tok.type + " " + repr(tok.value),
+            "invalid syntax at line "
+            + str(tok.lineno)
+            + ", column "
+            + str(tok.col),
             tok.lineno,
             tok.col,
         )
@@ -553,7 +570,10 @@ class Parser:
         if tok.type == TK_OP and tok.value == value:
             return self.advance()
         raise ParseError(
-            "expected '" + value + "', got " + tok.type + " " + repr(tok.value),
+            "invalid syntax at line "
+            + str(tok.lineno)
+            + ", column "
+            + str(tok.col),
             tok.lineno,
             tok.col,
         )
@@ -1496,7 +1516,7 @@ class Parser:
         if self.match_op("{"):
             return self.parse_mapping_pattern()
 
-        raise self.error("unexpected token in pattern: " + tok.value)
+        raise self.error("unexpected token '" + tok.value + "'")
 
     def parse_dotted_name_for_pattern(self) -> str:
         """Parse dotted name for pattern matching."""
@@ -2484,7 +2504,7 @@ class Parser:
             self.advance()
             return make_node("Constant", tok.lineno, tok.col, {"value": ...})
 
-        raise self.error("unexpected token: " + tok.type + " " + repr(tok.value))
+        raise self.error("unexpected token '" + tok.value + "'")
 
     def parse_dict_or_set(self) -> ASTNode:
         """Parse dict or set literal."""
