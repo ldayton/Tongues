@@ -727,3 +727,27 @@ type Alias[T] = list[T]
 ok
 ---
 
+=== type params on function
+def foo[T](x: T) -> T: pass
+---
+ok
+---
+
+=== type params on class
+class Foo[T]: pass
+---
+ok
+---
+
+=== multiple type params
+def bar[T, U, *Ts, **P](): pass
+---
+ok
+---
+
+=== bounded type var
+type X[T: int] = list[T]
+---
+ok
+---
+

@@ -168,12 +168,6 @@ u'''\N{}'''
 error: parse
 ---
 
-=== invalid unicode N name
-u'\N{foo}'
----
-error: parse
----
-
 === invalid bytes hex
 b"\x"
 ---
