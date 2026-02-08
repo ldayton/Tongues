@@ -19,12 +19,24 @@ if TYPE_CHECKING:
     from ..ir import SymbolTable
 
 
+def _all_param_args(args: ASTNode) -> list[ASTNode]:
+    """Collect all parameter arg nodes from posonlyargs + args + kwonlyargs."""
+    result: list[ASTNode] = []
+    for a in args.get("posonlyargs", []):
+        result.append(a)
+    for a in args.get("args", []):
+        result.append(a)
+    for a in args.get("kwonlyargs", []):
+        result.append(a)
+    return result
+
+
 def detect_mutated_params(node: ASTNode) -> set[str]:
     """Detect which parameters are mutated in the function body."""
     mutated = set()
     args = node.get("args", {})
-    args_list = args.get("args", [])
-    param_names = {a.get("arg") for a in args_list if a.get("arg") != "self"}
+    all_args = _all_param_args(args)
+    param_names = {a.get("arg") for a in all_args if a.get("arg") != "self"}
     for stmt in dict_walk(node):
         # param.append(...), param.extend(...), param.clear(), param.pop()
         if is_type(stmt, ["Expr"]) and is_type(stmt.get("value"), ["Call"]):
@@ -49,6 +61,38 @@ def detect_mutated_params(node: ASTNode) -> set[str]:
     return mutated
 
 
+def _make_param(
+    arg: ASTNode,
+    modifier: str,
+    has_default: bool,
+    default_node: ASTNode | None,
+    mutated_params: set[str],
+    callbacks: CollectionCallbacks,
+    func_name: str = "",
+) -> ParamInfo:
+    """Build a ParamInfo from an AST arg node."""
+    annotation = arg.get("annotation")
+    if annotation is None:
+        lineno = arg.get("lineno", 0)
+        raise TypeError(
+            f"{lineno}:0: [types] parameter '{arg.get('arg')}' missing type annotation in {func_name}()"
+        )
+    py_type = callbacks.annotation_to_str(annotation)
+    typ = callbacks.py_type_to_ir(py_type, True) if py_type else InterfaceRef("any")
+    if arg.get("arg") in mutated_params and isinstance(typ, Slice):
+        typ = Pointer(typ)
+    default_value = None
+    if has_default and default_node is not None:
+        default_value = callbacks.lower_expr(default_node)
+    return ParamInfo(
+        name=arg.get("arg"),
+        typ=typ,
+        has_default=has_default,
+        default_value=default_value,
+        modifier=modifier,
+    )
+
+
 def extract_func_info(
     node: ASTNode,
     callbacks: CollectionCallbacks,
@@ -56,34 +100,80 @@ def extract_func_info(
 ) -> FuncInfo:
     """Extract function signature information."""
     mutated_params = detect_mutated_params(node)
-    params = []
+    params: list[ParamInfo] = []
     args = node.get("args", {})
-    args_list = args.get("args", [])
+    # Positional-only params (before /)
+    posonlyargs = args.get("posonlyargs", [])
+    # Regular params (between / and *)
+    regular_args = args.get("args", [])
+    # Keyword-only params (after *)
+    kwonlyargs = args.get("kwonlyargs", [])
+    # Defaults apply to the tail of posonlyargs + regular_args
     defaults = args.get("defaults", [])
-    non_self_args = [a for a in args_list if a.get("arg") != "self"]
-    n_params = len(non_self_args)
+    # kw_defaults is parallel to kwonlyargs (None entries for no default)
+    kw_defaults = args.get("kw_defaults", [])
+    # Filter self from regular args (methods)
+    non_self_posonly = [a for a in posonlyargs if a.get("arg") != "self"]
+    non_self_regular = [a for a in regular_args if a.get("arg") != "self"]
+    # defaults covers the tail of posonlyargs + regular args combined
+    n_positional = len(non_self_posonly) + len(non_self_regular)
     n_defaults = len(defaults) if defaults else 0
-    for i, arg in enumerate(non_self_args):
-        annotation = arg.get("annotation")
-        py_type = callbacks.annotation_to_str(annotation) if annotation else ""
-        typ = callbacks.py_type_to_ir(py_type, True) if py_type else InterfaceRef("any")
-        # Auto-wrap mutated slice params with Pointer
-        if arg.get("arg") in mutated_params and isinstance(typ, Slice):
-            typ = Pointer(typ)
-        has_default = False
-        default_value = None
-        # Check if this param has a default
-        if i >= n_params - n_defaults:
-            has_default = True
-            default_idx = i - (n_params - n_defaults)
+    func_name = node.get("name", "")
+    # Positional-only params
+    for i, arg in enumerate(non_self_posonly):
+        has_default = i >= n_positional - n_defaults
+        default_node = None
+        if has_default:
+            default_idx = i - (n_positional - n_defaults)
             if defaults and default_idx < len(defaults):
-                default_value = callbacks.lower_expr(defaults[default_idx])
+                default_node = defaults[default_idx]
         params.append(
-            ParamInfo(
-                name=arg.get("arg"),
-                typ=typ,
-                has_default=has_default,
-                default_value=default_value,
+            _make_param(
+                arg,
+                "positional",
+                has_default,
+                default_node,
+                mutated_params,
+                callbacks,
+                func_name,
+            )
+        )
+    # Regular params
+    for i, arg in enumerate(non_self_regular):
+        global_i = len(non_self_posonly) + i
+        has_default = global_i >= n_positional - n_defaults
+        default_node = None
+        if has_default:
+            default_idx = global_i - (n_positional - n_defaults)
+            if defaults and default_idx < len(defaults):
+                default_node = defaults[default_idx]
+        params.append(
+            _make_param(
+                arg,
+                "pos_or_kw",
+                has_default,
+                default_node,
+                mutated_params,
+                callbacks,
+                func_name,
+            )
+        )
+    # Keyword-only params
+    for i, arg in enumerate(kwonlyargs):
+        has_default = False
+        default_node = None
+        if i < len(kw_defaults) and kw_defaults[i] is not None:
+            has_default = True
+            default_node = kw_defaults[i]
+        params.append(
+            _make_param(
+                arg,
+                "keyword",
+                has_default,
+                default_node,
+                mutated_params,
+                callbacks,
+                func_name,
             )
         )
     return_type = VOID
@@ -91,6 +181,11 @@ def extract_func_info(
     if returns:
         py_return = callbacks.annotation_to_str(returns)
         return_type = callbacks.py_return_type_to_ir(py_return)
+    else:
+        lineno = node.get("lineno", 0)
+        raise TypeError(
+            f"{lineno}:0: [types] function '{func_name}' missing return type annotation"
+        )
     return FuncInfo(
         name=node.get("name"),
         params=params,

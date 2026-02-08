@@ -370,6 +370,7 @@ def _ir_serialize(obj: object) -> object:
             "typ": serialize(obj.typ),
             "has_default": obj.has_default,
             "default_value": serialize(obj.default_value),
+            "modifier": obj.modifier,
         }
     if isinstance(obj, OwnershipInfo):
         return {
@@ -404,7 +405,13 @@ def _serialize_type(obj: Type) -> dict[str, object]:
     if isinstance(obj, Set):
         return {"_type": "Set", "element": serialize(obj.element)}
     if isinstance(obj, Tuple):
-        return {"_type": "Tuple", "elements": serialize(obj.elements)}
+        result: dict[str, object] = {
+            "_type": "Tuple",
+            "elements": serialize(obj.elements),
+        }
+        if obj.variadic:
+            result["variadic"] = True
+        return result
     if isinstance(obj, Pointer):
         return {"_type": "Pointer", "target": serialize(obj.target), "owned": obj.owned}
     if isinstance(obj, Optional):

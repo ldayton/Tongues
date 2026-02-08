@@ -28,6 +28,14 @@ test-parse-local:
 test-subset-local:
     uv run --directory tongues pytest tests/test_03_subset.py -v
 
+# Run names tests locally
+test-names-local:
+    uv run --directory tongues pytest tests/test_04_names.py -v
+
+# Run signatures tests locally
+test-signatures-local:
+    uv run --directory tongues pytest tests/test_05_signatures.py -v
+
 # Run codegen tests locally
 test-codegen-local:
     uv run --directory tongues pytest tests/test_15_codegen.py -v
@@ -54,6 +62,8 @@ check:
     just test-cli && results[cli]=✅ || { results[cli]=❌; failed=1; }
     just test-parse && results[parse]=✅ || { results[parse]=❌; failed=1; }
     just test-subset && results[subset-tests]=✅ || { results[subset-tests]=❌; failed=1; }
+    just test-names && results[names]=✅ || { results[names]=❌; failed=1; }
+    just test-signatures && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-codegen && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -64,7 +74,7 @@ check:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in fmt lint subset cli parse subset-tests codegen; do
+    for t in fmt lint subset cli parse subset-tests names signatures codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -97,6 +107,18 @@ test-subset:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_03_subset.py -v
+
+# Run names tests in Docker
+test-names:
+    docker build -t tongues-python docker/python
+    docker run --rm -v "$(pwd):/workspace" tongues-python \
+        uv run --directory tongues pytest tests/test_04_names.py -v
+
+# Run signatures tests in Docker
+test-signatures:
+    docker build -t tongues-python docker/python
+    docker run --rm -v "$(pwd):/workspace" tongues-python \
+        uv run --directory tongues pytest tests/test_05_signatures.py -v
 
 # Run codegen tests in Docker (uses python image)
 test-codegen:
@@ -204,6 +226,8 @@ test-local:
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
     just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
     just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
+    just test-names-local && results[names]=✅ || { results[names]=❌; failed=1; }
+    just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -214,7 +238,7 @@ test-local:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in versions cli parse codegen; do
+    for t in versions cli parse names signatures codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -238,6 +262,8 @@ check-local:
     just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
     just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
     just test-subset-local && results[subset-tests]=✅ || { results[subset-tests]=❌; failed=1; }
+    just test-names-local && results[names]=✅ || { results[names]=❌; failed=1; }
+    just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -248,7 +274,7 @@ check-local:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in versions fmt lint subset cli parse subset-tests codegen; do
+    for t in versions fmt lint subset cli parse subset-tests names signatures codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"

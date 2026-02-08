@@ -251,10 +251,12 @@ class Tuple(Type):
     | TS     | [T1, T2, ...]           |
 
     Invariants:
-    - len(elements) >= 2
+    - len(elements) >= 2 (when not variadic)
+    - len(elements) == 1 and variadic=True for tuple[T, ...]
     """
 
     elements: tuple[Type, ...]
+    variadic: bool = False
 
 
 @dataclass(unsafe_hash=True)
@@ -2615,3 +2617,4 @@ class ParamInfo:
     typ: Type
     has_default: bool = False
     default_value: Expr | None = None
+    modifier: str = "pos_or_kw"

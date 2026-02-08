@@ -300,9 +300,32 @@ class NameResolver:
     def resolve(self, ast_dict: ASTNode) -> NameResult:
         """Main entry point: run all passes and return result."""
         self.pass1_module_names(ast_dict)
+        self.validate_base_classes(ast_dict)
         self.pass2_class_names(ast_dict)
         self.pass3_locals_and_refs(ast_dict)
         return self.result
+
+    def validate_base_classes(self, ast_dict: ASTNode) -> None:
+        """Validate that all base class names resolve."""
+        body = ast_dict.get("body", [])
+        i = 0
+        while i < len(body):
+            stmt = body[i]
+            if stmt.get("_type") == "ClassDef":
+                bases = stmt.get("bases", [])
+                j = 0
+                while j < len(bases):
+                    base = bases[j]
+                    base_name = self._get_base_name(base)
+                    if base_name != "":
+                        if not self.resolve_name(base_name, "", ""):
+                            self.error(
+                                base,
+                                "undefined",
+                                "name '" + base_name + "' is not defined",
+                            )
+                    j += 1
+            i += 1
 
     def pass1_module_names(self, ast_dict: ASTNode) -> None:
         """Pass 1: Collect module-level names (classes, functions, constants)."""
@@ -700,16 +723,6 @@ class NameResolver:
                                 )
                                 self.result.table.add_local(class_name, func_name, info)
                     k += 1
-            elif node_type in ("ListComp", "SetComp", "DictComp", "GeneratorExp"):
-                # Collect comprehension loop variables
-                generators = node.get("generators", [])
-                k = 0
-                while k < len(generators):
-                    gen = generators[k]
-                    if isinstance(gen, dict):
-                        target = gen.get("target", {})
-                        self.collect_assign_target(target, class_name, func_name, node)
-                    k += 1
             elif node_type == "Match":
                 # Collect pattern variables from match/case
                 cases = node.get("cases", [])
@@ -849,6 +862,77 @@ class NameResolver:
             if len(patterns) > 0:
                 self.collect_pattern_names(patterns[0], class_name, func_name, stmt)
 
+    def _collect_target_names(self, target: ASTNode, names: set[str]) -> None:
+        """Extract variable names from an assignment target into a set."""
+        target_type = target.get("_type", "")
+        if target_type == "Name":
+            name = target.get("id", "")
+            if name != "":
+                names.add(name)
+        elif target_type == "Tuple" or target_type == "List":
+            elts = target.get("elts", [])
+            i = 0
+            while i < len(elts):
+                self._collect_target_names(elts[i], names)
+                i += 1
+
+    def resolve_comprehension_refs(
+        self,
+        node: ASTNode,
+        class_name: str,
+        func_name: str,
+        outer_comp_vars: set[str],
+    ) -> None:
+        """Resolve references inside a comprehension with its own scope."""
+        comp_vars: set[str] = set()
+        i = 0
+        keys = list(outer_comp_vars)
+        while i < len(keys):
+            comp_vars.add(keys[i])
+            i += 1
+        generators = node.get("generators", [])
+        i = 0
+        while i < len(generators):
+            gen = generators[i]
+            if isinstance(gen, dict):
+                target = gen.get("target", {})
+                self._collect_target_names(target, comp_vars)
+            i += 1
+        # Walk all children except nested comprehensions (handled recursively)
+        nodes_to_visit: list[ASTNode] = []
+        children = get_children(node)
+        i = 0
+        while i < len(children):
+            nodes_to_visit.append(children[i])
+            i += 1
+        j = 0
+        while j < len(nodes_to_visit):
+            child = nodes_to_visit[j]
+            child_type = child.get("_type", "")
+            if child_type in ("ListComp", "SetComp", "DictComp", "GeneratorExp"):
+                self.resolve_comprehension_refs(child, class_name, func_name, comp_vars)
+                j += 1
+                continue
+            if child_type == "Name":
+                ctx = child.get("ctx", {})
+                if ctx.get("_type", "") == "Load":
+                    name = child.get("id", "")
+                    if name not in comp_vars:
+                        if not self.resolve_name(name, class_name, func_name):
+                            self.error(
+                                child,
+                                "undefined",
+                                "name '" + name + "' is not defined",
+                            )
+            grandchildren = get_children(child)
+            m = 0
+            while m < len(grandchildren):
+                gc = grandchildren[m]
+                if gc.get("_type") != "FunctionDef":
+                    nodes_to_visit.append(gc)
+                m += 1
+            j += 1
+
     def resolve_references_in_body(
         self, body: list[ASTNode], class_name: str, func_name: str
     ) -> None:
@@ -862,6 +946,10 @@ class NameResolver:
         while j < len(nodes_to_visit):
             node = nodes_to_visit[j]
             node_type = node.get("_type", "")
+            if node_type in ("ListComp", "SetComp", "DictComp", "GeneratorExp"):
+                self.resolve_comprehension_refs(node, class_name, func_name, set())
+                j += 1
+                continue
             if node_type == "Name":
                 ctx = node.get("ctx", {})
                 ctx_type = ctx.get("_type", "")
