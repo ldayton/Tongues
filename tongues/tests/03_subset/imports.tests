@@ -326,3 +326,11 @@ def f() -> bytes:
 ---
 ok
 ---
+
+=== sys.exit allowed
+import sys
+def f() -> None:
+    sys.exit(1)
+---
+ok
+---

@@ -34,18 +34,19 @@ Subset violations are reported with the construct and reason:
 | List       | `list[T]`, `List[T]`                   | Bare `list` banned                             |
 | Dict       | `dict[K, V]`, `Dict[K, V]`             | Bare `dict` banned                             |
 | Set        | `set[T]`, `Set[T]`                     | Bare `set` banned                              |
+| Frozenset  | `frozenset[T]`                         | Effectively a set; immutability up to backend  |
 | Tuple      | `tuple[A, B, C]`, `Tuple[A, B, C]`     | Fixed-length, heterogeneous                    |
 | Tuple      | `tuple[T, ...]`                        | Variable-length, homogeneous                   |
 | Callable   | `Callable[[A, B], R]`                  | Function types; bound methods include receiver |
 
 ### Restrictions
 
-| Restriction                         | Rationale                             |
-| ----------------------------------- | ------------------------------------- |
-| All annotations required            | Static typing for transpilation       |
-| No bare `list`/`dict`/`set`/`tuple` | Element types must be known           |
-| No `Any`                            | Use `object` + `isinstance()` instead |
-| No `TypeVar`                        | No generics; monomorphic types only   |
+| Restriction                                     | Rationale                             |
+| ----------------------------------------------- | ------------------------------------- |
+| All annotations required                        | Static typing for transpilation       |
+| No bare `list`/`dict`/`set`/`tuple`/`frozenset` | Element types must be known           |
+| No `Any`                                        | Use `object` + `isinstance()` instead |
+| No `TypeVar`                                    | No generics; monomorphic types only   |
 
 ```python
 # Allowed
@@ -75,6 +76,7 @@ x: Any = foo()      # Any type (no checking)
 | --------------------------------- | -------------------- | ---------------------------------------------- |
 | `def f(a: int, b: int) -> int`    | `def f(*args)`       | Static arity required for type checking        |
 | `def f(a: int = 0) -> int`        | `def f(**kwargs)`    | Static parameter names required                |
+|                                   | `f(*xs)`, `f(**d)`   | Static arity required at call sites too        |
 | `def f(a: int, /, b: int) -> int` | `lambda x: x`        | All functions must be named for static binding |
 | `def f(*, a: int) -> int`         | nested functions     | No closures; flat function namespace           |
 | recursive functions               | `global`, `nonlocal` | Two-level scoping only (module + local)        |
@@ -110,13 +112,13 @@ Exception multiple inheritance allowed: `class E(Base, Exception)` (marker only)
 
 ## 4. Operators & Expressions
 
-| Allowed              | Not Allowed                   | Rationale                                      |
-| -------------------- | ----------------------------- | ---------------------------------------------- |
-| `x == y`             | `x is y` (except `x is None`) | Identity vs equality; `is` only for None check |
-| `x is None`          | `x is not y` (except None)    | Same as above                                  |
-| `x in xs`            | `del x`                       | Reassign or let go out of scope                |
-| `a < b < c` (chains) |                               |                                                |
-| `x += 1`             |                               |                                                |
+| Allowed                    | Not Allowed                       | Rationale                            |
+| -------------------------- | --------------------------------- | ------------------------------------ |
+| `x == y`                   | `x is y` (neither side a literal) | `is` only when one side is a literal |
+| `x is None`/`True`/`False` | `x is not y` (neither a literal)  | Same as above                        |
+| `x in xs`, `x not in xs`   | `del x`                           | Reassign or let go out of scope      |
+| `a < b < c` (chains)       |                                   |                                      |
+| `x += 1`                   |                                   |                                      |
 
 ### Walrus Operator
 
@@ -145,13 +147,17 @@ The walrus operator `:=` is allowed and scopes to the enclosing function (not th
 
 ## 5. Statements & Control Flow
 
-| Allowed                      | Not Allowed         | Rationale                              |
-| ---------------------------- | ------------------- | -------------------------------------- |
-| `if`/`elif`/`else`           | `with` statement    | Context managers need runtime protocol |
-| `for`/`while`                | loop `else` clause  | Unusual semantics; use flag variable   |
-| `try`/`except`/`finally`     | `try` `else` clause | Move else code after try block         |
-| `match`/`case`               | bare `except:`      | Must specify exception type            |
-| `raise`, `break`, `continue` | `async`/`await`     | Requires runtime scheduler             |
+| Allowed                  | Not Allowed         | Rationale                              |
+| ------------------------ | ------------------- | -------------------------------------- |
+| `if`/`elif`/`else`       | `with` statement    | Context managers need runtime protocol |
+| `for`/`while`            | loop `else` clause  | Unusual semantics; use flag variable   |
+| `try`/`except`/`finally` | `try` `else` clause | Move else code after try block         |
+| `match`/`case`           | bare `except:`      | Must specify exception type            |
+| `raise`, `raise from`    | `async`/`await`     | Requires runtime scheduler             |
+| `break`, `continue`      |                     |                                        |
+| `assert`, `pass`         |                     |                                        |
+
+`assert expr` evaluates the expression and aborts if falsy — raising `AssertionError` in targets with exceptions, or terminating the program otherwise. The optional message form `assert expr, msg` is allowed. Used primarily for test assertions.
 
 ---
 
@@ -292,6 +298,7 @@ Enforcement requires type information; verified during type inference (see [08-i
 | `sys.stdout.buffer.write(b)`  | Binary output          |
 | `sys.stderr.buffer.write(b)`  | Binary error output    |
 | `sys.argv`                    | Command-line arguments |
+| `sys.exit(code)`              | Process exit           |
 | `os.getenv(name)`             | Environment variables  |
 | `os.getenv(name, default)`    | With default           |
 
