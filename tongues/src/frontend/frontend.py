@@ -71,6 +71,34 @@ class Frontend:
             if info.kind == "class":
                 self.symbols.structs[name] = StructInfo(name=name, bases=info.bases)
 
+    def init_from_names(self, source: str, name_result: NameResult) -> None:
+        """Initialize frontend state from source and name resolution (phases 4+7)."""
+        self._source = source
+        self._populate_structs_from_names(name_result)
+        self._hierarchy = hierarchy.build_hierarchy(self.symbols)
+
+    def collect_sigs(self, tree: ASTNode) -> None:
+        """Phase 5: Collect function and method signatures."""
+        self._collect_signatures(tree)
+
+    def collect_flds(self, tree: ASTNode) -> None:
+        """Phase 6: Collect struct fields and constants."""
+        self._collect_fields(tree)
+        collection.build_kind_mapping(
+            self.symbols, self._kind_to_struct, self._kind_to_class
+        )
+        collection.collect_constants(tree, self.symbols)
+
+    def build_ir(self, tree: ASTNode) -> Module:
+        """Phases 8-9: Type inference and lowering to IR."""
+        return self._build_module(tree)
+
+    def get_hierarchy_root(self) -> str | None:
+        """The root of the class hierarchy, if any."""
+        if self._hierarchy is None:
+            return None
+        return self._hierarchy.hierarchy_root
+
     def transpile(
         self,
         source: str,
@@ -80,27 +108,14 @@ class Frontend:
         """Parse Python source and produce IR Module."""
         from .names import resolve_names
 
-        self._source = source
         if tree is None:
             tree = parse(source)
-        # Pass 1: Collect class names and inheritance (from Phase 4 name_result)
         if name_result is None:
             name_result = resolve_names(tree)
-        self._populate_structs_from_names(name_result)
-        # Pass 2: Build hierarchy (marks is_node, is_exception flags)
-        self._hierarchy = hierarchy.build_hierarchy(self.symbols)
-        # Pass 3: Collect function and method signatures
-        self._collect_signatures(tree)
-        # Pass 4: Collect struct fields
-        self._collect_fields(tree)
-        # Pass 4b: Build kind -> struct mapping from const_fields
-        collection.build_kind_mapping(
-            self.symbols, self._kind_to_struct, self._kind_to_class
-        )
-        # Pass 5: Collect module-level constants
-        collection.collect_constants(tree, self.symbols)
-        # Build IR Module
-        return self._build_module(tree)
+        self.init_from_names(source, name_result)
+        self.collect_sigs(tree)
+        self.collect_flds(tree)
+        return self.build_ir(tree)
 
     def _is_exception_subclass(self, name: str) -> bool:
         """Check if a class is an Exception subclass (directly or transitively)."""

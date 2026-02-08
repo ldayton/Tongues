@@ -1,0 +1,80 @@
+=== success
+args: --target go
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+---
+
+=== compilation error parse failure
+args:
+def f(x) -> int:
+    return x
+---
+exit: 1
+---
+
+=== compilation error subset violation
+args:
+f = lambda x: x + 1
+---
+exit: 1
+---
+
+=== compilation error type error
+args:
+def f(x) -> int:
+    return x
+---
+exit: 1
+---
+
+=== compilation error names undefined
+args:
+def f(x: int) -> int:
+    return y
+---
+exit: 1
+---
+
+=== unknown target
+args: --target brainfuck
+def f(x: int) -> int:
+    return x
+---
+exit: 2
+stderr: error: unknown target 'brainfuck'
+---
+
+=== unknown phase
+args: --stop-at nonexistent
+def f(x: int) -> int:
+    return x
+---
+exit: 2
+stderr: error: unknown phase 'nonexistent'
+---
+
+=== unknown flag
+args: --verbose
+def f(x: int) -> int:
+    return x
+---
+exit: 2
+stderr: error: unknown flag '--verbose'
+---
+
+=== empty input
+args:
+---
+exit: 2
+stderr: error: no input provided
+---
+
+=== invalid utf-8
+args:
+stdin-bytes: ff fe
+---
+exit: 1
+stderr: error: invalid utf-8 in input
+---

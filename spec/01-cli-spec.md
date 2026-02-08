@@ -7,12 +7,12 @@ Program entry point. Parses command-line arguments, reads source input, invokes 
 | Responsibility      | Implementation                                                                                                |
 | ------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Argument parsing    | Manual `sys.argv` processing (no argparse)                                                                    |
-| Source input        | `sys.stdin.read()`                                                                                            |
+| Source input        | `sys.stdin.buffer.read()` with UTF-8 decode                                                                   |
 | Target selection    | `--target` flag (15 languages, default: go)                                                                   |
 | Phase control       | `--stop-at` flag to halt pipeline at any phase                                                                |
 | Output              | `print()` to stdout                                                                                           |
 | Error reporting     | `print(..., file=sys.stderr)` with exit code                                                                  |
-| Pipeline invocation | `parse()` → `verify_subset()` → `resolve_names()` → `Frontend().transpile()` → `analyze()` → `backend.emit()` |
+| Pipeline invocation | `parse()` → `verify_subset()` → `resolve_names()` → `Frontend` (sigs → fields → IR) → `analyze()` → `backend.emit()` |
 
 ## Usage
 
@@ -34,7 +34,7 @@ The `--stop-at` flag halts the pipeline after the specified phase and outputs th
 
 | Phase        | Output Format                                  |
 | ------------ | ---------------------------------------------- |
-| `parse`      | JSON: `{"type": "Module", "body": [...]}`      |
+| `parse`      | JSON: `{"_type": "Module", "body": [...]}`     |
 | `subset`     | Nothing (validation only)                      |
 | `names`      | JSON: `{"names": {...}, "scopes": [...]}`      |
 | `signatures` | JSON: `{"functions": {...}, "methods": {...}}` |
