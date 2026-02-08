@@ -33,7 +33,7 @@ from ..ir import (
 )
 
 if TYPE_CHECKING:
-    from ..ir import FuncInfo, StructInfo, SymbolTable, Type
+    from ..ir import Expr, FuncInfo, StructInfo, SymbolTable, Type
     from .context import TypeContext
 
 
@@ -44,8 +44,8 @@ class BuilderCallbacks:
     annotation_to_str: Callable[[ASTNode | None], str]
     py_type_to_ir: Callable[[str, bool], "Type"]
     py_return_type_to_ir: Callable[[str], "Type"]
-    lower_expr: Callable[[ASTNode], "ir.Expr"]
-    lower_stmts: Callable[[list[ASTNode]], list["ir.Stmt"]]
+    lower_expr: Callable[[ASTNode], "Expr"]
+    lower_stmts: Callable[[list[ASTNode]], list["Stmt"]]
     collect_var_types: Callable[[list[ASTNode]], tuple[dict, dict, set, set, dict]]
     is_exception_subclass: Callable[[str], bool]
     extract_union_struct_names: Callable[[str], list[str]]
@@ -54,7 +54,7 @@ class BuilderCallbacks:
     setup_context: Callable[[str, "FuncInfo | None"], None]
     # Combined callback: set up type context then lower statements
     setup_and_lower_stmts: Callable[
-        [str, "FuncInfo | None", "TypeContext", list[ASTNode]], list["ir.Stmt"]
+        [str, "FuncInfo | None", "TypeContext", list[ASTNode]], list["Stmt"]
     ]
 
 
@@ -226,7 +226,7 @@ def build_method_shell(
                     name=p.name, typ=p.typ, default=p.default_value, loc=loc_unknown()
                 )
             )
-    body: list["ir.Stmt"] = []
+    body: list["Stmt"] = []
     if with_body:
         # Set up context first (needed by collect_var_types)
         callbacks.setup_context(class_name, func_info)
@@ -302,7 +302,7 @@ def build_function_shell(
                     name=p.name, typ=p.typ, default=p.default_value, loc=loc_unknown()
                 )
             )
-    body: list["ir.Stmt"] = []
+    body: list["Stmt"] = []
     if with_body:
         # Set up context first (needed by collect_var_types) - empty class name for functions
         callbacks.setup_context("", func_info)
