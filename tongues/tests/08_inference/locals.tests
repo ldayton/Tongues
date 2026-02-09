@@ -1,0 +1,190 @@
+=== infer int from literal
+def f() -> int:
+    x = 42
+    return x
+---
+ok
+---
+
+=== infer str from literal
+def f() -> str:
+    x = "hello"
+    return x
+---
+ok
+---
+
+=== infer bool from literal
+def f() -> bool:
+    x = True
+    return x
+---
+ok
+---
+
+=== infer float from literal
+def f() -> float:
+    x = 3.14
+    return x
+---
+ok
+---
+
+=== infer list type from literal
+def f() -> list[int]:
+    x = [1, 2, 3]
+    return x
+---
+ok
+---
+
+=== infer dict type from literal
+def f() -> dict[str, int]:
+    d = {"a": 1, "b": 2}
+    return d
+---
+ok
+---
+
+=== infer set type from literal
+def f() -> set[int]:
+    s = {1, 2, 3}
+    return s
+---
+ok
+---
+
+=== infer tuple type from literal
+def f() -> tuple[int, str]:
+    t = (1, "hello")
+    return t
+---
+ok
+---
+
+=== infer type from function return
+def get_name() -> str:
+    return "hello"
+def f() -> str:
+    x = get_name()
+    return x
+---
+ok
+---
+
+=== infer type from parameter
+def f(n: int) -> int:
+    x = n
+    return x
+---
+ok
+---
+
+=== infer type from field access
+from dataclasses import dataclass
+@dataclass
+class Point:
+    x: int
+    y: int
+def f(p: Point) -> int:
+    v = p.x
+    return v
+---
+ok
+---
+
+=== infer type through variable chain
+def f(n: int) -> int:
+    x = n
+    y = x
+    return y
+---
+ok
+---
+
+=== annotated assignment uses declared type
+def f() -> list[str]:
+    xs: list[str] = []
+    return xs
+---
+ok
+---
+
+=== annotated int assignment
+def f() -> int:
+    x: int = 0
+    return x
+---
+ok
+---
+
+=== annotated dict assignment
+def f() -> dict[str, int]:
+    d: dict[str, int] = {}
+    return d
+---
+ok
+---
+
+=== branch unification same type
+def f(flag: bool) -> str:
+    if flag:
+        x = "hello"
+    else:
+        x = "world"
+    return x
+---
+ok
+---
+
+=== branch unification int both sides
+def f(flag: bool) -> int:
+    if flag:
+        x = 1
+    else:
+        x = 2
+    return x
+---
+ok
+---
+
+=== inferred type mismatch in return
+def f() -> str:
+    x = 42
+    return x
+---
+error: type
+---
+
+=== inferred type used incorrectly
+def f() -> int:
+    x = "hello"
+    return x + 1
+---
+error: type
+---
+
+=== inferred list used with wrong return type
+def f() -> list[str]:
+    x = [1, 2, 3]
+    return x
+---
+error: type
+---
+
+=== empty collection needs annotation
+def f() -> list[int]:
+    xs = []
+    return xs
+---
+error: type
+---
+
+=== reassignment preserves inferred type
+def f() -> int:
+    x = 42
+    x = 100
+    return x
+---
+ok
+---

@@ -47,6 +47,7 @@ ALLOWED_BUILTINS: set[str] = {
     "range",
     "enumerate",
     "zip",
+    "reversed",
     # Formatting
     "repr",
     "ascii",

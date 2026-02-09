@@ -155,7 +155,6 @@ BANNED_BUILTINS: set[str] = {
     "next",
     "map",
     "filter",
-    "reversed",
     "open",
     "input",
     "breakpoint",

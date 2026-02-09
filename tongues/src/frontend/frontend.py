@@ -33,6 +33,7 @@ from . import hierarchy
 from . import signatures
 from . import fields
 from . import builders
+from . import validate
 from .names import NameResult
 
 # Python type -> IR type mapping for primitives
@@ -44,6 +45,43 @@ TYPE_MAP: dict[str, Type] = {
     "bytes": Slice(BYTE),
     "bytearray": Slice(BYTE),
 }
+
+
+def annotation_to_str(node: ASTNode | None) -> str:
+    """Convert type annotation AST to string."""
+    if node is None:
+        return ""
+    if not isinstance(node, dict):
+        return ""
+    node_t = node.get("_type")
+    if node_t == "Name":
+        return node.get("id", "")
+    if node_t == "Constant":
+        v = node.get("value")
+        if v is None:
+            return "None"
+        return str(v)
+    if node_t == "List":
+        elts = node.get("elts", [])
+        args = ", ".join(annotation_to_str(e) for e in elts)
+        return f"[{args}]"
+    if node_t == "Subscript":
+        base = annotation_to_str(node.get("value"))
+        slc = node.get("slice", {})
+        if slc.get("_type") == "Tuple":
+            elts = slc.get("elts", [])
+            args = ", ".join(annotation_to_str(e) for e in elts)
+            return f"{base}[{args}]"
+        return f"{base}[{annotation_to_str(slc)}]"
+    if node_t == "BinOp":
+        op = node.get("op", {})
+        if op.get("_type") == "BitOr":
+            left = annotation_to_str(node.get("left"))
+            right = annotation_to_str(node.get("right"))
+            return f"{left} | {right}"
+    if node_t == "Attribute":
+        return node.get("attr", "")
+    return ""
 
 
 class Frontend:
@@ -213,45 +251,22 @@ class Frontend:
             self._kind_to_struct,
             self._hierarchy.hierarchy_root,
         )
+        validate.validate_function(
+            stmts,
+            type_ctx.var_types,
+            self.symbols,
+            func_info,
+            class_name,
+            self._hierarchy.node_types,
+            self._hierarchy.hierarchy_root,
+            self._kind_to_struct,
+        )
         self._type_ctx = type_ctx
         return self._lower_stmts(stmts)
 
     def _annotation_to_str(self, node: ASTNode | None) -> str:
         """Convert type annotation AST to string."""
-        if node is None:
-            return ""
-        if not isinstance(node, dict):
-            return ""
-        node_t = node.get("_type")
-        if node_t == "Name":
-            return node.get("id", "")
-        if node_t == "Constant":
-            v = node.get("value")
-            if v is None:
-                return "None"
-            return str(v)
-        if node_t == "List":
-            # For annotations like Callable[[], T], the first arg is an ast.List
-            elts = node.get("elts", [])
-            args = ", ".join(self._annotation_to_str(e) for e in elts)
-            return f"[{args}]"
-        if node_t == "Subscript":
-            base = self._annotation_to_str(node.get("value"))
-            slc = node.get("slice", {})
-            if slc.get("_type") == "Tuple":
-                elts = slc.get("elts", [])
-                args = ", ".join(self._annotation_to_str(e) for e in elts)
-                return f"{base}[{args}]"
-            return f"{base}[{self._annotation_to_str(slc)}]"
-        if node_t == "BinOp":
-            op = node.get("op", {})
-            if op.get("_type") == "BitOr":
-                left = self._annotation_to_str(node.get("left"))
-                right = self._annotation_to_str(node.get("right"))
-                return f"{left} | {right}"
-        if node_t == "Attribute":
-            return node.get("attr", "")
-        return ""
+        return annotation_to_str(node)
 
     def _py_type_to_ir(self, py_type: str, concrete_nodes: bool = False) -> Type:
         """Convert Python type string to IR Type."""

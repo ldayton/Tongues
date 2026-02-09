@@ -87,6 +87,7 @@ def _make_param(
     return ParamInfo(
         name=arg.get("arg"),
         typ=typ,
+        py_type=py_type,
         has_default=has_default,
         default_value=default_value,
         modifier=modifier,
@@ -186,12 +187,14 @@ def extract_func_info(
         raise TypeError(
             f"{lineno}:0: [types] function '{func_name}' missing return type annotation"
         )
-    return FuncInfo(
+    info = FuncInfo(
         name=node.get("name"),
         params=params,
         return_type=return_type,
         is_method=is_method,
     )
+    info.return_py_type = py_return
+    return info
 
 
 def collect_class_methods(

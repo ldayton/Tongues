@@ -2611,6 +2611,7 @@ class FuncInfo:
         self.name: str = name
         self.params: list[ParamInfo] = params if params is not None else []
         self.return_type: Type = return_type
+        self.return_py_type: str = ""
         self.is_method: bool = is_method
         self.receiver_type: str = receiver_type
 
@@ -2621,6 +2622,7 @@ class ParamInfo:
 
     name: str
     typ: Type
+    py_type: str = ""
     has_default: bool = False
     default_value: Expr | None = None
     modifier: str = "pos_or_kw"

@@ -39,6 +39,7 @@ TYPE_MAP: dict[str, Type] = {
     "float": FLOAT,
     "bytes": Slice(BYTE),
     "bytearray": Slice(BYTE),
+    "object": InterfaceRef("any"),
 }
 
 

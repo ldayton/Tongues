@@ -1,0 +1,100 @@
+=== bool plus int coerces to int
+def f() -> int:
+    return True + 1
+---
+ok
+---
+
+=== bool in arithmetic yields int
+def f(x: bool) -> int:
+    return x + 1
+---
+ok
+---
+
+=== bool minus bool yields int
+def f() -> int:
+    return True - False
+---
+ok
+---
+
+=== unary minus on bool yields int
+def f() -> int:
+    return -True
+---
+ok
+---
+
+=== bool bitwise and preserves bool
+def f() -> bool:
+    return True & False
+---
+ok
+---
+
+=== mixed bool int bitwise yields int
+def f() -> int:
+    return True & 1
+---
+ok
+---
+
+=== min with mixed bool and int yields int
+def f() -> int:
+    return min(True, 1)
+---
+ok
+---
+
+=== max with mixed bool and int yields int
+def f() -> int:
+    return max(False, 0)
+---
+ok
+---
+
+=== large integer literal allowed
+def f() -> int:
+    x: int = 9007199254740992
+    return x
+---
+ok
+---
+
+=== bool compared to int allowed
+def f(x: bool) -> bool:
+    return x == 1
+---
+ok
+---
+
+=== string index returns str
+def f(s: str) -> str:
+    return s[0]
+---
+ok
+---
+
+=== bool multiply yields int
+def f(x: bool) -> int:
+    return x * 5
+---
+ok
+---
+
+=== int plus float yields float
+def f() -> float:
+    return 1 + 3.14
+---
+ok
+---
+
+=== bool or in arithmetic context
+def f() -> int:
+    x: bool = True
+    y: bool = False
+    return x + y
+---
+ok
+---

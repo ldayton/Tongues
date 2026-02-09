@@ -6,7 +6,7 @@ import pytest
 
 from src.frontend import compile, ParseError
 
-TYPECHECK_DIR = Path(__file__).parent / "09_inference"
+TYPECHECK_DIR = Path(__file__).parent / "08_inference"
 
 
 def parse_typecheck_file(path: Path) -> list[tuple[str, str, str]]:

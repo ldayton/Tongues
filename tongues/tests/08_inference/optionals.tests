@@ -1,0 +1,147 @@
+=== optional str initialized to None
+def f(flag: bool) -> str | None:
+    result: str | None = None
+    if flag:
+        result = "found"
+    return result
+---
+ok
+---
+
+=== optional int initialized to None
+def f(flag: bool) -> int | None:
+    result: int | None = None
+    if flag:
+        result = 42
+    return result
+---
+ok
+---
+
+=== optional assigned then used after guard
+def f(x: str | None) -> str:
+    if x is None:
+        return ""
+    return x
+---
+ok
+---
+
+=== optional narrowed with is not None
+def f(x: int | None) -> int:
+    if x is not None:
+        return x + 1
+    return 0
+---
+ok
+---
+
+=== optional field access after guard
+from dataclasses import dataclass
+@dataclass
+class Node:
+    value: int
+    next: "Node | None"
+def f(n: Node) -> int:
+    if n.next is not None:
+        return n.next.value
+    return 0
+---
+ok
+---
+
+=== optional early return pattern
+def f(x: int | None) -> int:
+    if x is None:
+        return -1
+    return x * 2
+---
+ok
+---
+
+=== optional with assert narrows
+def f(x: str | None) -> str:
+    assert x is not None
+    return x.upper()
+---
+ok
+---
+
+=== optional in conditional assignment
+def f(xs: list[int]) -> int | None:
+    result: int | None = None
+    for x in xs:
+        if x > 0:
+            result = x
+    return result
+---
+ok
+---
+
+=== nested optional guard
+from dataclasses import dataclass
+@dataclass
+class Tree:
+    value: int
+    left: "Tree | None"
+    right: "Tree | None"
+def f(t: Tree) -> int:
+    total: int = t.value
+    if t.left is not None:
+        total += t.left.value
+    if t.right is not None:
+        total += t.right.value
+    return total
+---
+ok
+---
+
+=== assign None to non-optional int not allowed
+def f() -> int:
+    x: int = None
+    return x
+---
+error: type
+---
+
+=== optional access without guard not allowed
+def f(x: int | None) -> int:
+    return x + 1
+---
+error: None
+---
+
+=== optional method call without guard not allowed
+def f(x: str | None) -> str:
+    return x.upper()
+---
+error: None
+---
+
+=== optional struct without guard not allowed
+from dataclasses import dataclass
+@dataclass
+class Point:
+    x: int
+    y: int
+def f(p: Point | None) -> int:
+    return p.x
+---
+error: None
+---
+
+=== any-typed specialization with int literal
+def f(x: object) -> int:
+    y = 42
+    return y
+---
+ok
+---
+
+=== any-typed specialization with str literal
+def f(x: object) -> str:
+    y = "hello"
+    return y
+---
+ok
+---
