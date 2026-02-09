@@ -8,7 +8,7 @@ The current IR is a large set of specialized nodes that carry Python-flavored se
 
 This IR replaces that with a small, target-neutral language. Python's quirks (floor division, value-returning `and`/`or`, type-dependent truthiness) are resolved during lowering into conventional semantics (truncating division, boolean `&&`/`||`), but representation choices are deliberately deferred. The IR has one loop-over-collection form (`for...in`), not two; strings are rune-indexed at the IR level, not pre-lowered into character operations. The middleend analyzes how values are actually used — whether a `for...in` over a range should become a classic for loop, whether a string needs rune-level access or can stay in the target's native representation — and makes those decisions as shared passes rather than per-backend logic. Backends receive already-decided representations and translate to syntax.
 
-This spec provides a textual syntax for the IR to facilitate exposition. The "language" is LL(1) parseable.
+This spec provides a textual syntax for the IR to facilitate exposition. The grammar is parseable by recursive descent with at most two tokens of lookahead.
 
 ## Numeric Types
 
@@ -90,8 +90,8 @@ let low: int = mask & 0xff
 let sum: int = a + b
 let avg: int = total / count
 let odd: bool = n % 2 != 0
-let big: int = 2 ** 10
-let inRange: bool = 0 <= x <= 255
+let big: int = Pow(2, 10)
+let inRange: bool = 0 <= x && x <= 255
 let either: bool = a || b
 let shifted: int = flags << 2
 let abs: int = x > 0 ? x : -x
@@ -102,12 +102,12 @@ let abs: int = x > 0 ? x : -x
 | `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                                 |
 | `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                           |
 | `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                          |
-| `==`     | `T, T`       | `bool` | 4    | chain | equality; structural for structs, IEEE 754 for float (NaN != NaN)   |
-| `!=`     | `T, T`       | `bool` | 4    | chain | inequality                                                          |
-| `<`      | `int, int`   | `bool` | 4    | chain | less than                                                           |
-| `<=`     | `int, int`   | `bool` | 4    | chain | less or equal                                                       |
-| `>`      | `int, int`   | `bool` | 4    | chain | greater than                                                        |
-| `>=`     | `int, int`   | `bool` | 4    | chain | greater or equal                                                    |
+| `==`     | `T, T`       | `bool` | 4    | none  | equality; structural for structs, IEEE 754 for float (NaN != NaN)   |
+| `!=`     | `T, T`       | `bool` | 4    | none  | inequality                                                          |
+| `<`      | `int, int`   | `bool` | 4    | none  | less than                                                           |
+| `<=`     | `int, int`   | `bool` | 4    | none  | less or equal                                                       |
+| `>`      | `int, int`   | `bool` | 4    | none  | greater than                                                        |
+| `>=`     | `int, int`   | `bool` | 4    | none  | greater or equal                                                    |
 | `\|`     | `int, int`   | `int`  | 5    | left  | bitwise or                                                          |
 | `^`      | `int, int`   | `int`  | 6    | left  | bitwise xor                                                         |
 | `&`      | `int, int`   | `int`  | 7    | left  | bitwise and                                                         |
@@ -118,14 +118,13 @@ let abs: int = x > 0 ? x : -x
 | `*`      | `int, int`   | `int`  | 10   | left  | multiplication                                                      |
 | `/`      | `int, int`   | `int`  | 10   | left  | truncating division (toward zero); `-7 / 2 == -3`                   |
 | `%`      | `int, int`   | `int`  | 10   | left  | truncating remainder; sign follows dividend; `-7 % 2 == -1`         |
-| `**`     | `int, int`   | `int`  | 11   | right | exponentiation; right operand must be non-negative                  |
-| `-`      | `int`        | `int`  | 12   | right | negation (prefix)                                                   |
-| `!`      | `bool`       | `bool` | 12   | right | logical not                                                         |
-| `~`      | `int`        | `int`  | 12   | right | bitwise complement (two's complement)                               |
+| `-`      | `int`        | `int`  | 11   | right | negation (prefix)                                                   |
+| `!`      | `bool`       | `bool` | 11   | right | logical not                                                         |
+| `~`      | `int`        | `int`  | 11   | right | bitwise complement (two's complement)                               |
 
-Arithmetic operators (`+`, `-`, `*`, `/`, `%`, `**`, unary `-`) also work on `float` operands, returning `float`. For float `/`, result is IEEE 754 division (not truncating). Comparison operators (`<`, `<=`, `>`, `>=`) also work on `float` and `string` (lexicographic). All arithmetic and comparison operators require both operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts.
+Arithmetic operators (`+`, `-`, `*`, `/`, `%`, unary `-`) also work on `float` operands, returning `float`. `Pow` also accepts float operands. For float `/`, result is IEEE 754 division (not truncating). Comparison operators (`<`, `<=`, `>`, `>=`) also work on `float` and `string` (lexicographic). All arithmetic and comparison operators require both operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts.
 
-Chained comparisons (`a < b < c`) evaluate each operand once. They desugar to `a < b && b < c` but `b` is only computed once.
+Comparisons are binary — `a < b < c` is not valid. Python's chained comparisons are desugared by the lowerer into `&&`-connected binary comparisons. A middleend raising pass can reconstruct chains for targets that support them (Python).
 
 ## Strings
 
@@ -147,35 +146,36 @@ let n: int = Len("café")        -- 4, not 5
 
 ### Functions
 
-| Function               | Signature                             | Description                              |
-| ---------------------- | ------------------------------------- | ---------------------------------------- |
-| `Len(s)`               | `string -> int`                       | rune count                               |
-| `CharAt(s, i)`         | `string, int -> rune`                 | rune at position                         |
-| `Substring(s, lo, hi)` | `string, int, int -> string`          | substring by rune position               |
-| `Concat(a, b)`         | `string, string -> string`            | concatenation                            |
-| `Chr(n)`               | `int -> rune`                         | code point to rune                       |
-| `Ord(c)`               | `rune -> int`                         | rune to code point                       |
-| `IntToStr(n)`          | `int -> string`                       | integer to string                        |
-| `ParseInt(s, base)`    | `string, int -> int`                  | parse integer in given base              |
-| `Upper(s)`             | `string -> string`                    | uppercase                                |
-| `Lower(s)`             | `string -> string`                    | lowercase                                |
-| `Strip(s, chars)`      | `string, string -> string`            | trim characters from both ends           |
-| `LStrip(s, chars)`     | `string, string -> string`            | trim characters from left                |
-| `RStrip(s, chars)`     | `string, string -> string`            | trim characters from right               |
-| `RuneToStr(c)`         | `rune -> string`                      | single-rune string                       |
-| `Split(s, sep, max)`   | `string, string, int -> list[string]` | split by separator; max=-1 for unlimited |
-| `SplitWhitespace(s)`   | `string -> list[string]`              | split on whitespace runs, strip ends     |
-| `Join(sep, parts)`     | `string, list[string] -> string`      | join with separator                      |
-| `Find(s, sub)`         | `string, string -> int`               | index of substring, -1 if missing        |
-| `Replace(s, old, new)` | `string, string, string -> string`    | replace all occurrences                  |
-| `StartsWith(s, pre)`   | `string, string -> bool`              | prefix test                              |
-| `EndsWith(s, suf)`     | `string, string -> bool`              | suffix test                              |
-| `IsDigit(s)`           | `string -> bool`                      | all characters are digits                |
-| `IsAlpha(s)`           | `string -> bool`                      | all characters are letters               |
-| `IsAlnum(s)`           | `string -> bool`                      | all characters are letters or digits     |
-| `IsSpace(s)`           | `string -> bool`                      | all characters are whitespace            |
-| `IsUpper(s)`           | `string -> bool`                      | all characters are uppercase             |
-| `IsLower(s)`           | `string -> bool`                      | all characters are lowercase             |
+| Function               | Signature                             | Description                            |
+| ---------------------- | ------------------------------------- | -------------------------------------- |
+| `Len(s)`               | `string -> int`                       | rune count                             |
+| `CharAt(s, i)`         | `string, int -> rune`                 | rune at position                       |
+| `Substring(s, lo, hi)` | `string, int, int -> string`          | substring by rune position             |
+| `Concat(a, b)`         | `string, string -> string`            | concatenation                          |
+| `RuneFromInt(n)`       | `int -> rune`                         | code point to rune                     |
+| `RuneToInt(c)`         | `rune -> int`                         | rune to code point                     |
+| `IntToStr(n)`          | `int -> string`                       | integer to string                      |
+| `ParseInt(s, base)`    | `string, int -> int`                  | parse integer in given base            |
+| `Upper(s)`             | `string -> string`                    | uppercase                              |
+| `Lower(s)`             | `string -> string`                    | lowercase                              |
+| `Trim(s, chars)`       | `string, string -> string`            | trim characters from both ends         |
+| `TrimStart(s, chars)`  | `string, string -> string`            | trim characters from start             |
+| `TrimEnd(s, chars)`    | `string, string -> string`            | trim characters from end               |
+| `RuneToStr(c)`         | `rune -> string`                      | single-rune string                     |
+| `Split(s, sep)`        | `string, string -> list[string]`      | split by separator                     |
+| `SplitN(s, sep, max)`  | `string, string, int -> list[string]` | split by separator; at most max pieces |
+| `SplitWhitespace(s)`   | `string -> list[string]`              | split on whitespace runs, strip ends   |
+| `Join(sep, parts)`     | `string, list[string] -> string`      | join with separator                    |
+| `Find(s, sub)`         | `string, string -> int`               | index of substring, -1 if missing      |
+| `Replace(s, old, new)` | `string, string, string -> string`    | replace all occurrences                |
+| `StartsWith(s, pre)`   | `string, string -> bool`              | prefix test                            |
+| `EndsWith(s, suf)`     | `string, string -> bool`              | suffix test                            |
+| `IsDigit(s)`           | `string -> bool`                      | all characters are digits              |
+| `IsAlpha(s)`           | `string -> bool`                      | all characters are letters             |
+| `IsAlnum(s)`           | `string -> bool`                      | all characters are letters or digits   |
+| `IsSpace(s)`           | `string -> bool`                      | all characters are whitespace          |
+| `IsUpper(s)`           | `string -> bool`                      | all characters are uppercase           |
+| `IsLower(s)`           | `string -> bool`                      | all characters are lowercase           |
 
 ## Functions
 
@@ -308,7 +308,7 @@ for value in items {
 }
 
 for i, ch in name {
-    Print(Concat(IntToStr(i), Concat(": ", Concat(IntToStr(Ord(ch)), "\n"))))
+    Print(Concat(IntToStr(i), Concat(": ", Concat(IntToStr(RuneToInt(ch)), "\n"))))
 }
 
 for _, v in pairs {
@@ -339,40 +339,277 @@ while true {
 
 `break` exits the innermost loop. `continue` skips to the next iteration.
 
+## Tuples
+
+```
+let pair: (int, string) = (1, "hello")
+let x: int = pair.0
+let y: string = pair.1
+
+let q: int
+let r: int
+q, r = DivMod(17, 5)
+```
+
+Tuples are fixed-size, heterogeneous, immutable. Elements are accessed by position with `.0`, `.1`, etc. Tuple assignment destructures into multiple targets.
+
+Tuple types have two or more elements — there is no single-element tuple.
+
+## Lists
+
+```
+let xs: list[int] = [1, 2, 3]
+let empty: list[string] = []
+let first: int = xs[0]
+let mid: list[int] = xs[1:3]
+let n: int = Len(xs)
+```
+
+`list[T]` is an ordered, mutable, variable-length sequence of elements of type `T`. Indexing (`xs[i]`) yields a `T`. Slicing (`xs[a:b]`) yields a new `list[T]`.
+
+### Functions
+
+| Function           | Signature                 | Description                              |
+| ------------------ | ------------------------- | ---------------------------------------- |
+| `Len(xs)`          | `list[T] -> int`          | element count                            |
+| `Append(xs, v)`    | `list[T], T -> void`      | append element to end                    |
+| `Insert(xs, i, v)` | `list[T], int, T -> void` | insert element at index                  |
+| `Pop(xs)`          | `list[T] -> T`            | remove and return last element           |
+| `RemoveAt(xs, i)`  | `list[T], int -> void`    | remove element at index                  |
+| `IndexOf(xs, v)`   | `list[T], T -> int`       | index of first occurrence, -1 if missing |
+| `Contains(xs, v)`  | `list[T], T -> bool`      | membership test                          |
+| `Repeat(xs, n)`    | `list[T], int -> list[T]` | repeat list n times                      |
+| `Reversed(xs)`     | `list[T] -> list[T]`      | new list in reverse order                |
+| `Sorted(xs)`       | `list[T] -> list[T]`      | new list in ascending order              |
+
+`Sorted` requires `T` to be an ordered type (`int`, `float`, `string`).
+
+## Maps
+
+```
+let ages: map[string, int] = {"alice": 30, "bob": 25}
+let empty: map[string, int] = Map()
+let age: int = ages["alice"]
+ages["charlie"] = 35
+```
+
+`map[K, V]` is an unordered mutable mapping from keys of type `K` to values of type `V`. `K` must be a hashable type (primitives, strings, runes, tuples of hashable types).
+
+Indexing (`m[k]`) yields a `V`. Assigning to an index (`m[k] = v`) inserts or updates.
+
+### Functions
+
+| Function             | Signature                   | Description                          |
+| -------------------- | --------------------------- | ------------------------------------ |
+| `Len(m)`             | `map[K, V] -> int`          | number of entries                    |
+| `Map()`              | `-> map[K, V]`              | empty map (type from context)        |
+| `Contains(m, k)`     | `map[K, V], K -> bool`      | key membership test                  |
+| `Get(m, k, default)` | `map[K, V], K, V -> V`      | value for key, or default if missing |
+| `Delete(m, k)`       | `map[K, V], K -> void`      | remove entry by key                  |
+| `Keys(m)`            | `map[K, V] -> list[K]`      | list of keys                         |
+| `Values(m)`          | `map[K, V] -> list[V]`      | list of values                       |
+| `Items(m)`           | `map[K, V] -> list[(K, V)]` | list of key-value pairs              |
+
+Iteration with `for k, v in m` yields key-value pairs.
+
+## Sets
+
+```
+let seen: set[int] = Set(1, 2, 3)
+let empty: set[string] = Set()
+```
+
+`set[T]` is an unordered mutable collection of unique values of type `T`. `T` must be a hashable type.
+
+### Functions
+
+| Function         | Signature           | Description               |
+| ---------------- | ------------------- | ------------------------- |
+| `Len(s)`         | `set[T] -> int`     | number of elements        |
+| `Set(...)`       | `T... -> set[T]`    | construct set from values |
+| `Add(s, v)`      | `set[T], T -> void` | add element               |
+| `Remove(s, v)`   | `set[T], T -> void` | remove element            |
+| `Contains(s, v)` | `set[T], T -> bool` | membership test           |
+
+## Collection Equality
+
+`==` and `!=` work on lists, maps, and sets with deep structural comparison. Lists compare element-wise in order. Maps compare by key-value pairs regardless of insertion order. Sets compare by membership.
+
+`<`, `<=`, `>`, `>=` work on lists only, comparing lexicographically.
+
+## Optional
+
+```
+let x: int? = nil
+let y: int? = 42
+```
+
+`T?` is the optional type — a value of type `T` or `nil`. `nil` is a literal representing the absence of a value. Any type can be made optional: `int?`, `string?`, `list[int]?`, `Token?`. `T??` is not valid — optionals do not nest.
+
+### Nil narrowing
+
+```
+fn Lookup(m: map[string, int], key: string) -> int {
+    let v: int? = Get(m, key)
+    if v != nil {
+        return v + 1
+    }
+    return 0
+}
+```
+
+After a `!= nil` check, the variable's type narrows from `T?` to `T` within the branch. This is the primary way to work with optional values.
+
+### Unwrap
+
+| Function    | Signature | Description                |
+| ----------- | --------- | -------------------------- |
+| `Unwrap(x)` | `T? -> T` | extract value; trap if nil |
+
+`Unwrap` extracts the value when the program can guarantee non-nil but control flow doesn't prove it.
+
+## Conversions
+
+```
+let f: float = IntToFloat(42)
+let n: int = FloatToInt(3.14)
+```
+
+| Function        | Signature      | Description            |
+| --------------- | -------------- | ---------------------- |
+| `IntToFloat(n)` | `int -> float` | exact if representable |
+| `FloatToInt(x)` | `float -> int` | truncate toward zero   |
+
+No implicit coercion between any types. All conversions are explicit function calls. `IntToStr` and `ParseInt` are in the Strings section. `RuneToInt` and `RuneFromInt` handle rune↔int.
+
+## Structs
+
+```
+struct Token {
+    kind: TokenKind
+    value: string
+    offset: int
+}
+
+let t: Token = Token(TokenKind.Ident, "foo", 0)
+let k: TokenKind = t.kind
+t.offset = 10
+```
+
+A struct has a name and typed fields. Construction is positional — arguments follow the field declaration order. Fields are accessed with `.` and are mutable.
+
+### Methods
+
+```
+struct Span {
+    start: int
+    end: int
+
+    fn Len(self) -> int {
+        return self.end - self.start
+    }
+}
+
+let s: Span = Span(0, 10)
+let n: int = s.Len()
+```
+
+Methods are functions declared inside a struct with `self` as the first parameter. `self` is the receiver instance; its type is the enclosing struct. Methods are called with `.` syntax.
+
+## Interfaces
+
+```
+interface Node {}
+
+struct Literal : Node {
+    value: int
+}
+
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+```
+
+An interface declares a type that can be one of several struct variants. Structs declare which interface they implement with `: InterfaceName`. A struct may implement at most one interface.
+
+There are no imports — the entire program is one module — so every interface is automatically sealed. The IR can see all implementations and verify exhaustive matching.
+
+Interface bodies are empty. They define no fields or methods; they exist solely as the root of a closed type hierarchy. Common operations are free functions that match internally.
+
+## Enums
+
+```
+enum TokenKind {
+    Ident
+    Number
+    String
+    LParen
+    RParen
+    Plus
+    Minus
+    Eof
+}
+
+let k: TokenKind = TokenKind.Ident
+```
+
+An enum defines a set of named constants with no associated data. Enum values are accessed as `EnumName.Variant` and compared with `==` and `!=`.
+
+## Match
+
+```
+match node {
+    case lit: Literal {
+        Print(IntToStr(lit.value))
+    }
+    case bin: BinOp {
+        Eval(bin.left)
+        Print(bin.op)
+        Eval(bin.right)
+    }
+}
+
+match kind {
+    case TokenKind.Ident {
+        ParseIdent()
+    }
+    case TokenKind.Number {
+        ParseNumber()
+    }
+    case TokenKind.LParen {
+        ParseGroup()
+    }
+}
+```
+
+`match` dispatches on the runtime type of an interface value or the value of an enum. For interfaces, each `case` names a variant type and binds a variable of that type. For enums, each `case` names a qualified enum value.
+
+A match must be exhaustive — every variant or enum value must have a case.
+
 ## TODO
 
 | Section      | Topic                 | Notes                                                                                                       |
 | ------------ | --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Type system  | Grammar               | optional `T?`, tuples, callable, union                                                                      |
-| Type system  | Optional and nil      | `T?`, nil checks, unwrap                                                                                    |
-| Type system  | Conversions and casts | int↔float, int↔string, ord/chr already covered                                                              |
-| Declarations | Structs               | fields, methods, constructors                                                                               |
-| Declarations | Interfaces            | hierarchy root, type switch, casts                                                                          |
-| Declarations | Enums                 |                                                                                                             |
-| Declarations | Module structure      | imports, constants, entrypoint                                                                              |
+| Declarations | Module structure      | constants, entrypoint                                                                                       |
 | Strings      | Format strings        | interpolation                                                                                               |
 | Strings      | Repetition            | `s * n` → `Repeat(s, n)`                                                                                    |
 | Strings      | RFind                 | index of last substring occurrence                                                                          |
 | Strings      | Count                 | count substring occurrences                                                                                 |
 | Strings      | Encoding / decoding   | `bytes.decode()`, `str.encode()`                                                                            |
-| Collections  | Tuples                | literals, indexing, unpacking                                                                               |
-| Collections  | Lists                 | literals, append, pop, insert, index, slice, comprehensions                                                 |
-| Collections  | Maps                  | literals, get, set, delete, keys/values/items, comprehensions, merge (`d1 \| d2`)                           |
-| Collections  | Sets                  | literals, add, remove, contains, comprehensions, frozenset                                                  |
-| Collections  | Membership testing    | `in` / `not in` for lists, maps, sets, strings, tuples                                                      |
-| Collections  | Equality / comparison | deep `==` on list/map/set; lexicographic `<` on list                                                        |
-| Collections  | Repetition            | `xs * n`                                                                                                    |
-| Collections  | Sorted / reversed     | builtins producing new or reversed collections                                                              |
+| Collections  | Merge                 | map merge (`Merge(m1, m2)`)                                                                                 |
+| Collections  | Contains for strings  | `Contains(s, sub)` for substring test — add to string functions                                             |
 | Math         | Numeric semantics     | division by zero, overflow, bitwise width, shift range, rounding, float edge cases, conversions, ParseInt   |
 | Control flow | Try/catch/raise       |                                                                                                             |
-| Control flow | Match/case            |                                                                                                             |
+| Control flow | Match/case            | match on non-interface/enum types? default case?                                                            |
 | Control flow | Assert                |                                                                                                             |
 | Control flow | Yield / generators    |                                                                                                             |
 | Functions    | References            | callable values, bound methods                                                                              |
-| Metadata     | Source metadata       | literal form (hex/octal/binary), large int flag, source positions — fully specified here                     |
-| Metadata     | Middleend annotations | format for attaching analysis results to IR nodes; contents defined by middleend specs, not this doc         |
+| Metadata     | Source metadata       | literal form (hex/octal/binary), large int flag, source positions — fully specified here                    |
+| Metadata     | Middleend annotations | format for attaching analysis results to IR nodes; contents defined by middleend specs, not this doc        |
 | I/O          | I/O                   | Print, ReadLine, ReadAll, ReadBytes, ReadBytesN, ReadBytesLine, WriteBytes, WriteStderr, Args, GetEnv, Exit |
-| Appendix     | Grammar reference     | complete LL(1) grammar for the IR textual syntax                                                            |
+| Appendix     | Grammar reference     | complete grammar for the IR textual syntax                                                                  |
 
 ## TOC
 
@@ -387,24 +624,22 @@ while true {
    - RFind, Count
    - Encoding / decoding (bytes↔string)
 4. Operators ✓
-5. Collections
-   - Tuples (literals, indexing, unpacking)
-   - Lists (literals, append, pop, insert, index, slice, comprehensions, repetition)
-   - Maps (literals, get, set, delete, keys/values/items, comprehensions, merge)
-   - Sets (literals, add, remove, contains, comprehensions, frozenset)
-   - Membership (`in` / `not in`)
-   - Equality and comparison
-   - Sorted / reversed
-6. Type System
-   - Type grammar (`T?`, union, callable, tuple types)
-   - Optional and nil (`T?`, nil checks, unwrap)
-   - Conversions and casts (int↔float, int↔string)
-7. Declarations
-   - Structs (fields, methods, constructors)
-   - Interfaces (hierarchy root, type switch, casts)
-   - Enums
+5. Collections ✓
+   - Tuples ✓
+   - Lists ✓ (merge pending)
+   - Maps ✓ (merge pending)
+   - Sets ✓
+   - Membership (`Contains`) ✓
+   - Equality and comparison ✓
+6. Type System ✓
+   - Optional and nil ✓
+   - Conversions ✓
+7. Declarations ✓
+   - Structs ✓
+   - Interfaces ✓
+   - Enums ✓
    - Functions ✓ (references, defaults pending)
-   - Module structure (imports, constants, entrypoint)
+   - Module structure (constants, entrypoint pending)
 8. Statements
    - Variables ✓ (zero values pending)
    - Assignment ✓
@@ -414,7 +649,7 @@ while true {
    - For ✓ (iterability, range, map iteration pending)
    - Break / continue ✓
    - Try / catch / raise
-   - Match / case
+   - Match / case ✓
    - Assert
    - Yield / generators
 9. Math Semantics
@@ -425,11 +660,164 @@ while true {
     - Round tie-breaking (half-to-even vs half-away-from-zero)
     - Float edge cases (NaN propagation in comparisons, negative zero)
     - Float-to-int conversion on overflow/NaN
-    - Exponentiation corner cases (`0 ** 0`, large exponents)
+    - Exponentiation corner cases (`Pow(0, 0)`, large exponents)
     - ParseInt failure mode (trap vs sentinel)
 10. Built-in Functions
     - I/O (Print, ReadLine, ReadAll, ReadBytes, ReadBytesN, ReadBytesLine, WriteBytes, WriteStderr, Args, GetEnv, Exit)
 11. Metadata
     - Source metadata: literal form, large int flag, source positions (fully specified here)
     - Middleend annotations: format for attaching analysis results; contents defined by middleend specs
-12. Appendix: LL(1) Grammar
+12. Appendix: Grammar
+
+## Grammar
+
+Notation is EBNF: `|` alternation, `( )?` optional, `( )*` zero or more, `( )+` one or more. Terminals in `'quotes'`. The grammar targets recursive descent with at most two tokens of lookahead. The few spots requiring the second token are noted inline.
+
+### Tokens
+
+```
+INT        = [0-9]+ | '0x' [0-9a-fA-F]+ | '0o' [0-7]+ | '0b' [01]+
+FLOAT      = [0-9]+ '.' [0-9]+
+STRING     = '"' ( escape | [^"\] )* '"'
+RUNE       = "'" ( escape | [^'\] ) "'"
+BYTES      = 'b"' ( escape | [^"\] )* '"'
+IDENT      = [a-zA-Z_] [a-zA-Z0-9_]*
+escape     = '\' ( 'n' | 'r' | 't' | '\' | '"' | "'" | '0'
+           | 'x' hex hex | 'u' hex hex hex hex )
+hex        = [0-9a-fA-F]
+```
+
+Keywords are reserved and cannot appear as `IDENT`:
+
+```
+bool    break     byte    bytes     case      continue
+else    enum      false   float    fn        for
+if      in        int     interface let       list
+map     match     nil     return   rune      self
+set     string    struct  true     void      while
+```
+
+Line comments start with `--` and run to end of line. No block comments.
+
+Whitespace (spaces, tabs, newlines) separates tokens but is otherwise insignificant. There are no semicolons — statements are self-delimiting because every statement form begins with a keyword or an expression, and the parser knows when each form ends by its structure.
+
+### Top Level
+
+```
+Program       = Decl*
+Decl          = FnDecl | StructDecl | InterfaceDecl | EnumDecl
+
+FnDecl        = 'fn' IDENT '(' ParamList ')' '->' Type Block
+ParamList     = ( Param ( ',' Param )* )?
+Param         = IDENT ':' Type
+Block         = '{' Stmt* '}'
+
+StructDecl    = 'struct' IDENT ( ':' IDENT )? '{' StructBody '}'
+StructBody    = ( FieldDecl | FnDecl )*
+FieldDecl     = IDENT ':' Type
+
+InterfaceDecl = 'interface' IDENT '{' '}'
+
+EnumDecl      = 'enum' IDENT '{' IDENT+ '}'
+```
+
+### Statements
+
+Every statement form starts with a distinct keyword except assignment and expression statements, which both start with an expression. Those are merged into `ExprStmt` and disambiguated by what follows.
+
+```
+Stmt       = LetStmt
+           | IfStmt
+           | WhileStmt
+           | ForStmt
+           | MatchStmt
+           | ReturnStmt
+           | 'break'
+           | 'continue'
+           | ExprStmt
+
+LetStmt    = 'let' IDENT ':' Type ( '=' Expr )?
+ReturnStmt = 'return' Expr?
+IfStmt     = 'if' Expr Block ( 'else' ( IfStmt | Block ) )?
+WhileStmt  = 'while' Expr Block
+ForStmt    = 'for' Binding 'in' Expr Block
+Binding    = IDENT ( ',' IDENT )?
+MatchStmt  = 'match' Expr '{' Case+ '}'
+Case       = 'case' Pattern Block
+Pattern    = IDENT ':' IDENT
+           | IDENT '.' IDENT
+```
+
+`ForStmt` needs two tokens of lookahead: after the first `IDENT`, peek for `,` (two bindings) versus `in` (one binding). `_` is a regular identifier; discard semantics are not a grammar concern.
+
+`Pattern` in a `Case` also needs two tokens: after the first `IDENT`, peek for `:` (interface variant binding) versus `.` (enum value).
+
+```
+ExprStmt   = Expr ( AssignTail )?
+AssignTail = AssignOp Expr
+           | ( ',' Expr )+ '=' Expr
+AssignOp   = '=' | '+=' | '-=' | '*=' | '/=' | '%='
+           | '&=' | '|=' | '^=' | '<<=' | '>>='
+```
+
+The left-hand `Expr` in an assignment must be a valid target (identifier, field access, or index expression). This is a semantic check, not a grammatical one. The `( ',' Expr )+` form handles tuple assignment.
+
+### Expressions
+
+One nonterminal per precedence level. Left-associative levels use iteration (`*`), right-associative levels use right-recursion.
+
+```
+Expr       = Ternary
+Ternary    = Or ( '?' Expr ':' Ternary )?
+Or         = And ( '||' And )*
+And        = Compare ( '&&' Compare )*
+Compare    = BitOr ( CompOp BitOr )?
+CompOp     = '==' | '!=' | '<' | '<=' | '>' | '>='
+BitOr      = BitXor ( '|' BitXor )*
+BitXor     = BitAnd ( '^' BitAnd )*
+BitAnd     = Shift ( '&' Shift )*
+Shift      = Sum ( ( '<<' | '>>' ) Sum )*
+Sum        = Product ( ( '+' | '-' ) Product )*
+Product    = Unary ( ( '*' | '/' | '%' ) Unary )*
+Unary      = ( '-' | '!' | '~' ) Unary
+           | Postfix
+Postfix    = Primary ( Suffix )*
+Suffix     = '.' IDENT | '.' INT
+           | '[' Expr ( ':' Expr )? ']'
+           | '(' ArgList ')'
+ArgList    = ( Expr ( ',' Expr )* )?
+Primary    = INT | FLOAT | STRING | RUNE | BYTES
+           | 'true' | 'false' | 'nil'
+           | IDENT
+           | '(' Expr ( ',' Expr )+ ')'
+           | '(' Expr ')'
+           | '[' ( Expr ( ',' Expr )* )? ']'
+           | '{' Expr ':' Expr ( ',' Expr ':' Expr )* '}'
+```
+
+`Ternary` is right-associative: the "then" branch is a full `Expr`, the "else" branch right-recurses into `Ternary`.
+
+`Compare` allows at most one comparison operator — `a < b < c` is a parse error. Chained comparisons are desugared during lowering into `&&`-connected binary comparisons.
+
+`Suffix` with `'['` uses one token of lookahead inside the brackets: after the first `Expr`, peek for `':'` to distinguish indexing from slicing.
+
+`'('` is disambiguated by what follows: parse the first `Expr`, then peek for `','` (tuple) versus `)` (parenthesized expression). `'['` as a `Primary` is a list literal; as a `Suffix` it's indexing/slicing — the parser knows which by context (a `Suffix` only follows a `Primary`). `'{'` is always a map literal (no empty map literal; use `Map()`). Sets have no literal syntax; use `Set(...)`.
+
+### Types
+
+```
+Type       = BaseType ( '?' )?
+BaseType   = 'int' | 'float' | 'bool'
+           | 'byte' | 'bytes'
+           | 'string' | 'rune'
+           | 'void'
+           | 'list' '[' Type ']'
+           | 'map' '[' Type ',' Type ']'
+           | 'set' '[' Type ']'
+           | '(' Type ',' Type ( ',' Type )* ')'
+           | IDENT
+```
+
+Every alternative in `BaseType` starts with a distinct token, so no lookahead is needed. `?` for optional is a single-token peek after the base type; types only appear in declaration contexts (after `:` or `->`) where `?` is unambiguous with the ternary operator.
+
+Tuple types require at least two elements — `(T)` is not a type. `IDENT` covers user-defined names: structs, interfaces, enums.
