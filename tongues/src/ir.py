@@ -2565,6 +2565,8 @@ class StructInfo:
         param_to_field: dict[str, str] | None = None,
         needs_constructor: bool = False,
         const_fields: dict[str, str] | None = None,
+        is_dataclass: bool = False,
+        kw_only: bool = False,
     ) -> None:
         self.name: str = name
         self.fields: dict[str, FieldInfo] = fields if fields is not None else {}
@@ -2580,6 +2582,8 @@ class StructInfo:
         self.const_fields: dict[str, str] = (
             const_fields if const_fields is not None else {}
         )
+        self.is_dataclass: bool = is_dataclass
+        self.kw_only: bool = kw_only
 
 
 @dataclass
@@ -2589,6 +2593,8 @@ class FieldInfo:
     name: str
     typ: Type
     py_name: str = ""
+    has_default: bool = False
+    default: Expr | None = None
 
 
 class FuncInfo:
