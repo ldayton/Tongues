@@ -55,7 +55,13 @@ Backend deficiencies (Java-specific, fixable in java.py):
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, replace_format_placeholders, to_camel, to_pascal, to_screaming_snake
+from src.backend.util import (
+    escape_string,
+    replace_format_placeholders,
+    to_camel,
+    to_pascal,
+    to_screaming_snake,
+)
 
 # Java reserved words that need escaping
 _JAVA_RESERVED = frozenset(

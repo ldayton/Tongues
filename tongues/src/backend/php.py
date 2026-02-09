@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from src.backend.util import replace_format_placeholders, to_camel, to_pascal, to_screaming_snake
+from src.backend.util import (
+    replace_format_placeholders,
+    to_camel,
+    to_pascal,
+    to_screaming_snake,
+)
 from src.ir import (
     BOOL,
     INT,
