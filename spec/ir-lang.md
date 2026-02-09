@@ -363,6 +363,7 @@ while true {
 | Collections  | Equality / comparison | deep `==` on list/map/set; lexicographic `<` on list                                                        |
 | Collections  | Repetition            | `xs * n`                                                                                                    |
 | Collections  | Sorted / reversed     | builtins producing new or reversed collections                                                              |
+| Math         | Numeric semantics     | division by zero, overflow, bitwise width, shift range, rounding, float edge cases, conversions, ParseInt   |
 | Control flow | Try/catch/raise       |                                                                                                             |
 | Control flow | Match/case            |                                                                                                             |
 | Control flow | Assert                |                                                                                                             |
@@ -416,9 +417,19 @@ while true {
    - Match / case
    - Assert
    - Yield / generators
-9. Built-in Functions
+9. Math Semantics
+    - Division by zero (integer: trap; float: IEEE 754 ±Inf/NaN)
+    - Integer overflow (wrap, trap, or bigint — mode TBD)
+    - Bitwise complement and width (`~` depends on integer representation)
+    - Shift out of range (behavior when shift amount ≥ bit width)
+    - Round tie-breaking (half-to-even vs half-away-from-zero)
+    - Float edge cases (NaN propagation in comparisons, negative zero)
+    - Float-to-int conversion on overflow/NaN
+    - Exponentiation corner cases (`0 ** 0`, large exponents)
+    - ParseInt failure mode (trap vs sentinel)
+10. Built-in Functions
     - I/O (Print, ReadLine, ReadAll, ReadBytes, ReadBytesN, ReadBytesLine, WriteBytes, WriteStderr, Args, GetEnv, Exit)
-10. Metadata
+11. Metadata
     - Source metadata: literal form, large int flag, source positions (fully specified here)
     - Middleend annotations: format for attaching analysis results; contents defined by middleend specs
-11. Appendix: LL(1) Grammar
+12. Appendix: LL(1) Grammar
