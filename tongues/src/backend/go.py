@@ -55,9 +55,7 @@ Middleend deficiencies (should be fixed in middleend.py):
 
 from __future__ import annotations
 
-import re
-
-from src.backend.util import escape_string, go_to_camel, go_to_pascal
+from src.backend.util import escape_string, go_to_camel, go_to_pascal, replace_format_placeholders
 from src.ir import (
     BOOL,
     BYTE,
@@ -2429,7 +2427,7 @@ class GoBackend:
     def _emit_expr_StringFormat(self, expr: StringFormat) -> str:
         args = ", ".join(self._emit_expr(a) for a in expr.args)
         # Convert Python-style {0}, {1} placeholders to Go-style %v
-        template = re.sub(r"\{(\d+)\}", "%v", expr.template)
+        template = replace_format_placeholders(expr.template, "%v")
         escaped = escape_string(template)
         if args:
             return f'fmt.Sprintf("{escaped}", {args})'

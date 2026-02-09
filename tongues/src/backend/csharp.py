@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from src.backend.util import escape_string, to_camel, to_pascal, to_screaming_snake
 from src.ir import (
     Array,
@@ -1742,16 +1740,33 @@ class CSharpBackend:
         return f"(({cs_type}){inner_str})"
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
-        # First escape all literal { and } as {{ and }}
-        result = template.replace("{", "{{").replace("}", "}}")
-        # Then convert {0}, {1} back to single braces (they got doubled to {{0}}, {{1}})
-        result = re.sub(r"\{\{(\d+)\}\}", r"{\1}", result)
+        # Escape literal { and } as {{ and }}, but preserve {0}, {1}, ... placeholders
+        result: list[str] = []
+        i = 0
+        while i < len(template):
+            ch = template[i]
+            if ch == "{" and i + 1 < len(template) and template[i + 1].isdigit():
+                j = i + 1
+                while j < len(template) and template[j].isdigit():
+                    j += 1
+                if j < len(template) and template[j] == "}":
+                    result.append(template[i : j + 1])
+                    i = j + 1
+                    continue
+            if ch == "{":
+                result.append("{{")
+            elif ch == "}":
+                result.append("}}")
+            else:
+                result.append(ch)
+            i += 1
+        result_str = "".join(result)
         # Convert %v placeholders to {0}, {1}, {2}, etc.
         idx = 0
-        while "%v" in result:
-            result = result.replace("%v", f"{{{idx}}}", 1)
+        while "%v" in result_str:
+            result_str = result_str.replace("%v", f"{{{idx}}}", 1)
             idx += 1
-        escaped = escape_string(result)
+        escaped = escape_string(result_str)
         args_str = ", ".join(self._expr(a) for a in args)
         if args_str:
             return f'string.Format("{escaped}", {args_str})'

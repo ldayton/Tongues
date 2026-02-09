@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 
 from src.ir import (
     Assign,
@@ -151,8 +150,37 @@ def to_snake(name: str) -> str:
         name = name[1:]
     if "_" in name or name.islower():
         return name.lower()
-    s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
-    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+    result: list[str] = []
+    i = 0
+    while i < len(name):
+        ch = name[i]
+        if ch.isupper() and i > 0:
+            prev = name[i - 1]
+            if prev.islower() or prev.isdigit():
+                result.append("_")
+            elif prev.isupper() and i + 1 < len(name) and name[i + 1].islower():
+                result.append("_")
+        result.append(ch)
+        i += 1
+    return "".join(result).lower()
+
+
+def replace_format_placeholders(template: str, replacement: str) -> str:
+    """Replace {0}, {1}, ... placeholders with a fixed replacement string."""
+    result: list[str] = []
+    i = 0
+    while i < len(template):
+        if template[i] == "{" and i + 1 < len(template) and template[i + 1].isdigit():
+            j = i + 1
+            while j < len(template) and template[j].isdigit():
+                j += 1
+            if j < len(template) and template[j] == "}":
+                result.append(replacement)
+                i = j + 1
+                continue
+        result.append(template[i])
+        i += 1
+    return "".join(result)
 
 
 def to_camel(name: str) -> str:

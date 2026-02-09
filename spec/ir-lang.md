@@ -2,9 +2,13 @@
 
 > **Note:** This document is an exploration of a future IR iteration, using language-like syntax to clarify thinking. It is not consistent with the rest of the spec.
 
-This spec provides a textual syntax for the Tongues IR, to facilitate exposition. The "language" is LL(1) parseable.
+## Introduction
 
-Grammar notation: `|` alternatives, `*` repetition, `?` optional, `'x'` terminal.
+The current IR is a large set of specialized nodes that carry Python-flavored semantics: `PythonAnd`, `PythonOr`, `PythonMod`, `FloorDiv`, `SentinelToOptional`, `CharAt`, `StringNonEmpty`, and dozens more. Lowering eagerly commits to representations — `range(a, b)` becomes `ForClassic`, string indexing becomes `CharAt`/`CharLen`/`Substring` — and every backend must interpret these nodes individually. The middleend is limited to read-only annotation passes.
+
+This IR replaces that with a small, target-neutral language. Python's quirks (floor division, value-returning `and`/`or`, type-dependent truthiness) are resolved during lowering into conventional semantics (truncating division, boolean `&&`/`||`), but representation choices are deliberately deferred. The IR has one loop-over-collection form (`for...in`), not two; strings are rune-indexed at the IR level, not pre-lowered into character operations. The middleend analyzes how values are actually used — whether a `for...in` over a range should become a classic for loop, whether a string needs rune-level access or can stay in the target's native representation — and makes those decisions as shared passes rather than per-backend logic. Backends receive already-decided representations and translate to syntax.
+
+This spec provides a textual syntax for the IR to facilitate exposition. The "language" is LL(1) parseable.
 
 ## Numeric Types
 
@@ -44,33 +48,38 @@ Target representations:
 
 | Function       | Signature                | Description              |
 | -------------- | ------------------------ | ------------------------ |
-| `Abs(x)`       | `int -> int`             | absolute value           |
-| `Min(a, b)`    | `int, int -> int`        | smaller of two values    |
-| `Max(a, b)`    | `int, int -> int`        | larger of two values     |
+| `Abs(x)`       | `T -> T`                 | absolute value           |
+| `Min(a, b)`    | `T, T -> T`              | smaller of two values    |
+| `Max(a, b)`    | `T, T -> T`              | larger of two values     |
+| `Sum(xs)`      | `list[T] -> T`           | sum of elements          |
 | `Pow(a, b)`    | `int, int -> int`        | exponentiation           |
 | `Round(x)`     | `float -> int`           | round to nearest integer |
 | `DivMod(a, b)` | `int, int -> (int, int)` | quotient and remainder   |
+
+`T` in `Abs`, `Min`, `Max`, `Sum` is `int` or `float`. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
 
 ## Bytes
 
 ```
 let tag: byte = 0xff
-let buf: bytes = read_bytes()
+let buf: bytes = ReadBytes()
 let header: bytes = b"\x89PNG"
 let first: byte = buf[0]
+let rest: bytes = buf[1:10]
 ```
 
-`byte` is an unsigned 8-bit integer. `bytes` is a byte sequence for binary I/O. The `b"..."` literal creates a `bytes` value.
+| Type    | Literal      | Description             |
+| ------- | ------------ | ----------------------- |
+| `byte`  | `0xff`       | unsigned 8-bit integer  |
+| `bytes` | `b"\x89PNG"` | indexable byte sequence |
+
+`bytes` is an ordered sequence of `byte` values. Indexing (`buf[i]`) yields a `byte`. Slicing (`buf[a:b]`) yields a `bytes`.
 
 ### Functions
 
-| Function         | Signature      | Description                   |
-| ---------------- | -------------- | ----------------------------- |
-| `Len(b)`         | `bytes -> int` | byte count                    |
-| `ReadBytes()`    | `-> bytes`     | read all bytes from stdin     |
-| `ReadBytesN(n)`  | `int -> bytes` | read up to n bytes from stdin |
-| `WriteBytes(b)`  | `bytes -> int` | write bytes to stdout         |
-| `WriteStderr(b)` | `bytes -> int` | write bytes to stderr         |
+| Function | Signature      | Description |
+| -------- | -------------- | ----------- |
+| `Len(b)` | `bytes -> int` | byte count  |
 
 ## Operators
 
@@ -114,7 +123,7 @@ let abs: int = x > 0 ? x : -x
 | `!`      | `bool`       | `bool` | 12   | right | logical not                                                         |
 | `~`      | `int`        | `int`  | 12   | right | bitwise complement (two's complement)                               |
 
-Arithmetic operators (`+`, `-`, `*`, `/`, `%`, `**`, unary `-`) also work on `float` operands, returning `float`. For float `/`, result is IEEE 754 division (not truncating). Comparison operators (`<`, `<=`, `>`, `>=`) also work on `float` and `string` (lexicographic).
+Arithmetic operators (`+`, `-`, `*`, `/`, `%`, `**`, unary `-`) also work on `float` operands, returning `float`. For float `/`, result is IEEE 754 division (not truncating). Comparison operators (`<`, `<=`, `>`, `>=`) also work on `float` and `string` (lexicographic). All arithmetic and comparison operators require both operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts.
 
 Chained comparisons (`a < b < c`) evaluate each operand once. They desugar to `a < b && b < c` but `b` is only computed once.
 
@@ -138,33 +147,35 @@ let n: int = Len("café")        -- 4, not 5
 
 ### Functions
 
-| Function               | Signature                          | Description                          |
-| ---------------------- | ---------------------------------- | ------------------------------------ |
-| `Len(s)`               | `string -> int`                    | rune count                           |
-| `CharAt(s, i)`         | `string, int -> rune`              | rune at position                     |
-| `Substring(s, lo, hi)` | `string, int, int -> string`       | substring by rune position           |
-| `Concat(a, b)`         | `string, string -> string`         | concatenation                        |
-| `Chr(n)`               | `int -> rune`                      | code point to rune                   |
-| `Ord(c)`               | `rune -> int`                      | rune to code point                   |
-| `IntToStr(n)`          | `int -> string`                    | integer to string                    |
-| `ParseInt(s, base)`    | `string, int -> int`               | parse integer in given base          |
-| `Upper(s)`             | `string -> string`                 | uppercase                            |
-| `Lower(s)`             | `string -> string`                 | lowercase                            |
-| `Strip(s, chars)`      | `string, string -> string`         | trim characters from both ends       |
-| `LStrip(s, chars)`     | `string, string -> string`         | trim characters from left            |
-| `RStrip(s, chars)`     | `string, string -> string`         | trim characters from right           |
-| `Split(s, sep)`        | `string, string -> list[string]`   | split by separator                   |
-| `Join(sep, parts)`     | `string, list[string] -> string`   | join with separator                  |
-| `Find(s, sub)`         | `string, string -> int`            | index of substring, -1 if missing    |
-| `Replace(s, old, new)` | `string, string, string -> string` | replace all occurrences              |
-| `StartsWith(s, pre)`   | `string, string -> bool`           | prefix test                          |
-| `EndsWith(s, suf)`     | `string, string -> bool`           | suffix test                          |
-| `IsDigit(s)`           | `string -> bool`                   | all characters are digits            |
-| `IsAlpha(s)`           | `string -> bool`                   | all characters are letters           |
-| `IsAlnum(s)`           | `string -> bool`                   | all characters are letters or digits |
-| `IsSpace(s)`           | `string -> bool`                   | all characters are whitespace        |
-| `IsUpper(s)`           | `string -> bool`                   | all characters are uppercase         |
-| `IsLower(s)`           | `string -> bool`                   | all characters are lowercase         |
+| Function               | Signature                             | Description                              |
+| ---------------------- | ------------------------------------- | ---------------------------------------- |
+| `Len(s)`               | `string -> int`                       | rune count                               |
+| `CharAt(s, i)`         | `string, int -> rune`                 | rune at position                         |
+| `Substring(s, lo, hi)` | `string, int, int -> string`          | substring by rune position               |
+| `Concat(a, b)`         | `string, string -> string`            | concatenation                            |
+| `Chr(n)`               | `int -> rune`                         | code point to rune                       |
+| `Ord(c)`               | `rune -> int`                         | rune to code point                       |
+| `IntToStr(n)`          | `int -> string`                       | integer to string                        |
+| `ParseInt(s, base)`    | `string, int -> int`                  | parse integer in given base              |
+| `Upper(s)`             | `string -> string`                    | uppercase                                |
+| `Lower(s)`             | `string -> string`                    | lowercase                                |
+| `Strip(s, chars)`      | `string, string -> string`            | trim characters from both ends           |
+| `LStrip(s, chars)`     | `string, string -> string`            | trim characters from left                |
+| `RStrip(s, chars)`     | `string, string -> string`            | trim characters from right               |
+| `RuneToStr(c)`         | `rune -> string`                      | single-rune string                       |
+| `Split(s, sep, max)`   | `string, string, int -> list[string]` | split by separator; max=-1 for unlimited |
+| `SplitWhitespace(s)`   | `string -> list[string]`              | split on whitespace runs, strip ends     |
+| `Join(sep, parts)`     | `string, list[string] -> string`      | join with separator                      |
+| `Find(s, sub)`         | `string, string -> int`               | index of substring, -1 if missing        |
+| `Replace(s, old, new)` | `string, string, string -> string`    | replace all occurrences                  |
+| `StartsWith(s, pre)`   | `string, string -> bool`              | prefix test                              |
+| `EndsWith(s, suf)`     | `string, string -> bool`              | suffix test                              |
+| `IsDigit(s)`           | `string -> bool`                      | all characters are digits                |
+| `IsAlpha(s)`           | `string -> bool`                      | all characters are letters               |
+| `IsAlnum(s)`           | `string -> bool`                      | all characters are letters or digits     |
+| `IsSpace(s)`           | `string -> bool`                      | all characters are whitespace            |
+| `IsUpper(s)`           | `string -> bool`                      | all characters are uppercase             |
+| `IsLower(s)`           | `string -> bool`                      | all characters are lowercase             |
 
 ## Functions
 
@@ -327,3 +338,87 @@ while true {
 ```
 
 `break` exits the innermost loop. `continue` skips to the next iteration.
+
+## TODO
+
+| Section      | Topic                 | Notes                                                                                                       |
+| ------------ | --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Type system  | Grammar               | optional `T?`, tuples, callable, union                                                                      |
+| Type system  | Optional and nil      | `T?`, nil checks, unwrap                                                                                    |
+| Type system  | Conversions and casts | int↔float, int↔string, ord/chr already covered                                                              |
+| Declarations | Structs               | fields, methods, constructors                                                                               |
+| Declarations | Interfaces            | hierarchy root, type switch, casts                                                                          |
+| Declarations | Enums                 |                                                                                                             |
+| Declarations | Module structure      | imports, constants, entrypoint                                                                              |
+| Strings      | Format strings        | interpolation                                                                                               |
+| Strings      | Repetition            | `s * n` → `Repeat(s, n)`                                                                                    |
+| Strings      | RFind                 | index of last substring occurrence                                                                          |
+| Strings      | Count                 | count substring occurrences                                                                                 |
+| Strings      | Encoding / decoding   | `bytes.decode()`, `str.encode()`                                                                            |
+| Collections  | Tuples                | literals, indexing, unpacking                                                                               |
+| Collections  | Lists                 | literals, append, pop, insert, index, slice, comprehensions                                                 |
+| Collections  | Maps                  | literals, get, set, delete, keys/values/items, comprehensions, merge (`d1 \| d2`)                           |
+| Collections  | Sets                  | literals, add, remove, contains, comprehensions, frozenset                                                  |
+| Collections  | Membership testing    | `in` / `not in` for lists, maps, sets, strings, tuples                                                      |
+| Collections  | Equality / comparison | deep `==` on list/map/set; lexicographic `<` on list                                                        |
+| Collections  | Repetition            | `xs * n`                                                                                                    |
+| Collections  | Sorted / reversed     | builtins producing new or reversed collections                                                              |
+| Control flow | Try/catch/raise       |                                                                                                             |
+| Control flow | Match/case            |                                                                                                             |
+| Control flow | Assert                |                                                                                                             |
+| Control flow | Yield / generators    |                                                                                                             |
+| Functions    | References            | callable values, bound methods                                                                              |
+| Metadata     | Source metadata       | literal form (hex/octal/binary), large int flag, source positions — fully specified here                     |
+| Metadata     | Middleend annotations | format for attaching analysis results to IR nodes; contents defined by middleend specs, not this doc         |
+| I/O          | I/O                   | Print, ReadLine, ReadAll, ReadBytes, ReadBytesN, ReadBytesLine, WriteBytes, WriteStderr, Args, GetEnv, Exit |
+| Appendix     | Grammar reference     | complete LL(1) grammar for the IR textual syntax                                                            |
+
+## TOC
+
+1. Introduction ✓
+2. Primitives ✓
+   - Numeric types (int, float, bool) + functions ✓
+   - Bytes (byte, bytes, indexing, slicing, Len) ✓
+3. Strings ✓
+   - string, rune + functions ✓
+   - Format strings
+   - Repetition (`Repeat`)
+   - RFind, Count
+   - Encoding / decoding (bytes↔string)
+4. Operators ✓
+5. Collections
+   - Tuples (literals, indexing, unpacking)
+   - Lists (literals, append, pop, insert, index, slice, comprehensions, repetition)
+   - Maps (literals, get, set, delete, keys/values/items, comprehensions, merge)
+   - Sets (literals, add, remove, contains, comprehensions, frozenset)
+   - Membership (`in` / `not in`)
+   - Equality and comparison
+   - Sorted / reversed
+6. Type System
+   - Type grammar (`T?`, union, callable, tuple types)
+   - Optional and nil (`T?`, nil checks, unwrap)
+   - Conversions and casts (int↔float, int↔string)
+7. Declarations
+   - Structs (fields, methods, constructors)
+   - Interfaces (hierarchy root, type switch, casts)
+   - Enums
+   - Functions ✓ (references, defaults pending)
+   - Module structure (imports, constants, entrypoint)
+8. Statements
+   - Variables ✓ (zero values pending)
+   - Assignment ✓
+   - Return ✓
+   - If ✓
+   - While ✓
+   - For ✓ (iterability, range, map iteration pending)
+   - Break / continue ✓
+   - Try / catch / raise
+   - Match / case
+   - Assert
+   - Yield / generators
+9. Built-in Functions
+    - I/O (Print, ReadLine, ReadAll, ReadBytes, ReadBytesN, ReadBytesLine, WriteBytes, WriteStderr, Args, GetEnv, Exit)
+10. Metadata
+    - Source metadata: literal form, large int flag, source positions (fully specified here)
+    - Middleend annotations: format for attaching analysis results; contents defined by middleend specs
+11. Appendix: LL(1) Grammar

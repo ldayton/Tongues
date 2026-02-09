@@ -160,12 +160,12 @@ def f(s: str) -> object:
 error: import
 ---
 
-=== import re allowed
+=== import re not allowed
 import re
 def f(s: str) -> bool:
     return re.match("a", s) is not None
 ---
-ok
+error: import
 ---
 
 === import math not allowed

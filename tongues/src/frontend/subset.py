@@ -203,7 +203,15 @@ EAGER_CONSUMERS: set[str] = {
 BANNED_TYPE_NAMES: set[str] = {"Any"}
 
 # Modules that can only be imported as `import X`, not `from X import ...`
-IMPORT_ONLY_MODULES: set[str] = {"sys", "os", "re"}
+IMPORT_ONLY_MODULES: set[str] = {"sys", "os"}
+
+# Modules allowed in `from X import Y` (non-relative)
+ALLOWED_FROM_MODULES: set[str] = {
+    "typing",
+    "dataclasses",
+    "collections",
+    "__future__",
+}
 
 # Restricted builtin keyword arguments: {func_name: {banned_kwarg_names}}
 RESTRICTED_KWARGS: dict[str, set[str]] = {
@@ -1211,7 +1219,7 @@ class Verifier:
             i += 1
 
     def visit_Import(self, node: ASTNode) -> None:
-        """Check import constraints. Only 'import sys/os/re' allowed."""
+        """Check import constraints. Only 'import sys/os' allowed."""
         names = node.get("names", [])
         i = 0
         while i < len(names):
@@ -1238,7 +1246,7 @@ class Verifier:
             i += 1
 
     def visit_ImportFrom(self, node: ASTNode) -> None:
-        """Check from-import syntax: no stars, no from sys/os/re."""
+        """Check from-import syntax: no stars, no from sys/os, no banned modules."""
         # Check for star imports
         import_names = node.get("names", [])
         i = 0
@@ -1255,7 +1263,7 @@ class Verifier:
         if module is None:
             return
         top_module = module.split(".")[0]
-        # sys/os/re can only be used with `import X`, not `from X import ...`
+        # sys/os can only be used with `import X`, not `from X import ...`
         if top_module in IMPORT_ONLY_MODULES:
             self.error(
                 node,
@@ -1263,7 +1271,13 @@ class Verifier:
                 "from " + module + " import: use 'import " + top_module + "' instead",
             )
             return
-        # All other from-imports (internal project, other stdlib) are allowed
+        # Only allowed stdlib modules can be from-imported
+        if top_module not in ALLOWED_FROM_MODULES:
+            self.error(
+                node,
+                "import",
+                "import of '" + module + "' not allowed",
+            )
 
     def visit_Attribute(self, node: ASTNode) -> None:
         """Check attribute access constraints."""
