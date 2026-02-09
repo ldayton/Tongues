@@ -533,6 +533,7 @@ def _validate_assert(stmt: ASTNode, env: TypeEnv) -> tuple[TypeEnv, bool]:
     test = stmt.get("test", {})
     _validate_expr(test, env)
     from .inference import is_isinstance_call
+
     isinstance_check = is_isinstance_call(test)
     if isinstance_check:
         var_name, type_name = isinstance_check
@@ -544,7 +545,9 @@ def _validate_assert(stmt: ASTNode, env: TypeEnv) -> tuple[TypeEnv, bool]:
         var_type = env.lookup(is_not_none)
         src = env.source_type(is_not_none)
         if isinstance(var_type, Optional):
-            narrowed_src = _non_none_parts(src)[0] if src and _is_optional_source(src) else ""
+            narrowed_src = (
+                _non_none_parts(src)[0] if src and _is_optional_source(src) else ""
+            )
             return env.narrow_source(is_not_none, var_type.inner, narrowed_src), False
         # Source type is optional but IR type was erased (e.g., str | None → STRING)
         if src and _is_optional_source(src):
@@ -687,7 +690,12 @@ def _validate_method_call(expr: ASTNode, env: TypeEnv) -> None:
         root = obj_type.name
         if root in env.symbols.structs:
             struct_info = env.symbols.structs[root]
-            if method not in struct_info.methods and method not in ("to_sexp", "get_kind", "ToSexp", "GetKind"):
+            if method not in struct_info.methods and method not in (
+                "to_sexp",
+                "get_kind",
+                "ToSexp",
+                "GetKind",
+            ):
                 lineno = expr.get("lineno", 0)
                 raise ParseError(
                     f"method '{method}' not available on base type {root}",
@@ -828,7 +836,11 @@ def _callable_assignable(actual: FuncType, expected: FuncType) -> bool:
     for a, e in zip(actual.params, expected.params):
         if a != e and e != InterfaceRef("any") and a != InterfaceRef("any"):
             return False
-    if actual.ret != expected.ret and expected.ret != InterfaceRef("any") and actual.ret != InterfaceRef("any"):
+    if (
+        actual.ret != expected.ret
+        and expected.ret != InterfaceRef("any")
+        and actual.ret != InterfaceRef("any")
+    ):
         return False
     return True
 
@@ -1008,9 +1020,15 @@ def _validate_subscript(expr: ASTNode, env: TypeEnv) -> None:
                 0,
             )
     # Tuple index out of bounds (only for fixed-element tuples with actual elements)
-    if isinstance(obj_type, Tuple) and not obj_type.variadic and len(obj_type.elements) > 0:
+    if (
+        isinstance(obj_type, Tuple)
+        and not obj_type.variadic
+        and len(obj_type.elements) > 0
+    ):
         slice_node = expr.get("slice", {})
-        if is_type(slice_node, ["Constant"]) and isinstance(slice_node.get("value"), int):
+        if is_type(slice_node, ["Constant"]) and isinstance(
+            slice_node.get("value"), int
+        ):
             idx = slice_node.get("value")
             if idx < 0 or idx >= len(obj_type.elements):
                 lineno = expr.get("lineno", 0)
@@ -1060,7 +1078,9 @@ def _validate_list_literal(expr: ASTNode, env: TypeEnv) -> None:
         elt_type = _expr_type(elt, env)
         if elt_type == InterfaceRef("any"):
             return
-        if not _is_assignable(elt_type, first_type, env) and not _is_assignable(first_type, elt_type, env):
+        if not _is_assignable(elt_type, first_type, env) and not _is_assignable(
+            first_type, elt_type, env
+        ):
             lineno = expr.get("lineno", 0)
             raise ParseError(
                 f"type error: mixed types in list literal: {_type_name(first_type)} and {_type_name(elt_type)}",
@@ -1092,12 +1112,16 @@ def _validate_dict_literal(expr: ASTNode, env: TypeEnv) -> None:
     if not keys:
         return
     first_key_type = _expr_type(keys[0], env) if isinstance(keys[0], dict) else None
-    first_val_type = _expr_type(values[0], env) if values and isinstance(values[0], dict) else None
+    first_val_type = (
+        _expr_type(values[0], env) if values and isinstance(values[0], dict) else None
+    )
     if first_key_type and first_key_type != InterfaceRef("any"):
         for k in keys[1:]:
             if isinstance(k, dict):
                 kt = _expr_type(k, env)
-                if kt != InterfaceRef("any") and not _is_assignable(kt, first_key_type, env):
+                if kt != InterfaceRef("any") and not _is_assignable(
+                    kt, first_key_type, env
+                ):
                     lineno = expr.get("lineno", 0)
                     raise ParseError(
                         f"type error: mixed key types in dict literal",
@@ -1108,7 +1132,9 @@ def _validate_dict_literal(expr: ASTNode, env: TypeEnv) -> None:
         for v in values[1:]:
             if isinstance(v, dict):
                 vt = _expr_type(v, env)
-                if vt != InterfaceRef("any") and not _is_assignable(vt, first_val_type, env):
+                if vt != InterfaceRef("any") and not _is_assignable(
+                    vt, first_val_type, env
+                ):
                     lineno = expr.get("lineno", 0)
                     raise ParseError(
                         f"type error: mixed value types in dict literal",
@@ -1122,10 +1148,21 @@ def _validate_dict_literal(expr: ASTNode, env: TypeEnv) -> None:
 # ============================================================
 
 
-_EAGER_CONSUMERS = frozenset({
-    "list", "tuple", "set", "dict", "frozenset",
-    "sum", "min", "max", "any", "all", "sorted",
-})
+_EAGER_CONSUMERS = frozenset(
+    {
+        "list",
+        "tuple",
+        "set",
+        "dict",
+        "frozenset",
+        "sum",
+        "min",
+        "max",
+        "any",
+        "all",
+        "sorted",
+    }
+)
 
 
 def _validate_truthiness(expr: ASTNode, env: TypeEnv) -> None:
@@ -1202,7 +1239,11 @@ def _check_source_truthiness(source_type: str, expr: ASTNode) -> None:
                 0,
             )
         # Optional[collection] — ambiguous
-        if inner.startswith("list[") or inner.startswith("dict[") or inner.startswith("set["):
+        if (
+            inner.startswith("list[")
+            or inner.startswith("dict[")
+            or inner.startswith("set[")
+        ):
             lineno = expr.get("lineno", 0) if isinstance(expr, dict) else 0
             inner_name = inner.split("[")[0]
             raise ParseError(
@@ -1214,7 +1255,12 @@ def _check_source_truthiness(source_type: str, expr: ASTNode) -> None:
         return
     # Multi-variant union with None — check each non-None part
     for p in non_none:
-        if p == "str" or p.startswith("list[") or p.startswith("dict[") or p.startswith("set["):
+        if (
+            p == "str"
+            or p.startswith("list[")
+            or p.startswith("dict[")
+            or p.startswith("set[")
+        ):
             lineno = expr.get("lineno", 0) if isinstance(expr, dict) else 0
             raise ParseError(
                 f"ambiguous truthiness for optional union (could be None or empty)",
@@ -1287,8 +1333,11 @@ def _extract_narrowing(test: ASTNode, env: TypeEnv) -> tuple[TypeEnv, TypeEnv]:
         var_type = env.lookup(is_none)
         src = env.source_type(is_none)
         if isinstance(var_type, Optional):
-            else_env = env.narrow_source(is_none, var_type.inner,
-                                         _non_none_parts(src)[0] if src and _is_optional_source(src) else "")
+            else_env = env.narrow_source(
+                is_none,
+                var_type.inner,
+                _non_none_parts(src)[0] if src and _is_optional_source(src) else "",
+            )
             return env, else_env
         # Source type says optional but IR erased it (e.g., str | None → STRING)
         if src and _is_optional_source(src):
@@ -1302,7 +1351,9 @@ def _extract_narrowing(test: ASTNode, env: TypeEnv) -> tuple[TypeEnv, TypeEnv]:
         var_type = env.lookup(is_not_none)
         src = env.source_type(is_not_none)
         if isinstance(var_type, Optional):
-            narrowed_src = _non_none_parts(src)[0] if src and _is_optional_source(src) else ""
+            narrowed_src = (
+                _non_none_parts(src)[0] if src and _is_optional_source(src) else ""
+            )
             then_env = env.narrow_source(is_not_none, var_type.inner, narrowed_src)
             return then_env, env
         # Source type says optional but IR erased it
@@ -1342,7 +1393,9 @@ def _extract_narrowing(test: ASTNode, env: TypeEnv) -> tuple[TypeEnv, TypeEnv]:
         var_type = env.lookup(var_name)
         src = env.source_type(var_name)
         if isinstance(var_type, Optional):
-            narrowed_src = _non_none_parts(src)[0] if src and _is_optional_source(src) else ""
+            narrowed_src = (
+                _non_none_parts(src)[0] if src and _is_optional_source(src) else ""
+            )
             then_env = env.narrow_source(var_name, var_type.inner, narrowed_src)
             return then_env, env
         # Source says optional but IR erased
@@ -1370,7 +1423,9 @@ def _extract_narrowing(test: ASTNode, env: TypeEnv) -> tuple[TypeEnv, TypeEnv]:
                     if len(non_none) == 1:
                         narrowed_type = _name_to_type(non_none[0], env)
                         if narrowed_type is not None:
-                            then_env = env.narrow_source(var_name, narrowed_type, non_none[0])
+                            then_env = env.narrow_source(
+                                var_name, narrowed_type, non_none[0]
+                            )
                             return then_env, env
                         # If type can't be resolved to IR, still narrow source
                         then_env = env.narrow_source(var_name, val_type, non_none[0])
@@ -1695,7 +1750,11 @@ def _expr_type(expr: ASTNode, env: TypeEnv) -> "Type":
         values = expr.get("values", [])
         if keys and isinstance(keys[0], dict):
             key_type = _expr_type(keys[0], env)
-            val_type = _expr_type(values[0], env) if values and isinstance(values[0], dict) else InterfaceRef("any")
+            val_type = (
+                _expr_type(values[0], env)
+                if values and isinstance(values[0], dict)
+                else InterfaceRef("any")
+            )
             return Map(key_type, val_type)
         return Map(InterfaceRef("any"), InterfaceRef("any"))
     if node_t == "NamedExpr":
@@ -1771,7 +1830,8 @@ def _is_assignable(actual: "Type", expected: "Type", env: TypeEnv) -> bool:
         if len(actual.elements) != len(expected.elements):
             return False
         return all(
-            _is_assignable(a, e, env) for a, e in zip(actual.elements, expected.elements)
+            _is_assignable(a, e, env)
+            for a, e in zip(actual.elements, expected.elements)
         )
     if isinstance(actual, FuncType) and isinstance(expected, FuncType):
         return _callable_assignable(actual, expected)
@@ -1790,7 +1850,10 @@ def _is_assignable(actual: "Type", expected: "Type", env: TypeEnv) -> bool:
             and expected.target.name in env.node_types
         ):
             return True
-        if expected.target.name == env.hierarchy_root and actual.target.name in env.node_types:
+        if (
+            expected.target.name == env.hierarchy_root
+            and actual.target.name in env.node_types
+        ):
             return True
     return False
 

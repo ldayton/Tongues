@@ -373,8 +373,11 @@ def py_return_type_to_ir(
         # Handle variadic tuple: tuple[T, ...]
         if len(parts) == 2 and parts[1] in ("Ellipsis", "..."):
             elem = py_type_to_ir(
-                parts[0], symbols, node_types,
-                concrete_nodes=True, hierarchy_root=hierarchy_root,
+                parts[0],
+                symbols,
+                node_types,
+                concrete_nodes=True,
+                hierarchy_root=hierarchy_root,
             )
             return Tuple((elem,), variadic=True)
         elements = tuple(
@@ -853,8 +856,13 @@ def infer_expr_type_from_ast(
                 args = node.get("args", [])
                 if args:
                     iter_type = infer_expr_type_from_ast(
-                        args[0], type_ctx, symbols, current_func_info,
-                        current_class_name, node_types, hierarchy_root,
+                        args[0],
+                        type_ctx,
+                        symbols,
+                        current_func_info,
+                        current_class_name,
+                        node_types,
+                        hierarchy_root,
                     )
                     if isinstance(iter_type, Slice):
                         return Slice(Tuple((INT, iter_type.element)))
@@ -863,12 +871,22 @@ def infer_expr_type_from_ast(
                 args = node.get("args", [])
                 if len(args) >= 2:
                     t1 = infer_expr_type_from_ast(
-                        args[0], type_ctx, symbols, current_func_info,
-                        current_class_name, node_types, hierarchy_root,
+                        args[0],
+                        type_ctx,
+                        symbols,
+                        current_func_info,
+                        current_class_name,
+                        node_types,
+                        hierarchy_root,
                     )
                     t2 = infer_expr_type_from_ast(
-                        args[1], type_ctx, symbols, current_func_info,
-                        current_class_name, node_types, hierarchy_root,
+                        args[1],
+                        type_ctx,
+                        symbols,
+                        current_func_info,
+                        current_class_name,
+                        node_types,
+                        hierarchy_root,
                     )
                     e1 = t1.element if isinstance(t1, Slice) else InterfaceRef("any")
                     e2 = t2.element if isinstance(t2, Slice) else InterfaceRef("any")
@@ -878,8 +896,13 @@ def infer_expr_type_from_ast(
                 args = node.get("args", [])
                 if args:
                     iter_type = infer_expr_type_from_ast(
-                        args[0], type_ctx, symbols, current_func_info,
-                        current_class_name, node_types, hierarchy_root,
+                        args[0],
+                        type_ctx,
+                        symbols,
+                        current_func_info,
+                        current_class_name,
+                        node_types,
+                        hierarchy_root,
                     )
                     if isinstance(iter_type, Slice):
                         return iter_type
@@ -888,8 +911,13 @@ def infer_expr_type_from_ast(
                 args = node.get("args", [])
                 if args:
                     iter_type = infer_expr_type_from_ast(
-                        args[0], type_ctx, symbols, current_func_info,
-                        current_class_name, node_types, hierarchy_root,
+                        args[0],
+                        type_ctx,
+                        symbols,
+                        current_func_info,
+                        current_class_name,
+                        node_types,
+                        hierarchy_root,
                     )
                     if isinstance(iter_type, Slice):
                         return iter_type
@@ -1035,14 +1063,24 @@ def infer_expr_type_from_ast(
         values = node.get("values", [])
         if keys and isinstance(keys[0], dict):
             key_type = infer_expr_type_from_ast(
-                keys[0], type_ctx, symbols, current_func_info,
-                current_class_name, node_types, hierarchy_root,
+                keys[0],
+                type_ctx,
+                symbols,
+                current_func_info,
+                current_class_name,
+                node_types,
+                hierarchy_root,
             )
             val_type = InterfaceRef("any")
             if values and isinstance(values[0], dict):
                 val_type = infer_expr_type_from_ast(
-                    values[0], type_ctx, symbols, current_func_info,
-                    current_class_name, node_types, hierarchy_root,
+                    values[0],
+                    type_ctx,
+                    symbols,
+                    current_func_info,
+                    current_class_name,
+                    node_types,
+                    hierarchy_root,
                 )
             return Map(key_type, val_type)
         return Map(InterfaceRef("any"), InterfaceRef("any"))
