@@ -220,7 +220,6 @@ _SKIP_LANGS: dict[str, set[str]] = {
 
 TESTS_DIR = Path(__file__).parent
 APP_DIR = TESTS_DIR / "15_app"
-CODEGEN_DIR = TESTS_DIR / "15_codegen"
 OUT_DIR = APP_DIR / ".out"
 TONGUES_DIR = TESTS_DIR.parent
 
@@ -403,60 +402,6 @@ TARGETS: dict[str, Target] = {
 }
 
 
-def discover_apptests() -> list[Path]:
-    """Find all apptest_*.py files."""
-    return sorted(APP_DIR.glob("apptest_*.py"))
-
-
-def parse_codegen_file(path: Path) -> list[tuple[str, str, dict[str, str]]]:
-    """Parse .tests file into (name, input, {lang: expected}) tuples."""
-    lines = path.read_text().split("\n")
-    result: list[tuple[str, str, dict[str, str]]] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("=== "):
-            test_name = line[4:].strip()
-            i += 1
-            input_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                input_lines.append(lines[i])
-                i += 1
-            expected_by_lang: dict[str, str] = {}
-            while i < len(lines) and lines[i].startswith("--- "):
-                lang = lines[i][4:].strip()
-                i += 1
-                expected_lines: list[str] = []
-                while i < len(lines) and not lines[i].startswith("---"):
-                    expected_lines.append(lines[i])
-                    i += 1
-                expected_by_lang[lang] = "\n".join(expected_lines)
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            test_input = "\n".join(input_lines)
-            result.append((test_name, test_input, expected_by_lang))
-        else:
-            i += 1
-    return result
-
-
-def discover_codegen_tests() -> list[tuple[str, str, str, str, bool]]:
-    """Find all codegen tests, returns (test_id, input, lang, expected, has_explicit_expected)."""
-    results = []
-    for test_file in sorted(CODEGEN_DIR.glob("*.tests")):
-        tests = parse_codegen_file(test_file)
-        for name, input_code, expected_by_lang in tests:
-            langs = list(expected_by_lang.keys())
-            if "python" not in langs:
-                langs.append("python")
-            for lang in langs:
-                has_explicit = lang in expected_by_lang
-                expected = expected_by_lang.get(lang, input_code)
-                test_id = f"{test_file.stem}/{name}[{lang}]"
-                results.append((test_id, input_code, lang, expected, has_explicit))
-    return results
-
-
 def pytest_addoption(parser):
     """Add --target, --ignore-version, --ignore-skips, and --summary options."""
     parser.addoption(
@@ -483,67 +428,6 @@ def pytest_addoption(parser):
         default=False,
         help="Print a summary table of apptest results",
     )
-
-
-def pytest_generate_tests(metafunc):
-    """Parametrize tests over test combinations."""
-    ignore_version = metafunc.config.getoption("ignore_version")
-    ignore_skips = metafunc.config.getoption("ignore_skips")
-    if "apptest" in metafunc.fixturenames and "target" in metafunc.fixturenames:
-        apptests = discover_apptests()
-        target_filter = metafunc.config.getoption("target")
-        targets = (
-            [TARGETS[t] for t in target_filter if t in TARGETS]
-            if target_filter
-            else list(TARGETS.values())
-        )
-        params = []
-        for apptest in apptests:
-            for target in targets:
-                test_id = f"{target.name}/{apptest.stem}"
-                version_ok, version_msg = _check_version(target.name)
-                if not version_ok and not ignore_version:
-                    params.append(
-                        pytest.param(
-                            apptest,
-                            target,
-                            id=test_id,
-                            marks=pytest.mark.skip(
-                                reason=f"wrong version: {version_msg}"
-                            ),
-                        )
-                    )
-                elif not ignore_skips and target.name in _SKIP_LANGS.get(
-                    apptest.stem, set()
-                ):
-                    params.append(
-                        pytest.param(
-                            apptest,
-                            target,
-                            id=test_id,
-                            marks=pytest.mark.skip(reason="known failure"),
-                        )
-                    )
-                else:
-                    params.append(pytest.param(apptest, target, id=test_id))
-        metafunc.parametrize("apptest,target", params)
-
-    if "codegen_input" in metafunc.fixturenames:
-        target_filter = metafunc.config.getoption("target")
-        tests = discover_codegen_tests()
-        if target_filter:
-            tests = [
-                (tid, inp, lang, exp, has_exp)
-                for tid, inp, lang, exp, has_exp in tests
-                if lang in target_filter
-            ]
-        params = [
-            pytest.param(input_code, lang, expected, has_explicit, id=test_id)
-            for test_id, input_code, lang, expected, has_explicit in tests
-        ]
-        metafunc.parametrize(
-            "codegen_input,codegen_lang,codegen_expected,codegen_has_explicit", params
-        )
 
 
 @pytest.fixture
