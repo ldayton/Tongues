@@ -369,6 +369,13 @@ def py_return_type_to_ir(
     if py_type.startswith("tuple["):
         inner = py_type[6:-1]
         parts = split_type_args(inner)
+        # Handle variadic tuple: tuple[T, ...]
+        if len(parts) == 2 and parts[1] in ("Ellipsis", "..."):
+            elem = py_type_to_ir(
+                parts[0], symbols, node_types,
+                concrete_nodes=True, hierarchy_root=hierarchy_root,
+            )
+            return Tuple((elem,), variadic=True)
         elements = tuple(
             py_type_to_ir(
                 p,
@@ -826,7 +833,66 @@ def infer_expr_type_from_ast(
             if func_name == "dict":
                 return Map(InterfaceRef("any"), InterfaceRef("any"))
             if func_name == "tuple":
+                args = node.get("args", [])
+                if args:
+                    arg_type = infer_expr_type_from_ast(
+                        args[0],
+                        type_ctx,
+                        symbols,
+                        current_func_info,
+                        current_class_name,
+                        node_types,
+                        hierarchy_root,
+                    )
+                    if isinstance(arg_type, Slice):
+                        return Tuple((arg_type.element,), variadic=True)
                 return Tuple(())  # Empty tuple
+            # Built-in iterator functions
+            if func_name == "enumerate":
+                args = node.get("args", [])
+                if args:
+                    iter_type = infer_expr_type_from_ast(
+                        args[0], type_ctx, symbols, current_func_info,
+                        current_class_name, node_types, hierarchy_root,
+                    )
+                    if isinstance(iter_type, Slice):
+                        return Slice(Tuple((INT, iter_type.element)))
+                return Slice(Tuple((INT, InterfaceRef("any"))))
+            if func_name == "zip":
+                args = node.get("args", [])
+                if len(args) >= 2:
+                    t1 = infer_expr_type_from_ast(
+                        args[0], type_ctx, symbols, current_func_info,
+                        current_class_name, node_types, hierarchy_root,
+                    )
+                    t2 = infer_expr_type_from_ast(
+                        args[1], type_ctx, symbols, current_func_info,
+                        current_class_name, node_types, hierarchy_root,
+                    )
+                    e1 = t1.element if isinstance(t1, Slice) else InterfaceRef("any")
+                    e2 = t2.element if isinstance(t2, Slice) else InterfaceRef("any")
+                    return Slice(Tuple((e1, e2)))
+                return Slice(Tuple(()))
+            if func_name == "reversed":
+                args = node.get("args", [])
+                if args:
+                    iter_type = infer_expr_type_from_ast(
+                        args[0], type_ctx, symbols, current_func_info,
+                        current_class_name, node_types, hierarchy_root,
+                    )
+                    if isinstance(iter_type, Slice):
+                        return iter_type
+                return Slice(InterfaceRef("any"))
+            if func_name == "sorted":
+                args = node.get("args", [])
+                if args:
+                    iter_type = infer_expr_type_from_ast(
+                        args[0], type_ctx, symbols, current_func_info,
+                        current_class_name, node_types, hierarchy_root,
+                    )
+                    if isinstance(iter_type, Slice):
+                        return iter_type
+                return Slice(InterfaceRef("any"))
             # Constructor calls
             if func_name in symbols.structs:
                 return Pointer(StructRef(func_name))
@@ -856,6 +922,10 @@ def infer_expr_type_from_ast(
         if val_type == STRING:
             return STRING  # string indexing returns string (after Cast)
         if isinstance(val_type, Slice):
+            # Check if this is a slice operation (xs[1:3]) vs element access (xs[0])
+            slice_node = node.get("slice", {})
+            if isinstance(slice_node, dict) and slice_node.get("_type") == "Slice":
+                return val_type  # Slicing returns same list type
             return val_type.element
         if isinstance(val_type, Map):
             return val_type.value
@@ -863,6 +933,27 @@ def infer_expr_type_from_ast(
     if node_t == "BinOp":
         op = op_type(node.get("op"))
         if op in ("BitAnd", "BitOr", "BitXor", "LShift", "RShift"):
+            if op in ("BitAnd", "BitOr", "BitXor"):
+                left_type = infer_expr_type_from_ast(
+                    node.get("left"),
+                    type_ctx,
+                    symbols,
+                    current_func_info,
+                    current_class_name,
+                    node_types,
+                    hierarchy_root,
+                )
+                right_type = infer_expr_type_from_ast(
+                    node.get("right"),
+                    type_ctx,
+                    symbols,
+                    current_func_info,
+                    current_class_name,
+                    node_types,
+                    hierarchy_root,
+                )
+                if left_type == BOOL and right_type == BOOL:
+                    return BOOL
             return INT
         if op in ("Add", "Sub", "Mult", "FloorDiv", "Mod"):
             left_type = infer_expr_type_from_ast(
@@ -919,6 +1010,20 @@ def infer_expr_type_from_ast(
         return Slice(InterfaceRef("any"))
     # Dict literals
     if node_t == "Dict":
+        keys = node.get("keys", [])
+        values = node.get("values", [])
+        if keys and isinstance(keys[0], dict):
+            key_type = infer_expr_type_from_ast(
+                keys[0], type_ctx, symbols, current_func_info,
+                current_class_name, node_types, hierarchy_root,
+            )
+            val_type = InterfaceRef("any")
+            if values and isinstance(values[0], dict):
+                val_type = infer_expr_type_from_ast(
+                    values[0], type_ctx, symbols, current_func_info,
+                    current_class_name, node_types, hierarchy_root,
+                )
+            return Map(key_type, val_type)
         return Map(InterfaceRef("any"), InterfaceRef("any"))
     # Set literals
     if node_t == "Set":

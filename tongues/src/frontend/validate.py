@@ -167,7 +167,7 @@ class TypeEnv:
         self.guarded_attrs: set[str] = set()  # attribute paths guarded by is not None
 
     def copy(self) -> TypeEnv:
-        return TypeEnv(
+        env = TypeEnv(
             var_types=self.var_types.copy(),
             return_type=self.return_type,
             return_py_type=self.return_py_type,
@@ -403,6 +403,24 @@ def _validate_assign(stmt: ASTNode, env: TypeEnv) -> None:
         if is_type(target, ["Subscript"]):
             _validate_subscript_assign(target, value, env, stmt)
         return
+    # Empty collection without annotation requires type annotation
+    var_name = target.get("id")
+    if not env.source_type(var_name):
+        val_t = value.get("_type") if isinstance(value, dict) else None
+        if val_t == "List" and not value.get("elts"):
+            lineno = stmt.get("lineno", 0)
+            raise ParseError(
+                f"type error: empty list needs type annotation",
+                lineno,
+                0,
+            )
+        if val_t == "Dict" and not value.get("keys"):
+            lineno = stmt.get("lineno", 0)
+            raise ParseError(
+                f"type error: empty dict needs type annotation",
+                lineno,
+                0,
+            )
 
 
 def _validate_ann_assign(stmt: ASTNode, env: TypeEnv) -> None:
@@ -616,6 +634,16 @@ def _validate_func_call(expr: ASTNode, env: TypeEnv) -> None:
     if isinstance(var_type, FuncType):
         _check_callable_args(args, var_type, env, expr)
         return
+    # Builtin function arg type checks
+    if func_name == "len" and args:
+        arg_type = _expr_type(args[0], env)
+        if arg_type in (INT, FLOAT, BOOL):
+            lineno = expr.get("lineno", 0)
+            raise ParseError(
+                f"type error: len() requires a sized type, got {_type_name(arg_type)}",
+                lineno,
+                0,
+            )
     # Check function signatures from symbol table
     if func_name in env.symbols.functions:
         func_info = env.symbols.functions[func_name]
@@ -654,25 +682,40 @@ def _validate_method_call(expr: ASTNode, env: TypeEnv) -> None:
                     lineno,
                     0,
                 )
+    # Check hierarchy interface method availability
+    if isinstance(obj_type, InterfaceRef) and obj_type.name != "any":
+        root = obj_type.name
+        if root in env.symbols.structs:
+            struct_info = env.symbols.structs[root]
+            if method not in struct_info.methods and method not in ("to_sexp", "get_kind", "ToSexp", "GetKind"):
+                lineno = expr.get("lineno", 0)
+                raise ParseError(
+                    f"method '{method}' not available on base type {root}",
+                    lineno,
+                    0,
+                )
+    # Unwrap Pointer for collection mutation checks (list params are Pointer(Slice))
+    inner_type = obj_type.target if isinstance(obj_type, Pointer) else obj_type
     # Collection mutation checks
-    if isinstance(obj_type, Slice):
+    if isinstance(inner_type, Slice):
         if method == "append" and args:
-            _check_collection_element(args[0], obj_type.element, env, expr, "list")
+            _check_collection_element(args[0], inner_type.element, env, expr, "list")
         elif method == "extend" and args:
             arg_type = _expr_type(args[0], env)
-            if isinstance(arg_type, Slice):
-                if not _is_assignable(arg_type.element, obj_type.element, env):
+            ext_type = arg_type.target if isinstance(arg_type, Pointer) else arg_type
+            if isinstance(ext_type, Slice):
+                if not _is_assignable(ext_type.element, inner_type.element, env):
                     lineno = expr.get("lineno", 0)
                     raise ParseError(
-                        f"type error: cannot extend list[{_type_name(obj_type.element)}] with list[{_type_name(arg_type.element)}]",
+                        f"type error: cannot extend list[{_type_name(inner_type.element)}] with list[{_type_name(ext_type.element)}]",
                         lineno,
                         0,
                     )
         elif method == "insert" and len(args) >= 2:
-            _check_collection_element(args[1], obj_type.element, env, expr, "list")
-    elif isinstance(obj_type, Set):
+            _check_collection_element(args[1], inner_type.element, env, expr, "list")
+    elif isinstance(inner_type, Set):
         if method == "add" and args:
-            _check_collection_element(args[0], obj_type.element, env, expr, "set")
+            _check_collection_element(args[0], inner_type.element, env, expr, "set")
     # Unbound method call: ClassName.method(args) — missing self
     if is_type(obj, ["Name"]) and obj.get("id") in env.symbols.structs:
         class_name = obj.get("id")
@@ -736,6 +779,11 @@ def _check_func_info_args(
             break
         expected = param_list[i].typ
         actual = _expr_type(arg, env)
+        # When expected is FuncType and arg is a function reference, resolve its type
+        if isinstance(expected, FuncType) and actual == InterfaceRef("any"):
+            resolved = _resolve_func_ref(arg, env)
+            if resolved is not None:
+                actual = resolved
         if isinstance(expected, FuncType) and isinstance(actual, FuncType):
             if not _callable_assignable(actual, expected):
                 lineno = expr.get("lineno", 0)
@@ -753,13 +801,34 @@ def _check_func_info_args(
             )
 
 
+def _resolve_func_ref(arg: ASTNode, env: TypeEnv) -> "FuncType | None":
+    """Resolve a function name reference to its FuncType."""
+    if not is_type(arg, ["Name"]):
+        return None
+    name = arg.get("id", "")
+    if name in env.symbols.functions:
+        fi = env.symbols.functions[name]
+        param_types = tuple(p.typ for p in fi.params if p.name != "self")
+        return FuncType(params=param_types, ret=fi.return_type)
+    # Builtins
+    if name == "len":
+        return FuncType(params=(InterfaceRef("any"),), ret=INT)
+    if name == "str":
+        return FuncType(params=(InterfaceRef("any"),), ret=STRING)
+    if name == "int":
+        return FuncType(params=(InterfaceRef("any"),), ret=INT)
+    if name == "bool":
+        return FuncType(params=(InterfaceRef("any"),), ret=BOOL)
+    return None
+
+
 def _callable_assignable(actual: FuncType, expected: FuncType) -> bool:
     if len(actual.params) != len(expected.params):
         return False
     for a, e in zip(actual.params, expected.params):
-        if a != e and e != InterfaceRef("any"):
+        if a != e and e != InterfaceRef("any") and a != InterfaceRef("any"):
             return False
-    if actual.ret != expected.ret and expected.ret != InterfaceRef("any"):
+    if actual.ret != expected.ret and expected.ret != InterfaceRef("any") and actual.ret != InterfaceRef("any"):
         return False
     return True
 
@@ -798,13 +867,24 @@ def _validate_binop(expr: ASTNode, env: TypeEnv) -> None:
             if len(non_none) > 1:
                 lineno = expr.get("lineno", 0)
                 raise ParseError(
-                    f"cannot use {src} in arithmetic without narrowing",
+                    f"cannot use union type {src} in arithmetic without narrowing",
                     lineno,
                     0,
                 )
+    left_type = _expr_type(left, env)
+    right_type = _expr_type(right, env)
     if op == "Add":
-        left_type = _expr_type(left, env)
-        right_type = _expr_type(right, env)
+        # String + non-string or non-string + string
+        if (left_type == STRING) != (right_type == STRING):
+            if left_type == STRING or right_type == STRING:
+                other = right_type if left_type == STRING else left_type
+                if other not in (STRING, InterfaceRef("any")):
+                    lineno = expr.get("lineno", 0)
+                    raise ParseError(
+                        f"type error: cannot add {_type_name(left_type)} and {_type_name(right_type)}",
+                        lineno,
+                        0,
+                    )
         if isinstance(left_type, Slice) and isinstance(right_type, Slice):
             if not _is_assignable(right_type.element, left_type.element, env):
                 lineno = expr.get("lineno", 0)
@@ -883,8 +963,11 @@ def _validate_attribute(expr: ASTNode, env: TypeEnv) -> None:
                     )
                 return
         # Already narrowed or non-union — fall through
-    # Optional without guard (IR-level)
+    # Optional without guard (IR-level) — skip if guarded by is not None
     if isinstance(obj_type, Optional):
+        expr_path = _attr_path(obj)
+        if expr_path and expr_path in env.guarded_attrs:
+            return  # guarded by is not None check
         lineno = expr.get("lineno", 0)
         raise ParseError(
             f"cannot access '{attr}' on optional type (may be None)",
@@ -1005,6 +1088,33 @@ def _validate_dict_literal(expr: ASTNode, env: TypeEnv) -> None:
     for v in values:
         if isinstance(v, dict):
             _validate_expr(v, env)
+    # Check key/value type consistency
+    if not keys:
+        return
+    first_key_type = _expr_type(keys[0], env) if isinstance(keys[0], dict) else None
+    first_val_type = _expr_type(values[0], env) if values and isinstance(values[0], dict) else None
+    if first_key_type and first_key_type != InterfaceRef("any"):
+        for k in keys[1:]:
+            if isinstance(k, dict):
+                kt = _expr_type(k, env)
+                if kt != InterfaceRef("any") and not _is_assignable(kt, first_key_type, env):
+                    lineno = expr.get("lineno", 0)
+                    raise ParseError(
+                        f"type error: mixed key types in dict literal",
+                        lineno,
+                        0,
+                    )
+    if first_val_type and first_val_type != InterfaceRef("any"):
+        for v in values[1:]:
+            if isinstance(v, dict):
+                vt = _expr_type(v, env)
+                if vt != InterfaceRef("any") and not _is_assignable(vt, first_val_type, env):
+                    lineno = expr.get("lineno", 0)
+                    raise ParseError(
+                        f"type error: mixed value types in dict literal",
+                        lineno,
+                        0,
+                    )
 
 
 # ============================================================
@@ -1033,9 +1143,8 @@ def _validate_truthiness(expr: ASTNode, env: TypeEnv) -> None:
     if node_t in ("Compare", "Call"):
         return
     if node_t == "NamedExpr":
-        val = expr.get("value", {})
-        typ = _expr_type(val, env)
-        _check_type_truthiness(typ, None, expr)
+        # Walrus in boolean context: if (val := expr) — skip truthiness check
+        # since the pattern is always used for optional narrowing
         return
     # For Name nodes, use source type if available
     if node_t == "Name":
@@ -1203,14 +1312,17 @@ def _extract_narrowing(test: ASTNode, env: TypeEnv) -> tuple[TypeEnv, TypeEnv]:
                 then_env = env.narrow_source(is_not_none, var_type, non_none[0])
                 return then_env, env
 
-    # x.attr is not None — narrow x.attr for the then-branch
-    attr_not_none = _extract_attr_is_not_none(test)
-    if attr_not_none:
-        return env, env  # Attribute narrowing is handled by suppressing errors
+    # x.attr is not None — guard the attr path for the then-branch
+    attr_path = _extract_attr_is_not_none_path(test)
+    if attr_path:
+        then_env = env.guard_attr(attr_path)
+        return then_env, env
 
-    # x.attr is None — narrow x.attr for the else-branch
-    if _is_attr_is_none(test):
-        return env, env
+    # x.attr is None — guard the attr path for the else-branch
+    attr_path_none = _extract_attr_is_none_path(test)
+    if attr_path_none:
+        else_env = env.guard_attr(attr_path_none)
+        return env, else_env
 
     # not isinstance(x, T) → then gets complement, else gets T
     if is_type(test, ["UnaryOp"]) and op_type(test.get("op")) == "Not":
@@ -1275,6 +1387,7 @@ def _extract_narrowing(test: ASTNode, env: TypeEnv) -> tuple[TypeEnv, TypeEnv]:
 
     # Kind check narrowing: x.kind == "value"
     if _is_kind_check(test, env):
+        _validate_kind_value(test, env)
         return env, env  # Kind checks are allowed, narrowing handled by inference
 
     return env, env
@@ -1322,6 +1435,42 @@ def _is_kind_check(test: ASTNode, env: TypeEnv) -> bool:
     return False
 
 
+def _validate_kind_value(test: ASTNode, env: TypeEnv) -> None:
+    """Validate that a kind check value maps to a known struct."""
+    comparators = test.get("comparators", [])
+    if not comparators:
+        return
+    right = comparators[0]
+    if not (is_type(right, ["Constant"]) and isinstance(right.get("value"), str)):
+        return
+    kind_value = right.get("value")
+    # Check against hierarchy kind_to_struct
+    if env.kind_to_struct and kind_value not in env.kind_to_struct:
+        lineno = test.get("lineno", 0)
+        raise ParseError(
+            f"kind value '{kind_value}' does not match any known type",
+            lineno,
+            0,
+        )
+        return
+    # Check against source type union members
+    left = test.get("left", {})
+    if is_type(left, ["Attribute"]) and left.get("attr") == "kind":
+        obj = left.get("value", {})
+        if is_type(obj, ["Name"]):
+            src = env.source_type(obj.get("id", ""))
+            if src and _is_union_source(src):
+                parts = _non_none_parts(src)
+                valid_kinds = {p.lower() for p in parts}
+                if kind_value not in valid_kinds:
+                    lineno = test.get("lineno", 0)
+                    raise ParseError(
+                        f"kind value '{kind_value}' does not match any union member",
+                        lineno,
+                        0,
+                    )
+
+
 def _extract_is_none(test: ASTNode) -> str | None:
     if not is_type(test, ["Compare"]):
         return None
@@ -1354,30 +1503,46 @@ def _extract_is_not_none(test: ASTNode) -> str | None:
     return None
 
 
-def _is_attr_is_not_none(test: ASTNode) -> bool:
+def _extract_attr_is_not_none_path(test: ASTNode) -> str | None:
+    """Extract 'x.attr' path from 'x.attr is not None'."""
     if not is_type(test, ["Compare"]):
-        return False
+        return None
     ops = test.get("ops", [])
     if len(ops) != 1 or not is_type(ops[0], ["IsNot"]):
-        return False
+        return None
     left = test.get("left", {})
     comparators = test.get("comparators", [])
     if not comparators:
-        return False
-    return is_type(left, ["Attribute"]) and _is_none_literal(comparators[0])
+        return None
+    if is_type(left, ["Attribute"]) and _is_none_literal(comparators[0]):
+        return _attr_path(left)
+    return None
 
 
-def _is_attr_is_none(test: ASTNode) -> bool:
+def _extract_attr_is_none_path(test: ASTNode) -> str | None:
+    """Extract 'x.attr' path from 'x.attr is None'."""
     if not is_type(test, ["Compare"]):
-        return False
+        return None
     ops = test.get("ops", [])
     if len(ops) != 1 or not is_type(ops[0], ["Is"]):
-        return False
+        return None
     left = test.get("left", {})
     comparators = test.get("comparators", [])
     if not comparators:
-        return False
-    return is_type(left, ["Attribute"]) and _is_none_literal(comparators[0])
+        return None
+    if is_type(left, ["Attribute"]) and _is_none_literal(comparators[0]):
+        return _attr_path(left)
+    return None
+
+
+def _attr_path(node: ASTNode) -> str:
+    """Build a dot-separated attribute path like 'n.next'."""
+    if is_type(node, ["Name"]):
+        return node.get("id", "")
+    if is_type(node, ["Attribute"]):
+        base = _attr_path(node.get("value", {}))
+        return f"{base}.{node.get('attr', '')}" if base else node.get("attr", "")
+    return ""
 
 
 # ============================================================
@@ -1525,6 +1690,14 @@ def _expr_type(expr: ASTNode, env: TypeEnv) -> "Type":
     if node_t == "Tuple":
         elts = expr.get("elts", [])
         return Tuple(tuple(_expr_type(e, env) for e in elts))
+    if node_t == "Dict":
+        keys = expr.get("keys", [])
+        values = expr.get("values", [])
+        if keys and isinstance(keys[0], dict):
+            key_type = _expr_type(keys[0], env)
+            val_type = _expr_type(values[0], env) if values and isinstance(values[0], dict) else InterfaceRef("any")
+            return Map(key_type, val_type)
+        return Map(InterfaceRef("any"), InterfaceRef("any"))
     if node_t == "NamedExpr":
         return _expr_type(expr.get("value", {}), env)
     return InterfaceRef("any")
@@ -1598,6 +1771,20 @@ def _is_assignable(actual: "Type", expected: "Type", env: TypeEnv) -> bool:
         return _callable_assignable(actual, expected)
     if isinstance(actual, StructRef) and isinstance(expected, InterfaceRef):
         if expected.name == env.hierarchy_root and actual.name in env.node_types:
+            return True
+    # Pointer[StructA] assignable to Pointer[StructB] if both are in node hierarchy
+    if (
+        isinstance(actual, Pointer)
+        and isinstance(expected, Pointer)
+        and isinstance(actual.target, StructRef)
+        and isinstance(expected.target, StructRef)
+    ):
+        if (
+            actual.target.name in env.node_types
+            and expected.target.name in env.node_types
+        ):
+            return True
+        if expected.target.name == env.hierarchy_root and actual.target.name in env.node_types:
             return True
     return False
 

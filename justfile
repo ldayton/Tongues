@@ -22,35 +22,39 @@ test-cli-local:
 
 # Run parse tests locally
 test-parse-local:
-    uv run --directory tongues pytest tests/test_02_parse.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_parse -v
 
 # Run subset tests locally
 test-subset-local:
-    uv run --directory tongues pytest tests/test_03_subset.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_subset -v
 
 # Run names tests locally
 test-names-local:
-    uv run --directory tongues pytest tests/test_04_names.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_names -v
 
 # Run signatures tests locally
 test-signatures-local:
-    uv run --directory tongues pytest tests/test_05_signatures.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_sigs -v
 
 # Run fields tests locally
 test-fields-local:
-    uv run --directory tongues pytest tests/test_06_fields.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_fields -v
 
 # Run hierarchy tests locally
 test-hierarchy-local:
-    uv run --directory tongues pytest tests/test_07_hierarchy.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
+
+# Run type-check tests locally
+test-typecheck-local:
+    uv run --directory tongues pytest tests/test_runner.py -k test_typecheck -v
 
 # Run codegen tests locally
 test-codegen-local:
-    uv run --directory tongues pytest tests/test_15_codegen.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_codegen -v
 
 # Run apptests locally for a specific language (or all if not specified)
 test-apptests-local lang="":
-    uv run --directory tongues pytest tests/test_15_app.py {{ if lang != "" { "--target " + lang } else { "" } }} -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_apptest {{ if lang != "" { "--target " + lang } else { "" } }} -v
 
 # Lint (--fix to apply changes)
 lint *ARGS:
@@ -110,49 +114,49 @@ test-cli:
 test-parse:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_02_parse.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_parse -v
 
 # Run subset tests in Docker
 test-subset:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_03_subset.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_subset -v
 
 # Run names tests in Docker
 test-names:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_04_names.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_names -v
 
 # Run signatures tests in Docker
 test-signatures:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_05_signatures.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_sigs -v
 
 # Run fields tests in Docker
 test-fields:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_06_fields.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_fields -v
 
 # Run hierarchy tests in Docker
 test-hierarchy:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_07_hierarchy.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
 
 # Run codegen tests in Docker (uses python image)
 test-codegen:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_15_codegen.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_codegen -v
 
 # Run apptests in Docker for a language (image must have python+uv installed)
 test-apptests lang:
     docker build -t tongues-{{lang}} docker/{{lang}}
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
-        uv run --directory tongues pytest tests/test_15_app.py --target {{lang}} -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_apptest --target {{lang}} -v
 
 # Check if formatters are installed
 formatters:
