@@ -7,6 +7,9 @@ dependencies = []
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.9"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff.lint]
 ignore = [
     # E402: Import not at top of file. Backends define helper functions before bulk imports.

@@ -18,7 +18,7 @@ subset:
 
 # Run CLI tests locally
 test-cli-local:
-    uv run --directory tongues pytest tests/test_01_cli.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_cli -v
 
 # Run parse tests locally
 test-parse-local:
@@ -78,6 +78,7 @@ check:
     just test-signatures && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-fields && results[fields]=✅ || { results[fields]=❌; failed=1; }
     just test-hierarchy && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
+    just test-typecheck && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-codegen && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -88,7 +89,7 @@ check:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in fmt lint subset cli parse subset-tests names signatures fields hierarchy codegen; do
+    for t in fmt lint subset cli parse subset-tests names signatures fields hierarchy typecheck codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -108,7 +109,7 @@ docker-build lang:
 test-cli:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_01_cli.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_cli -v
 
 # Run parse tests in Docker
 test-parse:
@@ -145,6 +146,12 @@ test-hierarchy:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
+
+# Run type-check tests in Docker
+test-typecheck:
+    docker build -t tongues-python docker/python
+    docker run --rm -v "$(pwd):/workspace" tongues-python \
+        uv run --directory tongues pytest tests/test_runner.py -k test_typecheck -v
 
 # Run codegen tests in Docker (uses python image)
 test-codegen:
@@ -252,10 +259,12 @@ test-local:
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
     just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
     just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
+    just test-subset-local && results[subset]=✅ || { results[subset]=❌; failed=1; }
     just test-names-local && results[names]=✅ || { results[names]=❌; failed=1; }
     just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-fields-local && results[fields]=✅ || { results[fields]=❌; failed=1; }
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
+    just test-typecheck-local && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -266,7 +275,7 @@ test-local:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in versions cli parse names signatures fields hierarchy codegen; do
+    for t in versions cli parse subset names signatures fields hierarchy typecheck codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -294,6 +303,7 @@ check-local:
     just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-fields-local && results[fields]=✅ || { results[fields]=❌; failed=1; }
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
+    just test-typecheck-local && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
@@ -304,7 +314,7 @@ check-local:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in versions fmt lint subset cli parse subset-tests names signatures fields hierarchy codegen; do
+    for t in versions fmt lint subset cli parse subset-tests names signatures fields hierarchy typecheck codegen; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
