@@ -49,6 +49,73 @@ Target representations:
 | `Round(x)`     | `float -> int`           | round to nearest integer |
 | `DivMod(a, b)` | `int, int -> (int, int)` | quotient and remainder   |
 
+## Bytes
+
+```
+let tag: byte = 0xff
+let buf: bytes = read_bytes()
+let header: bytes = b"\x89PNG"
+let first: byte = buf[0]
+```
+
+`byte` is an unsigned 8-bit integer. `bytes` is a byte sequence for binary I/O. The `b"..."` literal creates a `bytes` value.
+
+### Functions
+
+| Function         | Signature      | Description                   |
+| ---------------- | -------------- | ----------------------------- |
+| `Len(b)`         | `bytes -> int` | byte count                    |
+| `ReadBytes()`    | `-> bytes`     | read all bytes from stdin     |
+| `ReadBytesN(n)`  | `int -> bytes` | read up to n bytes from stdin |
+| `WriteBytes(b)`  | `bytes -> int` | write bytes to stdout         |
+| `WriteStderr(b)` | `bytes -> int` | write bytes to stderr         |
+
+## Operators
+
+```
+let neg: int = -x
+let valid: bool = !done
+let low: int = mask & 0xff
+let sum: int = a + b
+let avg: int = total / count
+let odd: bool = n % 2 != 0
+let big: int = 2 ** 10
+let inRange: bool = 0 <= x <= 255
+let either: bool = a || b
+let shifted: int = flags << 2
+let abs: int = x > 0 ? x : -x
+```
+
+| Operator | Operands     | Result | Prec | Assoc | Description                                                         |
+| -------- | ------------ | ------ | ---- | ----- | ------------------------------------------------------------------- |
+| `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                                 |
+| `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                           |
+| `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                          |
+| `==`     | `T, T`       | `bool` | 4    | chain | equality; structural for structs, IEEE 754 for float (NaN != NaN)   |
+| `!=`     | `T, T`       | `bool` | 4    | chain | inequality                                                          |
+| `<`      | `int, int`   | `bool` | 4    | chain | less than                                                           |
+| `<=`     | `int, int`   | `bool` | 4    | chain | less or equal                                                       |
+| `>`      | `int, int`   | `bool` | 4    | chain | greater than                                                        |
+| `>=`     | `int, int`   | `bool` | 4    | chain | greater or equal                                                    |
+| `\|`     | `int, int`   | `int`  | 5    | left  | bitwise or                                                          |
+| `^`      | `int, int`   | `int`  | 6    | left  | bitwise xor                                                         |
+| `&`      | `int, int`   | `int`  | 7    | left  | bitwise and                                                         |
+| `<<`     | `int, int`   | `int`  | 8    | left  | left shift; right operand must be non-negative                      |
+| `>>`     | `int, int`   | `int`  | 8    | left  | arithmetic right shift (sign-extending); right operand non-negative |
+| `+`      | `int, int`   | `int`  | 9    | left  | addition                                                            |
+| `-`      | `int, int`   | `int`  | 9    | left  | subtraction                                                         |
+| `*`      | `int, int`   | `int`  | 10   | left  | multiplication                                                      |
+| `/`      | `int, int`   | `int`  | 10   | left  | truncating division (toward zero); `-7 / 2 == -3`                   |
+| `%`      | `int, int`   | `int`  | 10   | left  | truncating remainder; sign follows dividend; `-7 % 2 == -1`         |
+| `**`     | `int, int`   | `int`  | 11   | right | exponentiation; right operand must be non-negative                  |
+| `-`      | `int`        | `int`  | 12   | right | negation (prefix)                                                   |
+| `!`      | `bool`       | `bool` | 12   | right | logical not                                                         |
+| `~`      | `int`        | `int`  | 12   | right | bitwise complement (two's complement)                               |
+
+Arithmetic operators (`+`, `-`, `*`, `/`, `%`, `**`, unary `-`) also work on `float` operands, returning `float`. For float `/`, result is IEEE 754 division (not truncating). Comparison operators (`<`, `<=`, `>`, `>=`) also work on `float` and `string` (lexicographic).
+
+Chained comparisons (`a < b < c`) evaluate each operand once. They desugar to `a < b && b < c` but `b` is only computed once.
+
 ## Strings
 
 Target languages disagree on what a string is. Some are byte-oriented (Go, Rust), some are UTF-16 (Java, JavaScript), and indexing `s[i]` means different things in each. The IR defines `string` as a sequence of runes, so indexing and length have consistent character-level semantics across all targets.
@@ -96,101 +163,3 @@ let n: int = Len("café")        -- 4, not 5
 | `IsSpace(s)`           | `string -> bool`                   | all characters are whitespace        |
 | `IsUpper(s)`           | `string -> bool`                   | all characters are uppercase         |
 | `IsLower(s)`           | `string -> bool`                   | all characters are lowercase         |
-
-## Bytes
-
-```
-let tag: byte = 0xff
-let buf: bytes = read_bytes()
-let header: bytes = b"\x89PNG"
-let first: byte = buf[0]
-```
-
-`byte` is an unsigned 8-bit integer. `bytes` is a byte sequence for binary I/O. The `b"..."` literal creates a `bytes` value.
-
-### Functions
-
-| Function         | Signature      | Description                   |
-| ---------------- | -------------- | ----------------------------- |
-| `Len(b)`         | `bytes -> int` | byte count                    |
-| `ReadBytes()`    | `-> bytes`     | read all bytes from stdin     |
-| `ReadBytesN(n)`  | `int -> bytes` | read up to n bytes from stdin |
-| `WriteBytes(b)`  | `bytes -> int` | write bytes to stdout         |
-| `WriteStderr(b)` | `bytes -> int` | write bytes to stderr         |
-
-## Basic Expressions
-
-```
-x                               -- variable
-token.kind                      -- field access
-node.left.value                 -- chained field access
-items[0]                        -- index
-table["key"]                    -- map lookup
-items[1:5]                      -- slice
-items[:n]                       -- slice from start
-items[2:]                       -- slice to end
--x                              -- negation
-!done                           -- logical not
-~mask                           -- bitwise complement
-a + b                           -- arithmetic
-n % 2                           -- modulo
-2 ** 10                         -- exponentiation
-x == y                          -- equality
-a < b < c                       -- chained comparison
-a && b                          -- logical and
-x || y                          -- logical or
-flags & 0xff                    -- bitwise and
-n << 2                          -- shift
-x > 0 ? x : -x                 -- ternary
-n as float                      -- cast
-node as! Token                  -- checked downcast
-node is Token                   -- type test
-x is nil                        -- nil check
-x is !nil                       -- negated nil check
-```
-
-A bare identifier is a variable reference. Dot chains access struct fields left to right.
-
-`**` is right-associative. All other binary operators are left-associative. Chained comparisons (`a < b < c`) evaluate each operand once.
-
-### Precedence
-
-| Level | Operators         | Assoc |
-| ----- | ----------------- | ----- |
-| 1     | `?:`              | right |
-| 2     | `\|\|`            | left  |
-| 3     | `&&`              | left  |
-| 4     | `== != < <= > >=` | chain |
-| 5     | `\|`              | left  |
-| 6     | `^`               | left  |
-| 7     | `&`               | left  |
-| 8     | `<< >>`           | left  |
-| 9     | `+ -`             | left  |
-| 10    | `* / %`           | left  |
-| 11    | `**`              | right |
-| 12    | `- ! ~` (prefix)  | right |
-| 13    | `. [] () as is`   | left  |
-
-### Indexing vs slicing
-
-After `[`, the parser reads an expression then checks for `:`. No colon means index, colon means slice. All slice bounds are optional.
-
-```
-items[i]                        -- Index
-items[lo:hi]                    -- SliceExpr
-items[:hi]                      -- SliceExpr, low omitted
-items[lo:]                      -- SliceExpr, high omitted
-items[::step]                   -- SliceExpr, step only
-```
-
-### Casts and type operations
-
-`as`, `as!`, and `is` bind at postfix level (tighter than any binary operator).
-
-```
-n as float                      -- Cast: convert int to float
-node as! Token                  -- TypeAssert: checked downcast, panics on mismatch
-node is Token                   -- IsType: runtime type test, returns bool
-x is nil                        -- IsNil: nil check
-x is !nil                       -- IsNil(negated): not-nil check
-```
