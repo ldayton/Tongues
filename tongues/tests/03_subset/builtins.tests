@@ -574,11 +574,11 @@ def f() -> None:
 ok
 ---
 
-=== reversed not allowed
-def f(xs: list[int]) -> object:
-    return reversed(xs)
+=== reversed allowed
+def f(xs: list[int]) -> list[int]:
+    return list(reversed(xs))
 ---
-error: reversed
+ok
 ---
 
 === breakpoint not allowed
