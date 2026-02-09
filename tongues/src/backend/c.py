@@ -3749,10 +3749,6 @@ class CBackend:
             return from_elem.name != to_elem.name
         return False
 
-    def _is_lvalue(self, expr: Expr) -> bool:
-        """Check if expression is an lvalue (can take address of)."""
-        return isinstance(expr, (Var, FieldAccess, Index, DerefLV))
-
     def _get_rvalue_temp(
         self, struct_name: str, field_name: str
     ) -> tuple[str, bool] | None:

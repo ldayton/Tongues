@@ -1507,7 +1507,6 @@ def _validate_kind_value(test: ASTNode, env: TypeEnv) -> None:
             lineno,
             0,
         )
-        return
     # Check against source type union members
     left = test.get("left", {})
     if is_type(left, ["Attribute"]) and left.get("attr") == "kind":

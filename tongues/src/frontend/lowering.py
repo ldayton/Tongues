@@ -309,7 +309,7 @@ def fill_default_args(
         method_info = symbols.structs[struct_name].methods.get(method)
     # If struct lookup failed, search all structs for this method (for union-typed receivers)
     if not method_info:
-        for s_name, s_info in symbols.structs.items():
+        for _, s_info in symbols.structs.items():
             if method in s_info.methods:
                 method_info = s_info.methods[method]
                 break
@@ -510,13 +510,6 @@ def coerce_args_to_node(
                     loc=arg.loc,
                 )
     return result
-
-
-def is_pointer_to_slice(typ: "Type") -> bool:
-    """Check if type is pointer-to-slice (Pointer(Slice) only, NOT Optional(Slice))."""
-    if isinstance(typ, Pointer) and isinstance(typ.target, Slice):
-        return True
-    return False
 
 
 def is_len_call(node: ASTNode) -> bool:
@@ -936,18 +929,6 @@ def get_sentinel_value(
             return sentinel_int_fields[(class_name, field_name)]
     return None
 
-
-def is_sentinel_int(
-    node: ASTNode,
-    type_ctx: "TypeContext",
-    current_class_name: str,
-    sentinel_int_fields: dict[tuple[str, str], int],
-) -> bool:
-    """Check if an expression is a sentinel int (uses a sentinel value for None)."""
-    return (
-        get_sentinel_value(node, type_ctx, current_class_name, sentinel_int_fields)
-        is not None
-    )
 
 
 def lower_expr_Compare(

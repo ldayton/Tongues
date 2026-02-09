@@ -1108,7 +1108,6 @@ class CSharpBackend:
             case TrimChars(string=s, chars=chars, mode=mode):
                 s_str = self._expr(s)
                 if isinstance(chars, StringLit):
-                    chars_arr = chars.value.replace("\\", "\\\\").replace("'", "\\'")
                     if mode == "both":
                         return f"{s_str}.Trim({self._expr(chars)}.ToCharArray())"
                     elif mode == "left":

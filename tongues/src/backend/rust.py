@@ -1097,7 +1097,7 @@ class RustBackend(Emitter):
         )
         return f"std::collections::HashMap::from([{pairs}])"
 
-    def _emit_MapLit_with_optional(self, expr: MapLit, opt_type: Optional) -> str:
+    def _emit_MapLit_with_optional(self, expr: MapLit, _opt_type: Optional) -> str:
         """Emit MapLit where values should be Option<T>, wrapping non-None values in Some()."""
         if not expr.entries:
             return "std::collections::HashMap::new()"
