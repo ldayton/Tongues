@@ -397,7 +397,10 @@ def _serialize_type(obj: Type) -> dict[str, object]:
     if isinstance(obj, Bytes):
         return {"_type": "Bytes", "kind": "bytes"}
     if isinstance(obj, Slice):
-        return {"_type": "Slice", "element": serialize(obj.element)}
+        d: dict[str, object] = {"_type": "Slice", "element": serialize(obj.element)}
+        if isinstance(obj.element, Primitive) and obj.element.kind == "byte":
+            d["kind"] = "bytes"
+        return d
     if isinstance(obj, Array):
         return {"_type": "Array", "element": serialize(obj.element), "size": obj.size}
     if isinstance(obj, Map):

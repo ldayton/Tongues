@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from ..ir import (
     BOOL,
     BYTE,
-    Bytes,
     FLOAT,
     INT,
     STRING,
@@ -38,7 +37,7 @@ TYPE_MAP: dict[str, Type] = {
     "int": INT,
     "bool": BOOL,
     "float": FLOAT,
-    "bytes": Bytes(),
+    "bytes": Slice(BYTE),
     "bytearray": Slice(BYTE),
 }
 
