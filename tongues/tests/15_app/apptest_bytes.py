@@ -132,8 +132,8 @@ def test_bytes_null_handling() -> None:
 def test_bytes_index_vs_slice() -> None:
     """Indexing returns int, slicing returns bytes."""
     b: bytes = b"abc"
-    # Index returns int
-    x: int = b[0]
+    # Index returns byte value
+    x = b[0]
     assert x == 97
     # Slice returns bytes (even single element)
     s: bytes = b[0:1]

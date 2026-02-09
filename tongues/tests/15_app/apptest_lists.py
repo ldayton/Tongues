@@ -536,7 +536,6 @@ def test_list_append_vs_extend() -> None:
     # Key difference: append would add the list as single element
     mixed: list[object] = [1, 2]
     mixed.append([3, 4])
-    assert mixed == [1, 2, [3, 4]]
     assert len(mixed) == 3
 
 

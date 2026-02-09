@@ -37,6 +37,7 @@ TYPE_MAP: dict[str, Type] = {
     "int": INT,
     "bool": BOOL,
     "float": FLOAT,
+    "None": VOID,
     "bytes": Slice(BYTE),
     "bytearray": Slice(BYTE),
     "object": InterfaceRef("any"),
@@ -954,6 +955,12 @@ def infer_expr_type_from_ast(
                 )
                 if left_type == BOOL and right_type == BOOL:
                     return BOOL
+                if isinstance(left_type, Set):
+                    return left_type
+                if isinstance(left_type, Slice):
+                    return Set(left_type.element)
+                if isinstance(left_type, Map) and op == "BitOr":
+                    return left_type
             return INT
         if op in ("Add", "Sub", "Mult", "FloorDiv", "Mod"):
             left_type = infer_expr_type_from_ast(
@@ -974,6 +981,20 @@ def infer_expr_type_from_ast(
                 node_types,
                 hierarchy_root,
             )
+            if op == "Sub":
+                if isinstance(left_type, Set):
+                    return left_type
+                if isinstance(left_type, Slice):
+                    return Set(left_type.element)
+            if op == "Mult":
+                if isinstance(left_type, Slice):
+                    return left_type
+                if isinstance(right_type, Slice):
+                    return right_type
+                if left_type == STRING:
+                    return STRING
+                if right_type == STRING:
+                    return STRING
             if left_type == INT or right_type == INT:
                 return INT
     # UnaryOp - infer type based on operator

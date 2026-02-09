@@ -1760,6 +1760,12 @@ def _is_assignable(actual: "Type", expected: "Type", env: TypeEnv) -> bool:
             if len(actual.elements) > 0 and len(expected.elements) > 0:
                 return _is_assignable(actual.elements[0], expected.elements[0], env)
             return True
+        if not actual.variadic and expected.variadic and len(expected.elements) == 1:
+            if not actual.elements:
+                return True
+            return all(
+                _is_assignable(a, expected.elements[0], env) for a in actual.elements
+            )
         if actual.variadic != expected.variadic:
             return False
         if len(actual.elements) != len(expected.elements):
