@@ -1,5 +1,7 @@
 # IR Specification
 
+> **Note:** This document is an exploration of a future IR iteration, using language-like syntax to clarify thinking. It is not consistent with the rest of the spec.
+
 This spec provides a textual syntax for the Tongues IR, to facilitate exposition. The "language" is LL(1) parseable.
 
 Grammar notation: `|` alternatives, `*` repetition, `?` optional, `'x'` terminal.
@@ -151,8 +153,8 @@ let n: int = Len("café")        -- 4, not 5
 | `Strip(s, chars)`      | `string, string -> string`         | trim characters from both ends       |
 | `LStrip(s, chars)`     | `string, string -> string`         | trim characters from left            |
 | `RStrip(s, chars)`     | `string, string -> string`         | trim characters from right           |
-| `Split(s, sep)`        | `string, string -> []string`       | split by separator                   |
-| `Join(sep, parts)`     | `string, []string -> string`       | join with separator                  |
+| `Split(s, sep)`        | `string, string -> list[string]`   | split by separator                   |
+| `Join(sep, parts)`     | `string, list[string] -> string`   | join with separator                  |
 | `Find(s, sub)`         | `string, string -> int`            | index of substring, -1 if missing    |
 | `Replace(s, old, new)` | `string, string, string -> string` | replace all occurrences              |
 | `StartsWith(s, pre)`   | `string, string -> bool`           | prefix test                          |
@@ -163,3 +165,165 @@ let n: int = Len("café")        -- 4, not 5
 | `IsSpace(s)`           | `string -> bool`                   | all characters are whitespace        |
 | `IsUpper(s)`           | `string -> bool`                   | all characters are uppercase         |
 | `IsLower(s)`           | `string -> bool`                   | all characters are lowercase         |
+
+## Functions
+
+```
+fn Gcd(a: int, b: int) -> int {
+    while b != 0 {
+        let t: int = b
+        b = a % b
+        a = t
+    }
+    return a
+}
+
+fn Greet(name: string) -> void {
+    Print(Concat("hello, ", name))
+}
+```
+
+A function has a name, typed parameters, a return type, and a body. `void` means no return value. The body is a block of statements enclosed in `{}`.
+
+```
+fn Factorial(n: int) -> int {
+    if n <= 1 {
+        return 1
+    }
+    return n * Factorial(n - 1)
+}
+```
+
+## Variables
+
+```
+let x: int = 42
+let name: string = "hello"
+let done: bool = false
+let items: list[int]
+```
+
+`let` declares a variable with an explicit type. The initializer is optional — omitting it gives the zero value for the type.
+
+`let` bindings are mutable. Backends may emit `const`/`final` when they detect a binding is never reassigned.
+
+## Assignment
+
+```
+x = 10
+name = "world"
+token.kind = "eof"
+items[0] = 99
+```
+
+Assignment writes to a variable, field, or index. The target must already be declared.
+
+### Compound assignment
+
+```
+x += 1
+total -= cost
+mask &= 0xff
+count *= 2
+```
+
+Compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=`) applies the operator and assigns the result.
+
+### Tuple assignment
+
+```
+let q: int
+let r: int
+q, r = DivMod(17, 5)
+```
+
+Tuple assignment destructures a tuple or multi-return value into multiple targets.
+
+## Return
+
+```
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+
+fn Log(msg: string) -> void {
+    Print(msg)
+    return
+}
+```
+
+`return` exits the current function. A `void` function uses bare `return` or omits it.
+
+## If
+
+```
+if x > 0 {
+    Print("positive")
+}
+
+if x > 0 {
+    Print("positive")
+} else {
+    Print("non-positive")
+}
+
+if x > 0 {
+    Print("positive")
+} else if x == 0 {
+    Print("zero")
+} else {
+    Print("negative")
+}
+```
+
+Braces are required. There is no parenthesized condition — the expression goes directly after `if`. `else if` chains are supported.
+
+## While
+
+```
+while n > 0 {
+    n = n / 10
+    digits += 1
+}
+```
+
+Executes the body while the condition is true. The condition must be `bool`.
+
+## For Range
+
+```
+for value in items {
+    Print(IntToStr(value))
+}
+
+for i, ch in name {
+    Print(Concat(IntToStr(i), Concat(": ", Concat(IntToStr(Ord(ch)), "\n"))))
+}
+
+for _, v in pairs {
+    total += v
+}
+
+for i in items {
+    Print(IntToStr(i))
+}
+```
+
+Iterates over a collection. The loop variable(s) before `in` bind the index and/or value for each element. Use `_` to discard a variable. A single variable before `in` binds the value; two variables bind index and value.
+
+## Break and Continue
+
+```
+while true {
+    let line: string = ReadLine()
+    if line == "" {
+        break
+    }
+    if StartsWith(line, "#") {
+        continue
+    }
+    Process(line)
+}
+```
+
+`break` exits the innermost loop. `continue` skips to the next iteration.
