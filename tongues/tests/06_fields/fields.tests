@@ -1,0 +1,733 @@
+=== class body annotation int
+class Foo:
+    def __init__(self, x: int) -> None:
+        self.x = x
+---
+classes.Foo.fields.x.typ.kind = int
+---
+
+=== class body annotation str
+class Foo:
+    def __init__(self, x: str) -> None:
+        self.x = x
+---
+classes.Foo.fields.x.typ.kind = string
+---
+
+=== class body annotation bool
+class Foo:
+    def __init__(self, x: bool) -> None:
+        self.x = x
+---
+classes.Foo.fields.x.typ.kind = bool
+---
+
+=== class body annotation float
+class Foo:
+    def __init__(self, x: float) -> None:
+        self.x = x
+---
+classes.Foo.fields.x.typ.kind = float
+---
+
+=== multiple fields from init
+class Point:
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+---
+classes.Point.fields.x.typ.kind = int
+classes.Point.fields.y.typ.kind = int
+---
+
+=== list field
+class Foo:
+    def __init__(self, items: list[int]) -> None:
+        self.items = items
+---
+classes.Foo.fields.items.typ._type = Slice
+classes.Foo.fields.items.typ.element.kind = int
+---
+
+=== dict field
+class Foo:
+    def __init__(self, data: dict[str, int]) -> None:
+        self.data = data
+---
+classes.Foo.fields.data.typ._type = Map
+classes.Foo.fields.data.typ.key.kind = string
+classes.Foo.fields.data.typ.value.kind = int
+---
+
+=== set field
+class Foo:
+    def __init__(self, tags: set[str]) -> None:
+        self.tags = tags
+---
+classes.Foo.fields.tags.typ._type = Set
+classes.Foo.fields.tags.typ.element.kind = string
+---
+
+=== optional field
+class Foo:
+    def __init__(self, x: int | None) -> None:
+        self.x = x
+---
+classes.Foo.fields.x.typ._type = Optional
+classes.Foo.fields.x.typ.inner.kind = int
+---
+
+=== tuple field
+class Foo:
+    def __init__(self, pair: tuple[int, str]) -> None:
+        self.pair = pair
+---
+classes.Foo.fields.pair.typ._type = Tuple
+classes.Foo.fields.pair.typ.elements.0.kind = int
+classes.Foo.fields.pair.typ.elements.1.kind = string
+---
+
+=== init params order
+class Point:
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+---
+classes.Point.init_params.length = 2
+classes.Point.init_params.0 = x
+classes.Point.init_params.1 = y
+---
+
+=== param to field direct mapping
+class Point:
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+---
+classes.Point.param_to_field.x = x
+classes.Point.param_to_field.y = y
+---
+
+=== param to field renamed
+class Foo:
+    def __init__(self, value: int) -> None:
+        self.val = value
+---
+classes.Foo.param_to_field.value = val
+---
+
+=== const field string literal
+class Add:
+    def __init__(self) -> None:
+        self.kind = "add"
+---
+classes.Add.const_fields.kind = add
+---
+
+=== const field arbitrary name
+class Foo:
+    def __init__(self) -> None:
+        self.tag = "foo"
+---
+classes.Foo.const_fields.tag = foo
+---
+
+=== const field not from param
+class Foo:
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+---
+classes.Foo.const_fields.length = 0
+---
+
+=== dataclass simple
+from dataclasses import dataclass
+@dataclass
+class Point:
+    x: int
+    y: int
+---
+classes.Point.fields.x.typ.kind = int
+classes.Point.fields.y.typ.kind = int
+---
+
+=== dataclass with default
+from dataclasses import dataclass
+@dataclass
+class Config:
+    name: str
+    count: int = 0
+---
+classes.Config.fields.name.typ.kind = string
+classes.Config.fields.count.typ.kind = int
+---
+
+=== dataclass init params
+from dataclasses import dataclass
+@dataclass
+class Point:
+    x: int
+    y: int
+---
+classes.Point.init_params.length = 2
+classes.Point.init_params.0 = x
+classes.Point.init_params.1 = y
+---
+
+=== inheritance own fields only
+class Base:
+    def __init__(self, x: int) -> None:
+        self.x = x
+class Child(Base):
+    def __init__(self, x: int, y: str) -> None:
+        super().__init__(x)
+        self.y = y
+---
+classes.Child.fields.y.typ.kind = string
+---
+
+=== multiple classes
+class Foo:
+    def __init__(self, x: int) -> None:
+        self.x = x
+class Bar:
+    def __init__(self, name: str) -> None:
+        self.name = name
+---
+classes.Foo.fields.x.typ.kind = int
+classes.Bar.fields.name.typ.kind = string
+---
+
+=== empty class no fields
+class Empty:
+    def __init__(self) -> None:
+        pass
+---
+classes.Empty.fields.length = 0
+---
+
+=== empty class no init
+class Empty:
+    pass
+---
+ok
+---
+
+=== kind field auto generated from class name
+class BinaryOp:
+    def __init__(self) -> None:
+        pass
+class UnaryOp:
+    def __init__(self) -> None:
+        pass
+---
+ok
+---
+
+=== nested collection field
+class Foo:
+    def __init__(self, data: list[dict[str, int]]) -> None:
+        self.data = data
+---
+classes.Foo.fields.data.typ._type = Slice
+classes.Foo.fields.data.typ.element._type = Map
+classes.Foo.fields.data.typ.element.key.kind = string
+classes.Foo.fields.data.typ.element.value.kind = int
+---
+
+=== struct ref field
+class Node:
+    def __init__(self, child: Node | None) -> None:
+        self.child = child
+---
+classes.Node.fields.child.typ._type = Optional
+---
+
+=== needs constructor from init
+class Foo:
+    def __init__(self, x: int) -> None:
+        self.x = x
+---
+classes.Foo.needs_constructor = true
+---
+
+=== bytes field
+class Foo:
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+---
+ok
+---
+
+=== field from literal int
+class Foo:
+    def __init__(self) -> None:
+        self.x = 0
+---
+classes.Foo.fields.x.typ.kind = int
+---
+
+=== field from literal str
+class Foo:
+    def __init__(self) -> None:
+        self.name = ""
+---
+classes.Foo.fields.name.typ.kind = string
+---
+
+=== field from literal bool
+class Foo:
+    def __init__(self) -> None:
+        self.flag = True
+---
+classes.Foo.fields.flag.typ.kind = bool
+---
+
+=== class with methods not just init
+class Counter:
+    def __init__(self, n: int) -> None:
+        self.n = n
+    def increment(self) -> None:
+        self.n = self.n + 1
+    def get(self) -> int:
+        return self.n
+---
+classes.Counter.fields.n.typ.kind = int
+classes.Counter.init_params.length = 1
+classes.Counter.init_params.0 = n
+---
+
+=== dataclass unsafe hash
+from dataclasses import dataclass
+@dataclass(unsafe_hash=True)
+class Key:
+    name: str
+    value: int
+---
+classes.Key.fields.name.typ.kind = string
+classes.Key.fields.value.typ.kind = int
+---
+
+=== dataclass eq true
+from dataclasses import dataclass
+@dataclass(eq=True)
+class Point:
+    x: int
+    y: int
+---
+classes.Point.fields.x.typ.kind = int
+classes.Point.fields.y.typ.kind = int
+---
+
+=== three fields different types
+class Record:
+    def __init__(self, name: str, age: int, score: float) -> None:
+        self.name = name
+        self.age = age
+        self.score = score
+---
+classes.Record.fields.name.typ.kind = string
+classes.Record.fields.age.typ.kind = int
+classes.Record.fields.score.typ.kind = float
+classes.Record.init_params.length = 3
+---
+
+=== field order class body then init
+from dataclasses import dataclass
+@dataclass
+class Ordered:
+    a: int
+    b: str
+    c: bool
+---
+classes.Ordered.init_params.0 = a
+classes.Ordered.init_params.1 = b
+classes.Ordered.init_params.2 = c
+---
+
+=== const fields multiple
+class Foo:
+    def __init__(self) -> None:
+        self.kind = "foo"
+        self.tag = "bar"
+---
+classes.Foo.const_fields.kind = foo
+classes.Foo.const_fields.tag = bar
+---
+
+=== mixed const and regular fields
+class Add:
+    def __init__(self, left: int, right: int) -> None:
+        self.kind = "add"
+        self.left = left
+        self.right = right
+---
+classes.Add.const_fields.kind = add
+classes.Add.fields.left.typ.kind = int
+classes.Add.fields.right.typ.kind = int
+---
+
+=== dataclass optional field
+from dataclasses import dataclass
+@dataclass
+class Opt:
+    value: int | None
+---
+classes.Opt.fields.value.typ._type = Optional
+classes.Opt.fields.value.typ.inner.kind = int
+---
+
+=== dataclass list field
+from dataclasses import dataclass
+@dataclass
+class Container:
+    items: list[str]
+---
+classes.Container.fields.items.typ._type = Slice
+classes.Container.fields.items.typ.element.kind = string
+---
+
+=== init assigns from constructor
+class Wrapper:
+    def __init__(self) -> None:
+        self.items: list[int] = []
+---
+classes.Wrapper.fields.items.typ._type = Slice
+classes.Wrapper.fields.items.typ.element.kind = int
+---
+
+=== annotated init assignment
+class Foo:
+    def __init__(self) -> None:
+        self.x: int = 0
+---
+classes.Foo.fields.x.typ.kind = int
+---
+
+=== error conditional field assignment
+class Foo:
+    def __init__(self, flag: bool) -> None:
+        if flag:
+            self.x = 1
+---
+error: conditional field assignment not allowed
+---
+
+=== error duplicate field declaration
+class Foo:
+    x: int
+    x: str
+    def __init__(self) -> None:
+        pass
+---
+error: already declared
+---
+
+=== error type mismatch body vs init
+class Foo:
+    x: int
+    def __init__(self) -> None:
+        self.x = "hello"
+---
+error: declared as int but assigned str
+---
+
+=== error field assigned outside init
+class Foo:
+    def do_thing(self) -> None:
+        self.x = 1
+---
+error: must be assigned in __init__
+---
+
+=== kind auto generated pascal to kebab
+class BinaryOp:
+    def __init__(self) -> None:
+        pass
+---
+classes.BinaryOp.const_fields.kind = binary-op
+---
+
+=== kind auto generated multi word
+class ForRange:
+    def __init__(self) -> None:
+        pass
+---
+classes.ForRange.const_fields.kind = for-range
+---
+
+=== kind auto generated single word
+class Add:
+    def __init__(self) -> None:
+        pass
+---
+classes.Add.const_fields.kind = add
+---
+
+=== kind explicit overrides auto
+class Add:
+    def __init__(self) -> None:
+        self.kind = "plus"
+---
+classes.Add.const_fields.kind = plus
+---
+
+=== kind not generated for hierarchy root
+class Expr:
+    def __init__(self) -> None:
+        pass
+class Add(Expr):
+    def __init__(self) -> None:
+        pass
+---
+classes.Add.const_fields.kind = add
+classes.Expr.const_fields.length = 0
+---
+
+=== dataclass kw only
+from dataclasses import dataclass
+@dataclass(kw_only=True)
+class Config:
+    name: str
+    value: int
+---
+classes.Config.fields.name.typ.kind = string
+classes.Config.fields.value.typ.kind = int
+classes.Config.init_params.length = 2
+classes.Config.kw_only = true
+---
+
+=== dataclass is_dataclass flag
+from dataclasses import dataclass
+@dataclass
+class Point:
+    x: int
+    y: int
+---
+classes.Point.is_dataclass = true
+---
+
+=== non dataclass is_dataclass flag
+class Foo:
+    def __init__(self, x: int) -> None:
+        self.x = x
+---
+classes.Foo.is_dataclass = false
+---
+
+=== has_default true
+from dataclasses import dataclass
+@dataclass
+class Cfg:
+    x: int = 42
+---
+classes.Cfg.fields.x.has_default = true
+---
+
+=== has_default false
+from dataclasses import dataclass
+@dataclass
+class Cfg:
+    x: int
+---
+classes.Cfg.fields.x.has_default = false
+---
+
+=== bytes field type
+class Foo:
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+---
+classes.Foo.fields.data.typ.kind = bytes
+---
+
+=== body annotation wins over init
+class Foo:
+    x: int
+    def __init__(self, x: int) -> None:
+        self.x = x
+---
+classes.Foo.fields.x.typ.kind = int
+---
+
+=== field from constructor call
+class Inner:
+    def __init__(self) -> None:
+        pass
+class Outer:
+    def __init__(self) -> None:
+        self.child = Inner()
+---
+classes.Outer.fields.child.typ._type = StructRef
+---
+
+=== computed field from expression
+class Foo:
+    def __init__(self, a: int, b: int) -> None:
+        self.total: int = a + b
+---
+classes.Foo.fields.total.typ.kind = int
+---
+
+=== field ordering body then init
+class Foo:
+    x: int
+    def __init__(self, x: int, y: str) -> None:
+        self.x = x
+        self.y = y
+---
+classes.Foo.init_params.0 = x
+classes.Foo.init_params.1 = y
+---
+
+=== inheritance child does not include parent field
+class Base:
+    def __init__(self, x: int) -> None:
+        self.x = x
+class Child(Base):
+    def __init__(self, x: int, y: str) -> None:
+        super().__init__(x)
+        self.y = y
+---
+classes.Child.fields.length = 1
+classes.Child.fields.y.typ.kind = string
+---
+
+=== optional field none first
+class Foo:
+    def __init__(self, x: None | int) -> None:
+        self.x = x
+---
+classes.Foo.fields.x.typ._type = Optional
+classes.Foo.fields.x.typ.inner.kind = int
+---
+
+=== non optional struct ref field
+class Inner:
+    def __init__(self) -> None:
+        pass
+class Outer:
+    def __init__(self, child: Inner) -> None:
+        self.child = child
+---
+classes.Outer.fields.child.typ._type = StructRef
+---
+
+=== dataclass inheritance own fields only
+from dataclasses import dataclass
+@dataclass
+class Base:
+    x: int
+@dataclass
+class Child(Base):
+    y: str
+---
+classes.Child.fields.length = 1
+classes.Child.fields.y.typ.kind = string
+---
+
+=== class body annotation with default
+class Foo:
+    x: int = 5
+    def __init__(self, x: int) -> None:
+        self.x = x
+---
+classes.Foo.fields.x.typ.kind = int
+classes.Foo.fields.x.has_default = true
+---
+
+=== field from literal float
+class Foo:
+    def __init__(self) -> None:
+        self.x = 0.0
+---
+classes.Foo.fields.x.typ.kind = float
+---
+
+=== computed field without annotation
+class Foo:
+    def __init__(self, a: int, b: int) -> None:
+        self.a = a
+        self.b = b
+        self.total = a + b
+---
+classes.Foo.fields.total.typ.kind = int
+---
+
+=== field from function call return type
+def make_name() -> str:
+    return "hello"
+class Foo:
+    def __init__(self) -> None:
+        self.name = make_name()
+---
+classes.Foo.fields.name.typ.kind = string
+---
+
+=== error cannot infer field type
+class Foo:
+    def __init__(self) -> None:
+        self.x = unknown
+---
+error: cannot infer type
+---
+
+=== empty string const field
+class Foo:
+    def __init__(self) -> None:
+        self.kind = ""
+---
+classes.Foo.const_fields.kind =
+---
+
+=== class body annotation without init
+class Foo:
+    x: int
+    y: str
+---
+classes.Foo.fields.x.typ.kind = int
+classes.Foo.fields.y.typ.kind = string
+classes.Foo.init_params.length = 0
+---
+
+=== error field default_factory not allowed
+from dataclasses import dataclass, field
+@dataclass
+class Foo:
+    items: list[int] = field(default_factory=list)
+---
+error: not allowed
+---
+
+=== default value int literal
+from dataclasses import dataclass
+@dataclass
+class Cfg:
+    x: int = 42
+---
+classes.Cfg.fields.x.has_default = true
+classes.Cfg.fields.x.default._type = IntLit
+classes.Cfg.fields.x.default.value = 42
+---
+
+=== default value string literal
+from dataclasses import dataclass
+@dataclass
+class Cfg:
+    name: str = "hello"
+---
+classes.Cfg.fields.name.has_default = true
+classes.Cfg.fields.name.default._type = StringLit
+classes.Cfg.fields.name.default.value = hello
+---
+
+=== default value bool literal
+from dataclasses import dataclass
+@dataclass
+class Cfg:
+    flag: bool = False
+---
+classes.Cfg.fields.flag.has_default = true
+classes.Cfg.fields.flag.default._type = BoolLit
+classes.Cfg.fields.flag.default.value = false
+---
