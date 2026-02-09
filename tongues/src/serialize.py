@@ -348,12 +348,16 @@ def _ir_serialize(obj: object) -> object:
             "const_fields": serialize(obj.const_fields),
         }
     if isinstance(obj, FieldInfo):
-        return {
+        d = {
             "_type": "FieldInfo",
             "name": obj.name,
             "typ": serialize(obj.typ),
             "py_name": obj.py_name,
+            "has_default": obj.has_default,
         }
+        if obj.default is not None:
+            d["default"] = serialize(obj.default)
+        return d
     if isinstance(obj, FuncInfo):
         return {
             "_type": "FuncInfo",
@@ -391,9 +395,12 @@ def _serialize_type(obj: Type) -> dict[str, object]:
     if isinstance(obj, CharSequence):
         return {"_type": "CharSequence"}
     if isinstance(obj, Bytes):
-        return {"_type": "Bytes"}
+        return {"_type": "Bytes", "kind": "bytes"}
     if isinstance(obj, Slice):
-        return {"_type": "Slice", "element": serialize(obj.element)}
+        d: dict[str, object] = {"_type": "Slice", "element": serialize(obj.element)}
+        if isinstance(obj.element, Primitive) and obj.element.kind == "byte":
+            d["kind"] = "bytes"
+        return d
     if isinstance(obj, Array):
         return {"_type": "Array", "element": serialize(obj.element), "size": obj.size}
     if isinstance(obj, Map):
@@ -845,6 +852,8 @@ def fields_to_dict(symbols: SymbolTable) -> dict[str, object]:
         classes[name] = {
             "fields": fields,
             "init_params": struct.init_params,
+            "is_dataclass": struct.is_dataclass,
+            "kw_only": struct.kw_only,
         }
     return {"classes": classes}
 

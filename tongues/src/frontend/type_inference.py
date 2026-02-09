@@ -403,6 +403,8 @@ def infer_type_from_value(
             return BOOL
         if isinstance(value, int):
             return INT
+        if isinstance(value, float):
+            return FLOAT
         if isinstance(value, str):
             return STRING
         if value is None:
@@ -445,6 +447,28 @@ def infer_type_from_value(
             return BOOL
         if name == "None":
             return InterfaceRef("any")
+    elif node_t == "BinOp":
+        left_t = infer_type_from_value(
+            node.get("left", {}),
+            param_types,
+            symbols,
+            node_types,
+            hierarchy_root,
+            concrete_nodes,
+        )
+        right_t = infer_type_from_value(
+            node.get("right", {}),
+            param_types,
+            symbols,
+            node_types,
+            hierarchy_root,
+            concrete_nodes,
+        )
+        if left_t == FLOAT or right_t == FLOAT:
+            return FLOAT
+        if left_t == STRING or right_t == STRING:
+            return STRING
+        return INT
     elif node_t == "Call":
         func = node.get("func")
         if is_type(func, ["Name"]):
@@ -464,6 +488,8 @@ def infer_type_from_value(
                 return Pointer(StructRef("QuoteState"))
             if func_name == "ContextStack":
                 return Pointer(StructRef("ContextStack"))
+            if func_name in symbols.functions:
+                return symbols.functions[func_name].return_type
     elif node_t == "Attribute":
         value = node.get("value")
         if is_type(value, ["Name"]):

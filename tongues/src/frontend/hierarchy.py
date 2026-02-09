@@ -8,14 +8,36 @@ if TYPE_CHECKING:
     from ..ir import SymbolTable
 
 
-def is_exception_subclass(name: str, symbols: SymbolTable) -> bool:
+def _detect_cycles(symbols: SymbolTable) -> None:
+    """Raise if any class has a cycle in its inheritance chain."""
+    for name in symbols.structs:
+        visited: set[str] = set()
+        current = name
+        while current:
+            if current in visited:
+                raise RuntimeError("cycle in inheritance")
+            visited.add(current)
+            info = symbols.structs.get(current)
+            if not info or not info.bases:
+                break
+            current = info.bases[0]
+
+
+def is_exception_subclass(
+    name: str, symbols: SymbolTable, _seen: set[str] | None = None
+) -> bool:
     """Check if a class is an Exception subclass (directly or transitively)."""
     if name == "Exception":
         return True
+    if _seen is None:
+        _seen = set()
+    if name in _seen:
+        return False
+    _seen.add(name)
     info = symbols.structs.get(name)
     if not info:
         return False
-    return any(is_exception_subclass(base, symbols) for base in info.bases)
+    return any(is_exception_subclass(base, symbols, _seen) for base in info.bases)
 
 
 def find_hierarchy_root(symbols: SymbolTable) -> str | None:
@@ -40,7 +62,10 @@ def find_hierarchy_root(symbols: SymbolTable) -> str | None:
 
 
 def is_node_subclass(
-    name: str, symbols: SymbolTable, hierarchy_root: str | None = None
+    name: str,
+    symbols: SymbolTable,
+    hierarchy_root: str | None = None,
+    _seen: set[str] | None = None,
 ) -> bool:
     """Check if a class is a Node subclass (directly or transitively)."""
     if hierarchy_root is None:
@@ -49,10 +74,17 @@ def is_node_subclass(
         return False
     if name == hierarchy_root:
         return True
+    if _seen is None:
+        _seen = set()
+    if name in _seen:
+        return False
+    _seen.add(name)
     info = symbols.structs.get(name)
     if not info:
         return False
-    return any(is_node_subclass(base, symbols, hierarchy_root) for base in info.bases)
+    return any(
+        is_node_subclass(base, symbols, hierarchy_root, _seen) for base in info.bases
+    )
 
 
 class SubtypeRel:
@@ -72,6 +104,7 @@ class SubtypeRel:
 
 def build_hierarchy(symbols: SymbolTable) -> SubtypeRel:
     """Phase 7: Build class hierarchy and mark subtype flags."""
+    _detect_cycles(symbols)
     hierarchy_root = find_hierarchy_root(symbols)
     rel = SubtypeRel(hierarchy_root=hierarchy_root)
     for name, info in symbols.structs.items():

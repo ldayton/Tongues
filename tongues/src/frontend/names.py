@@ -956,9 +956,10 @@ class NameResolver:
                 if ctx_type == "Load":
                     name = node.get("id", "")
                     if not self.resolve_name(name, class_name, func_name):
-                        self.error(
-                            node, "undefined", "name '" + name + "' is not defined"
-                        )
+                        msg = "name '" + name + "' is not defined"
+                        if func_name == "__init__":
+                            msg += "; cannot infer type"
+                        self.error(node, "undefined", msg)
             # Add children (skip nested FunctionDef)
             children = get_children(node)
             m = 0
