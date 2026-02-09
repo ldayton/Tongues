@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import re
-
-from src.backend.util import to_camel, to_pascal, to_screaming_snake
+from src.backend.util import (
+    replace_format_placeholders,
+    to_camel,
+    to_pascal,
+    to_screaming_snake,
+)
 from src.ir import (
     BOOL,
     INT,
@@ -1344,7 +1347,7 @@ class PhpBackend:
         return inner_str
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
-        result = re.sub(r"\{(\d+)\}", r"%s", template)
+        result = replace_format_placeholders(template, "%s")
         result = result.replace("%v", "%s")
         escaped = _escape_php_string(result)
         args_str = ", ".join(self._expr(a) for a in args)

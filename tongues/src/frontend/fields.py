@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 from .ast_compat import ASTNode, dict_walk, is_type
@@ -23,12 +22,21 @@ if TYPE_CHECKING:
     from ..ir import Expr, StructInfo, SymbolTable, Type
 
 
-_PASCAL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
-
-
 def _pascal_to_kebab(name: str) -> str:
     """PascalCase to kebab-case: BinaryOp → binary-op."""
-    return _PASCAL_RE.sub("-", name).lower()
+    result: list[str] = []
+    i = 0
+    while i < len(name):
+        ch = name[i]
+        if ch.isupper() and i > 0:
+            prev = name[i - 1]
+            if prev.islower() or prev.isdigit():
+                result.append("-")
+            elif prev.isupper() and i + 1 < len(name) and name[i + 1].islower():
+                result.append("-")
+        result.append(ch)
+        i += 1
+    return "".join(result).lower()
 
 
 def _is_dataclass_class(node: ASTNode) -> tuple[bool, bool]:

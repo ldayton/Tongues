@@ -316,9 +316,8 @@ Every module in the program's import graph must be subset-compliant. The transpi
 | `from . import module` |                   |                                |
 | `import sys`           |                   | stdin/stdout/stderr/argv       |
 | `import os`            |                   | `os.getenv()`                  |
-| `import re`            |                   | Regular expressions            |
 
-Bare `import` is restricted to `sys`, `os`, and `re`. These modules have built-in transpiler support and must be used via their module namespace (e.g., `sys.argv`, `os.getenv()`, `re.match()`), so `from sys/os/re import ...` is not allowed.
+Bare `import` is restricted to `sys` and `os`. These modules have built-in transpiler support and must be used via their module namespace (e.g., `sys.argv`, `os.getenv()`), so `from sys/os import ...` is not allowed.
 
 All other `from` imports are syntactically valid. Whether they resolve is a semantic question handled by import resolution.
 
@@ -330,6 +329,6 @@ Every import must resolve to one of:
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | Project file          | `from .module import X`, `from mypackage import Y`                                                                                     |
 | Allowed stdlib module | `from typing import ...`, `from dataclasses import dataclass`, `from collections.abc import ...`, `from __future__ import annotations` |
-| Allowed bare import   | `import sys`, `import os`, `import re`                                                                                                 |
+| Allowed bare import   | `import sys`, `import os`                                                                                                              |
 
 Imports that do not resolve — other stdlib modules, external packages — are errors at this phase, not at subset checking.

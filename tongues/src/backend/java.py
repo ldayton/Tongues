@@ -55,9 +55,13 @@ Backend deficiencies (Java-specific, fixable in java.py):
 
 from __future__ import annotations
 
-import re
-
-from src.backend.util import escape_string, to_camel, to_pascal, to_screaming_snake
+from src.backend.util import (
+    escape_string,
+    replace_format_placeholders,
+    to_camel,
+    to_pascal,
+    to_screaming_snake,
+)
 
 # Java reserved words that need escaping
 _JAVA_RESERVED = frozenset(
@@ -2186,7 +2190,7 @@ class JavaBackend:
 
     def _format_string(self, template: str, args: list[Expr]) -> str:
         # Convert {0}, {1}, etc. to %s
-        result = re.sub(r"\{\d+\}", "%s", template)
+        result = replace_format_placeholders(template, "%s")
         result = result.replace("%v", "%s")
         escaped = (
             result.replace("\\", "\\\\")

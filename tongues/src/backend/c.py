@@ -14,9 +14,7 @@ Error handling:
 
 from __future__ import annotations
 
-import re
-
-from src.backend.util import to_snake
+from src.backend.util import replace_format_placeholders, to_snake
 
 
 def escape_string_c(value: str) -> str:
@@ -3897,7 +3895,7 @@ class CBackend:
     def _emit_expr_StringFormat(self, expr: StringFormat) -> str:
         args_list = [self._emit_expr(a) for a in expr.args]
         # Convert {0}, {1} to %s, etc.
-        template = re.sub(r"\{(\d+)\}", "%s", expr.template)
+        template = replace_format_placeholders(expr.template, "%s")
         escaped = escape_string_c(template)
         if args_list:
             args_str = ", ".join(args_list)
