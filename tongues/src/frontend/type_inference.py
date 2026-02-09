@@ -449,12 +449,20 @@ def infer_type_from_value(
             return InterfaceRef("any")
     elif node_t == "BinOp":
         left_t = infer_type_from_value(
-            node.get("left", {}), param_types, symbols, node_types,
-            hierarchy_root, concrete_nodes,
+            node.get("left", {}),
+            param_types,
+            symbols,
+            node_types,
+            hierarchy_root,
+            concrete_nodes,
         )
         right_t = infer_type_from_value(
-            node.get("right", {}), param_types, symbols, node_types,
-            hierarchy_root, concrete_nodes,
+            node.get("right", {}),
+            param_types,
+            symbols,
+            node_types,
+            hierarchy_root,
+            concrete_nodes,
         )
         if left_t == FLOAT or right_t == FLOAT:
             return FLOAT

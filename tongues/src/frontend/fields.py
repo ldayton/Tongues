@@ -136,6 +136,7 @@ def _check_no_new_fields_outside_init(
 def _type_kind(typ: Type) -> str:
     """Return a short string for a type for error messages."""
     from ..ir import Primitive
+
     if isinstance(typ, Primitive):
         kind = typ.kind
         if kind == "string":
@@ -170,9 +171,7 @@ def collect_init_fields(
             if bad is None:
                 bad = _check_no_field_assign_in_block(orelse_stmts)
             if bad is not None:
-                raise RuntimeError(
-                    "conditional field assignment not allowed: " + bad
-                )
+                raise RuntimeError("conditional field assignment not allowed: " + bad)
             continue
         if is_type(stmt, ["AnnAssign"]):
             target = stmt.get("target", {})
@@ -183,9 +182,7 @@ def collect_init_fields(
             ):
                 field_name = target.get("attr")
                 py_type = callbacks.annotation_to_str(stmt.get("annotation"))
-                typ = _unwrap_field_type(
-                    callbacks.py_type_to_ir(py_type, True)
-                )
+                typ = _unwrap_field_type(callbacks.py_type_to_ir(py_type, True))
                 if field_name in info.fields:
                     # Check type mismatch
                     existing = info.fields[field_name]
@@ -203,8 +200,7 @@ def collect_init_fields(
                 value = stmt.get("value")
                 if value is not None:
                     if not (
-                        is_type(value, ["Name"])
-                        and value.get("id") in info.init_params
+                        is_type(value, ["Name"]) and value.get("id") in info.init_params
                     ):
                         has_computed_init = True
         elif is_type(stmt, ["Assign"]):
@@ -217,8 +213,7 @@ def collect_init_fields(
                     field_name = target.get("attr")
                     value = stmt.get("value", {})
                     is_simple_param = (
-                        is_type(value, ["Name"])
-                        and value.get("id") in info.init_params
+                        is_type(value, ["Name"]) and value.get("id") in info.init_params
                     )
                     is_const_str = is_type(value, ["Constant"]) and isinstance(
                         value.get("value"), str
@@ -232,9 +227,7 @@ def collect_init_fields(
                     if field_name in info.fields and not is_simple_param:
                         assert callbacks.infer_type_from_value is not None
                         inferred = _unwrap_field_type(
-                            callbacks.infer_type_from_value(
-                                value, param_types
-                            )
+                            callbacks.infer_type_from_value(value, param_types)
                         )
                         existing_kind = _type_kind(info.fields[field_name].typ)
                         new_kind = _type_kind(inferred)
@@ -277,9 +270,7 @@ def collect_class_fields(
             target = stmt.get("target", {})
             field_name = target.get("id")
             if field_name in seen_fields:
-                raise RuntimeError(
-                    f"field '{field_name}' already declared"
-                )
+                raise RuntimeError(f"field '{field_name}' already declared")
             seen_fields.add(field_name)
             py_type = callbacks.annotation_to_str(stmt.get("annotation"))
             typ = _unwrap_field_type(callbacks.py_type_to_ir(py_type, True))
@@ -288,9 +279,7 @@ def collect_class_fields(
             value_node = stmt.get("value")
             if value_node is not None:
                 if _is_field_call_default_factory(value_node):
-                    raise RuntimeError(
-                        "field(default_factory=...) not allowed"
-                    )
+                    raise RuntimeError("field(default_factory=...) not allowed")
                 has_default = True
                 default_expr = _make_default_expr(value_node)
             info.fields[field_name] = FieldInfo(
@@ -315,9 +304,7 @@ def collect_class_fields(
         if is_type(stmt, ["FunctionDef"]) and stmt.get("name") != "__init__":
             bad = _check_no_new_fields_outside_init(stmt, known_fields)
             if bad is not None:
-                raise RuntimeError(
-                    f"field '{bad}' must be assigned in __init__"
-                )
+                raise RuntimeError(f"field '{bad}' must be assigned in __init__")
     # Exception classes always need constructors
     if info.is_exception:
         info.needs_constructor = True
