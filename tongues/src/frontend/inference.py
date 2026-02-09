@@ -773,6 +773,7 @@ def collect_var_types(
             else:
                 var_types[target.get("id")] = typ
         # Infer from return statements: if returning var and return type is known
+        # Only set if var doesn't already have a specific type (avoid masking type errors)
         if is_type(stmt, ["Return"]) and stmt.get("value"):
             value = stmt.get("value", {})
             if is_type(value, ["Name"]):
@@ -780,7 +781,9 @@ def collect_var_types(
                 if current_func_info and isinstance(
                     current_func_info.return_type, Slice
                 ):
-                    var_types[var_name] = current_func_info.return_type
+                    existing = var_types.get(var_name)
+                    if existing is None or existing == Slice(InterfaceRef("any")):
+                        var_types[var_name] = current_func_info.return_type
         # Infer from field assignments: self.field = var -> var has field's type
         if is_type(stmt, ["Assign"]) and len(stmt.get("targets", [])) == 1:
             target = stmt.get("targets", [])[0]
@@ -1033,6 +1036,15 @@ def collect_var_types(
                         var_types[target.get("id")] = ret_type
     # Third pass: infer types from append() calls (after all variable types are collected)
     # Note: don't overwrite already-known specific slice types (e.g., bytearray -> []byte)
+    # Also don't overwrite explicitly annotated types (e.g., list[object])
+    annotated_vars: set[str] = set()
+    for stmt in dict_walk({"_type": "Module", "body": stmts}):
+        if is_type(stmt, ["AnnAssign"]) and is_type(stmt.get("target"), ["Name"]):
+            annotated_vars.add(stmt.get("target", {}).get("id", ""))
+    param_names: set[str] = set()
+    if current_func_info:
+        for p in current_func_info.params:
+            param_names.add(p.name)
     for stmt in dict_walk({"_type": "Module", "body": stmts}):
         if is_type(stmt, ["Expr"]) and is_type(stmt.get("value"), ["Call"]):
             call = stmt.get("value", {})
@@ -1042,6 +1054,9 @@ def collect_var_types(
                 call_args = call.get("args", [])
                 if is_type(func_value, ["Name"]) and call_args:
                     var_name = func_value.get("id")
+                    # Don't overwrite explicitly annotated types or function parameters
+                    if var_name in annotated_vars or var_name in param_names:
+                        continue
                     # Don't overwrite already-known specific slice types (e.g., bytearray)
                     # But DO infer if current type is generic Slice(any)
                     if var_name in var_types and isinstance(var_types[var_name], Slice):

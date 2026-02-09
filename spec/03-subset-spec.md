@@ -231,7 +231,7 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`, `foo(x for x i
 | Conversion  | `int`, `float`, `str`, `bool`, `bytes`, `chr`, `ord`         |
 | Collections | `list`, `dict`, `set`, `tuple`, `frozenset`, `len`, `sorted` |
 | Type check  | `isinstance`                                                 |
-| Iteration   | `range`, `enumerate`, `zip`                                  |
+| Iteration   | `range`, `enumerate`, `zip`, `reversed`                      |
 | Formatting  | `repr`, `ascii`, `bin`, `hex`, `oct`                         |
 | Boolean     | `all`, `any`                                                 |
 | Other       | `slice`, `super`, `object`, `print`                          |
@@ -266,7 +266,6 @@ Enforcement requires type information; verified during type inference (see [08-i
 | `memoryview`                               | Low-level memory access                         |
 | `complex`                                  | Adds type complexity; rarely needed             |
 | `aiter`, `anext`                           | Async iteration not supported                   |
-| `reversed`                                 | Returns iterator; use slice `xs[::-1]` instead  |
 | `breakpoint`                               | Debugger invocation                             |
 | `help`                                     | Interactive help system                         |
 | `exit`, `quit`                             | Use `sys.exit()` instead                        |

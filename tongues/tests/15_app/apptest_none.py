@@ -45,20 +45,20 @@ def _returns_none() -> None:
 
 def test_implicit_return() -> None:
     """Functions without return statement return None."""
-    result: None = _no_return()
+    result: int | None = _no_return()
     assert result is None
 
 
 def test_explicit_return_none() -> None:
     """Functions can explicitly return None."""
-    result: None = _returns_none()
+    result: int | None = _returns_none()
     assert result is None
 
 
 def test_none_is_singleton() -> None:
     """None is a singleton - all Nones are the same object."""
-    a: None = None
-    b: None = None
+    a: int | None = None
+    b: int | None = None
     # assert a is b  # subset requires literal on one side of 'is'
     assert a is None
     assert b is None

@@ -40,15 +40,12 @@ def test_nan_is_truthy() -> None:
     """NaN is truthy - surprising but consistent (non-zero)."""
     nan: float = float("nan")
     assert bool(nan) == True
-    assert nan  # truthy in if context
     # NaN is truthy even though it fails all comparisons
     assert nan != nan  # NaN != NaN is True
     assert not (nan == nan)  # NaN == NaN is False
-    # But still truthy!
-    if nan:
-        pass  # this branch is taken
-    else:
-        assert False  # should not reach here
+    # float truthiness in if/ternary is disallowed (zero is valid data),
+    # so we use bool() for explicit coercion
+    assert bool(nan) == True
 
 
 def test_infinity_is_truthy() -> None:
@@ -160,9 +157,9 @@ def test_if_expression_truthiness() -> None:
     assert x == 1
     x = 1 if "" else 0
     assert x == 0
-    x = 1 if 42 else 0
+    x = 1 if 42 != 0 else 0
     assert x == 1
-    x = 1 if 0 else 0
+    x = 1 if 0 != 0 else 0
     assert x == 0
 
 

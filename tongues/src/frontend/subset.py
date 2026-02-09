@@ -155,7 +155,6 @@ BANNED_BUILTINS: set[str] = {
     "next",
     "map",
     "filter",
-    "reversed",
     "open",
     "input",
     "breakpoint",
@@ -1128,6 +1127,11 @@ class Verifier:
             if test_type == "Name":
                 # Simple: `if var:`
                 guarded_var = test.get("id")
+            elif test_type == "NamedExpr":
+                # Walrus: `if (var := call()):`
+                target = test.get("target", {})
+                if target.get("_type") == "Name":
+                    guarded_var = target.get("id")
             elif test_type == "Compare":
                 # Check for `var is not None` or `(var := ...) is not None`
                 left = test.get("left", {})

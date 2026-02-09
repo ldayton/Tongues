@@ -16,13 +16,13 @@ def f(x: int | None) -> int:
 ok
 ---
 
-=== optional str truthiness allowed
+=== optional str truthiness not allowed
 def f(s: str | None) -> str:
     if s:
         return s
     return "default"
 ---
-ok
+error: ambiguous
 ---
 
 === list truthiness allowed
