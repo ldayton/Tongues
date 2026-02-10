@@ -64,7 +64,7 @@ Generic type parameters are built-in only (`list[T]`, `map[K, V]`, `set[T]`, `fn
 
 ### ToString
 
-`ToString` is a built-in free function defined on all types — the only universal operation.
+`ToString` is a built-in free function defined on all types — the only universal operation. The output format is target-native by default; `--strict-tostring` specifies a canonical format — see Strict ToString below.
 
 | Function      | Signature       | Description           |
 | ------------- | --------------- | --------------------- |
@@ -103,6 +103,7 @@ struct ZeroDivisionError { message: string }
 struct AssertError { message: string }
 struct NilError { message: string }
 struct ValueError { message: string }
+struct IOError { message: string }
 ```
 
 | Error               | Thrown by                                                       |
@@ -113,6 +114,7 @@ struct ValueError { message: string }
 | `AssertError`       | `Assert` failure                                                |
 | `NilError`          | `Unwrap` on nil                                                 |
 | `ValueError`        | `ParseInt`/`ParseFloat` bad input, `FloatToInt` overflow or NaN |
+| `IOError`           | `ReadFile`/`WriteFile` failure                                  |
 
 ## Numeric Types
 
@@ -130,22 +132,22 @@ let done: bool = true
 
 Target representations:
 
-| Target     | `int`     | `float`   | Notes                             |
-| ---------- | --------- | --------- | --------------------------------- |
-| C          | `int64_t` | `double`  |                                   |
-| C#         | `long`    | `double`  |                                   |
-| Dart       | `int`     | `double`  |                                   |
-| Go         | `int`     | `float64` | `int` is 64-bit on modern targets |
-| Java       | `long`    | `double`  |                                   |
-| JavaScript | `number`  | `number`  | IEEE 754 double; 53-bit int range |
-| Lua        | `integer` | `number`  |                                   |
-| Perl       | scalar    | scalar    |                                   |
-| PHP        | `int`     | `float`   | 64-bit on modern targets          |
-| Python     | `int`     | `float`   | int is arbitrary precision        |
-| Ruby       | `Integer` | `Float`   | Integer is arbitrary precision    |
-| Rust       | `i64`     | `f64`     |                                   |
-| Swift      | `Int`     | `Double`  | `Int` is 64-bit on modern targets |
-| TypeScript | `number`  | `number`  | IEEE 754 double; 53-bit int range |
+| Target     | `int`     | `float`   | Notes                              |
+| ---------- | --------- | --------- | ---------------------------------- |
+| C          | `int64_t` | `double`  |                                    |
+| C#         | `long`    | `double`  |                                    |
+| Dart       | `int`     | `double`  |                                    |
+| Go         | `int`     | `float64` | `int` is 64-bit on modern targets  |
+| Java       | `long`    | `double`  |                                    |
+| JavaScript | `number`  | `number`  | IEEE 754 double; 53-bit int range  |
+| Lua        | `integer` | `number`  |                                    |
+| Perl       | scalar    | scalar    |                                    |
+| PHP        | `int`     | `float`   | 64-bit on modern targets           |
+| Python     | `int`     | `float`   | int is arbitrary precision         |
+| Ruby       | `Integer` | `Float`   | Integer is arbitrary precision     |
+| Rust       | `i64`     | `f64`     |                                    |
+| Swift      | `Int`     | `Double`  | `Int` is 64-bit on modern targets  |
+| TypeScript | `number`  | `number`  | IEEE 754 double; 53-bit int range  |
 | Zig        | `i64`     | `f64`     | `f64` is IEEE-compliant by default |
 
 ### Functions
@@ -158,9 +160,12 @@ Target representations:
 | `Sum(xs)`      | `list[T] -> T`           | sum of elements                                          |
 | `Pow(a, b)`    | `T, T -> T`              | exponentiation                                           |
 | `Round(x)`     | `float -> int`           | round to nearest integer                                 |
+| `Floor(x)`     | `float -> int`           | largest integer ≤ x                                      |
+| `Ceil(x)`      | `float -> int`           | smallest integer ≥ x                                     |
+| `Sqrt(x)`      | `float -> float`         | square root; IEEE 754 correctly rounded                  |
 | `DivMod(a, b)` | `int, int -> (int, int)` | quotient and remainder (truncating, same as `/` and `%`) |
 
-`T` in `Min`, `Max` is `int`, `float`, or `byte`. `T` in `Abs`, `Sum`, `Pow` is `int` or `float`. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
+`T` in `Min`, `Max` is `int`, `float`, or `byte`. `T` in `Abs`, `Sum`, `Pow` is `int` or `float`. `Sqrt`, `Floor`, and `Ceil` are `float` only. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
 
 ## Bytes
 
@@ -478,7 +483,7 @@ Every name in a function body resolves to exactly one binding. Backends never ne
 
 ### Reserved names
 
-Built-in function names (`Len`, `Append`, `ToString`, `WriteOut`, `WritelnErr`, etc.) are reserved. No binding — top-level declaration, local variable, parameter, or loop variable — may use a reserved name. This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
+Built-in function names (`Len`, `Append`, `ToString`, `WriteOut`, `WritelnErr`, etc.) are reserved. No binding — top-level declaration, local variable, parameter, or loop variable — may use a reserved name. The one exception is `ToString`: structs may declare a `fn ToString(self) -> string` method to override the default string representation (see Strict ToString). This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
 
 ### Top-level declarations
 
@@ -1145,7 +1150,7 @@ match value {
 
 ## I/O
 
-All I/O operates on stdin, stdout, and stderr. There is no file I/O.
+I/O covers stdin, stdout, stderr, and file read/write.
 
 ```
 WritelnOut(ToString(42))
@@ -1155,6 +1160,8 @@ let input: string = ReadAll()
 let data: bytes = ReadBytes()
 let chunk: bytes = ReadBytesN(1024)
 WriteOut(Encode("binary output"))
+let content: string | bytes = ReadFile("input.txt")
+WriteFile("output.txt", result)
 let args: list[string] = Args()
 let home: string? = GetEnv("HOME")
 Exit(1)
@@ -1182,6 +1189,15 @@ To write other types, convert first: `WritelnOut(ToString(n))`.
 | `ReadBytes()`   | `-> bytes`     | read all of stdin as bytes                             |
 | `ReadBytesN(n)` | `int -> bytes` | read up to n bytes from stdin                          |
 
+### Files
+
+| Function             | Signature                         | Description       |
+| -------------------- | --------------------------------- | ----------------- |
+| `ReadFile(path)`     | `string -> string \| bytes`       | read entire file  |
+| `WriteFile(path, d)` | `string, string \| bytes -> void` | write entire file |
+
+`ReadFile` returns `string` if the file contains valid UTF-8, `bytes` otherwise. `WriteFile` accepts `string` or `bytes` — string arguments are written as UTF-8 — and writes the contents to the file, creating it if it doesn't exist and overwriting if it does. Both throw `IOError` on failure (missing file, permission denied, etc.).
+
 ### System
 
 | Function       | Signature           | Description                        |
@@ -1192,7 +1208,7 @@ To write other types, convert first: `WritelnOut(ToString(n))`.
 
 ## Math Semantics
 
-By default, Taytsh targets correct-enough portable behavior across all backends. Where targets disagree on edge-case behavior, Taytsh leaves it unspecified rather than imposing costly emulation. The `--strict-math` flag trades performance and target coverage for total consistency — see Strict Math below.
+By default, Taytsh targets correct-enough portable behavior across all backends. Where targets disagree on edge-case behavior, Taytsh leaves it unspecified rather than imposing costly emulation. Two strict flags trade performance for cross-target consistency: `--strict-math` (arithmetic) and `--strict-tostring` (string representation). `--strict` enables both.
 
 ### Integers
 
@@ -1228,7 +1244,7 @@ Floats are IEEE 754 binary64 (double precision) on all targets.
 
 ### Rounding
 
-`Round(x)` uses half-away-from-zero: `Round(0.5) == 1`, `Round(-0.5) == -1`.
+`Round(x)` uses half-away-from-zero: `Round(0.5) == 1`, `Round(-0.5) == -1`. `Floor` and `Ceil` follow standard mathematical definitions. All three return `int` and throw `ValueError` if the argument is NaN, positive infinity, or negative infinity, or if the result is outside the representable integer range.
 
 ### Conversions
 
@@ -1250,12 +1266,12 @@ The `--strict-math` flag enables bit-identical arithmetic across targets. All 12
 
 Excluded targets:
 
-| Target              | Reason                                                    |
-| ------------------- | --------------------------------------------------------- |
-| JavaScript          | 53-bit integer range; cannot represent 64-bit integers    |
-| TypeScript          | same as JavaScript                                        |
-| C#                  | .NET JIT performs FMA contraction; no in-code opt-out     |
-| Swift               | LLVM backend performs FMA contraction; no in-code opt-out |
+| Target     | Reason                                                    |
+| ---------- | --------------------------------------------------------- |
+| JavaScript | 53-bit integer range; cannot represent 64-bit integers    |
+| TypeScript | same as JavaScript                                        |
+| C#         | .NET JIT performs FMA contraction; no in-code opt-out     |
+| Swift      | LLVM backend performs FMA contraction; no in-code opt-out |
 
 When strict math is enabled:
 
@@ -1280,6 +1296,46 @@ Strict mode floats are IEEE 754 binary64, same as default mode. Basic operations
 `Pow(float, float)` with non-integer exponent is not available in strict mode — underlying `exp`/`log` implementations are not mandated by IEEE 754 and differ across targets. Integer exponents use binary exponentiation (emitted inline, exact within 64-bit range).
 
 The strict math flag is recorded in the IR module metadata. Middleend passes and backends read it to select checked or unchecked emission.
+
+### Strict ToString
+
+The `--strict-tostring` flag specifies a canonical `ToString` format for every type, so string output is identical across all 16 targets.
+
+| Property                   | Default mode  | Strict mode                                             |
+| -------------------------- | ------------- | ------------------------------------------------------- |
+| `int`                      | target-native | decimal, e.g. `"42"`, `"-7"`                            |
+| `float`                    | target-native | shortest round-trip                                     |
+| `float` special values     | target-native | `"NaN"`, `"Inf"`, `"-Inf"`                              |
+| `float` negative zero      | target-native | `"-0.0"`                                                |
+| `bool`                     | target-native | `"true"` / `"false"`                                    |
+| `byte`                     | target-native | decimal, e.g. `"255"`                                   |
+| `rune`                     | target-native | the character itself                                    |
+| `nil`                      | target-native | `"nil"`                                                 |
+| `string`                   | identity      | identity                                                |
+| `bytes`                    | target-native | all hex, e.g. `"b\"\\x89\\x50\\x4e\\x47\""`             |
+| `list[T]`                  | target-native | `[1, 2, 3]`                                             |
+| `map[K, V]`                | target-native | `{"a": 1, "b": 2}` sorted keys                          |
+| `set[T]`                   | target-native | `{1, 2, 3}` sorted                                      |
+| `(T, U, ...)`              | target-native | `(1, "hello")`                                           |
+| `struct`                   | target-native | `Token{kind: TokenKind.Ident, value: "foo", offset: 0}` |
+| `enum`                     | target-native | `TokenKind.Ident`                                       |
+| `fn[...]`                  | target-native | `fn[int, int]`                                          |
+| struct `ToString` override | n/a           | `ToString(self)` method                                 |
+| Available targets          | all 16        | all 16                                                  |
+
+"Shortest round-trip" means the fewest decimal digits such that parsing the string back produces the exact same float — algorithms like Ryū compute this. Backends that lack a native shortest-round-trip conversion emit a custom formatter.
+
+In composite contexts (collections, tuples, struct fields), `string` values are quoted with `"` and `rune` values are quoted with `'`. All other types are unquoted. This avoids ambiguity when parsing ToString output visually.
+
+Map and set `ToString` output sorts elements for deterministic output regardless of runtime iteration order.
+
+Structs may declare a `fn ToString(self) -> string` method to override the default format. `ToString` is normally a reserved name; this is the one permitted exception. The override applies in both default and strict modes. Enums always use the `EnumName.Variant` format.
+
+The strict tostring flag is recorded in the IR module metadata.
+
+### Strict
+
+`--strict` enables `--strict-math` and `--strict-tostring`. The available target set is the intersection — 12 targets (excluding JavaScript, TypeScript, C#, and Swift, per `--strict-math` restrictions).
 
 ## Source Metadata
 
@@ -1334,19 +1390,6 @@ Every Taytsh node has an `annotations` field of type `map[string, obj]`. Middlee
 Annotations are write-once — a pass sets a key, and no later pass overwrites it. Backends read annotations but never write them.
 
 The specific annotations produced by each pass are defined in the middleend specs, not this document.
-
-## TODO
-
-| Section      | Topic                 | Notes                                                                          |
-| ------------ | --------------------- | ------------------------------------------------------------------------------ |
-| Declarations | Module structure      | ✓ entrypoint                                                                   |
-| Math         | Numeric semantics     | ✓ div-by-zero, overflow unspecified, IEEE 754, rounding, conversions, ParseInt |
-| Control flow | Match/case            | ✓ obj matching, optional matching, default case                                |
-| Control flow | Yield / generators    | ✗ cut                                                                          |
-| Functions    | References            | ✓ function types, literals, no closures, no bound methods                      |
-| Metadata     | Source metadata       | ✓ pos, literal base/large/separators/scientific                                |
-| Metadata     | Middleend annotations | ✓ map[string, obj] on every node; contents defined by middleend specs          |
-| Appendix     | Grammar reference     | complete grammar for the Taytsh textual syntax                                 |
 
 ## Grammar
 

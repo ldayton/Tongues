@@ -9,19 +9,19 @@ Inherits from JsLikeBackend. Adds TypeScript-specific features:
 
 from __future__ import annotations
 
-from src.backend.jslike import (
+from .jslike import (
     JsLikeBackend,
     _camel,
     _safe_name,
 )
-from src.backend.util import (
+from .util import (
     ir_contains_call,
     ir_contains_cast,
     ir_has_bytes_ops,
     ir_has_tuple_maps,
     ir_has_tuple_sets,
 )
-from src.ir import (
+from ..ir import (
     BOOL,
     STRING,
     VOID,

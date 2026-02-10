@@ -26,8 +26,8 @@ Middleend deficiencies (should be fixed in middleend.py):
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, ir_contains_call
-from src.ir import (
+from .util import escape_string, ir_contains_call
+from ..ir import (
     Array,
     Assert,
     BYTE,

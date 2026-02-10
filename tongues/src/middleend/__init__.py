@@ -1,6 +1,6 @@
 """IR analysis passes (read-only, no transformations)."""
 
-from src.ir import Module
+from ..ir import Module
 
 from .callbacks import analyze_callbacks
 from .hoisting import analyze_hoisting

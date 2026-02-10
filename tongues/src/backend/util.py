@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-from src.ir import (
+from ..ir import (
     Assign,
     Assert,
     BinaryOp,

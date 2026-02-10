@@ -14,7 +14,7 @@ Error handling:
 
 from __future__ import annotations
 
-from src.backend.util import replace_format_placeholders, to_snake
+from .util import replace_format_placeholders, to_snake
 
 
 def escape_string_c(value: str) -> str:
@@ -33,7 +33,7 @@ def escape_string_c(value: str) -> str:
     )
 
 
-from src.ir import (
+from ..ir import (
     BOOL,
     BYTE,
     FLOAT,

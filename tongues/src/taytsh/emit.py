@@ -163,7 +163,7 @@ class _Emitter:
         if isinstance(decl, TEnumDecl):
             self._emit_enum_decl(decl)
             return
-        raise TypeError(f"unhandled decl type: {type(decl).__name__}")
+        raise TypeError("unhandled decl type")
 
     def _emit_fn_decl(self, decl: TFnDecl) -> None:
         params = self._render_param_list(decl.params)
@@ -265,7 +265,7 @@ class _Emitter:
         if isinstance(stmt, TTryStmt):
             self._emit_try_stmt(stmt)
             return
-        raise TypeError(f"unhandled stmt type: {type(stmt).__name__}")
+        raise TypeError("unhandled stmt type")
 
     def _emit_if_chain(self, stmt: TIfStmt) -> None:
         branches: list[tuple[TExpr, list[TStmt]]] = []
@@ -388,7 +388,7 @@ class _Emitter:
             return f"{pat.enum_name}.{pat.variant}"
         if isinstance(pat, TPatternType):
             return f"{pat.name}: {self._render_type_name(pat.type_name)}"
-        raise TypeError(f"unhandled pattern type: {type(pat).__name__}")
+        raise TypeError("unhandled pattern type")
 
     def _render_catch_types(self, types: list[TType]) -> str:
         parts: list[str] = []
@@ -436,7 +436,7 @@ class _Emitter:
             if isinstance(typ.inner, TOptionalType):
                 raise ValueError("nested optional types are not valid (T??)")
             return f"{self._render_type(typ.inner)}?"
-        raise TypeError(f"unhandled type node: {type(typ).__name__}")
+        raise TypeError("unhandled type node")
 
     # ── Params ──────────────────────────────────────────────
 
@@ -584,7 +584,7 @@ class _Emitter:
                 return f"({params}) -> {ret} {body}"
             return f"({params}) -> {ret} => {self._render_expr(expr.body, self._PREC_TERNARY)}"
 
-        raise TypeError(f"unhandled expr type: {type(expr).__name__}")
+        raise TypeError("unhandled expr type")
 
     def _render_inline_block(self, stmts: list[TStmt]) -> str:
         if len(stmts) == 0:
@@ -696,7 +696,7 @@ class _Emitter:
                 out2 += f" finally {self._render_inline_block(stmt.finally_body)}"
             return out2
 
-        raise TypeError(f"unhandled stmt type: {type(stmt).__name__}")
+        raise TypeError("unhandled stmt type")
 
     # ── Literals / Escapes ──────────────────────────────────
 

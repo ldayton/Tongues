@@ -7,7 +7,6 @@ defined in spec/taytsh.md.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 from typing import Callable, Iterable, Mapping, Sequence, cast
 
 from .ast import (
@@ -112,7 +111,7 @@ class Ty:
         raise NotImplementedError
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyPrim(Ty):
     kind: str
 
@@ -120,7 +119,7 @@ class TyPrim(Ty):
         return self.kind
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyList(Ty):
     element: Ty
 
@@ -128,7 +127,7 @@ class TyList(Ty):
         return f"list[{self.element.display()}]"
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyMap(Ty):
     key: Ty
     value: Ty
@@ -137,7 +136,7 @@ class TyMap(Ty):
         return f"map[{self.key.display()}, {self.value.display()}]"
 
 
-@dataclass(frozen=True)
+@dataclass
 class TySet(Ty):
     element: Ty
 
@@ -145,7 +144,7 @@ class TySet(Ty):
         return f"set[{self.element.display()}]"
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyTuple(Ty):
     elements: tuple[Ty, ...]
 
@@ -154,7 +153,7 @@ class TyTuple(Ty):
         return f"({inner})"
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyFunc(Ty):
     params: tuple[Ty, ...]
     ret: Ty
@@ -164,7 +163,7 @@ class TyFunc(Ty):
         return f"fn[{inner}]"
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyStruct(Ty):
     name: str
 
@@ -172,7 +171,7 @@ class TyStruct(Ty):
         return self.name
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyInterface(Ty):
     name: str
 
@@ -180,7 +179,7 @@ class TyInterface(Ty):
         return self.name
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyEnum(Ty):
     name: str
 
@@ -188,7 +187,7 @@ class TyEnum(Ty):
         return self.name
 
 
-@dataclass(frozen=True)
+@dataclass
 class TyUnion(Ty):
     members: tuple[Ty, ...]
 
@@ -208,7 +207,7 @@ TY_OBJ = TyPrim("obj")
 TY_NIL = TyPrim("nil")
 
 
-def _ty_key(t: Ty) -> tuple:
+def _ty_key(t: Ty) -> tuple[object, ...]:
     if isinstance(t, TyPrim):
         return ("prim", t.kind)
     if isinstance(t, TyStruct):
@@ -255,10 +254,12 @@ def ty_union(members: Iterable[Ty]) -> Ty:
     if any(ty_is_obj(m) for m in flat):
         return TY_OBJ
     # dedup
-    uniq: dict[tuple, Ty] = {}
+    uniq: dict[tuple[object, ...], Ty] = {}
     for m in flat:
         uniq[_ty_key(m)] = m
-    ordered = tuple(sorted(uniq.values(), key=_ty_key))
+    keyed = [(_ty_key(v), v) for v in uniq.values()]
+    keyed.sort()
+    ordered = tuple(v for _, v in keyed)
     if len(ordered) == 1:
         return ordered[0]
     return TyUnion(ordered)
@@ -297,9 +298,6 @@ class Value:
 class HashableValue(Value):
     """A value that can be used as a map key / set element."""
 
-    def __hash__(self) -> int:  # pragma: no cover - implemented by subclasses
-        raise NotImplementedError
-
 
 @dataclass
 class VNil(Value):
@@ -310,7 +308,7 @@ class VNil(Value):
         return "nil"
 
 
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VBool(HashableValue):
     value: bool
 
@@ -320,14 +318,8 @@ class VBool(HashableValue):
     def to_string(self) -> str:
         return "true" if self.value else "false"
 
-    def __hash__(self) -> int:
-        return hash(("bool", self.value))
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, VBool) and self.value == other.value
-
-
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VInt(HashableValue):
     value: int
 
@@ -337,14 +329,8 @@ class VInt(HashableValue):
     def to_string(self) -> str:
         return str(self.value)
 
-    def __hash__(self) -> int:
-        return hash(("int", self.value))
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, VInt) and self.value == other.value
-
-
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VFloat(HashableValue):
     value: float
 
@@ -354,20 +340,10 @@ class VFloat(HashableValue):
     def to_string(self) -> str:
         return str(self.value)
 
-    def __hash__(self) -> int:
-        # Include tag so float keys never collide with int keys of same value.
-        return hash(("float", self.value))
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, VFloat) and self.value == other.value
-
-
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VByte(HashableValue):
-    value: int  # 0..255
-
-    def __post_init__(self) -> None:
-        self.value &= 0xFF
+    value: int
 
     def ty(self) -> Ty:
         return TY_BYTE
@@ -375,14 +351,8 @@ class VByte(HashableValue):
     def to_string(self) -> str:
         return str(self.value)
 
-    def __hash__(self) -> int:
-        return hash(("byte", self.value))
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, VByte) and self.value == other.value
-
-
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VBytes(HashableValue):
     value: bytes
 
@@ -390,17 +360,10 @@ class VBytes(HashableValue):
         return TY_BYTES
 
     def to_string(self) -> str:
-        # Best-effort debug representation.
         return self.value.hex()
 
-    def __hash__(self) -> int:
-        return hash(("bytes", self.value))
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, VBytes) and self.value == other.value
-
-
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VString(HashableValue):
     value: str
 
@@ -410,20 +373,10 @@ class VString(HashableValue):
     def to_string(self) -> str:
         return self.value
 
-    def __hash__(self) -> int:
-        return hash(("string", self.value))
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, VString) and self.value == other.value
-
-
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VRune(HashableValue):
-    value: str  # len == 1
-
-    def __post_init__(self) -> None:
-        if len(self.value) != 1:
-            raise ValueError("rune must be length 1")
+    value: str
 
     def ty(self) -> Ty:
         return TY_RUNE
@@ -431,14 +384,8 @@ class VRune(HashableValue):
     def to_string(self) -> str:
         return self.value
 
-    def __hash__(self) -> int:
-        return hash(("rune", self.value))
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, VRune) and self.value == other.value
-
-
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VTuple(HashableValue):
     elements: tuple[Value, ...]
     typ: TyTuple
@@ -449,23 +396,6 @@ class VTuple(HashableValue):
     def to_string(self) -> str:
         inner = ", ".join(v.to_string() for v in self.elements)
         return f"({inner})"
-
-    def __hash__(self) -> int:
-        elems = []
-        for e in self.elements:
-            if not isinstance(e, HashableValue):
-                raise TypeError("unhashable tuple element")
-            elems.append(hash(e))
-        return hash(("tuple", _ty_key(self.typ), tuple(elems)))
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, VTuple):
-            return False
-        if not ty_eq(self.typ, other.typ):
-            return False
-        if len(self.elements) != len(other.elements):
-            return False
-        return all(_value_eq(a, b) for a, b in zip(self.elements, other.elements))
 
 
 @dataclass
@@ -481,7 +411,7 @@ class VList(Value):
         return f"[{inner}]"
 
 
-@dataclass(eq=False)
+@dataclass(unsafe_hash=True)
 class VEnum(HashableValue):
     enum_name: str
     variant: str
@@ -492,16 +422,8 @@ class VEnum(HashableValue):
     def to_string(self) -> str:
         return f"{self.enum_name}.{self.variant}"
 
-    def __hash__(self) -> int:
-        return hash(("enum", self.enum_name, self.variant))
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, VEnum):
-            return False
-        return self.enum_name == other.enum_name and self.variant == other.variant
-
-
-@dataclass(eq=False)
+@dataclass
 class VMap(Value):
     # Keys must be hashable Taytsh values.
     entries: dict[HashableValue, Value]
@@ -517,7 +439,7 @@ class VMap(Value):
         return "{" + ", ".join(parts) + "}"
 
 
-@dataclass(eq=False)
+@dataclass
 class VSet(Value):
     elements: set[HashableValue]
     typ: TySet
@@ -530,7 +452,7 @@ class VSet(Value):
         return "{" + inner + "}"
 
 
-@dataclass(eq=False)
+@dataclass
 class VStruct(Value):
     struct_name: str
     fields: dict[str, Value]
@@ -599,6 +521,8 @@ class _Exit(_Signal):
 
 
 class _Input:
+    _pos: int
+
     def __init__(self, data: bytes):
         self._data = data
         self._pos = 0
@@ -758,7 +682,7 @@ _RESERVED_BINDINGS: set[str] = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass
 class FnSig:
     params: tuple[Ty, ...]
     ret: Ty
@@ -767,14 +691,14 @@ class FnSig:
         return TyFunc(self.params, self.ret)
 
 
-@dataclass(frozen=True)
+@dataclass
 class FieldInfo:
     name: str
     ty: Ty
     decl: TFieldDecl
 
 
-@dataclass(frozen=True)
+@dataclass
 class MethodInfo:
     name: str
     sig: FnSig  # includes self as first param
@@ -828,31 +752,30 @@ def _ensure_not_reserved(name: str, *, pos: Pos) -> None:
         raise TaytshTypeError(f"reserved name '{name}'", pos)
 
 
+def _builtin_err(name: str) -> StructInfo:
+    decl = TStructDecl(
+        Pos(0, 0),
+        name,
+        None,
+        [TFieldDecl(Pos(0, 0), "message", TPrimitive(Pos(0, 0), "string"))],
+        [],
+    )
+    fi = FieldInfo("message", TY_STRING, decl.fields[0])
+    return StructInfo(
+        name=name,
+        implements=None,
+        fields=[fi],
+        field_map={"message": fi},
+        methods={},
+        decl=decl,
+    )
+
+
 def _build_index(module: TModule) -> ModuleIndex:
     funcs: dict[str, FnInfo] = {}
     structs: dict[str, StructInfo] = {}
     interfaces: dict[str, InterfaceInfo] = {}
     enums: dict[str, EnumInfo] = {}
-
-    # Predeclare built-in error structs.
-    def _builtin_err(name: str) -> StructInfo:
-        decl = TStructDecl(
-            Pos(0, 0),
-            name,
-            None,
-            [TFieldDecl(Pos(0, 0), "message", TPrimitive(Pos(0, 0), "string"))],
-            [],
-        )
-        # Types resolved later; placeholder for now.
-        fi = FieldInfo("message", TY_STRING, decl.fields[0])
-        return StructInfo(
-            name=name,
-            implements=None,
-            fields=[fi],
-            field_map={"message": fi},
-            methods={},
-            decl=decl,
-        )
 
     for err in (
         "KeyError",
@@ -995,10 +918,14 @@ class _TypeEnv:
         raise TaytshTypeError(f"unknown name '{name}'", pos)
 
 
+def _expr_key(expr: TExpr) -> tuple[int, int]:
+    return (expr.pos.line, expr.pos.col)
+
+
 class TypeChecker:
     def __init__(self, index: ModuleIndex):
         self.index = index
-        self.expr_types: dict[int, Ty] = {}
+        self.expr_types: dict[tuple[int, int], Ty] = {}
 
     def resolve_type(self, typ: TType, *, pos: Pos, allow_void: bool = False) -> Ty:
         if isinstance(typ, TPrimitive):
@@ -1628,7 +1555,7 @@ class TypeChecker:
         scrut_ty = self._type_expr(st.expr, env, allow_capture=allow_capture)
 
         # Typecheck cases and compute coverage.
-        covered_types: set[tuple] = set()
+        covered_types: set[tuple[object, ...]] = set()
         covered_enum: dict[str, set[str]] = {}
         covered_nil = False
         for c in st.cases:
@@ -1856,7 +1783,7 @@ class TypeChecker:
         expected: Ty | None = None,
         allow_capture: bool,
     ) -> Ty:
-        cached = self.expr_types.get(id(expr))
+        cached = self.expr_types.get(_expr_key(expr))
         if cached is not None:
             return cached
         if isinstance(expr, TIntLit):
@@ -1976,7 +1903,7 @@ class TypeChecker:
         if isinstance(expr, TListLit):
             if not expr.elements:
                 if isinstance(expected, TyList):
-                    self.expr_types[id(expr)] = expected
+                    self.expr_types[_expr_key(expr)] = expected
                     return expected
                 raise TaytshTypeError("cannot infer type for []", expr.pos)
             if isinstance(expected, TyList):
@@ -1986,7 +1913,7 @@ class TypeChecker:
                     )
                     if not self._assignable(ety, expected.element):
                         raise TaytshTypeError("list element type mismatch", e.pos)
-                self.expr_types[id(expr)] = expected
+                self.expr_types[_expr_key(expr)] = expected
                 return expected
             elem_ty = self._type_expr(
                 expr.elements[0], env, allow_capture=allow_capture
@@ -1998,7 +1925,7 @@ class TypeChecker:
                 if not ty_eq(ety, elem_ty):
                     raise TaytshTypeError("list elements must have same type", e.pos)
             ty = TyList(elem_ty)
-            self.expr_types[id(expr)] = ty
+            self.expr_types[_expr_key(expr)] = ty
             return ty
         if isinstance(expr, TMapLit):
             if isinstance(expected, TyMap):
@@ -2020,7 +1947,7 @@ class TypeChecker:
                         raise TaytshTypeError(
                             "map literal entry type mismatch", expr.pos
                         )
-                self.expr_types[id(expr)] = expected
+                self.expr_types[_expr_key(expr)] = expected
                 return expected
             (k0, v0) = expr.entries[0]
             kty = self._type_expr(k0, env, allow_capture=allow_capture)
@@ -2037,7 +1964,7 @@ class TypeChecker:
                         "map literal entries must have uniform types", expr.pos
                     )
             ty = TyMap(kty, vty)
-            self.expr_types[id(expr)] = ty
+            self.expr_types[_expr_key(expr)] = ty
             return ty
         if isinstance(expr, TSetLit):
             if isinstance(expected, TySet):
@@ -2052,7 +1979,7 @@ class TypeChecker:
                     )
                     if not self._assignable(ety, expected.element):
                         raise TaytshTypeError("set element type mismatch", e.pos)
-                self.expr_types[id(expr)] = expected
+                self.expr_types[_expr_key(expr)] = expected
                 return expected
             elem_ty = self._type_expr(
                 expr.elements[0], env, allow_capture=allow_capture
@@ -2068,7 +1995,7 @@ class TypeChecker:
                 if not ty_eq(ety, elem_ty):
                     raise TaytshTypeError("set elements must have same type", e.pos)
             ty = TySet(elem_ty)
-            self.expr_types[id(expr)] = ty
+            self.expr_types[_expr_key(expr)] = ty
             return ty
         if isinstance(expr, TTupleLit):
             if len(expr.elements) < 2:
@@ -2085,27 +2012,27 @@ class TypeChecker:
                     )
                     if not self._assignable(ety, expected.elements[i]):
                         raise TaytshTypeError("tuple element type mismatch", e.pos)
-                self.expr_types[id(expr)] = expected
+                self.expr_types[_expr_key(expr)] = expected
                 return expected
             elems = tuple(
                 self._type_expr(e, env, allow_capture=allow_capture)
                 for e in expr.elements
             )
             ty = TyTuple(elems)
-            self.expr_types[id(expr)] = ty
+            self.expr_types[_expr_key(expr)] = ty
             return ty
         if isinstance(expr, TFnLit):
             sig = self._fn_lit_sig(expr, method_self=None)
             # No closures: function literal can reference only its own params + globals.
             self._check_fn_lit_body(expr, sig)
             ty = sig.ty()
-            self.expr_types[id(expr)] = ty
+            self.expr_types[_expr_key(expr)] = ty
             return ty
         if isinstance(expr, TCall):
             ty = self._type_call(
                 expr, env, expected=expected, allow_capture=allow_capture
             )
-            self.expr_types[id(expr)] = ty
+            self.expr_types[_expr_key(expr)] = ty
             return ty
 
         raise TaytshTypeError("unsupported expression", expr.pos)
@@ -2420,20 +2347,11 @@ class TypeChecker:
     ) -> tuple[dict[str, Ty], dict[str, Ty]]:
         if not isinstance(cond, TBinaryOp) or cond.op not in ("==", "!="):
             return ({}, {})
-
-        def var_name(e: TExpr) -> str | None:
-            if isinstance(e, TVar):
-                return e.name
-            return None
-
-        def is_nil(e: TExpr) -> bool:
-            return isinstance(e, TNilLit)
-
-        left_var = var_name(cond.left)
-        right_var = var_name(cond.right)
-        if left_var is not None and is_nil(cond.right):
+        left_var = cond.left.name if isinstance(cond.left, TVar) else None
+        right_var = cond.right.name if isinstance(cond.right, TVar) else None
+        if left_var is not None and isinstance(cond.right, TNilLit):
             name = left_var
-        elif right_var is not None and is_nil(cond.left):
+        elif right_var is not None and isinstance(cond.left, TNilLit):
             name = right_var
         else:
             return ({}, {})
@@ -2504,37 +2422,13 @@ class TypeChecker:
 # ============================================================
 
 
-@dataclass(frozen=True)
+@dataclass
 class _Builtin:
     sig: FnSig
     typecheck: Callable[["TypeChecker", list[TArg], _TypeEnv, Ty | None, bool, Pos], Ty]
 
     def ty(self) -> TyFunc:
         return self.sig.ty()
-
-
-def _builtin_simple(sig: FnSig) -> _Builtin:
-    def _tc(
-        tc: TypeChecker,
-        args: list[TArg],
-        env: _TypeEnv,
-        expected: Ty | None,
-        allow_capture: bool,
-        pos: Pos,
-    ) -> Ty:
-        if any(a.name is not None for a in args):
-            raise TaytshTypeError("named args not supported for this call", pos)
-        if len(args) != len(sig.params):
-            raise TaytshTypeError("wrong number of arguments", pos)
-        for i, a in enumerate(args):
-            aty = tc._type_expr(
-                a.value, env, expected=sig.params[i], allow_capture=allow_capture
-            )
-            if not tc._assignable(aty, sig.params[i]):
-                raise TaytshTypeError("argument type mismatch", a.pos)
-        return sig.ret
-
-    return _Builtin(sig, _tc)
 
 
 def _tc_len(
@@ -2722,9 +2616,42 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
 # ============================================================
 
 
+def _same_value_class(a: Value, b: Value) -> bool:
+    if isinstance(a, VNil):
+        return isinstance(b, VNil)
+    if isinstance(a, VBool):
+        return isinstance(b, VBool)
+    if isinstance(a, VInt):
+        return isinstance(b, VInt)
+    if isinstance(a, VFloat):
+        return isinstance(b, VFloat)
+    if isinstance(a, VByte):
+        return isinstance(b, VByte)
+    if isinstance(a, VBytes):
+        return isinstance(b, VBytes)
+    if isinstance(a, VString):
+        return isinstance(b, VString)
+    if isinstance(a, VRune):
+        return isinstance(b, VRune)
+    if isinstance(a, VEnum):
+        return isinstance(b, VEnum)
+    if isinstance(a, VTuple):
+        return isinstance(b, VTuple)
+    if isinstance(a, VList):
+        return isinstance(b, VList)
+    if isinstance(a, VMap):
+        return isinstance(b, VMap)
+    if isinstance(a, VSet):
+        return isinstance(b, VSet)
+    if isinstance(a, VStruct):
+        return isinstance(b, VStruct)
+    if isinstance(a, VFunc):
+        return isinstance(b, VFunc)
+    return False
+
+
 def _value_eq(a: Value, b: Value) -> bool:
-    # Concrete-type equality (union/obj equality is by held concrete type).
-    if type(a) is not type(b):
+    if not _same_value_class(a, b):
         return False
     if isinstance(a, VNil):
         return True
@@ -2789,7 +2716,7 @@ def _value_eq(a: Value, b: Value) -> bool:
         return True
     if isinstance(a, VFunc):
         other = cast(VFunc, b)
-        return ty_eq(a.typ, other.typ) and a.name == other.name and a.call is other.call
+        return ty_eq(a.typ, other.typ) and a.name == other.name and a.call == other.call
     raise TaytshRuntimeFault("unsupported equality", None)
 
 
@@ -2923,7 +2850,50 @@ class _MapIndexRef(_LValueRef):
         self._obj.entries[self._key] = value
 
 
+def _fmod(x: float, y: float) -> float:
+    return x - float(int(x / y)) * y
+
+
+def _range_cond(x: int, end: int, step: int) -> bool:
+    return x < end if step > 0 else x > end
+
+
+class _FnLitCaller:
+    def __init__(self, rt: Runtime, lit: TFnLit, sig: FnSig):
+        self._rt = rt
+        self._lit = lit
+        self._sig = sig
+
+    def invoke(self, args: list[Value]) -> Value:
+        return self._rt._call_fn_lit(self._lit, self._sig, args)
+
+
+class _UserFnCaller:
+    def __init__(self, rt: Runtime, decl: TFnDecl, sig: FnSig):
+        self._rt = rt
+        self._decl = decl
+        self._sig = sig
+
+    def invoke(self, args: list[Value]) -> Value:
+        return self._rt._call_fn(self._decl, self._sig, args)
+
+
+class _BuiltinCaller:
+    def __init__(self, rt: Runtime, name: str):
+        self._rt = rt
+        self._name = name
+
+    def invoke(self, args: list[Value]) -> Value:
+        return _BUILTIN_RUNTIME[self._name](self._rt, args)
+
+
 class Runtime:
+    stdin: _Input
+    args: list[str]
+    env: dict[str, str]
+    stdout: bytearray
+    stderr: bytearray
+
     def __init__(
         self,
         module: TModule,
@@ -2951,7 +2921,7 @@ class Runtime:
         for name, b in _BUILTIN_DISPATCH.items():
             if name in _BUILTIN_RUNTIME:
                 self._builtin_values[name] = VFunc(
-                    b.sig.ty(), name, lambda av, n=name: _BUILTIN_RUNTIME[n](self, av)
+                    b.sig.ty(), name, _BuiltinCaller(self, name).invoke
                 )
 
     # ---- Errors / throwing -------------------------------------------------
@@ -3014,7 +2984,7 @@ class Runtime:
     # ---- Functions ---------------------------------------------------------
 
     def _make_user_fn(self, name: str, decl: TFnDecl, sig: FnSig) -> VFunc:
-        return VFunc(sig.ty(), name, lambda args: self._call_fn(decl, sig, args))
+        return VFunc(sig.ty(), name, _UserFnCaller(self, decl, sig).invoke)
 
     def _call_fn(self, decl: TFnDecl, sig: FnSig, args: list[Value]) -> Value:
         env = _RuntimeEnv()
@@ -3235,18 +3205,17 @@ class Runtime:
             if len(vals) == 1:
                 start, end, step = 0, vals[0], 1
             elif len(vals) == 2:
-                start, end = vals
+                start = vals[0]
+                end = vals[1]
                 step = 1
             else:
-                start, end, step = vals
+                start = vals[0]
+                end = vals[1]
+                step = vals[2]
             if step == 0:
                 self._throw_err("ValueError", "range() step must be nonzero")
             i = start
-
-            def cond(x: int) -> bool:
-                return x < end if step > 0 else x > end
-
-            while cond(i):
+            while _range_cond(i, end, step):
                 env.push_scope()
                 try:
                     env.bind(st.binding[0], TY_INT, VInt(i))
@@ -3505,7 +3474,7 @@ class Runtime:
 
         if isinstance(expr, TListLit):
             if expected is None:
-                inferred = self.tc.expr_types.get(id(expr))
+                inferred = self.tc.expr_types.get(_expr_key(expr))
                 if isinstance(inferred, TyList):
                     expected = inferred
             if isinstance(expected, TyList):
@@ -3523,7 +3492,7 @@ class Runtime:
 
         if isinstance(expr, TMapLit):
             if expected is None:
-                inferred = self.tc.expr_types.get(id(expr))
+                inferred = self.tc.expr_types.get(_expr_key(expr))
                 if isinstance(inferred, TyMap):
                     expected = inferred
             entries: dict[HashableValue, Value] = {}
@@ -3538,14 +3507,14 @@ class Runtime:
                     kk = _as_hashable(self._eval_expr(k, env))
                     vv = self._eval_expr(v, env)
                     entries[kk] = vv
-                first_k = next(iter(entries.keys()))
-                first_v = next(iter(entries.values()))
+                first_k: HashableValue = list(entries.keys())[0]
+                first_v: Value = list(entries.values())[0]
                 typ = TyMap(first_k.ty(), first_v.ty())
             return VMap(entries, typ)
 
         if isinstance(expr, TSetLit):
             if expected is None:
-                inferred = self.tc.expr_types.get(id(expr))
+                inferred = self.tc.expr_types.get(_expr_key(expr))
                 if isinstance(inferred, TySet):
                     expected = inferred
             if isinstance(expected, TySet):
@@ -3556,13 +3525,13 @@ class Runtime:
                 typ = expected
             else:
                 elems = {_as_hashable(self._eval_expr(e, env)) for e in expr.elements}
-                first = next(iter(elems))
+                first = list(elems)[0]
                 typ = TySet(first.ty())
             return VSet(elems, typ)
 
         if isinstance(expr, TTupleLit):
             if expected is None:
-                inferred = self.tc.expr_types.get(id(expr))
+                inferred = self.tc.expr_types.get(_expr_key(expr))
                 if isinstance(inferred, TyTuple):
                     expected = inferred
             if isinstance(expected, TyTuple):
@@ -3578,7 +3547,7 @@ class Runtime:
 
         if isinstance(expr, TFnLit):
             sig = self.tc._fn_lit_sig(expr, method_self=None)
-            return VFunc(sig.ty(), None, lambda av: self._call_fn_lit(expr, sig, av))
+            return VFunc(sig.ty(), None, _FnLitCaller(self, expr, sig).invoke)
 
         if isinstance(expr, TCall):
             return self._eval_call(expr, env, expected=expected)
@@ -3618,7 +3587,7 @@ class Runtime:
             and not call.args
         ):
             if expected is None:
-                inferred = self.tc.expr_types.get(id(call))
+                inferred = self.tc.expr_types.get(_expr_key(call))
                 expected = inferred
             if call.func.name == "Map":
                 if not isinstance(expected, TyMap):
@@ -3827,7 +3796,7 @@ class Runtime:
                     return VFloat(left.value * right.value)
                 if op == "/":
                     return VFloat(left.value / right.value)
-                return VFloat(math.fmod(left.value, right.value))
+                return VFloat(_fmod(left.value, right.value))
             if isinstance(left, VByte) and isinstance(right, VByte):
                 if op == "+":
                     return VByte((left.value + right.value) & 0xFF)
@@ -3898,7 +3867,8 @@ def _bi_get(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_contains(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args
+    a = args[0]
+    b = args[1]
     if isinstance(a, VList):
         return VBool(any(_value_eq(x, b) for x in a.elements))
     if isinstance(a, VMap):

@@ -1,0 +1,493 @@
+-- int literals and zero value
+fn TestIntLiterals() -> void {
+    let a: int = 42
+    Assert(a == 42)
+    let b: int = -7
+    Assert(b == -7)
+    let c: int = 0
+    Assert(c == 0)
+    let z: int
+    Assert(z == 0)
+}
+
+-- int arithmetic
+fn TestIntArithmetic() -> void {
+    Assert(2 + 3 == 5)
+    Assert(10 - 7 == 3)
+    Assert(6 * 7 == 42)
+    Assert(10 / 3 == 3)
+    Assert(-10 / 3 == -3)
+    Assert(10 % 3 == 1)
+    Assert(-7 % 2 == -1)
+    Assert(7 % -2 == 1)
+}
+
+-- int division truncates toward zero
+fn TestIntDivisionTruncation() -> void {
+    Assert(7 / 2 == 3)
+    Assert(-7 / 2 == -3)
+    Assert(7 / -2 == -3)
+    Assert(-7 / -2 == 3)
+    Assert(1 / 3 == 0)
+    Assert(-1 / 3 == 0)
+}
+
+-- int remainder sign follows dividend
+fn TestIntRemainderSign() -> void {
+    Assert(7 % 3 == 1)
+    Assert(-7 % 3 == -1)
+    Assert(7 % -3 == 1)
+    Assert(-7 % -3 == -1)
+}
+
+-- int division by zero throws ZeroDivisionError
+fn TestIntDivZero() -> void {
+    let caught: bool = false
+    try {
+        let x: int = 42 / 0
+    } catch e: ZeroDivisionError {
+        caught = true
+    }
+    Assert(caught, "expected ZeroDivisionError for int / 0")
+
+    caught = false
+    try {
+        let x: int = 42 % 0
+    } catch e: ZeroDivisionError {
+        caught = true
+    }
+    Assert(caught, "expected ZeroDivisionError for int % 0")
+}
+
+-- int comparisons
+fn TestIntComparisons() -> void {
+    Assert(1 < 2)
+    Assert(2 > 1)
+    Assert(1 <= 1)
+    Assert(1 >= 1)
+    Assert(1 == 1)
+    Assert(1 != 2)
+    Assert(-1 < 0)
+    Assert(0 < 1)
+}
+
+-- int bitwise operators
+fn TestIntBitwise() -> void {
+    Assert((0xf0 & 0x0f) == 0)
+    Assert((0xf0 | 0x0f) == 255)
+    Assert((0xf0 ^ 0x0f) == 255)
+    Assert(~0 == -1)
+    Assert(~(-1) == 0)
+    Assert(~42 == -43)
+}
+
+-- int shifts
+fn TestIntShifts() -> void {
+    Assert(1 << 0 == 1)
+    Assert(1 << 1 == 2)
+    Assert(1 << 10 == 1024)
+    Assert(1024 >> 10 == 1)
+    Assert(16 >> 2 == 4)
+    Assert(-8 >> 1 == -4)
+}
+
+-- int negation and complement
+fn TestIntUnary() -> void {
+    Assert(-42 == 0 - 42)
+    Assert(-(-42) == 42)
+    Assert(-0 == 0)
+    Assert(~0 == -(0 + 1))
+    Assert(~99 == -(99 + 1))
+}
+
+-- Abs for int
+fn TestIntAbs() -> void {
+    Assert(Abs(42) == 42)
+    Assert(Abs(-42) == 42)
+    Assert(Abs(0) == 0)
+}
+
+-- Min and Max for int
+fn TestIntMinMax() -> void {
+    Assert(Min(3, 7) == 3)
+    Assert(Min(7, 3) == 3)
+    Assert(Min(-1, 1) == -1)
+    Assert(Max(3, 7) == 7)
+    Assert(Max(7, 3) == 7)
+    Assert(Max(-1, 1) == 1)
+}
+
+-- Sum for int
+fn TestIntSum() -> void {
+    Assert(Sum([1, 2, 3, 4]) == 10)
+    Assert(Sum([]) == 0)
+    Assert(Sum([-1, 1]) == 0)
+    Assert(Sum([100]) == 100)
+}
+
+-- Pow for int
+fn TestIntPow() -> void {
+    Assert(Pow(2, 0) == 1)
+    Assert(Pow(2, 1) == 2)
+    Assert(Pow(2, 10) == 1024)
+    Assert(Pow(3, 3) == 27)
+    Assert(Pow(0, 0) == 1)
+    Assert(Pow(0, 5) == 0)
+    Assert(Pow(1, 100) == 1)
+    Assert(Pow(-2, 3) == -8)
+    Assert(Pow(-2, 4) == 16)
+}
+
+-- DivMod
+fn TestDivMod() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    Assert(q == 3)
+    Assert(r == 2)
+
+    q, r = DivMod(-7, 2)
+    Assert(q == -3)
+    Assert(r == -1)
+
+    q, r = DivMod(0, 1)
+    Assert(q == 0)
+    Assert(r == 0)
+}
+
+-- IntToFloat and FloatToInt conversions
+fn TestIntFloatConversions() -> void {
+    Assert(IntToFloat(42) == 42.0)
+    Assert(IntToFloat(0) == 0.0)
+    Assert(IntToFloat(-1) == -1.0)
+    Assert(FloatToInt(3.14) == 3)
+    Assert(FloatToInt(-3.14) == -3)
+    Assert(FloatToInt(3.99) == 3)
+    Assert(FloatToInt(-3.99) == -3)
+    Assert(FloatToInt(0.0) == 0)
+}
+
+-- FloatToInt throws ValueError on NaN and Inf
+fn TestFloatToIntErrors() -> void {
+    let caught: bool = false
+    try {
+        let x: int = FloatToInt(0.0 / 0.0)
+    } catch e: ValueError {
+        caught = true
+    }
+    Assert(caught, "expected ValueError for FloatToInt(NaN)")
+
+    caught = false
+    try {
+        let x: int = FloatToInt(1.0 / 0.0)
+    } catch e: ValueError {
+        caught = true
+    }
+    Assert(caught, "expected ValueError for FloatToInt(Inf)")
+}
+
+-- float literals and zero value
+fn TestFloatLiterals() -> void {
+    let a: float = 3.14
+    Assert(a == 3.14)
+    let b: float = -1.5
+    Assert(b == -1.5)
+    let c: float = 0.0
+    Assert(c == 0.0)
+    let d: float = 1e10
+    Assert(d == 10000000000.0)
+    let z: float
+    Assert(z == 0.0)
+}
+
+-- float arithmetic
+fn TestFloatArithmetic() -> void {
+    Assert(1.0 + 2.0 == 3.0)
+    Assert(5.0 - 3.0 == 2.0)
+    Assert(2.0 * 3.0 == 6.0)
+    Assert(7.0 / 2.0 == 3.5)
+}
+
+-- float division by zero follows IEEE 754
+fn TestFloatDivZero() -> void {
+    let posInf: float = 1.0 / 0.0
+    Assert(IsInf(posInf))
+    let negInf: float = -1.0 / 0.0
+    Assert(IsInf(negInf))
+    let nan: float = 0.0 / 0.0
+    Assert(IsNaN(nan))
+}
+
+-- float comparisons
+fn TestFloatComparisons() -> void {
+    Assert(1.0 < 2.0)
+    Assert(2.0 > 1.0)
+    Assert(1.0 <= 1.0)
+    Assert(1.0 >= 1.0)
+    Assert(1.0 == 1.0)
+    Assert(1.0 != 2.0)
+    Assert(-0.0 == 0.0)
+}
+
+-- NaN behavior
+fn TestNaN() -> void {
+    let nan: float = 0.0 / 0.0
+    Assert(IsNaN(nan))
+    Assert(nan != nan)
+    Assert(!(nan == nan))
+    Assert(!(nan < 0.0))
+    Assert(!(nan > 0.0))
+    Assert(!IsNaN(1.0))
+    Assert(!IsNaN(0.0))
+}
+
+-- IsInf
+fn TestIsInf() -> void {
+    Assert(IsInf(1.0 / 0.0))
+    Assert(IsInf(-1.0 / 0.0))
+    Assert(!IsInf(0.0))
+    Assert(!IsInf(1.0))
+    Assert(!IsInf(0.0 / 0.0))
+}
+
+-- float negation
+fn TestFloatUnary() -> void {
+    Assert(-3.14 == 0.0 - 3.14)
+    Assert(-(-3.14) == 3.14)
+    Assert(-0.0 == 0.0)
+}
+
+-- Abs for float
+fn TestFloatAbs() -> void {
+    Assert(Abs(3.14) == 3.14)
+    Assert(Abs(-3.14) == 3.14)
+    Assert(Abs(0.0) == 0.0)
+}
+
+-- Min and Max for float
+fn TestFloatMinMax() -> void {
+    Assert(Min(1.5, 2.5) == 1.5)
+    Assert(Min(2.5, 1.5) == 1.5)
+    Assert(Max(1.5, 2.5) == 2.5)
+    Assert(Max(2.5, 1.5) == 2.5)
+}
+
+-- Sum for float
+fn TestFloatSum() -> void {
+    Assert(Sum([1.0, 2.0, 3.0]) == 6.0)
+    Assert(Sum([]) == 0.0)
+    Assert(Sum([-1.0, 1.0]) == 0.0)
+}
+
+-- Pow for float
+fn TestFloatPow() -> void {
+    Assert(Pow(2.0, 0.0) == 1.0)
+    Assert(Pow(2.0, 3.0) == 8.0)
+    Assert(Pow(0.5, 2.0) == 0.25)
+}
+
+-- Sqrt
+fn TestSqrt() -> void {
+    Assert(Sqrt(4.0) == 2.0)
+    Assert(Sqrt(9.0) == 3.0)
+    Assert(Sqrt(0.0) == 0.0)
+    Assert(Sqrt(1.0) == 1.0)
+}
+
+-- Round: half-away-from-zero
+fn TestRound() -> void {
+    Assert(Round(0.5) == 1)
+    Assert(Round(-0.5) == -1)
+    Assert(Round(1.4) == 1)
+    Assert(Round(1.5) == 2)
+    Assert(Round(1.6) == 2)
+    Assert(Round(-1.4) == -1)
+    Assert(Round(-1.5) == -2)
+    Assert(Round(-1.6) == -2)
+    Assert(Round(0.0) == 0)
+}
+
+-- Round throws ValueError on NaN/Inf
+fn TestRoundErrors() -> void {
+    let caught: bool = false
+    try {
+        let x: int = Round(0.0 / 0.0)
+    } catch e: ValueError {
+        caught = true
+    }
+    Assert(caught, "expected ValueError for Round(NaN)")
+
+    caught = false
+    try {
+        let x: int = Round(1.0 / 0.0)
+    } catch e: ValueError {
+        caught = true
+    }
+    Assert(caught, "expected ValueError for Round(Inf)")
+}
+
+-- Floor
+fn TestFloor() -> void {
+    Assert(Floor(1.9) == 1)
+    Assert(Floor(1.0) == 1)
+    Assert(Floor(0.1) == 0)
+    Assert(Floor(-0.1) == -1)
+    Assert(Floor(-1.9) == -2)
+    Assert(Floor(0.0) == 0)
+}
+
+-- Ceil
+fn TestCeil() -> void {
+    Assert(Ceil(1.1) == 2)
+    Assert(Ceil(1.0) == 1)
+    Assert(Ceil(0.1) == 1)
+    Assert(Ceil(-0.1) == 0)
+    Assert(Ceil(-1.1) == -1)
+    Assert(Ceil(0.0) == 0)
+}
+
+-- bool literals and zero value
+fn TestBoolLiterals() -> void {
+    let a: bool = true
+    Assert(a)
+    let b: bool = false
+    Assert(!b)
+    let z: bool
+    Assert(!z)
+}
+
+-- logical operators
+fn TestBoolLogical() -> void {
+    Assert(true && true)
+    Assert(!(true && false))
+    Assert(!(false && true))
+    Assert(!(false && false))
+    Assert(true || true)
+    Assert(true || false)
+    Assert(false || true)
+    Assert(!(false || false))
+    Assert(!false)
+    Assert(!!true)
+}
+
+-- short-circuit evaluation
+fn TestBoolShortCircuit() -> void {
+    -- || should not evaluate right side when left is true
+    let evaluated: bool = false
+    let result: bool = true || SideEffect(evaluated)
+    Assert(!evaluated)
+
+    -- && should not evaluate right side when left is false
+    evaluated = false
+    result = false && SideEffect(evaluated)
+    Assert(!evaluated)
+}
+
+fn SideEffect(flag: bool) -> bool {
+    -- This function is used to detect short-circuit evaluation.
+    -- If called, it would mean the short-circuit did not apply.
+    -- We can't actually mutate 'flag' due to value semantics on bool,
+    -- but the test above checks that the call doesn't happen at all
+    -- by relying on the short-circuit skipping the call.
+    throw AssertError("short-circuit failed: should not be called")
+}
+
+-- bool equality
+fn TestBoolEquality() -> void {
+    Assert(true == true)
+    Assert(false == false)
+    Assert(true != false)
+    Assert(false != true)
+}
+
+-- ternary operator
+fn TestTernary() -> void {
+    Assert((true ? 1 : 2) == 1)
+    Assert((false ? 1 : 2) == 2)
+    let x: int = 5
+    let result: int = x > 3 ? 10 : 20
+    Assert(result == 10)
+    result = x > 10 ? 10 : 20
+    Assert(result == 20)
+}
+
+-- compound assignment operators
+fn TestCompoundAssignment() -> void {
+    let x: int = 10
+    x += 5
+    Assert(x == 15)
+    x -= 3
+    Assert(x == 12)
+    x *= 2
+    Assert(x == 24)
+    x /= 6
+    Assert(x == 4)
+    x %= 3
+    Assert(x == 1)
+    x = 0xff
+    x &= 0x0f
+    Assert(x == 0x0f)
+    x |= 0xf0
+    Assert(x == 0xff)
+    x ^= 0xff
+    Assert(x == 0)
+    x = 1
+    x <<= 4
+    Assert(x == 16)
+    x >>= 2
+    Assert(x == 4)
+}
+
+-- operator precedence
+fn TestPrecedence() -> void {
+    Assert(2 + 3 * 4 == 14)
+    Assert((2 + 3) * 4 == 20)
+    Assert(10 - 2 * 3 == 4)
+    Assert(10 / 2 + 1 == 6)
+    Assert(1 + 2 < 5 && 3 > 1)
+    Assert(1 | 2 == 3)
+    Assert((3 & 2) == 2)
+    Assert((5 ^ 3) == 6)
+}
+
+fn Main() -> void {
+    TestIntLiterals()
+    TestIntArithmetic()
+    TestIntDivisionTruncation()
+    TestIntRemainderSign()
+    TestIntDivZero()
+    TestIntComparisons()
+    TestIntBitwise()
+    TestIntShifts()
+    TestIntUnary()
+    TestIntAbs()
+    TestIntMinMax()
+    TestIntSum()
+    TestIntPow()
+    TestDivMod()
+    TestIntFloatConversions()
+    TestFloatToIntErrors()
+    TestFloatLiterals()
+    TestFloatArithmetic()
+    TestFloatDivZero()
+    TestFloatComparisons()
+    TestNaN()
+    TestIsInf()
+    TestFloatUnary()
+    TestFloatAbs()
+    TestFloatMinMax()
+    TestFloatSum()
+    TestFloatPow()
+    TestSqrt()
+    TestRound()
+    TestRoundErrors()
+    TestFloor()
+    TestCeil()
+    TestBoolLiterals()
+    TestBoolLogical()
+    TestBoolShortCircuit()
+    TestBoolEquality()
+    TestTernary()
+    TestCompoundAssignment()
+    TestPrecedence()
+}

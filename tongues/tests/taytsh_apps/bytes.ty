@@ -1,0 +1,288 @@
+-- byte literals and zero value
+fn TestByteLiterals() -> void {
+    let a: byte = 0xff
+    Assert(ByteToInt(a) == 255)
+    let b: byte = 0x00
+    Assert(ByteToInt(b) == 0)
+    let c: byte = 0x7f
+    Assert(ByteToInt(c) == 127)
+    let z: byte
+    Assert(ByteToInt(z) == 0)
+}
+
+-- bytes literals and zero value
+fn TestBytesLiterals() -> void {
+    let a: bytes = b"hello"
+    Assert(Len(a) == 5)
+    let b: bytes = b""
+    Assert(Len(b) == 0)
+    let c: bytes = b"\x89PNG"
+    Assert(Len(c) == 4)
+    let z: bytes
+    Assert(Len(z) == 0)
+}
+
+-- bytes indexing yields byte
+fn TestBytesIndexing() -> void {
+    let buf: bytes = b"\x00\xff\x7f\x80"
+    Assert(buf[0] == 0x00)
+    Assert(buf[1] == 0xff)
+    Assert(buf[2] == 0x7f)
+    Assert(buf[3] == 0x80)
+}
+
+-- bytes indexing out of bounds throws IndexError
+fn TestBytesIndexError() -> void {
+    let buf: bytes = b"abc"
+    let caught: bool = false
+    try {
+        let x: byte = buf[3]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for out-of-bounds index")
+
+    caught = false
+    try {
+        let x: byte = buf[10]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for far out-of-bounds index")
+}
+
+-- bytes slicing yields bytes
+fn TestBytesSlicing() -> void {
+    let buf: bytes = b"hello"
+    let head: bytes = buf[0:3]
+    Assert(Len(head) == 3)
+    Assert(head[0] == buf[0])
+    Assert(head[1] == buf[1])
+    Assert(head[2] == buf[2])
+
+    let tail: bytes = buf[3:5]
+    Assert(Len(tail) == 2)
+
+    -- empty slice
+    let empty: bytes = buf[2:2]
+    Assert(Len(empty) == 0)
+
+    -- full copy
+    let copy: bytes = buf[0:Len(buf)]
+    Assert(Len(copy) == 5)
+    Assert(copy[0] == buf[0])
+    Assert(copy[4] == buf[4])
+}
+
+-- slice out of bounds throws IndexError
+fn TestBytesSliceError() -> void {
+    let buf: bytes = b"abc"
+    let caught: bool = false
+    try {
+        let x: bytes = buf[0:4]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for slice hi out of range")
+
+    caught = false
+    try {
+        let x: bytes = buf[2:1]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for lo > hi")
+}
+
+-- Len
+fn TestBytesLen() -> void {
+    Assert(Len(b"") == 0)
+    Assert(Len(b"a") == 1)
+    Assert(Len(b"\x00\x01\x02") == 3)
+}
+
+-- Concat
+fn TestBytesConcat() -> void {
+    let a: bytes = b"hel"
+    let b: bytes = b"lo"
+    let c: bytes = Concat(a, b)
+    Assert(Len(c) == 5)
+    Assert(c[0] == a[0])
+    Assert(c[4] == b[1])
+    Assert(Len(Concat(b"", b"")) == 0)
+    Assert(Len(Concat(b"a", b"")) == 1)
+    Assert(Len(Concat(b"", b"a")) == 1)
+}
+
+-- Encode and Decode
+fn TestEncodeAndDecode() -> void {
+    let s: string = "hello"
+    let enc: bytes = Encode(s)
+    Assert(Len(enc) == 5)
+    let dec: string = Decode(enc)
+    Assert(dec == "hello")
+
+    -- multibyte: "café" is 5 UTF-8 bytes but 4 runes
+    let s2: string = "café"
+    let enc2: bytes = Encode(s2)
+    Assert(Len(enc2) == 5)
+    Assert(Decode(enc2) == "café")
+
+    -- empty roundtrip
+    Assert(Decode(Encode("")) == "")
+}
+
+-- byte arithmetic wraps mod 256
+fn TestByteArithmetic() -> void {
+    let a: byte = 0xff
+    let b: byte = 0x01
+    let sum: byte = a + b
+    Assert(sum == 0x00)
+
+    let c: byte = 0x00
+    let d: byte = 0x01
+    let diff: byte = c - d
+    Assert(diff == 0xff)
+
+    let e: byte = 0x80
+    let prod: byte = e * 0x02
+    Assert(prod == 0x00)
+}
+
+-- byte division and remainder
+fn TestByteDivMod() -> void {
+    let a: byte = 0xff
+    let b: byte = 0x10
+    Assert(a / b == 0x0f)
+    Assert(a % b == 0x0f)
+
+    let caught: bool = false
+    try {
+        let x: byte = a / 0x00
+    } catch e: ZeroDivisionError {
+        caught = true
+    }
+    Assert(caught, "expected ZeroDivisionError for byte / 0")
+
+    caught = false
+    try {
+        let x: byte = a % 0x00
+    } catch e: ZeroDivisionError {
+        caught = true
+    }
+    Assert(caught, "expected ZeroDivisionError for byte % 0")
+}
+
+-- byte bitwise operators
+fn TestByteBitwise() -> void {
+    Assert((0xf0 & 0x0f) == 0x00)
+    Assert((0xf0 | 0x0f) == 0xff)
+    Assert((0xf0 ^ 0x0f) == 0xff)
+    Assert((0xf0 ^ 0xf0) == 0x00)
+    Assert(~0x00 == 0xff)
+    Assert(~0xff == 0x00)
+    Assert(~0x0f == 0xf0)
+}
+
+-- byte comparisons
+fn TestByteComparisons() -> void {
+    Assert(0x00 < 0xff)
+    Assert(0xff > 0x00)
+    Assert(0x0a <= 0x0a)
+    Assert(0x0a >= 0x0a)
+    Assert(0x00 == 0x00)
+    Assert(0x00 != 0x01)
+}
+
+-- byte negation wraps
+fn TestByteNegation() -> void {
+    let a: byte = 0x01
+    let b: byte = -a
+    Assert(b == 0xff)
+    let c: byte = -0x00
+    Assert(c == 0x00)
+}
+
+-- ByteToInt and IntToByte conversions
+fn TestByteConversions() -> void {
+    Assert(ByteToInt(0xff) == 255)
+    Assert(ByteToInt(0x00) == 0)
+    Assert(ByteToInt(0x7f) == 127)
+    Assert(IntToByte(0) == 0x00)
+    Assert(IntToByte(255) == 0xff)
+    Assert(IntToByte(256) == 0x00)
+    Assert(IntToByte(257) == 0x01)
+    Assert(IntToByte(-1) == 0xff)
+}
+
+-- iterating over bytes
+fn TestBytesIteration() -> void {
+    let buf: bytes = b"\x01\x02\x03"
+    let total: int = 0
+    for b in buf {
+        total += ByteToInt(b)
+    }
+    Assert(total == 6)
+
+    -- two-variable form: index and byte
+    let idxSum: int = 0
+    let valSum: int = 0
+    for i, b in buf {
+        idxSum += i
+        valSum += ByteToInt(b)
+    }
+    Assert(idxSum == 3)
+    Assert(valSum == 6)
+}
+
+-- null bytes are valid data
+fn TestNullBytes() -> void {
+    let buf: bytes = b"\x00\x00\x00"
+    Assert(Len(buf) == 3)
+    Assert(buf[0] == 0x00)
+    Assert(buf[1] == 0x00)
+    Assert(buf[2] == 0x00)
+
+    let mixed: bytes = b"a\x00b"
+    Assert(Len(mixed) == 3)
+    Assert(mixed[1] == 0x00)
+}
+
+-- bytes equality
+fn TestBytesEquality() -> void {
+    Assert(b"hello" == b"hello")
+    Assert(b"" == b"")
+    Assert(b"\x00" == b"\x00")
+    Assert(b"hello" != b"world")
+    Assert(b"abc" != b"ab")
+}
+
+-- slicing produces a copy, not an alias
+fn TestSliceCopy() -> void {
+    let buf: bytes = b"abcd"
+    let slice: bytes = buf[0:4]
+    Assert(slice == buf)
+    Assert(Len(slice) == 4)
+}
+
+fn Main() -> void {
+    TestByteLiterals()
+    TestBytesLiterals()
+    TestBytesIndexing()
+    TestBytesIndexError()
+    TestBytesSlicing()
+    TestBytesSliceError()
+    TestBytesLen()
+    TestBytesConcat()
+    TestEncodeAndDecode()
+    TestByteArithmetic()
+    TestByteDivMod()
+    TestByteBitwise()
+    TestByteComparisons()
+    TestByteNegation()
+    TestByteConversions()
+    TestBytesIteration()
+    TestNullBytes()
+    TestBytesEquality()
+    TestSliceCopy()
+}

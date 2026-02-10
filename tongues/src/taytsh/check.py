@@ -173,8 +173,6 @@ _PRIMITIVE_MAP: dict[str, Type] = {
 
 
 def type_eq(a: Type, b: Type) -> bool:
-    if a is b:
-        return True
     if a.kind != b.kind:
         return False
     if isinstance(a, ListT) and isinstance(b, ListT):
@@ -290,8 +288,12 @@ def type_name(t: Type) -> str:
     if isinstance(t, EnumT):
         return t.name
     if isinstance(t, UnionT):
+        keyed: list[tuple[str, Type]] = []
+        for m in t.members:
+            keyed.append((_type_key(m), m))
+        keyed.sort()
         parts3: list[str] = []
-        for m in sorted(t.members, key=_type_key):
+        for _k, m in keyed:
             parts3.append(type_name(m))
         return " | ".join(parts3)
     return t.kind
@@ -553,6 +555,58 @@ class CheckError(Exception):
         super().__init__(msg + " at line " + str(line) + " col " + str(col))
 
 
+class _BuiltinCtx:
+    """Helper for check_builtin_call — avoids nested function closures."""
+
+    checker: Checker
+    name: str
+    arg_types: list[Type | None]
+    n: int
+    pos: Pos
+
+    def __init__(
+        self, checker: Checker, name: str, arg_types: list[Type | None], pos: Pos
+    ) -> None:
+        self.checker = checker
+        self.name = name
+        self.arg_types = arg_types
+        self.n = len(arg_types)
+        self.pos = pos
+
+    def require(self, count: int) -> bool:
+        if self.n != count:
+            self.checker.error(
+                self.name
+                + " requires "
+                + str(count)
+                + " argument(s), got "
+                + str(self.n),
+                self.pos,
+            )
+            return False
+        return True
+
+    def require_range(self, lo: int, hi: int) -> bool:
+        if self.n < lo or self.n > hi:
+            self.checker.error(
+                self.name
+                + " requires "
+                + str(lo)
+                + "-"
+                + str(hi)
+                + " argument(s), got "
+                + str(self.n),
+                self.pos,
+            )
+            return False
+        return True
+
+    def arg(self, i: int) -> Type | None:
+        if i < len(self.arg_types):
+            return self.arg_types[i]
+        return None
+
+
 # ============================================================
 # CHECKER
 # ============================================================
@@ -671,7 +725,7 @@ class Checker:
         if isinstance(t, TOptionalType):
             inner = self.resolve_type(t.inner)
             return make_optional(inner)
-        self.error("unhandled type node: " + type(t).__name__, t.pos)
+        self.error("unhandled type node", t.pos)
         return OBJ_T
 
     # ── Pass 1: Collect declarations ──────────────────────────
@@ -852,7 +906,7 @@ class Checker:
         elif isinstance(stmt, TTryStmt):
             self.check_try_stmt(stmt)
         else:
-            self.error("unhandled statement type: " + type(stmt).__name__, stmt.pos)
+            self.error("unhandled statement type", stmt.pos)
 
     def check_let_stmt(self, stmt: TLetStmt) -> None:
         declared_type = self.resolve_type(stmt.typ)
@@ -1252,7 +1306,7 @@ class Checker:
             return self.check_tuple_lit(expr, expected)
         if isinstance(expr, TFnLit):
             return self.check_fn_lit(expr, expected)
-        self.error("unhandled expression type: " + type(expr).__name__, expr.pos)
+        self.error("unhandled expression type", expr.pos)
         return None
 
     def check_var(self, expr: TVar) -> Type | None:
@@ -1941,35 +1995,10 @@ class Checker:
         for a in args:
             arg_types.append(self.check_expr(a.value, None))
         n = len(args)
-
-        def require(count: int) -> bool:
-            if n != count:
-                self.error(
-                    name + " requires " + str(count) + " argument(s), got " + str(n),
-                    pos,
-                )
-                return False
-            return True
-
-        def require_range(lo: int, hi: int) -> bool:
-            if n < lo or n > hi:
-                self.error(
-                    name
-                    + " requires "
-                    + str(lo)
-                    + "-"
-                    + str(hi)
-                    + " argument(s), got "
-                    + str(n),
-                    pos,
-                )
-                return False
-            return True
-
-        def arg(i: int) -> Type | None:
-            if i < len(arg_types):
-                return arg_types[i]
-            return None
+        ctx = _BuiltinCtx(self, name, arg_types, pos)
+        require = ctx.require
+        require_range = ctx.require_range
+        arg = ctx.arg
 
         # ── Numeric ──
         if name == "Abs":

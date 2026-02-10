@@ -5,7 +5,7 @@ we need to update the parameter's FuncType to include the receiver type.
 This enables C backend to emit correct function pointer signatures.
 """
 
-from src.ir import (
+from ..ir import (
     Call,
     Expr,
     FuncRef,
@@ -49,7 +49,7 @@ def _scan_stmt(
     stmt: Stmt, func_params: dict[str, list[Param]], current_struct: str | None
 ) -> None:
     """Scan a statement for call sites with FuncRef arguments."""
-    from src.ir import (
+    from ..ir import (
         Assign,
         Block,
         ExprStmt,
@@ -120,7 +120,7 @@ def _scan_expr(
     expr: Expr, func_params: dict[str, list[Param]], current_struct: str | None
 ) -> None:
     """Scan an expression for call sites with FuncRef arguments."""
-    from src.ir import (
+    from ..ir import (
         AddrOf,
         BinaryOp,
         Cast,
@@ -154,7 +154,7 @@ def _scan_expr(
                     # Look up the target method's parameter
                     receiver_type = expr.receiver_type
                     struct_name = ""
-                    from src.ir import Pointer, StructRef
+                    from ..ir import Pointer, StructRef
 
                     if isinstance(receiver_type, Pointer) and isinstance(
                         receiver_type.target, StructRef

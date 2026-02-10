@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.backend.util import (
+from .util import (
     escape_string as _escape_string_generic,
     to_camel,
 )
@@ -16,7 +16,7 @@ def escape_string(value: str) -> str:
     return _escape_string_generic(value).replace("$", r"\$")
 
 
-from src.ir import (
+from ..ir import (
     Args,
     Array,
     Assert,

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.backend.util import to_snake
-from src.ir import (
+from .util import to_snake
+from ..ir import (
     BOOL,
     Array,
     Assert,

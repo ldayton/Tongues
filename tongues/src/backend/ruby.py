@@ -8,8 +8,8 @@ comprehensions, nested contexts. Proper fix requires frontend type propagation.
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, to_snake, to_screaming_snake
-from src.ir import (
+from .util import escape_string, to_snake, to_screaming_snake
+from ..ir import (
     BOOL,
     FLOAT,
     INT,

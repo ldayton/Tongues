@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, to_camel, to_pascal, to_screaming_snake
-from src.ir import (
+from .util import escape_string, to_camel, to_pascal, to_screaming_snake
+from ..ir import (
     Array,
     Assert,
     Assign,

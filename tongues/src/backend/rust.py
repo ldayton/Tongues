@@ -6,7 +6,7 @@ raise NotImplementedError so gaps are obvious.
 
 from __future__ import annotations
 
-from src.backend.util import Emitter
+from .util import Emitter
 
 
 def escape_string_rust(value: str) -> str:
@@ -42,7 +42,7 @@ def escape_string_rust(value: str) -> str:
     return "".join(result)
 
 
-from src.ir import (
+from ..ir import (
     BOOL,
     FLOAT,
     INT,

@@ -11,8 +11,8 @@ frontend type propagation.
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, is_bytes_type
-from src.ir import (
+from .util import escape_string, is_bytes_type
+from ..ir import (
     BOOL,
     INT,
     STRING,

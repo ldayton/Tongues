@@ -1,6 +1,6 @@
 """Liveness analysis: initial_value_unused, binding_unused, unused_indices."""
 
-from src.ir import (
+from ..ir import (
     AddrOf,
     Assert,
     Assign,

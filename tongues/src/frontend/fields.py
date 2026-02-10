@@ -143,14 +143,58 @@ def _check_no_new_fields_outside_init(
 
 def _type_kind(typ: Type) -> str:
     """Return a short string for a type for error messages."""
-    from ..ir import Primitive
+    from ..ir import (
+        Array,
+        Bytes,
+        Char,
+        CharSequence,
+        FuncType,
+        InterfaceRef,
+        Map,
+        Optional,
+        Pointer,
+        Primitive,
+        Set,
+        Slice,
+        StructRef,
+        Tuple,
+        Union,
+    )
 
     if isinstance(typ, Primitive):
         kind = typ.kind
         if kind == "string":
             return "str"
         return kind
-    return str(type(typ).__name__)
+    if isinstance(typ, CharSequence):
+        return "str"
+    if isinstance(typ, Char):
+        return "char"
+    if isinstance(typ, Bytes):
+        return "bytes"
+    if isinstance(typ, Slice):
+        return "list"
+    if isinstance(typ, Array):
+        return "list"
+    if isinstance(typ, Map):
+        return "dict"
+    if isinstance(typ, Set):
+        return "set"
+    if isinstance(typ, Tuple):
+        return "tuple"
+    if isinstance(typ, Optional):
+        return "Optional"
+    if isinstance(typ, StructRef):
+        return typ.name
+    if isinstance(typ, InterfaceRef):
+        return typ.name
+    if isinstance(typ, Union):
+        return "Union"
+    if isinstance(typ, FuncType):
+        return "Callable"
+    if isinstance(typ, Pointer):
+        return "Pointer"
+    return "unknown"
 
 
 def collect_init_fields(

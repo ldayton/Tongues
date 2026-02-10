@@ -1,6 +1,6 @@
 """Type flow analysis: compute types at control flow join points."""
 
-from src.ir import InterfaceRef, Pointer, StructRef, Type
+from ..ir import InterfaceRef, Pointer, StructRef, Type
 
 
 def join_types(

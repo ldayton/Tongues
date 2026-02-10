@@ -1,0 +1,442 @@
+-- rune literals and zero value
+fn TestRuneLiterals() -> void {
+    let a: rune = 'a'
+    Assert(RuneToInt(a) == 97)
+    let lambda: rune = 'λ'
+    Assert(RuneToInt(lambda) == 955)
+    let nul: rune = '\0'
+    Assert(RuneToInt(nul) == 0)
+    let z: rune
+    Assert(RuneToInt(z) == 0)
+}
+
+-- RuneToInt and RuneFromInt
+fn TestRuneConversions() -> void {
+    Assert(RuneToInt('A') == 65)
+    Assert(RuneToInt('z') == 122)
+    Assert(RuneFromInt(65) == 'A')
+    Assert(RuneFromInt(955) == 'λ')
+    Assert(RuneFromInt(RuneToInt('x')) == 'x')
+}
+
+-- rune comparisons
+fn TestRuneComparisons() -> void {
+    Assert('a' < 'b')
+    Assert('z' > 'a')
+    Assert('a' <= 'a')
+    Assert('a' >= 'a')
+    Assert('a' == 'a')
+    Assert('a' != 'b')
+    Assert('A' < 'a')
+}
+
+-- string literals and zero value
+fn TestStringLiterals() -> void {
+    let s: string = "hello"
+    Assert(Len(s) == 5)
+    let empty: string = ""
+    Assert(Len(empty) == 0)
+    let z: string
+    Assert(Len(z) == 0)
+    Assert(z == "")
+}
+
+-- escape sequences in strings
+fn TestStringEscapes() -> void {
+    let nl: string = "a\nb"
+    Assert(Len(nl) == 3)
+    let tab: string = "a\tb"
+    Assert(Len(tab) == 3)
+    let cr: string = "a\rb"
+    Assert(Len(cr) == 3)
+    let bs: string = "a\\b"
+    Assert(Len(bs) == 3)
+    let qt: string = "a\"b"
+    Assert(Len(qt) == 3)
+    let hex: string = "\x41"
+    Assert(hex == "A")
+}
+
+-- Len returns rune count, not byte count
+fn TestStringLen() -> void {
+    Assert(Len("hello") == 5)
+    Assert(Len("") == 0)
+    Assert(Len("café") == 4)
+    Assert(Len("λ") == 1)
+}
+
+-- string indexing yields rune
+fn TestStringIndexing() -> void {
+    let s: string = "hello"
+    Assert(s[0] == 'h')
+    Assert(s[4] == 'o')
+    let s2: string = "café"
+    Assert(s2[0] == 'c')
+    Assert(s2[3] == 'é')
+}
+
+-- string index out of bounds
+fn TestStringIndexError() -> void {
+    let s: string = "abc"
+    let caught: bool = false
+    try {
+        let ch: rune = s[3]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for out-of-bounds string index")
+}
+
+-- string slicing yields string
+fn TestStringSlicing() -> void {
+    let s: string = "hello"
+    Assert(s[0:3] == "hel")
+    Assert(s[3:5] == "lo")
+    Assert(s[2:2] == "")
+    Assert(s[0:Len(s)] == "hello")
+    let s2: string = "café"
+    Assert(s2[0:4] == "café")
+    Assert(s2[1:3] == "af")
+}
+
+-- string slice out of bounds
+fn TestStringSliceError() -> void {
+    let s: string = "abc"
+    let caught: bool = false
+    try {
+        let x: string = s[0:4]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for slice hi out of range")
+
+    caught = false
+    try {
+        let x: string = s[2:1]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for lo > hi")
+}
+
+-- string equality and comparisons
+fn TestStringComparisons() -> void {
+    Assert("abc" == "abc")
+    Assert("abc" != "abd")
+    Assert("" == "")
+    Assert("abc" < "abd")
+    Assert("abc" < "abcd")
+    Assert("" < "a")
+    Assert("abc" <= "abc")
+    Assert("abc" >= "abc")
+    Assert("A" < "a")
+}
+
+-- Concat
+fn TestConcat() -> void {
+    Assert(Concat("hel", "lo") == "hello")
+    Assert(Concat("", "") == "")
+    Assert(Concat("a", "") == "a")
+    Assert(Concat("", "b") == "b")
+}
+
+-- Upper and Lower
+fn TestUpperLower() -> void {
+    Assert(Upper("hello") == "HELLO")
+    Assert(Lower("HELLO") == "hello")
+    Assert(Upper("") == "")
+    Assert(Lower("") == "")
+    Assert(Upper("123") == "123")
+    Assert(Lower("123") == "123")
+    Assert(Upper("café") == "CAFÉ")
+    Assert(Lower("CAFÉ") == "café")
+}
+
+-- Trim, TrimStart, TrimEnd
+fn TestTrim() -> void {
+    Assert(Trim("  hello  ", " ") == "hello")
+    Assert(Trim("xxhelloxx", "x") == "hello")
+    Assert(Trim("hello", "x") == "hello")
+    Assert(TrimStart("  hello", " ") == "hello")
+    Assert(TrimEnd("hello  ", " ") == "hello")
+    Assert(Trim("abcba", "ab") == "c")
+}
+
+-- Split
+fn TestSplit() -> void {
+    let parts: list[string] = Split("a,b,c", ",")
+    Assert(Len(parts) == 3)
+    Assert(parts[0] == "a")
+    Assert(parts[1] == "b")
+    Assert(parts[2] == "c")
+    Assert(Len(Split("hello", "x")) == 1)
+    Assert(Split("hello", "x")[0] == "hello")
+    Assert(Len(Split("a,,b", ",")) == 3)
+    Assert(Split("a,,b", ",")[1] == "")
+}
+
+-- Split with empty separator is error
+fn TestSplitEmptySep() -> void {
+    let caught: bool = false
+    try {
+        let parts: list[string] = Split("hello", "")
+    } catch e: ValueError {
+        caught = true
+    }
+    Assert(caught, "expected error for empty separator")
+}
+
+-- SplitN
+fn TestSplitN() -> void {
+    let parts: list[string] = SplitN("a,b,c,d", ",", 2)
+    Assert(Len(parts) == 2)
+    Assert(parts[0] == "a")
+    Assert(parts[1] == "b,c,d")
+
+    let parts2: list[string] = SplitN("a,b,c", ",", 3)
+    Assert(Len(parts2) == 3)
+    Assert(parts2[2] == "c")
+}
+
+-- SplitN with max <= 0 throws ValueError
+fn TestSplitNError() -> void {
+    let caught: bool = false
+    try {
+        let parts: list[string] = SplitN("abc", ",", 0)
+    } catch e: ValueError {
+        caught = true
+    }
+    Assert(caught, "expected ValueError for SplitN max <= 0")
+}
+
+-- SplitWhitespace
+fn TestSplitWhitespace() -> void {
+    let parts: list[string] = SplitWhitespace("  hello   world  ")
+    Assert(Len(parts) == 2)
+    Assert(parts[0] == "hello")
+    Assert(parts[1] == "world")
+    Assert(Len(SplitWhitespace("")) == 0)
+    Assert(Len(SplitWhitespace("   ")) == 0)
+    Assert(Len(SplitWhitespace("one")) == 1)
+}
+
+-- Join
+fn TestJoin() -> void {
+    let parts: list[string] = ["a", "b", "c"]
+    Assert(Join(",", parts) == "a,b,c")
+    Assert(Join("", ["a", "b"]) == "ab")
+    Assert(Join("-", ["x"]) == "x")
+    let empty: list[string] = []
+    Assert(Join(",", empty) == "")
+}
+
+-- Find and RFind
+fn TestFindRFind() -> void {
+    Assert(Find("hello", "ll") == 2)
+    Assert(Find("hello", "o") == 4)
+    Assert(Find("hello", "x") == -1)
+    Assert(Find("hello", "") == 0)
+    Assert(RFind("hello", "l") == 3)
+    Assert(RFind("hello", "x") == -1)
+    Assert(RFind("abcabc", "abc") == 3)
+}
+
+-- Count
+fn TestCount() -> void {
+    Assert(Count("hello", "l") == 2)
+    Assert(Count("hello", "ll") == 1)
+    Assert(Count("hello", "x") == 0)
+    Assert(Count("aaa", "a") == 3)
+    Assert(Count("aaa", "aa") == 1)
+}
+
+-- Contains
+fn TestContains() -> void {
+    Assert(Contains("hello", "ell"))
+    Assert(Contains("hello", ""))
+    Assert(Contains("hello", "hello"))
+    Assert(!Contains("hello", "xyz"))
+}
+
+-- Replace
+fn TestReplace() -> void {
+    Assert(Replace("hello", "l", "L") == "heLLo")
+    Assert(Replace("hello", "ll", "LL") == "heLLo")
+    Assert(Replace("hello", "x", "y") == "hello")
+    Assert(Replace("aaa", "a", "bb") == "bbbbbb")
+}
+
+-- Repeat
+fn TestRepeat() -> void {
+    Assert(Repeat("ab", 3) == "ababab")
+    Assert(Repeat("x", 0) == "")
+    Assert(Repeat("x", 1) == "x")
+    Assert(Repeat("", 5) == "")
+    Assert(Repeat("x", -1) == "")
+}
+
+-- StartsWith and EndsWith
+fn TestStartsEndsWith() -> void {
+    Assert(StartsWith("hello", "he"))
+    Assert(StartsWith("hello", ""))
+    Assert(StartsWith("hello", "hello"))
+    Assert(!StartsWith("hello", "lo"))
+    Assert(EndsWith("hello", "lo"))
+    Assert(EndsWith("hello", ""))
+    Assert(EndsWith("hello", "hello"))
+    Assert(!EndsWith("hello", "he"))
+}
+
+-- IsDigit, IsAlpha, IsAlnum, IsSpace, IsUpper, IsLower on strings
+fn TestClassifiers() -> void {
+    Assert(IsDigit("123"))
+    Assert(!IsDigit("12a"))
+    Assert(!IsDigit(""))
+    Assert(IsAlpha("abc"))
+    Assert(!IsAlpha("ab1"))
+    Assert(!IsAlpha(""))
+    Assert(IsAlnum("ab1"))
+    Assert(!IsAlnum("ab!"))
+    Assert(!IsAlnum(""))
+    Assert(IsSpace("  \t\n"))
+    Assert(!IsSpace("a "))
+    Assert(!IsSpace(""))
+    Assert(IsUpper("ABC"))
+    Assert(!IsUpper("ABc"))
+    Assert(!IsUpper(""))
+    Assert(IsLower("abc"))
+    Assert(!IsLower("abC"))
+    Assert(!IsLower(""))
+}
+
+-- classifiers on runes
+fn TestRuneClassifiers() -> void {
+    Assert(IsDigit('5'))
+    Assert(!IsDigit('a'))
+    Assert(IsAlpha('z'))
+    Assert(!IsAlpha('1'))
+    Assert(IsAlnum('a'))
+    Assert(IsAlnum('1'))
+    Assert(!IsAlnum('!'))
+    Assert(IsSpace(' '))
+    Assert(!IsSpace('a'))
+    Assert(IsUpper('A'))
+    Assert(!IsUpper('a'))
+    Assert(IsLower('a'))
+    Assert(!IsLower('A'))
+}
+
+-- ParseInt
+fn TestParseInt() -> void {
+    Assert(ParseInt("42", 10) == 42)
+    Assert(ParseInt("-7", 10) == -7)
+    Assert(ParseInt("ff", 16) == 255)
+    Assert(ParseInt("10", 2) == 2)
+    Assert(ParseInt("0", 10) == 0)
+    Assert(ParseInt("77", 8) == 63)
+    Assert(ParseInt("z", 36) == 35)
+}
+
+-- ParseInt with bad input throws ValueError
+fn TestParseIntError() -> void {
+    let caught: bool = false
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+        caught = true
+    }
+    Assert(caught, "expected ValueError for bad ParseInt input")
+}
+
+-- ParseFloat
+fn TestParseFloat() -> void {
+    Assert(ParseFloat("3.14") == 3.14)
+    Assert(ParseFloat("0.0") == 0.0)
+    Assert(ParseFloat("-1.5") == -1.5)
+}
+
+-- ParseFloat with bad input throws ValueError
+fn TestParseFloatError() -> void {
+    let caught: bool = false
+    try {
+        let f: float = ParseFloat("not_a_number")
+    } catch e: ValueError {
+        caught = true
+    }
+    Assert(caught, "expected ValueError for bad ParseFloat input")
+}
+
+-- FormatInt
+fn TestFormatInt() -> void {
+    Assert(FormatInt(255, 16) == "ff")
+    Assert(FormatInt(42, 10) == "42")
+    Assert(FormatInt(10, 2) == "1010")
+    Assert(FormatInt(0, 10) == "0")
+    Assert(FormatInt(63, 8) == "77")
+}
+
+-- Format
+fn TestFormat() -> void {
+    Assert(Format("hello, {}", "world") == "hello, world")
+    Assert(Format("{}: {}", "key", "val") == "key: val")
+    Assert(Format("{}", "x") == "x")
+    Assert(Format("no placeholders") == "no placeholders")
+}
+
+-- string iteration
+fn TestStringIteration() -> void {
+    let s: string = "café"
+    let count: int = 0
+    for ch in s {
+        count += 1
+    }
+    Assert(count == 4)
+
+    -- two-variable form: index and rune
+    let idxSum: int = 0
+    let lastCh: rune = '\0'
+    for i, ch in s {
+        idxSum += i
+        lastCh = ch
+    }
+    Assert(idxSum == 6)
+    Assert(lastCh == 'é')
+}
+
+fn Main() -> void {
+    TestRuneLiterals()
+    TestRuneConversions()
+    TestRuneComparisons()
+    TestStringLiterals()
+    TestStringEscapes()
+    TestStringLen()
+    TestStringIndexing()
+    TestStringIndexError()
+    TestStringSlicing()
+    TestStringSliceError()
+    TestStringComparisons()
+    TestConcat()
+    TestUpperLower()
+    TestTrim()
+    TestSplit()
+    TestSplitEmptySep()
+    TestSplitN()
+    TestSplitNError()
+    TestSplitWhitespace()
+    TestJoin()
+    TestFindRFind()
+    TestCount()
+    TestContains()
+    TestReplace()
+    TestRepeat()
+    TestStartsEndsWith()
+    TestClassifiers()
+    TestRuneClassifiers()
+    TestParseInt()
+    TestParseIntError()
+    TestParseFloat()
+    TestParseFloatError()
+    TestFormatInt()
+    TestFormat()
+    TestStringIteration()
+}
