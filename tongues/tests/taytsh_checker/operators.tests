@@ -1,0 +1,434 @@
+=== valid: arithmetic operators
+fn Main() -> void {
+    let a: int = 1 + 2
+    let b: int = 3 - 1
+    let c: int = 2 * 3
+    let d: int = 10 / 3
+    let e: int = 10 % 3
+}
+---
+ok
+---
+
+=== valid: float arithmetic
+fn Main() -> void {
+    let a: float = 1.0 + 2.0
+    let b: float = 3.0 - 1.0
+    let c: float = 2.0 * 3.0
+}
+---
+ok
+---
+
+=== error: mixed int and float
+fn Main() -> void {
+    let a: int = 1 + 2.0
+}
+---
+error: must be same type
+---
+
+=== valid: comparison operators
+fn Main() -> void {
+    let a: bool = 1 < 2
+    let b: bool = 1 <= 2
+    let c: bool = 1 > 2
+    let d: bool = 1 >= 2
+    let e: bool = 1 == 2
+    let f: bool = 1 != 2
+}
+---
+ok
+---
+
+=== valid: logical operators
+fn Main() -> void {
+    let a: bool = true && false
+    let b: bool = true || false
+    let c: bool = !true
+}
+---
+ok
+---
+
+=== error: logical and on non-bool
+fn Main() -> void {
+    let a: bool = 1 && 2
+}
+---
+error: must be bool
+---
+
+=== valid: bitwise operators
+fn Main() -> void {
+    let a: int = 1 & 2
+    let b: int = 1 | 2
+    let c: int = 1 ^ 2
+    let d: int = 1 << 2
+    let e: int = 1 >> 2
+    let f: int = ~1
+}
+---
+ok
+---
+
+=== error: bitwise on float
+fn Main() -> void {
+    let a: float = 1.0 & 2.0
+}
+---
+error: not defined for float
+---
+
+=== valid: unary operators
+fn Main() -> void {
+    let a: int = -1
+    let b: bool = !true
+    let c: int = ~1
+}
+---
+ok
+---
+
+=== error: negation on bool
+fn Main() -> void {
+    let a: bool = -true
+}
+---
+error: negation not defined for bool
+---
+
+=== valid: ternary
+fn Main() -> void {
+    let a: int = true ? 1 : 2
+}
+---
+ok
+---
+
+=== error: ternary condition not bool
+fn Main() -> void {
+    let a: int = 1 ? 2 : 3
+}
+---
+error: ternary condition must be bool
+---
+
+=== error: ternary branches differ
+fn Main() -> void {
+    let a: int = true ? 1 : "hello"
+}
+---
+error: ternary branches must have same type
+---
+
+=== valid: compound assignment
+fn Main() -> void {
+    let x: int = 1
+    x += 2
+    x -= 1
+    x *= 3
+    x /= 2
+    x %= 2
+}
+---
+ok
+---
+
+=== valid: byte arithmetic
+fn Main() -> void {
+    let a: byte = 0x01 + 0x02
+    let b: byte = 0xff & 0x0f
+}
+---
+ok
+---
+
+=== valid: string comparison
+fn Main() -> void {
+    let a: bool = "abc" < "def"
+    let b: bool = "abc" == "abc"
+}
+---
+ok
+---
+
+=== valid: rune comparison
+fn Main() -> void {
+    let a: bool = 'a' < 'z'
+    let b: bool = 'a' == 'a'
+    let c: bool = 'a' >= 'b'
+}
+---
+ok
+---
+
+=== valid: byte comparison
+fn Main() -> void {
+    let a: bool = 0x01 < 0xff
+    let b: bool = 0x01 == 0x01
+}
+---
+ok
+---
+
+=== error: logical or on non-bool
+fn Main() -> void {
+    let a: bool = 1 || 2
+}
+---
+error: must be bool
+---
+
+=== error: logical not on non-bool
+fn Main() -> void {
+    let a: bool = !42
+}
+---
+error: must be bool
+---
+
+=== error: bitwise complement on float
+fn Main() -> void {
+    let a: float = ~1.0
+}
+---
+error: not defined for float
+---
+
+=== error: bitwise complement on bool
+fn Main() -> void {
+    let a: bool = ~true
+}
+---
+error: not defined for bool
+---
+
+=== valid: byte bitwise operators
+fn Main() -> void {
+    let a: byte = 0xff & 0x0f
+    let b: byte = 0x0f | 0xf0
+    let c: byte = 0xff ^ 0x0f
+    let d: byte = ~0xff
+}
+---
+ok
+---
+
+=== valid: compound assignment bitwise
+fn Main() -> void {
+    let x: int = 0xff
+    x &= 0x0f
+    x |= 0xf0
+    x ^= 0x01
+    x <<= 2
+    x >>= 1
+}
+---
+ok
+---
+
+=== error: compound assignment type mismatch
+fn Main() -> void {
+    let x: int = 1
+    x += "hello"
+}
+---
+error: must be same type
+---
+
+=== error: equality between different types
+fn Main() -> void {
+    let a: bool = 1 == "hello"
+}
+---
+error: must be same type
+---
+
+=== error: arithmetic on bool
+fn Main() -> void {
+    let a: int = true + false
+}
+---
+error: not defined for bool
+---
+
+=== error: comparison between different types
+fn Main() -> void {
+    let a: bool = 1 < "hello"
+}
+---
+error: must be same type
+---
+
+=== error: arithmetic on string
+fn Main() -> void {
+    let a: string = "hello" + "world"
+}
+---
+error: not defined for string
+---
+
+=== error: arithmetic on rune
+fn Main() -> void {
+    let a: rune = 'a' + 'b'
+}
+---
+error: not defined for rune
+---
+
+=== error: bitwise and on bool
+fn Main() -> void {
+    let a: bool = true & false
+}
+---
+error: not defined for bool
+---
+
+=== error: bitwise or on bool
+fn Main() -> void {
+    let a: bool = true | false
+}
+---
+error: not defined for bool
+---
+
+=== error: bitwise xor on bool
+fn Main() -> void {
+    let a: bool = true ^ false
+}
+---
+error: not defined for bool
+---
+
+=== error: ordering on list
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    let b: list[int] = [3, 4]
+    let lt: bool = a < b
+}
+---
+error: not defined for list
+---
+
+=== error: negation on string
+fn Main() -> void {
+    let a: string = -"hello"
+}
+---
+error: negation not defined for string
+---
+
+=== error: ordering on struct
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let a: Foo = Foo(1)
+    let b: Foo = Foo(2)
+    let lt: bool = a < b
+}
+---
+error: not defined for Foo
+---
+
+=== valid: byte shift by int
+fn Main() -> void {
+    let a: byte = 0x0f << 2
+    let b: byte = 0xf0 >> 4
+}
+---
+ok
+---
+
+=== error: float comparison with int
+fn Main() -> void {
+    let a: bool = 1.0 < 1
+}
+---
+error: must be same type
+---
+
+=== error: ordering on map
+fn Main() -> void {
+    let a: map[string, int] = {"a": 1}
+    let b: map[string, int] = {"b": 2}
+    let lt: bool = a < b
+}
+---
+error: not defined for map
+---
+
+=== error: ordering on set
+fn Main() -> void {
+    let a: set[int] = {1, 2}
+    let b: set[int] = {3, 4}
+    let lt: bool = a < b
+}
+---
+error: not defined for set
+---
+
+=== valid: byte negation
+fn Main() -> void {
+    let a: byte = -0x01
+}
+---
+ok
+---
+
+=== error: shift by float
+fn Main() -> void {
+    let a: int = 1 << 2.0
+}
+---
+error: shift amount must be int
+---
+
+=== valid: compound assignment on field
+struct Counter {
+    value: int
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.value += 1
+}
+---
+ok
+---
+
+=== valid: compound assignment on index
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] += 10
+}
+---
+ok
+---
+
+=== valid: compound assignment on map index
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    m["a"] += 10
+}
+---
+ok
+---
+
+=== valid: float division
+fn Main() -> void {
+    let a: float = 1.0 / 2.0
+    let b: float = 1.0 % 2.0
+}
+---
+ok
+---
+
+=== valid: byte division
+fn Main() -> void {
+    let a: byte = 0x10 / 0x02
+    let b: byte = 0x10 % 0x03
+}
+---
+ok
+---

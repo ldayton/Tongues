@@ -1,0 +1,799 @@
+=== valid: ToString
+fn Main() -> void {
+    let s: string = ToString(42)
+    WritelnOut(s)
+}
+---
+ok
+---
+
+=== valid: Format
+fn Main() -> void {
+    let s: string = Format("hello, {}", "world")
+    WritelnOut(s)
+}
+---
+ok
+---
+
+=== error: Format non-string arg
+fn Main() -> void {
+    let s: string = Format("value: {}", 42)
+}
+---
+error: Format arguments must be string
+---
+
+=== valid: Assert
+fn Main() -> void {
+    Assert(true)
+    Assert(true, "should be true")
+}
+---
+ok
+---
+
+=== error: Assert non-bool
+fn Main() -> void {
+    Assert(42)
+}
+---
+error: Assert condition must be bool
+---
+
+=== valid: conversions
+fn Main() -> void {
+    let f: float = IntToFloat(42)
+    let n: int = FloatToInt(3.14)
+    let b: byte = IntToByte(65)
+    let i: int = ByteToInt(0x41)
+}
+---
+ok
+---
+
+=== valid: string functions
+fn Main() -> void {
+    let s: string = "hello world"
+    let u: string = Upper(s)
+    let l: string = Lower(s)
+    let parts: list[string] = Split(s, " ")
+    let joined: string = Join(", ", parts)
+    let has: bool = Contains(s, "hello")
+    let idx: int = Find(s, "world")
+    let rep: string = Replace(s, "world", "there")
+}
+---
+ok
+---
+
+=== valid: Abs Min Max
+fn Main() -> void {
+    let a: int = Abs(-5)
+    let b: int = Min(1, 2)
+    let c: int = Max(1, 2)
+}
+---
+ok
+---
+
+=== valid: Pow
+fn Main() -> void {
+    let a: int = Pow(2, 10)
+    let b: float = Pow(2.0, 0.5)
+}
+---
+ok
+---
+
+=== valid: I/O functions
+fn Main() -> void {
+    let input: string = ReadAll()
+    let bs: bytes = ReadBytes()
+    let args: list[string] = Args()
+    let home: string? = GetEnv("HOME")
+    WriteOut("hello")
+    WritelnOut("hello")
+    WriteErr("error")
+    WritelnErr("error")
+}
+---
+ok
+---
+
+=== valid: list functions
+fn Main() -> void {
+    let xs: list[int] = [3, 1, 2]
+    let sorted: list[int] = Sorted(xs)
+    let rev: list[int] = Reversed(xs)
+    let idx: int = IndexOf(xs, 2)
+    Pop(xs)
+    RemoveAt(xs, 0)
+    Insert(xs, 0, 10)
+}
+---
+ok
+---
+
+=== valid: map functions
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let ks: list[string] = Keys(m)
+    let vs: list[int] = Values(m)
+    let has: bool = Contains(m, "a")
+    Delete(m, "a")
+}
+---
+ok
+---
+
+=== valid: IsNaN IsInf
+fn Main() -> void {
+    let a: bool = IsNaN(0.0)
+    let b: bool = IsInf(0.0)
+}
+---
+ok
+---
+
+=== valid: rune functions
+fn Main() -> void {
+    let r: rune = RuneFromInt(65)
+    let n: int = RuneToInt('A')
+}
+---
+ok
+---
+
+=== valid: Sum
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let s: int = Sum(xs)
+}
+---
+ok
+---
+
+=== valid: Round DivMod
+fn Main() -> void {
+    let r: int = Round(3.14)
+    let q: int = 0
+    let rem: int = 0
+    q, rem = DivMod(17, 5)
+}
+---
+ok
+---
+
+=== valid: Encode Decode
+fn Main() -> void {
+    let b: bytes = Encode("hello")
+    let s: string = Decode(b)
+}
+---
+ok
+---
+
+=== valid: IsDigit IsAlpha etc
+fn Main() -> void {
+    let a: bool = IsDigit("123")
+    let b: bool = IsAlpha("abc")
+    let c: bool = IsAlnum("abc123")
+    let d: bool = IsSpace(" ")
+    let e: bool = IsUpper("ABC")
+    let f: bool = IsLower("abc")
+}
+---
+ok
+---
+
+=== valid: Trim functions
+fn Main() -> void {
+    let a: string = Trim("  hello  ", " ")
+    let b: string = TrimStart("  hello  ", " ")
+    let c: string = TrimEnd("  hello  ", " ")
+}
+---
+ok
+---
+
+=== valid: StartsWith EndsWith
+fn Main() -> void {
+    let a: bool = StartsWith("hello", "hel")
+    let b: bool = EndsWith("hello", "llo")
+}
+---
+ok
+---
+
+=== valid: string Repeat
+fn Main() -> void {
+    let s: string = Repeat("ab", 3)
+}
+---
+ok
+---
+
+=== valid: Count RFind
+fn Main() -> void {
+    let a: int = Count("abcabc", "abc")
+    let b: int = RFind("abcabc", "abc")
+}
+---
+ok
+---
+
+=== valid: SplitN SplitWhitespace
+fn Main() -> void {
+    let a: list[string] = SplitN("a,b,c", ",", 2)
+    let b: list[string] = SplitWhitespace("  hello  world  ")
+}
+---
+ok
+---
+
+=== valid: ParseInt ParseFloat FormatInt
+fn Main() -> void {
+    let a: int = ParseInt("42", 10)
+    let b: float = ParseFloat("3.14")
+    let c: string = FormatInt(42, 16)
+}
+---
+ok
+---
+
+=== valid: IsDigit with rune
+fn Main() -> void {
+    let a: bool = IsDigit('5')
+    let b: bool = IsAlpha('a')
+    let c: bool = IsAlnum('a')
+    let d: bool = IsSpace(' ')
+    let e: bool = IsUpper('A')
+    let f: bool = IsLower('a')
+}
+---
+ok
+---
+
+=== valid: Concat bytes
+fn Main() -> void {
+    let a: bytes = b"\x01\x02"
+    let b: bytes = b"\x03\x04"
+    let c: bytes = Concat(a, b)
+}
+---
+ok
+---
+
+=== valid: ReadBytesN and Exit
+fn Main() -> void {
+    let data: bytes = ReadBytesN(1024)
+    Exit(0)
+}
+---
+ok
+---
+
+=== error: wrong arg type to Len
+fn Main() -> void {
+    let n: int = Len(42)
+}
+---
+error: Len not defined for int
+---
+
+=== error: wrong arg type to Append
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    Append(xs, "hello")
+}
+---
+error: cannot pass string as int
+---
+
+=== error: wrong arg type to Min
+fn Main() -> void {
+    let a: int = Min(1, "hello")
+}
+---
+error: must be same type
+---
+
+=== error: Format placeholder count mismatch
+fn Main() -> void {
+    let s: string = Format("{} {}", "one")
+}
+---
+error: Format placeholder count
+---
+
+=== valid: WriteOut with bytes
+fn Main() -> void {
+    WriteOut(b"\x01\x02")
+    WritelnOut(b"\x01\x02")
+    WriteErr(b"\x01\x02")
+    WritelnErr(b"\x01\x02")
+}
+---
+ok
+---
+
+=== error: wrong arg type to WriteOut
+fn Main() -> void {
+    WriteOut(42)
+}
+---
+error: WriteOut expects string or bytes
+---
+
+=== valid: Items and Merge
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let pairs: list[(string, int)] = Items(m)
+    let m2: map[string, int] = {"b": 2}
+    let merged: map[string, int] = Merge(m, m2)
+}
+---
+ok
+---
+
+=== error: Abs wrong type
+fn Main() -> void {
+    let a: string = Abs("hello")
+}
+---
+error: Abs not defined for string
+---
+
+=== error: Sum wrong type
+fn Main() -> void {
+    let a: int = Sum(42)
+}
+---
+error: Sum requires list
+---
+
+=== error: Round wrong type
+fn Main() -> void {
+    let a: int = Round(42)
+}
+---
+error: Round requires float
+---
+
+=== error: DivMod wrong type
+fn Main() -> void {
+    let a: int = 0
+    let b: int = 0
+    a, b = DivMod(1.0, 2.0)
+}
+---
+error: DivMod requires int
+---
+
+=== error: FloatToInt wrong type
+fn Main() -> void {
+    let a: int = FloatToInt(42)
+}
+---
+error: FloatToInt requires float
+---
+
+=== error: IntToFloat wrong type
+fn Main() -> void {
+    let a: float = IntToFloat("hello")
+}
+---
+error: IntToFloat requires int
+---
+
+=== error: IntToByte wrong type
+fn Main() -> void {
+    let a: byte = IntToByte("hello")
+}
+---
+error: IntToByte requires int
+---
+
+=== error: ByteToInt wrong type
+fn Main() -> void {
+    let a: int = ByteToInt(42)
+}
+---
+error: ByteToInt requires byte
+---
+
+=== error: Pow mismatched types
+fn Main() -> void {
+    let a: int = Pow(2, 3.0)
+}
+---
+error: must be same type
+---
+
+=== error: Sorted non-ordered type
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let xs: list[Foo] = [Foo(1), Foo(2)]
+    let ys: list[Foo] = Sorted(xs)
+}
+---
+error: Sorted requires ordered type
+---
+
+=== valid: Min Max with float
+fn Main() -> void {
+    let a: float = Min(1.0, 2.0)
+    let b: float = Max(1.0, 2.0)
+}
+---
+ok
+---
+
+=== valid: Min Max with byte
+fn Main() -> void {
+    let a: byte = Min(0x01, 0x02)
+    let b: byte = Max(0x01, 0x02)
+}
+---
+ok
+---
+
+=== valid: Abs with float
+fn Main() -> void {
+    let a: float = Abs(-3.14)
+}
+---
+ok
+---
+
+=== error: Abs with byte
+fn Main() -> void {
+    let a: byte = Abs(0x01)
+}
+---
+error: Abs not defined for byte
+---
+
+=== valid: Sum with float list
+fn Main() -> void {
+    let xs: list[float] = [1.0, 2.0, 3.0]
+    let s: float = Sum(xs)
+}
+---
+ok
+---
+
+=== error: Pow with string
+fn Main() -> void {
+    let a: string = Pow("a", "b")
+}
+---
+error: Pow not defined for string
+---
+
+=== error: Sorted with list of bool
+fn Main() -> void {
+    let xs: list[bool] = [true, false]
+    let ys: list[bool] = Sorted(xs)
+}
+---
+error: Sorted requires ordered type
+---
+
+=== error: Remove set type mismatch
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    Remove(s, "hello")
+}
+---
+error: cannot pass string as int
+---
+
+=== error: Delete map type mismatch
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    Delete(m, 42)
+}
+---
+error: cannot pass int as string
+---
+
+=== error: Add set type mismatch
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    Add(s, "hello")
+}
+---
+error: cannot pass string as int
+---
+
+=== error: Contains list type mismatch
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let has: bool = Contains(xs, "hello")
+}
+---
+error: cannot pass string as int
+---
+
+=== error: Assert message not string
+fn Main() -> void {
+    Assert(true, 42)
+}
+---
+error: Assert message must be string
+---
+
+=== error: Concat wrong type
+fn Main() -> void {
+    let s: string = Concat(1, 2)
+}
+---
+error: Concat not defined for int
+---
+
+=== error: Concat mixed string and bytes
+fn Main() -> void {
+    let s: string = Concat("hello", b"world")
+}
+---
+error: must be same type
+---
+
+=== error: Len on tuple
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    let n: int = Len(t)
+}
+---
+error: Len not defined
+---
+
+=== error: IsDigit wrong type
+fn Main() -> void {
+    let a: bool = IsDigit(42)
+}
+---
+error: IsDigit requires string or rune
+---
+
+=== error: IsAlpha wrong type
+fn Main() -> void {
+    let a: bool = IsAlpha(42)
+}
+---
+error: IsAlpha requires string or rune
+---
+
+=== error: IsSpace wrong type
+fn Main() -> void {
+    let a: bool = IsSpace(true)
+}
+---
+error: IsSpace requires string or rune
+---
+
+=== error: Min with string
+fn Main() -> void {
+    let a: string = Min("a", "b")
+}
+---
+error: Min not defined for string
+---
+
+=== error: Max with bool
+fn Main() -> void {
+    let a: bool = Max(true, false)
+}
+---
+error: Max not defined for bool
+---
+
+=== error: Pow with byte
+fn Main() -> void {
+    let a: byte = Pow(0x02, 0x03)
+}
+---
+error: Pow not defined for byte
+---
+
+=== error: Sum with string list
+fn Main() -> void {
+    let xs: list[string] = ["a", "b"]
+    let s: string = Sum(xs)
+}
+---
+error: Sum not defined for string
+---
+
+=== error: Get on non-map
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let v: int? = Get(xs, 0)
+}
+---
+error: Get requires map
+---
+
+=== valid: Sorted with string list
+fn Main() -> void {
+    let xs: list[string] = ["b", "a", "c"]
+    let ys: list[string] = Sorted(xs)
+}
+---
+ok
+---
+
+=== valid: Sorted with rune list
+fn Main() -> void {
+    let xs: list[rune] = ['c', 'a', 'b']
+    let ys: list[rune] = Sorted(xs)
+}
+---
+ok
+---
+
+=== valid: Sorted with byte list
+fn Main() -> void {
+    let xs: list[byte] = [0x03, 0x01, 0x02]
+    let ys: list[byte] = Sorted(xs)
+}
+---
+ok
+---
+
+=== valid: Sorted with float list
+fn Main() -> void {
+    let xs: list[float] = [3.0, 1.0, 2.0]
+    let ys: list[float] = Sorted(xs)
+}
+---
+ok
+---
+
+=== valid: Format with zero args
+fn Main() -> void {
+    let s: string = Format("hello")
+    WritelnOut(s)
+}
+---
+ok
+---
+
+=== valid: Format with multiple args
+fn Main() -> void {
+    let s: string = Format("{} {} {}", "a", "b", "c")
+    WritelnOut(s)
+}
+---
+ok
+---
+
+=== error: Format too many args
+fn Main() -> void {
+    let s: string = Format("{}", "one", "two")
+}
+---
+error: Format placeholder count
+---
+
+=== error: IsNaN wrong type
+fn Main() -> void {
+    let a: bool = IsNaN(42)
+}
+---
+error: IsNaN requires float
+---
+
+=== error: IsInf wrong type
+fn Main() -> void {
+    let a: bool = IsInf(42)
+}
+---
+error: IsInf requires float
+---
+
+=== error: RuneFromInt wrong type
+fn Main() -> void {
+    let r: rune = RuneFromInt("a")
+}
+---
+error: RuneFromInt requires int
+---
+
+=== error: RuneToInt wrong type
+fn Main() -> void {
+    let n: int = RuneToInt(42)
+}
+---
+error: RuneToInt requires rune
+---
+
+=== error: Encode wrong type
+fn Main() -> void {
+    let b: bytes = Encode(42)
+}
+---
+error: Encode requires string
+---
+
+=== error: Decode wrong type
+fn Main() -> void {
+    let s: string = Decode("hello")
+}
+---
+error: Decode requires bytes
+---
+
+=== error: Sorted with enum list
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let xs: list[Color] = [Color.Red, Color.Blue]
+    let ys: list[Color] = Sorted(xs)
+}
+---
+error: Sorted requires ordered type
+---
+
+=== error: IndexOf type mismatch
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let idx: int = IndexOf(xs, "hello")
+}
+---
+error: cannot pass string as int
+---
+
+=== error: Insert type mismatch
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    Insert(xs, 0, "hello")
+}
+---
+error: cannot pass string as int
+---
+
+=== error: Merge type mismatch
+fn Main() -> void {
+    let a: map[string, int] = {"a": 1}
+    let b: map[string, string] = {"b": "two"}
+    let c: map[string, int] = Merge(a, b)
+}
+---
+error: must be same type
+---
+
+=== error: ReadBytesN wrong type
+fn Main() -> void {
+    let data: bytes = ReadBytesN("hello")
+}
+---
+error: ReadBytesN requires int
+---
+
+=== error: Exit wrong type
+fn Main() -> void {
+    Exit("bad")
+}
+---
+error: Exit requires int
+---
+
+=== error: ParseInt wrong base type
+fn Main() -> void {
+    let n: int = ParseInt("42", "10")
+}
+---
+error: cannot pass string as int
+---
+
+=== error: FormatInt wrong type
+fn Main() -> void {
+    let s: string = FormatInt("42", 10)
+}
+---
+error: FormatInt requires int
+---

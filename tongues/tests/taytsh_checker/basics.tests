@@ -1,0 +1,335 @@
+=== valid: empty main
+fn Main() -> void {}
+---
+ok
+---
+
+=== valid: let with initializer
+fn Main() -> void {
+    let x: int = 42
+}
+---
+ok
+---
+
+=== valid: let zero value
+fn Main() -> void {
+    let x: int
+    let s: string
+    let b: bool
+    let f: float
+    let by: byte
+    let bs: bytes
+    let r: rune
+    let xs: list[int]
+}
+---
+ok
+---
+
+=== error: struct requires initializer
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+}
+---
+error: initializer required
+---
+
+=== error: enum requires initializer
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color
+}
+---
+error: initializer required
+---
+
+=== valid: assignment
+fn Main() -> void {
+    let x: int = 1
+    x = 2
+}
+---
+ok
+---
+
+=== error: type mismatch in let
+fn Main() -> void {
+    let x: int = "hello"
+}
+---
+error: cannot assign string to int
+---
+
+=== error: type mismatch in assignment
+fn Main() -> void {
+    let x: int = 1
+    x = "hello"
+}
+---
+error: cannot assign string to int
+---
+
+=== valid: return value
+fn AddTwo(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {}
+---
+ok
+---
+
+=== error: return type mismatch
+fn Bad() -> int {
+    return "hello"
+}
+fn Main() -> void {}
+---
+error: cannot return string
+---
+
+=== error: missing return value
+fn Bad() -> int {
+    return
+}
+fn Main() -> void {}
+---
+error: missing return value
+---
+
+=== valid: void return
+fn DoNothing() -> void {
+    return
+}
+fn Main() -> void {}
+---
+ok
+---
+
+=== error: missing Main
+fn Foo() -> void {}
+---
+error: missing Main
+---
+
+=== error: Main with parameters
+fn Main(x: int) -> void {}
+---
+error: Main must take no parameters
+---
+
+=== error: Main with non-void return
+fn Main() -> int {
+    return 0
+}
+---
+error: Main must return void
+---
+
+=== valid: forward reference
+fn Main() -> void {
+    let y: int = Double(5)
+    WritelnOut(ToString(y))
+}
+fn Double(x: int) -> int {
+    return x * 2
+}
+---
+ok
+---
+
+=== error: void as variable type
+fn Main() -> void {
+    let x: void
+}
+---
+error: void is not a value type
+---
+
+=== error: fn type requires initializer
+fn Foo(x: int) -> int {
+    return x
+}
+fn Main() -> void {
+    let f: fn[int, int]
+}
+---
+error: initializer required
+---
+
+=== error: union without nil requires initializer
+fn Main() -> void {
+    let x: int | string
+}
+---
+error: initializer required
+---
+
+=== valid: map zero value
+fn Main() -> void {
+    let m: map[string, int]
+}
+---
+ok
+---
+
+=== valid: set zero value
+fn Main() -> void {
+    let s: set[int]
+}
+---
+ok
+---
+
+=== valid: tuple zero value
+fn Main() -> void {
+    let t: (int, string)
+}
+---
+ok
+---
+
+=== valid: optional zero value
+fn Main() -> void {
+    let x: int?
+}
+---
+ok
+---
+
+=== valid: obj zero value
+fn Main() -> void {
+    let x: obj
+}
+---
+ok
+---
+
+=== error: assign to undeclared variable
+fn Main() -> void {
+    x = 42
+}
+---
+error: undefined name 'x'
+---
+
+=== error: duplicate Main
+fn Main() -> void {}
+fn Main() -> void {}
+---
+error: duplicate function name
+---
+
+=== error: tuple with no-zero-value element requires initializer
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let t: (int, Foo)
+}
+---
+error: initializer required
+---
+
+=== error: void as list element type
+fn Main() -> void {
+    let xs: list[void]
+}
+---
+error: void is not a value type
+---
+
+=== error: void as map value type
+fn Main() -> void {
+    let m: map[string, void]
+}
+---
+error: void is not a value type
+---
+
+=== error: void as function parameter type
+fn Bad(x: void) -> void {}
+fn Main() -> void {}
+---
+error: void is not a value type
+---
+
+=== error: void in fn type parameter
+fn Main() -> void {
+    let f: fn[void, int]
+}
+---
+error: void is not a value type
+---
+
+=== error: void as tuple element
+fn Main() -> void {
+    let t: (int, void)
+}
+---
+error: void is not a value type
+---
+
+=== error: void as set element type
+fn Main() -> void {
+    let s: set[void]
+}
+---
+error: void is not a value type
+---
+
+=== error: void as map key type
+fn Main() -> void {
+    let m: map[void, int]
+}
+---
+error: void is not a value type
+---
+
+=== error: double optional
+fn Main() -> void {
+    let x: int??
+}
+---
+error: double optional
+---
+
+=== error: single element tuple type
+fn Main() -> void {
+    let x: (int)
+}
+---
+error: tuple requires at least two elements
+---
+
+=== error: non-lvalue assignment literal
+fn Main() -> void {
+    42 = 1
+}
+---
+error: invalid assignment target
+---
+
+=== error: non-lvalue assignment expression
+fn Main() -> void {
+    let a: int = 1
+    let b: int = 2
+    a + b = 3
+}
+---
+error: invalid assignment target
+---
+
+=== error: non-lvalue assignment call result
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    Double(1) = 2
+}
+---
+error: invalid assignment target
+---

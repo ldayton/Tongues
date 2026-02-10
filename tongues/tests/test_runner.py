@@ -18,7 +18,7 @@ from src.frontend.parse import parse
 from src.frontend.subset import verify as verify_subset
 from src.middleend import analyze
 from src.serialize import fields_to_dict, hierarchy_to_dict, signatures_to_dict
-from src.taytsh import parse as taytsh_parse
+from src.taytsh import check as taytsh_check, parse as taytsh_parse
 
 from src.backend.c import CBackend
 from src.backend.csharp import CSharpBackend
@@ -59,6 +59,7 @@ TESTS = {
     },
     "taytsh": {
         "taytsh_parse": {"dir": "taytsh_parser", "run": "phase"},
+        "taytsh_check": {"dir": "taytsh_checker", "run": "phase"},
     },
 }
 # fmt: on
@@ -594,6 +595,19 @@ def run_taytsh_parse(source: str) -> PhaseResult:
         signal.alarm(0)
 
 
+def run_taytsh_check(source: str) -> PhaseResult:
+    try:
+        signal.alarm(PARSE_TIMEOUT)
+        errors = taytsh_check(source)
+        if errors:
+            return PhaseResult(errors=[str(e) for e in errors])
+        return PhaseResult()
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    finally:
+        signal.alarm(0)
+
+
 def run_subset(source: str) -> PhaseResult:
     try:
         ast_dict = parse(source)
@@ -684,6 +698,7 @@ RUNNERS = {
     "hierarchy": run_hierarchy,
     "typecheck": run_typecheck,
     "taytsh_parse": run_taytsh_parse,
+    "taytsh_check": run_taytsh_check,
 }
 
 
@@ -1025,6 +1040,15 @@ def test_taytsh_parse(taytsh_parse_input, taytsh_parse_expected):
         taytsh_parse_expected,
         run_taytsh_parse(taytsh_parse_input),
         "taytsh_parse",
+        lenient_errors=True,
+    )
+
+
+def test_taytsh_check(taytsh_check_input, taytsh_check_expected):
+    check_expected(
+        taytsh_check_expected,
+        run_taytsh_check(taytsh_check_input),
+        "taytsh_check",
         lenient_errors=True,
     )
 

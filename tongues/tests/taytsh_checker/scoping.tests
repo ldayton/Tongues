@@ -1,0 +1,363 @@
+=== error: shadowing parameter
+fn Bad(x: int) -> void {
+    let x: int = 10
+}
+fn Main() -> void {}
+---
+error: shadows outer binding
+---
+
+=== error: shadowing in nested block
+fn Bad() -> void {
+    let x: int = 1
+    if true {
+        let x: int = 2
+    }
+}
+fn Main() -> void {}
+---
+error: shadows outer binding
+---
+
+=== valid: underscore discard
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    for _, v in m {
+        WritelnOut(ToString(v))
+    }
+}
+---
+ok
+---
+
+=== error: undefined variable
+fn Main() -> void {
+    WritelnOut(ToString(x))
+}
+---
+error: undefined name 'x'
+---
+
+=== error: reserved name
+fn Main() -> void {
+    let Len: int = 42
+}
+---
+error: reserved name
+---
+
+=== valid: for loop scoping
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for v in xs {
+        WritelnOut(ToString(v))
+    }
+}
+---
+ok
+---
+
+=== error: break outside loop
+fn Main() -> void {
+    break
+}
+---
+error: break outside of loop
+---
+
+=== error: continue outside loop
+fn Main() -> void {
+    continue
+}
+---
+error: continue outside of loop
+---
+
+=== valid: break and continue in loop
+fn Main() -> void {
+    let i: int = 0
+    while i < 10 {
+        if i == 5 {
+            break
+        }
+        if i % 2 == 0 {
+            i += 1
+            continue
+        }
+        i += 1
+    }
+}
+---
+ok
+---
+
+=== valid: multiple underscore discards
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    for _, _ in m {
+        WritelnOut("entry")
+    }
+}
+---
+ok
+---
+
+=== error: loop variable after loop
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for v in xs {
+        WritelnOut(ToString(v))
+    }
+    WritelnOut(ToString(v))
+}
+---
+error: undefined name 'v'
+---
+
+=== error: match binding after match
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    match n {
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+        case b: Bin {
+            WritelnOut(b.op)
+        }
+    }
+    WritelnOut(ToString(l.value))
+}
+---
+error: undefined name 'l'
+---
+
+=== error: catch binding after catch
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    }
+    WritelnErr(e.message)
+}
+---
+error: undefined name 'e'
+---
+
+=== valid: local shadows top-level name
+fn Foo() -> void {}
+fn Main() -> void {
+    let Foo: int = 42
+    WritelnOut(ToString(Foo))
+}
+---
+ok
+---
+
+=== error: shadowing in for loop
+fn Main() -> void {
+    let i: int = 0
+    let xs: list[int] = [1, 2, 3]
+    for i in xs {
+        WritelnOut(ToString(i))
+    }
+}
+---
+error: shadows outer binding
+---
+
+=== error: shadowing in catch
+fn Bad() -> void {
+    let e: int = 0
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    }
+}
+fn Main() -> void {}
+---
+error: shadows outer binding
+---
+
+=== error: shadowing in match case
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Bad() -> void {
+    let l: int = 0
+    let n: Node = Lit(1)
+    match n {
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+        case b: Bin {
+            WritelnOut(b.op)
+        }
+    }
+}
+fn Main() -> void {}
+---
+error: shadows outer binding
+---
+
+=== error: reserved name as parameter
+fn Bad(Len: int) -> void {
+    WritelnOut(ToString(Len))
+}
+fn Main() -> void {}
+---
+error: reserved name
+---
+
+=== error: reserved name as loop variable
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for Len in xs {
+        WritelnOut(ToString(Len))
+    }
+}
+---
+error: reserved name
+---
+
+=== error: reserved name as catch binding
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch Len: ValueError {
+        WritelnErr(Len.message)
+    }
+}
+---
+error: reserved name
+---
+
+=== error: redeclaration in same scope
+fn Main() -> void {
+    let x: int = 1
+    let x: int = 2
+}
+---
+error: shadows outer binding
+---
+
+=== error: reading discard variable
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for _, v in xs {
+        WritelnOut(ToString(_))
+    }
+}
+---
+error: undefined name '_'
+---
+
+=== error: reserved name as struct name
+struct Len {
+    x: int
+}
+fn Main() -> void {}
+---
+error: reserved name
+---
+
+=== error: reserved name as enum name
+enum Append { A B }
+fn Main() -> void {}
+---
+error: reserved name
+---
+
+=== error: reserved name as interface name
+interface ToString {}
+fn Main() -> void {}
+---
+error: reserved name
+---
+
+=== error: reserved name as function name
+fn Len() -> void {}
+fn Main() -> void {}
+---
+error: reserved name
+---
+
+=== error: reserved name as match binding
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    match n {
+        case Len: Lit {
+            WritelnOut(ToString(Len.value))
+        }
+        case b: Bin {
+            WritelnOut(b.op)
+        }
+    }
+}
+---
+error: reserved name
+---
+
+=== error: reserved name as default binding
+fn Main() -> void {
+    let x: obj = 42
+    match x {
+        default Len: obj {
+            WritelnOut(ToString(Len))
+        }
+    }
+}
+---
+error: reserved name
+---
+
+=== error: duplicate top-level names struct and function
+struct Foo {
+    x: int
+}
+fn Foo() -> void {}
+fn Main() -> void {}
+---
+error: duplicate name
+---
+
+=== error: duplicate top-level names enum and struct
+enum Foo { A B }
+struct Foo {
+    x: int
+}
+fn Main() -> void {}
+---
+error: duplicate name
+---
+
+=== valid: variable name same as type name in scope
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let Foo: int = 42
+    WritelnOut(ToString(Foo))
+}
+---
+ok
+---

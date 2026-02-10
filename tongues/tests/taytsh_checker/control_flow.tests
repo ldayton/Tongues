@@ -1,0 +1,513 @@
+=== valid: if statement
+fn Main() -> void {
+    let x: int = 42
+    if x > 0 {
+        WritelnOut("positive")
+    }
+}
+---
+ok
+---
+
+=== error: if condition not bool
+fn Main() -> void {
+    if 42 {
+        WritelnOut("bad")
+    }
+}
+---
+error: if condition must be bool
+---
+
+=== valid: while loop
+fn Main() -> void {
+    let i: int = 0
+    while i < 10 {
+        i += 1
+    }
+}
+---
+ok
+---
+
+=== error: while condition not bool
+fn Main() -> void {
+    while 42 {
+        WritelnOut("bad")
+    }
+}
+---
+error: while condition must be bool
+---
+
+=== valid: for loop over list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for v in xs {
+        WritelnOut(ToString(v))
+    }
+}
+---
+ok
+---
+
+=== valid: for loop with index
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for i, v in xs {
+        WritelnOut(Concat(ToString(i), Concat(": ", ToString(v))))
+    }
+}
+---
+ok
+---
+
+=== valid: for loop over string
+fn Main() -> void {
+    let s: string = "hello"
+    for ch in s {
+        WritelnOut(ToString(RuneToInt(ch)))
+    }
+}
+---
+ok
+---
+
+=== valid: for loop over map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    for k, v in m {
+        WritelnOut(Concat(k, Concat(": ", ToString(v))))
+    }
+}
+---
+ok
+---
+
+=== valid: range loop
+fn Main() -> void {
+    for i in range(10) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== valid: range with start and end
+fn Main() -> void {
+    for i in range(1, 10) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== valid: range with step
+fn Main() -> void {
+    for i in range(10, 0, -1) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== valid: try catch
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== valid: try catch finally
+fn Main() -> void {
+    try {
+        WritelnOut("try")
+    } catch e: obj {
+        WritelnErr(ToString(e))
+    } finally {
+        WritelnOut("finally")
+    }
+}
+---
+ok
+---
+
+=== valid: throw
+fn Main() -> void {
+    throw "error"
+}
+---
+ok
+---
+
+=== valid: if else chain
+fn Main() -> void {
+    let x: int = 42
+    if x > 0 {
+        WritelnOut("positive")
+    } else if x == 0 {
+        WritelnOut("zero")
+    } else {
+        WritelnOut("negative")
+    }
+}
+---
+ok
+---
+
+=== valid: for over bytes
+fn Main() -> void {
+    let b: bytes = b"\x01\x02\x03"
+    for v in b {
+        WritelnOut(ToString(ByteToInt(v)))
+    }
+}
+---
+ok
+---
+
+=== valid: for over bytes with index
+fn Main() -> void {
+    let b: bytes = b"\x01\x02\x03"
+    for i, v in b {
+        WritelnOut(Concat(ToString(i), Concat(": ", ToString(ByteToInt(v)))))
+    }
+}
+---
+ok
+---
+
+=== valid: for over set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    for v in s {
+        WritelnOut(ToString(v))
+    }
+}
+---
+ok
+---
+
+=== error: for over set two variables
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    for i, v in s {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: set does not support two-variable
+---
+
+=== error: for over non-iterable
+fn Main() -> void {
+    for v in 42 {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: cannot iterate over int
+---
+
+=== error: range args must be int
+fn Main() -> void {
+    for i in range(1.5) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+error: range arguments must be int
+---
+
+=== error: range two-variable form
+fn Main() -> void {
+    for i, v in range(10) {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: range does not support two-variable
+---
+
+=== valid: try finally only
+fn Main() -> void {
+    try {
+        WritelnOut("try")
+    } finally {
+        WritelnOut("finally")
+    }
+}
+---
+ok
+---
+
+=== valid: catch union type
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError | KeyError {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== valid: for over map single variable
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    for k in m {
+        WritelnOut(k)
+    }
+}
+---
+ok
+---
+
+=== valid: for over string with index
+fn Main() -> void {
+    let s: string = "hello"
+    for i, ch in s {
+        WritelnOut(Concat(ToString(i), Concat(": ", ToString(RuneToInt(ch)))))
+    }
+}
+---
+ok
+---
+
+=== valid: throw struct
+fn Main() -> void {
+    try {
+        throw ValueError("bad input")
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== valid: nested loop break
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        let ys: list[int] = [4, 5, 6]
+        for y in ys {
+            if y == 5 {
+                break
+            }
+            WritelnOut(ToString(y))
+        }
+        WritelnOut(ToString(x))
+    }
+}
+---
+ok
+---
+
+=== valid: nested loop continue
+fn Main() -> void {
+    for i in range(3) {
+        for j in range(3) {
+            if j == 1 {
+                continue
+            }
+            WritelnOut(ToString(j))
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: catch nil
+fn Main() -> void {
+    try {
+        throw nil
+    } catch e: nil {
+        WritelnOut("caught nil")
+    }
+}
+---
+ok
+---
+
+=== error: for over bool
+fn Main() -> void {
+    for v in true {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: cannot iterate over bool
+---
+
+=== error: for over struct
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo = Foo(1)
+    for v in f {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: cannot iterate over Foo
+---
+
+=== error: for over enum
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Red
+    for v in c {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: cannot iterate over Color
+---
+
+=== error: for over tuple
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    for v in t {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: cannot iterate over tuple
+---
+
+=== error: for over optional
+fn Main() -> void {
+    let x: int? = 42
+    for v in x {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: cannot iterate over int?
+---
+
+=== error: for over function type
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    for v in f {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: cannot iterate over fn
+---
+
+=== error: for over interface
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    for v in n {
+        WritelnOut(ToString(v))
+    }
+}
+---
+error: cannot iterate over Node
+---
+
+=== valid: for discard in range
+fn Main() -> void {
+    for _ in range(10) {
+        WritelnOut("tick")
+    }
+}
+---
+ok
+---
+
+=== valid: for discard value in list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for i, _ in xs {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== error: for over union
+fn Main() -> void {
+    let v: list[int] | string = "hello"
+    for x in v {
+        WritelnOut(ToString(x))
+    }
+}
+---
+error: cannot iterate over union
+---
+
+=== valid: return from within try
+fn GetValue() -> int {
+    try {
+        return ParseInt("42", 10)
+    } catch e: ValueError {
+        return 0
+    }
+}
+fn Main() -> void {
+    WritelnOut(ToString(GetValue()))
+}
+---
+ok
+---
+
+=== valid: throw int
+fn Main() -> void {
+    try {
+        throw 42
+    } catch e: int {
+        WritelnOut(ToString(e))
+    }
+}
+---
+ok
+---
+
+=== valid: throw nil
+fn Main() -> void {
+    try {
+        throw nil
+    } catch e: nil {
+        WritelnOut("nil")
+    }
+}
+---
+ok
+---
+
+=== error: multiple catch overlapping obj then specific
+fn Main() -> void {
+    try {
+        throw 42
+    } catch e: obj {
+        WritelnOut("caught")
+    } catch e: int {
+        WritelnOut("unreachable")
+    }
+}
+---
+error: unreachable catch
+---

@@ -124,8 +124,8 @@ let done: bool = true
 
 | Type    | Literal         | Description                      |
 | ------- | --------------- | -------------------------------- |
-| `int`   | `42`            | signed integer, at least 64 bits |
-| `float` | `3.14`          | floating point, at least 64 bits |
+| `int`   | `42`            | signed integer, at least 53 bits |
+| `float` | `3.14`          | IEEE 754 binary64                |
 | `bool`  | `true`, `false` | boolean                          |
 
 Target representations:
@@ -146,7 +146,7 @@ Target representations:
 | Rust       | `i64`     | `f64`     |                                   |
 | Swift      | `Int`     | `Double`  | `Int` is 64-bit on modern targets |
 | TypeScript | `number`  | `number`  | IEEE 754 double; 53-bit int range |
-| Zig        | `i64`     | `f64`     |                                   |
+| Zig        | `i64`     | `f64`     | `f64` is IEEE-compliant by default |
 
 ### Functions
 
@@ -1192,11 +1192,11 @@ To write other types, convert first: `WritelnOut(ToString(n))`.
 
 ## Math Semantics
 
-Strict math is not a goal. Taytsh targets correct-enough portable behavior across all backends, not mathematical rigor. Where targets disagree on edge-case behavior, Taytsh leaves it unspecified rather than imposing costly emulation.
+By default, Taytsh targets correct-enough portable behavior across all backends. Where targets disagree on edge-case behavior, Taytsh leaves it unspecified rather than imposing costly emulation. The `--strict-math` flag trades performance and target coverage for total consistency — see Strict Math below.
 
 ### Integers
 
-Integers are signed, at least 64 bits. Overflow, bitwise width, and shift behavior beyond 64 bits are unspecified — programs that depend on specific overflow or wrapping behavior are out of scope.
+Integers are signed, at least 53 bits. Most targets provide 64-bit integers; JavaScript and TypeScript provide 53-bit integer range (IEEE 754 double). Overflow beyond the target's integer range is unspecified — programs that depend on specific overflow or wrapping behavior are out of scope.
 
 ### Division and Remainder
 
@@ -1212,14 +1212,14 @@ Shift amounts must be non-negative. Behavior when the shift amount equals or exc
 
 ### Floating Point
 
-Follows IEEE 754 double precision.
+Floats are IEEE 754 binary64 (double precision) on all targets.
 
 | Rule            | Description                                                                                    |
 | --------------- | ---------------------------------------------------------------------------------------------- |
 | NaN != NaN      | NaN is not equal to itself                                                                     |
 | -0.0 == 0.0     | negative zero equals positive zero                                                             |
 | NaN propagation | `Min` and `Max` propagate NaN; targets disagree (some swallow NaN), backends may need wrappers |
-| NaN ordering    | `Sorted` on a list containing NaN is unspecified                                               |
+| NaN ordering    | `Sorted` on a list containing NaN is unspecified; strict mode traps                            |
 
 | Function   | Signature       | Description                                |
 | ---------- | --------------- | ------------------------------------------ |
@@ -1243,6 +1243,43 @@ Follows IEEE 754 double precision.
 ### Parsing
 
 `ParseInt(s, base)` and `ParseFloat(s)` throw `ValueError` on invalid input. Valid bases for `ParseInt` are 2–36.
+
+### Strict Math
+
+The `--strict-math` flag enables bit-identical arithmetic across targets. All 12 strict-mode targets produce exactly the same integer and float results for the same inputs.
+
+Excluded targets:
+
+| Target              | Reason                                                    |
+| ------------------- | --------------------------------------------------------- |
+| JavaScript          | 53-bit integer range; cannot represent 64-bit integers    |
+| TypeScript          | same as JavaScript                                        |
+| C#                  | .NET JIT performs FMA contraction; no in-code opt-out     |
+| Swift               | LLVM backend performs FMA contraction; no in-code opt-out |
+
+When strict math is enabled:
+
+| Property                          | Default mode        | Strict mode         |
+| --------------------------------- | ------------------- | ------------------- |
+| Integer width                     | at least 53 bits    | exactly 64 bits     |
+| Integer overflow                  | unspecified         | traps               |
+| Shift ≥ 64                        | unspecified         | traps               |
+| Negation of `INT64_MIN`           | unspecified         | traps               |
+| `Pow(int, int)` overflow          | unspecified         | traps               |
+| `Pow(int, int)` negative exponent | unspecified         | traps               |
+| `Min`/`Max` with NaN              | backends may differ | NaN propagates      |
+| `Round`                           | half-away-from-zero | half-away-from-zero |
+| Float `%` with zero divisor       | unspecified         | traps               |
+| `Sorted` with NaN                 | unspecified         | traps               |
+| Available targets                 | all 16              | 12                  |
+
+Strict mode integers are signed two's complement, exactly 64 bits. Overflow on any integer operation — addition, subtraction, multiplication, negation, left shift, exponentiation — is a runtime error. Targets with arbitrary-precision integers (Python, Ruby) emit range checks to enforce 64-bit bounds. Targets with native overflow detection use it: Rust (`checked_add`), Java (`Math.addExact`), C (`__builtin_add_overflow`), Zig (`@addWithOverflow`). Remaining targets (Go, Dart, Lua, PHP, Perl) emit manual comparison checks.
+
+Strict mode floats are IEEE 754 binary64, same as default mode. Basic operations (`+`, `-`, `*`, `/`) are already bit-identical across all targets by IEEE 754 mandate. Strict mode additionally specifies `Min`, `Max`, and float `%` behavior — backends emit inline wrappers where the native function disagrees. FMA contraction is controlled per-target: C (`#pragma STDC FP_CONTRACT OFF`), Zig (`f64` is IEEE-compliant by default), Rust (no contraction by default). Interpreted and VM targets (Python, Ruby, Go, Java, Dart, Lua, PHP, Perl) do not perform FMA contraction.
+
+`Pow(float, float)` with non-integer exponent is not available in strict mode — underlying `exp`/`log` implementations are not mandated by IEEE 754 and differ across targets. Integer exponents use binary exponentiation (emitted inline, exact within 64-bit range).
+
+The strict math flag is recorded in the IR module metadata. Middleend passes and backends read it to select checked or unchecked emission.
 
 ## Source Metadata
 
