@@ -5,3 +5,4 @@ __pycache__/
 .php-cs-fixer.cache
 .envrc
 .direnv/
+editors/vscode/*.vsix

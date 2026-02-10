@@ -1,0 +1,534 @@
+-- list literals and zero value
+fn TestListLiterals() -> void {
+    let xs: list[int] = [1, 2, 3]
+    Assert(Len(xs) == 3)
+    let empty: list[string] = []
+    Assert(Len(empty) == 0)
+    let z: list[int]
+    Assert(Len(z) == 0)
+}
+
+-- list indexing
+fn TestListIndexing() -> void {
+    let xs: list[int] = [10, 20, 30]
+    Assert(xs[0] == 10)
+    Assert(xs[1] == 20)
+    Assert(xs[2] == 30)
+}
+
+-- list index out of bounds
+fn TestListIndexError() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let caught: bool = false
+    try {
+        let x: int = xs[3]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for out-of-bounds list index")
+}
+
+-- list slicing
+fn TestListSlicing() -> void {
+    let xs: list[int] = [10, 20, 30, 40, 50]
+    let head: list[int] = xs[0:3]
+    Assert(Len(head) == 3)
+    Assert(head[0] == 10)
+    Assert(head[2] == 30)
+
+    let tail: list[int] = xs[3:5]
+    Assert(Len(tail) == 2)
+    Assert(tail[0] == 40)
+
+    -- empty slice
+    Assert(Len(xs[2:2]) == 0)
+
+    -- full copy
+    let copy: list[int] = xs[0:Len(xs)]
+    Assert(Len(copy) == 5)
+    Assert(copy[0] == 10)
+    Assert(copy[4] == 50)
+}
+
+-- slice out of bounds
+fn TestListSliceError() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let caught: bool = false
+    try {
+        let s: list[int] = xs[0:4]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for slice hi out of range")
+
+    caught = false
+    try {
+        let s: list[int] = xs[2:1]
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for lo > hi")
+}
+
+-- slicing produces a copy, not an alias
+fn TestListSliceCopy() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let ys: list[int] = xs[0:3]
+    Append(ys, 4)
+    Assert(Len(xs) == 3)
+    Assert(Len(ys) == 4)
+}
+
+-- Append
+fn TestListAppend() -> void {
+    let xs: list[int] = []
+    Append(xs, 1)
+    Append(xs, 2)
+    Append(xs, 3)
+    Assert(Len(xs) == 3)
+    Assert(xs[0] == 1)
+    Assert(xs[2] == 3)
+}
+
+-- Insert
+fn TestListInsert() -> void {
+    let xs: list[int] = [1, 3]
+    Insert(xs, 1, 2)
+    Assert(Len(xs) == 3)
+    Assert(xs[0] == 1)
+    Assert(xs[1] == 2)
+    Assert(xs[2] == 3)
+
+    Insert(xs, 0, 0)
+    Assert(xs[0] == 0)
+    Assert(Len(xs) == 4)
+}
+
+-- Pop
+fn TestListPop() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let v: int = Pop(xs)
+    Assert(v == 3)
+    Assert(Len(xs) == 2)
+    v = Pop(xs)
+    Assert(v == 2)
+    Assert(Len(xs) == 1)
+}
+
+-- Pop on empty list throws IndexError
+fn TestListPopError() -> void {
+    let xs: list[int] = []
+    let caught: bool = false
+    try {
+        let v: int = Pop(xs)
+    } catch e: IndexError {
+        caught = true
+    }
+    Assert(caught, "expected IndexError for Pop on empty list")
+}
+
+-- RemoveAt
+fn TestListRemoveAt() -> void {
+    let xs: list[int] = [10, 20, 30]
+    RemoveAt(xs, 1)
+    Assert(Len(xs) == 2)
+    Assert(xs[0] == 10)
+    Assert(xs[1] == 30)
+}
+
+-- IndexOf
+fn TestListIndexOf() -> void {
+    let xs: list[int] = [10, 20, 30, 20]
+    Assert(IndexOf(xs, 10) == 0)
+    Assert(IndexOf(xs, 20) == 1)
+    Assert(IndexOf(xs, 30) == 2)
+    Assert(IndexOf(xs, 99) == -1)
+}
+
+-- Contains for list
+fn TestListContains() -> void {
+    let xs: list[int] = [1, 2, 3]
+    Assert(Contains(xs, 1))
+    Assert(Contains(xs, 3))
+    Assert(!Contains(xs, 4))
+    Assert(!Contains([], 1))
+}
+
+-- Repeat for list
+fn TestListRepeat() -> void {
+    let xs: list[int] = [1, 2]
+    let ys: list[int] = Repeat(xs, 3)
+    Assert(Len(ys) == 6)
+    Assert(ys[0] == 1)
+    Assert(ys[1] == 2)
+    Assert(ys[2] == 1)
+    Assert(ys[5] == 2)
+    Assert(Len(Repeat(xs, 0)) == 0)
+    Assert(Len(Repeat(xs, -1)) == 0)
+}
+
+-- Reversed
+fn TestListReversed() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let rev: list[int] = Reversed(xs)
+    Assert(Len(rev) == 3)
+    Assert(rev[0] == 3)
+    Assert(rev[1] == 2)
+    Assert(rev[2] == 1)
+    -- original unchanged
+    Assert(xs[0] == 1)
+    Assert(Len(Reversed([])) == 0)
+}
+
+-- Sorted
+fn TestListSorted() -> void {
+    let xs: list[int] = [3, 1, 2]
+    let s: list[int] = Sorted(xs)
+    Assert(s[0] == 1)
+    Assert(s[1] == 2)
+    Assert(s[2] == 3)
+    -- original unchanged
+    Assert(xs[0] == 3)
+
+    let strs: list[string] = ["banana", "apple", "cherry"]
+    let ss: list[string] = Sorted(strs)
+    Assert(ss[0] == "apple")
+    Assert(ss[1] == "banana")
+    Assert(ss[2] == "cherry")
+
+    Assert(Len(Sorted([])) == 0)
+}
+
+-- list equality (deep structural)
+fn TestListEquality() -> void {
+    Assert([1, 2, 3] == [1, 2, 3])
+    Assert([1, 2, 3] != [1, 2, 4])
+    Assert([1, 2, 3] != [1, 2])
+    Assert([] == [])
+    let a: list[list[int]] = [[1, 2], [3, 4]]
+    let b: list[list[int]] = [[1, 2], [3, 4]]
+    Assert(a == b)
+}
+
+-- list reference semantics (aliasing)
+fn TestListAliasing() -> void {
+    let a: list[int] = [1, 2, 3]
+    let b: list[int] = a
+    Append(b, 4)
+    Assert(Len(a) == 4)
+    Assert(a[3] == 4)
+}
+
+-- list mutation via index assignment
+fn TestListIndexAssign() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[1] = 20
+    Assert(xs[1] == 20)
+    Assert(xs[0] == 1)
+    Assert(xs[2] == 3)
+}
+
+-- list iteration
+fn TestListIteration() -> void {
+    let xs: list[int] = [10, 20, 30]
+    let total: int = 0
+    for v in xs {
+        total += v
+    }
+    Assert(total == 60)
+
+    let idxSum: int = 0
+    for i, v in xs {
+        idxSum += i
+    }
+    Assert(idxSum == 3)
+}
+
+-- map literal and zero value
+fn TestMapLiterals() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    Assert(Len(m) == 2)
+    let empty: map[string, int] = Map()
+    Assert(Len(empty) == 0)
+    let z: map[int, int]
+    Assert(Len(z) == 0)
+}
+
+-- map indexing
+fn TestMapIndexing() -> void {
+    let m: map[string, int] = {"alice": 30, "bob": 25}
+    Assert(m["alice"] == 30)
+    Assert(m["bob"] == 25)
+}
+
+-- map index missing key throws KeyError
+fn TestMapKeyError() -> void {
+    let m: map[string, int] = {"a": 1}
+    let caught: bool = false
+    try {
+        let v: int = m["z"]
+    } catch e: KeyError {
+        caught = true
+    }
+    Assert(caught, "expected KeyError for missing key")
+}
+
+-- map insert and update via index assignment
+fn TestMapInsertUpdate() -> void {
+    let m: map[string, int] = {"a": 1}
+    m["b"] = 2
+    Assert(Len(m) == 2)
+    Assert(m["b"] == 2)
+    m["a"] = 10
+    Assert(m["a"] == 10)
+    Assert(Len(m) == 2)
+}
+
+-- Contains for map (key membership)
+fn TestMapContains() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    Assert(Contains(m, "a"))
+    Assert(Contains(m, "b"))
+    Assert(!Contains(m, "c"))
+}
+
+-- Get with two args (returns optional)
+fn TestMapGet() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int? = Get(m, "a")
+    Assert(v != nil)
+    Assert(Unwrap(v) == 1)
+    let missing: int? = Get(m, "z")
+    Assert(missing == nil)
+}
+
+-- Get with three args (returns default)
+fn TestMapGetDefault() -> void {
+    let m: map[string, int] = {"a": 1}
+    Assert(Get(m, "a", 0) == 1)
+    Assert(Get(m, "z", 99) == 99)
+}
+
+-- Delete
+fn TestMapDelete() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2, "c": 3}
+    Delete(m, "b")
+    Assert(Len(m) == 2)
+    Assert(!Contains(m, "b"))
+    Assert(Contains(m, "a"))
+    Assert(Contains(m, "c"))
+}
+
+-- Keys, Values, Items
+fn TestMapKeysValuesItems() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let ks: list[string] = Sorted(Keys(m))
+    Assert(Len(ks) == 2)
+    Assert(ks[0] == "a")
+    Assert(ks[1] == "b")
+
+    let vs: list[int] = Sorted(Values(m))
+    Assert(Len(vs) == 2)
+    Assert(vs[0] == 1)
+    Assert(vs[1] == 2)
+
+    let items: list[(string, int)] = Items(m)
+    Assert(Len(items) == 2)
+}
+
+-- Merge
+fn TestMapMerge() -> void {
+    let m1: map[string, int] = {"a": 1, "b": 2}
+    let m2: map[string, int] = {"b": 20, "c": 30}
+    let merged: map[string, int] = Merge(m1, m2)
+    Assert(Len(merged) == 3)
+    Assert(merged["a"] == 1)
+    Assert(merged["b"] == 20)
+    Assert(merged["c"] == 30)
+    -- originals unchanged
+    Assert(m1["b"] == 2)
+}
+
+-- map equality (deep structural, order-independent)
+fn TestMapEquality() -> void {
+    let a: map[string, int] = {"a": 1, "b": 2}
+    let b: map[string, int] = {"b": 2, "a": 1}
+    Assert(a == b)
+    let c: map[string, int] = {"a": 1, "b": 3}
+    Assert(a != c)
+    let d: map[string, int] = {"a": 1}
+    Assert(a != d)
+    let e: map[string, int] = Map()
+    let f: map[string, int] = Map()
+    Assert(e == f)
+}
+
+-- map reference semantics
+fn TestMapAliasing() -> void {
+    let a: map[string, int] = {"x": 1}
+    let b: map[string, int] = a
+    b["y"] = 2
+    Assert(Len(a) == 2)
+    Assert(a["y"] == 2)
+}
+
+-- map iteration
+fn TestMapIteration() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+
+    -- one variable: keys
+    let keyCount: int = 0
+    for k in m {
+        Assert(Contains(m, k))
+        keyCount += 1
+    }
+    Assert(keyCount == 2)
+
+    -- two variables: key and value
+    let total: int = 0
+    for k, v in m {
+        total += v
+    }
+    Assert(total == 3)
+}
+
+-- set literal and zero value
+fn TestSetLiterals() -> void {
+    let s: set[int] = {1, 2, 3}
+    Assert(Len(s) == 3)
+    let empty: set[int] = Set()
+    Assert(Len(empty) == 0)
+    let z: set[string]
+    Assert(Len(z) == 0)
+}
+
+-- set deduplication in literal
+fn TestSetDedup() -> void {
+    let s: set[int] = {1, 1, 2, 2, 3}
+    Assert(Len(s) == 3)
+}
+
+-- Add
+fn TestSetAdd() -> void {
+    let s: set[int] = Set()
+    Add(s, 1)
+    Add(s, 2)
+    Add(s, 1)
+    Assert(Len(s) == 2)
+    Assert(Contains(s, 1))
+    Assert(Contains(s, 2))
+}
+
+-- Remove
+fn TestSetRemove() -> void {
+    let s: set[int] = {1, 2, 3}
+    Remove(s, 2)
+    Assert(Len(s) == 2)
+    Assert(!Contains(s, 2))
+    Assert(Contains(s, 1))
+    Assert(Contains(s, 3))
+}
+
+-- Contains for set
+fn TestSetContains() -> void {
+    let s: set[int] = {10, 20, 30}
+    Assert(Contains(s, 10))
+    Assert(Contains(s, 30))
+    Assert(!Contains(s, 40))
+}
+
+-- set equality (membership-based, order-independent)
+fn TestSetEquality() -> void {
+    let a: set[int] = {1, 2, 3}
+    let b: set[int] = {3, 2, 1}
+    Assert(a == b)
+    let c: set[int] = {1, 2}
+    Assert(a != c)
+    let d: set[int] = Set()
+    let e: set[int] = Set()
+    Assert(d == e)
+}
+
+-- set reference semantics
+fn TestSetAliasing() -> void {
+    let a: set[int] = {1}
+    let b: set[int] = a
+    Add(b, 2)
+    Assert(Len(a) == 2)
+    Assert(Contains(a, 2))
+}
+
+-- set iteration (one variable only)
+fn TestSetIteration() -> void {
+    let s: set[int] = {10, 20, 30}
+    let total: int = 0
+    for v in s {
+        total += v
+    }
+    Assert(total == 60)
+}
+
+-- nested collections
+fn TestNestedCollections() -> void {
+    let grid: list[list[int]] = [[1, 2], [3, 4]]
+    Assert(grid[0][0] == 1)
+    Assert(grid[1][1] == 4)
+
+    let nested: map[string, list[int]] = {"a": [1, 2], "b": [3, 4]}
+    Assert(nested["a"][0] == 1)
+    Assert(nested["b"][1] == 4)
+}
+
+-- map with int keys
+fn TestMapIntKeys() -> void {
+    let m: map[int, string] = {1: "one", 2: "two"}
+    Assert(m[1] == "one")
+    Assert(m[2] == "two")
+    Assert(Len(m) == 2)
+}
+
+fn Main() -> void {
+    TestListLiterals()
+    TestListIndexing()
+    TestListIndexError()
+    TestListSlicing()
+    TestListSliceError()
+    TestListSliceCopy()
+    TestListAppend()
+    TestListInsert()
+    TestListPop()
+    TestListPopError()
+    TestListRemoveAt()
+    TestListIndexOf()
+    TestListContains()
+    TestListRepeat()
+    TestListReversed()
+    TestListSorted()
+    TestListEquality()
+    TestListAliasing()
+    TestListIndexAssign()
+    TestListIteration()
+    TestMapLiterals()
+    TestMapIndexing()
+    TestMapKeyError()
+    TestMapInsertUpdate()
+    TestMapContains()
+    TestMapGet()
+    TestMapGetDefault()
+    TestMapDelete()
+    TestMapKeysValuesItems()
+    TestMapMerge()
+    TestMapEquality()
+    TestMapAliasing()
+    TestMapIteration()
+    TestSetLiterals()
+    TestSetDedup()
+    TestSetAdd()
+    TestSetRemove()
+    TestSetContains()
+    TestSetEquality()
+    TestSetAliasing()
+    TestSetIteration()
+    TestNestedCollections()
+    TestMapIntKeys()
+}

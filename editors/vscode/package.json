@@ -1,0 +1,38 @@
+{
+  "name": "taytsh-syntax",
+  "displayName": "Taytsh Syntax",
+  "description": "Syntax highlighting for Taytsh (.ty) files",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ldayton/Tongues"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "taytsh",
+        "aliases": ["Taytsh", "taytsh"],
+        "extensions": [".ty", ".taytsh"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "taytsh",
+        "scopeName": "source.taytsh",
+        "path": "./syntaxes/taytsh.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "taytsh",
+        "path": "./snippets.json"
+      }
+    ]
+  }
+}

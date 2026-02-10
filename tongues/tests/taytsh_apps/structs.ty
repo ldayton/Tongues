@@ -1,0 +1,284 @@
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+enum Direction {
+    North
+    South
+    East
+    West
+}
+
+interface Shape {}
+
+struct Circle : Shape {
+    radius: float
+
+    fn Area(self) -> float {
+        return 3.14159265358979 * self.radius * self.radius
+    }
+}
+
+struct Rect : Shape {
+    width: float
+    height: float
+
+    fn Area(self) -> float {
+        return self.width * self.height
+    }
+}
+
+struct Point {
+    x: int
+    y: int
+
+    fn Translate(self, dx: int, dy: int) -> Point {
+        return Point(self.x + dx, self.y + dy)
+    }
+
+    fn DistSq(self, other: Point) -> int {
+        let dx: int = self.x - other.x
+        let dy: int = self.y - other.y
+        return dx * dx + dy * dy
+    }
+}
+
+struct Pair {
+    first: string
+    second: int
+}
+
+interface Node {}
+
+struct Leaf : Node {
+    value: int
+}
+
+struct Branch : Node {
+    left: Node
+    right: Node
+}
+
+-- enum literal access
+fn TestEnumLiterals() -> void {
+    let c: Color = Color.Red
+    Assert(c == Color.Red)
+    Assert(c != Color.Green)
+    Assert(c != Color.Blue)
+}
+
+-- enum equality
+fn TestEnumEquality() -> void {
+    Assert(Color.Red == Color.Red)
+    Assert(Color.Red != Color.Green)
+    Assert(Direction.North == Direction.North)
+    Assert(Direction.North != Direction.South)
+}
+
+-- enum as function parameter
+fn IsWarm(c: Color) -> bool {
+    match c {
+        case Color.Red {
+            return true
+        }
+        default {
+            return false
+        }
+    }
+}
+
+fn TestEnumParam() -> void {
+    Assert(IsWarm(Color.Red))
+    Assert(!IsWarm(Color.Blue))
+}
+
+-- struct positional construction
+fn TestStructPositional() -> void {
+    let p: Point = Point(3, 4)
+    Assert(p.x == 3)
+    Assert(p.y == 4)
+}
+
+-- struct named construction
+fn TestStructNamed() -> void {
+    let p: Point = Point(x: 10, y: 20)
+    Assert(p.x == 10)
+    Assert(p.y == 20)
+}
+
+-- struct named construction, any order
+fn TestStructNamedOrder() -> void {
+    let p: Pair = Pair(second: 42, first: "hello")
+    Assert(p.first == "hello")
+    Assert(p.second == 42)
+}
+
+-- struct field mutation
+fn TestStructFieldMutation() -> void {
+    let p: Point = Point(1, 2)
+    p.x = 10
+    p.y = 20
+    Assert(p.x == 10)
+    Assert(p.y == 20)
+}
+
+-- struct methods
+fn TestStructMethods() -> void {
+    let p: Point = Point(1, 2)
+    let moved: Point = p.Translate(3, 4)
+    Assert(moved.x == 4)
+    Assert(moved.y == 6)
+    -- original unchanged (returned new struct)
+    Assert(p.x == 1)
+    Assert(p.y == 2)
+}
+
+-- method with another struct param
+fn TestMethodWithStructParam() -> void {
+    let a: Point = Point(0, 0)
+    let b: Point = Point(3, 4)
+    Assert(a.DistSq(b) == 25)
+}
+
+-- struct reference semantics
+fn TestStructAliasing() -> void {
+    let a: Point = Point(1, 2)
+    let b: Point = a
+    b.x = 99
+    Assert(a.x == 99)
+}
+
+-- struct equality (deep structural)
+fn TestStructEquality() -> void {
+    let a: Point = Point(1, 2)
+    let b: Point = Point(1, 2)
+    Assert(a == b)
+    b.x = 3
+    Assert(a != b)
+}
+
+-- struct with enum field
+fn TestStructWithEnum() -> void {
+    let p: Pair = Pair("red", 1)
+    Assert(p.first == "red")
+    Assert(p.second == 1)
+}
+
+-- interface: construct variants
+fn TestInterfaceConstruction() -> void {
+    let c: Shape = Circle(5.0)
+    let r: Shape = Rect(3.0, 4.0)
+    -- just verifying these compile and assign to Shape
+    Assert(true)
+}
+
+-- interface method dispatch via match
+fn ShapeArea(s: Shape) -> float {
+    match s {
+        case c: Circle {
+            return c.Area()
+        }
+        case r: Rect {
+            return r.Area()
+        }
+    }
+}
+
+fn TestInterfaceMatch() -> void {
+    let c: Shape = Circle(1.0)
+    let a: float = ShapeArea(c)
+    Assert(a > 3.14)
+    Assert(a < 3.15)
+
+    let r: Shape = Rect(3.0, 4.0)
+    Assert(ShapeArea(r) == 12.0)
+}
+
+-- recursive interface (tree)
+fn TreeSum(n: Node) -> int {
+    match n {
+        case leaf: Leaf {
+            return leaf.value
+        }
+        case branch: Branch {
+            return TreeSum(branch.left) + TreeSum(branch.right)
+        }
+    }
+}
+
+fn TestRecursiveInterface() -> void {
+    let tree: Node = Branch(
+        Branch(Leaf(1), Leaf(2)),
+        Leaf(3)
+    )
+    Assert(TreeSum(tree) == 6)
+}
+
+-- struct in list
+fn TestStructInList() -> void {
+    let points: list[Point] = [Point(0, 0), Point(1, 1), Point(2, 2)]
+    Assert(Len(points) == 3)
+    Assert(points[0].x == 0)
+    Assert(points[2].y == 2)
+}
+
+-- struct in map
+fn TestStructInMap() -> void {
+    let m: map[string, Point] = {"origin": Point(0, 0), "unit": Point(1, 1)}
+    Assert(m["origin"].x == 0)
+    Assert(m["unit"].y == 1)
+}
+
+-- enum in map key
+fn TestEnumAsMapKey() -> void {
+    let names: map[Color, string] = {Color.Red: "red", Color.Green: "green", Color.Blue: "blue"}
+    Assert(names[Color.Red] == "red")
+    Assert(names[Color.Blue] == "blue")
+    Assert(Len(names) == 3)
+}
+
+-- method on interface variant
+fn TestMethodOnVariant() -> void {
+    let c: Circle = Circle(2.0)
+    let area: float = c.Area()
+    Assert(area > 12.56)
+    Assert(area < 12.57)
+}
+
+-- mutate struct passed to function
+fn Bump(p: Point) -> void {
+    p.x += 1
+    p.y += 1
+}
+
+fn TestMutateViaFunction() -> void {
+    let p: Point = Point(0, 0)
+    Bump(p)
+    Assert(p.x == 1)
+    Assert(p.y == 1)
+}
+
+fn Main() -> void {
+    TestEnumLiterals()
+    TestEnumEquality()
+    TestEnumParam()
+    TestStructPositional()
+    TestStructNamed()
+    TestStructNamedOrder()
+    TestStructFieldMutation()
+    TestStructMethods()
+    TestMethodWithStructParam()
+    TestStructAliasing()
+    TestStructEquality()
+    TestStructWithEnum()
+    TestInterfaceConstruction()
+    TestInterfaceMatch()
+    TestRecursiveInterface()
+    TestStructInList()
+    TestStructInMap()
+    TestEnumAsMapKey()
+    TestMethodOnVariant()
+    TestMutateViaFunction()
+}

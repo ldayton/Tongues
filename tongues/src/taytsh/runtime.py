@@ -672,6 +672,11 @@ _RESERVED_BINDINGS: set[str] = {
     "FloatToInt",
     "ByteToInt",
     "IntToByte",
+    "Floor",
+    "Ceil",
+    "Sqrt",
+    "ReadFile",
+    "WriteFile",
     # Built-in error struct names (treated as reserved for simplicity)
     "KeyError",
     "IndexError",
@@ -679,6 +684,7 @@ _RESERVED_BINDINGS: set[str] = {
     "AssertError",
     "NilError",
     "ValueError",
+    "IOError",
 }
 
 
@@ -784,6 +790,7 @@ def _build_index(module: TModule) -> ModuleIndex:
         "AssertError",
         "NilError",
         "ValueError",
+        "IOError",
     ):
         structs[err] = _builtin_err(err)
 
@@ -2598,8 +2605,479 @@ def _tc_assert(
     return TY_VOID
 
 
+# ---- Simple builtin factory ------------------------------------------------
+
+
+_TY_STR_OR_BYTES = ty_union([TY_STRING, TY_BYTES])
+_TY_STR_OR_RUNE = ty_union([TY_STRING, TY_RUNE])
+_TY_OPT_STRING = ty_union([TY_STRING, TY_NIL])
+
+
+def _builtin_simple(name: str, params: tuple[Ty, ...], ret: Ty) -> _Builtin:
+    def _tc(
+        tc: TypeChecker,
+        args: list[TArg],
+        env: _TypeEnv,
+        expected: Ty | None,
+        allow_capture: bool,
+        pos: Pos,
+    ) -> Ty:
+        if any(a.name is not None for a in args):
+            raise TaytshTypeError(f"named args not supported for {name}", pos)
+        if len(args) != len(params):
+            raise TaytshTypeError(f"{name} expects {len(params)} argument(s)", pos)
+        for i, a in enumerate(args):
+            aty = tc._type_expr(
+                a.value, env, expected=params[i], allow_capture=allow_capture
+            )
+            if not tc._assignable(aty, params[i]):
+                raise TaytshTypeError(f"{name} argument type mismatch", a.pos)
+        return ret
+
+    return _Builtin(FnSig(params, ret), _tc)
+
+
+# ---- Polymorphic builtin typecheckers --------------------------------------
+
+
+def _tc_concat(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Concat", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Concat expects 2 arguments", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
+    if ty_eq(aty, TY_STRING) and ty_eq(bty, TY_STRING):
+        return TY_STRING
+    if ty_eq(aty, TY_BYTES) and ty_eq(bty, TY_BYTES):
+        return TY_BYTES
+    raise TaytshTypeError("Concat requires (string, string) or (bytes, bytes)", pos)
+
+
+def _tc_abs(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Abs", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("Abs expects 1 argument", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if ty_eq(aty, TY_INT) or ty_eq(aty, TY_FLOAT):
+        return aty
+    raise TaytshTypeError("Abs requires int or float", pos)
+
+
+def _tc_min_max(name: str) -> Callable:
+    def _tc(
+        tc: TypeChecker,
+        args: list[TArg],
+        env: _TypeEnv,
+        expected: Ty | None,
+        allow_capture: bool,
+        pos: Pos,
+    ) -> Ty:
+        if any(a.name is not None for a in args):
+            raise TaytshTypeError(f"named args not supported for {name}", pos)
+        if len(args) != 2:
+            raise TaytshTypeError(f"{name} expects 2 arguments", pos)
+        aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+        bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
+        if not ty_eq(aty, bty):
+            raise TaytshTypeError(f"{name} requires same type arguments", pos)
+        if ty_eq(aty, TY_INT) or ty_eq(aty, TY_FLOAT) or ty_eq(aty, TY_BYTE):
+            return aty
+        raise TaytshTypeError(f"{name} requires int, float, or byte", pos)
+
+    return _tc
+
+
+_tc_min = _tc_min_max("Min")
+_tc_max = _tc_min_max("Max")
+
+
+def _tc_sum(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Sum", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("Sum expects 1 argument", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if isinstance(aty, TyList):
+        if ty_eq(aty.element, TY_INT) or ty_eq(aty.element, TY_FLOAT):
+            return aty.element
+    raise TaytshTypeError("Sum requires list[int] or list[float]", pos)
+
+
+def _tc_pow(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Pow", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Pow expects 2 arguments", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
+    if not ty_eq(aty, bty):
+        raise TaytshTypeError("Pow requires same type arguments", pos)
+    if ty_eq(aty, TY_INT) or ty_eq(aty, TY_FLOAT):
+        return aty
+    raise TaytshTypeError("Pow requires int or float", pos)
+
+
+def _tc_repeat(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Repeat", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Repeat expects 2 arguments", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    nty = tc._type_expr(
+        args[1].value, env, expected=TY_INT, allow_capture=allow_capture
+    )
+    if not ty_eq(nty, TY_INT):
+        raise TaytshTypeError("Repeat count must be int", args[1].pos)
+    if ty_eq(aty, TY_STRING):
+        return TY_STRING
+    if isinstance(aty, TyList):
+        return aty
+    raise TaytshTypeError("Repeat requires string or list", pos)
+
+
+def _tc_format(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Format", pos)
+    if len(args) < 1:
+        raise TaytshTypeError("Format expects at least 1 argument", pos)
+    for a in args:
+        aty = tc._type_expr(
+            a.value, env, expected=TY_STRING, allow_capture=allow_capture
+        )
+        if not ty_eq(aty, TY_STRING):
+            raise TaytshTypeError("Format arguments must be string", a.pos)
+    return TY_STRING
+
+
+def _tc_append(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Append", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Append expects 2 arguments", pos)
+    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(lty, TyList):
+        raise TaytshTypeError("Append first argument must be a list", pos)
+    vty = tc._type_expr(
+        args[1].value, env, expected=lty.element, allow_capture=allow_capture
+    )
+    if not tc._assignable(vty, lty.element):
+        raise TaytshTypeError("Append element type mismatch", args[1].pos)
+    return TY_VOID
+
+
+def _tc_insert(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Insert", pos)
+    if len(args) != 3:
+        raise TaytshTypeError("Insert expects 3 arguments", pos)
+    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(lty, TyList):
+        raise TaytshTypeError("Insert first argument must be a list", pos)
+    ity = tc._type_expr(
+        args[1].value, env, expected=TY_INT, allow_capture=allow_capture
+    )
+    if not ty_eq(ity, TY_INT):
+        raise TaytshTypeError("Insert index must be int", args[1].pos)
+    vty = tc._type_expr(
+        args[2].value, env, expected=lty.element, allow_capture=allow_capture
+    )
+    if not tc._assignable(vty, lty.element):
+        raise TaytshTypeError("Insert element type mismatch", args[2].pos)
+    return TY_VOID
+
+
+def _tc_pop(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Pop", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("Pop expects 1 argument", pos)
+    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(lty, TyList):
+        raise TaytshTypeError("Pop requires a list", pos)
+    return lty.element
+
+
+def _tc_remove_at(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for RemoveAt", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("RemoveAt expects 2 arguments", pos)
+    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(lty, TyList):
+        raise TaytshTypeError("RemoveAt first argument must be a list", pos)
+    ity = tc._type_expr(
+        args[1].value, env, expected=TY_INT, allow_capture=allow_capture
+    )
+    if not ty_eq(ity, TY_INT):
+        raise TaytshTypeError("RemoveAt index must be int", args[1].pos)
+    return TY_VOID
+
+
+def _tc_index_of(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for IndexOf", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("IndexOf expects 2 arguments", pos)
+    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(lty, TyList):
+        raise TaytshTypeError("IndexOf first argument must be a list", pos)
+    vty = tc._type_expr(
+        args[1].value, env, expected=lty.element, allow_capture=allow_capture
+    )
+    if not tc._assignable(vty, lty.element):
+        raise TaytshTypeError("IndexOf element type mismatch", args[1].pos)
+    return TY_INT
+
+
+def _tc_list_to_list(name: str) -> Callable:
+    def _tc(
+        tc: TypeChecker,
+        args: list[TArg],
+        env: _TypeEnv,
+        expected: Ty | None,
+        allow_capture: bool,
+        pos: Pos,
+    ) -> Ty:
+        if any(a.name is not None for a in args):
+            raise TaytshTypeError(f"named args not supported for {name}", pos)
+        if len(args) != 1:
+            raise TaytshTypeError(f"{name} expects 1 argument", pos)
+        lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+        if not isinstance(lty, TyList):
+            raise TaytshTypeError(f"{name} requires a list", pos)
+        return lty
+
+    return _tc
+
+
+_tc_reversed = _tc_list_to_list("Reversed")
+_tc_sorted = _tc_list_to_list("Sorted")
+
+
+def _tc_delete(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Delete", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Delete expects 2 arguments", pos)
+    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(mty, TyMap):
+        raise TaytshTypeError("Delete first argument must be a map", pos)
+    kty = tc._type_expr(
+        args[1].value, env, expected=mty.key, allow_capture=allow_capture
+    )
+    if not tc._assignable(kty, mty.key):
+        raise TaytshTypeError("Delete key type mismatch", args[1].pos)
+    return TY_VOID
+
+
+def _tc_keys(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Keys", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("Keys expects 1 argument", pos)
+    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(mty, TyMap):
+        raise TaytshTypeError("Keys requires a map", pos)
+    return TyList(mty.key)
+
+
+def _tc_values(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Values", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("Values expects 1 argument", pos)
+    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(mty, TyMap):
+        raise TaytshTypeError("Values requires a map", pos)
+    return TyList(mty.value)
+
+
+def _tc_items(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Items", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("Items expects 1 argument", pos)
+    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(mty, TyMap):
+        raise TaytshTypeError("Items requires a map", pos)
+    return TyList(TyTuple((mty.key, mty.value)))
+
+
+def _tc_merge(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Merge", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Merge expects 2 arguments", pos)
+    m1 = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    m2 = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
+    if not isinstance(m1, TyMap) or not isinstance(m2, TyMap):
+        raise TaytshTypeError("Merge requires two maps", pos)
+    if not ty_eq(m1, m2):
+        raise TaytshTypeError("Merge requires maps of same type", pos)
+    return m1
+
+
+def _tc_set_add(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Add", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Add expects 2 arguments", pos)
+    sty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(sty, TySet):
+        raise TaytshTypeError("Add first argument must be a set", pos)
+    vty = tc._type_expr(
+        args[1].value, env, expected=sty.element, allow_capture=allow_capture
+    )
+    if not tc._assignable(vty, sty.element):
+        raise TaytshTypeError("Add element type mismatch", args[1].pos)
+    return TY_VOID
+
+
+def _tc_set_remove(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Remove", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Remove expects 2 arguments", pos)
+    sty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(sty, TySet):
+        raise TaytshTypeError("Remove first argument must be a set", pos)
+    vty = tc._type_expr(
+        args[1].value, env, expected=sty.element, allow_capture=allow_capture
+    )
+    if not tc._assignable(vty, sty.element):
+        raise TaytshTypeError("Remove element type mismatch", args[1].pos)
+    return TY_VOID
+
+
 _BUILTIN_DISPATCH: dict[str, _Builtin] = {
-    # Minimal builtins needed for typing most programs; runtime impl added later.
     "ToString": _Builtin(FnSig((TY_OBJ,), TY_STRING), _tc_tostring),
     "Len": _Builtin(FnSig((TY_OBJ,), TY_INT), _tc_len),
     "Map": _Builtin(FnSig((), TyMap(TY_OBJ, TY_OBJ)), _tc_map_ctor),
@@ -2608,6 +3086,93 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "Contains": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_BOOL), _tc_contains),
     "Unwrap": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_unwrap),
     "Assert": _Builtin(FnSig((TY_BOOL,), TY_VOID), _tc_assert),
+    # Numeric
+    "Round": _builtin_simple("Round", (TY_FLOAT,), TY_INT),
+    "Floor": _builtin_simple("Floor", (TY_FLOAT,), TY_INT),
+    "Ceil": _builtin_simple("Ceil", (TY_FLOAT,), TY_INT),
+    "Sqrt": _builtin_simple("Sqrt", (TY_FLOAT,), TY_FLOAT),
+    "IsNaN": _builtin_simple("IsNaN", (TY_FLOAT,), TY_BOOL),
+    "IsInf": _builtin_simple("IsInf", (TY_FLOAT,), TY_BOOL),
+    "DivMod": _builtin_simple("DivMod", (TY_INT, TY_INT), TyTuple((TY_INT, TY_INT))),
+    "Abs": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_abs),
+    "Min": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_min),
+    "Max": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_max),
+    "Sum": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_sum),
+    "Pow": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_pow),
+    # Conversions
+    "IntToFloat": _builtin_simple("IntToFloat", (TY_INT,), TY_FLOAT),
+    "FloatToInt": _builtin_simple("FloatToInt", (TY_FLOAT,), TY_INT),
+    "ByteToInt": _builtin_simple("ByteToInt", (TY_BYTE,), TY_INT),
+    "IntToByte": _builtin_simple("IntToByte", (TY_INT,), TY_BYTE),
+    "RuneFromInt": _builtin_simple("RuneFromInt", (TY_INT,), TY_RUNE),
+    "RuneToInt": _builtin_simple("RuneToInt", (TY_RUNE,), TY_INT),
+    # String — simple
+    "ParseInt": _builtin_simple("ParseInt", (TY_STRING, TY_INT), TY_INT),
+    "ParseFloat": _builtin_simple("ParseFloat", (TY_STRING,), TY_FLOAT),
+    "FormatInt": _builtin_simple("FormatInt", (TY_INT, TY_INT), TY_STRING),
+    "Upper": _builtin_simple("Upper", (TY_STRING,), TY_STRING),
+    "Lower": _builtin_simple("Lower", (TY_STRING,), TY_STRING),
+    "Trim": _builtin_simple("Trim", (TY_STRING, TY_STRING), TY_STRING),
+    "TrimStart": _builtin_simple("TrimStart", (TY_STRING, TY_STRING), TY_STRING),
+    "TrimEnd": _builtin_simple("TrimEnd", (TY_STRING, TY_STRING), TY_STRING),
+    "Split": _builtin_simple("Split", (TY_STRING, TY_STRING), TyList(TY_STRING)),
+    "SplitN": _builtin_simple(
+        "SplitN", (TY_STRING, TY_STRING, TY_INT), TyList(TY_STRING)
+    ),
+    "SplitWhitespace": _builtin_simple(
+        "SplitWhitespace", (TY_STRING,), TyList(TY_STRING)
+    ),
+    "Join": _builtin_simple("Join", (TY_STRING, TyList(TY_STRING)), TY_STRING),
+    "Find": _builtin_simple("Find", (TY_STRING, TY_STRING), TY_INT),
+    "RFind": _builtin_simple("RFind", (TY_STRING, TY_STRING), TY_INT),
+    "Count": _builtin_simple("Count", (TY_STRING, TY_STRING), TY_INT),
+    "Replace": _builtin_simple("Replace", (TY_STRING, TY_STRING, TY_STRING), TY_STRING),
+    "StartsWith": _builtin_simple("StartsWith", (TY_STRING, TY_STRING), TY_BOOL),
+    "EndsWith": _builtin_simple("EndsWith", (TY_STRING, TY_STRING), TY_BOOL),
+    "Encode": _builtin_simple("Encode", (TY_STRING,), TY_BYTES),
+    "Decode": _builtin_simple("Decode", (TY_BYTES,), TY_STRING),
+    # String — polymorphic
+    "Concat": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_concat),
+    "Repeat": _Builtin(FnSig((TY_OBJ, TY_INT), TY_OBJ), _tc_repeat),
+    "Format": _Builtin(FnSig((TY_STRING,), TY_STRING), _tc_format),
+    # Character tests
+    "IsDigit": _builtin_simple("IsDigit", (_TY_STR_OR_RUNE,), TY_BOOL),
+    "IsAlpha": _builtin_simple("IsAlpha", (_TY_STR_OR_RUNE,), TY_BOOL),
+    "IsAlnum": _builtin_simple("IsAlnum", (_TY_STR_OR_RUNE,), TY_BOOL),
+    "IsSpace": _builtin_simple("IsSpace", (_TY_STR_OR_RUNE,), TY_BOOL),
+    "IsUpper": _builtin_simple("IsUpper", (_TY_STR_OR_RUNE,), TY_BOOL),
+    "IsLower": _builtin_simple("IsLower", (_TY_STR_OR_RUNE,), TY_BOOL),
+    # List — polymorphic
+    "Append": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_append),
+    "Insert": _Builtin(FnSig((TY_OBJ, TY_INT, TY_OBJ), TY_VOID), _tc_insert),
+    "Pop": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_pop),
+    "RemoveAt": _Builtin(FnSig((TY_OBJ, TY_INT), TY_VOID), _tc_remove_at),
+    "IndexOf": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_INT), _tc_index_of),
+    "Reversed": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_reversed),
+    "Sorted": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_sorted),
+    # Map — polymorphic
+    "Delete": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_delete),
+    "Keys": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_keys),
+    "Values": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_values),
+    "Items": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_items),
+    "Merge": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_merge),
+    # Set — polymorphic
+    "Add": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_set_add),
+    "Remove": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_set_remove),
+    # I/O
+    "WriteOut": _builtin_simple("WriteOut", (_TY_STR_OR_BYTES,), TY_VOID),
+    "WriteErr": _builtin_simple("WriteErr", (_TY_STR_OR_BYTES,), TY_VOID),
+    "WritelnOut": _builtin_simple("WritelnOut", (_TY_STR_OR_BYTES,), TY_VOID),
+    "WritelnErr": _builtin_simple("WritelnErr", (_TY_STR_OR_BYTES,), TY_VOID),
+    "ReadLine": _builtin_simple("ReadLine", (), _TY_OPT_STRING),
+    "ReadAll": _builtin_simple("ReadAll", (), TY_STRING),
+    "ReadBytes": _builtin_simple("ReadBytes", (), TY_BYTES),
+    "ReadBytesN": _builtin_simple("ReadBytesN", (TY_INT,), TY_BYTES),
+    "ReadFile": _builtin_simple("ReadFile", (TY_STRING,), _TY_STR_OR_BYTES),
+    "WriteFile": _builtin_simple("WriteFile", (TY_STRING, _TY_STR_OR_BYTES), TY_VOID),
+    "Args": _builtin_simple("Args", (), TyList(TY_STRING)),
+    "GetEnv": _builtin_simple("GetEnv", (TY_STRING,), _TY_OPT_STRING),
+    "Exit": _builtin_simple("Exit", (TY_INT,), TY_VOID),
 }
 
 

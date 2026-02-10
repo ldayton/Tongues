@@ -1316,7 +1316,7 @@ The `--strict-tostring` flag specifies a canonical `ToString` format for every t
 | `list[T]`                  | target-native | `[1, 2, 3]`                                             |
 | `map[K, V]`                | target-native | `{"a": 1, "b": 2}` sorted keys                          |
 | `set[T]`                   | target-native | `{1, 2, 3}` sorted                                      |
-| `(T, U, ...)`              | target-native | `(1, "hello")`                                           |
+| `(T, U, ...)`              | target-native | `(1, "hello")`                                          |
 | `struct`                   | target-native | `Token{kind: TokenKind.Ident, value: "foo", offset: 0}` |
 | `enum`                     | target-native | `TokenKind.Ident`                                       |
 | `fn[...]`                  | target-native | `fn[int, int]`                                          |
@@ -1336,6 +1336,17 @@ The strict tostring flag is recorded in the IR module metadata.
 ### Strict
 
 `--strict` enables `--strict-math` and `--strict-tostring`. The available target set is the intersection — 12 targets (excluding JavaScript, TypeScript, C#, and Swift, per `--strict-math` restrictions).
+
+### Pragmas
+
+Strict flags can be set within the source file using pragma comments on the first lines, before any declarations:
+
+```
+-- pragma strict-math
+-- pragma strict-tostring
+```
+
+Pragmas are equivalent to the corresponding command-line flags. Both `-- pragma strict-math` and `-- pragma strict-tostring` together are equivalent to `--strict`. Pragmas must appear before any non-comment, non-blank content. A pragma comment is exactly `-- pragma strict-math` or `-- pragma strict-tostring` — no other forms are recognized.
 
 ## Source Metadata
 

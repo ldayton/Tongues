@@ -325,3 +325,18 @@ check-local:
     if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
     echo "══════════════════════════════════════"
     exit $failed
+
+# Install VS Code syntax highlighting extension for Taytsh
+vscode:
+    #!/usr/bin/env bash
+    cd editors/vscode
+    rm -f taytsh-syntax-*.vsix
+    npx @vscode/vsce package --allow-missing-repository
+    shopt -s nullglob
+    vsix=(taytsh-syntax-*.vsix)
+    if [ ${#vsix[@]} -ne 1 ]; then
+        echo "expected exactly one VSIX, found ${#vsix[@]}"
+        ls -la
+        exit 1
+    fi
+    code --install-extension "${vsix[0]}"

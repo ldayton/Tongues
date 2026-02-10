@@ -1,0 +1,248 @@
+-- optional with nil
+fn TestOptionalNil() -> void {
+    let x: int? = nil
+    Assert(x == nil)
+}
+
+-- optional with value
+fn TestOptionalValue() -> void {
+    let x: int? = 42
+    Assert(x != nil)
+}
+
+-- optional zero value is nil
+fn TestOptionalZeroValue() -> void {
+    let x: int?
+    Assert(x == nil)
+    let s: string?
+    Assert(s == nil)
+}
+
+-- nil narrowing with != nil
+fn TestNilNarrowing() -> void {
+    let x: int? = 42
+    if x != nil {
+        let n: int = x + 1
+        Assert(n == 43)
+    } else {
+        Assert(false, "should not reach else branch")
+    }
+}
+
+-- nil narrowing: nil case
+fn TestNilNarrowingNilCase() -> void {
+    let x: int? = nil
+    if x != nil {
+        Assert(false, "should not reach non-nil branch")
+    }
+}
+
+-- nil narrowing in function
+fn SafeAdd(a: int?, b: int) -> int {
+    if a != nil {
+        return a + b
+    }
+    return b
+}
+
+fn TestNilNarrowingFunction() -> void {
+    Assert(SafeAdd(10, 5) == 15)
+    Assert(SafeAdd(nil, 5) == 5)
+}
+
+-- Unwrap on non-nil
+fn TestUnwrap() -> void {
+    let x: int? = 42
+    Assert(Unwrap(x) == 42)
+    let s: string? = "hello"
+    Assert(Unwrap(s) == "hello")
+}
+
+-- Unwrap on nil throws NilError
+fn TestUnwrapNilError() -> void {
+    let x: int? = nil
+    let caught: bool = false
+    try {
+        let v: int = Unwrap(x)
+    } catch e: NilError {
+        caught = true
+    }
+    Assert(caught, "expected NilError from Unwrap(nil)")
+}
+
+-- optional equality
+fn TestOptionalEquality() -> void {
+    let a: int? = 42
+    let b: int? = 42
+    Assert(a == b)
+    let c: int? = nil
+    let d: int? = nil
+    Assert(c == d)
+    Assert(a != c)
+    Assert(c != a)
+}
+
+-- optional string
+fn TestOptionalString() -> void {
+    let s: string? = "hello"
+    Assert(s != nil)
+    Assert(Unwrap(s) == "hello")
+    let n: string? = nil
+    Assert(n == nil)
+}
+
+-- optional list
+fn TestOptionalList() -> void {
+    let xs: list[int]? = [1, 2, 3]
+    if xs != nil {
+        Assert(Len(xs) == 3)
+    }
+    let empty: list[int]? = nil
+    Assert(empty == nil)
+}
+
+-- map Get returns optional
+fn TestMapGetOptional() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let v: int? = Get(m, "a")
+    Assert(v != nil)
+    if v != nil {
+        Assert(v == 1)
+    }
+    let missing: int? = Get(m, "z")
+    Assert(missing == nil)
+}
+
+-- union type basics
+fn TestUnionBasics() -> void {
+    let v: int | string = 42
+    Assert(v == 42)
+    let w: int | string = "hello"
+    Assert(w == "hello")
+}
+
+-- union with nil (equivalent to optional)
+fn TestUnionWithNil() -> void {
+    let v: int | nil = nil
+    Assert(v == nil)
+    v = 42
+    Assert(v != nil)
+}
+
+-- union zero value: contains nil -> nil
+fn TestUnionZeroValue() -> void {
+    let v: int | string | nil
+    Assert(v == nil)
+}
+
+-- union equality
+fn TestUnionEquality() -> void {
+    let a: int | string = 42
+    let b: int | string = 42
+    Assert(a == b)
+    let c: int | string = "hello"
+    Assert(a != c)
+    let d: int | string = "hello"
+    Assert(c == d)
+}
+
+-- union narrowing via match
+fn UnionToString(v: int | string | float) -> string {
+    match v {
+        case n: int {
+            return Concat("int:", ToString(n))
+        }
+        case s: string {
+            return Concat("str:", s)
+        }
+        case f: float {
+            return Concat("float:", ToString(f))
+        }
+    }
+}
+
+fn TestUnionNarrowing() -> void {
+    Assert(UnionToString(42) == "int:42")
+    Assert(UnionToString("hi") == "str:hi")
+}
+
+-- union nil narrowing
+fn UnionNilNarrow(v: int | string | nil) -> string {
+    if v == nil {
+        return "nil"
+    }
+    match v {
+        case n: int {
+            return "int"
+        }
+        case s: string {
+            return "string"
+        }
+    }
+}
+
+fn TestUnionNilNarrowing() -> void {
+    Assert(UnionNilNarrow(nil) == "nil")
+    Assert(UnionNilNarrow(42) == "int")
+    Assert(UnionNilNarrow("hi") == "string")
+}
+
+-- union in list
+fn TestUnionInList() -> void {
+    let xs: list[int | string] = [1, "two", 3, "four"]
+    Assert(Len(xs) == 4)
+}
+
+-- optional with match
+fn OptionalViaMatch(v: int?) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case nil {
+            return "none"
+        }
+    }
+}
+
+fn TestOptionalViaMatch() -> void {
+    Assert(OptionalViaMatch(42) == "42")
+    Assert(OptionalViaMatch(nil) == "none")
+}
+
+-- passing optional through functions
+fn MaybeDouble(v: int?) -> int? {
+    if v == nil {
+        return nil
+    }
+    return Unwrap(v) * 2
+}
+
+fn TestOptionalChain() -> void {
+    Assert(MaybeDouble(5) == 10)
+    Assert(MaybeDouble(nil) == nil)
+}
+
+fn Main() -> void {
+    TestOptionalNil()
+    TestOptionalValue()
+    TestOptionalZeroValue()
+    TestNilNarrowing()
+    TestNilNarrowingNilCase()
+    TestNilNarrowingFunction()
+    TestUnwrap()
+    TestUnwrapNilError()
+    TestOptionalEquality()
+    TestOptionalString()
+    TestOptionalList()
+    TestMapGetOptional()
+    TestUnionBasics()
+    TestUnionWithNil()
+    TestUnionZeroValue()
+    TestUnionEquality()
+    TestUnionNarrowing()
+    TestUnionNilNarrowing()
+    TestUnionInList()
+    TestOptionalViaMatch()
+    TestOptionalChain()
+}

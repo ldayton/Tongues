@@ -1,0 +1,153 @@
+{
+  "scopeName": "source.taytsh",
+  "patterns": [
+    { "include": "#pragma" },
+    { "include": "#comment" },
+    { "include": "#bytes" },
+    { "include": "#string" },
+    { "include": "#rune" },
+    { "include": "#numbers" },
+    { "include": "#decls" },
+    { "include": "#constants" },
+    { "include": "#types" },
+    { "include": "#keywords" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "pragma": {
+      "begin": "^\\s*(--)(\\s*)(pragma)\\b",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.comment.taytsh" },
+        "3": { "name": "invalid.illegal.pragma.taytsh" }
+      },
+      "end": "$",
+      "name": "comment.line.double-dash.taytsh",
+      "patterns": [
+        {
+          "match": "\\b(strict-math|strict-tostring)\\b",
+          "name": "constant.language.flag.taytsh"
+        }
+      ]
+    },
+    "comment": {
+      "match": "^\\s*--.*$",
+      "name": "comment.line.double-dash.taytsh"
+    },
+    "bytes": {
+      "begin": "b\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.taytsh" }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.taytsh" }
+      },
+      "name": "string.quoted.double.bytes.taytsh",
+      "patterns": [{ "include": "#escapes" }]
+    },
+    "string": {
+      "begin": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.taytsh" }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.taytsh" }
+      },
+      "name": "string.quoted.double.taytsh",
+      "patterns": [{ "include": "#escapes" }]
+    },
+    "rune": {
+      "begin": "'",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.taytsh" }
+      },
+      "end": "'",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.taytsh" }
+      },
+      "name": "string.quoted.single.rune.taytsh",
+      "patterns": [{ "include": "#escapes" }]
+    },
+    "escapes": {
+      "match": "\\\\(x[0-9a-fA-F]{2}|[nrt\\\\\"'0])",
+      "name": "constant.character.escape.taytsh"
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "match": "\\b0[xX][0-9a-fA-F]{2}\\b",
+          "name": "constant.numeric.byte.taytsh"
+        },
+        {
+          "match": "\\b\\d+\\.\\d+(?:[eE][+-]?\\d+)?\\b|\\b\\d+[eE][+-]?\\d+\\b",
+          "name": "constant.numeric.float.taytsh"
+        },
+        {
+          "match": "\\b\\d+\\b",
+          "name": "constant.numeric.integer.taytsh"
+        }
+      ]
+    },
+    "decls": {
+      "patterns": [
+        {
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.taytsh" },
+            "2": { "name": "entity.name.function.taytsh" }
+          }
+        },
+        {
+          "match": "\\b(struct)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.taytsh" },
+            "2": { "name": "entity.name.type.struct.taytsh" }
+          }
+        },
+        {
+          "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.taytsh" },
+            "2": { "name": "entity.name.type.enum.taytsh" }
+          }
+        },
+        {
+          "match": "\\b(interface)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.taytsh" },
+            "2": { "name": "entity.name.type.interface.taytsh" }
+          }
+        }
+      ]
+    },
+    "constants": {
+      "match": "\\b(true|false|nil)\\b",
+      "name": "constant.language.taytsh"
+    },
+    "types": {
+      "patterns": [
+        {
+          "match": "\\b(int|float|bool|byte|bytes|string|rune|void|obj)\\b",
+          "name": "storage.type.taytsh"
+        },
+        {
+          "match": "\\b(list|map|set|fn)\\b",
+          "name": "storage.type.generic.taytsh"
+        },
+        {
+          "match": "\\bself\\b",
+          "name": "variable.language.self.taytsh"
+        }
+      ]
+    },
+    "keywords": {
+      "match": "\\b(break|continue|case|catch|default|else|finally|for|if|in|interface|let|match|range|return|struct|throw|try|while|enum)\\b",
+      "name": "keyword.control.taytsh"
+    },
+    "operators": {
+      "match": "(->|=>|\\?\\:|\\|\\||&&|==|!=|<=|>=|<<=|>>=|<<|>>|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|[+\\-*/%&|^~!<>?:=])",
+      "name": "keyword.operator.taytsh"
+    }
+  }
+}
