@@ -27,7 +27,7 @@ fn Main() -> void {
 
 `Main` is the program entrypoint. It takes no parameters and returns `void`. Command-line arguments and environment variables are accessed via `Args()` and `GetEnv()`.
 
-A valid program must contain exactly one `Main` function.
+A valid program must contain exactly one `Main` function. Normal return from `Main` implies exit code 0.
 
 ## Type System
 
@@ -150,15 +150,15 @@ Target representations:
 
 ### Functions
 
-| Function       | Signature                | Description              |
-| -------------- | ------------------------ | ------------------------ |
-| `Abs(x)`       | `T -> T`                 | absolute value           |
-| `Min(a, b)`    | `T, T -> T`              | smaller of two values    |
-| `Max(a, b)`    | `T, T -> T`              | larger of two values     |
-| `Sum(xs)`      | `list[T] -> T`           | sum of elements          |
-| `Pow(a, b)`    | `T, T -> T`              | exponentiation           |
-| `Round(x)`     | `float -> int`           | round to nearest integer |
-| `DivMod(a, b)` | `int, int -> (int, int)` | quotient and remainder   |
+| Function       | Signature                | Description                                              |
+| -------------- | ------------------------ | -------------------------------------------------------- |
+| `Abs(x)`       | `T -> T`                 | absolute value                                           |
+| `Min(a, b)`    | `T, T -> T`              | smaller of two values                                    |
+| `Max(a, b)`    | `T, T -> T`              | larger of two values                                     |
+| `Sum(xs)`      | `list[T] -> T`           | sum of elements                                          |
+| `Pow(a, b)`    | `T, T -> T`              | exponentiation                                           |
+| `Round(x)`     | `float -> int`           | round to nearest integer                                 |
+| `DivMod(a, b)` | `int, int -> (int, int)` | quotient and remainder (truncating, same as `/` and `%`) |
 
 `T` in `Min`, `Max` is `int`, `float`, or `byte`. `T` in `Abs`, `Sum`, `Pow` is `int` or `float`. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
 
@@ -179,7 +179,7 @@ let rest: bytes = buf[1:10]
 
 `bytes` is an ordered sequence of `byte` values. Indexing (`buf[i]`) yields a `byte`; throws `IndexError` if out of bounds. Slicing (`buf[a:b]`) yields a `bytes`; throws `IndexError` if either bound is out of range.
 
-`byte` is a numeric type. Integer literals in the range 0–255 are accepted where a `byte` is expected. Arithmetic and bitwise operators work on `byte` pairs (see Operators). For byte↔int conversion, see Conversions.
+`byte` is a numeric type. Integer literals in the range 0–255 are accepted where a `byte` is expected. `0xff`-style hex literals always produce `byte` — for a hex int value, use `ByteToInt(0xff)`. Arithmetic and bitwise operators work on `byte` pairs (see Operators). For byte↔int conversion, see Conversions.
 
 ### Functions
 
@@ -206,30 +206,30 @@ let shifted: int = flags << 2
 let abs: int = x > 0 ? x : -x
 ```
 
-| Operator | Operands     | Result | Prec | Assoc | Description                                                       |
-| -------- | ------------ | ------ | ---- | ----- | ----------------------------------------------------------------- |
-| `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                               |
-| `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                         |
-| `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                        |
-| `==`     | `T, T`       | `bool` | 4    | none  | equality; structural for structs, IEEE 754 for float (NaN != NaN) |
-| `!=`     | `T, T`       | `bool` | 4    | none  | inequality                                                        |
-| `<`      | `T, T`       | `bool` | 4    | none  | less than (int, float, byte, rune, string)                        |
-| `<=`     | `T, T`       | `bool` | 4    | none  | less or equal (int, float, byte, rune, string)                    |
-| `>`      | `T, T`       | `bool` | 4    | none  | greater than (int, float, byte, rune, string)                     |
-| `>=`     | `T, T`       | `bool` | 4    | none  | greater or equal (int, float, byte, rune, string)                 |
-| `\|`     | `T, T`       | `T`    | 5    | left  | bitwise or (int, byte)                                            |
-| `^`      | `T, T`       | `T`    | 6    | left  | bitwise xor (int, byte)                                           |
-| `&`      | `T, T`       | `T`    | 7    | left  | bitwise and (int, byte)                                           |
-| `<<`     | `T, int`     | `T`    | 8    | left  | left shift (int, byte); right operand must be non-negative        |
-| `>>`     | `T, int`     | `T`    | 8    | left  | arithmetic right shift (int, byte); right operand non-negative    |
-| `+`      | `T, T`       | `T`    | 9    | left  | addition (int, float, byte)                                       |
-| `-`      | `T, T`       | `T`    | 9    | left  | subtraction (int, float, byte)                                    |
-| `*`      | `T, T`       | `T`    | 10   | left  | multiplication (int, float, byte)                                 |
-| `/`      | `T, T`       | `T`    | 10   | left  | division (int, float, byte); int truncates toward zero            |
-| `%`      | `T, T`       | `T`    | 10   | left  | remainder (int, float, byte); int sign follows dividend           |
-| `-`      | `T`          | `T`    | 11   | right | negation (int, float, byte)                                       |
-| `!`      | `bool`       | `bool` | 11   | right | logical not                                                       |
-| `~`      | `T`          | `T`    | 11   | right | bitwise complement (int, byte)                                    |
+| Operator | Operands     | Result | Prec | Assoc | Description                                                                        |
+| -------- | ------------ | ------ | ---- | ----- | ---------------------------------------------------------------------------------- |
+| `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                                                |
+| `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                                          |
+| `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                                         |
+| `==`     | `T, T`       | `bool` | 4    | none  | equality; deep structural for structs/collections, IEEE 754 for float (NaN != NaN) |
+| `!=`     | `T, T`       | `bool` | 4    | none  | inequality                                                                         |
+| `<`      | `T, T`       | `bool` | 4    | none  | less than (int, float, byte, rune, string)                                         |
+| `<=`     | `T, T`       | `bool` | 4    | none  | less or equal (int, float, byte, rune, string)                                     |
+| `>`      | `T, T`       | `bool` | 4    | none  | greater than (int, float, byte, rune, string)                                      |
+| `>=`     | `T, T`       | `bool` | 4    | none  | greater or equal (int, float, byte, rune, string)                                  |
+| `\|`     | `T, T`       | `T`    | 5    | left  | bitwise or (int, byte)                                                             |
+| `^`      | `T, T`       | `T`    | 6    | left  | bitwise xor (int, byte)                                                            |
+| `&`      | `T, T`       | `T`    | 7    | left  | bitwise and (int, byte)                                                            |
+| `<<`     | `T, int`     | `T`    | 8    | left  | left shift (int, byte); right operand must be non-negative                         |
+| `>>`     | `T, int`     | `T`    | 8    | left  | arithmetic right shift (int, byte); right operand non-negative                     |
+| `+`      | `T, T`       | `T`    | 9    | left  | addition (int, float, byte)                                                        |
+| `-`      | `T, T`       | `T`    | 9    | left  | subtraction (int, float, byte)                                                     |
+| `*`      | `T, T`       | `T`    | 10   | left  | multiplication (int, float, byte)                                                  |
+| `/`      | `T, T`       | `T`    | 10   | left  | division (int, float, byte); int truncates toward zero                             |
+| `%`      | `T, T`       | `T`    | 10   | left  | remainder (int, float, byte); int sign follows dividend                            |
+| `-`      | `T`          | `T`    | 11   | right | negation (int, float, byte)                                                        |
+| `!`      | `bool`       | `bool` | 11   | right | logical not                                                                        |
+| `~`      | `T`          | `T`    | 11   | right | bitwise complement (int, byte)                                                     |
 
 All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. Byte arithmetic wraps mod 256. String comparisons are lexicographic.
 
@@ -270,11 +270,11 @@ let n: int = Len("café")        -- 4, not 5
 | `TrimStart(s, chars)` | `string, string -> string` | trim characters from start     |
 | `TrimEnd(s, chars)`   | `string, string -> string` | trim characters from end       |
 
-| `Split(s, sep)`        | `string, string -> list[string]`      | split by separator                     |
-| `SplitN(s, sep, max)`  | `string, string, int -> list[string]` | split by separator; at most max pieces |
+| `Split(s, sep)`        | `string, string -> list[string]`      | split by separator; empty sep is error |
+| `SplitN(s, sep, max)`  | `string, string, int -> list[string]` | split by separator; at most max pieces; max ≤ 0 throws ValueError |
 | `SplitWhitespace(s)`   | `string -> list[string]`              | split on whitespace runs, strip ends   |
 | `Join(sep, parts)`     | `string, list[string] -> string`      | join with separator                    |
-| `Find(s, sub)`         | `string, string -> int`               | index of substring, -1 if missing      |
+| `Find(s, sub)`         | `string, string -> int`               | index of substring, -1 if missing; empty sub returns 0 |
 | `RFind(s, sub)`        | `string, string -> int`               | last occurrence, -1 if missing         |
 | `Count(s, sub)`        | `string, string -> int`               | count non-overlapping occurrences      |
 | `Contains(s, sub)`     | `string, string -> bool`              | substring test                         |
@@ -282,12 +282,12 @@ let n: int = Len("café")        -- 4, not 5
 | `Repeat(s, n)`         | `string, int -> string`               | repeat n times; n ≤ 0 yields empty     |
 | `StartsWith(s, pre)`   | `string, string -> bool`              | prefix test                            |
 | `EndsWith(s, suf)`     | `string, string -> bool`              | suffix test                            |
-| `IsDigit(x)`           | `string \| rune -> bool`              | all characters are digits              |
-| `IsAlpha(x)`           | `string \| rune -> bool`              | all characters are letters             |
-| `IsAlnum(x)`           | `string \| rune -> bool`              | all characters are letters or digits   |
-| `IsSpace(x)`           | `string \| rune -> bool`              | all characters are whitespace          |
-| `IsUpper(x)`           | `string \| rune -> bool`              | all characters are uppercase           |
-| `IsLower(x)`           | `string \| rune -> bool`              | all characters are lowercase           |
+| `IsDigit(x)`           | `string \| rune -> bool`              | all characters are digits; false for empty string              |
+| `IsAlpha(x)`           | `string \| rune -> bool`              | all characters are letters; false for empty string             |
+| `IsAlnum(x)`           | `string \| rune -> bool`              | all characters are letters or digits; false for empty string   |
+| `IsSpace(x)`           | `string \| rune -> bool`              | all characters are whitespace; false for empty string          |
+| `IsUpper(x)`           | `string \| rune -> bool`              | all characters are uppercase; false for empty string           |
+| `IsLower(x)`           | `string \| rune -> bool`              | all characters are lowercase; false for empty string           |
 
 ### Format Strings
 
@@ -296,7 +296,7 @@ let msg: string = Format("hello, {}", name)
 let line: string = Format("{}: {}", ToString(lineno), text)
 ```
 
-`Format(template, args...)` interpolates arguments into a template string. `{}` placeholders are filled left to right. All arguments must be `string` — callers insert explicit conversions (`ToString`, etc.) before passing. The number of `{}` must match the number of arguments.
+`Format(template, args...)` interpolates arguments into a template string. `{}` placeholders are filled left to right. All arguments must be `string` — callers insert explicit conversions (`ToString`, etc.) before passing. The number of `{}` must match the number of arguments. `Format` is a built-in variadic function — user-defined functions cannot declare variadic parameters.
 
 | Function                    | Signature                     | Description                     |
 | --------------------------- | ----------------------------- | ------------------------------- |
@@ -459,7 +459,7 @@ for i, v in items {
 
 ### No shadowing
 
-A name may be bound at most once within a function. Declaring a variable with the same name as an outer binding — including parameters, loop variables, and case/catch bindings — is a compile error.
+A name may be bound at most once within a function. Declaring a variable with the same name as an outer binding — including parameters, loop variables, and case/catch bindings — is a compile error. `_` is the exception — it may appear multiple times in bindings (e.g. `for _, _ in m`) and is never accessible as a variable.
 
 ```
 fn Bad(x: int) -> void {
@@ -514,7 +514,7 @@ let r: int
 q, r = DivMod(17, 5)
 ```
 
-Tuple assignment destructures a tuple or multi-return value into multiple targets.
+Tuple assignment destructures a tuple or multi-return value into multiple targets. The right-hand side must be a tuple expression in parentheses or a function call returning a tuple.
 
 ## Return
 
@@ -594,7 +594,7 @@ Iterates over a collection. The loop variable(s) before `in` bind the index and/
 | `map[K, V]` | `k: K`       | `k: K, v: V`       |
 | `set[T]`    | `v: T`       | not allowed        |
 
-Map and set iteration order is unspecified. Sets do not support the two-variable form.
+Map and set iteration order is unspecified. Sets do not support the two-variable form. Mutating a collection while iterating it is undefined behavior.
 
 ### Range
 
@@ -669,7 +669,7 @@ throw "something went wrong"
 
 `throw` accepts any expression. `throw` with an existing variable re-throws it.
 
-`catch` can name a union of types to handle multiple exception types in one clause:
+`catch` can name a union of types to handle multiple exception types in one clause. The binding's type is the union — access to shared fields like `.message` requires all member types to have that field with the same type.
 
 ```
 try {
@@ -727,7 +727,7 @@ let n: int = Len(xs)
 | `RemoveAt(xs, i)`  | `list[T], int -> void`    | remove element at index                            |
 | `IndexOf(xs, v)`   | `list[T], T -> int`       | index of first occurrence, -1 if missing           |
 | `Contains(xs, v)`  | `list[T], T -> bool`      | membership test                                    |
-| `Repeat(xs, n)`    | `list[T], int -> list[T]` | repeat list n times                                |
+| `Repeat(xs, n)`    | `list[T], int -> list[T]` | repeat list n times; n ≤ 0 yields empty list       |
 | `Reversed(xs)`     | `list[T] -> list[T]`      | new list in reverse order                          |
 | `Sorted(xs)`       | `list[T] -> list[T]`      | new list in ascending order                        |
 
@@ -742,24 +742,26 @@ let age: int = ages["alice"]
 ages["charlie"] = 35
 ```
 
-`map[K, V]` is an unordered mutable mapping from keys of type `K` to values of type `V`. `K` must be a hashable type (primitives, strings, runes, tuples of hashable types).
+`map[K, V]` is an unordered mutable mapping from keys of type `K` to values of type `V`. `K` must be a hashable type (primitives, strings, runes, enums, tuples of hashable types).
 
 Indexing (`m[k]`) yields a `V`; throws `KeyError` if `k` is not present. Assigning to an index (`m[k] = v`) inserts or updates.
 
 ### Functions
 
-| Function             | Signature                           | Description                          |
-| -------------------- | ----------------------------------- | ------------------------------------ |
-| `Len(m)`             | `map[K, V] -> int`                  | number of entries                    |
-| `Map()`              | `-> map[K, V]`                      | empty map (type from context)        |
-| `Contains(m, k)`     | `map[K, V], K -> bool`              | key membership test                  |
-| `Get(m, k)`          | `map[K, V], K -> V?`                | value for key, or nil if missing     |
-| `Get(m, k, default)` | `map[K, V], K, V -> V`              | value for key, or default if missing |
+| Function             | Signature              | Description                          |
+| -------------------- | ---------------------- | ------------------------------------ |
+| `Len(m)`             | `map[K, V] -> int`     | number of entries                    |
+| `Map()`              | `-> map[K, V]`         | empty map (type from context)        |
+| `Contains(m, k)`     | `map[K, V], K -> bool` | key membership test                  |
+| `Get(m, k)`          | `map[K, V], K -> V?`   | value for key, or nil if missing     |
+| `Get(m, k, default)` | `map[K, V], K, V -> V` | value for key, or default if missing |
 | `Delete(m, k)`       | `map[K, V], K -> void`              | remove entry by key                  |
-| `Keys(m)`            | `map[K, V] -> list[K]`              | list of keys                         |
-| `Values(m)`          | `map[K, V] -> list[V]`              | list of values                       |
-| `Items(m)`           | `map[K, V] -> list[(K, V)]`         | list of key-value pairs              |
+| `Keys(m)`            | `map[K, V] -> list[K]`              | list of keys; order unspecified      |
+| `Values(m)`          | `map[K, V] -> list[V]`              | list of values; order unspecified    |
+| `Items(m)`           | `map[K, V] -> list[(K, V)]`         | list of key-value pairs; order unspecified |
 | `Merge(m1, m2)`      | `map[K, V], map[K, V] -> map[K, V]` | new map; m2 wins on key conflict     |
+
+`Get` is a built-in with two arities. `Assert` (see Try/Catch) likewise accepts one or two arguments. User-defined functions cannot declare optional parameters.
 
 Iteration with `for k, v in m` yields key-value pairs.
 
@@ -812,7 +814,7 @@ Both bounds of a slice are always present. Open-ended slices are a Python featur
 
 The grammar enforces this — `[Expr : Expr]` requires both expressions. Backends that want to emit idiomatic open-ended slices can detect `0` or `Len(x)` bounds, or use the `open_start` / `open_end` provenance annotations.
 
-Slicing always produces a copy. `xs[0:Len(xs)]` is a full copy of `xs`.
+If `lo > hi`, the slice throws `IndexError`. Slicing always produces a copy. `xs[0:Len(xs)]` is a full copy of `xs`.
 
 ## Value and Reference Semantics
 
@@ -956,7 +958,7 @@ let k: TokenKind = t.kind
 t.offset = 10
 ```
 
-A struct has a name and typed fields. Construction is positional or named. Positional arguments follow the field declaration order. Named arguments use `field: value` syntax and may appear in any order. Mixing positional and named arguments in a single construction is not allowed. Fields are accessed with `.` and are mutable.
+A struct has a name and one or more typed fields. Construction is positional or named. Positional arguments follow the field declaration order. Named arguments use `field: value` syntax and may appear in any order. Mixing positional and named arguments in a single construction is not allowed. Fields are accessed with `.` and are mutable.
 
 ### Methods
 
@@ -1160,21 +1162,21 @@ Exit(1)
 
 `Stdout` and `Stderr` are built-in constants of type `Stream` (a built-in enum with variants `Stdout` and `Stderr`). `Write` and `Writeln` accept both `string` and `bytes`. `Writeln` appends a newline after writing.
 
-| Function           | Signature                          | Description        |
-| ------------------ | ---------------------------------- | ------------------ |
-| `Write(dest, d)`   | `Stream, string \| bytes -> void`  | write to stream    |
-| `Writeln(dest, d)` | `Stream, string \| bytes -> void`  | write + newline    |
+| Function           | Signature                         | Description     |
+| ------------------ | --------------------------------- | --------------- |
+| `Write(dest, d)`   | `Stream, string \| bytes -> void` | write to stream |
+| `Writeln(dest, d)` | `Stream, string \| bytes -> void` | write + newline |
 
 To write other types, convert first: `Writeln(Stdout, ToString(n))`.
 
 ### Input
 
-| Function        | Signature      | Description                                    |
-| --------------- | -------------- | ---------------------------------------------- |
-| `ReadLine()`    | `-> string?`   | read one line from stdin, strip \n; nil on EOF |
-| `ReadAll()`     | `-> string`    | read all of stdin as string                    |
-| `ReadBytes()`   | `-> bytes`     | read all of stdin as bytes                     |
-| `ReadBytesN(n)` | `int -> bytes` | read up to n bytes from stdin                  |
+| Function        | Signature      | Description                                            |
+| --------------- | -------------- | ------------------------------------------------------ |
+| `ReadLine()`    | `-> string?`   | read one line from stdin, strip \n or \r\n; nil on EOF |
+| `ReadAll()`     | `-> string`    | read all of stdin as string                            |
+| `ReadBytes()`   | `-> bytes`     | read all of stdin as bytes                             |
+| `ReadBytesN(n)` | `int -> bytes` | read up to n bytes from stdin                          |
 
 ### System
 
@@ -1208,11 +1210,17 @@ Shift amounts must be non-negative. Behavior when the shift amount equals or exc
 
 Follows IEEE 754 double precision.
 
-| Rule            | Description                        |
-| --------------- | ---------------------------------- |
-| NaN != NaN      | NaN is not equal to itself         |
-| -0.0 == 0.0     | negative zero equals positive zero |
-| NaN propagation | `Min` and `Max` propagate NaN      |
+| Rule            | Description                                      |
+| --------------- | ------------------------------------------------ |
+| NaN != NaN      | NaN is not equal to itself                       |
+| -0.0 == 0.0     | negative zero equals positive zero               |
+| NaN propagation | `Min` and `Max` propagate NaN                    |
+| NaN ordering    | `Sorted` on a list containing NaN is unspecified |
+
+| Function   | Signature       | Description                                |
+| ---------- | --------------- | ------------------------------------------ |
+| `IsNaN(x)` | `float -> bool` | true if x is NaN                           |
+| `IsInf(x)` | `float -> bool` | true if x is positive or negative infinity |
 
 ### Rounding
 
@@ -1230,7 +1238,7 @@ Follows IEEE 754 double precision.
 
 ### Parsing
 
-`ParseInt(s, base)` and `ParseFloat(s)` throw `ValueError` on invalid input.
+`ParseInt(s, base)` and `ParseFloat(s)` throw `ValueError` on invalid input. Valid bases for `ParseInt` are 2–36.
 
 ## Source Metadata
 
@@ -1260,7 +1268,7 @@ A backend that doesn't support hex literals can emit decimal instead. The `large
 
 Some Python patterns are desugared during lowering into simpler IR forms. The original pattern is recorded under the `provenance` key (type `string`) so middleend raising passes can reconstruct idiomatic forms for targets that support them.
 
-| `provenance` value   | Taytsh form                     | Python source               |
+| `provenance` value   | Taytsh form                    | Python source               |
 | -------------------- | ------------------------------ | --------------------------- |
 | `chained_comparison` | `a < b && b < c`               | `a < b < c`                 |
 | `list_comprehension` | for loop + `Append`            | `[x*2 for x in items]`      |
@@ -1272,7 +1280,7 @@ Some Python patterns are desugared during lowering into simpler IR forms. The or
 | `enumerate`          | `for i, v in xs`               | `for i, v in enumerate(xs)` |
 | `string_multiply`    | `Repeat(s, n)`                 | `s * n`                     |
 | `list_multiply`      | `Repeat(xs, n)`                | `xs * n`                    |
-| `negative_index`     | `x[Len(x) - 1]`               | `x[-1]`                     |
+| `negative_index`     | `x[Len(x) - 1]`                | `x[-1]`                     |
 | `open_start`         | `xs[0:n]`                      | `xs[:n]`                    |
 | `open_end`           | `xs[n:Len(xs)]`                | `xs[n:]`                    |
 
@@ -1297,7 +1305,7 @@ The specific annotations produced by each pass are defined in the middleend spec
 | Functions    | References            | ✓ function types, literals, no closures, no bound methods                      |
 | Metadata     | Source metadata       | ✓ pos, literal base/large/separators/scientific                                |
 | Metadata     | Middleend annotations | ✓ map[string, obj] on every node; contents defined by middleend specs          |
-| Appendix     | Grammar reference     | complete grammar for the Taytsh textual syntax                                  |
+| Appendix     | Grammar reference     | complete grammar for the Taytsh textual syntax                                 |
 
 ## Grammar
 
@@ -1315,7 +1323,7 @@ RUNE       = "'" ( escape | [^'\] ) "'"
 BYTES      = 'b"' ( escape | [^"\] )* '"'
 IDENT      = [a-zA-Z_] [a-zA-Z0-9_]*
 escape     = '\' ( 'n' | 'r' | 't' | '\' | '"' | "'" | '0'
-           | 'x' hex hex | 'u' hex hex hex hex )
+           | 'x' hex hex )
 hex        = [0-9a-fA-F]
 ```
 
