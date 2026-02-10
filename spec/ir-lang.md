@@ -1,14 +1,14 @@
-# IR Specification
+# Koine Specification
 
-> **Note:** This document is an exploration of a future IR iteration, using language-like syntax to clarify thinking. It is not consistent with the rest of the spec.
+> **Note:** This document is an exploration of a future IR iteration (Koine), using language-like syntax to clarify thinking. It is not consistent with the rest of the spec.
 
 ## Introduction
 
 The current IR is a large set of specialized nodes that carry Python-flavored semantics: `PythonAnd`, `PythonOr`, `PythonMod`, `FloorDiv`, `SentinelToOptional`, `CharAt`, `StringNonEmpty`, and dozens more. Lowering eagerly commits to representations — `range(a, b)` becomes `ForClassic`, string indexing becomes `CharAt`/`CharLen`/`Substring` — and every backend must interpret these nodes individually. The middleend is limited to read-only annotation passes.
 
-This IR replaces that with a small, target-neutral language. Python's quirks (floor division, value-returning `and`/`or`, type-dependent truthiness) are resolved during lowering into conventional semantics (truncating division, boolean `&&`/`||`), but representation choices are deliberately deferred. The IR has one loop-over-collection form (`for...in`), not two; strings are rune-indexed at the IR level, not pre-lowered into character operations. The middleend analyzes how values are actually used — whether a `for...in` over a range should become a classic for loop, whether a string needs rune-level access or can stay in the target's native representation — and makes those decisions as shared passes rather than per-backend logic. Backends receive already-decided representations and translate to syntax.
+Koine replaces that with a small, target-neutral language. Python's quirks (floor division, value-returning `and`/`or`, type-dependent truthiness) are resolved during lowering into conventional semantics (truncating division, boolean `&&`/`||`), but representation choices are deliberately deferred. Koine has one loop-over-collection form (`for...in`), not two; strings are rune-indexed at the Koine level, not pre-lowered into character operations. The middleend analyzes how values are actually used — whether a `for...in` over a range should become a classic for loop, whether a string needs rune-level access or can stay in the target's native representation — and makes those decisions as shared passes rather than per-backend logic. Backends receive already-decided representations and translate to syntax.
 
-This spec provides a textual syntax for the IR to facilitate exposition. The grammar is parseable by recursive descent with at most two tokens of lookahead.
+This spec provides a textual syntax for Koine to facilitate exposition. The grammar is parseable by recursive descent with at most two tokens of lookahead.
 
 ## Module Structure
 
@@ -31,7 +31,7 @@ A valid program must contain exactly one `Main` function.
 
 ## Type System
 
-Every value in the IR is an `obj`. The terms "object" and "value" are synonymous — there is no distinction between primitive and reference types at this level of abstraction.
+Every value in Koine is an `obj`. The terms "object" and "value" are synonymous — there is no distinction between primitive and reference types at this level of abstraction.
 
 ```
 obj
@@ -47,13 +47,14 @@ obj
 ├── set[T]
 ├── (T, U, ...)       -- tuples
 ├── fn[T..., R]       -- function values
+├── A | B | ...       -- union types
 ├── nil                -- value in expressions, type in type position
 ├── structs
 ├── interfaces
 └── enums
 ```
 
-`void` is not a type. It is a return-type marker meaning "no value."
+`void` is a return-type marker meaning "no value." It may appear after `->` in function declarations and as the last element of `fn[...]` types. It is not a value type — it cannot be used for variables, parameters, or collection elements.
 
 `T?` is sugar for `T` or `nil`. `nil` is a value in expression position and a type in type position.
 
@@ -74,13 +75,13 @@ Any `obj` can be thrown. `catch` blocks follow the same type-matching semantics 
 ```
 throw 42
 throw "something went wrong"
-throw ParseError("unexpected token", pos)
+throw ValueError("unexpected token")
 ```
 
 ```
 try {
     RiskyOperation()
-} catch e: ParseError {
+} catch e: ValueError {
     Writeln(Stderr, e.message)
 } catch e: obj {
     Writeln(Stderr, Concat("unexpected: ", ToString(e)))
@@ -88,6 +89,28 @@ try {
 ```
 
 Catching `obj` is the catch-all. Catching `nil` handles a thrown `nil`.
+
+### Built-in Errors
+
+Built-in operations throw the following error types. All are catchable via `try`/`catch`.
+
+```
+struct KeyError { message: string }
+struct IndexError { message: string }
+struct ZeroDivisionError { message: string }
+struct AssertError { message: string }
+struct NilError { message: string }
+struct ValueError { message: string }
+```
+
+| Error               | Thrown by                                                       |
+| ------------------- | --------------------------------------------------------------- |
+| `KeyError`          | map indexing with missing key                                   |
+| `IndexError`        | out-of-bounds index or slice, `Pop` on empty list               |
+| `ZeroDivisionError` | integer `/` or `%` with zero divisor                            |
+| `AssertError`       | `Assert` failure                                                |
+| `NilError`          | `Unwrap` on nil                                                 |
+| `ValueError`        | `ParseInt`/`ParseFloat` bad input, `FloatToInt` overflow or NaN |
 
 ## Numeric Types
 
@@ -131,11 +154,11 @@ Target representations:
 | `Min(a, b)`    | `T, T -> T`              | smaller of two values    |
 | `Max(a, b)`    | `T, T -> T`              | larger of two values     |
 | `Sum(xs)`      | `list[T] -> T`           | sum of elements          |
-| `Pow(a, b)`    | `int, int -> int`        | exponentiation           |
+| `Pow(a, b)`    | `T, T -> T`              | exponentiation           |
 | `Round(x)`     | `float -> int`           | round to nearest integer |
 | `DivMod(a, b)` | `int, int -> (int, int)` | quotient and remainder   |
 
-`T` in `Abs`, `Min`, `Max`, `Sum` is `int` or `float`. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
+`T` in `Min`, `Max` is `int`, `float`, or `byte`. `T` in `Abs`, `Sum`, `Pow` is `int` or `float`. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
 
 ## Bytes
 
@@ -152,15 +175,18 @@ let rest: bytes = buf[1:10]
 | `byte`  | `0xff`       | unsigned 8-bit integer  |
 | `bytes` | `b"\x89PNG"` | indexable byte sequence |
 
-`bytes` is an ordered sequence of `byte` values. Indexing (`buf[i]`) yields a `byte`. Slicing (`buf[a:b]`) yields a `bytes`.
+`bytes` is an ordered sequence of `byte` values. Indexing (`buf[i]`) yields a `byte`; throws `IndexError` if out of bounds. Slicing (`buf[a:b]`) yields a `bytes`; throws `IndexError` if either bound is out of range.
+
+`byte` is a numeric type. Integer literals in the range 0–255 are accepted where a `byte` is expected. Arithmetic and bitwise operators work on `byte` pairs (see Operators). For byte↔int conversion, see Conversions.
 
 ### Functions
 
-| Function    | Signature         | Description  |
-| ----------- | ----------------- | ------------ |
-| `Len(b)`    | `bytes -> int`    | byte count   |
-| `Encode(s)` | `string -> bytes` | UTF-8 encode |
-| `Decode(b)` | `bytes -> string` | UTF-8 decode |
+| Function       | Signature               | Description   |
+| -------------- | ----------------------- | ------------- |
+| `Len(b)`       | `bytes -> int`          | byte count    |
+| `Concat(a, b)` | `bytes, bytes -> bytes` | concatenation |
+| `Encode(s)`    | `string -> bytes`       | UTF-8 encode  |
+| `Decode(b)`    | `bytes -> string`       | UTF-8 decode  |
 
 ## Operators
 
@@ -178,38 +204,38 @@ let shifted: int = flags << 2
 let abs: int = x > 0 ? x : -x
 ```
 
-| Operator | Operands     | Result | Prec | Assoc | Description                                                         |
-| -------- | ------------ | ------ | ---- | ----- | ------------------------------------------------------------------- |
-| `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                                 |
-| `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                           |
-| `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                          |
-| `==`     | `T, T`       | `bool` | 4    | none  | equality; structural for structs, IEEE 754 for float (NaN != NaN)   |
-| `!=`     | `T, T`       | `bool` | 4    | none  | inequality                                                          |
-| `<`      | `int, int`   | `bool` | 4    | none  | less than                                                           |
-| `<=`     | `int, int`   | `bool` | 4    | none  | less or equal                                                       |
-| `>`      | `int, int`   | `bool` | 4    | none  | greater than                                                        |
-| `>=`     | `int, int`   | `bool` | 4    | none  | greater or equal                                                    |
-| `\|`     | `int, int`   | `int`  | 5    | left  | bitwise or                                                          |
-| `^`      | `int, int`   | `int`  | 6    | left  | bitwise xor                                                         |
-| `&`      | `int, int`   | `int`  | 7    | left  | bitwise and                                                         |
-| `<<`     | `int, int`   | `int`  | 8    | left  | left shift; right operand must be non-negative                      |
-| `>>`     | `int, int`   | `int`  | 8    | left  | arithmetic right shift (sign-extending); right operand non-negative |
-| `+`      | `int, int`   | `int`  | 9    | left  | addition                                                            |
-| `-`      | `int, int`   | `int`  | 9    | left  | subtraction                                                         |
-| `*`      | `int, int`   | `int`  | 10   | left  | multiplication                                                      |
-| `/`      | `int, int`   | `int`  | 10   | left  | truncating division (toward zero); `-7 / 2 == -3`                   |
-| `%`      | `int, int`   | `int`  | 10   | left  | truncating remainder; sign follows dividend; `-7 % 2 == -1`         |
-| `-`      | `int`        | `int`  | 11   | right | negation (prefix)                                                   |
-| `!`      | `bool`       | `bool` | 11   | right | logical not                                                         |
-| `~`      | `int`        | `int`  | 11   | right | bitwise complement (two's complement)                               |
+| Operator | Operands     | Result | Prec | Assoc | Description                                                       |
+| -------- | ------------ | ------ | ---- | ----- | ----------------------------------------------------------------- |
+| `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                               |
+| `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                         |
+| `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                        |
+| `==`     | `T, T`       | `bool` | 4    | none  | equality; structural for structs, IEEE 754 for float (NaN != NaN) |
+| `!=`     | `T, T`       | `bool` | 4    | none  | inequality                                                        |
+| `<`      | `T, T`       | `bool` | 4    | none  | less than (int, float, byte, rune, string)                        |
+| `<=`     | `T, T`       | `bool` | 4    | none  | less or equal (int, float, byte, rune, string)                    |
+| `>`      | `T, T`       | `bool` | 4    | none  | greater than (int, float, byte, rune, string)                     |
+| `>=`     | `T, T`       | `bool` | 4    | none  | greater or equal (int, float, byte, rune, string)                 |
+| `\|`     | `T, T`       | `T`    | 5    | left  | bitwise or (int, byte)                                            |
+| `^`      | `T, T`       | `T`    | 6    | left  | bitwise xor (int, byte)                                           |
+| `&`      | `T, T`       | `T`    | 7    | left  | bitwise and (int, byte)                                           |
+| `<<`     | `T, int`     | `T`    | 8    | left  | left shift (int, byte); right operand must be non-negative        |
+| `>>`     | `T, int`     | `T`    | 8    | left  | arithmetic right shift (int, byte); right operand non-negative    |
+| `+`      | `T, T`       | `T`    | 9    | left  | addition (int, float, byte)                                       |
+| `-`      | `T, T`       | `T`    | 9    | left  | subtraction (int, float, byte)                                    |
+| `*`      | `T, T`       | `T`    | 10   | left  | multiplication (int, float, byte)                                 |
+| `/`      | `T, T`       | `T`    | 10   | left  | division (int, float, byte); int truncates toward zero            |
+| `%`      | `T, T`       | `T`    | 10   | left  | remainder (int, float, byte); int sign follows dividend           |
+| `-`      | `T`          | `T`    | 11   | right | negation (int, float, byte)                                       |
+| `!`      | `bool`       | `bool` | 11   | right | logical not                                                       |
+| `~`      | `T`          | `T`    | 11   | right | bitwise complement (int, byte)                                    |
 
-Arithmetic operators (`+`, `-`, `*`, `/`, `%`, unary `-`) also work on `float` operands, returning `float`. `Pow` also accepts float operands. For float `/`, result is IEEE 754 division (not truncating). Comparison operators (`<`, `<=`, `>`, `>=`) also work on `float` and `string` (lexicographic). All arithmetic and comparison operators require both operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts.
+All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. Byte arithmetic wraps mod 256. String comparisons are lexicographic.
 
 Comparisons are binary — `a < b < c` is not valid. Python's chained comparisons are desugared by the lowerer into `&&`-connected binary comparisons. A middleend raising pass can reconstruct chains for targets that support them (Python).
 
 ## Strings
 
-Target languages disagree on what a string is. Some are byte-oriented (Go, Rust), some are UTF-16 (Java, JavaScript), and indexing `s[i]` means different things in each. The IR defines `string` as a sequence of runes, so indexing and length have consistent character-level semantics across all targets.
+Target languages disagree on what a string is. Some are byte-oriented (Go, Rust), some are UTF-16 (Java, JavaScript), and indexing `s[i]` means different things in each. Koine defines `string` as a sequence of runes, so indexing and length have consistent character-level semantics across all targets.
 
 ```
 let name: string = "hello"
@@ -220,27 +246,27 @@ let n: int = Len("café")        -- 4, not 5
 
 | Type     | Literal   | Description              |
 | -------- | --------- | ------------------------ |
-| `string` | `"hello"` | sequence of UTF-8 runes  |
+| `string` | `"hello"` | sequence of runes        |
 | `rune`   | `'λ'`     | single Unicode character |
 
-`string[i]` yields a `rune`. `Len(s)` returns the rune count.
+`string[i]` yields a `rune`; throws `IndexError` if out of bounds. `string[lo:hi]` yields a `string`; throws `IndexError` if either bound is out of range. `Len(s)` returns the rune count.
 
 ### Functions
 
-| Function               | Signature                    | Description                    |
-| ---------------------- | ---------------------------- | ------------------------------ |
-| `Len(s)`               | `string -> int`              | rune count                     |
-| `CharAt(s, i)`         | `string, int -> rune`        | rune at position               |
-| `Substring(s, lo, hi)` | `string, int, int -> string` | substring by rune position     |
-| `Concat(a, b)`         | `string, string -> string`   | concatenation                  |
-| `RuneFromInt(n)`       | `int -> rune`                | code point to rune             |
-| `RuneToInt(c)`         | `rune -> int`                | rune to code point             |
-| `ParseInt(s, base)`    | `string, int -> int`         | parse integer in given base    |
-| `Upper(s)`             | `string -> string`           | uppercase                      |
-| `Lower(s)`             | `string -> string`           | lowercase                      |
-| `Trim(s, chars)`       | `string, string -> string`   | trim characters from both ends |
-| `TrimStart(s, chars)`  | `string, string -> string`   | trim characters from start     |
-| `TrimEnd(s, chars)`    | `string, string -> string`   | trim characters from end       |
+| Function              | Signature                  | Description                    |
+| --------------------- | -------------------------- | ------------------------------ |
+| `Len(s)`              | `string -> int`            | rune count                     |
+| `Concat(a, b)`        | `string, string -> string` | concatenation                  |
+| `RuneFromInt(n)`      | `int -> rune`              | code point to rune             |
+| `RuneToInt(c)`        | `rune -> int`              | rune to code point             |
+| `ParseInt(s, base)`   | `string, int -> int`       | parse integer in given base    |
+| `ParseFloat(s)`       | `string -> float`          | parse float                    |
+| `FormatInt(n, base)`  | `int, int -> string`       | format integer in given base   |
+| `Upper(s)`            | `string -> string`         | uppercase                      |
+| `Lower(s)`            | `string -> string`         | lowercase                      |
+| `Trim(s, chars)`      | `string, string -> string` | trim characters from both ends |
+| `TrimStart(s, chars)` | `string, string -> string` | trim characters from start     |
+| `TrimEnd(s, chars)`   | `string, string -> string` | trim characters from end       |
 
 | `Split(s, sep)`        | `string, string -> list[string]`      | split by separator                     |
 | `SplitN(s, sep, max)`  | `string, string, int -> list[string]` | split by separator; at most max pieces |
@@ -254,12 +280,12 @@ let n: int = Len("café")        -- 4, not 5
 | `Repeat(s, n)`         | `string, int -> string`               | repeat n times; n ≤ 0 yields empty     |
 | `StartsWith(s, pre)`   | `string, string -> bool`              | prefix test                            |
 | `EndsWith(s, suf)`     | `string, string -> bool`              | suffix test                            |
-| `IsDigit(s)`           | `string -> bool`                      | all characters are digits              |
-| `IsAlpha(s)`           | `string -> bool`                      | all characters are letters             |
-| `IsAlnum(s)`           | `string -> bool`                      | all characters are letters or digits   |
-| `IsSpace(s)`           | `string -> bool`                      | all characters are whitespace          |
-| `IsUpper(s)`           | `string -> bool`                      | all characters are uppercase           |
-| `IsLower(s)`           | `string -> bool`                      | all characters are lowercase           |
+| `IsDigit(x)`           | `string \| rune -> bool`              | all characters are digits              |
+| `IsAlpha(x)`           | `string \| rune -> bool`              | all characters are letters             |
+| `IsAlnum(x)`           | `string \| rune -> bool`              | all characters are letters or digits   |
+| `IsSpace(x)`           | `string \| rune -> bool`              | all characters are whitespace          |
+| `IsUpper(x)`           | `string \| rune -> bool`              | all characters are uppercase           |
+| `IsLower(x)`           | `string \| rune -> bool`              | all characters are lowercase           |
 
 ### Format Strings
 
@@ -382,32 +408,86 @@ let items: list[int]
 
 ### Zero values
 
-| Type          | Zero value           |
-| ------------- | -------------------- |
-| `int`         | `0`                  |
-| `float`       | `0.0`                |
-| `bool`        | `false`              |
-| `byte`        | `0x00`               |
-| `bytes`       | `b""`                |
-| `string`      | `""`                 |
-| `rune`        | `'\0'`               |
-| `list[T]`     | `[]`                 |
-| `map[K, V]`   | `Map()`              |
-| `set[T]`      | `Set()`              |
-| `(T, U, ...)` | tuple of zero values |
-| `T?`          | `nil`                |
-| `obj`         | `nil`                |
+| Type          | Zero value                                             |
+| ------------- | ------------------------------------------------------ |
+| `int`         | `0`                                                    |
+| `float`       | `0.0`                                                  |
+| `bool`        | `false`                                                |
+| `byte`        | `0x00`                                                 |
+| `bytes`       | `b""`                                                  |
+| `string`      | `""`                                                   |
+| `rune`        | `'\0'`                                                 |
+| `list[T]`     | `[]`                                                   |
+| `map[K, V]`   | `Map()`                                                |
+| `set[T]`      | `Set()`                                                |
+| `(T, U, ...)` | tuple of zero values                                   |
+| `T?`          | `nil`                                                  |
+| `A \| B`      | `nil` if union contains `nil`; otherwise no zero value |
+| `obj`         | `nil`                                                  |
 
-Structs, interfaces, and enums have no zero value.
+Structs, interfaces, enums, and union types not containing `nil` have no zero value.
 
 `let` bindings are mutable. Backends may emit `const`/`final` when they detect a binding is never reassigned.
+
+## Scoping
+
+Koine uses lexical block scoping. A variable is visible from its `let` declaration to the end of the enclosing `{}` block. A variable does not exist before its declaration — there is no hoisting.
+
+```
+fn Example() -> void {
+    let x: int = 1          -- x visible from here to end of function
+    if x > 0 {
+        let y: int = 2      -- y visible only inside this block
+        Writeln(Stdout, ToString(y))
+    }
+    -- y is not accessible here
+}
+```
+
+### Loop and binding scopes
+
+`for` loop variables are scoped to the loop body. `match`/`case` bindings are scoped to the case body. `catch` bindings are scoped to the catch body.
+
+```
+for i, v in items {
+    -- i and v are scoped here
+}
+-- i and v are not accessible here
+```
+
+### No shadowing
+
+A name may be bound at most once within a function. Declaring a variable with the same name as an outer binding — including parameters, loop variables, and case/catch bindings — is a compile error.
+
+```
+fn Bad(x: int) -> void {
+    let x: int = 10              -- error: x already bound (parameter)
+}
+
+fn AlsoBad() -> void {
+    let x: int = 1
+    if true {
+        let x: int = 2          -- error: x already bound (outer block)
+    }
+}
+```
+
+Every name in a function body resolves to exactly one binding. Backends never need to rename variables to avoid scope collisions.
+
+### Reserved names
+
+Built-in function names (`Len`, `Append`, `ToString`, etc.) and stream constants (`Stdout`, `Stderr`) are reserved at the top level. A user-defined function, struct, interface, or enum may not use a reserved name. This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
+
+### Top-level declarations
+
+Functions, structs, interfaces, and enums live in a single flat namespace and are mutually visible regardless of declaration order (see Module Structure). Top-level names and local names occupy disjoint namespaces — a local variable may share a name with a top-level declaration, and the local binding takes precedence within its scope.
 
 ## Assignment
 
 ```
 x = 10
 name = "world"
-token.kind = "eof"
+token.kind = TokenKind.Eof
 items[0] = 99
 ```
 
@@ -526,16 +606,20 @@ for i in range(10) {
 for i in range(2, 10) {
     Writeln(Stdout, ToString(i))
 }
+
+for i in range(10, 0, -1) {
+    Writeln(Stdout, ToString(i))
+}
 ```
 
-`range(end)` iterates from `0` to `end - 1`. `range(start, end)` iterates from `start` to `end - 1`. Both arguments must be `int`. The loop variable binds the current value. The two-variable form is not supported — the value is the index.
+`range(end)` iterates from `0` to `end - 1`. `range(start, end)` iterates from `start` to `end - 1`. `range(start, end, step)` iterates from `start` toward `end` (exclusive) by `step`. `step` must be nonzero; negative `step` counts downward. All arguments must be `int`. The loop variable binds the current value. The two-variable form is not supported — the value is the index.
 
 ## Break and Continue
 
 ```
 while true {
-    let line: string = ReadLine()
-    if line == "" {
+    let line: string? = ReadLine()
+    if line == nil {
         break
     }
     if StartsWith(line, "#") {
@@ -555,7 +639,7 @@ Any `obj` can be thrown — see the Type System section for details. `catch` blo
 try {
     let n: int = ParseInt(input, 10)
     Writeln(Stdout, ToString(n))
-} catch e: ParseError {
+} catch e: ValueError {
     Writeln(Stderr, Concat("bad input: ", e.message))
 }
 ```
@@ -565,10 +649,10 @@ try {
 ```
 try {
     RiskyOperation()
-} catch e: IOError {
-    Log(e.message)
+} catch e: KeyError {
+    Writeln(Stderr, e.message)
 } catch e: obj {
-    Log(Concat("unexpected: ", ToString(e)))
+    Writeln(Stderr, Concat("unexpected: ", ToString(e)))
 } finally {
     Cleanup()
 }
@@ -577,15 +661,25 @@ try {
 `finally` is optional and executes unconditionally — on normal exit, after a catch, or on return from within the try body.
 
 ```
-throw ParseError("unexpected token", pos)
+throw ValueError("unexpected token")
 throw "something went wrong"
 ```
 
 `throw` accepts any expression. `throw` with an existing variable re-throws it.
 
+`catch` can name a union of types to handle multiple exception types in one clause:
+
+```
+try {
+    Process(input)
+} catch e: ValueError | KeyError {
+    Writeln(Stderr, e.message)
+}
+```
+
 ### Assert
 
-`Assert(cond)` and `Assert(cond, msg)` evaluate the condition and trap if false. The optional second argument is a message string included in the error. Backends emit language-appropriate abort mechanisms (panic, exception, process exit).
+`Assert(cond)` and `Assert(cond, msg)` evaluate the condition and throw `AssertError` if false. The optional second argument provides the error message. Backends emit language-appropriate mechanisms (panic, exception, process exit).
 
 ```
 Assert(n > 0)
@@ -618,24 +712,24 @@ let mid: list[int] = xs[1:3]
 let n: int = Len(xs)
 ```
 
-`list[T]` is an ordered, mutable, variable-length sequence of elements of type `T`. Indexing (`xs[i]`) yields a `T`. Slicing (`xs[a:b]`) yields a new `list[T]`.
+`list[T]` is an ordered, mutable, variable-length sequence of elements of type `T`. Indexing (`xs[i]`) yields a `T`; throws `IndexError` if out of bounds. Slicing (`xs[a:b]`) yields a new `list[T]`; throws `IndexError` if either bound is out of range.
 
 ### Functions
 
-| Function           | Signature                 | Description                              |
-| ------------------ | ------------------------- | ---------------------------------------- |
-| `Len(xs)`          | `list[T] -> int`          | element count                            |
-| `Append(xs, v)`    | `list[T], T -> void`      | append element to end                    |
-| `Insert(xs, i, v)` | `list[T], int, T -> void` | insert element at index                  |
-| `Pop(xs)`          | `list[T] -> T`            | remove and return last element           |
-| `RemoveAt(xs, i)`  | `list[T], int -> void`    | remove element at index                  |
-| `IndexOf(xs, v)`   | `list[T], T -> int`       | index of first occurrence, -1 if missing |
-| `Contains(xs, v)`  | `list[T], T -> bool`      | membership test                          |
-| `Repeat(xs, n)`    | `list[T], int -> list[T]` | repeat list n times                      |
-| `Reversed(xs)`     | `list[T] -> list[T]`      | new list in reverse order                |
-| `Sorted(xs)`       | `list[T] -> list[T]`      | new list in ascending order              |
+| Function           | Signature                 | Description                                        |
+| ------------------ | ------------------------- | -------------------------------------------------- |
+| `Len(xs)`          | `list[T] -> int`          | element count                                      |
+| `Append(xs, v)`    | `list[T], T -> void`      | append element to end                              |
+| `Insert(xs, i, v)` | `list[T], int, T -> void` | insert element at index                            |
+| `Pop(xs)`          | `list[T] -> T`            | remove and return last; throws IndexError if empty |
+| `RemoveAt(xs, i)`  | `list[T], int -> void`    | remove element at index                            |
+| `IndexOf(xs, v)`   | `list[T], T -> int`       | index of first occurrence, -1 if missing           |
+| `Contains(xs, v)`  | `list[T], T -> bool`      | membership test                                    |
+| `Repeat(xs, n)`    | `list[T], int -> list[T]` | repeat list n times                                |
+| `Reversed(xs)`     | `list[T] -> list[T]`      | new list in reverse order                          |
+| `Sorted(xs)`       | `list[T] -> list[T]`      | new list in ascending order                        |
 
-`Sorted` requires `T` to be an ordered type (`int`, `float`, `string`).
+`Sorted` requires `T` to be an ordered type (`int`, `float`, `byte`, `rune`, `string`).
 
 ## Maps
 
@@ -648,7 +742,7 @@ ages["charlie"] = 35
 
 `map[K, V]` is an unordered mutable mapping from keys of type `K` to values of type `V`. `K` must be a hashable type (primitives, strings, runes, tuples of hashable types).
 
-Indexing (`m[k]`) yields a `V`. Assigning to an index (`m[k] = v`) inserts or updates.
+Indexing (`m[k]`) yields a `V`; throws `KeyError` if `k` is not present. Assigning to an index (`m[k] = v`) inserts or updates.
 
 ### Functions
 
@@ -657,6 +751,7 @@ Indexing (`m[k]`) yields a `V`. Assigning to an index (`m[k] = v`) inserts or up
 | `Len(m)`             | `map[K, V] -> int`                  | number of entries                    |
 | `Map()`              | `-> map[K, V]`                      | empty map (type from context)        |
 | `Contains(m, k)`     | `map[K, V], K -> bool`              | key membership test                  |
+| `Get(m, k)`          | `map[K, V], K -> V?`                | value for key, or nil if missing     |
 | `Get(m, k, default)` | `map[K, V], K, V -> V`              | value for key, or default if missing |
 | `Delete(m, k)`       | `map[K, V], K -> void`              | remove entry by key                  |
 | `Keys(m)`            | `map[K, V] -> list[K]`              | list of keys                         |
@@ -699,7 +794,7 @@ let x: int? = nil
 let y: int? = 42
 ```
 
-`T?` is sugar for `T` or `nil`. Any type can be made optional: `int?`, `string?`, `list[int]?`, `Token?`. `T??` is not valid — optionals do not nest.
+`T?` is sugar for `T` or `nil`. Any type can be made optional: `int?`, `string?`, `list[int]?`, `Token?`. `T??` is not valid — optionals do not nest. See also Union Types below.
 
 ### Nil narrowing
 
@@ -717,25 +812,82 @@ After a `!= nil` check, the variable's type narrows from `T?` to `T` within the 
 
 ### Unwrap
 
-| Function    | Signature | Description                |
-| ----------- | --------- | -------------------------- |
-| `Unwrap(x)` | `T? -> T` | extract value; trap if nil |
+| Function    | Signature | Description                           |
+| ----------- | --------- | ------------------------------------- |
+| `Unwrap(x)` | `T? -> T` | extract value; throws NilError if nil |
 
 `Unwrap` extracts the value when the program can guarantee non-nil but control flow doesn't prove it.
+
+## Union Types
+
+```
+let v: int | string = 42
+let w: string | bytes = "hello"
+fn Process(v: int | string | nil) -> void { ... }
+```
+
+`A | B` is a union type — a value that is one of the listed member types. `|` separates members in type position (after `:` or `->`), where it is unambiguous with the bitwise OR operator (which lives in expression position).
+
+### Syntax and parsing
+
+`|` binds tighter than `,` because `|` is consumed within the `Type` parse before returning to the enclosing list. So `fn[int | string, bool]` is `fn[(int | string), bool]`, and `map[string, int | float]` is `map[string, (int | float)]`.
+
+### Interaction with `T?`
+
+`?` applies to the entire union: `int | string?` parses as `(int | string)?` = `int | string | nil`. To include nil in a union without `?`, write `| nil` explicitly. `int | nil` is equivalent to `int?`. Both forms are valid.
+
+`T??` remains invalid. `void` cannot appear as a union member (not a value type).
+
+### Interaction with interfaces
+
+Interfaces and unions are distinct concepts. `Node` (an interface) and `Literal | BinOp` (a union of its implementors) are different types, even if extensionally equivalent. Mixing is allowed: `Node | int` means "any Node variant or an int."
+
+### Interaction with `obj`
+
+Any union containing `obj` reduces to `obj`.
+
+### Normalization rules
+
+1. **Flatten:** `A | (B | C)` → `A | B | C`
+2. **Deduplicate:** `A | A` → `A`
+3. **Absorb obj:** `A | obj` → `obj`
+4. **Single remaining:** if reduced to 1 type, it's that type (not a 1-element union)
+5. **Unordered:** `int | string` = `string | int`
+
+### Zero values
+
+Union types containing `nil` have zero value `nil`. Others have no zero value and require an explicit initializer (like structs and enums).
+
+### Type narrowing
+
+- After `match`, the variable narrows to the matched type
+- After `!= nil`, nil is removed from the union
+- If removing nil leaves one type, the variable narrows to that type (consistent with existing `T?` narrowing)
+
+### Equality and operators
+
+- `==` / `!=`: defined on unions. Equal iff same variant type and equal values.
+- Ordering (`<`, `<=`, etc.): not defined on unions. Narrow first.
+- Arithmetic: not defined on unions. Narrow first.
+- `ToString`: works (dispatches to held type).
 
 ## Conversions
 
 ```
 let f: float = IntToFloat(42)
 let n: int = FloatToInt(3.14)
+let b: byte = IntToByte(65)
+let code: int = ByteToInt(b)
 ```
 
 | Function        | Signature      | Description            |
 | --------------- | -------------- | ---------------------- |
 | `IntToFloat(n)` | `int -> float` | exact if representable |
 | `FloatToInt(x)` | `float -> int` | truncate toward zero   |
+| `ByteToInt(b)`  | `byte -> int`  | widen to int           |
+| `IntToByte(n)`  | `int -> byte`  | low 8 bits             |
 
-No implicit coercion between any types. All conversions are explicit function calls. `ToString` is universal (see Type System). `ParseInt` is in the Strings section. `RuneToInt` and `RuneFromInt` handle rune↔int.
+No implicit coercion between any types. All conversions are explicit function calls. `ToString` is universal (see Type System). `ParseInt` is in the Strings section. `RuneToInt` and `RuneFromInt` handle rune↔int. `ByteToInt` and `IntToByte` handle byte↔int.
 
 ## Structs
 
@@ -747,11 +899,12 @@ struct Token {
 }
 
 let t: Token = Token(TokenKind.Ident, "foo", 0)
+let t: Token = Token(kind: TokenKind.Ident, value: "foo", offset: 0)
 let k: TokenKind = t.kind
 t.offset = 10
 ```
 
-A struct has a name and typed fields. Construction is positional — arguments follow the field declaration order. Fields are accessed with `.` and are mutable.
+A struct has a name and typed fields. Construction is positional or named. Positional arguments follow the field declaration order. Named arguments use `field: value` syntax and may appear in any order. Mixing positional and named arguments in a single construction is not allowed. Fields are accessed with `.` and are mutable.
 
 ### Methods
 
@@ -884,6 +1037,41 @@ match value {
 
 When matching on `obj`, cases name concrete types. `default` is required — the set of all types cannot be enumerated.
 
+### Union matching
+
+```
+fn Describe(v: int | string | nil) -> string {
+    match v {
+        case n: int {
+            return Concat("int: ", ToString(n))
+        }
+        case s: string {
+            return Concat("string: ", s)
+        }
+        case nil {
+            return "nil"
+        }
+    }
+}
+```
+
+Each union member must be covered by a case, or `default` must be present. `case nil` handles nil members (same as optional matching).
+
+When a union member is an interface, a case naming the interface matches all its variants. Individual variant cases also work — the exhaustiveness checker recognizes that covering all variants covers the interface.
+
+```
+fn Process(v: Node | int) -> void {
+    match v {
+        case n: int {
+            Writeln(Stdout, ToString(n))
+        }
+        case node: Node {
+            EvalNode(node)
+        }
+    }
+}
+```
+
 ### Default
 
 `default` matches any value not covered by preceding cases. `default x: obj` binds the value for use in the body.
@@ -906,7 +1094,7 @@ All I/O operates on stdin, stdout, and stderr. There is no file I/O.
 ```
 Writeln(Stdout, ToString(42))
 Writeln(Stderr, "error: bad input")
-let line: string = ReadLine()
+let line: string? = ReadLine()
 let input: string = ReadAll()
 let data: bytes = ReadBytes()
 let chunk: bytes = ReadBytesN(1024)
@@ -918,23 +1106,23 @@ Exit(1)
 
 ### Output
 
-`Write` and `Writeln` accept both `string` and `bytes`. `Writeln` appends a newline after writing.
+`Stdout` and `Stderr` are built-in constants of type `Stream` (a built-in enum with variants `Stdout` and `Stderr`). `Write` and `Writeln` accept both `string` and `bytes`. `Writeln` appends a newline after writing.
 
-| Function           | Signature           | Description                |
-| ------------------ | ------------------- | -------------------------- |
-| `Write(dest, d)`   | `stream, T -> void` | write string or bytes      |
-| `Writeln(dest, d)` | `stream, T -> void` | write string or bytes + \n |
+| Function           | Signature                          | Description        |
+| ------------------ | ---------------------------------- | ------------------ |
+| `Write(dest, d)`   | `Stream, string \| bytes -> void`  | write to stream    |
+| `Writeln(dest, d)` | `Stream, string \| bytes -> void`  | write + newline    |
 
-`dest` is `Stdout` or `Stderr`. `T` is `string` or `bytes`. To write other types, convert first: `Writeln(Stdout, ToString(n))`.
+To write other types, convert first: `Writeln(Stdout, ToString(n))`.
 
 ### Input
 
-| Function        | Signature      | Description                        |
-| --------------- | -------------- | ---------------------------------- |
-| `ReadLine()`    | `-> string`    | read one line from stdin, strip \n |
-| `ReadAll()`     | `-> string`    | read all of stdin as string        |
-| `ReadBytes()`   | `-> bytes`     | read all of stdin as bytes         |
-| `ReadBytesN(n)` | `int -> bytes` | read up to n bytes from stdin      |
+| Function        | Signature      | Description                                    |
+| --------------- | -------------- | ---------------------------------------------- |
+| `ReadLine()`    | `-> string?`   | read one line from stdin, strip \n; nil on EOF |
+| `ReadAll()`     | `-> string`    | read all of stdin as string                    |
+| `ReadBytes()`   | `-> bytes`     | read all of stdin as bytes                     |
+| `ReadBytesN(n)` | `int -> bytes` | read up to n bytes from stdin                  |
 
 ### System
 
@@ -946,7 +1134,7 @@ Exit(1)
 
 ## Math Semantics
 
-Strict math is not a goal. The IR targets correct-enough portable behavior across all backends, not mathematical rigor. Where targets disagree on edge-case behavior, the IR leaves it unspecified rather than imposing costly emulation.
+Strict math is not a goal. Koine targets correct-enough portable behavior across all backends, not mathematical rigor. Where targets disagree on edge-case behavior, Koine leaves it unspecified rather than imposing costly emulation.
 
 ### Integers
 
@@ -954,7 +1142,7 @@ Integers are signed, at least 64 bits. Overflow, bitwise width, and shift behavi
 
 ### Division and Remainder
 
-Integer division by zero traps. `/` truncates toward zero; `%` follows the dividend's sign. These are specified in the Operators section.
+Integer division by zero throws `ZeroDivisionError`. `/` truncates toward zero; `%` follows the dividend's sign. These are specified in the Operators section.
 
 Float division by zero follows IEEE 754: `1.0 / 0.0` is `+Inf`, `-1.0 / 0.0` is `-Inf`, `0.0 / 0.0` is `NaN`.
 
@@ -980,7 +1168,7 @@ Follows IEEE 754 double precision.
 
 ### Conversions
 
-`FloatToInt(x)` truncates toward zero. Traps if the value is NaN or outside the representable integer range.
+`FloatToInt(x)` truncates toward zero. Throws `ValueError` if the value is NaN or outside the representable integer range.
 
 `IntToFloat(n)` converts exactly if representable; may lose precision for large values. This is not a trap — the result is the nearest representable double.
 
@@ -988,39 +1176,39 @@ Follows IEEE 754 double precision.
 
 `Pow(0, 0) == 1`. Overflow follows integer overflow rules (unspecified).
 
-### ParseInt
+### Parsing
 
-`ParseInt(s, base)` traps on invalid input. Programs that need to handle bad input should validate with string checks before calling.
+`ParseInt(s, base)` and `ParseFloat(s)` throw `ValueError` on invalid input.
 
 ## Source Metadata
 
-Every IR node has a `metadata` field of type `dict[str, Any]`. The lowerer populates it during IR construction. Metadata is advisory — backends and raising passes may use it but are never required to.
+Every Koine node has a `metadata` field of type `map[string, obj]`. The lowerer populates it during IR construction. Metadata is advisory — backends and raising passes may use it but are never required to.
 
 The `pos` key is present on every node. All other keys are optional and node-type-specific.
 
 ### Position
 
-Every node carries `pos`: a `tuple[int, int]` of `(line, col)`, 1-indexed, for error reporting and source maps.
+Every node carries `pos`: a `(int, int)` of `(line, col)`, 1-indexed, for error reporting and source maps.
 
 ### Literal Notation
 
 Literal nodes carry keys that preserve the original Python source form, enabling backends to emit idiomatic notation.
 
-| Key          | Type   | Node            | Values                             | Purpose                    |
-| ------------ | ------ | --------------- | ---------------------------------- | -------------------------- |
-| `base`       | `str`  | Integer literal | `"dec"`, `"hex"`, `"oct"`, `"bin"` | preserve source notation   |
-| `large`      | `bool` | Integer literal |                                    | value exceeds 64-bit range |
-| `separators` | `bool` | Integer literal |                                    | source used `_` separators |
-| `scientific` | `bool` | Float literal   |                                    | preserve `1e10` form       |
-| `separators` | `bool` | Float literal   |                                    | source used `_` separators |
+| Key          | Type     | Node            | Values                             | Purpose                    |
+| ------------ | -------- | --------------- | ---------------------------------- | -------------------------- |
+| `base`       | `string` | Integer literal | `"dec"`, `"hex"`, `"oct"`, `"bin"` | preserve source notation   |
+| `large`      | `bool`   | Integer literal |                                    | value exceeds 64-bit range |
+| `separators` | `bool`   | Integer literal |                                    | source used `_` separators |
+| `scientific` | `bool`   | Float literal   |                                    | preserve `1e10` form       |
+| `separators` | `bool`   | Float literal   |                                    | source used `_` separators |
 
 A backend that doesn't support hex literals can emit decimal instead. The `large` flag lets backends that lack arbitrary-precision integers emit a compile error or use a big-integer library.
 
 ### Lowering Provenance
 
-Some Python patterns are desugared during lowering into simpler IR forms. The original pattern is recorded under the `provenance` key (type `str`) so middleend raising passes can reconstruct idiomatic forms for targets that support them.
+Some Python patterns are desugared during lowering into simpler IR forms. The original pattern is recorded under the `provenance` key (type `string`) so middleend raising passes can reconstruct idiomatic forms for targets that support them.
 
-| `provenance` value  | IR form                         | Python source               |
+| `provenance` value   | Koine form                     | Python source               |
 | -------------------- | ------------------------------ | --------------------------- |
 | `chained_comparison` | `a < b && b < c`               | `a < b < c`                 |
 | `list_comprehension` | for loop + `Append`            | `[x*2 for x in items]`      |
@@ -1037,7 +1225,7 @@ Provenance is advisory — the lowered form is always correct as-is.
 
 ## Middleend Annotations
 
-Every IR node has an `annotations` field of type `dict[str, Any]`. Middleend passes read the IR and write analysis results into this dict. Keys are namespaced by pass (e.g. `"scope.is_reassigned"`, `"ownership.region"`). Values are any Python value.
+Every Koine node has an `annotations` field of type `map[string, obj]`. Middleend passes read the IR and write analysis results into this map. Keys are namespaced by pass (e.g. `"scope.is_reassigned"`, `"ownership.region"`).
 
 Annotations are write-once — a pass sets a key, and no later pass overwrites it. Backends read annotations but never write them.
 
@@ -1053,66 +1241,8 @@ The specific annotations produced by each pass are defined in the middleend spec
 | Control flow | Yield / generators    | ✗ cut                                                                          |
 | Functions    | References            | ✓ function types, literals, no closures, no bound methods                      |
 | Metadata     | Source metadata       | ✓ pos, literal base/large/separators/scientific                                |
-| Metadata     | Middleend annotations | ✓ dict[str, Any] on every node; contents defined by middleend specs            |
-| Appendix     | Grammar reference     | complete grammar for the IR textual syntax                                     |
-
-## TOC
-
-1. Introduction ✓
-2. Primitives ✓
-   - Numeric types (int, float, bool) + functions ✓
-   - Bytes (byte, bytes, indexing, slicing, Len, Encode, Decode) ✓
-3. Strings ✓
-   - string, rune + functions ✓
-   - Format strings ✓
-   - Repetition, RFind, Count, Contains ✓
-   - Encoding / decoding (bytes↔string) ✓
-4. Operators ✓
-5. Collections ✓
-   - Tuples ✓
-   - Lists ✓
-   - Maps ✓ (incl. Merge)
-   - Sets ✓
-   - Membership (`Contains`) ✓
-   - Equality and comparison ✓
-6. Type System ✓
-   - Type hierarchy (obj root, nil, ToString) ✓
-   - Optional and nil ✓
-   - Conversions ✓
-7. Declarations ✓
-   - Structs ✓
-   - Interfaces ✓
-   - Enums ✓
-   - Functions ✓ (types, references, literals, no closures)
-   - Module structure ✓ (entrypoint)
-8. Statements
-   - Variables ✓ (zero values ✓)
-   - Assignment ✓
-   - Return ✓
-   - If ✓
-   - While ✓
-   - For ✓ (iterability, range, map/set order ✓)
-   - Break / continue ✓
-   - Try / catch / raise ✓
-   - Match / case ✓ (obj, optional, default)
-   - Assert ✓
-   - Yield / generators ✗ (cut)
-9. Math Semantics ✓
-    - Integer div-by-zero: trap
-    - Float div-by-zero: IEEE 754
-    - Integer overflow: unspecified
-    - Bitwise: two's complement, shift range unspecified
-    - Rounding: half-away-from-zero
-    - Float: IEEE 754 (NaN, -0.0, propagation)
-    - FloatToInt: trap on overflow/NaN
-    - Pow(0, 0) == 1, overflow unspecified
-    - ParseInt: trap on failure
-10. Built-in Functions ✓
-    - I/O ✓
-11. Metadata
-    - Source metadata ✓ (pos, literal base/large/separators/scientific)
-    - Middleend annotations ✓ (dict[str, Any], write-once, namespaced by pass)
-12. Appendix: Grammar
+| Metadata     | Middleend annotations | ✓ map[string, obj] on every node; contents defined by middleend specs          |
+| Appendix     | Grammar reference     | complete grammar for the Koine textual syntax                                  |
 
 ## Grammar
 
@@ -1121,8 +1251,10 @@ Notation is EBNF: `|` alternation, `( )?` optional, `( )*` zero or more, `( )+` 
 ### Tokens
 
 ```
-INT        = [0-9]+ | '0x' [0-9a-fA-F]+ | '0o' [0-7]+ | '0b' [01]+
-FLOAT      = [0-9]+ '.' [0-9]+
+INT        = [0-9]+
+BYTE       = '0x' hex hex
+FLOAT      = [0-9]+ '.' [0-9]+ ( [eE] [+-]? [0-9]+ )?
+           | [0-9]+ [eE] [+-]? [0-9]+
 STRING     = '"' ( escape | [^"\] )* '"'
 RUNE       = "'" ( escape | [^'\] ) "'"
 BYTES      = 'b"' ( escape | [^"\] )* '"'
@@ -1191,7 +1323,7 @@ IfStmt     = 'if' Expr Block ( 'else' ( IfStmt | Block ) )?
 WhileStmt  = 'while' Expr Block
 ForStmt    = 'for' Binding 'in' ( Expr | Range ) Block
 Binding    = IDENT ( ',' IDENT )?
-Range      = 'range' '(' Expr ( ',' Expr )? ')'
+Range      = 'range' '(' Expr ( ',' Expr ( ',' Expr )? )? ')'
 MatchStmt  = 'match' Expr '{' Case+ Default? '}'
            | 'match' Expr '{' Default '}'
 Case       = 'case' Pattern Block
@@ -1200,7 +1332,7 @@ Pattern    = IDENT ':' TypeName
            | 'nil'
 Default    = 'default' ( IDENT ':' 'obj' )? Block
 TryStmt    = 'try' Block Catch+ ( 'finally' Block )?
-Catch      = 'catch' IDENT ':' TypeName Block
+Catch      = 'catch' IDENT ':' TypeName ( '|' TypeName )* Block
 TypeName   = IDENT | 'obj' | 'nil' | 'int' | 'float' | 'bool'
            | 'byte' | 'bytes' | 'string' | 'rune'
 ```
@@ -1242,8 +1374,10 @@ Postfix    = Primary ( Suffix )*
 Suffix     = '.' IDENT | '.' INT
            | '[' Expr ( ':' Expr )? ']'
            | '(' ArgList ')'
-ArgList    = ( Expr ( ',' Expr )* )?
-Primary    = INT | FLOAT | STRING | RUNE | BYTES
+ArgList    = ( Arg ( ',' Arg )* )?
+Arg        = IDENT ':' Expr
+           | Expr
+Primary    = INT | FLOAT | BYTE | STRING | RUNE | BYTES
            | 'true' | 'false' | 'nil'
            | IDENT
            | '(' Expr ( ',' Expr )+ ')'
@@ -1260,14 +1394,15 @@ FnLiteral  = '(' ParamList ')' '->' Type Block
 
 `Compare` allows at most one comparison operator — `a < b < c` is a parse error. Chained comparisons are desugared during lowering into `&&`-connected binary comparisons.
 
-`Suffix` with `'['` uses one token of lookahead inside the brackets: after the first `Expr`, peek for `':'` to distinguish indexing from slicing.
+`Suffix` with `'['` uses one token of lookahead inside the brackets: after the first `Expr`, peek for `':'` to distinguish indexing from slicing. `Arg` in an `ArgList` needs two tokens of lookahead: if the next tokens are `IDENT ':'`, it's a named argument; otherwise parse as a positional expression. Mixing named and positional arguments is a semantic error, not a grammar concern.
 
 `'('` in `Primary` has three interpretations: function literal, tuple, or parenthesized expression. If the contents match `ParamList ')' '->'`, it's a function literal. Otherwise, parse the first `Expr`, then peek for `','` (tuple) versus `)` (parenthesized expression). `'['` as a `Primary` is a list literal; as a `Suffix` it's indexing/slicing — the parser knows which by context (a `Suffix` only follows a `Primary`). `'{'` is a map or set literal: parse the first `Expr`, then peek for `':'` (map) versus `','` or `}` (set). Empty maps use `Map()`, empty sets use `Set()`.
 
 ### Types
 
 ```
-Type       = BaseType ( '?' )?
+Type       = UnionType ( '?' )?
+UnionType  = BaseType ( '|' BaseType )*
 BaseType   = 'obj'
            | 'int' | 'float' | 'bool'
            | 'byte' | 'bytes'
@@ -1279,10 +1414,11 @@ BaseType   = 'obj'
            | 'set' '[' Type ']'
            | '(' Type ',' Type ( ',' Type )* ')'
            | 'fn' '[' Type ( ',' Type )* ']'
-           | 'fn' '[' Type ']'
            | IDENT
 ```
 
-Every alternative in `BaseType` starts with a distinct token, so no lookahead is needed. `?` for optional is a single-token peek after the base type; types only appear in declaration contexts (after `:` or `->`) where `?` is unambiguous with the ternary operator.
+Every alternative in `BaseType` starts with a distinct token, so no lookahead is needed. `|` in `UnionType` is unambiguous with bitwise OR because types only appear after `:` or `->` (type position), while `|` as an operator appears between expressions (expression position). After each `BaseType`, peek for `|` to continue the union or anything else to stop — zero additional lookahead beyond the standard single-token peek. `?` for optional applies to the entire union and is a single-token peek after the union; types only appear in declaration contexts (after `:` or `->`) where `?` is unambiguous with the ternary operator.
+
+`|` in `Catch` uses the same `TypeName` production — after each `TypeName`, peek for `|` to continue or `{` to stop.
 
 Tuple types require at least two elements — `(T)` is not a type. `IDENT` covers user-defined names: structs, interfaces, enums.
