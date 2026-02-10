@@ -1,14 +1,14 @@
-# Koine Specification
+# Taytsh Specification
 
-> **Note:** This document is an exploration of a future IR iteration (Koine), using language-like syntax to clarify thinking. It is not consistent with the rest of the spec.
+Taytsh is a statically-typed monomorphic intermediate language that serves as the target-neutral IR for the Tongues transpiler. It has reference semantics for mutable types, lexical block scoping, sealed interfaces, exhaustive pattern matching, no closures, no imports, and no user-defined generics. Programs are single-file, closed-world, and free of implicit coercion.
 
 ## Introduction
 
-The current IR is a large set of specialized nodes that carry Python-flavored semantics: `PythonAnd`, `PythonOr`, `PythonMod`, `FloorDiv`, `SentinelToOptional`, `CharAt`, `StringNonEmpty`, and dozens more. Lowering eagerly commits to representations — `range(a, b)` becomes `ForClassic`, string indexing becomes `CharAt`/`CharLen`/`Substring` — and every backend must interpret these nodes individually. The middleend is limited to read-only annotation passes.
+Tongues transpiles a well-behaved subset of Python into 15 target languages. Python's semantics — floor division, value-returning `and`/`or`, type-dependent truthiness, negative indexing, open-ended slices, chained comparisons — must be resolved before code generation, but the targets themselves disagree on fundamentals: string encoding, integer width, value vs reference passing, loop forms, and pattern matching support. The IR must absorb Python's quirks on one side and remain neutral across diverse backends on the other.
 
-Koine replaces that with a small, target-neutral language. Python's quirks (floor division, value-returning `and`/`or`, type-dependent truthiness) are resolved during lowering into conventional semantics (truncating division, boolean `&&`/`||`), but representation choices are deliberately deferred. Koine has one loop-over-collection form (`for...in`), not two; strings are rune-indexed at the Koine level, not pre-lowered into character operations. The middleend analyzes how values are actually used — whether a `for...in` over a range should become a classic for loop, whether a string needs rune-level access or can stay in the target's native representation — and makes those decisions as shared passes rather than per-backend logic. Backends receive already-decided representations and translate to syntax.
+Taytsh is that IR. The lowerer resolves Python semantics into conventional forms (truncating division, boolean `&&`/`||`, explicit nil checks), but defers representation choices. Taytsh has one loop-over-collection form (`for...in`), not separate range and iterator loops; strings are rune-indexed, not pre-lowered into target-specific character operations. The middleend analyzes how values are actually used — whether a `for...in` over a range should become a classic for loop, whether a string needs rune-level access or can stay in the target's native encoding — and records those decisions as annotations. Backends read the annotated IR and translate to syntax.
 
-This spec provides a textual syntax for Koine to facilitate exposition. The grammar is parseable by recursive descent with at most two tokens of lookahead.
+This spec defines Taytsh using a textual syntax to facilitate exposition. The grammar is parseable by recursive descent with at most two tokens of lookahead.
 
 ## Module Structure
 
@@ -31,7 +31,7 @@ A valid program must contain exactly one `Main` function.
 
 ## Type System
 
-Every value in Koine is an `obj`. The terms "object" and "value" are synonymous — there is no distinction between primitive and reference types at this level of abstraction.
+Every value in Taytsh is an `obj`. The terms "object" and "value" are synonymous — there is no distinction between primitive and reference types at this level of abstraction.
 
 ```
 obj
@@ -59,6 +59,8 @@ obj
 `T?` is sugar for `T` or `nil`. `nil` is a value in expression position and a type in type position.
 
 No implicit coercion exists anywhere in the language. All type conversions are explicit function calls.
+
+Generic type parameters are built-in only (`list[T]`, `map[K, V]`, `set[T]`, `fn[T..., R]`). User-defined structs, interfaces, and functions are monomorphic.
 
 ### ToString
 
@@ -235,7 +237,7 @@ Comparisons are binary — `a < b < c` is not valid. Python's chained comparison
 
 ## Strings
 
-Target languages disagree on what a string is. Some are byte-oriented (Go, Rust), some are UTF-16 (Java, JavaScript), and indexing `s[i]` means different things in each. Koine defines `string` as a sequence of runes, so indexing and length have consistent character-level semantics across all targets.
+Target languages disagree on what a string is. Some are byte-oriented (Go, Rust), some are UTF-16 (Java, JavaScript), and indexing `s[i]` means different things in each. Taytsh defines `string` as a sequence of runes, so indexing and length have consistent character-level semantics across all targets.
 
 ```
 let name: string = "hello"
@@ -431,7 +433,7 @@ Structs, interfaces, enums, and union types not containing `nil` have no zero va
 
 ## Scoping
 
-Koine uses lexical block scoping. A variable is visible from its `let` declaration to the end of the enclosing `{}` block. A variable does not exist before its declaration — there is no hoisting.
+Taytsh uses lexical block scoping. A variable is visible from its `let` declaration to the end of the enclosing `{}` block. A variable does not exist before its declaration — there is no hoisting.
 
 ```
 fn Example() -> void {
@@ -787,6 +789,56 @@ let empty: set[string] = Set()
 
 `<`, `<=`, `>`, `>=` work on lists only, comparing lexicographically.
 
+## Indexing and Slicing
+
+Indexing and slicing apply to `string`, `bytes`, and `list[T]`. The rules below are universal across all three.
+
+### Non-negative indices
+
+Taytsh indices are non-negative. Negative indexing is a Python feature resolved during lowering:
+
+- Literal negative indices: `x[-1]` lowers to `x[Len(x) - 1]`
+- Dynamic indices that may be negative: the lowerer inserts `i < 0 ? Len(x) + i : i`
+
+At the Taytsh level, a negative index that reaches runtime is out of bounds and throws `IndexError`.
+
+### Slice bounds
+
+Both bounds of a slice are always present. Open-ended slices are a Python feature resolved during lowering:
+
+- `xs[:3]` lowers to `xs[0:3]`
+- `xs[2:]` lowers to `xs[2:Len(xs)]`
+- `xs[:-1]` lowers to `xs[0:Len(xs) - 1]`
+
+The grammar enforces this — `[Expr : Expr]` requires both expressions. Backends that want to emit idiomatic open-ended slices can detect `0` or `Len(x)` bounds, or use the `open_start` / `open_end` provenance annotations.
+
+Slicing always produces a copy. `xs[0:Len(xs)]` is a full copy of `xs`.
+
+## Value and Reference Semantics
+
+Mutable types — `list[T]`, `map[K, V]`, `set[T]`, and structs — have reference semantics. Assignment and parameter passing create aliases. Mutation through one alias is visible through all others.
+
+```
+let a: list[int] = [1, 2, 3]
+let b: list[int] = a
+Append(b, 4)
+-- Len(a) == 4. a and b are aliases of the same list.
+```
+
+```
+fn Bump(t: Token) -> void {
+    t.offset += 1       -- caller sees the change
+}
+```
+
+Immutable types — primitives (`int`, `float`, `bool`, `byte`, `rune`), `string`, `bytes`, tuples, and enums — have no observable mutation, so the value/reference distinction is unobservable. Backends represent them however they like.
+
+Slicing is the one explicit carve-out: `xs[0:3]` returns a new value that does not alias the source (see Indexing and Slicing).
+
+### Representation deferral
+
+Reference semantics defines what the program means, not how backends represent it. The middleend analyzes whether a mutable value is actually aliased — whether more than one live variable refers to the same underlying data. The common case (a list is created, mutated, and returned but never shared) does not require reference types at the backend level. Backends for value-semantics languages (Go, Rust, Swift, C, Zig) can emit value types for non-aliased values and reference types only where aliasing occurs.
+
 ## Optional
 
 ```
@@ -1134,7 +1186,7 @@ To write other types, convert first: `Writeln(Stdout, ToString(n))`.
 
 ## Math Semantics
 
-Strict math is not a goal. Koine targets correct-enough portable behavior across all backends, not mathematical rigor. Where targets disagree on edge-case behavior, Koine leaves it unspecified rather than imposing costly emulation.
+Strict math is not a goal. Taytsh targets correct-enough portable behavior across all backends, not mathematical rigor. Where targets disagree on edge-case behavior, Taytsh leaves it unspecified rather than imposing costly emulation.
 
 ### Integers
 
@@ -1182,7 +1234,7 @@ Follows IEEE 754 double precision.
 
 ## Source Metadata
 
-Every Koine node has a `metadata` field of type `map[string, obj]`. The lowerer populates it during IR construction. Metadata is advisory — backends and raising passes may use it but are never required to.
+Every Taytsh node has a `metadata` field of type `map[string, obj]`. The lowerer populates it during IR construction. Metadata is advisory — backends and raising passes may use it but are never required to.
 
 The `pos` key is present on every node. All other keys are optional and node-type-specific.
 
@@ -1208,7 +1260,7 @@ A backend that doesn't support hex literals can emit decimal instead. The `large
 
 Some Python patterns are desugared during lowering into simpler IR forms. The original pattern is recorded under the `provenance` key (type `string`) so middleend raising passes can reconstruct idiomatic forms for targets that support them.
 
-| `provenance` value   | Koine form                     | Python source               |
+| `provenance` value   | Taytsh form                     | Python source               |
 | -------------------- | ------------------------------ | --------------------------- |
 | `chained_comparison` | `a < b && b < c`               | `a < b < c`                 |
 | `list_comprehension` | for loop + `Append`            | `[x*2 for x in items]`      |
@@ -1220,12 +1272,15 @@ Some Python patterns are desugared during lowering into simpler IR forms. The or
 | `enumerate`          | `for i, v in xs`               | `for i, v in enumerate(xs)` |
 | `string_multiply`    | `Repeat(s, n)`                 | `s * n`                     |
 | `list_multiply`      | `Repeat(xs, n)`                | `xs * n`                    |
+| `negative_index`     | `x[Len(x) - 1]`               | `x[-1]`                     |
+| `open_start`         | `xs[0:n]`                      | `xs[:n]`                    |
+| `open_end`           | `xs[n:Len(xs)]`                | `xs[n:]`                    |
 
 Provenance is advisory — the lowered form is always correct as-is.
 
 ## Middleend Annotations
 
-Every Koine node has an `annotations` field of type `map[string, obj]`. Middleend passes read the IR and write analysis results into this map. Keys are namespaced by pass (e.g. `"scope.is_reassigned"`, `"ownership.region"`).
+Every Taytsh node has an `annotations` field of type `map[string, obj]`. Middleend passes read the IR and write analysis results into this map. Keys are namespaced by pass (e.g. `"scope.is_reassigned"`, `"ownership.region"`).
 
 Annotations are write-once — a pass sets a key, and no later pass overwrites it. Backends read annotations but never write them.
 
@@ -1242,7 +1297,7 @@ The specific annotations produced by each pass are defined in the middleend spec
 | Functions    | References            | ✓ function types, literals, no closures, no bound methods                      |
 | Metadata     | Source metadata       | ✓ pos, literal base/large/separators/scientific                                |
 | Metadata     | Middleend annotations | ✓ map[string, obj] on every node; contents defined by middleend specs          |
-| Appendix     | Grammar reference     | complete grammar for the Koine textual syntax                                  |
+| Appendix     | Grammar reference     | complete grammar for the Taytsh textual syntax                                  |
 
 ## Grammar
 
