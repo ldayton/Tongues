@@ -1,6 +1,6 @@
 # Taytsh Specification
 
-Taytsh is a statically-typed monomorphic intermediate language that serves as the target-neutral IR for the Tongues transpiler. It has reference semantics for mutable types, lexical block scoping, sealed interfaces, exhaustive pattern matching, no closures, no imports, and no user-defined generics. Programs are single-file, closed-world, and free of implicit coercion.
+Taytsh is a statically-typed nominally-typed monomorphic intermediate language that serves as the target-neutral IR for the Tongues transpiler. It has reference semantics for mutable types, lexical block scoping, sealed interfaces, exhaustive pattern matching, no closures, no imports, and no user-defined generics. Programs are single-file, closed-world, and free of implicit coercion.
 
 ## Introduction
 
@@ -48,7 +48,7 @@ obj
 ├── (T, U, ...)       -- tuples
 ├── fn[T..., R]       -- function values
 ├── A | B | ...       -- union types
-├── nil                -- value in expressions, type in type position
+├── nil               -- value in expressions, type in type position
 ├── structs
 ├── interfaces
 └── enums
@@ -1313,7 +1313,7 @@ The specific annotations produced by each pass are defined in the middleend spec
 
 ## Grammar
 
-Notation is EBNF: `|` alternation, `( )?` optional, `( )*` zero or more, `( )+` one or more. Terminals in `'quotes'`. The grammar targets recursive descent with at most two tokens of lookahead. The few spots requiring the second token are noted inline.
+Notation is EBNF: `|` alternation, `( )?` optional, `( )*` zero or more, `( )+` one or more. Terminals in `'quotes'`; `\` has no escape meaning within quotes or character classes, so `'\'` is a literal backslash and `[^"\]` excludes `"` and `\`. The grammar targets recursive descent with at most two tokens of lookahead. The few spots requiring the second token are noted inline.
 
 ### Tokens
 
@@ -1359,7 +1359,7 @@ Param         = IDENT ':' Type
 Block         = '{' Stmt* '}'
 
 StructDecl    = 'struct' IDENT ( ':' IDENT )? '{' StructBody '}'
-StructBody    = ( FieldDecl | FnDecl )*
+StructBody    = FnDecl* FieldDecl ( FieldDecl | FnDecl )*
 FieldDecl     = IDENT ':' Type
 
 InterfaceDecl = 'interface' IDENT '{' '}'
@@ -1402,6 +1402,11 @@ TryStmt    = 'try' Block ( Catch+ ( 'finally' Block )? | 'finally' Block )
 Catch      = 'catch' IDENT ':' TypeName ( '|' TypeName )* Block
 TypeName   = IDENT | 'obj' | 'nil' | 'int' | 'float' | 'bool'
            | 'byte' | 'bytes' | 'string' | 'rune'
+           | 'list' '[' Type ']'
+           | 'map' '[' Type ',' Type ']'
+           | 'set' '[' Type ']'
+           | '(' Type ',' Type ( ',' Type )* ')'
+           | 'fn' '[' Type ( ',' Type )* ']'
 ```
 
 `ForStmt` needs two tokens of lookahead: after the first `IDENT`, peek for `,` (two bindings) versus `in` (one binding). `_` is a regular identifier; discard semantics are not a grammar concern.
