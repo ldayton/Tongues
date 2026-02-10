@@ -21,7 +21,7 @@ This closed-world property means the compiler can see every type that exists, ev
 ```
 fn Main() -> void {
     let input: string = ReadAll()
-    Writeln(Stdout, input)
+    WritelnOut(input)
 }
 ```
 
@@ -84,9 +84,9 @@ throw ValueError("unexpected token")
 try {
     RiskyOperation()
 } catch e: ValueError {
-    Writeln(Stderr, e.message)
+    WritelnErr(e.message)
 } catch e: obj {
-    Writeln(Stderr, Concat("unexpected: ", ToString(e)))
+    WritelnErr(Concat("unexpected: ", ToString(e)))
 }
 ```
 
@@ -231,7 +231,7 @@ let abs: int = x > 0 ? x : -x
 | `!`      | `bool`       | `bool` | 11   | right | logical not                                                                        |
 | `~`      | `T`          | `T`    | 11   | right | bitwise complement (int, byte)                                                     |
 
-All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. Byte arithmetic wraps mod 256. String comparisons are lexicographic.
+All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. For float `%`, result is IEEE 754 remainder (`fmod`); sign follows dividend. Byte arithmetic wraps mod 256. String comparisons are lexicographic.
 
 Comparisons are binary — `a < b < c` is not valid. Python's chained comparisons are desugared by the lowerer into `&&`-connected binary comparisons. A middleend raising pass can reconstruct chains for targets that support them (Python).
 
@@ -315,7 +315,7 @@ fn Gcd(a: int, b: int) -> int {
 }
 
 fn Greet(name: string) -> void {
-    Writeln(Stdout, Concat("hello, ", name))
+    WritelnOut(Concat("hello, ", name))
 }
 ```
 
@@ -362,7 +362,7 @@ Anonymous functions use arrow syntax. Block body with `{ }` or expression body w
 let double: fn[int, int] = (x: int) -> int { return x * 2 }
 let negate: fn[int, int] = (x: int) -> int => -x
 let greet: fn[string, void] = (name: string) -> void {
-    Writeln(Stdout, Concat("hello, ", name))
+    WritelnOut(Concat("hello, ", name))
 }
 ```
 
@@ -440,7 +440,7 @@ fn Example() -> void {
     let x: int = 1          -- x visible from here to end of function
     if x > 0 {
         let y: int = 2      -- y visible only inside this block
-        Writeln(Stdout, ToString(y))
+        WritelnOut(ToString(y))
     }
     -- y is not accessible here
 }
@@ -478,7 +478,7 @@ Every name in a function body resolves to exactly one binding. Backends never ne
 
 ### Reserved names
 
-Built-in function names (`Len`, `Append`, `ToString`, etc.) and stream constants (`Stdout`, `Stderr`) are reserved at the top level. A user-defined function, struct, interface, or enum may not use a reserved name. This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
+Built-in function names (`Len`, `Append`, `ToString`, `WriteOut`, `WritelnErr`, etc.) are reserved. No binding — top-level declaration, local variable, parameter, or loop variable — may use a reserved name. This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
 
 ### Top-level declarations
 
@@ -524,7 +524,7 @@ fn Add(a: int, b: int) -> int {
 }
 
 fn Log(msg: string) -> void {
-    Writeln(Stdout, msg)
+    WritelnOut(msg)
     return
 }
 ```
@@ -535,21 +535,21 @@ fn Log(msg: string) -> void {
 
 ```
 if x > 0 {
-    Writeln(Stdout, "positive")
+    WritelnOut("positive")
 }
 
 if x > 0 {
-    Writeln(Stdout, "positive")
+    WritelnOut("positive")
 } else {
-    Writeln(Stdout, "non-positive")
+    WritelnOut("non-positive")
 }
 
 if x > 0 {
-    Writeln(Stdout, "positive")
+    WritelnOut("positive")
 } else if x == 0 {
-    Writeln(Stdout, "zero")
+    WritelnOut("zero")
 } else {
-    Writeln(Stdout, "negative")
+    WritelnOut("negative")
 }
 ```
 
@@ -570,11 +570,11 @@ Executes the body while the condition is true. The condition must be `bool`.
 
 ```
 for value in items {
-    Writeln(Stdout, ToString(value))
+    WritelnOut(ToString(value))
 }
 
 for i, ch in name {
-    Writeln(Stdout, Concat(ToString(i), Concat(": ", ToString(RuneToInt(ch)))))
+    WritelnOut(Concat(ToString(i), Concat(": ", ToString(RuneToInt(ch)))))
 }
 
 for _, v in pairs {
@@ -602,15 +602,15 @@ Map and set iteration order is unspecified. Sets do not support the two-variable
 
 ```
 for i in range(10) {
-    Writeln(Stdout, ToString(i))
+    WritelnOut(ToString(i))
 }
 
 for i in range(2, 10) {
-    Writeln(Stdout, ToString(i))
+    WritelnOut(ToString(i))
 }
 
 for i in range(10, 0, -1) {
-    Writeln(Stdout, ToString(i))
+    WritelnOut(ToString(i))
 }
 ```
 
@@ -640,9 +640,9 @@ Any `obj` can be thrown — see the Type System section for details. `catch` blo
 ```
 try {
     let n: int = ParseInt(input, 10)
-    Writeln(Stdout, ToString(n))
+    WritelnOut(ToString(n))
 } catch e: ValueError {
-    Writeln(Stderr, Concat("bad input: ", e.message))
+    WritelnErr(Concat("bad input: ", e.message))
 }
 ```
 
@@ -652,9 +652,9 @@ try {
 try {
     RiskyOperation()
 } catch e: KeyError {
-    Writeln(Stderr, e.message)
+    WritelnErr(e.message)
 } catch e: obj {
-    Writeln(Stderr, Concat("unexpected: ", ToString(e)))
+    WritelnErr(Concat("unexpected: ", ToString(e)))
 } finally {
     Cleanup()
 }
@@ -675,7 +675,7 @@ throw "something went wrong"
 try {
     Process(input)
 } catch e: ValueError | KeyError {
-    Writeln(Stderr, e.message)
+    WritelnErr(e.message)
 }
 ```
 
@@ -748,18 +748,18 @@ Indexing (`m[k]`) yields a `V`; throws `KeyError` if `k` is not present. Assigni
 
 ### Functions
 
-| Function             | Signature              | Description                          |
-| -------------------- | ---------------------- | ------------------------------------ |
-| `Len(m)`             | `map[K, V] -> int`     | number of entries                    |
-| `Map()`              | `-> map[K, V]`         | empty map (type from context)        |
-| `Contains(m, k)`     | `map[K, V], K -> bool` | key membership test                  |
-| `Get(m, k)`          | `map[K, V], K -> V?`   | value for key, or nil if missing     |
-| `Get(m, k, default)` | `map[K, V], K, V -> V` | value for key, or default if missing |
-| `Delete(m, k)`       | `map[K, V], K -> void`              | remove entry by key                  |
-| `Keys(m)`            | `map[K, V] -> list[K]`              | list of keys; order unspecified      |
-| `Values(m)`          | `map[K, V] -> list[V]`              | list of values; order unspecified    |
+| Function             | Signature                           | Description                                |
+| -------------------- | ----------------------------------- | ------------------------------------------ |
+| `Len(m)`             | `map[K, V] -> int`                  | number of entries                          |
+| `Map()`              | `-> map[K, V]`                      | empty map (type from context)              |
+| `Contains(m, k)`     | `map[K, V], K -> bool`              | key membership test                        |
+| `Get(m, k)`          | `map[K, V], K -> V?`                | value for key, or nil if missing           |
+| `Get(m, k, default)` | `map[K, V], K, V -> V`              | value for key, or default if missing       |
+| `Delete(m, k)`       | `map[K, V], K -> void`              | remove entry by key                        |
+| `Keys(m)`            | `map[K, V] -> list[K]`              | list of keys; order unspecified            |
+| `Values(m)`          | `map[K, V] -> list[V]`              | list of values; order unspecified          |
 | `Items(m)`           | `map[K, V] -> list[(K, V)]`         | list of key-value pairs; order unspecified |
-| `Merge(m1, m2)`      | `map[K, V], map[K, V] -> map[K, V]` | new map; m2 wins on key conflict     |
+| `Merge(m1, m2)`      | `map[K, V], map[K, V] -> map[K, V]` | new map; m2 wins on key conflict           |
 
 `Get` is a built-in with two arities. `Assert` (see Try/Catch) likewise accepts one or two arguments. User-defined functions cannot declare optional parameters.
 
@@ -789,7 +789,7 @@ let empty: set[string] = Set()
 
 `==` and `!=` work on lists, maps, and sets with deep structural comparison. Lists compare element-wise in order. Maps compare by key-value pairs regardless of insertion order. Sets compare by membership.
 
-`<`, `<=`, `>`, `>=` work on lists only, comparing lexicographically.
+
 
 ## Indexing and Slicing
 
@@ -952,8 +952,11 @@ struct Token {
     offset: int
 }
 
+-- positional construction
 let t: Token = Token(TokenKind.Ident, "foo", 0)
-let t: Token = Token(kind: TokenKind.Ident, value: "foo", offset: 0)
+
+-- or named construction
+let t2: Token = Token(kind: TokenKind.Ident, value: "foo", offset: 0)
 let k: TokenKind = t.kind
 t.offset = 10
 ```
@@ -1028,11 +1031,11 @@ An enum defines a set of named constants with no associated data. Enum values ar
 ```
 match node {
     case lit: Literal {
-        Writeln(Stdout, ToString(lit.value))
+        WritelnOut(ToString(lit.value))
     }
     case bin: BinOp {
         Eval(bin.left)
-        Write(Stdout, bin.op)
+        WriteOut(bin.op)
         Eval(bin.right)
     }
 }
@@ -1063,10 +1066,10 @@ Each case names a qualified enum value. Exhaustive — every variant must have a
 ```
 match result {
     case v: int {
-        Writeln(Stdout, ToString(v))
+        WritelnOut(ToString(v))
     }
     case nil {
-        Writeln(Stdout, "absent")
+        WritelnOut("absent")
     }
 }
 ```
@@ -1078,13 +1081,13 @@ match result {
 ```
 match value {
     case n: int {
-        Writeln(Stdout, ToString(n))
+        WritelnOut(ToString(n))
     }
     case s: string {
-        Writeln(Stdout, s)
+        WritelnOut(s)
     }
     default {
-        Writeln(Stdout, "something else")
+        WritelnOut("something else")
     }
 }
 ```
@@ -1117,7 +1120,7 @@ When a union member is an interface, a case naming the interface matches all its
 fn Process(v: Node | int) -> void {
     match v {
         case n: int {
-            Writeln(Stdout, ToString(n))
+            WritelnOut(ToString(n))
         }
         case node: Node {
             EvalNode(node)
@@ -1133,10 +1136,10 @@ fn Process(v: Node | int) -> void {
 ```
 match value {
     case n: int {
-        Writeln(Stdout, ToString(n))
+        WritelnOut(ToString(n))
     }
     default o: obj {
-        Writeln(Stderr, Concat("unexpected: ", ToString(o)))
+        WritelnErr(Concat("unexpected: ", ToString(o)))
     }
 }
 ```
@@ -1146,13 +1149,13 @@ match value {
 All I/O operates on stdin, stdout, and stderr. There is no file I/O.
 
 ```
-Writeln(Stdout, ToString(42))
-Writeln(Stderr, "error: bad input")
+WritelnOut(ToString(42))
+WritelnErr("error: bad input")
 let line: string? = ReadLine()
 let input: string = ReadAll()
 let data: bytes = ReadBytes()
 let chunk: bytes = ReadBytesN(1024)
-Write(Stdout, Encode("binary output"))
+WriteOut(Encode("binary output"))
 let args: list[string] = Args()
 let home: string? = GetEnv("HOME")
 Exit(1)
@@ -1160,14 +1163,16 @@ Exit(1)
 
 ### Output
 
-`Stdout` and `Stderr` are built-in constants of type `Stream` (a built-in enum with variants `Stdout` and `Stderr`). `Write` and `Writeln` accept both `string` and `bytes`. `Writeln` appends a newline after writing.
+Four output functions write to stdout or stderr. Each accepts `string` or `bytes`. The `Writeln` variants append a newline after writing.
 
-| Function           | Signature                         | Description     |
-| ------------------ | --------------------------------- | --------------- |
-| `Write(dest, d)`   | `Stream, string \| bytes -> void` | write to stream |
-| `Writeln(dest, d)` | `Stream, string \| bytes -> void` | write + newline |
+| Function        | Signature                 | Description      |
+| --------------- | ------------------------- | ---------------- |
+| `WriteOut(d)`   | `string \| bytes -> void` | write to stdout  |
+| `WriteErr(d)`   | `string \| bytes -> void` | write to stderr  |
+| `WritelnOut(d)` | `string \| bytes -> void` | stdout + newline |
+| `WritelnErr(d)` | `string \| bytes -> void` | stderr + newline |
 
-To write other types, convert first: `Writeln(Stdout, ToString(n))`.
+To write other types, convert first: `WritelnOut(ToString(n))`.
 
 ### Input
 
@@ -1350,7 +1355,7 @@ Program       = Decl*
 Decl          = FnDecl | StructDecl | InterfaceDecl | EnumDecl
 
 FnDecl        = 'fn' IDENT '(' ParamList ')' '->' Type Block
-ParamList     = ( Param ( ',' Param )* )?
+ParamList     = ( 'self' ( ',' Param )* | Param ( ',' Param )* )?
 Param         = IDENT ':' Type
 Block         = '{' Stmt* '}'
 
@@ -1394,7 +1399,7 @@ Pattern    = IDENT ':' TypeName
            | IDENT '.' IDENT
            | 'nil'
 Default    = 'default' ( IDENT ':' 'obj' )? Block
-TryStmt    = 'try' Block Catch+ ( 'finally' Block )?
+TryStmt    = 'try' Block Catch* ( 'finally' Block )?
 Catch      = 'catch' IDENT ':' TypeName ( '|' TypeName )* Block
 TypeName   = IDENT | 'obj' | 'nil' | 'int' | 'float' | 'bool'
            | 'byte' | 'bytes' | 'string' | 'rune'
