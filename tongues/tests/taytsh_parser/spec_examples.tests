@@ -1,0 +1,440 @@
+=== spec: entrypoint
+fn Main() -> void {
+    let input: string = ReadAll()
+    WritelnOut(input)
+}
+---
+ok
+---
+
+=== spec: gcd
+fn Gcd(a: int, b: int) -> int {
+    while b != 0 {
+        let t: int = b
+        b = a % b
+        a = t
+    }
+    return a
+}
+---
+ok
+---
+
+=== spec: factorial
+fn Factorial(n: int) -> int {
+    if n <= 1 {
+        return 1
+    }
+    return n * Factorial(n - 1)
+}
+---
+ok
+---
+
+=== spec: function types
+fn Main() -> void {
+    let predicate: fn[int, bool] = IsEven
+    let transform: fn[string, string] = Upper
+    let callback: fn[void] = DoNothing
+}
+---
+ok
+---
+
+=== spec: apply
+fn Apply(xs: list[int], f: fn[int, int]) -> list[int] {
+    let result: list[int]
+    for x in xs {
+        Append(result, f(x))
+    }
+    return result
+}
+---
+ok
+---
+
+=== spec: function literals
+fn Main() -> void {
+    let double: fn[int, int] = (x: int) -> int { return x * 2 }
+    let negate: fn[int, int] = (x: int) -> int => -x
+    let greet: fn[string, void] = (name: string) -> void {
+        WritelnOut(Concat("hello, ", name))
+    }
+}
+---
+ok
+---
+
+=== spec: filter with fn literal
+fn Filter(xs: list[int], f: fn[int, bool]) -> list[int] {
+    let result: list[int]
+    for x in xs {
+        if f(x) {
+            Append(result, x)
+        }
+    }
+    return result
+}
+---
+ok
+---
+
+=== spec: variables
+fn Main() -> void {
+    let x: int = 42
+    let name: string = "hello"
+    let done: bool = false
+    let items: list[int]
+}
+---
+ok
+---
+
+=== spec: compound assignment
+fn Main() -> void {
+    let x: int = 0
+    x += 1
+    let total: int = 100
+    total -= 10
+    let mask: int = 255
+    mask &= 0xff
+    let count: int = 1
+    count *= 2
+}
+---
+ok
+---
+
+=== spec: tuple assignment
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+}
+---
+ok
+---
+
+=== spec: for loop forms
+fn Main() -> void {
+    for value in items {
+        WritelnOut(ToString(value))
+    }
+    for i, ch in name {
+        WritelnOut(ToString(i))
+    }
+    for _, v in pairs {
+        total += v
+    }
+}
+---
+ok
+---
+
+=== spec: range forms
+fn Main() -> void {
+    for i in range(10) {
+        WritelnOut(ToString(i))
+    }
+    for i in range(2, 10) {
+        WritelnOut(ToString(i))
+    }
+    for i in range(10, 0, -1) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== spec: break continue
+fn Main() -> void {
+    while true {
+        let line: string? = ReadLine()
+        if line == nil {
+            break
+        }
+        if StartsWith(line, "#") {
+            continue
+        }
+        Process(line)
+    }
+}
+---
+ok
+---
+
+=== spec: try catch finally
+fn Main() -> void {
+    try {
+        let n: int = ParseInt(input, 10)
+        WritelnOut(ToString(n))
+    } catch e: ValueError {
+        WritelnErr(Concat("bad input: ", e.message))
+    }
+    try {
+        RiskyOperation()
+    } catch e: KeyError {
+        WritelnErr(e.message)
+    } catch e: obj {
+        WritelnErr(Concat("unexpected: ", ToString(e)))
+    } finally {
+        Cleanup()
+    }
+}
+---
+ok
+---
+
+=== spec: catch union
+fn Main() -> void {
+    try {
+        Process(input)
+    } catch e: ValueError | KeyError {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== spec: tuples
+fn Main() -> void {
+    let pair: (int, string) = (1, "hello")
+    let x: int = pair.0
+    let y: string = pair.1
+}
+---
+ok
+---
+
+=== spec: lists
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let empty: list[string] = []
+    let first: int = xs[0]
+    let mid: list[int] = xs[1:3]
+    let n: int = Len(xs)
+}
+---
+ok
+---
+
+=== spec: maps
+fn Main() -> void {
+    let ages: map[string, int] = {"alice": 30, "bob": 25}
+    let empty: map[string, int] = Map()
+    let age: int = ages["alice"]
+    ages["charlie"] = 35
+}
+---
+ok
+---
+
+=== spec: sets
+fn Main() -> void {
+    let seen: set[int] = {1, 2, 3}
+    let empty: set[string] = Set()
+}
+---
+ok
+---
+
+=== spec: optional
+fn Main() -> void {
+    let x: int? = nil
+    let y: int? = 42
+}
+---
+ok
+---
+
+=== spec: struct construction
+fn Main() -> void {
+    let t: Token = Token(TokenKind.Ident, "foo", 0)
+    let t2: Token = Token(kind: TokenKind.Ident, value: "foo", offset: 0)
+    let k: TokenKind = t.kind
+    t.offset = 10
+}
+---
+ok
+---
+
+=== spec: interface match
+fn Main() -> void {
+    match node {
+        case lit: Literal {
+            WritelnOut(ToString(lit.value))
+        }
+        case bin: BinOp {
+            Eval(bin.left)
+            WriteOut(bin.op)
+            Eval(bin.right)
+        }
+    }
+}
+---
+ok
+---
+
+=== spec: enum match
+fn Main() -> void {
+    match kind {
+        case TokenKind.Ident {
+            ParseIdent()
+        }
+        case TokenKind.Number {
+            ParseNumber()
+        }
+        default {
+            ParseOther()
+        }
+    }
+}
+---
+ok
+---
+
+=== spec: optional match
+fn Main() -> void {
+    match result {
+        case v: int {
+            WritelnOut(ToString(v))
+        }
+        case nil {
+            WritelnOut("absent")
+        }
+    }
+}
+---
+ok
+---
+
+=== spec: default binding
+fn Main() -> void {
+    match value {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        default o: obj {
+            WritelnErr(Concat("unexpected: ", ToString(o)))
+        }
+    }
+}
+---
+ok
+---
+
+=== spec: union match
+fn Describe(v: int | string | nil) -> string {
+    match v {
+        case n: int {
+            return Concat("int: ", ToString(n))
+        }
+        case s: string {
+            return Concat("string: ", s)
+        }
+        case nil {
+            return "nil"
+        }
+    }
+}
+---
+ok
+---
+
+=== spec: operators
+fn Main() -> void {
+    let neg: int = -x
+    let sum: int = a + b
+    let avg: int = total / count
+    let odd: bool = n % 2 != 0
+    let inRange: bool = 0 <= x && x <= 255
+    let either: bool = a || b
+    let shifted: int = flags << 2
+    let abs: int = x > 0 ? x : -x
+}
+---
+ok
+---
+
+=== spec: struct with method
+struct Span {
+    start: int
+    end: int
+
+    fn Len(self) -> int {
+        return self.end - self.start
+    }
+}
+---
+ok
+---
+
+=== spec: interface and structs
+interface Node {}
+
+struct Literal : Node {
+    value: int
+}
+
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+---
+ok
+---
+
+=== spec: enum
+enum TokenKind {
+    Ident
+    Number
+    String
+    LParen
+    RParen
+    Plus
+    Minus
+    Eof
+}
+---
+ok
+---
+
+=== spec: union types
+fn Main() -> void {
+    let v: int | string = 42
+    let w: string | bytes = "hello"
+}
+
+fn Process(v: int | string | nil) -> void {}
+---
+ok
+---
+
+=== spec: conversions
+fn Main() -> void {
+    let f: float = IntToFloat(42)
+    let n: int = FloatToInt(3.14)
+    let b: byte = IntToByte(65)
+    let code: int = ByteToInt(b)
+}
+---
+ok
+---
+
+=== spec: io
+fn Main() -> void {
+    WritelnOut(ToString(42))
+    WritelnErr("error: bad input")
+    let line: string? = ReadLine()
+    let input: string = ReadAll()
+    let data: bytes = ReadBytes()
+    let args: list[string] = Args()
+    let home: string? = GetEnv("HOME")
+    Exit(1)
+}
+---
+ok
+---

@@ -1,0 +1,195 @@
+=== type match
+fn Main() -> void {
+    match node {
+        case lit: Literal {
+            WritelnOut(ToString(lit.value))
+        }
+        case bin: BinOp {
+            Eval(bin.left)
+        }
+    }
+}
+---
+ok
+---
+
+=== enum match
+fn Main() -> void {
+    match kind {
+        case TokenKind.Ident {
+            ParseIdent()
+        }
+        case TokenKind.Number {
+            ParseNumber()
+        }
+        default {
+            ParseOther()
+        }
+    }
+}
+---
+ok
+---
+
+=== nil match
+fn Main() -> void {
+    match result {
+        case v: int {
+            WritelnOut(ToString(v))
+        }
+        case nil {
+            WritelnOut("absent")
+        }
+    }
+}
+---
+ok
+---
+
+=== default with binding
+fn Main() -> void {
+    match value {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        default o: obj {
+            WritelnErr(ToString(o))
+        }
+    }
+}
+---
+ok
+---
+
+=== default without binding
+fn Main() -> void {
+    match value {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== match with only default
+fn Main() -> void {
+    match value {
+        default {
+            WritelnOut("fallback")
+        }
+    }
+}
+---
+ok
+---
+
+=== union type match
+fn Describe(v: int | string | nil) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: string {
+            return s
+        }
+        case nil {
+            return "nil"
+        }
+    }
+}
+---
+ok
+---
+
+=== match with primitive type names
+fn Main() -> void {
+    match v {
+        case n: int {
+            WritelnOut("int")
+        }
+        case s: string {
+            WritelnOut("string")
+        }
+        case b: bool {
+            WritelnOut("bool")
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== match with collection type name
+fn Main() -> void {
+    match v {
+        case xs: list[int] {
+            WritelnOut("list")
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== match with tuple type pattern
+fn Main() -> void {
+    match v {
+        case t: (int, string) {
+            WritelnOut("tuple")
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== match with fn type pattern
+fn Main() -> void {
+    match v {
+        case f: fn[int, bool] {
+            WritelnOut("fn")
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== nested match
+fn Main() -> void {
+    match outer {
+        case a: int {
+            match inner {
+                case b: string {
+                    WritelnOut(b)
+                }
+                default {
+                    WritelnOut("inner default")
+                }
+            }
+        }
+        default {
+            WritelnOut("outer default")
+        }
+    }
+}
+---
+ok
+---

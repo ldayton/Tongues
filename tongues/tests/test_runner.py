@@ -18,6 +18,7 @@ from src.frontend.parse import parse
 from src.frontend.subset import verify as verify_subset
 from src.middleend import analyze
 from src.serialize import fields_to_dict, hierarchy_to_dict, signatures_to_dict
+from src.taytsh import parse as taytsh_parse
 
 from src.backend.c import CBackend
 from src.backend.csharp import CSharpBackend
@@ -55,6 +56,9 @@ TESTS = {
     "backend": {
         "codegen":   {"dir": "15_codegen",    "run": "codegen"},
         "apptest":   {"dir": "15_app",        "run": "apptest"},
+    },
+    "taytsh": {
+        "taytsh_parse": {"dir": "taytsh_parser", "run": "phase"},
     },
 }
 # fmt: on
@@ -579,6 +583,17 @@ def run_parse(source: str) -> PhaseResult:
         signal.alarm(0)
 
 
+def run_taytsh_parse(source: str) -> PhaseResult:
+    try:
+        signal.alarm(PARSE_TIMEOUT)
+        taytsh_parse(source)
+        return PhaseResult()
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    finally:
+        signal.alarm(0)
+
+
 def run_subset(source: str) -> PhaseResult:
     try:
         ast_dict = parse(source)
@@ -668,6 +683,7 @@ RUNNERS = {
     "fields": run_fields,
     "hierarchy": run_hierarchy,
     "typecheck": run_typecheck,
+    "taytsh_parse": run_taytsh_parse,
 }
 
 
@@ -1002,6 +1018,15 @@ def test_cli(cli_spec: dict) -> None:
 
 def test_parse(parse_input, parse_expected):
     check_expected(parse_expected, run_parse(parse_input), "parse", lenient_errors=True)
+
+
+def test_taytsh_parse(taytsh_parse_input, taytsh_parse_expected):
+    check_expected(
+        taytsh_parse_expected,
+        run_taytsh_parse(taytsh_parse_input),
+        "taytsh_parse",
+        lenient_errors=True,
+    )
 
 
 def test_subset(subset_input, subset_expected):

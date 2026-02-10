@@ -1,0 +1,87 @@
+=== try catch
+fn Main() -> void {
+    try {
+        let n: int = ParseInt(input, 10)
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== try catch finally
+fn Main() -> void {
+    try {
+        RiskyOperation()
+    } catch e: KeyError {
+        WritelnErr(e.message)
+    } finally {
+        Cleanup()
+    }
+}
+---
+ok
+---
+
+=== try finally only
+fn Main() -> void {
+    try {
+        DoWork()
+    } finally {
+        Cleanup()
+    }
+}
+---
+ok
+---
+
+=== multiple catches
+fn Main() -> void {
+    try {
+        Process()
+    } catch e: ValueError {
+        WritelnErr("value error")
+    } catch e: KeyError {
+        WritelnErr("key error")
+    } catch e: obj {
+        WritelnErr(ToString(e))
+    }
+}
+---
+ok
+---
+
+=== catch with union types
+fn Main() -> void {
+    try {
+        Process()
+    } catch e: ValueError | KeyError | IndexError {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== catch obj
+fn Main() -> void {
+    try {
+        Process()
+    } catch e: obj {
+        WritelnErr(ToString(e))
+    }
+}
+---
+ok
+---
+
+=== try without catch or finally
+fn Main() -> void {
+    try {
+        Process()
+    }
+}
+---
+error:
+---

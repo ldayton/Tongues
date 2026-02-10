@@ -930,7 +930,6 @@ def get_sentinel_value(
     return None
 
 
-
 def lower_expr_Compare(
     node: ASTNode,
     lower_expr: Callable[[ASTNode], "ir.Expr"],

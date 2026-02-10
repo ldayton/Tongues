@@ -1,0 +1,40 @@
+=== line comment
+-- this is a comment
+fn Main() -> void {}
+---
+ok
+---
+
+=== inline comment
+fn Main() -> void {
+    let x: int = 42  -- inline comment
+}
+---
+ok
+---
+
+=== comment between declarations
+fn Foo() -> void {}
+-- comment between
+fn Bar() -> void {}
+---
+ok
+---
+
+=== comment inside block
+fn Main() -> void {
+    -- start
+    let x: int = 1
+    -- middle
+    let y: int = 2
+    -- end
+}
+---
+ok
+---
+
+=== comment only
+-- just a comment
+---
+ok
+---

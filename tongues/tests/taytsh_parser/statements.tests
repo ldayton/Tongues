@@ -1,0 +1,232 @@
+=== let with init
+fn Main() -> void {
+    let x: int = 42
+}
+---
+ok
+---
+
+=== let without init
+fn Main() -> void {
+    let x: int
+}
+---
+ok
+---
+
+=== assignment
+fn Main() -> void {
+    let x: int = 0
+    x = 10
+}
+---
+ok
+---
+
+=== compound assignment
+fn Main() -> void {
+    let x: int = 0
+    x += 1
+    x -= 2
+    x *= 3
+    x /= 4
+    x %= 5
+    x &= 6
+    x |= 7
+    x ^= 8
+    x <<= 1
+    x >>= 1
+}
+---
+ok
+---
+
+=== tuple assignment
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+}
+---
+ok
+---
+
+=== if statement
+fn Main() -> void {
+    if x > 0 {
+        WritelnOut("positive")
+    }
+}
+---
+ok
+---
+
+=== if else
+fn Main() -> void {
+    if x > 0 {
+        WritelnOut("positive")
+    } else {
+        WritelnOut("non-positive")
+    }
+}
+---
+ok
+---
+
+=== if else if else
+fn Main() -> void {
+    if x > 0 {
+        WritelnOut("positive")
+    } else if x == 0 {
+        WritelnOut("zero")
+    } else {
+        WritelnOut("negative")
+    }
+}
+---
+ok
+---
+
+=== chained else if
+fn Main() -> void {
+    if x > 100 {
+        WritelnOut("big")
+    } else if x > 50 {
+        WritelnOut("medium")
+    } else if x > 10 {
+        WritelnOut("small")
+    } else {
+        WritelnOut("tiny")
+    }
+}
+---
+ok
+---
+
+=== while loop
+fn Main() -> void {
+    let n: int = 100
+    while n > 0 {
+        n = n / 10
+    }
+}
+---
+ok
+---
+
+=== for loop single binding
+fn Main() -> void {
+    for x in items {
+        WritelnOut(ToString(x))
+    }
+}
+---
+ok
+---
+
+=== for loop two bindings
+fn Main() -> void {
+    for i, ch in name {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== for with range one arg
+fn Main() -> void {
+    for i in range(10) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== for with range two args
+fn Main() -> void {
+    for i in range(2, 10) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== for with range three args
+fn Main() -> void {
+    for i in range(10, 0, -1) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== break and continue
+fn Main() -> void {
+    while true {
+        if done {
+            break
+        }
+        if skip {
+            continue
+        }
+    }
+}
+---
+ok
+---
+
+=== return with value
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+---
+ok
+---
+
+=== return without value
+fn Log(msg: string) -> void {
+    WritelnOut(msg)
+    return
+}
+---
+ok
+---
+
+=== throw statement
+fn Main() -> void {
+    throw "something went wrong"
+    throw ValueError("unexpected token")
+    throw 42
+}
+---
+ok
+---
+
+=== expression statement
+fn Main() -> void {
+    WritelnOut("hello")
+    Append(xs, 42)
+}
+---
+ok
+---
+
+=== field assignment
+fn Main() -> void {
+    token.kind = TokenKind.Eof
+}
+---
+ok
+---
+
+=== index assignment
+fn Main() -> void {
+    items[0] = 99
+}
+---
+ok
+---

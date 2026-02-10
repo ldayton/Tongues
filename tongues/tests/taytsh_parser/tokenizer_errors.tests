@@ -1,0 +1,151 @@
+=== invalid escape in bytes literal
+fn Main() -> void {
+    let b: bytes = b"\q"
+}
+---
+error:
+---
+
+=== bytes literal with newline
+fn Main() -> void {
+    let b: bytes = b"hello
+}
+---
+error:
+---
+
+=== unterminated bytes literal
+fn Main() -> void {
+    let b: bytes = b"hello
+---
+error:
+---
+
+=== float exponent missing digits
+fn Main() -> void {
+    let x: float = 1e
+}
+---
+error:
+---
+
+=== float exponent missing digits after sign
+fn Main() -> void {
+    let x: float = 2.5E+
+}
+---
+error:
+---
+
+=== rune with newline
+fn Main() -> void {
+    let c: rune = '
+'}
+---
+error:
+---
+
+=== unterminated rune
+fn Main() -> void {
+    let c: rune = 'ab'
+}
+---
+error:
+---
+
+=== incomplete hex escape in string
+fn Main() -> void {
+    let s: string = "\x4"
+}
+---
+error:
+---
+
+=== incomplete hex escape in bytes
+fn Main() -> void {
+    let b: bytes = b"\x4"
+}
+---
+error:
+---
+
+=== invalid hex escape in string
+fn Main() -> void {
+    let s: string = "\xZZ"
+}
+---
+error:
+---
+
+=== invalid hex escape in bytes
+fn Main() -> void {
+    let b: bytes = b"\xGG"
+}
+---
+error:
+---
+
+=== unterminated string at eof
+fn Main() -> void {
+    let s: string = "hello
+---
+error:
+---
+
+=== byte literal zero hex digits
+fn Main() -> void {
+    let b: byte = 0x
+}
+---
+error:
+---
+
+=== byte literal one hex digit
+fn Main() -> void {
+    let b: byte = 0xf
+}
+---
+error:
+---
+
+=== byte literal three hex digits
+fn Main() -> void {
+    let b: byte = 0xfff
+}
+---
+error:
+---
+
+=== unexpected character at sign
+fn Main() -> void {
+    let x: int = @
+}
+---
+error:
+---
+
+=== unexpected character backtick
+fn Main() -> void {
+    let x: int = `hello`
+}
+---
+error:
+---
+
+=== string escape backslash at eof
+fn Main() -> void { let s: string = "\
+---
+error:
+---
+
+=== bytes escape backslash at eof
+fn Main() -> void { let b: bytes = b"\
+---
+error:
+---
+
+=== hex escape string at eof
+fn Main() -> void { let s: string = "\x
+---
+error:
+---

@@ -1,0 +1,117 @@
+=== primitive types
+fn Main() -> void {
+    let a: int
+    let b: float
+    let c: bool
+    let d: byte
+    let e: bytes
+    let f: string
+    let g: rune
+    let h: obj
+}
+---
+ok
+---
+
+=== list type
+fn Main() -> void {
+    let xs: list[int]
+}
+---
+ok
+---
+
+=== map type
+fn Main() -> void {
+    let m: map[string, int]
+}
+---
+ok
+---
+
+=== set type
+fn Main() -> void {
+    let s: set[int]
+}
+---
+ok
+---
+
+=== tuple type
+fn Main() -> void {
+    let p: (int, string)
+    let t: (int, string, bool)
+}
+---
+ok
+---
+
+=== func type
+fn Main() -> void {
+    let f: fn[int, bool]
+    let g: fn[void]
+    let h: fn[int, string, void]
+}
+---
+ok
+---
+
+=== user-defined type
+fn Main() -> void {
+    let t: Token
+    let n: Node
+}
+---
+ok
+---
+
+=== optional type
+fn Main() -> void {
+    let x: int?
+    let s: string?
+    let n: Node?
+}
+---
+ok
+---
+
+=== union type
+fn Main() -> void {
+    let v: int | string
+    let w: int | string | nil
+}
+---
+ok
+---
+
+=== optional union
+fn Main() -> void {
+    let v: int | string?
+}
+---
+ok
+---
+
+=== nested collection types
+fn Main() -> void {
+    let m: map[string, list[int]]
+    let s: set[list[int]]
+    let ll: list[list[string]]
+}
+---
+ok
+---
+
+=== void return type
+fn DoNothing() -> void {}
+---
+ok
+---
+
+=== nil type
+fn Main() -> void {
+    let x: nil
+}
+---
+ok
+---

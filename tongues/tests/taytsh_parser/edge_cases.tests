@@ -1,0 +1,550 @@
+=== underscore identifier
+fn Main() -> void {
+    for _, v in items {
+        WritelnOut(ToString(v))
+    }
+}
+---
+ok
+---
+
+=== double underscore identifiers
+fn Main() -> void {
+    for _, _ in items {}
+}
+---
+ok
+---
+
+=== discard second binding
+fn Main() -> void {
+    for i, _ in items {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== deeply nested parens
+fn Main() -> void {
+    let x: int = ((((a + b))))
+}
+---
+ok
+---
+
+=== all string escapes
+fn Main() -> void {
+    let s: string = "\n\r\t\\\"\'\0\x41"
+}
+---
+ok
+---
+
+=== all bytes escapes
+fn Main() -> void {
+    let b: bytes = b"\n\r\t\\\"\0\x41"
+}
+---
+ok
+---
+
+=== empty list literal
+fn Main() -> void {
+    let xs: list[int] = []
+}
+---
+ok
+---
+
+=== single element list
+fn Main() -> void {
+    let xs: list[int] = [42]
+}
+---
+ok
+---
+
+=== single element set
+fn Main() -> void {
+    let s: set[int] = {42}
+}
+---
+ok
+---
+
+=== single entry map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+}
+---
+ok
+---
+
+=== nested fn literal calls
+fn Main() -> void {
+    let result: int = Apply(xs, (x: int) -> int => x * 2)
+}
+---
+ok
+---
+
+=== chained indexing and field access
+fn Main() -> void {
+    let x: int = matrix[0][1]
+    let y: string = items[0].name
+    let z: rune = names[i][0]
+}
+---
+ok
+---
+
+=== complex call chain
+fn Main() -> void {
+    let n: int = Len(Split(Trim(input, " "), ","))
+}
+---
+ok
+---
+
+=== negative literal in range
+fn Main() -> void {
+    for i in range(10, 0, -1) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== empty string and bytes
+fn Main() -> void {
+    let s: string = ""
+    let b: bytes = b""
+}
+---
+ok
+---
+
+=== zero values
+fn Main() -> void {
+    let i: int = 0
+    let f: float = 0.0
+    let b: byte = 0x00
+}
+---
+ok
+---
+
+=== integer zero
+fn Main() -> void {
+    let x: int = 0
+}
+---
+ok
+---
+
+=== float without decimal
+fn Main() -> void {
+    let x: float = 1e10
+    let y: float = 5E3
+    let z: float = 2e+5
+    let w: float = 3E-2
+}
+---
+ok
+---
+
+=== float with long decimal
+fn Main() -> void {
+    let pi: float = 3.14159265358979
+}
+---
+ok
+---
+
+=== large integer
+fn Main() -> void {
+    let big: int = 999999999999999999
+}
+---
+ok
+---
+
+=== dot after int is not float
+fn Main() -> void {
+    let x: int = pair.0
+}
+---
+ok
+---
+
+=== hex byte all values
+fn Main() -> void {
+    let a: byte = 0x00
+    let b: byte = 0xff
+    let c: byte = 0xAB
+    let d: byte = 0x0a
+}
+---
+ok
+---
+
+=== empty match body
+fn Main() -> void {
+    match x {}
+}
+---
+error:
+---
+
+=== match case missing pattern
+fn Main() -> void {
+    match x {
+        case {}
+    }
+}
+---
+error:
+---
+
+=== missing block after if condition
+fn Main() -> void {
+    if x > 0
+        WritelnOut("yes")
+}
+---
+error:
+---
+
+=== return at end of non-void function
+fn Id(x: int) -> int {
+    return x
+}
+---
+ok
+---
+
+=== nested if in else
+fn Main() -> void {
+    if a {
+        if b {
+            WritelnOut("both")
+        }
+    } else {
+        if c {
+            WritelnOut("c only")
+        }
+    }
+}
+---
+ok
+---
+
+=== multiple statements in for body
+fn Main() -> void {
+    for i in range(10) {
+        let x: int = i * 2
+        WritelnOut(ToString(x))
+        if x > 10 {
+            break
+        }
+    }
+}
+---
+ok
+---
+
+=== deeply nested blocks
+fn Main() -> void {
+    if a {
+        if b {
+            if c {
+                if d {
+                    WritelnOut("deep")
+                }
+            }
+        }
+    }
+}
+---
+ok
+---
+
+=== expression as call target
+fn Main() -> void {
+    GetCallback()(42)
+}
+---
+ok
+---
+
+=== mixed operators precedence
+fn Main() -> void {
+    let x: bool = a + b * c == d - e / f && g || h
+}
+---
+ok
+---
+
+=== unary in binary
+fn Main() -> void {
+    let x: int = -a + -b
+    let y: int = ~a & ~b
+}
+---
+ok
+---
+
+=== multiple returns
+fn Clamp(x: int, lo: int, hi: int) -> int {
+    if x < lo {
+        return lo
+    }
+    if x > hi {
+        return hi
+    }
+    return x
+}
+---
+ok
+---
+
+=== struct with many fields
+struct BigStruct {
+    a: int
+    b: string
+    c: bool
+    d: float
+    e: byte
+    f: bytes
+    g: rune
+    h: list[int]
+    i: map[string, int]
+    j: set[int]
+}
+---
+ok
+---
+
+=== struct with multiple methods
+struct Vec2 {
+    x: float
+    y: float
+
+    fn Add(self, other: Vec2) -> Vec2 {
+        return Vec2(self.x + other.x, self.y + other.y)
+    }
+
+    fn Len(self) -> float {
+        return self.x * self.x + self.y * self.y
+    }
+}
+---
+ok
+---
+
+=== enum used in match and field access
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn Main() -> void {
+    let c: Color = Color.Red
+    match c {
+        case Color.Red {
+            WritelnOut("red")
+        }
+        case Color.Green {
+            WritelnOut("green")
+        }
+        case Color.Blue {
+            WritelnOut("blue")
+        }
+    }
+}
+---
+ok
+---
+
+=== whitespace variations
+fn   Main(  )  ->  void  {  let  x  :  int  =  42  }
+---
+ok
+---
+
+=== tabs as whitespace
+fn Main() -> void {
+	let x: int = 42
+}
+---
+ok
+---
+
+=== unicode in string
+fn Main() -> void {
+    let s: string = "hello"
+}
+---
+ok
+---
+
+=== rune escape null
+fn Main() -> void {
+    let c: rune = '\0'
+}
+---
+ok
+---
+
+=== rune escape hex
+fn Main() -> void {
+    let c: rune = '\x41'
+}
+---
+ok
+---
+
+=== call with no args
+fn Main() -> void {
+    let input: string = ReadAll()
+    let args: list[string] = Args()
+}
+---
+ok
+---
+
+=== nested collection type in param
+fn Process(data: map[string, list[set[int]]]) -> void {}
+---
+ok
+---
+
+=== fn type in fn type
+fn Main() -> void {
+    let f: fn[fn[int, bool], int]
+}
+---
+ok
+---
+
+=== union in collection type
+fn Main() -> void {
+    let xs: list[int | string]
+    let m: map[string, int | nil]
+}
+---
+ok
+---
+
+=== optional collection type
+fn Main() -> void {
+    let xs: list[int]?
+    let m: map[string, int]?
+}
+---
+ok
+---
+
+=== catch with primitive types
+fn Main() -> void {
+    try {
+        Process()
+    } catch e: int {
+        WritelnErr(ToString(e))
+    } catch e: string {
+        WritelnErr(e)
+    } catch e: bool {
+        WritelnErr(ToString(e))
+    }
+}
+---
+ok
+---
+
+=== match with obj type
+fn Main() -> void {
+    match v {
+        case n: int {
+            WritelnOut("int")
+        }
+        case s: obj {
+            WritelnOut("obj")
+        }
+    }
+}
+---
+ok
+---
+
+=== match with nil type
+fn Main() -> void {
+    match v {
+        case n: nil {
+            WritelnOut("nil type")
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== slice in expression
+fn Main() -> void {
+    let x: int = Len(items[0:5])
+}
+---
+ok
+---
+
+=== index in assignment target
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] = 99
+    xs[Len(xs) - 1] = 0
+}
+---
+ok
+---
+
+=== field in assignment target
+fn Main() -> void {
+    node.left = Literal(42)
+    token.kind = TokenKind.Eof
+}
+---
+ok
+---
+
+=== compound assign to field
+fn Main() -> void {
+    counter.value += 1
+    stats.total -= cost
+}
+---
+ok
+---
+
+=== compound assign to index
+fn Main() -> void {
+    xs[0] += 1
+    matrix[i][j] *= 2
+}
+---
+ok
+---
+
+=== map index compound assign
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    m["a"] += 10
+}
+---
+ok
+---

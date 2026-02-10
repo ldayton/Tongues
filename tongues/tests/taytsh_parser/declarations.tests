@@ -1,0 +1,144 @@
+=== empty function
+fn Main() -> void {}
+---
+ok
+---
+
+=== function with params
+fn Gcd(a: int, b: int) -> int {
+    return a
+}
+---
+ok
+---
+
+=== function returning void
+fn Log(msg: string) -> void {
+    WritelnOut(msg)
+    return
+}
+---
+ok
+---
+
+=== struct with fields
+struct Token {
+    kind: int
+    value: string
+    offset: int
+}
+---
+ok
+---
+
+=== struct with parent
+struct Literal : Node {
+    value: int
+}
+---
+ok
+---
+
+=== struct with method
+struct Span {
+    start: int
+    end: int
+
+    fn Len(self) -> int {
+        return self.end - self.start
+    }
+}
+---
+ok
+---
+
+=== struct with leading method
+struct Foo {
+    fn Bar(self) -> void {}
+
+    x: int
+}
+---
+ok
+---
+
+=== interface
+interface Node {}
+---
+ok
+---
+
+=== enum
+enum TokenKind {
+    Ident
+    Number
+    Eof
+}
+---
+ok
+---
+
+=== multiple declarations
+interface Node {}
+
+struct Literal : Node {
+    value: int
+}
+
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+
+fn Eval(node: Node) -> int {
+    return 0
+}
+---
+ok
+---
+
+=== method with self and params
+struct Span {
+    start: int
+    end: int
+
+    fn Contains(self, pos: int) -> bool {
+        return pos >= self.start && pos < self.end
+    }
+}
+---
+ok
+---
+
+=== empty enum
+enum Empty {}
+---
+error:
+---
+
+=== missing return type
+fn Main() {}
+---
+error:
+---
+
+=== missing fn name
+fn () -> void {}
+---
+error:
+---
+
+=== struct with no fields
+struct Empty {}
+---
+error:
+---
+
+=== struct with only methods
+struct NoFields {
+    fn DoStuff(self) -> void {}
+}
+---
+error:
+---
