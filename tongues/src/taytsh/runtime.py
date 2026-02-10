@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-import re
 from typing import Callable, Iterable, Mapping, Sequence, cast
 
 from .ast import (
@@ -21,9 +20,8 @@ from .ast import (
     TByteLit,
     TBytesLit,
     TCall,
-    TCatch,
     TContinueStmt,
-    TDefault,
+    TDecl,
     TEnumDecl,
     TExpr,
     TExprStmt,
@@ -44,13 +42,11 @@ from .ast import (
     TListType,
     TMapLit,
     TMapType,
-    TMatchCase,
     TMatchStmt,
     TModule,
     TNilLit,
     TOpAssignStmt,
     TOptionalType,
-    TParam,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -840,7 +836,13 @@ def _build_index(module: TModule) -> ModuleIndex:
 
     # Predeclare built-in error structs.
     def _builtin_err(name: str) -> StructInfo:
-        decl = TStructDecl(Pos(0, 0), name, None, [TFieldDecl(Pos(0, 0), "message", TPrimitive(Pos(0, 0), "string"))], [])
+        decl = TStructDecl(
+            Pos(0, 0),
+            name,
+            None,
+            [TFieldDecl(Pos(0, 0), "message", TPrimitive(Pos(0, 0), "string"))],
+            [],
+        )
         # Types resolved later; placeholder for now.
         fi = FieldInfo("message", TY_STRING, decl.fields[0])
         return StructInfo(
@@ -941,7 +943,9 @@ def _build_index(module: TModule) -> ModuleIndex:
     # Functions (signatures resolved later).
     for name, d in seen_top.items():
         if isinstance(d, TFnDecl):
-            funcs[name] = FnInfo(name=name, sig=FnSig((), TY_VOID), decl=d)  # placeholder
+            funcs[name] = FnInfo(
+                name=name, sig=FnSig((), TY_VOID), decl=d
+            )  # placeholder
 
     return ModuleIndex(funcs=funcs, structs=structs, interfaces=interfaces, enums=enums)
 
@@ -1048,7 +1052,9 @@ class TypeChecker:
         if isinstance(typ, TFuncType):
             if len(typ.params) < 1:
                 raise TaytshTypeError("fn[...] requires at least a return type", pos)
-            resolved = [self.resolve_type(t, pos=t.pos, allow_void=True) for t in typ.params]
+            resolved = [
+                self.resolve_type(t, pos=t.pos, allow_void=True) for t in typ.params
+            ]
             ret = resolved[-1]
             params = tuple(resolved[:-1])
             if any(ty_eq(p, TY_VOID) for p in params):
@@ -1078,7 +1084,15 @@ class TypeChecker:
 
     def _is_hashable_type(self, typ: Ty) -> bool:
         if isinstance(typ, TyPrim):
-            return typ.kind in {"int", "float", "bool", "byte", "bytes", "string", "rune"}
+            return typ.kind in {
+                "int",
+                "float",
+                "bool",
+                "byte",
+                "bytes",
+                "string",
+                "rune",
+            }
         if isinstance(typ, TyEnum):
             return True
         if isinstance(typ, TyTuple):
@@ -1089,14 +1103,18 @@ class TypeChecker:
         # Struct field types
         for s in self.index.structs.values():
             # Built-in error structs already have resolved placeholder types.
-            if s.name in {
-                "KeyError",
-                "IndexError",
-                "ZeroDivisionError",
-                "AssertError",
-                "NilError",
-                "ValueError",
-            } and s.decl.pos.line == 0:
+            if (
+                s.name
+                in {
+                    "KeyError",
+                    "IndexError",
+                    "ZeroDivisionError",
+                    "AssertError",
+                    "NilError",
+                    "ValueError",
+                }
+                and s.decl.pos.line == 0
+            ):
                 continue
             fields: list[FieldInfo] = []
             field_map: dict[str, FieldInfo] = {}
@@ -1129,7 +1147,9 @@ class TypeChecker:
                 raise TaytshTypeError("method must take self parameter", decl.pos)
             first = decl.params[0]
             if first.typ is not None or first.name != "self":
-                raise TaytshTypeError("method must take self as first parameter", first.pos)
+                raise TaytshTypeError(
+                    "method must take self as first parameter", first.pos
+                )
         for i, p in enumerate(decl.params):
             if p.name in seen and p.name != "_":
                 raise TaytshTypeError(f"duplicate parameter '{p.name}'", p.pos)
@@ -1158,7 +1178,9 @@ class TypeChecker:
             raise TaytshTypeError("missing Main() entrypoint", Pos(1, 1))
         main = self.index.funcs["Main"]
         if len(main.sig.params) != 0 or not ty_eq(main.sig.ret, TY_VOID):
-            raise TaytshTypeError("Main must have signature fn Main() -> void", main.decl.pos)
+            raise TaytshTypeError(
+                "Main must have signature fn Main() -> void", main.decl.pos
+            )
 
         # Typecheck all top-level functions and methods.
         for f in self.index.funcs.values():
@@ -1219,15 +1241,17 @@ class TypeChecker:
         if isinstance(last, TIfStmt):
             if last.else_body is None:
                 return False
-            return self._block_always_returns(last.then_body) and self._block_always_returns(
-                cast(list[TStmt], last.else_body)
-            )
+            return self._block_always_returns(
+                last.then_body
+            ) and self._block_always_returns(cast(list[TStmt], last.else_body))
         if isinstance(last, TMatchStmt):
             # Exhaustive match with all cases returning counts as always-return.
             for c in last.cases:
                 if not self._block_always_returns(c.body):
                     return False
-            if last.default is not None and not self._block_always_returns(last.default.body):
+            if last.default is not None and not self._block_always_returns(
+                last.default.body
+            ):
                 return False
             # If default absent, the match must be exhaustive (checked elsewhere) to count.
             return True
@@ -1287,7 +1311,9 @@ class TypeChecker:
                     )
                 env.bind(st.name, t, pos=st.pos)
                 return
-            vty = self._type_expr(st.value, env, expected=t, allow_capture=allow_capture)
+            vty = self._type_expr(
+                st.value, env, expected=t, allow_capture=allow_capture
+            )
             if not self._assignable(vty, t):
                 raise TaytshTypeError(
                     f"cannot assign '{vty.display()}' to '{t.display()}'",
@@ -1298,7 +1324,9 @@ class TypeChecker:
 
         if isinstance(st, TAssignStmt):
             target_ty = self._type_lvalue(st.target, env, allow_capture=allow_capture)
-            value_ty = self._type_expr(st.value, env, expected=target_ty, allow_capture=allow_capture)
+            value_ty = self._type_expr(
+                st.value, env, expected=target_ty, allow_capture=allow_capture
+            )
             if not self._assignable(value_ty, target_ty):
                 raise TaytshTypeError(
                     f"cannot assign '{value_ty.display()}' to '{target_ty.display()}'",
@@ -1308,7 +1336,9 @@ class TypeChecker:
 
         if isinstance(st, TOpAssignStmt):
             target_ty = self._type_lvalue(st.target, env, allow_capture=allow_capture)
-            value_ty = self._type_expr(st.value, env, expected=target_ty, allow_capture=allow_capture)
+            value_ty = self._type_expr(
+                st.value, env, expected=target_ty, allow_capture=allow_capture
+            )
             if not self._assignable(value_ty, target_ty):
                 raise TaytshTypeError(
                     f"cannot assign '{value_ty.display()}' to '{target_ty.display()}'",
@@ -1344,7 +1374,9 @@ class TypeChecker:
                 return
             if st.value is None:
                 raise TaytshTypeError("non-void function must return a value", st.pos)
-            vty = self._type_expr(st.value, env, expected=fn_ret, allow_capture=allow_capture)
+            vty = self._type_expr(
+                st.value, env, expected=fn_ret, allow_capture=allow_capture
+            )
             if not self._assignable(vty, fn_ret):
                 raise TaytshTypeError(
                     f"cannot return '{vty.display()}' from function returning '{fn_ret.display()}'",
@@ -1353,13 +1385,21 @@ class TypeChecker:
             return
 
         if isinstance(st, TIfStmt):
-            cty = self._type_expr(st.cond, env, expected=TY_BOOL, allow_capture=allow_capture)
+            cty = self._type_expr(
+                st.cond, env, expected=TY_BOOL, allow_capture=allow_capture
+            )
             if not ty_eq(cty, TY_BOOL):
                 raise TaytshTypeError("if condition must be bool", st.pos)
             then_ovr, else_ovr = self._nil_refinements(st.cond, env)
             if then_ovr:
                 env.push_override(then_ovr)
-            self._check_block(st.then_body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+            self._check_block(
+                st.then_body,
+                env,
+                fn_ret=fn_ret,
+                in_loop=in_loop,
+                allow_capture=allow_capture,
+            )
             if then_ovr:
                 env.pop_override()
             if st.else_body is not None:
@@ -1377,14 +1417,24 @@ class TypeChecker:
             return
 
         if isinstance(st, TWhileStmt):
-            cty = self._type_expr(st.cond, env, expected=TY_BOOL, allow_capture=allow_capture)
+            cty = self._type_expr(
+                st.cond, env, expected=TY_BOOL, allow_capture=allow_capture
+            )
             if not ty_eq(cty, TY_BOOL):
                 raise TaytshTypeError("while condition must be bool", st.pos)
-            self._check_block(st.body, env, fn_ret=fn_ret, in_loop=in_loop + 1, allow_capture=allow_capture)
+            self._check_block(
+                st.body,
+                env,
+                fn_ret=fn_ret,
+                in_loop=in_loop + 1,
+                allow_capture=allow_capture,
+            )
             return
 
         if isinstance(st, TForStmt):
-            self._check_for(st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+            self._check_for(
+                st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
+            )
             return
 
         if isinstance(st, TBreakStmt):
@@ -1408,11 +1458,15 @@ class TypeChecker:
             return
 
         if isinstance(st, TMatchStmt):
-            self._check_match(st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+            self._check_match(
+                st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
+            )
             return
 
         if isinstance(st, TTryStmt):
-            self._check_try(st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+            self._check_try(
+                st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
+            )
             return
 
         raise TaytshTypeError("unsupported statement", st.pos)
@@ -1426,7 +1480,9 @@ class TypeChecker:
         in_loop: int,
         allow_capture: bool,
     ) -> None:
-        self._check_block(st.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+        self._check_block(
+            st.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
+        )
         for c in st.catches:
             types = [self.resolve_type(t, pos=t.pos) for t in c.types]
             if any(ty_eq(t, TY_VOID) for t in types):
@@ -1435,11 +1491,23 @@ class TypeChecker:
             env.push_scope()
             try:
                 env.bind(c.name, c_ty, pos=c.pos)
-                self._check_block(c.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+                self._check_block(
+                    c.body,
+                    env,
+                    fn_ret=fn_ret,
+                    in_loop=in_loop,
+                    allow_capture=allow_capture,
+                )
             finally:
                 env.pop_scope()
         if st.finally_body is not None:
-            self._check_block(st.finally_body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+            self._check_block(
+                st.finally_body,
+                env,
+                fn_ret=fn_ret,
+                in_loop=in_loop,
+                allow_capture=allow_capture,
+            )
 
     def _check_for(
         self,
@@ -1456,11 +1524,17 @@ class TypeChecker:
         # Range loop
         if isinstance(st.iterable, TRange):
             if len(st.binding) != 1:
-                raise TaytshTypeError("range loops do not support two-variable form", st.pos)
+                raise TaytshTypeError(
+                    "range loops do not support two-variable form", st.pos
+                )
             if not (1 <= len(st.iterable.args) <= 3):
-                raise TaytshTypeError("range() expects 1 to 3 arguments", st.iterable.pos)
+                raise TaytshTypeError(
+                    "range() expects 1 to 3 arguments", st.iterable.pos
+                )
             for a in st.iterable.args:
-                aty = self._type_expr(a, env, expected=TY_INT, allow_capture=allow_capture)
+                aty = self._type_expr(
+                    a, env, expected=TY_INT, allow_capture=allow_capture
+                )
                 if not ty_eq(aty, TY_INT):
                     raise TaytshTypeError("range() arguments must be int", a.pos)
             loop_bindings = [(st.binding[0], TY_INT)]
@@ -1502,7 +1576,9 @@ class TypeChecker:
                 loop_bindings.append((st.binding[1], it_ty.value))
         elif isinstance(it_ty, TySet):
             if len(st.binding) != 1:
-                raise TaytshTypeError("set iteration does not support two-variable form", st.pos)
+                raise TaytshTypeError(
+                    "set iteration does not support two-variable form", st.pos
+                )
             loop_bindings.append((st.binding[0], it_ty.element))
         else:
             raise TaytshTypeError(f"type '{it_ty.display()}' is not iterable", st.pos)
@@ -1530,7 +1606,13 @@ class TypeChecker:
         try:
             for name, t in loop_bindings:
                 env.bind(name, t, pos=Pos(0, 0))
-            self._check_block(body, env, fn_ret=fn_ret, in_loop=in_loop + 1, allow_capture=allow_capture)
+            self._check_block(
+                body,
+                env,
+                fn_ret=fn_ret,
+                in_loop=in_loop + 1,
+                allow_capture=allow_capture,
+            )
         finally:
             env.pop_scope()
 
@@ -1555,12 +1637,20 @@ class TypeChecker:
                 if not ty_has_nil(scrut_ty):
                     raise TaytshTypeError("case nil is unreachable", pat.pos)
                 covered_nil = True
-                self._check_block(c.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+                self._check_block(
+                    c.body,
+                    env,
+                    fn_ret=fn_ret,
+                    in_loop=in_loop,
+                    allow_capture=allow_capture,
+                )
                 continue
             if isinstance(pat, TPatternEnum):
                 enum_ty = TyEnum(pat.enum_name)
                 if not self._match_case_possible(scrut_ty, enum_ty):
-                    raise TaytshTypeError("enum case does not match scrutinee type", pat.pos)
+                    raise TaytshTypeError(
+                        "enum case does not match scrutinee type", pat.pos
+                    )
                 enum = self.index.enums.get(pat.enum_name)
                 if enum is None or pat.variant not in enum.variants:
                     raise TaytshTypeError("unknown enum variant", pat.pos)
@@ -1568,7 +1658,13 @@ class TypeChecker:
                 if pat.variant in seen:
                     raise TaytshTypeError("duplicate enum case", pat.pos)
                 seen.add(pat.variant)
-                self._check_block(c.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+                self._check_block(
+                    c.body,
+                    env,
+                    fn_ret=fn_ret,
+                    in_loop=in_loop,
+                    allow_capture=allow_capture,
+                )
                 continue
             if isinstance(pat, TPatternType):
                 case_ty = self.resolve_type(pat.type_name, pos=pat.pos)
@@ -1584,7 +1680,13 @@ class TypeChecker:
                 env.push_scope()
                 try:
                     env.bind(pat.name, case_ty, pos=pat.pos)
-                    self._check_block(c.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+                    self._check_block(
+                        c.body,
+                        env,
+                        fn_ret=fn_ret,
+                        in_loop=in_loop,
+                        allow_capture=allow_capture,
+                    )
                 finally:
                     env.pop_scope()
                 continue
@@ -1593,7 +1695,13 @@ class TypeChecker:
         # Default
         if st.default is not None:
             if st.default.name is None:
-                self._check_block(st.default.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture)
+                self._check_block(
+                    st.default.body,
+                    env,
+                    fn_ret=fn_ret,
+                    in_loop=in_loop,
+                    allow_capture=allow_capture,
+                )
             else:
                 env.push_scope()
                 try:
@@ -1645,7 +1753,9 @@ class TypeChecker:
             for m in scrut_ty.members:
                 if ty_is_nil(m):
                     if not covered_nil:
-                        raise TaytshTypeError("non-exhaustive match (missing nil)", st.pos)
+                        raise TaytshTypeError(
+                            "non-exhaustive match (missing nil)", st.pos
+                        )
                     continue
                 if isinstance(m, TyEnum):
                     if _ty_key(m) in covered_types:
@@ -1681,8 +1791,10 @@ class TypeChecker:
                     )
             return
         # Concrete type: must have a case or default.
-        if st.default is None and _ty_key(scrut_ty) not in covered_types and not (
-            ty_is_nil(scrut_ty) and covered_nil
+        if (
+            st.default is None
+            and _ty_key(scrut_ty) not in covered_types
+            and not (ty_is_nil(scrut_ty) and covered_nil)
         ):
             raise TaytshTypeError("non-exhaustive match", st.pos)
 
@@ -1718,16 +1830,22 @@ class TypeChecker:
         if isinstance(expr, TIndex):
             obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
             if isinstance(obj_ty, TyList):
-                idx_ty = self._type_expr(expr.index, env, expected=TY_INT, allow_capture=allow_capture)
+                idx_ty = self._type_expr(
+                    expr.index, env, expected=TY_INT, allow_capture=allow_capture
+                )
                 if not ty_eq(idx_ty, TY_INT):
                     raise TaytshTypeError("list index must be int", expr.pos)
                 return obj_ty.element
             if isinstance(obj_ty, TyMap):
-                key_ty = self._type_expr(expr.index, env, expected=obj_ty.key, allow_capture=allow_capture)
+                key_ty = self._type_expr(
+                    expr.index, env, expected=obj_ty.key, allow_capture=allow_capture
+                )
                 if not self._assignable(key_ty, obj_ty.key):
                     raise TaytshTypeError("map key type mismatch", expr.pos)
                 return obj_ty.value
-            raise TaytshTypeError("index assignment only allowed on list or map", expr.pos)
+            raise TaytshTypeError(
+                "index assignment only allowed on list or map", expr.pos
+            )
         raise TaytshTypeError("invalid assignment target", expr.pos)
 
     def _type_expr(
@@ -1781,7 +1899,9 @@ class TypeChecker:
             rty = self._type_expr(expr.right, env, allow_capture=allow_capture)
             return self._type_binary(expr.op, lty, rty, pos=expr.pos)
         if isinstance(expr, TTernary):
-            cty = self._type_expr(expr.cond, env, expected=TY_BOOL, allow_capture=allow_capture)
+            cty = self._type_expr(
+                expr.cond, env, expected=TY_BOOL, allow_capture=allow_capture
+            )
             if not ty_eq(cty, TY_BOOL):
                 raise TaytshTypeError("ternary condition must be bool", expr.pos)
             tty = self._type_expr(expr.then_expr, env, allow_capture=allow_capture)
@@ -1808,30 +1928,42 @@ class TypeChecker:
         if isinstance(expr, TIndex):
             obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
             if isinstance(obj_ty, TyList):
-                idx_ty = self._type_expr(expr.index, env, expected=TY_INT, allow_capture=allow_capture)
+                idx_ty = self._type_expr(
+                    expr.index, env, expected=TY_INT, allow_capture=allow_capture
+                )
                 if not ty_eq(idx_ty, TY_INT):
                     raise TaytshTypeError("list index must be int", expr.pos)
                 return obj_ty.element
             if ty_eq(obj_ty, TY_STRING):
-                idx_ty = self._type_expr(expr.index, env, expected=TY_INT, allow_capture=allow_capture)
+                idx_ty = self._type_expr(
+                    expr.index, env, expected=TY_INT, allow_capture=allow_capture
+                )
                 if not ty_eq(idx_ty, TY_INT):
                     raise TaytshTypeError("string index must be int", expr.pos)
                 return TY_RUNE
             if ty_eq(obj_ty, TY_BYTES):
-                idx_ty = self._type_expr(expr.index, env, expected=TY_INT, allow_capture=allow_capture)
+                idx_ty = self._type_expr(
+                    expr.index, env, expected=TY_INT, allow_capture=allow_capture
+                )
                 if not ty_eq(idx_ty, TY_INT):
                     raise TaytshTypeError("bytes index must be int", expr.pos)
                 return TY_BYTE
             if isinstance(obj_ty, TyMap):
-                kty = self._type_expr(expr.index, env, expected=obj_ty.key, allow_capture=allow_capture)
+                kty = self._type_expr(
+                    expr.index, env, expected=obj_ty.key, allow_capture=allow_capture
+                )
                 if not self._assignable(kty, obj_ty.key):
                     raise TaytshTypeError("map key type mismatch", expr.pos)
                 return obj_ty.value
             raise TaytshTypeError("indexing not supported for this type", expr.pos)
         if isinstance(expr, TSlice):
             obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
-            low_ty = self._type_expr(expr.low, env, expected=TY_INT, allow_capture=allow_capture)
-            high_ty = self._type_expr(expr.high, env, expected=TY_INT, allow_capture=allow_capture)
+            low_ty = self._type_expr(
+                expr.low, env, expected=TY_INT, allow_capture=allow_capture
+            )
+            high_ty = self._type_expr(
+                expr.high, env, expected=TY_INT, allow_capture=allow_capture
+            )
             if not ty_eq(low_ty, TY_INT) or not ty_eq(high_ty, TY_INT):
                 raise TaytshTypeError("slice bounds must be int", expr.pos)
             if isinstance(obj_ty, TyList):
@@ -1853,14 +1985,16 @@ class TypeChecker:
                         e, env, expected=expected.element, allow_capture=allow_capture
                     )
                     if not self._assignable(ety, expected.element):
-                        raise TaytshTypeError(
-                            "list element type mismatch", e.pos
-                        )
+                        raise TaytshTypeError("list element type mismatch", e.pos)
                 self.expr_types[id(expr)] = expected
                 return expected
-            elem_ty = self._type_expr(expr.elements[0], env, allow_capture=allow_capture)
+            elem_ty = self._type_expr(
+                expr.elements[0], env, allow_capture=allow_capture
+            )
             for e in expr.elements[1:]:
-                ety = self._type_expr(e, env, expected=elem_ty, allow_capture=allow_capture)
+                ety = self._type_expr(
+                    e, env, expected=elem_ty, allow_capture=allow_capture
+                )
                 if not ty_eq(ety, elem_ty):
                     raise TaytshTypeError("list elements must have same type", e.pos)
             ty = TyList(elem_ty)
@@ -1899,7 +2033,9 @@ class TypeChecker:
                 kt = self._type_expr(k, env, expected=kty, allow_capture=allow_capture)
                 vt = self._type_expr(v, env, expected=vty, allow_capture=allow_capture)
                 if not ty_eq(kt, kty) or not ty_eq(vt, vty):
-                    raise TaytshTypeError("map literal entries must have uniform types", expr.pos)
+                    raise TaytshTypeError(
+                        "map literal entries must have uniform types", expr.pos
+                    )
             ty = TyMap(kty, vty)
             self.expr_types[id(expr)] = ty
             return ty
@@ -1918,13 +2054,17 @@ class TypeChecker:
                         raise TaytshTypeError("set element type mismatch", e.pos)
                 self.expr_types[id(expr)] = expected
                 return expected
-            elem_ty = self._type_expr(expr.elements[0], env, allow_capture=allow_capture)
+            elem_ty = self._type_expr(
+                expr.elements[0], env, allow_capture=allow_capture
+            )
             if not self._is_hashable_type(elem_ty):
                 raise TaytshTypeError(
                     f"set element type '{elem_ty.display()}' is not hashable", expr.pos
                 )
             for e in expr.elements[1:]:
-                ety = self._type_expr(e, env, expected=elem_ty, allow_capture=allow_capture)
+                ety = self._type_expr(
+                    e, env, expected=elem_ty, allow_capture=allow_capture
+                )
                 if not ty_eq(ety, elem_ty):
                     raise TaytshTypeError("set elements must have same type", e.pos)
             ty = TySet(elem_ty)
@@ -1938,13 +2078,19 @@ class TypeChecker:
                     raise TaytshTypeError("tuple arity mismatch", expr.pos)
                 for i, e in enumerate(expr.elements):
                     ety = self._type_expr(
-                        e, env, expected=expected.elements[i], allow_capture=allow_capture
+                        e,
+                        env,
+                        expected=expected.elements[i],
+                        allow_capture=allow_capture,
                     )
                     if not self._assignable(ety, expected.elements[i]):
                         raise TaytshTypeError("tuple element type mismatch", e.pos)
                 self.expr_types[id(expr)] = expected
                 return expected
-            elems = tuple(self._type_expr(e, env, allow_capture=allow_capture) for e in expr.elements)
+            elems = tuple(
+                self._type_expr(e, env, allow_capture=allow_capture)
+                for e in expr.elements
+            )
             ty = TyTuple(elems)
             self.expr_types[id(expr)] = ty
             return ty
@@ -1956,7 +2102,9 @@ class TypeChecker:
             self.expr_types[id(expr)] = ty
             return ty
         if isinstance(expr, TCall):
-            ty = self._type_call(expr, env, expected=expected, allow_capture=allow_capture)
+            ty = self._type_call(
+                expr, env, expected=expected, allow_capture=allow_capture
+            )
             self.expr_types[id(expr)] = ty
             return ty
 
@@ -1981,11 +2129,17 @@ class TypeChecker:
             env.bind(p.name, sig.params[i], pos=p.pos)
         # allow_capture=False because we only bound params; outer locals are not present.
         if isinstance(lit.body, list):
-            self._check_block(lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False)
+            self._check_block(
+                lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False
+            )
             if not ty_eq(sig.ret, TY_VOID) and not self._block_always_returns(lit.body):
-                raise TaytshTypeError("function literal may fall off without returning", lit.pos)
+                raise TaytshTypeError(
+                    "function literal may fall off without returning", lit.pos
+                )
         else:
-            body_ty = self._type_expr(lit.body, env, expected=sig.ret, allow_capture=False)
+            body_ty = self._type_expr(
+                lit.body, env, expected=sig.ret, allow_capture=False
+            )
             if not self._assignable(body_ty, sig.ret):
                 raise TaytshTypeError(
                     f"cannot return '{body_ty.display()}' from function literal returning '{sig.ret.display()}'",
@@ -2006,7 +2160,14 @@ class TypeChecker:
 
         # Built-in call by name: Foo(...)
         if isinstance(call.func, TVar) and call.func.name in _BUILTIN_DISPATCH:
-            return self._type_builtin_call(call.func.name, call.args, env, expected=expected, allow_capture=allow_capture, pos=call.pos)
+            return self._type_builtin_call(
+                call.func.name,
+                call.args,
+                env,
+                expected=expected,
+                allow_capture=allow_capture,
+                pos=call.pos,
+            )
 
         # Method call: obj.Method(...)
         if isinstance(call.func, TFieldAccess):
@@ -2026,16 +2187,30 @@ class TypeChecker:
             # Otherwise treat as field access yielding a function value.
             fty = self._type_expr(call.func, env, allow_capture=allow_capture)
             if isinstance(fty, TyFunc):
-                return self._type_user_call(FnSig(fty.params, fty.ret), call.args, env, allow_capture=allow_capture, pos=call.pos)
+                return self._type_user_call(
+                    FnSig(fty.params, fty.ret),
+                    call.args,
+                    env,
+                    allow_capture=allow_capture,
+                    pos=call.pos,
+                )
             raise TaytshTypeError("call target is not a function", call.pos)
 
         # Regular function value or named function.
         fty = self._type_expr(call.func, env, allow_capture=allow_capture)
         if isinstance(fty, TyFunc):
-            return self._type_user_call(FnSig(fty.params, fty.ret), call.args, env, allow_capture=allow_capture, pos=call.pos)
+            return self._type_user_call(
+                FnSig(fty.params, fty.ret),
+                call.args,
+                env,
+                allow_capture=allow_capture,
+                pos=call.pos,
+            )
         raise TaytshTypeError("call target is not a function", call.pos)
 
-    def _type_struct_ctor(self, call: TCall, env: _TypeEnv, *, allow_capture: bool) -> Ty:
+    def _type_struct_ctor(
+        self, call: TCall, env: _TypeEnv, *, allow_capture: bool
+    ) -> Ty:
         assert isinstance(call.func, TVar)
         s = self.index.structs[call.func.name]
         field_order = [f.name for f in s.fields]
@@ -2051,7 +2226,9 @@ class TypeChecker:
                 raise TaytshTypeError("wrong number of constructor args", call.pos)
             for i, arg in enumerate(call.args):
                 f = s.field_map[field_order[i]]
-                aty = self._type_expr(arg.value, env, expected=f.ty, allow_capture=allow_capture)
+                aty = self._type_expr(
+                    arg.value, env, expected=f.ty, allow_capture=allow_capture
+                )
                 if not self._assignable(aty, f.ty):
                     raise TaytshTypeError(
                         f"cannot assign '{aty.display()}' to field '{f.name}: {f.ty.display()}'",
@@ -2067,7 +2244,9 @@ class TypeChecker:
                     raise TaytshTypeError(f"duplicate field '{arg.name}'", arg.pos)
                 seen.add(arg.name)
                 f = s.field_map[arg.name]
-                aty = self._type_expr(arg.value, env, expected=f.ty, allow_capture=allow_capture)
+                aty = self._type_expr(
+                    arg.value, env, expected=f.ty, allow_capture=allow_capture
+                )
                 if not self._assignable(aty, f.ty):
                     raise TaytshTypeError(
                         f"cannot assign '{aty.display()}' to field '{f.name}: {f.ty.display()}'",
@@ -2090,7 +2269,9 @@ class TypeChecker:
     ) -> Ty:
         has_named = any(a.name is not None for a in args)
         if has_named:
-            raise TaytshTypeError("named args are only supported for struct construction", pos)
+            raise TaytshTypeError(
+                "named args are only supported for struct construction", pos
+            )
         params = list(sig.params)
         if method_receiver is not None:
             if not params:
@@ -2102,7 +2283,9 @@ class TypeChecker:
         if len(args) != len(params):
             raise TaytshTypeError("wrong number of arguments", pos)
         for i, a in enumerate(args):
-            aty = self._type_expr(a.value, env, expected=params[i], allow_capture=allow_capture)
+            aty = self._type_expr(
+                a.value, env, expected=params[i], allow_capture=allow_capture
+            )
             if not self._assignable(aty, params[i]):
                 raise TaytshTypeError(
                     f"cannot pass '{aty.display()}' to param '{params[i].display()}'",
@@ -2121,7 +2304,9 @@ class TypeChecker:
         pos: Pos,
     ) -> Ty:
         fn = _BUILTIN_DISPATCH[name]
-        return fn.typecheck(self, args, env, expected=expected, allow_capture=allow_capture, pos=pos)
+        return fn.typecheck(
+            self, args, env, expected=expected, allow_capture=allow_capture, pos=pos
+        )
 
     def _field_type(self, obj_ty: Ty, field: str, *, pos: Pos) -> Ty:
         if isinstance(obj_ty, TyStruct):
@@ -2139,15 +2324,23 @@ class TypeChecker:
                 if isinstance(m, TyStruct):
                     s = self.index.structs.get(m.name)
                     if s is None or field not in s.field_map:
-                        raise TaytshTypeError(f"field '{field}' not present on all union members", pos)
+                        raise TaytshTypeError(
+                            f"field '{field}' not present on all union members", pos
+                        )
                     member_tys.append(s.field_map[field].ty)
                 else:
-                    raise TaytshTypeError(f"field access not supported on '{m.display()}'", pos)
+                    raise TaytshTypeError(
+                        f"field access not supported on '{m.display()}'", pos
+                    )
             first = member_tys[0]
             if any(not ty_eq(t, first) for t in member_tys[1:]):
-                raise TaytshTypeError(f"field '{field}' has inconsistent type across union", pos)
+                raise TaytshTypeError(
+                    f"field '{field}' has inconsistent type across union", pos
+                )
             return first
-        raise TaytshTypeError(f"field access not supported on '{obj_ty.display()}'", pos)
+        raise TaytshTypeError(
+            f"field access not supported on '{obj_ty.display()}'", pos
+        )
 
     def _type_unary(self, op: str, operand: Ty, *, pos: Pos) -> Ty:
         if op == "!":
@@ -2155,7 +2348,11 @@ class TypeChecker:
                 raise TaytshTypeError("! requires bool", pos)
             return TY_BOOL
         if op == "-":
-            if ty_eq(operand, TY_INT) or ty_eq(operand, TY_FLOAT) or ty_eq(operand, TY_BYTE):
+            if (
+                ty_eq(operand, TY_INT)
+                or ty_eq(operand, TY_FLOAT)
+                or ty_eq(operand, TY_BYTE)
+            ):
                 return operand
             raise TaytshTypeError("- requires int/float/byte", pos)
         if op == "~":
@@ -2210,13 +2407,17 @@ class TypeChecker:
         if op in ("+", "-", "*", "/", "%"):
             if not ty_eq(left, right):
                 raise TaytshTypeError("arithmetic requires operands of same type", pos)
-            if not (ty_eq(left, TY_INT) or ty_eq(left, TY_FLOAT) or ty_eq(left, TY_BYTE)):
+            if not (
+                ty_eq(left, TY_INT) or ty_eq(left, TY_FLOAT) or ty_eq(left, TY_BYTE)
+            ):
                 raise TaytshTypeError("arithmetic requires int/float/byte", pos)
             return left
 
         raise TaytshTypeError(f"unknown binary operator '{op}'", pos)
 
-    def _nil_refinements(self, cond: TExpr, env: _TypeEnv) -> tuple[dict[str, Ty], dict[str, Ty]]:
+    def _nil_refinements(
+        self, cond: TExpr, env: _TypeEnv
+    ) -> tuple[dict[str, Ty], dict[str, Ty]]:
         if not isinstance(cond, TBinaryOp) or cond.op not in ("==", "!="):
             return ({}, {})
 
@@ -2306,9 +2507,7 @@ class TypeChecker:
 @dataclass(frozen=True)
 class _Builtin:
     sig: FnSig
-    typecheck: Callable[
-        ["TypeChecker", list[TArg], _TypeEnv, Ty | None, bool, Pos], Ty
-    ]
+    typecheck: Callable[["TypeChecker", list[TArg], _TypeEnv, Ty | None, bool, Pos], Ty]
 
     def ty(self) -> TyFunc:
         return self.sig.ty()
@@ -2328,7 +2527,9 @@ def _builtin_simple(sig: FnSig) -> _Builtin:
         if len(args) != len(sig.params):
             raise TaytshTypeError("wrong number of arguments", pos)
         for i, a in enumerate(args):
-            aty = tc._type_expr(a.value, env, expected=sig.params[i], allow_capture=allow_capture)
+            aty = tc._type_expr(
+                a.value, env, expected=sig.params[i], allow_capture=allow_capture
+            )
             if not tc._assignable(aty, sig.params[i]):
                 raise TaytshTypeError("argument type mismatch", a.pos)
         return sig.ret
@@ -2349,7 +2550,11 @@ def _tc_len(
     if len(args) != 1:
         raise TaytshTypeError("Len expects 1 argument", pos)
     aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if isinstance(aty, (TyList, TyMap, TySet)) or ty_eq(aty, TY_STRING) or ty_eq(aty, TY_BYTES):
+    if (
+        isinstance(aty, (TyList, TyMap, TySet))
+        or ty_eq(aty, TY_STRING)
+        or ty_eq(aty, TY_BYTES)
+    ):
         return TY_INT
     raise TaytshTypeError("Len not supported for this type", pos)
 
@@ -2399,12 +2604,16 @@ def _tc_get(
     mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
     if not isinstance(mty, TyMap):
         raise TaytshTypeError("Get expects a map", pos)
-    kty = tc._type_expr(args[1].value, env, expected=mty.key, allow_capture=allow_capture)
+    kty = tc._type_expr(
+        args[1].value, env, expected=mty.key, allow_capture=allow_capture
+    )
     if not tc._assignable(kty, mty.key):
         raise TaytshTypeError("Get key type mismatch", args[1].pos)
     if len(args) == 2:
         return ty_union([mty.value, TY_NIL])
-    dty = tc._type_expr(args[2].value, env, expected=mty.value, allow_capture=allow_capture)
+    dty = tc._type_expr(
+        args[2].value, env, expected=mty.value, allow_capture=allow_capture
+    )
     if not tc._assignable(dty, mty.value):
         raise TaytshTypeError("Get default type mismatch", args[2].pos)
     return mty.value
@@ -2481,11 +2690,15 @@ def _tc_assert(
         raise TaytshTypeError("named args not supported for Assert", pos)
     if len(args) not in (1, 2):
         raise TaytshTypeError("Assert expects 1 or 2 arguments", pos)
-    cty = tc._type_expr(args[0].value, env, expected=TY_BOOL, allow_capture=allow_capture)
+    cty = tc._type_expr(
+        args[0].value, env, expected=TY_BOOL, allow_capture=allow_capture
+    )
     if not ty_eq(cty, TY_BOOL):
         raise TaytshTypeError("Assert condition must be bool", args[0].pos)
     if len(args) == 2:
-        mty = tc._type_expr(args[1].value, env, expected=TY_STRING, allow_capture=allow_capture)
+        mty = tc._type_expr(
+            args[1].value, env, expected=TY_STRING, allow_capture=allow_capture
+        )
         if not ty_eq(mty, TY_STRING):
             raise TaytshTypeError("Assert message must be string", args[1].pos)
     return TY_VOID
@@ -2737,7 +2950,9 @@ class Runtime:
         self._builtin_values: dict[str, VFunc] = {}
         for name, b in _BUILTIN_DISPATCH.items():
             if name in _BUILTIN_RUNTIME:
-                self._builtin_values[name] = VFunc(b.sig.ty(), name, lambda av, n=name: _BUILTIN_RUNTIME[n](self, av))
+                self._builtin_values[name] = VFunc(
+                    b.sig.ty(), name, lambda av, n=name: _BUILTIN_RUNTIME[n](self, av)
+                )
 
     # ---- Errors / throwing -------------------------------------------------
 
@@ -2784,7 +2999,9 @@ class Runtime:
 
     def run_main(self) -> RunResult:
         try:
-            self._call_fn(self.index.funcs["Main"].decl, self.index.funcs["Main"].sig, [])
+            self._call_fn(
+                self.index.funcs["Main"].decl, self.index.funcs["Main"].sig, []
+            )
             return RunResult(0, bytes(self.stdout), bytes(self.stderr))
         except _Exit as e:
             return RunResult(e.code, bytes(self.stdout), bytes(self.stderr))
@@ -2936,13 +3153,18 @@ class Runtime:
             if isinstance(s, _Throw):
                 handled = False
                 for c in st.catches:
-                    if any(self._matches_type(s.value, self.tc.resolve_type(t, pos=t.pos)) for t in c.types):
+                    if any(
+                        self._matches_type(s.value, self.tc.resolve_type(t, pos=t.pos))
+                        for t in c.types
+                    ):
                         handled = True
                         pending = None
                         env.push_scope()
                         try:
                             # Catch binding static type is union of types, but runtime stores the concrete value.
-                            c_ty = ty_union([self.tc.resolve_type(t, pos=t.pos) for t in c.types])
+                            c_ty = ty_union(
+                                [self.tc.resolve_type(t, pos=t.pos) for t in c.types]
+                            )
                             env.bind(c.name, c_ty, s.value)
                             self._eval_block(c.body, env, fn_ret=fn_ret)
                         except _Signal as inner:
@@ -2970,7 +3192,11 @@ class Runtime:
                     self._eval_block(c.body, env, fn_ret=fn_ret)
                     return
             elif isinstance(pat, TPatternEnum):
-                if isinstance(v, VEnum) and v.enum_name == pat.enum_name and v.variant == pat.variant:
+                if (
+                    isinstance(v, VEnum)
+                    and v.enum_name == pat.enum_name
+                    and v.variant == pat.variant
+                ):
                     self._eval_block(c.body, env, fn_ret=fn_ret)
                     return
             elif isinstance(pat, TPatternType):
@@ -3002,7 +3228,9 @@ class Runtime:
             vals = []
             for iv in ints:
                 if not isinstance(iv, VInt):
-                    raise TaytshRuntimeFault("range() args must be int", st.iterable.pos)
+                    raise TaytshRuntimeFault(
+                        "range() args must be int", st.iterable.pos
+                    )
                 vals.append(iv.value)
             if len(vals) == 1:
                 start, end, step = 0, vals[0], 1
@@ -3014,6 +3242,7 @@ class Runtime:
             if step == 0:
                 self._throw_err("ValueError", "range() step must be nonzero")
             i = start
+
             def cond(x: int) -> bool:
                 return x < end if step > 0 else x > end
 
@@ -3111,7 +3340,9 @@ class Runtime:
 
         if isinstance(it, VSet):
             if len(st.binding) != 1:
-                raise TaytshRuntimeFault("set iteration does not support two bindings", st.pos)
+                raise TaytshRuntimeFault(
+                    "set iteration does not support two bindings", st.pos
+                )
             snapshot = list(it.elements)
             for v in snapshot:
                 env.push_scope()
@@ -3156,7 +3387,9 @@ class Runtime:
             raise TaytshRuntimeFault("index assignment only for list/map", expr.pos)
         raise TaytshRuntimeFault("invalid assignment target", expr.pos)
 
-    def _eval_expr(self, expr: TExpr, env: _RuntimeEnv, *, expected: Ty | None = None) -> Value:
+    def _eval_expr(
+        self, expr: TExpr, env: _RuntimeEnv, *, expected: Ty | None = None
+    ) -> Value:
         if isinstance(expr, TIntLit):
             return VInt(expr.value)
         if isinstance(expr, TFloatLit):
@@ -3234,7 +3467,9 @@ class Runtime:
             cond = self._eval_expr(expr.cond, env)
             if not isinstance(cond, VBool):
                 raise TaytshRuntimeFault("ternary condition not bool", expr.pos)
-            return self._eval_expr(expr.then_expr if cond.value else expr.else_expr, env, expected=expected)
+            return self._eval_expr(
+                expr.then_expr if cond.value else expr.else_expr, env, expected=expected
+            )
 
         if isinstance(expr, TTupleAccess):
             obj = self._eval_expr(expr.obj, env)
@@ -3314,7 +3549,10 @@ class Runtime:
                 if isinstance(inferred, TySet):
                     expected = inferred
             if isinstance(expected, TySet):
-                elems = {_as_hashable(self._eval_expr(e, env, expected=expected.element)) for e in expr.elements}
+                elems = {
+                    _as_hashable(self._eval_expr(e, env, expected=expected.element))
+                    for e in expr.elements
+                }
                 typ = expected
             else:
                 elems = {_as_hashable(self._eval_expr(e, env)) for e in expr.elements}
@@ -3366,13 +3604,19 @@ class Runtime:
             raise TaytshRuntimeFault("function literal fell off", lit.pos)
         return self._eval_expr(lit.body, env, expected=sig.ret)
 
-    def _eval_call(self, call: TCall, env: _RuntimeEnv, *, expected: Ty | None) -> Value:
+    def _eval_call(
+        self, call: TCall, env: _RuntimeEnv, *, expected: Ty | None
+    ) -> Value:
         # Struct constructor
         if isinstance(call.func, TVar) and call.func.name in self.index.structs:
             return self._eval_struct_ctor(call, env)
 
         # Builtins Map/Set need expected type for tagging.
-        if isinstance(call.func, TVar) and call.func.name in ("Map", "Set") and not call.args:
+        if (
+            isinstance(call.func, TVar)
+            and call.func.name in ("Map", "Set")
+            and not call.args
+        ):
             if expected is None:
                 inferred = self.tc.expr_types.get(id(call))
                 expected = inferred
@@ -3449,7 +3693,10 @@ class Runtime:
         if isinstance(typ, TyStruct):
             return isinstance(v, VStruct) and v.struct_name == typ.name
         if isinstance(typ, TyInterface):
-            return isinstance(v, VStruct) and v.struct_name in self.index.interfaces[typ.name].implementors
+            return (
+                isinstance(v, VStruct)
+                and v.struct_name in self.index.interfaces[typ.name].implementors
+            )
         if isinstance(typ, TyEnum):
             return isinstance(v, VEnum) and v.enum_name == typ.name
         if isinstance(typ, TyUnion):
@@ -3542,7 +3789,11 @@ class Runtime:
             if shift < 0:
                 self._throw_err("ValueError", "shift amount must be non-negative")
             if isinstance(left, VInt):
-                return VInt(left.value << shift) if op == "<<" else VInt(left.value >> shift)
+                return (
+                    VInt(left.value << shift)
+                    if op == "<<"
+                    else VInt(left.value >> shift)
+                )
             if isinstance(left, VByte):
                 val = (left.value << shift) if op == "<<" else (left.value >> shift)
                 return VByte(val & 0xFF)

@@ -12,7 +12,6 @@ from __future__ import annotations
 from src.backend.jslike import (
     JsLikeBackend,
     _camel,
-    _is_bool_int_compare,
     _is_bytes_list_type,
 )
 from src.backend.util import (
@@ -23,12 +22,9 @@ from src.backend.util import (
     is_bytes_type,
 )
 from src.ir import (
-    BOOL,
     FLOAT,
-    INT,
     VOID,
     Assign,
-    BinaryOp,
     Expr,
     Function,
     If,

@@ -5,8 +5,8 @@ from __future__ import annotations
 from .ast import TModule
 from .check import CheckError, check as check_module
 from .emit import to_source
-from .parse import ParseError, Parser
-from .tokens import TokenizeError, tokenize
+from .parse import ParseError as ParseError, Parser
+from .tokens import TokenizeError as TokenizeError, tokenize
 
 
 def parse(source: str) -> TModule:

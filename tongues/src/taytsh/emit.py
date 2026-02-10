@@ -7,8 +7,6 @@ node type is added, this emitter should be updated alongside it.
 from __future__ import annotations
 
 from .ast import (
-    Pos,
-    TArg,
     TAssignStmt,
     TBinaryOp,
     TBoolLit,
@@ -16,7 +14,6 @@ from .ast import (
     TByteLit,
     TBytesLit,
     TCall,
-    TCatch,
     TContinueStmt,
     TDecl,
     TDefault,
@@ -24,7 +21,6 @@ from .ast import (
     TExpr,
     TExprStmt,
     TFieldAccess,
-    TFieldDecl,
     TFnDecl,
     TFnLit,
     TFloatLit,
@@ -226,13 +222,17 @@ class _Emitter:
             for t in stmt.targets:
                 targets.append(self._render_expr(t, self._PREC_TERNARY))
             left = ", ".join(targets)
-            self._emit_line(f"{left} = {self._render_expr(stmt.value, self._PREC_TERNARY)}")
+            self._emit_line(
+                f"{left} = {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+            )
             return
         if isinstance(stmt, TReturnStmt):
             if stmt.value is None:
                 self._emit_line("return")
             else:
-                self._emit_line(f"return {self._render_expr(stmt.value, self._PREC_TERNARY)}")
+                self._emit_line(
+                    f"return {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+                )
             return
         if isinstance(stmt, TBreakStmt):
             self._emit_line("break")
@@ -250,7 +250,9 @@ class _Emitter:
             self._emit_if_chain(stmt)
             return
         if isinstance(stmt, TWhileStmt):
-            self._emit_line("while " + self._render_expr(stmt.cond, self._PREC_TERNARY) + " {")
+            self._emit_line(
+                "while " + self._render_expr(stmt.cond, self._PREC_TERNARY) + " {"
+            )
             self._emit_stmt_block(stmt.body)
             self._emit_line("}")
             return
@@ -285,14 +287,18 @@ class _Emitter:
 
         # Emit first branch
         first_cond, first_body = branches[0]
-        self._emit_line("if " + self._render_expr(first_cond, self._PREC_TERNARY) + " {")
+        self._emit_line(
+            "if " + self._render_expr(first_cond, self._PREC_TERNARY) + " {"
+        )
         self._emit_stmt_block(first_body)
 
         # else-if branches
         i = 1
         while i < len(branches):
             cond, body = branches[i]
-            self._emit_line("} else if " + self._render_expr(cond, self._PREC_TERNARY) + " {")
+            self._emit_line(
+                "} else if " + self._render_expr(cond, self._PREC_TERNARY) + " {"
+            )
             self._emit_stmt_block(body)
             i += 1
 
@@ -325,7 +331,9 @@ class _Emitter:
         self._emit_line("}")
 
     def _emit_match_stmt(self, stmt: TMatchStmt) -> None:
-        self._emit_line("match " + self._render_expr(stmt.expr, self._PREC_TERNARY) + " {")
+        self._emit_line(
+            "match " + self._render_expr(stmt.expr, self._PREC_TERNARY) + " {"
+        )
         self._indent_level += 1
 
         for case in stmt.cases:
@@ -358,7 +366,9 @@ class _Emitter:
         idx = 0
         while idx < len(stmt.catches):
             c = stmt.catches[idx]
-            self._emit_line("} catch " + c.name + ": " + self._render_catch_types(c.types) + " {")
+            self._emit_line(
+                "} catch " + c.name + ": " + self._render_catch_types(c.types) + " {"
+            )
             self._emit_stmt_block(c.body)
             idx += 1
 
@@ -461,15 +471,20 @@ class _Emitter:
         need_parens = False
         if prec < parent_prec:
             need_parens = True
-        elif prec == parent_prec and side == "right" and prec in (
-            self._PREC_PRODUCT,
-            self._PREC_SUM,
-            self._PREC_SHIFT,
-            self._PREC_BITAND,
-            self._PREC_BITXOR,
-            self._PREC_BITOR,
-            self._PREC_AND,
-            self._PREC_OR,
+        elif (
+            prec == parent_prec
+            and side == "right"
+            and prec
+            in (
+                self._PREC_PRODUCT,
+                self._PREC_SUM,
+                self._PREC_SHIFT,
+                self._PREC_BITAND,
+                self._PREC_BITXOR,
+                self._PREC_BITOR,
+                self._PREC_AND,
+                self._PREC_OR,
+            )
         ):
             need_parens = True
         elif prec == parent_prec and side != "" and prec == self._PREC_COMPARE:
@@ -533,7 +548,9 @@ class _Emitter:
                 if a.name is None:
                     args.append(self._render_expr(a.value, self._PREC_TERNARY))
                 else:
-                    args.append(f"{a.name}: {self._render_expr(a.value, self._PREC_TERNARY)}")
+                    args.append(
+                        f"{a.name}: {self._render_expr(a.value, self._PREC_TERNARY)}"
+                    )
             return f"{func}({', '.join(args)})"
         if isinstance(expr, TListLit):
             parts3: list[str] = []
@@ -652,10 +669,14 @@ class _Emitter:
         if isinstance(stmt, TMatchStmt):
             cases: list[str] = []
             for c in stmt.cases:
-                cases.append(f"case {self._render_pattern(c.pattern)} {self._render_inline_block(c.body)}")
+                cases.append(
+                    f"case {self._render_pattern(c.pattern)} {self._render_inline_block(c.body)}"
+                )
             if stmt.default is not None:
                 if stmt.default.name is None:
-                    cases.append(f"default {self._render_inline_block(stmt.default.body)}")
+                    cases.append(
+                        f"default {self._render_inline_block(stmt.default.body)}"
+                    )
                 else:
                     cases.append(
                         f"default {stmt.default.name}: obj {self._render_inline_block(stmt.default.body)}"
