@@ -109,7 +109,7 @@ struct ValueError { message: string }
 | ------------------- | --------------------------------------------------------------- |
 | `KeyError`          | map indexing with missing key                                   |
 | `IndexError`        | out-of-bounds index or slice, `Pop` on empty list               |
-| `ZeroDivisionError` | integer `/` or `%` with zero divisor                            |
+| `ZeroDivisionError` | int or byte `/` or `%` with zero divisor                        |
 | `AssertError`       | `Assert` failure                                                |
 | `NilError`          | `Unwrap` on nil                                                 |
 | `ValueError`        | `ParseInt`/`ParseFloat` bad input, `FloatToInt` overflow or NaN |
@@ -231,7 +231,7 @@ let abs: int = x > 0 ? x : -x
 | `!`      | `bool`       | `bool` | 11   | right | logical not                                                                        |
 | `~`      | `T`          | `T`    | 11   | right | bitwise complement (int, byte)                                                     |
 
-All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. For float `%`, result is IEEE 754 remainder (`fmod`); sign follows dividend. Byte arithmetic wraps mod 256. String comparisons are lexicographic.
+All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. For float `%`, result is IEEE 754 remainder (`fmod`); sign follows dividend; behavior with zero divisor is unspecified. Byte arithmetic wraps mod 256. String comparisons are lexicographic.
 
 Comparisons are binary — `a < b < c` is not valid. Python's chained comparisons are desugared by the lowerer into `&&`-connected binary comparisons. A middleend raising pass can reconstruct chains for targets that support them (Python).
 
@@ -406,28 +406,28 @@ let done: bool = false
 let items: list[int]
 ```
 
-`let` declares a variable with an explicit type. The initializer is optional for types with zero values — omitting it gives the zero value. Structs, interfaces, and enums have no zero value and require an explicit initializer.
+`let` declares a variable with an explicit type. The initializer is optional for types with zero values — omitting it gives the zero value. Structs, interfaces, enums, function types, and union types not containing `nil` have no zero value and require an explicit initializer.
 
 ### Zero values
 
-| Type          | Zero value                                             |
-| ------------- | ------------------------------------------------------ |
-| `int`         | `0`                                                    |
-| `float`       | `0.0`                                                  |
-| `bool`        | `false`                                                |
-| `byte`        | `0x00`                                                 |
-| `bytes`       | `b""`                                                  |
-| `string`      | `""`                                                   |
-| `rune`        | `'\0'`                                                 |
-| `list[T]`     | `[]`                                                   |
-| `map[K, V]`   | `Map()`                                                |
-| `set[T]`      | `Set()`                                                |
-| `(T, U, ...)` | tuple of zero values                                   |
-| `T?`          | `nil`                                                  |
-| `A \| B`      | `nil` if union contains `nil`; otherwise no zero value |
-| `obj`         | `nil`                                                  |
+| Type          | Zero value                                                                |
+| ------------- | ------------------------------------------------------------------------- |
+| `int`         | `0`                                                                       |
+| `float`       | `0.0`                                                                     |
+| `bool`        | `false`                                                                   |
+| `byte`        | `0x00`                                                                    |
+| `bytes`       | `b""`                                                                     |
+| `string`      | `""`                                                                      |
+| `rune`        | `'\0'`                                                                    |
+| `list[T]`     | `[]`                                                                      |
+| `map[K, V]`   | `Map()`                                                                   |
+| `set[T]`      | `Set()`                                                                   |
+| `(T, U, ...)` | tuple of element zero values; no zero value if any element type lacks one |
+| `T?`          | `nil`                                                                     |
+| `A \| B`      | `nil` if union contains `nil`; otherwise no zero value                    |
+| `obj`         | `nil`                                                                     |
 
-Structs, interfaces, enums, and union types not containing `nil` have no zero value.
+Structs, interfaces, enums, function types, and union types not containing `nil` have no zero value.
 
 `let` bindings are mutable. Backends may emit `const`/`final` when they detect a binding is never reassigned.
 
@@ -769,7 +769,6 @@ Iteration with `for k, v in m` yields key-value pairs.
 
 ```
 let seen: set[int] = {1, 2, 3}
-let also: set[int] = Set(1, 2, 3)
 let empty: set[string] = Set()
 ```
 
@@ -777,13 +776,13 @@ let empty: set[string] = Set()
 
 ### Functions
 
-| Function         | Signature           | Description               |
-| ---------------- | ------------------- | ------------------------- |
-| `Len(s)`         | `set[T] -> int`     | number of elements        |
-| `Set(...)`       | `T... -> set[T]`    | construct set from values |
-| `Add(s, v)`      | `set[T], T -> void` | add element               |
-| `Remove(s, v)`   | `set[T], T -> void` | remove element            |
-| `Contains(s, v)` | `set[T], T -> bool` | membership test           |
+| Function         | Signature           | Description                   |
+| ---------------- | ------------------- | ----------------------------- |
+| `Len(s)`         | `set[T] -> int`     | number of elements            |
+| `Set()`          | `-> set[T]`         | empty set (type from context) |
+| `Add(s, v)`      | `set[T], T -> void` | add element                   |
+| `Remove(s, v)`   | `set[T], T -> void` | remove element                |
+| `Contains(s, v)` | `set[T], T -> bool` | membership test               |
 
 ## Collection Equality
 
@@ -1201,9 +1200,9 @@ Integers are signed, at least 64 bits. Overflow, bitwise width, and shift behavi
 
 ### Division and Remainder
 
-Integer division by zero throws `ZeroDivisionError`. `/` truncates toward zero; `%` follows the dividend's sign. These are specified in the Operators section.
+Int and byte division by zero throws `ZeroDivisionError`. `/` truncates toward zero; `%` follows the dividend's sign. These are specified in the Operators section.
 
-Float division by zero follows IEEE 754: `1.0 / 0.0` is `+Inf`, `-1.0 / 0.0` is `-Inf`, `0.0 / 0.0` is `NaN`.
+Float division by zero follows IEEE 754: `1.0 / 0.0` is `+Inf`, `-1.0 / 0.0` is `-Inf`, `0.0 / 0.0` is `NaN`. Float remainder by zero (`%` with zero divisor) is unspecified — targets disagree (some return NaN, some throw).
 
 ### Bitwise Operations
 
@@ -1215,12 +1214,12 @@ Shift amounts must be non-negative. Behavior when the shift amount equals or exc
 
 Follows IEEE 754 double precision.
 
-| Rule            | Description                                      |
-| --------------- | ------------------------------------------------ |
-| NaN != NaN      | NaN is not equal to itself                       |
-| -0.0 == 0.0     | negative zero equals positive zero               |
-| NaN propagation | `Min` and `Max` propagate NaN                    |
-| NaN ordering    | `Sorted` on a list containing NaN is unspecified |
+| Rule            | Description                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| NaN != NaN      | NaN is not equal to itself                                                                     |
+| -0.0 == 0.0     | negative zero equals positive zero                                                             |
+| NaN propagation | `Min` and `Max` propagate NaN; targets disagree (some swallow NaN), backends may need wrappers |
+| NaN ordering    | `Sorted` on a list containing NaN is unspecified                                               |
 
 | Function   | Signature       | Description                                |
 | ---------- | --------------- | ------------------------------------------ |
@@ -1239,7 +1238,7 @@ Follows IEEE 754 double precision.
 
 ### Exponentiation
 
-`Pow(0, 0) == 1`. Overflow follows integer overflow rules (unspecified).
+`Pow(0, 0) == 1`. Integer `Pow` with negative exponent is unspecified. Overflow follows integer overflow rules (unspecified).
 
 ### Parsing
 
@@ -1399,7 +1398,7 @@ Pattern    = IDENT ':' TypeName
            | IDENT '.' IDENT
            | 'nil'
 Default    = 'default' ( IDENT ':' 'obj' )? Block
-TryStmt    = 'try' Block Catch* ( 'finally' Block )?
+TryStmt    = 'try' Block ( Catch+ ( 'finally' Block )? | 'finally' Block )
 Catch      = 'catch' IDENT ':' TypeName ( '|' TypeName )* Block
 TypeName   = IDENT | 'obj' | 'nil' | 'int' | 'float' | 'bool'
            | 'byte' | 'bytes' | 'string' | 'rune'
