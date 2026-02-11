@@ -28,11 +28,27 @@ from src.backend.lua import LuaBackend
 from src.backend.perl import PerlBackend
 from src.backend.php import PhpBackend
 from src.backend.python import PythonBackend
+from src.backend_v2.python import emit_python as emit_python_v2
 from src.backend.ruby import RubyBackend
 from src.backend.rust import RustBackend
 from src.backend.swift import SwiftBackend
 from src.backend.typescript import TsBackend
 from src.backend.zig import ZigBackend
+from src.middleend_v2.liveness import analyze_liveness
+from src.middleend_v2.scope import analyze_scope
+from src.taytsh import parse as taytsh_parse
+from src.taytsh.check import check_with_info
+from src.taytsh.ast import (
+    TFnDecl, TStructDecl, TIfStmt, TWhileStmt, TForStmt,
+    TMatchStmt, TTryStmt, TRange,
+    TLetStmt, TPatternType, TVar,
+    TExprStmt, TReturnStmt, TCall, TBinaryOp, TUnaryOp,
+    TFieldAccess, TIndex, TTernary, TFnLit, TThrowStmt,
+    TAssignStmt, TOpAssignStmt, TTupleAssignStmt,
+    TListLit, TMapLit, TSetLit, TTupleLit, TSlice,
+)
+from src.middleend_v2.returns import analyze_returns
+from src.middleend_v2.scope import analyze_scope
 
 PARSE_TIMEOUT = 5
 TESTS_DIR = Path(__file__).parent
@@ -51,8 +67,13 @@ TESTS = {
         "hierarchy": {"dir": "07_hierarchy",  "run": "phase"},
         "typecheck": {"dir": "08_inference",  "run": "phase"},
     },
+    "middleend": {
+        "returns_v2": {"dir": "09_returns", "run": "phase"},
+        "scope_v2":   {"dir": "10_scope",   "run": "phase"},
+    },
     "backend": {
         "codegen":   {"dir": "15_codegen",    "run": "codegen"},
+        "codegen_v2_python": {"dir": "15_codegen_v2_python", "run": "codegen_v2_python"},
         "apptest":   {"dir": "15_app",        "run": "apptest"},
     },
 }
@@ -498,6 +519,22 @@ def discover_codegen_tests(test_dir: Path) -> list[tuple[str, str, str, str, boo
     return results
 
 
+def discover_codegen_v2_python_tests(test_dir: Path) -> list[tuple[str, str, str]]:
+    """Find v2 Python codegen tests, returns (test_id, input, expected)."""
+    results = []
+    for test_file in sorted(test_dir.glob("*.tests")):
+        tests = parse_codegen_file(test_file)
+        for name, input_code, expected_by_lang in tests:
+            expected = expected_by_lang.get("python")
+            if expected is None:
+                pytest.fail(
+                    f"{test_file.name}:{name} missing '--- python' expected block"
+                )
+            test_id = f"{test_file.stem}/{name}[python-v2]"
+            results.append((test_id, input_code, expected))
+    return results
+
+
 def discover_apptests(test_dir: Path) -> list[Path]:
     """Find all apptest_*.py files."""
     return sorted(test_dir.glob("apptest_*.py"))
@@ -659,6 +696,245 @@ def run_typecheck(source: str) -> PhaseResult:
         return PhaseResult(errors=[str(e)])
 
 
+# ---------------------------------------------------------------------------
+# v2 middleend serializers
+# ---------------------------------------------------------------------------
+
+
+def _strip_prefix(annotations, prefix):
+    """Strip a prefix from annotation keys."""
+    return {k[len(prefix):]: v for k, v in annotations.items() if k.startswith(prefix)}
+
+
+def _serialize_returns_stmt(stmt):
+    d = {"type": type(stmt).__name__}
+    for k, v in getattr(stmt, "annotations", {}).items():
+        if k.startswith("returns."):
+            d[k[8:]] = v
+    if isinstance(stmt, TMatchStmt):
+        d["cases"] = [_strip_prefix(c.annotations, "returns.") for c in stmt.cases]
+        if stmt.default is not None:
+            d["default"] = _strip_prefix(stmt.default.annotations, "returns.")
+    elif isinstance(stmt, TTryStmt):
+        d["catches"] = [_strip_prefix(c.annotations, "returns.") for c in stmt.catches]
+    return d
+
+
+def _serialize_fn_returns(fn):
+    d = _strip_prefix(fn.annotations, "returns.")
+    d["body"] = [_serialize_returns_stmt(s) for s in fn.body]
+    return d
+
+
+def _serialize_returns(module):
+    result = {}
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            result[decl.name] = _serialize_fn_returns(decl)
+        elif isinstance(decl, TStructDecl):
+            for method in decl.methods:
+                result[f"{decl.name}.{method.name}"] = _serialize_fn_returns(method)
+    return result
+
+
+def _serialize_scope_stmt(stmt):
+    d = {"type": type(stmt).__name__}
+    if isinstance(stmt, TForStmt):
+        binder = {}
+        for k, v in stmt.annotations.items():
+            if k.startswith("scope.binder."):
+                rest = k[len("scope.binder."):]
+                bname, attr = rest.split(".", 1)
+                if bname not in binder:
+                    binder[bname] = {}
+                binder[bname][attr] = v
+        if binder:
+            d["binder"] = binder
+    elif isinstance(stmt, TMatchStmt):
+        cases = []
+        for case in stmt.cases:
+            cd = {}
+            if isinstance(case.pattern, TPatternType):
+                a = _strip_prefix(case.pattern.annotations, "scope.")
+                if a:
+                    cd["pattern"] = a
+            cases.append(cd)
+        d["cases"] = cases
+    elif isinstance(stmt, TTryStmt):
+        d["catches"] = [_strip_prefix(c.annotations, "scope.") for c in stmt.catches]
+    return d
+
+
+def _collect_vars_expr(expr, result):
+    """Walk an expression tree collecting TVar nodes with scope annotations."""
+    if isinstance(expr, TVar):
+        a = _strip_prefix(expr.annotations, "scope.")
+        if a:
+            if expr.name in result:
+                result[expr.name].update(a)
+            else:
+                result[expr.name] = dict(a)
+    elif isinstance(expr, TBinaryOp):
+        _collect_vars_expr(expr.left, result)
+        _collect_vars_expr(expr.right, result)
+    elif isinstance(expr, TUnaryOp):
+        _collect_vars_expr(expr.operand, result)
+    elif isinstance(expr, TCall):
+        _collect_vars_expr(expr.func, result)
+        for a in expr.args:
+            _collect_vars_expr(a.value, result)
+    elif isinstance(expr, TFieldAccess):
+        _collect_vars_expr(expr.obj, result)
+    elif isinstance(expr, TIndex):
+        _collect_vars_expr(expr.obj, result)
+        _collect_vars_expr(expr.index, result)
+    elif isinstance(expr, TTernary):
+        _collect_vars_expr(expr.cond, result)
+        _collect_vars_expr(expr.then_expr, result)
+        _collect_vars_expr(expr.else_expr, result)
+    elif isinstance(expr, TSlice):
+        _collect_vars_expr(expr.obj, result)
+        _collect_vars_expr(expr.low, result)
+        _collect_vars_expr(expr.high, result)
+    elif isinstance(expr, TListLit):
+        for e in expr.elements:
+            _collect_vars_expr(e, result)
+    elif isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            _collect_vars_expr(k, result)
+            _collect_vars_expr(v, result)
+    elif isinstance(expr, TSetLit):
+        for e in expr.elements:
+            _collect_vars_expr(e, result)
+    elif isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            _collect_vars_expr(e, result)
+    elif isinstance(expr, TFnLit):
+        if isinstance(expr.body, list):
+            _collect_vars_stmts(expr.body, result)
+        else:
+            _collect_vars_expr(expr.body, result)
+
+
+def _collect_vars_stmts(stmts, result):
+    for stmt in stmts:
+        _collect_vars_stmt(stmt, result)
+
+
+def _collect_vars_stmt(stmt, result):
+    if isinstance(stmt, TExprStmt):
+        _collect_vars_expr(stmt.expr, result)
+    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
+        _collect_vars_expr(stmt.value, result)
+    elif isinstance(stmt, TThrowStmt):
+        _collect_vars_expr(stmt.expr, result)
+    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
+        _collect_vars_expr(stmt.value, result)
+    elif isinstance(stmt, TAssignStmt):
+        _collect_vars_expr(stmt.target, result)
+        _collect_vars_expr(stmt.value, result)
+    elif isinstance(stmt, TOpAssignStmt):
+        _collect_vars_expr(stmt.target, result)
+        _collect_vars_expr(stmt.value, result)
+    elif isinstance(stmt, TTupleAssignStmt):
+        for t in stmt.targets:
+            _collect_vars_expr(t, result)
+        _collect_vars_expr(stmt.value, result)
+    elif isinstance(stmt, TIfStmt):
+        _collect_vars_expr(stmt.cond, result)
+        _collect_vars_stmts(stmt.then_body, result)
+        if stmt.else_body is not None:
+            _collect_vars_stmts(stmt.else_body, result)
+    elif isinstance(stmt, TWhileStmt):
+        _collect_vars_expr(stmt.cond, result)
+        _collect_vars_stmts(stmt.body, result)
+    elif isinstance(stmt, TForStmt):
+        if isinstance(stmt.iterable, TRange):
+            for a in stmt.iterable.args:
+                _collect_vars_expr(a, result)
+        else:
+            _collect_vars_expr(stmt.iterable, result)
+        _collect_vars_stmts(stmt.body, result)
+    elif isinstance(stmt, TMatchStmt):
+        _collect_vars_expr(stmt.expr, result)
+        for case in stmt.cases:
+            _collect_vars_stmts(case.body, result)
+        if stmt.default is not None:
+            _collect_vars_stmts(stmt.default.body, result)
+    elif isinstance(stmt, TTryStmt):
+        _collect_vars_stmts(stmt.body, result)
+        for catch in stmt.catches:
+            _collect_vars_stmts(catch.body, result)
+        if stmt.finally_body is not None:
+            _collect_vars_stmts(stmt.finally_body, result)
+
+
+def _serialize_fn_scope(fn):
+    d = {}
+    params = {}
+    for p in fn.params:
+        a = _strip_prefix(p.annotations, "scope.")
+        if a:
+            params[p.name] = a
+    if params:
+        d["params"] = params
+    lets = {}
+    for stmt in fn.body:
+        if isinstance(stmt, TLetStmt):
+            a = _strip_prefix(stmt.annotations, "scope.")
+            if a:
+                lets[stmt.name] = a
+    if lets:
+        d["lets"] = lets
+    d["body"] = [_serialize_scope_stmt(s) for s in fn.body]
+    vars_dict = {}
+    _collect_vars_stmts(fn.body, vars_dict)
+    if vars_dict:
+        d["vars"] = vars_dict
+    return d
+
+
+def _serialize_scope(module):
+    result = {}
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            result[decl.name] = _serialize_fn_scope(decl)
+        elif isinstance(decl, TStructDecl):
+            for method in decl.methods:
+                result[f"{decl.name}.{method.name}"] = _serialize_fn_scope(method)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# v2 middleend runners
+# ---------------------------------------------------------------------------
+
+
+def _run_taytsh_pipeline(source):
+    """Parse taytsh, run check. Returns (error, module, checker)."""
+    module = taytsh_parse(source)
+    errors, checker = check_with_info(module)
+    if errors:
+        return PhaseResult(errors=[str(e) for e in errors]), None, None
+    return None, module, checker
+
+
+def run_returns_v2(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_returns(module, checker)
+    return PhaseResult(data=_serialize_returns(module))
+
+
+def run_scope_v2(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_scope(module, checker)
+    return PhaseResult(data=_serialize_scope(module))
+
+
 RUNNERS = {
     "parse": run_parse,
     "subset": run_subset,
@@ -667,6 +943,8 @@ RUNNERS = {
     "fields": run_fields,
     "hierarchy": run_hierarchy,
     "typecheck": run_typecheck,
+    "returns_v2": run_returns_v2,
+    "scope_v2": run_scope_v2,
 }
 
 
@@ -807,6 +1085,24 @@ def transpile_code(source: str, target: str) -> tuple[str | None, str | None]:
     return (code, None)
 
 
+def transpile_code_v2_python(source: str) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source using python backend v2. Returns (output, error)."""
+    try:
+        module = taytsh_parse(source)
+    except Exception as e:
+        return (None, str(e))
+    errors, checker = check_with_info(module)
+    if errors:
+        return (None, str(errors[0]))
+    try:
+        analyze_returns(module, checker)
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        return (emit_python_v2(module), None)
+    except Exception as e:
+        return (None, str(e))
+
+
 def contains_normalized(haystack: str, needle: str) -> bool:
     """Check if needle appears in haystack, normalizing line-by-line whitespace."""
     needle_lines = [line.strip() for line in needle.strip().split("\n") if line.strip()]
@@ -914,6 +1210,17 @@ def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
     return output
 
 
+@pytest.fixture
+def transpiled_output_v2_python(codegen_v2_input: str) -> str:
+    """Transpile v2 codegen input to Python."""
+    output, err = transpile_code_v2_python(codegen_v2_input)
+    if err is not None:
+        pytest.fail(f"Transpile error: {err}")
+    if output is None:
+        pytest.fail("No output from transpiler")
+    return output
+
+
 # ---------------------------------------------------------------------------
 # Parametrization
 # ---------------------------------------------------------------------------
@@ -949,6 +1256,13 @@ def pytest_generate_tests(metafunc):
                     "codegen_input,codegen_lang,codegen_expected,codegen_has_explicit",
                     params,
                 )
+            elif (
+                run == "codegen_v2_python"
+                and "codegen_v2_input" in metafunc.fixturenames
+            ):
+                tests = discover_codegen_v2_python_tests(test_dir)
+                params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
+                metafunc.parametrize("codegen_v2_input,codegen_v2_expected", params)
             elif run == "apptest" and "apptest" in metafunc.fixturenames:
                 apptests = discover_apptests(test_dir)
                 targets = (
@@ -1027,6 +1341,14 @@ def test_typecheck(typecheck_input, typecheck_expected):
     check_expected(typecheck_expected, run_typecheck(typecheck_input), "typecheck")
 
 
+def test_returns_v2(returns_v2_input, returns_v2_expected):
+    check_expected(returns_v2_expected, run_returns_v2(returns_v2_input), "returns_v2")
+
+
+def test_scope_v2(scope_v2_input, scope_v2_expected):
+    check_expected(scope_v2_expected, run_scope_v2(scope_v2_input), "scope_v2")
+
+
 def test_codegen(
     codegen_input: str,
     codegen_lang: str,
@@ -1049,6 +1371,20 @@ def test_codegen(
                 pytest.fail(
                     f"Semantic mismatch:\n  input  {input_stripped!r} = {input_result!r}\n  output {output_stripped!r} = {output_result!r}"
                 )
+
+
+def test_codegen_v2_python(
+    codegen_v2_input: str,
+    codegen_v2_expected: str,
+    transpiled_output_v2_python: str,
+):
+    """Verify v2 Python backend output matches expected code snippets."""
+    if not contains_normalized(transpiled_output_v2_python, codegen_v2_expected):
+        pytest.fail(
+            "Expected not found in output:\n"
+            f"--- expected ---\n{codegen_v2_expected}\n"
+            f"--- got ---\n{transpiled_output_v2_python}"
+        )
 
 
 def test_apptest(apptest: Path, target, executable: list[str]):

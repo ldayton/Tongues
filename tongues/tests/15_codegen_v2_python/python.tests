@@ -1,0 +1,1378 @@
+=== match default binds scrutinee value
+fn Show(value: int | string | bool) -> string {
+    match value {
+        case n: int {
+            return ToString(n)
+        }
+        default x: obj {
+            return ToString(x)
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Show(1))
+}
+--- python
+if isinstance(value, int):
+    n = value
+    return str(n)
+else:
+    x = value
+    return str(x)
+---
+
+=== delete on map is missing-key safe
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    Delete(m, "k")
+}
+--- python
+m.pop("k", None)
+---
+
+=== unused catch variable is omitted
+fn Main() -> void {
+    try {
+        ParseInt("x", 10)
+    } catch e: ValueError {
+        WritelnOut("bad")
+    }
+}
+--- python
+except ValueError:
+---
+
+=== used catch variable is kept
+fn Main() -> void {
+    try {
+        ParseInt("x", 10)
+    } catch e: ValueError {
+        WritelnOut(e.message)
+    }
+}
+--- python
+except ValueError as e:
+---
+
+=== unused tuple target becomes underscore
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(ToString(q))
+}
+--- python
+q, _ = divmod(17, 5)
+---
+
+=== all tuple targets used
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(ToString(q + r))
+}
+--- python
+q, r = divmod(17, 5)
+---
+
+=== unused match binding is omitted
+fn Show(value: int | string) -> string {
+    match value {
+        case n: int {
+            return "int"
+        }
+        case s: string {
+            return s
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Show(1))
+}
+--- python
+if isinstance(value, int):
+    return "int"
+---
+
+=== initial value suppressed when overwritten
+fn Main() -> void {
+    let x: int = 0
+    x = ParseInt(ReadAll(), 10)
+    WritelnOut(ToString(x))
+}
+--- python
+x = int(read_all(), 10)
+---
+
+=== initial value kept when read before overwrite
+fn Main() -> void {
+    let x: int = 0
+    WritelnOut(ToString(x))
+    x = 1
+    WritelnOut(ToString(x))
+}
+--- python
+x = 0
+---
+
+=== in operator emits pythonic form
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    if Contains(xs, 2) {
+        WritelnOut("found")
+    }
+}
+--- python
+if 2 in xs:
+---
+
+=== not in operator
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    if !Contains(xs, 2) {
+        WritelnOut("missing")
+    }
+}
+--- python
+if 2 not in xs:
+---
+
+=== string multiply via Repeat
+fn Main() -> void {
+    let s: string = Repeat("ab", 3)
+    WritelnOut(s)
+}
+--- python
+s = "ab" * 3
+---
+
+=== list multiply via Repeat
+fn Main() -> void {
+    let xs: list[int] = Repeat([0], 5)
+    WritelnOut(ToString(Len(xs)))
+}
+--- python
+xs = [0] * 5
+---
+
+=== negative index via Len subtraction
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    WritelnOut(ToString(xs[Len(xs) - 1]))
+}
+--- python
+xs[-1]
+---
+
+=== open-end slice
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4]
+    let tail: list[int] = xs[1:Len(xs)]
+    WritelnOut(ToString(Len(tail)))
+}
+--- python
+xs[1:]
+---
+
+=== open-start slice
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4]
+    let head: list[int] = xs[0:3]
+    WritelnOut(ToString(Len(head)))
+}
+--- python
+xs[:3]
+---
+
+=== truthiness check on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    if Len(xs) > 0 {
+        WritelnOut("nonempty")
+    }
+}
+--- python
+if xs:
+---
+
+=== truthiness check on string
+fn Main() -> void {
+    let s: string = "hello"
+    if s != "" {
+        WritelnOut(s)
+    }
+}
+--- python
+if s:
+---
+
+=== chained comparison
+fn InRange(x: int) -> bool {
+    return 0 <= x && x <= 255
+}
+fn Main() -> void {
+    WritelnOut(ToString(InRange(42)))
+}
+--- python
+return 0 <= x <= 255
+---
+
+=== list comprehension
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let doubled: list[int]
+    for x in xs {
+        Append(doubled, x * 2)
+    }
+    WritelnOut(ToString(Len(doubled)))
+}
+--- python
+doubled = [x * 2 for x in xs]
+---
+
+=== list comprehension with filter
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let evens: list[int]
+    for x in xs {
+        if x % 2 == 0 {
+            Append(evens, x)
+        }
+    }
+    WritelnOut(ToString(Len(evens)))
+}
+--- python
+evens = [x for x in xs if x % 2 == 0]
+---
+
+=== dict comprehension
+fn Main() -> void {
+    let keys: list[string] = ["a", "b", "c"]
+    let m: map[string, int]
+    for i, k in keys {
+        m[k] = i
+    }
+    WritelnOut(ToString(Len(m)))
+}
+--- python
+m = {k: i for i, k in enumerate(keys)}
+---
+
+=== set comprehension
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 2, 3]
+    let unique: set[int]
+    for x in xs {
+        Add(unique, x)
+    }
+    WritelnOut(ToString(Len(unique)))
+}
+--- python
+unique = {x for x in xs}
+---
+
+=== enumerate over list
+fn Main() -> void {
+    let xs: list[string] = ["a", "b", "c"]
+    for i, v in xs {
+        WritelnOut(Format("{}: {}", ToString(i), v))
+    }
+}
+--- python
+for i, v in enumerate(xs):
+---
+
+=== format string becomes f-string
+fn Greet(name: string) -> string {
+    return Format("hello, {}", name)
+}
+fn Main() -> void {
+    WritelnOut(Greet("world"))
+}
+--- python
+return f"hello, {name}"
+---
+
+=== match on optional with nil case
+fn Describe(x: int?) -> string {
+    match x {
+        case v: int {
+            return ToString(v)
+        }
+        case nil {
+            return "absent"
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(nil))
+}
+--- python
+if x is None:
+    return "absent"
+---
+
+=== match on enum
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Name(c: Color) -> string {
+    match c {
+        case Color.Red {
+            return "red"
+        }
+        case Color.Green {
+            return "green"
+        }
+        case Color.Blue {
+            return "blue"
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Name(Color.Red))
+}
+--- python
+if c == Color.Red:
+    return "red"
+---
+
+=== match on interface
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+struct Rect : Shape {
+    w: float
+    h: float
+}
+fn Area(s: Shape) -> float {
+    match s {
+        case c: Circle {
+            return 3.14159 * c.radius * c.radius
+        }
+        case r: Rect {
+            return r.w * r.h
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(ToString(Area(Circle(1.0))))
+}
+--- python
+if isinstance(s, Circle):
+    c = s
+    return 3.14159 * c.radius * c.radius
+---
+
+=== nil narrowing after check
+fn Safe(x: int?) -> int {
+    if x != nil {
+        return x + 1
+    }
+    return 0
+}
+fn Main() -> void {
+    WritelnOut(ToString(Safe(5)))
+}
+--- python
+if x is not None:
+    return x + 1
+---
+
+=== nil check with early return
+fn MustGet(x: int?) -> int {
+    if x == nil {
+        return 0
+    }
+    return x * 2
+}
+fn Main() -> void {
+    WritelnOut(ToString(MustGet(nil)))
+}
+--- python
+if x is None:
+    return 0
+return x * 2
+---
+
+=== struct construction and field access
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(1, 2)
+    WritelnOut(ToString(p.x + p.y))
+}
+--- python
+p = Point(1, 2)
+---
+
+=== struct method call
+struct Counter {
+    n: int
+
+    fn Inc(self) -> void {
+        self.n += 1
+    }
+
+    fn Value(self) -> int {
+        return self.n
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.Inc()
+    WritelnOut(ToString(c.Value()))
+}
+--- python
+c.Inc()
+---
+
+=== while loop
+fn Main() -> void {
+    let n: int = 10
+    let total: int = 0
+    while n > 0 {
+        total += n
+        n -= 1
+    }
+    WritelnOut(ToString(total))
+}
+--- python
+while n > 0:
+    total += n
+    n -= 1
+---
+
+=== for range single arg
+fn Main() -> void {
+    let total: int = 0
+    for i in range(10) {
+        total += i
+    }
+    WritelnOut(ToString(total))
+}
+--- python
+for i in range(10):
+---
+
+=== for range two args
+fn Main() -> void {
+    let total: int = 0
+    for i in range(5, 10) {
+        total += i
+    }
+    WritelnOut(ToString(total))
+}
+--- python
+for i in range(5, 10):
+---
+
+=== for range three args
+fn Main() -> void {
+    for i in range(10, 0, -1) {
+        WritelnOut(ToString(i))
+    }
+}
+--- python
+for i in range(10, 0, -1):
+---
+
+=== for over list single var
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        WritelnOut(ToString(x))
+    }
+}
+--- python
+for x in xs:
+---
+
+=== for over map keys
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    for k in m {
+        WritelnOut(k)
+    }
+}
+--- python
+for k in m:
+---
+
+=== for over map key-value pairs
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    for k, v in m {
+        WritelnOut(Format("{}: {}", k, ToString(v)))
+    }
+}
+--- python
+for k, v in m.items():
+---
+
+=== break and continue
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    for x in xs {
+        if x == 3 {
+            continue
+        }
+        if x == 5 {
+            break
+        }
+        WritelnOut(ToString(x))
+    }
+}
+--- python
+continue
+---
+
+=== try with finally
+fn Main() -> void {
+    try {
+        WritelnOut("try")
+    } catch e: ValueError {
+        WritelnOut("catch")
+    } finally {
+        WritelnOut("finally")
+    }
+}
+--- python
+finally:
+    print("finally")
+---
+
+=== try with multiple catch clauses
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("x", 10)
+        WritelnOut(ToString(n))
+    } catch e: ValueError {
+        WritelnOut("value error")
+    } catch e: KeyError {
+        WritelnOut("key error")
+    }
+}
+--- python
+except ValueError as e:
+---
+
+=== ternary expression
+fn Clamp(x: int, lo: int, hi: int) -> int {
+    return x < lo ? lo : (x > hi ? hi : x)
+}
+fn Main() -> void {
+    WritelnOut(ToString(Clamp(5, 0, 10)))
+}
+--- python
+return lo if x < lo else (hi if x > hi else x)
+---
+
+=== Append on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    Append(xs, 3)
+    WritelnOut(ToString(Len(xs)))
+}
+--- python
+xs.append(3)
+---
+
+=== Get with default on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int = Get(m, "b", 0)
+    WritelnOut(ToString(v))
+}
+--- python
+v = m.get("b", 0)
+---
+
+=== Get without default returns optional
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int? = Get(m, "b")
+    WritelnOut(ToString(v))
+}
+--- python
+v = m.get("b")
+---
+
+=== Keys Values Items on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let ks: list[string] = Keys(m)
+    let vs: list[int] = Values(m)
+    let ps: list[(string, int)] = Items(m)
+    WritelnOut(ToString(Len(ks)))
+}
+--- python
+ks = list(m.keys())
+---
+
+=== Contains on string
+fn Main() -> void {
+    let s: string = "hello world"
+    if Contains(s, "world") {
+        WritelnOut("found")
+    }
+}
+--- python
+if "world" in s:
+---
+
+=== Contains on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    if Contains(m, "a") {
+        WritelnOut("found")
+    }
+}
+--- python
+if "a" in m:
+---
+
+=== IndexOf on list
+fn Main() -> void {
+    let xs: list[int] = [10, 20, 30]
+    let idx: int = IndexOf(xs, 20)
+    WritelnOut(ToString(idx))
+}
+--- python
+idx = xs.index(20) if 20 in xs else -1
+---
+
+=== Split and Join
+fn Main() -> void {
+    let parts: list[string] = Split("a,b,c", ",")
+    let joined: string = Join("-", parts)
+    WritelnOut(joined)
+}
+--- python
+parts = "a,b,c".split(",")
+---
+
+=== string Find
+fn Main() -> void {
+    let idx: int = Find("hello world", "world")
+    WritelnOut(ToString(idx))
+}
+--- python
+idx = "hello world".find("world")
+---
+
+=== Replace on string
+fn Main() -> void {
+    let s: string = Replace("aabbcc", "bb", "XX")
+    WritelnOut(s)
+}
+--- python
+s = "aabbcc".replace("bb", "XX")
+---
+
+=== Upper and Lower
+fn Main() -> void {
+    WritelnOut(Upper("hello"))
+    WritelnOut(Lower("HELLO"))
+}
+--- python
+print(("hello").upper())
+---
+
+=== StartsWith and EndsWith
+fn Main() -> void {
+    let s: string = "hello world"
+    WritelnOut(ToString(StartsWith(s, "hello")))
+    WritelnOut(ToString(EndsWith(s, "world")))
+}
+--- python
+s.startswith("hello")
+---
+
+=== Sorted and Reversed
+fn Main() -> void {
+    let xs: list[int] = [3, 1, 2]
+    let s: list[int] = Sorted(xs)
+    let r: list[int] = Reversed(xs)
+    WritelnOut(ToString(Len(s)))
+}
+--- python
+s = sorted(xs)
+---
+
+=== Pop and RemoveAt
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let last: int = Pop(xs)
+    RemoveAt(xs, 0)
+    WritelnOut(ToString(last))
+}
+--- python
+last = xs.pop()
+---
+
+=== Insert on list
+fn Main() -> void {
+    let xs: list[int] = [1, 3]
+    Insert(xs, 1, 2)
+    WritelnOut(ToString(Len(xs)))
+}
+--- python
+xs.insert(1, 2)
+---
+
+=== Add and Remove on set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    Add(s, 4)
+    Remove(s, 1)
+    WritelnOut(ToString(Len(s)))
+}
+--- python
+s.add(4)
+---
+
+=== Merge maps
+fn Main() -> void {
+    let a: map[string, int] = {"x": 1}
+    let b: map[string, int] = {"y": 2}
+    let c: map[string, int] = Merge(a, b)
+    WritelnOut(ToString(Len(c)))
+}
+--- python
+c = {**a, **b}
+---
+
+=== Concat strings
+fn Main() -> void {
+    let s: string = Concat("hello", " world")
+    WritelnOut(s)
+}
+--- python
+s = "hello" + " world"
+---
+
+=== Assert with message
+fn Main() -> void {
+    let x: int = 42
+    Assert(x > 0, "must be positive")
+}
+--- python
+assert x > 0, "must be positive"
+---
+
+=== Assert without message
+fn Main() -> void {
+    let x: int = 42
+    Assert(x > 0)
+}
+--- python
+assert x > 0
+---
+
+=== Unwrap on optional
+fn Main() -> void {
+    let x: int? = 42
+    let v: int = Unwrap(x)
+    WritelnOut(ToString(v))
+}
+--- python
+v = x
+---
+
+=== function as value
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Main() -> void {
+    WritelnOut(ToString(Apply(Double, 5)))
+}
+--- python
+return f(x)
+---
+
+=== function literal expression body
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Main() -> void {
+    let result: int = Apply((x: int) -> int => x * 2, 10)
+    WritelnOut(ToString(result))
+}
+--- python
+lambda x: x * 2
+---
+
+=== function literal block body
+fn Apply(f: fn[int, void], x: int) -> void {
+    f(x)
+}
+fn Main() -> void {
+    Apply((x: int) -> void {
+        WritelnOut(ToString(x))
+    }, 42)
+}
+--- python
+def _fn(x):
+---
+
+=== negated condition
+fn Main() -> void {
+    let done: bool = false
+    if !done {
+        WritelnOut("not done")
+    }
+}
+--- python
+if not done:
+---
+
+=== bitwise operators
+fn Main() -> void {
+    let x: int = 0xff
+    let y: int = x & 0x0f
+    let z: int = x | 0x100
+    let w: int = x ^ 0x0f
+    let s: int = x << 2
+    let r: int = x >> 4
+    let c: int = ~x
+    WritelnOut(ToString(y))
+}
+--- python
+y = x & 0x0f
+---
+
+=== compound assignment operators
+fn Main() -> void {
+    let x: int = 10
+    x += 5
+    x -= 2
+    x *= 3
+    x /= 2
+    x %= 7
+    WritelnOut(ToString(x))
+}
+--- python
+x += 5
+---
+
+=== conversion functions
+fn Main() -> void {
+    let f: float = IntToFloat(42)
+    let n: int = FloatToInt(3.14)
+    let b: byte = IntToByte(65)
+    let i: int = ByteToInt(b)
+    WritelnOut(ToString(f))
+}
+--- python
+f = float(42)
+---
+
+=== tuple construction and access
+fn Main() -> void {
+    let pair: (int, string) = (1, "hello")
+    let x: int = pair.0
+    let y: string = pair.1
+    WritelnOut(Format("{} {}", ToString(x), y))
+}
+--- python
+pair = (1, "hello")
+---
+
+=== map literal and index
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let v: int = m["a"]
+    m["c"] = 3
+    WritelnOut(ToString(v))
+}
+--- python
+m = {"a": 1, "b": 2}
+---
+
+=== set literal
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    WritelnOut(ToString(Len(s)))
+}
+--- python
+s = {1, 2, 3}
+---
+
+=== empty map and set via constructors
+fn Main() -> void {
+    let m: map[string, int] = Map()
+    let s: set[int] = Set()
+    WritelnOut(ToString(Len(m)))
+}
+--- python
+m = {}
+---
+
+=== math functions
+fn Main() -> void {
+    WritelnOut(ToString(Abs(-5)))
+    WritelnOut(ToString(Min(3, 7)))
+    WritelnOut(ToString(Max(3, 7)))
+    WritelnOut(ToString(Pow(2, 10)))
+}
+--- python
+print(str(abs(-5)))
+---
+
+=== float math functions
+fn Main() -> void {
+    let r: int = Round(3.7)
+    let f: int = Floor(3.7)
+    let c: int = Ceil(3.2)
+    let s: float = Sqrt(16.0)
+    WritelnOut(ToString(r))
+}
+--- python
+r = round(3.7)
+---
+
+=== string classification functions
+fn Main() -> void {
+    WritelnOut(ToString(IsDigit("123")))
+    WritelnOut(ToString(IsAlpha("abc")))
+    WritelnOut(ToString(IsAlnum("abc123")))
+    WritelnOut(ToString(IsSpace(" ")))
+    WritelnOut(ToString(IsUpper("ABC")))
+    WritelnOut(ToString(IsLower("abc")))
+}
+--- python
+("123").isdigit()
+---
+
+=== Trim functions
+fn Main() -> void {
+    let s: string = Trim("  hello  ", " ")
+    let s2: string = TrimStart("  hello", " ")
+    let s3: string = TrimEnd("hello  ", " ")
+    WritelnOut(s)
+}
+--- python
+s = "  hello  ".strip(" ")
+---
+
+=== Count and RFind on string
+fn Main() -> void {
+    let c: int = Count("abcabc", "abc")
+    let r: int = RFind("abcabc", "abc")
+    WritelnOut(ToString(c))
+}
+--- python
+c = "abcabc".count("abc")
+---
+
+=== SplitN and SplitWhitespace
+fn Main() -> void {
+    let parts: list[string] = SplitN("a,b,c,d", ",", 2)
+    let words: list[string] = SplitWhitespace("  hello   world  ")
+    WritelnOut(ToString(Len(parts)))
+}
+--- python
+parts = "a,b,c,d".split(",", 1)
+---
+
+=== IO functions
+fn Main() -> void {
+    WriteOut("no newline")
+    WritelnOut("with newline")
+    WritelnErr("error")
+}
+--- python
+print("with newline")
+---
+
+=== ReadAll and ReadLine
+fn Main() -> void {
+    let all: string = ReadAll()
+    WritelnOut(all)
+}
+--- python
+import sys
+---
+
+=== Sum on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    WritelnOut(ToString(Sum(xs)))
+}
+--- python
+sum(xs)
+---
+
+=== DivMod
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(Format("{} {}", ToString(q), ToString(r)))
+}
+--- python
+q, r = divmod(17, 5)
+---
+
+=== ParseInt and ParseFloat
+fn Main() -> void {
+    let n: int = ParseInt("42", 10)
+    let f: float = ParseFloat("3.14")
+    WritelnOut(ToString(n))
+}
+--- python
+n = int("42", 10)
+---
+
+=== FormatInt
+fn Main() -> void {
+    let hex: string = FormatInt(255, 16)
+    WritelnOut(hex)
+}
+--- python
+hex = format(255, 'x')
+---
+
+=== RuneToInt and RuneFromInt
+fn Main() -> void {
+    let n: int = RuneToInt('A')
+    let c: rune = RuneFromInt(65)
+    WritelnOut(ToString(n))
+}
+--- python
+n = ord('A')
+---
+
+=== Len on various types
+fn Main() -> void {
+    WritelnOut(ToString(Len("hello")))
+    WritelnOut(ToString(Len([1, 2, 3])))
+    WritelnOut(ToString(Len({"a": 1})))
+    WritelnOut(ToString(Len({1, 2})))
+}
+--- python
+print(str(len("hello")))
+---
+
+=== throw and catch struct
+struct AppError {
+    message: string
+}
+fn Fail() -> void {
+    throw AppError("boom")
+}
+fn Main() -> void {
+    try {
+        Fail()
+    } catch e: AppError {
+        WritelnOut(e.message)
+    }
+}
+--- python
+raise AppError("boom")
+---
+
+=== catch-all without type
+struct ErrA {
+    message: string
+}
+struct ErrB {
+    message: string
+}
+fn Risky() -> void {
+    throw ErrA("a")
+}
+fn Main() -> void {
+    try {
+        Risky()
+    } catch e {
+        WritelnOut(ToString(e))
+    }
+}
+--- python
+except Exception as e:
+---
+
+=== catch union of types
+struct ErrA {
+    message: string
+}
+struct ErrB {
+    message: string
+}
+fn Risky() -> void {
+    throw ErrA("a")
+}
+fn Main() -> void {
+    try {
+        Risky()
+    } catch e: ErrA | ErrB {
+        WritelnOut(e.message)
+    }
+}
+--- python
+except (ErrA, ErrB) as e:
+---
+
+=== Exit call
+fn Main() -> void {
+    Exit(1)
+}
+--- python
+sys.exit(1)
+---
+
+=== Args and GetEnv
+fn Main() -> void {
+    let args: list[string] = Args()
+    let home: string? = GetEnv("HOME")
+    WritelnOut(ToString(Len(args)))
+}
+--- python
+args = sys.argv[1:]
+---
+
+=== Encode and Decode
+fn Main() -> void {
+    let b: bytes = Encode("hello")
+    let s: string = Decode(b)
+    WritelnOut(s)
+}
+--- python
+b = ("hello").encode("utf-8")
+---
+
+=== if-else chain
+fn Classify(x: int) -> string {
+    if x > 0 {
+        return "positive"
+    } else if x == 0 {
+        return "zero"
+    } else {
+        return "negative"
+    }
+}
+fn Main() -> void {
+    WritelnOut(Classify(5))
+}
+--- python
+elif x == 0:
+    return "zero"
+---
+
+=== match on union with three types
+fn Describe(v: int | string | bool) -> string {
+    match v {
+        case n: int {
+            return Format("int: {}", ToString(n))
+        }
+        case s: string {
+            return Format("str: {}", s)
+        }
+        case b: bool {
+            return Format("bool: {}", ToString(b))
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(42))
+}
+--- python
+if isinstance(v, int):
+---
+
+=== match with default no binding
+enum Dir {
+    North
+    South
+    East
+    West
+}
+fn IsVertical(d: Dir) -> bool {
+    match d {
+        case Dir.North {
+            return true
+        }
+        case Dir.South {
+            return true
+        }
+        default {
+            return false
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(ToString(IsVertical(Dir.North)))
+}
+--- python
+else:
+    return False
+---
+
+=== field assignment
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(0, 0)
+    p.x = 10
+    p.y = 20
+    WritelnOut(ToString(p.x + p.y))
+}
+--- python
+p.x = 10
+---
+
+=== index assignment on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] = 99
+    WritelnOut(ToString(xs[0]))
+}
+--- python
+xs[0] = 99
+---
+
+=== index assignment on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    m["b"] = 2
+    WritelnOut(ToString(m["b"]))
+}
+--- python
+m["b"] = 2
+---
+
+=== list slicing
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let mid: list[int] = xs[1:4]
+    WritelnOut(ToString(Len(mid)))
+}
+--- python
+mid = xs[1:4]
+---
+
+=== string indexing and slicing
+fn Main() -> void {
+    let s: string = "hello"
+    let ch: rune = s[0]
+    let sub: string = s[1:4]
+    WritelnOut(ToString(RuneToInt(ch)))
+}
+--- python
+sub = s[1:4]
+---
+
+=== boolean operators
+fn Main() -> void {
+    let a: bool = true
+    let b: bool = false
+    WritelnOut(ToString(a && b))
+    WritelnOut(ToString(a || b))
+    WritelnOut(ToString(!a))
+}
+--- python
+print(str(a and b))
+---
+
+=== nested struct access
+struct Inner {
+    value: int
+}
+struct Outer {
+    inner: Inner
+}
+fn Main() -> void {
+    let o: Outer = Outer(Inner(42))
+    WritelnOut(ToString(o.inner.value))
+}
+--- python
+o.inner.value
+---
+
+=== enum comparison
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color = Color.Red
+    if c == Color.Red {
+        WritelnOut("red")
+    }
+}
+--- python
+if c == Color.Red:
+---
+
+=== struct with interface field
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+struct Branch : Node {
+    left: Node
+    right: Node
+}
+fn Eval(n: Node) -> int {
+    match n {
+        case l: Leaf {
+            return l.value
+        }
+        case b: Branch {
+            return Eval(b.left) + Eval(b.right)
+        }
+    }
+}
+fn Main() -> void {
+    let tree: Node = Branch(Leaf(1), Leaf(2))
+    WritelnOut(ToString(Eval(tree)))
+}
+--- python
+return Eval(b.left) + Eval(b.right)
+---
+
+=== IsNaN and IsInf
+fn Main() -> void {
+    let x: float = 0.0 / 0.0
+    let y: float = 1.0 / 0.0
+    WritelnOut(ToString(IsNaN(x)))
+    WritelnOut(ToString(IsInf(y)))
+}
+--- python
+math.isnan(x)
+---
+
+=== for over string characters
+fn Main() -> void {
+    for ch in "hello" {
+        WritelnOut(ToString(RuneToInt(ch)))
+    }
+}
+--- python
+for ch in "hello":
+---
+
+=== for over set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    for v in s {
+        WritelnOut(ToString(v))
+    }
+}
+--- python
+for v in s:
+---

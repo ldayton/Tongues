@@ -1,12 +1,12 @@
 # Tongues Backend Specification v2
 
-A Tongues backend walks the annotated Taytsh IR and emits source code for one target language. It reads three things: the IR tree, provenance metadata (stamped by the lowerer), and annotations (written by middleend passes). It never modifies the IR.
+A Tongues backend walks the annotated Taytsh IR and emits source code for one target language. It reads three things: the IR tree, provenance metadata (stamped by the frontend), and annotations (written by middleend passes). It never modifies the IR.
 
 ## Backend Structure
 
 Each backend is a tree walker. For each IR node type, the backend has an emitter that decides how to render that node. The emitter may:
 
-1. Emit the node's lowered form directly (always correct).
+1. Emit the node's desugared form directly (always correct).
 2. Check provenance metadata and emit an idiomatic alternative.
 3. Read annotations to refine the emission (const, unused, etc.).
 4. Recognize structural patterns in the IR and emit target idioms.
@@ -103,7 +103,7 @@ Used by C, Rust, Zig, Swift.
 
 ## Provenance Consumption
 
-Backends read provenance metadata from IR nodes and decide whether to emit the idiomatic form or the lowered form. The lowered form is always correct. A backend that doesn't recognize a provenance tag simply ignores it.
+Backends read provenance metadata from IR nodes and decide whether to emit the idiomatic form or the desugared form. The desugared form is always correct. A backend that doesn't recognize a provenance tag simply ignores it.
 
 ### Single-node provenance
 
@@ -140,7 +140,7 @@ The backend checks provenance on the slice node and omits the redundant bound. W
 | Ruby   | `x[-n]`        |       |
 | Perl   | `$x[-n]`       |       |
 
-The backend pattern-matches `Len(x) - n` (guaranteed by lowerer) and emits the negative index directly. Other backends emit the arithmetic form.
+The backend pattern-matches `Len(x) - n` (guaranteed by the frontend) and emits the negative index directly. Other backends emit the arithmetic form.
 
 **string_multiply / list_multiply** — `Repeat(s, n)` with provenance.
 
@@ -162,7 +162,7 @@ Other backends emit their Repeat implementation (loop, library call, etc.).
 | Perl       | `if (@xs)`       | or `if ($s)`                                |
 | Lua        | n/a              | tables are always truthy; ignore provenance |
 
-**Caution**: Ruby and Lua have different truthiness rules than Python. Ruby treats empty arrays/hashes as truthy. Lua treats tables as truthy. The backend MUST only use the provenance form when the target's truthiness semantics match the lowered form's semantics for the specific type. When in doubt, emit the lowered form.
+**Caution**: Ruby and Lua have different truthiness rules than Python. Ruby treats empty arrays/hashes as truthy. Lua treats tables as truthy. The backend MUST only use the provenance form when the target's truthiness semantics match the desugared form's semantics for the specific type. When in doubt, emit the desugared form.
 
 **enumerate** — `for i, v in xs` where the index was from `enumerate()`.
 
@@ -180,7 +180,7 @@ These are stamped on the `for` node but the idiomatic form collapses multiple st
 
 **list_comprehension / dict_comprehension / set_comprehension**
 
-The lowered pattern (guaranteed by the lowerer):
+The desugared pattern (guaranteed by the frontend):
 ```
 let ACC: COLL_TYPE              -- accumulator declaration
 for VAR in ITERABLE {
