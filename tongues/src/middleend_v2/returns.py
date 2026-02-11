@@ -6,9 +6,9 @@ for always-returns, needs-named-returns, may-return-nil, and try-body-has-return
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from src.taytsh.ast import (
+from ..taytsh.ast import (
     TBinaryOp,
     TCall,
     TCatch,
@@ -34,7 +34,7 @@ from src.taytsh.ast import (
     TVar,
     TWhileStmt,
 )
-from src.taytsh.check import (
+from ..taytsh.check import (
     Checker,
     FnT,
     NIL_T,
@@ -58,12 +58,18 @@ class _FnResults:
     may_return_nil: bool = False
 
 
-@dataclass
 class _ReturnsCtx:
-    checker: Checker
-    locals: dict[str, Type] = field(default_factory=dict)
-    narrowings: dict[str, Type] = field(default_factory=dict)
-    fn_results: _FnResults = field(default_factory=_FnResults)
+    def __init__(
+        self,
+        checker: Checker,
+        locals: dict[str, Type] | None = None,
+        narrowings: dict[str, Type] | None = None,
+        fn_results: _FnResults | None = None,
+    ) -> None:
+        self.checker = checker
+        self.locals: dict[str, Type] = locals if locals is not None else {}
+        self.narrowings: dict[str, Type] = narrowings if narrowings is not None else {}
+        self.fn_results: _FnResults = fn_results if fn_results is not None else _FnResults()
 
 
 def _fork_ctx(
