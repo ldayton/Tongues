@@ -9,11 +9,33 @@ from .parse import ParseError as ParseError, Parser
 from .tokens import TokenizeError as TokenizeError, tokenize
 
 
+def _extract_pragmas(source: str) -> tuple[bool, bool]:
+    """Scan leading lines for pragma comments. Returns (strict_math, strict_tostring)."""
+    strict_math = False
+    strict_tostring = False
+    for line in source.split("\n"):
+        stripped = line.strip()
+        if stripped == "":
+            continue
+        if not stripped.startswith("--"):
+            break
+        body = stripped[2:].strip()
+        if body == "pragma strict-math":
+            strict_math = True
+        elif body == "pragma strict-tostring":
+            strict_tostring = True
+    return strict_math, strict_tostring
+
+
 def parse(source: str) -> TModule:
     """Parse Taytsh source code into a TModule AST."""
+    strict_math, strict_tostring = _extract_pragmas(source)
     tokens = tokenize(source)
     parser = Parser(tokens)
-    return parser.parse_program()
+    module = parser.parse_program()
+    module.strict_math = strict_math
+    module.strict_tostring = strict_tostring
+    return module
 
 
 def check(source: str) -> list[CheckError]:

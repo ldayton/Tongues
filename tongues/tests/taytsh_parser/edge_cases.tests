@@ -548,3 +548,62 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== string literal with minus as argument
+fn Main() -> void {
+    Foo("-", "x")
+}
+---
+ok
+---
+
+=== string literal with bang as argument
+fn Main() -> void {
+    Foo("!", "x")
+}
+---
+ok
+---
+
+=== string literal with tilde as argument
+fn Main() -> void {
+    Foo("~", "x")
+}
+---
+ok
+---
+
+=== string minus in let
+fn Main() -> void {
+    let s: string = "-"
+}
+---
+ok
+---
+
+=== chained tuple access
+fn Main() -> void {
+    let t: ((int, int), string) = ((1, 2), "hello")
+    let x: int = t.0.0
+}
+---
+ok
+---
+
+=== triple chained tuple access
+fn Main() -> void {
+    let t: (((int, int), int), int) = (((1, 2), 3), 4)
+    let x: int = t.0.0.0
+}
+---
+ok
+---
+
+=== tuple access then field access
+fn Main() -> void {
+    let t: (Span, int) = (Span(0, 10), 5)
+    let n: int = t.0.start
+}
+---
+ok
+---

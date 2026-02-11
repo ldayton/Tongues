@@ -164,6 +164,8 @@ class TModule:
     """Top-level module — list of declarations."""
 
     decls: list[TDecl]
+    strict_math: bool = False
+    strict_tostring: bool = False
 
 
 # ============================================================

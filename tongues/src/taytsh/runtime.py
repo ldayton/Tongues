@@ -9,6 +9,39 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Iterable, Mapping, Sequence, cast
 
+
+def _isnan(x: float) -> bool:
+    return x != x
+
+
+def _isinf(x: float) -> bool:
+    return x == float("inf") or x == float("-inf")
+
+
+def _copysign_inf(x: float) -> float:
+    """Return +inf or -inf depending on sign of x."""
+    if x < 0:
+        return float("-inf")
+    return float("inf")
+
+
+def _floor(x: float) -> int:
+    i = int(x)
+    if x < 0 and x != i:
+        return i - 1
+    return i
+
+
+def _ceil(x: float) -> int:
+    i = int(x)
+    if x > 0 and x != i:
+        return i + 1
+    return i
+
+
+def _sqrt(x: float) -> float:
+    return x**0.5
+
 from .ast import (
     Pos,
     TArg,
@@ -111,7 +144,7 @@ class Ty:
         raise NotImplementedError
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyPrim(Ty):
     kind: str
 
@@ -119,7 +152,7 @@ class TyPrim(Ty):
         return self.kind
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyList(Ty):
     element: Ty
 
@@ -127,7 +160,7 @@ class TyList(Ty):
         return f"list[{self.element.display()}]"
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyMap(Ty):
     key: Ty
     value: Ty
@@ -136,7 +169,7 @@ class TyMap(Ty):
         return f"map[{self.key.display()}, {self.value.display()}]"
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TySet(Ty):
     element: Ty
 
@@ -144,7 +177,7 @@ class TySet(Ty):
         return f"set[{self.element.display()}]"
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyTuple(Ty):
     elements: tuple[Ty, ...]
 
@@ -153,7 +186,7 @@ class TyTuple(Ty):
         return f"({inner})"
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyFunc(Ty):
     params: tuple[Ty, ...]
     ret: Ty
@@ -163,7 +196,7 @@ class TyFunc(Ty):
         return f"fn[{inner}]"
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyStruct(Ty):
     name: str
 
@@ -171,7 +204,7 @@ class TyStruct(Ty):
         return self.name
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyInterface(Ty):
     name: str
 
@@ -179,7 +212,7 @@ class TyInterface(Ty):
         return self.name
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyEnum(Ty):
     name: str
 
@@ -187,7 +220,7 @@ class TyEnum(Ty):
         return self.name
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TyUnion(Ty):
     members: tuple[Ty, ...]
 
@@ -572,6 +605,10 @@ def run(
     env: Mapping[str, str] | None = None,
 ) -> RunResult:
     """Typecheck and run a parsed Taytsh module."""
+    if module.strict_math:
+        raise TaytshRuntimeFault("strict-math is not implemented")
+    if module.strict_tostring:
+        raise TaytshRuntimeFault("strict-tostring is not implemented")
     idx = _build_index(module)
     tc = TypeChecker(idx)
     checked = tc.check_module(module)
@@ -651,7 +688,6 @@ _RESERVED_BINDINGS: set[str] = {
     "Items",
     "Merge",
     "Set",
-    "Add",
     "Remove",
     "Unwrap",
     "Encode",
@@ -830,7 +866,18 @@ def _build_index(module: TModule) -> ModuleIndex:
             )
 
     # Second pass: resolve struct implements + field/method names (types later).
+    _BUILTIN_ERR_NAMES = {
+        "KeyError",
+        "IndexError",
+        "ZeroDivisionError",
+        "AssertError",
+        "NilError",
+        "ValueError",
+        "IOError",
+    }
     for s in structs.values():
+        if s.name in _BUILTIN_ERR_NAMES and s.decl.pos.line == 0:
+            continue
         decl = s.decl
         if decl.parent is not None:
             if decl.parent not in interfaces:
@@ -897,6 +944,13 @@ class _TypeEnv:
     def pop_override(self) -> None:
         self._overrides.pop()
 
+    def narrow(self, name: str, typ: Ty) -> None:
+        """Narrow a variable's type in the scope where it's bound."""
+        for scope in reversed(self._scopes):
+            if name in scope:
+                scope[name] = typ
+                return
+
     def is_bound_anywhere(self, name: str) -> bool:
         for scope in reversed(self._scopes):
             if name in scope:
@@ -923,6 +977,20 @@ class _TypeEnv:
             if name in scope:
                 return scope[name]
         raise TaytshTypeError(f"unknown name '{name}'", pos)
+
+
+def _always_terminates(stmts: list[TStmt]) -> bool:
+    """Check if a statement block always terminates (return/throw)."""
+    if not stmts:
+        return False
+    last = stmts[-1]
+    if isinstance(last, (TReturnStmt, TThrowStmt)):
+        return True
+    if isinstance(last, TIfStmt) and last.else_body is not None:
+        return _always_terminates(last.then_body) and _always_terminates(
+            cast(list[TStmt], last.else_body)
+        )
+    return False
 
 
 def _expr_key(expr: TExpr) -> tuple[int, int]:
@@ -1170,7 +1238,7 @@ class TypeChecker:
         if not stmts:
             return False
         last = stmts[-1]
-        if isinstance(last, TReturnStmt):
+        if isinstance(last, (TReturnStmt, TThrowStmt)):
             return True
         if isinstance(last, TIfStmt):
             if last.else_body is None:
@@ -1348,6 +1416,9 @@ class TypeChecker:
                 )
                 if else_ovr:
                     env.pop_override()
+            elif else_ovr and _always_terminates(st.then_body):
+                for vname, vty in else_ovr.items():
+                    env.narrow(vname, vty)
             return
 
         if isinstance(st, TWhileStmt):
@@ -1829,8 +1900,14 @@ class TypeChecker:
             oty = self._type_expr(expr.operand, env, allow_capture=allow_capture)
             return self._type_unary(expr.op, oty, pos=expr.pos)
         if isinstance(expr, TBinaryOp):
-            lty = self._type_expr(expr.left, env, allow_capture=allow_capture)
-            rty = self._type_expr(expr.right, env, allow_capture=allow_capture)
+            if expr.op in ("==", "!="):
+                rty = self._type_expr(expr.right, env, allow_capture=allow_capture)
+                lty = self._type_expr(
+                    expr.left, env, expected=rty, allow_capture=allow_capture
+                )
+            else:
+                lty = self._type_expr(expr.left, env, allow_capture=allow_capture)
+                rty = self._type_expr(expr.right, env, allow_capture=allow_capture)
             return self._type_binary(expr.op, lty, rty, pos=expr.pos)
         if isinstance(expr, TTernary):
             cty = self._type_expr(
@@ -1912,7 +1989,9 @@ class TypeChecker:
                 if isinstance(expected, TyList):
                     self.expr_types[_expr_key(expr)] = expected
                     return expected
-                raise TaytshTypeError("cannot infer type for []", expr.pos)
+                fallback = TyList(TY_OBJ)
+                self.expr_types[_expr_key(expr)] = fallback
+                return fallback
             if isinstance(expected, TyList):
                 for e in expr.elements:
                     ety = self._type_expr(
@@ -2309,27 +2388,47 @@ class TypeChecker:
                 return TY_BOOL
             if ty_is_nil(right) and ty_has_nil(left):
                 return TY_BOOL
+            # Allow obj == T and T == obj
+            if ty_is_obj(left) or ty_is_obj(right):
+                return TY_BOOL
+            # Allow byte == int and int == byte
+            if (ty_eq(left, TY_BYTE) and ty_eq(right, TY_INT)) or (
+                ty_eq(left, TY_INT) and ty_eq(right, TY_BYTE)
+            ):
+                return TY_BOOL
+            # Allow union member comparison: (A|B) == A
+            if isinstance(left, TyUnion) and any(ty_eq(right, m) for m in left.members):
+                return TY_BOOL
+            if isinstance(right, TyUnion) and any(
+                ty_eq(left, m) for m in right.members
+            ):
+                return TY_BOOL
             raise TaytshTypeError("==/!= requires same type (or nil check)", pos)
 
         if op in ("<", "<=", ">", ">="):
-            if not ty_eq(left, right):
+            # Unwrap optionals for comparison (nil case guarded at runtime)
+            cmp_left = ty_without_nil(left) if isinstance(left, TyUnion) else left
+            cmp_right = ty_without_nil(right) if isinstance(right, TyUnion) else right
+            if not ty_eq(cmp_left, cmp_right):
                 raise TaytshTypeError("comparison requires operands of same type", pos)
             if not (
-                ty_eq(left, TY_INT)
-                or ty_eq(left, TY_FLOAT)
-                or ty_eq(left, TY_BYTE)
-                or ty_eq(left, TY_RUNE)
-                or ty_eq(left, TY_STRING)
+                ty_eq(cmp_left, TY_INT)
+                or ty_eq(cmp_left, TY_FLOAT)
+                or ty_eq(cmp_left, TY_BYTE)
+                or ty_eq(cmp_left, TY_RUNE)
+                or ty_eq(cmp_left, TY_STRING)
             ):
                 raise TaytshTypeError("type is not orderable", pos)
             return TY_BOOL
 
         if op in ("|", "^", "&"):
-            if not ty_eq(left, right):
-                raise TaytshTypeError("bitwise requires same operand types", pos)
-            if not (ty_eq(left, TY_INT) or ty_eq(left, TY_BYTE)):
-                raise TaytshTypeError("bitwise requires int/byte", pos)
-            return left
+            if ty_eq(left, right):
+                if not (ty_eq(left, TY_INT) or ty_eq(left, TY_BYTE)):
+                    raise TaytshTypeError("bitwise requires int/byte", pos)
+                return left
+            if {_ty_key(left), _ty_key(right)} == {_ty_key(TY_INT), _ty_key(TY_BYTE)}:
+                return TY_INT
+            raise TaytshTypeError("bitwise requires same operand types", pos)
 
         if op in ("<<", ">>"):
             if not (ty_eq(left, TY_INT) or ty_eq(left, TY_BYTE)):
@@ -2412,6 +2511,8 @@ class TypeChecker:
             return True
         if ty_is_nil(src):
             return ty_has_nil(dst)
+        if ty_eq(src, TY_BYTE) and ty_eq(dst, TY_INT):
+            return True
         # Union destination: any member works.
         if isinstance(dst, TyUnion):
             return any(self._assignable(src, m) for m in dst.members)
@@ -2532,8 +2633,16 @@ def _tc_contains(
         raise TaytshTypeError("named args not supported for Contains", pos)
     if len(args) != 2:
         raise TaytshTypeError("Contains expects 2 arguments", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    # Type element arg first so we can provide context for empty collection literals
     bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
+    expected_a: Ty | None = None
+    if isinstance(args[0].value, TListLit) and not args[0].value.elements:
+        expected_a = TyList(bty)
+    elif isinstance(args[0].value, TSetLit) and not args[0].value.elements:
+        expected_a = TySet(bty)
+    aty = tc._type_expr(
+        args[0].value, env, expected=expected_a, allow_capture=allow_capture
+    )
     if isinstance(aty, TyList) and tc._assignable(bty, aty.element):
         return TY_BOOL
     if isinstance(aty, TyMap) and tc._assignable(bty, aty.key):
@@ -2575,7 +2684,7 @@ def _tc_unwrap(
         raise TaytshTypeError("Unwrap expects 1 argument", pos)
     aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
     if not ty_has_nil(aty):
-        raise TaytshTypeError("Unwrap expects an optional/union-with-nil", pos)
+        return aty
     return ty_without_nil(aty)
 
 
@@ -2613,8 +2722,16 @@ _TY_STR_OR_RUNE = ty_union([TY_STRING, TY_RUNE])
 _TY_OPT_STRING = ty_union([TY_STRING, TY_NIL])
 
 
-def _builtin_simple(name: str, params: tuple[Ty, ...], ret: Ty) -> _Builtin:
-    def _tc(
+class _SimpleTC:
+    """Typecheck callable for fixed-signature builtins."""
+
+    def __init__(self, name: str, params: tuple[Ty, ...], ret: Ty) -> None:
+        self.name = name
+        self.params = params
+        self.ret = ret
+
+    def check(
+        self,
         tc: TypeChecker,
         args: list[TArg],
         env: _TypeEnv,
@@ -2623,18 +2740,22 @@ def _builtin_simple(name: str, params: tuple[Ty, ...], ret: Ty) -> _Builtin:
         pos: Pos,
     ) -> Ty:
         if any(a.name is not None for a in args):
-            raise TaytshTypeError(f"named args not supported for {name}", pos)
-        if len(args) != len(params):
-            raise TaytshTypeError(f"{name} expects {len(params)} argument(s)", pos)
+            raise TaytshTypeError(f"named args not supported for {self.name}", pos)
+        if len(args) != len(self.params):
+            raise TaytshTypeError(
+                f"{self.name} expects {len(self.params)} argument(s)", pos
+            )
         for i, a in enumerate(args):
             aty = tc._type_expr(
-                a.value, env, expected=params[i], allow_capture=allow_capture
+                a.value, env, expected=self.params[i], allow_capture=allow_capture
             )
-            if not tc._assignable(aty, params[i]):
-                raise TaytshTypeError(f"{name} argument type mismatch", a.pos)
-        return ret
+            if not tc._assignable(aty, self.params[i]):
+                raise TaytshTypeError(f"{self.name} argument type mismatch", a.pos)
+        return self.ret
 
-    return _Builtin(FnSig(params, ret), _tc)
+
+def _builtin_simple(name: str, params: tuple[Ty, ...], ret: Ty) -> _Builtin:
+    return _Builtin(FnSig(params, ret), _SimpleTC(name, params, ret).check)
 
 
 # ---- Polymorphic builtin typecheckers --------------------------------------
@@ -2679,8 +2800,14 @@ def _tc_abs(
     raise TaytshTypeError("Abs requires int or float", pos)
 
 
-def _tc_min_max(name: str) -> Callable:
-    def _tc(
+class _MinMaxTC:
+    """Typecheck callable for Min/Max builtins."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def check(
+        self,
         tc: TypeChecker,
         args: list[TArg],
         env: _TypeEnv,
@@ -2689,22 +2816,20 @@ def _tc_min_max(name: str) -> Callable:
         pos: Pos,
     ) -> Ty:
         if any(a.name is not None for a in args):
-            raise TaytshTypeError(f"named args not supported for {name}", pos)
+            raise TaytshTypeError(f"named args not supported for {self.name}", pos)
         if len(args) != 2:
-            raise TaytshTypeError(f"{name} expects 2 arguments", pos)
+            raise TaytshTypeError(f"{self.name} expects 2 arguments", pos)
         aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
         bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
         if not ty_eq(aty, bty):
-            raise TaytshTypeError(f"{name} requires same type arguments", pos)
+            raise TaytshTypeError(f"{self.name} requires same type arguments", pos)
         if ty_eq(aty, TY_INT) or ty_eq(aty, TY_FLOAT) or ty_eq(aty, TY_BYTE):
             return aty
-        raise TaytshTypeError(f"{name} requires int, float, or byte", pos)
-
-    return _tc
+        raise TaytshTypeError(f"{self.name} requires int, float, or byte", pos)
 
 
-_tc_min = _tc_min_max("Min")
-_tc_max = _tc_min_max("Max")
+_tc_min = _MinMaxTC("Min").check
+_tc_max = _MinMaxTC("Max").check
 
 
 def _tc_sum(
@@ -2719,7 +2844,14 @@ def _tc_sum(
         raise TaytshTypeError("named args not supported for Sum", pos)
     if len(args) != 1:
         raise TaytshTypeError("Sum expects 1 argument", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    expected_arg: Ty | None = None
+    if expected is not None and (ty_eq(expected, TY_INT) or ty_eq(expected, TY_FLOAT)):
+        expected_arg = TyList(expected)
+    elif isinstance(args[0].value, TListLit) and not args[0].value.elements:
+        expected_arg = TyList(TY_INT)
+    aty = tc._type_expr(
+        args[0].value, env, expected=expected_arg, allow_capture=allow_capture
+    )
     if isinstance(aty, TyList):
         if ty_eq(aty.element, TY_INT) or ty_eq(aty.element, TY_FLOAT):
             return aty.element
@@ -2908,8 +3040,14 @@ def _tc_index_of(
     return TY_INT
 
 
-def _tc_list_to_list(name: str) -> Callable:
-    def _tc(
+class _ListToListTC:
+    """Typecheck callable for Reversed/Sorted builtins."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def check(
+        self,
         tc: TypeChecker,
         args: list[TArg],
         env: _TypeEnv,
@@ -2918,19 +3056,26 @@ def _tc_list_to_list(name: str) -> Callable:
         pos: Pos,
     ) -> Ty:
         if any(a.name is not None for a in args):
-            raise TaytshTypeError(f"named args not supported for {name}", pos)
+            raise TaytshTypeError(f"named args not supported for {self.name}", pos)
         if len(args) != 1:
-            raise TaytshTypeError(f"{name} expects 1 argument", pos)
-        lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+            raise TaytshTypeError(f"{self.name} expects 1 argument", pos)
+        expected_arg: Ty | None = expected if isinstance(expected, TyList) else None
+        if (
+            expected_arg is None
+            and isinstance(args[0].value, TListLit)
+            and not args[0].value.elements
+        ):
+            expected_arg = TyList(TY_INT)
+        lty = tc._type_expr(
+            args[0].value, env, expected=expected_arg, allow_capture=allow_capture
+        )
         if not isinstance(lty, TyList):
-            raise TaytshTypeError(f"{name} requires a list", pos)
+            raise TaytshTypeError(f"{self.name} requires a list", pos)
         return lty
 
-    return _tc
 
-
-_tc_reversed = _tc_list_to_list("Reversed")
-_tc_sorted = _tc_list_to_list("Sorted")
+_tc_reversed = _ListToListTC("Reversed").check
+_tc_sorted = _ListToListTC("Sorted").check
 
 
 def _tc_delete(
@@ -3217,6 +3362,10 @@ def _same_value_class(a: Value, b: Value) -> bool:
 
 def _value_eq(a: Value, b: Value) -> bool:
     if not _same_value_class(a, b):
+        if (isinstance(a, VByte) and isinstance(b, VInt)) or (
+            isinstance(a, VInt) and isinstance(b, VByte)
+        ):
+            return a.value == b.value
         return False
     if isinstance(a, VNil):
         return True
@@ -3929,6 +4078,8 @@ class Runtime:
         if isinstance(expr, TFloatLit):
             return VFloat(expr.value)
         if isinstance(expr, TByteLit):
+            if isinstance(expected, TyPrim) and expected.kind == "int":
+                return VInt(expr.value)
             return VByte(expr.value)
         if isinstance(expr, TStringLit):
             return VString(expr.value)
@@ -4302,18 +4453,21 @@ class Runtime:
             raise TaytshRuntimeFault("invalid comparison operands", pos)
 
         if op in ("|", "^", "&"):
-            if isinstance(left, VInt) and isinstance(right, VInt):
+            lv: int | None = None
+            rv: int | None = None
+            is_byte_only = isinstance(left, VByte) and isinstance(right, VByte)
+            if isinstance(left, (VInt, VByte)):
+                lv = left.value
+            if isinstance(right, (VInt, VByte)):
+                rv = right.value
+            if lv is not None and rv is not None:
                 if op == "|":
-                    return VInt(left.value | right.value)
-                if op == "^":
-                    return VInt(left.value ^ right.value)
-                return VInt(left.value & right.value)
-            if isinstance(left, VByte) and isinstance(right, VByte):
-                if op == "|":
-                    return VByte(left.value | right.value)
-                if op == "^":
-                    return VByte(left.value ^ right.value)
-                return VByte(left.value & right.value)
+                    result = lv | rv
+                elif op == "^":
+                    result = lv ^ rv
+                else:
+                    result = lv & rv
+                return VByte(result) if is_byte_only else VInt(result)
             raise TaytshRuntimeFault("invalid bitwise operands", pos)
 
         if op in ("<<", ">>"):
@@ -4360,7 +4514,15 @@ class Runtime:
                 if op == "*":
                     return VFloat(left.value * right.value)
                 if op == "/":
+                    if right.value == 0.0:
+                    
+
+                        if left.value == 0.0:
+                            return VFloat(float("nan"))
+                        return VFloat(_copysign_inf(left.value))
                     return VFloat(left.value / right.value)
+                if right.value == 0.0:
+                    return VFloat(float("nan"))
                 return VFloat(_fmod(left.value, right.value))
             if isinstance(left, VByte) and isinstance(right, VByte):
                 if op == "+":
@@ -4465,6 +4627,773 @@ def _bi_assert(rt: Runtime, args: list[Value]) -> Value:
     return VNil()
 
 
+# ---------------------------------------------------------------------------
+# Numeric builtins
+# ---------------------------------------------------------------------------
+
+
+def _bi_round(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VFloat):
+        raise TaytshRuntimeFault("Round expects float", None)
+
+
+    if _isnan(x.value) or _isinf(x.value):
+        rt._throw_err("ValueError", "Round on non-finite float")
+    # half-away-from-zero
+    if x.value >= 0:
+        return VInt(_floor(x.value + 0.5))
+    return VInt(_ceil(x.value - 0.5))
+
+
+def _bi_floor(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VFloat):
+        raise TaytshRuntimeFault("Floor expects float", None)
+
+
+    if _isnan(x.value) or _isinf(x.value):
+        rt._throw_err("ValueError", "Floor on non-finite float")
+    return VInt(_floor(x.value))
+
+
+def _bi_ceil(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VFloat):
+        raise TaytshRuntimeFault("Ceil expects float", None)
+
+
+    if _isnan(x.value) or _isinf(x.value):
+        rt._throw_err("ValueError", "Ceil on non-finite float")
+    return VInt(_ceil(x.value))
+
+
+def _bi_sqrt(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VFloat):
+        raise TaytshRuntimeFault("Sqrt expects float", None)
+
+
+    return VFloat(_sqrt(x.value))
+
+
+def _bi_isnan(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VFloat):
+        raise TaytshRuntimeFault("IsNaN expects float", None)
+
+
+    return VBool(_isnan(x.value))
+
+
+def _bi_isinf(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VFloat):
+        raise TaytshRuntimeFault("IsInf expects float", None)
+
+
+    return VBool(_isinf(x.value))
+
+
+def _bi_divmod(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VInt) or not isinstance(b, VInt):
+        raise TaytshRuntimeFault("DivMod expects int, int", None)
+    if b.value == 0:
+        rt._throw_err("ZeroDivisionError", "division by zero")
+    q = int(a.value / b.value)  # truncate toward zero
+    r = a.value - q * b.value
+    return VTuple((VInt(q), VInt(r)), TyTuple((TY_INT, TY_INT)))
+
+
+def _bi_abs(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VInt):
+        return VInt(abs(x.value))
+    if isinstance(x, VFloat):
+        return VFloat(abs(x.value))
+    raise TaytshRuntimeFault("Abs expects int or float", None)
+
+
+def _bi_min(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if isinstance(a, VInt) and isinstance(b, VInt):
+        return VInt(min(a.value, b.value))
+    if isinstance(a, VFloat) and isinstance(b, VFloat):
+    
+
+        if _isnan(a.value) or _isnan(b.value):
+            return VFloat(float("nan"))
+        return VFloat(min(a.value, b.value))
+    if isinstance(a, VByte) and isinstance(b, VByte):
+        return VByte(min(a.value, b.value))
+    raise TaytshRuntimeFault("Min expects matching numeric types", None)
+
+
+def _bi_max(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if isinstance(a, VInt) and isinstance(b, VInt):
+        return VInt(max(a.value, b.value))
+    if isinstance(a, VFloat) and isinstance(b, VFloat):
+    
+
+        if _isnan(a.value) or _isnan(b.value):
+            return VFloat(float("nan"))
+        return VFloat(max(a.value, b.value))
+    if isinstance(a, VByte) and isinstance(b, VByte):
+        return VByte(max(a.value, b.value))
+    raise TaytshRuntimeFault("Max expects matching numeric types", None)
+
+
+def _bi_sum(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("Sum expects list", None)
+    if not xs.elements:
+        if isinstance(xs.typ.element, TyPrim) and xs.typ.element.kind == "float":
+            return VFloat(0.0)
+        return VInt(0)
+    total: int | float = 0
+    is_float = isinstance(xs.elements[0], VFloat)
+    for e in xs.elements:
+        if isinstance(e, VInt):
+            total += e.value
+        elif isinstance(e, VFloat):
+            total += e.value
+        else:
+            raise TaytshRuntimeFault("Sum elements must be numeric", None)
+    if is_float:
+        return VFloat(float(total))
+    return VInt(int(total))
+
+
+def _bi_pow(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if isinstance(a, VInt) and isinstance(b, VInt):
+        return VInt(a.value**b.value)
+    if isinstance(a, VFloat) and isinstance(b, VFloat):
+        return VFloat(a.value**b.value)
+    raise TaytshRuntimeFault("Pow expects matching numeric types", None)
+
+
+# ---------------------------------------------------------------------------
+# Conversion builtins
+# ---------------------------------------------------------------------------
+
+
+def _bi_int_to_float(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VInt):
+        raise TaytshRuntimeFault("IntToFloat expects int", None)
+    return VFloat(float(x.value))
+
+
+def _bi_float_to_int(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VFloat):
+        raise TaytshRuntimeFault("FloatToInt expects float", None)
+
+
+    if _isnan(x.value) or _isinf(x.value):
+        rt._throw_err("ValueError", "FloatToInt on non-finite float")
+    return VInt(int(x.value))
+
+
+def _bi_byte_to_int(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VByte):
+        raise TaytshRuntimeFault("ByteToInt expects byte", None)
+    return VInt(x.value)
+
+
+def _bi_int_to_byte(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VInt):
+        raise TaytshRuntimeFault("IntToByte expects int", None)
+    return VByte(x.value & 0xFF)
+
+
+def _bi_rune_from_int(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VInt):
+        raise TaytshRuntimeFault("RuneFromInt expects int", None)
+    return VRune(chr(x.value))
+
+
+def _bi_rune_to_int(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if not isinstance(x, VRune):
+        raise TaytshRuntimeFault("RuneToInt expects rune", None)
+    return VInt(ord(x.value))
+
+
+# ---------------------------------------------------------------------------
+# String builtins
+# ---------------------------------------------------------------------------
+
+
+def _bi_parse_int(rt: Runtime, args: list[Value]) -> Value:
+    s, base = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(base, VInt):
+        raise TaytshRuntimeFault("ParseInt expects string, int", None)
+    try:
+        return VInt(int(s.value, base.value))
+    except (ValueError, OverflowError):
+        rt._throw_err("ValueError", "invalid integer: " + repr(s.value))
+    return VNil()  # unreachable
+
+
+def _bi_parse_float(rt: Runtime, args: list[Value]) -> Value:
+    s = args[0]
+    if not isinstance(s, VString):
+        raise TaytshRuntimeFault("ParseFloat expects string", None)
+    try:
+        return VFloat(float(s.value))
+    except ValueError:
+        rt._throw_err("ValueError", "invalid float: " + repr(s.value))
+    return VNil()
+
+
+def _bi_format_int(rt: Runtime, args: list[Value]) -> Value:
+    n, base = args[0], args[1]
+    if not isinstance(n, VInt) or not isinstance(base, VInt):
+        raise TaytshRuntimeFault("FormatInt expects int, int", None)
+    b = base.value
+    if b == 10:
+        return VString(str(n.value))
+    if b == 16:
+        return VString(hex(n.value)[2:])
+    if b == 8:
+        return VString(oct(n.value)[2:])
+    if b == 2:
+        return VString(bin(n.value)[2:])
+    # General base
+    if n.value == 0:
+        return VString("0")
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    neg = n.value < 0
+    val = abs(n.value)
+    chars: list[str] = []
+    while val > 0:
+        chars.append(digits[val % b])
+        val //= b
+    if neg:
+        chars.append("-")
+    return VString("".join(reversed(chars)))
+
+
+def _bi_upper(rt: Runtime, args: list[Value]) -> Value:
+    s = args[0]
+    if not isinstance(s, VString):
+        raise TaytshRuntimeFault("Upper expects string", None)
+    return VString(s.value.upper())
+
+
+def _bi_lower(rt: Runtime, args: list[Value]) -> Value:
+    s = args[0]
+    if not isinstance(s, VString):
+        raise TaytshRuntimeFault("Lower expects string", None)
+    return VString(s.value.lower())
+
+
+def _bi_trim(rt: Runtime, args: list[Value]) -> Value:
+    s, chars = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(chars, VString):
+        raise TaytshRuntimeFault("Trim expects string, string", None)
+    return VString(s.value.strip(chars.value))
+
+
+def _bi_trim_start(rt: Runtime, args: list[Value]) -> Value:
+    s, chars = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(chars, VString):
+        raise TaytshRuntimeFault("TrimStart expects string, string", None)
+    return VString(s.value.lstrip(chars.value))
+
+
+def _bi_trim_end(rt: Runtime, args: list[Value]) -> Value:
+    s, chars = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(chars, VString):
+        raise TaytshRuntimeFault("TrimEnd expects string, string", None)
+    return VString(s.value.rstrip(chars.value))
+
+
+def _bi_split(rt: Runtime, args: list[Value]) -> Value:
+    s, sep = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(sep, VString):
+        raise TaytshRuntimeFault("Split expects string, string", None)
+    if sep.value == "":
+        rt._throw_err("ValueError", "Split separator must not be empty")
+    parts = s.value.split(sep.value)
+    return VList([VString(p) for p in parts], TyList(TY_STRING))
+
+
+def _bi_split_n(rt: Runtime, args: list[Value]) -> Value:
+    s, sep, n = args[0], args[1], args[2]
+    if (
+        not isinstance(s, VString)
+        or not isinstance(sep, VString)
+        or not isinstance(n, VInt)
+    ):
+        raise TaytshRuntimeFault("SplitN expects string, string, int", None)
+    if n.value <= 0:
+        rt._throw_err("ValueError", "SplitN max must be > 0")
+    parts = s.value.split(sep.value, n.value - 1)
+    return VList([VString(p) for p in parts], TyList(TY_STRING))
+
+
+def _bi_split_whitespace(rt: Runtime, args: list[Value]) -> Value:
+    s = args[0]
+    if not isinstance(s, VString):
+        raise TaytshRuntimeFault("SplitWhitespace expects string", None)
+    parts = s.value.split()
+    return VList([VString(p) for p in parts], TyList(TY_STRING))
+
+
+def _bi_join(rt: Runtime, args: list[Value]) -> Value:
+    sep, parts = args[0], args[1]
+    if not isinstance(sep, VString) or not isinstance(parts, VList):
+        raise TaytshRuntimeFault("Join expects string, list[string]", None)
+    strs = [cast(VString, e).value for e in parts.elements]
+    return VString(sep.value.join(strs))
+
+
+def _bi_find(rt: Runtime, args: list[Value]) -> Value:
+    s, sub = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(sub, VString):
+        raise TaytshRuntimeFault("Find expects string, string", None)
+    return VInt(s.value.find(sub.value))
+
+
+def _bi_rfind(rt: Runtime, args: list[Value]) -> Value:
+    s, sub = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(sub, VString):
+        raise TaytshRuntimeFault("RFind expects string, string", None)
+    return VInt(s.value.rfind(sub.value))
+
+
+def _bi_count(rt: Runtime, args: list[Value]) -> Value:
+    s, sub = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(sub, VString):
+        raise TaytshRuntimeFault("Count expects string, string", None)
+    return VInt(s.value.count(sub.value))
+
+
+def _bi_replace(rt: Runtime, args: list[Value]) -> Value:
+    s, old, new = args[0], args[1], args[2]
+    if (
+        not isinstance(s, VString)
+        or not isinstance(old, VString)
+        or not isinstance(new, VString)
+    ):
+        raise TaytshRuntimeFault("Replace expects string, string, string", None)
+    return VString(s.value.replace(old.value, new.value))
+
+
+def _bi_starts_with(rt: Runtime, args: list[Value]) -> Value:
+    s, pre = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(pre, VString):
+        raise TaytshRuntimeFault("StartsWith expects string, string", None)
+    return VBool(s.value.startswith(pre.value))
+
+
+def _bi_ends_with(rt: Runtime, args: list[Value]) -> Value:
+    s, suf = args[0], args[1]
+    if not isinstance(s, VString) or not isinstance(suf, VString):
+        raise TaytshRuntimeFault("EndsWith expects string, string", None)
+    return VBool(s.value.endswith(suf.value))
+
+
+def _bi_encode(rt: Runtime, args: list[Value]) -> Value:
+    s = args[0]
+    if not isinstance(s, VString):
+        raise TaytshRuntimeFault("Encode expects string", None)
+    return VBytes(s.value.encode("utf-8"))
+
+
+def _bi_decode(rt: Runtime, args: list[Value]) -> Value:
+    b = args[0]
+    if not isinstance(b, VBytes):
+        raise TaytshRuntimeFault("Decode expects bytes", None)
+    return VString(b.value.decode("utf-8"))
+
+
+def _bi_concat(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if isinstance(a, VString) and isinstance(b, VString):
+        return VString(a.value + b.value)
+    if isinstance(a, VBytes) and isinstance(b, VBytes):
+        return VBytes(a.value + b.value)
+    raise TaytshRuntimeFault("Concat expects matching string or bytes", None)
+
+
+def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
+    a, n = args[0], args[1]
+    if not isinstance(n, VInt):
+        raise TaytshRuntimeFault("Repeat expects int count", None)
+    if isinstance(a, VString):
+        return VString(a.value * max(0, n.value))
+    if isinstance(a, VList):
+        return VList(list(a.elements) * max(0, n.value), a.typ)
+    raise TaytshRuntimeFault("Repeat expects string or list", None)
+
+
+def _bi_format(rt: Runtime, args: list[Value]) -> Value:
+    template = args[0]
+    if not isinstance(template, VString):
+        raise TaytshRuntimeFault("Format expects string template", None)
+    parts = template.value.split("{}")
+    if len(parts) - 1 != len(args) - 1:
+        raise TaytshRuntimeFault(
+            f"Format: {len(parts) - 1} placeholders but {len(args) - 1} arguments", None
+        )
+    result: list[str] = [parts[0]]
+    for i, arg in enumerate(args[1:]):
+        if not isinstance(arg, VString):
+            raise TaytshRuntimeFault("Format arguments must be string", None)
+        result.append(arg.value)
+        result.append(parts[i + 1])
+    return VString("".join(result))
+
+
+# ---------------------------------------------------------------------------
+# Character classifier builtins
+# ---------------------------------------------------------------------------
+
+
+def _bi_is_digit(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        return VBool(len(x.value) > 0 and all(c.isdigit() for c in x.value))
+    if isinstance(x, VRune):
+        return VBool(x.value.isdigit())
+    raise TaytshRuntimeFault("IsDigit expects string or rune", None)
+
+
+def _bi_is_alpha(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        return VBool(len(x.value) > 0 and all(c.isalpha() for c in x.value))
+    if isinstance(x, VRune):
+        return VBool(x.value.isalpha())
+    raise TaytshRuntimeFault("IsAlpha expects string or rune", None)
+
+
+def _bi_is_alnum(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        return VBool(len(x.value) > 0 and all(c.isalnum() for c in x.value))
+    if isinstance(x, VRune):
+        return VBool(x.value.isalnum())
+    raise TaytshRuntimeFault("IsAlnum expects string or rune", None)
+
+
+def _bi_is_space(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        return VBool(len(x.value) > 0 and all(c.isspace() for c in x.value))
+    if isinstance(x, VRune):
+        return VBool(x.value.isspace())
+    raise TaytshRuntimeFault("IsSpace expects string or rune", None)
+
+
+def _bi_is_upper(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        return VBool(len(x.value) > 0 and all(c.isupper() for c in x.value))
+    if isinstance(x, VRune):
+        return VBool(x.value.isupper())
+    raise TaytshRuntimeFault("IsUpper expects string or rune", None)
+
+
+def _bi_is_lower(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        return VBool(len(x.value) > 0 and all(c.islower() for c in x.value))
+    if isinstance(x, VRune):
+        return VBool(x.value.islower())
+    raise TaytshRuntimeFault("IsLower expects string or rune", None)
+
+
+# ---------------------------------------------------------------------------
+# List builtins
+# ---------------------------------------------------------------------------
+
+
+def _bi_append(rt: Runtime, args: list[Value]) -> Value:
+    xs, v = args[0], args[1]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("Append expects list", None)
+    xs.elements.append(v)
+    return VNil()
+
+
+def _bi_insert(rt: Runtime, args: list[Value]) -> Value:
+    xs, i, v = args[0], args[1], args[2]
+    if not isinstance(xs, VList) or not isinstance(i, VInt):
+        raise TaytshRuntimeFault("Insert expects list, int, value", None)
+    if i.value < 0 or i.value > len(xs.elements):
+        rt._throw_err("IndexError", "Insert index out of bounds")
+    xs.elements.insert(i.value, v)
+    return VNil()
+
+
+def _bi_pop(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("Pop expects list", None)
+    if not xs.elements:
+        rt._throw_err("IndexError", "Pop on empty list")
+    return xs.elements.pop()
+
+
+def _bi_remove_at(rt: Runtime, args: list[Value]) -> Value:
+    xs, i = args[0], args[1]
+    if not isinstance(xs, VList) or not isinstance(i, VInt):
+        raise TaytshRuntimeFault("RemoveAt expects list, int", None)
+    if i.value < 0 or i.value >= len(xs.elements):
+        rt._throw_err("IndexError", "RemoveAt index out of bounds")
+    xs.elements.pop(i.value)
+    return VNil()
+
+
+def _bi_index_of(rt: Runtime, args: list[Value]) -> Value:
+    xs, v = args[0], args[1]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("IndexOf expects list", None)
+    for i, e in enumerate(xs.elements):
+        if _value_eq(e, v):
+            return VInt(i)
+    return VInt(-1)
+
+
+def _bi_reversed(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("Reversed expects list", None)
+    return VList(list(reversed(xs.elements)), xs.typ)
+
+
+def _sort_key(v: Value) -> tuple[int, object]:
+    if isinstance(v, VInt):
+        return (0, v.value)
+    if isinstance(v, VFloat):
+        return (1, v.value)
+    if isinstance(v, VByte):
+        return (2, v.value)
+    if isinstance(v, VRune):
+        return (3, v.value)
+    if isinstance(v, VString):
+        return (4, v.value)
+    raise TaytshRuntimeFault("Sorted: unsupported element type", None)
+
+
+def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("Sorted expects list", None)
+    decorated = [(_sort_key(e), i, e) for i, e in enumerate(xs.elements)]
+    decorated.sort()
+    return VList([e for _, _, e in decorated], xs.typ)
+
+
+# ---------------------------------------------------------------------------
+# Map builtins
+# ---------------------------------------------------------------------------
+
+
+def _bi_delete(rt: Runtime, args: list[Value]) -> Value:
+    m, k = args[0], args[1]
+    if not isinstance(m, VMap):
+        raise TaytshRuntimeFault("Delete expects map", None)
+    key = _as_hashable(k)
+    m.entries.pop(key, None)
+    return VNil()
+
+
+def _bi_keys(rt: Runtime, args: list[Value]) -> Value:
+    m = args[0]
+    if not isinstance(m, VMap):
+        raise TaytshRuntimeFault("Keys expects map", None)
+    return VList(list(m.entries.keys()), TyList(m.typ.key))
+
+
+def _bi_values(rt: Runtime, args: list[Value]) -> Value:
+    m = args[0]
+    if not isinstance(m, VMap):
+        raise TaytshRuntimeFault("Values expects map", None)
+    return VList(list(m.entries.values()), TyList(m.typ.value))
+
+
+def _bi_items(rt: Runtime, args: list[Value]) -> Value:
+    m = args[0]
+    if not isinstance(m, VMap):
+        raise TaytshRuntimeFault("Items expects map", None)
+    pair_ty = TyTuple((m.typ.key, m.typ.value))
+    elems = [VTuple((k, v), pair_ty) for k, v in m.entries.items()]
+    return VList(elems, TyList(pair_ty))
+
+
+def _bi_merge(rt: Runtime, args: list[Value]) -> Value:
+    m1, m2 = args[0], args[1]
+    if not isinstance(m1, VMap) or not isinstance(m2, VMap):
+        raise TaytshRuntimeFault("Merge expects map, map", None)
+    merged = dict(m1.entries)
+    merged.update(m2.entries)
+    return VMap(merged, m1.typ)
+
+
+# ---------------------------------------------------------------------------
+# Set builtins
+# ---------------------------------------------------------------------------
+
+
+def _bi_add(rt: Runtime, args: list[Value]) -> Value:
+    s, v = args[0], args[1]
+    if not isinstance(s, VSet):
+        raise TaytshRuntimeFault("Add expects set", None)
+    s.elements.add(_as_hashable(v))
+    return VNil()
+
+
+def _bi_remove(rt: Runtime, args: list[Value]) -> Value:
+    s, v = args[0], args[1]
+    if not isinstance(s, VSet):
+        raise TaytshRuntimeFault("Remove expects set", None)
+    s.elements.discard(_as_hashable(v))
+    return VNil()
+
+
+# ---------------------------------------------------------------------------
+# I/O builtins
+# ---------------------------------------------------------------------------
+
+
+def _bi_write_out(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        rt.stdout.extend(x.value.encode("utf-8"))
+    elif isinstance(x, VBytes):
+        rt.stdout.extend(x.value)
+    else:
+        raise TaytshRuntimeFault("WriteOut expects string or bytes", None)
+    return VNil()
+
+
+def _bi_write_err(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        rt.stderr.extend(x.value.encode("utf-8"))
+    elif isinstance(x, VBytes):
+        rt.stderr.extend(x.value)
+    else:
+        raise TaytshRuntimeFault("WriteErr expects string or bytes", None)
+    return VNil()
+
+
+def _bi_writeln_out(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        rt.stdout.extend((x.value + "\n").encode("utf-8"))
+    elif isinstance(x, VBytes):
+        rt.stdout.extend(x.value + b"\n")
+    else:
+        raise TaytshRuntimeFault("WritelnOut expects string or bytes", None)
+    return VNil()
+
+
+def _bi_writeln_err(rt: Runtime, args: list[Value]) -> Value:
+    x = args[0]
+    if isinstance(x, VString):
+        rt.stderr.extend((x.value + "\n").encode("utf-8"))
+    elif isinstance(x, VBytes):
+        rt.stderr.extend(x.value + b"\n")
+    else:
+        raise TaytshRuntimeFault("WritelnErr expects string or bytes", None)
+    return VNil()
+
+
+def _bi_read_line(rt: Runtime, args: list[Value]) -> Value:
+    line = rt.stdin.read_line()
+    if line is None:
+        return VNil()
+    text = line.decode("utf-8")
+    if text.endswith("\r\n"):
+        text = text[:-2]
+    elif text.endswith("\n"):
+        text = text[:-1]
+    return VString(text)
+
+
+def _bi_read_all(rt: Runtime, args: list[Value]) -> Value:
+    return VString(rt.stdin.read_all().decode("utf-8"))
+
+
+def _bi_read_bytes(rt: Runtime, args: list[Value]) -> Value:
+    return VBytes(rt.stdin.read_all())
+
+
+def _bi_read_bytes_n(rt: Runtime, args: list[Value]) -> Value:
+    n = args[0]
+    if not isinstance(n, VInt):
+        raise TaytshRuntimeFault("ReadBytesN expects int", None)
+    return VBytes(rt.stdin.read_n(n.value))
+
+
+def _bi_read_file(rt: Runtime, args: list[Value]) -> Value:
+    path = args[0]
+    if not isinstance(path, VString):
+        raise TaytshRuntimeFault("ReadFile expects string", None)
+    try:
+        with open(path.value, "rb") as f:
+            data = f.read()
+    except OSError as e:
+        rt._throw_err("IOError", str(e))
+        return VNil()
+    try:
+        return VString(data.decode("utf-8"))
+    except UnicodeDecodeError:
+        return VBytes(data)
+
+
+def _bi_write_file(rt: Runtime, args: list[Value]) -> Value:
+    path, data = args[0], args[1]
+    if not isinstance(path, VString):
+        raise TaytshRuntimeFault("WriteFile expects string path", None)
+    try:
+        if isinstance(data, VString):
+            with open(path.value, "w") as f:
+                f.write(data.value)
+        elif isinstance(data, VBytes):
+            with open(path.value, "wb") as f:
+                f.write(data.value)
+        else:
+            raise TaytshRuntimeFault("WriteFile expects string or bytes", None)
+    except OSError as e:
+        rt._throw_err("IOError", str(e))
+    return VNil()
+
+
+def _bi_args(rt: Runtime, args: list[Value]) -> Value:
+    return VList([VString(a) for a in rt.args], TyList(TY_STRING))
+
+
+def _bi_get_env(rt: Runtime, args: list[Value]) -> Value:
+    name = args[0]
+    if not isinstance(name, VString):
+        raise TaytshRuntimeFault("GetEnv expects string", None)
+    val = rt.env.get(name.value)
+    if val is None:
+        return VNil()
+    return VString(val)
+
+
+def _bi_exit(rt: Runtime, args: list[Value]) -> Value:
+    code = args[0]
+    if not isinstance(code, VInt):
+        raise TaytshRuntimeFault("Exit expects int", None)
+    raise _Exit(code.value)
+
+
 _BUILTIN_RUNTIME: dict[str, Callable[[Runtime, list[Value]], Value]] = {
     "ToString": _bi_tostring,
     "Len": _bi_len,
@@ -4472,4 +5401,86 @@ _BUILTIN_RUNTIME: dict[str, Callable[[Runtime, list[Value]], Value]] = {
     "Contains": _bi_contains,
     "Unwrap": _bi_unwrap,
     "Assert": _bi_assert,
+    # Numeric
+    "Round": _bi_round,
+    "Floor": _bi_floor,
+    "Ceil": _bi_ceil,
+    "Sqrt": _bi_sqrt,
+    "IsNaN": _bi_isnan,
+    "IsInf": _bi_isinf,
+    "DivMod": _bi_divmod,
+    "Abs": _bi_abs,
+    "Min": _bi_min,
+    "Max": _bi_max,
+    "Sum": _bi_sum,
+    "Pow": _bi_pow,
+    # Conversions
+    "IntToFloat": _bi_int_to_float,
+    "FloatToInt": _bi_float_to_int,
+    "ByteToInt": _bi_byte_to_int,
+    "IntToByte": _bi_int_to_byte,
+    "RuneFromInt": _bi_rune_from_int,
+    "RuneToInt": _bi_rune_to_int,
+    # String
+    "ParseInt": _bi_parse_int,
+    "ParseFloat": _bi_parse_float,
+    "FormatInt": _bi_format_int,
+    "Upper": _bi_upper,
+    "Lower": _bi_lower,
+    "Trim": _bi_trim,
+    "TrimStart": _bi_trim_start,
+    "TrimEnd": _bi_trim_end,
+    "Split": _bi_split,
+    "SplitN": _bi_split_n,
+    "SplitWhitespace": _bi_split_whitespace,
+    "Join": _bi_join,
+    "Find": _bi_find,
+    "RFind": _bi_rfind,
+    "Count": _bi_count,
+    "Replace": _bi_replace,
+    "StartsWith": _bi_starts_with,
+    "EndsWith": _bi_ends_with,
+    "Encode": _bi_encode,
+    "Decode": _bi_decode,
+    "Concat": _bi_concat,
+    "Repeat": _bi_repeat,
+    "Format": _bi_format,
+    # Character classifiers
+    "IsDigit": _bi_is_digit,
+    "IsAlpha": _bi_is_alpha,
+    "IsAlnum": _bi_is_alnum,
+    "IsSpace": _bi_is_space,
+    "IsUpper": _bi_is_upper,
+    "IsLower": _bi_is_lower,
+    # List
+    "Append": _bi_append,
+    "Insert": _bi_insert,
+    "Pop": _bi_pop,
+    "RemoveAt": _bi_remove_at,
+    "IndexOf": _bi_index_of,
+    "Reversed": _bi_reversed,
+    "Sorted": _bi_sorted,
+    # Map
+    "Delete": _bi_delete,
+    "Keys": _bi_keys,
+    "Values": _bi_values,
+    "Items": _bi_items,
+    "Merge": _bi_merge,
+    # Set
+    "Add": _bi_add,
+    "Remove": _bi_remove,
+    # I/O
+    "WriteOut": _bi_write_out,
+    "WriteErr": _bi_write_err,
+    "WritelnOut": _bi_writeln_out,
+    "WritelnErr": _bi_writeln_err,
+    "ReadLine": _bi_read_line,
+    "ReadAll": _bi_read_all,
+    "ReadBytes": _bi_read_bytes,
+    "ReadBytesN": _bi_read_bytes_n,
+    "ReadFile": _bi_read_file,
+    "WriteFile": _bi_write_file,
+    "Args": _bi_args,
+    "GetEnv": _bi_get_env,
+    "Exit": _bi_exit,
 }

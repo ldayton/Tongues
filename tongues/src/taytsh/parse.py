@@ -705,7 +705,10 @@ class Parser:
 
     def parse_unary(self) -> TExpr:
         """Unary = ( '-' | '!' | '~' ) Unary | Postfix"""
-        if self.at("-") or self.at("!") or self.at("~"):
+        tok = self.current()
+        if tok.type == TK_OP and (
+            tok.value == "-" or tok.value == "!" or tok.value == "~"
+        ):
             pos = self._pos()
             op = self.advance().value
             operand = self.parse_unary()

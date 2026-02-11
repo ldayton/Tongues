@@ -312,7 +312,8 @@ def tokenize(source: str) -> list[Token]:
                 pos += 1
                 col += 1
             is_float = False
-            if pos < length and source[pos] == ".":
+            after_dot = tokens and tokens[-1].type == TK_OP and tokens[-1].value == "."
+            if not after_dot and pos < length and source[pos] == ".":
                 if pos + 1 < length and _is_digit(source[pos + 1]):
                     is_float = True
                     pos += 1

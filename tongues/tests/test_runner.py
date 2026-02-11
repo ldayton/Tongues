@@ -594,8 +594,13 @@ def run_parse(source: str) -> PhaseResult:
 def run_taytsh_parse(source: str) -> PhaseResult:
     try:
         signal.alarm(PARSE_TIMEOUT)
-        taytsh_parse(source)
-        return PhaseResult()
+        module = taytsh_parse(source)
+        return PhaseResult(
+            data={
+                "strict_math": module.strict_math,
+                "strict_tostring": module.strict_tostring,
+            }
+        )
     except Exception as e:
         return PhaseResult(errors=[str(e)])
     finally:

@@ -31,27 +31,26 @@ A valid program must contain exactly one `Main` function. Normal return from `Ma
 
 ## Type System
 
-Every value in Taytsh is an `obj`. The terms "object" and "value" are synonymous — there is no distinction between primitive and reference types at this level of abstraction.
+Every value in Taytsh has a concrete type. There is no top type — the compiler always knows every type that exists (see Module Structure). The type universe is:
 
 ```
-obj
-├── int
-├── float
-├── bool
-├── byte
-├── bytes
-├── string
-├── rune
-├── list[T]
-├── map[K, V]
-├── set[T]
-├── (T, U, ...)       -- tuples
-├── fn[T..., R]       -- function values
-├── A | B | ...       -- union types
-├── nil               -- value in expressions, type in type position
-├── structs
-├── interfaces
-└── enums
+int
+float
+bool
+byte
+bytes
+string
+rune
+list[T]
+map[K, V]
+set[T]
+(T, U, ...)       -- tuples
+fn[T..., R]       -- function values
+A | B | ...       -- union types
+nil               -- value in expressions, type in type position
+structs
+interfaces
+enums
 ```
 
 `void` is a return-type marker meaning "no value." It may appear after `->` in function declarations and as the last element of `fn[...]` types. It is not a value type — it cannot be used for variables, parameters, or collection elements.
@@ -68,16 +67,15 @@ Generic type parameters are built-in only (`list[T]`, `map[K, V]`, `set[T]`, `fn
 
 | Function      | Signature       | Description           |
 | ------------- | --------------- | --------------------- |
-| `ToString(x)` | `obj -> string` | string representation |
+| `ToString(x)` | `T -> string` | string representation (defined on all types) |
 
 ### Throw and Catch
 
-Any `obj` can be thrown. `catch` blocks follow the same type-matching semantics as `match` cases — each `catch` names a type and binds a variable of that type. Unlike `match`, `catch` does not require exhaustiveness; unmatched exceptions propagate to the caller.
+Any struct can be thrown. A typed `catch` names a type and binds the exception as that type — the same type-matching semantics as `match` cases. A `catch` without a type annotation is a catch-all: the binding's type is the residual — the union of struct types not covered by preceding catches. Unlike `match`, `catch` does not require exhaustiveness; unmatched exceptions propagate to the caller.
 
 ```
-throw 42
-throw "something went wrong"
 throw ValueError("unexpected token")
+throw KeyError("missing key")
 ```
 
 ```
@@ -85,12 +83,10 @@ try {
     RiskyOperation()
 } catch e: ValueError {
     WritelnErr(e.message)
-} catch e: obj {
+} catch e {
     WritelnErr(Concat("unexpected: ", ToString(e)))
 }
 ```
-
-Catching `obj` is the catch-all. Catching `nil` handles a thrown `nil`.
 
 ### Built-in Errors
 
@@ -430,7 +426,6 @@ let items: list[int]
 | `(T, U, ...)` | tuple of element zero values; no zero value if any element type lacks one |
 | `T?`          | `nil`                                                                     |
 | `A \| B`      | `nil` if union contains `nil`; otherwise no zero value                    |
-| `obj`         | `nil`                                                                     |
 
 Structs, interfaces, enums, function types, and union types not containing `nil` have no zero value.
 
@@ -640,7 +635,7 @@ while true {
 
 ## Try / Catch / Throw
 
-Any `obj` can be thrown — see the Type System section for details. `catch` blocks use the same type-matching semantics as `match` cases. Unlike `match`, `catch` does not require exhaustiveness; unmatched exceptions propagate to the caller.
+Any struct can be thrown — see the Type System section for details. A typed `catch` names a type and binds the exception as that type, using the same type-matching semantics as `match` cases. Unlike `match`, `catch` does not require exhaustiveness; unmatched exceptions propagate to the caller.
 
 ```
 try {
@@ -651,14 +646,14 @@ try {
 }
 ```
 
-`try` executes the body. If an exception is thrown, control transfers to the first `catch` whose type matches. Each `catch` binds the exception to a named variable of that type.
+`try` executes the body. If an exception is thrown, control transfers to the first matching `catch`. A typed catch matches when the exception is an instance of the named type; a catch-all matches any exception.
 
 ```
 try {
     RiskyOperation()
 } catch e: KeyError {
     WritelnErr(e.message)
-} catch e: obj {
+} catch e {
     WritelnErr(Concat("unexpected: ", ToString(e)))
 } finally {
     Cleanup()
@@ -669,10 +664,13 @@ try {
 
 ```
 throw ValueError("unexpected token")
-throw "something went wrong"
 ```
 
-`throw` accepts any expression. `throw` with an existing variable re-throws it.
+`throw` accepts any struct expression. `throw` with an existing variable re-throws it.
+
+Only struct types can be thrown. Primitives, collections, and `nil` are not throwable. This keeps the throwable universe small and statically known — the compiler can determine every type that might appear in a `catch` by scanning `throw` expressions.
+
+A `catch` without a type annotation is a catch-all — it matches any thrown value. The binding's type is the residual: the union of struct types not covered by preceding typed catches. Subsequent `catch` clauses after a catch-all are unreachable.
 
 `catch` can name a union of types to handle multiple exception types in one clause. The binding's type is the union — access to shared fields like `.message` requires all member types to have that field with the same type.
 
@@ -900,17 +898,12 @@ fn Process(v: int | string | nil) -> void { ... }
 
 Interfaces and unions are distinct concepts. `Node` (an interface) and `Literal | BinOp` (a union of its implementors) are different types, even if extensionally equivalent. Mixing is allowed: `Node | int` means "any Node variant or an int."
 
-### Interaction with `obj`
-
-Any union containing `obj` reduces to `obj`.
-
 ### Normalization rules
 
 1. **Flatten:** `A | (B | C)` → `A | B | C`
 2. **Deduplicate:** `A | A` → `A`
-3. **Absorb obj:** `A | obj` → `obj`
-4. **Single remaining:** if reduced to 1 type, it's that type (not a 1-element union)
-5. **Unordered:** `int | string` = `string | int`
+3. **Single remaining:** if reduced to 1 type, it's that type (not a 1-element union)
+4. **Unordered:** `int | string` = `string | int`
 
 ### Zero values
 
@@ -1080,24 +1073,6 @@ match result {
 
 `case nil` matches the nil case. Since `nil` is a type in type position, no binding is needed — the value is always `nil`. Exhaustive — both the value type and `nil` must be covered.
 
-### Obj matching
-
-```
-match value {
-    case n: int {
-        WritelnOut(ToString(n))
-    }
-    case s: string {
-        WritelnOut(s)
-    }
-    default {
-        WritelnOut("something else")
-    }
-}
-```
-
-When matching on `obj`, cases name concrete types. `default` is required — the set of all types cannot be enumerated.
-
 ### Union matching
 
 ```
@@ -1135,15 +1110,19 @@ fn Process(v: Node | int) -> void {
 
 ### Default
 
-`default` matches any value not covered by preceding cases. `default x: obj` binds the value for use in the body.
+`default` matches any value not covered by preceding cases. `default x` binds the value for use in the body. The binding's type is the residual — the union of types not covered by preceding cases.
+
+When the match subject is an interface, the residual is the union of variant structs without explicit cases. When the subject is a union, the residual is the union of uncovered members. When the subject is an enum, the residual is the enum type itself (enum cases cover values, not types).
 
 ```
-match value {
-    case n: int {
-        WritelnOut(ToString(n))
-    }
-    default o: obj {
-        WritelnErr(Concat("unexpected: ", ToString(o)))
+fn Show(value: int | string | bool) -> void {
+    match value {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        default o {
+            WritelnErr(Concat("other: ", ToString(o)))
+        }
     }
 }
 ```
@@ -1350,7 +1329,7 @@ Pragmas are equivalent to the corresponding command-line flags. Both `-- pragma 
 
 ## Source Metadata
 
-Every Taytsh node has a `metadata` field of type `map[string, obj]`. The lowerer populates it during IR construction. Metadata is advisory — backends and raising passes may use it but are never required to.
+Every Taytsh node has a `metadata` field — a map from string keys to values of type `bool`, `int`, `string`, or `(int, int)`. The lowerer populates it during IR construction. Metadata is advisory — backends and raising passes may use it but are never required to.
 
 The `pos` key is present on every node. All other keys are optional and node-type-specific.
 
@@ -1405,7 +1384,7 @@ Provenance is advisory — the lowered form is always correct as-is.
 
 ## Middleend Annotations
 
-Every Taytsh node has an `annotations` field of type `map[string, obj]`. Middleend passes read the IR and write analysis results into this map. Keys are namespaced by pass (e.g. `"scope.is_reassigned"`, `"ownership.region"`).
+Every Taytsh node has an `annotations` field — the same map type as `metadata`. Middleend passes read the IR and write analysis results into this map. Keys are namespaced by pass (e.g. `"scope.is_reassigned"`, `"ownership.region"`).
 
 Annotations are write-once — a pass sets a key, and no later pass overwrites it. Backends read annotations but never write them.
 
@@ -1438,7 +1417,7 @@ bool      break     byte      bytes     case      catch
 continue  default   else      enum      false     finally
 float     fn        for       if        in        int
 interface let       list      map       match     nil
-obj       range     return    rune      self      set
+range     return    rune      self      set
 string    struct    throw     true      try       void
 while
 ```
@@ -1497,10 +1476,10 @@ Case       = 'case' Pattern Block
 Pattern    = IDENT ':' TypeName
            | IDENT '.' IDENT
            | 'nil'
-Default    = 'default' ( IDENT ':' 'obj' )? Block
+Default    = 'default' IDENT? Block
 TryStmt    = 'try' Block ( Catch+ ( 'finally' Block )? | 'finally' Block )
-Catch      = 'catch' IDENT ':' TypeName ( '|' TypeName )* Block
-TypeName   = IDENT | 'obj' | 'nil' | 'int' | 'float' | 'bool'
+Catch      = 'catch' IDENT ( ':' TypeName ( '|' TypeName )* )? Block
+TypeName   = IDENT | 'nil' | 'int' | 'float' | 'bool'
            | 'byte' | 'bytes' | 'string' | 'rune'
            | 'list' '[' Type ']'
            | 'map' '[' Type ',' Type ']'
@@ -1511,7 +1490,7 @@ TypeName   = IDENT | 'obj' | 'nil' | 'int' | 'float' | 'bool'
 
 `ForStmt` needs two tokens of lookahead: after the first `IDENT`, peek for `,` (two bindings) versus `in` (one binding). `_` is a regular identifier; discard semantics are not a grammar concern.
 
-`Pattern` in a `Case`: if the token is `nil`, no lookahead needed. Otherwise, after the first `IDENT`, peek for `:` (type binding) versus `.` (enum value). `Default` is unambiguous — it starts with `default`, then peek for `IDENT` (binding) versus `{` (no binding).
+`Pattern` in a `Case`: if the token is `nil`, no lookahead needed. Otherwise, after the first `IDENT`, peek for `:` (type binding) versus `.` (enum value). `Default` is unambiguous — it starts with `default`, then peek for `IDENT` (binding) versus `{` (no binding). `Catch` without a type annotation is a catch-all: after `IDENT`, peek for `:` (typed catch) versus `{` (catch-all) — one token of lookahead.
 
 ```
 ExprStmt   = Expr ( AssignTail )?
@@ -1575,8 +1554,7 @@ FnLiteral  = '(' ParamList ')' '->' Type Block
 ```
 Type       = UnionType ( '?' )?
 UnionType  = BaseType ( '|' BaseType )*
-BaseType   = 'obj'
-           | 'int' | 'float' | 'bool'
+BaseType   = 'int' | 'float' | 'bool'
            | 'byte' | 'bytes'
            | 'string' | 'rune'
            | 'nil'
