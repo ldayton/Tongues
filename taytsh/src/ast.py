@@ -126,6 +126,9 @@ class TFnDecl(TDecl):
     params: list[TParam]
     ret: TType
     body: list[TStmt]
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -258,6 +261,9 @@ class TIfStmt(TStmt):
     cond: TExpr
     then_body: list[TStmt]
     else_body: list[TStmt] | None
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -266,6 +272,9 @@ class TWhileStmt(TStmt):
 
     cond: TExpr
     body: list[TStmt]
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -323,6 +332,9 @@ class TMatchCase:
     pos: Pos
     pattern: TPatternType | TPatternEnum | TPatternNil
     body: list[TStmt]
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -344,6 +356,9 @@ class TMatchStmt(TStmt):
     expr: TExpr
     cases: list[TMatchCase]
     default: TDefault | None
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -366,6 +381,9 @@ class TTryStmt(TStmt):
     body: list[TStmt]
     catches: list[TCatch]
     finally_body: list[TStmt] | None
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 # ============================================================
