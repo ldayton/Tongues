@@ -1266,7 +1266,7 @@ When strict math is enabled:
 | `Round`                           | half-away-from-zero | half-away-from-zero |
 | Float `%` with zero divisor       | unspecified         | traps               |
 | `Sorted` with NaN                 | unspecified         | traps               |
-| Available targets                 | all 16              | 12                  |
+| Available targets                 | all 15              | 11                  |
 
 Strict mode integers are signed two's complement, exactly 64 bits. Overflow on any integer operation — addition, subtraction, multiplication, negation, left shift, exponentiation — is a runtime error. Targets with arbitrary-precision integers (Python, Ruby) emit range checks to enforce 64-bit bounds. Targets with native overflow detection use it: Rust (`checked_add`), Java (`Math.addExact`), C (`__builtin_add_overflow`), Zig (`@addWithOverflow`). Remaining targets (Go, Dart, Lua, PHP, Perl) emit manual comparison checks.
 
@@ -1300,7 +1300,7 @@ The `--strict-tostring` flag specifies a canonical `ToString` format for every t
 | `enum`                     | target-native | `TokenKind.Ident`                                       |
 | `fn[...]`                  | target-native | `fn[int, int]`                                          |
 | struct `ToString` override | n/a           | `ToString(self)` method                                 |
-| Available targets          | all 16        | all 16                                                  |
+| Available targets          | all 15        | all 15                                                  |
 
 "Shortest round-trip" means the fewest decimal digits such that parsing the string back produces the exact same float — algorithms like Ryū compute this. Backends that lack a native shortest-round-trip conversion emit a custom formatter.
 
@@ -1314,7 +1314,7 @@ The strict tostring flag is stored on the Module node (see Source Metadata).
 
 ### Strict
 
-`--strict` enables `--strict-math` and `--strict-tostring`. The available target set is the intersection — 12 targets (excluding JavaScript, TypeScript, C#, and Swift, per `--strict-math` restrictions).
+`--strict` enables `--strict-math` and `--strict-tostring`. The available target set is the intersection — 11 targets (excluding JavaScript, TypeScript, C#, and Swift, per `--strict-math` restrictions).
 
 ### Pragmas
 

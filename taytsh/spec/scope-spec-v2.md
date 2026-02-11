@@ -1,11 +1,11 @@
-# Scope Analysis (Taytsh Middleend)
+# Scope Analysis (Tongues Middleend)
 
-This document specifies the **scope** middleend pass for Taytsh. The pass is **intra-procedural**: it analyzes each function body independently and writes results into Taytsh node `annotations`.
+This document specifies the **scope** middleend pass over Taytsh IR. The pass is **intra-procedural**: it analyzes each function body independently and writes results into Taytsh node `annotations`.
 
 Taytsh already has:
 
 - explicit local declarations via `let`
-- lexical block scoping (with shadowing)
+- lexical block scoping (no shadowing — each name bound at most once per function)
 - concrete static types (no `object` top type)
 - explicit function types (`fn[T..., R]`)
 - no module-level variables/constants (top-level declarations are only `fn`, `struct`, `interface`, `enum`)
@@ -39,7 +39,7 @@ The pass treats the following constructs as introducing **bindings** (lexically 
 - `match` case binders (`case v: T { ... }`, `default v { ... }`)
 - `catch` binders (`catch e: SomeError { ... }`, `catch e { ... }`)
 
-Bindings may **shadow** outer bindings; the pass tracks binding identity, not just spelling.
+Taytsh forbids shadowing — each name is bound at most once per function. The pass can resolve names by spelling without tracking binding identity.
 
 ## Produced Annotations
 
@@ -212,7 +212,6 @@ For each function (including methods):
 
 1. **Collect bindings**
    - Create a binding record for each parameter and each binder introduced in the body.
-   - Track lexical scopes (block stack) to handle shadowing correctly.
 2. **Track references**
    - For each identifier use that resolves to a binding, record a “use”.
    - For each identifier use that resolves to a top-level function symbol, set `scope.is_function_ref=true` on that node.

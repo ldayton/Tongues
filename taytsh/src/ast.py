@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 # ============================================================
@@ -113,6 +113,9 @@ class TParam:
     pos: Pos
     name: str
     typ: TType | None
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -187,6 +190,9 @@ class TLetStmt(TStmt):
     name: str
     typ: TType
     value: TExpr | None
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -277,6 +283,9 @@ class TForStmt(TStmt):
     binding: list[str]
     iterable: TExpr | TRange
     body: list[TStmt]
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -286,6 +295,9 @@ class TPatternType:
     pos: Pos
     name: str
     type_name: TType
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -320,6 +332,9 @@ class TDefault:
     pos: Pos
     name: str | None
     body: list[TStmt]
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -339,6 +354,9 @@ class TCatch:
     name: str
     types: list[TType]
     body: list[TStmt]
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -424,6 +442,9 @@ class TVar(TExpr):
     """Variable reference."""
 
     name: str
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
