@@ -221,6 +221,9 @@ class TTupleAssignStmt(TStmt):
 
     targets: list[TExpr]
     value: TExpr
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
