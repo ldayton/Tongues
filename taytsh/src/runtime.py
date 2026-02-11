@@ -42,6 +42,7 @@ def _ceil(x: float) -> int:
 def _sqrt(x: float) -> float:
     return x**0.5
 
+
 from .ast import (
     Pos,
     TArg,
@@ -4515,8 +4516,6 @@ class Runtime:
                     return VFloat(left.value * right.value)
                 if op == "/":
                     if right.value == 0.0:
-                    
-
                         if left.value == 0.0:
                             return VFloat(float("nan"))
                         return VFloat(_copysign_inf(left.value))
@@ -4637,7 +4636,6 @@ def _bi_round(rt: Runtime, args: list[Value]) -> Value:
     if not isinstance(x, VFloat):
         raise TaytshRuntimeFault("Round expects float", None)
 
-
     if _isnan(x.value) or _isinf(x.value):
         rt._throw_err("ValueError", "Round on non-finite float")
     # half-away-from-zero
@@ -4651,7 +4649,6 @@ def _bi_floor(rt: Runtime, args: list[Value]) -> Value:
     if not isinstance(x, VFloat):
         raise TaytshRuntimeFault("Floor expects float", None)
 
-
     if _isnan(x.value) or _isinf(x.value):
         rt._throw_err("ValueError", "Floor on non-finite float")
     return VInt(_floor(x.value))
@@ -4661,7 +4658,6 @@ def _bi_ceil(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if not isinstance(x, VFloat):
         raise TaytshRuntimeFault("Ceil expects float", None)
-
 
     if _isnan(x.value) or _isinf(x.value):
         rt._throw_err("ValueError", "Ceil on non-finite float")
@@ -4673,7 +4669,6 @@ def _bi_sqrt(rt: Runtime, args: list[Value]) -> Value:
     if not isinstance(x, VFloat):
         raise TaytshRuntimeFault("Sqrt expects float", None)
 
-
     return VFloat(_sqrt(x.value))
 
 
@@ -4682,7 +4677,6 @@ def _bi_isnan(rt: Runtime, args: list[Value]) -> Value:
     if not isinstance(x, VFloat):
         raise TaytshRuntimeFault("IsNaN expects float", None)
 
-
     return VBool(_isnan(x.value))
 
 
@@ -4690,7 +4684,6 @@ def _bi_isinf(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if not isinstance(x, VFloat):
         raise TaytshRuntimeFault("IsInf expects float", None)
-
 
     return VBool(_isinf(x.value))
 
@@ -4720,8 +4713,6 @@ def _bi_min(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(a, VInt) and isinstance(b, VInt):
         return VInt(min(a.value, b.value))
     if isinstance(a, VFloat) and isinstance(b, VFloat):
-    
-
         if _isnan(a.value) or _isnan(b.value):
             return VFloat(float("nan"))
         return VFloat(min(a.value, b.value))
@@ -4735,8 +4726,6 @@ def _bi_max(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(a, VInt) and isinstance(b, VInt):
         return VInt(max(a.value, b.value))
     if isinstance(a, VFloat) and isinstance(b, VFloat):
-    
-
         if _isnan(a.value) or _isnan(b.value):
             return VFloat(float("nan"))
         return VFloat(max(a.value, b.value))
@@ -4792,7 +4781,6 @@ def _bi_float_to_int(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if not isinstance(x, VFloat):
         raise TaytshRuntimeFault("FloatToInt expects float", None)
-
 
     if _isnan(x.value) or _isinf(x.value):
         rt._throw_err("ValueError", "FloatToInt on non-finite float")

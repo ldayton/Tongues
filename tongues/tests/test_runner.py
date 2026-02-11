@@ -18,9 +18,6 @@ from src.frontend.parse import parse
 from src.frontend.subset import verify as verify_subset
 from src.middleend import analyze
 from src.serialize import fields_to_dict, hierarchy_to_dict, signatures_to_dict
-from src.taytsh import check as taytsh_check, parse as taytsh_parse
-from src.taytsh.runtime import run as taytsh_run
-
 from src.backend.c import CBackend
 from src.backend.csharp import CSharpBackend
 from src.backend.dart import DartBackend
@@ -57,11 +54,6 @@ TESTS = {
     "backend": {
         "codegen":   {"dir": "15_codegen",    "run": "codegen"},
         "apptest":   {"dir": "15_app",        "run": "apptest"},
-    },
-    "taytsh": {
-        "taytsh_parse": {"dir": "taytsh_parser",  "run": "phase"},
-        "taytsh_check": {"dir": "taytsh_checker", "run": "phase"},
-        "taytsh_app":   {"dir": "taytsh_apps",    "run": "taytsh_app"},
     },
 }
 # fmt: on
@@ -511,11 +503,6 @@ def discover_apptests(test_dir: Path) -> list[Path]:
     return sorted(test_dir.glob("apptest_*.py"))
 
 
-def discover_taytsh_apps(test_dir: Path) -> list[Path]:
-    """Find all .ty files in a directory."""
-    return sorted(test_dir.glob("*.ty"))
-
-
 # ---------------------------------------------------------------------------
 # CLI runner + assertions
 # ---------------------------------------------------------------------------
@@ -584,35 +571,6 @@ def run_parse(source: str) -> PhaseResult:
     try:
         signal.alarm(PARSE_TIMEOUT)
         parse(source)
-        return PhaseResult()
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-    finally:
-        signal.alarm(0)
-
-
-def run_taytsh_parse(source: str) -> PhaseResult:
-    try:
-        signal.alarm(PARSE_TIMEOUT)
-        module = taytsh_parse(source)
-        return PhaseResult(
-            data={
-                "strict_math": module.strict_math,
-                "strict_tostring": module.strict_tostring,
-            }
-        )
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-    finally:
-        signal.alarm(0)
-
-
-def run_taytsh_check(source: str) -> PhaseResult:
-    try:
-        signal.alarm(PARSE_TIMEOUT)
-        errors = taytsh_check(source)
-        if errors:
-            return PhaseResult(errors=[str(e) for e in errors])
         return PhaseResult()
     except Exception as e:
         return PhaseResult(errors=[str(e)])
@@ -709,8 +667,6 @@ RUNNERS = {
     "fields": run_fields,
     "hierarchy": run_hierarchy,
     "typecheck": run_typecheck,
-    "taytsh_parse": run_taytsh_parse,
-    "taytsh_check": run_taytsh_check,
 }
 
 
@@ -1030,10 +986,6 @@ def pytest_generate_tests(metafunc):
                         else:
                             params.append(pytest.param(apptest, target, id=test_id))
                 metafunc.parametrize("apptest,target", params)
-            elif run == "taytsh_app" and "taytsh_app" in metafunc.fixturenames:
-                apps = discover_taytsh_apps(test_dir)
-                params = [pytest.param(p, id=p.stem) for p in apps]
-                metafunc.parametrize("taytsh_app", params)
 
 
 # ---------------------------------------------------------------------------
@@ -1049,24 +1001,6 @@ def test_cli(cli_spec: dict) -> None:
 
 def test_parse(parse_input, parse_expected):
     check_expected(parse_expected, run_parse(parse_input), "parse", lenient_errors=True)
-
-
-def test_taytsh_parse(taytsh_parse_input, taytsh_parse_expected):
-    check_expected(
-        taytsh_parse_expected,
-        run_taytsh_parse(taytsh_parse_input),
-        "taytsh_parse",
-        lenient_errors=True,
-    )
-
-
-def test_taytsh_check(taytsh_check_input, taytsh_check_expected):
-    check_expected(
-        taytsh_check_expected,
-        run_taytsh_check(taytsh_check_input),
-        "taytsh_check",
-        lenient_errors=True,
-    )
 
 
 def test_subset(subset_input, subset_expected):
@@ -1126,13 +1060,3 @@ def test_apptest(apptest: Path, target, executable: list[str]):
     if result.returncode != 0:
         output = (result.stdout + result.stderr).strip()
         pytest.fail(f"Test failed with exit code {result.returncode}:\n{output}")
-
-
-def test_taytsh_app(taytsh_app: Path):
-    """Parse and run a .ty program in-process. Exit code 0 = pass."""
-    source = taytsh_app.read_text()
-    module = taytsh_parse(source)
-    result = taytsh_run(module)
-    if result.exit_code != 0:
-        output = (result.stdout + result.stderr).decode(errors="replace").strip()
-        pytest.fail(f"Exit code {result.exit_code}:\n{output}")

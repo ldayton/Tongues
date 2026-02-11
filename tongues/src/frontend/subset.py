@@ -1097,7 +1097,9 @@ class Verifier:
     def visit_With(self, node: ASTNode) -> None:
         """Only allow with-open file I/O idiom; reject all other with statements."""
         if not self._is_valid_file_open(node):
-            self.error(node, "with", "with statement: only with-open file I/O is allowed")
+            self.error(
+                node, "with", "with statement: only with-open file I/O is allowed"
+            )
             return
         old = self.in_file_open
         self.in_file_open = True
