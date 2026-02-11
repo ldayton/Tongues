@@ -1210,8 +1210,12 @@ class _PythonEmitter:
         if name == "Reversed":
             return "list(reversed(" + self._a(args, 0) + "))"
         if name == "Map":
+            if len(args) == 0:
+                return "{}"
             return "list(map(" + self._a(args, 0) + ", " + self._a(args, 1) + "))"
         if name == "Set":
+            if len(args) == 0:
+                return "set()"
             return "set(" + self._a(args, 0) + ")"
         if name == "ToString":
             return "str(" + self._a(args, 0) + ")"

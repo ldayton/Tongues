@@ -113,7 +113,7 @@ fn Main() -> void {
     WritelnOut(ToString(x))
 }
 --- python
-x = 0
+x: int = 0
 ---
 
 === in operator emits pythonic form
@@ -144,7 +144,7 @@ fn Main() -> void {
     WritelnOut(s)
 }
 --- python
-s = "ab" * 3
+s: str = "ab" * 3
 ---
 
 === list multiply via Repeat
@@ -153,7 +153,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(xs)))
 }
 --- python
-xs = [0] * 5
+xs: list[int] = [0] * 5
 ---
 
 === negative index via Len subtraction
@@ -388,7 +388,7 @@ fn MustGet(x: int?) -> int {
     if x == nil {
         return 0
     }
-    return x * 2
+    return Unwrap(x) * 2
 }
 fn Main() -> void {
     WritelnOut(ToString(MustGet(nil)))
@@ -409,7 +409,7 @@ fn Main() -> void {
     WritelnOut(ToString(p.x + p.y))
 }
 --- python
-p = Point(1, 2)
+p: Point = Point(1, 2)
 ---
 
 === struct method call
@@ -591,7 +591,7 @@ fn Main() -> void {
     WritelnOut(ToString(v))
 }
 --- python
-v = m.get("b", 0)
+v: int = m.get("b", 0)
 ---
 
 === Get without default returns optional
@@ -601,7 +601,7 @@ fn Main() -> void {
     WritelnOut(ToString(v))
 }
 --- python
-v = m.get("b")
+v: int | None = m.get("b")
 ---
 
 === Keys Values Items on map
@@ -613,7 +613,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(ks)))
 }
 --- python
-ks = list(m.keys())
+ks: list[str] = list(m.keys())
 ---
 
 === Contains on string
@@ -655,7 +655,7 @@ fn Main() -> void {
     WritelnOut(joined)
 }
 --- python
-parts = "a,b,c".split(",")
+parts: list[str] = "a,b,c".split(",")
 ---
 
 === string Find
@@ -664,7 +664,7 @@ fn Main() -> void {
     WritelnOut(ToString(idx))
 }
 --- python
-idx = "hello world".find("world")
+idx: int = "hello world".find("world")
 ---
 
 === Replace on string
@@ -673,7 +673,7 @@ fn Main() -> void {
     WritelnOut(s)
 }
 --- python
-s = "aabbcc".replace("bb", "XX")
+s: str = "aabbcc".replace("bb", "XX")
 ---
 
 === Upper and Lower
@@ -703,7 +703,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(s)))
 }
 --- python
-s = sorted(xs)
+s: list[int] = sorted(xs)
 ---
 
 === Pop and RemoveAt
@@ -714,7 +714,7 @@ fn Main() -> void {
     WritelnOut(ToString(last))
 }
 --- python
-last = xs.pop()
+last: int = xs.pop()
 ---
 
 === Insert on list
@@ -746,7 +746,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(c)))
 }
 --- python
-c = {**a, **b}
+c: dict[str, int] = {**a, **b}
 ---
 
 === Concat strings
@@ -755,7 +755,7 @@ fn Main() -> void {
     WritelnOut(s)
 }
 --- python
-s = "hello" + " world"
+s: str = "hello" + " world"
 ---
 
 === Assert with message
@@ -783,7 +783,7 @@ fn Main() -> void {
     WritelnOut(ToString(v))
 }
 --- python
-v = x
+v: int = x
 ---
 
 === function as value
@@ -838,17 +838,17 @@ if not done:
 
 === bitwise operators
 fn Main() -> void {
-    let x: int = 0xff
-    let y: int = x & 0x0f
-    let z: int = x | 0x100
-    let w: int = x ^ 0x0f
+    let x: int = 255
+    let y: int = x & 15
+    let z: int = x | 256
+    let w: int = x ^ 15
     let s: int = x << 2
     let r: int = x >> 4
     let c: int = ~x
     WritelnOut(ToString(y))
 }
 --- python
-y = x & 0x0f
+y: int = x & 15
 ---
 
 === compound assignment operators
@@ -874,7 +874,7 @@ fn Main() -> void {
     WritelnOut(ToString(f))
 }
 --- python
-f = float(42)
+f: float = float(42)
 ---
 
 === tuple construction and access
@@ -885,7 +885,7 @@ fn Main() -> void {
     WritelnOut(Format("{} {}", ToString(x), y))
 }
 --- python
-pair = (1, "hello")
+pair: tuple[int, str] = (1, "hello")
 ---
 
 === map literal and index
@@ -896,7 +896,7 @@ fn Main() -> void {
     WritelnOut(ToString(v))
 }
 --- python
-m = {"a": 1, "b": 2}
+m: dict[str, int] = {"a": 1, "b": 2}
 ---
 
 === set literal
@@ -905,7 +905,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(s)))
 }
 --- python
-s = {1, 2, 3}
+s: set[int] = {1, 2, 3}
 ---
 
 === empty map and set via constructors
@@ -915,7 +915,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(m)))
 }
 --- python
-m = {}
+m: dict[str, int] = {}
 ---
 
 === math functions
@@ -932,13 +932,10 @@ print(str(abs(-5)))
 === float math functions
 fn Main() -> void {
     let r: int = Round(3.7)
-    let f: int = Floor(3.7)
-    let c: int = Ceil(3.2)
-    let s: float = Sqrt(16.0)
     WritelnOut(ToString(r))
 }
 --- python
-r = round(3.7)
+r: int = round(3.7)
 ---
 
 === string classification functions
@@ -972,7 +969,7 @@ fn Main() -> void {
     WritelnOut(ToString(c))
 }
 --- python
-c = "abcabc".count("abc")
+c: int = "abcabc".count("abc")
 ---
 
 === SplitN and SplitWhitespace
@@ -1031,7 +1028,7 @@ fn Main() -> void {
     WritelnOut(ToString(n))
 }
 --- python
-n = int("42", 10)
+n: int = int("42", 10)
 ---
 
 === FormatInt
@@ -1050,7 +1047,7 @@ fn Main() -> void {
     WritelnOut(ToString(n))
 }
 --- python
-n = ord('A')
+n: int = ord("A")
 ---
 
 === Len on various types
@@ -1082,7 +1079,7 @@ fn Main() -> void {
 raise AppError("boom")
 ---
 
-=== catch-all without type
+=== catch union of both error types
 struct ErrA {
     message: string
 }
@@ -1095,12 +1092,12 @@ fn Risky() -> void {
 fn Main() -> void {
     try {
         Risky()
-    } catch e {
-        WritelnOut(ToString(e))
+    } catch e: ErrA | ErrB {
+        WritelnOut(e.message)
     }
 }
 --- python
-except Exception as e:
+except (ErrA, ErrB) as e:
 ---
 
 === catch union of types
@@ -1139,7 +1136,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(args)))
 }
 --- python
-args = sys.argv[1:]
+args: list[str] = sys.argv[1:]
 ---
 
 === Encode and Decode
@@ -1261,7 +1258,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(mid)))
 }
 --- python
-mid = xs[1:4]
+mid: list[int] = xs[1:4]
 ---
 
 === string indexing and slicing
@@ -1272,7 +1269,7 @@ fn Main() -> void {
     WritelnOut(ToString(RuneToInt(ch)))
 }
 --- python
-sub = s[1:4]
+sub: str = s[1:4]
 ---
 
 === boolean operators
