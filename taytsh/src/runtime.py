@@ -18,6 +18,10 @@ def _isinf(x: float) -> bool:
     return x == float("inf") or x == float("-inf")
 
 
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
+
+
 def _copysign_inf(x: float) -> float:
     """Return +inf or -inf depending on sign of x."""
     if x < 0:
@@ -606,10 +610,6 @@ def run(
     env: Mapping[str, str] | None = None,
 ) -> RunResult:
     """Typecheck and run a parsed Taytsh module."""
-    if module.strict_math:
-        raise TaytshRuntimeFault("strict-math is not implemented")
-    if module.strict_tostring:
-        raise TaytshRuntimeFault("strict-tostring is not implemented")
     idx = _build_index(module)
     tc = TypeChecker(idx)
     checked = tc.check_module(module)
@@ -4110,7 +4110,12 @@ class Runtime:
                 return VBool(not operand.value)
             if expr.op == "-":
                 if isinstance(operand, VInt):
-                    return VInt(-operand.value)
+                    result = -operand.value
+                    if self.module.strict_math and (
+                        result < _INT64_MIN or result > _INT64_MAX
+                    ):
+                        self._throw_err("ValueError", "integer overflow")
+                    return VInt(result)
                 if isinstance(operand, VFloat):
                     return VFloat(-operand.value)
                 if isinstance(operand, VByte):
@@ -4477,12 +4482,17 @@ class Runtime:
             shift = right.value
             if shift < 0:
                 self._throw_err("ValueError", "shift amount must be non-negative")
+            if self.module.strict_math and isinstance(left, VInt) and shift >= 64:
+                self._throw_err("ValueError", "shift amount >= 64")
             if isinstance(left, VInt):
-                return (
-                    VInt(left.value << shift)
-                    if op == "<<"
-                    else VInt(left.value >> shift)
-                )
+                if op == "<<":
+                    result = left.value << shift
+                    if self.module.strict_math and (
+                        result < _INT64_MIN or result > _INT64_MAX
+                    ):
+                        self._throw_err("ValueError", "integer overflow")
+                    return VInt(result)
+                return VInt(left.value >> shift)
             if isinstance(left, VByte):
                 val = (left.value << shift) if op == "<<" else (left.value >> shift)
                 return VByte(val & 0xFF)
@@ -4490,12 +4500,18 @@ class Runtime:
 
         if op in ("+", "-", "*", "/", "%"):
             if isinstance(left, VInt) and isinstance(right, VInt):
-                if op == "+":
-                    return VInt(left.value + right.value)
-                if op == "-":
-                    return VInt(left.value - right.value)
-                if op == "*":
-                    return VInt(left.value * right.value)
+                if op in ("+", "-", "*"):
+                    if op == "+":
+                        result = left.value + right.value
+                    elif op == "-":
+                        result = left.value - right.value
+                    else:
+                        result = left.value * right.value
+                    if self.module.strict_math and (
+                        result < _INT64_MIN or result > _INT64_MAX
+                    ):
+                        self._throw_err("ValueError", "integer overflow")
+                    return VInt(result)
                 if op == "/":
                     try:
                         q, _ = _int_divmod_trunc(left.value, right.value)
@@ -4521,6 +4537,8 @@ class Runtime:
                         return VFloat(_copysign_inf(left.value))
                     return VFloat(left.value / right.value)
                 if right.value == 0.0:
+                    if self.module.strict_math:
+                        self._throw_err("ValueError", "float modulo by zero")
                     return VFloat(float("nan"))
                 return VFloat(_fmod(left.value, right.value))
             if isinstance(left, VByte) and isinstance(right, VByte):
@@ -4561,7 +4579,85 @@ def _cmp(op: str, a: object, b: object) -> bool:
 # ---- Minimal builtin runtime (expanded in step 4) --------------------------
 
 
+def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> str:
+    """Strict ToString: canonical format for cross-target consistency."""
+    if isinstance(v, VNil):
+        return "nil"
+    if isinstance(v, VBool):
+        return "true" if v.value else "false"
+    if isinstance(v, VInt):
+        return str(v.value)
+    if isinstance(v, VFloat):
+        if _isnan(v.value):
+            return "NaN"
+        if v.value == float("inf"):
+            return "Inf"
+        if v.value == float("-inf"):
+            return "-Inf"
+        return repr(v.value)
+    if isinstance(v, VByte):
+        return str(v.value)
+    if isinstance(v, VRune):
+        return f"'{v.value}'" if in_composite else v.value
+    if isinstance(v, VString):
+        return f'"{v.value}"' if in_composite else v.value
+    if isinstance(v, VBytes):
+        hex_chars = "0123456789abcdef"
+        hex_parts = "".join(
+            "\\x" + hex_chars[b >> 4] + hex_chars[b & 0x0F] for b in v.value
+        )
+        return f'b"{hex_parts}"'
+    if isinstance(v, VList):
+        inner = ", ".join(
+            _strict_tostring(e, rt, in_composite=True) for e in v.elements
+        )
+        return f"[{inner}]"
+    if isinstance(v, VTuple):
+        inner = ", ".join(
+            _strict_tostring(e, rt, in_composite=True) for e in v.elements
+        )
+        return f"({inner})"
+    if isinstance(v, VMap):
+        decorated = [(_sort_key(k), i, k) for i, k in enumerate(v.entries.keys())]
+        decorated.sort()
+        parts: list[str] = []
+        for _, _, k in decorated:
+            val = v.entries[k]
+            parts.append(
+                _strict_tostring(k, rt, in_composite=True)
+                + ": "
+                + _strict_tostring(val, rt, in_composite=True)
+            )
+        return "{" + ", ".join(parts) + "}"
+    if isinstance(v, VSet):
+        decorated = [(_sort_key(e), i, e) for i, e in enumerate(v.elements)]
+        decorated.sort()
+        inner = ", ".join(
+            _strict_tostring(e, rt, in_composite=True) for _, _, e in decorated
+        )
+        return "{" + inner + "}"
+    if isinstance(v, VEnum):
+        return f"{v.enum_name}.{v.variant}"
+    if isinstance(v, VStruct):
+        si = rt.index.structs.get(v.struct_name)
+        if si is not None and "ToString" in si.methods:
+            mi = si.methods["ToString"]
+            result = rt._call_fn(mi.decl, mi.sig, [v])
+            if isinstance(result, VString):
+                return result.value
+        parts = [
+            f"{k}: {_strict_tostring(val, rt, in_composite=True)}"
+            for k, val in v.fields.items()
+        ]
+        return v.struct_name + "{" + ", ".join(parts) + "}"
+    if isinstance(v, VFunc):
+        return v.typ.display()
+    return v.to_string()
+
+
 def _bi_tostring(rt: Runtime, args: list[Value]) -> Value:
+    if rt.module.strict_tostring:
+        return VString(_strict_tostring(args[0], rt))
     return VString(args[0].to_string())
 
 
@@ -4759,6 +4855,13 @@ def _bi_sum(rt: Runtime, args: list[Value]) -> Value:
 def _bi_pow(rt: Runtime, args: list[Value]) -> Value:
     a, b = args[0], args[1]
     if isinstance(a, VInt) and isinstance(b, VInt):
+        if rt.module.strict_math:
+            if b.value < 0:
+                rt._throw_err("ValueError", "Pow(int, int) with negative exponent")
+            result = a.value**b.value
+            if result < _INT64_MIN or result > _INT64_MAX:
+                rt._throw_err("ValueError", "integer overflow")
+            return VInt(result)
         return VInt(a.value**b.value)
     if isinstance(a, VFloat) and isinstance(b, VFloat):
         return VFloat(a.value**b.value)
@@ -5179,6 +5282,10 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Sorted expects list", None)
+    if rt.module.strict_math:
+        for e in xs.elements:
+            if isinstance(e, VFloat) and _isnan(e.value):
+                rt._throw_err("ValueError", "Sorted: list contains NaN")
     decorated = [(_sort_key(e), i, e) for i, e in enumerate(xs.elements)]
     decorated.sort()
     return VList([e for _, _, e in decorated], xs.typ)

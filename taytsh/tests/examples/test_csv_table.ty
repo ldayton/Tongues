@@ -161,6 +161,22 @@ fn Main() -> void {
     if failed > 0 {
         Exit(1)
     }
+
+    -- Demo
+    let csv: string = "name,age,city\nalice,30,nyc\nbob,25,\"san francisco\"\ncharlie,35,chicago"
+    let rows: list[list[string]] = ParseCsv(csv)
+    ValidateRows(rows)
+    let widths: map[int, int] = ComputeWidths(rows)
+    let ncols: int = Len(rows[0])
+    let sep: string = Separator(ncols, widths)
+    WritelnOut("")
+    WritelnOut(sep)
+    WritelnOut(FormatRow(rows[0], widths))
+    WritelnOut(sep)
+    for i in range(1, Len(rows)) {
+        WritelnOut(FormatRow(rows[i], widths))
+    }
+    WritelnOut(sep)
 }
 
 -- Functions under test (single-file language, no imports)

@@ -4,15 +4,16 @@ set shell := ["bash", "-o", "pipefail", "-cu"]
 subset:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd tongues
     failed=0
-    for f in $(find src -name '*.py'); do
-        [ ! -s "$f" ] && continue
-        if ! uv run python -m src.tongues --stop-at subset < "$f" 2>/dev/null; then
-            echo "FAIL: $f"
-            uv run python -m src.tongues --stop-at subset < "$f" 2>&1 | head -5
-            failed=1
-        fi
+    for dir in tongues/src taytsh/src; do
+        for f in $(find "$dir" -name '*.py'); do
+            [ ! -s "$f" ] && continue
+            if ! uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>/dev/null; then
+                echo "FAIL: $f"
+                uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>&1 | head -5
+                failed=1
+            fi
+        done
     done
     exit $failed
 
