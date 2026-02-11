@@ -1,0 +1,19 @@
+[project]
+name = "taytsh"
+version = "0.1.0"
+requires-python = "~=3.12.0"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint]
+ignore = [
+    # E402: Module level import not at top of file. Runtime defines helpers before bulk imports.
+    "E402",
+    # E741: Ambiguous variable name (l/O/I).
+    "E741",
+]

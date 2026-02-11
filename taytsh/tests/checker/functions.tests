@@ -1,0 +1,281 @@
+=== valid: function call
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let y: int = Double(5)
+    WritelnOut(ToString(y))
+}
+---
+ok
+---
+
+=== error: wrong arg count
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let y: int = Double(1, 2)
+}
+---
+error: expected 1 arguments, got 2
+---
+
+=== error: wrong arg type
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let y: int = Double("hello")
+}
+---
+error: cannot pass string as int
+---
+
+=== valid: function value
+fn IsEven(n: int) -> bool {
+    return n % 2 == 0
+}
+fn Main() -> void {
+    let f: fn[int, bool] = IsEven
+    let r: bool = f(4)
+    WritelnOut(ToString(r))
+}
+---
+ok
+---
+
+=== valid: fn literal
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int => x * 2
+    let r: int = f(5)
+    WritelnOut(ToString(r))
+}
+---
+ok
+---
+
+=== error: fn literal captures variable
+fn Main() -> void {
+    let offset: int = 10
+    let f: fn[int, int] = (x: int) -> int => x + offset
+}
+---
+error: cannot capture 'offset'
+---
+
+=== valid: fn literal block body
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int {
+        return x * 2
+    }
+    WritelnOut(ToString(f(5)))
+}
+---
+ok
+---
+
+=== valid: higher order function
+fn Apply(x: int, f: fn[int, int]) -> int {
+    return f(x)
+}
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let r: int = Apply(5, Double)
+    WritelnOut(ToString(r))
+}
+---
+ok
+---
+
+=== error: bound method as value
+struct Span {
+    start: int
+    end: int
+
+    fn Len(self) -> int {
+        return self.end - self.start
+    }
+}
+fn Main() -> void {
+    let s: Span = Span(0, 10)
+    let f: fn[int] = s.Len
+}
+---
+error: cannot capture 'self'
+---
+
+=== error: fn type mismatch
+fn Foo(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[string, string] = Foo
+}
+---
+error: cannot assign
+---
+
+=== valid: void function type
+fn DoNothing() -> void {}
+fn Main() -> void {
+    let f: fn[void] = DoNothing
+    f()
+}
+---
+ok
+---
+
+=== error: call non-function
+fn Main() -> void {
+    let x: int = 42
+    x()
+}
+---
+error: cannot call int
+---
+
+=== error: return value from void function
+fn Bad() -> void {
+    return 42
+}
+fn Main() -> void {}
+---
+error: cannot return value from void
+---
+
+=== valid: fn literal as argument
+fn Apply(x: int, f: fn[int, int]) -> int {
+    return f(x)
+}
+fn Main() -> void {
+    let r: int = Apply(5, (x: int) -> int => x * 2)
+    WritelnOut(ToString(r))
+}
+---
+ok
+---
+
+=== error: fn literal wrong return type
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> string => "hello"
+}
+---
+error: cannot assign
+---
+
+=== valid: fn literal multiple parameters
+fn Main() -> void {
+    let f: fn[int, int, int] = (a: int, b: int) -> int => a + b
+    let r: int = f(3, 4)
+    WritelnOut(ToString(r))
+}
+---
+ok
+---
+
+=== valid: fn literal void return
+fn Main() -> void {
+    let f: fn[string, void] = (s: string) -> void {
+        WritelnOut(s)
+    }
+    f("hello")
+}
+---
+ok
+---
+
+=== error: call fn value wrong type
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    let r: int = f("hello")
+}
+---
+error: cannot pass string as int
+---
+
+=== valid: named arguments in function call
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {
+    let r: int = Add(a: 1, b: 2)
+    WritelnOut(ToString(r))
+}
+---
+ok
+---
+
+=== valid: named arguments out of order
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {
+    let r: int = Add(b: 2, a: 1)
+    WritelnOut(ToString(r))
+}
+---
+ok
+---
+
+=== error: mixed positional and named in function call
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {
+    let r: int = Add(1, b: 2)
+}
+---
+error: cannot mix positional and named
+---
+
+=== error: wrong named parameter in function call
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {
+    let r: int = Add(a: 1, c: 2)
+}
+---
+error: no parameter 'c'
+---
+
+=== error: fn literal captures parameter
+fn Outer(x: int) -> fn[int, int] {
+    return (y: int) -> int => x + y
+}
+fn Main() -> void {}
+---
+error: cannot capture 'x'
+---
+
+=== valid: recursive function
+fn Factorial(n: int) -> int {
+    if n <= 1 {
+        return 1
+    }
+    return n * Factorial(n - 1)
+}
+fn Main() -> void {
+    WritelnOut(ToString(Factorial(5)))
+}
+---
+ok
+---
+
+=== error: fn value wrong arg count
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    let r: int = f(1, 2)
+}
+---
+error: expected 1 arguments, got 2
+---

@@ -18,7 +18,6 @@ from src.frontend.parse import parse
 from src.frontend.subset import verify as verify_subset
 from src.middleend import analyze
 from src.serialize import fields_to_dict, hierarchy_to_dict, signatures_to_dict
-
 from src.backend.c import CBackend
 from src.backend.csharp import CSharpBackend
 from src.backend.dart import DartBackend

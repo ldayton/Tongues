@@ -1,6 +1,6 @@
 """Return pattern analysis: contains_return, always_returns, needs_named_returns."""
 
-from src.ir import (
+from ..ir import (
     Block,
     ForClassic,
     ForRange,

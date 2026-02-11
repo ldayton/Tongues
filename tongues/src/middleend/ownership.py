@@ -18,7 +18,7 @@ Annotations added:
     OwnershipInfo: Module-level summary of escape analysis results
 """
 
-from src.ir import (
+from ..ir import (
     Assign,
     BinaryOp,
     Block,
@@ -399,4 +399,4 @@ def _check_return_escape(
 
 
 # Import If here to avoid circular import at module level
-from src.ir import If  # noqa: E402
+from ..ir import If  # noqa: E402

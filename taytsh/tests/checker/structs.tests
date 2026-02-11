@@ -1,0 +1,361 @@
+=== valid: struct construction and field access
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(1, 2)
+    let a: int = p.x
+    p.y = 3
+}
+---
+ok
+---
+
+=== valid: named construction
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(x: 1, y: 2)
+}
+---
+ok
+---
+
+=== error: wrong field count
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(1)
+}
+---
+error: 2 fields, got 1
+---
+
+=== valid: method call
+struct Span {
+    start: int
+    end: int
+
+    fn Len(self) -> int {
+        return self.end - self.start
+    }
+}
+fn Main() -> void {
+    let s: Span = Span(0, 10)
+    let n: int = s.Len()
+}
+---
+ok
+---
+
+=== error: no such field
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(1, 2)
+    let z: int = p.z
+}
+---
+error: has no field or method 'z'
+---
+
+=== valid: struct with interface parent
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Lit(42)
+}
+---
+ok
+---
+
+=== error: struct assigned to wrong interface
+interface Node {}
+interface Other {}
+struct Lit : Node {
+    value: int
+}
+fn Main() -> void {
+    let o: Other = Lit(42)
+}
+---
+error: cannot assign
+---
+
+=== error: mixed positional and named args
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(1, y: 2)
+}
+---
+error: cannot mix positional and named
+---
+
+=== error: wrong named field
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(x: 1, z: 2)
+}
+---
+error: no field 'z'
+---
+
+=== error: field type mismatch in construction
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(1, "hello")
+}
+---
+error: cannot assign string to int
+---
+
+=== valid: method with return type
+struct Counter {
+    value: int
+
+    fn Inc(self) -> int {
+        self.value += 1
+        return self.value
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    let n: int = c.Inc()
+}
+---
+ok
+---
+
+=== error: method wrong arg count
+struct Span {
+    start: int
+    end: int
+
+    fn Len(self) -> int {
+        return self.end - self.start
+    }
+}
+fn Main() -> void {
+    let s: Span = Span(0, 10)
+    let n: int = s.Len(42)
+}
+---
+error: expected 0 arguments, got 1
+---
+
+=== valid: interface as parameter type
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+fn Process(n: Node) -> void {
+    WritelnOut(ToString(n))
+}
+fn Main() -> void {
+    Process(Lit(42))
+}
+---
+ok
+---
+
+=== valid: method with parameters
+struct Rect {
+    width: int
+    height: int
+
+    fn Scale(self, factor: int) -> Rect {
+        return Rect(self.width * factor, self.height * factor)
+    }
+}
+fn Main() -> void {
+    let r: Rect = Rect(3, 4)
+    let r2: Rect = r.Scale(2)
+    WritelnOut(ToString(r2.width))
+}
+---
+ok
+---
+
+=== error: duplicate named field in construction
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(x: 1, x: 2)
+}
+---
+error: duplicate field
+---
+
+=== error: struct implementing non-existent interface
+struct Foo : NonExistent {
+    x: int
+}
+fn Main() -> void {}
+---
+error: undefined
+---
+
+=== error: self in free function
+fn Bad(self) -> void {}
+fn Main() -> void {}
+---
+error: self outside method
+---
+
+=== error: missing named field in construction
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(x: 1)
+}
+---
+error: missing field
+---
+
+=== valid: named construction out of order
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(y: 2, x: 1)
+}
+---
+ok
+---
+
+=== error: field assignment type mismatch
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(1, 2)
+    p.x = "hello"
+}
+---
+error: cannot assign string to int
+---
+
+=== error: struct implementing struct
+struct Foo {
+    x: int
+}
+struct Bar : Foo {
+    y: int
+}
+fn Main() -> void {}
+---
+error: not an interface
+---
+
+=== error: struct implementing enum
+enum Color { Red Green Blue }
+struct Foo : Color {
+    x: int
+}
+fn Main() -> void {}
+---
+error: not an interface
+---
+
+=== valid: recursive struct
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+struct Branch : Node {
+    left: Node
+    right: Node
+}
+fn Main() -> void {
+    let tree: Node = Branch(Leaf(1), Leaf(2))
+    WritelnOut(ToString(tree))
+}
+---
+ok
+---
+
+=== error: struct implements two interfaces
+interface A {}
+interface B {}
+struct Foo : A : B {
+    x: int
+}
+fn Main() -> void {}
+---
+error: multiple interfaces
+---
+
+=== error: interface with body
+interface Node {
+    fn Eval(self) -> int
+}
+fn Main() -> void {}
+---
+error: interface body must be empty
+---
+
+=== error: field access on interface
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Lit(42)
+    let v: int = n.value
+}
+---
+error: has no field or method 'value'
+---
+
+=== error: assign to self in method
+struct Foo {
+    x: int
+
+    fn Bad(self) -> void {
+        self = Foo(10)
+    }
+}
+fn Main() -> void {}
+---
+error: cannot assign to self
+---
+
+=== valid: methods before fields
+struct Foo {
+    fn GetX(self) -> int {
+        return self.x
+    }
+
+    x: int
+}
+fn Main() -> void {
+    let f: Foo = Foo(1)
+    WritelnOut(ToString(f.GetX()))
+}
+---
+ok
+---

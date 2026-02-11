@@ -1,0 +1,17 @@
+-- pragma strict-math
+
+struct Point {
+    x: int
+    y: int
+}
+
+fn Main() -> void {
+    let p: Point = Point(1, 2)
+    let ok: bool = 0 <= p.x && p.x <= 255
+    if ok {
+        WritelnOut(ToString(p.x))
+    } else {
+        throw ValueError("out of range")
+    }
+}
+

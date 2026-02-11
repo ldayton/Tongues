@@ -1,0 +1,216 @@
+-- pragma strict-tostring
+
+enum TokenKind {
+    Ident
+    Number
+    Eof
+}
+
+struct Point {
+    x: int
+    y: int
+}
+
+struct Named {
+    label: string
+    value: int
+
+    fn ToString(self) -> string {
+        return Concat(self.label, Concat("=", ToString(self.value)))
+    }
+}
+
+interface Shape {}
+
+struct Circle : Shape {
+    radius: float
+}
+
+struct Rect : Shape {
+    width: float
+    height: float
+}
+
+-- int
+fn TestIntToString() -> void {
+    Assert(ToString(42) == "42")
+    Assert(ToString(-7) == "-7")
+    Assert(ToString(0) == "0")
+}
+
+-- float
+fn TestFloatToString() -> void {
+    Assert(ToString(0.0 / 0.0) == "NaN")
+    Assert(ToString(1.0 / 0.0) == "Inf")
+    Assert(ToString(-1.0 / 0.0) == "-Inf")
+    Assert(ToString(-0.0) == "-0.0")
+}
+
+-- float round-trip: shortest representation parses back to same value
+fn TestFloatRoundTrip() -> void {
+    let vals: list[float] = [3.14, 1.0, 0.1, 100.0, 1e10]
+    for v in vals {
+        let s: string = ToString(v)
+        Assert(ParseFloat(s) == v)
+    }
+}
+
+-- bool
+fn TestBoolToString() -> void {
+    Assert(ToString(true) == "true")
+    Assert(ToString(false) == "false")
+}
+
+-- byte
+fn TestByteToString() -> void {
+    Assert(ToString(0xff) == "255")
+    Assert(ToString(0x00) == "0")
+    Assert(ToString(0x7f) == "127")
+}
+
+-- rune
+fn TestRuneToString() -> void {
+    Assert(ToString('a') == "a")
+    Assert(ToString('λ') == "λ")
+}
+
+-- nil
+fn TestNilToString() -> void {
+    let x: int? = nil
+    Assert(ToString(x) == "nil")
+}
+
+-- string is identity
+fn TestStringToString() -> void {
+    Assert(ToString("hello") == "hello")
+    Assert(ToString("") == "")
+}
+
+-- list: elements formatted, strings quoted
+fn TestListToString() -> void {
+    Assert(ToString([1, 2, 3]) == "[1, 2, 3]")
+    Assert(ToString([]) == "[]")
+    Assert(ToString(["a", "b"]) == "[\"a\", \"b\"]")
+}
+
+-- nested list
+fn TestNestedListToString() -> void {
+    Assert(ToString([[1, 2], [3]]) == "[[1, 2], [3]]")
+}
+
+-- map: sorted keys, strings quoted
+fn TestMapToString() -> void {
+    let m: map[string, int] = {"b": 2, "a": 1}
+    Assert(ToString(m) == "{\"a\": 1, \"b\": 2}")
+}
+
+-- map with int keys
+fn TestMapIntKeysToString() -> void {
+    let m: map[int, string] = {2: "b", 1: "a"}
+    Assert(ToString(m) == "{1: \"a\", 2: \"b\"}")
+}
+
+-- empty map
+fn TestEmptyMapToString() -> void {
+    let m: map[string, int] = Map()
+    Assert(ToString(m) == "{}")
+}
+
+-- set: sorted
+fn TestSetToString() -> void {
+    let s: set[int] = {3, 1, 2}
+    Assert(ToString(s) == "{1, 2, 3}")
+}
+
+-- empty set
+fn TestEmptySetToString() -> void {
+    let s: set[int] = Set()
+    Assert(ToString(s) == "{}")
+}
+
+-- set of strings: quoted
+fn TestSetStringToString() -> void {
+    let s: set[string] = {"b", "a"}
+    Assert(ToString(s) == "{\"a\", \"b\"}")
+}
+
+-- tuple: strings quoted
+fn TestTupleToString() -> void {
+    Assert(ToString((1, "hello")) == "(1, \"hello\")")
+    Assert(ToString((true, 3.14)) == "(true, 3.14)")
+}
+
+-- struct
+fn TestStructToString() -> void {
+    let p: Point = Point(3, 4)
+    Assert(ToString(p) == "Point{x: 3, y: 4}")
+}
+
+-- struct ToString override
+fn TestStructToStringOverride() -> void {
+    let n: Named = Named("count", 42)
+    Assert(ToString(n) == "count=42")
+}
+
+-- enum
+fn TestEnumToString() -> void {
+    Assert(ToString(TokenKind.Ident) == "TokenKind.Ident")
+    Assert(ToString(TokenKind.Number) == "TokenKind.Number")
+    Assert(ToString(TokenKind.Eof) == "TokenKind.Eof")
+}
+
+-- function type
+fn Double(x: int) -> int {
+    return x * 2
+}
+
+fn TestFnToString() -> void {
+    let f: fn[int, int] = Double
+    Assert(ToString(f) == "fn[int, int]")
+}
+
+-- rune quoted inside composite
+fn TestRuneInComposite() -> void {
+    Assert(ToString(['a', 'b']) == "['a', 'b']")
+    Assert(ToString(('x', 1)) == "('x', 1)")
+}
+
+-- list with mixed types via obj
+fn TestListBoolToString() -> void {
+    Assert(ToString([true, false]) == "[true, false]")
+}
+
+-- bytes
+fn TestBytesToString() -> void {
+    let b: bytes = b"\x89PNG"
+    Assert(ToString(b) == "b\"\\x89\\x50\\x4e\\x47\"")
+    Assert(ToString(b"") == "b\"\"")
+    Assert(ToString(b"\x00\xff") == "b\"\\x00\\xff\"")
+}
+
+fn Main() -> void {
+    TestIntToString()
+    TestFloatToString()
+    TestFloatRoundTrip()
+    TestBoolToString()
+    TestByteToString()
+    TestRuneToString()
+    TestNilToString()
+    TestStringToString()
+    TestListToString()
+    TestNestedListToString()
+    TestMapToString()
+    TestMapIntKeysToString()
+    TestEmptyMapToString()
+    TestSetToString()
+    TestEmptySetToString()
+    TestSetStringToString()
+    TestTupleToString()
+    TestStructToString()
+    TestStructToStringOverride()
+    TestEnumToString()
+    TestFnToString()
+    TestRuneInComposite()
+    TestListBoolToString()
+    TestBytesToString()
+}

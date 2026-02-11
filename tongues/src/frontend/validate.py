@@ -410,14 +410,14 @@ def _validate_assign(stmt: ASTNode, env: TypeEnv) -> None:
         if val_t == "List" and not value.get("elts"):
             lineno = stmt.get("lineno", 0)
             raise ParseError(
-                f"type error: empty list needs type annotation",
+                "type error: empty list needs type annotation",
                 lineno,
                 0,
             )
         if val_t == "Dict" and not value.get("keys"):
             lineno = stmt.get("lineno", 0)
             raise ParseError(
-                f"type error: empty dict needs type annotation",
+                "type error: empty dict needs type annotation",
                 lineno,
                 0,
             )
@@ -502,7 +502,7 @@ def _validate_tuple_unpack(
         if src and _is_optional_source(src):
             lineno = stmt.get("lineno", 0)
             raise ParseError(
-                f"cannot unpack optional tuple without guard",
+                "cannot unpack optional tuple without guard",
                 lineno,
                 0,
             )
@@ -510,7 +510,7 @@ def _validate_tuple_unpack(
     if isinstance(val_type, Optional) and isinstance(val_type.inner, Tuple):
         lineno = stmt.get("lineno", 0)
         raise ParseError(
-            f"cannot unpack optional tuple without guard",
+            "cannot unpack optional tuple without guard",
             lineno,
             0,
         )
@@ -666,7 +666,7 @@ def _validate_method_call(expr: ASTNode, env: TypeEnv) -> None:
             if src == "object":
                 lineno = expr.get("lineno", 0)
                 raise ParseError(
-                    f"cannot call method on object without narrowing",
+                    "cannot call method on object without narrowing",
                     lineno,
                     0,
                 )
@@ -674,14 +674,14 @@ def _validate_method_call(expr: ASTNode, env: TypeEnv) -> None:
             if "None" in _split_union_parts(src):
                 lineno = expr.get("lineno", 0)
                 raise ParseError(
-                    f"cannot call method on optional type (may be None)",
+                    "cannot call method on optional type (may be None)",
                     lineno,
                     0,
                 )
             if len(parts) > 1:
                 lineno = expr.get("lineno", 0)
                 raise ParseError(
-                    f"cannot call method on union type without narrowing",
+                    "cannot call method on union type without narrowing",
                     lineno,
                     0,
                 )
@@ -863,7 +863,7 @@ def _validate_binop(expr: ASTNode, env: TypeEnv) -> None:
             if src == "object":
                 lineno = expr.get("lineno", 0)
                 raise ParseError(
-                    f"cannot use object in arithmetic without narrowing",
+                    "cannot use object in arithmetic without narrowing",
                     lineno,
                     0,
                 )
@@ -1015,7 +1015,7 @@ def _validate_subscript(expr: ASTNode, env: TypeEnv) -> None:
         if src == "object":
             lineno = expr.get("lineno", 0)
             raise ParseError(
-                f"cannot subscript object without narrowing",
+                "cannot subscript object without narrowing",
                 lineno,
                 0,
             )
@@ -1124,7 +1124,7 @@ def _validate_dict_literal(expr: ASTNode, env: TypeEnv) -> None:
                 ):
                     lineno = expr.get("lineno", 0)
                     raise ParseError(
-                        f"type error: mixed key types in dict literal",
+                        "type error: mixed key types in dict literal",
                         lineno,
                         0,
                     )
@@ -1137,7 +1137,7 @@ def _validate_dict_literal(expr: ASTNode, env: TypeEnv) -> None:
                 ):
                     lineno = expr.get("lineno", 0)
                     raise ParseError(
-                        f"type error: mixed value types in dict literal",
+                        "type error: mixed value types in dict literal",
                         lineno,
                         0,
                     )
@@ -1234,7 +1234,7 @@ def _check_source_truthiness(source_type: str, expr: ASTNode) -> None:
         if inner == "str":
             lineno = expr.get("lineno", 0) if isinstance(expr, dict) else 0
             raise ParseError(
-                f"ambiguous truthiness for optional str (could be None or empty)",
+                "ambiguous truthiness for optional str (could be None or empty)",
                 lineno,
                 0,
             )
@@ -1263,7 +1263,7 @@ def _check_source_truthiness(source_type: str, expr: ASTNode) -> None:
         ):
             lineno = expr.get("lineno", 0) if isinstance(expr, dict) else 0
             raise ParseError(
-                f"ambiguous truthiness for optional union (could be None or empty)",
+                "ambiguous truthiness for optional union (could be None or empty)",
                 lineno,
                 0,
             )
@@ -1287,14 +1287,14 @@ def _check_type_truthiness(typ: "Type", source_type: str | None, expr: ASTNode) 
     if typ == INT:
         lineno = expr.get("lineno", 0) if isinstance(expr, dict) else 0
         raise ParseError(
-            f"truthiness of int not allowed (zero is valid data)",
+            "truthiness of int not allowed (zero is valid data)",
             lineno,
             0,
         )
     if typ == FLOAT:
         lineno = expr.get("lineno", 0) if isinstance(expr, dict) else 0
         raise ParseError(
-            f"truthiness of float not allowed (zero is valid data)",
+            "truthiness of float not allowed (zero is valid data)",
             lineno,
             0,
         )
@@ -1507,7 +1507,6 @@ def _validate_kind_value(test: ASTNode, env: TypeEnv) -> None:
             lineno,
             0,
         )
-        return
     # Check against source type union members
     left = test.get("left", {})
     if is_type(left, ["Attribute"]) and left.get("attr") == "kind":
@@ -1636,7 +1635,7 @@ def _check_iterator_escape_assign(value: ASTNode, env: TypeEnv, stmt: ASTNode) -
     if _is_generator_expr(value):
         lineno = stmt.get("lineno", 0)
         raise ParseError(
-            f"cannot assign generator expression to variable",
+            "cannot assign generator expression to variable",
             lineno,
             0,
         )
@@ -1657,7 +1656,7 @@ def _check_iterator_escape_return(value: ASTNode, env: TypeEnv) -> None:
     if _is_generator_expr(value):
         lineno = value.get("lineno", 0)
         raise ParseError(
-            f"cannot return generator expression",
+            "cannot return generator expression",
             lineno,
             0,
         )
@@ -1703,7 +1702,7 @@ def _check_iterator_escape_expr_stmt(value: ASTNode, env: TypeEnv) -> None:
                 continue
             lineno = value.get("lineno", 0)
             raise ParseError(
-                f"cannot pass generator expression to non-consumer function",
+                "cannot pass generator expression to non-consumer function",
                 lineno,
                 0,
             )

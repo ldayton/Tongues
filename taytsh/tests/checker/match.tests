@@ -1,0 +1,544 @@
+=== valid: exhaustive interface match
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    match n {
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+        case b: Bin {
+            WritelnOut(b.op)
+        }
+    }
+}
+---
+ok
+---
+
+=== error: non-exhaustive interface match
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    match n {
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+    }
+}
+---
+error: non-exhaustive match
+---
+
+=== valid: match with default
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    match n {
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: enum match
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Red
+    match c {
+        case Color.Red {
+            WritelnOut("red")
+        }
+        case Color.Green {
+            WritelnOut("green")
+        }
+        case Color.Blue {
+            WritelnOut("blue")
+        }
+    }
+}
+---
+ok
+---
+
+=== error: non-exhaustive enum match
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Red
+    match c {
+        case Color.Red {
+            WritelnOut("red")
+        }
+    }
+}
+---
+error: non-exhaustive match
+---
+
+=== valid: optional match
+fn Main() -> void {
+    let x: int? = nil
+    match x {
+        case v: int {
+            WritelnOut(ToString(v))
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: obj match with default
+fn Main() -> void {
+    let x: obj = 42
+    match x {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== error: obj match without default
+fn Main() -> void {
+    let x: obj = 42
+    match x {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+    }
+}
+---
+error: non-exhaustive match on obj
+---
+
+=== valid: default with binding
+fn Main() -> void {
+    let x: obj = 42
+    match x {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        default o: obj {
+            WritelnOut(ToString(o))
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: union match exhaustive
+fn Main() -> void {
+    let v: int | string | nil = nil
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        case s: string {
+            WritelnOut(s)
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+ok
+---
+
+=== error: non-exhaustive union match
+fn Main() -> void {
+    let v: int | string = 42
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+    }
+}
+---
+error: non-exhaustive match
+---
+
+=== error: non-exhaustive optional match
+fn Main() -> void {
+    let x: int? = nil
+    match x {
+        case v: int {
+            WritelnOut(ToString(v))
+        }
+    }
+}
+---
+error: non-exhaustive match
+---
+
+=== valid: match union with interface member
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Process(v: Node | int) -> void {
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        case node: Node {
+            WritelnOut(ToString(node))
+        }
+    }
+}
+fn Main() -> void {
+    Process(42)
+}
+---
+ok
+---
+
+=== valid: covering all variants satisfies interface
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Process(v: Node | int) -> void {
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+        case b: Bin {
+            WritelnOut(b.op)
+        }
+    }
+}
+fn Main() -> void {
+    Process(42)
+}
+---
+ok
+---
+
+=== valid: match narrows type in case body
+fn Main() -> void {
+    let v: int | string = 42
+    match v {
+        case n: int {
+            let doubled: int = n * 2
+            WritelnOut(ToString(doubled))
+        }
+        case s: string {
+            let upper: string = Upper(s)
+            WritelnOut(upper)
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: match on only default
+fn Main() -> void {
+    let x: obj = 42
+    match x {
+        default {
+            WritelnOut("anything")
+        }
+    }
+}
+---
+ok
+---
+
+=== error: duplicate case type
+fn Main() -> void {
+    let v: int | string = 42
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        case s: string {
+            WritelnOut(s)
+        }
+        case m: int {
+            WritelnOut(ToString(m))
+        }
+    }
+}
+---
+error: duplicate case
+---
+
+=== error: case type not in union
+fn Main() -> void {
+    let v: int | string = 42
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        case s: string {
+            WritelnOut(s)
+        }
+        case b: bool {
+            WritelnOut(ToString(b))
+        }
+    }
+}
+---
+error: not a member
+---
+
+=== error: enum match wrong enum variant
+enum Color { Red Green Blue }
+enum Size { Small Large }
+fn Main() -> void {
+    let c: Color = Color.Red
+    match c {
+        case Size.Small {
+            WritelnOut("small")
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+error: not a variant of Color
+---
+
+=== error: duplicate enum case in match
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Red
+    match c {
+        case Color.Red {
+            WritelnOut("red")
+        }
+        case Color.Red {
+            WritelnOut("red again")
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+error: duplicate case
+---
+
+=== error: case variant not from matched interface
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Other {
+    x: int
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    match n {
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+        case o: Other {
+            WritelnOut(ToString(o.x))
+        }
+    }
+}
+---
+error: not a variant
+---
+
+=== error: non-exhaustive optional match missing value case
+fn Main() -> void {
+    let x: int? = nil
+    match x {
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+error: non-exhaustive match
+---
+
+=== valid: optional enum match
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color? = nil
+    match c {
+        case Color.Red {
+            WritelnOut("red")
+        }
+        case Color.Green {
+            WritelnOut("green")
+        }
+        case Color.Blue {
+            WritelnOut("blue")
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+ok
+---
+
+=== error: non-exhaustive optional enum match
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color? = nil
+    match c {
+        case Color.Red {
+            WritelnOut("red")
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+error: non-exhaustive match
+---
+
+=== error: match on non-matchable type int
+fn Main() -> void {
+    let x: int = 42
+    match x {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+    }
+}
+---
+error: cannot match on int
+---
+
+=== error: match on non-matchable type string
+fn Main() -> void {
+    let s: string = "hello"
+    match s {
+        case v: string {
+            WritelnOut(v)
+        }
+    }
+}
+---
+error: cannot match on string
+---
+
+=== error: match on non-matchable type list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    match xs {
+        default {
+            WritelnOut("list")
+        }
+    }
+}
+---
+error: cannot match on list
+---
+
+=== error: match on non-matchable type bool
+fn Main() -> void {
+    let b: bool = true
+    match b {
+        default {
+            WritelnOut("bool")
+        }
+    }
+}
+---
+error: cannot match on bool
+---
+
+=== valid: default with binding in union match
+fn Main() -> void {
+    let v: int | string | bool = true
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        default o: obj {
+            WritelnOut(ToString(o))
+        }
+    }
+}
+---
+ok
+---
+
+=== error: duplicate nil case
+fn Main() -> void {
+    let x: int? = nil
+    match x {
+        case v: int {
+            WritelnOut(ToString(v))
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+        case nil {
+            WritelnOut("nil again")
+        }
+    }
+}
+---
+error: duplicate case
+---
+
+=== error: default not last
+fn Main() -> void {
+    let x: obj = 42
+    match x {
+        default {
+            WritelnOut("default")
+        }
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+    }
+}
+---
+error: default must be last
+---

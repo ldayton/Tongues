@@ -55,13 +55,13 @@ Middleend deficiencies (should be fixed in middleend.py):
 
 from __future__ import annotations
 
-from src.backend.util import (
+from .util import (
     escape_string,
     go_to_camel,
     go_to_pascal,
     replace_format_placeholders,
 )
-from src.ir import (
+from ..ir import (
     BOOL,
     BYTE,
     FLOAT,

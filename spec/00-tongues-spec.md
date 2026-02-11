@@ -31,7 +31,7 @@ Tongues supports these target languages:
 | Rust       | Rust 1.75    |
 | Swift      | Swift 6.0    |
 | Typescript | tsc 5.3      |
-| Zig        | Zig 0.14     |
+| Zig        | Zig 0.15     |
 
 ## Pipeline Overview
 

@@ -412,9 +412,91 @@ def f(xs: list[int]) -> object:
 error: filter
 ---
 
-=== open not allowed
+=== open read binary allowed
+def f(path: str) -> bytes:
+    with open(path, "rb") as f:
+        data = f.read()
+    return data
+---
+ok
+---
+
+=== open write text allowed
+def f(path: str, text: str) -> None:
+    with open(path, "w") as f:
+        f.write(text)
+---
+ok
+---
+
+=== open write binary allowed
+def f(path: str, data: bytes) -> None:
+    with open(path, "wb") as f:
+        f.write(data)
+---
+ok
+---
+
+=== open bare not allowed
 def f() -> object:
     return open("file.txt")
+---
+error: open
+---
+
+=== open read text not allowed
+def f(path: str) -> str:
+    with open(path, "r") as f:
+        data = f.read()
+    return data
+---
+error: open
+---
+
+=== open append not allowed
+def f(path: str, text: str) -> None:
+    with open(path, "a") as f:
+        f.write(text)
+---
+error: open
+---
+
+=== open without with not allowed
+def f(path: str) -> bytes:
+    f = open(path, "rb")
+    data = f.read()
+    f.close()
+    return data
+---
+error: open
+---
+
+=== open with iteration not allowed
+def f(path: str) -> list[str]:
+    result: list[str] = []
+    with open(path, "rb") as f:
+        for line in f:
+            result.append(str(line))
+    return result
+---
+error: open
+---
+
+=== open with readline not allowed
+def f(path: str) -> bytes:
+    with open(path, "rb") as f:
+        data = f.readline()
+    return data
+---
+error: open
+---
+
+=== open with seek not allowed
+def f(path: str) -> bytes:
+    with open(path, "rb") as f:
+        f.seek(10)
+        data = f.read()
+    return data
 ---
 error: open
 ---

@@ -8,8 +8,8 @@ comprehensions, nested contexts. Proper fix requires frontend type propagation.
 
 from __future__ import annotations
 
-from src.backend.util import escape_string, to_snake, to_screaming_snake
-from src.ir import (
+from .util import escape_string, to_snake, to_screaming_snake
+from ..ir import (
     BOOL,
     FLOAT,
     INT,
@@ -1588,7 +1588,7 @@ class RubyBackend:
             ):
                 # Python's `and` returns first falsy value or last value
                 # Ruby: python_truthy(x) ? y : x
-                left_val, left_str, cond = self._extract_and_or_value(left_expr)
+                _, left_str, cond = self._extract_and_or_value(left_expr)
                 right_str = self._and_or_operand(right_expr)
                 return f"({cond} ? {right_str} : {left_str})"
             case BinaryOp(op="||", left=left_expr, right=right_expr) if (
@@ -1596,7 +1596,7 @@ class RubyBackend:
             ):
                 # Python's `or` returns first truthy value or last value
                 # Ruby: python_truthy(x) ? x : y
-                left_val, left_str, cond = self._extract_and_or_value(left_expr)
+                _, left_str, cond = self._extract_and_or_value(left_expr)
                 right_str = self._and_or_operand(right_expr)
                 return f"({cond} ? {left_str} : {right_str})"
             case BinaryOp(op="//", left=left, right=right):
@@ -1835,7 +1835,7 @@ class RubyBackend:
                 # Python: s.find(x) == -1 -> Ruby: s.index(x).nil?
                 # Python: s.find(x) != -1 -> Ruby: !s.index(x).nil?
                 if op in ("==", "!="):
-                    find_expr, neg_one = None, None
+                    find_expr = None
                     if isinstance(left, MethodCall) and left.method == "find":
                         if (
                             isinstance(right, UnaryOp)
@@ -1843,7 +1843,7 @@ class RubyBackend:
                             and isinstance(right.operand, IntLit)
                             and right.operand.value == 1
                         ):
-                            find_expr, neg_one = left, right
+                            find_expr = left
                     elif isinstance(right, MethodCall) and right.method == "find":
                         if (
                             isinstance(left, UnaryOp)
@@ -1851,7 +1851,7 @@ class RubyBackend:
                             and isinstance(left.operand, IntLit)
                             and left.operand.value == 1
                         ):
-                            find_expr, neg_one = right, left
+                            find_expr = right
                     if find_expr is not None:
                         obj_str = self._expr(find_expr.obj)
                         args_str = ", ".join(self._expr(a) for a in find_expr.args)

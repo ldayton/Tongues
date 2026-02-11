@@ -1,0 +1,57 @@
+{
+  "fn": {
+    "prefix": "fn",
+    "body": ["fn ${1:Name}(${2:args}) -> ${3:void} {", "    $0", "}"],
+    "description": "Function declaration"
+  },
+  "main": {
+    "prefix": "main",
+    "body": ["fn Main() -> void {", "    $0", "}"],
+    "description": "Entrypoint function"
+  },
+  "let": {
+    "prefix": "let",
+    "body": "let ${1:name}: ${2:type} = ${0:value}",
+    "description": "Let binding"
+  },
+  "struct": {
+    "prefix": "struct",
+    "body": ["struct ${1:Name} {", "    ${2:field}: ${3:type}", "}"],
+    "description": "Struct declaration"
+  },
+  "enum": {
+    "prefix": "enum",
+    "body": ["enum ${1:Name} {", "    ${2:Variant}", "}"],
+    "description": "Enum declaration"
+  },
+  "match": {
+    "prefix": "match",
+    "body": [
+      "match ${1:expr} {",
+      "    case ${2:Pattern} {",
+      "        $0",
+      "    }",
+      "    default {",
+      "    }",
+      "}"
+    ],
+    "description": "Match statement"
+  },
+  "try": {
+    "prefix": "try",
+    "body": [
+      "try {",
+      "    $0",
+      "} catch ${1:e}: ${2:obj} {",
+      "}",
+      ""
+    ],
+    "description": "Try/catch"
+  },
+  "forin": {
+    "prefix": "for",
+    "body": ["for ${1:x} in ${2:xs} {", "    $0", "}"],
+    "description": "For-in loop"
+  }
+}
+

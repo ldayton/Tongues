@@ -1,6 +1,6 @@
 """Hoisting analysis: compute variables needing hoisting for Go emission."""
 
-from src.ir import (
+from ..ir import (
     Assign,
     Block,
     ForClassic,

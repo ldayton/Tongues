@@ -331,29 +331,6 @@ class Frontend:
             node, var_types, self._current_class_name, self.symbols
         )
 
-    def _infer_element_type_from_append_arg(
-        self, arg: ASTNode, var_types: dict[str, Type]
-    ) -> Type:
-        """Infer slice element type from what's being appended."""
-        cb = inference.InferenceCallbacks(
-            annotation_to_str=self._annotation_to_str,
-            py_type_to_ir=self._py_type_to_ir,
-            extract_struct_name=type_inference.extract_struct_name,
-            infer_container_type_from_ast=self._infer_container_type_from_ast,
-            is_len_call=lowering.is_len_call,
-            is_kind_check=self._is_kind_check,
-            infer_call_return_type=self._infer_call_return_type,
-            infer_iterable_type=self._infer_iterable_type,
-        )
-        return inference.infer_element_type_from_append_arg(
-            arg,
-            var_types,
-            self.symbols,
-            self._current_class_name,
-            self._current_func_info,
-            cb,
-        )
-
     def _infer_container_type_from_ast(
         self, node: ASTNode, var_types: dict[str, Type]
     ) -> Type:

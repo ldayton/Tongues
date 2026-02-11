@@ -1,0 +1,347 @@
+=== integer literal
+fn Main() -> void {
+    let x: int = 42
+}
+---
+ok
+---
+
+=== float literal
+fn Main() -> void {
+    let x: float = 3.14
+}
+---
+ok
+---
+
+=== float with exponent
+fn Main() -> void {
+    let x: float = 1e10
+    let y: float = 2.5E-3
+}
+---
+ok
+---
+
+=== byte literal
+fn Main() -> void {
+    let b: byte = 0xff
+    let z: byte = 0x00
+}
+---
+ok
+---
+
+=== string literal
+fn Main() -> void {
+    let s: string = "hello world"
+}
+---
+ok
+---
+
+=== string with escapes
+fn Main() -> void {
+    let s: string = "line1\nline2\ttab\\backslash"
+}
+---
+ok
+---
+
+=== rune literal
+fn Main() -> void {
+    let ch: rune = 'x'
+    let nl: rune = '\n'
+    let nul: rune = '\0'
+    let sq: rune = '\''
+}
+---
+ok
+---
+
+=== unicode rune literal
+fn Main() -> void {
+    let ch: rune = 'λ'
+}
+---
+ok
+---
+
+=== bytes literal
+fn Main() -> void {
+    let b: bytes = b"\x89PNG"
+    let empty: bytes = b""
+}
+---
+ok
+---
+
+=== bool literals
+fn Main() -> void {
+    let t: bool = true
+    let f: bool = false
+}
+---
+ok
+---
+
+=== nil literal
+fn Main() -> void {
+    let x: int? = nil
+}
+---
+ok
+---
+
+=== variable reference
+fn Main() -> void {
+    let x: int = y
+}
+---
+ok
+---
+
+=== binary operators
+fn Main() -> void {
+    let a: int = x + y
+    let b: int = x - y
+    let c: int = x * y
+    let d: int = x / y
+    let e: int = x % y
+}
+---
+ok
+---
+
+=== comparison operators
+fn Main() -> void {
+    let a: bool = x == y
+    let b: bool = x != y
+    let c: bool = x < y
+    let d: bool = x <= y
+    let e: bool = x > y
+    let f: bool = x >= y
+}
+---
+ok
+---
+
+=== logical operators
+fn Main() -> void {
+    let a: bool = x && y
+    let b: bool = x || y
+}
+---
+ok
+---
+
+=== bitwise operators
+fn Main() -> void {
+    let a: int = x & y
+    let b: int = x | y
+    let c: int = x ^ y
+    let d: int = x << 2
+    let e: int = x >> 1
+}
+---
+ok
+---
+
+=== unary operators
+fn Main() -> void {
+    let a: int = -x
+    let b: int = ~x
+    let c: bool = !done
+}
+---
+ok
+---
+
+=== ternary
+fn Main() -> void {
+    let abs: int = x > 0 ? x : -x
+}
+---
+ok
+---
+
+=== nested ternary
+fn Main() -> void {
+    let r: int = a ? b : c ? d : e
+}
+---
+ok
+---
+
+=== field access
+fn Main() -> void {
+    let k: int = token.kind
+    let v: string = token.value
+}
+---
+ok
+---
+
+=== tuple access
+fn Main() -> void {
+    let x: int = pair.0
+    let y: string = pair.1
+}
+---
+ok
+---
+
+=== indexing
+fn Main() -> void {
+    let first: int = xs[0]
+    let ch: rune = name[i]
+}
+---
+ok
+---
+
+=== slicing
+fn Main() -> void {
+    let mid: list[int] = xs[1:3]
+    let rest: string = s[0:Len(s)]
+}
+---
+ok
+---
+
+=== function call
+fn Main() -> void {
+    WritelnOut("hello")
+    let n: int = Len(xs)
+}
+---
+ok
+---
+
+=== method call
+fn Main() -> void {
+    let n: int = s.Len()
+}
+---
+ok
+---
+
+=== named arguments
+fn Main() -> void {
+    let t: Token = Token(kind: TokenKind.Ident, value: "foo", offset: 0)
+}
+---
+ok
+---
+
+=== positional arguments
+fn Main() -> void {
+    let t: Token = Token(TokenKind.Ident, "foo", 0)
+}
+---
+ok
+---
+
+=== list literal
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let empty: list[string] = []
+}
+---
+ok
+---
+
+=== map literal
+fn Main() -> void {
+    let ages: map[string, int] = {"alice": 30, "bob": 25}
+}
+---
+ok
+---
+
+=== set literal
+fn Main() -> void {
+    let seen: set[int] = {1, 2, 3}
+}
+---
+ok
+---
+
+=== tuple literal
+fn Main() -> void {
+    let pair: (int, string) = (1, "hello")
+    let triple: (int, int, int) = (1, 2, 3)
+}
+---
+ok
+---
+
+=== parenthesized expression
+fn Main() -> void {
+    let x: int = (a + b) * c
+}
+---
+ok
+---
+
+=== chained field access
+fn Main() -> void {
+    let x: int = a.b.c
+}
+---
+ok
+---
+
+=== chained method calls
+fn Main() -> void {
+    Process(items[0].value)
+}
+---
+ok
+---
+
+=== self in expression
+struct Span {
+    start: int
+    end: int
+
+    fn Len(self) -> int {
+        return self.end - self.start
+    }
+}
+---
+ok
+---
+
+=== enum value
+fn Main() -> void {
+    let k: TokenKind = TokenKind.Ident
+}
+---
+ok
+---
+
+=== complex nested expression
+fn Main() -> void {
+    let x: int = (a + b) * (c - d) / e % f
+}
+---
+ok
+---
+
+=== operator precedence
+fn Main() -> void {
+    let x: int = a + b * c
+    let y: bool = a < b && c > d || e == f
+}
+---
+ok
+---
+
+=== empty braces error
+fn Main() -> void {
+    let x: int = {}
+}
+---
+error:
+---

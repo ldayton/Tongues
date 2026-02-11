@@ -14,7 +14,7 @@ Error handling:
 
 from __future__ import annotations
 
-from src.backend.util import replace_format_placeholders, to_snake
+from .util import replace_format_placeholders, to_snake
 
 
 def escape_string_c(value: str) -> str:
@@ -33,7 +33,7 @@ def escape_string_c(value: str) -> str:
     )
 
 
-from src.ir import (
+from ..ir import (
     BOOL,
     BYTE,
     FLOAT,
@@ -3748,10 +3748,6 @@ class CBackend:
         if isinstance(from_elem, InterfaceRef) and isinstance(to_elem, InterfaceRef):
             return from_elem.name != to_elem.name
         return False
-
-    def _is_lvalue(self, expr: Expr) -> bool:
-        """Check if expression is an lvalue (can take address of)."""
-        return isinstance(expr, (Var, FieldAccess, Index, DerefLV))
 
     def _get_rvalue_temp(
         self, struct_name: str, field_name: str

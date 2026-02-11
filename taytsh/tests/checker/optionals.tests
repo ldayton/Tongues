@@ -1,0 +1,285 @@
+=== valid: optional assignment
+fn Main() -> void {
+    let x: int? = nil
+    x = 42
+}
+---
+ok
+---
+
+=== valid: nil narrowing
+fn Main() -> void {
+    let x: int? = nil
+    if x != nil {
+        let y: int = x + 1
+    }
+}
+---
+ok
+---
+
+=== valid: unwrap
+fn Main() -> void {
+    let x: int? = 42
+    let y: int = Unwrap(x)
+    WritelnOut(ToString(y))
+}
+---
+ok
+---
+
+=== error: unwrap non-optional
+fn Main() -> void {
+    let x: int = 42
+    let y: int = Unwrap(x)
+}
+---
+error: Unwrap requires optional type
+---
+
+=== valid: optional from function
+fn Main() -> void {
+    let line: string? = ReadLine()
+    if line != nil {
+        WritelnOut(line)
+    }
+}
+---
+ok
+---
+
+=== valid: nil equality check
+fn Main() -> void {
+    let x: int? = nil
+    if x == nil {
+        WritelnOut("nil")
+    }
+}
+---
+ok
+---
+
+=== error: optional in arithmetic
+fn Main() -> void {
+    let x: int? = 42
+    let y: int = x + 1
+}
+---
+error: operator + not defined for int?
+---
+
+=== valid: optional zero value no initializer
+fn Main() -> void {
+    let x: int?
+    if x == nil {
+        WritelnOut("nil as expected")
+    }
+}
+---
+ok
+---
+
+=== valid: nil narrowing in else branch
+fn Main() -> void {
+    let x: int? = 42
+    if x == nil {
+        WritelnOut("nil")
+    } else {
+        let y: int = x + 1
+        WritelnOut(ToString(y))
+    }
+}
+---
+ok
+---
+
+=== error: assign non-matching type to optional
+fn Main() -> void {
+    let x: int? = "hello"
+}
+---
+error: cannot assign string to int?
+---
+
+=== valid: optional struct
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo? = nil
+    if f != nil {
+        WritelnOut(ToString(f.x))
+    }
+}
+---
+ok
+---
+
+=== valid: optional list
+fn Main() -> void {
+    let xs: list[int]? = nil
+    if xs != nil {
+        WritelnOut(ToString(Len(xs)))
+    }
+}
+---
+ok
+---
+
+=== error: assign nil to non-optional
+fn Main() -> void {
+    let x: int = nil
+}
+---
+error: cannot assign nil to int
+---
+
+=== valid: optional return type
+fn MaybeDouble(x: int, doit: bool) -> int? {
+    if doit {
+        return x * 2
+    }
+    return nil
+}
+fn Main() -> void {
+    let r: int? = MaybeDouble(5, true)
+    if r != nil {
+        WritelnOut(ToString(r))
+    }
+}
+---
+ok
+---
+
+=== valid: optional enum
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color? = nil
+    if c != nil {
+        match c {
+            case Color.Red {
+                WritelnOut("red")
+            }
+            default {
+                WritelnOut("other")
+            }
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: optional interface
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node? = nil
+    if n != nil {
+        match n {
+            case l: Lit {
+                WritelnOut(ToString(l.value))
+            }
+            case b: Bin {
+                WritelnOut(b.op)
+            }
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: optional match on interface
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node? = Lit(1)
+    match n {
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+        case b: Bin {
+            WritelnOut(b.op)
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: Get on map with optional value type
+fn Main() -> void {
+    let m: map[string, int?] = Map()
+    let v: int? = Get(m, "key")
+}
+---
+ok
+---
+
+=== error: double optional type
+fn Main() -> void {
+    let x: int?? = nil
+}
+---
+error: double optional
+---
+
+=== valid: optional in collection
+fn Main() -> void {
+    let xs: list[int?] = [1, nil, 3]
+    let m: map[string, int?] = {"a": 1, "b": nil}
+}
+---
+ok
+---
+
+=== error: optional field access without narrowing
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo? = Foo(1)
+    let v: int = f.x
+}
+---
+error: cannot access field on optional
+---
+
+=== error: optional method call without narrowing
+struct Foo {
+    x: int
+
+    fn GetX(self) -> int {
+        return self.x
+    }
+}
+fn Main() -> void {
+    let f: Foo? = Foo(1)
+    let v: int = f.GetX()
+}
+---
+error: cannot access field on optional
+---
+
+=== error: optional indexing without narrowing
+fn Main() -> void {
+    let xs: list[int]? = [1, 2, 3]
+    let v: int = xs[0]
+}
+---
+error: cannot index optional
+---

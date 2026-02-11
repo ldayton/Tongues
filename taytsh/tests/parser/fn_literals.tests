@@ -1,0 +1,67 @@
+=== expression body fn literal
+fn Main() -> void {
+    let double: fn[int, int] = (x: int) -> int => x * 2
+}
+---
+ok
+---
+
+=== block body fn literal
+fn Main() -> void {
+    let greet: fn[string, void] = (name: string) -> void {
+        WritelnOut(name)
+    }
+}
+---
+ok
+---
+
+=== fn literal as argument
+fn Main() -> void {
+    let small: list[int] = Filter(numbers, (x: int) -> bool => x < 10)
+}
+---
+ok
+---
+
+=== multi-param fn literal
+fn Main() -> void {
+    let add: fn[int, int, int] = (a: int, b: int) -> int => a + b
+}
+---
+ok
+---
+
+=== zero-param fn literal
+fn Main() -> void {
+    let greet: fn[void] = () -> void {
+        WritelnOut("hello")
+    }
+}
+---
+ok
+---
+
+=== fn literal block with multiple stmts
+fn Main() -> void {
+    let process: fn[int, int] = (x: int) -> int {
+        let y: int = x * 2
+        return y + 1
+    }
+}
+---
+ok
+---
+
+=== nested fn literal in call
+fn Main() -> void {
+    Apply(xs, (x: int) -> int {
+        if x > 0 {
+            return x
+        }
+        return -x
+    })
+}
+---
+ok
+---

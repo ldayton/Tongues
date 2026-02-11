@@ -1,0 +1,457 @@
+=== valid: list operations
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let n: int = Len(xs)
+    let first: int = xs[0]
+    let mid: list[int] = xs[0:2]
+    Append(xs, 4)
+}
+---
+ok
+---
+
+=== valid: empty list with type context
+fn Main() -> void {
+    let xs: list[int] = []
+}
+---
+ok
+---
+
+=== error: empty list without context
+fn Main() -> void {
+    let xs: list[int] = []
+    let ys: list[int] = xs
+    WritelnOut(ToString(Len(ys)))
+}
+---
+ok
+---
+
+=== valid: map operations
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let n: int = Len(m)
+    let v: int = m["a"]
+    m["c"] = 3
+}
+---
+ok
+---
+
+=== valid: empty map with context
+fn Main() -> void {
+    let m: map[string, int] = Map()
+}
+---
+ok
+---
+
+=== valid: set operations
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    Add(s, 4)
+    let has: bool = Contains(s, 1)
+    let n: int = Len(s)
+}
+---
+ok
+---
+
+=== valid: tuple
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    let a: int = t.0
+    let b: string = t.1
+}
+---
+ok
+---
+
+=== error: tuple index out of range
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    let c: int = t.2
+}
+---
+error: tuple index 2 out of range
+---
+
+=== valid: tuple assignment
+fn Main() -> void {
+    let a: int = 0
+    let b: int = 0
+    a, b = DivMod(17, 5)
+}
+---
+ok
+---
+
+=== error: list element type mismatch
+fn Main() -> void {
+    let xs: list[int] = [1, "two", 3]
+}
+---
+error: list elements must have same type
+---
+
+=== valid: string indexing
+fn Main() -> void {
+    let s: string = "hello"
+    let ch: rune = s[0]
+    let sub: string = s[0:3]
+}
+---
+ok
+---
+
+=== valid: bytes indexing
+fn Main() -> void {
+    let b: bytes = b"\x00\x01\x02"
+    let first: byte = b[0]
+    let sub: bytes = b[0:2]
+}
+---
+ok
+---
+
+=== valid: map Get
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int? = Get(m, "a")
+    let w: int = Get(m, "a", 0)
+}
+---
+ok
+---
+
+=== error: index non-indexable
+fn Main() -> void {
+    let x: int = 42
+    let y: int = x[0]
+}
+---
+error: cannot index int
+---
+
+=== valid: list equality
+fn Main() -> void {
+    let a: list[int] = [1, 2, 3]
+    let b: list[int] = [1, 2, 3]
+    let eq: bool = a == b
+    let neq: bool = a != b
+}
+---
+ok
+---
+
+=== valid: map equality
+fn Main() -> void {
+    let a: map[string, int] = {"x": 1}
+    let b: map[string, int] = {"x": 1}
+    let eq: bool = a == b
+}
+---
+ok
+---
+
+=== valid: set equality
+fn Main() -> void {
+    let a: set[int] = {1, 2, 3}
+    let b: set[int] = {1, 2, 3}
+    let eq: bool = a == b
+}
+---
+ok
+---
+
+=== error: map literal value type mismatch
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": "two"}
+}
+---
+error: map values must have same type
+---
+
+=== error: set literal mixed types
+fn Main() -> void {
+    let s: set[int] = {1, "two", 3}
+}
+---
+error: set elements must have same type
+---
+
+=== valid: Merge
+fn Main() -> void {
+    let a: map[string, int] = {"x": 1}
+    let b: map[string, int] = {"y": 2}
+    let c: map[string, int] = Merge(a, b)
+}
+---
+ok
+---
+
+=== valid: Items
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let pairs: list[(string, int)] = Items(m)
+}
+---
+ok
+---
+
+=== valid: list Repeat
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    let ys: list[int] = Repeat(xs, 3)
+}
+---
+ok
+---
+
+=== valid: struct equality
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let a: Point = Point(1, 2)
+    let b: Point = Point(1, 2)
+    let eq: bool = a == b
+}
+---
+ok
+---
+
+=== error: map key type mismatch
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int = m[42]
+}
+---
+error: cannot use int as string
+---
+
+=== error: tuple type mismatch
+fn Main() -> void {
+    let t: (int, string) = (1, 2)
+}
+---
+error: cannot assign int to string
+---
+
+=== error: tuple assignment wrong count
+fn Main() -> void {
+    let a: int = 0
+    let b: int = 0
+    let c: int = 0
+    a, b, c = DivMod(17, 5)
+}
+---
+error: tuple has 2 elements, got 3
+---
+
+=== valid: list index assignment
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] = 99
+}
+---
+ok
+---
+
+=== error: list index non-int
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let v: int = xs["hello"]
+}
+---
+error: index must be int
+---
+
+=== error: slice index non-int
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let sub: list[int] = xs["a":"b"]
+}
+---
+error: index must be int
+---
+
+=== error: map literal mixed key types
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, 2: 3}
+}
+---
+error: map keys must have same type
+---
+
+=== valid: nested generic types
+fn Main() -> void {
+    let xs: list[list[int]] = [[1, 2], [3, 4]]
+    let m: map[string, list[int]] = {"a": [1, 2]}
+}
+---
+ok
+---
+
+=== error: list index assignment type mismatch
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] = "hello"
+}
+---
+error: cannot assign string to int
+---
+
+=== error: non-hashable map key
+fn Main() -> void {
+    let m: map[list[int], string] = Map()
+}
+---
+error: not hashable
+---
+
+=== error: non-hashable set element
+fn Main() -> void {
+    let s: set[list[int]] = Set()
+}
+---
+error: not hashable
+---
+
+=== error: struct as map key
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let m: map[Foo, string] = Map()
+}
+---
+error: not hashable
+---
+
+=== error: map as set element
+fn Main() -> void {
+    let s: set[map[string, int]] = Set()
+}
+---
+error: not hashable
+---
+
+=== error: map index assignment type mismatch
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    m["b"] = "hello"
+}
+---
+error: cannot assign string to int
+---
+
+=== error: string index with non-int
+fn Main() -> void {
+    let s: string = "hello"
+    let ch: rune = s["x"]
+}
+---
+error: index must be int
+---
+
+=== error: bytes index with non-int
+fn Main() -> void {
+    let b: bytes = b"\x01\x02"
+    let v: byte = b["x"]
+}
+---
+error: index must be int
+---
+
+=== error: slice on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let s: map[string, int] = m[0:1]
+}
+---
+error: cannot slice map
+---
+
+=== valid: tuple of hashable types as map key
+fn Main() -> void {
+    let m: map[(int, string), bool] = Map()
+    m[(1, "a")] = true
+}
+---
+ok
+---
+
+=== error: tuple of non-hashable types as map key
+fn Main() -> void {
+    let m: map[(int, list[int]), string] = Map()
+}
+---
+error: not hashable
+---
+
+=== error: tuple element assignment
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    t.0 = 2
+}
+---
+error: tuple elements are immutable
+---
+
+=== error: string index assignment
+fn Main() -> void {
+    let s: string = "hello"
+    s[0] = 'x'
+}
+---
+error: cannot assign to string index
+---
+
+=== error: bytes index assignment
+fn Main() -> void {
+    let b: bytes = b"\x01\x02\x03"
+    b[0] = 0xff
+}
+---
+error: cannot assign to bytes index
+---
+
+=== error: slice on set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    let sub: set[int] = s[0:1]
+}
+---
+error: cannot slice set
+---
+
+=== valid: Len on bytes
+fn Main() -> void {
+    let b: bytes = b"\x01\x02\x03"
+    let n: int = Len(b)
+}
+---
+ok
+---
+
+=== valid: nested list of lists
+fn Main() -> void {
+    let xs: list[list[int]] = [[1, 2], [3, 4]]
+    let first: list[int] = xs[0]
+    let sub: list[list[int]] = xs[0:1]
+}
+---
+ok
+---
+
+=== error: map key assignment type mismatch
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    m[42] = 2
+}
+---
+error: cannot use int as string
+---

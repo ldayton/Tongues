@@ -155,7 +155,6 @@ BANNED_BUILTINS: set[str] = {
     "next",
     "map",
     "filter",
-    "open",
     "input",
     "breakpoint",
     "help",
@@ -176,7 +175,6 @@ BANNED_NODES: set[str] = {
     "AsyncFor",
     "AsyncWith",
     "Await",
-    "With",
     "Lambda",
     "Global",
     "Nonlocal",
@@ -390,6 +388,7 @@ class Verifier:
         self.in_eager_consumer: bool = False
         self.in_for_iter: bool = False
         self.in_for_body: bool = False  # For structural recursion (yield allowed)
+        self.in_file_open: bool = False  # Inside validated with-open block
         # Variables guarded by `if var:` condition (for tuple unpacking)
         self.guarded_vars: set[str] = set()
 
@@ -468,6 +467,8 @@ class Verifier:
             self.visit_Yield(node)
         elif node_type == "YieldFrom":
             self.visit_YieldFrom(node)
+        elif node_type == "With":
+            self.visit_With(node)
         elif node_type == "Match":
             pass
         else:
@@ -830,6 +831,9 @@ class Verifier:
         # Check banned builtins
         if func_name is not None and func_name in BANNED_BUILTINS:
             self.error(node, "builtin", func_name + "() is not allowed")
+        # open() only allowed inside validated with-open
+        if func_name == "open" and not self.in_file_open:
+            self.error(node, "builtin", "open() only allowed in with-open idiom")
         # Check enumerate/zip only allowed in for-loop iter or eager consumer
         if (
             func_name in ("enumerate", "zip")
@@ -1035,6 +1039,79 @@ class Verifier:
         value = node.get("value")
         if value is not None:
             self.visit(value)
+
+    def _is_valid_file_open(self, node: ASTNode) -> bool:
+        """Check if a With node is the allowed with-open file I/O idiom."""
+        items = node.get("items", [])
+        if len(items) != 1:
+            return False
+        item = items[0]
+        ctx_expr = item.get("context_expr", {})
+        opt_vars = item.get("optional_vars")
+        if get_name_id(ctx_expr.get("func", {})) != "open":
+            return False
+        if opt_vars is None or get_name_id(opt_vars) is None:
+            return False
+        handle = get_name_id(opt_vars)
+        args = ctx_expr.get("args", [])
+        if len(args) != 2:
+            return False
+        mode_node = args[1]
+        if mode_node.get("_type") != "Constant":
+            return False
+        mode = mode_node.get("value")
+        if mode not in ("rb", "w", "wb"):
+            return False
+        body = node.get("body", [])
+        if len(body) != 1:
+            return False
+        stmt = body[0]
+        if mode == "rb":
+            if stmt.get("_type") != "Assign":
+                return False
+            val = stmt.get("value", {})
+            if val.get("_type") != "Call":
+                return False
+            func = val.get("func", {})
+            if func.get("_type") != "Attribute" or func.get("attr") != "read":
+                return False
+            if get_name_id(func.get("value", {})) != handle:
+                return False
+            if len(val.get("args", [])) != 0:
+                return False
+        else:
+            if stmt.get("_type") != "Expr":
+                return False
+            call = stmt.get("value", {})
+            if call.get("_type") != "Call":
+                return False
+            func = call.get("func", {})
+            if func.get("_type") != "Attribute" or func.get("attr") != "write":
+                return False
+            if get_name_id(func.get("value", {})) != handle:
+                return False
+            if len(call.get("args", [])) != 1:
+                return False
+        return True
+
+    def visit_With(self, node: ASTNode) -> None:
+        """Only allow with-open file I/O idiom; reject all other with statements."""
+        if not self._is_valid_file_open(node):
+            self.error(
+                node, "with", "with statement: only with-open file I/O is allowed"
+            )
+            return
+        old = self.in_file_open
+        self.in_file_open = True
+        items = node.get("items", [])
+        ctx_expr = items[0].get("context_expr", {})
+        self.visit(ctx_expr)
+        body = node.get("body", [])
+        i = 0
+        while i < len(body):
+            self.visit(body[i])
+            i += 1
+        self.in_file_open = old
 
     def visit_For(self, node: ASTNode) -> None:
         """Check for loop constraints."""

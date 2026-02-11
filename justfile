@@ -4,15 +4,16 @@ set shell := ["bash", "-o", "pipefail", "-cu"]
 subset:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd tongues
     failed=0
-    for f in $(find src -name '*.py'); do
-        [ ! -s "$f" ] && continue
-        if ! uv run python -m src.tongues --stop-at subset < "$f" 2>/dev/null; then
-            echo "FAIL: $f"
-            uv run python -m src.tongues --stop-at subset < "$f" 2>&1 | head -5
-            failed=1
-        fi
+    for dir in tongues/src taytsh/src; do
+        for f in $(find "$dir" -name '*.py'); do
+            [ ! -s "$f" ] && continue
+            if ! uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>/dev/null; then
+                echo "FAIL: $f"
+                uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>&1 | head -5
+                failed=1
+            fi
+        done
     done
     exit $failed
 
@@ -56,20 +57,34 @@ test-codegen-local:
 test-apptests-local lang="":
     uv run --directory tongues pytest tests/test_runner.py -k test_apptest {{ if lang != "" { "--target " + lang } else { "" } }} -v
 
-# Lint (--fix to apply changes)
+# Run taytsh tests locally
+test-taytsh-local:
+    uv run --directory taytsh pytest tests/test_runner.py -v
+
+# Lint tongues (--fix to apply changes)
 lint *ARGS:
     uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
 
-# Format (--fix to apply changes)
+# Lint taytsh (--fix to apply changes)
+lint-taytsh *ARGS:
+    uv run --directory taytsh ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
+
+# Format tongues (--fix to apply changes)
 fmt *ARGS:
     uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
+
+# Format taytsh (--fix to apply changes)
+fmt-taytsh *ARGS:
+    uv run --directory taytsh ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
 
 check:
     #!/usr/bin/env bash
     declare -A results
     failed=0
     just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
+    just fmt-taytsh && results[fmt-taytsh]=✅ || { results[fmt-taytsh]=❌; failed=1; }
     just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
+    just lint-taytsh && results[lint-taytsh]=✅ || { results[lint-taytsh]=❌; failed=1; }
     just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
     just test-cli && results[cli]=✅ || { results[cli]=❌; failed=1; }
     just test-parse && results[parse]=✅ || { results[parse]=❌; failed=1; }
@@ -80,6 +95,7 @@ check:
     just test-hierarchy && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
     just test-typecheck && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-codegen && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-taytsh && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
     done
@@ -89,7 +105,7 @@ check:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in fmt lint subset cli parse subset-tests names signatures fields hierarchy typecheck codegen; do
+    for t in fmt fmt-taytsh lint lint-taytsh subset cli parse subset-tests names signatures fields hierarchy typecheck codegen taytsh; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -165,6 +181,12 @@ test-apptests lang:
     docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
         uv run --directory tongues pytest tests/test_runner.py -k test_apptest --target {{lang}} -v
 
+# Run taytsh tests in Docker
+test-taytsh:
+    docker build -t tongues-python docker/python
+    docker run --rm -v "$(pwd):/workspace" tongues-python \
+        uv run --directory taytsh pytest tests/test_runner.py -v
+
 # Check if formatters are installed
 formatters:
     #!/usr/bin/env bash
@@ -234,7 +256,7 @@ versions:
     exit $failed
 
 # Run all tests in Docker
-test: test-codegen \
+test: test-codegen test-taytsh \
     (test-apptests "c") \
     (test-apptests "csharp") \
     (test-apptests "dart") \
@@ -266,6 +288,7 @@ test-local:
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
     just test-typecheck-local && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
     done
@@ -275,7 +298,7 @@ test-local:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy typecheck codegen; do
+    for t in versions cli parse subset names signatures fields hierarchy typecheck codegen taytsh; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -294,7 +317,9 @@ check-local:
     failed=0
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
     just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
+    just fmt-taytsh && results[fmt-taytsh]=✅ || { results[fmt-taytsh]=❌; failed=1; }
     just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
+    just lint-taytsh && results[lint-taytsh]=✅ || { results[lint-taytsh]=❌; failed=1; }
     just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
     just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
     just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
@@ -305,6 +330,7 @@ check-local:
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
     just test-typecheck-local && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
         just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
     done
@@ -314,7 +340,7 @@ check-local:
     echo "══════════════════════════════════════"
     printf "%-12s %s\n" "TARGET" "STATUS"
     printf "%-12s %s\n" "──────" "──────"
-    for t in versions fmt lint subset cli parse subset-tests names signatures fields hierarchy typecheck codegen; do
+    for t in versions fmt fmt-taytsh lint lint-taytsh subset cli parse subset-tests names signatures fields hierarchy typecheck codegen taytsh; do
         printf "%-12s %s\n" "$t" "${results[$t]}"
     done
     echo "──────────── ──────"
@@ -325,3 +351,18 @@ check-local:
     if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
     echo "══════════════════════════════════════"
     exit $failed
+
+# Install VS Code syntax highlighting extension for Taytsh
+vscode:
+    #!/usr/bin/env bash
+    cd editors/vscode
+    rm -f taytsh-syntax-*.vsix
+    npx @vscode/vsce package --allow-missing-repository
+    shopt -s nullglob
+    vsix=(taytsh-syntax-*.vsix)
+    if [ ${#vsix[@]} -ne 1 ]; then
+        echo "expected exactly one VSIX, found ${#vsix[@]}"
+        ls -la
+        exit 1
+    fi
+    code --install-extension "${vsix[0]}"

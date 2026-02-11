@@ -10,8 +10,8 @@ Key differences from other backends:
 
 from __future__ import annotations
 
-from src.backend.util import to_snake, to_screaming_snake
-from src.ir import (
+from .util import to_snake, to_screaming_snake
+from ..ir import (
     BOOL,
     INT,
     Array,

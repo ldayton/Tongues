@@ -347,8 +347,8 @@ ok
 ---
 
 === with statement not allowed
-def f() -> None:
-    with open("file.txt") as f:
+def f(x: object) -> None:
+    with x as y:
         pass
 ---
 error: with

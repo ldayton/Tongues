@@ -1,0 +1,539 @@
+-- if
+fn TestIf() -> void {
+    let x: int = 5
+    let result: string = ""
+    if x > 0 {
+        result = "positive"
+    }
+    Assert(result == "positive")
+}
+
+-- if/else
+fn TestIfElse() -> void {
+    let x: int = -1
+    let result: string = ""
+    if x > 0 {
+        result = "positive"
+    } else {
+        result = "non-positive"
+    }
+    Assert(result == "non-positive")
+}
+
+-- if/else if/else chain
+fn Classify(x: int) -> string {
+    if x > 0 {
+        return "positive"
+    } else if x == 0 {
+        return "zero"
+    } else {
+        return "negative"
+    }
+}
+
+fn TestIfElseIfElse() -> void {
+    Assert(Classify(5) == "positive")
+    Assert(Classify(0) == "zero")
+    Assert(Classify(-3) == "negative")
+}
+
+-- long else-if chain
+fn Grade(score: int) -> string {
+    if score >= 90 {
+        return "A"
+    } else if score >= 80 {
+        return "B"
+    } else if score >= 70 {
+        return "C"
+    } else if score >= 60 {
+        return "D"
+    } else {
+        return "F"
+    }
+}
+
+fn TestLongElseIfChain() -> void {
+    Assert(Grade(95) == "A")
+    Assert(Grade(85) == "B")
+    Assert(Grade(75) == "C")
+    Assert(Grade(65) == "D")
+    Assert(Grade(50) == "F")
+}
+
+-- nested if
+fn TestNestedIf() -> void {
+    let x: int = 5
+    let y: int = 10
+    let result: string = ""
+    if x > 0 {
+        if y > 0 {
+            result = "both positive"
+        } else {
+            result = "x positive, y not"
+        }
+    }
+    Assert(result == "both positive")
+}
+
+-- while loop
+fn TestWhile() -> void {
+    let n: int = 100
+    let digits: int = 0
+    while n > 0 {
+        n = n / 10
+        digits += 1
+    }
+    Assert(digits == 3)
+}
+
+-- while loop that doesn't execute
+fn TestWhileNoExec() -> void {
+    let count: int = 0
+    while false {
+        count += 1
+    }
+    Assert(count == 0)
+}
+
+-- while with complex condition
+fn TestWhileComplex() -> void {
+    let i: int = 0
+    let sum: int = 0
+    while i < 10 && sum < 20 {
+        sum += i
+        i += 1
+    }
+    Assert(sum >= 20 || i >= 10)
+}
+
+-- for over list
+fn TestForList() -> void {
+    let xs: list[int] = [10, 20, 30]
+    let total: int = 0
+    for v in xs {
+        total += v
+    }
+    Assert(total == 60)
+}
+
+-- for over list with index
+fn TestForListIndex() -> void {
+    let xs: list[string] = ["a", "b", "c"]
+    let indices: list[int] = []
+    let values: list[string] = []
+    for i, v in xs {
+        Append(indices, i)
+        Append(values, v)
+    }
+    Assert(indices[0] == 0)
+    Assert(indices[2] == 2)
+    Assert(values[0] == "a")
+    Assert(values[2] == "c")
+}
+
+-- for with discard
+fn TestForDiscard() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2, "c": 3}
+    let total: int = 0
+    for _, v in m {
+        total += v
+    }
+    Assert(total == 6)
+}
+
+-- for over string
+fn TestForString() -> void {
+    let count: int = 0
+    for ch in "hello" {
+        count += 1
+    }
+    Assert(count == 5)
+}
+
+-- for over empty collection
+fn TestForEmpty() -> void {
+    let count: int = 0
+    let empty: list[int] = []
+    for v in empty {
+        count += 1
+    }
+    Assert(count == 0)
+}
+
+-- range(end)
+fn TestRangeEnd() -> void {
+    let total: int = 0
+    for i in range(5) {
+        total += i
+    }
+    Assert(total == 10)
+}
+
+-- range(start, end)
+fn TestRangeStartEnd() -> void {
+    let total: int = 0
+    for i in range(2, 5) {
+        total += i
+    }
+    Assert(total == 9)
+}
+
+-- range(start, end, step)
+fn TestRangeStep() -> void {
+    let vals: list[int] = []
+    for i in range(0, 10, 2) {
+        Append(vals, i)
+    }
+    Assert(Len(vals) == 5)
+    Assert(vals[0] == 0)
+    Assert(vals[1] == 2)
+    Assert(vals[4] == 8)
+}
+
+-- range with negative step
+fn TestRangeNegativeStep() -> void {
+    let vals: list[int] = []
+    for i in range(5, 0, -1) {
+        Append(vals, i)
+    }
+    Assert(Len(vals) == 5)
+    Assert(vals[0] == 5)
+    Assert(vals[4] == 1)
+}
+
+-- range that produces no iterations
+fn TestRangeEmpty() -> void {
+    let count: int = 0
+    for i in range(0) {
+        count += 1
+    }
+    Assert(count == 0)
+
+    count = 0
+    for i in range(5, 5) {
+        count += 1
+    }
+    Assert(count == 0)
+
+    count = 0
+    for i in range(0, 5, -1) {
+        count += 1
+    }
+    Assert(count == 0)
+}
+
+-- break exits innermost loop
+fn TestBreak() -> void {
+    let count: int = 0
+    for i in range(100) {
+        if i == 5 {
+            break
+        }
+        count += 1
+    }
+    Assert(count == 5)
+}
+
+-- break in while
+fn TestBreakWhile() -> void {
+    let n: int = 0
+    while true {
+        n += 1
+        if n == 10 {
+            break
+        }
+    }
+    Assert(n == 10)
+}
+
+-- break exits only innermost loop
+fn TestBreakNested() -> void {
+    let outerCount: int = 0
+    for i in range(3) {
+        outerCount += 1
+        for j in range(100) {
+            if j == 2 {
+                break
+            }
+        }
+    }
+    Assert(outerCount == 3)
+}
+
+-- continue skips to next iteration
+fn TestContinue() -> void {
+    let total: int = 0
+    for i in range(10) {
+        if i % 2 == 0 {
+            continue
+        }
+        total += i
+    }
+    Assert(total == 25)
+}
+
+-- continue in while
+fn TestContinueWhile() -> void {
+    let i: int = 0
+    let total: int = 0
+    while i < 10 {
+        i += 1
+        if i % 3 == 0 {
+            continue
+        }
+        total += i
+    }
+    Assert(total == 37)
+}
+
+-- try/catch basic
+fn TestTryCatch() -> void {
+    let caught: bool = false
+    try {
+        throw ValueError("test")
+    } catch e: ValueError {
+        caught = true
+        Assert(e.message == "test")
+    }
+    Assert(caught)
+}
+
+-- throw string
+fn TestThrowString() -> void {
+    let caught: bool = false
+    let msg: string = ""
+    try {
+        throw "oops"
+    } catch e: string {
+        caught = true
+        msg = e
+    }
+    Assert(caught)
+    Assert(msg == "oops")
+}
+
+-- throw int
+fn TestThrowInt() -> void {
+    let caught: bool = false
+    let val: int = 0
+    try {
+        throw 42
+    } catch e: int {
+        caught = true
+        val = e
+    }
+    Assert(caught)
+    Assert(val == 42)
+}
+
+-- multiple catch clauses
+fn TestMultipleCatch() -> void {
+    let which: string = ""
+    try {
+        let m: map[string, int] = Map()
+        let v: int = m["missing"]
+    } catch e: ValueError {
+        which = "value"
+    } catch e: KeyError {
+        which = "key"
+    }
+    Assert(which == "key")
+}
+
+-- catch with union type
+fn TestCatchUnion() -> void {
+    let caught: bool = false
+    try {
+        throw ValueError("bad")
+    } catch e: ValueError | KeyError {
+        caught = true
+    }
+    Assert(caught)
+}
+
+-- catch obj (catch-all)
+fn TestCatchObj() -> void {
+    let caught: bool = false
+    try {
+        throw "anything"
+    } catch e: obj {
+        caught = true
+    }
+    Assert(caught)
+}
+
+-- unmatched exception propagates
+fn Thrower() -> void {
+    throw KeyError("nope")
+}
+
+fn TestExceptionPropagation() -> void {
+    let caught: bool = false
+    try {
+        Thrower()
+    } catch e: KeyError {
+        caught = true
+    }
+    Assert(caught)
+}
+
+-- finally runs on normal exit
+fn TestFinallyNormal() -> void {
+    let finallyRan: bool = false
+    try {
+        let x: int = 1
+    } finally {
+        finallyRan = true
+    }
+    Assert(finallyRan)
+}
+
+-- finally runs after catch
+fn TestFinallyAfterCatch() -> void {
+    let finallyRan: bool = false
+    let caught: bool = false
+    try {
+        throw ValueError("test")
+    } catch e: ValueError {
+        caught = true
+    } finally {
+        finallyRan = true
+    }
+    Assert(caught)
+    Assert(finallyRan)
+}
+
+-- finally runs even when no catch matches (re-catch outer)
+fn TestFinallyOnPropagate() -> void {
+    let finallyRan: bool = false
+    let outerCaught: bool = false
+    try {
+        try {
+            throw ValueError("test")
+        } catch e: KeyError {
+            Assert(false, "wrong catch")
+        } finally {
+            finallyRan = true
+        }
+    } catch e: ValueError {
+        outerCaught = true
+    }
+    Assert(finallyRan)
+    Assert(outerCaught)
+}
+
+-- finally only (no catch)
+fn TestFinallyOnly() -> void {
+    let finallyRan: bool = false
+    let outerCaught: bool = false
+    try {
+        try {
+            throw ValueError("test")
+        } finally {
+            finallyRan = true
+        }
+    } catch e: ValueError {
+        outerCaught = true
+    }
+    Assert(finallyRan)
+    Assert(outerCaught)
+}
+
+-- nested try/catch
+fn TestNestedTryCatch() -> void {
+    let inner: bool = false
+    let outer: bool = false
+    try {
+        try {
+            throw KeyError("inner")
+        } catch e: KeyError {
+            inner = true
+            throw ValueError("outer")
+        }
+    } catch e: ValueError {
+        outer = true
+    }
+    Assert(inner)
+    Assert(outer)
+}
+
+-- Assert with message
+fn TestAssertWithMessage() -> void {
+    let caught: bool = false
+    try {
+        Assert(false, "custom message")
+    } catch e: AssertError {
+        caught = true
+        Assert(e.message == "custom message")
+    }
+    Assert(caught)
+}
+
+-- Assert without message
+fn TestAssertWithoutMessage() -> void {
+    let caught: bool = false
+    try {
+        Assert(false)
+    } catch e: AssertError {
+        caught = true
+    }
+    Assert(caught)
+}
+
+-- return from inside try body
+fn TryReturn(x: int) -> int {
+    try {
+        if x < 0 {
+            throw ValueError("negative")
+        }
+        return x * 2
+    } catch e: ValueError {
+        return -1
+    }
+}
+
+fn TestReturnFromTry() -> void {
+    Assert(TryReturn(5) == 10)
+    Assert(TryReturn(-1) == -1)
+}
+
+fn Main() -> void {
+    TestIf()
+    TestIfElse()
+    TestIfElseIfElse()
+    TestLongElseIfChain()
+    TestNestedIf()
+    TestWhile()
+    TestWhileNoExec()
+    TestWhileComplex()
+    TestForList()
+    TestForListIndex()
+    TestForDiscard()
+    TestForString()
+    TestForEmpty()
+    TestRangeEnd()
+    TestRangeStartEnd()
+    TestRangeStep()
+    TestRangeNegativeStep()
+    TestRangeEmpty()
+    TestBreak()
+    TestBreakWhile()
+    TestBreakNested()
+    TestContinue()
+    TestContinueWhile()
+    TestTryCatch()
+    TestThrowString()
+    TestThrowInt()
+    TestMultipleCatch()
+    TestCatchUnion()
+    TestCatchObj()
+    TestExceptionPropagation()
+    TestFinallyNormal()
+    TestFinallyAfterCatch()
+    TestFinallyOnPropagate()
+    TestFinallyOnly()
+    TestNestedTryCatch()
+    TestAssertWithMessage()
+    TestAssertWithoutMessage()
+    TestReturnFromTry()
+}

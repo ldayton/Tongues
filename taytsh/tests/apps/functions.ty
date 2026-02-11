@@ -1,0 +1,298 @@
+-- basic function
+fn Double(x: int) -> int {
+    return x * 2
+}
+
+fn TestBasicFunction() -> void {
+    Assert(Double(5) == 10)
+    Assert(Double(0) == 0)
+    Assert(Double(-3) == -6)
+}
+
+-- void function
+fn Noop() -> void {
+    return
+}
+
+fn TestVoidFunction() -> void {
+    Noop()
+    Assert(true)
+}
+
+-- void function implicit return
+fn ImplicitReturn() -> void {
+    let x: int = 1
+}
+
+fn TestImplicitReturn() -> void {
+    ImplicitReturn()
+    Assert(true)
+}
+
+-- recursion
+fn Factorial(n: int) -> int {
+    if n <= 1 {
+        return 1
+    }
+    return n * Factorial(n - 1)
+}
+
+fn TestRecursion() -> void {
+    Assert(Factorial(0) == 1)
+    Assert(Factorial(1) == 1)
+    Assert(Factorial(5) == 120)
+    Assert(Factorial(10) == 3628800)
+}
+
+-- mutual recursion
+fn IsEvenRec(n: int) -> bool {
+    if n == 0 {
+        return true
+    }
+    return IsOddRec(n - 1)
+}
+
+fn IsOddRec(n: int) -> bool {
+    if n == 0 {
+        return false
+    }
+    return IsEvenRec(n - 1)
+}
+
+fn TestMutualRecursion() -> void {
+    Assert(IsEvenRec(0))
+    Assert(!IsOddRec(0))
+    Assert(!IsEvenRec(1))
+    Assert(IsOddRec(1))
+    Assert(IsEvenRec(10))
+    Assert(IsOddRec(11))
+}
+
+-- multiple parameters
+fn Gcd(a: int, b: int) -> int {
+    while b != 0 {
+        let t: int = b
+        b = a % b
+        a = t
+    }
+    return a
+}
+
+fn TestMultipleParams() -> void {
+    Assert(Gcd(12, 8) == 4)
+    Assert(Gcd(7, 3) == 1)
+    Assert(Gcd(100, 100) == 100)
+}
+
+-- function as value (named function reference)
+fn IsEven(x: int) -> bool {
+    return x % 2 == 0
+}
+
+fn IsPositive(x: int) -> bool {
+    return x > 0
+}
+
+fn TestFunctionAsValue() -> void {
+    let f: fn[int, bool] = IsEven
+    Assert(f(4))
+    Assert(!f(3))
+    f = IsPositive
+    Assert(f(1))
+    Assert(!f(-1))
+}
+
+-- function value called with () syntax
+fn Square(x: int) -> int {
+    return x * x
+}
+
+fn TestFunctionValueCall() -> void {
+    let f: fn[int, int] = Square
+    Assert(f(5) == 25)
+    Assert(f(0) == 0)
+}
+
+-- void function as value
+fn DoNothing() -> void {
+}
+
+fn TestVoidFunctionValue() -> void {
+    let f: fn[void] = DoNothing
+    f()
+    Assert(true)
+}
+
+-- higher-order function: map
+fn Apply(xs: list[int], f: fn[int, int]) -> list[int] {
+    let result: list[int]
+    for x in xs {
+        Append(result, f(x))
+    }
+    return result
+}
+
+fn TestHigherOrderMap() -> void {
+    let xs: list[int] = [1, 2, 3, 4]
+    let doubled: list[int] = Apply(xs, Double)
+    Assert(Len(doubled) == 4)
+    Assert(doubled[0] == 2)
+    Assert(doubled[1] == 4)
+    Assert(doubled[2] == 6)
+    Assert(doubled[3] == 8)
+}
+
+-- higher-order function: filter
+fn Filter(xs: list[int], f: fn[int, bool]) -> list[int] {
+    let result: list[int]
+    for x in xs {
+        if f(x) {
+            Append(result, x)
+        }
+    }
+    return result
+}
+
+fn TestHigherOrderFilter() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5, 6]
+    let evens: list[int] = Filter(xs, IsEven)
+    Assert(Len(evens) == 3)
+    Assert(evens[0] == 2)
+    Assert(evens[1] == 4)
+    Assert(evens[2] == 6)
+}
+
+-- higher-order function: reduce
+fn Reduce(xs: list[int], init: int, f: fn[int, int, int]) -> int {
+    let acc: int = init
+    for x in xs {
+        acc = f(acc, x)
+    }
+    return acc
+}
+
+fn AddInts(a: int, b: int) -> int {
+    return a + b
+}
+
+fn MulInts(a: int, b: int) -> int {
+    return a * b
+}
+
+fn TestHigherOrderReduce() -> void {
+    let xs: list[int] = [1, 2, 3, 4]
+    Assert(Reduce(xs, 0, AddInts) == 10)
+    Assert(Reduce(xs, 1, MulInts) == 24)
+    Assert(Reduce([], 0, AddInts) == 0)
+}
+
+-- function literal: block body
+fn TestFnLiteralBlock() -> void {
+    let dbl: fn[int, int] = (x: int) -> int { return x * 2 }
+    Assert(dbl(5) == 10)
+    Assert(dbl(0) == 0)
+}
+
+-- function literal: expression body
+fn TestFnLiteralExpr() -> void {
+    let neg: fn[int, int] = (x: int) -> int => -x
+    Assert(neg(5) == -5)
+    Assert(neg(-3) == 3)
+    Assert(neg(0) == 0)
+}
+
+-- function literal passed directly to higher-order function
+fn TestFnLiteralInline() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let small: list[int] = Filter(xs, (x: int) -> bool => x < 4)
+    Assert(Len(small) == 3)
+    Assert(small[0] == 1)
+    Assert(small[2] == 3)
+}
+
+-- function literal with multiple params
+fn TestFnLiteralMultiParam() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let sum: int = Reduce(xs, 0, (a: int, b: int) -> int => a + b)
+    Assert(sum == 6)
+}
+
+-- function literal: block body with multiple statements
+fn TestFnLiteralBlockMulti() -> void {
+    let compute: fn[int, int] = (x: int) -> int {
+        let doubled: int = x * 2
+        let incremented: int = doubled + 1
+        return incremented
+    }
+    Assert(compute(5) == 11)
+    Assert(compute(0) == 1)
+}
+
+-- function returning function
+fn MakeAdder(n: int) -> fn[int, int] {
+    -- can't close over n, so return a known function
+    if n == 1 {
+        return Increment
+    }
+    return Double
+}
+
+fn Increment(x: int) -> int {
+    return x + 1
+}
+
+fn TestFunctionReturningFunction() -> void {
+    let f: fn[int, int] = MakeAdder(1)
+    Assert(f(5) == 6)
+    let g: fn[int, int] = MakeAdder(0)
+    Assert(g(5) == 10)
+}
+
+-- function in a list
+fn TestFunctionInList() -> void {
+    let fns: list[fn[int, int]] = [Double, Square, Increment]
+    Assert(fns[0](3) == 6)
+    Assert(fns[1](3) == 9)
+    Assert(fns[2](3) == 4)
+}
+
+-- function in a map
+fn TestFunctionInMap() -> void {
+    let ops: map[string, fn[int, int]] = {"double": Double, "square": Square}
+    Assert(ops["double"](4) == 8)
+    Assert(ops["square"](4) == 16)
+}
+
+-- chaining higher-order calls
+fn TestChainedHigherOrder() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    let result: list[int] = Apply(Filter(xs, IsEven), Double)
+    Assert(Len(result) == 5)
+    Assert(result[0] == 4)
+    Assert(result[1] == 8)
+    Assert(result[4] == 20)
+}
+
+fn Main() -> void {
+    TestBasicFunction()
+    TestVoidFunction()
+    TestImplicitReturn()
+    TestRecursion()
+    TestMutualRecursion()
+    TestMultipleParams()
+    TestFunctionAsValue()
+    TestFunctionValueCall()
+    TestVoidFunctionValue()
+    TestHigherOrderMap()
+    TestHigherOrderFilter()
+    TestHigherOrderReduce()
+    TestFnLiteralBlock()
+    TestFnLiteralExpr()
+    TestFnLiteralInline()
+    TestFnLiteralMultiParam()
+    TestFnLiteralBlockMulti()
+    TestFunctionReturningFunction()
+    TestFunctionInList()
+    TestFunctionInMap()
+    TestChainedHigherOrder()
+}

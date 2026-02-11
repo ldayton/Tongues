@@ -1,0 +1,63 @@
+=== no pragmas
+fn Main() -> void {}
+---
+strict_math = false
+strict_tostring = false
+---
+
+=== pragma strict-math
+-- pragma strict-math
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = false
+---
+
+=== pragma strict-tostring
+-- pragma strict-tostring
+fn Main() -> void {}
+---
+strict_math = false
+strict_tostring = true
+---
+
+=== both pragmas
+-- pragma strict-math
+-- pragma strict-tostring
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = true
+---
+
+=== pragmas order independent
+-- pragma strict-tostring
+-- pragma strict-math
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = true
+---
+
+=== pragma with blank lines
+-- pragma strict-math
+
+fn Main() -> void {}
+---
+strict_math = true
+---
+
+=== pragma after decl ignored
+fn Main() -> void {}
+-- pragma strict-math
+---
+strict_math = false
+---
+
+=== regular comment not pragma
+-- this is a comment
+fn Main() -> void {}
+---
+strict_math = false
+strict_tostring = false
+---

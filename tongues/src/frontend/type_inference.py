@@ -200,19 +200,20 @@ def py_type_to_ir(
     if py_type == "set":
         return Set(InterfaceRef("any"))
 
-    # Shorthand for recursive calls
-    def _recurse(t: str) -> Type:
-        return py_type_to_ir(
-            t, symbols, node_types, concrete_nodes, hierarchy_root, strict
-        )
-
     # Handle X | None -> Optional[base type]
     if " | " in py_type:
         parts = split_union_types(py_type)
         if len(parts) > 1:
             parts = [p for p in parts if p != "None"]
             if len(parts) == 1:
-                inner = _recurse(parts[0])
+                inner = py_type_to_ir(
+                    parts[0],
+                    symbols,
+                    node_types,
+                    concrete_nodes,
+                    hierarchy_root,
+                    strict,
+                )
                 # For Node | None when not using concrete types, use Node interface (nilable)
                 if not concrete_nodes and (
                     (hierarchy_root and parts[0] == hierarchy_root)
@@ -244,7 +245,9 @@ def py_type_to_ir(
         parts = split_type_args(inner)
         if len(parts) != 1:
             raise TypeError(f"list requires 1 type argument, got {len(parts)}")
-        inner_type = _recurse(parts[0])
+        inner_type = py_type_to_ir(
+            parts[0], symbols, node_types, concrete_nodes, hierarchy_root, strict
+        )
         # Auto-wrap struct refs in Pointer for slice elements (Go slices need pointers for mutability)
         # InterfaceRef stays unwrapped (interfaces are already reference types)
         if isinstance(inner_type, StructRef):
@@ -256,22 +259,41 @@ def py_type_to_ir(
         parts = split_type_args(inner)
         if len(parts) != 2:
             raise TypeError(f"dict requires 2 type arguments, got {len(parts)}")
-        return Map(_recurse(parts[0]), _recurse(parts[1]))
+        return Map(
+            py_type_to_ir(
+                parts[0], symbols, node_types, concrete_nodes, hierarchy_root, strict
+            ),
+            py_type_to_ir(
+                parts[1], symbols, node_types, concrete_nodes, hierarchy_root, strict
+            ),
+        )
     # Handle set[X]
     if py_type.startswith("set["):
         inner = py_type[4:-1]
         parts = split_type_args(inner)
         if len(parts) != 1:
             raise TypeError(f"set requires 1 type argument, got {len(parts)}")
-        return Set(_recurse(parts[0]))
+        return Set(
+            py_type_to_ir(
+                parts[0], symbols, node_types, concrete_nodes, hierarchy_root, strict
+            )
+        )
     # Handle frozenset[X]
     if py_type.startswith("frozenset["):
         inner = py_type[10:-1]
-        return Set(_recurse(inner))
+        return Set(
+            py_type_to_ir(
+                inner, symbols, node_types, concrete_nodes, hierarchy_root, strict
+            )
+        )
     # Handle Optional[T] from typing
     if py_type.startswith("Optional["):
         inner = py_type[9:-1]
-        return Optional(_recurse(inner))
+        return Optional(
+            py_type_to_ir(
+                inner, symbols, node_types, concrete_nodes, hierarchy_root, strict
+            )
+        )
     # Handle Union[T1, T2, ...] from typing
     if py_type.startswith("Union["):
         inner = py_type[6:-1]
@@ -285,7 +307,9 @@ def py_type_to_ir(
         # Remove None for Optional
         non_none = [p for p in parts if p != "None"]
         if len(non_none) == 1:
-            inner_type = _recurse(non_none[0])
+            inner_type = py_type_to_ir(
+                non_none[0], symbols, node_types, concrete_nodes, hierarchy_root, strict
+            )
             if len(non_none) < len(parts):
                 return Optional(inner_type)
             return inner_type
@@ -301,8 +325,25 @@ def py_type_to_ir(
         parts = split_type_args(inner)
         # Handle variadic tuple: tuple[T, ...]
         if len(parts) == 2 and parts[1] == "Ellipsis":
-            return Tuple((_recurse(parts[0]),), variadic=True)
-        elements = tuple(_recurse(p) for p in parts)
+            return Tuple(
+                (
+                    py_type_to_ir(
+                        parts[0],
+                        symbols,
+                        node_types,
+                        concrete_nodes,
+                        hierarchy_root,
+                        strict,
+                    ),
+                ),
+                variadic=True,
+            )
+        elements = tuple(
+            py_type_to_ir(
+                p, symbols, node_types, concrete_nodes, hierarchy_root, strict
+            )
+            for p in parts
+        )
         return Tuple(elements)
     # Handle Callable
     if py_type.startswith("Callable["):

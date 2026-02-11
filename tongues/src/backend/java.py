@@ -55,7 +55,7 @@ Backend deficiencies (Java-specific, fixable in java.py):
 
 from __future__ import annotations
 
-from src.backend.util import (
+from .util import (
     escape_string,
     replace_format_placeholders,
     to_camel,
@@ -166,7 +166,7 @@ def _java_safe_class(name: str) -> str:
     return name
 
 
-from src.ir import (
+from ..ir import (
     BOOL,
     INT,
     Array,

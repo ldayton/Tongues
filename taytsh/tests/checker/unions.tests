@@ -1,0 +1,387 @@
+=== valid: union type
+fn Main() -> void {
+    let v: int | string = 42
+    let w: int | string = "hello"
+}
+---
+ok
+---
+
+=== valid: union match
+fn Main() -> void {
+    let v: int | string = 42
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        case s: string {
+            WritelnOut(s)
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: union with nil
+fn Main() -> void {
+    let v: int | string | nil = nil
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        case s: string {
+            WritelnOut(s)
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: obj assignability
+fn Main() -> void {
+    let x: obj = 42
+    let y: obj = "hello"
+    let z: obj = nil
+}
+---
+ok
+---
+
+=== error: duplicate type name
+struct Foo {
+    x: int
+}
+struct Foo {
+    y: string
+}
+fn Main() -> void {}
+---
+error: duplicate type name
+---
+
+=== error: duplicate function name
+fn Foo() -> void {}
+fn Foo() -> void {}
+fn Main() -> void {}
+---
+error: duplicate function name
+---
+
+=== valid: optional sugar on union
+fn Main() -> void {
+    let v: int | string? = nil
+    match v {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        case s: string {
+            WritelnOut(s)
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: union zero value with nil
+fn Main() -> void {
+    let v: int | string | nil
+    if v == nil {
+        WritelnOut("nil")
+    }
+}
+---
+ok
+---
+
+=== error: union without nil no initializer
+fn Main() -> void {
+    let v: int | string
+}
+---
+error: initializer required
+---
+
+=== valid: nil narrowing on union
+fn Main() -> void {
+    let v: int | string | nil = 42
+    if v != nil {
+        WritelnOut(ToString(v))
+    }
+}
+---
+ok
+---
+
+=== valid: union equality
+fn Main() -> void {
+    let a: int | string = 42
+    let b: int | string = 42
+    let eq: bool = a == b
+    let neq: bool = a != b
+}
+---
+ok
+---
+
+=== error: ordering on union
+fn Main() -> void {
+    let a: int | string = 42
+    let b: int | string = 42
+    let lt: bool = a < b
+}
+---
+error: not defined for union
+---
+
+=== error: arithmetic on union
+fn Main() -> void {
+    let a: int | string = 42
+    let b: int | string = 42
+    let c: int | string = a + b
+}
+---
+error: not defined for union
+---
+
+=== error: void in union
+fn Main() -> void {
+    let x: int | void = 42
+}
+---
+error: void is not a value type
+---
+
+=== valid: match union with interface member
+interface Shape {}
+struct Circle : Shape {
+    radius: int
+}
+struct Rect : Shape {
+    width: int
+    height: int
+}
+fn Describe(v: Shape | int) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: Shape {
+            return "shape"
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(42))
+}
+---
+ok
+---
+
+=== valid: obj absorbs union
+fn Main() -> void {
+    let x: obj = 42
+    let y: int | string = "hello"
+    x = y
+}
+---
+ok
+---
+
+=== valid: union assignability
+fn Main() -> void {
+    let x: int | string = 42
+    let y: int | string | bool = x
+}
+---
+ok
+---
+
+=== error: union assignability mismatch
+fn Main() -> void {
+    let x: int | string | bool = true
+    let y: int | string = x
+}
+---
+error: cannot assign
+---
+
+=== valid: nil narrowing removes nil from union
+fn Main() -> void {
+    let v: int | string | nil = 42
+    if v != nil {
+        match v {
+            case n: int {
+                WritelnOut(ToString(n))
+            }
+            case s: string {
+                WritelnOut(s)
+            }
+        }
+    }
+}
+---
+ok
+---
+
+=== valid: union deduplication
+fn Main() -> void {
+    let x: int | int = 42
+    let y: int = x
+}
+---
+ok
+---
+
+=== valid: union order equivalence
+fn Main() -> void {
+    let x: int | string = 42
+    let y: string | int = x
+}
+---
+ok
+---
+
+=== valid: union with tuple member
+fn Main() -> void {
+    let v: (int, string) | nil = nil
+    if v != nil {
+        let a: int = v.0
+    }
+}
+---
+ok
+---
+
+=== valid: obj absorbs union
+fn Main() -> void {
+    let x: int | obj = 42
+    let y: obj = x
+}
+---
+ok
+---
+
+=== valid: nil narrowing union to single type
+fn Main() -> void {
+    let v: int | nil = 42
+    if v != nil {
+        let n: int = v + 1
+    }
+}
+---
+ok
+---
+
+=== valid: int | nil equivalent to int?
+fn Main() -> void {
+    let x: int | nil = 42
+    let y: int? = x
+    let z: int | nil = y
+}
+---
+ok
+---
+
+=== error: void in union
+fn Main() -> void {
+    let x: int | void | string = 42
+}
+---
+error: void is not a value type
+---
+
+=== valid: union flatten nested
+fn Main() -> void {
+    let x: int | string = 42
+    let y: int | string | bool = x
+}
+---
+ok
+---
+
+=== valid: union with interface and individual variants
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let x: Node | int = Lit(1)
+    match x {
+        case l: Lit {
+            WritelnOut(ToString(l.value))
+        }
+        case b: Bin {
+            WritelnOut(b.op)
+        }
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+    }
+}
+---
+ok
+---
+
+=== error: union field access without narrowing
+fn Main() -> void {
+    let v: int | string = 42
+    let n: int = v + 1
+}
+---
+error: not defined for union
+---
+
+=== error: union indexing without narrowing
+fn Main() -> void {
+    let v: list[int] | string = "hello"
+    let x: int = v[0]
+}
+---
+error: cannot index union
+---
+
+=== valid: union parameter type
+fn Process(v: int | string) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: string {
+            return s
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Process(42))
+    WritelnOut(Process("hello"))
+}
+---
+ok
+---
+
+=== valid: union return type
+fn MaybeInt(flag: bool) -> int | string {
+    if flag {
+        return 42
+    }
+    return "no"
+}
+fn Main() -> void {
+    let v: int | string = MaybeInt(true)
+    WritelnOut(ToString(v))
+}
+---
+ok
+---

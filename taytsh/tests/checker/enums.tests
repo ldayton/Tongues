@@ -1,0 +1,156 @@
+=== valid: enum access
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Red
+    WritelnOut(ToString(c))
+}
+---
+ok
+---
+
+=== error: wrong enum variant
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Yellow
+}
+---
+error: not a variant
+---
+
+=== valid: enum comparison
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Red
+    let same: bool = c == Color.Red
+    let diff: bool = c != Color.Blue
+}
+---
+ok
+---
+
+=== valid: enum match with default
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Red
+    match c {
+        case Color.Red {
+            WritelnOut("red")
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== error: ordering on enum
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let a: Color = Color.Red
+    let b: Color = Color.Blue
+    let lt: bool = a < b
+}
+---
+error: not defined for enum
+---
+
+=== error: arithmetic on enum
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let a: Color = Color.Red
+    let b: Color = Color.Red + Color.Blue
+}
+---
+error: not defined for enum
+---
+
+=== error: enum cross-type comparison
+enum Color { Red Green Blue }
+enum Size { Small Large }
+fn Main() -> void {
+    let a: Color = Color.Red
+    let b: Size = Size.Small
+    let eq: bool = a == b
+}
+---
+error: must be same type
+---
+
+=== valid: enum as map key
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let m: map[Color, string] = {Color.Red: "red", Color.Blue: "blue"}
+    let v: string = m[Color.Red]
+}
+---
+ok
+---
+
+=== valid: enum in set
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let s: set[Color] = {Color.Red, Color.Blue}
+    let has: bool = Contains(s, Color.Red)
+}
+---
+ok
+---
+
+=== error: assign int to enum
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = 42
+}
+---
+error: cannot assign int to Color
+---
+
+=== valid: enum as parameter type
+enum Color { Red Green Blue }
+fn Describe(c: Color) -> string {
+    match c {
+        case Color.Red {
+            return "red"
+        }
+        case Color.Green {
+            return "green"
+        }
+        case Color.Blue {
+            return "blue"
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(Color.Blue))
+}
+---
+ok
+---
+
+=== error: duplicate enum variant
+enum Color { Red Red Blue }
+fn Main() -> void {}
+---
+error: duplicate variant
+---
+
+=== error: enum called as constructor
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color()
+}
+---
+error: cannot call enum
+---
+
+=== error: enum field access
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color = Color.Red
+    let x: int = c.value
+}
+---
+error: has no field or method 'value'
+---

@@ -1,0 +1,354 @@
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+enum Season {
+    Spring
+    Summer
+    Autumn
+    Winter
+}
+
+interface Animal {}
+
+struct Dog : Animal {
+    name: string
+}
+
+struct Cat : Animal {
+    name: string
+    indoor: bool
+}
+
+struct Fish : Animal {
+    species: string
+}
+
+interface Expr {}
+
+struct Num : Expr {
+    value: int
+}
+
+struct Add : Expr {
+    left: Expr
+    right: Expr
+}
+
+struct Neg : Expr {
+    operand: Expr
+}
+
+-- enum match with all cases
+fn ColorName(c: Color) -> string {
+    match c {
+        case Color.Red {
+            return "red"
+        }
+        case Color.Green {
+            return "green"
+        }
+        case Color.Blue {
+            return "blue"
+        }
+    }
+}
+
+fn TestEnumMatchAll() -> void {
+    Assert(ColorName(Color.Red) == "red")
+    Assert(ColorName(Color.Green) == "green")
+    Assert(ColorName(Color.Blue) == "blue")
+}
+
+-- enum match with default
+fn IsWinter(s: Season) -> bool {
+    match s {
+        case Season.Winter {
+            return true
+        }
+        default {
+            return false
+        }
+    }
+}
+
+fn TestEnumMatchDefault() -> void {
+    Assert(IsWinter(Season.Winter))
+    Assert(!IsWinter(Season.Spring))
+    Assert(!IsWinter(Season.Summer))
+}
+
+-- interface match: all variants
+fn AnimalSound(a: Animal) -> string {
+    match a {
+        case d: Dog {
+            return "woof"
+        }
+        case c: Cat {
+            return "meow"
+        }
+        case f: Fish {
+            return "blub"
+        }
+    }
+}
+
+fn TestInterfaceMatchAll() -> void {
+    Assert(AnimalSound(Dog("Rex")) == "woof")
+    Assert(AnimalSound(Cat("Whiskers", true)) == "meow")
+    Assert(AnimalSound(Fish("Goldfish")) == "blub")
+}
+
+-- interface match: access variant fields
+fn AnimalName(a: Animal) -> string {
+    match a {
+        case d: Dog {
+            return d.name
+        }
+        case c: Cat {
+            return c.name
+        }
+        case f: Fish {
+            return f.species
+        }
+    }
+}
+
+fn TestInterfaceMatchFields() -> void {
+    Assert(AnimalName(Dog("Rex")) == "Rex")
+    Assert(AnimalName(Cat("Whiskers", false)) == "Whiskers")
+    Assert(AnimalName(Fish("Salmon")) == "Salmon")
+}
+
+-- interface match with default
+fn IsDog(a: Animal) -> bool {
+    match a {
+        case d: Dog {
+            return true
+        }
+        default {
+            return false
+        }
+    }
+}
+
+fn TestInterfaceMatchDefault() -> void {
+    Assert(IsDog(Dog("Rex")))
+    Assert(!IsDog(Cat("Whiskers", true)))
+    Assert(!IsDog(Fish("Cod")))
+}
+
+-- recursive interface match (expression evaluator)
+fn Eval(e: Expr) -> int {
+    match e {
+        case n: Num {
+            return n.value
+        }
+        case a: Add {
+            return Eval(a.left) + Eval(a.right)
+        }
+        case neg: Neg {
+            return -Eval(neg.operand)
+        }
+    }
+}
+
+fn TestRecursiveMatch() -> void {
+    let expr: Expr = Add(Num(1), Add(Num(2), Num(3)))
+    Assert(Eval(expr) == 6)
+    let negExpr: Expr = Neg(Add(Num(3), Num(4)))
+    Assert(Eval(negExpr) == -7)
+}
+
+-- optional match
+fn DescribeOpt(v: int?) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case nil {
+            return "nil"
+        }
+    }
+}
+
+fn TestOptionalMatch() -> void {
+    Assert(DescribeOpt(42) == "42")
+    Assert(DescribeOpt(nil) == "nil")
+}
+
+-- optional match with string
+fn OptStr(v: string?) -> string {
+    match v {
+        case s: string {
+            return Concat("got: ", s)
+        }
+        case nil {
+            return "nothing"
+        }
+    }
+}
+
+fn TestOptionalMatchString() -> void {
+    Assert(OptStr("hello") == "got: hello")
+    Assert(OptStr(nil) == "nothing")
+}
+
+-- union match
+fn DescribeUnion(v: int | string | bool) -> string {
+    match v {
+        case n: int {
+            return "int"
+        }
+        case s: string {
+            return "string"
+        }
+        case b: bool {
+            return "bool"
+        }
+    }
+}
+
+fn TestUnionMatch() -> void {
+    Assert(DescribeUnion(42) == "int")
+    Assert(DescribeUnion("hello") == "string")
+    Assert(DescribeUnion(true) == "bool")
+}
+
+-- union match with nil
+fn DescribeNullable(v: int | string | nil) -> string {
+    match v {
+        case n: int {
+            return "int"
+        }
+        case s: string {
+            return "string"
+        }
+        case nil {
+            return "nil"
+        }
+    }
+}
+
+fn TestUnionMatchNil() -> void {
+    Assert(DescribeNullable(42) == "int")
+    Assert(DescribeNullable("hi") == "string")
+    Assert(DescribeNullable(nil) == "nil")
+}
+
+-- obj match with default
+fn TypeName(v: obj) -> string {
+    match v {
+        case n: int {
+            return "int"
+        }
+        case s: string {
+            return "string"
+        }
+        case b: bool {
+            return "bool"
+        }
+        default {
+            return "other"
+        }
+    }
+}
+
+fn TestObjMatch() -> void {
+    Assert(TypeName(42) == "int")
+    Assert(TypeName("hi") == "string")
+    Assert(TypeName(true) == "bool")
+    Assert(TypeName(3.14) == "other")
+}
+
+-- default with binding
+fn DescribeObj(v: obj) -> string {
+    match v {
+        case n: int {
+            return Concat("int: ", ToString(n))
+        }
+        default o: obj {
+            return Concat("other: ", ToString(o))
+        }
+    }
+}
+
+fn TestDefaultBinding() -> void {
+    Assert(DescribeObj(42) == "int: 42")
+    Assert(DescribeObj("hello") == "other: hello")
+}
+
+-- match on interface inside union
+fn ProcessMixed(v: Expr | int) -> int {
+    match v {
+        case n: int {
+            return n
+        }
+        case e: Expr {
+            return Eval(e)
+        }
+    }
+}
+
+fn TestUnionWithInterface() -> void {
+    Assert(ProcessMixed(42) == 42)
+    Assert(ProcessMixed(Num(10)) == 10)
+    Assert(ProcessMixed(Add(Num(1), Num(2))) == 3)
+}
+
+-- match selects first matching case
+fn FirstMatch(v: obj) -> string {
+    match v {
+        case n: int {
+            return "int"
+        }
+        default {
+            return "default"
+        }
+    }
+}
+
+fn TestMatchOrder() -> void {
+    Assert(FirstMatch(42) == "int")
+    Assert(FirstMatch("hello") == "default")
+}
+
+-- match in a loop
+fn CountNils(xs: list[int?]) -> int {
+    let count: int = 0
+    for v in xs {
+        match v {
+            case n: int {
+            }
+            case nil {
+                count += 1
+            }
+        }
+    }
+    return count
+}
+
+fn TestMatchInLoop() -> void {
+    let xs: list[int?] = [1, nil, 2, nil, nil]
+    Assert(CountNils(xs) == 3)
+}
+
+fn Main() -> void {
+    TestEnumMatchAll()
+    TestEnumMatchDefault()
+    TestInterfaceMatchAll()
+    TestInterfaceMatchFields()
+    TestInterfaceMatchDefault()
+    TestRecursiveMatch()
+    TestOptionalMatch()
+    TestOptionalMatchString()
+    TestUnionMatch()
+    TestUnionMatchNil()
+    TestObjMatch()
+    TestDefaultBinding()
+    TestUnionWithInterface()
+    TestMatchOrder()
+    TestMatchInLoop()
+}

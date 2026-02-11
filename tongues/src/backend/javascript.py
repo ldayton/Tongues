@@ -9,26 +9,22 @@ Inherits from JsLikeBackend. Adds JS-specific features:
 
 from __future__ import annotations
 
-from src.backend.jslike import (
+from .jslike import (
     JsLikeBackend,
     _camel,
-    _is_bool_int_compare,
     _is_bytes_list_type,
 )
-from src.backend.util import (
+from .util import (
     ir_contains_call,
     ir_has_bytes_ops,
     ir_has_tuple_maps,
     ir_has_tuple_sets,
     is_bytes_type,
 )
-from src.ir import (
-    BOOL,
+from ..ir import (
     FLOAT,
-    INT,
     VOID,
     Assign,
-    BinaryOp,
     Expr,
     Function,
     If,
@@ -50,7 +46,6 @@ from src.ir import (
     SliceLit,
     Stmt,
     StringLit,
-    Ternary,
     TryCatch,
     TupleAssign,
     Type,
@@ -693,26 +688,3 @@ def _is_bytes_join(sep: Expr, arr: Expr) -> bool:
     if sep.typ is not None and is_bytes_type(sep.typ):
         return True
     return False
-
-
-def _is_bool_int_compare_js(left: Expr, right: Expr) -> bool:
-    """Extended bool/int comparison check for JavaScript."""
-    if _is_bool_int_compare(left, right):
-        return True
-    l, r = left.typ, right.typ
-    if l == BOOL or r == BOOL:
-        if isinstance(left, BinaryOp) and left.op in ("+", "-", "*", "/", "//", "%"):
-            return True
-        if isinstance(right, BinaryOp) and right.op in ("+", "-", "*", "/", "//", "%"):
-            return True
-    if isinstance(left, Ternary) and _ternary_has_bool_int_mix(left):
-        return True
-    if isinstance(right, Ternary) and _ternary_has_bool_int_mix(right):
-        return True
-    return False
-
-
-def _ternary_has_bool_int_mix(t: Ternary) -> bool:
-    """Check if a ternary has both bool and int in its branches."""
-    types = {t.then_expr.typ, t.else_expr.typ}
-    return BOOL in types and INT in types

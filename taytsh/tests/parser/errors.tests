@@ -1,0 +1,111 @@
+=== unexpected token at top level
+let x: int = 42
+---
+error:
+---
+
+=== missing closing brace
+fn Main() -> void {
+    let x: int = 42
+---
+error:
+---
+
+=== missing type in let
+fn Main() -> void {
+    let x = 42
+}
+---
+error:
+---
+
+=== missing colon in let
+fn Main() -> void {
+    let x int = 42
+}
+---
+error:
+---
+
+=== invalid byte literal too many digits
+fn Main() -> void {
+    let b: byte = 0xfff
+}
+---
+error:
+---
+
+=== invalid byte literal one digit
+fn Main() -> void {
+    let b: byte = 0xf
+}
+---
+error:
+---
+
+=== unterminated string
+fn Main() -> void {
+    let s: string = "hello
+}
+---
+error:
+---
+
+=== empty rune
+fn Main() -> void {
+    let c: rune = ''
+}
+---
+error:
+---
+
+=== missing arrow in fn
+fn Main() void {}
+---
+error:
+---
+
+=== unexpected character
+fn Main() -> void {
+    let x: int = @
+}
+---
+error:
+---
+
+=== empty program
+---
+ok
+---
+
+=== invalid escape in string
+fn Main() -> void {
+    let s: string = "\q"
+}
+---
+error:
+---
+
+=== chained comparison
+fn Main() -> void {
+    let x: bool = a < b < c
+}
+---
+error:
+---
+
+=== double optional
+fn Main() -> void {
+    let x: int??
+}
+---
+error:
+---
+
+=== keyword as identifier
+fn Main() -> void {
+    let int: int = 42
+}
+---
+error:
+---

@@ -10,7 +10,7 @@ Annotations added:
     TupleAssign.new_targets: list[str] - which targets are new declarations
 """
 
-from src.ir import (
+from ..ir import (
     Assert,
     Assign,
     BinaryOp,
@@ -606,4 +606,4 @@ def _analyze_function(func: Function) -> None:
 
 
 # Import If here to avoid circular import at module level
-from src.ir import If  # noqa: E402
+from ..ir import If  # noqa: E402
