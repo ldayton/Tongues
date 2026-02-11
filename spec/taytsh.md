@@ -1295,7 +1295,7 @@ Strict mode floats are IEEE 754 binary64, same as default mode. Basic operations
 
 `Pow(float, float)` with non-integer exponent is not available in strict mode — underlying `exp`/`log` implementations are not mandated by IEEE 754 and differ across targets. Integer exponents use binary exponentiation (emitted inline, exact within 64-bit range).
 
-The strict math flag is recorded in the IR module metadata. Middleend passes and backends read it to select checked or unchecked emission.
+The strict math flag is stored on the Module node (see Source Metadata). Middleend passes and backends read it to select checked or unchecked emission.
 
 ### Strict ToString
 
@@ -1331,7 +1331,7 @@ Map and set `ToString` output sorts elements for deterministic output regardless
 
 Structs may declare a `fn ToString(self) -> string` method to override the default format. `ToString` is normally a reserved name; this is the one permitted exception. The override applies in both default and strict modes. Enums always use the `EnumName.Variant` format.
 
-The strict tostring flag is recorded in the IR module metadata.
+The strict tostring flag is stored on the Module node (see Source Metadata).
 
 ### Strict
 
@@ -1353,6 +1353,15 @@ Pragmas are equivalent to the corresponding command-line flags. Both `-- pragma 
 Every Taytsh node has a `metadata` field of type `map[string, obj]`. The lowerer populates it during IR construction. Metadata is advisory — backends and raising passes may use it but are never required to.
 
 The `pos` key is present on every node. All other keys are optional and node-type-specific.
+
+### Module
+
+The Module node is the root of the IR tree. It carries program-level metadata:
+
+| Key               | Type   | Description                                       |
+| ----------------- | ------ | ------------------------------------------------- |
+| `strict_math`     | `bool` | `true` if `--strict-math` or pragma is active     |
+| `strict_tostring` | `bool` | `true` if `--strict-tostring` or pragma is active |
 
 ### Position
 
