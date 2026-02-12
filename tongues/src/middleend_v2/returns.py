@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
+    TAssignStmt,
     TBinaryOp,
     TCall,
     TExpr,
@@ -111,6 +112,8 @@ def _resolve_expr_type(expr: TExpr, ctx: _ReturnsCtx) -> Type | None:
     if isinstance(expr, TCall):
         if isinstance(expr.func, TVar):
             name = expr.func.name
+            if name == "Get":
+                return NIL_T
             if name in ctx.checker.functions:
                 return ctx.checker.functions[name].ret
         if isinstance(expr.func, TFieldAccess):
@@ -162,6 +165,30 @@ def _extract_nil_narrowing(
         then_narrows[name] = NIL_T
         else_narrows[name] = non_nil
     return then_narrows, else_narrows
+
+
+def _may_be_nil(expr: TExpr, ctx: _ReturnsCtx) -> bool:
+    """Check if an expression might evaluate to nil."""
+    if isinstance(expr, TNilLit):
+        return True
+    t = _resolve_expr_type(expr, ctx)
+    return t is not None and contains_nil(t)
+
+
+def _merge_branch_narrowings(
+    ctx: _ReturnsCtx, branches: list[_ReturnsCtx]
+) -> None:
+    """Merge narrowings back to parent: non-nil only if ALL branches agree."""
+    if not branches:
+        return
+    common = set(branches[0].narrowings.keys())
+    for bctx in branches[1:]:
+        common &= set(bctx.narrowings.keys())
+    for name in common:
+        if all(not contains_nil(bctx.narrowings[name]) for bctx in branches):
+            declared = ctx.locals.get(name)
+            if declared is not None and contains_nil(declared):
+                ctx.narrowings[name] = remove_nil(declared)
 
 
 # ============================================================
@@ -262,15 +289,22 @@ def _walk_block(stmts: list[TStmt], ctx: _ReturnsCtx) -> bool:
             then_narrows, else_narrows = _extract_nil_narrowing(stmt.cond, ctx)
             then_ctx = _fork_ctx(ctx, then_narrows)
             then_returns = _walk_block(stmt.then_body, then_ctx)
+            else_ctx = _fork_ctx(ctx, else_narrows)
             if stmt.else_body is not None:
-                else_ctx = _fork_ctx(ctx, else_narrows)
                 else_returns = _walk_block(stmt.else_body, else_ctx)
                 combined = then_returns and else_returns
             else:
+                else_returns = False
                 combined = False
             stmt.annotations["returns.always_returns"] = combined
             if combined:
                 return True
+            survivors = []
+            if not then_returns:
+                survivors.append(then_ctx)
+            if not else_returns:
+                survivors.append(else_ctx)
+            _merge_branch_narrowings(ctx, survivors)
 
         elif isinstance(stmt, TWhileStmt):
             _walk_block(stmt.body, ctx)
@@ -282,19 +316,25 @@ def _walk_block(stmts: list[TStmt], ctx: _ReturnsCtx) -> bool:
 
         elif isinstance(stmt, TMatchStmt):
             all_return = True
+            survivors: list[_ReturnsCtx] = []
             for case in stmt.cases:
-                case_returns = _walk_block(case.body, ctx)
+                case_ctx = _fork_ctx(ctx)
+                case_returns = _walk_block(case.body, case_ctx)
                 case.annotations["returns.always_returns"] = case_returns
                 if not case_returns:
                     all_return = False
+                    survivors.append(case_ctx)
             if stmt.default is not None:
-                dflt_returns = _walk_block(stmt.default.body, ctx)
+                dflt_ctx = _fork_ctx(ctx)
+                dflt_returns = _walk_block(stmt.default.body, dflt_ctx)
                 stmt.default.annotations["returns.always_returns"] = dflt_returns
                 if not dflt_returns:
                     all_return = False
+                    survivors.append(dflt_ctx)
             stmt.annotations["returns.always_returns"] = all_return
             if all_return:
                 return True
+            _merge_branch_narrowings(ctx, survivors)
 
         elif isinstance(stmt, TTryStmt):
             body_returns = _walk_block(stmt.body, ctx)
@@ -317,6 +357,16 @@ def _walk_block(stmts: list[TStmt], ctx: _ReturnsCtx) -> bool:
         elif isinstance(stmt, TLetStmt):
             declared_type = ctx.checker.resolve_type(stmt.typ)
             ctx.locals[stmt.name] = declared_type
+
+        elif isinstance(stmt, TAssignStmt):
+            if isinstance(stmt.target, TVar):
+                name = stmt.target.name
+                declared = ctx.locals.get(name)
+                if declared is not None and contains_nil(declared):
+                    if _may_be_nil(stmt.value, ctx):
+                        ctx.narrowings.pop(name, None)
+                    else:
+                        ctx.narrowings[name] = remove_nil(declared)
 
     return False
 
