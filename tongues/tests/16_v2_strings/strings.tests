@@ -469,19 +469,19 @@ FormatList.body.1.builder = result
 ---
 
 === builder while loop
-fn ReadLines() -> string {
+fn JoinLines(lines: list[string]) -> string {
     let result: string = ""
-    let line: string? = ReadLine()
-    while line != nil {
-        result = Concat(result, Concat(line, "\n"))
-        line = ReadLine()
+    let i: int = 0
+    while i < Len(lines) {
+        result = Concat(result, Concat(lines[i], "\n"))
+        i += 1
     }
     return result
 }
-fn Main() -> void { WritelnOut(ReadLines()) }
+fn Main() -> void { WritelnOut(JoinLines(["a", "b"])) }
 ---
-ReadLines.body.2.type = TWhileStmt
-ReadLines.body.2.builder = result
+JoinLines.body.2.type = TWhileStmt
+JoinLines.body.2.builder = result
 ---
 
 === builder multiple appends per iteration

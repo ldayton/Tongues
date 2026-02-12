@@ -489,6 +489,7 @@ BUILTIN_NAMES: set[str] = {
     "Contains",
     "Replace",
     "Repeat",
+    "Reverse",
     "StartsWith",
     "EndsWith",
     "IsDigit",
@@ -2692,6 +2693,14 @@ class Checker:
                     return t1
                 self.error("Repeat requires string or list", pos)
             return None
+
+        if name == "Reverse":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("Reverse requires string", pos)
+            return STRING_T
 
         # ── Reversed / Sorted ──
         if name == "Reversed":
