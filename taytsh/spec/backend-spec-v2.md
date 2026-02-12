@@ -101,6 +101,40 @@ Used by C, Rust, Zig, Swift.
 
 `ownership.region` — C: determines which scope calls `free()`. Rust: informs lifetime annotations.
 
+### callgraph.*
+
+Used by Go, Rust, Zig, Lua.
+
+`callgraph.throws` — backends that represent exceptions as return values use the throw set to determine the function's error return type:
+
+| Target | Mechanism                                                                        |
+| ------ | -------------------------------------------------------------------------------- |
+| Go     | error return type; empty throw set means no error return                         |
+| Rust   | `Result<T, E>` where `E` is an enum of the throw set types; empty means bare `T` |
+| Zig    | error union `!T` with error set derived from throw types; empty means bare `T`   |
+| Java   | `throws` clause on method signature (optional but improves generated code)       |
+| Others | no action needed (native exceptions propagate implicitly)                        |
+
+`callgraph.is_recursive` — backends that need special handling for recursive functions:
+
+| Target | Mechanism                                                                 |
+| ------ | ------------------------------------------------------------------------- |
+| Zig    | recursive functions cannot infer error sets; must declare them explicitly |
+| Rust   | recursive functions returning `impl Trait` need `Box<dyn>` indirection    |
+| Others | no special handling needed                                                |
+
+`callgraph.recursive_group` — identifies mutually recursive function groups. Zig and Rust use this to co-declare error sets or types for the group.
+
+`callgraph.is_tail_call` — backends that support tail call optimization:
+
+| Target | Mechanism                                                                |
+| ------ | ------------------------------------------------------------------------ |
+| Lua    | proper tail calls are guaranteed; backend emits `return f()` form        |
+| Zig    | `@call(.always_tail, f, args)` for self-tail-calls                       |
+| Go     | self-recursive tail calls can be transformed to loops                    |
+| Rust   | self-recursive tail calls can be transformed to loops (no TCO guarantee) |
+| Others | no action needed (tail position has no special syntax)                   |
+
 ## Provenance Consumption
 
 Backends read provenance metadata from IR nodes and decide whether to emit the idiomatic form or the desugared form. The desugared form is always correct. A backend that doesn't recognize a provenance tag simply ignores it.
@@ -300,7 +334,7 @@ Taytsh try/catch maps to fundamentally different mechanisms per target:
 | Perl   | eval { } / die + $@                      |
 | Others | native try/catch/except                  |
 
-Go, Rust, and Zig transform exception semantics into return-value semantics. This is the most complex backend transformation and relies heavily on `returns.needs_named_returns`, `returns.body_has_return`, and `scope.is_modified` for parameters that cross try/catch boundaries.
+Go, Rust, and Zig transform exception semantics into return-value semantics. This is the most complex backend transformation and relies heavily on `callgraph.throws` (to determine the error return type), `returns.needs_named_returns`, `returns.body_has_return`, and `scope.is_modified` for parameters that cross try/catch boundaries.
 
 ### Loop forms
 

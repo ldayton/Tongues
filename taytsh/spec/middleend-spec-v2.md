@@ -6,9 +6,11 @@ The middleend is a pipeline of analysis passes over Taytsh IR. Every pass reads 
 
 ```
 lowerer → scope → returns → liveness → hoisting → ownership → backends
+            \                                                /
+             `--→ callgraph ---→---→---→---→---→---→---→---'
 ```
 
-All passes are intra-procedural (per-function) unless noted otherwise.
+All passes are intra-procedural (per-function) except callgraph, which is inter-procedural (whole-module).
 
 ## Pass Summaries
 
@@ -74,14 +76,31 @@ Depends on: scope (reads scope.is_modified for mutation tracking, scope.is_const
 
 Skippable for GC targets. The pass is a no-op when the target set excludes C, Rust, Zig, and Swift.
 
+### 6. Callgraph
+
+Spec: callgraph-spec-v2.md
+
+Inter-procedural call graph analysis. Throw type propagation, recursion detection, tail call identification.
+
+Produces:
+- callgraph.throws              (function)    exception types that can escape
+- callgraph.is_recursive        (function)    direct or mutual recursion
+- callgraph.recursive_group     (function)    SCC identifier
+- callgraph.is_tail_call        (call site)   call is in tail position
+
+No dependencies on other passes. Reads raw IR only. Runs in parallel with the intra-procedural pipeline.
+
+Skippable when the target set excludes Go, Rust, Zig, and Lua (the targets that transform exceptions into return values or need tail call syntax). Always useful for diagnostics.
+
 ## Dependency Graph
 
-All backends read scope and liveness annotations directly. The graph uses liveness (the last universal pass) as the anchor and shows conditional pass edges to backend groups partitioned by their unique dependency profiles.
+All backends read scope and liveness annotations directly. Callgraph runs in parallel with the intra-procedural pipeline (no shared dependencies). The graph uses liveness (the last universal intra-procedural pass) as the anchor and shows conditional pass edges to backend groups partitioned by their unique dependency profiles.
 
 ```mermaid
 graph LR
     lowerer --> scope
     lowerer --> returns
+    lowerer --> callgraph
 
     scope --> liveness
     scope --> hoisting
@@ -101,6 +120,9 @@ PHP, Python, Ruby, TypeScript"]:::lang
     returns --> g4
     returns --> g5
     hoisting --> g3
+    callgraph --> g3
+    callgraph --> g4
+    callgraph --> g5
     ownership --> g4
     ownership --> g5
 
@@ -109,7 +131,7 @@ PHP, Python, Ruby, TypeScript"]:::lang
 
 ## Annotation Namespacing
 
-Each pass writes under its own namespace: scope.*, returns.*, liveness.*, hoisting.*, ownership.*. Annotations are write-once: no pass overwrites another's keys.
+Each pass writes under its own namespace: scope.*, returns.*, liveness.*, hoisting.*, ownership.*, callgraph.*. Annotations are write-once: no pass overwrites another's keys.
 
 ## Target-Conditional Passes
 
@@ -122,3 +144,4 @@ Not all passes are needed for all targets:
 | liveness  | yes         |                                         |
 | hoisting  | no          | Go, Lua, or any target needing pre-decl |
 | ownership | no          | C, Rust, Zig, Swift                     |
+| callgraph | no          | Go, Rust, Zig, Lua                      |

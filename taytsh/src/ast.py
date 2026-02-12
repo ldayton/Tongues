@@ -533,6 +533,9 @@ class TCall(TExpr):
 
     func: TExpr
     args: list[TArg]
+    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
