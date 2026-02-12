@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from src.backend_v2.perl import emit_perl as emit_perl_v2
 from src.backend_v2.python import emit_python as emit_python_v2
 from src.middleend_v2.callgraph import analyze_callgraph
 from src.middleend_v2.hoisting import analyze_hoisting
@@ -41,6 +42,7 @@ TESTS = {
     },
     "backend": {
         "codegen_v2_python": {"dir": "20_v2_codegen", "run": "codegen_v2_python"},
+        "codegen_v2_perl": {"dir": "20_v2_codegen", "run": "codegen_v2_perl"},
     },
 }
 # fmt: on
@@ -134,18 +136,21 @@ def parse_codegen_file(path: Path) -> list[tuple[str, str, dict[str, str]]]:
     return result
 
 
-def discover_codegen_v2_python_tests(test_dir: Path) -> list[tuple[str, str, str]]:
-    """Find v2 Python codegen tests, returns (test_id, input, expected)."""
+def discover_codegen_v2_tests(test_dir: Path, lang: str) -> list[tuple[str, str, str]]:
+    """Find v2 codegen tests for a language, returns (test_id, input, expected)."""
     results = []
     for test_file in sorted(test_dir.glob("*.tests")):
         tests = parse_codegen_file(test_file)
+        # Skip files that are for other languages (e.g. perl.tests vs python.tests).
+        if not any(lang in expected_by_lang for _, _, expected_by_lang in tests):
+            continue
         for name, input_code, expected_by_lang in tests:
-            expected = expected_by_lang.get("python")
+            expected = expected_by_lang.get(lang)
             if expected is None:
                 pytest.fail(
-                    f"{test_file.name}:{name} missing '--- python' expected block"
+                    f"{test_file.name}:{name} missing '--- {lang}' expected block"
                 )
-            test_id = f"{test_file.stem}/{name}[python-v2]"
+            test_id = f"{test_file.stem}/{name}[{lang}-v2]"
             results.append((test_id, input_code, expected))
     return results
 
@@ -457,8 +462,8 @@ def run_callgraph_v2(source: str) -> PhaseResult:
     return PhaseResult(data=_serialize_callgraph(module, checker))
 
 
-def transpile_code_v2_python(source: str) -> tuple[str | None, str | None]:
-    """Transpile Taytsh source using python backend v2. Returns (output, error)."""
+def _transpile_v2_with_emitter(source: str, emitter) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source for backend v2. Returns (output, error)."""
     try:
         signal.alarm(PARSE_TIMEOUT)
         module = taytsh_parse(source)
@@ -473,9 +478,19 @@ def transpile_code_v2_python(source: str) -> tuple[str | None, str | None]:
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
-        return (emit_python_v2(module), None)
+        return (emitter(module), None)
     except Exception as e:
         return (None, str(e))
+
+
+def transpile_code_v2_python(source: str) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source using python backend v2. Returns (output, error)."""
+    return _transpile_v2_with_emitter(source, emit_python_v2)
+
+
+def transpile_code_v2_perl(source: str) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source using perl backend v2. Returns (output, error)."""
+    return _transpile_v2_with_emitter(source, emit_perl_v2)
 
 
 # ---------------------------------------------------------------------------
@@ -484,8 +499,18 @@ def transpile_code_v2_python(source: str) -> tuple[str | None, str | None]:
 
 
 @pytest.fixture
-def transpiled_output_v2_python(codegen_v2_input: str) -> str:
-    output, err = transpile_code_v2_python(codegen_v2_input)
+def transpiled_output_v2_python(codegen_v2_python_input: str) -> str:
+    output, err = transpile_code_v2_python(codegen_v2_python_input)
+    if err is not None:
+        pytest.fail(f"Transpile error: {err}")
+    if output is None:
+        pytest.fail("No output from transpiler")
+    return output
+
+
+@pytest.fixture
+def transpiled_output_v2_perl(codegen_v2_perl_input: str) -> str:
+    output, err = transpile_code_v2_perl(codegen_v2_perl_input)
     if err is not None:
         pytest.fail(f"Transpile error: {err}")
     if output is None:
@@ -511,11 +536,22 @@ def pytest_generate_tests(metafunc):
                     metafunc.parametrize(f"{fixture},{name}_expected", params)
             elif (
                 run == "codegen_v2_python"
-                and "codegen_v2_input" in metafunc.fixturenames
+                and "codegen_v2_python_input" in metafunc.fixturenames
             ):
-                tests = discover_codegen_v2_python_tests(test_dir)
+                tests = discover_codegen_v2_tests(test_dir, "python")
                 params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
-                metafunc.parametrize("codegen_v2_input,codegen_v2_expected", params)
+                metafunc.parametrize(
+                    "codegen_v2_python_input,codegen_v2_python_expected", params
+                )
+            elif (
+                run == "codegen_v2_perl"
+                and "codegen_v2_perl_input" in metafunc.fixturenames
+            ):
+                tests = discover_codegen_v2_tests(test_dir, "perl")
+                params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
+                metafunc.parametrize(
+                    "codegen_v2_perl_input,codegen_v2_perl_expected", params
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -560,13 +596,26 @@ def test_callgraph_v2(callgraph_v2_input, callgraph_v2_expected):
 
 
 def test_codegen_v2_python(
-    codegen_v2_input: str,
-    codegen_v2_expected: str,
+    codegen_v2_python_input: str,
+    codegen_v2_python_expected: str,
     transpiled_output_v2_python: str,
 ):
-    if not contains_normalized(transpiled_output_v2_python, codegen_v2_expected):
+    if not contains_normalized(transpiled_output_v2_python, codegen_v2_python_expected):
         pytest.fail(
             "Expected not found in output:\n"
-            f"--- expected ---\n{codegen_v2_expected}\n"
+            f"--- expected ---\n{codegen_v2_python_expected}\n"
             f"--- got ---\n{transpiled_output_v2_python}"
+        )
+
+
+def test_codegen_v2_perl(
+    codegen_v2_perl_input: str,
+    codegen_v2_perl_expected: str,
+    transpiled_output_v2_perl: str,
+):
+    if not contains_normalized(transpiled_output_v2_perl, codegen_v2_perl_expected):
+        pytest.fail(
+            "Expected not found in output:\n"
+            f"--- expected ---\n{codegen_v2_perl_expected}\n"
+            f"--- got ---\n{transpiled_output_v2_perl}"
         )
