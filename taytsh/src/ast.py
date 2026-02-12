@@ -39,7 +39,7 @@ class TType:
 
 @dataclass
 class TPrimitive(TType):
-    """int, float, bool, byte, bytes, string, rune, void, obj, nil."""
+    """int, float, bool, byte, bytes, string, rune, void, nil."""
 
     kind: str
 
@@ -343,7 +343,7 @@ class TMatchCase:
 
 @dataclass
 class TDefault:
-    """default (name: obj)? { ... }."""
+    """default name? { ... }."""
 
     pos: Pos
     name: str | None

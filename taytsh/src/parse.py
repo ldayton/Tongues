@@ -107,7 +107,6 @@ PRIMITIVE_TYPES: set[str] = {
     "string",
     "rune",
     "void",
-    "obj",
     "nil",
 }
 
@@ -616,8 +615,6 @@ class Parser:
         name: str | None = None
         if self.at_ident():
             name_tok = self.advance()
-            self.expect(":")
-            self.expect("obj")
             name = name_tok.value
         body = self.parse_block()
         return TDefault(pos, name, body, {})
@@ -641,11 +638,13 @@ class Parser:
         pos = self._pos()
         self.expect("catch")
         name_tok = self.expect_ident()
-        self.expect(":")
-        types: list[TType] = [self.parse_type_name()]
-        while self.at("|"):
+        types: list[TType] = []
+        if self.at(":"):
             self.advance()
             types.append(self.parse_type_name())
+            while self.at("|"):
+                self.advance()
+                types.append(self.parse_type_name())
         body = self.parse_block()
         return TCatch(pos, name_tok.value, types, body, {})
 

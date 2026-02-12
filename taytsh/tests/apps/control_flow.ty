@@ -351,12 +351,12 @@ fn TestCatchUnion() -> void {
     Assert(caught)
 }
 
--- catch obj (catch-all)
+-- catch all
 fn TestCatchObj() -> void {
     let caught: bool = false
     try {
         throw "anything"
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught)

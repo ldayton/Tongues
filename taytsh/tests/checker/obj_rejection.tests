@@ -1,0 +1,131 @@
+=== let type
+fn Main() -> void {
+    let x: obj = 42
+}
+---
+error:
+---
+
+=== parameter type
+fn Foo(x: obj) -> void {
+    WritelnOut(ToString(x))
+}
+---
+error:
+---
+
+=== return type
+fn Foo() -> obj {
+    return 42
+}
+---
+error:
+---
+
+=== list element type
+fn Main() -> void {
+    let xs: list[obj] = [1, 2, 3]
+}
+---
+error:
+---
+
+=== map key type
+fn Main() -> void {
+    let m: map[obj, int] = {}
+}
+---
+error:
+---
+
+=== map value type
+fn Main() -> void {
+    let m: map[string, obj] = {}
+}
+---
+error:
+---
+
+=== set element type
+fn Main() -> void {
+    let s: set[obj] = {}
+}
+---
+error:
+---
+
+=== fn type parameter
+fn Main() -> void {
+    let f: fn[obj, int] = (x: int) -> int => x
+}
+---
+error:
+---
+
+=== fn type return
+fn Main() -> void {
+    let f: fn[int, obj] = (x: int) -> int => x
+}
+---
+error:
+---
+
+=== tuple element type
+fn Main() -> void {
+    let t: (obj, int) = (1, 2)
+}
+---
+error:
+---
+
+=== union member
+fn Main() -> void {
+    let x: int | obj = 42
+}
+---
+error:
+---
+
+=== optional base
+fn Main() -> void {
+    let x: obj? = nil
+}
+---
+error:
+---
+
+=== struct field type
+struct Bag {
+    value: obj
+}
+---
+error:
+---
+
+=== match case type
+fn Main() -> void {
+    let x: int? = 42
+    match x {
+        case v: obj {
+            WritelnOut(ToString(v))
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+---
+error:
+---
+
+=== catch type
+fn Main() -> void {
+    try {
+        WritelnOut("hi")
+    } catch e: obj {
+        WritelnOut("err")
+    }
+}
+---
+error:
+---

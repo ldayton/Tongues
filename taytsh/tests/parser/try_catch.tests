@@ -44,7 +44,7 @@ fn Main() -> void {
         WritelnErr("value error")
     } catch e: KeyError {
         WritelnErr("key error")
-    } catch e: obj {
+    } catch e {
         WritelnErr(ToString(e))
     }
 }
@@ -64,12 +64,26 @@ fn Main() -> void {
 ok
 ---
 
-=== catch obj
+=== catch all
 fn Main() -> void {
     try {
         Process()
-    } catch e: obj {
+    } catch e {
         WritelnErr(ToString(e))
+    }
+}
+---
+ok
+---
+
+=== catch all without type
+fn Main() -> void {
+    try {
+        Process()
+    } catch e: ValueError {
+        WritelnErr("value error")
+    } catch e {
+        WritelnErr(Concat("unexpected: ", ToString(e)))
     }
 }
 ---

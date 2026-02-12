@@ -12,7 +12,7 @@ fn TestIntAddOverflowTraps() -> void {
     let caught: bool = false
     try {
         let x: int = max + 1
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected int overflow trap for max + 1")
@@ -24,7 +24,7 @@ fn TestIntSubOverflowTraps() -> void {
     let caught: bool = false
     try {
         let x: int = min - 1
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected int overflow trap for min - 1")
@@ -36,7 +36,7 @@ fn TestIntMulOverflowTraps() -> void {
     let caught: bool = false
     try {
         let x: int = halfUp * 2
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected int overflow trap for ((max/2)+1)*2")
@@ -48,7 +48,7 @@ fn TestIntNegateMinTraps() -> void {
     let caught: bool = false
     try {
         let x: int = -min
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected int overflow trap for -INT64_MIN")
@@ -58,7 +58,7 @@ fn TestIntShiftGE64Traps() -> void {
     let caught: bool = false
     try {
         let x: int = 1 << 64
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected shift trap for 1<<64")
@@ -66,7 +66,7 @@ fn TestIntShiftGE64Traps() -> void {
     caught = false
     try {
         let x: int = 1 >> 64
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected shift trap for 1>>64")
@@ -76,7 +76,7 @@ fn TestIntPowNegativeExponentTraps() -> void {
     let caught: bool = false
     try {
         let x: int = Pow(2, -1)
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected Pow(int,int) trap for negative exponent")
@@ -86,7 +86,7 @@ fn TestIntPowOverflowTraps() -> void {
     let caught: bool = false
     try {
         let x: int = Pow(2, 63)
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected Pow(int,int) trap on overflow")
@@ -104,7 +104,7 @@ fn TestFloatModByZeroTraps() -> void {
     let caught: bool = false
     try {
         let x: float = 1.0 % 0.0
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected float % 0.0 trap")
@@ -112,7 +112,7 @@ fn TestFloatModByZeroTraps() -> void {
     caught = false
     try {
         let x: float = 0.0 % 0.0
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected float % 0.0 trap for 0.0 % 0.0")
@@ -123,7 +123,7 @@ fn TestSortedNaNTraps() -> void {
     let caught: bool = false
     try {
         let xs: list[float] = Sorted([1.0, nan, 2.0])
-    } catch e: obj {
+    } catch e {
         caught = true
     }
     Assert(caught, "expected Sorted(list[float]) trap when list contains NaN")

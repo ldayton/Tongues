@@ -355,7 +355,7 @@ class _Emitter:
         if default.name is None:
             self._emit_line("default {")
         else:
-            self._emit_line("default " + default.name + ": obj {")
+            self._emit_line("default " + default.name + " {")
         self._emit_stmt_block(default.body)
         self._emit_line("}")
 
@@ -679,7 +679,7 @@ class _Emitter:
                     )
                 else:
                     cases.append(
-                        f"default {stmt.default.name}: obj {self._render_inline_block(stmt.default.body)}"
+                        f"default {stmt.default.name} {self._render_inline_block(stmt.default.body)}"
                     )
             return (
                 "match "

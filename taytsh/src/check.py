@@ -163,7 +163,6 @@ _PRIMITIVE_MAP: dict[str, Type] = {
     "rune": RUNE_T,
     "nil": NIL_T,
     "void": VOID_T,
-    "obj": OBJ_T,
 }
 
 
@@ -1407,7 +1406,9 @@ class Checker:
         seen_obj = False
         for catch in stmt.catches:
             self.enter_scope()
-            if len(catch.types) == 1:
+            if len(catch.types) == 0:
+                catch_type = OBJ_T
+            elif len(catch.types) == 1:
                 catch_type = self.resolve_type(catch.types[0])
             else:
                 members: list[Type] = []
@@ -1415,7 +1416,7 @@ class Checker:
                     members.append(self.resolve_type(ct))
                 catch_type = normalize_union(members)
             if seen_obj:
-                self.error("unreachable catch after obj", catch.pos)
+                self.error("unreachable catch after catch-all", catch.pos)
             if type_eq(catch_type, OBJ_T) and not isinstance(
                 catch_type, (StructT, InterfaceT, EnumT)
             ):

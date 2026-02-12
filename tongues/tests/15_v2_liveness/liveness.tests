@@ -1,0 +1,858 @@
+=== let init used
+fn Main() -> void {
+    let x: int = 1
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let init overwritten before read
+fn Main() -> void {
+    let x: int = 0
+    x = ParseInt(ReadAll(), 10)
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = true
+---
+
+=== let zero value overwritten
+fn Main() -> void {
+    let x: int
+    x = 42
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = true
+---
+
+=== let init read then overwritten
+fn Main() -> void {
+    let x: int = 1
+    WritelnOut(ToString(x))
+    x = 2
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let init used in assignment rhs
+fn Main() -> void {
+    let x: int = 1
+    let y: int = x + 1
+    WritelnOut(ToString(y))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== multiple lets mixed
+fn Main() -> void {
+    let x: int = 0
+    let y: int = 0
+    x = ParseInt(ReadAll(), 10)
+    WritelnOut(ToString(x + y))
+}
+---
+Main.lets.x.initial_value_unused = true
+Main.lets.y.initial_value_unused = false
+---
+
+=== let overwritten both branches
+fn Main() -> void {
+    let x: int = 0
+    if true {
+        x = 1
+    } else {
+        x = 2
+    }
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = true
+---
+
+=== let overwritten one branch only
+fn Main() -> void {
+    let x: int = 0
+    if true {
+        x = 1
+    }
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let read in condition before overwrite
+fn Main() -> void {
+    let x: int = 0
+    if x > 0 {
+        x = 1
+    }
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let overwritten in loop conservative
+fn Main() -> void {
+    let x: int = 0
+    let xs: list[int] = [1, 2, 3]
+    for v in xs {
+        x = v
+    }
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let overwritten in while conservative
+fn Main() -> void {
+    let x: int = 0
+    while x < 10 {
+        x = x + 1
+    }
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let string init overwritten
+fn Main() -> void {
+    let s: string = ""
+    s = ReadAll()
+    WritelnOut(s)
+}
+---
+Main.lets.s.initial_value_unused = true
+---
+
+=== let list init overwritten
+fn Main() -> void {
+    let xs: list[int] = []
+    xs = [1, 2, 3]
+    WritelnOut(ToString(Len(xs)))
+}
+---
+Main.lets.xs.initial_value_unused = true
+---
+
+=== let init used in function call
+fn Double(x: int) -> int { return x * 2 }
+fn Main() -> void {
+    let x: int = 5
+    WritelnOut(ToString(Double(x)))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let overwritten match all arms
+fn Main() -> void {
+    let result: int = 0
+    let x: int? = 42
+    match x {
+        case v: int {
+            result = v
+        }
+        case nil {
+            result = -1
+        }
+    }
+    WritelnOut(ToString(result))
+}
+---
+Main.lets.result.initial_value_unused = true
+---
+
+=== let overwritten try catch all branches
+fn Main() -> void {
+    let result: int = 0
+    try {
+        result = ParseInt("42", 10)
+    } catch e: ValueError {
+        result = -1
+    }
+    WritelnOut(ToString(result))
+}
+---
+Main.lets.result.initial_value_unused = true
+---
+
+=== let overwritten try but not catch
+fn Main() -> void {
+    let result: int = 0
+    try {
+        result = ParseInt("42", 10)
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+    WritelnOut(ToString(result))
+}
+---
+Main.lets.result.initial_value_unused = false
+---
+
+=== catch var unused
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(ParseInt("x", 10)))
+    } catch e: ValueError {
+        WritelnOut("bad input")
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = true
+---
+
+=== catch var used
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(ParseInt("x", 10)))
+    } catch e: ValueError {
+        WritelnOut(e.message)
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = false
+---
+
+=== catch all unused
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(ParseInt("x", 10)))
+    } catch e {
+        WritelnOut("error occurred")
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = true
+---
+
+=== catch all used
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(ParseInt("x", 10)))
+    } catch e {
+        WritelnOut(ToString(e))
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = false
+---
+
+=== multiple catches mixed
+fn Main() -> void {
+    try {
+        let xs: list[int] = [1, 2, 3]
+        let n: int = ParseInt("1", 10)
+        WritelnOut(ToString(xs[n]))
+    } catch e: ValueError {
+        WritelnOut("parse error")
+    } catch e: IndexError {
+        WritelnOut(e.message)
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = true
+Main.body.0.catches.1.catch_var_unused = false
+---
+
+=== match var used
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle {
+            return ToString(c.radius)
+        }
+        case r: Rect {
+            return ToString(r.w)
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = false
+Describe.body.0.cases.1.match_var_unused = false
+---
+
+=== match var unused
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle {
+            return "circle"
+        }
+        case r: Rect {
+            return "rect"
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = true
+Describe.body.0.cases.1.match_var_unused = true
+---
+
+=== match var mixed
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Area(s: Shape) -> int {
+    match s {
+        case c: Circle {
+            return c.radius * c.radius
+        }
+        case r: Rect {
+            return 0
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Area(Circle(radius: 5)))) }
+---
+Area.body.0.type = TMatchStmt
+Area.body.0.cases.0.match_var_unused = false
+Area.body.0.cases.1.match_var_unused = true
+---
+
+=== default binding unused
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle {
+            return ToString(c.radius)
+        }
+        default o {
+            return "other"
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = false
+Describe.body.0.default.match_var_unused = true
+---
+
+=== default binding used
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle {
+            return ToString(c.radius)
+        }
+        default o {
+            return ToString(o)
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = false
+Describe.body.0.default.match_var_unused = false
+---
+
+=== default no binding not annotated
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle {
+            return ToString(c.radius)
+        }
+        default {
+            return "other"
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = false
+---
+
+=== optional match binding
+fn SafeUnwrap(x: int?) -> int {
+    match x {
+        case v: int {
+            return v
+        }
+        case nil {
+            return 0
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(SafeUnwrap(5))) }
+---
+SafeUnwrap.body.0.type = TMatchStmt
+SafeUnwrap.body.0.cases.0.match_var_unused = false
+---
+
+=== optional match binding unused
+fn IsPresent(x: int?) -> bool {
+    match x {
+        case v: int {
+            return true
+        }
+        case nil {
+            return false
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(IsPresent(5))) }
+---
+IsPresent.body.0.type = TMatchStmt
+IsPresent.body.0.cases.0.match_var_unused = true
+---
+
+=== tuple all used
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(Concat(ToString(q), Concat(" ", ToString(r))))
+}
+---
+Main.body.2.tuple_unused_indices = ""
+---
+
+=== tuple one unused
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(ToString(q))
+}
+---
+Main.body.2.tuple_unused_indices = "1"
+---
+
+=== tuple first unused
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(ToString(r))
+}
+---
+Main.body.2.tuple_unused_indices = "0"
+---
+
+=== tuple all unused
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut("done")
+}
+---
+Main.body.2.tuple_unused_indices = "0,1"
+---
+
+=== tuple used later after overwrite
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    q = 99
+    WritelnOut(ToString(q))
+}
+---
+Main.body.2.tuple_unused_indices = "0,1"
+---
+
+=== let in method
+struct Calc {
+    value: int
+    fn Compute(self) -> int {
+        let temp: int = 0
+        temp = self.value * 2
+        return temp
+    }
+}
+fn Main() -> void {
+    let c: Calc = Calc(value: 5)
+    WritelnOut(ToString(c.Compute()))
+}
+---
+Calc.Compute.lets.temp.initial_value_unused = true
+---
+
+=== let in method init used
+struct Calc {
+    value: int
+    fn Compute(self) -> int {
+        let temp: int = self.value
+        return temp * 2
+    }
+}
+fn Main() -> void {
+    let c: Calc = Calc(value: 5)
+    WritelnOut(ToString(c.Compute()))
+}
+---
+Calc.Compute.lets.temp.initial_value_unused = false
+---
+
+=== catch in method
+struct Parser {
+    input: string
+    fn TryParse(self) -> int {
+        try {
+            return ParseInt(self.input, 10)
+        } catch e: ValueError {
+            return -1
+        }
+    }
+}
+fn Main() -> void {
+    let p: Parser = Parser(input: "42")
+    WritelnOut(ToString(p.TryParse()))
+}
+---
+Parser.TryParse.body.0.type = TTryStmt
+Parser.TryParse.body.0.catches.0.catch_var_unused = true
+---
+
+=== let overwritten compound assign
+fn Main() -> void {
+    let x: int = 0
+    x += 10
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let overwritten in nested if else
+fn Foo(a: int, b: int) -> int {
+    let result: int = 0
+    if a > 0 {
+        if b > 0 {
+            result = 1
+        } else {
+            result = 2
+        }
+    } else {
+        if b > 0 {
+            result = 3
+        } else {
+            result = 4
+        }
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1, 2))) }
+---
+Foo.lets.result.initial_value_unused = true
+---
+
+=== let read inside branch before overwrite
+fn Foo(flag: bool) -> int {
+    let x: int = 5
+    if flag {
+        WritelnOut(ToString(x))
+        x = 10
+    } else {
+        x = 20
+    }
+    return x
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true))) }
+---
+Foo.lets.x.initial_value_unused = false
+---
+
+=== let overwritten try all paths including finally
+fn Foo(s: string) -> int {
+    let x: int = 0
+    try {
+        x = ParseInt(s, 10)
+    } catch e: ValueError {
+        x = -1
+    }
+    return x
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.lets.x.initial_value_unused = true
+---
+
+=== let init read via field access
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(x: 1, y: 2)
+    WritelnOut(ToString(p.x))
+}
+---
+Main.lets.p.initial_value_unused = false
+---
+
+=== let init read via index access
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    WritelnOut(ToString(xs[0]))
+}
+---
+Main.lets.xs.initial_value_unused = false
+---
+
+=== let overwritten else if all branches
+fn Foo(x: int) -> int {
+    let result: int = 0
+    if x > 10 {
+        result = 3
+    } else if x > 0 {
+        result = 2
+    } else {
+        result = 1
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.lets.result.initial_value_unused = true
+---
+
+=== let overwritten else if missing else
+fn Foo(x: int) -> int {
+    let result: int = 0
+    if x > 10 {
+        result = 3
+    } else if x > 0 {
+        result = 2
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.lets.result.initial_value_unused = false
+---
+
+=== let never referenced
+fn Main() -> void {
+    let x: int = 0
+    WritelnOut("done")
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== let overwritten never read
+fn Main() -> void {
+    let x: int = 0
+    x = 5
+    WritelnOut("done")
+}
+---
+Main.lets.x.initial_value_unused = true
+---
+
+=== let inside nested block overwritten
+fn Foo(flag: bool) -> void {
+    if flag {
+        let x: int = 0
+        x = 42
+        WritelnOut(ToString(x))
+    }
+}
+fn Main() -> void { Foo(true) }
+---
+Foo.lets.x.initial_value_unused = true
+---
+
+=== catch union type unused
+fn Main() -> void {
+    try {
+        let xs: list[int] = [1, 2, 3]
+        let n: int = ParseInt("1", 10)
+        WritelnOut(ToString(xs[n]))
+    } catch e: ValueError | IndexError {
+        WritelnOut("error")
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = true
+---
+
+=== catch union type used
+fn Main() -> void {
+    try {
+        let xs: list[int] = [1, 2, 3]
+        let n: int = ParseInt("1", 10)
+        WritelnOut(ToString(xs[n]))
+    } catch e: ValueError | IndexError {
+        WritelnOut(e.message)
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = false
+---
+
+=== catch var used in nested if
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(ParseInt("x", 10)))
+    } catch e: ValueError {
+        if true {
+            WritelnOut(e.message)
+        }
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = false
+---
+
+=== union match var used
+fn Describe(v: int | string) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: string {
+            return s
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(42)) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = false
+Describe.body.0.cases.1.match_var_unused = false
+---
+
+=== union match var unused
+fn Describe(v: int | string) -> string {
+    match v {
+        case n: int {
+            return "int"
+        }
+        case s: string {
+            return "string"
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(42)) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = true
+Describe.body.0.cases.1.match_var_unused = true
+---
+
+=== match var used in nested control flow
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape, verbose: bool) -> string {
+    match s {
+        case c: Circle {
+            if verbose {
+                return ToString(c.radius)
+            }
+            return "circle"
+        }
+        case r: Rect {
+            return "rect"
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5), true)) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = false
+Describe.body.0.cases.1.match_var_unused = true
+---
+
+=== tuple three targets middle used
+fn Triple(a: int, b: int) -> (int, int, int) {
+    return (a + b, a - b, a * b)
+}
+fn Main() -> void {
+    let x: int
+    let y: int
+    let z: int
+    x, y, z = Triple(10, 3)
+    WritelnOut(ToString(y))
+}
+---
+Main.body.3.tuple_unused_indices = "0,2"
+---
+
+=== tuple three targets all used
+fn Triple(a: int, b: int) -> (int, int, int) {
+    return (a + b, a - b, a * b)
+}
+fn Main() -> void {
+    let x: int
+    let y: int
+    let z: int
+    x, y, z = Triple(10, 3)
+    WritelnOut(Concat(ToString(x), Concat(" ", Concat(ToString(y), Concat(" ", ToString(z))))))
+}
+---
+Main.body.3.tuple_unused_indices = ""
+---
+
+=== tuple three targets all unused
+fn Triple(a: int, b: int) -> (int, int, int) {
+    return (a + b, a - b, a * b)
+}
+fn Main() -> void {
+    let x: int
+    let y: int
+    let z: int
+    x, y, z = Triple(10, 3)
+    WritelnOut("done")
+}
+---
+Main.body.3.tuple_unused_indices = "0,1,2"
+---
+
+=== enum match no bindings
+enum Color { Red Green Blue }
+fn Name(c: Color) -> string {
+    match c {
+        case Color.Red {
+            return "red"
+        }
+        case Color.Green {
+            return "green"
+        }
+        case Color.Blue {
+            return "blue"
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Name(Color.Red)) }
+---
+Name.body.0.type = TMatchStmt
+---

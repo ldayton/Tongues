@@ -42,16 +42,6 @@ fn Main() -> void {
 ok
 ---
 
-=== valid: obj assignability
-fn Main() -> void {
-    let x: obj = 42
-    let y: obj = "hello"
-    let z: obj = nil
-}
----
-ok
----
-
 === error: duplicate type name
 struct Foo {
     x: int
@@ -186,15 +176,6 @@ fn Main() -> void {
 ok
 ---
 
-=== valid: obj absorbs union
-fn Main() -> void {
-    let x: obj = 42
-    let y: int | string = "hello"
-    x = y
-}
----
-ok
----
 
 === valid: union assignability
 fn Main() -> void {
@@ -256,15 +237,6 @@ fn Main() -> void {
     if v != nil {
         let a: int = v.0
     }
-}
----
-ok
----
-
-=== valid: obj absorbs union
-fn Main() -> void {
-    let x: int | obj = 42
-    let y: obj = x
 }
 ---
 ok

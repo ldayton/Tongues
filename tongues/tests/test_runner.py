@@ -90,8 +90,9 @@ TESTS = {
         "typecheck": {"dir": "08_inference",  "run": "phase"},
     },
     "middleend": {
-        "scope_v2":   {"dir": "13_v2_scope",   "run": "phase"},
-        "returns_v2": {"dir": "14_v2_returns", "run": "phase"},
+        "scope_v2":    {"dir": "13_v2_scope",    "run": "phase"},
+        "returns_v2":  {"dir": "14_v2_returns",  "run": "phase"},
+        "liveness_v2": {"dir": "15_v2_liveness", "run": "phase"},
     },
     "backend": {
         "codegen":   {"dir": "15_codegen",    "run": "codegen"},
@@ -927,6 +928,78 @@ def _serialize_scope(module):
     return result
 
 
+def _collect_all_lets(stmts, lets):
+    """Recursively collect all TLetStmt nodes with liveness annotations."""
+    for stmt in stmts:
+        if isinstance(stmt, TLetStmt):
+            a = _strip_prefix(stmt.annotations, "liveness.")
+            if a:
+                lets[stmt.name] = a
+        if isinstance(stmt, TIfStmt):
+            _collect_all_lets(stmt.then_body, lets)
+            if stmt.else_body is not None:
+                _collect_all_lets(stmt.else_body, lets)
+        elif isinstance(stmt, TWhileStmt):
+            _collect_all_lets(stmt.body, lets)
+        elif isinstance(stmt, TForStmt):
+            _collect_all_lets(stmt.body, lets)
+        elif isinstance(stmt, TMatchStmt):
+            for case in stmt.cases:
+                _collect_all_lets(case.body, lets)
+            if stmt.default is not None:
+                _collect_all_lets(stmt.default.body, lets)
+        elif isinstance(stmt, TTryStmt):
+            _collect_all_lets(stmt.body, lets)
+            for catch in stmt.catches:
+                _collect_all_lets(catch.body, lets)
+            if stmt.finally_body is not None:
+                _collect_all_lets(stmt.finally_body, lets)
+
+
+def _serialize_liveness_stmt(stmt):
+    d = {"type": type(stmt).__name__}
+    for k, v in getattr(stmt, "annotations", {}).items():
+        if k.startswith("liveness."):
+            d[k[9:]] = v
+    if isinstance(stmt, TMatchStmt):
+        cases = []
+        for case in stmt.cases:
+            cd = {}
+            if isinstance(case.pattern, TPatternType):
+                a = _strip_prefix(case.pattern.annotations, "liveness.")
+                if a:
+                    cd.update(a)
+            cases.append(cd)
+        d["cases"] = cases
+        if stmt.default is not None:
+            dd = _strip_prefix(stmt.default.annotations, "liveness.")
+            d["default"] = dd
+    elif isinstance(stmt, TTryStmt):
+        d["catches"] = [_strip_prefix(c.annotations, "liveness.") for c in stmt.catches]
+    return d
+
+
+def _serialize_fn_liveness(fn):
+    d = {}
+    lets = {}
+    _collect_all_lets(fn.body, lets)
+    if lets:
+        d["lets"] = lets
+    d["body"] = [_serialize_liveness_stmt(s) for s in fn.body]
+    return d
+
+
+def _serialize_liveness(module):
+    result = {}
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            result[decl.name] = _serialize_fn_liveness(decl)
+        elif isinstance(decl, TStructDecl):
+            for method in decl.methods:
+                result[f"{decl.name}.{method.name}"] = _serialize_fn_liveness(method)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # v2 middleend runners
 # ---------------------------------------------------------------------------
@@ -957,6 +1030,15 @@ def run_scope_v2(source: str) -> PhaseResult:
     return PhaseResult(data=_serialize_scope(module))
 
 
+def run_liveness_v2(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_scope(module, checker)
+    analyze_liveness(module, checker)
+    return PhaseResult(data=_serialize_liveness(module))
+
+
 RUNNERS = {
     "parse": run_parse,
     "subset": run_subset,
@@ -967,6 +1049,7 @@ RUNNERS = {
     "typecheck": run_typecheck,
     "returns_v2": run_returns_v2,
     "scope_v2": run_scope_v2,
+    "liveness_v2": run_liveness_v2,
 }
 
 
@@ -1369,6 +1452,12 @@ def test_returns_v2(returns_v2_input, returns_v2_expected):
 
 def test_scope_v2(scope_v2_input, scope_v2_expected):
     check_expected(scope_v2_expected, run_scope_v2(scope_v2_input), "scope_v2")
+
+
+def test_liveness_v2(liveness_v2_input, liveness_v2_expected):
+    check_expected(
+        liveness_v2_expected, run_liveness_v2(liveness_v2_input), "liveness_v2"
+    )
 
 
 def test_codegen(

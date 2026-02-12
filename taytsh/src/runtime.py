@@ -1020,8 +1020,6 @@ class TypeChecker:
                 return TY_STRING
             if typ.kind == "rune":
                 return TY_RUNE
-            if typ.kind == "obj":
-                return TY_OBJ
             if typ.kind == "nil":
                 return TY_NIL
             if typ.kind == "void":
@@ -1491,10 +1489,13 @@ class TypeChecker:
             st.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
         )
         for c in st.catches:
-            types = [self.resolve_type(t, pos=t.pos) for t in c.types]
-            if any(ty_eq(t, TY_VOID) for t in types):
-                raise TaytshTypeError("void cannot be caught", c.pos)
-            c_ty = ty_union(types)
+            if c.types:
+                types = [self.resolve_type(t, pos=t.pos) for t in c.types]
+                if any(ty_eq(t, TY_VOID) for t in types):
+                    raise TaytshTypeError("void cannot be caught", c.pos)
+                c_ty = ty_union(types)
+            else:
+                c_ty = TY_OBJ
             env.push_scope()
             try:
                 env.bind(c.name, c_ty, pos=c.pos)
@@ -3839,7 +3840,7 @@ class Runtime:
             if isinstance(s, _Throw):
                 handled = False
                 for c in st.catches:
-                    if any(
+                    if not c.types or any(
                         self._matches_type(s.value, self.tc.resolve_type(t, pos=t.pos))
                         for t in c.types
                     ):
@@ -3847,10 +3848,15 @@ class Runtime:
                         pending = None
                         env.push_scope()
                         try:
-                            # Catch binding static type is union of types, but runtime stores the concrete value.
-                            c_ty = ty_union(
-                                [self.tc.resolve_type(t, pos=t.pos) for t in c.types]
-                            )
+                            if c.types:
+                                c_ty = ty_union(
+                                    [
+                                        self.tc.resolve_type(t, pos=t.pos)
+                                        for t in c.types
+                                    ]
+                                )
+                            else:
+                                c_ty = TY_OBJ
                             env.bind(c.name, c_ty, s.value)
                             self._eval_block(c.body, env, fn_ret=fn_ret)
                         except _Signal as inner:
