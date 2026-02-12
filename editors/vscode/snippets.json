@@ -42,7 +42,7 @@
     "body": [
       "try {",
       "    $0",
-      "} catch ${1:e}: ${2:obj} {",
+      "} catch ${1:e}: ${2:ValueError} {",
       "}",
       ""
     ],

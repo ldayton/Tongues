@@ -1,7 +1,7 @@
 {
   "scopeName": "source.taytsh",
   "patterns": [
-    { "include": "#pragma" },
+    { "include": "#annotation" },
     { "include": "#comment" },
     { "include": "#bytes" },
     { "include": "#string" },
@@ -14,23 +14,37 @@
     { "include": "#operators" }
   ],
   "repository": {
-    "pragma": {
-      "begin": "^\\s*(--)(\\s*)(pragma)\\b",
+    "annotation": {
+      "begin": "@@?\\[",
       "beginCaptures": {
-        "1": { "name": "punctuation.definition.comment.taytsh" },
-        "3": { "name": "invalid.illegal.pragma.taytsh" }
+        "0": { "name": "punctuation.definition.annotation.taytsh" }
       },
-      "end": "$",
-      "name": "comment.line.double-dash.taytsh",
+      "end": "\\]",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.annotation.taytsh" }
+      },
+      "name": "meta.annotation.taytsh",
       "patterns": [
         {
-          "match": "\\b(strict-math|strict-tostring)\\b",
-          "name": "constant.language.flag.taytsh"
+          "match": "\"[^\"]*\"",
+          "name": "string.quoted.double.annotation.taytsh"
+        },
+        {
+          "match": "\\b(true|false)\\b",
+          "name": "constant.language.taytsh"
+        },
+        {
+          "match": "\\b\\d+\\b",
+          "name": "constant.numeric.integer.taytsh"
+        },
+        {
+          "match": "=",
+          "name": "keyword.operator.assignment.taytsh"
         }
       ]
     },
     "comment": {
-      "match": "^\\s*--.*$",
+      "match": "--.*$",
       "name": "comment.line.double-dash.taytsh"
     },
     "bytes": {
@@ -128,7 +142,7 @@
     "types": {
       "patterns": [
         {
-          "match": "\\b(int|float|bool|byte|bytes|string|rune|void|obj)\\b",
+          "match": "\\b(int|float|bool|byte|bytes|string|rune|void)\\b",
           "name": "storage.type.taytsh"
         },
         {
