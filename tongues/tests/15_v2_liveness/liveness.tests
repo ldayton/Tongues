@@ -856,3 +856,100 @@ fn Main() -> void { WritelnOut(Name(Color.Red)) }
 ---
 Name.body.0.type = TMatchStmt
 ---
+
+=== let overwritten in try finally no catch
+fn Main() -> void {
+    let x: int = 0
+    try {
+        x = 1
+    } finally {
+        WritelnOut("cleanup")
+    }
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = true
+---
+
+=== catch var used in nested try
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(ParseInt("x", 10)))
+    } catch e: ValueError {
+        try {
+            WritelnOut(e.message)
+        } catch inner: ValueError {
+            WritelnOut("inner")
+        }
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.catch_var_unused = false
+---
+
+=== default binding used in nested control flow
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape, verbose: bool) -> string {
+    match s {
+        case c: Circle {
+            return "circle"
+        }
+        default o {
+            if verbose {
+                return ToString(o)
+            }
+            return "other"
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5), true)) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.cases.0.match_var_unused = true
+Describe.body.0.default.match_var_unused = false
+---
+
+=== let overwritten in finally only
+fn Main() -> void {
+    let x: int = 0
+    try {
+        WritelnOut("work")
+    } finally {
+        x = 7
+    }
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = true
+---
+
+=== let read in finally before overwrite
+fn Main() -> void {
+    let x: int = 0
+    try {
+        WritelnOut("work")
+    } finally {
+        WritelnOut(ToString(x))
+    }
+    x = 1
+    WritelnOut(ToString(x))
+}
+---
+Main.lets.x.initial_value_unused = false
+---
+
+=== tuple multiple assignments all annotated
+fn Main() -> void {
+    let a: int
+    let b: int
+    a, b = DivMod(9, 4)
+    b, a = DivMod(7, 3)
+    WritelnOut(ToString(a))
+}
+---
+Main.body.2.tuple_unused_indices = 0,1
+Main.body.3.tuple_unused_indices = 0
+---

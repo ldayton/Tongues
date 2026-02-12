@@ -285,3 +285,354 @@ fn Main() -> void {
 Main.lets.a.is_reassigned = true
 Main.lets.b.is_reassigned = true
 ---
+
+=== case interface via function param
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+fn ProcessNode(n: Node) -> void {
+    WritelnOut(ToString(n))
+}
+fn Handle(n: Node) -> void {
+    match n {
+        case lit: Literal {
+            ProcessNode(lit)
+        }
+        case bin: BinOp {
+            WritelnOut(bin.op)
+        }
+    }
+}
+fn Main() -> void { Handle(Literal(value: 42)) }
+---
+Handle.body.0.type = TMatchStmt
+Handle.body.0.cases.0.pattern.case_interface = Node
+Handle.body.0.cases.1.pattern.case_interface =
+---
+
+=== case interface direct use only
+interface Shape {}
+struct Circle : Shape {
+    radius: int
+}
+struct Rect : Shape {
+    w: int
+    h: int
+}
+fn Area(s: Shape) -> int {
+    match s {
+        case c: Circle {
+            return c.radius * c.radius
+        }
+        case r: Rect {
+            return r.w * r.h
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Area(Circle(radius: 5)))) }
+---
+Area.body.0.type = TMatchStmt
+Area.body.0.cases.0.pattern.case_interface =
+Area.body.0.cases.1.pattern.case_interface =
+---
+
+=== case interface default binding
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+fn ProcessNode(n: Node) -> void {
+    WritelnOut(ToString(n))
+}
+fn Handle(n: Node) -> void {
+    match n {
+        case lit: Literal {
+            WritelnOut(ToString(lit.value))
+        }
+        default other {
+            ProcessNode(other)
+        }
+    }
+}
+fn Main() -> void { Handle(Literal(value: 42)) }
+---
+Handle.body.0.type = TMatchStmt
+Handle.body.0.cases.0.pattern.case_interface =
+Handle.body.0.default.case_interface = Node
+---
+
+=== case interface optional match
+fn Process(x: int?) -> void {
+    match x {
+        case v: int {
+            WritelnOut(ToString(v))
+        }
+        case nil {
+            WritelnOut("nil")
+        }
+    }
+}
+fn Main() -> void { Process(42) }
+---
+Process.body.0.type = TMatchStmt
+Process.body.0.cases.0.pattern.case_interface =
+---
+
+=== default binding const
+interface Shape {}
+struct Circle : Shape {
+    radius: int
+}
+struct Rect : Shape {
+    w: int
+    h: int
+}
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle {
+            return "circle"
+        }
+        default other {
+            return ToString(other)
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.default.is_reassigned = false
+Describe.body.0.default.is_const = true
+---
+
+=== catch all binding const
+fn Main() -> void {
+    try {
+        throw KeyError(message: "oops")
+    } catch e {
+        WritelnOut(ToString(e))
+    }
+}
+---
+Main.body.0.type = TTryStmt
+Main.body.0.catches.0.is_reassigned = false
+Main.body.0.catches.0.is_const = true
+---
+
+=== nil narrowing union type
+fn Foo(x: int | string | nil) -> void {
+    if x != nil {
+        WritelnOut(ToString(x))
+    }
+}
+fn Main() -> void { Foo(42) }
+---
+Foo.vars.x.narrowed_type = int | string
+---
+
+=== param Insert mutation
+fn Foo(xs: list[int]) -> void {
+    Insert(xs, 0, 99)
+}
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    Foo(a)
+}
+---
+Foo.params.xs.is_modified = true
+---
+
+=== param Pop mutation
+fn Foo(xs: list[int]) -> int {
+    return Pop(xs)
+}
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    WritelnOut(ToString(Foo(a)))
+}
+---
+Foo.params.xs.is_modified = true
+---
+
+=== param RemoveAt mutation
+fn Foo(xs: list[int]) -> void {
+    RemoveAt(xs, 0)
+}
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    Foo(a)
+}
+---
+Foo.params.xs.is_modified = true
+---
+
+=== param map Delete mutation
+fn Foo(m: map[string, int]) -> void {
+    Delete(m, "a")
+}
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    Foo(m)
+}
+---
+Foo.params.m.is_modified = true
+---
+
+=== param map index assign mutation
+fn Foo(m: map[string, int]) -> void {
+    m["b"] = 2
+}
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    Foo(m)
+}
+---
+Foo.params.m.is_modified = true
+---
+
+=== param set Add mutation
+fn Foo(s: set[int]) -> void {
+    Add(s, 42)
+}
+fn Main() -> void {
+    let s: set[int] = {1, 2}
+    Foo(s)
+}
+---
+Foo.params.s.is_modified = true
+---
+
+=== param set Remove mutation
+fn Foo(s: set[int]) -> void {
+    Remove(s, 1)
+}
+fn Main() -> void {
+    let s: set[int] = {1, 2}
+    Foo(s)
+}
+---
+Foo.params.s.is_modified = true
+---
+
+=== param tuple assign
+fn Foo(a: int) -> int {
+    let b: int
+    a, b = DivMod(10, 3)
+    return b
+}
+fn Main() -> void { WritelnOut(ToString(Foo(0))) }
+---
+Foo.params.a.is_reassigned = true
+Foo.params.a.is_modified = true
+---
+
+=== param const
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void { WritelnOut(ToString(Add(1, 2))) }
+---
+Add.params.a.is_reassigned = false
+Add.params.a.is_const = true
+Add.params.b.is_reassigned = false
+Add.params.b.is_const = true
+---
+
+=== multiple params mixed usage
+fn Foo(a: int, b: int, c: int) -> int {
+    b = b + 1
+    return a + b
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1, 2, 3))) }
+---
+Foo.params.a.is_unused = false
+Foo.params.a.is_modified = false
+Foo.params.a.is_reassigned = false
+Foo.params.b.is_unused = false
+Foo.params.b.is_modified = true
+Foo.params.b.is_reassigned = true
+Foo.params.c.is_unused = true
+Foo.params.c.is_modified = false
+---
+
+=== self modified
+struct Counter {
+    n: int
+    fn Inc(self) -> void {
+        self.n = self.n + 1
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(n: 0)
+    c.Inc()
+}
+---
+Counter.Inc.params.self.is_modified = true
+Counter.Inc.params.self.is_reassigned = false
+---
+
+=== self unused
+struct Dummy {
+    x: int
+    fn Constant(self) -> int {
+        return 42
+    }
+}
+fn Main() -> void {
+    let d: Dummy = Dummy(x: 0)
+    WritelnOut(ToString(d.Constant()))
+}
+---
+Dummy.Constant.params.self.is_unused = true
+Dummy.Constant.params.self.is_modified = false
+---
+
+=== index assign not reassign
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] = 99
+    WritelnOut(ToString(xs[0]))
+}
+---
+Main.lets.xs.is_reassigned = false
+Main.lets.xs.is_const = true
+---
+
+=== map index assign not reassign
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    m["b"] = 2
+    WritelnOut(ToString(Len(m)))
+}
+---
+Main.lets.m.is_reassigned = false
+Main.lets.m.is_const = true
+---
+
+=== compound field assign is mutation not reassign
+struct Pt {
+    x: int
+    y: int
+}
+fn Bump(p: Pt) -> void {
+    p.x += 1
+}
+fn Main() -> void {
+    let pt: Pt = Pt(x: 1, y: 2)
+    Bump(pt)
+}
+---
+Bump.params.p.is_reassigned = false
+Bump.params.p.is_modified = true
+Bump.params.p.is_const = true
+---

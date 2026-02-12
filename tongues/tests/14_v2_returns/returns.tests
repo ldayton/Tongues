@@ -544,3 +544,423 @@ fn Main() -> void { WritelnOut(ToString(MaybeNil(5))) }
 ---
 MaybeNil.may_return_nil = true
 ---
+
+=== else if chain one branch no return
+fn Classify(x: int) -> string {
+    if x > 0 {
+        return "positive"
+    } else if x == 0 {
+        WritelnOut("zero")
+    } else {
+        return "negative"
+    }
+    return "fallback"
+}
+fn Main() -> void { WritelnOut(Classify(1)) }
+---
+Classify.body.0.type = TIfStmt
+Classify.body.0.always_returns = false
+---
+
+=== match default does not return
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Area(s: Shape) -> int {
+    match s {
+        case c: Circle {
+            return c.radius * c.radius
+        }
+        default {
+            WritelnOut("not circle")
+        }
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Area(Circle(radius: 5)))) }
+---
+Area.body.0.type = TMatchStmt
+Area.body.0.always_returns = false
+---
+
+=== try returns catch does not
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.always_returns = false
+---
+
+=== catch returns try does not
+fn Foo(s: string) -> int {
+    let result: int = 0
+    try {
+        result = ParseInt(s, 10)
+    } catch e: ValueError {
+        return -1
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.body.1.type = TTryStmt
+Foo.body.1.always_returns = false
+---
+
+=== try catch with finally both return
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        return 0
+    } finally {
+        WritelnOut("done")
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.always_returns = true
+Foo.always_returns = true
+---
+
+=== enum match all arms return
+enum Color { Red Green Blue }
+fn Name(c: Color) -> string {
+    match c {
+        case Color.Red { return "red" }
+        case Color.Green { return "green" }
+        case Color.Blue { return "blue" }
+    }
+}
+fn Main() -> void { WritelnOut(Name(Color.Red)) }
+---
+Name.always_returns = true
+Name.body.0.type = TMatchStmt
+Name.body.0.always_returns = true
+---
+
+=== union match all arms return
+fn Describe(v: int | string) -> string {
+    match v {
+        case n: int { return ToString(n) }
+        case s: string { return s }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(42)) }
+---
+Describe.always_returns = true
+Describe.body.0.type = TMatchStmt
+Describe.body.0.always_returns = true
+---
+
+=== throw in match arm terminates
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn GetRadius(s: Shape) -> int {
+    match s {
+        case c: Circle {
+            return c.radius
+        }
+        case r: Rect {
+            throw ValueError(message: "not a circle")
+        }
+    }
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(GetRadius(Circle(radius: 5))))
+    } catch e: ValueError {
+        WritelnOut(e.message)
+    }
+}
+---
+GetRadius.always_returns = true
+GetRadius.body.0.type = TMatchStmt
+GetRadius.body.0.always_returns = true
+---
+
+=== exit in if branch terminates
+fn Foo(x: int) -> int {
+    if x < 0 {
+        Exit(1)
+    } else {
+        return x
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.always_returns = true
+Foo.body.0.type = TIfStmt
+Foo.body.0.always_returns = true
+---
+
+=== for range always false
+fn Foo() -> void {
+    for i in range(10) {
+        return
+    }
+}
+fn Main() -> void { Foo() }
+---
+Foo.body.0.type = TForStmt
+Foo.body.0.always_returns = false
+---
+
+=== try only finally with return
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } finally {
+        WritelnOut("done")
+    }
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo("42")))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.always_returns = true
+Foo.always_returns = true
+---
+
+=== try only finally no return
+fn Foo() -> int {
+    try {
+        WritelnOut("hi")
+    } finally {
+        WritelnOut("done")
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Foo())) }
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.always_returns = false
+---
+
+=== try body return needs named returns
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.needs_named_returns = true
+---
+
+=== return in finally no named returns
+fn Foo() -> int {
+    try {
+        WritelnOut("try")
+    } finally {
+        return 42
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo())) }
+---
+Foo.needs_named_returns = false
+---
+
+=== method needs named returns
+struct Parser {
+    input: string
+    fn Parse(self) -> int {
+        try {
+            return ParseInt(self.input, 10)
+        } catch e: ValueError {
+            return 0
+        }
+    }
+}
+fn Main() -> void {
+    let p: Parser = Parser(input: "42")
+    WritelnOut(ToString(p.Parse()))
+}
+---
+Parser.Parse.needs_named_returns = true
+Parser.Parse.body.0.type = TTryStmt
+Parser.Parse.body.0.body_has_return = true
+---
+
+=== may return nil false all branches reassign
+fn SafeFirst(xs: list[int]) -> int? {
+    let result: int? = nil
+    if Len(xs) > 0 {
+        result = xs[0]
+    } else {
+        result = 0
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(SafeFirst([1, 2]))) }
+---
+SafeFirst.may_return_nil = false
+---
+
+=== may return nil union with nil
+fn Foo(x: int) -> int | string | nil {
+    if x > 0 {
+        return x
+    }
+    return nil
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.may_return_nil = true
+---
+
+=== multiple returns some nil
+fn Foo(x: int) -> int? {
+    if x > 10 {
+        return x
+    }
+    if x > 0 {
+        return nil
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Foo(15))) }
+---
+Foo.may_return_nil = true
+---
+
+=== return nil from match arm
+fn Foo(x: int?) -> int? {
+    match x {
+        case v: int {
+            return v
+        }
+        case nil {
+            return nil
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.may_return_nil = true
+---
+
+=== return Get optional
+fn Foo(m: map[string, int], k: string) -> int? {
+    return Get(m, k)
+}
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    WritelnOut(ToString(Foo(m, "a")))
+}
+---
+Foo.may_return_nil = true
+---
+
+=== may return nil false match all reassign
+fn Foo(x: int?) -> int? {
+    let result: int? = nil
+    match x {
+        case v: int {
+            result = v
+        }
+        case nil {
+            result = 0
+        }
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.may_return_nil = false
+---
+
+=== may return nil true match partial reassign
+fn Foo(x: int?) -> int? {
+    let result: int? = nil
+    match x {
+        case v: int {
+            result = v
+        }
+        case nil {
+            WritelnOut("nil input")
+        }
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.may_return_nil = true
+---
+
+=== return in for inside try body
+fn Foo(xs: list[string]) -> int {
+    try {
+        for s in xs {
+            return ParseInt(s, 10)
+        }
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Foo(["42"]))) }
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.body_has_return = true
+---
+
+=== return in match inside try body
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Foo(s: Shape) -> int {
+    try {
+        match s {
+            case c: Circle {
+                return c.radius
+            }
+            case r: Rect {
+                return r.w * r.h
+            }
+        }
+    } catch e: ValueError {
+        return 0
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo(Circle(radius: 5)))) }
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.body_has_return = true
+---
+
+=== return in nested try inside try body
+fn Foo(s: string) -> int {
+    try {
+        try {
+            return ParseInt(s, 10)
+        } catch e: ValueError {
+            WritelnOut("inner err")
+        }
+    } catch e {
+        WritelnOut("outer err")
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.body_has_return = true
+---

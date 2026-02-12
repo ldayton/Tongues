@@ -1,4 +1,4 @@
-"""Unified test runner for all Tongues test phases."""
+"""Test runner for non-v2 Tongues test phases."""
 
 import ast
 import re
@@ -89,14 +89,8 @@ TESTS = {
         "hierarchy": {"dir": "07_hierarchy",  "run": "phase"},
         "typecheck": {"dir": "08_inference",  "run": "phase"},
     },
-    "middleend": {
-        "scope_v2":    {"dir": "13_v2_scope",    "run": "phase"},
-        "returns_v2":  {"dir": "14_v2_returns",  "run": "phase"},
-        "liveness_v2": {"dir": "15_v2_liveness", "run": "phase"},
-    },
     "backend": {
         "codegen":   {"dir": "15_codegen",    "run": "codegen"},
-        "codegen_v2_python": {"dir": "15_codegen_v2_python", "run": "codegen_v2_python"},
         "apptest":   {"dir": "15_app",        "run": "apptest"},
     },
 }
@@ -1446,15 +1440,15 @@ def test_typecheck(typecheck_input, typecheck_expected):
     check_expected(typecheck_expected, run_typecheck(typecheck_input), "typecheck")
 
 
-def test_returns_v2(returns_v2_input, returns_v2_expected):
+def _test_returns_v2(returns_v2_input, returns_v2_expected):
     check_expected(returns_v2_expected, run_returns_v2(returns_v2_input), "returns_v2")
 
 
-def test_scope_v2(scope_v2_input, scope_v2_expected):
+def _test_scope_v2(scope_v2_input, scope_v2_expected):
     check_expected(scope_v2_expected, run_scope_v2(scope_v2_input), "scope_v2")
 
 
-def test_liveness_v2(liveness_v2_input, liveness_v2_expected):
+def _test_liveness_v2(liveness_v2_input, liveness_v2_expected):
     check_expected(
         liveness_v2_expected, run_liveness_v2(liveness_v2_input), "liveness_v2"
     )
@@ -1484,7 +1478,7 @@ def test_codegen(
                 )
 
 
-def test_codegen_v2_python(
+def _test_codegen_v2_python(
     codegen_v2_input: str,
     codegen_v2_expected: str,
     transpiled_output_v2_python: str,

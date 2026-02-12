@@ -1,0 +1,1198 @@
+=== var declared before if no hoist
+fn Classify(x: int) -> string {
+    let label: string
+    if x > 0 {
+        label = "positive"
+    } else {
+        label = "negative"
+    }
+    return label
+}
+fn Main() -> void { WritelnOut(Classify(1)) }
+---
+Classify.body.1.type = TIfStmt
+Classify.body.1.hoisted_vars =
+---
+
+=== var declared inside if used after
+fn Foo(x: int) -> int {
+    if x > 0 {
+        let n: int = x * 2
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = n:int
+---
+
+=== var declared inside if not used after
+fn Foo(x: int) -> void {
+    if x > 0 {
+        let n: int = x * 2
+        WritelnOut(ToString(n))
+    }
+}
+fn Main() -> void { Foo(5) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars =
+---
+
+=== var declared inside else used after
+fn Foo(x: int) -> int {
+    if x > 0 {
+        WritelnOut("positive")
+    } else {
+        let n: int = x * -1
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo(-3))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = n:int
+---
+
+=== multiple vars hoisted from if
+fn Foo(x: int) -> int {
+    if x > 0 {
+        let a: int = x
+        let b: string = ToString(x)
+    }
+    WritelnOut(b)
+    return a
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = a:int;b:string
+---
+
+=== var declared inside try used after
+fn Parse(s: string) -> int {
+    try {
+        let n: int = ParseInt(s, 10)
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Parse("42"))) }
+---
+Parse.body.0.type = TTryStmt
+Parse.body.0.hoisted_vars = n:int
+---
+
+=== var declared inside try not used after
+fn Parse(s: string) -> int {
+    let result: int
+    try {
+        let n: int = ParseInt(s, 10)
+        result = n * 2
+    } catch e: ValueError {
+        result = 0
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Parse("42"))) }
+---
+Parse.body.1.type = TTryStmt
+Parse.body.1.hoisted_vars =
+---
+
+=== var declared inside for used after
+fn Foo(xs: list[int]) -> int {
+    for x in xs {
+        let last: int = x
+    }
+    return last
+}
+fn Main() -> void { WritelnOut(ToString(Foo([1, 2, 3]))) }
+---
+Foo.body.0.type = TForStmt
+Foo.body.0.hoisted_vars = last:int
+---
+
+=== var declared inside while used after
+fn Foo() -> int {
+    let i: int = 0
+    while i < 10 {
+        let doubled: int = i * 2
+        i += 1
+    }
+    return doubled
+}
+fn Main() -> void { WritelnOut(ToString(Foo())) }
+---
+Foo.body.1.type = TWhileStmt
+Foo.body.1.hoisted_vars = doubled:int
+---
+
+=== var declared inside match case used after
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Measure(s: Shape) -> int {
+    match s {
+        case c: Circle {
+            let size: int = c.radius
+        }
+        case r: Rect {
+            let size: int = r.w * r.h
+        }
+    }
+    return size
+}
+fn Main() -> void { WritelnOut(ToString(Measure(Circle(radius: 5)))) }
+---
+Measure.body.0.type = TMatchStmt
+Measure.body.0.hoisted_vars = size:int
+---
+
+=== var declared inside match not used after
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle {
+            let label: string = "circle"
+            return label
+        }
+        case r: Rect {
+            let label: string = "rect"
+            return label
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.hoisted_vars =
+---
+
+=== both branches declare used after
+fn Foo(flag: bool) -> string {
+    if flag {
+        let msg: string = "yes"
+    } else {
+        let msg: string = "no"
+    }
+    return msg
+}
+fn Main() -> void { WritelnOut(Foo(true)) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = msg:string
+---
+
+=== nested inner declares used after outer
+fn Foo(a: int, b: int) -> int {
+    if a > 0 {
+        if b > 0 {
+            let result: int = a + b
+        }
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1, 2))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = result:int
+---
+
+=== nested inner declares used after inner only
+fn Foo(a: int, b: int) -> int {
+    if a > 0 {
+        if b > 0 {
+            let x: int = b
+        }
+        return x
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1, 2))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars =
+---
+
+=== spec example no hoist both branches return
+fn Classify(x: int) -> string {
+    if x > 0 {
+        let label: string = "positive"
+        let code: int = 1
+        return Concat(label, ToString(code))
+    } else {
+        let label: string = "negative"
+        return label
+    }
+}
+fn Main() -> void { WritelnOut(Classify(1)) }
+---
+Classify.body.0.type = TIfStmt
+Classify.body.0.hoisted_vars =
+Classify.func_hoisted_vars =
+---
+
+=== var in catch used after try
+fn Foo(s: string) -> string {
+    try {
+        WritelnOut(ToString(ParseInt(s, 10)))
+    } catch e: ValueError {
+        let msg: string = e.message
+    }
+    return msg
+}
+fn Main() -> void { WritelnOut(Foo("x")) }
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.hoisted_vars = msg:string
+---
+
+=== for has continue
+fn SumPositive(xs: list[int]) -> int {
+    let total: int = 0
+    for x in xs {
+        if x < 0 {
+            continue
+        }
+        total += x
+    }
+    return total
+}
+fn Main() -> void { WritelnOut(ToString(SumPositive([1, -2, 3]))) }
+---
+SumPositive.body.1.type = TForStmt
+SumPositive.body.1.has_continue = true
+---
+
+=== for no continue
+fn Sum(xs: list[int]) -> int {
+    let total: int = 0
+    for x in xs {
+        total += x
+    }
+    return total
+}
+fn Main() -> void { WritelnOut(ToString(Sum([1, 2, 3]))) }
+---
+Sum.body.1.type = TForStmt
+Sum.body.1.has_continue = false
+---
+
+=== while has continue
+fn Main() -> void {
+    let i: int = 0
+    while i < 10 {
+        i += 1
+        if i % 2 == 0 {
+            continue
+        }
+        WritelnOut(ToString(i))
+    }
+}
+---
+Main.body.1.type = TWhileStmt
+Main.body.1.has_continue = true
+---
+
+=== while no continue
+fn Main() -> void {
+    let i: int = 0
+    while i < 5 {
+        WritelnOut(ToString(i))
+        i += 1
+    }
+}
+---
+Main.body.1.type = TWhileStmt
+Main.body.1.has_continue = false
+---
+
+=== continue nested in if counts
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    for x in xs {
+        if x % 2 == 0 {
+            continue
+        }
+        WritelnOut(ToString(x))
+    }
+}
+---
+Main.body.1.type = TForStmt
+Main.body.1.has_continue = true
+---
+
+=== continue in nested loop not counted
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        let ys: list[int] = [4, 5, 6]
+        for y in ys {
+            if y == 5 {
+                continue
+            }
+            WritelnOut(ToString(x + y))
+        }
+    }
+}
+---
+Main.body.1.type = TForStmt
+Main.body.1.has_continue = false
+---
+
+=== continue in nested while not counted
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        let i: int = 0
+        while i < 3 {
+            i += 1
+            if i == 2 {
+                continue
+            }
+            WritelnOut(ToString(x + i))
+        }
+    }
+}
+---
+Main.body.1.type = TForStmt
+Main.body.1.has_continue = false
+---
+
+=== match has break
+fn Process(xs: list[int | string]) -> void {
+    for item in xs {
+        match item {
+            case n: int {
+                if n < 0 {
+                    break
+                }
+                WritelnOut(ToString(n))
+            }
+            case s: string {
+                WritelnOut(s)
+            }
+        }
+    }
+}
+fn Main() -> void { Process([1, "hi", -1]) }
+---
+Process.body.0.type = TForStmt
+---
+
+=== match no break
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle {
+            return "circle"
+        }
+        case r: Rect {
+            return "rect"
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.body.0.type = TMatchStmt
+Describe.body.0.has_break = false
+---
+
+=== break nested in if inside match counts
+fn Process(xs: list[int | string]) -> void {
+    for item in xs {
+        match item {
+            case n: int {
+                if n < 0 {
+                    if n == -1 {
+                        break
+                    }
+                }
+                WritelnOut(ToString(n))
+            }
+            case s: string {
+                WritelnOut(s)
+            }
+        }
+    }
+}
+fn Main() -> void { Process([1, -1]) }
+---
+Process.body.0.type = TForStmt
+---
+
+=== break in nested loop inside match not counted
+fn Process(xs: list[int | string]) -> void {
+    for item in xs {
+        match item {
+            case n: int {
+                let ys: list[int] = [1, 2, 3]
+                for y in ys {
+                    if y == n {
+                        break
+                    }
+                }
+                WritelnOut(ToString(n))
+            }
+            case s: string {
+                WritelnOut(s)
+            }
+        }
+    }
+}
+fn Main() -> void { Process([2, "hi"]) }
+---
+Process.body.0.type = TForStmt
+---
+
+=== break in nested match inside match counts
+enum Color { Red Green Blue }
+fn Process(xs: list[Color]) -> void {
+    for c in xs {
+        match c {
+            case Color.Red {
+                match c {
+                    case Color.Red {
+                        break
+                    }
+                    default {
+                        WritelnOut("other")
+                    }
+                }
+            }
+            default {
+                WritelnOut("not red")
+            }
+        }
+    }
+}
+fn Main() -> void { Process([Color.Red, Color.Blue]) }
+---
+Process.body.0.type = TForStmt
+---
+
+=== enum match has break
+enum Color { Red Green Blue }
+fn FindRed(xs: list[Color]) -> void {
+    for c in xs {
+        match c {
+            case Color.Red {
+                WritelnOut("found red")
+                break
+            }
+            default {
+                WritelnOut("skip")
+            }
+        }
+    }
+}
+fn Main() -> void { FindRed([Color.Blue, Color.Red]) }
+---
+FindRed.body.0.type = TForStmt
+---
+
+=== enum match no break
+enum Color { Red Green Blue }
+fn PrintColors(xs: list[Color]) -> void {
+    for c in xs {
+        match c {
+            case Color.Red {
+                WritelnOut("red")
+            }
+            case Color.Green {
+                WritelnOut("green")
+            }
+            case Color.Blue {
+                WritelnOut("blue")
+            }
+        }
+    }
+}
+fn Main() -> void { PrintColors([Color.Red, Color.Blue]) }
+---
+PrintColors.body.0.type = TForStmt
+---
+
+=== rune var from index
+fn CharAt(s: string, i: int) -> rune {
+    return s[i]
+}
+fn Main() -> void { WritelnOut(ToString(RuneToInt(CharAt("abc", 0)))) }
+---
+CharAt.rune_vars = s
+---
+
+=== rune var from slice
+fn Prefix(s: string, n: int) -> string {
+    return s[0:n]
+}
+fn Main() -> void { WritelnOut(Prefix("hello", 3)) }
+---
+Prefix.rune_vars = s
+---
+
+=== no rune vars
+fn Greet(name: string) -> void {
+    WritelnOut(Concat("hello ", name))
+}
+fn Main() -> void { Greet("world") }
+---
+Greet.rune_vars =
+---
+
+=== multiple rune vars
+fn Swap(a: string, b: string, i: int) -> (rune, rune) {
+    return (b[i], a[i])
+}
+fn Main() -> void {
+    let x: rune
+    let y: rune
+    x, y = Swap("abc", "xyz", 0)
+    WritelnOut(ToString(RuneToInt(x)))
+}
+---
+Swap.rune_vars = a,b
+---
+
+=== rune var from both index and slice
+fn Middle(s: string) -> rune {
+    let half: int = Len(s) / 2
+    let sub: string = s[0:half]
+    return s[half]
+}
+fn Main() -> void { WritelnOut(ToString(RuneToInt(Middle("abcde")))) }
+---
+Middle.rune_vars = s
+---
+
+=== string not indexed not rune var
+fn Process(s: string) -> int {
+    return Len(s)
+}
+fn Main() -> void { WritelnOut(ToString(Process("hello"))) }
+---
+Process.rune_vars =
+---
+
+=== func hoisted vars empty
+fn Foo() -> int {
+    let x: int = 42
+    return x
+}
+fn Main() -> void { WritelnOut(ToString(Foo())) }
+---
+Foo.func_hoisted_vars =
+---
+
+=== func hoisted vars from one if
+fn Foo(flag: bool) -> int {
+    if flag {
+        let n: int = 42
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = n:int
+Foo.func_hoisted_vars = n:int
+---
+
+=== func hoisted vars from multiple structures
+fn Foo(flag: bool, xs: list[int]) -> int {
+    if flag {
+        let a: int = 1
+    }
+    for x in xs {
+        let b: string = ToString(x)
+    }
+    WritelnOut(b)
+    return a
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true, [1]))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = a:int
+Foo.body.1.type = TForStmt
+Foo.body.1.hoisted_vars = b:string
+Foo.func_hoisted_vars = a:int;b:string
+---
+
+=== spec example try no hoist
+fn TryParse(s: string) -> int {
+    let result: int
+    try {
+        let n: int = ParseInt(s, 10)
+        result = n
+    } catch e: ValueError {
+        result = 0
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(TryParse("42"))) }
+---
+TryParse.body.1.type = TTryStmt
+TryParse.body.1.hoisted_vars =
+TryParse.func_hoisted_vars =
+---
+
+=== hoisted var string type
+fn Foo(flag: bool) -> string {
+    if flag {
+        let s: string = "hello"
+    }
+    return s
+}
+fn Main() -> void { WritelnOut(Foo(true)) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = s:string
+---
+
+=== hoisted var list type
+fn Foo(flag: bool) -> list[int] {
+    if flag {
+        let xs: list[int] = [1, 2, 3]
+    }
+    return xs
+}
+fn Main() -> void { WritelnOut(ToString(Len(Foo(true)))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = xs:list[int]
+---
+
+=== hoisted var optional type
+fn Foo(flag: bool) -> int? {
+    if flag {
+        let v: int? = 42
+    }
+    return v
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = v:int?
+---
+
+=== hoisted var struct type
+struct Pt {
+    x: int
+    y: int
+}
+fn Foo(flag: bool) -> Pt {
+    if flag {
+        let p: Pt = Pt(x: 1, y: 2)
+    }
+    return p
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = p:Pt
+---
+
+=== all control structures empty hoisted
+fn Foo(x: int, s: string, xs: list[int]) -> void {
+    if x > 0 {
+        WritelnOut("pos")
+    }
+    try {
+        WritelnOut(ToString(ParseInt(s, 10)))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+    for v in xs {
+        WritelnOut(ToString(v))
+    }
+    while x > 0 {
+        x = x - 1
+    }
+}
+fn Main() -> void { Foo(1, "1", [1]) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars =
+Foo.body.1.type = TTryStmt
+Foo.body.1.hoisted_vars =
+Foo.body.2.type = TForStmt
+Foo.body.2.hoisted_vars =
+Foo.body.2.has_continue = false
+Foo.body.3.type = TWhileStmt
+Foo.body.3.hoisted_vars =
+Foo.body.3.has_continue = false
+Foo.func_hoisted_vars =
+Foo.rune_vars =
+---
+
+=== continue in match inside loop counts
+fn Process(xs: list[int | string]) -> void {
+    for item in xs {
+        match item {
+            case n: int {
+                if n < 0 {
+                    continue
+                }
+                WritelnOut(ToString(n))
+            }
+            case s: string {
+                WritelnOut(s)
+            }
+        }
+    }
+}
+fn Main() -> void { Process([1, "hi", -1]) }
+---
+Process.body.0.type = TForStmt
+Process.body.0.has_continue = true
+---
+
+=== continue in try inside loop counts
+fn Main() -> void {
+    let xs: list[string] = ["1", "x", "3"]
+    for s in xs {
+        try {
+            WritelnOut(ToString(ParseInt(s, 10)))
+            continue
+        } catch e: ValueError {
+            WritelnOut("skip")
+        }
+    }
+}
+---
+Main.body.1.type = TForStmt
+Main.body.1.has_continue = true
+---
+
+=== method rune vars
+struct Finder {
+    text: string
+    fn CharAt(self, i: int) -> rune {
+        return self.text[i]
+    }
+}
+fn Main() -> void {
+    let f: Finder = Finder(text: "abc")
+    WritelnOut(ToString(RuneToInt(f.CharAt(0))))
+}
+---
+Finder.CharAt.rune_vars = text
+---
+
+=== method func hoisted vars
+struct Parser {
+    input: string
+    fn Parse(self) -> int {
+        try {
+            let n: int = ParseInt(self.input, 10)
+        } catch e: ValueError {
+            WritelnOut("err")
+        }
+        return n
+    }
+}
+fn Main() -> void {
+    let p: Parser = Parser(input: "42")
+    WritelnOut(ToString(p.Parse()))
+}
+---
+Parser.Parse.body.0.type = TTryStmt
+Parser.Parse.body.0.hoisted_vars = n:int
+Parser.Parse.func_hoisted_vars = n:int
+---
+
+=== method has continue
+struct Processor {
+    items: list[int]
+    fn Run(self) -> int {
+        let total: int = 0
+        for x in self.items {
+            if x < 0 {
+                continue
+            }
+            total += x
+        }
+        return total
+    }
+}
+fn Main() -> void {
+    let p: Processor = Processor(items: [1, -2, 3])
+    WritelnOut(ToString(p.Run()))
+}
+---
+Processor.Run.body.1.type = TForStmt
+Processor.Run.body.1.has_continue = true
+---
+
+=== break in try inside match counts
+fn Process(xs: list[int | string]) -> void {
+    for item in xs {
+        match item {
+            case n: int {
+                try {
+                    if n < 0 {
+                        break
+                    }
+                } catch e: ValueError {
+                    WritelnOut("err")
+                }
+                WritelnOut(ToString(n))
+            }
+            case s: string {
+                WritelnOut(s)
+            }
+        }
+    }
+}
+fn Main() -> void { Process([1, -1]) }
+---
+Process.body.0.type = TForStmt
+---
+
+=== hoisted from while used after
+fn Main() -> void {
+    let i: int = 0
+    while i < 5 {
+        let msg: string = ToString(i)
+        i += 1
+    }
+    WritelnOut(msg)
+}
+---
+Main.body.1.type = TWhileStmt
+Main.body.1.hoisted_vars = msg:string
+---
+
+=== hoisted from for string var
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        let label: string = ToString(x)
+    }
+    WritelnOut(label)
+}
+---
+Main.body.1.type = TForStmt
+Main.body.1.hoisted_vars = label:string
+---
+
+=== let indexed string rune var
+fn Main() -> void {
+    let s: string = "hello"
+    let ch: rune = s[2]
+    WritelnOut(ToString(RuneToInt(ch)))
+}
+---
+Main.rune_vars = s
+---
+
+=== let not indexed no rune var
+fn Main() -> void {
+    let s: string = "hello"
+    WritelnOut(s)
+}
+---
+Main.rune_vars =
+---
+
+=== param and let both indexed
+fn Process(s: string) -> rune {
+    let t: string = "world"
+    WritelnOut(ToString(RuneToInt(t[0])))
+    return s[0]
+}
+fn Main() -> void { WritelnOut(ToString(RuneToInt(Process("abc")))) }
+---
+Process.rune_vars = s,t
+---
+
+=== var declared inside else-if used after
+fn Foo(x: int) -> int {
+    if x > 10 {
+        WritelnOut("big")
+    } else if x > 0 {
+        let n: int = x * 3
+    } else {
+        WritelnOut("neg")
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = n:int
+Foo.func_hoisted_vars = n:int
+---
+
+=== var declared inside finally used after
+fn Foo(s: string) -> int {
+    try {
+        let x: int = ParseInt(s, 10)
+        WritelnOut(ToString(x))
+    } catch e: ValueError {
+        WritelnOut("err")
+    } finally {
+        let n: int = Len(s)
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.body.0.type = TTryStmt
+Foo.body.0.hoisted_vars = n:int
+---
+
+=== var inside for range used after
+fn Foo() -> int {
+    for i in range(5) {
+        let last: int = i
+    }
+    return last
+}
+fn Main() -> void { WritelnOut(ToString(Foo())) }
+---
+Foo.body.0.type = TForStmt
+Foo.body.0.hoisted_vars = last:int
+---
+
+=== tuple targets inside if used after
+fn Foo(flag: bool) -> int {
+    if flag {
+        let a: int
+        let b: int
+        a, b = DivMod(17, 5)
+    }
+    return a + b
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = a:int;b:int
+---
+
+=== var declared inside match default used after
+interface Animal {}
+struct Dog : Animal { name: string }
+struct Cat : Animal { name: string }
+struct Bird : Animal { name: string }
+fn Foo(a: Animal) -> int {
+    match a {
+        case d: Dog {
+            WritelnOut(d.name)
+        }
+        default other {
+            let n: int = 99
+        }
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo(Cat(name: "whiskers")))) }
+---
+Foo.body.0.type = TMatchStmt
+Foo.body.0.hoisted_vars = n:int
+---
+
+=== var inside enum match case used after
+enum Color { Red Green Blue }
+fn Foo(c: Color) -> int {
+    match c {
+        case Color.Red {
+            let n: int = 1
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo(Color.Red))) }
+---
+Foo.body.0.type = TMatchStmt
+Foo.body.0.hoisted_vars = n:int
+---
+
+=== hoisted var map type
+fn Foo(flag: bool) -> map[string, int] {
+    if flag {
+        let m: map[string, int] = {"a": 1}
+    }
+    return m
+}
+fn Main() -> void { WritelnOut(ToString(Len(Foo(true)))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = m:map[string, int]
+---
+
+=== hoisted var set type
+fn Foo(flag: bool) -> set[int] {
+    if flag {
+        let s: set[int] = {1, 2}
+    }
+    return s
+}
+fn Main() -> void { WritelnOut(ToString(Len(Foo(true)))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = s:set[int]
+---
+
+=== hoisted var tuple type
+fn Foo(flag: bool) -> (int, string) {
+    if flag {
+        let t: (int, string) = (1, "hi")
+    }
+    return t
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true).0)) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = t:(int, string)
+---
+
+=== hoisted var union type
+fn Foo(flag: bool) -> int | string {
+    if flag {
+        let v: int | string = 42
+    }
+    return v
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = v:int | string
+---
+
+=== hoisted var enum type
+enum Color { Red Green Blue }
+fn Foo(flag: bool) -> Color {
+    if flag {
+        let c: Color = Color.Red
+    }
+    return c
+}
+fn Main() -> void { WritelnOut(ToString(Foo(true))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = c:Color
+---
+
+=== triple nested hoisted to outermost
+fn Foo(a: int, b: int, c: int) -> int {
+    if a > 0 {
+        if b > 0 {
+            if c > 0 {
+                let result: int = a + b + c
+            }
+        }
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1, 2, 3))) }
+---
+Foo.body.0.type = TIfStmt
+Foo.body.0.hoisted_vars = result:int
+Foo.func_hoisted_vars = result:int
+---
+
+=== for range has continue
+fn Main() -> void {
+    for i in range(10) {
+        if i % 2 == 0 {
+            continue
+        }
+        WritelnOut(ToString(i))
+    }
+}
+---
+Main.body.0.type = TForStmt
+Main.body.0.has_continue = true
+---
+
+=== for range no continue
+fn Main() -> void {
+    for i in range(5) {
+        WritelnOut(ToString(i))
+    }
+}
+---
+Main.body.0.type = TForStmt
+Main.body.0.has_continue = false
+---
+
+=== break in while inside match not counted
+fn Process(xs: list[int | string]) -> void {
+    for item in xs {
+        match item {
+            case n: int {
+                let i: int = 0
+                while i < n {
+                    i += 1
+                    if i == 3 {
+                        break
+                    }
+                }
+                WritelnOut(ToString(n))
+            }
+            case s: string {
+                WritelnOut(s)
+            }
+        }
+    }
+}
+fn Main() -> void { Process([5, "hi"]) }
+---
+Process.body.0.type = TForStmt
+---
+
+=== optional match has break
+fn Process(xs: list[int?]) -> void {
+    for item in xs {
+        match item {
+            case n: int {
+                if n < 0 {
+                    break
+                }
+                WritelnOut(ToString(n))
+            }
+            case nil {
+                WritelnOut("nil")
+            }
+        }
+    }
+}
+fn Main() -> void { Process([1, nil, -1]) }
+---
+Process.body.0.type = TForStmt
+---
+
+=== union match has break
+fn Process(xs: list[int | string | bool]) -> void {
+    for item in xs {
+        match item {
+            case n: int {
+                if n < 0 {
+                    break
+                }
+                WritelnOut(ToString(n))
+            }
+            case s: string {
+                WritelnOut(s)
+            }
+            case b: bool {
+                WritelnOut(ToString(b))
+            }
+        }
+    }
+}
+fn Main() -> void { Process([1, "hi", false, -1]) }
+---
+Process.body.0.type = TForStmt
+---

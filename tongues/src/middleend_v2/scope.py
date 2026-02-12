@@ -706,32 +706,231 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
 
         _walk_stmts(case.body, case_ctx)
 
+        if isinstance(pat, TPatternType):
+            iface = _detect_case_interface(pat.name, case.body, case_ctx)
+            pat.annotations["scope.case_interface"] = iface
+
     if stmt.default is not None:
         dflt = stmt.default
         dflt_ctx = _fork_ctx(ctx)
         if dflt.name is not None:
-            residual = _compute_residual_type(scrutinee_type, covered_types)
+            residual = _compute_residual_type(scrutinee_type, covered_types, ctx)
             dflt_ctx.bindings[dflt.name] = _BindingInfo(
                 node=dflt, declared_type=residual, is_param=False
             )
         _walk_stmts(dflt.body, dflt_ctx)
+        if dflt.name is not None:
+            iface = _detect_case_interface(dflt.name, dflt.body, dflt_ctx)
+            dflt.annotations["scope.case_interface"] = iface
 
 
-def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
+def _detect_case_interface(
+    binding_name: str, body: list[TStmt], ctx: _ScopeCtx
+) -> str:
+    """Detect if a case binding is used through an interface in the body.
+
+    Returns the interface name or "" if none.
+    """
+    for stmt in body:
+        result = _scan_stmt_for_interface_use(binding_name, stmt, ctx)
+        if result:
+            return result
+    return ""
+
+
+def _scan_stmt_for_interface_use(
+    name: str, stmt: TStmt, ctx: _ScopeCtx
+) -> str | None:
+    if isinstance(stmt, TExprStmt):
+        return _scan_expr_for_interface_use(name, stmt.expr, ctx)
+    if isinstance(stmt, TReturnStmt) and stmt.value is not None:
+        return _scan_expr_for_interface_use(name, stmt.value, ctx)
+    if isinstance(stmt, TThrowStmt):
+        return _scan_expr_for_interface_use(name, stmt.expr, ctx)
+    if isinstance(stmt, TLetStmt) and stmt.value is not None:
+        return _scan_expr_for_interface_use(name, stmt.value, ctx)
+    if isinstance(stmt, TAssignStmt):
+        r = _scan_expr_for_interface_use(name, stmt.value, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, stmt.target, ctx)
+    if isinstance(stmt, TOpAssignStmt):
+        r = _scan_expr_for_interface_use(name, stmt.value, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, stmt.target, ctx)
+    if isinstance(stmt, TTupleAssignStmt):
+        r = _scan_expr_for_interface_use(name, stmt.value, ctx)
+        if r:
+            return r
+        for t in stmt.targets:
+            r = _scan_expr_for_interface_use(name, t, ctx)
+            if r:
+                return r
+    if isinstance(stmt, TIfStmt):
+        r = _scan_expr_for_interface_use(name, stmt.cond, ctx)
+        if r:
+            return r
+        for s in stmt.then_body:
+            r = _scan_stmt_for_interface_use(name, s, ctx)
+            if r:
+                return r
+        if stmt.else_body is not None:
+            for s in stmt.else_body:
+                r = _scan_stmt_for_interface_use(name, s, ctx)
+                if r:
+                    return r
+    if isinstance(stmt, TWhileStmt):
+        r = _scan_expr_for_interface_use(name, stmt.cond, ctx)
+        if r:
+            return r
+        for s in stmt.body:
+            r = _scan_stmt_for_interface_use(name, s, ctx)
+            if r:
+                return r
+    if isinstance(stmt, TForStmt):
+        for s in stmt.body:
+            r = _scan_stmt_for_interface_use(name, s, ctx)
+            if r:
+                return r
+    if isinstance(stmt, TTryStmt):
+        for s in stmt.body:
+            r = _scan_stmt_for_interface_use(name, s, ctx)
+            if r:
+                return r
+        for catch in stmt.catches:
+            for s in catch.body:
+                r = _scan_stmt_for_interface_use(name, s, ctx)
+                if r:
+                    return r
+    return None
+
+
+def _scan_expr_for_interface_use(
+    name: str, expr: TExpr, ctx: _ScopeCtx
+) -> str | None:
+    """Check if `name` is passed to a function parameter typed as an interface."""
+    if isinstance(expr, TCall):
+        # Check each argument: is it `name` passed to an interface-typed param?
+        result = _check_call_interface_arg(name, expr, ctx)
+        if result:
+            return result
+        # Recurse into sub-expressions
+        r = _scan_expr_for_interface_use(name, expr.func, ctx)
+        if r:
+            return r
+        for a in expr.args:
+            r = _scan_expr_for_interface_use(name, a.value, ctx)
+            if r:
+                return r
+        return None
+    if isinstance(expr, TBinaryOp):
+        r = _scan_expr_for_interface_use(name, expr.left, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, expr.right, ctx)
+    if isinstance(expr, TUnaryOp):
+        return _scan_expr_for_interface_use(name, expr.operand, ctx)
+    if isinstance(expr, TTernary):
+        r = _scan_expr_for_interface_use(name, expr.cond, ctx)
+        if r:
+            return r
+        r = _scan_expr_for_interface_use(name, expr.then_expr, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, expr.else_expr, ctx)
+    if isinstance(expr, TFieldAccess):
+        return _scan_expr_for_interface_use(name, expr.obj, ctx)
+    if isinstance(expr, TIndex):
+        r = _scan_expr_for_interface_use(name, expr.obj, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, expr.index, ctx)
+    if isinstance(expr, TSlice):
+        r = _scan_expr_for_interface_use(name, expr.obj, ctx)
+        if r:
+            return r
+        r = _scan_expr_for_interface_use(name, expr.low, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, expr.high, ctx)
+    if isinstance(expr, TListLit):
+        for e in expr.elements:
+            r = _scan_expr_for_interface_use(name, e, ctx)
+            if r:
+                return r
+    if isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            r = _scan_expr_for_interface_use(name, e, ctx)
+            if r:
+                return r
+    if isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            r = _scan_expr_for_interface_use(name, k, ctx)
+            if r:
+                return r
+            r = _scan_expr_for_interface_use(name, v, ctx)
+            if r:
+                return r
+    if isinstance(expr, TSetLit):
+        for e in expr.elements:
+            r = _scan_expr_for_interface_use(name, e, ctx)
+            if r:
+                return r
+    return None
+
+
+def _check_call_interface_arg(
+    name: str, call: TCall, ctx: _ScopeCtx
+) -> str | None:
+    """If `name` is passed as an argument to an interface-typed parameter, return the interface name."""
+    # Resolve param types for the called function
+    param_types: list[Type] | None = None
+    if isinstance(call.func, TVar):
+        fname = call.func.name
+        if fname in ctx.checker.functions:
+            param_types = ctx.checker.functions[fname].params
+        elif fname in ctx.checker.types:
+            t = ctx.checker.types[fname]
+            if isinstance(t, StructT):
+                param_types = list(t.fields.values())
+    elif isinstance(call.func, TFieldAccess):
+        obj_t = _resolve_expr_type(call.func.obj, ctx)
+        if obj_t is not None and isinstance(obj_t, StructT):
+            mname = call.func.field
+            if mname in obj_t.methods:
+                # Skip self param
+                param_types = obj_t.methods[mname].params[1:]
+    if param_types is None:
+        return None
+    for i, arg in enumerate(call.args):
+        if isinstance(arg.value, TVar) and arg.value.name == name:
+            if i < len(param_types) and isinstance(param_types[i], InterfaceT):
+                return param_types[i].name
+    return None
+
+
+def _compute_residual_type(
+    scrutinee: Type | None, covered: list[Type], ctx: _ScopeCtx
+) -> Type:
     """Compute the residual type for a default arm (scrutinee minus covered)."""
-
     if scrutinee is None:
         return OBJ_T
 
     if isinstance(scrutinee, InterfaceT):
         remaining: list[Type] = []
         for variant_name in scrutinee.variants:
-            vt = None
-            # We don't have direct access to checker.types here, but
-            # the covered list contains resolved types we can compare
-            # For simplicity, interface default gets obj
-            pass
-        return OBJ_T
+            vt = ctx.checker.types.get(variant_name)
+            if vt is None:
+                continue
+            is_covered = any(type_eq(vt, c) for c in covered)
+            if not is_covered:
+                remaining.append(vt)
+        if len(remaining) == 0:
+            return OBJ_T
+        if len(remaining) == 1:
+            return remaining[0]
+        return normalize_union(remaining)
 
     if isinstance(scrutinee, UnionT):
         remaining2: list[Type] = []
@@ -741,7 +940,6 @@ def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
                 if type_eq(m, c):
                     is_covered = True
                     break
-                # struct covered by interface
                 if isinstance(m, StructT) and isinstance(c, InterfaceT):
                     if m.parent == c.name:
                         is_covered = True

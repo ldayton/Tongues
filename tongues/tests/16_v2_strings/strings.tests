@@ -1,0 +1,1288 @@
+=== ascii literal
+fn Main() -> void {
+    let s: string = "hello"
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+Main.lets.s.indexed = false
+Main.lets.s.iterated = false
+Main.lets.s.len_called = false
+---
+
+=== bmp literal
+fn Main() -> void {
+    let s: string = "こんにちは"
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+Main.lets.s.indexed = false
+Main.lets.s.iterated = false
+Main.lets.s.len_called = false
+---
+
+=== unknown from ReadAll
+fn Main() -> void {
+    let s: string = ReadAll()
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = unknown
+---
+
+=== unknown from parameter
+fn Process(s: string) -> void {
+    WritelnOut(s)
+}
+fn Main() -> void { Process("hello") }
+---
+Process.params.s.content = unknown
+Process.params.s.indexed = false
+Process.params.s.iterated = false
+Process.params.s.len_called = false
+---
+
+=== ascii from ToString int
+fn Main() -> void {
+    let s: string = ToString(42)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii from ToString float
+fn Main() -> void {
+    let s: string = ToString(3.14)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii from ToString bool
+fn Main() -> void {
+    let s: string = ToString(true)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii from ToString byte
+fn Main() -> void {
+    let s: string = ToString(0xff)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii from FormatInt
+fn Main() -> void {
+    let s: string = FormatInt(255, 16)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii concat ascii
+fn Main() -> void {
+    let a: string = "hello"
+    let b: string = Concat(a, " world")
+    WritelnOut(b)
+}
+---
+Main.lets.a.content = ascii
+Main.lets.b.content = ascii
+---
+
+=== bmp concat ascii
+fn Main() -> void {
+    let a: string = "café"
+    let b: string = Concat(a, "!")
+    WritelnOut(b)
+}
+---
+Main.lets.a.content = bmp
+Main.lets.b.content = bmp
+---
+
+=== unknown concat ascii
+fn Process(s: string) -> void {
+    let r: string = Concat(s, "!")
+    WritelnOut(r)
+}
+fn Main() -> void { Process("hi") }
+---
+Process.lets.r.content = unknown
+---
+
+=== ascii Format all ascii
+fn Main() -> void {
+    let s: string = Format("{}: {}", "key", ToString(42))
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== unknown Format with unknown arg
+fn Greet(name: string) -> void {
+    let s: string = Format("hello, {}", name)
+    WritelnOut(s)
+}
+fn Main() -> void { Greet("world") }
+---
+Greet.lets.s.content = unknown
+---
+
+=== ascii Lower
+fn Main() -> void {
+    let s: string = Lower("HELLO")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii Upper
+fn Main() -> void {
+    let s: string = Upper("hello")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== unknown Lower of param
+fn Process(s: string) -> void {
+    let r: string = Lower(s)
+    WritelnOut(r)
+}
+fn Main() -> void { Process("HI") }
+---
+Process.lets.r.content = unknown
+---
+
+=== ascii Trim
+fn Main() -> void {
+    let s: string = Trim("  hello  ", " ")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii Replace
+fn Main() -> void {
+    let s: string = Replace("a-b-c", "-", "_")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii Repeat
+fn Main() -> void {
+    let s: string = Repeat("ab", 3)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii Reverse
+fn Main() -> void {
+    let s: string = Reverse("abc")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== ascii slice
+fn Main() -> void {
+    let s: string = "hello"
+    let t: string = s[0:3]
+    WritelnOut(t)
+}
+---
+Main.lets.t.content = ascii
+---
+
+=== unknown from Decode
+fn Main() -> void {
+    let b: bytes = ReadBytes()
+    let s: string = Decode(b)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = unknown
+---
+
+=== unknown from function return
+fn Helper() -> string {
+    return "hello"
+}
+fn Main() -> void {
+    let s: string = Helper()
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = unknown
+---
+
+=== unknown from list element
+fn Main() -> void {
+    let xs: list[string] = ["a", "b", "c"]
+    let s: string = xs[0]
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = unknown
+---
+
+=== unknown from map value
+fn Main() -> void {
+    let m: map[string, string] = {"key": "val"}
+    let s: string = m["key"]
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = unknown
+---
+
+=== unknown from field access
+struct Wrapper {
+    value: string
+}
+fn Main() -> void {
+    let w: Wrapper = Wrapper(value: "hello")
+    let s: string = w.value
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = unknown
+---
+
+=== join ascii both branches
+fn Foo(flag: bool) -> void {
+    let s: string = "a"
+    if flag {
+        s = "b"
+    } else {
+        s = "c"
+    }
+    WritelnOut(s)
+}
+fn Main() -> void { Foo(true) }
+---
+Foo.lets.s.content = ascii
+---
+
+=== join ascii and bmp
+fn Foo(flag: bool) -> void {
+    let s: string = ""
+    if flag {
+        s = "hello"
+    } else {
+        s = "café"
+    }
+    WritelnOut(s)
+}
+fn Main() -> void { Foo(true) }
+---
+Foo.lets.s.content = bmp
+---
+
+=== join ascii and unknown
+fn Foo(flag: bool) -> void {
+    let s: string = ""
+    if flag {
+        s = "hello"
+    } else {
+        s = ReadAll()
+    }
+    WritelnOut(s)
+}
+fn Main() -> void { Foo(true) }
+---
+Foo.lets.s.content = unknown
+---
+
+=== join bmp and unknown
+fn Foo(flag: bool) -> void {
+    let s: string = ""
+    if flag {
+        s = "日本語"
+    } else {
+        s = ReadAll()
+    }
+    WritelnOut(s)
+}
+fn Main() -> void { Foo(true) }
+---
+Foo.lets.s.content = unknown
+---
+
+=== dead init not counted
+fn Main() -> void {
+    let s: string = ReadAll()
+    s = "hello"
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== indexed by subscript
+fn CharAt(s: string, i: int) -> rune {
+    return s[i]
+}
+fn Main() -> void { WritelnOut(ToString(RuneToInt(CharAt("abc", 0)))) }
+---
+CharAt.params.s.indexed = true
+CharAt.params.s.iterated = false
+CharAt.params.s.len_called = false
+---
+
+=== indexed by slice
+fn Prefix(s: string, n: int) -> string {
+    return s[0:n]
+}
+fn Main() -> void { WritelnOut(Prefix("hello", 3)) }
+---
+Prefix.params.s.indexed = true
+---
+
+=== not indexed
+fn Echo(s: string) -> void {
+    WritelnOut(s)
+}
+fn Main() -> void { Echo("hello") }
+---
+Echo.params.s.indexed = false
+---
+
+=== iterated for in
+fn CountAlpha(s: string) -> int {
+    let n: int = 0
+    for ch in s {
+        if IsAlpha(ch) {
+            n += 1
+        }
+    }
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(CountAlpha("a1b2"))) }
+---
+CountAlpha.params.s.iterated = true
+CountAlpha.params.s.indexed = false
+---
+
+=== iterated for i ch in
+fn PrintChars(s: string) -> void {
+    for i, ch in s {
+        WritelnOut(Concat(ToString(i), Concat(": ", ToString(RuneToInt(ch)))))
+    }
+}
+fn Main() -> void { PrintChars("abc") }
+---
+PrintChars.params.s.iterated = true
+---
+
+=== not iterated
+fn Greet(s: string) -> void {
+    WritelnOut(Concat("hi ", s))
+}
+fn Main() -> void { Greet("world") }
+---
+Greet.params.s.iterated = false
+---
+
+=== len called
+fn IsEmpty(s: string) -> bool {
+    return Len(s) == 0
+}
+fn Main() -> void { WritelnOut(ToString(IsEmpty(""))) }
+---
+IsEmpty.params.s.len_called = true
+IsEmpty.params.s.indexed = false
+IsEmpty.params.s.iterated = false
+---
+
+=== len not called
+fn Echo(s: string) -> void {
+    WritelnOut(s)
+}
+fn Main() -> void { Echo("hello") }
+---
+Echo.params.s.len_called = false
+---
+
+=== indexed and len called
+fn Truncate(s: string, max: int) -> string {
+    if Len(s) <= max {
+        return s
+    }
+    return s[0:max]
+}
+fn Main() -> void { WritelnOut(Truncate("hello world", 5)) }
+---
+Truncate.params.s.indexed = true
+Truncate.params.s.len_called = true
+Truncate.params.s.iterated = false
+Truncate.params.s.content = unknown
+---
+
+=== all usage flags true
+fn Process(s: string) -> void {
+    let n: int = Len(s)
+    WritelnOut(ToString(n))
+    for ch in s {
+        WritelnOut(ToString(RuneToInt(ch)))
+    }
+    WritelnOut(ToString(RuneToInt(s[0])))
+}
+fn Main() -> void { Process("abc") }
+---
+Process.params.s.indexed = true
+Process.params.s.iterated = true
+Process.params.s.len_called = true
+---
+
+=== builder simple for
+fn FormatList(xs: list[int]) -> string {
+    let result: string = ""
+    for x in xs {
+        result = Concat(result, ToString(x))
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(FormatList([1, 2, 3])) }
+---
+FormatList.body.1.type = TForStmt
+FormatList.body.1.builder = result
+---
+
+=== builder while loop
+fn ReadLines() -> string {
+    let result: string = ""
+    let line: string? = ReadLine()
+    while line != nil {
+        result = Concat(result, Concat(line, "\n"))
+        line = ReadLine()
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ReadLines()) }
+---
+ReadLines.body.2.type = TWhileStmt
+ReadLines.body.2.builder = result
+---
+
+=== builder multiple appends per iteration
+fn FormatPairs(xs: list[int]) -> string {
+    let s: string = ""
+    for x in xs {
+        s = Concat(s, "(")
+        s = Concat(s, ToString(x))
+        s = Concat(s, ")")
+    }
+    return s
+}
+fn Main() -> void { WritelnOut(FormatPairs([1, 2])) }
+---
+FormatPairs.body.1.type = TForStmt
+FormatPairs.body.1.builder = s
+---
+
+=== builder conditional append
+fn JoinPositive(xs: list[int]) -> string {
+    let s: string = ""
+    for x in xs {
+        if x > 0 {
+            s = Concat(s, ToString(x))
+        }
+    }
+    return s
+}
+fn Main() -> void { WritelnOut(JoinPositive([1, -2, 3])) }
+---
+JoinPositive.body.1.type = TForStmt
+JoinPositive.body.1.builder = s
+---
+
+=== builder broken by non-concat assign
+fn Broken(xs: list[int]) -> string {
+    let s: string = ""
+    for x in xs {
+        s = Concat(s, ToString(x))
+        s = Upper(s)
+    }
+    return s
+}
+fn Main() -> void { WritelnOut(Broken([1, 2])) }
+---
+Broken.body.1.type = TForStmt
+Broken.body.1.builder =
+---
+
+=== no builder no string accumulation
+fn SumList(xs: list[int]) -> int {
+    let total: int = 0
+    for x in xs {
+        total += x
+    }
+    return total
+}
+fn Main() -> void { WritelnOut(ToString(SumList([1, 2, 3]))) }
+---
+SumList.body.1.type = TForStmt
+SumList.body.1.builder =
+---
+
+=== no builder string not accumulated
+fn PrintAll(xs: list[string]) -> void {
+    for s in xs {
+        WritelnOut(s)
+    }
+}
+fn Main() -> void { PrintAll(["a", "b"]) }
+---
+PrintAll.body.0.type = TForStmt
+PrintAll.body.0.builder =
+---
+
+=== builder with separator
+fn JoinComma(xs: list[int]) -> string {
+    let result: string = ""
+    for i, x in xs {
+        if i > 0 {
+            result = Concat(result, ", ")
+        }
+        result = Concat(result, ToString(x))
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(JoinComma([1, 2, 3])) }
+---
+JoinComma.body.1.type = TForStmt
+JoinComma.body.1.builder = result
+---
+
+=== for without builder empty annotation
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        WritelnOut(ToString(x))
+    }
+}
+---
+Main.body.1.type = TForStmt
+Main.body.1.builder =
+---
+
+=== while without builder empty annotation
+fn Main() -> void {
+    let i: int = 0
+    while i < 5 {
+        WritelnOut(ToString(i))
+        i += 1
+    }
+}
+---
+Main.body.1.type = TWhileStmt
+Main.body.1.builder =
+---
+
+=== content ascii from concat chain
+fn Main() -> void {
+    let a: string = "x"
+    let b: string = Concat(a, Concat("_", ToString(42)))
+    WritelnOut(b)
+}
+---
+Main.lets.b.content = ascii
+---
+
+=== content propagates through Repeat
+fn Main() -> void {
+    let s: string = Repeat("ab", 5)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== bmp Repeat stays bmp
+fn Main() -> void {
+    let s: string = Repeat("日", 3)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content unknown from ReadLine
+fn Main() -> void {
+    let line: string? = ReadLine()
+    if line != nil {
+        WritelnOut(line)
+    }
+}
+---
+Main.lets.line.content = unknown
+---
+
+=== for binder string typed
+fn PrintChars(s: string) -> void {
+    for ch in s {
+        WritelnOut(ToString(RuneToInt(ch)))
+    }
+}
+fn Main() -> void { PrintChars("abc") }
+---
+PrintChars.params.s.iterated = true
+---
+
+=== let string not indexed just compared
+fn Same(a: string, b: string) -> bool {
+    return a == b
+}
+fn Main() -> void { WritelnOut(ToString(Same("a", "b"))) }
+---
+Same.params.a.indexed = false
+Same.params.a.iterated = false
+Same.params.a.len_called = false
+Same.params.b.indexed = false
+Same.params.b.iterated = false
+Same.params.b.len_called = false
+---
+
+=== let string only in Contains
+fn Has(s: string, sub: string) -> bool {
+    return Contains(s, sub)
+}
+fn Main() -> void { WritelnOut(ToString(Has("hello", "ell"))) }
+---
+Has.params.s.indexed = false
+Has.params.s.iterated = false
+Has.params.s.len_called = false
+---
+
+=== let string only in Find
+fn Pos(s: string, sub: string) -> int {
+    return Find(s, sub)
+}
+fn Main() -> void { WritelnOut(ToString(Pos("hello", "ll"))) }
+---
+Pos.params.s.indexed = false
+Pos.params.s.iterated = false
+Pos.params.s.len_called = false
+---
+
+=== let string only in Split
+fn Words(s: string) -> list[string] {
+    return Split(s, " ")
+}
+fn Main() -> void {
+    let ws: list[string] = Words("a b c")
+    WritelnOut(ToString(Len(ws)))
+}
+---
+Words.params.s.indexed = false
+Words.params.s.iterated = false
+Words.params.s.len_called = false
+---
+
+=== content ascii Join all ascii
+fn Main() -> void {
+    let parts: list[string] = ["a", "b", "c"]
+    let s: string = Join(", ", parts)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== content ascii TrimStart
+fn Main() -> void {
+    let s: string = TrimStart("  hello", " ")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== content ascii TrimEnd
+fn Main() -> void {
+    let s: string = TrimEnd("hello  ", " ")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== method string param
+struct Greeter {
+    prefix: string
+    fn Greet(self, name: string) -> string {
+        return Concat(self.prefix, name)
+    }
+}
+fn Main() -> void {
+    let g: Greeter = Greeter(prefix: "hi ")
+    WritelnOut(g.Greet("world"))
+}
+---
+Greeter.Greet.params.name.content = unknown
+Greeter.Greet.params.name.indexed = false
+Greeter.Greet.params.name.iterated = false
+Greeter.Greet.params.name.len_called = false
+---
+
+=== ascii empty string
+fn Main() -> void {
+    let s: string = ""
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== bmp literal with emoji is unknown
+fn Main() -> void {
+    let s: string = "hello 🌍"
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = unknown
+---
+
+=== indexed let not param
+fn Main() -> void {
+    let s: string = "hello"
+    let ch: rune = s[0]
+    WritelnOut(ToString(RuneToInt(ch)))
+}
+---
+Main.lets.s.indexed = true
+Main.lets.s.content = ascii
+---
+
+=== multiple lets different content
+fn Main() -> void {
+    let a: string = "hello"
+    let b: string = "café"
+    let c: string = ReadAll()
+    WritelnOut(Concat(a, Concat(b, c)))
+}
+---
+Main.lets.a.content = ascii
+Main.lets.b.content = bmp
+Main.lets.c.content = unknown
+---
+
+=== builder accumulator read outside disqualifies
+fn Process(xs: list[int]) -> string {
+    let s: string = ""
+    for x in xs {
+        WritelnOut(s)
+        s = Concat(s, ToString(x))
+    }
+    return s
+}
+fn Main() -> void { WritelnOut(Process([1, 2])) }
+---
+Process.body.1.type = TForStmt
+Process.body.1.builder =
+---
+
+=== builder two accumulators
+fn Build(xs: list[int]) -> (string, string) {
+    let evens: string = ""
+    let odds: string = ""
+    for x in xs {
+        if x % 2 == 0 {
+            evens = Concat(evens, ToString(x))
+        } else {
+            odds = Concat(odds, ToString(x))
+        }
+    }
+    return (evens, odds)
+}
+fn Main() -> void {
+    let e: string
+    let o: string
+    e, o = Build([1, 2, 3, 4])
+    WritelnOut(Concat(e, Concat(" ", o)))
+}
+---
+Build.body.2.type = TForStmt
+Build.body.2.builder = evens,odds
+---
+
+=== builder var declared inside loop not builder
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        let s: string = ""
+        s = Concat(s, ToString(x))
+        WritelnOut(s)
+    }
+}
+---
+Main.body.1.type = TForStmt
+Main.body.1.builder =
+---
+
+=== content bmp from concat bmp and ascii
+fn Main() -> void {
+    let s: string = Concat("日本", "abc")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content ascii from nested concat
+fn Main() -> void {
+    let s: string = Concat("a", Concat("b", Concat("c", "d")))
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== content unknown from ToString string param
+fn Describe(s: string) -> string {
+    return ToString(s)
+}
+fn Main() -> void { WritelnOut(Describe("hi")) }
+---
+Describe.params.s.content = unknown
+---
+
+=== content unknown from Get map
+fn Main() -> void {
+    let m: map[string, string] = {"a": "hello"}
+    let v: string? = Get(m, "a")
+    if v != nil {
+        WritelnOut(v)
+    }
+}
+---
+Main.lets.v.content = unknown
+---
+
+=== content ascii reassigned all ascii
+fn Foo(flag: bool) -> void {
+    let s: string = "a"
+    if flag {
+        s = "b"
+    }
+    WritelnOut(s)
+}
+fn Main() -> void { Foo(true) }
+---
+Foo.lets.s.content = ascii
+---
+
+=== content dead init ignored reassigned ascii
+fn Main() -> void {
+    let s: string = ReadAll()
+    s = ToString(42)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = ascii
+---
+
+=== len called via let
+fn Main() -> void {
+    let s: string = "hello"
+    let n: int = Len(s)
+    WritelnOut(ToString(n))
+}
+---
+Main.lets.s.len_called = true
+---
+
+=== Format with bmp template
+fn Main() -> void {
+    let s: string = Format("名前: {}", "Alice")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content bmp Lower
+fn Main() -> void {
+    let s: string = Lower("Café")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content bmp Upper
+fn Main() -> void {
+    let s: string = Upper("café")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content bmp Trim
+fn Main() -> void {
+    let s: string = Trim(" café ", " ")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content bmp TrimStart
+fn Main() -> void {
+    let s: string = TrimStart(" café", " ")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content bmp TrimEnd
+fn Main() -> void {
+    let s: string = TrimEnd("café ", " ")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content bmp Replace
+fn Main() -> void {
+    let s: string = Replace("café", "é", "è")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content bmp Join
+fn Main() -> void {
+    let parts: list[string] = ["日", "本"]
+    let s: string = Join(",", parts)
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== content bmp slice
+fn Main() -> void {
+    let s: string = "日本語"
+    let t: string = s[0:2]
+    WritelnOut(t)
+}
+---
+Main.lets.t.content = bmp
+---
+
+=== content bmp Reverse
+fn Main() -> void {
+    let s: string = Reverse("café")
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = bmp
+---
+
+=== join bmp and bmp
+fn Foo(flag: bool) -> void {
+    let s: string = ""
+    if flag {
+        s = "café"
+    } else {
+        s = "日本語"
+    }
+    WritelnOut(s)
+}
+fn Main() -> void { Foo(true) }
+---
+Foo.lets.s.content = bmp
+---
+
+=== case binding string typed
+fn Describe(v: int | string) -> string {
+    match v {
+        case s: string {
+            return s
+        }
+        case n: int {
+            return ToString(n)
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe("hi")) }
+---
+Describe.body.0.cases.0.content = unknown
+Describe.body.0.cases.0.indexed = false
+Describe.body.0.cases.0.iterated = false
+Describe.body.0.cases.0.len_called = false
+---
+
+=== case binding indexed
+fn FirstChar(v: int | string) -> string {
+    match v {
+        case s: string {
+            return ToString(RuneToInt(s[0]))
+        }
+        case n: int {
+            return ToString(n)
+        }
+    }
+}
+fn Main() -> void { WritelnOut(FirstChar("abc")) }
+---
+FirstChar.body.0.cases.0.indexed = true
+FirstChar.body.0.cases.0.iterated = false
+FirstChar.body.0.cases.0.len_called = false
+---
+
+=== case binding iterated
+fn CountChars(v: int | string) -> int {
+    match v {
+        case s: string {
+            let n: int = 0
+            for ch in s {
+                n += 1
+            }
+            return n
+        }
+        case n: int {
+            return n
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(CountChars("abc"))) }
+---
+CountChars.body.0.cases.0.iterated = true
+CountChars.body.0.cases.0.indexed = false
+---
+
+=== default binding string typed
+fn Describe(v: int | string) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        default s {
+            return ToString(s)
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe("hi")) }
+---
+Describe.body.0.default.content = unknown
+Describe.body.0.default.indexed = false
+Describe.body.0.default.iterated = false
+Describe.body.0.default.len_called = false
+---
+
+=== for binder string from list
+fn PrintAll(xs: list[string]) -> void {
+    for s in xs {
+        WritelnOut(s)
+    }
+}
+fn Main() -> void { PrintAll(["a", "b"]) }
+---
+PrintAll.body.0.binder.s.content = unknown
+PrintAll.body.0.binder.s.indexed = false
+PrintAll.body.0.binder.s.iterated = false
+PrintAll.body.0.binder.s.len_called = false
+---
+
+=== for binder string indexed
+fn HasPrefix(xs: list[string], ch: rune) -> bool {
+    for s in xs {
+        if s[0] == ch {
+            return true
+        }
+    }
+    return false
+}
+fn Main() -> void { WritelnOut(ToString(HasPrefix(["abc"], 'a'))) }
+---
+HasPrefix.body.0.binder.s.indexed = true
+HasPrefix.body.0.binder.s.iterated = false
+---
+
+=== for binder string len called
+fn TotalLen(xs: list[string]) -> int {
+    let total: int = 0
+    for s in xs {
+        total += Len(s)
+    }
+    return total
+}
+fn Main() -> void { WritelnOut(ToString(TotalLen(["a", "bc"]))) }
+---
+TotalLen.body.1.binder.s.len_called = true
+TotalLen.body.1.binder.s.indexed = false
+---
+
+=== for binder string iterated
+fn CountAllRunes(xs: list[string]) -> int {
+    let total: int = 0
+    for s in xs {
+        for ch in s {
+            total += 1
+        }
+    }
+    return total
+}
+fn Main() -> void { WritelnOut(ToString(CountAllRunes(["ab", "cd"]))) }
+---
+CountAllRunes.body.1.binder.s.iterated = true
+CountAllRunes.body.1.binder.s.indexed = false
+---
+
+=== for binder map key string
+fn PrintKeys(m: map[string, int]) -> void {
+    for k in m {
+        WritelnOut(k)
+    }
+}
+fn Main() -> void { PrintKeys({"a": 1}) }
+---
+PrintKeys.body.0.binder.k.content = unknown
+PrintKeys.body.0.binder.k.indexed = false
+PrintKeys.body.0.binder.k.iterated = false
+PrintKeys.body.0.binder.k.len_called = false
+---
+
+=== for binder map value string
+fn PrintVals(m: map[int, string]) -> void {
+    for k, v in m {
+        WritelnOut(v)
+    }
+}
+fn Main() -> void { PrintVals({1: "a"}) }
+---
+PrintVals.body.0.binder.v.content = unknown
+PrintVals.body.0.binder.v.indexed = false
+PrintVals.body.0.binder.v.iterated = false
+PrintVals.body.0.binder.v.len_called = false
+---
+
+=== union param string annotations
+fn Process(v: int | string) -> void {
+    WritelnOut(ToString(v))
+}
+fn Main() -> void { Process("hello") }
+---
+Process.params.v.content = unknown
+Process.params.v.indexed = false
+Process.params.v.iterated = false
+Process.params.v.len_called = false
+---
+
+=== optional param string annotations
+fn Process(s: string?) -> void {
+    if s != nil {
+        WritelnOut(s)
+    }
+}
+fn Main() -> void { Process("hello") }
+---
+Process.params.s.content = unknown
+Process.params.s.indexed = false
+Process.params.s.iterated = false
+Process.params.s.len_called = false
+---
+
+=== builder accumulator content ascii
+fn FormatList(xs: list[int]) -> string {
+    let result: string = ""
+    for x in xs {
+        result = Concat(result, ToString(x))
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(FormatList([1, 2, 3])) }
+---
+FormatList.lets.result.content = ascii
+FormatList.lets.result.indexed = false
+FormatList.lets.result.iterated = false
+FormatList.lets.result.len_called = false
+FormatList.body.1.type = TForStmt
+FormatList.body.1.builder = result
+---
+
+=== builder accumulator content unknown from param
+fn Collect(xs: list[string]) -> string {
+    let s: string = ""
+    for x in xs {
+        s = Concat(s, x)
+    }
+    return s
+}
+fn Main() -> void { WritelnOut(Collect(["a"])) }
+---
+Collect.lets.s.content = unknown
+Collect.body.1.type = TForStmt
+Collect.body.1.builder = s
+---
+
+=== fixed point content stays ascii
+fn Build(xs: list[int]) -> string {
+    let s: string = "["
+    for x in xs {
+        s = Concat(s, ToString(x))
+    }
+    s = Concat(s, "]")
+    return s
+}
+fn Main() -> void { WritelnOut(Build([1, 2])) }
+---
+Build.lets.s.content = ascii
+---
+
+=== fixed point content widens to unknown
+fn JoinStrings(xs: list[string]) -> string {
+    let s: string = ""
+    for x in xs {
+        s = Concat(s, Concat(x, " "))
+    }
+    return s
+}
+fn Main() -> void { WritelnOut(JoinStrings(["a"])) }
+---
+JoinStrings.lets.s.content = unknown
+---
+
+=== nested loops outer builder
+fn Matrix(rows: list[list[int]]) -> string {
+    let result: string = ""
+    for row in rows {
+        let line: string = ""
+        for x in row {
+            line = Concat(line, ToString(x))
+        }
+        result = Concat(result, Concat(line, "\n"))
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(Matrix([[1, 2], [3, 4]])) }
+---
+Matrix.body.1.type = TForStmt
+Matrix.body.1.builder = result
+---

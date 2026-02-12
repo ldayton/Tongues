@@ -1241,7 +1241,8 @@ class Checker:
             assert dflt is not None
             self.enter_scope()
             if dflt.name is not None:
-                self.declare(dflt.name, OBJ_T, dflt.pos)
+                residual = self._compute_default_type(scrutinee_type, covered)
+                self.declare(dflt.name, residual, dflt.pos)
             self.check_stmts(dflt.body)
             self.exit_scope()
         if not has_default:
@@ -1364,6 +1365,40 @@ class Checker:
                 if isinstance(m, EnumT):
                     return m
         return None
+
+    def _compute_default_type(self, scrutinee: Type, covered: list[str]) -> Type:
+        """Compute residual type for a default binding (scrutinee minus covered)."""
+        if isinstance(scrutinee, InterfaceT):
+            remaining: list[Type] = []
+            for v in scrutinee.variants:
+                if _type_key(self.types[v]) not in covered:
+                    remaining.append(self.types[v])
+            if len(remaining) == 0:
+                return scrutinee
+            if len(remaining) == 1:
+                return remaining[0]
+            return normalize_union(remaining)
+        if isinstance(scrutinee, UnionT):
+            remaining2: list[Type] = []
+            for m in scrutinee.members:
+                if type_eq(m, NIL_T):
+                    if "nil" not in covered:
+                        remaining2.append(m)
+                elif isinstance(m, InterfaceT):
+                    for v in m.variants:
+                        if _type_key(self.types[v]) not in covered:
+                            remaining2.append(self.types[v])
+                else:
+                    if _type_key(m) not in covered:
+                        remaining2.append(m)
+            if len(remaining2) == 0:
+                return scrutinee
+            if len(remaining2) == 1:
+                return remaining2[0]
+            return normalize_union(remaining2)
+        if isinstance(scrutinee, EnumT):
+            return scrutinee
+        return OBJ_T
 
     def check_exhaustiveness(
         self, scrutinee: Type, covered: list[str], pos: Pos
