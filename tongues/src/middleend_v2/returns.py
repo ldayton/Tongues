@@ -175,9 +175,7 @@ def _may_be_nil(expr: TExpr, ctx: _ReturnsCtx) -> bool:
     return t is not None and contains_nil(t)
 
 
-def _merge_branch_narrowings(
-    ctx: _ReturnsCtx, branches: list[_ReturnsCtx]
-) -> None:
+def _merge_branch_narrowings(ctx: _ReturnsCtx, branches: list[_ReturnsCtx]) -> None:
     """Merge narrowings back to parent: non-nil only if ALL branches agree."""
     if not branches:
         return

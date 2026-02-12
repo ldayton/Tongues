@@ -290,7 +290,6 @@ def contains_normalized(haystack: str, needle: str) -> bool:
     return False
 
 
-
 # ---------------------------------------------------------------------------
 # v2 runners
 # ---------------------------------------------------------------------------
@@ -380,11 +379,35 @@ def _collect_calls(obj, calls, checker):
         for item in obj:
             _collect_calls(item, calls, checker)
         return
-    for attr in ("body", "value", "expr", "func", "target", "targets", "cond",
-                 "then_body", "else_body", "then_expr", "else_expr", "left", "right",
-                 "operand", "obj", "index", "low", "high", "args", "elements",
-                 "entries", "iterable", "cases", "default", "catches", "finally_body",
-                 "pattern"):
+    for attr in (
+        "body",
+        "value",
+        "expr",
+        "func",
+        "target",
+        "targets",
+        "cond",
+        "then_body",
+        "else_body",
+        "then_expr",
+        "else_expr",
+        "left",
+        "right",
+        "operand",
+        "obj",
+        "index",
+        "low",
+        "high",
+        "args",
+        "elements",
+        "entries",
+        "iterable",
+        "cases",
+        "default",
+        "catches",
+        "finally_body",
+        "pattern",
+    ):
         child = getattr(obj, attr, None)
         if child is not None:
             if isinstance(child, list):
@@ -401,7 +424,11 @@ def _serialize_callgraph(module, checker):
     result = {}
     for decl in module.decls:
         if isinstance(decl, TFnDecl):
-            d = {k[10:]: v for k, v in decl.annotations.items() if k.startswith("callgraph.")}
+            d = {
+                k[10:]: v
+                for k, v in decl.annotations.items()
+                if k.startswith("callgraph.")
+            }
             calls = {}
             _collect_calls(decl.body, calls, checker)
             if calls:
@@ -409,7 +436,11 @@ def _serialize_callgraph(module, checker):
             result[decl.name] = d
         elif isinstance(decl, TStructDecl):
             for method in decl.methods:
-                d = {k[10:]: v for k, v in method.annotations.items() if k.startswith("callgraph.")}
+                d = {
+                    k[10:]: v
+                    for k, v in method.annotations.items()
+                    if k.startswith("callgraph.")
+                }
                 calls = {}
                 _collect_calls(method.body, calls, checker)
                 if calls:
@@ -507,9 +538,7 @@ def test_liveness_v2(liveness_v2_input, liveness_v2_expected):
 
 
 def test_strings_v2(strings_v2_input, strings_v2_expected):
-    check_expected(
-        strings_v2_expected, run_strings_v2(strings_v2_input), "strings_v2"
-    )
+    check_expected(strings_v2_expected, run_strings_v2(strings_v2_input), "strings_v2")
 
 
 def test_hoisting_v2(hoisting_v2_input, hoisting_v2_expected):

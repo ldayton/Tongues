@@ -76,7 +76,6 @@ from ..taytsh.check import (
     TupleT,
     Type,
     UnionT,
-    VOID_T,
     normalize_union,
     type_eq,
 )
@@ -340,7 +339,9 @@ def _resolve_call_type(expr: TCall, ctx: _StringsCtx) -> Type | None:
     return None
 
 
-def _resolve_for_binder_types(stmt: TForStmt, ctx: _StringsCtx) -> dict[str, Type] | None:
+def _resolve_for_binder_types(
+    stmt: TForStmt, ctx: _StringsCtx
+) -> dict[str, Type] | None:
     if isinstance(stmt.iterable, TRange):
         result: dict[str, Type] = {}
         for b in stmt.binding:
@@ -511,110 +512,112 @@ def _is_accum_concat(value: TExpr, name: str) -> bool:
     return True
 
 
-def _candidate_builder_in_stmts(name: str, stmts: list[TStmt]) -> bool:
-    has_accum = False
-
-    def walk(stmt: TStmt) -> bool:
-        nonlocal has_accum
-        if isinstance(stmt, TLetStmt):
-            if stmt.value is not None and _expr_reads(name, stmt.value):
-                return False
-            return True
-        if isinstance(stmt, TAssignStmt):
-            if isinstance(stmt.target, TVar) and stmt.target.name == name:
-                if _is_accum_concat(stmt.value, name):
-                    has_accum = True
-                    return True
-                return False
-            if _expr_reads(name, stmt.value) or _target_reads(name, stmt.target):
-                return False
-            return True
-        if isinstance(stmt, TOpAssignStmt):
-            if isinstance(stmt.target, TVar) and stmt.target.name == name:
-                return False
-            if _expr_reads(name, stmt.value) or _expr_reads(name, stmt.target):
-                return False
-            return True
-        if isinstance(stmt, TTupleAssignStmt):
-            if _expr_reads(name, stmt.value):
-                return False
-            for t in stmt.targets:
-                if isinstance(t, TVar) and t.name == name:
-                    return False
-                if _target_reads(name, t):
-                    return False
-            return True
-        if isinstance(stmt, TExprStmt):
-            return not _expr_reads(name, stmt.expr)
-        if isinstance(stmt, TReturnStmt):
-            return stmt.value is None or (not _expr_reads(name, stmt.value))
-        if isinstance(stmt, TThrowStmt):
-            return not _expr_reads(name, stmt.expr)
-        if isinstance(stmt, TIfStmt):
-            if _expr_reads(name, stmt.cond):
-                return False
-            for s in stmt.then_body:
-                if not walk(s):
-                    return False
-            if stmt.else_body is not None:
-                for s in stmt.else_body:
-                    if not walk(s):
-                        return False
-            return True
-        if isinstance(stmt, TWhileStmt):
-            if _expr_reads(name, stmt.cond):
-                return False
-            for s in stmt.body:
-                if not walk(s):
-                    return False
-            return True
-        if isinstance(stmt, TForStmt):
-            if isinstance(stmt.iterable, TRange):
-                for a in stmt.iterable.args:
-                    if _expr_reads(name, a):
-                        return False
-            else:
-                if _expr_reads(name, stmt.iterable):
-                    return False
-            for s in stmt.body:
-                if not walk(s):
-                    return False
-            return True
-        if isinstance(stmt, TTryStmt):
-            for s in stmt.body:
-                if not walk(s):
-                    return False
-            for catch in stmt.catches:
-                for s in catch.body:
-                    if not walk(s):
-                        return False
-            if stmt.finally_body is not None:
-                for s in stmt.finally_body:
-                    if not walk(s):
-                        return False
-            return True
-        if isinstance(stmt, TMatchStmt):
-            if _expr_reads(name, stmt.expr):
-                return False
-            for case in stmt.cases:
-                for s in case.body:
-                    if not walk(s):
-                        return False
-            if stmt.default is not None:
-                for s in stmt.default.body:
-                    if not walk(s):
-                        return False
-            return True
-        return True
-
-    for stmt in stmts:
-        if not walk(stmt):
+def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
+    if isinstance(stmt, TLetStmt):
+        if stmt.value is not None and _expr_reads(name, stmt.value):
             return False
-    return has_accum
+        return True
+    if isinstance(stmt, TAssignStmt):
+        if isinstance(stmt.target, TVar) and stmt.target.name == name:
+            if _is_accum_concat(stmt.value, name):
+                found[0] = True
+                return True
+            return False
+        if _expr_reads(name, stmt.value) or _target_reads(name, stmt.target):
+            return False
+        return True
+    if isinstance(stmt, TOpAssignStmt):
+        if isinstance(stmt.target, TVar) and stmt.target.name == name:
+            return False
+        if _expr_reads(name, stmt.value) or _expr_reads(name, stmt.target):
+            return False
+        return True
+    if isinstance(stmt, TTupleAssignStmt):
+        if _expr_reads(name, stmt.value):
+            return False
+        for t in stmt.targets:
+            if isinstance(t, TVar) and t.name == name:
+                return False
+            if _target_reads(name, t):
+                return False
+        return True
+    if isinstance(stmt, TExprStmt):
+        return not _expr_reads(name, stmt.expr)
+    if isinstance(stmt, TReturnStmt):
+        return stmt.value is None or (not _expr_reads(name, stmt.value))
+    if isinstance(stmt, TThrowStmt):
+        return not _expr_reads(name, stmt.expr)
+    if isinstance(stmt, TIfStmt):
+        if _expr_reads(name, stmt.cond):
+            return False
+        for s in stmt.then_body:
+            if not _builder_walk_stmt(name, s, found):
+                return False
+        if stmt.else_body is not None:
+            for s in stmt.else_body:
+                if not _builder_walk_stmt(name, s, found):
+                    return False
+        return True
+    if isinstance(stmt, TWhileStmt):
+        if _expr_reads(name, stmt.cond):
+            return False
+        for s in stmt.body:
+            if not _builder_walk_stmt(name, s, found):
+                return False
+        return True
+    if isinstance(stmt, TForStmt):
+        if isinstance(stmt.iterable, TRange):
+            for a in stmt.iterable.args:
+                if _expr_reads(name, a):
+                    return False
+        else:
+            if _expr_reads(name, stmt.iterable):
+                return False
+        for s in stmt.body:
+            if not _builder_walk_stmt(name, s, found):
+                return False
+        return True
+    if isinstance(stmt, TTryStmt):
+        for s in stmt.body:
+            if not _builder_walk_stmt(name, s, found):
+                return False
+        for catch in stmt.catches:
+            for s in catch.body:
+                if not _builder_walk_stmt(name, s, found):
+                    return False
+        if stmt.finally_body is not None:
+            for s in stmt.finally_body:
+                if not _builder_walk_stmt(name, s, found):
+                    return False
+        return True
+    if isinstance(stmt, TMatchStmt):
+        if _expr_reads(name, stmt.expr):
+            return False
+        for case in stmt.cases:
+            for s in case.body:
+                if not _builder_walk_stmt(name, s, found):
+                    return False
+        if stmt.default is not None:
+            for s in stmt.default.body:
+                if not _builder_walk_stmt(name, s, found):
+                    return False
+        return True
+    return True
+
+
+def _candidate_builder_in_stmts(name: str, stmts: list[TStmt]) -> bool:
+    found: list[bool] = [False]
+    for stmt in stmts:
+        if not _builder_walk_stmt(name, stmt, found):
+            return False
+    return found[0]
 
 
 def _classify_list_source(
-    source: _Source, string_content: dict[str, str], list_content: dict[str, str], ctx: _StringsCtx
+    source: _Source,
+    string_content: dict[str, str],
+    list_content: dict[str, str],
+    ctx: _StringsCtx,
 ) -> str:
     if source.kind == "unknown":
         return _C_UNKNOWN
@@ -673,8 +676,12 @@ def _classify_string_expr(
             if name == "Concat":
                 if len(expr.args) < 2:
                     return _C_UNKNOWN
-                a = _classify_string_expr(expr.args[0].value, string_content, list_content, ctx)
-                b = _classify_string_expr(expr.args[1].value, string_content, list_content, ctx)
+                a = _classify_string_expr(
+                    expr.args[0].value, string_content, list_content, ctx
+                )
+                b = _classify_string_expr(
+                    expr.args[1].value, string_content, list_content, ctx
+                )
                 return _join_content(a, b)
             if name == "Format":
                 if len(expr.args) == 0:
@@ -683,13 +690,25 @@ def _classify_string_expr(
                 for a in expr.args:
                     level = _join_content(
                         level,
-                        _classify_string_expr(a.value, string_content, list_content, ctx),
+                        _classify_string_expr(
+                            a.value, string_content, list_content, ctx
+                        ),
                     )
                 return level if level is not None else _C_UNKNOWN
-            if name in ("Lower", "Upper", "Trim", "TrimStart", "TrimEnd", "Repeat", "Reverse"):
+            if name in (
+                "Lower",
+                "Upper",
+                "Trim",
+                "TrimStart",
+                "TrimEnd",
+                "Repeat",
+                "Reverse",
+            ):
                 if len(expr.args) == 0:
                     return _C_UNKNOWN
-                return _classify_string_expr(expr.args[0].value, string_content, list_content, ctx)
+                return _classify_string_expr(
+                    expr.args[0].value, string_content, list_content, ctx
+                )
             if name == "Replace":
                 if len(expr.args) < 3:
                     return _C_UNKNOWN
@@ -697,20 +716,25 @@ def _classify_string_expr(
                 for i in range(3):
                     level = _join_content(
                         level,
-                        _classify_string_expr(expr.args[i].value, string_content, list_content, ctx),
+                        _classify_string_expr(
+                            expr.args[i].value, string_content, list_content, ctx
+                        ),
                     )
                 return level if level is not None else _C_UNKNOWN
             if name == "Join":
                 if len(expr.args) < 2:
                     return _C_UNKNOWN
-                sep_c = _classify_string_expr(expr.args[0].value, string_content, list_content, ctx)
+                sep_c = _classify_string_expr(
+                    expr.args[0].value, string_content, list_content, ctx
+                )
                 parts_expr = expr.args[1].value
                 parts_c = _C_UNKNOWN
                 if isinstance(parts_expr, TListLit):
                     level: str | None = _C_ASCII
                     for e in parts_expr.elements:
                         level = _join_content(
-                            level, _classify_string_expr(e, string_content, list_content, ctx)
+                            level,
+                            _classify_string_expr(e, string_content, list_content, ctx),
                         )
                     parts_c = level if level is not None else _C_ASCII
                 elif isinstance(parts_expr, TVar) and parts_expr.name in list_content:
@@ -782,7 +806,9 @@ def _walk_expr_usage(expr: TExpr, ctx: _StringsCtx) -> None:
             _walk_expr_usage(expr.body, ctx)
 
 
-def _compute_builder(loop: TForStmt | TWhileStmt, ctx: _StringsCtx, declared_before: set[str]) -> str:
+def _compute_builder(
+    loop: TForStmt | TWhileStmt, ctx: _StringsCtx, declared_before: set[str]
+) -> str:
     candidates: list[str] = []
     for name in ctx.decl_order:
         if name in declared_before:
@@ -814,7 +840,9 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 if stmt.value is None:
                     _add_string_source(ctx, stmt.name, _Source(kind="zero"))
                 else:
-                    _add_string_source(ctx, stmt.name, _Source(kind="expr", expr=stmt.value))
+                    _add_string_source(
+                        ctx, stmt.name, _Source(kind="expr", expr=stmt.value)
+                    )
         if _is_list_of_string_type(declared_t):
             ctx.list_string_types[stmt.name] = declared_t
             if stmt.name not in ctx.list_string_sources:
@@ -1023,7 +1051,9 @@ def _compute_contents(ctx: _StringsCtx) -> None:
                 elif src.kind == "unknown":
                     level = _join_content(level, _C_UNKNOWN)
                 elif src.expr is not None:
-                    c = _classify_string_expr(src.expr, string_content, list_content, ctx)
+                    c = _classify_string_expr(
+                        src.expr, string_content, list_content, ctx
+                    )
                     level = _join_content(level, c)
             new_level = level if level is not None else _C_UNKNOWN
             if string_content.get(name) != new_level:
@@ -1077,9 +1107,7 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
         ctx.var_types[p.name] = pt
         declared.add(p.name)
         if _contains_string_type(pt):
-            _register_string_binding(
-                ctx, p.name, p, pt, base_unknown=True
-            )
+            _register_string_binding(ctx, p.name, p, pt, base_unknown=True)
         if _is_list_of_string_type(pt):
             ctx.list_string_types[p.name] = pt
             ctx.list_string_sources[p.name] = []

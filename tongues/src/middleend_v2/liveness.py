@@ -308,9 +308,9 @@ def _analyze_catch_and_match_bindings(stmts: list[TStmt]) -> None:
     for stmt in stmts:
         if isinstance(stmt, TTryStmt):
             for catch in stmt.catches:
-                catch.annotations["liveness.catch_var_unused"] = not _binding_used_in_stmts(
-                    catch.name, catch.body
-                )
+                catch.annotations[
+                    "liveness.catch_var_unused"
+                ] = not _binding_used_in_stmts(catch.name, catch.body)
             _analyze_catch_and_match_bindings(stmt.body)
             for catch in stmt.catches:
                 _analyze_catch_and_match_bindings(catch.body)
@@ -320,17 +320,15 @@ def _analyze_catch_and_match_bindings(stmts: list[TStmt]) -> None:
             for case in stmt.cases:
                 pat = case.pattern
                 if isinstance(pat, TPatternType):
-                    pat.annotations["liveness.match_var_unused"] = (
-                        not _binding_used_in_stmts(pat.name, case.body)
-                    )
+                    pat.annotations[
+                        "liveness.match_var_unused"
+                    ] = not _binding_used_in_stmts(pat.name, case.body)
                 _analyze_catch_and_match_bindings(case.body)
             if stmt.default is not None:
                 if stmt.default.name is not None:
-                    stmt.default.annotations["liveness.match_var_unused"] = (
-                        not _binding_used_in_stmts(
-                            stmt.default.name, stmt.default.body
-                        )
-                    )
+                    stmt.default.annotations[
+                        "liveness.match_var_unused"
+                    ] = not _binding_used_in_stmts(stmt.default.name, stmt.default.body)
                 _analyze_catch_and_match_bindings(stmt.default.body)
         elif isinstance(stmt, TIfStmt):
             _analyze_catch_and_match_bindings(stmt.then_body)
@@ -347,9 +345,9 @@ def _binding_read_in_expr(name: str, expr: TExpr, shadowed: bool) -> bool:
     if isinstance(expr, TVar):
         return not shadowed and expr.name == name
     if isinstance(expr, TBinaryOp):
-        return _binding_read_in_expr(name, expr.left, shadowed) or _binding_read_in_expr(
-            name, expr.right, shadowed
-        )
+        return _binding_read_in_expr(
+            name, expr.left, shadowed
+        ) or _binding_read_in_expr(name, expr.right, shadowed)
     if isinstance(expr, TUnaryOp):
         return _binding_read_in_expr(name, expr.operand, shadowed)
     if isinstance(expr, TTernary):
@@ -363,9 +361,9 @@ def _binding_read_in_expr(name: str, expr: TExpr, shadowed: bool) -> bool:
     if isinstance(expr, TTupleAccess):
         return _binding_read_in_expr(name, expr.obj, shadowed)
     if isinstance(expr, TIndex):
-        return _binding_read_in_expr(
-            name, expr.obj, shadowed
-        ) or _binding_read_in_expr(name, expr.index, shadowed)
+        return _binding_read_in_expr(name, expr.obj, shadowed) or _binding_read_in_expr(
+            name, expr.index, shadowed
+        )
     if isinstance(expr, TSlice):
         return (
             _binding_read_in_expr(name, expr.obj, shadowed)
@@ -423,7 +421,9 @@ def _binding_used_in_stmt(name: str, stmt: TStmt, shadowed: bool) -> bool:
     if isinstance(stmt, TExprStmt):
         return _binding_read_in_expr(name, stmt.expr, shadowed)
     if isinstance(stmt, TReturnStmt):
-        return stmt.value is not None and _binding_read_in_expr(name, stmt.value, shadowed)
+        return stmt.value is not None and _binding_read_in_expr(
+            name, stmt.value, shadowed
+        )
     if isinstance(stmt, TThrowStmt):
         return _binding_read_in_expr(name, stmt.expr, shadowed)
     if isinstance(stmt, TIfStmt):
@@ -476,7 +476,9 @@ def _binding_used_in_stmt(name: str, stmt: TStmt, shadowed: bool) -> bool:
     return False
 
 
-def _binding_used_in_stmts(name: str, stmts: list[TStmt], shadowed: bool = False) -> bool:
+def _binding_used_in_stmts(
+    name: str, stmts: list[TStmt], shadowed: bool = False
+) -> bool:
     """Return True if tracked binding `name` is read within stmts."""
     block_shadowed = shadowed
     for stmt in stmts:

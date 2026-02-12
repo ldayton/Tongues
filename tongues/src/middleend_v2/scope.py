@@ -724,9 +724,7 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
             dflt.annotations["scope.case_interface"] = iface
 
 
-def _detect_case_interface(
-    binding_name: str, body: list[TStmt], ctx: _ScopeCtx
-) -> str:
+def _detect_case_interface(binding_name: str, body: list[TStmt], ctx: _ScopeCtx) -> str:
     """Detect if a case binding is used through an interface in the body.
 
     Returns the interface name or "" if none.
@@ -738,9 +736,7 @@ def _detect_case_interface(
     return ""
 
 
-def _scan_stmt_for_interface_use(
-    name: str, stmt: TStmt, ctx: _ScopeCtx
-) -> str | None:
+def _scan_stmt_for_interface_use(name: str, stmt: TStmt, ctx: _ScopeCtx) -> str | None:
     if isinstance(stmt, TExprStmt):
         return _scan_expr_for_interface_use(name, stmt.expr, ctx)
     if isinstance(stmt, TReturnStmt) and stmt.value is not None:
@@ -806,9 +802,7 @@ def _scan_stmt_for_interface_use(
     return None
 
 
-def _scan_expr_for_interface_use(
-    name: str, expr: TExpr, ctx: _ScopeCtx
-) -> str | None:
+def _scan_expr_for_interface_use(name: str, expr: TExpr, ctx: _ScopeCtx) -> str | None:
     """Check if `name` is passed to a function parameter typed as an interface."""
     if isinstance(expr, TCall):
         # Check each argument: is it `name` passed to an interface-typed param?
@@ -880,9 +874,7 @@ def _scan_expr_for_interface_use(
     return None
 
 
-def _check_call_interface_arg(
-    name: str, call: TCall, ctx: _ScopeCtx
-) -> str | None:
+def _check_call_interface_arg(name: str, call: TCall, ctx: _ScopeCtx) -> str | None:
     """If `name` is passed as an argument to an interface-typed parameter, return the interface name."""
     # Resolve param types for the called function
     param_types: list[Type] | None = None
