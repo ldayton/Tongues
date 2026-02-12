@@ -567,8 +567,7 @@ class _PythonEmitter:
         self.indent += 1
         if not decl.body:
             self._line("pass")
-        for stmt in decl.body:
-            self._emit_stmt(stmt)
+        self._emit_stmts(decl.body)
         self.indent -= 1
         self.var_types = old_var_types
 
@@ -586,8 +585,7 @@ class _PythonEmitter:
             self.self_name = decl.params[0].name
         if not decl.body:
             self._line("pass")
-        for stmt in decl.body:
-            self._emit_stmt(stmt)
+        self._emit_stmts(decl.body)
         self.self_name = old_self
         self.indent -= 1
         self.var_types = old_var_types
@@ -603,6 +601,123 @@ class _PythonEmitter:
         return ", ".join(parts)
 
     # ── Statements ────────────────────────────────────────────
+
+    def _emit_stmts(self, stmts: list[TStmt]) -> None:
+        """Emit a statement list with look-ahead for comprehension patterns."""
+        i = 0
+        while i < len(stmts):
+            stmt = stmts[i]
+            if isinstance(stmt, TLetStmt) and i + 1 < len(stmts):
+                next_stmt = stmts[i + 1]
+                if isinstance(next_stmt, TForStmt):
+                    prov = next_stmt.annotations.get("provenance", "")
+                    if prov in (
+                        "list_comprehension",
+                        "dict_comprehension",
+                        "set_comprehension",
+                    ):
+                        comp = self._try_comprehension(stmt, next_stmt, prov)
+                        if comp is not None:
+                            self._line(comp)
+                            i += 2
+                            continue
+            self._emit_stmt(stmt)
+            i += 1
+
+    def _try_comprehension(
+        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+    ) -> str | None:
+        """Try to emit a comprehension from a let + for pair."""
+        acc = _safe_name(let_stmt.name)
+        binding = for_stmt.binding
+        if isinstance(for_stmt.iterable, TRange):
+            args = ", ".join(self._expr(a) for a in for_stmt.iterable.args)
+            iterable = "range(" + args + ")"
+        else:
+            iterable = self._expr(for_stmt.iterable)
+        binders = ", ".join(_safe_name(b) for b in binding)
+        iter_is_map = not isinstance(for_stmt.iterable, TRange) and self._is_map_type(
+            for_stmt.iterable
+        )
+        if iter_is_map:
+            iterable += ".items()"
+        elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
+            iterable = "enumerate(" + iterable + ")"
+        body = for_stmt.body
+        if prov == "list_comprehension":
+            if len(body) == 1 and isinstance(body[0], TExprStmt):
+                call = body[0].expr
+                if self._is_append_to(call, let_stmt.name):
+                    val = self._expr(call.args[1].value)
+                    return (
+                        acc + " = [" + val + " for " + binders + " in " + iterable + "]"
+                    )
+            if len(body) == 1 and isinstance(body[0], TIfStmt):
+                if_stmt = body[0]
+                if len(if_stmt.then_body) == 1 and isinstance(
+                    if_stmt.then_body[0], TExprStmt
+                ):
+                    call = if_stmt.then_body[0].expr
+                    if self._is_append_to(call, let_stmt.name):
+                        val = self._expr(call.args[1].value)
+                        guard = self._expr(if_stmt.cond)
+                        return (
+                            acc
+                            + " = ["
+                            + val
+                            + " for "
+                            + binders
+                            + " in "
+                            + iterable
+                            + " if "
+                            + guard
+                            + "]"
+                        )
+        elif prov == "dict_comprehension":
+            if len(body) == 1 and isinstance(body[0], TAssignStmt):
+                target = body[0].target
+                if isinstance(target, TIndex):
+                    key = self._expr(target.index)
+                    val = self._expr(body[0].value)
+                    return (
+                        acc
+                        + " = {"
+                        + key
+                        + ": "
+                        + val
+                        + " for "
+                        + binders
+                        + " in "
+                        + iterable
+                        + "}"
+                    )
+        elif prov == "set_comprehension":
+            if len(body) == 1 and isinstance(body[0], TExprStmt):
+                call = body[0].expr
+                if self._is_add_to(call, let_stmt.name):
+                    val = self._expr(call.args[1].value)
+                    return (
+                        acc + " = {" + val + " for " + binders + " in " + iterable + "}"
+                    )
+        return None
+
+    def _is_append_to(self, expr: TExpr, name: str) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Append"
+            and isinstance(expr.args[0].value, TVar)
+            and expr.args[0].value.name == name
+        )
+
+    def _is_add_to(self, expr: TExpr, name: str) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Add"
+            and isinstance(expr.args[0].value, TVar)
+            and expr.args[0].value.name == name
+        )
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
@@ -689,14 +804,40 @@ class _PythonEmitter:
         self._line(self._expr(expr))
 
     def _emit_if(self, stmt: TIfStmt) -> None:
-        self._line("if " + self._expr(stmt.cond) + ":")
+        if stmt.annotations.get("provenance") == "truthiness":
+            truth = self._truthiness_expr(stmt.cond)
+            if truth is not None:
+                self._line("if " + truth + ":")
+            else:
+                self._line("if " + self._expr(stmt.cond) + ":")
+        else:
+            self._line("if " + self._expr(stmt.cond) + ":")
         self.indent += 1
         if not stmt.then_body:
             self._line("pass")
-        for s in stmt.then_body:
-            self._emit_stmt(s)
+        self._emit_stmts(stmt.then_body)
         self.indent -= 1
         self._emit_else_body(stmt.else_body)
+
+    def _truthiness_expr(self, cond: TExpr) -> str | None:
+        """Extract truthiness target: Len(xs) > 0 → xs, s != "" → s."""
+        if isinstance(cond, TBinaryOp):
+            if (
+                cond.op == ">"
+                and isinstance(cond.right, TIntLit)
+                and cond.right.value == 0
+                and isinstance(cond.left, TCall)
+                and isinstance(cond.left.func, TVar)
+                and cond.left.func.name == "Len"
+            ):
+                return self._expr(cond.left.args[0].value)
+            if (
+                cond.op == "!="
+                and isinstance(cond.right, TStringLit)
+                and cond.right.value == ""
+            ):
+                return self._expr(cond.left)
+        return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
         if else_body is None or not else_body:
@@ -707,15 +848,13 @@ class _PythonEmitter:
             self.indent += 1
             if not elif_stmt.then_body:
                 self._line("pass")
-            for s in elif_stmt.then_body:
-                self._emit_stmt(s)
+            self._emit_stmts(elif_stmt.then_body)
             self.indent -= 1
             self._emit_else_body(elif_stmt.else_body)
         else:
             self._line("else:")
             self.indent += 1
-            for s in else_body:
-                self._emit_stmt(s)
+            self._emit_stmts(else_body)
             self.indent -= 1
 
     def _emit_while(self, stmt: TWhileStmt) -> None:
@@ -723,8 +862,7 @@ class _PythonEmitter:
         self.indent += 1
         if not stmt.body:
             self._line("pass")
-        for s in stmt.body:
-            self._emit_stmt(s)
+        self._emit_stmts(stmt.body)
         self.indent -= 1
 
     def _emit_for(self, stmt: TForStmt) -> None:
@@ -764,8 +902,7 @@ class _PythonEmitter:
         self.indent += 1
         if not stmt.body:
             self._line("pass")
-        for s in stmt.body:
-            self._emit_stmt(s)
+        self._emit_stmts(stmt.body)
         self.indent -= 1
 
     def _is_map_type(self, expr: TExpr) -> bool:
@@ -780,8 +917,7 @@ class _PythonEmitter:
         self.indent += 1
         if not stmt.body:
             self._line("pass")
-        for s in stmt.body:
-            self._emit_stmt(s)
+        self._emit_stmts(stmt.body)
         self.indent -= 1
         for catch in stmt.catches:
             self._emit_catch(catch)
@@ -790,8 +926,7 @@ class _PythonEmitter:
             self.indent += 1
             if not stmt.finally_body:
                 self._line("pass")
-            for s in stmt.finally_body:
-                self._emit_stmt(s)
+            self._emit_stmts(stmt.finally_body)
             self.indent -= 1
 
     def _emit_catch(self, catch: TCatch) -> None:
@@ -813,8 +948,7 @@ class _PythonEmitter:
         self.indent += 1
         if not catch.body:
             self._line("pass")
-        for s in catch.body:
-            self._emit_stmt(s)
+        self._emit_stmts(catch.body)
         self.indent -= 1
 
     def _emit_match(self, stmt: TMatchStmt) -> None:
@@ -839,8 +973,7 @@ class _PythonEmitter:
             if not case.body:
                 if unused:
                     self._line("pass")
-            for s in case.body:
-                self._emit_stmt(s)
+            self._emit_stmts(case.body)
             self.indent -= 1
         elif isinstance(pat, TPatternEnum):
             self._line(
@@ -856,16 +989,14 @@ class _PythonEmitter:
             self.indent += 1
             if not case.body:
                 self._line("pass")
-            for s in case.body:
-                self._emit_stmt(s)
+            self._emit_stmts(case.body)
             self.indent -= 1
         elif isinstance(pat, TPatternNil):
             self._line(keyword + " " + expr_str + " is None:")
             self.indent += 1
             if not case.body:
                 self._line("pass")
-            for s in case.body:
-                self._emit_stmt(s)
+            self._emit_stmts(case.body)
             self.indent -= 1
 
     def _emit_match_default(
@@ -882,8 +1013,7 @@ class _PythonEmitter:
                 self._line(_safe_name(default.name) + " = " + expr_str)
         if not default.body:
             self._line("pass")
-        for s in default.body:
-            self._emit_stmt(s)
+        self._emit_stmts(default.body)
         self.indent -= 1
 
     def _pattern_type_name(self, typ: TType) -> str:
@@ -919,6 +1049,10 @@ class _PythonEmitter:
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
         if isinstance(expr, TIndex):
+            if expr.annotations.get("provenance") == "negative_index":
+                neg = self._negative_index(expr)
+                if neg is not None:
+                    return self._expr(expr.obj) + "[" + neg + "]"
             return self._expr(expr.obj) + "[" + self._expr(expr.index) + "]"
         if isinstance(expr, TSlice):
             return self._slice(expr)
@@ -984,14 +1118,31 @@ class _PythonEmitter:
 
     def _slice(self, expr: TSlice) -> str:
         obj = self._expr(expr.obj)
-        low = self._expr(expr.low) if not self._is_zero(expr.low) else ""
-        high = self._expr(expr.high) if not self._is_end(expr.high) else ""
+        prov = expr.annotations.get("provenance", "")
+        low = self._expr(expr.low)
+        high = self._expr(expr.high)
+        if prov == "open_start" and self._is_zero(expr.low):
+            low = ""
+        if prov == "open_end" and self._is_len_call(expr.high):
+            high = ""
         return obj + "[" + low + ":" + high + "]"
+
+    def _negative_index(self, expr: TIndex) -> str | None:
+        """Pattern-match Len(x) - n → -n for negative indexing."""
+        idx = expr.index
+        if isinstance(idx, TBinaryOp) and idx.op == "-":
+            if (
+                isinstance(idx.left, TCall)
+                and isinstance(idx.left.func, TVar)
+                and idx.left.func.name == "Len"
+            ):
+                return "-" + self._expr(idx.right)
+        return None
 
     def _is_zero(self, expr: TExpr) -> bool:
         return isinstance(expr, TIntLit) and expr.value == 0
 
-    def _is_end(self, expr: TExpr) -> bool:
+    def _is_len_call(self, expr: TExpr) -> bool:
         if isinstance(expr, TCall):
             if isinstance(expr.func, TVar) and expr.func.name == "Len":
                 return True
@@ -999,6 +1150,11 @@ class _PythonEmitter:
 
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
+        # chained comparison: a OP1 b && b OP2 c → a OP1 b OP2 c
+        if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
+            chained = self._chain_comparison(expr)
+            if chained is not None:
+                return chained
         # nil comparisons → is / is not
         if op == "==" and isinstance(expr.right, TNilLit):
             return self._maybe_paren(expr.left, op, is_left=True) + " is None"
@@ -1020,6 +1176,17 @@ class _PythonEmitter:
     def _unary(self, expr: TUnaryOp) -> str:
         op = expr.op
         if op == "!":
+            if (
+                isinstance(expr.operand, TCall)
+                and isinstance(expr.operand.func, TVar)
+                and expr.operand.func.name == "Contains"
+                and expr.operand.annotations.get("provenance") == "not_in_operator"
+            ):
+                return (
+                    self._a(expr.operand.args, 1)
+                    + " not in "
+                    + self._a(expr.operand.args, 0)
+                )
             py_op = "not "
             if isinstance(expr.operand, (TBinaryOp,)):
                 if expr.operand.op in ("&&", "||", "and", "or"):
@@ -1031,6 +1198,29 @@ class _PythonEmitter:
         if isinstance(expr.operand, (TBinaryOp, TTernary)):
             return op + "(" + self._expr(expr.operand) + ")"
         return op + self._expr(expr.operand)
+
+    def _chain_comparison(self, expr: TBinaryOp) -> str | None:
+        """a OP1 b && b OP2 c → a OP1 b OP2 c."""
+        left = expr.left
+        right = expr.right
+        if (
+            isinstance(left, TBinaryOp)
+            and isinstance(right, TBinaryOp)
+            and left.op in _CMP_OPS
+            and right.op in _CMP_OPS
+        ):
+            return (
+                self._expr(left.left)
+                + " "
+                + left.op
+                + " "
+                + self._expr(left.right)
+                + " "
+                + right.op
+                + " "
+                + self._expr(right.right)
+            )
+        return None
 
     def _maybe_paren(self, expr: TExpr, parent_op: str, is_left: bool) -> str:
         if isinstance(expr, TBinaryOp):
@@ -1114,28 +1304,28 @@ class _PythonEmitter:
         if name == "RemoveAt":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ")"
         if name == "IndexOf":
-            return self._a(args, 0) + ".index(" + self._a(args, 1) + ")"
+            obj = self._a(args, 0)
+            val = self._a(args, 1)
+            return obj + ".index(" + val + ") if " + val + " in " + obj + " else -1"
         if name == "Upper":
             return self._a(args, 0) + ".upper()"
         if name == "Lower":
             return self._a(args, 0) + ".lower()"
         if name == "Trim":
-            return self._a(args, 0) + ".strip()"
+            return self._a(args, 0) + ".strip(" + self._a(args, 1) + ")"
         if name == "TrimStart":
-            return self._a(args, 0) + ".lstrip()"
+            return self._a(args, 0) + ".lstrip(" + self._a(args, 1) + ")"
         if name == "TrimEnd":
-            return self._a(args, 0) + ".rstrip()"
+            return self._a(args, 0) + ".rstrip(" + self._a(args, 1) + ")"
         if name == "Split":
             return self._a(args, 0) + ".split(" + self._a(args, 1) + ")"
         if name == "SplitN":
-            return (
-                self._a(args, 0)
-                + ".split("
-                + self._a(args, 1)
-                + ", "
-                + self._a(args, 2)
-                + ")"
-            )
+            obj = self._a(args, 0)
+            sep = self._a(args, 1)
+            n_expr = args[2].value
+            if isinstance(n_expr, TIntLit):
+                return obj + ".split(" + sep + ", " + str(n_expr.value - 1) + ")"
+            return obj + ".split(" + sep + ", " + self._a(args, 2) + " - 1)"
         if name == "SplitWhitespace":
             return self._a(args, 0) + ".split()"
         if name == "Join":
@@ -1304,11 +1494,11 @@ class _PythonEmitter:
         base_expr = args[1].value
         if isinstance(base_expr, TIntLit):
             if base_expr.value == 16:
-                return "hex(" + n + ")"
+                return "format(" + n + ', "x")'
             if base_expr.value == 8:
-                return "oct(" + n + ")"
+                return "format(" + n + ', "o")'
             if base_expr.value == 2:
-                return "bin(" + n + ")"
+                return "format(" + n + ', "b")'
         base = self._a(args, 1)
         return "_format_int(" + n + ", " + base + ")"
 

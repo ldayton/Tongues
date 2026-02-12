@@ -102,7 +102,7 @@ fn Main() -> void {
     WritelnOut(ToString(x))
 }
 --- python
-x = int(read_all(), 10)
+x = int(sys.stdin.read(), 10)
 ---
 
 === initial value kept when read before overwrite
@@ -135,6 +135,17 @@ fn Main() -> void {
     }
 }
 --- python
+if not 2 in xs:
+---
+
+=== not in operator (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    if !@["provenance" = "not_in_operator"] Contains(xs, 2) {
+        WritelnOut("missing")
+    }
+}
+--- python
 if 2 not in xs:
 ---
 
@@ -162,7 +173,16 @@ fn Main() -> void {
     WritelnOut(ToString(xs[Len(xs) - 1]))
 }
 --- python
-xs[-1]
+print(str(xs[len(xs) - 1]))
+---
+
+=== negative index via Len subtraction (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    WritelnOut(ToString(@["provenance" = "negative_index"] xs[Len(xs) - 1]))
+}
+--- python
+print(str(xs[-1]))
 ---
 
 === open-end slice
@@ -172,7 +192,17 @@ fn Main() -> void {
     WritelnOut(ToString(Len(tail)))
 }
 --- python
-xs[1:]
+tail: list[int] = xs[1:len(xs)]
+---
+
+=== open-end slice (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4]
+    let tail: list[int] = @["provenance" = "open_end"] xs[1:Len(xs)]
+    WritelnOut(ToString(Len(tail)))
+}
+--- python
+tail: list[int] = xs[1:]
 ---
 
 === open-start slice
@@ -182,13 +212,34 @@ fn Main() -> void {
     WritelnOut(ToString(Len(head)))
 }
 --- python
-xs[:3]
+head: list[int] = xs[0:3]
+---
+
+=== open-start slice (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4]
+    let head: list[int] = @["provenance" = "open_start"] xs[0:3]
+    WritelnOut(ToString(Len(head)))
+}
+--- python
+head: list[int] = xs[:3]
 ---
 
 === truthiness check on list
 fn Main() -> void {
     let xs: list[int] = [1, 2, 3]
     if Len(xs) > 0 {
+        WritelnOut("nonempty")
+    }
+}
+--- python
+if len(xs) > 0:
+---
+
+=== truthiness check on list (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    @["provenance" = "truthiness"] if Len(xs) > 0 {
         WritelnOut("nonempty")
     }
 }
@@ -204,12 +255,34 @@ fn Main() -> void {
     }
 }
 --- python
+if s != "":
+---
+
+=== truthiness check on string (raised)
+fn Main() -> void {
+    let s: string = "hello"
+    @["provenance" = "truthiness"] if s != "" {
+        WritelnOut(s)
+    }
+}
+--- python
 if s:
 ---
 
 === chained comparison
 fn InRange(x: int) -> bool {
     return 0 <= x && x <= 255
+}
+fn Main() -> void {
+    WritelnOut(ToString(InRange(42)))
+}
+--- python
+return 0 <= x and x <= 255
+---
+
+=== chained comparison (raised)
+fn InRange(x: int) -> bool {
+    return @["provenance" = "chained_comparison"] (0 <= x && x <= 255)
 }
 fn Main() -> void {
     WritelnOut(ToString(InRange(42)))
@@ -223,6 +296,19 @@ fn Main() -> void {
     let xs: list[int] = [1, 2, 3]
     let doubled: list[int]
     for x in xs {
+        Append(doubled, x * 2)
+    }
+    WritelnOut(ToString(Len(doubled)))
+}
+--- python
+doubled.append(x * 2)
+---
+
+=== list comprehension (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let doubled: list[int]
+    @["provenance" = "list_comprehension"] for x in xs {
         Append(doubled, x * 2)
     }
     WritelnOut(ToString(Len(doubled)))
@@ -243,6 +329,21 @@ fn Main() -> void {
     WritelnOut(ToString(Len(evens)))
 }
 --- python
+evens.append(x)
+---
+
+=== list comprehension with filter (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let evens: list[int]
+    @["provenance" = "list_comprehension"] for x in xs {
+        if x % 2 == 0 {
+            Append(evens, x)
+        }
+    }
+    WritelnOut(ToString(Len(evens)))
+}
+--- python
 evens = [x for x in xs if x % 2 == 0]
 ---
 
@@ -256,6 +357,19 @@ fn Main() -> void {
     WritelnOut(ToString(Len(m)))
 }
 --- python
+m[k] = i
+---
+
+=== dict comprehension (raised)
+fn Main() -> void {
+    let keys: list[string] = ["a", "b", "c"]
+    let m: map[string, int]
+    @["provenance" = "dict_comprehension"] for i, k in keys {
+        m[k] = i
+    }
+    WritelnOut(ToString(Len(m)))
+}
+--- python
 m = {k: i for i, k in enumerate(keys)}
 ---
 
@@ -264,6 +378,19 @@ fn Main() -> void {
     let xs: list[int] = [1, 2, 2, 3]
     let unique: set[int]
     for x in xs {
+        Add(unique, x)
+    }
+    WritelnOut(ToString(Len(unique)))
+}
+--- python
+unique.add(x)
+---
+
+=== set comprehension (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 2, 3]
+    let unique: set[int]
+    @["provenance" = "set_comprehension"] for x in xs {
         Add(unique, x)
     }
     WritelnOut(ToString(Len(unique)))
@@ -309,7 +436,7 @@ fn Main() -> void {
     WritelnOut(Describe(nil))
 }
 --- python
-if x is None:
+elif x is None:
     return "absent"
 ---
 
@@ -560,7 +687,7 @@ fn Main() -> void {
     }
 }
 --- python
-except ValueError as e:
+except ValueError:
 ---
 
 === ternary expression
@@ -571,7 +698,7 @@ fn Main() -> void {
     WritelnOut(ToString(Clamp(5, 0, 10)))
 }
 --- python
-return lo if x < lo else (hi if x > hi else x)
+return lo if x < lo else hi if x > hi else x
 ---
 
 === Append on list
@@ -645,7 +772,7 @@ fn Main() -> void {
     WritelnOut(ToString(idx))
 }
 --- python
-idx = xs.index(20) if 20 in xs else -1
+idx: int = xs.index(20) if 20 in xs else -1
 ---
 
 === Split and Join
@@ -682,7 +809,7 @@ fn Main() -> void {
     WritelnOut(Lower("HELLO"))
 }
 --- python
-print(("hello").upper())
+print("hello".upper())
 ---
 
 === StartsWith and EndsWith
@@ -692,7 +819,7 @@ fn Main() -> void {
     WritelnOut(ToString(EndsWith(s, "world")))
 }
 --- python
-s.startswith("hello")
+print(str(s.startswith("hello")))
 ---
 
 === Sorted and Reversed
@@ -809,7 +936,7 @@ fn Main() -> void {
     WritelnOut(ToString(result))
 }
 --- python
-lambda x: x * 2
+result: int = Apply(lambda x: x * 2, 10)
 ---
 
 === function literal block body
@@ -948,7 +1075,7 @@ fn Main() -> void {
     WritelnOut(ToString(IsLower("abc")))
 }
 --- python
-("123").isdigit()
+print(str("123".isdigit()))
 ---
 
 === Trim functions
@@ -959,7 +1086,7 @@ fn Main() -> void {
     WritelnOut(s)
 }
 --- python
-s = "  hello  ".strip(" ")
+s: str = "  hello  ".strip(" ")
 ---
 
 === Count and RFind on string
@@ -979,7 +1106,7 @@ fn Main() -> void {
     WritelnOut(ToString(Len(parts)))
 }
 --- python
-parts = "a,b,c,d".split(",", 1)
+parts: list[str] = "a,b,c,d".split(",", 1)
 ---
 
 === IO functions
@@ -1007,7 +1134,7 @@ fn Main() -> void {
     WritelnOut(ToString(Sum(xs)))
 }
 --- python
-sum(xs)
+print(str(sum(xs)))
 ---
 
 === DivMod
@@ -1037,7 +1164,7 @@ fn Main() -> void {
     WritelnOut(hex)
 }
 --- python
-hex = format(255, 'x')
+hex_: str = format(255, "x")
 ---
 
 === RuneToInt and RuneFromInt
@@ -1146,7 +1273,7 @@ fn Main() -> void {
     WritelnOut(s)
 }
 --- python
-b = ("hello").encode("utf-8")
+b: bytes = "hello".encode("utf-8")
 ---
 
 === if-else chain
@@ -1296,7 +1423,7 @@ fn Main() -> void {
     WritelnOut(ToString(o.inner.value))
 }
 --- python
-o.inner.value
+print(str(o.inner.value))
 ---
 
 === enum comparison
@@ -1350,7 +1477,7 @@ fn Main() -> void {
     WritelnOut(ToString(IsInf(y)))
 }
 --- python
-math.isnan(x)
+print(str(math.isnan(x)))
 ---
 
 === for over string characters
