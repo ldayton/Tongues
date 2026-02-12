@@ -27,16 +27,16 @@ This section is normative: it defines the annotation keys, value types, attachme
 
 Attachment points (by syntax):
 
-| Syntax | Annotation attachment point |
-| ------ | --------------------------- |
-| `fn F(...) -> T { ... }` | the function node |
-| `{ stmt; stmt; ... }` | the block node |
-| `try { ... } catch ...` | the try node |
+| Syntax                   | Annotation attachment point |
+| ------------------------ | --------------------------- |
+| `fn F(...) -> T { ... }` | the function node           |
+| `{ stmt; stmt; ... }`    | the block node              |
+| `try { ... } catch ...`  | the try node                |
 
 ### Block annotations
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
+| Key                      | Type   | Applies to | Meaning                                                        |
+| ------------------------ | ------ | ---------- | -------------------------------------------------------------- |
 | `returns.always_returns` | `bool` | block node | `true` if every control-flow path through the block terminates |
 
 A block **always returns** if every path through it ends in a terminator. The terminators are:
@@ -58,16 +58,18 @@ Statements after a terminator are unreachable. The pass does not need to flag th
 
 ### Function annotations
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
+| Key                           | Type   | Applies to    | Meaning                                                |
+| ----------------------------- | ------ | ------------- | ------------------------------------------------------ |
 | `returns.needs_named_returns` | `bool` | function node | `true` if the function requires Go-style named returns |
-| `returns.may_return_nil` | `bool` | function node | `true` if the function may return `nil` at runtime |
+| `returns.may_return_nil`      | `bool` | function node | `true` if the function may return `nil` at runtime     |
 
 **`returns.needs_named_returns`**: set `true` when a function contains a try/catch where any catch body (or the try body itself) contains a `return` statement. Go transforms try/catch into `defer`/`recover`, and deferred functions can only set return values through named returns.
 
 **`returns.may_return_nil`**: set `true` if any of:
 - The function body contains `return nil`.
-- The function body contains a `return` whose expression has a static type that includes `nil` (i.e. `T?` or a union containing `nil`), and the expression is not narrowed to exclude `nil` at that point.
+- The function body contains a `return` whose expression has a static type that includes `nil` (i.e. `T?` or a union containing `nil`), and the value may be `nil` at that point.
+
+A variable **may be nil** at a return point if it was assigned `nil` or a nil-typed value on some control-flow path reaching the return and was not reassigned to a non-nil value on every such path. When a variable's type includes `nil` but it is provably non-nil at the return site (all paths from the last assignment to the return assign non-nil values), the return does not trigger `may_return_nil`.
 
 This annotation is independent of whether the declared return type includes `nil`. A function declared `-> int` that never returns `nil` gets `false`; a function declared `-> int?` that always narrows before returning also gets `false`.
 
@@ -75,9 +77,9 @@ Both MUST be present on every function node (even when `false`).
 
 ### Try annotations
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
-| `returns.body_has_return` | `bool` | try node | `true` if the try body contains any `return` statement |
+| Key                       | Type   | Applies to | Meaning                                                |
+| ------------------------- | ------ | ---------- | ------------------------------------------------------ |
+| `returns.body_has_return` | `bool` | try node   | `true` if the try body contains any `return` statement |
 
 Languages that transform try/catch into non-exception mechanisms need to know whether the try body contains returns:
 
@@ -106,9 +108,15 @@ For each function (including methods):
    - For each `try` node, recursively check the try body for any `return` statement.
    - Set `returns.body_has_return` accordingly.
 
-4. **Detect nil returns**:
-   - For each `return` statement, check whether the expression is `nil` or has a static type including `nil`.
-   - If any such return exists, set `returns.may_return_nil=true` on the function node.
+4. **Detect nil returns** (forward dataflow):
+   - Track a set of variables that may hold `nil` at each program point.
+   - When a variable is assigned `nil` or a value whose static type includes `nil`, add it to the may-hold-nil set.
+   - When a variable is assigned a value whose type excludes `nil`, remove it from the set.
+   - At control-flow merges (if/else, match, try/catch), union the may-hold-nil sets from all branches.
+   - For each `return` statement, set `returns.may_return_nil=true` if:
+     - The expression is `nil`, or
+     - The expression has a static type including `nil` and is not a variable known to be non-nil, or
+     - The expression is a variable in the may-hold-nil set.
 
 Steps 1–4 can be combined into a single recursive walk.
 
@@ -160,6 +168,32 @@ fn Describe(v: int | string | nil) -> string {
 }
 -- function node: returns.needs_named_returns=false, returns.may_return_nil=false
 -- function body block: returns.always_returns=true (match is exhaustive, all arms return)
+```
+
+```taytsh
+fn SafeFirst(xs: list[int]) -> int? {
+    let result: int? = nil
+    if Len(xs) > 0 {
+        result = xs[0]
+    } else {
+        result = 0
+    }
+    return result
+}
+-- function node: returns.may_return_nil=false
+--   (result has type int? but is assigned non-nil on both branches before return)
+```
+
+```taytsh
+fn UnsafeFirst(xs: list[int]) -> int? {
+    let result: int? = nil
+    if Len(xs) > 0 {
+        result = xs[0]
+    }
+    return result
+}
+-- function node: returns.may_return_nil=true
+--   (result is nil on the path where Len(xs) == 0; the else path does not reassign)
 ```
 
 ## Postconditions

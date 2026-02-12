@@ -25,6 +25,7 @@ Produces:
 - scope.is_modified, scope.is_unused      (parameters)
 - scope.narrowed_type                     (use sites after nil checks / match arms)
 - scope.is_interface, scope.is_function_ref (use sites)
+- scope.case_interface                     (type-switch case bindings)
 
 No dependencies.
 
@@ -38,7 +39,7 @@ Produces:
 - returns.may_return_nil        (function)  function may return nil at runtime
 - returns.body_has_return       (try node)  try body contains return (Lua/Perl/Zig workaround)
 
-No dependencies. Pure control-flow walk.
+No dependencies. Forward dataflow for nil tracking; pure control-flow walk otherwise.
 
 ### 3. Liveness
 
@@ -71,12 +72,14 @@ Skippable for native-rune targets. The pass is a no-op when the target set inclu
 
 ### 5. Hoisting
 
-Declaration placement for languages requiring pre-declaration (Go) and loop annotation for languages lacking native continue (Lua).
+Declaration placement for languages requiring pre-declaration (Go, Perl), loop annotation for languages lacking native continue (Lua), and break detection for languages emitting match/type-switch as native switch (C#).
 
 Produces:
-- hoisting.hoisted_vars    (if/try/while/for/match)  [(name, type)] to hoist
-- hoisting.has_continue    (while/for)                body contains continue
-- hoisting.rune_vars       (function)                 string vars needing rune conversion (Go)
+- hoisting.hoisted_vars       (if/try/while/for/match/type-switch)  [(name, type)] to hoist
+- hoisting.has_continue        (while/for)                           body contains continue
+- hoisting.has_break           (match/type-switch)                   case body contains break targeting enclosing loop
+- hoisting.rune_vars           (function)                            string vars needing rune conversion (Go)
+- hoisting.func_hoisted_vars   (function)                            union of all hoisted_vars in function (Perl)
 
 Depends on: scope (reads scope.is_reassigned to know which vars are assigned inside control structures). When the strings pass is active, `hoisting.rune_vars` is derived from `strings.indexed` rather than performing its own string-indexing detection.
 
@@ -111,7 +114,7 @@ Skippable when the target set excludes Go, Rust, Zig, and Lua (the targets that 
 
 ## Dependency Graph
 
-All backends read scope, returns, and liveness annotations directly. Callgraph runs in parallel with the intra-procedural pipeline (no shared dependencies). Strings sits between liveness and the target-conditional passes, feeding both backends and the hoisting pass. Native-rune targets (Python, Ruby, Perl) need only the universal passes; all other targets consume strings annotations.
+All backends read scope, returns, and liveness annotations directly. Callgraph runs in parallel with the intra-procedural pipeline (no shared dependencies). Strings sits between liveness and the target-conditional passes, feeding both backends and the hoisting pass. Hoisting serves Go and Lua (variable hoisting, continue transformation, rune conversion), Perl (function-scope pre-declaration), and C# (break-in-switch detection). Native-rune targets without hoisting needs (Python, Ruby) need only the universal passes. The graph groups targets by approximate pass consumption; within a group, individual targets may read only a subset of annotations from a given pass (e.g. C# reads `hoisting.has_break` but not `hoisting.has_continue`).
 
 ```mermaid
 graph LR
@@ -126,23 +129,27 @@ graph LR
     liveness --> ownership
     strings --> hoisting
 
-    liveness --> g1["Python, Ruby, Perl"]:::lang
+    liveness --> g1["Python, Ruby"]:::lang
     liveness --> g2["C#, Dart, Java, JavaScript,
 PHP, TypeScript"]:::lang
     liveness --> g3["Go, Lua"]:::lang
     liveness --> g4["C, Rust, Swift"]:::lang
     liveness --> g5["Zig"]:::lang
+    liveness --> g6["Perl"]:::lang
 
     returns --> g1
     returns --> g2
     returns --> g3
     returns --> g4
     returns --> g5
+    returns --> g6
     strings --> g2
     strings --> g3
     strings --> g4
     strings --> g5
+    hoisting --> g2
     hoisting --> g3
+    hoisting --> g6
     callgraph --> g3
     callgraph --> g4
     callgraph --> g5
@@ -160,12 +167,12 @@ Each pass writes under its own namespace: scope.*, returns.*, liveness.*, string
 
 Not all passes are needed for all targets:
 
-| Pass      | Always runs | Conditional                             |
-| --------- | ----------- | --------------------------------------- |
-| scope     | yes         |                                         |
-| returns   | yes         |                                         |
-| liveness  | yes         |                                         |
-| strings   | no          | all targets except Python, Ruby, Perl   |
-| hoisting  | no          | Go, Lua, or any target needing pre-decl |
-| ownership | no          | C, Rust, Zig, Swift                     |
-| callgraph | no          | Go, Rust, Zig, Lua                      |
+| Pass      | Always runs | Conditional                                                             |
+| --------- | ----------- | ----------------------------------------------------------------------- |
+| scope     | yes         |                                                                         |
+| returns   | yes         |                                                                         |
+| liveness  | yes         |                                                                         |
+| strings   | no          | all targets except Python, Ruby, Perl                                   |
+| hoisting  | no          | Go, Lua, Perl, C#, or any target needing pre-decl or switch workarounds |
+| ownership | no          | C, Rust, Zig, Swift                                                     |
+| callgraph | no          | Go, Rust, Zig, Lua                                                      |

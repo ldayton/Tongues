@@ -57,6 +57,8 @@ Used by all backends.
 
 `scope.is_function_ref` — backends where function references need special syntax (Go is direct, Python is direct, Java needs method references, C needs function pointers) use this to emit the right form.
 
+`scope.case_interface` — Go uses this in type-switch emission to choose the right type assertion. When a case binding is used through interface methods, Go emits `v := expr.(InterfaceName)` instead of `v := expr.(ConcreteType)`.
+
 ### returns.*
 
 Used by a subset of backends.
@@ -155,11 +157,15 @@ The backend transforms the loop: replace the `let ACC = ""` + loop-with-Concat p
 
 ### hoisting.*
 
-Used by Go and Lua.
+Used by Go, Lua, Perl, and C#.
 
 `hoisting.hoisted_vars` — Go emits `var` declarations before the control structure. Lua emits `local` declarations before the block.
 
+`hoisting.func_hoisted_vars` — Perl reads this to emit `my` declarations at function scope. Perl's block-scoped `my` declarations inside control-flow blocks are invisible to sibling blocks, so all hoisted variables must be pre-declared at function entry.
+
 `hoisting.has_continue` — Lua emits `goto continue_label` with a label at the loop end, since Lua lacks native `continue` (before 5.2) or uses `repeat until true` wrapping.
+
+`hoisting.has_break` — C# uses this for match/type-switch nodes emitted as native `switch`/`case`. When `true`, C# emits a flag variable to propagate `break` past the switch to the enclosing loop, since C#'s `break` exits the switch rather than the loop.
 
 `hoisting.rune_vars` — Go emits `xRunes := []rune(x)` at function entry for string variables that are indexed, then uses `xRunes[i]` at index sites. When the strings pass is active, `hoisting.rune_vars` is derived from `strings.indexed` — only bindings with `strings.indexed=true` and `strings.content!="ascii"` need rune conversion.
 
