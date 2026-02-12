@@ -319,9 +319,9 @@ error: reserved name
 
 === error: reserved name as default binding
 fn Main() -> void {
-    let x: obj = 42
+    let x: int | string = 42
     match x {
-        default Len: obj {
+        default Len {
             WritelnOut(ToString(Len))
         }
     }

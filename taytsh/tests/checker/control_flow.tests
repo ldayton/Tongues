@@ -130,7 +130,7 @@ ok
 fn Main() -> void {
     try {
         WritelnOut("try")
-    } catch e: obj {
+    } catch e {
         WritelnErr(ToString(e))
     } finally {
         WritelnOut("finally")
@@ -498,11 +498,11 @@ fn Main() -> void {
 ok
 ---
 
-=== error: multiple catch overlapping obj then specific
+=== error: multiple catch overlapping catch-all then specific
 fn Main() -> void {
     try {
         throw 42
-    } catch e: obj {
+    } catch e {
         WritelnOut("caught")
     } catch e: int {
         WritelnOut("unreachable")

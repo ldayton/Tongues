@@ -238,8 +238,8 @@ fn TestUnionMatchNil() -> void {
     Assert(DescribeNullable(nil) == "nil")
 }
 
--- obj match with default
-fn TypeName(v: obj) -> string {
+-- union match with default
+fn TypeName(v: int | string | bool | float) -> string {
     match v {
         case n: int {
             return "int"
@@ -256,7 +256,7 @@ fn TypeName(v: obj) -> string {
     }
 }
 
-fn TestObjMatch() -> void {
+fn TestUnionMatchDefault() -> void {
     Assert(TypeName(42) == "int")
     Assert(TypeName("hi") == "string")
     Assert(TypeName(true) == "bool")
@@ -264,20 +264,20 @@ fn TestObjMatch() -> void {
 }
 
 -- default with binding
-fn DescribeObj(v: obj) -> string {
+fn DescribeValue(v: int | string) -> string {
     match v {
         case n: int {
             return Concat("int: ", ToString(n))
         }
-        default o: obj {
+        default o {
             return Concat("other: ", ToString(o))
         }
     }
 }
 
 fn TestDefaultBinding() -> void {
-    Assert(DescribeObj(42) == "int: 42")
-    Assert(DescribeObj("hello") == "other: hello")
+    Assert(DescribeValue(42) == "int: 42")
+    Assert(DescribeValue("hello") == "other: hello")
 }
 
 -- match on interface inside union
@@ -299,7 +299,7 @@ fn TestUnionWithInterface() -> void {
 }
 
 -- match selects first matching case
-fn FirstMatch(v: obj) -> string {
+fn FirstMatch(v: int | string) -> string {
     match v {
         case n: int {
             return "int"
@@ -346,7 +346,7 @@ fn Main() -> void {
     TestOptionalMatchString()
     TestUnionMatch()
     TestUnionMatchNil()
-    TestObjMatch()
+    TestUnionMatchDefault()
     TestDefaultBinding()
     TestUnionWithInterface()
     TestMatchOrder()

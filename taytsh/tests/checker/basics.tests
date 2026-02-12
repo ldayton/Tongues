@@ -200,14 +200,6 @@ fn Main() -> void {
 ok
 ---
 
-=== valid: obj zero value
-fn Main() -> void {
-    let x: obj
-}
----
-ok
----
-
 === error: assign to undeclared variable
 fn Main() -> void {
     x = 42

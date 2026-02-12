@@ -163,7 +163,6 @@ _PRIMITIVE_MAP: dict[str, Type] = {
     "rune": RUNE_T,
     "nil": NIL_T,
     "void": VOID_T,
-    "obj": OBJ_T,
 }
 
 
@@ -463,6 +462,8 @@ BUILTIN_NAMES: set[str] = {
     "Sum",
     "Pow",
     "Round",
+    "Floor",
+    "Ceil",
     "DivMod",
     # Bytes
     "Encode",
@@ -490,6 +491,7 @@ BUILTIN_NAMES: set[str] = {
     "Contains",
     "Replace",
     "Repeat",
+    "Reverse",
     "StartsWith",
     "EndsWith",
     "IsDigit",
@@ -534,6 +536,8 @@ BUILTIN_NAMES: set[str] = {
     "ReadAll",
     "ReadBytes",
     "ReadBytesN",
+    "ReadFile",
+    "WriteFile",
     "Args",
     "GetEnv",
     "Exit",
@@ -557,6 +561,7 @@ BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
     "AssertError": {"message": STRING_T},
     "NilError": {"message": STRING_T},
     "ValueError": {"message": STRING_T},
+    "IOError": {"message": STRING_T},
 }
 
 
@@ -1242,7 +1247,8 @@ class Checker:
             assert dflt is not None
             self.enter_scope()
             if dflt.name is not None:
-                self.declare(dflt.name, OBJ_T, dflt.pos)
+                residual = self._compute_default_type(scrutinee_type, covered)
+                self.declare(dflt.name, residual, dflt.pos)
             self.check_stmts(dflt.body)
             self.exit_scope()
         if not has_default:
@@ -1366,6 +1372,40 @@ class Checker:
                     return m
         return None
 
+    def _compute_default_type(self, scrutinee: Type, covered: list[str]) -> Type:
+        """Compute residual type for a default binding (scrutinee minus covered)."""
+        if isinstance(scrutinee, InterfaceT):
+            remaining: list[Type] = []
+            for v in scrutinee.variants:
+                if _type_key(self.types[v]) not in covered:
+                    remaining.append(self.types[v])
+            if len(remaining) == 0:
+                return scrutinee
+            if len(remaining) == 1:
+                return remaining[0]
+            return normalize_union(remaining)
+        if isinstance(scrutinee, UnionT):
+            remaining2: list[Type] = []
+            for m in scrutinee.members:
+                if type_eq(m, NIL_T):
+                    if "nil" not in covered:
+                        remaining2.append(m)
+                elif isinstance(m, InterfaceT):
+                    for v in m.variants:
+                        if _type_key(self.types[v]) not in covered:
+                            remaining2.append(self.types[v])
+                else:
+                    if _type_key(m) not in covered:
+                        remaining2.append(m)
+            if len(remaining2) == 0:
+                return scrutinee
+            if len(remaining2) == 1:
+                return remaining2[0]
+            return normalize_union(remaining2)
+        if isinstance(scrutinee, EnumT):
+            return scrutinee
+        return OBJ_T
+
     def check_exhaustiveness(
         self, scrutinee: Type, covered: list[str], pos: Pos
     ) -> None:
@@ -1407,7 +1447,9 @@ class Checker:
         seen_obj = False
         for catch in stmt.catches:
             self.enter_scope()
-            if len(catch.types) == 1:
+            if len(catch.types) == 0:
+                catch_type = OBJ_T
+            elif len(catch.types) == 1:
                 catch_type = self.resolve_type(catch.types[0])
             else:
                 members: list[Type] = []
@@ -1415,7 +1457,7 @@ class Checker:
                     members.append(self.resolve_type(ct))
                 catch_type = normalize_union(members)
             if seen_obj:
-                self.error("unreachable catch after obj", catch.pos)
+                self.error("unreachable catch after catch-all", catch.pos)
             if type_eq(catch_type, OBJ_T) and not isinstance(
                 catch_type, (StructT, InterfaceT, EnumT)
             ):
@@ -2332,12 +2374,12 @@ class Checker:
                 if t1.kind not in (TY_INT, TY_FLOAT):
                     self.error("Pow requires int or float", pos)
             return t1
-        if name == "Round":
+        if name in ("Round", "Floor", "Ceil"):
             if not require(1):
                 return None
             t = arg(0)
             if t is not None and not type_eq(t, FLOAT_T):
-                self.error("Round requires float", pos)
+                self.error(name + " requires float", pos)
             return INT_T
         if name == "DivMod":
             if not require(2):
@@ -2657,6 +2699,14 @@ class Checker:
                 self.error("Repeat requires string or list", pos)
             return None
 
+        if name == "Reverse":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("Reverse requires string", pos)
+            return STRING_T
+
         # ── Reversed / Sorted ──
         if name == "Reversed":
             if not require(1):
@@ -2869,6 +2919,20 @@ class Checker:
             if t is not None and not type_eq(t, INT_T):
                 self.error("ReadBytesN requires int", pos)
             return BYTES_T
+        if name == "ReadFile":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("ReadFile requires string path", pos)
+            return BYTES_T
+        if name == "WriteFile":
+            if not require(2):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("WriteFile requires string path", pos)
+            return VOID_T
         if name == "Args":
             if not require(0):
                 return None

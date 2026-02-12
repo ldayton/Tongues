@@ -39,7 +39,7 @@ class TType:
 
 @dataclass
 class TPrimitive(TType):
-    """int, float, bool, byte, bytes, string, rune, void, obj, nil."""
+    """int, float, bool, byte, bytes, string, rune, void, nil."""
 
     kind: str
 
@@ -343,7 +343,7 @@ class TMatchCase:
 
 @dataclass
 class TDefault:
-    """default (name: obj)? { ... }."""
+    """default name? { ... }."""
 
     pos: Pos
     name: str | None
@@ -592,3 +592,257 @@ class TFnLit(TExpr):
     ret: TType
     body: list[TStmt] | TExpr
     annotations: Ann
+
+
+# ============================================================
+# GENERIC ANNOTATION SERIALIZER
+# ============================================================
+
+
+def _sa_strip(ann: Ann, pfx: str, plen: int) -> Ann:
+    return {k[plen:]: v for k, v in ann.items() if k.startswith(pfx)}
+
+
+def _sa_collect_lets(
+    stmts: list[TStmt], lets: dict[str, Ann], pfx: str, plen: int
+) -> None:
+    for stmt in stmts:
+        if isinstance(stmt, TLetStmt):
+            a = _sa_strip(stmt.annotations, pfx, plen)
+            if a:
+                lets[stmt.name] = a
+        if isinstance(stmt, TIfStmt):
+            _sa_collect_lets(stmt.then_body, lets, pfx, plen)
+            if stmt.else_body is not None:
+                _sa_collect_lets(stmt.else_body, lets, pfx, plen)
+        elif isinstance(stmt, TWhileStmt):
+            _sa_collect_lets(stmt.body, lets, pfx, plen)
+        elif isinstance(stmt, TForStmt):
+            _sa_collect_lets(stmt.body, lets, pfx, plen)
+        elif isinstance(stmt, TMatchStmt):
+            for case in stmt.cases:
+                _sa_collect_lets(case.body, lets, pfx, plen)
+            if stmt.default is not None:
+                _sa_collect_lets(stmt.default.body, lets, pfx, plen)
+        elif isinstance(stmt, TTryStmt):
+            _sa_collect_lets(stmt.body, lets, pfx, plen)
+            for catch in stmt.catches:
+                _sa_collect_lets(catch.body, lets, pfx, plen)
+            if stmt.finally_body is not None:
+                _sa_collect_lets(stmt.finally_body, lets, pfx, plen)
+
+
+def _sa_collect_vars_expr(
+    expr: TExpr, result: dict[str, Ann], pfx: str, plen: int
+) -> None:
+    if isinstance(expr, TVar):
+        a = _sa_strip(expr.annotations, pfx, plen)
+        if a:
+            result.setdefault(expr.name, {}).update(a)
+    elif isinstance(expr, TBinaryOp):
+        _sa_collect_vars_expr(expr.left, result, pfx, plen)
+        _sa_collect_vars_expr(expr.right, result, pfx, plen)
+    elif isinstance(expr, TUnaryOp):
+        _sa_collect_vars_expr(expr.operand, result, pfx, plen)
+    elif isinstance(expr, TCall):
+        _sa_collect_vars_expr(expr.func, result, pfx, plen)
+        for a in expr.args:
+            _sa_collect_vars_expr(a.value, result, pfx, plen)
+    elif isinstance(expr, TFieldAccess):
+        _sa_collect_vars_expr(expr.obj, result, pfx, plen)
+    elif isinstance(expr, TTupleAccess):
+        _sa_collect_vars_expr(expr.obj, result, pfx, plen)
+    elif isinstance(expr, TIndex):
+        _sa_collect_vars_expr(expr.obj, result, pfx, plen)
+        _sa_collect_vars_expr(expr.index, result, pfx, plen)
+    elif isinstance(expr, TTernary):
+        _sa_collect_vars_expr(expr.cond, result, pfx, plen)
+        _sa_collect_vars_expr(expr.then_expr, result, pfx, plen)
+        _sa_collect_vars_expr(expr.else_expr, result, pfx, plen)
+    elif isinstance(expr, TSlice):
+        _sa_collect_vars_expr(expr.obj, result, pfx, plen)
+        _sa_collect_vars_expr(expr.low, result, pfx, plen)
+        _sa_collect_vars_expr(expr.high, result, pfx, plen)
+    elif isinstance(expr, TListLit):
+        for e in expr.elements:
+            _sa_collect_vars_expr(e, result, pfx, plen)
+    elif isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            _sa_collect_vars_expr(k, result, pfx, plen)
+            _sa_collect_vars_expr(v, result, pfx, plen)
+    elif isinstance(expr, TSetLit):
+        for e in expr.elements:
+            _sa_collect_vars_expr(e, result, pfx, plen)
+    elif isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            _sa_collect_vars_expr(e, result, pfx, plen)
+    elif isinstance(expr, TFnLit):
+        if isinstance(expr.body, list):
+            _sa_collect_vars_stmts(expr.body, result, pfx, plen)
+        else:
+            _sa_collect_vars_expr(expr.body, result, pfx, plen)
+
+
+def _sa_collect_vars_stmt(
+    stmt: TStmt, result: dict[str, Ann], pfx: str, plen: int
+) -> None:
+    if isinstance(stmt, TExprStmt):
+        _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
+    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
+        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+    elif isinstance(stmt, TThrowStmt):
+        _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
+    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
+        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+    elif isinstance(stmt, TAssignStmt):
+        _sa_collect_vars_expr(stmt.target, result, pfx, plen)
+        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+    elif isinstance(stmt, TOpAssignStmt):
+        _sa_collect_vars_expr(stmt.target, result, pfx, plen)
+        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+    elif isinstance(stmt, TTupleAssignStmt):
+        for t in stmt.targets:
+            _sa_collect_vars_expr(t, result, pfx, plen)
+        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+    elif isinstance(stmt, TIfStmt):
+        _sa_collect_vars_expr(stmt.cond, result, pfx, plen)
+        _sa_collect_vars_stmts(stmt.then_body, result, pfx, plen)
+        if stmt.else_body is not None:
+            _sa_collect_vars_stmts(stmt.else_body, result, pfx, plen)
+    elif isinstance(stmt, TWhileStmt):
+        _sa_collect_vars_expr(stmt.cond, result, pfx, plen)
+        _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
+    elif isinstance(stmt, TForStmt):
+        if isinstance(stmt.iterable, TRange):
+            for a in stmt.iterable.args:
+                _sa_collect_vars_expr(a, result, pfx, plen)
+        else:
+            _sa_collect_vars_expr(stmt.iterable, result, pfx, plen)
+        _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
+    elif isinstance(stmt, TMatchStmt):
+        _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
+        for case in stmt.cases:
+            _sa_collect_vars_stmts(case.body, result, pfx, plen)
+        if stmt.default is not None:
+            _sa_collect_vars_stmts(stmt.default.body, result, pfx, plen)
+    elif isinstance(stmt, TTryStmt):
+        _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
+        for catch in stmt.catches:
+            _sa_collect_vars_stmts(catch.body, result, pfx, plen)
+        if stmt.finally_body is not None:
+            _sa_collect_vars_stmts(stmt.finally_body, result, pfx, plen)
+
+
+def _sa_collect_vars_stmts(
+    stmts: list[TStmt], result: dict[str, Ann], pfx: str, plen: int
+) -> None:
+    for stmt in stmts:
+        _sa_collect_vars_stmt(stmt, result, pfx, plen)
+
+
+def _sa_stmt_type_name(stmt: TStmt) -> str:
+    if isinstance(stmt, TLetStmt):
+        return "TLetStmt"
+    if isinstance(stmt, TAssignStmt):
+        return "TAssignStmt"
+    if isinstance(stmt, TOpAssignStmt):
+        return "TOpAssignStmt"
+    if isinstance(stmt, TTupleAssignStmt):
+        return "TTupleAssignStmt"
+    if isinstance(stmt, TReturnStmt):
+        return "TReturnStmt"
+    if isinstance(stmt, TBreakStmt):
+        return "TBreakStmt"
+    if isinstance(stmt, TContinueStmt):
+        return "TContinueStmt"
+    if isinstance(stmt, TThrowStmt):
+        return "TThrowStmt"
+    if isinstance(stmt, TExprStmt):
+        return "TExprStmt"
+    if isinstance(stmt, TIfStmt):
+        return "TIfStmt"
+    if isinstance(stmt, TWhileStmt):
+        return "TWhileStmt"
+    if isinstance(stmt, TForStmt):
+        return "TForStmt"
+    if isinstance(stmt, TMatchStmt):
+        return "TMatchStmt"
+    if isinstance(stmt, TTryStmt):
+        return "TTryStmt"
+    return "TStmt"
+
+
+def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, object]:
+    d: dict[str, object] = {"type": _sa_stmt_type_name(stmt)}
+    ann = _sa_strip(stmt.annotations, pfx, plen)
+    binder: dict[str, dict[str, object]] = {}
+    for k, v in ann.items():
+        if k.startswith("binder."):
+            rest = k[7:]
+            dot = rest.find(".")
+            if dot != -1:
+                binder.setdefault(rest[:dot], {})[rest[dot + 1 :]] = v
+            else:
+                d[k] = v
+        else:
+            d[k] = v
+    if binder:
+        d["binder"] = binder
+    if isinstance(stmt, TMatchStmt):
+        cases: list[Ann] = []
+        for case in stmt.cases:
+            cd: Ann = _sa_strip(case.annotations, pfx, plen)
+            if isinstance(case.pattern, TPatternType):
+                pat = _sa_strip(case.pattern.annotations, pfx, plen)
+                cd.update(pat)
+                for ka, va in pat.items():
+                    cd["pattern." + ka] = va
+            cases.append(cd)
+        d["cases"] = cases
+        if stmt.default is not None:
+            d["default"] = _sa_strip(stmt.default.annotations, pfx, plen)
+    elif isinstance(stmt, TTryStmt):
+        d["catches"] = [_sa_strip(c.annotations, pfx, plen) for c in stmt.catches]
+    return d
+
+
+def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, object]:
+    d: dict[str, object] = _sa_strip(fn.annotations, pfx, plen)
+    params: dict[str, Ann] = {}
+    for p in fn.params:
+        a = _sa_strip(p.annotations, pfx, plen)
+        if a:
+            params[p.name] = a
+    if params:
+        d["params"] = params
+    lets: dict[str, Ann] = {}
+    _sa_collect_lets(fn.body, lets, pfx, plen)
+    if lets:
+        d["lets"] = lets
+    d["body"] = [_sa_serialize_stmt(s, pfx, plen) for s in fn.body]
+    vars_dict: dict[str, Ann] = {}
+    _sa_collect_vars_stmts(fn.body, vars_dict, pfx, plen)
+    if vars_dict:
+        d["vars"] = vars_dict
+        escapes: dict[str, bool] = {
+            n: True for n, a in vars_dict.items() if a.get("escapes")
+        }
+        if escapes:
+            d["escapes"] = escapes
+    return d
+
+
+def serialize_annotations(module: TModule, prefix: str) -> dict[str, dict[str, object]]:
+    """Serialize all annotations matching prefix from every function into nested dicts."""
+    pfx = prefix + "."
+    plen = len(pfx)
+    result: dict[str, dict[str, object]] = {}
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            result[decl.name] = _sa_serialize_fn(decl, pfx, plen)
+        elif isinstance(decl, TStructDecl):
+            for method in decl.methods:
+                result[f"{decl.name}.{method.name}"] = _sa_serialize_fn(
+                    method, pfx, plen
+                )
+    return result

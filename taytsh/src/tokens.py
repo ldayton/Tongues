@@ -39,7 +39,6 @@ KEYWORDS: set[str] = {
     "map",
     "match",
     "nil",
-    "obj",
     "range",
     "return",
     "rune",

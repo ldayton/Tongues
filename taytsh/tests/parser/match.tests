@@ -46,13 +46,28 @@ fn Main() -> void {
 ok
 ---
 
-=== default with binding
+=== default with binding and type
 fn Main() -> void {
     match value {
         case n: int {
             WritelnOut(ToString(n))
         }
         default o: obj {
+            WritelnErr(ToString(o))
+        }
+    }
+}
+---
+error:
+---
+
+=== default with binding no type
+fn Main() -> void {
+    match value {
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        default o {
             WritelnErr(ToString(o))
         }
     }

@@ -176,7 +176,7 @@ fn Main() -> void {
         RiskyOperation()
     } catch e: KeyError {
         WritelnErr(e.message)
-    } catch e: obj {
+    } catch e {
         WritelnErr(Concat("unexpected: ", ToString(e)))
     } finally {
         Cleanup()
@@ -316,7 +316,7 @@ fn Main() -> void {
         case n: int {
             WritelnOut(ToString(n))
         }
-        default o: obj {
+        default o {
             WritelnErr(Concat("unexpected: ", ToString(o)))
         }
     }

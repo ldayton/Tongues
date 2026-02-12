@@ -114,9 +114,9 @@ fn Main() -> void {
 ok
 ---
 
-=== valid: obj match with default
+=== valid: union match with default
 fn Main() -> void {
-    let x: obj = 42
+    let x: int | string | float = 42
     match x {
         case n: int {
             WritelnOut(ToString(n))
@@ -130,9 +130,9 @@ fn Main() -> void {
 ok
 ---
 
-=== error: obj match without default
+=== error: union match without default
 fn Main() -> void {
-    let x: obj = 42
+    let x: int | string | float = 42
     match x {
         case n: int {
             WritelnOut(ToString(n))
@@ -140,17 +140,17 @@ fn Main() -> void {
     }
 }
 ---
-error: non-exhaustive match on obj
+error: non-exhaustive match
 ---
 
 === valid: default with binding
 fn Main() -> void {
-    let x: obj = 42
+    let x: int | string | float = 42
     match x {
         case n: int {
             WritelnOut(ToString(n))
         }
-        default o: obj {
+        default o {
             WritelnOut(ToString(o))
         }
     }
@@ -277,7 +277,7 @@ ok
 
 === valid: match on only default
 fn Main() -> void {
-    let x: obj = 42
+    let x: int | string = 42
     match x {
         default {
             WritelnOut("anything")
@@ -499,7 +499,7 @@ fn Main() -> void {
         case n: int {
             WritelnOut(ToString(n))
         }
-        default o: obj {
+        default o {
             WritelnOut(ToString(o))
         }
     }
@@ -529,7 +529,7 @@ error: duplicate case
 
 === error: default not last
 fn Main() -> void {
-    let x: obj = 42
+    let x: int | string = 42
     match x {
         default {
             WritelnOut("default")

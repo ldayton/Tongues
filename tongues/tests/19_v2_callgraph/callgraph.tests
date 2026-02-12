@@ -1,0 +1,1464 @@
+=== no throws
+fn Foo() -> int {
+    return 42
+}
+fn Main() -> void { WritelnOut(ToString(Foo())) }
+---
+Foo.throws =
+Foo.is_recursive = false
+Foo.recursive_group =
+---
+
+=== explicit throw
+fn Foo() -> int {
+    throw ValueError(message: "bad")
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo()))
+    } catch e: ValueError {
+        WritelnOut(e.message)
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== explicit throw multiple types
+fn Foo(x: int) -> int {
+    if x < 0 {
+        throw ValueError(message: "negative")
+    }
+    if x == 0 {
+        throw KeyError(message: "zero")
+    }
+    return x
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(1)))
+    } catch e: ValueError {
+        WritelnOut(e.message)
+    } catch e: KeyError {
+        WritelnOut(e.message)
+    }
+}
+---
+Foo.throws = KeyError;ValueError
+---
+
+=== builtin ParseInt throws ValueError
+fn Foo(s: string) -> int {
+    return ParseInt(s, 10)
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo("42")))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== builtin ParseFloat throws ValueError
+fn Foo(s: string) -> float {
+    return ParseFloat(s)
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo("3.14")))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== builtin FloatToInt throws ValueError
+fn Foo(x: float) -> int {
+    return FloatToInt(x)
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(3.14)))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== builtin Unwrap throws NilError
+fn Foo(x: int?) -> int {
+    return Unwrap(x)
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(42)))
+    } catch e: NilError {
+        WritelnOut("nil")
+    }
+}
+---
+Foo.throws = NilError
+---
+
+=== builtin Assert throws AssertError
+fn Foo(x: int) -> void {
+    Assert(x > 0)
+}
+fn Main() -> void {
+    try {
+        Foo(1)
+    } catch e: AssertError {
+        WritelnOut("assert")
+    }
+}
+---
+Foo.throws = AssertError
+---
+
+=== builtin Assert with message throws AssertError
+fn Foo(x: int) -> void {
+    Assert(x > 0, "must be positive")
+}
+fn Main() -> void {
+    try {
+        Foo(1)
+    } catch e: AssertError {
+        WritelnOut(e.message)
+    }
+}
+---
+Foo.throws = AssertError
+---
+
+=== builtin Pop throws IndexError
+fn Foo(xs: list[int]) -> int {
+    return Pop(xs)
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo([1])))
+    } catch e: IndexError {
+        WritelnOut("empty")
+    }
+}
+---
+Foo.throws = IndexError
+---
+
+=== builtin ReadFile throws IOError
+fn Foo(path: string) -> string | bytes {
+    return ReadFile(path)
+}
+fn Main() -> void {
+    try {
+        let content: string | bytes = Foo("test.txt")
+        WritelnOut(ToString(content))
+    } catch e: IOError {
+        WritelnOut("io")
+    }
+}
+---
+Foo.throws = IOError
+---
+
+=== builtin WriteFile throws IOError
+fn Foo(path: string, data: string) -> void {
+    WriteFile(path, data)
+}
+fn Main() -> void {
+    try {
+        Foo("out.txt", "hello")
+    } catch e: IOError {
+        WritelnOut("io")
+    }
+}
+---
+Foo.throws = IOError
+---
+
+=== map index throws KeyError
+fn Foo(m: map[string, int], k: string) -> int {
+    return m[k]
+}
+fn Main() -> void {
+    try {
+        let m: map[string, int] = {"a": 1}
+        WritelnOut(ToString(Foo(m, "a")))
+    } catch e: KeyError {
+        WritelnOut("key")
+    }
+}
+---
+Foo.throws = KeyError
+---
+
+=== list index throws IndexError
+fn Foo(xs: list[int], i: int) -> int {
+    return xs[i]
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo([1, 2], 0)))
+    } catch e: IndexError {
+        WritelnOut("idx")
+    }
+}
+---
+Foo.throws = IndexError
+---
+
+=== string index throws IndexError
+fn Foo(s: string, i: int) -> rune {
+    return s[i]
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(RuneToInt(Foo("abc", 0))))
+    } catch e: IndexError {
+        WritelnOut("idx")
+    }
+}
+---
+Foo.throws = IndexError
+---
+
+=== list slice throws IndexError
+fn Foo(xs: list[int], a: int, b: int) -> list[int] {
+    return xs[a:b]
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Len(Foo([1, 2, 3], 0, 2))))
+    } catch e: IndexError {
+        WritelnOut("idx")
+    }
+}
+---
+Foo.throws = IndexError
+---
+
+=== int division throws ZeroDivisionError
+fn Foo(a: int, b: int) -> int {
+    return a / b
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(10, 2)))
+    } catch e: ZeroDivisionError {
+        WritelnOut("div0")
+    }
+}
+---
+Foo.throws = ZeroDivisionError
+---
+
+=== int modulo throws ZeroDivisionError
+fn Foo(a: int, b: int) -> int {
+    return a % b
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(10, 3)))
+    } catch e: ZeroDivisionError {
+        WritelnOut("div0")
+    }
+}
+---
+Foo.throws = ZeroDivisionError
+---
+
+=== multiple builtin throw sources
+fn Foo(m: map[string, int], s: string) -> int {
+    let n: int = ParseInt(s, 10)
+    return m["key"] + n
+}
+fn Main() -> void {
+    try {
+        let m: map[string, int] = {"key": 1}
+        WritelnOut(ToString(Foo(m, "1")))
+    } catch e: ValueError {
+        WritelnOut("val")
+    } catch e: KeyError {
+        WritelnOut("key")
+    }
+}
+---
+Foo.throws = KeyError;ValueError
+---
+
+=== transitive throws
+fn Inner(s: string) -> int {
+    return ParseInt(s, 10)
+}
+fn Outer(s: string) -> int {
+    return Inner(s) + 1
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Outer("42")))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+Inner.throws = ValueError
+Outer.throws = ValueError
+---
+
+=== transitive throws chain
+fn A(s: string) -> int {
+    return ParseInt(s, 10)
+}
+fn B(s: string) -> int {
+    return A(s) * 2
+}
+fn C(s: string) -> int {
+    return B(s) + 1
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(C("42")))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+A.throws = ValueError
+B.throws = ValueError
+C.throws = ValueError
+---
+
+=== try catch filters throws
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        return 0
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.throws =
+---
+
+=== catch all filters everything
+fn Foo(s: string, m: map[string, int]) -> int {
+    try {
+        let n: int = ParseInt(s, 10)
+        return m["key"]
+    } catch e {
+        return 0
+    }
+}
+fn Main() -> void {
+    let m: map[string, int] = {"key": 1}
+    WritelnOut(ToString(Foo("1", m)))
+}
+---
+Foo.throws =
+---
+
+=== partial catch
+fn Foo(s: string, m: map[string, int]) -> int {
+    try {
+        let n: int = ParseInt(s, 10)
+        return m["key"]
+    } catch e: ValueError {
+        return 0
+    }
+}
+fn Main() -> void {
+    try {
+        let m: map[string, int] = {"key": 1}
+        WritelnOut(ToString(Foo("1", m)))
+    } catch e: KeyError {
+        WritelnOut("key")
+    }
+}
+---
+Foo.throws = KeyError
+---
+
+=== union catch filters multiple types
+fn Foo(s: string, xs: list[int]) -> int {
+    try {
+        let n: int = ParseInt(s, 10)
+        return xs[n]
+    } catch e: ValueError | IndexError {
+        return 0
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo("0", [1]))) }
+---
+Foo.throws =
+---
+
+=== catch body rethrow
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        throw ValueError(message: Concat("bad: ", e.message))
+    }
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo("42")))
+    } catch e: ValueError {
+        WritelnOut(e.message)
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== catch body throws different type
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        throw KeyError(message: "wrapped")
+    }
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo("42")))
+    } catch e: KeyError {
+        WritelnOut(e.message)
+    }
+}
+---
+Foo.throws = KeyError
+---
+
+=== finally does not filter
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } finally {
+        WritelnOut("done")
+    }
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo("42")))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== finally adds its own throws
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        return 0
+    } finally {
+        Assert(true)
+    }
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo("42")))
+    } catch e: AssertError {
+        WritelnOut("assert")
+    }
+}
+---
+Foo.throws = AssertError
+---
+
+=== transitive throw filtered by caller
+fn Inner(s: string) -> int {
+    return ParseInt(s, 10)
+}
+fn Outer(s: string) -> int {
+    try {
+        return Inner(s)
+    } catch e: ValueError {
+        return 0
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Outer("42"))) }
+---
+Inner.throws = ValueError
+Outer.throws =
+---
+
+=== no throw from safe operations
+fn Foo(xs: list[int]) -> int {
+    let n: int = Len(xs)
+    let s: string = ToString(n)
+    let t: string = Concat(s, "!")
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo([1]))) }
+---
+Foo.throws =
+---
+
+=== Round Floor Ceil throw ValueError
+fn Foo(x: float) -> int {
+    let a: int = Round(x)
+    let b: int = Floor(x)
+    let c: int = Ceil(x)
+    return a + b + c
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(1.5)))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== direct self recursion
+fn Factorial(n: int) -> int {
+    if n <= 1 {
+        return 1
+    }
+    return n * Factorial(n - 1)
+}
+fn Main() -> void { WritelnOut(ToString(Factorial(5))) }
+---
+Factorial.is_recursive = true
+---
+
+=== not recursive
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void { WritelnOut(ToString(Add(1, 2))) }
+---
+Add.is_recursive = false
+Add.recursive_group =
+---
+
+=== mutual recursion
+fn IsEven(n: int) -> bool {
+    if n == 0 { return true }
+    return IsOdd(n - 1)
+}
+fn IsOdd(n: int) -> bool {
+    if n == 0 { return false }
+    return IsEven(n - 1)
+}
+fn Main() -> void { WritelnOut(ToString(IsEven(4))) }
+---
+IsEven.is_recursive = true
+IsOdd.is_recursive = true
+IsEven.recursive_group = IsOdd.recursive_group
+---
+
+=== non recursive calls recursive
+fn Factorial(n: int) -> int {
+    if n <= 1 { return 1 }
+    return n * Factorial(n - 1)
+}
+fn Double(n: int) -> int {
+    return Factorial(n) * 2
+}
+fn Main() -> void { WritelnOut(ToString(Double(5))) }
+---
+Factorial.is_recursive = true
+Double.is_recursive = false
+Double.recursive_group =
+---
+
+=== tail call return f()
+fn Helper(x: int) -> int {
+    return x + 1
+}
+fn Foo(x: int) -> int {
+    return Helper(x)
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.calls.Helper.is_tail_call = true
+---
+
+=== not tail call used in expression
+fn Helper(x: int) -> int {
+    return x + 1
+}
+fn Foo(x: int) -> int {
+    return Helper(x) + 1
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.calls.Helper.is_tail_call = false
+---
+
+=== not tail call not returned
+fn Helper(x: int) -> int {
+    return x + 1
+}
+fn Foo(x: int) -> int {
+    let n: int = Helper(x)
+    return n
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.calls.Helper.is_tail_call = false
+---
+
+=== tail call in if else both branches
+fn A(x: int) -> int { return x + 1 }
+fn B(x: int) -> int { return x - 1 }
+fn Foo(x: int) -> int {
+    if x > 0 {
+        return A(x)
+    } else {
+        return B(x)
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.calls.A.is_tail_call = true
+Foo.calls.B.is_tail_call = true
+---
+
+=== tail call in match arms
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn CircleArea(c: Circle) -> int { return c.radius * c.radius }
+fn RectArea(r: Rect) -> int { return r.w * r.h }
+fn Area(s: Shape) -> int {
+    match s {
+        case c: Circle {
+            return CircleArea(c)
+        }
+        case r: Rect {
+            return RectArea(r)
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Area(Circle(radius: 5)))) }
+---
+Area.calls.CircleArea.is_tail_call = true
+Area.calls.RectArea.is_tail_call = true
+---
+
+=== not tail call in try body
+fn Helper(s: string) -> int {
+    return ParseInt(s, 10)
+}
+fn Foo(s: string) -> int {
+    try {
+        return Helper(s)
+    } catch e: ValueError {
+        return 0
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.calls.Helper.is_tail_call = false
+---
+
+=== tail call in catch body no finally
+fn Helper() -> int { return 0 }
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        return Helper()
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.calls.Helper.is_tail_call = true
+---
+
+=== not tail call in catch body with finally
+fn Helper() -> int { return 0 }
+fn Foo(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        return Helper()
+    } finally {
+        WritelnOut("done")
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.calls.Helper.is_tail_call = false
+---
+
+=== not tail call in loop
+fn Helper(x: int) -> int { return x + 1 }
+fn Foo(xs: list[int]) -> void {
+    for x in xs {
+        Helper(x)
+    }
+}
+fn Main() -> void { Foo([1, 2]) }
+---
+Foo.calls.Helper.is_tail_call = false
+---
+
+=== not tail call in while
+fn Helper(x: int) -> int { return x + 1 }
+fn Foo() -> void {
+    let i: int = 0
+    while i < 5 {
+        Helper(i)
+        i += 1
+    }
+}
+fn Main() -> void { Foo() }
+---
+Foo.calls.Helper.is_tail_call = false
+---
+
+=== self recursive tail call
+fn Last(xs: list[int]) -> int {
+    if Len(xs) == 1 {
+        return xs[0]
+    }
+    return Last(xs[1:Len(xs)])
+}
+fn Main() -> void { WritelnOut(ToString(Last([1, 2, 3]))) }
+---
+Last.is_recursive = true
+Last.calls.Last.is_tail_call = true
+---
+
+=== self recursive not tail call
+fn Total(xs: list[int]) -> int {
+    if Len(xs) == 0 { return 0 }
+    return xs[0] + Total(xs[1:Len(xs)])
+}
+fn Main() -> void { WritelnOut(ToString(Total([1, 2, 3]))) }
+---
+Total.is_recursive = true
+Total.calls.Total.is_tail_call = false
+---
+
+=== mutual recursive tail calls
+fn IsEven(n: int) -> bool {
+    if n == 0 { return true }
+    return IsOdd(n - 1)
+}
+fn IsOdd(n: int) -> bool {
+    if n == 0 { return false }
+    return IsEven(n - 1)
+}
+fn Main() -> void { WritelnOut(ToString(IsEven(4))) }
+---
+IsEven.calls.IsOdd.is_tail_call = true
+IsOdd.calls.IsEven.is_tail_call = true
+---
+
+=== method tail call
+struct Calc {
+    value: int
+    fn Double(self) -> int {
+        return self.value * 2
+    }
+}
+fn Helper(c: Calc) -> int {
+    return c.Double()
+}
+fn Main() -> void {
+    let c: Calc = Calc(value: 5)
+    WritelnOut(ToString(Helper(c)))
+}
+---
+Helper.calls.Double.is_tail_call = true
+---
+
+=== condition not tail position
+fn Helper(x: int) -> bool { return x > 0 }
+fn Foo(x: int) -> int {
+    if Helper(x) {
+        return 1
+    }
+    return 0
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.calls.Helper.is_tail_call = false
+---
+
+=== match discriminant not tail position
+fn GetKind(x: int) -> int { return x % 3 }
+fn Foo(x: int?) -> int {
+    match x {
+        case v: int {
+            return v
+        }
+        case nil {
+            return 0
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.is_recursive = false
+---
+
+=== throws from method call
+struct Parser {
+    input: string
+    fn Parse(self) -> int {
+        return ParseInt(self.input, 10)
+    }
+}
+fn Foo(p: Parser) -> int {
+    return p.Parse()
+}
+fn Main() -> void {
+    try {
+        let p: Parser = Parser(input: "42")
+        WritelnOut(ToString(Foo(p)))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+Parser.Parse.throws = ValueError
+Foo.throws = ValueError
+---
+
+=== throws from interface method dispatch
+interface Validator {}
+struct IntValidator : Validator {
+    label: string
+    fn Validate(self, s: string) -> int {
+        return ParseInt(s, 10)
+    }
+}
+struct FloatValidator : Validator {
+    label: string
+    fn Validate(self, s: string) -> float {
+        return ParseFloat(s)
+    }
+}
+fn Main() -> void {
+    try {
+        let v: IntValidator = IntValidator(label: "int")
+        WritelnOut(ToString(v.Validate("42")))
+    } catch e: ValueError {
+        WritelnOut("err")
+    }
+}
+---
+IntValidator.Validate.throws = ValueError
+FloatValidator.Validate.throws = ValueError
+---
+
+=== recursive function throws
+fn Walk(xs: list[int], i: int) -> int {
+    if i >= Len(xs) { return 0 }
+    return xs[i] + Walk(xs, i + 1)
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Walk([1, 2, 3], 0)))
+    } catch e: IndexError {
+        WritelnOut("idx")
+    }
+}
+---
+Walk.is_recursive = true
+Walk.throws = IndexError
+---
+
+=== try in caller filters transitive throw
+fn Risky(s: string) -> int {
+    return ParseInt(s, 10)
+}
+fn Safe(s: string) -> int {
+    try {
+        return Risky(s)
+    } catch e: ValueError {
+        return 0
+    }
+}
+fn Caller(s: string) -> int {
+    return Safe(s)
+}
+fn Main() -> void { WritelnOut(ToString(Caller("42"))) }
+---
+Risky.throws = ValueError
+Safe.throws =
+Caller.throws =
+---
+
+=== nested try inner filters outer propagates
+fn Foo(s: string, m: map[string, int]) -> int {
+    try {
+        let n: int = ParseInt(s, 10)
+    } catch e: ValueError {
+        WritelnOut("val")
+    }
+    return m["key"]
+}
+fn Main() -> void {
+    try {
+        let m: map[string, int] = {"key": 1}
+        WritelnOut(ToString(Foo("1", m)))
+    } catch e: KeyError {
+        WritelnOut("key")
+    }
+}
+---
+Foo.throws = KeyError
+---
+
+=== Main throws
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    WritelnOut(ToString(xs[0]))
+}
+---
+Main.throws = IndexError
+---
+
+=== function with only safe builtins no throw
+fn Foo(xs: list[int]) -> string {
+    let n: int = Len(xs)
+    let s: string = ToString(n)
+    let t: string = Concat(s, " items")
+    let u: string = Upper(t)
+    return u
+}
+fn Main() -> void { WritelnOut(Foo([1, 2])) }
+---
+Foo.throws =
+---
+
+=== byte division throws ZeroDivisionError
+fn Foo(a: byte, b: byte) -> byte {
+    return a / b
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(0x0a, 0x02)))
+    } catch e: ZeroDivisionError {
+        WritelnOut("div0")
+    }
+}
+---
+Foo.throws = ZeroDivisionError
+---
+
+=== byte modulo throws ZeroDivisionError
+fn Foo(a: byte, b: byte) -> byte {
+    return a % b
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(0x0a, 0x03)))
+    } catch e: ZeroDivisionError {
+        WritelnOut("div0")
+    }
+}
+---
+Foo.throws = ZeroDivisionError
+---
+
+=== float division no throw
+fn Foo(a: float, b: float) -> float {
+    return a / b
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1.0, 2.0))) }
+---
+Foo.throws =
+---
+
+=== tail call in else if chain
+fn A() -> int { return 1 }
+fn B() -> int { return 2 }
+fn C() -> int { return 3 }
+fn Foo(x: int) -> int {
+    if x > 10 {
+        return A()
+    } else if x > 0 {
+        return B()
+    } else {
+        return C()
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo(5))) }
+---
+Foo.calls.A.is_tail_call = true
+Foo.calls.B.is_tail_call = true
+Foo.calls.C.is_tail_call = true
+---
+
+=== tail call in default arm
+interface Shape {}
+struct Circle : Shape { radius: int }
+struct Rect : Shape { w: int h: int }
+fn CircleSize(c: Circle) -> int { return c.radius }
+fn DefaultSize() -> int { return 0 }
+fn Size(s: Shape) -> int {
+    match s {
+        case c: Circle {
+            return CircleSize(c)
+        }
+        default {
+            return DefaultSize()
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Size(Circle(radius: 5)))) }
+---
+Size.calls.CircleSize.is_tail_call = true
+Size.calls.DefaultSize.is_tail_call = true
+---
+
+=== tail call in finally body
+fn Cleanup() -> int { return 0 }
+fn Foo(s: string) -> int {
+    try {
+        WritelnOut(ToString(ParseInt(s, 10)))
+    } catch e: ValueError {
+        WritelnOut("err")
+    } finally {
+        return Cleanup()
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
+---
+Foo.calls.Cleanup.is_tail_call = true
+---
+
+=== enum match method annotations
+struct Calc {
+    value: int
+    fn Compute(self) -> int {
+        if self.value <= 1 { return 1 }
+        return self.value * Calc(value: self.value - 1).Compute()
+    }
+}
+fn Main() -> void {
+    let c: Calc = Calc(value: 5)
+    WritelnOut(ToString(c.Compute()))
+}
+---
+Calc.Compute.is_recursive = true
+Calc.Compute.calls.Compute.is_tail_call = false
+---
+
+=== three way mutual recursion
+fn A(n: int) -> int {
+    if n <= 0 { return 0 }
+    return B(n - 1)
+}
+fn B(n: int) -> int {
+    if n <= 0 { return 0 }
+    return C(n - 1)
+}
+fn C(n: int) -> int {
+    if n <= 0 { return 0 }
+    return A(n - 1)
+}
+fn Main() -> void { WritelnOut(ToString(A(10))) }
+---
+A.is_recursive = true
+B.is_recursive = true
+C.is_recursive = true
+A.recursive_group = B.recursive_group
+B.recursive_group = C.recursive_group
+---
+
+=== not recursive despite similar name
+fn FooHelper(x: int) -> int {
+    return x + 1
+}
+fn Foo(x: int) -> int {
+    return FooHelper(x)
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.is_recursive = false
+FooHelper.is_recursive = false
+---
+
+=== catch all rethrow propagates residual
+struct CustomError { message: string }
+fn Risky() -> void {
+    throw CustomError(message: "oops")
+}
+fn Foo() -> void {
+    try {
+        Risky()
+    } catch e: ValueError {
+        WritelnOut("val")
+    } catch e {
+        throw e
+    }
+}
+fn Main() -> void {
+    try {
+        Foo()
+    } catch e: CustomError {
+        WritelnOut(e.message)
+    }
+}
+---
+Risky.throws = CustomError
+Foo.throws = CustomError
+---
+
+=== multiple callee throw sets merge
+fn ParseNum(s: string) -> int {
+    return ParseInt(s, 10)
+}
+fn ReadMap(m: map[string, int], k: string) -> int {
+    return m[k]
+}
+fn Foo(s: string, m: map[string, int]) -> int {
+    return ParseNum(s) + ReadMap(m, "key")
+}
+fn Main() -> void {
+    try {
+        let m: map[string, int] = {"key": 1}
+        WritelnOut(ToString(Foo("1", m)))
+    } catch e {
+        WritelnOut("err")
+    }
+}
+---
+Foo.throws = KeyError;ValueError
+---
+
+=== string slice throws IndexError
+fn Foo(s: string, a: int, b: int) -> string {
+    return s[a:b]
+}
+fn Main() -> void {
+    try {
+        WritelnOut(Foo("hello", 0, 3))
+    } catch e: IndexError {
+        WritelnOut("idx")
+    }
+}
+---
+Foo.throws = IndexError
+---
+
+=== bytes index throws IndexError
+fn Foo(data: bytes, i: int) -> byte {
+    return data[i]
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(b"\x01\x02", 0)))
+    } catch e: IndexError {
+        WritelnOut("idx")
+    }
+}
+---
+Foo.throws = IndexError
+---
+
+=== bytes slice throws IndexError
+fn Foo(data: bytes, a: int, b: int) -> bytes {
+    return data[a:b]
+}
+fn Main() -> void {
+    try {
+        let result: bytes = Foo(b"\x01\x02\x03", 0, 2)
+        WritelnOut(ToString(Len(result)))
+    } catch e: IndexError {
+        WritelnOut("idx")
+    }
+}
+---
+Foo.throws = IndexError
+---
+
+=== compound division throws ZeroDivisionError
+fn Foo(a: int, b: int) -> int {
+    a /= b
+    return a
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(10, 2)))
+    } catch e: ZeroDivisionError {
+        WritelnOut("div0")
+    }
+}
+---
+Foo.throws = ZeroDivisionError
+---
+
+=== int arithmetic no throw without strict math
+fn Foo(a: int, b: int) -> int {
+    return a + b * a - b
+}
+fn Main() -> void { WritelnOut(ToString(Foo(3, 2))) }
+---
+Foo.throws =
+---
+
+=== Sorted no throw without strict math
+fn Foo(xs: list[float]) -> list[float] {
+    return Sorted(xs)
+}
+fn Main() -> void { WritelnOut(ToString(Len(Foo([3.0, 1.0, 2.0])))) }
+---
+Foo.throws =
+---
+
+=== strict math int addition throws ValueError
+@@["strict_math"]
+fn Foo(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Foo(1, 2)))
+    } catch e: ValueError {
+        WritelnOut("overflow")
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== strict math Sorted throws ValueError
+@@["strict_math"]
+fn Foo(xs: list[float]) -> list[float] {
+    return Sorted(xs)
+}
+fn Main() -> void {
+    try {
+        let result: list[float] = Foo([3.0, 1.0, 2.0])
+        WritelnOut(ToString(Len(result)))
+    } catch e: ValueError {
+        WritelnOut("nan")
+    }
+}
+---
+Foo.throws = ValueError
+---
+
+=== mutual recursion throw propagation
+fn Ping(s: string, n: int) -> int {
+    if n <= 0 { return 0 }
+    let x: int = ParseInt(s, 10)
+    return Pong(s, n - 1)
+}
+fn Pong(s: string, n: int) -> int {
+    if n <= 0 { return 0 }
+    let m: map[string, int] = {"key": 1}
+    let v: int = m[s]
+    return Ping(s, n - 1)
+}
+fn Main() -> void {
+    try {
+        WritelnOut(ToString(Ping("key", 3)))
+    } catch e {
+        WritelnOut("err")
+    }
+}
+---
+Ping.is_recursive = true
+Pong.is_recursive = true
+Ping.recursive_group = Pong.recursive_group
+Ping.throws = KeyError;ValueError
+Pong.throws = KeyError;ValueError
+---
+
+=== interface dispatch different throw types
+interface Parser {}
+struct IntParser : Parser {
+    label: string
+    fn Parse(self, s: string) -> int {
+        return ParseInt(s, 10)
+    }
+}
+struct MapParser : Parser {
+    label: string
+    fn Parse(self, s: string) -> int {
+        let m: map[string, int] = {"a": 1}
+        return m[s]
+    }
+}
+fn DoInt(p: IntParser, s: string) -> int {
+    return p.Parse(s)
+}
+fn DoMap(p: MapParser, s: string) -> int {
+    return p.Parse(s)
+}
+fn Main() -> void {
+    try {
+        let p: IntParser = IntParser(label: "int")
+        WritelnOut(ToString(DoInt(p, "1")))
+    } catch e {
+        WritelnOut("err")
+    }
+}
+---
+IntParser.Parse.throws = ValueError
+MapParser.Parse.throws = KeyError
+DoInt.throws = ValueError
+DoMap.throws = KeyError
+---
+
+=== multiple typed catches partial filter
+fn Foo(s: string, m: map[string, int], xs: list[int]) -> int {
+    try {
+        let n: int = ParseInt(s, 10)
+        let v: int = m["key"]
+        return xs[n] + v
+    } catch e: ValueError {
+        return 0
+    } catch e: KeyError {
+        return 0
+    }
+}
+fn Main() -> void {
+    try {
+        let m: map[string, int] = {"key": 1}
+        WritelnOut(ToString(Foo("0", m, [1])))
+    } catch e: IndexError {
+        WritelnOut("idx")
+    }
+}
+---
+Foo.throws = IndexError
+---
+
+=== method self recursion via self
+struct Counter {
+    n: int
+    fn CountDown(self) -> int {
+        if self.n <= 0 { return 0 }
+        self.n = self.n - 1
+        return self.CountDown()
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(n: 5)
+    WritelnOut(ToString(c.CountDown()))
+}
+---
+Counter.CountDown.is_recursive = true
+Counter.CountDown.calls.CountDown.is_tail_call = true
+---
+
+=== ternary tail call
+fn A() -> int { return 1 }
+fn B() -> int { return 2 }
+fn Foo(x: int) -> int {
+    return x > 0 ? A() : B()
+}
+fn Main() -> void { WritelnOut(ToString(Foo(1))) }
+---
+Foo.calls.A.is_tail_call = true
+Foo.calls.B.is_tail_call = true
+---
+
+=== tail call in enum match arms
+enum Color { Red Green Blue }
+fn HandleRed() -> string { return "red" }
+fn HandleGreen() -> string { return "green" }
+fn HandleBlue() -> string { return "blue" }
+fn Describe(c: Color) -> string {
+    match c {
+        case Color.Red {
+            return HandleRed()
+        }
+        case Color.Green {
+            return HandleGreen()
+        }
+        case Color.Blue {
+            return HandleBlue()
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(Color.Red)) }
+---
+Describe.calls.HandleRed.is_tail_call = true
+Describe.calls.HandleGreen.is_tail_call = true
+Describe.calls.HandleBlue.is_tail_call = true
+---
+
+=== tail call in optional match arms
+fn HandleInt(n: int) -> string { return ToString(n) }
+fn HandleNil() -> string { return "nil" }
+fn Describe(v: int?) -> string {
+    match v {
+        case n: int {
+            return HandleInt(n)
+        }
+        case nil {
+            return HandleNil()
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(42)) }
+---
+Describe.calls.HandleInt.is_tail_call = true
+Describe.calls.HandleNil.is_tail_call = true
+---
+
+=== tail call in union match arms
+fn HandleInt(n: int) -> string { return ToString(n) }
+fn HandleStr(s: string) -> string { return s }
+fn HandleBool(b: bool) -> string { return ToString(b) }
+fn Describe(v: int | string | bool) -> string {
+    match v {
+        case n: int {
+            return HandleInt(n)
+        }
+        case s: string {
+            return HandleStr(s)
+        }
+        case b: bool {
+            return HandleBool(b)
+        }
+    }
+}
+fn Main() -> void { WritelnOut(Describe(42)) }
+---
+Describe.calls.HandleInt.is_tail_call = true
+Describe.calls.HandleStr.is_tail_call = true
+Describe.calls.HandleBool.is_tail_call = true
+---
+
+=== struct construction return not a call
+struct Wrapper { value: int }
+fn Helper(x: int) -> int { return x + 1 }
+fn Foo(x: int) -> Wrapper {
+    let n: int = Helper(x)
+    return Wrapper(value: n)
+}
+fn Main() -> void {
+    let w: Wrapper = Foo(1)
+    WritelnOut(ToString(w.value))
+}
+---
+Foo.calls.Helper.is_tail_call = false
+---
+
+=== tail call last statement void function
+fn Helper() -> void { WritelnOut("hi") }
+fn Foo() -> void {
+    Helper()
+}
+fn Main() -> void { Foo() }
+---
+Foo.calls.Helper.is_tail_call = true
+---
