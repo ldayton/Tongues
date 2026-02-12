@@ -101,16 +101,16 @@ Double.params.x.kind = borrowed
 ---
 
 === parameter list borrowed
-fn Sum(xs: list[int]) -> int {
+fn Total(xs: list[int]) -> int {
     let total: int = 0
     for x in xs {
         total += x
     }
     return total
 }
-fn Main() -> void { WritelnOut(ToString(Sum([1, 2, 3]))) }
+fn Main() -> void { WritelnOut(ToString(Total([1, 2, 3]))) }
 ---
-Sum.params.xs.kind = borrowed
+Total.params.xs.kind = borrowed
 ---
 
 === parameter string borrowed

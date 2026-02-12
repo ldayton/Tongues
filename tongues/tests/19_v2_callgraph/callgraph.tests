@@ -739,14 +739,14 @@ Last.calls.Last.is_tail_call = true
 ---
 
 === self recursive not tail call
-fn Sum(xs: list[int]) -> int {
+fn Total(xs: list[int]) -> int {
     if Len(xs) == 0 { return 0 }
-    return xs[0] + Sum(xs[1:Len(xs)])
+    return xs[0] + Total(xs[1:Len(xs)])
 }
-fn Main() -> void { WritelnOut(ToString(Sum([1, 2, 3]))) }
+fn Main() -> void { WritelnOut(ToString(Total([1, 2, 3]))) }
 ---
-Sum.is_recursive = true
-Sum.calls.Sum.is_tail_call = false
+Total.is_recursive = true
+Total.calls.Total.is_tail_call = false
 ---
 
 === mutual recursive tail calls

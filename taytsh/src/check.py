@@ -462,6 +462,8 @@ BUILTIN_NAMES: set[str] = {
     "Sum",
     "Pow",
     "Round",
+    "Floor",
+    "Ceil",
     "DivMod",
     # Bytes
     "Encode",
@@ -534,6 +536,8 @@ BUILTIN_NAMES: set[str] = {
     "ReadAll",
     "ReadBytes",
     "ReadBytesN",
+    "ReadFile",
+    "WriteFile",
     "Args",
     "GetEnv",
     "Exit",
@@ -557,6 +561,7 @@ BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
     "AssertError": {"message": STRING_T},
     "NilError": {"message": STRING_T},
     "ValueError": {"message": STRING_T},
+    "IOError": {"message": STRING_T},
 }
 
 
@@ -2369,12 +2374,12 @@ class Checker:
                 if t1.kind not in (TY_INT, TY_FLOAT):
                     self.error("Pow requires int or float", pos)
             return t1
-        if name == "Round":
+        if name in ("Round", "Floor", "Ceil"):
             if not require(1):
                 return None
             t = arg(0)
             if t is not None and not type_eq(t, FLOAT_T):
-                self.error("Round requires float", pos)
+                self.error(name + " requires float", pos)
             return INT_T
         if name == "DivMod":
             if not require(2):
@@ -2914,6 +2919,20 @@ class Checker:
             if t is not None and not type_eq(t, INT_T):
                 self.error("ReadBytesN requires int", pos)
             return BYTES_T
+        if name == "ReadFile":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("ReadFile requires string path", pos)
+            return BYTES_T
+        if name == "WriteFile":
+            if not require(2):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("WriteFile requires string path", pos)
+            return VOID_T
         if name == "Args":
             if not require(0):
                 return None
