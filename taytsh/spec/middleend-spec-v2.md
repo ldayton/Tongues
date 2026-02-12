@@ -5,9 +5,9 @@ The middleend is a pipeline of analysis passes over Taytsh IR. Every pass reads 
 ## Pipeline
 
 ```
-lowerer → scope → returns → liveness → hoisting → ownership → backends
-            \                                                /
-             `--→ callgraph ---→---→---→---→---→---→---→---'
+lowerer → scope → returns → liveness → strings → hoisting → ownership → backends
+            \                                                          /
+             `--→ callgraph ---→---→---→---→---→---→---→---→---→---→-'
 ```
 
 All passes are intra-procedural (per-function) except callgraph, which is inter-procedural (whole-module).
@@ -52,7 +52,24 @@ Produces:
 
 Depends on: scope (reads scope.is_unused to avoid redundant work, but can run independently with degraded precision).
 
-### 4. Hoisting
+### 4. Strings
+
+Spec: strings-spec-v2.md
+
+String content classification and usage analysis. Tells backends when rune-decoding machinery can be skipped.
+
+Produces:
+- strings.content          (string-typed binding)  ascii | bmp | unknown
+- strings.indexed          (string-typed binding)  used in s[i] or s[a:b]
+- strings.iterated         (string-typed binding)  iterated via for-in
+- strings.len_called       (string-typed binding)  Len(s) called
+- strings.builder          (for/while loop)         accumulator variable name(s)
+
+Depends on: scope (reads scope.is_reassigned, scope.is_const), liveness (reads liveness.initial_value_unused).
+
+Skippable for native-rune targets. The pass is a no-op when the target set includes only Python, Ruby, and Perl.
+
+### 5. Hoisting
 
 Declaration placement for languages requiring pre-declaration (Go) and loop annotation for languages lacking native continue (Lua).
 
@@ -61,9 +78,9 @@ Produces:
 - hoisting.has_continue    (while/for)                body contains continue
 - hoisting.rune_vars       (function)                 string vars needing rune conversion (Go)
 
-Depends on: scope (reads scope.is_reassigned to know which vars are assigned inside control structures).
+Depends on: scope (reads scope.is_reassigned to know which vars are assigned inside control structures). When the strings pass is active, `hoisting.rune_vars` is derived from `strings.indexed` rather than performing its own string-indexing detection.
 
-### 5. Ownership
+### 6. Ownership
 
 Memory ownership and escape analysis for non-GC targets (C, Rust, Zig).
 
@@ -76,7 +93,7 @@ Depends on: scope (reads scope.is_modified for mutation tracking, scope.is_const
 
 Skippable for GC targets. The pass is a no-op when the target set excludes C, Rust, Zig, and Swift.
 
-### 6. Callgraph
+### 7. Callgraph
 
 Spec: callgraph-spec-v2.md
 
@@ -94,7 +111,7 @@ Skippable when the target set excludes Go, Rust, Zig, and Lua (the targets that 
 
 ## Dependency Graph
 
-All backends read scope and liveness annotations directly. Callgraph runs in parallel with the intra-procedural pipeline (no shared dependencies). The graph uses liveness (the last universal intra-procedural pass) as the anchor and shows conditional pass edges to backend groups partitioned by their unique dependency profiles.
+All backends read scope, returns, and liveness annotations directly. Callgraph runs in parallel with the intra-procedural pipeline (no shared dependencies). Strings sits between liveness and the target-conditional passes, feeding both backends and the hoisting pass. Native-rune targets (Python, Ruby, Perl) need only the universal passes; all other targets consume strings annotations.
 
 ```mermaid
 graph LR
@@ -105,11 +122,13 @@ graph LR
     scope --> liveness
     scope --> hoisting
     scope --> ownership
+    liveness --> strings
     liveness --> ownership
+    strings --> hoisting
 
-    liveness --> g1["C#, Java, JavaScript,
-PHP, Python, Ruby, TypeScript"]:::lang
-    liveness --> g2["Dart, Perl"]:::lang
+    liveness --> g1["Python, Ruby, Perl"]:::lang
+    liveness --> g2["C#, Dart, Java, JavaScript,
+PHP, TypeScript"]:::lang
     liveness --> g3["Go, Lua"]:::lang
     liveness --> g4["C, Rust, Swift"]:::lang
     liveness --> g5["Zig"]:::lang
@@ -119,6 +138,10 @@ PHP, Python, Ruby, TypeScript"]:::lang
     returns --> g3
     returns --> g4
     returns --> g5
+    strings --> g2
+    strings --> g3
+    strings --> g4
+    strings --> g5
     hoisting --> g3
     callgraph --> g3
     callgraph --> g4
@@ -131,7 +154,7 @@ PHP, Python, Ruby, TypeScript"]:::lang
 
 ## Annotation Namespacing
 
-Each pass writes under its own namespace: scope.*, returns.*, liveness.*, hoisting.*, ownership.*, callgraph.*. Annotations are write-once: no pass overwrites another's keys.
+Each pass writes under its own namespace: scope.*, returns.*, liveness.*, strings.*, hoisting.*, ownership.*, callgraph.*. Annotations are write-once: no pass overwrites another's keys.
 
 ## Target-Conditional Passes
 
@@ -142,6 +165,7 @@ Not all passes are needed for all targets:
 | scope     | yes         |                                         |
 | returns   | yes         |                                         |
 | liveness  | yes         |                                         |
+| strings   | no          | all targets except Python, Ruby, Perl   |
 | hoisting  | no          | Go, Lua, or any target needing pre-decl |
 | ownership | no          | C, Rust, Zig, Swift                     |
 | callgraph | no          | Go, Rust, Zig, Lua                      |

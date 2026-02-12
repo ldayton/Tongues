@@ -65,8 +65,8 @@ Generic type parameters are built-in only (`list[T]`, `map[K, V]`, `set[T]`, `fn
 
 `ToString` is a built-in free function defined on all types — the only universal operation. The output format is target-native by default; `--strict-tostring` specifies a canonical format — see Strict ToString below.
 
-| Function      | Signature       | Description           |
-| ------------- | --------------- | --------------------- |
+| Function      | Signature     | Description                                  |
+| ------------- | ------------- | -------------------------------------------- |
 | `ToString(x)` | `T -> string` | string representation (defined on all types) |
 
 ### Throw and Catch
@@ -281,6 +281,7 @@ let n: int = Len("café")        -- 4, not 5
 | `Contains(s, sub)`     | `string, string -> bool`              | substring test                         |
 | `Replace(s, old, new)` | `string, string, string -> string`    | replace all occurrences                |
 | `Repeat(s, n)`         | `string, int -> string`               | repeat n times; n ≤ 0 yields empty     |
+| `Reverse(s)`           | `string -> string`                    | new string in reverse rune order       |
 | `StartsWith(s, pre)`   | `string, string -> bool`              | prefix test                            |
 | `EndsWith(s, suf)`     | `string, string -> bool`              | suffix test                            |
 | `IsDigit(x)`           | `string \| rune -> bool`              | all characters are digits; false for empty string              |

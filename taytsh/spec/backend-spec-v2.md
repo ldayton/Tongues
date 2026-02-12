@@ -81,6 +81,78 @@ Used by all backends for cleaner output.
 
 `liveness.tuple_unused_indices` — emit `_` for unused targets. Go: `_, b := f()`. Python: `_, b = f()`. Rust: `let (_, b) = f();`.
 
+### strings.*
+
+Used by all backends except Python, Ruby, and Perl (native-rune targets where string operations are already correct).
+
+`strings.content` — select string operation implementation based on character content:
+
+| Content     | UTF-8 targets (Go, Rust, C, Zig, Lua, PHP) | UTF-16 targets (Java, C#, JS, TS, Dart, Swift)          |
+| ----------- | ------------------------------------------ | ------------------------------------------------------- |
+| `"ascii"`   | native byte operations (`s[i]`, `len(s)`)  | native code-unit operations (`.charAt()`, `.length`)    |
+| `"bmp"`     | still need multi-byte decode               | native code-unit operations safely (no surrogate pairs) |
+| `"unknown"` | full rune-safe operations                  | full codepoint-safe operations                          |
+
+Target-specific ASCII-mode examples:
+
+| Target     | ASCII `s[i]`                | ASCII `Len(s)` |
+| ---------- | --------------------------- | -------------- |
+| Go         | `s[i]` (byte access)        | `len(s)`       |
+| Rust       | `s.as_bytes()[i] as char`   | `s.len()`      |
+| C          | `s[i]`                      | `strlen(s)`    |
+| Java       | `s.charAt(i)`               | `s.length()`   |
+| JavaScript | `s[i]` or `s.charCodeAt(i)` | `s.length`     |
+| PHP        | `$s[$i]`                    | `strlen($s)`   |
+
+`strings.indexed` — when `false`, skip rune-indexing machinery entirely:
+
+| Target     | Effect when `strings.indexed=false`               |
+| ---------- | ------------------------------------------------- |
+| Go         | no `[]rune` conversion needed                     |
+| Rust       | no `.chars().nth()` needed; plain `&str` suffices |
+| C          | no UTF-8 index-to-byte-offset mapping             |
+| Java       | no `codePointAt()` / `offsetByCodePoints()`       |
+| JavaScript | no surrogate-aware indexing                       |
+| PHP        | no `mb_substr()`                                  |
+
+`strings.iterated` — when `true` and `strings.indexed=false`, use sequential decoding instead of random-access conversion:
+
+| Target | Sequential iteration form                     |
+| ------ | --------------------------------------------- |
+| Go     | `for _, r := range s` (UTF-8 decode per rune) |
+| Rust   | `for c in s.chars()`                          |
+| C      | sequential UTF-8 walk                         |
+| Java   | `s.codePoints().forEach(...)`                 |
+
+When `strings.indexed=true`, the rune conversion needed for indexing also handles iteration.
+
+`strings.len_called` — when `false`, skip rune-counting calls:
+
+| Target | Effect when `strings.len_called=false` |
+| ------ | -------------------------------------- |
+| Go     | no `utf8.RuneCountInString(s)`         |
+| Rust   | no `.chars().count()`                  |
+| PHP    | no `mb_strlen()`                       |
+| C      | no UTF-8 rune-counting loop            |
+
+When `strings.content="ascii"`, rune count equals byte count regardless of `strings.len_called` — the backend uses the native length operation.
+
+`strings.builder` — when non-empty, emit efficient string building instead of quadratic concatenation:
+
+| Target     | Builder mechanism                       |
+| ---------- | --------------------------------------- |
+| Go         | `strings.Builder` with `.WriteString()` |
+| Java / C#  | `StringBuilder` with `.append()`        |
+| Rust       | `String` with `.push_str()`             |
+| C          | growable buffer with doubling           |
+| Zig        | `ArrayList(u8)` or equivalent           |
+| JavaScript | array `.push()` + `.join("")`           |
+| Dart       | `StringBuffer` with `.write()`          |
+| PHP        | array `$parts[]` + `implode()`          |
+| Lua        | table `insert` + `table.concat()`       |
+
+The backend transforms the loop: replace the `let ACC = ""` + loop-with-Concat pattern into builder initialization, append calls, and final `.toString()`/`.String()` extraction.
+
 ### hoisting.*
 
 Used by Go and Lua.
@@ -89,7 +161,7 @@ Used by Go and Lua.
 
 `hoisting.has_continue` — Lua emits `goto continue_label` with a label at the loop end, since Lua lacks native `continue` (before 5.2) or uses `repeat until true` wrapping.
 
-`hoisting.rune_vars` — Go emits `xRunes := []rune(x)` at function entry for string variables that are indexed, then uses `xRunes[i]` at index sites.
+`hoisting.rune_vars` — Go emits `xRunes := []rune(x)` at function entry for string variables that are indexed, then uses `xRunes[i]` at index sites. When the strings pass is active, `hoisting.rune_vars` is derived from `strings.indexed` — only bindings with `strings.indexed=true` and `strings.content!="ascii"` need rune conversion.
 
 ### ownership.*
 
