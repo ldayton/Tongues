@@ -1,4 +1,4 @@
--- pragma strict-math
+@@["strict_math"]
 
 -- Strict math focuses on cross-target consistency:
 -- - int is exactly int64 and overflows trap

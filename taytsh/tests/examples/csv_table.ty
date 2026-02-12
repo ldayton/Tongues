@@ -1,185 +1,6 @@
--- Tests for CSV table formatter
+-- CSV table formatter: parse CSV text and render as an ASCII table
 
-fn AssertEq(actual: string, expected: string, label: string) -> void {
-    if actual != expected {
-        throw AssertError(Format("{}: got \"{}\", want \"{}\"", label, actual, expected))
-    }
-}
-
-fn AssertFields(actual: list[string], expected: list[string], label: string) -> void {
-    Assert(Len(actual) == Len(expected),
-        Format("{}: got {} fields, want {}", label, ToString(Len(actual)), ToString(Len(expected))))
-    for i, field in actual {
-        AssertEq(field, expected[i], Format("{}[{}]", label, ToString(i)))
-    }
-}
-
-fn AssertThrows(threw: bool, label: string) -> void {
-    Assert(threw, Format("{}: expected ValueError", label))
-}
-
--- ParseRow tests
-
-fn TestParseRowSimple() -> void {
-    let row: list[string] = ParseRow("a,b,c")
-    AssertFields(row, ["a", "b", "c"], "simple")
-}
-
-fn TestParseRowWhitespace() -> void {
-    let row: list[string] = ParseRow("  a , b , c  ")
-    AssertFields(row, ["a", "b", "c"], "whitespace")
-}
-
-fn TestParseRowQuoted() -> void {
-    let row: list[string] = ParseRow("\"hello, world\",b,c")
-    AssertFields(row, ["hello, world", "b", "c"], "quoted comma")
-}
-
-fn TestParseRowEscapedQuote() -> void {
-    let row: list[string] = ParseRow("\"she said \"\"hi\"\"\",b")
-    AssertFields(row, ["she said \"hi\"", "b"], "escaped quote")
-}
-
-fn TestParseRowSingleField() -> void {
-    let row: list[string] = ParseRow("alone")
-    AssertFields(row, ["alone"], "single field")
-}
-
-fn TestParseRowEmpty() -> void {
-    let row: list[string] = ParseRow("a,,c")
-    AssertFields(row, ["a", "", "c"], "empty field")
-}
-
-fn TestParseRowUnclosedQuote() -> void {
-    let threw: bool = false
-    try {
-        ParseRow("\"oops")
-    } catch e: ValueError {
-        threw = true
-        Assert(Contains(e.message, "unclosed"), "unclosed quote message")
-    }
-    AssertThrows(threw, "unclosed quote")
-}
-
--- ParseCsv tests
-
-fn TestParseCsvSkipsBlanks() -> void {
-    let rows: list[list[string]] = ParseCsv("a,b\n\nc,d\n")
-    Assert(Len(rows) == 2, "skip blanks: row count")
-    AssertFields(rows[0], ["a", "b"], "skip blanks row 0")
-    AssertFields(rows[1], ["c", "d"], "skip blanks row 1")
-}
-
-fn TestParseCsvEmpty() -> void {
-    let rows: list[list[string]] = ParseCsv("")
-    Assert(Len(rows) == 0, "empty input")
-}
-
--- ValidateRows tests
-
-fn TestValidateRowsOk() -> void {
-    let rows: list[list[string]] = [["a", "b"], ["c", "d"]]
-    let threw: bool = false
-    try {
-        ValidateRows(rows)
-    } catch e: ValueError {
-        threw = true
-    }
-    Assert(!threw, "valid rows should not throw")
-}
-
-fn TestValidateRowsRagged() -> void {
-    let rows: list[list[string]] = [["a", "b"], ["c"]]
-    let threw: bool = false
-    try {
-        ValidateRows(rows)
-    } catch e: ValueError {
-        threw = true
-        Assert(Contains(e.message, "row 2"), "ragged row message")
-    }
-    AssertThrows(threw, "ragged rows")
-}
-
--- ComputeWidths tests
-
-fn TestComputeWidths() -> void {
-    let rows: list[list[string]] = [["name", "age"], ["alice", "30"], ["bo", "7"]]
-    let widths: map[int, int] = ComputeWidths(rows)
-    Assert(widths[0] == 5, "col 0 width")
-    Assert(widths[1] == 3, "col 1 width")
-}
-
--- Formatting tests
-
-fn TestPadRight() -> void {
-    AssertEq(PadRight("hi", 5), "hi   ", "pad right")
-    AssertEq(PadRight("hello", 3), "hello", "pad no-op")
-    AssertEq(PadRight("", 4), "    ", "pad empty")
-}
-
-fn TestSeparator() -> void {
-    let widths: map[int, int] = {0: 4, 1: 3}
-    AssertEq(Separator(2, widths), "+------+-----+", "separator")
-}
-
-fn TestFormatRow() -> void {
-    let widths: map[int, int] = {0: 5, 1: 3}
-    AssertEq(FormatRow(["name", "age"], widths), "| name  | age |", "format header")
-    AssertEq(FormatRow(["bo", "7"], widths), "| bo    | 7   |", "format data row")
-}
-
--- Runner
-
-fn Main() -> void {
-    let passed: int = 0
-    let failed: int = 0
-    let tests: list[fn[void]] = [
-        TestParseRowSimple, TestParseRowWhitespace, TestParseRowQuoted,
-        TestParseRowEscapedQuote, TestParseRowSingleField, TestParseRowEmpty,
-        TestParseRowUnclosedQuote, TestParseCsvSkipsBlanks, TestParseCsvEmpty,
-        TestValidateRowsOk, TestValidateRowsRagged, TestComputeWidths,
-        TestPadRight, TestSeparator, TestFormatRow
-    ]
-    let names: list[string] = [
-        "ParseRow/simple", "ParseRow/whitespace", "ParseRow/quoted",
-        "ParseRow/escaped_quote", "ParseRow/single_field", "ParseRow/empty_field",
-        "ParseRow/unclosed_quote", "ParseCsv/skip_blanks", "ParseCsv/empty",
-        "ValidateRows/ok", "ValidateRows/ragged", "ComputeWidths",
-        "PadRight", "Separator", "FormatRow"
-    ]
-    for i, test in tests {
-        try {
-            test()
-            WritelnOut(Format("  pass  {}", names[i]))
-            passed += 1
-        } catch e: obj {
-            WritelnErr(Format("  FAIL  {} -- {}", names[i], ToString(e)))
-            failed += 1
-        }
-    }
-    WritelnOut(Format("\n{} passed, {} failed", ToString(passed), ToString(failed)))
-    if failed > 0 {
-        Exit(1)
-    }
-
-    -- Demo
-    let csv: string = "name,age,city\nalice,30,nyc\nbob,25,\"san francisco\"\ncharlie,35,chicago"
-    let rows: list[list[string]] = ParseCsv(csv)
-    ValidateRows(rows)
-    let widths: map[int, int] = ComputeWidths(rows)
-    let ncols: int = Len(rows[0])
-    let sep: string = Separator(ncols, widths)
-    WritelnOut("")
-    WritelnOut(sep)
-    WritelnOut(FormatRow(rows[0], widths))
-    WritelnOut(sep)
-    for i in range(1, Len(rows)) {
-        WritelnOut(FormatRow(rows[i], widths))
-    }
-    WritelnOut(sep)
-}
-
--- Functions under test (single-file language, no imports)
+-- Parsing
 
 fn ParseCsv(input: string) -> list[list[string]] {
     let lines: list[string] = Split(input, "\n")
@@ -240,6 +61,8 @@ fn ValidateRows(rows: list[list[string]]) -> void {
     }
 }
 
+-- Formatting
+
 fn ComputeWidths(rows: list[list[string]]) -> map[int, int] {
     let widths: map[int, int] = Map()
     for row in rows {
@@ -275,4 +98,182 @@ fn FormatRow(row: list[string], widths: map[int, int]) -> string {
         Append(cells, Format(" {} ", PadRight(field, widths[i])))
     }
     return Concat("|", Concat(Join("|", cells), "|"))
+}
+
+fn FormatTable(csv: string) -> void {
+    let rows: list[list[string]] = ParseCsv(csv)
+    ValidateRows(rows)
+    let widths: map[int, int] = ComputeWidths(rows)
+    let ncols: int = Len(rows[0])
+    let sep: string = Separator(ncols, widths)
+    WritelnOut(sep)
+    WritelnOut(FormatRow(rows[0], widths))
+    WritelnOut(sep)
+    for i in range(1, Len(rows)) {
+        WritelnOut(FormatRow(rows[i], widths))
+    }
+    WritelnOut(sep)
+}
+
+-- Entrypoint
+
+fn Main() -> void {
+    let csv: string = "name,age,city\nalice,30,nyc\nbob,25,\"san francisco\"\ncharlie,35,chicago"
+    FormatTable(csv)
+
+    WritelnOut("")
+    RunTests()
+}
+
+-- Self-tests
+
+fn AssertEq(actual: string, expected: string, label: string) -> void {
+    if actual != expected {
+        throw AssertError(Format("{}: got \"{}\", want \"{}\"", label, actual, expected))
+    }
+}
+
+fn AssertFields(actual: list[string], expected: list[string], label: string) -> void {
+    Assert(Len(actual) == Len(expected),
+        Format("{}: got {} fields, want {}", label, ToString(Len(actual)), ToString(Len(expected))))
+    for i, field in actual {
+        AssertEq(field, expected[i], Format("{}[{}]", label, ToString(i)))
+    }
+}
+
+fn AssertThrows(threw: bool, label: string) -> void {
+    Assert(threw, Format("{}: expected ValueError", label))
+}
+
+fn TestParseRowSimple() -> void {
+    let row: list[string] = ParseRow("a,b,c")
+    AssertFields(row, ["a", "b", "c"], "simple")
+}
+
+fn TestParseRowWhitespace() -> void {
+    let row: list[string] = ParseRow("  a , b , c  ")
+    AssertFields(row, ["a", "b", "c"], "whitespace")
+}
+
+fn TestParseRowQuoted() -> void {
+    let row: list[string] = ParseRow("\"hello, world\",b,c")
+    AssertFields(row, ["hello, world", "b", "c"], "quoted comma")
+}
+
+fn TestParseRowEscapedQuote() -> void {
+    let row: list[string] = ParseRow("\"she said \"\"hi\"\"\",b")
+    AssertFields(row, ["she said \"hi\"", "b"], "escaped quote")
+}
+
+fn TestParseRowSingleField() -> void {
+    let row: list[string] = ParseRow("alone")
+    AssertFields(row, ["alone"], "single field")
+}
+
+fn TestParseRowEmpty() -> void {
+    let row: list[string] = ParseRow("a,,c")
+    AssertFields(row, ["a", "", "c"], "empty field")
+}
+
+fn TestParseRowUnclosedQuote() -> void {
+    let threw: bool = false
+    try {
+        ParseRow("\"oops")
+    } catch e: ValueError {
+        threw = true
+        Assert(Contains(e.message, "unclosed"), "unclosed quote message")
+    }
+    AssertThrows(threw, "unclosed quote")
+}
+
+fn TestParseCsvSkipsBlanks() -> void {
+    let rows: list[list[string]] = ParseCsv("a,b\n\nc,d\n")
+    Assert(Len(rows) == 2, "skip blanks: row count")
+    AssertFields(rows[0], ["a", "b"], "skip blanks row 0")
+    AssertFields(rows[1], ["c", "d"], "skip blanks row 1")
+}
+
+fn TestParseCsvEmpty() -> void {
+    let rows: list[list[string]] = ParseCsv("")
+    Assert(Len(rows) == 0, "empty input")
+}
+
+fn TestValidateRowsOk() -> void {
+    let rows: list[list[string]] = [["a", "b"], ["c", "d"]]
+    let threw: bool = false
+    try {
+        ValidateRows(rows)
+    } catch e: ValueError {
+        threw = true
+    }
+    Assert(!threw, "valid rows should not throw")
+}
+
+fn TestValidateRowsRagged() -> void {
+    let rows: list[list[string]] = [["a", "b"], ["c"]]
+    let threw: bool = false
+    try {
+        ValidateRows(rows)
+    } catch e: ValueError {
+        threw = true
+        Assert(Contains(e.message, "row 2"), "ragged row message")
+    }
+    AssertThrows(threw, "ragged rows")
+}
+
+fn TestComputeWidths() -> void {
+    let rows: list[list[string]] = [["name", "age"], ["alice", "30"], ["bo", "7"]]
+    let widths: map[int, int] = ComputeWidths(rows)
+    Assert(widths[0] == 5, "col 0 width")
+    Assert(widths[1] == 3, "col 1 width")
+}
+
+fn TestPadRight() -> void {
+    AssertEq(PadRight("hi", 5), "hi   ", "pad right")
+    AssertEq(PadRight("hello", 3), "hello", "pad no-op")
+    AssertEq(PadRight("", 4), "    ", "pad empty")
+}
+
+fn TestSeparator() -> void {
+    let widths: map[int, int] = {0: 4, 1: 3}
+    AssertEq(Separator(2, widths), "+------+-----+", "separator")
+}
+
+fn TestFormatRow() -> void {
+    let widths: map[int, int] = {0: 5, 1: 3}
+    AssertEq(FormatRow(["name", "age"], widths), "| name  | age |", "format header")
+    AssertEq(FormatRow(["bo", "7"], widths), "| bo    | 7   |", "format data row")
+}
+
+fn RunTests() -> void {
+    let passed: int = 0
+    let failed: int = 0
+    let tests: list[fn[void]] = [
+        TestParseRowSimple, TestParseRowWhitespace, TestParseRowQuoted,
+        TestParseRowEscapedQuote, TestParseRowSingleField, TestParseRowEmpty,
+        TestParseRowUnclosedQuote, TestParseCsvSkipsBlanks, TestParseCsvEmpty,
+        TestValidateRowsOk, TestValidateRowsRagged, TestComputeWidths,
+        TestPadRight, TestSeparator, TestFormatRow
+    ]
+    let names: list[string] = [
+        "ParseRow/simple", "ParseRow/whitespace", "ParseRow/quoted",
+        "ParseRow/escaped_quote", "ParseRow/single_field", "ParseRow/empty_field",
+        "ParseRow/unclosed_quote", "ParseCsv/skip_blanks", "ParseCsv/empty",
+        "ValidateRows/ok", "ValidateRows/ragged", "ComputeWidths",
+        "PadRight", "Separator", "FormatRow"
+    ]
+    for i, test in tests {
+        try {
+            test()
+            WritelnOut(Format("  pass  {}", names[i]))
+            passed += 1
+        } catch e {
+            WritelnErr(Format("  FAIL  {} -- {}", names[i], ToString(e)))
+            failed += 1
+        }
+    }
+    WritelnOut(Format("\n{} passed, {} failed", ToString(passed), ToString(failed)))
+    if failed > 0 {
+        Exit(1)
+    }
 }

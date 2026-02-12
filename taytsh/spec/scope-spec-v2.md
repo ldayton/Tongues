@@ -1,11 +1,11 @@
-# Scope Analysis (Taytsh Middleend)
+# Scope Analysis (Tongues Middleend)
 
-This document specifies the **scope** middleend pass for Taytsh. The pass is **intra-procedural**: it analyzes each function body independently and writes results into Taytsh node `annotations`.
+This document specifies the **scope** middleend pass over Taytsh IR. The pass is **intra-procedural**: it analyzes each function body independently and writes results into Taytsh node `annotations`.
 
 Taytsh already has:
 
 - explicit local declarations via `let`
-- lexical block scoping (with shadowing)
+- lexical block scoping (no shadowing — each name bound at most once per function)
 - concrete static types (no `object` top type)
 - explicit function types (`fn[T..., R]`)
 - no module-level variables/constants (top-level declarations are only `fn`, `struct`, `interface`, `enum`)
@@ -26,6 +26,7 @@ The pass writes annotations under the `scope.` namespace:
 - binding-level facts: reassignment / constness
 - parameter facts: modified / unused
 - use-site facts: narrowed type, interface-typed, function reference
+- type-switch case facts: interface usage within case body
 
 All annotations are stored in each node’s `annotations` map (Taytsh supports `bool`, `int`, `string`, `(int, int)` values).
 
@@ -39,7 +40,7 @@ The pass treats the following constructs as introducing **bindings** (lexically 
 - `match` case binders (`case v: T { ... }`, `default v { ... }`)
 - `catch` binders (`catch e: SomeError { ... }`, `catch e { ... }`)
 
-Bindings may **shadow** outer bindings; the pass tracks binding identity, not just spelling.
+Taytsh forbids shadowing — each name is bound at most once per function. The pass can resolve names by spelling without tracking binding identity.
 
 ## Produced Annotations
 
@@ -54,21 +55,21 @@ Notation:
 
 Attachment points (by syntax):
 
-| Syntax | Annotation attachment point |
-| ------ | ---------------------------- |
-| `fn F(p: T, ...) { ... }` | each parameter binding `p` |
-| `let x: T = expr` | the `let` binding `x` |
-| `for x in xs { ... }` / `for i, x in xs { ... }` | the loop binder(s) `i`, `x` |
-| `case v: T { ... }` / `default v { ... }` | the case binding `v` (if present) |
-| `catch e: E { ... }` / `catch e { ... }` | the catch binding `e` |
-| identifier expression `x` | the identifier use node |
+| Syntax                                           | Annotation attachment point       |
+| ------------------------------------------------ | --------------------------------- |
+| `fn F(p: T, ...) { ... }`                        | each parameter binding `p`        |
+| `let x: T = expr`                                | the `let` binding `x`             |
+| `for x in xs { ... }` / `for i, x in xs { ... }` | the loop binder(s) `i`, `x`       |
+| `case v: T { ... }` / `default v { ... }`        | the case binding `v` (if present) |
+| `catch e: E { ... }` / `catch e { ... }`         | the catch binding `e`             |
+| identifier expression `x`                        | the identifier use node           |
 
 ### Binding declarations
 
 These annotations are attached to the node that introduces the binding (parameter node, `let` binder node, loop binder node, etc.).
 
-| Key                   | Type   | Applies to | Meaning                                                  |
-| --------------------- | ------ | ---------- | -------------------------------------------------------- |
+| Key                   | Type   | Applies to               | Meaning                                                  |
+| --------------------- | ------ | ------------------------ | -------------------------------------------------------- |
 | `scope.is_reassigned` | `bool` | binding declaration node | `true` if the binding is assigned after its introduction |
 | `scope.is_const`      | `bool` | binding declaration node | `true` if the binding is never reassigned                |
 
@@ -101,8 +102,8 @@ fn Example() -> void {
 
 These annotations are attached to parameter declaration nodes.
 
-| Key                 | Type   | Applies to | Meaning                                                      |
-| ------------------- | ------ | ---------- | ------------------------------------------------------------ |
+| Key                 | Type   | Applies to                 | Meaning                                                      |
+| ------------------- | ------ | -------------------------- | ------------------------------------------------------------ |
 | `scope.is_modified` | `bool` | parameter declaration node | `true` if the parameter is reassigned or mutated in the body |
 | `scope.is_unused`   | `bool` | parameter declaration node | `true` if the parameter is never referenced                  |
 
@@ -145,12 +146,58 @@ fn P3(xs: list[int]) -> void {
 }
 ```
 
+### Type-switch case bindings
+
+This annotation is attached to type-switch case and default binding nodes.
+
+| Key                    | Type     | Applies to                            | Meaning                                                            |
+| ---------------------- | -------- | ------------------------------------- | ------------------------------------------------------------------ |
+| `scope.case_interface` | `string` | type-switch case/default binding node | interface the binding is used as in the case body, or `""` if none |
+
+**`scope.case_interface`** resolves which interface a type-switch case binding is consumed as within its case body. In a type switch `match v { case x: T { BODY } }`, the binding `x` is narrowed to concrete type `T`. If `BODY` passes `x` to a function or calls a method on `x` that belongs to an interface `I` rather than to `T` directly, the annotation records `"I"`.
+
+Go emits type switches as `switch v := expr.(type)` and needs to know whether a case body uses the binding through an interface — `v := expr.(InterfaceName)` vs `v := expr.(ConcreteType)`. Without this annotation, the Go backend must perform its own recursive AST walk per case body.
+
+The analysis walks the case body once and checks whether the binding appears as receiver or argument in any call whose resolved target is an interface method. If multiple interfaces match, the first one found is recorded (in practice, Taytsh's type system ensures at most one interface is relevant per case).
+
+When the binding is not used through any interface method, the value is `""`.
+
+`scope.case_interface` MUST be present on every type-switch case and default binding node (even when `""`).
+
+Example:
+
+```taytsh
+interface Printable {
+    fn Display() -> string
+}
+
+struct Foo {
+    fn Display() -> string { return "foo" }
+    fn FooOnly() -> void { }
+}
+
+fn Process(v: Foo | int) -> void {
+    match v {
+        case f: Foo {
+            let s: string = f.Display()
+            WritelnOut(s)
+        }
+        -- case binding f: scope.case_interface="Printable"
+        --   (Display is a method of interface Printable)
+        case n: int {
+            WritelnOut(ToString(n))
+        }
+        -- case binding n: scope.case_interface=""
+    }
+}
+```
+
 ### Identifier uses (variable references)
 
 These annotations are attached to identifier expression nodes (variable references).
 
-| Key                     | Type     | Applies to | Meaning                                                         |
-| ----------------------- | -------- | --------- | --------------------------------------------------------------- |
+| Key                     | Type     | Applies to          | Meaning                                                         |
+| ----------------------- | -------- | ------------------- | --------------------------------------------------------------- |
 | `scope.narrowed_type`   | `string` | identifier use node | a more precise type for this use site (Taytsh type syntax)      |
 | `scope.is_interface`    | `bool`   | identifier use node | `true` if the static type at this use site is an interface type |
 | `scope.is_function_ref` | `bool`   | identifier use node | `true` if the identifier resolves to a top-level `fn` symbol    |
@@ -212,7 +259,6 @@ For each function (including methods):
 
 1. **Collect bindings**
    - Create a binding record for each parameter and each binder introduced in the body.
-   - Track lexical scopes (block stack) to handle shadowing correctly.
 2. **Track references**
    - For each identifier use that resolves to a binding, record a “use”.
    - For each identifier use that resolves to a top-level function symbol, set `scope.is_function_ref=true` on that node.
@@ -230,7 +276,11 @@ For each function (including methods):
    - For each identifier use, compare its use-site static type against the binding’s declared type.
    - If narrower, write `scope.narrowed_type` as a Taytsh type string on the identifier node.
    - If the use-site static type is an interface, write `scope.is_interface=true` on the identifier node.
-6. **Derive constness**
+6. **Resolve type-switch case interfaces**
+   - For each type-switch case/default binding, walk the case body.
+   - Check whether the binding appears as receiver or argument in a call to a method defined on an interface type.
+   - If so, record the interface name as `scope.case_interface`. Otherwise, record `""`.
+7. **Derive constness**
    - For each binding declaration, set:
      - `scope.is_const = !scope.is_reassigned`
 
@@ -241,3 +291,4 @@ For each function (including methods):
 - Identifier use nodes MAY have `scope.is_function_ref: bool` (when absent, treated as `false`).
 - Identifier use nodes MAY have `scope.narrowed_type: string` (absent means “no narrower type recorded”).
 - Identifier use nodes MAY have `scope.is_interface: bool` (when absent, treated as `false`).
+- Every type-switch case and default binding node has `scope.case_interface: string` (present even when `""`).

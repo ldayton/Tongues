@@ -1,0 +1,403 @@
+@@["strict_math", "strict_tostring"]
+
+-- Tagged value pipeline: parse, classify, transform, and format mixed data
+
+@["pos" = (1, 1)]
+enum Kind {
+    Numeric
+    Textual
+    Logical
+    Empty
+}
+
+interface Value {}
+
+@["ownership.kind" = "owned", "pos" = (14, 1)]
+struct IntVal : Value {
+    n: int
+
+    fn IsEven(self) -> bool {
+        return self.n % 2 == 0
+    }
+}
+
+struct FloatVal : Value { x: float }
+struct StrVal : Value { s: string }
+struct BoolVal : Value { b: bool }
+struct NilVal : Value {}
+
+-- Classification
+
+fn Classify(v: Value) -> Kind {
+    match v {
+        case _: IntVal { return Kind.Numeric }
+        case _: FloatVal { return Kind.Numeric }
+        case _: StrVal { return Kind.Textual }
+        case _: BoolVal { return Kind.Logical }
+        case _: NilVal { return Kind.Empty }
+    }
+}
+
+fn KindLabel(k: Kind) -> string {
+    match k {
+        case Kind.Numeric { return "numeric" }
+        case Kind.Textual { return "textual" }
+        case Kind.Logical { return "logical" }
+        case Kind.Empty { return "empty" }
+    }
+}
+
+-- Display with type tag and ternary
+
+fn Display(v: Value) -> string {
+    match v {
+        case i: IntVal {
+            return Format("int({})", ToString(i.n))
+        }
+        case f: FloatVal {
+            let repr: string = IsNaN(f.x) ? "NaN" : ToString(f.x)
+            return Format("float({})", repr)
+        }
+        case s: StrVal {
+            return Format("str(\"{}\")", s.s)
+        }
+        case b: BoolVal {
+            return b.b ? "true" : "false"
+        }
+        case _: NilVal {
+            return "nil"
+        }
+    }
+}
+
+-- Numeric extraction with optional return
+
+fn ToFloat(v: Value) -> float? {
+    match v {
+        case i: IntVal { return IntToFloat(i.n) }
+        case f: FloatVal { return f.x }
+        default { return nil }
+    }
+}
+
+-- Parsing with if/else if/else
+
+fn ParseTagged(raw: string) -> Value {
+    let sep: int = Find(raw, "|")
+    if sep < 0 {
+        throw ValueError(Format("no '|' in \"{}\"", raw))
+    }
+    @["provenance" = "open_start"] let tag: string = raw[0:sep]
+    @["provenance" = "open_end"] let body: string = raw[sep + 1:Len(raw)]
+    if tag == "int" {
+        return IntVal(ParseInt(body, 10))
+    } else if tag == "float" {
+        return FloatVal(ParseFloat(body))
+    } else if tag == "str" {
+        return StrVal(body)
+    } else if tag == "bool" {
+        return BoolVal(body == "true")
+    } else if tag == "nil" {
+        return NilVal()
+    } else {
+        throw ValueError(Format("unknown tag \"{}\"", tag))
+    }
+}
+
+-- Aggregation
+
+fn CountByKind(items: list[Value]) -> map[Kind, int] {
+    let counts: map[Kind, int] = Map()
+    for item in items {
+        let k: Kind = Classify(item)
+        counts[k] = Get(counts, k, 0) + 1
+    }
+    return counts
+}
+
+fn SumAll(items: list[Value]) -> float {
+    @["scope.is_reassigned", "scope.is_const" = false] let total: float = 0.0
+    for item in items {
+        let n: float? = ToFloat(item)
+        if n == nil {
+            continue
+        }
+        total += Unwrap(n)
+    }
+    return total
+}
+
+fn UniqueDisplays(items: list[Value]) -> set[string] {
+    let seen: set[string] = Set()
+    for item in items {
+        Add(seen, Display(item))
+    }
+    return seen
+}
+
+-- Higher-order helpers
+
+fn MapValues(items: list[Value], f: fn[Value, Value]) -> list[Value] {
+    let result: list[Value]
+    for item in items {
+        Append(result, f(item))
+    }
+    return result
+}
+
+fn FilterValues(items: list[Value], pred: fn[Value, bool]) -> list[Value] {
+    let result: list[Value]
+    for item in items {
+        if pred(item) {
+            Append(result, item)
+        }
+    }
+    return result
+}
+
+-- Rune analysis with while loop
+
+@["loops.canonical_for" = true, "pos" = (158, 1)]
+fn CountDigits(s: string) -> (int, int) {
+    let digits: int = 0
+    let other: int = 0
+    let i: int = 0
+    while i < Len(s) {
+        if IsDigit(s[i]) {
+            digits += 1
+        } else {
+            other += 1
+        }
+        i += 1
+    }
+    return (digits, other)
+}
+
+-- Bitwise utilities
+
+fn PackBits(flags: list[bool]) -> byte {
+    let result: byte = 0x00
+    for i, flag in flags {
+        if flag {
+            result |= IntToByte(1 << i)
+        }
+    }
+    return result
+}
+
+fn TestBit(packed: byte, index: int) -> bool {
+    return ByteToInt(packed & IntToByte(1 << index)) != 0
+}
+
+-- Byte framing with stacked annotations
+
+@["callgraph.is_leaf"]
+@["strings.encoding" = "utf8", "strings.max_len" = 1024]
+fn FramePayload(tag: byte, payload: string) -> bytes {
+    let body: bytes = Encode(payload)
+    return Concat(Concat(b"\x01", body), b"\x00")
+}
+
+-- Union type matching
+
+fn DescribeMixed(v: int | string | nil) -> string {
+    match v {
+        case n: int { return Format("int={}", ToString(n)) }
+        case s: string { return Format("str={}", s) }
+        case nil { return "absent" }
+    }
+}
+
+-- Entrypoint
+
+fn Main() -> void {
+    let inputs: list[string] = [
+        "int|42", "float|3.14", "str|hello", "bool|true",
+        "int|-7", "nil|", "float|1e10", "str|café"
+    ]
+    let values: list[Value]
+    let errors: int = 0
+    for raw in inputs {
+        try {
+            Append(values, ParseTagged(raw))
+        } catch e: ValueError | KeyError {
+            WritelnErr(Format("skip: {}", e.message))
+        } catch e {
+            WritelnErr(Format("unexpected: {}", ToString(e)))
+            errors += 1
+        } finally {
+            errors += 0 -- runs unconditionally
+        }
+    }
+    Assert(Len(values) > 0, "no values parsed")
+
+    -- Display parsed values
+    WritelnOut("Parsed:")
+    for i, v in values {
+        WritelnOut(Format("  [{}] {}", ToString(i), Display(v)))
+    }
+
+    -- Counts by category
+    let counts: map[Kind, int] = CountByKind(values)
+    WritelnOut("\nBy kind:")
+    for kind, n in counts {
+        WritelnOut(Format("  {}: {}", KindLabel(kind), ToString(n)))
+    }
+
+    -- Numeric sum
+    WritelnOut(Format("\nSum: {}", ToString(SumAll(values))))
+
+    -- Unique representations
+    let uniq: set[string] = UniqueDisplays(values)
+    WritelnOut(Format("{} unique values", ToString(Len(uniq))))
+
+    -- Transform: negate even ints (block-body function literal)
+    let negated: list[Value] = MapValues(values, (v: Value) -> Value {
+        match v {
+            case iv: IntVal {
+                if iv.IsEven() {
+                    return IntVal(n: -iv.n) -- named construction
+                }
+                return iv
+            }
+            default o { return o } -- default with binding
+        }
+    })
+
+    -- Filter: keep only numerics (expression-body lambda)
+    let numerics: list[Value] = FilterValues(values,
+        (v: Value) -> bool => Classify(v) == Kind.Numeric)
+    WritelnOut(Format("{} numeric after filter", ToString(Len(numerics))))
+
+    -- Optional matching
+    let probe: float? = ToFloat(values[0])
+    match probe {
+        case f: float {
+            WritelnOut(Format("first numeric: {}", ToString(f)))
+        }
+        case nil {
+            WritelnOut("first value is not numeric")
+        }
+    }
+
+    -- Find first textual value with if/else if/else
+    let idx: int = -1
+    for j, item in values {
+        if Classify(item) == Kind.Textual {
+            idx = j
+            break
+        }
+    }
+    if idx < 0 {
+        WritelnOut("no text found")
+    } else if idx == 0 {
+        WritelnOut("text is first value")
+    } else {
+        WritelnOut(Format("first text at [{}]: {}", ToString(idx), Display(values[idx])))
+    }
+
+    -- Tuple return and destructuring
+    let nd: int
+    let no: int
+    nd, no = CountDigits("abc123def45")
+    WritelnOut(Format("\ndigit count: {}, other: {}", ToString(nd), ToString(no)))
+
+    -- Tuple literal and field access
+    let pair: (string, int) = ("hello", 5)
+    WritelnOut(Format("pair: ({}, {})", pair.0, ToString(pair.1)))
+
+    -- DivMod tuple
+    let q: int
+    let r: int
+    q, r = DivMod(42, 5)
+    WritelnOut(Format("42 / 5 = {} remainder {}", ToString(q), ToString(r)))
+
+    -- Rune and string operations with annotated expressions
+    let word: string = "Taytsh"
+    let first: rune = word[0]
+    let rest: string = @["provenance" = "open_start"] word[1:Len(word)]
+    if first == 'T' {
+        WritelnOut(Format("starts with '{}', rest: \"{}\"", ToString(first), rest))
+    }
+
+    -- Range variants
+    let squares: list[int]
+    for n in range(5) {
+        Append(squares, n * n)
+    }
+    for n in range(10, 15) {
+        Append(squares, n)
+    }
+    let countdown: list[int]
+    for n in range(10, 0, -1) {
+        Append(countdown, n)
+    }
+
+    -- Bitwise operations
+    let flags: list[bool] = [true, false, true, true, false, false, true, false]
+    let packed: byte = PackBits(flags)
+    WritelnOut(Format("\npacked: {}", ToString(ByteToInt(packed))))
+    for bit in range(8) {
+        if TestBit(packed, bit) {
+            WritelnOut(Format("  bit {} set", ToString(bit)))
+        }
+    }
+
+    let a: int = 170
+    let shifted: int = a << 4
+    let complement: int = ~a
+    let masked: int = a & 255
+    let flipped: int = a ^ 85
+    WritelnOut(Format("shift={} comp={} and={} xor={}",
+        ToString(shifted), ToString(complement), ToString(masked), ToString(flipped)))
+
+    -- Compound assignment operators
+    let acc: int = 100
+    acc -= 10
+    acc *= 2
+    acc /= 3
+    acc %= 7
+    acc &= 15
+    acc ^= 3
+    acc <<= 2
+    acc >>= 1
+    WritelnOut(Format("acc={}", ToString(acc)))
+
+    -- Byte framing
+    let frame: bytes = FramePayload(0x42, "test\tdata\n")
+    WritelnOut(Format("frame: {} bytes", ToString(Len(frame))))
+
+    -- Map and set literals
+    let scores: map[string, int] = {"alice": 95, "bob": 87}
+    let primes: set[int] = {2, 3, 5, 7, 11}
+    WritelnOut(Format("{} scores, {} primes", ToString(Len(scores)), ToString(Len(primes))))
+
+    -- Iterate map values with discard
+    let total_score: int = 0
+    for _, s in scores {
+        total_score += s
+    }
+
+    -- Union type
+    let mixed: list[int | string | nil] = [42, "hi", nil]
+    for m in mixed {
+        WritelnOut(Format("  {}", DescribeMixed(m)))
+    }
+
+    -- Boolean operators
+    let all_ok: bool = Len(values) > 0 && errors == 0
+    let none_ok: bool = !all_ok || Len(uniq) <= 0
+    WritelnOut(Format("ok={} none={}", ToString(all_ok), ToString(none_ok)))
+
+    -- Factorial with while + break
+    let fact: int = 1
+    let k: int = 1
+    while true {
+        if k > 10 {
+            break
+        }
+        fact *= k
+        k += 1
+    }
+    WritelnOut(Format("10! = {}", ToString(fact)))
+}

@@ -2938,6 +2938,17 @@ def check(module: TModule) -> list[CheckError]:
     return checker.errors
 
 
+def check_with_info(module: TModule) -> tuple[list[CheckError], Checker]:
+    """Type-check and return both errors and the Checker (for downstream passes)."""
+    checker = Checker()
+    checker.collect_declarations(module)
+    if len(checker.errors) > 0:
+        return (checker.errors, checker)
+    checker.check_bodies(module)
+    _check_main(checker)
+    return (checker.errors, checker)
+
+
 def _check_main(checker: Checker) -> None:
     if "Main" not in checker.functions:
         checker.error("missing Main", Pos(1, 1))

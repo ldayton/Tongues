@@ -102,6 +102,7 @@ SINGLE_OPS: set[str] = {
     ":",
     ".",
     "?",
+    "@",
 }
 
 ESCAPE_MAP: dict[str, str] = {

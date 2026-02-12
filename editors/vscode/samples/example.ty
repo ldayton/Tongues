@@ -1,4 +1,4 @@
--- pragma strict-math
+@@["strict_math"]
 
 struct Point {
     x: int
@@ -14,4 +14,3 @@ fn Main() -> void {
         throw ValueError("out of range")
     }
 }
-

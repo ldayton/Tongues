@@ -1,4 +1,4 @@
--- pragma strict-tostring
+@@["strict_tostring"]
 
 enum TokenKind {
     Ident
