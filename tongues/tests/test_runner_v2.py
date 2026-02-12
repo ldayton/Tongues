@@ -7,42 +7,23 @@ from pathlib import Path
 import pytest
 
 from src.backend_v2.python import emit_python as emit_python_v2
+from src.middleend_v2.callgraph import analyze_callgraph
+from src.middleend_v2.hoisting import analyze_hoisting
 from src.middleend_v2.liveness import analyze_liveness
+from src.middleend_v2.ownership import analyze_ownership
 from src.middleend_v2.returns import analyze_returns
 from src.middleend_v2.scope import analyze_scope
+from src.middleend_v2.strings import analyze_strings
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.ast import (
-    TAssignStmt,
-    TBinaryOp,
     TCall,
-    TExprStmt,
     TFieldAccess,
     TFnDecl,
-    TFnLit,
-    TForStmt,
-    TIfStmt,
-    TIndex,
-    TLetStmt,
-    TListLit,
-    TMapLit,
-    TMatchStmt,
-    TOpAssignStmt,
-    TPatternType,
-    TRange,
-    TReturnStmt,
-    TSetLit,
-    TSlice,
     TStructDecl,
-    TThrowStmt,
-    TTernary,
-    TTryStmt,
-    TTupleAssignStmt,
-    TTupleLit,
-    TUnaryOp,
     TVar,
-    TWhileStmt,
+    serialize_annotations,
 )
-from src.taytsh.check import check_with_info
+from src.taytsh.check import Checker, StructT, check_with_info
 
 PARSE_TIMEOUT = 5
 TESTS_DIR = Path(__file__).parent
@@ -50,9 +31,13 @@ TESTS_DIR = Path(__file__).parent
 # fmt: off
 TESTS = {
     "middleend": {
-        "scope_v2":    {"dir": "13_v2_scope",    "run": "phase"},
-        "returns_v2":  {"dir": "14_v2_returns",  "run": "phase"},
-        "liveness_v2": {"dir": "15_v2_liveness", "run": "phase"},
+        "scope_v2":     {"dir": "13_v2_scope",     "run": "phase"},
+        "returns_v2":   {"dir": "14_v2_returns",   "run": "phase"},
+        "liveness_v2":  {"dir": "15_v2_liveness",  "run": "phase"},
+        "strings_v2":   {"dir": "16_v2_strings",   "run": "phase"},
+        "hoisting_v2":  {"dir": "17_v2_hoisting",  "run": "phase"},
+        "ownership_v2": {"dir": "18_v2_ownership", "run": "phase"},
+        "callgraph_v2": {"dir": "19_v2_callgraph", "run": "phase"},
     },
     "backend": {
         "codegen_v2_python": {"dir": "20_v2_codegen", "run": "codegen_v2_python"},
@@ -269,6 +254,13 @@ def check_expected(
         except (KeyError, IndexError, TypeError) as e:
             pytest.fail(f"Path '{path}' not found in result: {e}")
         actual_str = to_comparable(actual)
+        # Cross-reference: if RHS looks like a dotpath, resolve it too
+        if "." in expected_val and " " not in expected_val:
+            try:
+                ref_val = resolve_dotpath(result.data, expected_val)
+                expected_val = to_comparable(ref_val)
+            except (KeyError, IndexError, TypeError):
+                pass  # treat as literal
         if actual_str != expected_val:
             pytest.fail(
                 f"Assertion failed: {path}\n"
@@ -298,287 +290,6 @@ def contains_normalized(haystack: str, needle: str) -> bool:
     return False
 
 
-# ---------------------------------------------------------------------------
-# v2 serializers
-# ---------------------------------------------------------------------------
-
-
-def _strip_prefix(annotations, prefix):
-    return {k[len(prefix) :]: v for k, v in annotations.items() if k.startswith(prefix)}
-
-
-def _serialize_returns_stmt(stmt):
-    d = {"type": type(stmt).__name__}
-    for k, v in getattr(stmt, "annotations", {}).items():
-        if k.startswith("returns."):
-            d[k[8:]] = v
-    if isinstance(stmt, TMatchStmt):
-        d["cases"] = [_strip_prefix(c.annotations, "returns.") for c in stmt.cases]
-        if stmt.default is not None:
-            d["default"] = _strip_prefix(stmt.default.annotations, "returns.")
-    elif isinstance(stmt, TTryStmt):
-        d["catches"] = [_strip_prefix(c.annotations, "returns.") for c in stmt.catches]
-    return d
-
-
-def _serialize_fn_returns(fn):
-    d = _strip_prefix(fn.annotations, "returns.")
-    d["body"] = [_serialize_returns_stmt(s) for s in fn.body]
-    return d
-
-
-def _serialize_returns(module):
-    result = {}
-    for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = _serialize_fn_returns(decl)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = _serialize_fn_returns(method)
-    return result
-
-
-def _serialize_scope_stmt(stmt):
-    d = {"type": type(stmt).__name__}
-    if isinstance(stmt, TForStmt):
-        binder = {}
-        for k, v in stmt.annotations.items():
-            if k.startswith("scope.binder."):
-                rest = k[len("scope.binder.") :]
-                bname, attr = rest.split(".", 1)
-                if bname not in binder:
-                    binder[bname] = {}
-                binder[bname][attr] = v
-        if binder:
-            d["binder"] = binder
-    elif isinstance(stmt, TMatchStmt):
-        cases = []
-        for case in stmt.cases:
-            cd = {}
-            if isinstance(case.pattern, TPatternType):
-                a = _strip_prefix(case.pattern.annotations, "scope.")
-                if a:
-                    cd["pattern"] = a
-            cases.append(cd)
-        d["cases"] = cases
-        if stmt.default is not None:
-            a = _strip_prefix(stmt.default.annotations, "scope.")
-            if a:
-                d["default"] = a
-    elif isinstance(stmt, TTryStmt):
-        d["catches"] = [_strip_prefix(c.annotations, "scope.") for c in stmt.catches]
-    return d
-
-
-def _collect_vars_expr(expr, result):
-    if isinstance(expr, TVar):
-        a = _strip_prefix(expr.annotations, "scope.")
-        if a:
-            if expr.name in result:
-                result[expr.name].update(a)
-            else:
-                result[expr.name] = dict(a)
-    elif isinstance(expr, TBinaryOp):
-        _collect_vars_expr(expr.left, result)
-        _collect_vars_expr(expr.right, result)
-    elif isinstance(expr, TUnaryOp):
-        _collect_vars_expr(expr.operand, result)
-    elif isinstance(expr, TCall):
-        _collect_vars_expr(expr.func, result)
-        for a in expr.args:
-            _collect_vars_expr(a.value, result)
-    elif isinstance(expr, TFieldAccess):
-        _collect_vars_expr(expr.obj, result)
-    elif isinstance(expr, TIndex):
-        _collect_vars_expr(expr.obj, result)
-        _collect_vars_expr(expr.index, result)
-    elif isinstance(expr, TTernary):
-        _collect_vars_expr(expr.cond, result)
-        _collect_vars_expr(expr.then_expr, result)
-        _collect_vars_expr(expr.else_expr, result)
-    elif isinstance(expr, TSlice):
-        _collect_vars_expr(expr.obj, result)
-        _collect_vars_expr(expr.low, result)
-        _collect_vars_expr(expr.high, result)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_vars_expr(e, result)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_vars_expr(k, result)
-            _collect_vars_expr(v, result)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_vars_expr(e, result)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_vars_expr(e, result)
-    elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            _collect_vars_stmts(expr.body, result)
-        else:
-            _collect_vars_expr(expr.body, result)
-
-
-def _collect_vars_stmts(stmts, result):
-    for stmt in stmts:
-        _collect_vars_stmt(stmt, result)
-
-
-def _collect_vars_stmt(stmt, result):
-    if isinstance(stmt, TExprStmt):
-        _collect_vars_expr(stmt.expr, result)
-    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TThrowStmt):
-        _collect_vars_expr(stmt.expr, result)
-    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TAssignStmt):
-        _collect_vars_expr(stmt.target, result)
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_vars_expr(stmt.target, result)
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TTupleAssignStmt):
-        for t in stmt.targets:
-            _collect_vars_expr(t, result)
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TIfStmt):
-        _collect_vars_expr(stmt.cond, result)
-        _collect_vars_stmts(stmt.then_body, result)
-        if stmt.else_body is not None:
-            _collect_vars_stmts(stmt.else_body, result)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_vars_expr(stmt.cond, result)
-        _collect_vars_stmts(stmt.body, result)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_vars_expr(a, result)
-        else:
-            _collect_vars_expr(stmt.iterable, result)
-        _collect_vars_stmts(stmt.body, result)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_vars_expr(stmt.expr, result)
-        for case in stmt.cases:
-            _collect_vars_stmts(case.body, result)
-        if stmt.default is not None:
-            _collect_vars_stmts(stmt.default.body, result)
-    elif isinstance(stmt, TTryStmt):
-        _collect_vars_stmts(stmt.body, result)
-        for catch in stmt.catches:
-            _collect_vars_stmts(catch.body, result)
-        if stmt.finally_body is not None:
-            _collect_vars_stmts(stmt.finally_body, result)
-
-
-def _serialize_fn_scope(fn):
-    d = {}
-    params = {}
-    for p in fn.params:
-        a = _strip_prefix(p.annotations, "scope.")
-        if a:
-            params[p.name] = a
-    if params:
-        d["params"] = params
-    lets = {}
-    for stmt in fn.body:
-        if isinstance(stmt, TLetStmt):
-            a = _strip_prefix(stmt.annotations, "scope.")
-            if a:
-                lets[stmt.name] = a
-    if lets:
-        d["lets"] = lets
-    d["body"] = [_serialize_scope_stmt(s) for s in fn.body]
-    vars_dict = {}
-    _collect_vars_stmts(fn.body, vars_dict)
-    if vars_dict:
-        d["vars"] = vars_dict
-    return d
-
-
-def _serialize_scope(module):
-    result = {}
-    for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = _serialize_fn_scope(decl)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = _serialize_fn_scope(method)
-    return result
-
-
-def _collect_all_lets(stmts, lets):
-    for stmt in stmts:
-        if isinstance(stmt, TLetStmt):
-            a = _strip_prefix(stmt.annotations, "liveness.")
-            if a:
-                lets[stmt.name] = a
-        if isinstance(stmt, TIfStmt):
-            _collect_all_lets(stmt.then_body, lets)
-            if stmt.else_body is not None:
-                _collect_all_lets(stmt.else_body, lets)
-        elif isinstance(stmt, TWhileStmt):
-            _collect_all_lets(stmt.body, lets)
-        elif isinstance(stmt, TForStmt):
-            _collect_all_lets(stmt.body, lets)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                _collect_all_lets(case.body, lets)
-            if stmt.default is not None:
-                _collect_all_lets(stmt.default.body, lets)
-        elif isinstance(stmt, TTryStmt):
-            _collect_all_lets(stmt.body, lets)
-            for catch in stmt.catches:
-                _collect_all_lets(catch.body, lets)
-            if stmt.finally_body is not None:
-                _collect_all_lets(stmt.finally_body, lets)
-
-
-def _serialize_liveness_stmt(stmt):
-    d = {"type": type(stmt).__name__}
-    for k, v in getattr(stmt, "annotations", {}).items():
-        if k.startswith("liveness."):
-            d[k[9:]] = v
-    if isinstance(stmt, TMatchStmt):
-        cases = []
-        for case in stmt.cases:
-            cd = {}
-            if isinstance(case.pattern, TPatternType):
-                a = _strip_prefix(case.pattern.annotations, "liveness.")
-                if a:
-                    cd.update(a)
-            cases.append(cd)
-        d["cases"] = cases
-        if stmt.default is not None:
-            dd = _strip_prefix(stmt.default.annotations, "liveness.")
-            d["default"] = dd
-    elif isinstance(stmt, TTryStmt):
-        d["catches"] = [_strip_prefix(c.annotations, "liveness.") for c in stmt.catches]
-    return d
-
-
-def _serialize_fn_liveness(fn):
-    d = {}
-    lets = {}
-    _collect_all_lets(fn.body, lets)
-    if lets:
-        d["lets"] = lets
-    d["body"] = [_serialize_liveness_stmt(s) for s in fn.body]
-    return d
-
-
-def _serialize_liveness(module):
-    result = {}
-    for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = _serialize_fn_liveness(decl)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = _serialize_fn_liveness(method)
-    return result
-
 
 # ---------------------------------------------------------------------------
 # v2 runners
@@ -598,7 +309,7 @@ def run_returns_v2(source: str) -> PhaseResult:
     if err:
         return err
     analyze_returns(module, checker)
-    return PhaseResult(data=_serialize_returns(module))
+    return PhaseResult(data=serialize_annotations(module, "returns"))
 
 
 def run_scope_v2(source: str) -> PhaseResult:
@@ -606,7 +317,7 @@ def run_scope_v2(source: str) -> PhaseResult:
     if err:
         return err
     analyze_scope(module, checker)
-    return PhaseResult(data=_serialize_scope(module))
+    return PhaseResult(data=serialize_annotations(module, "scope"))
 
 
 def run_liveness_v2(source: str) -> PhaseResult:
@@ -615,7 +326,104 @@ def run_liveness_v2(source: str) -> PhaseResult:
         return err
     analyze_scope(module, checker)
     analyze_liveness(module, checker)
-    return PhaseResult(data=_serialize_liveness(module))
+    return PhaseResult(data=serialize_annotations(module, "liveness"))
+
+
+def run_strings_v2(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_scope(module, checker)
+    analyze_liveness(module, checker)
+    analyze_strings(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "strings"))
+
+
+def run_hoisting_v2(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_hoisting(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "hoisting"))
+
+
+def run_ownership_v2(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_scope(module, checker)
+    analyze_liveness(module, checker)
+    analyze_ownership(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "ownership"))
+
+
+def _collect_calls(obj, calls, checker):
+    """Walk AST collecting TCall nodes keyed by callee name."""
+    if isinstance(obj, TCall):
+        name = None
+        if isinstance(obj.func, TVar):
+            n = obj.func.name
+            # Skip builtins and struct constructors — only user-defined fns
+            t = checker.types.get(n)
+            if t is not None and isinstance(t, StructT):
+                name = None  # struct construction
+            elif n in checker.functions:
+                name = n
+            else:
+                name = None  # builtin or unknown
+        elif isinstance(obj.func, TFieldAccess):
+            name = obj.func.field
+        if name is not None:
+            is_tail = obj.annotations.get("callgraph.is_tail_call", False)
+            calls.setdefault(name, {})["is_tail_call"] = is_tail
+    if isinstance(obj, list):
+        for item in obj:
+            _collect_calls(item, calls, checker)
+        return
+    for attr in ("body", "value", "expr", "func", "target", "targets", "cond",
+                 "then_body", "else_body", "then_expr", "else_expr", "left", "right",
+                 "operand", "obj", "index", "low", "high", "args", "elements",
+                 "entries", "iterable", "cases", "default", "catches", "finally_body",
+                 "pattern"):
+        child = getattr(obj, attr, None)
+        if child is not None:
+            if isinstance(child, list):
+                for item in child:
+                    _collect_calls(item, calls, checker)
+            elif isinstance(child, tuple):
+                for item in child:
+                    _collect_calls(item, calls, checker)
+            elif hasattr(child, "__dict__"):
+                _collect_calls(child, calls, checker)
+
+
+def _serialize_callgraph(module, checker):
+    result = {}
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            d = {k[10:]: v for k, v in decl.annotations.items() if k.startswith("callgraph.")}
+            calls = {}
+            _collect_calls(decl.body, calls, checker)
+            if calls:
+                d["calls"] = calls
+            result[decl.name] = d
+        elif isinstance(decl, TStructDecl):
+            for method in decl.methods:
+                d = {k[10:]: v for k, v in method.annotations.items() if k.startswith("callgraph.")}
+                calls = {}
+                _collect_calls(method.body, calls, checker)
+                if calls:
+                    d["calls"] = calls
+                result[f"{decl.name}.{method.name}"] = d
+    return result
+
+
+def run_callgraph_v2(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_callgraph(module, checker)
+    return PhaseResult(data=_serialize_callgraph(module, checker))
 
 
 def transpile_code_v2_python(source: str) -> tuple[str | None, str | None]:
@@ -695,6 +503,30 @@ def test_scope_v2(scope_v2_input, scope_v2_expected):
 def test_liveness_v2(liveness_v2_input, liveness_v2_expected):
     check_expected(
         liveness_v2_expected, run_liveness_v2(liveness_v2_input), "liveness_v2"
+    )
+
+
+def test_strings_v2(strings_v2_input, strings_v2_expected):
+    check_expected(
+        strings_v2_expected, run_strings_v2(strings_v2_input), "strings_v2"
+    )
+
+
+def test_hoisting_v2(hoisting_v2_input, hoisting_v2_expected):
+    check_expected(
+        hoisting_v2_expected, run_hoisting_v2(hoisting_v2_input), "hoisting_v2"
+    )
+
+
+def test_ownership_v2(ownership_v2_input, ownership_v2_expected):
+    check_expected(
+        ownership_v2_expected, run_ownership_v2(ownership_v2_input), "ownership_v2"
+    )
+
+
+def test_callgraph_v2(callgraph_v2_input, callgraph_v2_expected):
+    check_expected(
+        callgraph_v2_expected, run_callgraph_v2(callgraph_v2_input), "callgraph_v2"
     )
 
 

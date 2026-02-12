@@ -592,3 +592,211 @@ class TFnLit(TExpr):
     ret: TType
     body: list[TStmt] | TExpr
     annotations: Ann
+
+
+# ============================================================
+# GENERIC ANNOTATION SERIALIZER
+# ============================================================
+
+
+def serialize_annotations(module: TModule, prefix: str) -> dict[str, dict]:
+    """Serialize all annotations matching prefix from every function into nested dicts.
+
+    Returns {fn_name: fn_dict} where fn_dict contains params, lets, body, vars,
+    escapes, and any function-level annotations — all with the prefix stripped.
+    """
+    pfx = prefix + "."
+    plen = len(pfx)
+
+    def _strip(ann: Ann) -> dict:
+        return {k[plen:]: v for k, v in ann.items() if k.startswith(pfx)}
+
+    def _collect_lets(stmts: list[TStmt], lets: dict) -> None:
+        for stmt in stmts:
+            if isinstance(stmt, TLetStmt):
+                a = _strip(stmt.annotations)
+                if a:
+                    lets[stmt.name] = a
+            if isinstance(stmt, TIfStmt):
+                _collect_lets(stmt.then_body, lets)
+                if stmt.else_body is not None:
+                    _collect_lets(stmt.else_body, lets)
+            elif isinstance(stmt, TWhileStmt):
+                _collect_lets(stmt.body, lets)
+            elif isinstance(stmt, TForStmt):
+                _collect_lets(stmt.body, lets)
+            elif isinstance(stmt, TMatchStmt):
+                for case in stmt.cases:
+                    _collect_lets(case.body, lets)
+                if stmt.default is not None:
+                    _collect_lets(stmt.default.body, lets)
+            elif isinstance(stmt, TTryStmt):
+                _collect_lets(stmt.body, lets)
+                for catch in stmt.catches:
+                    _collect_lets(catch.body, lets)
+                if stmt.finally_body is not None:
+                    _collect_lets(stmt.finally_body, lets)
+
+    def _collect_vars_expr(expr: TExpr, result: dict) -> None:
+        if isinstance(expr, TVar):
+            a = _strip(expr.annotations)
+            if a:
+                result.setdefault(expr.name, {}).update(a)
+        elif isinstance(expr, TBinaryOp):
+            _collect_vars_expr(expr.left, result)
+            _collect_vars_expr(expr.right, result)
+        elif isinstance(expr, TUnaryOp):
+            _collect_vars_expr(expr.operand, result)
+        elif isinstance(expr, TCall):
+            _collect_vars_expr(expr.func, result)
+            for a in expr.args:
+                _collect_vars_expr(a.value, result)
+        elif isinstance(expr, TFieldAccess):
+            _collect_vars_expr(expr.obj, result)
+        elif isinstance(expr, TTupleAccess):
+            _collect_vars_expr(expr.obj, result)
+        elif isinstance(expr, TIndex):
+            _collect_vars_expr(expr.obj, result)
+            _collect_vars_expr(expr.index, result)
+        elif isinstance(expr, TTernary):
+            _collect_vars_expr(expr.cond, result)
+            _collect_vars_expr(expr.then_expr, result)
+            _collect_vars_expr(expr.else_expr, result)
+        elif isinstance(expr, TSlice):
+            _collect_vars_expr(expr.obj, result)
+            _collect_vars_expr(expr.low, result)
+            _collect_vars_expr(expr.high, result)
+        elif isinstance(expr, TListLit):
+            for e in expr.elements:
+                _collect_vars_expr(e, result)
+        elif isinstance(expr, TMapLit):
+            for k, v in expr.entries:
+                _collect_vars_expr(k, result)
+                _collect_vars_expr(v, result)
+        elif isinstance(expr, TSetLit):
+            for e in expr.elements:
+                _collect_vars_expr(e, result)
+        elif isinstance(expr, TTupleLit):
+            for e in expr.elements:
+                _collect_vars_expr(e, result)
+        elif isinstance(expr, TFnLit):
+            if isinstance(expr.body, list):
+                _collect_vars_stmts(expr.body, result)
+            else:
+                _collect_vars_expr(expr.body, result)
+
+    def _collect_vars_stmt(stmt: TStmt, result: dict) -> None:
+        if isinstance(stmt, TExprStmt):
+            _collect_vars_expr(stmt.expr, result)
+        elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
+            _collect_vars_expr(stmt.value, result)
+        elif isinstance(stmt, TThrowStmt):
+            _collect_vars_expr(stmt.expr, result)
+        elif isinstance(stmt, TLetStmt) and stmt.value is not None:
+            _collect_vars_expr(stmt.value, result)
+        elif isinstance(stmt, TAssignStmt):
+            _collect_vars_expr(stmt.target, result)
+            _collect_vars_expr(stmt.value, result)
+        elif isinstance(stmt, TOpAssignStmt):
+            _collect_vars_expr(stmt.target, result)
+            _collect_vars_expr(stmt.value, result)
+        elif isinstance(stmt, TTupleAssignStmt):
+            for t in stmt.targets:
+                _collect_vars_expr(t, result)
+            _collect_vars_expr(stmt.value, result)
+        elif isinstance(stmt, TIfStmt):
+            _collect_vars_expr(stmt.cond, result)
+            _collect_vars_stmts(stmt.then_body, result)
+            if stmt.else_body is not None:
+                _collect_vars_stmts(stmt.else_body, result)
+        elif isinstance(stmt, TWhileStmt):
+            _collect_vars_expr(stmt.cond, result)
+            _collect_vars_stmts(stmt.body, result)
+        elif isinstance(stmt, TForStmt):
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _collect_vars_expr(a, result)
+            else:
+                _collect_vars_expr(stmt.iterable, result)
+            _collect_vars_stmts(stmt.body, result)
+        elif isinstance(stmt, TMatchStmt):
+            _collect_vars_expr(stmt.expr, result)
+            for case in stmt.cases:
+                _collect_vars_stmts(case.body, result)
+            if stmt.default is not None:
+                _collect_vars_stmts(stmt.default.body, result)
+        elif isinstance(stmt, TTryStmt):
+            _collect_vars_stmts(stmt.body, result)
+            for catch in stmt.catches:
+                _collect_vars_stmts(catch.body, result)
+            if stmt.finally_body is not None:
+                _collect_vars_stmts(stmt.finally_body, result)
+
+    def _collect_vars_stmts(stmts: list[TStmt], result: dict) -> None:
+        for stmt in stmts:
+            _collect_vars_stmt(stmt, result)
+
+    def _serialize_stmt(stmt: TStmt) -> dict:
+        d: dict = {"type": type(stmt).__name__}
+        ann = _strip(stmt.annotations)
+        binder: dict = {}
+        for k, v in ann.items():
+            if k.startswith("binder."):
+                rest = k[7:]
+                dot = rest.find(".")
+                if dot != -1:
+                    binder.setdefault(rest[:dot], {})[rest[dot + 1 :]] = v
+                else:
+                    d[k] = v
+            else:
+                d[k] = v
+        if binder:
+            d["binder"] = binder
+        if isinstance(stmt, TMatchStmt):
+            cases = []
+            for case in stmt.cases:
+                cd: dict = _strip(case.annotations)
+                if isinstance(case.pattern, TPatternType):
+                    pat = _strip(case.pattern.annotations)
+                    cd.update(pat)
+                    for ka, va in pat.items():
+                        cd["pattern." + ka] = va
+                cases.append(cd)
+            d["cases"] = cases
+            if stmt.default is not None:
+                d["default"] = _strip(stmt.default.annotations)
+        elif isinstance(stmt, TTryStmt):
+            d["catches"] = [_strip(c.annotations) for c in stmt.catches]
+        return d
+
+    def _serialize_fn(fn: TFnDecl) -> dict:
+        d: dict = _strip(fn.annotations)
+        params: dict = {}
+        for p in fn.params:
+            a = _strip(p.annotations)
+            if a:
+                params[p.name] = a
+        if params:
+            d["params"] = params
+        lets: dict = {}
+        _collect_lets(fn.body, lets)
+        if lets:
+            d["lets"] = lets
+        d["body"] = [_serialize_stmt(s) for s in fn.body]
+        vars_dict: dict = {}
+        _collect_vars_stmts(fn.body, vars_dict)
+        if vars_dict:
+            d["vars"] = vars_dict
+            escapes = {n: True for n, a in vars_dict.items() if a.get("escapes")}
+            if escapes:
+                d["escapes"] = escapes
+        return d
+
+    result: dict = {}
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            result[decl.name] = _serialize_fn(decl)
+        elif isinstance(decl, TStructDecl):
+            for method in decl.methods:
+                result[f"{decl.name}.{method.name}"] = _serialize_fn(method)
+    return result
