@@ -59,6 +59,7 @@ class _OwnershipCtx:
     var_ownership: dict[str, str]
     params: set[str]
     escaping: set[str]
+    let_stmts: dict[str, TLetStmt]
 
 
 # ============================================================
@@ -69,9 +70,12 @@ class _OwnershipCtx:
 def _infer_ownership(expr: TExpr, ctx: _OwnershipCtx) -> str:
     if isinstance(expr, TCall):
         if isinstance(expr.func, TVar):
-            t = ctx.checker.types.get(expr.func.name)
+            name = expr.func.name
+            t = ctx.checker.types.get(name)
             if isinstance(t, StructT):
                 return "owned"
+            if name == "Get":
+                return "borrowed"
         return "owned"
     if isinstance(expr, (TListLit, TMapLit, TSetLit, TTupleLit)):
         return "owned"
@@ -200,20 +204,16 @@ def _check_collection_escape(value: TExpr, ctx: _OwnershipCtx) -> None:
 
 
 def _check_return_escape(value: TExpr, ctx: _OwnershipCtx) -> None:
-    ownership = _infer_ownership(value, ctx)
-    if ownership != "borrowed":
-        return
-    if isinstance(value, TVar) and value.name not in ctx.params:
+    if isinstance(value, TVar):
         value.annotations["ownership.escapes"] = True
         ctx.escaping.add(value.name)
     elif isinstance(value, TFieldAccess):
-        if isinstance(value.obj, TVar) and value.obj.name not in ctx.params:
+        if isinstance(value.obj, TVar):
             value.obj.annotations["ownership.escapes"] = True
 
 
 def _check_throw_escape(expr: TExpr, ctx: _OwnershipCtx) -> None:
-    ownership = _infer_ownership(expr, ctx)
-    if ownership == "borrowed" and isinstance(expr, TVar):
+    if isinstance(expr, TVar):
         expr.annotations["ownership.escapes"] = True
         ctx.escaping.add(expr.name)
 
@@ -231,14 +231,16 @@ def _walk_stmts(stmts: list[TStmt], ctx: _OwnershipCtx) -> None:
 def _walk_stmt(stmt: TStmt, ctx: _OwnershipCtx) -> None:
     if isinstance(stmt, TLetStmt):
         dead = stmt.annotations.get("liveness.initial_value_unused", False)
-        if stmt.value is not None and not dead:
-            _walk_expr(stmt.value, ctx, False)
+        if stmt.value is not None:
+            if not dead:
+                _walk_expr(stmt.value, ctx, False)
             ownership = _infer_ownership(stmt.value, ctx)
         else:
             ownership = "owned"
         stmt.annotations["ownership.kind"] = ownership
         stmt.annotations["ownership.region"] = ctx.region
         ctx.var_ownership[stmt.name] = ownership
+        ctx.let_stmts[stmt.name] = stmt
     elif isinstance(stmt, TAssignStmt):
         _walk_expr(stmt.value, ctx, False)
         if isinstance(stmt.target, TVar):
@@ -253,7 +255,7 @@ def _walk_stmt(stmt: TStmt, ctx: _OwnershipCtx) -> None:
             _check_field_escape(stmt.value, ctx)
         elif isinstance(stmt.target, TIndex):
             _walk_expr(stmt.target.obj, ctx, False)
-            _walk_expr(stmt.target.index, ctx, False)
+            _walk_expr(stmt.target.index, ctx, True)
             _check_collection_escape(stmt.value, ctx)
         elif isinstance(stmt.target, TTupleAccess):
             _walk_expr(stmt.target.obj, ctx, False)
@@ -306,10 +308,7 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _OwnershipCtx) -> None:
     else:
         _walk_expr(stmt.iterable, ctx, False)
     for i, bname in enumerate(stmt.binding):
-        if len(stmt.binding) == 2 and i == 0:
-            kind = "owned"
-        else:
-            kind = "borrowed"
+        kind = "borrowed"
         stmt.annotations["ownership.binder." + bname + ".kind"] = kind
         stmt.annotations["ownership.binder." + bname + ".region"] = ctx.region
         ctx.var_ownership[bname] = kind
@@ -324,8 +323,8 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _OwnershipCtx) -> None:
 def _walk_try_stmt(stmt: TTryStmt, ctx: _OwnershipCtx) -> None:
     _walk_stmts(stmt.body, ctx)
     for catch in stmt.catches:
-        ctx.var_ownership[catch.name] = "owned"
-        catch.annotations["ownership.kind"] = "owned"
+        ctx.var_ownership[catch.name] = "borrowed"
+        catch.annotations["ownership.kind"] = "borrowed"
         catch.annotations["ownership.region"] = ctx.region
         _walk_stmts(catch.body, ctx)
     if stmt.finally_body is not None:
@@ -367,6 +366,7 @@ def _analyze_fn_lit(expr: TFnLit, parent_ctx: _OwnershipCtx) -> None:
         var_ownership={},
         params=set(),
         escaping=set(),
+        let_stmts={},
     )
     for p in expr.params:
         ctx.params.add(p.name)
@@ -377,6 +377,10 @@ def _analyze_fn_lit(expr: TFnLit, parent_ctx: _OwnershipCtx) -> None:
         _walk_stmts(expr.body, ctx)
     else:
         _walk_expr(expr.body, ctx, False)
+    for name, let_stmt in ctx.let_stmts.items():
+        final = ctx.var_ownership.get(name)
+        if final is not None:
+            let_stmt.annotations["ownership.kind"] = final
 
 
 # ============================================================
@@ -393,6 +397,7 @@ def _analyze_fn(decl: TFnDecl, checker: Checker) -> None:
         var_ownership={},
         params=set(),
         escaping=set(),
+        let_stmts={},
     )
     for p in decl.params:
         ctx.params.add(p.name)
@@ -400,6 +405,10 @@ def _analyze_fn(decl: TFnDecl, checker: Checker) -> None:
         p.annotations["ownership.kind"] = "borrowed"
         p.annotations["ownership.region"] = region
     _walk_stmts(decl.body, ctx)
+    for name, let_stmt in ctx.let_stmts.items():
+        final = ctx.var_ownership.get(name)
+        if final is not None:
+            let_stmt.annotations["ownership.kind"] = final
 
 
 # ============================================================

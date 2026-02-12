@@ -838,18 +838,20 @@ Foo.throws = ValueError
 === throws from interface method dispatch
 interface Validator {}
 struct IntValidator : Validator {
+    label: string
     fn Validate(self, s: string) -> int {
         return ParseInt(s, 10)
     }
 }
 struct FloatValidator : Validator {
+    label: string
     fn Validate(self, s: string) -> float {
         return ParseFloat(s)
     }
 }
 fn Main() -> void {
     try {
-        let v: IntValidator = IntValidator()
+        let v: IntValidator = IntValidator(label: "int")
         WritelnOut(ToString(v.Validate("42")))
     } catch e: ValueError {
         WritelnOut("err")
@@ -1281,23 +1283,28 @@ Pong.throws = KeyError;ValueError
 === interface dispatch different throw types
 interface Parser {}
 struct IntParser : Parser {
+    label: string
     fn Parse(self, s: string) -> int {
         return ParseInt(s, 10)
     }
 }
 struct MapParser : Parser {
+    label: string
     fn Parse(self, s: string) -> int {
         let m: map[string, int] = {"a": 1}
         return m[s]
     }
 }
-fn DoParse(p: Parser, s: string) -> int {
+fn DoInt(p: IntParser, s: string) -> int {
+    return p.Parse(s)
+}
+fn DoMap(p: MapParser, s: string) -> int {
     return p.Parse(s)
 }
 fn Main() -> void {
     try {
-        let p: IntParser = IntParser()
-        WritelnOut(ToString(DoParse(p, "1")))
+        let p: IntParser = IntParser(label: "int")
+        WritelnOut(ToString(DoInt(p, "1")))
     } catch e {
         WritelnOut("err")
     }
@@ -1305,7 +1312,8 @@ fn Main() -> void {
 ---
 IntParser.Parse.throws = ValueError
 MapParser.Parse.throws = KeyError
-DoParse.throws = KeyError;ValueError
+DoInt.throws = ValueError
+DoMap.throws = KeyError
 ---
 
 === multiple typed catches partial filter

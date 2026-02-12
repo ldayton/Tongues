@@ -182,7 +182,7 @@ struct Pt {
     y: int
 }
 fn MakePt(flag: bool) -> Pt {
-    let p: Pt
+    let p: Pt = Pt(x: 0, y: 0)
     if flag {
         p = Pt(x: 1, y: 2)
     } else {

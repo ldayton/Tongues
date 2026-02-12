@@ -4,7 +4,7 @@ fn Show(value: int | string | bool) -> string {
         case n: int {
             return ToString(n)
         }
-        default x: obj {
+        default x {
             return ToString(x)
         }
     }
