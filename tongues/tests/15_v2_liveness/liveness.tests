@@ -436,7 +436,7 @@ fn Main() -> void {
     WritelnOut(Concat(ToString(q), Concat(" ", ToString(r))))
 }
 ---
-Main.body.2.tuple_unused_indices = ""
+Main.body.2.tuple_unused_indices =
 ---
 
 === tuple one unused
@@ -447,7 +447,7 @@ fn Main() -> void {
     WritelnOut(ToString(q))
 }
 ---
-Main.body.2.tuple_unused_indices = "1"
+Main.body.2.tuple_unused_indices = 1
 ---
 
 === tuple first unused
@@ -458,7 +458,7 @@ fn Main() -> void {
     WritelnOut(ToString(r))
 }
 ---
-Main.body.2.tuple_unused_indices = "0"
+Main.body.2.tuple_unused_indices = 0
 ---
 
 === tuple all unused
@@ -469,7 +469,7 @@ fn Main() -> void {
     WritelnOut("done")
 }
 ---
-Main.body.2.tuple_unused_indices = "0,1"
+Main.body.2.tuple_unused_indices = 0,1
 ---
 
 === tuple used later after overwrite
@@ -481,7 +481,7 @@ fn Main() -> void {
     WritelnOut(ToString(q))
 }
 ---
-Main.body.2.tuple_unused_indices = "0,1"
+Main.body.2.tuple_unused_indices = 0,1
 ---
 
 === let in method
@@ -804,7 +804,7 @@ fn Main() -> void {
     WritelnOut(ToString(y))
 }
 ---
-Main.body.3.tuple_unused_indices = "0,2"
+Main.body.3.tuple_unused_indices = 0,2
 ---
 
 === tuple three targets all used
@@ -819,7 +819,7 @@ fn Main() -> void {
     WritelnOut(Concat(ToString(x), Concat(" ", Concat(ToString(y), Concat(" ", ToString(z))))))
 }
 ---
-Main.body.3.tuple_unused_indices = ""
+Main.body.3.tuple_unused_indices =
 ---
 
 === tuple three targets all unused
@@ -834,7 +834,7 @@ fn Main() -> void {
     WritelnOut("done")
 }
 ---
-Main.body.3.tuple_unused_indices = "0,1,2"
+Main.body.3.tuple_unused_indices = 0,1,2
 ---
 
 === enum match no bindings

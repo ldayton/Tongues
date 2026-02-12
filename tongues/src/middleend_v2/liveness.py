@@ -213,25 +213,36 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
             return "read"
         return None
     if isinstance(stmt, TTryStmt):
-        result = _first_access_in_stmts(name, stmt.body)
-        if result == "read":
+        try_result = _first_access_in_stmts(name, stmt.body)
+        if try_result == "read":
             return "read"
+        catch_results = []
         for catch in stmt.catches:
             catch_result = _first_access_in_stmts(name, catch.body)
             if catch_result == "read":
                 return "read"
+            catch_results.append(catch_result)
+        if try_result == "write" and catch_results and all(
+            r == "write" for r in catch_results
+        ):
+            return "write"
         return None
     if isinstance(stmt, TMatchStmt):
         if _expr_reads(name, stmt.expr):
             return "read"
+        results = []
         for case in stmt.cases:
             case_result = _first_access_in_stmts(name, case.body)
             if case_result == "read":
                 return "read"
+            results.append(case_result)
         if stmt.default is not None:
             dflt_result = _first_access_in_stmts(name, stmt.default.body)
             if dflt_result == "read":
                 return "read"
+            results.append(dflt_result)
+        if results and all(r == "write" for r in results):
+            return "write"
         return None
     return None
 
@@ -459,34 +470,37 @@ def _analyze_catch_and_match_bindings(stmts: list[TStmt]) -> None:
 # ============================================================
 
 
-def _analyze_tuple_targets_in_stmts(stmts: list[TStmt], used_vars: set[str]) -> None:
+def _analyze_tuple_targets_in_stmts(stmts: list[TStmt]) -> None:
     """Mark unused tuple target indices in statements."""
-    for stmt in stmts:
+    for i, stmt in enumerate(stmts):
         if isinstance(stmt, TTupleAssignStmt):
+            remaining = stmts[i + 1 :]
             unused: list[str] = []
-            for i, t in enumerate(stmt.targets):
-                if isinstance(t, TVar) and t.name != "_" and t.name not in used_vars:
-                    unused.append(str(i))
+            for j, t in enumerate(stmt.targets):
+                if isinstance(t, TVar) and t.name != "_":
+                    first = _first_access_in_stmts(t.name, remaining)
+                    if first != "read":
+                        unused.append(str(j))
             stmt.annotations["liveness.tuple_unused_indices"] = ",".join(unused)
         if isinstance(stmt, TIfStmt):
-            _analyze_tuple_targets_in_stmts(stmt.then_body, used_vars)
+            _analyze_tuple_targets_in_stmts(stmt.then_body)
             if stmt.else_body is not None:
-                _analyze_tuple_targets_in_stmts(stmt.else_body, used_vars)
+                _analyze_tuple_targets_in_stmts(stmt.else_body)
         elif isinstance(stmt, TWhileStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body, used_vars)
+            _analyze_tuple_targets_in_stmts(stmt.body)
         elif isinstance(stmt, TForStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body, used_vars)
+            _analyze_tuple_targets_in_stmts(stmt.body)
         elif isinstance(stmt, TTryStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body, used_vars)
+            _analyze_tuple_targets_in_stmts(stmt.body)
             for catch in stmt.catches:
-                _analyze_tuple_targets_in_stmts(catch.body, used_vars)
+                _analyze_tuple_targets_in_stmts(catch.body)
             if stmt.finally_body is not None:
-                _analyze_tuple_targets_in_stmts(stmt.finally_body, used_vars)
+                _analyze_tuple_targets_in_stmts(stmt.finally_body)
         elif isinstance(stmt, TMatchStmt):
             for case in stmt.cases:
-                _analyze_tuple_targets_in_stmts(case.body, used_vars)
+                _analyze_tuple_targets_in_stmts(case.body)
             if stmt.default is not None:
-                _analyze_tuple_targets_in_stmts(stmt.default.body, used_vars)
+                _analyze_tuple_targets_in_stmts(stmt.default.body)
 
 
 # ============================================================
@@ -498,8 +512,7 @@ def _analyze_fn(decl: TFnDecl) -> None:
     """Run liveness analysis on a single function."""
     _analyze_initial_value_in_stmts(decl.body)
     _analyze_catch_and_match_bindings(decl.body)
-    used_vars = _collect_used_var_names(decl.body)
-    _analyze_tuple_targets_in_stmts(decl.body, used_vars)
+    _analyze_tuple_targets_in_stmts(decl.body)
 
 
 # ============================================================
