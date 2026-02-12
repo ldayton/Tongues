@@ -387,3 +387,160 @@ fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
 Foo.body.0.type = TTryStmt
 Foo.body.0.catches.0.always_returns = true
 ---
+
+=== void explicit return
+fn Greet() -> void {
+    WritelnOut("hi")
+    return
+}
+fn Main() -> void { Greet() }
+---
+Greet.always_returns = true
+---
+
+=== if else one branch returns
+fn Half(x: int) -> int {
+    let result: int = 0
+    if x > 0 {
+        return x / 2
+    } else {
+        result = 0
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Half(4))) }
+---
+Half.body.1.type = TIfStmt
+Half.body.1.always_returns = false
+---
+
+=== else if chain all return
+fn Classify(x: int) -> string {
+    if x > 0 {
+        return "positive"
+    } else if x == 0 {
+        return "zero"
+    } else {
+        return "negative"
+    }
+}
+fn Main() -> void { WritelnOut(Classify(1)) }
+---
+Classify.always_returns = true
+Classify.body.0.type = TIfStmt
+Classify.body.0.always_returns = true
+---
+
+=== unreachable after return
+fn Early(x: int) -> int {
+    return x
+    WritelnOut("unreachable")
+}
+fn Main() -> void { WritelnOut(ToString(Early(1))) }
+---
+Early.always_returns = true
+---
+
+=== optional match all return
+fn SafeUnwrap(x: int?) -> int {
+    match x {
+        case v: int {
+            return v
+        }
+        case nil {
+            return 0
+        }
+    }
+}
+fn Main() -> void { WritelnOut(ToString(SafeUnwrap(5))) }
+---
+SafeUnwrap.always_returns = true
+SafeUnwrap.may_return_nil = false
+---
+
+=== try catch only catch returns
+fn Parse(s: string) -> int {
+    let result: int = 0
+    try {
+        result = ParseInt(s, 10)
+    } catch e: ValueError {
+        return -1
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(Parse("42"))) }
+---
+Parse.needs_named_returns = true
+Parse.body.1.type = TTryStmt
+Parse.body.1.body_has_return = false
+---
+
+=== multiple catches
+fn Multi(s: string) -> int {
+    try {
+        let n: int = ParseInt(s, 10)
+        let xs: list[int] = [1, 2, 3]
+        return xs[n]
+    } catch e: ValueError {
+        return -1
+    } catch e: IndexError {
+        return -2
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Multi("1"))) }
+---
+Multi.always_returns = true
+Multi.needs_named_returns = true
+Multi.body.0.type = TTryStmt
+Multi.body.0.body_has_return = true
+Multi.body.0.always_returns = true
+---
+
+=== try with finally no returns
+fn WithFinally(s: string) -> int {
+    let result: int = 0
+    try {
+        result = ParseInt(s, 10)
+    } catch e: ValueError {
+        result = -1
+    } finally {
+        WritelnOut("done")
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(WithFinally("5"))) }
+---
+WithFinally.needs_named_returns = false
+WithFinally.body.1.type = TTryStmt
+WithFinally.body.1.body_has_return = false
+---
+
+=== try finally return in catch
+fn Cleanup(s: string) -> int {
+    try {
+        return ParseInt(s, 10)
+    } catch e: ValueError {
+        return 0
+    } finally {
+        WritelnOut("cleanup")
+    }
+}
+fn Main() -> void { WritelnOut(ToString(Cleanup("5"))) }
+---
+Cleanup.needs_named_returns = true
+Cleanup.body.0.type = TTryStmt
+Cleanup.body.0.body_has_return = true
+---
+
+=== may return nil one branch nil
+fn MaybeNil(x: int?) -> int? {
+    let result: int? = nil
+    if x != nil {
+        result = x
+    }
+    return result
+}
+fn Main() -> void { WritelnOut(ToString(MaybeNil(5))) }
+---
+MaybeNil.may_return_nil = true
+---

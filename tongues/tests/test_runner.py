@@ -90,8 +90,8 @@ TESTS = {
         "typecheck": {"dir": "08_inference",  "run": "phase"},
     },
     "middleend": {
-        "returns_v2": {"dir": "09_returns", "run": "phase"},
-        "scope_v2":   {"dir": "10_scope",   "run": "phase"},
+        "scope_v2":   {"dir": "13_v2_scope",   "run": "phase"},
+        "returns_v2": {"dir": "14_v2_returns", "run": "phase"},
     },
     "backend": {
         "codegen":   {"dir": "15_codegen",    "run": "codegen"},
