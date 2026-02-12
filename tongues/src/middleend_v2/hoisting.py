@@ -10,6 +10,7 @@ from __future__ import annotations
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
     TContinueStmt,
     TExpr,
@@ -41,12 +42,24 @@ from ..taytsh.ast import (
     TVar,
     TWhileStmt,
 )
-from ..taytsh.check import Checker, Type, type_name, STRING_T, type_eq
+from ..taytsh.check import Checker, StructT, Type, type_name, STRING_T, type_eq
 
 
 # ============================================================
 # RUNE VARIABLE COLLECTION
 # ============================================================
+
+
+def _check_self_field_rune(
+    fa: TFieldAccess, bindings: dict[str, Type], out: set[str]
+) -> None:
+    """If fa is self.field and the field is string-typed, add field name to rune vars."""
+    if isinstance(fa.obj, TVar) and fa.obj.name == "self":
+        self_t = bindings.get("self")
+        if self_t is not None and isinstance(self_t, StructT):
+            field_t = self_t.fields.get(fa.field)
+            if field_t is not None and type_eq(field_t, STRING_T):
+                out.add(fa.field)
 
 
 def _collect_rune_expr(expr: TExpr, bindings: dict[str, Type], out: set[str]) -> None:
@@ -56,6 +69,8 @@ def _collect_rune_expr(expr: TExpr, bindings: dict[str, Type], out: set[str]) ->
             t = bindings.get(expr.obj.name)
             if t is not None and type_eq(t, STRING_T):
                 out.add(expr.obj.name)
+        elif isinstance(expr.obj, TFieldAccess):
+            _check_self_field_rune(expr.obj, bindings, out)
         _collect_rune_expr(expr.obj, bindings, out)
         _collect_rune_expr(expr.index, bindings, out)
         return
@@ -64,6 +79,8 @@ def _collect_rune_expr(expr: TExpr, bindings: dict[str, Type], out: set[str]) ->
             t = bindings.get(expr.obj.name)
             if t is not None and type_eq(t, STRING_T):
                 out.add(expr.obj.name)
+        elif isinstance(expr.obj, TFieldAccess):
+            _check_self_field_rune(expr.obj, bindings, out)
         _collect_rune_expr(expr.obj, bindings, out)
         _collect_rune_expr(expr.low, bindings, out)
         _collect_rune_expr(expr.high, bindings, out)
@@ -192,6 +209,33 @@ def _has_continue(stmts: list[TStmt]) -> bool:
             if stmt.default is not None and _has_continue(stmt.default.body):
                 return True
         # TWhileStmt/TForStmt: don't recurse — nested loops own their continues
+    return False
+
+
+def _has_break(stmts: list[TStmt]) -> bool:
+    """Check for TBreakStmt targeting an enclosing loop, stopping at nested loops."""
+    for stmt in stmts:
+        if isinstance(stmt, TBreakStmt):
+            return True
+        if isinstance(stmt, TIfStmt):
+            if _has_break(stmt.then_body):
+                return True
+            if stmt.else_body is not None and _has_break(stmt.else_body):
+                return True
+        elif isinstance(stmt, TTryStmt):
+            if _has_break(stmt.body):
+                return True
+            for catch in stmt.catches:
+                if _has_break(catch.body):
+                    return True
+        elif isinstance(stmt, TMatchStmt):
+            # Nested match does NOT intercept break — recurse through it
+            for case in stmt.cases:
+                if _has_break(case.body):
+                    return True
+            if stmt.default is not None and _has_break(stmt.default.body):
+                return True
+        # TWhileStmt/TForStmt: don't recurse — nested loops own their breaks
     return False
 
 
@@ -392,11 +436,17 @@ def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> 
         if not is_control:
             continue
 
-        # For while/for: annotate has_continue
         if isinstance(stmt, TWhileStmt):
             stmt.annotations["hoisting.has_continue"] = _has_continue(stmt.body)
         elif isinstance(stmt, TForStmt):
             stmt.annotations["hoisting.has_continue"] = _has_continue(stmt.body)
+        elif isinstance(stmt, TMatchStmt):
+            all_case_stmts: list[TStmt] = []
+            for case in stmt.cases:
+                all_case_stmts.extend(case.body)
+            if stmt.default is not None:
+                all_case_stmts.extend(stmt.default.body)
+            stmt.annotations["hoisting.has_break"] = _has_break(all_case_stmts)
 
         # Collect let decls inside this control structure
         inner_decls = _collect_let_decls(_get_control_bodies(stmt), declared, checker)
