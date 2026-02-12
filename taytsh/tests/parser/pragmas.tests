@@ -5,51 +5,147 @@ strict_math = false
 strict_tostring = false
 ---
 
-=== pragma strict-math
--- pragma strict-math
+=== pragma strict_math
+@@["strict_math"]
 fn Main() -> void {}
 ---
 strict_math = true
 strict_tostring = false
 ---
 
-=== pragma strict-tostring
--- pragma strict-tostring
+=== pragma strict_tostring
+@@["strict_tostring"]
 fn Main() -> void {}
 ---
 strict_math = false
 strict_tostring = true
 ---
 
-=== both pragmas
--- pragma strict-math
--- pragma strict-tostring
+=== both pragmas single annotation
+@@["strict_math", "strict_tostring"]
 fn Main() -> void {}
 ---
 strict_math = true
 strict_tostring = true
 ---
 
-=== pragmas order independent
--- pragma strict-tostring
--- pragma strict-math
+=== both pragmas separate annotations
+@@["strict_math"]
+@@["strict_tostring"]
 fn Main() -> void {}
 ---
 strict_math = true
 strict_tostring = true
 ---
 
-=== pragma with blank lines
--- pragma strict-math
+=== pragmas order independent combined
+@@["strict_tostring", "strict_math"]
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = true
+---
+
+=== pragmas order independent separate
+@@["strict_tostring"]
+@@["strict_math"]
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = true
+---
+
+=== blank lines between pragmas
+@@["strict_math"]
+
+@@["strict_tostring"]
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = true
+---
+
+=== blank lines before pragma
+
+
+@@["strict_math"]
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = false
+---
+
+=== blank line between pragma and decl
+@@["strict_math"]
 
 fn Main() -> void {}
 ---
 strict_math = true
+strict_tostring = false
 ---
 
-=== pragma after decl ignored
+=== comments between pragmas
+@@["strict_math"]
+-- some comment
+@@["strict_tostring"]
 fn Main() -> void {}
--- pragma strict-math
+---
+strict_math = true
+strict_tostring = true
+---
+
+=== comment before pragma
+-- some comment
+@@["strict_math"]
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = false
+---
+
+=== comment between pragma and decl
+@@["strict_math"]
+-- some comment
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = false
+---
+
+=== blank lines and comments mixed
+-- header comment
+
+@@["strict_math"]
+
+-- another comment
+@@["strict_tostring"]
+
+fn Main() -> void {}
+---
+strict_math = true
+strict_tostring = true
+---
+
+=== pragma after decl is not module-level
+fn Main() -> void {}
+@@["strict_math"]
+fn Other() -> void {}
+---
+strict_math = false
+---
+
+=== advisory annotation before decl is not pragma
+@["strict_math"]
+fn Main() -> void {}
+---
+strict_math = false
+---
+
+=== advisory annotation before pragma does not block it
+@["some_key"]
+fn Setup() -> void {}
+@@["strict_math"]
+fn Main() -> void {}
 ---
 strict_math = false
 ---

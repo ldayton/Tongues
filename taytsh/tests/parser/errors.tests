@@ -67,7 +67,7 @@ error:
 
 === unexpected character
 fn Main() -> void {
-    let x: int = @
+    let x: int = $
 }
 ---
 error:

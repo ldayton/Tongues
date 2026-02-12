@@ -1,0 +1,547 @@
+=== bare key annotation on expression
+fn Main() -> void {
+    let x: int = @["large"] 42
+}
+---
+ok
+---
+
+=== string value annotation on expression
+fn Main() -> void {
+    let x: int = @["base" = "hex"] 0xff
+}
+---
+ok
+---
+
+=== bool value annotation
+fn Main() -> void {
+    let x: int = @["large" = true] 999999999999999999
+}
+---
+ok
+---
+
+=== false value annotation
+fn Main() -> void {
+    let x: int = @["large" = false] 42
+}
+---
+ok
+---
+
+=== int value annotation
+fn Main() -> void {
+    let x: int = @["weight" = 3] 42
+}
+---
+ok
+---
+
+=== tuple value annotation
+fn Main() -> void {
+    let x: int = @["pos" = (1, 5)] 42
+}
+---
+ok
+---
+
+=== multiple keys annotation
+fn Main() -> void {
+    let x: int = @["large", "base" = "hex", "separators"] 1_000
+}
+---
+ok
+---
+
+=== annotation on function call
+fn Main() -> void {
+    @["provenance" = "in_operator"] Contains(xs, v)
+}
+---
+ok
+---
+
+=== annotation on method call
+fn Main() -> void {
+    let n: int = @["some_key"] s.Len()
+}
+---
+ok
+---
+
+=== annotation on field access
+fn Main() -> void {
+    let k: int = @["some_key"] token.kind
+}
+---
+ok
+---
+
+=== annotation on index expression
+fn Main() -> void {
+    let first: int = @["some_key"] xs[0]
+}
+---
+ok
+---
+
+=== annotation on slice expression
+fn Main() -> void {
+    let mid: list[int] = @["provenance" = "open_start"] xs[0:3]
+}
+---
+ok
+---
+
+=== annotation on parenthesized binary expression
+fn Main() -> void {
+    let x: int = @["provenance" = "negative_index"] (Len(xs) - 1)
+}
+---
+ok
+---
+
+=== annotation on parenthesized ternary
+fn Main() -> void {
+    let x: int = @["some_key"] (a > 0 ? a : -a)
+}
+---
+ok
+---
+
+=== annotation on list literal
+fn Main() -> void {
+    let xs: list[int] = @["some_key"] [1, 2, 3]
+}
+---
+ok
+---
+
+=== annotation on map literal
+fn Main() -> void {
+    let m: map[string, int] = @["some_key"] {"a": 1}
+}
+---
+ok
+---
+
+=== annotation on set literal
+fn Main() -> void {
+    let s: set[int] = @["some_key"] {1, 2, 3}
+}
+---
+ok
+---
+
+=== annotation on tuple literal
+fn Main() -> void {
+    let pair: (int, string) = @["some_key"] (1, "hello")
+}
+---
+ok
+---
+
+=== annotation on string literal
+fn Main() -> void {
+    let s: string = @["some_key"] "hello"
+}
+---
+ok
+---
+
+=== annotation on bool literal
+fn Main() -> void {
+    let b: bool = @["some_key"] true
+}
+---
+ok
+---
+
+=== annotation on nil literal
+fn Main() -> void {
+    let x: int? = @["some_key"] nil
+}
+---
+ok
+---
+
+=== annotation on variable reference
+fn Main() -> void {
+    let y: int = @["scope.narrowed_type" = "int"] x
+}
+---
+ok
+---
+
+=== annotation inside function argument
+fn Main() -> void {
+    WritelnOut(@["some_key"] ToString(x))
+}
+---
+ok
+---
+
+=== annotation on each argument
+fn Main() -> void {
+    Foo(@["a"] x, @["b"] y, @["c"] z)
+}
+---
+ok
+---
+
+=== annotation inside collection literal
+fn Main() -> void {
+    let xs: list[int] = [@["base" = "hex"] 0xff, @["base" = "dec"] 255]
+}
+---
+ok
+---
+
+=== multiple stacked annotations on expression
+fn Main() -> void {
+    let x: int = @["base" = "hex"] @["large"] 0xff
+}
+---
+ok
+---
+
+=== annotation on let statement
+fn Main() -> void {
+    @["scope.is_reassigned", "scope.is_const"]
+    let x: int = 42
+}
+---
+ok
+---
+
+=== annotation on if statement
+fn Main() -> void {
+    @["hoisting.hoisted_vars" = "x:int"]
+    if cond {
+        let x: int = 1
+    }
+}
+---
+ok
+---
+
+=== annotation on while statement
+fn Main() -> void {
+    @["hoisting.has_continue"]
+    while running {
+        Process()
+    }
+}
+---
+ok
+---
+
+=== annotation on for statement
+fn Main() -> void {
+    @["provenance" = "list_comprehension"]
+    for v in items {
+        Append(result, f(v))
+    }
+}
+---
+ok
+---
+
+=== annotation on match statement
+fn Main() -> void {
+    @["some_key"]
+    match node {
+        case lit: Literal {
+            WritelnOut(ToString(lit.value))
+        }
+        default {
+            WritelnOut("other")
+        }
+    }
+}
+---
+ok
+---
+
+=== annotation on try statement
+fn Main() -> void {
+    @["some_key"]
+    try {
+        Process()
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== annotation on return statement
+fn Foo() -> int {
+    @["some_key"]
+    return 42
+}
+---
+ok
+---
+
+=== annotation on throw statement
+fn Main() -> void {
+    @["some_key"]
+    throw ValueError("bad")
+}
+---
+ok
+---
+
+=== annotation on expression statement
+fn Main() -> void {
+    @["some_key"]
+    WritelnOut("hello")
+}
+---
+ok
+---
+
+=== annotation on assignment statement
+fn Main() -> void {
+    let x: int = 0
+    @["some_key"]
+    x = 10
+}
+---
+ok
+---
+
+=== annotation on function declaration
+@["callgraph.is_recursive"]
+fn Factorial(n: int) -> int {
+    if n <= 1 {
+        return 1
+    }
+    return n * Factorial(n - 1)
+}
+---
+ok
+---
+
+=== annotation on struct declaration
+@["some_key"]
+struct Token {
+    kind: int
+    value: string
+}
+---
+ok
+---
+
+=== annotation on interface declaration
+@["some_key"]
+interface Node {}
+---
+ok
+---
+
+=== annotation on enum declaration
+@["some_key"]
+enum Color {
+    Red
+    Green
+    Blue
+}
+---
+ok
+---
+
+=== multiple annotations on declaration
+@["callgraph.is_recursive"]
+@["callgraph.throws" = "ValueError"]
+fn Process(input: string) -> int {
+    return ParseInt(input, 10)
+}
+---
+ok
+---
+
+=== semantic annotation on declaration
+@@["strict_math"]
+fn Compute(x: int) -> int {
+    return x * x
+}
+---
+ok
+---
+
+=== mixed advisory and semantic annotations
+@["callgraph.throws" = ""]
+@@["strict_math"]
+fn Compute(x: int) -> int {
+    return x * x
+}
+---
+ok
+---
+
+=== annotation on fn literal
+fn Main() -> void {
+    let double: fn[int, int] = @["some_key"] (x: int) -> int => x * 2
+}
+---
+ok
+---
+
+=== annotation on fn literal block body
+fn Main() -> void {
+    let add: fn[int, int, int] = @["some_key"] (a: int, b: int) -> int {
+        return a + b
+    }
+}
+---
+ok
+---
+
+=== annotation with all value types
+fn Main() -> void {
+    @["flag", "name" = "test", "count" = 42, "active" = true, "pos" = (1, 5)]
+    let x: int = 0
+}
+---
+ok
+---
+
+=== annotation empty string value
+fn Main() -> void {
+    @["callgraph.throws" = ""]
+    WritelnOut("hello")
+}
+---
+ok
+---
+
+=== deeply nested annotated expressions
+fn Main() -> void {
+    let xs: list[int] = [@["a"] 1, @["b"] (2 + @["c"] 3)]
+}
+---
+ok
+---
+
+=== annotation on inner parenthesized call
+fn Main() -> void {
+    let x: int = (@["some_key"] f(a)) + b
+}
+---
+ok
+---
+
+=== annotation missing closing bracket
+fn Main() -> void {
+    let x: int = @["base" = "hex" 42
+}
+---
+error:
+---
+
+=== annotation missing opening bracket
+fn Main() -> void {
+    let x: int = @"base" = "hex"] 42
+}
+---
+error:
+---
+
+=== annotation empty brackets
+fn Main() -> void {
+    let x: int = @[] 42
+}
+---
+error:
+---
+
+=== annotation non-string key
+fn Main() -> void {
+    let x: int = @[42] 0xff
+}
+---
+error:
+---
+
+=== annotation key with invalid value type
+fn Main() -> void {
+    let x: int = @["key" = [1, 2]] 42
+}
+---
+error:
+---
+
+=== annotation missing value after equals
+fn Main() -> void {
+    let x: int = @["key" =] 42
+}
+---
+error:
+---
+
+=== double-at missing bracket
+fn Main() -> void {
+    @@"strict_math"
+    let x: int = 42
+}
+---
+error:
+---
+
+=== annotation with no following expression
+fn Main() -> void {
+    let x: int = @["base" = "hex"]
+}
+---
+error:
+---
+
+=== bare at sign is error
+fn Main() -> void {
+    let x: int = @
+}
+---
+error:
+---
+
+=== at in middle of binary expression
+fn Main() -> void {
+    let x: int = 1 + @["key"] 2
+}
+---
+ok
+---
+
+=== annotation on unary operand
+fn Main() -> void {
+    let x: int = -@["key"] a
+}
+---
+ok
+---
+
+=== annotation before break
+fn Main() -> void {
+    while true {
+        @["some_key"]
+        break
+    }
+}
+---
+ok
+---
+
+=== annotation before continue
+fn Main() -> void {
+    while true {
+        @["some_key"]
+        continue
+    }
+}
+---
+ok
+---

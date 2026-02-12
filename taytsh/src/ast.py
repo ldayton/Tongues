@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+
+# ============================================================
+# Annotation type alias (not a runtime construct, just for brevity)
+# ============================================================
+
+Ann = dict[str, bool | int | str | tuple[int, int]]
 
 
 # ============================================================
@@ -113,9 +120,7 @@ class TParam:
     pos: Pos
     name: str
     typ: TType | None
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -126,9 +131,7 @@ class TFnDecl(TDecl):
     params: list[TParam]
     ret: TType
     body: list[TStmt]
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -148,6 +151,7 @@ class TStructDecl(TDecl):
     parent: str | None
     fields: list[TFieldDecl]
     methods: list[TFnDecl]
+    annotations: Ann
 
 
 @dataclass
@@ -155,6 +159,7 @@ class TInterfaceDecl(TDecl):
     """interface Name { }."""
 
     name: str
+    annotations: Ann
 
 
 @dataclass
@@ -163,6 +168,7 @@ class TEnumDecl(TDecl):
 
     name: str
     variants: list[str]
+    annotations: Ann
 
 
 @dataclass
@@ -193,9 +199,7 @@ class TLetStmt(TStmt):
     name: str
     typ: TType
     value: TExpr | None
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -204,6 +208,7 @@ class TAssignStmt(TStmt):
 
     target: TExpr
     value: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -213,6 +218,7 @@ class TOpAssignStmt(TStmt):
     target: TExpr
     op: str
     value: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -221,9 +227,7 @@ class TTupleAssignStmt(TStmt):
 
     targets: list[TExpr]
     value: TExpr
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -231,16 +235,21 @@ class TReturnStmt(TStmt):
     """return expr?."""
 
     value: TExpr | None
+    annotations: Ann
 
 
 @dataclass
 class TBreakStmt(TStmt):
     """break."""
 
+    annotations: Ann
+
 
 @dataclass
 class TContinueStmt(TStmt):
     """continue."""
+
+    annotations: Ann
 
 
 @dataclass
@@ -248,6 +257,7 @@ class TThrowStmt(TStmt):
     """throw expr."""
 
     expr: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -255,6 +265,7 @@ class TExprStmt(TStmt):
     """Bare expression as statement."""
 
     expr: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -264,9 +275,7 @@ class TIfStmt(TStmt):
     cond: TExpr
     then_body: list[TStmt]
     else_body: list[TStmt] | None
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -275,9 +284,7 @@ class TWhileStmt(TStmt):
 
     cond: TExpr
     body: list[TStmt]
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -295,9 +302,7 @@ class TForStmt(TStmt):
     binding: list[str]
     iterable: TExpr | TRange
     body: list[TStmt]
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -307,9 +312,7 @@ class TPatternType:
     pos: Pos
     name: str
     type_name: TType
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -335,9 +338,7 @@ class TMatchCase:
     pos: Pos
     pattern: TPatternType | TPatternEnum | TPatternNil
     body: list[TStmt]
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -347,9 +348,7 @@ class TDefault:
     pos: Pos
     name: str | None
     body: list[TStmt]
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -359,9 +358,7 @@ class TMatchStmt(TStmt):
     expr: TExpr
     cases: list[TMatchCase]
     default: TDefault | None
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -372,9 +369,7 @@ class TCatch:
     name: str
     types: list[TType]
     body: list[TStmt]
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -384,9 +379,7 @@ class TTryStmt(TStmt):
     body: list[TStmt]
     catches: list[TCatch]
     finally_body: list[TStmt] | None
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 # ============================================================
@@ -407,6 +400,7 @@ class TIntLit(TExpr):
 
     value: int
     raw: str
+    annotations: Ann
 
 
 @dataclass
@@ -415,6 +409,7 @@ class TFloatLit(TExpr):
 
     value: float
     raw: str
+    annotations: Ann
 
 
 @dataclass
@@ -423,6 +418,7 @@ class TByteLit(TExpr):
 
     value: int
     raw: str
+    annotations: Ann
 
 
 @dataclass
@@ -430,6 +426,7 @@ class TStringLit(TExpr):
     """String literal with escapes resolved."""
 
     value: str
+    annotations: Ann
 
 
 @dataclass
@@ -437,6 +434,7 @@ class TRuneLit(TExpr):
     """Rune literal with escapes resolved."""
 
     value: str
+    annotations: Ann
 
 
 @dataclass
@@ -444,6 +442,7 @@ class TBytesLit(TExpr):
     """Bytes literal with escapes resolved."""
 
     value: bytes
+    annotations: Ann
 
 
 @dataclass
@@ -451,11 +450,14 @@ class TBoolLit(TExpr):
     """true or false."""
 
     value: bool
+    annotations: Ann
 
 
 @dataclass
 class TNilLit(TExpr):
     """nil."""
+
+    annotations: Ann
 
 
 @dataclass
@@ -463,9 +465,7 @@ class TVar(TExpr):
     """Variable reference."""
 
     name: str
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -475,6 +475,7 @@ class TBinaryOp(TExpr):
     op: str
     left: TExpr
     right: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -483,6 +484,7 @@ class TUnaryOp(TExpr):
 
     op: str
     operand: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -492,6 +494,7 @@ class TTernary(TExpr):
     cond: TExpr
     then_expr: TExpr
     else_expr: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -500,6 +503,7 @@ class TFieldAccess(TExpr):
 
     obj: TExpr
     field: str
+    annotations: Ann
 
 
 @dataclass
@@ -508,6 +512,7 @@ class TTupleAccess(TExpr):
 
     obj: TExpr
     index: int
+    annotations: Ann
 
 
 @dataclass
@@ -516,6 +521,7 @@ class TIndex(TExpr):
 
     obj: TExpr
     index: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -525,6 +531,7 @@ class TSlice(TExpr):
     obj: TExpr
     low: TExpr
     high: TExpr
+    annotations: Ann
 
 
 @dataclass
@@ -533,9 +540,7 @@ class TCall(TExpr):
 
     func: TExpr
     args: list[TArg]
-    annotations: dict[str, bool | int | str | tuple[int, int]] = field(
-        default_factory=dict
-    )
+    annotations: Ann
 
 
 @dataclass
@@ -552,6 +557,7 @@ class TListLit(TExpr):
     """[elements]."""
 
     elements: list[TExpr]
+    annotations: Ann
 
 
 @dataclass
@@ -559,6 +565,7 @@ class TMapLit(TExpr):
     """{ k: v, ... }."""
 
     entries: list[tuple[TExpr, TExpr]]
+    annotations: Ann
 
 
 @dataclass
@@ -566,6 +573,7 @@ class TSetLit(TExpr):
     """{ elements }."""
 
     elements: list[TExpr]
+    annotations: Ann
 
 
 @dataclass
@@ -573,6 +581,7 @@ class TTupleLit(TExpr):
     """(a, b, ...) — 2+ elements."""
 
     elements: list[TExpr]
+    annotations: Ann
 
 
 @dataclass
@@ -582,3 +591,4 @@ class TFnLit(TExpr):
     params: list[TParam]
     ret: TType
     body: list[TStmt] | TExpr
+    annotations: Ann

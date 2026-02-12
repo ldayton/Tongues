@@ -1,13 +1,13 @@
 # Tongues Backend Specification v2
 
-A Tongues backend walks the annotated Taytsh IR and emits source code for one target language. It reads three things: the IR tree, provenance metadata (stamped by the frontend), and annotations (written by middleend passes). It never modifies the IR.
+A Tongues backend walks the annotated Taytsh IR and emits source code for one target language. It reads the IR tree and its annotations (written by the lowerer and middleend passes). It never modifies the IR.
 
 ## Backend Structure
 
 Each backend is a tree walker. For each IR node type, the backend has an emitter that decides how to render that node. The emitter may:
 
 1. Emit the node's desugared form directly (always correct).
-2. Check provenance metadata and emit an idiomatic alternative.
+2. Check provenance annotations and emit an idiomatic alternative.
 3. Read annotations to refine the emission (const, unused, etc.).
 4. Recognize structural patterns in the IR and emit target idioms.
 
@@ -215,7 +215,7 @@ Used by Go, Rust, Zig, Lua.
 
 ## Provenance Consumption
 
-Backends read provenance metadata from IR nodes and decide whether to emit the idiomatic form or the desugared form. The desugared form is always correct. A backend that doesn't recognize a provenance tag simply ignores it.
+Backends read provenance annotations from IR nodes and decide whether to emit the idiomatic form or the desugared form. The desugared form is always correct. A backend that doesn't recognize a provenance tag simply ignores it.
 
 ### Single-node provenance
 
@@ -472,10 +472,58 @@ Most provenance forms benefit 1-3 backends. Python benefits from all of them (un
 
 Not all backends are equal in complexity. Rough ranking by implementation difficulty:
 
-| Tier   | Backends                                         | Why                                                   |
-| ------ | ------------------------------------------------ | ----------------------------------------------------- |
-| Low    | Python, Ruby, Perl                               | Dynamic typing, close to source semantics             |
-| Medium | JavaScript, TypeScript, PHP, Lua, Dart, Java, C# | Native exceptions, GC, some type ceremony             |
-| High   | Go                                               | Error returns, hoisting, rune handling, no exceptions |
-| High   | Rust, Swift                                      | Ownership, lifetimes/ARC, pattern matching            |
-| High   | C, Zig                                           | Manual memory, no exceptions, no GC                   |
+| Tier        | Backends              | Why                                                          |
+| ----------- | --------------------- | ------------------------------------------------------------ |
+| Low         | Python, Ruby, Perl    | Dynamic typing, close to source semantics.                   |
+|             |                       | Native rune strings — skip strings/hoisting/ownership/       |
+|             |                       | callgraph passes.                                            |
+| ----------- | --------------------- | ------------------------------------------------------------ |
+| Medium      | JavaScript,           | GC, native exceptions, some type ceremony.                   |
+|             | TypeScript, PHP,      | Consume strings pass for encoding-aware operations.          |
+|             | Dart, Java, C#        | Hoisting needed for C# (break-in-switch).                    |
+| ----------- | --------------------- | ------------------------------------------------------------ |
+| Medium-High | Lua                   | Native exceptions via pcall but needs hoisting (continue     |
+|             |                       | workaround, variable pre-declaration) and callgraph          |
+|             |                       | (tail calls). Returns pass for pcall return propagation.     |
+| ----------- | --------------------- | ------------------------------------------------------------ |
+| High        | Go                    | Error returns from callgraph.throws, variable hoisting,      |
+|             |                       | rune conversion, no exceptions, no pattern matching —        |
+|             |                       | consumes the most passes of any backend.                     |
+| ----------- | --------------------- | ------------------------------------------------------------ |
+| High        | Rust, Swift           | Ownership/lifetimes/ARC from ownership pass. Rust needs      |
+|             |                       | error-return transformation from callgraph.throws.           |
+|             |                       | Swift has native exceptions but needs ARC reasoning.         |
+| ----------- | --------------------- | ------------------------------------------------------------ |
+| High        | C, Zig                | Manual memory from ownership pass, no exceptions,            |
+|             |                       | no GC, no standard collections. C uses setjmp/longjmp;       |
+|             |                       | Zig uses error unions from callgraph.throws.                 |
+| ----------- | --------------------- | ------------------------------------------------------------ |
+
+### Possible Future Targets
+
+| Tier        | Backends              | Why                                                           |
+| ----------- | --------------------- | ------------------------------------------------------------- |
+| Medium      | C++                   | Smart pointers map directly to ownership.kind (unique_ptr     |
+|             |                       | for owned, shared_ptr for shared, const T& for borrowed).     |
+|             |                       | Native exceptions, STL covers all collections. Byte-indexed   |
+|             |                       | strings need strings pass. No pattern matching — use          |
+|             |                       | std::variant + std::visit for interfaces and unions.          |
+| ----------- | --------------------- | ------------------------------------------------------------  |
+| Medium      | Scala                 | JVM — GC, native exceptions. Excellent pattern matching       |
+|             |                       | (case classes map to Taytsh interfaces, match is exhaustive). |
+|             |                       | val/var from scope.is_const. Option[T] for T?. UTF-16         |
+|             |                       | strings need strings pass for BMP/unknown distinction.        |
+| ----------- | --------------------- | ------------------------------------------------------------  |
+| Medium-High | OCaml                 | GC, native exceptions (raise/try...with), excellent pattern   |
+|             |                       | matching via variants. Mutability inversion: every reassigned |
+|             |                       | binding needs ref/!/:= — scope.is_const is critical.          |
+|             |                       | Byte-indexed strings need strings pass. Mutable record        |
+|             |                       | fields and Hashtbl/Array for reference semantics.             |
+| ----------- | --------------------- | ------------------------------------------------------------  |
+| Absurd      | Bash                  | No types, no structs, no floats without forking bc/awk.       |
+|             |                       | ID-based object system with global variables for fields.      |
+|             |                       | Function returns via global __retval (subshells break         |
+|             |                       | reference semantics). Error propagation via global error      |
+|             |                       | state + return codes. Needs callgraph (error returns),        |
+|             |                       | hoisting (function-scoped locals), strings (byte-indexed).    |
+| ----------- | --------------------- | ------------------------------------------------------------  |

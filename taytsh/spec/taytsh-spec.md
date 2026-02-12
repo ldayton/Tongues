@@ -1319,35 +1319,59 @@ The strict tostring flag is stored on the Module node (see Source Metadata).
 
 ### Pragmas
 
-Strict flags can be set within the source file using pragma comments on the first lines, before any declarations:
+Strict flags can be set within the source file using semantic annotations before any declarations:
 
 ```
--- pragma strict-math
--- pragma strict-tostring
+@@["strict_math", "strict_tostring"]
 ```
 
-Pragmas are equivalent to the corresponding command-line flags. Both `-- pragma strict-math` and `-- pragma strict-tostring` together are equivalent to `--strict`. Pragmas must appear before any non-comment, non-blank content. A pragma comment is exactly `-- pragma strict-math` or `-- pragma strict-tostring` — no other forms are recognized.
+Semantic annotations use `@@[...]` — see Annotations. They are equivalent to the corresponding command-line flags. `"strict_math"` and `"strict_tostring"` together are equivalent to `--strict`. Pragmas must appear before any declarations.
 
-## Source Metadata
+## Annotations
 
-Every Taytsh node has a `metadata` field — a map from string keys to values of type `bool`, `int`, `string`, or `(int, int)`. The lowerer populates it during IR construction. Metadata is advisory — backends and raising passes may use it but are never required to.
+Every Taytsh node carries an annotation map — string keys to values of type `bool`, `int`, `string`, or `(int, int)`. The textual syntax is `@[...]` before the annotated node. `@@[...]` (double-`@`) marks semantic annotations that change compilation behavior.
 
-The `pos` key is present on every node. All other keys are optional and node-type-specific.
+```
+@["base" = "hex"] 0xff
+@["scope.is_reassigned", "ownership.kind" = "owned"] let x: int = 42
+@@["strict_math", "strict_tostring"]
+fn Main() -> void { ... }
+```
 
-### Module
+A bare key is shorthand for `true`. Keys with values use `=`.
 
-The Module node is the root of the IR tree. It carries program-level metadata:
+### Binding
 
-| Key               | Type   | Description                                       |
-| ----------------- | ------ | ------------------------------------------------- |
-| `strict_math`     | `bool` | `true` if `--strict-math` or pragma is active     |
-| `strict_tostring` | `bool` | `true` if `--strict-tostring` or pragma is active |
+Annotations can appear before any expression, statement, or declaration. On expressions, the annotation attaches to the entire postfix chain (primary plus all `.`, `[]`, `()` suffixes). Parenthesize to control scope:
 
-### Position
+```
+-- annotates the subtraction node
+@["provenance" = "negative_index"] (Len(x) - 1)
+
+-- annotates just the call, not the addition
+(@["some_key"] f(x)) + y
+
+-- annotates argument x
+f(@["some_key"] x, y)
+```
+
+### Semantic Annotations
+
+`@@[...]` marks annotations that affect compilation — currently `"strict_math"` and `"strict_tostring"` (see Pragmas under Math Semantics). Module-level `@@[...]` before any declaration attaches to the Module node.
+
+### Lowerer Annotations
+
+The lowerer populates annotations during IR construction. All are advisory — backends and raising passes may use them but are never required to.
+
+#### Position
 
 Every node carries `pos`: a `(int, int)` of `(line, col)`, 1-indexed, for error reporting and source maps.
 
-### Literal Notation
+```
+@["pos" = (1, 5)] let x: int = @["pos" = (1, 21)] 42
+```
+
+#### Literal Notation
 
 Literal nodes carry keys that preserve the original Python source form, enabling backends to emit idiomatic notation.
 
@@ -1361,9 +1385,9 @@ Literal nodes carry keys that preserve the original Python source form, enabling
 
 A backend that doesn't support hex literals can emit decimal instead. The `large` flag lets backends that lack arbitrary-precision integers emit a compile error or use a big-integer library.
 
-### Lowering Provenance
+#### Lowering Provenance
 
-Some Python patterns are desugared during lowering into simpler IR forms. The original pattern is recorded under the `provenance` key (type `string`) so middleend raising passes can reconstruct idiomatic forms for targets that support them.
+Some Python patterns are desugared during lowering into simpler IR forms. The original pattern is recorded under the `provenance` key so middleend raising passes can reconstruct idiomatic forms for targets that support them.
 
 | `provenance` value   | Taytsh form                    | Python source               |
 | -------------------- | ------------------------------ | --------------------------- |
@@ -1383,13 +1407,16 @@ Some Python patterns are desugared during lowering into simpler IR forms. The or
 
 Provenance is advisory — the lowered form is always correct as-is.
 
-## Middleend Annotations
+### Middleend Annotations
 
-Every Taytsh node has an `annotations` field — the same map type as `metadata`. Middleend passes read the IR and write analysis results into this map. Keys are namespaced by pass (e.g. `"scope.is_reassigned"`, `"ownership.region"`).
+Middleend passes read the IR and write analysis results as annotations. Keys are namespaced by pass (e.g. `"scope.is_reassigned"`, `"ownership.region"`). Annotations are write-once — a pass sets a key, and no later pass overwrites it. Backends read annotations but never write them.
 
-Annotations are write-once — a pass sets a key, and no later pass overwrites it. Backends read annotations but never write them.
+```
+@["scope.is_reassigned", "scope.is_const", "ownership.kind" = "owned"]
+let x: int = 42
+```
 
-The specific annotations produced by each pass are defined in the middleend specs, not this document.
+The specific annotations produced by each pass are defined in the middleend specs.
 
 ## Grammar
 
@@ -1430,7 +1457,7 @@ Whitespace (spaces, tabs, newlines) separates tokens but is otherwise insignific
 ### Top Level
 
 ```
-Program       = Decl*
+Program       = ( Annotation* Decl )*
 Decl          = FnDecl | StructDecl | InterfaceDecl | EnumDecl
 
 FnDecl        = 'fn' IDENT '(' ParamList ')' '->' Type Block
@@ -1449,10 +1476,11 @@ EnumDecl      = 'enum' IDENT '{' IDENT+ '}'
 
 ### Statements
 
-Every statement form starts with a distinct keyword except assignment and expression statements, which both start with an expression. Those are merged into `ExprStmt` and disambiguated by what follows.
+Every statement form starts with a distinct keyword except assignment and expression statements, which both start with an expression. Those are merged into `ExprStmt` and disambiguated by what follows. If the first token is `@`, the parser consumes annotations before dispatching on the next token.
 
 ```
-Stmt       = LetStmt
+Stmt       = Annotation* StmtBody
+StmtBody   = LetStmt
            | IfStmt
            | WhileStmt
            | ForStmt
@@ -1522,7 +1550,7 @@ Sum        = Product ( ( '+' | '-' ) Product )*
 Product    = Unary ( ( '*' | '/' | '%' ) Unary )*
 Unary      = ( '-' | '!' | '~' ) Unary
            | Postfix
-Postfix    = Primary ( Suffix )*
+Postfix    = Annotation* Primary ( Suffix )*
 Suffix     = '.' IDENT | '.' INT
            | '[' Expr ( ':' Expr )? ']'
            | '(' ArgList ')'
@@ -1573,3 +1601,16 @@ Every alternative in `BaseType` starts with a distinct token, so no lookahead is
 `|` in `Catch` uses the same `TypeName` production — after each `TypeName`, peek for `|` to continue or `{` to stop.
 
 Tuple types require at least two elements — `(T)` is not a type. `IDENT` covers user-defined names: structs, interfaces, enums.
+
+### Annotations
+
+```
+Annotation = ( '@' | '@@' ) '[' AnnEntry ( ',' AnnEntry )* ']'
+AnnEntry   = STRING ( '=' AnnValue )?
+AnnValue   = STRING | INT | 'true' | 'false'
+           | '(' INT ',' INT ')'
+```
+
+`@` is unambiguous — it does not appear elsewhere in the grammar. After `@`, peek for `@` (semantic) versus `[` (advisory). Inside the brackets, each entry is a `STRING` optionally followed by `=` and a value — one token of lookahead after the string (peek for `=` versus `,` or `]`). A bare string without `=` is shorthand for `= true`.
+
+`Annotation*` appears at three levels: before `Decl` in the program, before `StmtBody` in a statement, and before `Primary` in a postfix expression. At each site, the parser checks for `@` to decide whether to consume annotations before proceeding to the inner production.

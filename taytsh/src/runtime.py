@@ -802,6 +802,7 @@ def _builtin_err(name: str) -> StructInfo:
         None,
         [TFieldDecl(Pos(0, 0), "message", TPrimitive(Pos(0, 0), "string"))],
         [],
+        {},
     )
     fi = FieldInfo("message", TY_STRING, decl.fields[0])
     return StructInfo(
