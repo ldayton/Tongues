@@ -7,9 +7,9 @@ interface detection, and function reference detection.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from src.taytsh.ast import (
+from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
     TBoolLit,
@@ -57,21 +57,24 @@ from src.taytsh.ast import (
     TVar,
     TWhileStmt,
 )
-from src.taytsh.check import (
+from ..taytsh.check import (
+    BOOL_T,
     BUILTIN_NAMES,
     BYTE_T,
     BYTES_T,
     Checker,
-    FnT,
+    FLOAT_T,
     INT_T,
     InterfaceT,
     ListT,
     MapT,
     NIL_T,
+    OBJ_T,
     RUNE_T,
     STRING_T,
     SetT,
     StructT,
+    TupleT,
     Type,
     UnionT,
     VOID_T,
@@ -121,11 +124,13 @@ class _BindingInfo:
 class _ScopeCtx:
     checker: Checker
     top_level_fns: set[str]
-    bindings: dict[str, _BindingInfo] = field(default_factory=dict)
-    narrowings: dict[str, Type] = field(default_factory=dict)
+    bindings: dict[str, _BindingInfo]
+    narrowings: dict[str, Type]
 
 
-def _fork_ctx(ctx: _ScopeCtx, extra_narrowings: dict[str, Type] | None = None) -> _ScopeCtx:
+def _fork_ctx(
+    ctx: _ScopeCtx, extra_narrowings: dict[str, Type] | None = None
+) -> _ScopeCtx:
     """Fork context with independent narrowings but shared bindings."""
     new_narrowings = dict(ctx.narrowings)
     if extra_narrowings is not None:
@@ -158,10 +163,8 @@ def _resolve_expr_type(expr: TExpr, ctx: _ScopeCtx) -> Type | None:
     if isinstance(expr, TIntLit):
         return INT_T
     if isinstance(expr, TFloatLit):
-        from src.taytsh.check import FLOAT_T
         return FLOAT_T
     if isinstance(expr, TBoolLit):
-        from src.taytsh.check import BOOL_T
         return BOOL_T
     if isinstance(expr, TByteLit):
         return BYTE_T
@@ -199,7 +202,7 @@ def _resolve_expr_type(expr: TExpr, ctx: _ScopeCtx) -> Type | None:
             if t is None:
                 return None
             elems.append(t)
-        from src.taytsh.check import TupleT
+
         return TupleT(kind="tuple", elements=elems)
     if isinstance(expr, TCall):
         return _resolve_call_return_type(expr, ctx)
@@ -281,7 +284,16 @@ def _resolve_builtin_return(name: str, expr: TCall, ctx: _ScopeCtx) -> Type | No
         if len(expr.args) > 0:
             return _resolve_expr_type(expr.args[0].value, ctx)
         return None
-    if name in ("Concat", "Upper", "Lower", "Join", "Replace", "Trim", "TrimStart", "TrimEnd"):
+    if name in (
+        "Concat",
+        "Upper",
+        "Lower",
+        "Join",
+        "Replace",
+        "Trim",
+        "TrimStart",
+        "TrimEnd",
+    ):
         return STRING_T
     if name in ("Split", "SplitN", "SplitWhitespace"):
         return ListT(kind="list", element=STRING_T)
@@ -295,9 +307,7 @@ def _resolve_builtin_return(name: str, expr: TCall, ctx: _ScopeCtx) -> Type | No
 # ============================================================
 
 
-def _resolve_for_binder_types(
-    stmt: TForStmt, ctx: _ScopeCtx
-) -> dict[str, Type] | None:
+def _resolve_for_binder_types(stmt: TForStmt, ctx: _ScopeCtx) -> dict[str, Type] | None:
     """Resolve types for for-loop binder variables. Returns name->type map or None."""
     if isinstance(stmt.iterable, TRange):
         result: dict[str, Type] = {}
@@ -474,13 +484,13 @@ def _analyze_fn_lit(expr: TFnLit, parent_ctx: _ScopeCtx) -> None:
     ctx = _ScopeCtx(
         checker=parent_ctx.checker,
         top_level_fns=parent_ctx.top_level_fns,
+        bindings={},
+        narrowings={},
     )
     for p in expr.params:
         if p.typ is not None:
             pt = parent_ctx.checker.resolve_type(p.typ)
-            ctx.bindings[p.name] = _BindingInfo(
-                node=p, declared_type=pt, is_param=True
-            )
+            ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
     if isinstance(expr.body, list):
         _walk_stmts(expr.body, ctx)
     else:
@@ -600,11 +610,15 @@ def _walk_if_stmt(stmt: TIfStmt, ctx: _ScopeCtx) -> None:
         is_neq = False
 
         if stmt.cond.op in ("!=", "=="):
-            if isinstance(stmt.cond.left, TVar) and isinstance(stmt.cond.right, TNilLit):
+            if isinstance(stmt.cond.left, TVar) and isinstance(
+                stmt.cond.right, TNilLit
+            ):
                 var_node = stmt.cond.left
                 is_nil_check = True
                 is_neq = stmt.cond.op == "!="
-            elif isinstance(stmt.cond.right, TVar) and isinstance(stmt.cond.left, TNilLit):
+            elif isinstance(stmt.cond.right, TVar) and isinstance(
+                stmt.cond.left, TNilLit
+            ):
                 var_node = stmt.cond.right
                 is_nil_check = True
                 is_neq = stmt.cond.op == "!="
@@ -650,7 +664,6 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _ScopeCtx) -> None:
     for bname in stmt.binding:
         btype = binder_types.get(bname) if binder_types is not None else None
         if btype is None:
-            from src.taytsh.check import OBJ_T
             btype = OBJ_T
         ctx.bindings[bname] = _BindingInfo(
             node=stmt,
@@ -706,7 +719,6 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
 
 def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
     """Compute the residual type for a default arm (scrutinee minus covered)."""
-    from src.taytsh.check import OBJ_T
 
     if scrutinee is None:
         return OBJ_T
@@ -714,7 +726,6 @@ def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
     if isinstance(scrutinee, InterfaceT):
         remaining: list[Type] = []
         for variant_name in scrutinee.variants:
-            from src.taytsh.check import _type_key
             vt = None
             # We don't have direct access to checker.types here, but
             # the covered list contains resolved types we can compare
@@ -802,6 +813,8 @@ def _analyze_fn(decl: TFnDecl, ctx: _ScopeCtx, self_type: Type | None = None) ->
     fn_ctx = _ScopeCtx(
         checker=ctx.checker,
         top_level_fns=ctx.top_level_fns,
+        bindings={},
+        narrowings={},
     )
     for p in decl.params:
         if p.typ is not None:
@@ -810,9 +823,7 @@ def _analyze_fn(decl: TFnDecl, ctx: _ScopeCtx, self_type: Type | None = None) ->
             pt = self_type
         else:
             continue
-        fn_ctx.bindings[p.name] = _BindingInfo(
-            node=p, declared_type=pt, is_param=True
-        )
+        fn_ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
     _walk_stmts(decl.body, fn_ctx)
     _stamp_bindings(fn_ctx)
 
@@ -829,6 +840,8 @@ def analyze_scope(module: TModule, checker: Checker) -> None:
     base_ctx = _ScopeCtx(
         checker=checker,
         top_level_fns=top_level_fns,
+        bindings={},
+        narrowings={},
     )
 
     for decl in module.decls:

@@ -868,7 +868,9 @@ class _PythonEmitter:
                 self._emit_stmt(s)
             self.indent -= 1
 
-    def _emit_match_default(self, default: TDefault, expr_str: str, first: bool) -> None:
+    def _emit_match_default(
+        self, default: TDefault, expr_str: str, first: bool
+    ) -> None:
         if first:
             self._line("if True:")
         else:
@@ -956,9 +958,7 @@ class _PythonEmitter:
             return self._fn_lit(expr)
         if isinstance(expr, TCall):
             return self._call(expr)
-        raise NotImplementedError(
-            "unknown expression: " + type(expr).__name__
-        )
+        raise NotImplementedError("unknown expression")
 
     def _int_lit(self, expr: TIntLit) -> str:
         raw = expr.raw
@@ -976,7 +976,10 @@ class _PythonEmitter:
             if 32 <= b < 127 and b != ord("\\") and b != ord('"'):
                 parts.append(chr(b))
             else:
-                parts.append("\\x" + format(b, "02x"))
+                h = hex(b)[2:]
+                if len(h) == 1:
+                    h = "0" + h
+                parts.append("\\x" + h)
         return 'b"' + "".join(parts) + '"'
 
     def _slice(self, expr: TSlice) -> str:
@@ -1178,7 +1181,14 @@ class _PythonEmitter:
             return self._a(args, 0) + ".discard(" + self._a(args, 1) + ")"
         if name == "Get":
             if len(args) == 3:
-                return self._a(args, 0) + ".get(" + self._a(args, 1) + ", " + self._a(args, 2) + ")"
+                return (
+                    self._a(args, 0)
+                    + ".get("
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
             return self._a(args, 0) + ".get(" + self._a(args, 1) + ")"
         if name == "Delete":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ", None)"

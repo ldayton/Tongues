@@ -11,17 +11,13 @@ from dataclasses import dataclass
 from ..taytsh.ast import (
     TBinaryOp,
     TCall,
-    TCatch,
-    TDefault,
     TExpr,
     TExprStmt,
     TFieldAccess,
     TFnDecl,
-    TFnLit,
     TForStmt,
     TIfStmt,
     TLetStmt,
-    TMatchCase,
     TMatchStmt,
     TModule,
     TNilLit,
@@ -36,7 +32,6 @@ from ..taytsh.ast import (
 )
 from ..taytsh.check import (
     Checker,
-    FnT,
     NIL_T,
     StructT,
     Type,
@@ -69,7 +64,9 @@ class _ReturnsCtx:
         self.checker = checker
         self.locals: dict[str, Type] = locals if locals is not None else {}
         self.narrowings: dict[str, Type] = narrowings if narrowings is not None else {}
-        self.fn_results: _FnResults = fn_results if fn_results is not None else _FnResults()
+        self.fn_results: _FnResults = (
+            fn_results if fn_results is not None else _FnResults()
+        )
 
 
 def _fork_ctx(
@@ -216,7 +213,9 @@ def _check_needs_named_returns(stmts: list[TStmt]) -> bool:
         if isinstance(stmt, TIfStmt):
             if _check_needs_named_returns(stmt.then_body):
                 return True
-            if stmt.else_body is not None and _check_needs_named_returns(stmt.else_body):
+            if stmt.else_body is not None and _check_needs_named_returns(
+                stmt.else_body
+            ):
                 return True
         elif isinstance(stmt, (TWhileStmt, TForStmt)):
             if _check_needs_named_returns(stmt.body):
@@ -231,7 +230,9 @@ def _check_needs_named_returns(stmts: list[TStmt]) -> bool:
             for case in stmt.cases:
                 if _check_needs_named_returns(case.body):
                     return True
-            if stmt.default is not None and _check_needs_named_returns(stmt.default.body):
+            if stmt.default is not None and _check_needs_named_returns(
+                stmt.default.body
+            ):
                 return True
     return False
 
@@ -325,9 +326,7 @@ def _walk_block(stmts: list[TStmt], ctx: _ReturnsCtx) -> bool:
 # ============================================================
 
 
-def _analyze_fn(
-    decl: TFnDecl, checker: Checker, self_type: Type | None = None
-) -> None:
+def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) -> None:
     fn_results = _FnResults()
     locals_: dict[str, Type] = {}
     for p in decl.params:

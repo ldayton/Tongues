@@ -39,13 +39,35 @@ from src.middleend_v2.scope import analyze_scope
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.check import check_with_info
 from src.taytsh.ast import (
-    TFnDecl, TStructDecl, TIfStmt, TWhileStmt, TForStmt,
-    TMatchStmt, TTryStmt, TRange,
-    TLetStmt, TPatternType, TVar,
-    TExprStmt, TReturnStmt, TCall, TBinaryOp, TUnaryOp,
-    TFieldAccess, TIndex, TTernary, TFnLit, TThrowStmt,
-    TAssignStmt, TOpAssignStmt, TTupleAssignStmt,
-    TListLit, TMapLit, TSetLit, TTupleLit, TSlice,
+    TFnDecl,
+    TStructDecl,
+    TIfStmt,
+    TWhileStmt,
+    TForStmt,
+    TMatchStmt,
+    TTryStmt,
+    TRange,
+    TLetStmt,
+    TPatternType,
+    TVar,
+    TExprStmt,
+    TReturnStmt,
+    TCall,
+    TBinaryOp,
+    TUnaryOp,
+    TFieldAccess,
+    TIndex,
+    TTernary,
+    TFnLit,
+    TThrowStmt,
+    TAssignStmt,
+    TOpAssignStmt,
+    TTupleAssignStmt,
+    TListLit,
+    TMapLit,
+    TSetLit,
+    TTupleLit,
+    TSlice,
 )
 from src.middleend_v2.returns import analyze_returns
 from src.middleend_v2.scope import analyze_scope
@@ -703,7 +725,7 @@ def run_typecheck(source: str) -> PhaseResult:
 
 def _strip_prefix(annotations, prefix):
     """Strip a prefix from annotation keys."""
-    return {k[len(prefix):]: v for k, v in annotations.items() if k.startswith(prefix)}
+    return {k[len(prefix) :]: v for k, v in annotations.items() if k.startswith(prefix)}
 
 
 def _serialize_returns_stmt(stmt):
@@ -743,7 +765,7 @@ def _serialize_scope_stmt(stmt):
         binder = {}
         for k, v in stmt.annotations.items():
             if k.startswith("scope.binder."):
-                rest = k[len("scope.binder."):]
+                rest = k[len("scope.binder.") :]
                 bname, attr = rest.split(".", 1)
                 if bname not in binder:
                     binder[bname] = {}

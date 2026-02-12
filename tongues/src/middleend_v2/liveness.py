@@ -11,13 +11,10 @@ from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
     TCall,
-    TCatch,
-    TDefault,
     TExpr,
     TExprStmt,
     TFieldAccess,
     TFnDecl,
-    TFnLit,
     TForStmt,
     TIfStmt,
     TIndex,
@@ -462,9 +459,7 @@ def _analyze_catch_and_match_bindings(stmts: list[TStmt]) -> None:
 # ============================================================
 
 
-def _analyze_tuple_targets_in_stmts(
-    stmts: list[TStmt], used_vars: set[str]
-) -> None:
+def _analyze_tuple_targets_in_stmts(stmts: list[TStmt], used_vars: set[str]) -> None:
     """Mark unused tuple target indices in statements."""
     for stmt in stmts:
         if isinstance(stmt, TTupleAssignStmt):

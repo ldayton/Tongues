@@ -16,7 +16,6 @@ from ..taytsh.ast import (
     TExprStmt,
     TFieldAccess,
     TFnDecl,
-    TFnLit,
     TForStmt,
     TIfStmt,
     TIndex,
@@ -380,9 +379,7 @@ def _serialize_hoisted(pairs: list[tuple[str, str]]) -> str:
 # ============================================================
 
 
-def _analyze_stmts(
-    stmts: list[TStmt], declared: set[str], checker: Checker
-) -> None:
+def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> None:
     """Walk statements, annotating control structures with hoisted_vars and has_continue."""
     for i, stmt in enumerate(stmts):
         if isinstance(stmt, TLetStmt):
@@ -477,9 +474,7 @@ def _recurse_control_children(
 # ============================================================
 
 
-def _analyze_fn(
-    decl: TFnDecl, checker: Checker, self_type: Type | None = None
-) -> None:
+def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) -> None:
     """Run hoisting analysis on a single function."""
     # Build bindings map from params and let statements
     bindings: dict[str, Type] = {}
