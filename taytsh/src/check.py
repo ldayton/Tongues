@@ -1575,7 +1575,11 @@ class Checker:
                 )
                 return None
             if left.kind not in (TY_INT, TY_FLOAT, TY_BYTE, TY_RUNE, TY_STRING):
-                msg = "not defined for union" if isinstance(left, UnionT) else "ordering not defined for " + type_name(left)
+                msg = (
+                    "not defined for union"
+                    if isinstance(left, UnionT)
+                    else "ordering not defined for " + type_name(left)
+                )
                 self.error(msg, pos)
                 return None
             return BOOL_T
@@ -1799,7 +1803,11 @@ class Checker:
                     expr.pos,
                 )
             return obj_type.value
-        msg = "cannot index union" if isinstance(obj_type, UnionT) else "cannot index " + type_name(obj_type)
+        msg = (
+            "cannot index union"
+            if isinstance(obj_type, UnionT)
+            else "cannot index " + type_name(obj_type)
+        )
         self.error(msg, expr.pos)
         return None
 
