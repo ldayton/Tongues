@@ -547,6 +547,7 @@ BUILTIN_NAMES: set[str] = {
     # Math
     "IsNaN",
     "IsInf",
+    "Sqrt",
 }
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
@@ -1711,6 +1712,8 @@ class Checker:
             field_type = self._union_field_type(obj_type, expr.field)
             if field_type is not None:
                 return field_type
+        if obj_type.kind == TY_OBJ:
+            return OBJ_T
         self.error(
             "cannot access field '" + expr.field + "' on " + type_name(obj_type),
             expr.pos,
@@ -2897,7 +2900,7 @@ class Checker:
             if not require(1):
                 return None
             t = arg(0)
-            if t is not None and not (type_eq(t, STRING_T) or type_eq(t, BYTES_T)):
+            if t is not None and not (type_eq(t, STRING_T) or type_eq(t, BYTES_T) or type_eq(t, OBJ_T)):
                 self.error(name + " requires string or bytes", pos)
             return VOID_T
         if name == "ReadLine":
@@ -2970,7 +2973,7 @@ class Checker:
             if t is not None:
                 if contains_nil(t):
                     return remove_nil(t)
-                self.error("Unwrap requires optional type", pos)
+                return t
             return None
 
         # ── Math extras ──
@@ -2981,6 +2984,13 @@ class Checker:
             if t is not None and not type_eq(t, FLOAT_T):
                 self.error(name + " requires float", pos)
             return BOOL_T
+        if name == "Sqrt":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, FLOAT_T):
+                self.error("Sqrt requires float", pos)
+            return FLOAT_T
 
         self.error("unknown built-in function: " + name, pos)
         return None

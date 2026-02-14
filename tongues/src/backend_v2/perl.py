@@ -557,6 +557,15 @@ class _PerlEmitter:
             self._emit_if(stmt)
             return
         if isinstance(stmt, TWhileStmt):
+            if stmt.annotations.get("provenance") == "negated_while":
+                inner = self._negated_inner(stmt.cond)
+                if inner is not None:
+                    self._line("until (" + inner + ") {")
+                    self.indent += 1
+                    self._emit_stmts(stmt.body)
+                    self.indent -= 1
+                    self._line("}")
+                    return
             self._line("while (" + self._expr(stmt.cond) + ") {")
             self.indent += 1
             self._emit_stmts(stmt.body)
@@ -613,7 +622,8 @@ class _PerlEmitter:
             self._line("(" + ", ".join(parts) + ") = @{" + rhs + "};")
 
     def _emit_if(self, stmt: TIfStmt) -> None:
-        if stmt.annotations.get("provenance") == "truthiness":
+        prov = stmt.annotations.get("provenance")
+        if prov == "truthiness":
             truth = self._truthiness_expr(stmt.cond)
             if truth is not None:
                 self._line("if (" + truth + ") {")
@@ -623,12 +633,26 @@ class _PerlEmitter:
                 self._emit_else_body(stmt.else_body)
                 self._line("}")
                 return
+        if prov == "negated_condition" and stmt.else_body is None:
+            inner = self._negated_inner(stmt.cond)
+            if inner is not None:
+                self._line("unless (" + inner + ") {")
+                self.indent += 1
+                self._emit_stmts(stmt.then_body)
+                self.indent -= 1
+                self._line("}")
+                return
         self._line("if (" + self._expr(stmt.cond) + ") {")
         self.indent += 1
         self._emit_stmts(stmt.then_body)
         self.indent -= 1
         self._emit_else_body(stmt.else_body)
         self._line("}")
+
+    def _negated_inner(self, cond: TExpr) -> str | None:
+        if isinstance(cond, TUnaryOp) and cond.op == "!":
+            return self._expr(cond.operand)
+        return None
 
     def _truthiness_expr(self, cond: TExpr) -> str | None:
         if isinstance(cond, TBinaryOp):
@@ -1000,6 +1024,10 @@ class _PerlEmitter:
         if isinstance(expr, TUnaryOp):
             return self._unary(expr)
         if isinstance(expr, TTernary):
+            if expr.annotations.get("provenance") == "none_coalesce":
+                val = self._nil_coalesce_value(expr)
+                if val is not None:
+                    return val
             return (
                 "("
                 + self._expr(expr.cond)
@@ -1235,7 +1263,7 @@ class _PerlEmitter:
         func = expr.func
         args = expr.args
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
-            return self._builtin_call(func.name, args)
+            return self._builtin_call(func.name, args, expr.annotations)
         if isinstance(func, TVar) and func.name in self.struct_names:
             return self._struct_call(func.name, args)
         if isinstance(func, TFieldAccess):
@@ -1274,7 +1302,7 @@ class _PerlEmitter:
         arg_strs = ", ".join(self._expr(a.value) for a in args)
         return obj + "->" + method + "(" + arg_strs + ")"
 
-    def _builtin_call(self, name: str, args: list[TArg]) -> str:
+    def _builtin_call(self, name: str, args: list[TArg], ann: dict | None = None) -> str:
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":
@@ -1455,6 +1483,16 @@ class _PerlEmitter:
             return "delete " + self._a(args, 0) + "->{" + self._a(args, 1) + "}"
         if name == "Get":
             if len(args) == 3:
+                if ann and ann.get("provenance") == "dict_get_default":
+                    return (
+                        "("
+                        + self._a(args, 0)
+                        + "->{"
+                        + self._a(args, 1)
+                        + "} // "
+                        + self._a(args, 2)
+                        + ")"
+                    )
                 return (
                     "(exists "
                     + self._a(args, 0)
@@ -1518,6 +1556,10 @@ class _PerlEmitter:
                 + "]"
             )
         if name == "Sorted":
+            inner = args[0].value
+            typ = self._expr_type(inner)
+            if isinstance(typ, TListType) and _is_string_type(typ.element):
+                return "[sort @{" + self._a(args, 0) + "}]"
             return "[sort { $a <=> $b } @{" + self._a(args, 0) + "}]"
         if name == "Reversed":
             return "[reverse @{" + self._a(args, 0) + "}]"
@@ -1572,6 +1614,8 @@ class _PerlEmitter:
             return "chr(" + self._a(args, 0) + ")"
         if name == "Unwrap":
             return self._a(args, 0)
+        if name == "Sqrt":
+            return "sqrt(" + self._a(args, 0) + ")"
         if name == "IsNaN":
             v = self._a(args, 0)
             return "((" + v + " != " + v + ") ? 1 : 0)"
@@ -1635,6 +1679,8 @@ class _PerlEmitter:
                 )
             return "(" + self._a(args, 0) + " x " + self._a(args, 1) + ")"
         if name == "Format":
+            if ann and ann.get("provenance") == "f_string":
+                return self._format_interpolated(args)
             return self._format_call(args)
         if name == "Assert":
             cond = self._a(args, 0)
@@ -1829,6 +1875,57 @@ class _PerlEmitter:
             and isinstance(expr.func, TVar)
             and expr.func.name == "Len"
         )
+
+    def _nil_coalesce_value(self, expr: TTernary) -> str | None:
+        """Emit ($x // default) for none_coalesce provenance."""
+        cond = expr.cond
+        if not isinstance(cond, TBinaryOp) or cond.op != "!=":
+            return None
+        if not isinstance(cond.right, TNilLit):
+            return None
+        if not isinstance(cond.left, TVar):
+            return None
+        var = "$" + _safe_name(cond.left.name)
+        default = self._expr(expr.else_expr)
+        return "(" + var + " // " + default + ")"
+
+    def _format_interpolated(self, args: list[TArg]) -> str:
+        """Emit Perl double-quoted string with variable interpolation."""
+        template_expr = args[0].value
+        if not isinstance(template_expr, TStringLit):
+            return self._format_call(args)
+        template = template_expr.value
+        parts: list[str] = []
+        arg_idx = 0
+        i = 0
+        while i < len(template):
+            if i + 1 < len(template) and template[i] == "{" and template[i + 1] == "}":
+                if arg_idx < len(args) - 1:
+                    parts.append(self._expr(args[arg_idx + 1].value))
+                arg_idx += 1
+                i += 2
+                continue
+            parts.append(template[i])
+            i += 1
+        result: list[str] = []
+        buf: list[str] = []
+        for p in parts:
+            if p.startswith("$"):
+                if buf:
+                    result.append("".join(buf))
+                    buf = []
+                result.append(p)
+            else:
+                buf.append(p)
+        if buf:
+            result.append("".join(buf))
+        out: list[str] = []
+        for r in result:
+            if r.startswith("$"):
+                out.append(r)
+            else:
+                out.append(_escape_perl_string(r))
+        return '"' + "".join(out) + '"'
 
 
 def emit_perl(module: TModule) -> str:
