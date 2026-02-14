@@ -429,12 +429,12 @@ error: unknown type
 def f(x: int):
     return x
 ---
-error: missing return type annotation
+error: missing type annotation for 'f'
 ---
 
 === error missing param type
 def f(x) -> int:
     return x
 ---
-error: missing type annotation
+error: missing type annotation for 'x'
 ---

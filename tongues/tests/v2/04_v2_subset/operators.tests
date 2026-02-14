@@ -282,6 +282,15 @@ def f() -> int:
 ok
 ---
 
+=== walrus operator should not warn
+def f() -> int:
+    if (x := 1):
+        return x
+    return 0
+---
+warning: NamedExpr
+---
+
 === walrus in while allowed
 def f(xs: list[int]) -> int:
     total: int = 0

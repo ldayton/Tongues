@@ -12,7 +12,7 @@ Nodes are plain dicts with a `_type` key identifying the node type. Every node c
 
 ```python
 {"_type": "Name", "id": "x", "ctx": {"_type": "Load"},
- "lineno": 1, "col_offset": 0, "end_lineno": 1, "end_col_offset": 0}
+ "lineno": 1, "col_offset": 0, "end_lineno": 1, "end_col_offset": 1}
 ```
 
 Node types, field names, and nesting follow `ast.parse()` output — `FunctionDef` has `name`, `args`, `body`, `decorator_list`, `returns`; `BinOp` has `left`, `op`, `right`; operators are nested dicts like `{"_type": "Add"}`; context fields (`Load`/`Store`/`Del`) appear on `Name`, `Attribute`, `Subscript`, `List`, `Tuple`, `Starred`.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..backend.util import escape_string
+from .util import escape_string
 from ..taytsh.ast import (
     TArg,
     TAssignStmt,

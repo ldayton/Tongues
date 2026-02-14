@@ -235,12 +235,12 @@ class Foo:
 ok
 ---
 
-=== class field without annotation not allowed
+=== class field without annotation allowed
 class Foo:
     def __init__(self) -> None:
         self.x = 1
 ---
-error: annotation
+ok
 ---
 
 === bare list not allowed

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..backend.util import to_snake
+from .util import to_snake
 from ..taytsh.ast import (
     TArg,
     TAssignStmt,

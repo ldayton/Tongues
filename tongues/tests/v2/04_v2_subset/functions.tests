@@ -235,14 +235,14 @@ error: async
 def f(x: int):
     return x
 ---
-error: return type
+error: missing type annotation for 'f'
 ---
 
 === missing parameter type annotation not allowed
 def f(x) -> int:
     return x
 ---
-error: missing param type
+error: missing type annotation for 'x'
 ---
 
 === arbitrary decorator not allowed

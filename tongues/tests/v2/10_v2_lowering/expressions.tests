@@ -63,14 +63,14 @@ return Pt(1, 2)
 def f(x: int | None) -> bool:
     return x is None
 ---
-x == nil
+IsNil(x)
 ---
 
 === is not None
 def f(x: int | None) -> bool:
     return x is not None
 ---
-x != nil
+IsNil(x, negated=True)
 ---
 
 === isinstance check

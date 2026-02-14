@@ -4,68 +4,31 @@ from __future__ import annotations
 
 import sys
 
-from .frontend import Frontend
-from .frontend.parse import parse, ParseError
-from .frontend.subset import verify as verify_subset
-from .frontend.names import NameInfo, NameTable, resolve_names
-from .middleend import analyze
-from .serialize import (
-    serialize as ir_serialize,
-    signatures_to_dict,
-    fields_to_dict,
-    hierarchy_to_dict,
-    module_to_dict,
-)
-from .backend.c import CBackend
-from .backend.go import GoBackend
-from .backend.java import JavaBackend
-from .backend.javascript import JsBackend
-from .backend.lua import LuaBackend
-from .backend.perl import PerlBackend
-from .backend.python import PythonBackend
-from .backend.ruby import RubyBackend
-from .backend.typescript import TsBackend
-from .backend.csharp import CSharpBackend
-from .backend.dart import DartBackend
-from .backend.php import PhpBackend
-from .backend.rust import RustBackend
-from .backend.swift import SwiftBackend
-from .backend.zig import ZigBackend
+from .frontend_v2.parse import parse, ParseError
+from .frontend_v2.subset import verify as verify_subset
+from .frontend_v2.names import NameInfo, NameTable, resolve_names
+from .frontend_v2.signatures import SignatureResult, collect_signatures
+from .frontend_v2.fields import FieldResult, collect_fields
+from .frontend_v2.hierarchy import HierarchyResult, build_hierarchy
+from .frontend_v2.inference import InferenceResult, run_inference
 
-BACKENDS: dict[
-    str,
-    type[CBackend]
-    | type[GoBackend]
-    | type[JavaBackend]
-    | type[JsBackend]
-    | type[LuaBackend]
-    | type[PerlBackend]
-    | type[PythonBackend]
-    | type[RubyBackend]
-    | type[TsBackend]
-    | type[CSharpBackend]
-    | type[DartBackend]
-    | type[PhpBackend]
-    | type[RustBackend]
-    | type[SwiftBackend]
-    | type[ZigBackend],
-] = {
-    "c": CBackend,
-    "csharp": CSharpBackend,
-    "dart": DartBackend,
-    "go": GoBackend,
-    "java": JavaBackend,
-    "javascript": JsBackend,
-    "lua": LuaBackend,
-    "perl": PerlBackend,
-    "php": PhpBackend,
-    "python": PythonBackend,
-    "ruby": RubyBackend,
-    "rust": RustBackend,
-    "swift": SwiftBackend,
-    "typescript": TsBackend,
-    "zig": ZigBackend,
-}
+TARGETS: list[str] = [
+    "c",
+    "csharp",
+    "dart",
+    "go",
+    "java",
+    "javascript",
+    "lua",
+    "perl",
+    "php",
+    "python",
+    "ruby",
+    "rust",
+    "swift",
+    "typescript",
+    "zig",
+]
 
 PHASES: list[str] = [
     "parse",
@@ -83,11 +46,14 @@ USAGE: str = """\
 tongues [OPTIONS] < input.py
 
 Options:
-  --target TARGET   Output language: c, csharp, dart, go, java, javascript,
-                    lua, perl, php, python, ruby, rust, swift, typescript, zig
-  --stop-at PHASE   Stop after phase: parse, subset, names, signatures,
-                    fields, hierarchy, inference, lowering, analyze
-  --help            Show this help message
+  --target TARGET     Output language: c, csharp, dart, go, java, javascript,
+                      lua, perl, php, python, ruby, rust, swift, typescript, zig
+  --stop-at PHASE     Stop after phase: parse, subset, names, signatures,
+                      fields, hierarchy, inference, lowering, analyze
+  --strict            Enable strict math and strict tostring
+  --strict-math       Enable strict math mode
+  --strict-tostring   Enable strict tostring mode
+  --help              Show this help message
 """
 
 
@@ -269,7 +235,9 @@ def _print_errors(errors: list[object]) -> None:
 # --- Pipeline ---
 
 
-def run_pipeline(target: str, stop_at: str | None) -> int:
+def run_pipeline(
+    target: str, stop_at: str | None, strict_math: bool, strict_tostring: bool
+) -> int:
     """Run the transpilation pipeline, optionally stopping at a phase."""
     source, err = read_source()
     if err != 0:
@@ -307,73 +275,115 @@ def run_pipeline(target: str, stop_at: str | None) -> int:
     if stop_at == "names":
         print(to_json(_name_table_to_dict(name_result.table)))
         return 0
-    # Phases 5+: Frontend (phased execution)
-    fe = Frontend()
-    try:
-        fe.init_from_names(source, name_result)
-    except Exception as e:
-        print("error: " + str(e), file=sys.stderr)
-        return 1
     # Phase 5: Signatures
-    try:
-        fe.collect_sigs(ast_dict)
-    except Exception as e:
-        print("error: " + str(e), file=sys.stderr)
+    known_classes: set[str] = set()
+    node_classes: set[str] = set()
+    mkeys = list(name_result.table.module_names.keys())
+    ki = 0
+    while ki < len(mkeys):
+        mname = mkeys[ki]
+        info = name_result.table.module_names[mname]
+        if info.kind == "class":
+            known_classes.add(mname)
+            bi = 0
+            while bi < len(info.bases):
+                base = info.bases[bi]
+                if base == "Node" or base.endswith("Node"):
+                    node_classes.add(mname)
+                bi += 1
+        ki += 1
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    errors = sig_result.errors()
+    if len(errors) > 0:
+        _print_errors(errors)
         return 1
     if stop_at == "signatures":
-        print(to_json(signatures_to_dict(fe.symbols)))
+        print(to_json(sig_result.to_dict()))
         return 0
     # Phase 6: Fields
-    try:
-        fe.collect_flds(ast_dict)
-    except Exception as e:
-        print("error: " + str(e), file=sys.stderr)
+    # Determine hierarchy roots
+    hierarchy_roots: set[str] = set()
+    base_counts: dict[str, int] = {}
+    parent_of: dict[str, str] = {}
+    ki = 0
+    mkeys2 = list(name_result.table.module_names.keys())
+    while ki < len(mkeys2):
+        mname = mkeys2[ki]
+        info = name_result.table.module_names[mname]
+        if info.kind == "class":
+            bi = 0
+            while bi < len(info.bases):
+                base = info.bases[bi]
+                if base not in base_counts:
+                    base_counts[base] = 0
+                base_counts[base] = base_counts[base] + 1
+                parent_of[mname] = base
+                bi += 1
+        ki += 1
+    bkeys = list(base_counts.keys())
+    ki = 0
+    while ki < len(bkeys):
+        bname = bkeys[ki]
+        if bname not in parent_of:
+            hierarchy_roots.add(bname)
+        ki += 1
+    field_result = collect_fields(ast_dict, known_classes, node_classes, hierarchy_roots, sig_result)
+    errors = field_result.errors()
+    if len(errors) > 0:
+        _print_errors(errors)
         return 1
     if stop_at == "fields":
-        print(to_json(fields_to_dict(fe.symbols)))
+        print(to_json(field_result.to_dict()))
         return 0
-    # Phase 7: Hierarchy (computed during init_from_names)
+    # Phase 7: Hierarchy
+    class_bases: dict[str, list[str]] = {}
+    ki = 0
+    while ki < len(mkeys2):
+        mname = mkeys2[ki]
+        info = name_result.table.module_names[mname]
+        if info.kind == "class":
+            class_bases[mname] = list(info.bases)
+        ki += 1
+    hier_result = build_hierarchy(known_classes, class_bases)
+    errors = hier_result.errors()
+    if len(errors) > 0:
+        _print_errors(errors)
+        return 1
     if stop_at == "hierarchy":
-        print(to_json(hierarchy_to_dict(fe.symbols, fe.get_hierarchy_root())))
+        print(to_json(hier_result.to_dict()))
         return 0
-    # Phases 8-9: Inference + Lowering
-    try:
-        module = fe.build_ir(ast_dict)
-    except Exception as e:
-        print("error: " + str(e), file=sys.stderr)
+    # Phase 8: Inference
+    inf_result = run_inference(ast_dict, sig_result, field_result, hier_result, known_classes, class_bases)
+    errors = inf_result.errors()
+    if len(errors) > 0:
+        _print_errors(errors)
         return 1
     if stop_at == "inference":
-        print(to_json(ir_serialize(ast_dict)))
+        print(to_json(ast_dict))
         return 0
+    # Phase 9: Lowering
+    # TODO: wire frontend_v2.lowering — produces TModule, set strict flags on it
     if stop_at == "lowering":
-        print(to_json(module_to_dict(module)))
-        return 0
-    # Phases 10-14: Analyze
-    try:
-        analyze(module)
-    except Exception as e:
-        print("error: " + str(e), file=sys.stderr)
+        print("error: phase not yet implemented", file=sys.stderr)
         return 1
+    # Phases 10-16: Analyze
+    # TODO: wire middleend_v2
     if stop_at == "analyze":
-        print(to_json(module_to_dict(module)))
-        return 0
-    # Phase 15: Backend
-    backend_cls = BACKENDS[target]
-    be = backend_cls()
-    try:
-        code = be.emit(module)
-    except Exception as e:
-        print("error: " + str(e), file=sys.stderr)
+        print("error: phase not yet implemented", file=sys.stderr)
         return 1
-    print(code)
-    return 0
+    # Phase 17: Backend
+    # TODO: wire backend_v2
+    print("error: phase not yet implemented", file=sys.stderr)
+    return 1
 
 
-def parse_args() -> tuple[str, str | None]:
-    """Parse command-line arguments. Returns (target, stop_at)."""
+def parse_args() -> tuple[str, str | None, bool, bool]:
+    """Parse command-line arguments. Returns (target, stop_at, strict_math, strict_tostring)."""
     args = sys.argv[1:]
     target = "go"
     stop_at: str | None = None
+    strict_math = False
+    strict_tostring = False
     i = 0
     while i < len(args):
         arg = args[i]
@@ -392,22 +402,32 @@ def parse_args() -> tuple[str, str | None]:
                 sys.exit(2)
             stop_at = args[i + 1]
             i += 2
+        elif arg == "--strict":
+            strict_math = True
+            strict_tostring = True
+            i += 1
+        elif arg == "--strict-math":
+            strict_math = True
+            i += 1
+        elif arg == "--strict-tostring":
+            strict_tostring = True
+            i += 1
         else:
             print("error: unknown flag '" + arg + "'", file=sys.stderr)
             sys.exit(2)
     if stop_at is not None and stop_at not in PHASES:
         print("error: unknown phase '" + stop_at + "'", file=sys.stderr)
         sys.exit(2)
-    if target not in BACKENDS:
+    if target not in TARGETS:
         print("error: unknown target '" + target + "'", file=sys.stderr)
         sys.exit(2)
-    return (target, stop_at)
+    return (target, stop_at, strict_math, strict_tostring)
 
 
 def main() -> int:
     """Main entry point."""
-    target, stop_at = parse_args()
-    return run_pipeline(target, stop_at)
+    target, stop_at, strict_math, strict_tostring = parse_args()
+    return run_pipeline(target, stop_at, strict_math, strict_tostring)
 
 
 if __name__ == "__main__":

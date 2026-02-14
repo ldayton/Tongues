@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..backend.util import escape_string, to_snake
+from .util import escape_string, to_snake
 from ..taytsh.ast import (
     TArg,
     TAssignStmt,

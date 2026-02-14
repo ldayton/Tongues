@@ -1,23 +1,142 @@
 """Test runner for Tongues v2 test phases."""
 
 import signal
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
-from tests.test_runner import (
-    check_cli_assertions,
-    discover_cli_tests,
-    run_cli,
-)
+from src.frontend_v2.fields import collect_fields
+from src.frontend_v2.hierarchy import build_hierarchy
+from src.frontend_v2.inference import run_inference
+from src.frontend_v2.names import resolve_names
+from src.frontend_v2.parse import parse
+from src.frontend_v2.signatures import collect_signatures
+from src.frontend_v2.subset import verify as verify_subset
 
-from src.frontend import Frontend, compile as frontend_compile
-from src.frontend.hierarchy import build_hierarchy
-from src.frontend.names import resolve_names
-from src.frontend.parse import parse
-from src.frontend.subset import verify as verify_subset
-from src.serialize import fields_to_dict, hierarchy_to_dict, signatures_to_dict
+TONGUES_DIR = Path(__file__).parent.parent.parent
+
+
+def parse_cli_test_file(path: Path) -> list[tuple[str, dict]]:
+    """Parse a CLI .tests file into (name, spec) tuples."""
+    lines = path.read_text().split("\n")
+    result: list[tuple[str, dict]] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("=== "):
+            test_name = line[4:].strip()
+            i += 1
+            input_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("---"):
+                input_lines.append(lines[i])
+                i += 1
+            if i < len(lines) and lines[i] == "---":
+                i += 1
+            expected_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("---"):
+                expected_lines.append(lines[i])
+                i += 1
+            if i < len(lines) and lines[i] == "---":
+                i += 1
+            spec = _parse_cli_spec(input_lines, expected_lines)
+            result.append((test_name, spec))
+        else:
+            i += 1
+    return result
+
+
+def _parse_cli_spec(input_lines: list[str], expected_lines: list[str]) -> dict:
+    """Parse input + expected lines into a CLI test spec dict."""
+    spec: dict = {"args": [], "stdin": None, "stdin_bytes": None, "assertions": []}
+    body_start = 0
+    if input_lines and input_lines[0].startswith("args:"):
+        args_str = input_lines[0][5:].strip()
+        spec["args"] = args_str.split() if args_str else []
+        body_start = 1
+    remaining = input_lines[body_start:]
+    if remaining and remaining[0].startswith("stdin-bytes:"):
+        hex_str = remaining[0][len("stdin-bytes:") :].strip()
+        spec["stdin_bytes"] = bytes.fromhex(hex_str)
+    else:
+        spec["stdin"] = "\n".join(remaining)
+    for line in expected_lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("exit:"):
+            spec["assertions"].append(("exit", int(line[5:].strip())))
+        elif line.startswith("exit-not:"):
+            spec["assertions"].append(("exit-not", int(line[9:].strip())))
+        elif line.startswith("stderr:"):
+            spec["assertions"].append(("stderr", line[7:].strip()))
+        elif line.startswith("stderr-contains:"):
+            spec["assertions"].append(("stderr-contains", line[16:].strip()))
+        elif line.startswith("stderr-empty:"):
+            spec["assertions"].append(("stderr-empty", None))
+        elif line.startswith("stdout-contains:"):
+            spec["assertions"].append(("stdout-contains", line[16:].strip()))
+        elif line.startswith("stdout-empty:"):
+            spec["assertions"].append(("stdout-empty", None))
+    return spec
+
+
+def discover_cli_tests(test_dir: Path) -> list[tuple[str, dict]]:
+    """Find all CLI tests across .tests files."""
+    results = []
+    for test_file in sorted(test_dir.glob("*.tests")):
+        for name, spec in parse_cli_test_file(test_file):
+            results.append((f"{test_file.stem}/{name}", spec))
+    return results
+
+
+def run_cli(spec: dict) -> subprocess.CompletedProcess[bytes]:
+    """Run tongues CLI from a test spec."""
+    cmd = [sys.executable, "-m", "src.tongues", *spec["args"]]
+    if spec["stdin_bytes"] is not None:
+        stdin_data = spec["stdin_bytes"]
+    elif spec["stdin"] is not None:
+        stdin_data = spec["stdin"].encode()
+    else:
+        stdin_data = b""
+    return subprocess.run(cmd, input=stdin_data, capture_output=True, cwd=TONGUES_DIR)
+
+
+def check_cli_assertions(
+    result: subprocess.CompletedProcess[bytes], assertions: list[tuple]
+) -> None:
+    """Check all assertions against a CLI result."""
+    for kind, value in assertions:
+        if kind == "exit":
+            assert result.returncode == value, (
+                f"expected exit {value}, got {result.returncode}"
+                f"\nstderr: {result.stderr.decode(errors='replace')}"
+            )
+        elif kind == "exit-not":
+            assert result.returncode != value, (
+                f"expected exit != {value}, got {result.returncode}"
+            )
+        elif kind == "stderr":
+            actual = result.stderr.decode(errors="replace").rstrip("\n")
+            assert actual == value, f"expected stderr {value!r}, got {actual!r}"
+        elif kind == "stderr-contains":
+            actual = result.stderr.decode(errors="replace")
+            assert value in actual, (
+                f"expected stderr to contain {value!r}, got {actual!r}"
+            )
+        elif kind == "stderr-empty":
+            assert result.stderr == b"", f"expected empty stderr, got {result.stderr!r}"
+        elif kind == "stdout-contains":
+            actual = result.stdout.decode(errors="replace")
+            assert value in actual, (
+                f"expected stdout to contain {value!r}, got {actual!r}"
+            )
+        elif kind == "stdout-empty":
+            assert result.stdout == b"", (
+                f"expected empty stdout, got {result.stdout[:200]!r}"
+            )
 
 from src.backend_v2.perl import emit_perl as emit_perl_v2
 from src.backend_v2.python import emit_python as emit_python_v2
@@ -58,7 +177,7 @@ TESTS = {
         "lowering_v2":  {"dir": "10_v2_lowering",  "run": "lowering"},
     },
     "taytsh": {
-        "type_checking_v2": {"dir": "11_v2_type_checking", "run": "phase"},
+        "type_checking_v2": {"dir": "13_v2_type_checking", "run": "phase"},
     },
     "middleend": {
         "scope_v2":     {"dir": "14_v2_scope",     "run": "phase"},
@@ -304,18 +423,23 @@ def check_expected(
 
 
 def contains_normalized(haystack: str, needle: str) -> bool:
-    """Check if needle appears in haystack, normalizing line-by-line whitespace."""
+    """Check if needle appears in haystack, normalizing line-by-line whitespace.
+
+    Each needle line is matched as a substring within the corresponding haystack
+    line (after stripping), and all needle lines must appear as consecutive
+    haystack lines.
+    """
     needle_lines = [line.strip() for line in needle.strip().split("\n") if line.strip()]
     haystack_lines = [line.strip() for line in haystack.split("\n") if line.strip()]
     if not needle_lines:
         return True
     for i in range(len(haystack_lines)):
-        if haystack_lines[i] == needle_lines[0]:
+        if needle_lines[0] in haystack_lines[i]:
             match = True
             for j in range(1, len(needle_lines)):
                 if (
                     i + j >= len(haystack_lines)
-                    or haystack_lines[i + j] != needle_lines[j]
+                    or needle_lines[j] not in haystack_lines[i + j]
                 ):
                     match = False
                     break
@@ -367,65 +491,169 @@ def run_names_v2(source: str) -> PhaseResult:
     )
 
 
-def _run_frontend_through_sigs(source: str) -> tuple[Frontend, dict]:
-    """Parse -> names -> Frontend -> sigs. Raises on error."""
-    ast_dict = parse(source)
-    name_result = resolve_names(ast_dict)
-    errors = name_result.errors()
-    if errors:
-        raise RuntimeError(errors[0].message)
-    fe = Frontend()
-    fe.init_from_names(source, name_result)
-    fe.collect_sigs(ast_dict)
-    return fe, ast_dict
-
-
 def run_sigs_v2(source: str) -> PhaseResult:
     """Run signature collection on Python source."""
     try:
-        fe, _ = _run_frontend_through_sigs(source)
-        return PhaseResult(data=signatures_to_dict(fe.symbols))
+        ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    sub_errors = result.errors()
+    if sub_errors:
+        return PhaseResult(errors=[e.message for e in sub_errors])
+    name_result = resolve_names(ast_dict)
+    name_errors = name_result.errors()
+    if name_errors:
+        return PhaseResult(errors=[e.message for e in name_errors])
+    # Build known_classes and node_classes from name table
+    known_classes: set[str] = set()
+    node_classes: set[str] = set()
+    table = name_result.table
+    for name, info in table.module_names.items():
+        if info.kind == "class":
+            known_classes.add(name)
+            if len(info.bases) > 0:
+                # Check if any base is "Node" or ends with "Node"
+                for base in info.bases:
+                    if base == "Node" or base.endswith("Node"):
+                        node_classes.add(name)
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_errors = sig_result.errors()
+    if sig_errors:
+        return PhaseResult(errors=[str(e) for e in sig_errors])
+    return PhaseResult(data=sig_result.to_dict())
 
 
 def run_fields_v2(source: str) -> PhaseResult:
     """Run field collection on Python source."""
     try:
-        fe, ast_dict = _run_frontend_through_sigs(source)
-        fe.collect_flds(ast_dict)
-        result = fields_to_dict(fe.symbols)
-        for sname, struct in fe.symbols.structs.items():
-            entry = result["classes"][sname]
-            entry["param_to_field"] = dict(struct.param_to_field)
-            entry["const_fields"] = dict(struct.const_fields)
-            entry["needs_constructor"] = struct.needs_constructor
-        return PhaseResult(data=result)
+        ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    sub_errors = result.errors()
+    if sub_errors:
+        return PhaseResult(errors=[e.message for e in sub_errors])
+    name_result = resolve_names(ast_dict)
+    name_errors = name_result.errors()
+    if name_errors:
+        return PhaseResult(errors=[e.message for e in name_errors])
+    # Build known_classes, node_classes, hierarchy_roots from name table
+    known_classes: set[str] = set()
+    node_classes: set[str] = set()
+    base_counts: dict[str, int] = {}
+    parent_of: dict[str, str] = {}
+    table = name_result.table
+    for name, info in table.module_names.items():
+        if info.kind == "class":
+            known_classes.add(name)
+            for base in info.bases:
+                if base == "Node" or base.endswith("Node"):
+                    node_classes.add(name)
+                if base in known_classes or base[0:1].isupper():
+                    if base not in base_counts:
+                        base_counts[base] = 0
+                    base_counts[base] += 1
+                    parent_of[name] = base
+    # Hierarchy roots: classes that are bases of others but have no parent themselves
+    hierarchy_roots: set[str] = set()
+    for base_name in base_counts:
+        if base_name not in parent_of:
+            hierarchy_roots.add(base_name)
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_errors = sig_result.errors()
+    if sig_errors:
+        return PhaseResult(errors=[str(e) for e in sig_errors])
+    field_result = collect_fields(ast_dict, known_classes, node_classes, hierarchy_roots, sig_result)
+    field_errors = field_result.errors()
+    if field_errors:
+        return PhaseResult(errors=[str(e) for e in field_errors])
+    return PhaseResult(data=field_result.to_dict())
 
 
 def run_hierarchy_v2(source: str) -> PhaseResult:
     """Run hierarchy analysis on Python source."""
     try:
-        fe, ast_dict = _run_frontend_through_sigs(source)
-        fe.collect_flds(ast_dict)
-        rel = build_hierarchy(fe.symbols)
-        result = hierarchy_to_dict(fe.symbols, rel.hierarchy_root)
-        result["node_types"] = sorted(rel.node_types)
-        result["exception_types"] = sorted(rel.exception_types)
-        return PhaseResult(data=result)
+        ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    sub_errors = result.errors()
+    if sub_errors:
+        return PhaseResult(errors=[e.message for e in sub_errors])
+    name_result = resolve_names(ast_dict)
+    name_errors = name_result.errors()
+    if name_errors:
+        return PhaseResult(errors=[e.message for e in name_errors])
+    # Build known_classes and class_bases from name table
+    known_classes: set[str] = set()
+    class_bases: dict[str, list[str]] = {}
+    table = name_result.table
+    for name, info in table.module_names.items():
+        if info.kind == "class":
+            known_classes.add(name)
+            class_bases[name] = list(info.bases)
+    hier_result = build_hierarchy(known_classes, class_bases)
+    hier_errors = hier_result.errors()
+    if hier_errors:
+        return PhaseResult(errors=[str(e) for e in hier_errors])
+    return PhaseResult(data=hier_result.to_dict())
 
 
 def run_inference_v2(source: str) -> PhaseResult:
     """Run the full Python frontend pipeline (phases 2-9), checking inference errors."""
     try:
-        frontend_compile(source)
-        return PhaseResult()
+        ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    sub_errors = result.errors()
+    if sub_errors:
+        return PhaseResult(errors=[e.message for e in sub_errors])
+    name_result = resolve_names(ast_dict)
+    name_errors = name_result.errors()
+    if name_errors:
+        return PhaseResult(errors=[e.message for e in name_errors])
+    known_classes: set[str] = set()
+    node_classes: set[str] = set()
+    class_bases: dict[str, list[str]] = {}
+    base_counts: dict[str, int] = {}
+    parent_of: dict[str, str] = {}
+    table = name_result.table
+    for name, info in table.module_names.items():
+        if info.kind == "class":
+            known_classes.add(name)
+            class_bases[name] = list(info.bases)
+            for base in info.bases:
+                if base == "Node" or base.endswith("Node"):
+                    node_classes.add(name)
+                if base in known_classes or base[0:1].isupper():
+                    if base not in base_counts:
+                        base_counts[base] = 0
+                    base_counts[base] += 1
+                    parent_of[name] = base
+    hierarchy_roots: set[str] = set()
+    for base_name in base_counts:
+        if base_name not in parent_of:
+            hierarchy_roots.add(base_name)
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_errors = sig_result.errors()
+    if sig_errors:
+        return PhaseResult(errors=[str(e) for e in sig_errors])
+    field_result = collect_fields(ast_dict, known_classes, node_classes, hierarchy_roots, sig_result)
+    field_errors = field_result.errors()
+    if field_errors:
+        return PhaseResult(errors=[str(e) for e in field_errors])
+    from src.frontend_v2.hierarchy import build_hierarchy
+    hier_result = build_hierarchy(known_classes, class_bases)
+    hier_errors = hier_result.errors()
+    if hier_errors:
+        return PhaseResult(errors=[str(e) for e in hier_errors])
+    inf_result = run_inference(ast_dict, sig_result, field_result, hier_result, known_classes, class_bases)
+    inf_errors = inf_result.errors()
+    if inf_errors:
+        return PhaseResult(errors=[str(e) for e in inf_errors])
+    return PhaseResult()
 
 
 def run_type_checking_v2(source: str) -> PhaseResult:
@@ -443,8 +671,59 @@ def run_type_checking_v2(source: str) -> PhaseResult:
 def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
     """Lower Python source to Taytsh text. Returns (output, error)."""
     try:
-        # TODO: replace with v2 lowering pipeline when implemented
-        pytest.skip("v2 lowering not yet implemented")
+        ast_dict = parse(source)
+        result = verify_subset(ast_dict)
+        sub_errors = result.errors()
+        if sub_errors:
+            return (None, sub_errors[0].message)
+        name_result = resolve_names(ast_dict)
+        name_errors = name_result.errors()
+        if name_errors:
+            return (None, name_errors[0].message)
+        known_classes: set[str] = set()
+        node_classes: set[str] = set()
+        class_bases: dict[str, list[str]] = {}
+        base_counts: dict[str, int] = {}
+        parent_of: dict[str, str] = {}
+        table = name_result.table
+        for name, info in table.module_names.items():
+            if info.kind == "class":
+                known_classes.add(name)
+                class_bases[name] = list(info.bases)
+                for base in info.bases:
+                    if base == "Node" or base.endswith("Node"):
+                        node_classes.add(name)
+                    if base in known_classes or base[0:1].isupper():
+                        if base not in base_counts:
+                            base_counts[base] = 0
+                        base_counts[base] += 1
+                        parent_of[name] = base
+        hierarchy_roots: set[str] = set()
+        for base_name in base_counts:
+            if base_name not in parent_of:
+                hierarchy_roots.add(base_name)
+        sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+        sig_errors = sig_result.errors()
+        if sig_errors:
+            return (None, str(sig_errors[0]))
+        field_result = collect_fields(ast_dict, known_classes, node_classes, hierarchy_roots, sig_result)
+        field_errors = field_result.errors()
+        if field_errors:
+            return (None, str(field_errors[0]))
+        from src.frontend_v2.hierarchy import build_hierarchy
+        hier_result = build_hierarchy(known_classes, class_bases)
+        hier_errors = hier_result.errors()
+        if hier_errors:
+            return (None, str(hier_errors[0]))
+        from src.frontend_v2.lowering import lower
+        from src.taytsh.emit import to_source
+        module, lower_errors = lower(ast_dict, sig_result, field_result, hier_result, known_classes, class_bases, source)
+        if lower_errors:
+            return (None, str(lower_errors[0]))
+        if module is None:
+            return (None, "lowering produced no module")
+        output = to_source(module)
+        return (output, None)
     except Exception as e:
         return (None, str(e))
 

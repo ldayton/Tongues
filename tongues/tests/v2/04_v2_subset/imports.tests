@@ -327,6 +327,14 @@ def f() -> list[str]:
 error: import
 ---
 
+=== from collections (not collections.abc) not allowed
+from collections import OrderedDict
+def f() -> int:
+    return 0
+---
+error: import
+---
+
 === star import not allowed
 from typing import *
 def f(x: Optional[int]) -> int:

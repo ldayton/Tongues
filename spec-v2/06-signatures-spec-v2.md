@@ -123,12 +123,12 @@ Type constructors must have the correct number of arguments:
 
 ## Errors
 
-| Condition           | Diagnostic                                            |
-| ------------------- | ----------------------------------------------------- |
-| Missing return type | error: `function 'f' missing return type annotation`  |
-| Missing param type  | error: `parameter 'x' missing type annotation in f()` |
-| Wrong arity         | error: `list requires 1 type argument, got 0`         |
-| Unknown type        | error: `unknown type 'Foo'`                           |
+| Condition    | Diagnostic                                    |
+| ------------ | --------------------------------------------- |
+| Wrong arity  | error: `list requires 1 type argument, got 0` |
+| Unknown type | error: `unknown type 'Foo'`                   |
+
+Missing return types and missing parameter type annotations are caught by the subset phase (phase 3).
 
 ## Output
 
