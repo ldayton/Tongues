@@ -775,9 +775,7 @@ def test_lowering_v2(lowering_v2_input, lowering_v2_expected):
         if err is None:
             pytest.fail(f"Expected error containing '{expected_msg}', got success")
         if expected_msg and expected_msg.lower() not in (err or "").lower():
-            pytest.fail(
-                f"Expected error containing '{expected_msg}', got: {err}"
-            )
+            pytest.fail(f"Expected error containing '{expected_msg}', got: {err}")
         return
     if err is not None:
         pytest.fail(f"Lowering error: {err}")
