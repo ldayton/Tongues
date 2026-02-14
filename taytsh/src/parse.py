@@ -579,6 +579,8 @@ class Parser:
             cases.append(self.parse_case())
         if self.at("default"):
             default = self.parse_default()
+            if self.at("case"):
+                raise ParseError("default must be last", self._pos().line, self._pos().col)
         self.expect("}")
         if len(cases) == 0 and default is None:
             raise ParseError(
