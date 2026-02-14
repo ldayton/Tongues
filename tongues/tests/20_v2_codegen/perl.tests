@@ -13,7 +13,7 @@ fn Main() -> void {
     WritelnOut(Show(1))
 }
 --- perl
-if (defined($value) && eval { $value->isa('UNSUPPORTED') }) {
+if (looks_like_number($value)) {
     my $n = $value;
     return ("" . $n);
 } else {
@@ -68,7 +68,7 @@ fn Main() -> void {
     WritelnOut(ToString(q))
 }
 --- perl
-($q, undef) = @{[int(17 / 5), 17 % 5]};
+($q, undef) = (int(17 / 5), 17 % 5);
 ---
 
 === all tuple targets used
@@ -79,7 +79,7 @@ fn Main() -> void {
     WritelnOut(ToString(q + r))
 }
 --- perl
-($q, $r) = @{[int(17 / 5), 17 % 5]};
+($q, $r) = (int(17 / 5), 17 % 5);
 ---
 
 === unused match binding is omitted
@@ -97,7 +97,7 @@ fn Main() -> void {
     WritelnOut(Show(1))
 }
 --- perl
-if (defined($value) && eval { $value->isa('UNSUPPORTED') }) {
+if (looks_like_number($value)) {
     return "int";
 } else {
     my $s = $value;
@@ -135,7 +135,7 @@ fn Main() -> void {
     }
 }
 --- perl
-if (do { my $__f = 0; for (@{$xs}) { if ($_ eq 2) { $__f = 1; last; } } $__f }) {
+if (do { my $__f = 0; for (@{$xs}) { if ($_ == 2) { $__f = 1; last; } } $__f }) {
     say("found");
 }
 ---
@@ -148,7 +148,7 @@ fn Main() -> void {
     }
 }
 --- perl
-if (!do { my $__f = 0; for (@{$xs}) { if ($_ eq 2) { $__f = 1; last; } } $__f }) {
+if (!do { my $__f = 0; for (@{$xs}) { if ($_ == 2) { $__f = 1; last; } } $__f }) {
     say("missing");
 }
 ---
@@ -161,7 +161,7 @@ fn Main() -> void {
     }
 }
 --- perl
-if (!(do { my $__f = 0; for (@{$xs}) { if ($_ eq 2) { $__f = 1; last; } } $__f })) {
+if (!(do { my $__f = 0; for (@{$xs}) { if ($_ == 2) { $__f = 1; last; } } $__f })) {
     say("missing");
 }
 ---
@@ -769,8 +769,11 @@ fn Main() -> void {
     }
 }
 --- perl
-if (ref($__err1) eq 'ValueError') {
-    say("catch");
+if (!$__ok0) {
+    my $__err1 = $@;
+    if (ref($__err1) eq 'ValueError') {
+        say("catch");
+    }
 }
 say("finally");
 ---
@@ -885,7 +888,7 @@ fn Main() -> void {
 my $idx = do {
     my $__i = 0;
     my $__r = -1;
-    for my $v (@{$xs}) { if ($v eq 20) { $__r = $__i; last; } $__i += 1; }
+    for my $v (@{$xs}) { if ($v == 20) { $__r = $__i; last; } $__i += 1; }
     $__r;
 };
 ---
@@ -1281,7 +1284,7 @@ fn Main() -> void {
     WritelnOut(Format("{} {}", ToString(q), ToString(r)))
 }
 --- perl
-($q, $r) = @{[int(17 / 5), 17 % 5]};
+($q, $r) = (int(17 / 5), 17 % 5);
 ---
 
 === ParseInt and ParseFloat
@@ -1462,10 +1465,10 @@ fn Main() -> void {
     WritelnOut(Describe(42))
 }
 --- perl
-if (defined($v) && eval { $v->isa('UNSUPPORTED') }) {
+if (looks_like_number($v)) {
     my $n = $v;
     return sprintf("int: %s", ("" . $n));
-} elsif (!ref($v)) {
+} elsif (!ref($v) && !looks_like_number($v)) {
     my $s = $v;
     return sprintf("str: %s", $s);
 } else {
@@ -1647,7 +1650,7 @@ fn Main() -> void {
 }
 --- perl
 say(("" . (($x != $x) ? 1 : 0)));
-say(("" . (("" . $y) eq "inf" ? 1 : 0)));
+say(("" . (POSIX::isinf($y) ? 1 : 0)));
 ---
 
 === for over string characters
