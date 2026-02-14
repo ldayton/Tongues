@@ -2,12 +2,12 @@
 
 **Module:** `tongues.py`
 
-Program entry point. Parses command-line arguments, reads source input, invokes the compilation pipeline, writes output. Written in the Tongues subset — uses only allowed I/O primitives (stdin/stdout/stderr, no file I/O).
+Program entry point. Parses command-line arguments, reads source input, invokes the compilation pipeline, writes output. Written in the Tongues subset.
 
 ## Usage
 
 ```
-tongues [OPTIONS] < input.py
+tongues [OPTIONS] [INPUT] [-o OUTPUT]
 
 Options:
   --target TARGET     Output language (see Target Selection)
@@ -15,10 +15,26 @@ Options:
   --strict            Enable strict math and strict tostring
   --strict-math       Enable strict math mode
   --strict-tostring   Enable strict tostring mode
+  -o, --output FILE   Write output to FILE instead of stdout
   --help              Show this help message
 ```
 
-File redirection is handled by the shell; the transpiler itself only uses stdin/stdout.
+## Input / Output
+
+| Source        | Syntax              | Behavior                          |
+| ------------- | ------------------- | --------------------------------- |
+| Positional    | `tongues foo.py`    | Read from `foo.py`                |
+| Stdin         | `tongues < foo.py`  | Read from stdin (no file argument)|
+| Both omitted  | `tongues`           | Read from stdin                   |
+
+| Destination   | Syntax              | Behavior                          |
+| ------------- | ------------------- | --------------------------------- |
+| `-o FILE`     | `tongues -o out.go` | Write output to `out.go`          |
+| Stdout        | `tongues`           | Write to stdout (default)         |
+
+When an input file is given, it is read as bytes and decoded as UTF-8 — the same validation as stdin input. If the file cannot be opened or read, print an error to stderr and exit 1.
+
+Errors and diagnostics always go to stderr regardless of `-o`.
 
 ## Target Selection
 
@@ -99,13 +115,18 @@ Files containing `tongues: skip` in the first 5 lines are skipped during `--stop
 | Whitespace only     | Passed to parser (may fail at parse)    |
 | Invalid UTF-8       | error: `invalid utf-8 in input`, exit 1 |
 | No trailing newline | Accepted                                |
+| File not found      | error: `cannot open 'foo.py'`, exit 1   |
+
+When both a positional file argument and stdin data are available, the file argument takes precedence and stdin is ignored.
 
 ## Errors
 
-| Condition      | Diagnostic                      | Exit |
-| -------------- | ------------------------------- | ---- |
-| Unknown target | error: `unknown target 'foo'`   | 2    |
-| Unknown phase  | error: `unknown phase 'foo'`    | 2    |
-| Unknown flag   | error: `unknown flag 'foo'`     | 2    |
-| Empty input    | error: `no input provided`      | 2    |
-| Invalid UTF-8  | error: `invalid utf-8 in input` | 1    |
+| Condition       | Diagnostic                       | Exit |
+| --------------- | -------------------------------- | ---- |
+| Unknown target  | error: `unknown target 'foo'`    | 2    |
+| Unknown phase   | error: `unknown phase 'foo'`     | 2    |
+| Unknown flag    | error: `unknown flag 'foo'`      | 2    |
+| Empty input     | error: `no input provided`       | 2    |
+| Invalid UTF-8   | error: `invalid utf-8 in input`  | 1    |
+| File not found  | error: `cannot open 'foo.py'`    | 1    |
+| Output failure  | error: `cannot write 'out.go'`   | 1    |

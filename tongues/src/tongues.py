@@ -1,4 +1,4 @@
-"""Subset-compliant entry point - reads from stdin, writes to stdout."""
+"""Subset-compliant entry point."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ PHASES: list[str] = [
 ]
 
 USAGE: str = """\
-tongues [OPTIONS] < input.py
+tongues [OPTIONS] [INPUT] [-o OUTPUT]
 
 Options:
   --target TARGET     Output language: c, csharp, dart, go, java, javascript,
@@ -62,6 +62,7 @@ Options:
   --strict            Enable strict math and strict tostring
   --strict-math       Enable strict math mode
   --strict-tostring   Enable strict tostring mode
+  -o, --output FILE   Write output to FILE instead of stdout
   --help              Show this help message
 """
 
@@ -77,9 +78,17 @@ def should_skip_file(source: str) -> bool:
     return False
 
 
-def read_source() -> tuple[str, int]:
-    """Read source from stdin with validation. Returns (source, exit_code) where exit_code 0 means OK."""
-    raw = sys.stdin.buffer.read()
+def read_source(input_file: str | None) -> tuple[str, int]:
+    """Read source from file or stdin. Returns (source, exit_code) where exit_code 0 means OK."""
+    if input_file is not None:
+        try:
+            with open(input_file, "rb") as f:
+                raw = f.read()
+        except OSError:
+            print("error: cannot open '" + input_file + "'", file=sys.stderr)
+            return ("", 1)
+    else:
+        raw = sys.stdin.buffer.read()
     if len(raw) > 0:
         try:
             source = raw.decode("utf-8")
@@ -88,6 +97,20 @@ def read_source() -> tuple[str, int]:
             return ("", 1)
         return (source, 0)
     return ("", 0)
+
+
+def write_output(output: str, output_file: str | None) -> int:
+    """Write output to file or stdout. Returns 0 on success, 1 on error."""
+    if output_file is not None:
+        try:
+            with open(output_file, "w") as f:
+                f.write(output)
+        except OSError:
+            print("error: cannot write '" + output_file + "'", file=sys.stderr)
+            return 1
+        return 0
+    print(output)
+    return 0
 
 
 # --- JSON serialization (subset-compliant, no json module) ---
@@ -245,17 +268,11 @@ def _print_errors(errors: list[object]) -> None:
 
 
 def run_pipeline(
-    target: str, stop_at: str | None, strict_math: bool, strict_tostring: bool
-) -> int:
-    """Run the transpilation pipeline, optionally stopping at a phase."""
-    source, err = read_source()
-    if err != 0:
-        return err
-    if len(source) == 0:
-        print("error: no input provided", file=sys.stderr)
-        return 2
+    source: str, target: str, stop_at: str | None, strict_math: bool, strict_tostring: bool
+) -> tuple[int, str]:
+    """Run the transpilation pipeline. Returns (exit_code, output)."""
     if stop_at == "subset" and should_skip_file(source):
-        return 0
+        return (0, "")
     # Phase 2: Parse
     try:
         ast_dict = parse(source)
@@ -263,27 +280,25 @@ def run_pipeline(
         print(
             "error:" + str(e.lineno) + ":" + str(e.col) + ": " + e.msg, file=sys.stderr
         )
-        return 1
+        return (1, "")
     if stop_at == "parse":
-        print(to_json(ast_dict))
-        return 0
+        return (0, to_json(ast_dict))
     # Phase 3: Subset
     result = verify_subset(ast_dict)
     errors = result.errors()
     if len(errors) > 0:
         _print_errors(errors)
-        return 1
+        return (1, "")
     if stop_at == "subset":
-        return 0
+        return (0, "")
     # Phase 4: Names
     name_result = resolve_names(ast_dict)
     errors = name_result.errors()
     if len(errors) > 0:
         _print_errors(errors)
-        return 1
+        return (1, "")
     if stop_at == "names":
-        print(to_json(_name_table_to_dict(name_result.table)))
-        return 0
+        return (0, to_json(_name_table_to_dict(name_result.table)))
     # Phase 5: Signatures
     known_classes: set[str] = set()
     node_classes: set[str] = set()
@@ -305,10 +320,9 @@ def run_pipeline(
     errors = sig_result.errors()
     if len(errors) > 0:
         _print_errors(errors)
-        return 1
+        return (1, "")
     if stop_at == "signatures":
-        print(to_json(sig_result.to_dict()))
-        return 0
+        return (0, to_json(sig_result.to_dict()))
     # Phase 6: Fields
     # Determine hierarchy roots
     hierarchy_roots: set[str] = set()
@@ -342,10 +356,9 @@ def run_pipeline(
     errors = field_result.errors()
     if len(errors) > 0:
         _print_errors(errors)
-        return 1
+        return (1, "")
     if stop_at == "fields":
-        print(to_json(field_result.to_dict()))
-        return 0
+        return (0, to_json(field_result.to_dict()))
     # Phase 7: Hierarchy
     class_bases: dict[str, list[str]] = {}
     ki = 0
@@ -359,10 +372,9 @@ def run_pipeline(
     errors = hier_result.errors()
     if len(errors) > 0:
         _print_errors(errors)
-        return 1
+        return (1, "")
     if stop_at == "hierarchy":
-        print(to_json(hier_result.to_dict()))
-        return 0
+        return (0, to_json(hier_result.to_dict()))
     # Phase 8: Inference
     inf_result = run_inference(
         ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
@@ -370,44 +382,41 @@ def run_pipeline(
     errors = inf_result.errors()
     if len(errors) > 0:
         _print_errors(errors)
-        return 1
+        return (1, "")
     if stop_at == "inference":
-        print(to_json(ast_dict))
-        return 0
+        return (0, to_json(ast_dict))
     # Phase 9: Lowering
     module, lower_errors = lower(
         ast_dict, sig_result, field_result, hier_result, known_classes, class_bases, source
     )
     if len(lower_errors) > 0:
         _print_errors(lower_errors)
-        return 1
+        return (1, "")
     if module is None:
         print("error: lowering produced no module", file=sys.stderr)
-        return 1
+        return (1, "")
     if strict_math:
         module.strict_math = True
     if strict_tostring:
         module.strict_tostring = True
     if stop_at == "lowering":
-        print(to_json(module_to_dict(module)))
-        return 0
+        return (0, to_json(module_to_dict(module)))
     # Phase 10: Type check
     checker = Checker()
     checker.collect_declarations(module)
     if len(checker.errors) > 0:
         _print_errors(checker.errors)
-        return 1
+        return (1, "")
     checker.check_bodies(module)
     if len(checker.errors) > 0:
         _print_errors(checker.errors)
-        return 1
+        return (1, "")
     # Phases 11-16: Middleend
     analyze_returns(module, checker)
     analyze_scope(module, checker)
     analyze_liveness(module, checker)
     if stop_at == "analyze":
-        print(to_json(module_to_dict(module)))
-        return 0
+        return (0, to_json(module_to_dict(module)))
     # Phase 17: Backend
     emitters: dict[str, object] = {
         "python": emit_python,
@@ -416,19 +425,20 @@ def run_pipeline(
     }
     if target not in emitters:
         print("error: backend not yet implemented for '" + target + "'", file=sys.stderr)
-        return 1
+        return (1, "")
     emitter = emitters[target]
-    print(emitter(module))
-    return 0
+    return (0, emitter(module))
 
 
-def parse_args() -> tuple[str, str | None, bool, bool]:
-    """Parse command-line arguments. Returns (target, stop_at, strict_math, strict_tostring)."""
+def parse_args() -> tuple[str, str | None, bool, bool, str | None, str | None]:
+    """Parse command-line arguments. Returns (target, stop_at, strict_math, strict_tostring, input_file, output_file)."""
     args = sys.argv[1:]
     target = "go"
     stop_at: str | None = None
     strict_math = False
     strict_tostring = False
+    input_file: str | None = None
+    output_file: str | None = None
     i = 0
     while i < len(args):
         arg = args[i]
@@ -447,6 +457,12 @@ def parse_args() -> tuple[str, str | None, bool, bool]:
                 sys.exit(2)
             stop_at = args[i + 1]
             i += 2
+        elif arg == "-o" or arg == "--output":
+            if i + 1 >= len(args):
+                print("error: " + arg + " requires an argument", file=sys.stderr)
+                sys.exit(2)
+            output_file = args[i + 1]
+            i += 2
         elif arg == "--strict":
             strict_math = True
             strict_tostring = True
@@ -457,22 +473,39 @@ def parse_args() -> tuple[str, str | None, bool, bool]:
         elif arg == "--strict-tostring":
             strict_tostring = True
             i += 1
-        else:
+        elif arg.startswith("-"):
             print("error: unknown flag '" + arg + "'", file=sys.stderr)
             sys.exit(2)
+        else:
+            if input_file is not None:
+                print("error: unexpected argument '" + arg + "'", file=sys.stderr)
+                sys.exit(2)
+            input_file = arg
+            i += 1
     if stop_at is not None and stop_at not in PHASES:
         print("error: unknown phase '" + stop_at + "'", file=sys.stderr)
         sys.exit(2)
     if target not in TARGETS:
         print("error: unknown target '" + target + "'", file=sys.stderr)
         sys.exit(2)
-    return (target, stop_at, strict_math, strict_tostring)
+    return (target, stop_at, strict_math, strict_tostring, input_file, output_file)
 
 
 def main() -> int:
     """Main entry point."""
-    target, stop_at, strict_math, strict_tostring = parse_args()
-    return run_pipeline(target, stop_at, strict_math, strict_tostring)
+    target, stop_at, strict_math, strict_tostring, input_file, output_file = parse_args()
+    source, err = read_source(input_file)
+    if err != 0:
+        return err
+    if len(source) == 0:
+        print("error: no input provided", file=sys.stderr)
+        return 2
+    exit_code, output = run_pipeline(source, target, stop_at, strict_math, strict_tostring)
+    if exit_code != 0:
+        return exit_code
+    if len(output) > 0:
+        return write_output(output, output_file)
+    return 0
 
 
 if __name__ == "__main__":
