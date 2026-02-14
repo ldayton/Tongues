@@ -179,10 +179,8 @@ TESTS = {
         "inference": {"dir": "09_inference", "run": "phase"},
         "lowering":  {"dir": "10_lowering",  "run": "lowering"},
     },
-    "taytsh": {
-        "type_checking": {"dir": "13_type_checking", "run": "phase"},
-    },
     "middleend": {
+        "type_checking": {"dir": "13_type_checking", "run": "phase"},
         "scope":     {"dir": "14_scope",     "run": "phase"},
         "returns":   {"dir": "15_returns",   "run": "phase"},
         "liveness":  {"dir": "16_liveness",  "run": "phase"},

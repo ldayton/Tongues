@@ -36,18 +36,6 @@ jobs:
       - run: just test-inference-local
       - run: just test-lowering-local
 
-  typecheck:
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
-      - run: just test-typecheck-local
-
   middleend:
     runs-on: ubuntu-latest
     needs: lint
@@ -86,10 +74,10 @@ jobs:
 
   check:
     if: always()
-    needs: [lint, frontend, typecheck, middleend, codegen, taytsh]
+    needs: [lint, frontend, middleend, codegen, taytsh]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          if [[ "${{ needs.lint.result }}" != "success" || "${{ needs.frontend.result }}" != "success" || "${{ needs.typecheck.result }}" != "success" || "${{ needs.middleend.result }}" != "success" || "${{ needs.codegen.result }}" != "success" || "${{ needs.taytsh.result }}" != "success" ]]; then
+          if [[ "${{ needs.lint.result }}" != "success" || "${{ needs.frontend.result }}" != "success" || "${{ needs.middleend.result }}" != "success" || "${{ needs.codegen.result }}" != "success" || "${{ needs.taytsh.result }}" != "success" ]]; then
             exit 1
           fi

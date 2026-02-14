@@ -69,13 +69,9 @@ test-inference-local:
 test-lowering-local:
     uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
 
-# Run type checking tests locally
-test-typecheck-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_type_checking -v
-
 # Run middleend tests locally
 test-middleend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
 
 # Run codegen tests locally
 test-codegen-local:
@@ -126,7 +122,6 @@ check:
     just test-hierarchy && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
     just test-inference && results[inference]=✅ || { results[inference]=❌; failed=1; }
     just test-lowering && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
-    just test-typecheck && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-middleend && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-codegen && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     just test-taytsh && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
@@ -136,7 +131,7 @@ check:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering typecheck middleend codegen taytsh; do
+    for t in fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend codegen taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
@@ -202,17 +197,11 @@ test-lowering:
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
 
-# Run type checking tests in Docker
-test-typecheck:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_type_checking -v
-
 # Run middleend tests in Docker
 test-middleend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
 
 # Run codegen tests in Docker
 test-codegen:
@@ -312,7 +301,6 @@ test-local:
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
     just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
     just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
-    just test-typecheck-local && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
@@ -322,7 +310,7 @@ test-local:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy inference lowering typecheck middleend codegen taytsh; do
+    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend codegen taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
@@ -351,7 +339,6 @@ check-local:
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
     just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
     just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
-    just test-typecheck-local && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
     just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
