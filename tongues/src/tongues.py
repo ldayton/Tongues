@@ -11,6 +11,15 @@ from .frontend.signatures import collect_signatures
 from .frontend.fields import collect_fields
 from .frontend.hierarchy import build_hierarchy
 from .frontend.inference import run_inference
+from .frontend.lowering import lower
+from .taytsh.ast import to_dict as module_to_dict
+from .taytsh.check import Checker
+from .middleend.returns import analyze_returns
+from .middleend.scope import analyze_scope
+from .middleend.liveness import analyze_liveness
+from .backend.python import emit_python
+from .backend.perl import emit_perl
+from .backend.ruby import emit_ruby
 
 TARGETS: list[str] = [
     "c",
@@ -366,19 +375,51 @@ def run_pipeline(
         print(to_json(ast_dict))
         return 0
     # Phase 9: Lowering
-    # TODO: wire frontend.lowering — produces TModule, set strict flags on it
+    module, lower_errors = lower(
+        ast_dict, sig_result, field_result, hier_result, known_classes, class_bases, source
+    )
+    if len(lower_errors) > 0:
+        _print_errors(lower_errors)
+        return 1
+    if module is None:
+        print("error: lowering produced no module", file=sys.stderr)
+        return 1
+    if strict_math:
+        module.strict_math = True
+    if strict_tostring:
+        module.strict_tostring = True
     if stop_at == "lowering":
-        print("error: phase not yet implemented", file=sys.stderr)
+        print(to_json(module_to_dict(module)))
+        return 0
+    # Phase 10: Type check
+    checker = Checker()
+    checker.collect_declarations(module)
+    if len(checker.errors) > 0:
+        _print_errors(checker.errors)
         return 1
-    # Phases 10-16: Analyze
-    # TODO: wire middleend
+    checker.check_bodies(module)
+    if len(checker.errors) > 0:
+        _print_errors(checker.errors)
+        return 1
+    # Phases 11-16: Middleend
+    analyze_returns(module, checker)
+    analyze_scope(module, checker)
+    analyze_liveness(module, checker)
     if stop_at == "analyze":
-        print("error: phase not yet implemented", file=sys.stderr)
-        return 1
+        print(to_json(module_to_dict(module)))
+        return 0
     # Phase 17: Backend
-    # TODO: wire backend
-    print("error: phase not yet implemented", file=sys.stderr)
-    return 1
+    emitters: dict[str, object] = {
+        "python": emit_python,
+        "perl": emit_perl,
+        "ruby": emit_ruby,
+    }
+    if target not in emitters:
+        print("error: backend not yet implemented for '" + target + "'", file=sys.stderr)
+        return 1
+    emitter = emitters[target]
+    print(emitter(module))
+    return 0
 
 
 def parse_args() -> tuple[str, str | None, bool, bool]:

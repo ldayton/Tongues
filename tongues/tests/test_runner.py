@@ -10,13 +10,13 @@ import pytest
 
 from src.frontend.fields import collect_fields
 from src.frontend.hierarchy import build_hierarchy
-from src.frontend.inference import run_inference
+from src.frontend.inference import run_inference as _run_inference
 from src.frontend.names import resolve_names
 from src.frontend.parse import parse
 from src.frontend.signatures import collect_signatures
 from src.frontend.subset import verify as verify_subset
 
-TONGUES_DIR = Path(__file__).parent.parent.parent
+TONGUES_DIR = Path(__file__).parent.parent
 
 
 def parse_cli_test_file(path: Path) -> list[tuple[str, dict]]:
@@ -655,7 +655,7 @@ def run_inference(source: str) -> PhaseResult:
     hier_errors = hier_result.errors()
     if hier_errors:
         return PhaseResult(errors=[str(e) for e in hier_errors])
-    inf_result = run_inference(
+    inf_result = _run_inference(
         ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
     )
     inf_errors = inf_result.errors()

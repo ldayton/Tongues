@@ -75,9 +75,9 @@ def add(a: int, b: int) -> int:
     return a + b
 ---
 exit: 0
-stdout-contains: "_type"
-stdout-contains: "Module"
-stdout-contains: "functions"
+stdout-contains: "decls"
+stdout-contains: "name"
+stdout-contains: "strict_math"
 ---
 
 === stop-at analyze
@@ -86,9 +86,9 @@ def add(a: int, b: int) -> int:
     return a + b
 ---
 exit: 0
-stdout-contains: "_type"
-stdout-contains: "Module"
-stdout-contains: "functions"
+stdout-contains: "decls"
+stdout-contains: "name"
+stdout-contains: "strict_math"
 ---
 
 === early failure parse error stops pipeline
