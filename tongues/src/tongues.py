@@ -253,6 +253,45 @@ def _name_table_to_dict(table: NameTable) -> dict[str, object]:
     return result
 
 
+# --- Pragma extraction ---
+
+
+def _extract_pragmas(
+    source: str,
+) -> tuple[str, bool, bool]:
+    """Strip @@[...] pragma lines from the start of source.
+
+    Returns (remaining_source, strict_math, strict_tostring).
+    """
+    strict_math = False
+    strict_tostring = False
+    lines = source.split("\n")
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped == "":
+            i += 1
+            continue
+        if not stripped.startswith("@@["):
+            break
+        body = stripped[3:]
+        if not body.endswith("]"):
+            break
+        body = body[:-1]
+        entries = body.split(",")
+        j = 0
+        while j < len(entries):
+            entry = entries[j].strip().strip('"')
+            if entry == "strict_math":
+                strict_math = True
+            elif entry == "strict_tostring":
+                strict_tostring = True
+            j += 1
+        i += 1
+    remaining = "\n".join(lines[i:])
+    return (remaining, strict_math, strict_tostring)
+
+
 # --- Error reporting ---
 
 
@@ -275,6 +314,11 @@ def run_pipeline(
     strict_tostring: bool,
 ) -> tuple[int, str]:
     """Run the transpilation pipeline. Returns (exit_code, output)."""
+    source, pragma_math, pragma_tostring = _extract_pragmas(source)
+    if pragma_math:
+        strict_math = True
+    if pragma_tostring:
+        strict_tostring = True
     if stop_at == "subset" and should_skip_file(source):
         return (0, "")
     # Phase 2: Parse
@@ -445,7 +489,7 @@ def run_pipeline(
 def parse_args() -> tuple[str, str | None, bool, bool, str | None, str | None]:
     """Parse command-line arguments. Returns (target, stop_at, strict_math, strict_tostring, input_file, output_file)."""
     args = sys.argv[1:]
-    target = "go"
+    target: str | None = None
     stop_at: str | None = None
     strict_math = False
     strict_tostring = False
@@ -497,6 +541,12 @@ def parse_args() -> tuple[str, str | None, bool, bool, str | None, str | None]:
     if stop_at is not None and stop_at not in PHASES:
         print("error: unknown phase '" + stop_at + "'", file=sys.stderr)
         sys.exit(2)
+    if target is None:
+        if stop_at is not None:
+            target = "python"
+        else:
+            print("error: --target is required", file=sys.stderr)
+            sys.exit(2)
     if target not in TARGETS:
         print("error: unknown target '" + target + "'", file=sys.stderr)
         sys.exit(2)

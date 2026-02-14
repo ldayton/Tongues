@@ -1,12 +1,12 @@
 === zero bytes
-args:
+args: --target python
 ---
 exit: 2
 stderr: error: no input provided
 ---
 
 === whitespace only goes to parser
-args:
+args: --target python
 
 
 
@@ -23,7 +23,7 @@ exit: 0
 ---
 
 === invalid utf-8 two byte
-args:
+args: --target python
 stdin-bytes: c3 28
 ---
 exit: 1

@@ -1,12 +1,3 @@
-=== default target is go
-args:
-def add(a: int, b: int) -> int:
-    return a + b
----
-exit: 0
-stdout-contains: func
----
-
 === target c
 args: --target c
 def add(a: int, b: int) -> int:

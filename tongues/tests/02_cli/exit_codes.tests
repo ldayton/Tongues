@@ -1,5 +1,5 @@
 === success
-args: --target go
+args: --target python
 def add(a: int, b: int) -> int:
     return a + b
 ---
@@ -7,7 +7,7 @@ exit: 0
 ---
 
 === compilation error parse failure
-args:
+args: --target python
 def f(x) -> int:
     return x
 ---
@@ -15,14 +15,14 @@ exit: 1
 ---
 
 === compilation error subset violation
-args:
+args: --target python
 f = lambda x: x + 1
 ---
 exit: 1
 ---
 
 === compilation error type error
-args:
+args: --target python
 def f(x) -> int:
     return x
 ---
@@ -30,7 +30,7 @@ exit: 1
 ---
 
 === compilation error names undefined
-args:
+args: --target python
 def f(x: int) -> int:
     return y
 ---
@@ -64,15 +64,24 @@ exit: 2
 stderr: error: unknown flag '--verbose'
 ---
 
-=== empty input exit 2
+=== no target exit 2
 args:
+def f(x: int) -> int:
+    return x
+---
+exit: 2
+stderr: error: --target is required
+---
+
+=== empty input exit 2
+args: --target python
 ---
 exit: 2
 stderr: error: no input provided
 ---
 
 === invalid utf-8 exit 1
-args:
+args: --target python
 stdin-bytes: ff fe
 ---
 exit: 1

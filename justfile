@@ -35,51 +35,51 @@ subset-taytsh:
 
 # Run CLI tests locally
 test-cli-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_cli_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_cli -v
 
 # Run parse tests locally
 test-parse-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_parse_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_parse -v
 
 # Run subset tests locally
 test-subset-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_subset_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_subset -v
 
 # Run names tests locally
 test-names-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_names_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_names -v
 
 # Run signatures tests locally
 test-signatures-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_sigs_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_sigs -v
 
 # Run fields tests locally
 test-fields-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_fields_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_fields -v
 
 # Run hierarchy tests locally
 test-hierarchy-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_hierarchy_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
 
 # Run inference tests locally
 test-inference-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_inference_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_inference -v
 
 # Run lowering tests locally
 test-lowering-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_lowering_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
 
 # Run type checking tests locally
 test-typecheck-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_type_checking_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_type_checking -v
 
 # Run middleend tests locally
 test-middleend-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k "test_scope_v2 or test_returns_v2 or test_liveness_v2 or test_strings_v2 or test_hoisting_v2 or test_ownership_v2 or test_callgraph_v2" -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
 
 # Run codegen tests locally
 test-codegen-local:
-    uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_codegen_v2 -v
+    uv run --directory tongues pytest tests/test_runner.py -k test_codegen -v
 
 # Run taytsh tests locally
 test-taytsh-local:
@@ -152,73 +152,73 @@ docker-build lang:
 test-cli:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_cli_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_cli -v
 
 # Run parse tests in Docker
 test-parse:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_parse_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_parse -v
 
 # Run subset tests in Docker
 test-subset:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_subset_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_subset -v
 
 # Run names tests in Docker
 test-names:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_names_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_names -v
 
 # Run signatures tests in Docker
 test-signatures:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_sigs_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_sigs -v
 
 # Run fields tests in Docker
 test-fields:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_fields_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_fields -v
 
 # Run hierarchy tests in Docker
 test-hierarchy:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_hierarchy_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
 
 # Run inference tests in Docker
 test-inference:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_inference_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_inference -v
 
 # Run lowering tests in Docker
 test-lowering:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_lowering_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
 
 # Run type checking tests in Docker
 test-typecheck:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_type_checking_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_type_checking -v
 
 # Run middleend tests in Docker
 test-middleend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k "test_scope_v2 or test_returns_v2 or test_liveness_v2 or test_strings_v2 or test_hoisting_v2 or test_ownership_v2 or test_callgraph_v2" -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
 
 # Run codegen tests in Docker
 test-codegen:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/v2/test_runner_v2.py -k test_codegen_v2 -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_codegen -v
 
 # Run taytsh tests in Docker
 test-taytsh:

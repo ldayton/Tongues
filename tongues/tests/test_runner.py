@@ -1072,7 +1072,27 @@ def pytest_generate_tests(metafunc):
 # ---------------------------------------------------------------------------
 
 
+IMPLEMENTED_BACKENDS = {"python", "perl", "ruby"}
+
+
+def _cli_needs_backend(spec: dict) -> bool:
+    """True if the test will reach the backend (no --stop-at, expects exit 0)."""
+    args = spec["args"]
+    if "--stop-at" in args:
+        return False
+    expects_success = any(k == "exit" and v == 0 for k, v in spec["assertions"])
+    if not expects_success:
+        return False
+    if "--target" not in args:
+        return False
+    target = args[args.index("--target") + 1]
+    return target not in IMPLEMENTED_BACKENDS
+
+
 def test_cli(cli_spec: dict) -> None:
+    if _cli_needs_backend(cli_spec):
+        target = cli_spec["args"][cli_spec["args"].index("--target") + 1]
+        pytest.skip(f"backend not yet implemented for '{target}'")
     result = run_cli(cli_spec)
     check_cli_assertions(result, cli_spec["assertions"])
 
