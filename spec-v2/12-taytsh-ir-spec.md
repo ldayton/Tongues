@@ -1242,7 +1242,7 @@ Floats are IEEE 754 binary64 (double precision) on all targets.
 
 ### Strict Math
 
-The `--strict-math` flag enables bit-identical arithmetic across targets. All 12 strict-mode targets produce exactly the same integer and float results for the same inputs.
+The `--strict-math` flag enables bit-identical arithmetic across targets. All 11 strict-mode targets produce exactly the same integer and float results for the same inputs.
 
 Excluded targets:
 
@@ -1279,7 +1279,7 @@ The strict math flag is stored on the Module node (see Source Metadata). Middlee
 
 ### Strict ToString
 
-The `--strict-tostring` flag specifies a canonical `ToString` format for every type, so string output is identical across all 16 targets.
+The `--strict-tostring` flag specifies a canonical `ToString` format for every type, so string output is identical across all 15 targets.
 
 | Property                   | Default mode  | Strict mode                                             |
 | -------------------------- | ------------- | ------------------------------------------------------- |

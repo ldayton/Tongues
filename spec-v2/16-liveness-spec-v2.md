@@ -29,17 +29,17 @@ This section is normative: it defines the annotation keys, value types, attachme
 
 Attachment points (by syntax):
 
-| Syntax | Annotation attachment point |
-| ------ | --------------------------- |
-| `let x: T = expr` / `let x: T` | the `let` declaration node |
-| `catch e: E { ... }` / `catch e { ... }` | the catch binding node |
+| Syntax                                    | Annotation attachment point   |
+| ----------------------------------------- | ----------------------------- |
+| `let x: T = expr` / `let x: T`            | the `let` declaration node    |
+| `catch e: E { ... }` / `catch e { ... }`  | the catch binding node        |
 | `case v: T { ... }` / `default v { ... }` | the case/default binding node |
-| `a, b = expr` | the tuple assignment node |
+| `a, b = expr`                             | the tuple assignment node     |
 
 ### Let declarations
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
+| Key                             | Type   | Applies to             | Meaning                                                           |
+| ------------------------------- | ------ | ---------------------- | ----------------------------------------------------------------- |
 | `liveness.initial_value_unused` | `bool` | `let` declaration node | `true` if the initial value is overwritten before it is ever read |
 
 A `let` declaration's initial value is **unused** when every control-flow path from the declaration reaches an assignment to the same binding before any read of it. This covers both explicit initializers (`let x: int = 0`) and implicit zero values (`let x: int`).
@@ -53,8 +53,8 @@ When `true`, backends can suppress the initializer:
 
 ### Catch bindings
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
+| Key                         | Type   | Applies to         | Meaning                                                            |
+| --------------------------- | ------ | ------------------ | ------------------------------------------------------------------ |
 | `liveness.catch_var_unused` | `bool` | catch binding node | `true` if the catch variable is never referenced in the catch body |
 
 When `true`, backends can emit anonymous catch forms:
@@ -66,8 +66,8 @@ When `true`, backends can emit anonymous catch forms:
 
 ### Match bindings
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
+| Key                         | Type   | Applies to                | Meaning                                                    |
+| --------------------------- | ------ | ------------------------- | ---------------------------------------------------------- |
 | `liveness.match_var_unused` | `bool` | case/default binding node | `true` if the binding is never referenced in the case body |
 
 When `true`, backends can emit patterns without bindings:
@@ -80,8 +80,8 @@ This applies to both `case v: T { ... }` and `default v { ... }` bindings.
 
 ### Tuple assignments
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
+| Key                             | Type     | Applies to            | Meaning                                                                                 |
+| ------------------------------- | -------- | --------------------- | --------------------------------------------------------------------------------------- |
 | `liveness.tuple_unused_indices` | `string` | tuple assignment node | comma-separated 0-based indices of targets that are never read before being overwritten |
 
 For a tuple assignment `a, b, c = F()`, if `a` is never read before being overwritten (or never read at all), the annotation is `"0"`. If both `a` and `c` are unused, it is `"0,2"`.
