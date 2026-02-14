@@ -649,9 +649,7 @@ class Verifier:
         # Check return type (except __init__, __new__)
         if name not in ("__init__", "__new__"):
             if node.get("returns") is None:
-                self.error(
-                    node, "types", "missing type annotation for '" + name + "'"
-                )
+                self.error(node, "types", "missing type annotation for '" + name + "'")
         # Check return type bare collection and visit return annotation
         returns = node.get("returns")
         if returns is not None:
@@ -1322,7 +1320,10 @@ class Verifier:
             )
             return
         # Only allowed stdlib modules can be from-imported
-        if module not in ALLOWED_FROM_MODULES and top_module not in ALLOWED_FROM_MODULES:
+        if (
+            module not in ALLOWED_FROM_MODULES
+            and top_module not in ALLOWED_FROM_MODULES
+        ):
             self.error(
                 node,
                 "import",

@@ -9,7 +9,6 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
-from typing import Callable
 
 # Type alias for AST dict nodes
 ASTNode = dict[str, object]
@@ -316,7 +315,13 @@ def _split_union_members(s: str) -> list[str]:
         elif c == "]":
             depth -= 1
             current.append(c)
-        elif c == " " and depth == 0 and i + 2 < len(s) and s[i + 1] == "|" and s[i + 2] == " ":
+        elif (
+            c == " "
+            and depth == 0
+            and i + 2 < len(s)
+            and s[i + 1] == "|"
+            and s[i + 2] == " "
+        ):
             result.append("".join(current).strip())
             current = []
             i += 3
@@ -713,7 +718,11 @@ def _make_param(
             SignatureError(
                 lineno,
                 0,
-                "parameter '" + param_name + "' missing type annotation in " + func_name + "()",
+                "parameter '"
+                + param_name
+                + "' missing type annotation in "
+                + func_name
+                + "()",
             )
         )
         return None

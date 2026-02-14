@@ -10,7 +10,6 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
-from typing import Callable
 
 from .signatures import (
     SignatureResult,
@@ -283,7 +282,11 @@ def _is_dataclass_class(node: ASTNode) -> tuple[bool, bool]:
             return (True, False)
         if _is_type(dec, ["Call"]):
             func = dec.get("func", {})
-            if isinstance(func, dict) and _is_type(func, ["Name"]) and func.get("id") == "dataclass":
+            if (
+                isinstance(func, dict)
+                and _is_type(func, ["Name"])
+                and func.get("id") == "dataclass"
+            ):
                 kw_only = False
                 keywords = dec.get("keywords", [])
                 if isinstance(keywords, list):
@@ -442,6 +445,7 @@ def _infer_type_from_value(
             py_type = param_types[name]
             dummy_errors: list[object] = []
             from .signatures import SignatureError
+
             sig_errors: list[SignatureError] = []
             typ = py_type_to_type_dict(py_type, known_classes, sig_errors, lineno, 0)
             return _unwrap_field_type(typ)
@@ -463,8 +467,11 @@ def _infer_type_from_value(
                 if func_name in func_return_types:
                     py_ret = func_return_types[func_name]
                     from .signatures import SignatureError
+
                     sig_errors = []
-                    typ = py_type_to_type_dict(py_ret, known_classes, sig_errors, lineno, 0)
+                    typ = py_type_to_type_dict(
+                        py_ret, known_classes, sig_errors, lineno, 0
+                    )
                     return _unwrap_field_type(typ)
         return None
     # Binary op — infer from operands
@@ -490,7 +497,11 @@ def _infer_type_from_value(
     if t == "List":
         return {"_type": "Slice", "element": {"_type": "InterfaceRef", "name": "any"}}
     if t == "Dict":
-        return {"_type": "Map", "key": {"_type": "InterfaceRef", "name": "any"}, "value": {"_type": "InterfaceRef", "name": "any"}}
+        return {
+            "_type": "Map",
+            "key": {"_type": "InterfaceRef", "name": "any"},
+            "value": {"_type": "InterfaceRef", "name": "any"},
+        }
     if t == "Set":
         return {"_type": "Set", "element": {"_type": "InterfaceRef", "name": "any"}}
     if t == "Tuple":
@@ -598,14 +609,21 @@ def _collect_init_fields(
             target = stmt.get("target", {})
             if isinstance(target, dict) and _is_type(target, ["Attribute"]):
                 val_node = target.get("value")
-                if isinstance(val_node, dict) and _is_type(val_node, ["Name"]) and val_node.get("id") == "self":
+                if (
+                    isinstance(val_node, dict)
+                    and _is_type(val_node, ["Name"])
+                    and val_node.get("id") == "self"
+                ):
                     field_name = target.get("attr")
                     if isinstance(field_name, str):
                         ann = stmt.get("annotation")
                         py_type = annotation_to_str(ann)
                         from .signatures import SignatureError
+
                         sig_errors: list[SignatureError] = []
-                        typ = py_type_to_type_dict(py_type, known_classes, sig_errors, stmt_lineno, 0)
+                        typ = py_type_to_type_dict(
+                            py_type, known_classes, sig_errors, stmt_lineno, 0
+                        )
                         typ = _unwrap_field_type(typ)
                         if field_name in info.fields:
                             existing_kind = _type_kind_str(info.fields[field_name].typ)
@@ -634,7 +652,11 @@ def _collect_init_fields(
                             )
                         value = stmt.get("value")
                         if value is not None:
-                            if not (isinstance(value, dict) and _is_type(value, ["Name"]) and value.get("id") in param_types):
+                            if not (
+                                isinstance(value, dict)
+                                and _is_type(value, ["Name"])
+                                and value.get("id") in param_types
+                            ):
                                 has_computed_init = True
             i += 1
             continue
@@ -648,7 +670,11 @@ def _collect_init_fields(
                 target = targets[j]
                 if isinstance(target, dict) and _is_type(target, ["Attribute"]):
                     val_node = target.get("value")
-                    if isinstance(val_node, dict) and _is_type(val_node, ["Name"]) and val_node.get("id") == "self":
+                    if (
+                        isinstance(val_node, dict)
+                        and _is_type(val_node, ["Name"])
+                        and val_node.get("id") == "self"
+                    ):
                         field_name = target.get("attr")
                         if isinstance(field_name, str):
                             value = stmt.get("value", {})
@@ -659,9 +685,8 @@ def _collect_init_fields(
                                 and isinstance(value.get("id"), str)
                                 and value.get("id") in param_types
                             )
-                            is_const_str = (
-                                _is_type(value, ["Constant"])
-                                and isinstance(value.get("value"), str)
+                            is_const_str = _is_type(value, ["Constant"]) and isinstance(
+                                value.get("value"), str
                             )
                             if is_simple_param:
                                 param_name = value.get("id")
@@ -677,12 +702,20 @@ def _collect_init_fields(
                             if field_name not in info.fields:
                                 if is_simple_param:
                                     param_name = value.get("id")
-                                    if isinstance(param_name, str) and param_name in param_types:
+                                    if (
+                                        isinstance(param_name, str)
+                                        and param_name in param_types
+                                    ):
                                         py_type = param_types[param_name]
                                         from .signatures import SignatureError
+
                                         sig_errors = []
                                         typ = py_type_to_type_dict(
-                                            py_type, known_classes, sig_errors, stmt_lineno, 0
+                                            py_type,
+                                            known_classes,
+                                            sig_errors,
+                                            stmt_lineno,
+                                            0,
                                         )
                                         typ = _unwrap_field_type(typ)
                                         info.fields[field_name] = FieldInfo(
@@ -730,7 +763,9 @@ def _collect_init_fields(
                                 )
                                 if inferred is not None:
                                     inferred = _unwrap_field_type(inferred)
-                                    existing_kind = _type_kind_str(info.fields[field_name].typ)
+                                    existing_kind = _type_kind_str(
+                                        info.fields[field_name].typ
+                                    )
                                     new_kind = _type_kind_str(inferred)
                                     if existing_kind != new_kind:
                                         errors.append(
@@ -791,21 +826,28 @@ def _collect_class_fields(
                 field_name = target.get("id")
                 if isinstance(field_name, str):
                     if field_name in seen_fields:
-                        result.add_error(lineno, 0, "field '" + field_name + "' already declared")
+                        result.add_error(
+                            lineno, 0, "field '" + field_name + "' already declared"
+                        )
                         return
                     seen_fields.add(field_name)
                     ann = stmt.get("annotation")
                     py_type = annotation_to_str(ann)
                     from .signatures import SignatureError
+
                     sig_errors: list[SignatureError] = []
-                    typ = py_type_to_type_dict(py_type, known_classes, sig_errors, lineno, 0)
+                    typ = py_type_to_type_dict(
+                        py_type, known_classes, sig_errors, lineno, 0
+                    )
                     typ = _unwrap_field_type(typ)
                     has_default = False
                     default_expr: dict[str, object] | None = None
                     value_node = stmt.get("value")
                     if value_node is not None and isinstance(value_node, dict):
                         if _is_field_call_default_factory(value_node):
-                            result.add_error(lineno, 0, "field(default_factory=...) not allowed")
+                            result.add_error(
+                                lineno, 0, "field(default_factory=...) not allowed"
+                            )
                             return
                         has_default = True
                         default_expr = _make_default_expr(value_node)
@@ -822,9 +864,15 @@ def _collect_class_fields(
     i = 0
     while i < len(body):
         stmt = body[i]
-        if isinstance(stmt, dict) and _is_type(stmt, ["FunctionDef"]) and stmt.get("name") == "__init__":
+        if (
+            isinstance(stmt, dict)
+            and _is_type(stmt, ["FunctionDef"])
+            and stmt.get("name") == "__init__"
+        ):
             has_init = True
-            _collect_init_fields(stmt, info, known_classes, func_return_types, result._errors)
+            _collect_init_fields(
+                stmt, info, known_classes, func_return_types, result._errors
+            )
             if len(result._errors) > 0:
                 return
         i += 1
@@ -850,10 +898,16 @@ def _collect_class_fields(
     i = 0
     while i < len(body):
         stmt = body[i]
-        if isinstance(stmt, dict) and _is_type(stmt, ["FunctionDef"]) and stmt.get("name") != "__init__":
+        if (
+            isinstance(stmt, dict)
+            and _is_type(stmt, ["FunctionDef"])
+            and stmt.get("name") != "__init__"
+        ):
             bad = _check_no_new_fields_outside_init(stmt, known_field_set)
             if bad is not None:
-                result.add_error(lineno, 0, "field '" + bad + "' must be assigned in __init__")
+                result.add_error(
+                    lineno, 0, "field '" + bad + "' must be assigned in __init__"
+                )
                 return
         i += 1
     # Auto-generate kind from class name
@@ -922,8 +976,12 @@ def collect_fields(
         node = body[i]
         if isinstance(node, dict) and _is_type(node, ["ClassDef"]):
             _collect_class_fields(
-                node, known_classes, node_classes, hierarchy_roots,
-                func_return_types, result,
+                node,
+                known_classes,
+                node_classes,
+                hierarchy_roots,
+                func_return_types,
+                result,
             )
             if len(result._errors) > 0:
                 return result

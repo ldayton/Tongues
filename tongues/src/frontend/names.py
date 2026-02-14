@@ -287,10 +287,7 @@ class NameResolver:
             self.error(
                 stmt,
                 "redefinition",
-                "'"
-                + info.name
-                + "' already defined at line "
-                + str(existing.lineno),
+                "'" + info.name + "' already defined at line " + str(existing.lineno),
             )
             return False
         self.result.table.add_module(info)

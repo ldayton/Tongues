@@ -138,6 +138,7 @@ def check_cli_assertions(
                 f"expected empty stdout, got {result.stdout[:200]!r}"
             )
 
+
 from src.backend.perl import emit_perl as emit_perl
 from src.backend.python import emit_python as emit_python
 from src.middleend.callgraph import analyze_callgraph
@@ -564,7 +565,9 @@ def run_fields(source: str) -> PhaseResult:
     sig_errors = sig_result.errors()
     if sig_errors:
         return PhaseResult(errors=[str(e) for e in sig_errors])
-    field_result = collect_fields(ast_dict, known_classes, node_classes, hierarchy_roots, sig_result)
+    field_result = collect_fields(
+        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+    )
     field_errors = field_result.errors()
     if field_errors:
         return PhaseResult(errors=[str(e) for e in field_errors])
@@ -640,16 +643,21 @@ def run_inference(source: str) -> PhaseResult:
     sig_errors = sig_result.errors()
     if sig_errors:
         return PhaseResult(errors=[str(e) for e in sig_errors])
-    field_result = collect_fields(ast_dict, known_classes, node_classes, hierarchy_roots, sig_result)
+    field_result = collect_fields(
+        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+    )
     field_errors = field_result.errors()
     if field_errors:
         return PhaseResult(errors=[str(e) for e in field_errors])
     from src.frontend.hierarchy import build_hierarchy
+
     hier_result = build_hierarchy(known_classes, class_bases)
     hier_errors = hier_result.errors()
     if hier_errors:
         return PhaseResult(errors=[str(e) for e in hier_errors])
-    inf_result = run_inference(ast_dict, sig_result, field_result, hier_result, known_classes, class_bases)
+    inf_result = run_inference(
+        ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+    )
     inf_errors = inf_result.errors()
     if inf_errors:
         return PhaseResult(errors=[str(e) for e in inf_errors])
@@ -706,18 +714,30 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         sig_errors = sig_result.errors()
         if sig_errors:
             return (None, str(sig_errors[0]))
-        field_result = collect_fields(ast_dict, known_classes, node_classes, hierarchy_roots, sig_result)
+        field_result = collect_fields(
+            ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+        )
         field_errors = field_result.errors()
         if field_errors:
             return (None, str(field_errors[0]))
         from src.frontend.hierarchy import build_hierarchy
+
         hier_result = build_hierarchy(known_classes, class_bases)
         hier_errors = hier_result.errors()
         if hier_errors:
             return (None, str(hier_errors[0]))
         from src.frontend.lowering import lower
         from src.taytsh.emit import to_source
-        module, lower_errors = lower(ast_dict, sig_result, field_result, hier_result, known_classes, class_bases, source)
+
+        module, lower_errors = lower(
+            ast_dict,
+            sig_result,
+            field_result,
+            hier_result,
+            known_classes,
+            class_bases,
+            source,
+        )
         if lower_errors:
             return (None, str(lower_errors[0]))
         if module is None:
@@ -982,14 +1002,11 @@ def pytest_generate_tests(metafunc):
                     "codegen_python_input,codegen_python_expected", params
                 )
             elif (
-                run == "codegen_perl"
-                and "codegen_perl_input" in metafunc.fixturenames
+                run == "codegen_perl" and "codegen_perl_input" in metafunc.fixturenames
             ):
                 tests = discover_codegen_tests(test_dir, "perl")
                 params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
-                metafunc.parametrize(
-                    "codegen_perl_input,codegen_perl_expected", params
-                )
+                metafunc.parametrize("codegen_perl_input,codegen_perl_expected", params)
 
 
 # ---------------------------------------------------------------------------
@@ -1003,9 +1020,7 @@ def test_cli(cli_spec: dict) -> None:
 
 
 def test_parse(parse_input, parse_expected):
-    check_expected(
-        parse_expected, run_parse(parse_input), "parse", lenient_errors=True
-    )
+    check_expected(parse_expected, run_parse(parse_input), "parse", lenient_errors=True)
 
 
 def test_subset(subset_input, subset_expected):
@@ -1025,9 +1040,7 @@ def test_fields(fields_input, fields_expected):
 
 
 def test_hierarchy(hierarchy_input, hierarchy_expected):
-    check_expected(
-        hierarchy_expected, run_hierarchy(hierarchy_input), "hierarchy"
-    )
+    check_expected(hierarchy_expected, run_hierarchy(hierarchy_input), "hierarchy")
 
 
 def test_inference(inference_input, inference_expected):
@@ -1077,9 +1090,7 @@ def test_scope(scope_input, scope_expected):
 
 
 def test_liveness(liveness_input, liveness_expected):
-    check_expected(
-        liveness_expected, run_liveness(liveness_input), "liveness"
-    )
+    check_expected(liveness_expected, run_liveness(liveness_input), "liveness")
 
 
 def test_strings(strings_input, strings_expected):
@@ -1087,21 +1098,15 @@ def test_strings(strings_input, strings_expected):
 
 
 def test_hoisting(hoisting_input, hoisting_expected):
-    check_expected(
-        hoisting_expected, run_hoisting(hoisting_input), "hoisting"
-    )
+    check_expected(hoisting_expected, run_hoisting(hoisting_input), "hoisting")
 
 
 def test_ownership(ownership_input, ownership_expected):
-    check_expected(
-        ownership_expected, run_ownership(ownership_input), "ownership"
-    )
+    check_expected(ownership_expected, run_ownership(ownership_input), "ownership")
 
 
 def test_callgraph(callgraph_input, callgraph_expected):
-    check_expected(
-        callgraph_expected, run_callgraph(callgraph_input), "callgraph"
-    )
+    check_expected(callgraph_expected, run_callgraph(callgraph_input), "callgraph")
 
 
 def test_codegen_python(

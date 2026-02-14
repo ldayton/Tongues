@@ -9,17 +9,15 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
-from typing import Callable
 
 from .signatures import (
     FuncInfo,
-    ParamInfo,
     SignatureResult,
     annotation_to_str,
     py_type_to_type_dict,
     SignatureError,
 )
-from .fields import ClassInfo, FieldInfo, FieldResult
+from .fields import FieldResult
 from .hierarchy import HierarchyResult
 
 # Type alias for AST dict nodes
@@ -90,7 +88,7 @@ def _is_type(node: object, type_names: list[str]) -> bool:
 
 def _type_eq(a: dict[str, object], b: dict[str, object]) -> bool:
     """Check structural equality of two type dicts."""
-    if a is b:
+    if a == b:
         return True
     a_kind = a.get("kind")
     b_kind = b.get("kind")
@@ -111,7 +109,12 @@ def _type_eq(a: dict[str, object], b: dict[str, object]) -> bool:
         bk = b.get("key")
         av = a.get("value")
         bv = b.get("value")
-        if isinstance(ak, dict) and isinstance(bk, dict) and isinstance(av, dict) and isinstance(bv, dict):
+        if (
+            isinstance(ak, dict)
+            and isinstance(bk, dict)
+            and isinstance(av, dict)
+            and isinstance(bv, dict)
+        ):
             return _type_eq(ak, bk) and _type_eq(av, bv)
         return False
     if a_type == "Set":
@@ -359,7 +362,12 @@ def _is_assignable(
         bk = expected.get("key")
         av = actual.get("value")
         bv = expected.get("value")
-        if isinstance(ak, dict) and isinstance(bk, dict) and isinstance(av, dict) and isinstance(bv, dict):
+        if (
+            isinstance(ak, dict)
+            and isinstance(bk, dict)
+            and isinstance(av, dict)
+            and isinstance(bv, dict)
+        ):
             return _is_assignable(ak, bk, hier) and _is_assignable(av, bv, hier)
     if actual.get("_type") == "Set" and expected.get("_type") == "Set":
         ae = actual.get("element")
@@ -449,7 +457,13 @@ def _split_union_parts(py_type: str) -> list[str]:
         elif c == "]":
             depth -= 1
             current.append(c)
-        elif c == " " and depth == 0 and i + 2 < len(py_type) and py_type[i + 1] == "|" and py_type[i + 2] == " ":
+        elif (
+            c == " "
+            and depth == 0
+            and i + 2 < len(py_type)
+            and py_type[i + 1] == "|"
+            and py_type[i + 2] == " "
+        ):
             parts.append("".join(current).strip())
             current = []
             i += 3
@@ -553,8 +567,17 @@ class TypeEnv:
 # ---------------------------------------------------------------------------
 
 _EAGER_CONSUMERS: set[str] = {
-    "list", "tuple", "set", "dict", "frozenset",
-    "sum", "min", "max", "any", "all", "sorted",
+    "list",
+    "tuple",
+    "set",
+    "dict",
+    "frozenset",
+    "sum",
+    "min",
+    "max",
+    "any",
+    "all",
+    "sorted",
 }
 
 _ITERATOR_FUNCS: set[str] = {"enumerate", "zip", "reversed"}
@@ -685,12 +708,26 @@ def _resolve_attr(
             obj_type = target
     # String methods
     if obj_type.get("kind") == "string":
-        if attr == "upper" or attr == "lower" or attr == "strip" or attr == "lstrip" or attr == "rstrip":
+        if (
+            attr == "upper"
+            or attr == "lower"
+            or attr == "strip"
+            or attr == "lstrip"
+            or attr == "rstrip"
+        ):
             return {"_type": "FuncType", "params": [], "ret": _STR_TYPE}
         if attr == "split":
-            return {"_type": "FuncType", "params": [], "ret": {"_type": "Slice", "element": _STR_TYPE}}
+            return {
+                "_type": "FuncType",
+                "params": [],
+                "ret": {"_type": "Slice", "element": _STR_TYPE},
+            }
         if attr == "join":
-            return {"_type": "FuncType", "params": [{"_type": "Slice", "element": _STR_TYPE}], "ret": _STR_TYPE}
+            return {
+                "_type": "FuncType",
+                "params": [{"_type": "Slice", "element": _STR_TYPE}],
+                "ret": _STR_TYPE,
+            }
         if attr == "replace" or attr == "format":
             return {"_type": "FuncType", "params": [_STR_TYPE], "ret": _STR_TYPE}
         if attr == "startswith" or attr == "endswith":
@@ -706,7 +743,11 @@ def _resolve_attr(
         if attr == "append":
             return {"_type": "FuncType", "params": [elem], "ret": _VOID_TYPE}
         if attr == "extend":
-            return {"_type": "FuncType", "params": [{"_type": "Slice", "element": elem}], "ret": _VOID_TYPE}
+            return {
+                "_type": "FuncType",
+                "params": [{"_type": "Slice", "element": elem}],
+                "ret": _VOID_TYPE,
+            }
         if attr == "insert":
             return {"_type": "FuncType", "params": [_INT_TYPE, elem], "ret": _VOID_TYPE}
         if attr == "pop":
@@ -735,13 +776,36 @@ def _resolve_attr(
         if not isinstance(val_t, dict):
             val_t = _ANY_TYPE
         if attr == "get":
-            return {"_type": "FuncType", "params": [key_t], "ret": {"_type": "Optional", "inner": val_t}}
+            return {
+                "_type": "FuncType",
+                "params": [key_t],
+                "ret": {"_type": "Optional", "inner": val_t},
+            }
         if attr == "keys":
-            return {"_type": "FuncType", "params": [], "ret": {"_type": "Slice", "element": key_t}}
+            return {
+                "_type": "FuncType",
+                "params": [],
+                "ret": {"_type": "Slice", "element": key_t},
+            }
         if attr == "values":
-            return {"_type": "FuncType", "params": [], "ret": {"_type": "Slice", "element": val_t}}
+            return {
+                "_type": "FuncType",
+                "params": [],
+                "ret": {"_type": "Slice", "element": val_t},
+            }
         if attr == "items":
-            return {"_type": "FuncType", "params": [], "ret": {"_type": "Slice", "element": {"_type": "Tuple", "elements": [key_t, val_t], "variadic": False}}}
+            return {
+                "_type": "FuncType",
+                "params": [],
+                "ret": {
+                    "_type": "Slice",
+                    "element": {
+                        "_type": "Tuple",
+                        "elements": [key_t, val_t],
+                        "variadic": False,
+                    },
+                },
+            }
         if attr == "pop":
             return {"_type": "FuncType", "params": [key_t], "ret": val_t}
         if attr == "update":
@@ -903,8 +967,24 @@ def _synth_name_call(
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
                 elem = _element_type(ft)
-                return {"_type": "_Iterator", "element": {"_type": "Tuple", "elements": [_INT_TYPE, elem], "variadic": False}, "source": "enumerate"}
-        return {"_type": "_Iterator", "element": {"_type": "Tuple", "elements": [_INT_TYPE, _ANY_TYPE], "variadic": False}, "source": "enumerate"}
+                return {
+                    "_type": "_Iterator",
+                    "element": {
+                        "_type": "Tuple",
+                        "elements": [_INT_TYPE, elem],
+                        "variadic": False,
+                    },
+                    "source": "enumerate",
+                }
+        return {
+            "_type": "_Iterator",
+            "element": {
+                "_type": "Tuple",
+                "elements": [_INT_TYPE, _ANY_TYPE],
+                "variadic": False,
+            },
+            "source": "enumerate",
+        }
     if fname == "zip":
         # Returns iterator of tuples
         elems: list[object] = []
@@ -915,7 +995,11 @@ def _synth_name_call(
                 ft = _synth_expr(a, env, ctx)
                 elems.append(_element_type(ft))
             j += 1
-        return {"_type": "_Iterator", "element": {"_type": "Tuple", "elements": elems, "variadic": False}, "source": "zip"}
+        return {
+            "_type": "_Iterator",
+            "element": {"_type": "Tuple", "elements": elems, "variadic": False},
+            "source": "zip",
+        }
     if fname == "reversed":
         if len(args) > 0:
             first = args[0]
@@ -1110,7 +1194,14 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, o
                         t_lineno = node.get("lineno", 0)
                         if not isinstance(t_lineno, int):
                             t_lineno = 0
-                        ctx.result.add_error(t_lineno, 0, "tuple index " + str(idx) + " out of bounds for tuple of length " + str(len(elems)))
+                        ctx.result.add_error(
+                            t_lineno,
+                            0,
+                            "tuple index "
+                            + str(idx)
+                            + " out of bounds for tuple of length "
+                            + str(len(elems)),
+                        )
     return _ANY_TYPE
 
 
@@ -1133,11 +1224,21 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, objec
         le = lt.get("element")
         re = rt.get("element")
         if isinstance(le, dict) and isinstance(re, dict):
-            if not _is_assignable(le, re, ctx.hier_result) and not _is_assignable(re, le, ctx.hier_result):
+            if not _is_assignable(le, re, ctx.hier_result) and not _is_assignable(
+                re, le, ctx.hier_result
+            ):
                 b_lineno = node.get("lineno", 0)
                 if not isinstance(b_lineno, int):
                     b_lineno = 0
-                ctx.result.add_error(b_lineno, 0, "cannot concatenate list[" + _type_name(le) + "] and list[" + _type_name(re) + "]")
+                ctx.result.add_error(
+                    b_lineno,
+                    0,
+                    "cannot concatenate list["
+                    + _type_name(le)
+                    + "] and list["
+                    + _type_name(re)
+                    + "]",
+                )
         return lt
     # Numeric
     lt_num = lt.get("kind") in ("int", "float", "bool")
@@ -1152,9 +1253,13 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, objec
             return _FLOAT_TYPE
         return _INT_TYPE
     # String * int
-    if lt.get("kind") == "string" and (rt.get("kind") == "int" or rt.get("kind") == "bool"):
+    if lt.get("kind") == "string" and (
+        rt.get("kind") == "int" or rt.get("kind") == "bool"
+    ):
         return _STR_TYPE
-    if (lt.get("kind") == "int" or lt.get("kind") == "bool") and rt.get("kind") == "string":
+    if (lt.get("kind") == "int" or lt.get("kind") == "bool") and rt.get(
+        "kind"
+    ) == "string":
         return _STR_TYPE
     return _ANY_TYPE
 
@@ -1288,7 +1393,9 @@ def _synth_dictcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, ob
     return {"_type": "Map", "key": kt, "value": vt}
 
 
-def _bind_comprehension_vars(generators: list[object], env: TypeEnv, ctx: _InferCtx) -> None:
+def _bind_comprehension_vars(
+    generators: list[object], env: TypeEnv, ctx: _InferCtx
+) -> None:
     """Bind iteration variables from comprehension generators."""
     i = 0
     while i < len(generators):
@@ -1436,7 +1543,10 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
         i += 1
     # If method, add self
     if receiver != "":
-        self_type: dict[str, object] = {"_type": "Pointer", "target": {"_type": "StructRef", "name": receiver}}
+        self_type: dict[str, object] = {
+            "_type": "Pointer",
+            "target": {"_type": "StructRef", "name": receiver},
+        }
         env.set("self", self_type, receiver)
     body = func_node.get("body", [])
     if not isinstance(body, list):
@@ -1522,7 +1632,9 @@ def _validate_stmt(
     return False
 
 
-def _validate_return(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_return(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     value = stmt.get("value")
     if value is None:
         return
@@ -1554,12 +1666,15 @@ def _validate_return(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _Inf
     expected = func_info.return_type
     if not _is_assignable(actual, expected, ctx.hier_result):
         ctx.result.add_error(
-            lineno, 0,
+            lineno,
+            0,
             "cannot return " + _type_name(actual) + " as " + _type_name(expected),
         )
 
 
-def _validate_assign(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_assign(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     targets = stmt.get("targets", [])
     value = stmt.get("value")
     if not isinstance(targets, list) or not isinstance(value, dict):
@@ -1588,17 +1703,26 @@ def _validate_assign(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _Inf
                         # Re-assignment: check assignability
                         if not _is_assignable(val_type, existing, ctx.hier_result):
                             ctx.result.add_error(
-                                lineno, 0,
-                                "cannot assign " + _type_name(val_type) + " to " + _type_name(existing),
+                                lineno,
+                                0,
+                                "cannot assign "
+                                + _type_name(val_type)
+                                + " to "
+                                + _type_name(existing),
                             )
                             return
                     else:
                         # First assignment: infer type
                         # Empty collection without annotation is error
-                        if _is_empty_collection(value) and _is_any(_element_type(val_type)):
+                        if _is_empty_collection(value) and _is_any(
+                            _element_type(val_type)
+                        ):
                             ctx.result.add_error(
-                                lineno, 0,
-                                "empty " + _collection_name(value) + " needs type annotation",
+                                lineno,
+                                0,
+                                "empty "
+                                + _collection_name(value)
+                                + " needs type annotation",
                             )
                             return
                         source = _infer_source(value, env, ctx)
@@ -1712,8 +1836,13 @@ def _validate_unpack(
         return
     if len(elts) != len(telems):
         ctx.result.add_error(
-            lineno, 0,
-            "cannot unpack tuple of " + str(len(telems)) + " elements into " + str(len(elts)) + " targets",
+            lineno,
+            0,
+            "cannot unpack tuple of "
+            + str(len(telems))
+            + " elements into "
+            + str(len(elts))
+            + " targets",
         )
         return
     j = 0
@@ -1743,19 +1872,42 @@ def _validate_subscript_assign(
         if isinstance(key_t, dict) and isinstance(slc, dict):
             key_actual = _synth_expr(slc, env, ctx)
             if not _is_assignable(key_actual, key_t, ctx.hier_result):
-                ctx.result.add_error(lineno, 0, "cannot assign " + _type_name(key_actual) + " key to " + _type_name(key_t))
+                ctx.result.add_error(
+                    lineno,
+                    0,
+                    "cannot assign "
+                    + _type_name(key_actual)
+                    + " key to "
+                    + _type_name(key_t),
+                )
                 return
         if isinstance(val_t, dict):
             if not _is_assignable(val_type, val_t, ctx.hier_result):
-                ctx.result.add_error(lineno, 0, "cannot assign " + _type_name(val_type) + " value to " + _type_name(val_t))
+                ctx.result.add_error(
+                    lineno,
+                    0,
+                    "cannot assign "
+                    + _type_name(val_type)
+                    + " value to "
+                    + _type_name(val_t),
+                )
     elif obj_type.get("_type") == "Slice":
         elem = obj_type.get("element")
         if isinstance(elem, dict):
             if not _is_assignable(val_type, elem, ctx.hier_result):
-                ctx.result.add_error(lineno, 0, "cannot assign " + _type_name(val_type) + " to list element " + _type_name(elem))
+                ctx.result.add_error(
+                    lineno,
+                    0,
+                    "cannot assign "
+                    + _type_name(val_type)
+                    + " to list element "
+                    + _type_name(elem),
+                )
 
 
-def _validate_ann_assign(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_ann_assign(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     target = stmt.get("target")
     annotation = stmt.get("annotation")
     value = stmt.get("value")
@@ -1777,12 +1929,18 @@ def _validate_ann_assign(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: 
                 val_type = _synth_expr(value, env, ctx)
                 if not _is_assignable(val_type, ann_type, ctx.hier_result):
                     ctx.result.add_error(
-                        lineno, 0,
-                        "cannot assign " + _type_name(val_type) + " to " + _type_name(ann_type),
+                        lineno,
+                        0,
+                        "cannot assign "
+                        + _type_name(val_type)
+                        + " to "
+                        + _type_name(ann_type),
                     )
 
 
-def _validate_aug_assign(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_aug_assign(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     target = stmt.get("target")
     value = stmt.get("value")
     if not isinstance(target, dict) or not isinstance(value, dict):
@@ -1794,7 +1952,9 @@ def _validate_aug_assign(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: 
     _synth_expr(value, env, ctx)
 
 
-def _validate_expr_stmt(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_expr_stmt(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     value = stmt.get("value")
     if not isinstance(value, dict):
         return
@@ -1806,7 +1966,11 @@ def _validate_expr_stmt(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _
         func = value.get("func")
         if isinstance(func, dict) and _is_type(func, ["Name"]):
             fname = func.get("id")
-            if isinstance(fname, str) and fname not in _EAGER_CONSUMERS and fname not in _ITERATOR_FUNCS:
+            if (
+                isinstance(fname, str)
+                and fname not in _EAGER_CONSUMERS
+                and fname not in _ITERATOR_FUNCS
+            ):
                 # Check args for iterator escape
                 args = value.get("args", [])
                 if isinstance(args, list):
@@ -1838,7 +2002,9 @@ def _validate_expr_stmt(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _
     _validate_call_args(value, env, ctx, lineno)
 
 
-def _validate_call_args(node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) -> None:
+def _validate_call_args(
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> None:
     """Validate argument types in function/method calls."""
     if not _is_type(node, ["Call"]):
         return
@@ -1870,8 +2036,16 @@ def _validate_call_args(node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
                 a = args[0]
                 if isinstance(a, dict):
                     at = _synth_expr(a, env, ctx)
-                    if at.get("kind") == "int" or at.get("kind") == "float" or at.get("kind") == "bool":
-                        ctx.result.add_error(lineno, 0, "len() requires a sized type, got " + _type_name(at))
+                    if (
+                        at.get("kind") == "int"
+                        or at.get("kind") == "float"
+                        or at.get("kind") == "bool"
+                    ):
+                        ctx.result.add_error(
+                            lineno,
+                            0,
+                            "len() requires a sized type, got " + _type_name(at),
+                        )
     # Method call (obj.method)
     if _is_type(func, ["Attribute"]):
         obj = func.get("value")
@@ -1885,7 +2059,11 @@ def _validate_call_args(node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
             if isinstance(obj_name, str) and obj_name in ctx.known_classes:
                 methods = ctx.sig_result.methods.get(obj_name)
                 if methods is not None and attr in methods:
-                    ctx.result.add_error(lineno, 0, "cannot call method without self: " + obj_name + "." + attr)
+                    ctx.result.add_error(
+                        lineno,
+                        0,
+                        "cannot call method without self: " + obj_name + "." + attr,
+                    )
                     return
         # Check method argument types
         sname = _struct_name(obj_type)
@@ -1899,7 +2077,9 @@ def _validate_call_args(node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
                 return
             # Method not found on this struct — check if subclass has it
             if _subclass_has_method(sname, attr, ctx):
-                ctx.result.add_error(lineno, 0, "method '" + attr + "' not accessible on " + sname)
+                ctx.result.add_error(
+                    lineno, 0, "method '" + attr + "' not accessible on " + sname
+                )
                 return
         # Unwrap Pointer for collection method checking
         check_type = obj_type
@@ -1928,7 +2108,8 @@ def _check_call_args(
         j += 1
     if len(args) < n_required or len(args) > len(params):
         ctx.result.add_error(
-            lineno, 0,
+            lineno,
+            0,
             "expected " + str(len(params)) + " arguments, got " + str(len(args)),
         )
         return
@@ -1940,8 +2121,14 @@ def _check_call_args(
             expected = params[j].typ
             if not _is_assignable(actual, expected, ctx.hier_result):
                 ctx.result.add_error(
-                    lineno, 0,
-                    "argument " + str(j + 1) + " has type " + _type_name(actual) + ", expected " + _type_name(expected),
+                    lineno,
+                    0,
+                    "argument "
+                    + str(j + 1)
+                    + " has type "
+                    + _type_name(actual)
+                    + ", expected "
+                    + _type_name(expected),
                 )
                 return
         j += 1
@@ -1960,7 +2147,8 @@ def _check_func_type_args(
         return
     if len(args) != len(params):
         ctx.result.add_error(
-            lineno, 0,
+            lineno,
+            0,
             "expected " + str(len(params)) + " arguments, got " + str(len(args)),
         )
         return
@@ -1973,8 +2161,14 @@ def _check_func_type_args(
             if isinstance(expected, dict):
                 if not _is_assignable(actual, expected, ctx.hier_result):
                     ctx.result.add_error(
-                        lineno, 0,
-                        "argument " + str(j + 1) + " has type " + _type_name(actual) + ", expected " + _type_name(expected),
+                        lineno,
+                        0,
+                        "argument "
+                        + str(j + 1)
+                        + " has type "
+                        + _type_name(actual)
+                        + ", expected "
+                        + _type_name(expected),
                     )
                     return
         j += 1
@@ -1999,7 +2193,14 @@ def _validate_collection_method_args(
                 if isinstance(a, dict):
                     at = _synth_expr(a, env, ctx)
                     if not _is_assignable(at, elem, ctx.hier_result):
-                        ctx.result.add_error(lineno, 0, "cannot assign " + _type_name(at) + " to list element " + _type_name(elem))
+                        ctx.result.add_error(
+                            lineno,
+                            0,
+                            "cannot assign "
+                            + _type_name(at)
+                            + " to list element "
+                            + _type_name(elem),
+                        )
         elif method == "extend":
             if len(args) > 0:
                 a = args[0]
@@ -2007,14 +2208,28 @@ def _validate_collection_method_args(
                     at = _synth_expr(a, env, ctx)
                     aelem = _element_type(at)
                     if not _is_assignable(aelem, elem, ctx.hier_result):
-                        ctx.result.add_error(lineno, 0, "cannot assign " + _type_name(aelem) + " to list element " + _type_name(elem))
+                        ctx.result.add_error(
+                            lineno,
+                            0,
+                            "cannot assign "
+                            + _type_name(aelem)
+                            + " to list element "
+                            + _type_name(elem),
+                        )
         elif method == "insert":
             if len(args) > 1:
                 a = args[1]
                 if isinstance(a, dict):
                     at = _synth_expr(a, env, ctx)
                     if not _is_assignable(at, elem, ctx.hier_result):
-                        ctx.result.add_error(lineno, 0, "cannot assign " + _type_name(at) + " to list element " + _type_name(elem))
+                        ctx.result.add_error(
+                            lineno,
+                            0,
+                            "cannot assign "
+                            + _type_name(at)
+                            + " to list element "
+                            + _type_name(elem),
+                        )
     elif obj_type.get("_type") == "Set":
         elem = obj_type.get("element")
         if not isinstance(elem, dict):
@@ -2025,7 +2240,14 @@ def _validate_collection_method_args(
                 if isinstance(a, dict):
                     at = _synth_expr(a, env, ctx)
                     if not _is_assignable(at, elem, ctx.hier_result):
-                        ctx.result.add_error(lineno, 0, "cannot assign " + _type_name(at) + " to set element " + _type_name(elem))
+                        ctx.result.add_error(
+                            lineno,
+                            0,
+                            "cannot assign "
+                            + _type_name(at)
+                            + " to set element "
+                            + _type_name(elem),
+                        )
 
 
 def _validate_if(
@@ -2080,7 +2302,9 @@ def _validate_if(
     return then_returns and else_returns
 
 
-def _validate_while(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_while(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     test = stmt.get("test")
     body = stmt.get("body", [])
     if not isinstance(body, list):
@@ -2094,7 +2318,9 @@ def _validate_while(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _Infe
     _validate_stmts(body, loop_env, func_info, ctx)
 
 
-def _validate_for(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_for(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     target = stmt.get("target")
     iter_node = stmt.get("iter")
     body = stmt.get("body", [])
@@ -2108,7 +2334,9 @@ def _validate_for(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferC
     _validate_stmts(body, env, func_info, ctx)
 
 
-def _validate_assert(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_assert(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     test = stmt.get("test")
     if not isinstance(test, dict):
         return
@@ -2117,7 +2345,9 @@ def _validate_assert(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _Inf
     _extract_narrowing(test, env, dummy_else, ctx)
 
 
-def _validate_try(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_try(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     body = stmt.get("body", [])
     handlers = stmt.get("handlers", [])
     orelse = stmt.get("orelse", [])
@@ -2139,7 +2369,9 @@ def _validate_try(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferC
         _validate_stmts(finalbody, env, func_info, ctx)
 
 
-def _validate_match(stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx) -> None:
+def _validate_match(
+    stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
+) -> None:
     cases = stmt.get("cases", [])
     if not isinstance(cases, list):
         return
@@ -2169,7 +2401,11 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
     # isinstance is always bool
     if t == "Call":
         func = test.get("func")
-        if isinstance(func, dict) and _is_type(func, ["Name"]) and func.get("id") == "isinstance":
+        if (
+            isinstance(func, dict)
+            and _is_type(func, ["Name"])
+            and func.get("id") == "isinstance"
+        ):
             return
     # BoolOp: check each value
     if t == "BoolOp":
@@ -2214,10 +2450,14 @@ def _check_type_truthiness(
         return
     # int/float: rejected
     if typ.get("kind") == "int":
-        ctx.result.add_error(lineno, 0, "truthiness of int not allowed (zero is valid data)")
+        ctx.result.add_error(
+            lineno, 0, "truthiness of int not allowed (zero is valid data)"
+        )
         return
     if typ.get("kind") == "float":
-        ctx.result.add_error(lineno, 0, "truthiness of float not allowed (zero is valid data)")
+        ctx.result.add_error(
+            lineno, 0, "truthiness of float not allowed (zero is valid data)"
+        )
         return
     # Optional: check if inner is ambiguous
     if _is_optional(typ):
@@ -2289,7 +2529,11 @@ def _extract_narrowing(
     # isinstance(x, T)
     if t == "Call":
         func = test.get("func")
-        if isinstance(func, dict) and _is_type(func, ["Name"]) and func.get("id") == "isinstance":
+        if (
+            isinstance(func, dict)
+            and _is_type(func, ["Name"])
+            and func.get("id") == "isinstance"
+        ):
             _narrow_isinstance(test, then_env, else_env, ctx)
             return
     # x is None / x is not None
@@ -2329,7 +2573,11 @@ def _extract_narrowing(
     if t == "NamedExpr":
         target = test.get("target")
         value = test.get("value")
-        if isinstance(target, dict) and isinstance(value, dict) and _is_type(target, ["Name"]):
+        if (
+            isinstance(target, dict)
+            and isinstance(value, dict)
+            and _is_type(target, ["Name"])
+        ):
             name = target.get("id")
             if isinstance(name, str):
                 vt = _synth_expr(value, then_env, ctx)
@@ -2354,7 +2602,9 @@ def _extract_narrowing(
                 non_none = _non_none_parts(source)
                 if len(non_none) == 1:
                     sig_errors: list[SignatureError] = []
-                    narrowed = py_type_to_type_dict(non_none[0], ctx.known_classes, sig_errors, 0, 0)
+                    narrowed = py_type_to_type_dict(
+                        non_none[0], ctx.known_classes, sig_errors, 0, 0
+                    )
                     then_env.narrow(name, narrowed, non_none[0])
         return
 
@@ -2401,12 +2651,16 @@ def _narrow_isinstance(
             j += 1
         if len(remaining) == 1:
             sig_errors2: list[SignatureError] = []
-            rem_type = py_type_to_type_dict(remaining[0], ctx.known_classes, sig_errors2, 0, 0)
+            rem_type = py_type_to_type_dict(
+                remaining[0], ctx.known_classes, sig_errors2, 0, 0
+            )
             else_env.narrow(name, rem_type, remaining[0])
         elif len(remaining) > 1:
             new_source = " | ".join(remaining)
             sig_errors2 = []
-            rem_type = py_type_to_type_dict(new_source, ctx.known_classes, sig_errors2, 0, 0)
+            rem_type = py_type_to_type_dict(
+                new_source, ctx.known_classes, sig_errors2, 0, 0
+            )
             else_env.narrow(name, rem_type, new_source)
 
 
@@ -2420,7 +2674,11 @@ def _narrow_compare(
     left = test.get("left")
     ops = test.get("ops", [])
     comparators = test.get("comparators", [])
-    if not isinstance(left, dict) or not isinstance(ops, list) or not isinstance(comparators, list):
+    if (
+        not isinstance(left, dict)
+        or not isinstance(ops, list)
+        or not isinstance(comparators, list)
+    ):
         return
     if len(ops) == 0 or len(comparators) == 0:
         return
@@ -2439,7 +2697,11 @@ def _narrow_compare(
                 _narrow_to_non_none(name, else_env, ctx)
         return
     # x is not None
-    if op_type == "IsNot" and _is_type(comp, ["Constant"]) and comp.get("value") is None:
+    if (
+        op_type == "IsNot"
+        and _is_type(comp, ["Constant"])
+        and comp.get("value") is None
+    ):
         if _is_type(left, ["Name"]):
             name = str(left.get("id", ""))
             if name != "":
@@ -2448,7 +2710,11 @@ def _narrow_compare(
         if _is_type(left, ["Attribute"]):
             value_node = left.get("value")
             attr = left.get("attr")
-            if isinstance(value_node, dict) and _is_type(value_node, ["Name"]) and isinstance(attr, str):
+            if (
+                isinstance(value_node, dict)
+                and _is_type(value_node, ["Name"])
+                and isinstance(attr, str)
+            ):
                 obj_name = str(value_node.get("id", ""))
                 if obj_name != "":
                     then_env.guard_attr(obj_name + "." + attr)
@@ -2458,7 +2724,11 @@ def _narrow_compare(
         if _is_type(left, ["Attribute"]):
             value_node = left.get("value")
             attr = left.get("attr")
-            if isinstance(value_node, dict) and _is_type(value_node, ["Name"]) and isinstance(attr, str):
+            if (
+                isinstance(value_node, dict)
+                and _is_type(value_node, ["Name"])
+                and isinstance(attr, str)
+            ):
                 obj_name = str(value_node.get("id", ""))
                 if obj_name != "":
                     else_env.guard_attr(obj_name + "." + attr)
@@ -2483,7 +2753,13 @@ def _narrow_compare(
                         k_lineno = test.get("lineno", 0)
                         if not isinstance(k_lineno, int):
                             k_lineno = 0
-                        ctx.result.add_error(k_lineno, 0, "kind value '" + comp_value + "' does not match any known type")
+                        ctx.result.add_error(
+                            k_lineno,
+                            0,
+                            "kind value '"
+                            + comp_value
+                            + "' does not match any known type",
+                        )
                 return
 
 
@@ -2499,16 +2775,22 @@ def _narrow_to_non_none(name: str, env: TypeEnv, ctx: _InferCtx) -> None:
         non_none = _non_none_parts(source)
         if len(non_none) == 1:
             sig_errors: list[SignatureError] = []
-            narrowed = py_type_to_type_dict(non_none[0], ctx.known_classes, sig_errors, 0, 0)
+            narrowed = py_type_to_type_dict(
+                non_none[0], ctx.known_classes, sig_errors, 0, 0
+            )
             env.narrow(name, narrowed, non_none[0])
         elif len(non_none) > 1:
             new_source = " | ".join(non_none)
             sig_errors = []
-            narrowed = py_type_to_type_dict(new_source, ctx.known_classes, sig_errors, 0, 0)
+            narrowed = py_type_to_type_dict(
+                new_source, ctx.known_classes, sig_errors, 0, 0
+            )
             env.narrow(name, narrowed, new_source)
 
 
-def _narrow_or_isinstance(values: list[object], then_env: TypeEnv, ctx: _InferCtx) -> None:
+def _narrow_or_isinstance(
+    values: list[object], then_env: TypeEnv, ctx: _InferCtx
+) -> None:
     """Handle isinstance(x,A) or isinstance(x,B) in then branch."""
     # Just allow isinstance narrowing for individual values
     pass
@@ -2535,7 +2817,9 @@ def _is_generator_expr(node: ASTNode) -> bool:
     return _is_type(node, ["GeneratorExp"])
 
 
-def _check_iterator_escape_assign(value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) -> bool:
+def _check_iterator_escape_assign(
+    value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> bool:
     fname = _is_iterator_call(value)
     if fname != "":
         ctx.result.add_error(lineno, 0, "cannot assign " + fname + "() to variable")
@@ -2543,7 +2827,9 @@ def _check_iterator_escape_assign(value: ASTNode, env: TypeEnv, ctx: _InferCtx, 
     return False
 
 
-def _check_iterator_escape_return(value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) -> bool:
+def _check_iterator_escape_return(
+    value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> bool:
     # Check if value is an iterator call
     fname = _is_iterator_call(value)
     if fname != "":
@@ -2559,20 +2845,30 @@ def _check_iterator_escape_return(value: ASTNode, env: TypeEnv, ctx: _InferCtx, 
     return False
 
 
-def _check_iterator_escape_arg(arg: ASTNode, caller: str, env: TypeEnv, ctx: _InferCtx, lineno: int) -> None:
+def _check_iterator_escape_arg(
+    arg: ASTNode, caller: str, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> None:
     fname = _is_iterator_call(arg)
     if fname != "" and caller not in _EAGER_CONSUMERS:
-        ctx.result.add_error(lineno, 0, "cannot pass " + fname + "() to non-consumer function")
+        ctx.result.add_error(
+            lineno, 0, "cannot pass " + fname + "() to non-consumer function"
+        )
 
 
-def _check_generator_escape_assign(value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) -> bool:
+def _check_generator_escape_assign(
+    value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> bool:
     if _is_generator_expr(value):
-        ctx.result.add_error(lineno, 0, "cannot assign generator expression to variable")
+        ctx.result.add_error(
+            lineno, 0, "cannot assign generator expression to variable"
+        )
         return True
     return False
 
 
-def _check_generator_escape_return(value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) -> bool:
+def _check_generator_escape_return(
+    value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> bool:
     if _is_generator_expr(value):
         ctx.result.add_error(lineno, 0, "cannot return generator expression")
         return True
@@ -2580,7 +2876,11 @@ def _check_generator_escape_return(value: ASTNode, env: TypeEnv, ctx: _InferCtx,
     if _is_type(value, ["Call"]):
         func = value.get("func")
         args = value.get("args", [])
-        if isinstance(func, dict) and _is_type(func, ["Name"]) and isinstance(args, list):
+        if (
+            isinstance(func, dict)
+            and _is_type(func, ["Name"])
+            and isinstance(args, list)
+        ):
             wrapper = func.get("id")
             if isinstance(wrapper, str) and wrapper in _EAGER_CONSUMERS:
                 return False  # Eager consumer wrapping generator is OK
@@ -2599,15 +2899,21 @@ def _check_generator_escape_return(value: ASTNode, env: TypeEnv, ctx: _InferCtx,
                         wrapper = func.get("id")
                         if isinstance(wrapper, str) and wrapper in _EAGER_CONSUMERS:
                             return False
-                    ctx.result.add_error(lineno, 0, "cannot return generator expression")
+                    ctx.result.add_error(
+                        lineno, 0, "cannot return generator expression"
+                    )
                     return True
                 j += 1
     return False
 
 
-def _check_generator_escape_arg(arg: ASTNode, caller: str, env: TypeEnv, ctx: _InferCtx, lineno: int) -> None:
+def _check_generator_escape_arg(
+    arg: ASTNode, caller: str, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> None:
     if _is_generator_expr(arg) and caller not in _EAGER_CONSUMERS and caller != "join":
-        ctx.result.add_error(lineno, 0, "cannot pass generator expression to non-consumer")
+        ctx.result.add_error(
+            lineno, 0, "cannot pass generator expression to non-consumer"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2615,7 +2921,13 @@ def _check_generator_escape_arg(arg: ASTNode, caller: str, env: TypeEnv, ctx: _I
 # ---------------------------------------------------------------------------
 
 
-def _validate_list_literal(node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int, expected: dict[str, object] | None = None) -> None:
+def _validate_list_literal(
+    node: ASTNode,
+    env: TypeEnv,
+    ctx: _InferCtx,
+    lineno: int,
+    expected: dict[str, object] | None = None,
+) -> None:
     """Check list literal for mixed types."""
     # Union-typed list context allows mixed literals
     if expected is not None and expected.get("_type") == "Slice":
@@ -2634,16 +2946,24 @@ def _validate_list_literal(node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: 
         e = elts[j]
         if isinstance(e, dict):
             et = _synth_expr(e, env, ctx)
-            if not _is_assignable(et, first_type, ctx.hier_result) and not _is_assignable(first_type, et, ctx.hier_result):
+            if not _is_assignable(
+                et, first_type, ctx.hier_result
+            ) and not _is_assignable(first_type, et, ctx.hier_result):
                 ctx.result.add_error(
-                    lineno, 0,
-                    "mixed types in list literal: " + _type_name(first_type) + " and " + _type_name(et),
+                    lineno,
+                    0,
+                    "mixed types in list literal: "
+                    + _type_name(first_type)
+                    + " and "
+                    + _type_name(et),
                 )
                 return
         j += 1
 
 
-def _validate_dict_literal(node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) -> None:
+def _validate_dict_literal(
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> None:
     """Check dict literal for mixed key/value types."""
     keys = node.get("keys", [])
     values = node.get("values", [])
@@ -2717,41 +3037,71 @@ def _check_needs_narrowing(
     # Optional (IR type level)
     if _is_optional(typ):
         if context == "arithmetic":
-            ctx.result.add_error(lineno, 0, "cannot use optional type in arithmetic (may be None)")
+            ctx.result.add_error(
+                lineno, 0, "cannot use optional type in arithmetic (may be None)"
+            )
         elif context == "attribute":
-            ctx.result.add_error(lineno, 0, "cannot access '" + attr_name + "' on optional type (may be None)")
+            ctx.result.add_error(
+                lineno,
+                0,
+                "cannot access '" + attr_name + "' on optional type (may be None)",
+            )
         elif context == "subscript":
-            ctx.result.add_error(lineno, 0, "cannot subscript optional type (may be None)")
+            ctx.result.add_error(
+                lineno, 0, "cannot subscript optional type (may be None)"
+            )
         return
     # Source-tracked optional
     if source != "" and _is_optional_source(source):
         if context == "arithmetic":
-            ctx.result.add_error(lineno, 0, "cannot use " + source + " in arithmetic (may be None)")
+            ctx.result.add_error(
+                lineno, 0, "cannot use " + source + " in arithmetic (may be None)"
+            )
         elif context == "attribute":
-            ctx.result.add_error(lineno, 0, "cannot access '" + attr_name + "' on optional type (may be None)")
+            ctx.result.add_error(
+                lineno,
+                0,
+                "cannot access '" + attr_name + "' on optional type (may be None)",
+            )
         elif context == "subscript":
-            ctx.result.add_error(lineno, 0, "cannot subscript optional type (may be None)")
+            ctx.result.add_error(
+                lineno, 0, "cannot subscript optional type (may be None)"
+            )
         return
     # Source-tracked non-optional union
     if source != "" and _is_union_source(source):
         if context == "attribute" and attr_name != "":
             if _all_members_have_attr(source, attr_name, ctx):
                 return
-            ctx.result.add_error(lineno, 0, "attribute '" + attr_name + "' not available on all union members")
+            ctx.result.add_error(
+                lineno,
+                0,
+                "attribute '" + attr_name + "' not available on all union members",
+            )
             return
         if context == "arithmetic":
-            ctx.result.add_error(lineno, 0, "cannot use union type in arithmetic without narrowing")
+            ctx.result.add_error(
+                lineno, 0, "cannot use union type in arithmetic without narrowing"
+            )
         elif context == "attribute":
-            ctx.result.add_error(lineno, 0, "cannot access attribute on union type without narrowing")
+            ctx.result.add_error(
+                lineno, 0, "cannot access attribute on union type without narrowing"
+            )
         elif context == "subscript":
-            ctx.result.add_error(lineno, 0, "cannot subscript union type without narrowing")
+            ctx.result.add_error(
+                lineno, 0, "cannot subscript union type without narrowing"
+            )
         return
     # Explicit object type
     if source == "object":
         if context == "arithmetic":
-            ctx.result.add_error(lineno, 0, "cannot use object in arithmetic without narrowing")
+            ctx.result.add_error(
+                lineno, 0, "cannot use object in arithmetic without narrowing"
+            )
         elif context == "attribute":
-            ctx.result.add_error(lineno, 0, "cannot access attribute on object without narrowing")
+            ctx.result.add_error(
+                lineno, 0, "cannot access attribute on object without narrowing"
+            )
         elif context == "subscript":
             ctx.result.add_error(lineno, 0, "cannot subscript object without narrowing")
         return
@@ -2882,7 +3232,9 @@ def run_inference(
 ) -> InferenceResult:
     """Run type inference and validation on the module AST."""
     result = InferenceResult()
-    ctx = _InferCtx(sig_result, field_result, hier_result, known_classes, class_bases, result)
+    ctx = _InferCtx(
+        sig_result, field_result, hier_result, known_classes, class_bases, result
+    )
     body = tree.get("body", [])
     if not isinstance(body, list):
         return result

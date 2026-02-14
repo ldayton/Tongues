@@ -8,7 +8,6 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
-from typing import Callable
 
 # Type alias for AST dict nodes
 ASTNode = dict[str, object]
@@ -174,7 +173,9 @@ def _find_hierarchy_root(
         j = 0
         while j < len(bases):
             base = bases[j]
-            if base != "Exception" and not _is_exception_subclass(base, class_bases, exception_cache):
+            if base != "Exception" and not _is_exception_subclass(
+                base, class_bases, exception_cache
+            ):
                 used_as_base.add(base)
             j += 1
         i += 1
@@ -279,7 +280,9 @@ def build_hierarchy(
             result.exception_types.append(name)
         i += 1
     # Find hierarchy root
-    result.hierarchy_root = _find_hierarchy_root(known_classes, class_bases, exception_cache)
+    result.hierarchy_root = _find_hierarchy_root(
+        known_classes, class_bases, exception_cache
+    )
     # Classify node types
     if result.hierarchy_root is not None:
         node_cache: dict[str, bool] = {}

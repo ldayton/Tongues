@@ -7,10 +7,10 @@ import sys
 from .frontend.parse import parse, ParseError
 from .frontend.subset import verify as verify_subset
 from .frontend.names import NameInfo, NameTable, resolve_names
-from .frontend.signatures import SignatureResult, collect_signatures
-from .frontend.fields import FieldResult, collect_fields
-from .frontend.hierarchy import HierarchyResult, build_hierarchy
-from .frontend.inference import InferenceResult, run_inference
+from .frontend.signatures import collect_signatures
+from .frontend.fields import collect_fields
+from .frontend.hierarchy import build_hierarchy
+from .frontend.inference import run_inference
 
 TARGETS: list[str] = [
     "c",
@@ -327,7 +327,9 @@ def run_pipeline(
         if bname not in parent_of:
             hierarchy_roots.add(bname)
         ki += 1
-    field_result = collect_fields(ast_dict, known_classes, node_classes, hierarchy_roots, sig_result)
+    field_result = collect_fields(
+        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+    )
     errors = field_result.errors()
     if len(errors) > 0:
         _print_errors(errors)
@@ -353,7 +355,9 @@ def run_pipeline(
         print(to_json(hier_result.to_dict()))
         return 0
     # Phase 8: Inference
-    inf_result = run_inference(ast_dict, sig_result, field_result, hier_result, known_classes, class_bases)
+    inf_result = run_inference(
+        ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+    )
     errors = inf_result.errors()
     if len(errors) > 0:
         _print_errors(errors)

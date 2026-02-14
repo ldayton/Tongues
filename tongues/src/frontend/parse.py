@@ -3495,7 +3495,7 @@ def parse_number_value(s: str) -> int | float | complex:
     """Parse a number literal string to value."""
     s = s.replace("_", "")
     if s.endswith(("j", "J")):
-        return complex(0, float(s[:-1]))
+        return float(s[:-1]) * 1j
     if "." in s or (
         "e" in s.lower() and not s.startswith(("0x", "0X", "0b", "0B", "0o", "0O"))
     ):
