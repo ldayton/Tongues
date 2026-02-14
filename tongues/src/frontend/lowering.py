@@ -1229,8 +1229,11 @@ def _lower_name_call(
                 return arg
             if _is_type_dict(arg_type, ["Slice", "Map", "Set"]):
                 return TBinaryOp(
-                    _P0, "!=", _make_call("Len", [arg]),
-                    TIntLit(_P0, 0, "0", _EMPTY_ANN), _EMPTY_ANN,
+                    _P0,
+                    "!=",
+                    _make_call("Len", [arg]),
+                    TIntLit(_P0, 0, "0", _EMPTY_ANN),
+                    _EMPTY_ANN,
                 )
             return TBinaryOp(
                 _P0, "!=", arg, TIntLit(_P0, 0, "0", _EMPTY_ANN), _EMPTY_ANN
@@ -1989,8 +1992,11 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if _is_type_dict(expr_type, ["Slice", "Map", "Set"]):
         expr = _lower_expr(node, env, ctx)
         return TBinaryOp(
-            _P0, "!=", _make_call("Len", [expr]),
-            TIntLit(_P0, 0, "0", _EMPTY_ANN), _EMPTY_ANN,
+            _P0,
+            "!=",
+            _make_call("Len", [expr]),
+            TIntLit(_P0, 0, "0", _EMPTY_ANN),
+            _EMPTY_ANN,
         )
     # Comparison/BoolOp already return bool
     t = node.get("_type")

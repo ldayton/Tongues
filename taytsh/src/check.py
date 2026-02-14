@@ -1202,10 +1202,9 @@ class Checker:
         if isinstance(iter_type, ListT):
             if len(binding) == 1:
                 self.declare(binding[0], iter_type.element, pos)
-            elif (
-                isinstance(iter_type.element, TupleT)
-                and len(iter_type.element.elements) == len(binding)
-            ):
+            elif isinstance(iter_type.element, TupleT) and len(
+                iter_type.element.elements
+            ) == len(binding):
                 i = 0
                 while i < len(binding):
                     self.declare(binding[i], iter_type.element.elements[i], pos)
