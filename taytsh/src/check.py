@@ -2900,7 +2900,9 @@ class Checker:
             if not require(1):
                 return None
             t = arg(0)
-            if t is not None and not (type_eq(t, STRING_T) or type_eq(t, BYTES_T) or type_eq(t, OBJ_T)):
+            if t is not None and not (
+                type_eq(t, STRING_T) or type_eq(t, BYTES_T) or type_eq(t, OBJ_T)
+            ):
                 self.error(name + " requires string or bytes", pos)
             return VOID_T
         if name == "ReadLine":

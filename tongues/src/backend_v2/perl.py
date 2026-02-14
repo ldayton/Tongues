@@ -449,7 +449,7 @@ class _PerlEmitter:
                         self.var_alias[binding_name] = "$_"
                     val = self._expr(call.args[1].value)
                     if binding_name:
-                        del self.var_alias[binding_name]
+                        self.var_alias.pop(binding_name)
                     return "my " + acc + " = [map { " + val + " } @{" + iterable + "}];"
             if len(body) == 1 and isinstance(body[0], TIfStmt):
                 if_stmt = body[0]
@@ -462,11 +462,23 @@ class _PerlEmitter:
                             self.var_alias[binding_name] = "$_"
                         guard = self._expr(if_stmt.cond)
                         if binding_name:
-                            del self.var_alias[binding_name]
-                        return "my " + acc + " = [grep { " + guard + " } @{" + iterable + "}];"
+                            self.var_alias.pop(binding_name)
+                        return (
+                            "my "
+                            + acc
+                            + " = [grep { "
+                            + guard
+                            + " } @{"
+                            + iterable
+                            + "}];"
+                        )
         elif prov == "dict_comprehension":
             binding = for_stmt.binding
-            if len(binding) == 2 and len(body) == 1 and isinstance(body[0], TAssignStmt):
+            if (
+                len(binding) == 2
+                and len(body) == 1
+                and isinstance(body[0], TAssignStmt)
+            ):
                 target = body[0].target
                 if isinstance(target, TIndex):
                     first = "$" + _safe_name(binding[0])
@@ -475,17 +487,43 @@ class _PerlEmitter:
                     val = self._expr(body[0].value)
                     pad = "    " * (self.indent + 1)
                     return (
-                        "my " + acc + " = do {\n"
-                        + pad + "my $__m = {};\n"
-                        + pad + "for my " + first + " (0 .. $#{" + iterable + "}) { my " + second + " = " + iterable + "->[" + first + "]; $__m->{" + key + "} = " + val + "; }\n"
-                        + pad + "$__m;\n"
-                        + "    " * self.indent + "};"
+                        "my "
+                        + acc
+                        + " = do {\n"
+                        + pad
+                        + "my $__m = {};\n"
+                        + pad
+                        + "for my "
+                        + first
+                        + " (0 .. $#{"
+                        + iterable
+                        + "}) { my "
+                        + second
+                        + " = "
+                        + iterable
+                        + "->["
+                        + first
+                        + "]; $__m->{"
+                        + key
+                        + "} = "
+                        + val
+                        + "; }\n"
+                        + pad
+                        + "$__m;\n"
+                        + "    " * self.indent
+                        + "};"
                     )
         elif prov == "set_comprehension":
             if len(body) == 1 and isinstance(body[0], TExprStmt):
                 call = body[0].expr
                 if self._is_add_to(call, let_stmt.name):
-                    return "my " + acc + " = do { my $__s = {}; $__s->{$_} = 1 for @{" + iterable + "}; $__s };"
+                    return (
+                        "my "
+                        + acc
+                        + " = do { my $__s = {}; $__s->{$_} = 1 for @{"
+                        + iterable
+                        + "}; $__s };"
+                    )
         return None
 
     def _is_append_to(self, expr: TExpr, name: str) -> bool:
@@ -870,9 +908,7 @@ class _PerlEmitter:
 
     def _emit_match(self, stmt: TMatchStmt) -> None:
         expr = self._expr(stmt.expr)
-        has_nil_case = any(
-            isinstance(c.pattern, TPatternNil) for c in stmt.cases
-        )
+        has_nil_case = any(isinstance(c.pattern, TPatternNil) for c in stmt.cases)
         first = True
         num_cases = len(stmt.cases)
         has_default = stmt.default is not None
@@ -886,7 +922,11 @@ class _PerlEmitter:
             self._line("}")
 
     def _emit_match_case(
-        self, case: TMatchCase, expr: str, first: bool, is_last: bool,
+        self,
+        case: TMatchCase,
+        expr: str,
+        first: bool,
+        is_last: bool,
         has_nil_case: bool = False,
     ) -> None:
         pat = case.pattern
@@ -936,7 +976,15 @@ class _PerlEmitter:
         if isinstance(typ, TIdentType):
             if typ.name in self.struct_names:
                 return "eval { " + expr + "->isa('" + typ.name + "') }"
-            return "defined(" + expr + ") && eval { " + expr + "->isa('" + typ.name + "') }"
+            return (
+                "defined("
+                + expr
+                + ") && eval { "
+                + expr
+                + "->isa('"
+                + typ.name
+                + "') }"
+            )
         if isinstance(typ, TPrimitive):
             if is_optional:
                 return "defined(" + expr + ")"
@@ -1302,7 +1350,9 @@ class _PerlEmitter:
         arg_strs = ", ".join(self._expr(a.value) for a in args)
         return obj + "->" + method + "(" + arg_strs + ")"
 
-    def _builtin_call(self, name: str, args: list[TArg], ann: dict | None = None) -> str:
+    def _builtin_call(
+        self, name: str, args: list[TArg], ann: dict | None = None
+    ) -> str:
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":
@@ -1325,11 +1375,22 @@ class _PerlEmitter:
             pad = "    " * (self.indent + 1)
             return (
                 "do {\n"
-                + pad + "my $__i = 0;\n"
-                + pad + "my $__r = -1;\n"
-                + pad + "for my $v (@{" + arr + "}) { if ($v " + ("eq" if self._is_string_expr(args[1].value) else "==") + " " + val + ") { $__r = $__i; last; } $__i += 1; }\n"
-                + pad + "$__r;\n"
-                + "    " * self.indent + "}"
+                + pad
+                + "my $__i = 0;\n"
+                + pad
+                + "my $__r = -1;\n"
+                + pad
+                + "for my $v (@{"
+                + arr
+                + "}) { if ($v "
+                + ("eq" if self._is_string_expr(args[1].value) else "==")
+                + " "
+                + val
+                + ") { $__r = $__i; last; } $__i += 1; }\n"
+                + pad
+                + "$__r;\n"
+                + "    " * self.indent
+                + "}"
             )
         if name == "Upper":
             return "uc(" + self._a(args, 0) + ")"
@@ -1392,7 +1453,15 @@ class _PerlEmitter:
         if name == "SplitN":
             if isinstance(args[1].value, TStringLit):
                 pat = "\\Q" + _escape_perl_regex(args[1].value.value) + "\\E"
-                return "[split(/" + pat + "/, " + self._a(args, 0) + ", " + self._a(args, 2) + ")]"
+                return (
+                    "[split(/"
+                    + pat
+                    + "/, "
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")]"
+                )
             return (
                 "do { my $__s = "
                 + self._a(args, 0)
@@ -1701,7 +1770,9 @@ class _PerlEmitter:
         return (
             "do { my $__f = 0; for (@{"
             + c
-            + "}) { if ($_ " + cmp_op + " "
+            + "}) { if ($_ "
+            + cmp_op
+            + " "
             + n
             + ") { $__f = 1; last; } } $__f }"
         )
@@ -1862,7 +1933,11 @@ class _PerlEmitter:
     def _static_int(self, expr: TExpr) -> int | None:
         if isinstance(expr, TIntLit):
             return expr.value
-        if isinstance(expr, TUnaryOp) and expr.op == "-" and isinstance(expr.operand, TIntLit):
+        if (
+            isinstance(expr, TUnaryOp)
+            and expr.op == "-"
+            and isinstance(expr.operand, TIntLit)
+        ):
             return -expr.operand.value
         return None
 
