@@ -268,7 +268,11 @@ def _print_errors(errors: list[object]) -> None:
 
 
 def run_pipeline(
-    source: str, target: str, stop_at: str | None, strict_math: bool, strict_tostring: bool
+    source: str,
+    target: str,
+    stop_at: str | None,
+    strict_math: bool,
+    strict_tostring: bool,
 ) -> tuple[int, str]:
     """Run the transpilation pipeline. Returns (exit_code, output)."""
     if stop_at == "subset" and should_skip_file(source):
@@ -387,7 +391,13 @@ def run_pipeline(
         return (0, to_json(ast_dict))
     # Phase 9: Lowering
     module, lower_errors = lower(
-        ast_dict, sig_result, field_result, hier_result, known_classes, class_bases, source
+        ast_dict,
+        sig_result,
+        field_result,
+        hier_result,
+        known_classes,
+        class_bases,
+        source,
     )
     if len(lower_errors) > 0:
         _print_errors(lower_errors)
@@ -424,7 +434,9 @@ def run_pipeline(
         "ruby": emit_ruby,
     }
     if target not in emitters:
-        print("error: backend not yet implemented for '" + target + "'", file=sys.stderr)
+        print(
+            "error: backend not yet implemented for '" + target + "'", file=sys.stderr
+        )
         return (1, "")
     emitter = emitters[target]
     return (0, emitter(module))
@@ -493,14 +505,18 @@ def parse_args() -> tuple[str, str | None, bool, bool, str | None, str | None]:
 
 def main() -> int:
     """Main entry point."""
-    target, stop_at, strict_math, strict_tostring, input_file, output_file = parse_args()
+    target, stop_at, strict_math, strict_tostring, input_file, output_file = (
+        parse_args()
+    )
     source, err = read_source(input_file)
     if err != 0:
         return err
     if len(source) == 0:
         print("error: no input provided", file=sys.stderr)
         return 2
-    exit_code, output = run_pipeline(source, target, stop_at, strict_math, strict_tostring)
+    exit_code, output = run_pipeline(
+        source, target, stop_at, strict_math, strict_tostring
+    )
     if exit_code != 0:
         return exit_code
     if len(output) > 0:
