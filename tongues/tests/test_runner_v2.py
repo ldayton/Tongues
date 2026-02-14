@@ -32,17 +32,17 @@ TESTS_DIR = Path(__file__).parent
 # fmt: off
 TESTS = {
     "middleend": {
-        "scope_v2":     {"dir": "13_v2_scope",     "run": "phase"},
-        "returns_v2":   {"dir": "14_v2_returns",   "run": "phase"},
-        "liveness_v2":  {"dir": "15_v2_liveness",  "run": "phase"},
-        "strings_v2":   {"dir": "16_v2_strings",   "run": "phase"},
-        "hoisting_v2":  {"dir": "17_v2_hoisting",  "run": "phase"},
-        "ownership_v2": {"dir": "18_v2_ownership", "run": "phase"},
-        "callgraph_v2": {"dir": "19_v2_callgraph", "run": "phase"},
+        "scope_v2":     {"dir": "14_v2_scope",     "run": "phase"},
+        "returns_v2":   {"dir": "15_v2_returns",   "run": "phase"},
+        "liveness_v2":  {"dir": "16_v2_liveness",  "run": "phase"},
+        "strings_v2":   {"dir": "17_v2_strings",   "run": "phase"},
+        "hoisting_v2":  {"dir": "18_v2_hoisting",  "run": "phase"},
+        "ownership_v2": {"dir": "19_v2_ownership", "run": "phase"},
+        "callgraph_v2": {"dir": "20_v2_callgraph", "run": "phase"},
     },
     "backend": {
-        "codegen_v2_python": {"dir": "20_v2_codegen", "run": "codegen_v2_python"},
-        "codegen_v2_perl": {"dir": "20_v2_codegen", "run": "codegen_v2_perl"},
+        "codegen_v2_python": {"dir": "21_v2_codegen", "run": "codegen_v2_python"},
+        "codegen_v2_perl": {"dir": "21_v2_codegen", "run": "codegen_v2_perl"},
     },
 }
 # fmt: on

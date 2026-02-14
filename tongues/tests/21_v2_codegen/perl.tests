@@ -1677,3 +1677,304 @@ for my $v (keys %{$s}) {
     say(("" . $v));
 }
 ---
+
+=== Sqrt function
+fn Main() -> void {
+    let x: float = Sqrt(2.0)
+    WritelnOut(ToString(x))
+}
+--- perl
+my $x = sqrt(2.0);
+---
+
+=== Floor function
+fn Main() -> void {
+    let n: int = Floor(3.7)
+    WritelnOut(ToString(n))
+}
+--- perl
+my $n = floor(3.7);
+---
+
+=== Ceil function
+fn Main() -> void {
+    let n: int = Ceil(3.2)
+    WritelnOut(ToString(n))
+}
+--- perl
+my $n = ceil(3.2);
+---
+
+=== Reverse on string
+fn Main() -> void {
+    let s: string = Reverse("hello")
+    WritelnOut(s)
+}
+--- perl
+my $s = scalar(reverse("hello"));
+---
+
+=== while true with break
+fn Main() -> void {
+    let n: int = 0
+    while true {
+        n += 1
+        if n >= 5 {
+            break
+        }
+    }
+    WritelnOut(ToString(n))
+}
+--- perl
+while (1) {
+---
+
+=== re-throw in catch
+fn Main() -> void {
+    try {
+        ParseInt("x", 10)
+    } catch e: ValueError {
+        throw e
+    }
+}
+--- perl
+die $e;
+---
+
+=== catch-all without type
+struct AppError {
+    message: string
+}
+fn Fail() -> void {
+    throw AppError("boom")
+}
+fn Main() -> void {
+    try {
+        Fail()
+    } catch e {
+        WritelnOut(e.message)
+    }
+}
+--- perl
+my $e = $__err1;
+say($e->{message});
+---
+
+=== catch-all after typed catch
+struct ErrA {
+    message: string
+}
+struct ErrB {
+    message: string
+}
+fn Risky(x: int) -> void {
+    if x > 0 {
+        throw ErrA("a")
+    }
+    throw ErrB("b")
+}
+fn Main() -> void {
+    try {
+        Risky(1)
+    } catch e: ErrA {
+        WritelnOut("got A")
+    } catch e {
+        WritelnOut(e.message)
+    }
+}
+--- perl
+if (ref($__err1) eq 'ErrA') {
+    say("got A");
+} else {
+    my $e = $__err1;
+    say($e->{message});
+}
+---
+
+=== Sorted on string list
+fn Main() -> void {
+    let xs: list[string] = ["banana", "apple", "cherry"]
+    let s: list[string] = Sorted(xs)
+    WritelnOut(ToString(Len(s)))
+}
+--- perl
+my $s = [sort @{$xs}];
+---
+
+=== ReadLine returns optional
+fn Main() -> void {
+    let line: string? = ReadLine()
+    if line != nil {
+        WritelnOut(Unwrap(line))
+    }
+}
+--- perl
+my $line = scalar(<STDIN>);
+---
+
+=== ReadFile emits open idiom
+fn Main() -> void {
+    let data: string | bytes = ReadFile("input.txt")
+    WritelnOut(ToString(data))
+}
+--- perl
+my $data = do { my $__p = "input.txt"; open(my $__fh, '<', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d };
+---
+
+=== WriteFile emits open idiom
+fn Main() -> void {
+    WriteFile("output.txt", "hello")
+}
+--- perl
+do { my $__p = "output.txt"; my $__d = "hello"; open(my $__fh, '>', $__p) or die $__p; print $__fh $__d; close($__fh) };
+---
+
+=== ReadBytesN
+fn Main() -> void {
+    let chunk: bytes = ReadBytesN(1024)
+    WritelnOut(ToString(Len(chunk)))
+}
+--- perl
+my $chunk = do { read(STDIN, my $__b, 1024); $__b };
+---
+
+=== bytes indexing
+fn Main() -> void {
+    let b: bytes = Encode("hello")
+    let first: byte = b[0]
+    WritelnOut(ToString(ByteToInt(first)))
+}
+--- perl
+my $first = substr($b, 0, 1);
+---
+
+=== bytes slicing
+fn Main() -> void {
+    let b: bytes = Encode("hello")
+    let part: bytes = b[1:3]
+    WritelnOut(ToString(Len(part)))
+}
+--- perl
+my $part = substr($b, 1, (3) - (1));
+---
+
+=== Concat on bytes
+fn Main() -> void {
+    let a: bytes = Encode("hello")
+    let b: bytes = Encode(" world")
+    let c: bytes = Concat(a, b)
+    WritelnOut(ToString(Len(c)))
+}
+--- perl
+my $c = ($a . $b);
+---
+
+=== nested collection access
+fn Main() -> void {
+    let m: map[string, list[int]] = {"a": [1, 2, 3]}
+    let v: int = m["a"][0]
+    WritelnOut(ToString(v))
+}
+--- perl
+my $v = $m->{"a"}->[0];
+---
+
+=== named struct construction
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(y: 2, x: 1)
+    WritelnOut(ToString(p.x + p.y))
+}
+--- perl
+my $p = Point->new(1, 2);
+---
+
+=== truthiness check on map (raised)
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    @["provenance" = "truthiness"] if Len(m) > 0 {
+        WritelnOut("nonempty")
+    }
+}
+--- perl
+if (%{$m}) {
+    say("nonempty");
+}
+---
+
+=== truthiness check on set (raised)
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    @["provenance" = "truthiness"] if Len(s) > 0 {
+        WritelnOut("nonempty")
+    }
+}
+--- perl
+if (%{$s}) {
+    say("nonempty");
+}
+---
+
+=== negated condition (raised)
+fn Main() -> void {
+    let done: bool = false
+    @["provenance" = "negated_condition"] if !done {
+        WritelnOut("not done")
+    }
+}
+--- perl
+unless ($done) {
+    say("not done");
+}
+---
+
+=== negated while (raised)
+fn Main() -> void {
+    let n: int = 10
+    let done: bool = false
+    @["provenance" = "negated_while"] while !done {
+        n -= 1
+        if n == 0 {
+            done = true
+        }
+    }
+    WritelnOut(ToString(n))
+}
+--- perl
+until ($done) {
+---
+
+=== format string with interpolation (raised)
+fn Greet(name: string) -> string {
+    return @["provenance" = "f_string"] Format("hello, {}", name)
+}
+fn Main() -> void {
+    WritelnOut(Greet("world"))
+}
+--- perl
+return "hello, $name";
+---
+
+=== nil coalesce (raised)
+fn Safe(x: int?) -> int {
+    return @["provenance" = "none_coalesce"] (x != nil ? Unwrap(x) : 0)
+}
+fn Main() -> void {
+    WritelnOut(ToString(Safe(nil)))
+}
+--- perl
+return ($x // 0);
+---
+
+=== Get with default using defined-or (raised)
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int = @["provenance" = "dict_get_default"] Get(m, "b", 0)
+    WritelnOut(ToString(v))
+}
+--- perl
+my $v = ($m->{"b"} // 0);
+---
