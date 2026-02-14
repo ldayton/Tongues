@@ -19,7 +19,7 @@ def f(s: str) -> None:
     if s:
         print(s)
 ---
-Truthy(s)
+s != ""
 ---
 
 === list truthy is non-empty
@@ -27,7 +27,7 @@ def f(xs: list[int]) -> None:
     if xs:
         print("non-empty")
 ---
-Truthy(xs)
+Len(xs) != 0
 ---
 
 === dict truthy is non-empty
@@ -35,7 +35,7 @@ def f(d: dict[str, int]) -> None:
     if d:
         print("non-empty")
 ---
-Truthy(d)
+Len(d) != 0
 ---
 
 === set truthy is non-empty
@@ -43,7 +43,7 @@ def f(s: set[int]) -> None:
     if s:
         print("non-empty")
 ---
-Truthy(s)
+Len(s) != 0
 ---
 
 === int truthy is non-zero
@@ -51,7 +51,7 @@ def f(n: int) -> None:
     if n:
         print("non-zero")
 ---
-Truthy(n)
+n != 0
 ---
 
 === float truthy is non-zero
@@ -59,7 +59,7 @@ def f(x: float) -> None:
     if x:
         print("non-zero")
 ---
-Truthy(x)
+x != 0.0
 ---
 
 === not on optional

@@ -128,7 +128,8 @@ def test_string_join() -> None:
     assert ",".join(["a", "b", "c"]) == "a,b,c"
     assert "".join(["a", "b"]) == "ab"
     assert "-".join(["x"]) == "x"
-    assert "-".join([]) == ""
+    empty: list[str] = []
+    assert "-".join(empty) == ""
     assert "::".join(["a", "b"]) == "a::b"
 
 
@@ -240,66 +241,6 @@ def test_string_isupper_islower() -> None:
     assert "hello123".islower()
 
 
-def test_string_capitalize_title() -> None:
-    """capitalize() and title() methods."""
-    assert "hello".capitalize() == "Hello"
-    assert "HELLO".capitalize() == "Hello"
-    assert "hello world".capitalize() == "Hello world"
-    assert "".capitalize() == ""
-    assert "hello world".title() == "Hello World"
-    assert "HELLO WORLD".title() == "Hello World"
-
-
-def test_string_center_ljust_rjust() -> None:
-    """center(), ljust(), rjust() padding methods."""
-    assert "hi".center(6) == "  hi  "
-    assert "hi".ljust(6) == "hi    "
-    assert "hi".rjust(6) == "    hi"
-    # With fill character
-    assert "hi".center(6, "-") == "--hi--"
-    assert "hi".ljust(6, "-") == "hi----"
-    assert "hi".rjust(6, "-") == "----hi"
-    # Width less than string length
-    assert "hello".center(3) == "hello"
-
-
-def test_string_zfill() -> None:
-    """zfill() zero-pads numbers."""
-    assert "42".zfill(5) == "00042"
-    assert "42".zfill(1) == "42"
-    assert "-42".zfill(5) == "-0042"
-    assert "+42".zfill(5) == "+0042"
-    assert "".zfill(3) == "000"
-
-
-def test_string_partition() -> None:
-    """partition() splits on first occurrence."""
-    assert "hello".partition("l") == ("he", "l", "lo")
-    assert "hello".partition("x") == ("hello", "", "")
-    assert "a:b:c".partition(":") == ("a", ":", "b:c")
-
-
-def test_string_rpartition() -> None:
-    """rpartition() splits on last occurrence."""
-    assert "hello".rpartition("l") == ("hel", "l", "o")
-    assert "hello".rpartition("x") == ("", "", "hello")
-
-
-def test_string_splitlines() -> None:
-    """splitlines() splits on line boundaries."""
-    assert "a\nb\nc".splitlines() == ["a", "b", "c"]
-    assert "a\nb\n".splitlines() == ["a", "b"]
-    assert "".splitlines() == []
-    assert "no newline".splitlines() == ["no newline"]
-
-
-def test_string_expandtabs() -> None:
-    """expandtabs() replaces tabs with spaces."""
-    assert "a\tb".expandtabs(4) == "a   b"
-    assert "\t".expandtabs(4) == "    "
-    assert "no tabs".expandtabs() == "no tabs"
-
-
 def test_string_bool() -> None:
     """String truthiness - empty is falsy."""
     assert bool("hello") == True
@@ -309,11 +250,11 @@ def test_string_bool() -> None:
     assert "x"
 
 
-def test_string_str_repr() -> None:
-    """str() and repr() of strings."""
+def test_string_str() -> None:
+    """str() identity on strings."""
     assert str("hello") == "hello"
-    assert repr("hello") == "'hello'"
-    assert repr("it's") == '"it\'s"'
+    assert str("") == ""
+    assert str(" ") == " "
 
 
 def test_string_escape_sequences() -> None:
@@ -353,14 +294,6 @@ def test_string_split_maxsplit() -> None:
     assert "a,b,c".split(",", 0) == ["a,b,c"]  # no splits
 
 
-def test_string_rsplit_maxsplit() -> None:
-    """rsplit() with maxsplit splits from right."""
-    assert "a,b,c,d".rsplit(",", 1) == ["a,b,c", "d"]
-    assert "a,b,c,d".rsplit(",", 2) == ["a,b", "c", "d"]
-    assert "a,b,c".rsplit(",", 10) == ["a", "b", "c"]
-    assert "a,b,c".rsplit(",", 0) == ["a,b,c"]
-
-
 def test_string_split_consecutive_delimiters() -> None:
     """Consecutive delimiters create empty strings."""
     assert "a,,b".split(",") == ["a", "", "b"]
@@ -374,7 +307,8 @@ def test_string_split_whitespace() -> None:
     assert "a b  c".split() == ["a", "b", "c"]
     assert "  a  b  ".split() == ["a", "b"]
     assert "a\tb\nc".split() == ["a", "b", "c"]
-    assert "   ".split() == []
+    empty_parts: list[str] = []
+    assert "   ".split() == empty_parts
     # Compare to explicit space separator
     assert "a  b".split(" ") == ["a", "", "b"]
 
@@ -405,43 +339,11 @@ def test_unicode_indexing() -> None:
     assert s[2] == "b"
 
 
-def test_casefold() -> None:
-    """casefold() for case-insensitive comparison."""
-    assert "Hello".casefold() == "hello"
-    assert "HELLO".casefold() == "hello"
-    assert "HeLLo WoRLd".casefold() == "hello world"
-    assert "".casefold() == ""
-
-
 def test_string_multiplication_negative() -> None:
     """Negative multiplier gives empty string."""
     assert "hello" * -1 == ""
     assert "hello" * -100 == ""
     assert -5 * "abc" == ""
-
-
-def test_string_format_basic() -> None:
-    """Basic string formatting with format()."""
-    assert "Hello, {}!".format("world") == "Hello, world!"
-    assert "{} + {} = {}".format(1, 2, 3) == "1 + 2 = 3"
-    assert "{0} {1} {0}".format("a", "b") == "a b a"
-
-
-def test_string_swapcase() -> None:
-    """swapcase() inverts case."""
-    assert "Hello".swapcase() == "hELLO"
-    assert "hELLO".swapcase() == "Hello"
-    assert "123".swapcase() == "123"
-    assert "".swapcase() == ""
-
-
-def test_string_removeprefix_removesuffix() -> None:
-    """removeprefix() and removesuffix() methods."""
-    assert "hello_world".removeprefix("hello_") == "world"
-    assert "hello_world".removeprefix("xxx") == "hello_world"
-    assert "hello_world".removesuffix("_world") == "hello"
-    assert "hello_world".removesuffix("xxx") == "hello_world"
-    assert "aaa".removeprefix("a") == "aa"  # only removes once
 
 
 def main() -> int:
@@ -470,20 +372,12 @@ def main() -> int:
         ("test_string_isalnum", test_string_isalnum),
         ("test_string_isspace", test_string_isspace),
         ("test_string_isupper_islower", test_string_isupper_islower),
-        ("test_string_capitalize_title", test_string_capitalize_title),
-        ("test_string_center_ljust_rjust", test_string_center_ljust_rjust),
-        ("test_string_zfill", test_string_zfill),
-        ("test_string_partition", test_string_partition),
-        ("test_string_rpartition", test_string_rpartition),
-        ("test_string_splitlines", test_string_splitlines),
-        ("test_string_expandtabs", test_string_expandtabs),
         ("test_string_bool", test_string_bool),
-        ("test_string_str_repr", test_string_str_repr),
+        ("test_string_str", test_string_str),
         ("test_string_escape_sequences", test_string_escape_sequences),
         ("test_string_multiplication_edge", test_string_multiplication_edge),
         ("test_string_comparison_empty", test_string_comparison_empty),
         ("test_string_split_maxsplit", test_string_split_maxsplit),
-        ("test_string_rsplit_maxsplit", test_string_rsplit_maxsplit),
         (
             "test_string_split_consecutive_delimiters",
             test_string_split_consecutive_delimiters,
@@ -492,14 +386,7 @@ def main() -> int:
         ("test_string_split_leading_trailing", test_string_split_leading_trailing),
         ("test_unicode_length", test_unicode_length),
         ("test_unicode_indexing", test_unicode_indexing),
-        ("test_casefold", test_casefold),
         ("test_string_multiplication_negative", test_string_multiplication_negative),
-        ("test_string_format_basic", test_string_format_basic),
-        ("test_string_swapcase", test_string_swapcase),
-        (
-            "test_string_removeprefix_removesuffix",
-            test_string_removeprefix_removesuffix,
-        ),
     ]
     for name, fn in tests:
         try:

@@ -104,6 +104,17 @@ fn Main() -> void {
 ok
 ---
 
+=== for tuple destructuring over list of tuples
+fn Main() -> void {
+    let pairs: list[(string, int)] = [("a", 1), ("b", 2)]
+    for name, val in pairs {
+        WritelnOut(Concat(name, ToString(val)))
+    }
+}
+---
+ok
+---
+
 === for over map
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
