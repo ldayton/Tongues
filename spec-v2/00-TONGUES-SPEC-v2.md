@@ -58,7 +58,7 @@ The frontend parses Python type annotations and maps them to Taytsh types. From 
 
 | Taytsh Type    | Meaning                       |
 | -------------- | ----------------------------- |
-| `int`          | signed integer, ≥53 bits      |
+| `int`          | signed integer, ≥32 bits      |
 | `float`        | IEEE 754 binary64             |
 | `bool`         | boolean                       |
 | `byte`         | unsigned 8-bit integer        |

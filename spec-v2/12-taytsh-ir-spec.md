@@ -122,29 +122,29 @@ let done: bool = true
 
 | Type    | Literal         | Description                      |
 | ------- | --------------- | -------------------------------- |
-| `int`   | `42`            | signed integer, at least 53 bits |
+| `int`   | `42`            | signed integer, at least 32 bits |
 | `float` | `3.14`          | IEEE 754 binary64                |
 | `bool`  | `true`, `false` | boolean                          |
 
 Target representations:
 
-| Target     | `int`     | `float`   | Notes                                                        |
-| ---------- | --------- | --------- | ------------------------------------------------------------ |
-| C          | `int64_t` | `double`  |                                                              |
-| C#         | `long`    | `double`  |                                                              |
-| Dart       | `int`     | `double`  |                                                              |
-| Go         | `int`     | `float64` | `int` is 64-bit on modern targets                            |
-| Java       | `long`    | `double`  |                                                              |
-| JavaScript | `number`  | `number`  | IEEE 754 double; 53-bit int range; strict math uses `BigInt` |
-| Lua        | `integer` | `number`  |                                                              |
-| Perl       | scalar    | scalar    |                                                              |
-| PHP        | `int`     | `float`   | 64-bit on modern targets                                     |
-| Python     | `int`     | `float`   | int is arbitrary precision                                   |
-| Ruby       | `Integer` | `Float`   | Integer is arbitrary precision                               |
-| Rust       | `i64`     | `f64`     |                                                              |
-| Swift      | `Int`     | `Double`  | `Int` is 64-bit on modern targets                            |
-| TypeScript | `number`  | `number`  | IEEE 754 double; 53-bit int range; strict math uses `BigInt` |
-| Zig        | `i64`     | `f64`     | `f64` is IEEE-compliant by default                           |
+| Target     | `int`     | `float`   | Notes                          |
+| ---------- | --------- | --------- | ------------------------------ |
+| C          | `int`     | `double`  | strict math uses `int64_t`     |
+| C#         | `int`     | `double`  | strict math uses `long`        |
+| Dart       | `int`     | `double`  |                                |
+| Go         | `int`     | `float64` |                                |
+| Java       | `int`     | `double`  | strict math uses `long`        |
+| JavaScript | `number`  | `number`  | strict math uses `BigInt`      |
+| Lua        | `integer` | `number`  |                                |
+| Perl       | scalar    | scalar    |                                |
+| PHP        | `int`     | `float`   |                                |
+| Python     | `int`     | `float`   | int is arbitrary precision     |
+| Ruby       | `Integer` | `Float`   | Integer is arbitrary precision |
+| Rust       | `i32`     | `f64`     | strict math uses `i64`         |
+| Swift      | `Int32`   | `Double`  | strict math uses `Int`         |
+| TypeScript | `number`  | `number`  | strict math uses `BigInt`      |
+| Zig        | `i32`     | `f64`     | strict math uses `i64`         |
 
 ### Functions
 
@@ -1198,7 +1198,7 @@ By default, Taytsh targets correct-enough portable behavior across all backends.
 
 ### Integers
 
-Integers are signed, at least 53 bits. Most targets provide 64-bit integers; JavaScript and TypeScript provide 53-bit integer range (IEEE 754 double). Overflow beyond the target's integer range is unspecified — programs that depend on specific overflow or wrapping behavior are out of scope.
+Integers are signed, at least 32 bits. Most targets provide 32-bit or 64-bit integers natively; some (Python, Ruby) provide arbitrary precision; JavaScript and TypeScript provide 53-bit integer range (IEEE 754 double). Overflow beyond the target's integer range is unspecified — programs that depend on specific overflow or wrapping behavior are out of scope. Programs that need guaranteed range should use strict math mode (exactly 64 bits).
 
 ### Division and Remainder
 
@@ -1254,7 +1254,7 @@ When strict math is enabled:
 
 | Property                          | Default mode        | Strict mode          |
 | --------------------------------- | ------------------- | -------------------- |
-| Integer width                     | at least 53 bits    | exactly 64 bits      |
+| Integer width                     | at least 32 bits    | exactly 64 bits      |
 | Integer overflow                  | unspecified         | traps                |
 | Shift ≥ 64                        | unspecified         | traps                |
 | Negation of `INT64_MIN`           | unspecified         | traps                |

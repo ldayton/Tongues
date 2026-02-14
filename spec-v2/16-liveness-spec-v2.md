@@ -47,7 +47,7 @@ A `let` declaration's initial value is **unused** when every control-flow path f
 When `true`, backends can suppress the initializer:
 - Emit `let x: int` instead of `let x: int = 0`.
 - Go emits `var x int` instead of `x := 0`.
-- Rust emits `let x: i64;` (uninitialized binding).
+- Rust emits `let x: i32;` (uninitialized binding).
 
 `liveness.initial_value_unused` MUST be present on every `let` declaration node (even when `false`).
 

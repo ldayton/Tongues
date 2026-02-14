@@ -420,9 +420,9 @@ Taytsh `for i in range(n)` maps to target-native loop syntax:
 
 | Target     | Emission                              |
 | ---------- | ------------------------------------- |
-| C          | `for (int64_t i = 0; i < n; i++)`     |
+| C          | `for (int i = 0; i < n; i++)`         |
 | Go         | `for i := 0; i < n; i++`              |
-| Java       | `for (long i = 0; i < n; i++)`        |
+| Java       | `for (int i = 0; i < n; i++)`         |
 | Python     | `for i in range(n)`                   |
 | Rust       | `for i in 0..n`                       |
 | Ruby       | `(0...n).each do \|i\|`  or `n.times` |
