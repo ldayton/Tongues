@@ -2988,6 +2988,7 @@ class Checker:
             if t is not None:
                 if contains_nil(t):
                     return remove_nil(t)
+                self.error("Unwrap requires optional type", pos)
                 return t
             return None
 
