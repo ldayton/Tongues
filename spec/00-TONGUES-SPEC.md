@@ -1,4 +1,4 @@
-# Tongues Specification v2
+# Tongues Specification
 
 Tongues is a transpiler for a well-behaved subset of Python. Programs in this subset are valid Python — they execute normally with CPython, work with standard IDEs, debuggers, test frameworks, and tooling. The subset trades dynamic flexibility for compile-time guarantees: all types are known, all calls resolve statically, all ownership is inferrable. This enables generation of idiomatic output in multiple target languages from a single source, all without shipping a runtime dependency.
 
@@ -107,4 +107,4 @@ Read-only analysis passes that annotate Taytsh IR nodes. No transformations — 
 | `middleend/ownership.py` | scope,liveness | `ownership.kind`, `ownership.escapes`, `ownership.region`                                                                                                                     |
 | `middleend/callgraph.py` | —              | `callgraph.throws`, `callgraph.is_recursive`, `callgraph.recursive_group`, `callgraph.is_tail_call`                                                                           |
 
-See `11-MIDDLEEND-SPEC-v2.md` for pass ordering, dependency graph, and target-conditional execution.
+See `11-MIDDLEEND-SPEC.md` for pass ordering, dependency graph, and target-conditional execution.
