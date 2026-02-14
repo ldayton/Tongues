@@ -91,7 +91,7 @@ class NameInfo:
         bases: list[str] | None = None,
     ):
         self.name: str = name
-        self.kind: str = kind  # "class" | "function" | "variable" | "parameter" | "field" | "builtin" | "constant"
+        self.kind: str = kind  # "class" | "function" | "variable" | "parameter" | "field" | "constant" | "type_alias" | "import" | "builtin"
         self.scope: str = scope  # "builtin" | "module" | "class" | "local"
         self.lineno: int = lineno
         self.col: int = col
@@ -280,6 +280,22 @@ class NameResolver:
         self.current_class: str = ""
         self.current_func: str = ""
 
+    def _register_module_name(self, stmt: ASTNode, info: NameInfo) -> bool:
+        """Register a module-level name, erroring on duplicates. Returns True if registered."""
+        existing = self.result.table.get_module(info.name)
+        if existing is not None:
+            self.error(
+                stmt,
+                "redefinition",
+                "'"
+                + info.name
+                + "' already defined at line "
+                + str(existing.lineno),
+            )
+            return False
+        self.result.table.add_module(info)
+        return True
+
     def _get_base_name(self, base: ASTNode) -> str:
         """Extract base class name from AST node."""
         if base.get("_type") == "Name":
@@ -339,41 +355,19 @@ class NameResolver:
             col = stmt.get("col_offset", 0)
             if node_type == "ClassDef":
                 name = stmt.get("name", "")
-                existing = self.result.table.get_module(name)
-                if existing is not None:
-                    self.error(
-                        stmt,
-                        "redefinition",
-                        "'"
-                        + name
-                        + "' already defined at line "
-                        + str(existing.lineno),
-                    )
-                else:
-                    bases: list[str] = []
-                    for base in stmt.get("bases", []):
-                        base_name = self._get_base_name(base)
-                        if base_name:
-                            bases.append(base_name)
-                    info = NameInfo(
-                        name, "class", "module", lineno, col, "", "", bases=bases
-                    )
-                    self.result.table.add_module(info)
+                bases: list[str] = []
+                for base in stmt.get("bases", []):
+                    base_name = self._get_base_name(base)
+                    if base_name:
+                        bases.append(base_name)
+                info = NameInfo(
+                    name, "class", "module", lineno, col, "", "", bases=bases
+                )
+                self._register_module_name(stmt, info)
             elif node_type == "FunctionDef":
                 name = stmt.get("name", "")
-                existing = self.result.table.get_module(name)
-                if existing is not None:
-                    self.error(
-                        stmt,
-                        "redefinition",
-                        "'"
-                        + name
-                        + "' already defined at line "
-                        + str(existing.lineno),
-                    )
-                else:
-                    info = NameInfo(name, "function", "module", lineno, col, "", "")
-                    self.result.table.add_module(info)
+                info = NameInfo(name, "function", "module", lineno, col, "", "")
+                self._register_module_name(stmt, info)
             elif node_type == "Assign":
                 targets = stmt.get("targets", [])
                 value = stmt.get("value", {})
@@ -382,30 +376,25 @@ class NameResolver:
                     target = targets[j]
                     if target.get("_type") == "Name":
                         name = target.get("id", "")
-                        existing = self.result.table.get_module(name)
-                        if existing is None:
-                            if is_all_caps(name):
-                                info = NameInfo(
-                                    name, "constant", "module", lineno, col, "", ""
-                                )
-                                self.result.table.add_module(info)
-                            elif is_type_alias(name, value):
-                                info = NameInfo(
-                                    name, "type_alias", "module", lineno, col, "", ""
-                                )
-                                self.result.table.add_module(info)
+                        if is_all_caps(name):
+                            info = NameInfo(
+                                name, "constant", "module", lineno, col, "", ""
+                            )
+                            self._register_module_name(stmt, info)
+                        elif is_type_alias(name, value):
+                            info = NameInfo(
+                                name, "type_alias", "module", lineno, col, "", ""
+                            )
+                            self._register_module_name(stmt, info)
                     j += 1
             elif node_type == "AnnAssign":
                 target = stmt.get("target", {})
                 if target.get("_type") == "Name":
                     name = target.get("id", "")
-                    existing = self.result.table.get_module(name)
-                    if existing is None:
-                        kind = "constant" if is_all_caps(name) else "variable"
-                        info = NameInfo(name, kind, "module", lineno, col, "", "")
-                        self.result.table.add_module(info)
+                    kind = "constant" if is_all_caps(name) else "variable"
+                    info = NameInfo(name, kind, "module", lineno, col, "", "")
+                    self._register_module_name(stmt, info)
             elif node_type == "Import":
-                # Register imported module names (e.g., import sys)
                 names_list = stmt.get("names", [])
                 j = 0
                 while j < len(names_list):
@@ -418,16 +407,14 @@ class NameResolver:
                             info = NameInfo(
                                 bound_name, "import", "module", lineno, col, "", ""
                             )
-                            self.result.table.add_module(info)
+                            self._register_module_name(stmt, info)
                     j += 1
             elif node_type == "ImportFrom":
-                # Register imported names in module scope
                 names_list = stmt.get("names", [])
                 j = 0
                 while j < len(names_list):
                     alias = names_list[j]
                     if isinstance(alias, dict):
-                        # Use asname if present, otherwise use name
                         asname = alias.get("asname")
                         import_name = alias.get("name", "")
                         bound_name = asname if asname is not None else import_name
@@ -435,7 +422,7 @@ class NameResolver:
                             info = NameInfo(
                                 bound_name, "import", "module", lineno, col, "", ""
                             )
-                            self.result.table.add_module(info)
+                            self._register_module_name(stmt, info)
                     j += 1
             elif node_type == "If":
                 # Handle TYPE_CHECKING blocks - imports inside are module-level
@@ -468,7 +455,7 @@ class NameResolver:
                                             "",
                                             "",
                                         )
-                                        self.result.table.add_module(info)
+                                        self._register_module_name(if_stmt, info)
                                 k += 1
                         j += 1
             i += 1

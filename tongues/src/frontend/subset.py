@@ -207,7 +207,7 @@ IMPORT_ONLY_MODULES: set[str] = {"sys", "os"}
 ALLOWED_FROM_MODULES: set[str] = {
     "typing",
     "dataclasses",
-    "collections",
+    "collections.abc",
     "__future__",
 }
 
@@ -650,7 +650,7 @@ class Verifier:
         if name not in ("__init__", "__new__"):
             if node.get("returns") is None:
                 self.error(
-                    node, "types", "missing return type: def " + name + "() -> ..."
+                    node, "types", "missing type annotation for '" + name + "'"
                 )
         # Check return type bare collection and visit return annotation
         returns = node.get("returns")
@@ -700,7 +700,7 @@ class Verifier:
                 self.error(
                     node,
                     "types",
-                    "missing param type: " + arg_name + " in " + name + "()",
+                    "missing type annotation for '" + arg_name + "'",
                 )
             else:
                 self.annotated_params.add(arg_name)
@@ -977,33 +977,6 @@ class Verifier:
                         "expression",
                         "tuple unpack from variable: unpack directly from call",
                     )
-        # Check unannotated field assigns in class
-        if self.in_class:
-            i = 0
-            while i < len(targets):
-                target = targets[i]
-                if target.get("_type") == "Attribute":
-                    target_value = target.get("value", {})
-                    if get_name_id(target_value) == "self":
-                        field_name = target.get("attr", "")
-                        if field_name not in self.annotated_fields:
-                            # Skip if value is annotated param
-                            val_name = get_name_id(value)
-                            if (
-                                val_name is not None
-                                and val_name in self.annotated_params
-                            ):
-                                self.annotated_fields.add(field_name)
-                            else:
-                                self.error(
-                                    node,
-                                    "types",
-                                    "unannotated field: self."
-                                    + field_name
-                                    + " needs type annotation",
-                                )
-                                self.annotated_fields.add(field_name)
-                i += 1
         # Visit children
         j = 0
         while j < len(targets):
@@ -1349,7 +1322,7 @@ class Verifier:
             )
             return
         # Only allowed stdlib modules can be from-imported
-        if top_module not in ALLOWED_FROM_MODULES:
+        if module not in ALLOWED_FROM_MODULES and top_module not in ALLOWED_FROM_MODULES:
             self.error(
                 node,
                 "import",

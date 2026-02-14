@@ -1,139 +1,83 @@
-"""Python backend: IR → Python code.
-
-COMPENSATIONS FOR EARLIER STAGE DEFICIENCIES
-============================================
-
-Frontend deficiencies (should be fixed in frontend.py):
-- None identified. Frontend now emits NoOp IR nodes for skipped statements.
-
-Middleend deficiencies (should be fixed in middleend.py):
-- None identified. Python backend is cleanest because source language matches.
-
-UNCOMPENSATED DEFICIENCIES (non-idiomatic output)
-=================================================
-
-Frontend deficiencies (should be fixed in frontend.py):
-- _intPtr(fd) emits helper instead of inline ternary.
-- Pointer/Optional conflation: Pointer(StructRef("X")) renders as `X` but should
-  be `X | None` when field is nullable. Example: `word: Word = None` should be
-  `word: Word | None = None`. (~50 fields affected)
-
-Middleend deficiencies (should be fixed in middleend.py):
-- None. The while loops and accumulator patterns in the output faithfully reflect
-  the source Python. Making them more idiomatic (comprehensions, enumerate, etc.)
-  would be an IR transformation pass, not fixing missing analysis.
-"""
+"""Python backend: Taytsh AST → Python source code."""
 
 from __future__ import annotations
 
-from .util import escape_string, ir_contains_call
-from ..ir import (
-    Array,
-    Assert,
-    BYTE,
-    Assign,
-    BinaryOp,
-    Block,
-    BoolLit,
-    Break,
-    Call,
-    Cast,
-    ChainedCompare,
-    CharClassify,
-    CatchClause,
-    CompGenerator,
-    Constant,
-    Continue,
-    DerefLV,
-    DictComp,
-    EntryPoint,
-    Expr,
-    ExprStmt,
-    Field,
-    FieldAccess,
-    FieldLV,
-    FloatLit,
-    ForClassic,
-    ForRange,
-    FuncRef,
-    FuncType,
-    Function,
-    If,
-    Index,
-    IndexLV,
-    IntLit,
-    IntToStr,
-    InterfaceDef,
-    InterfaceRef,
-    IsNil,
-    IsType,
-    Len,
-    ListComp,
-    LValue,
-    MakeMap,
-    MakeSlice,
-    Map,
-    MapLit,
-    Match,
-    MatchCase,
-    MaxExpr,
-    MethodCall,
-    MinExpr,
-    Module,
-    NilLit,
-    NoOp,
-    OpAssign,
-    Optional,
-    Param,
-    ParseInt,
-    Pointer,
-    Primitive,
-    Raise,
-    Return,
-    Set,
-    SetComp,
-    SetLit,
-    Slice,
-    SliceConvert,
-    SliceExpr,
-    SliceLit,
-    SliceLV,
-    SoftFail,
-    StaticCall,
-    Stmt,
-    StringConcat,
-    StringFormat,
-    StringLit,
-    StringSlice,
-    Struct,
-    StructLit,
-    StructRef,
-    Ternary,
-    TrimChars,
-    TryCatch,
-    Tuple,
-    TupleAssign,
-    Truthy,
-    TupleLit,
-    Type,
-    TypeAssert,
-    TypeCase,
-    TypeSwitch,
-    UnaryOp,
-    Union,
-    Var,
-    VarDecl,
-    VarLV,
-    While,
+from .util import escape_string
+from ..taytsh.ast import (
+    TArg,
+    TAssignStmt,
+    TBinaryOp,
+    TBoolLit,
+    TBreakStmt,
+    TByteLit,
+    TBytesLit,
+    TCall,
+    TCatch,
+    TContinueStmt,
+    TDecl,
+    TDefault,
+    TEnumDecl,
+    TExpr,
+    TExprStmt,
+    TFieldAccess,
+    TFieldDecl,
+    TFnDecl,
+    TFnLit,
+    TFloatLit,
+    TForStmt,
+    TFuncType,
+    TIdentType,
+    TIfStmt,
+    TIndex,
+    TIntLit,
+    TInterfaceDecl,
+    TLetStmt,
+    TListLit,
+    TListType,
+    TMapLit,
+    TMapType,
+    TMatchCase,
+    TMatchStmt,
+    TModule,
+    TNilLit,
+    TOpAssignStmt,
+    TOptionalType,
+    TParam,
+    TPatternEnum,
+    TPatternNil,
+    TPatternType,
+    TPrimitive,
+    TRange,
+    TReturnStmt,
+    TRuneLit,
+    TSetLit,
+    TSetType,
+    TSlice,
+    TStmt,
+    TStringLit,
+    TStructDecl,
+    TTernary,
+    TThrowStmt,
+    TTupleAccess,
+    TTupleAssignStmt,
+    TTupleLit,
+    TTupleType,
+    TTryStmt,
+    TType,
+    TUnaryOp,
+    TUnionType,
+    TVar,
+    TWhileStmt,
+)
+from ..taytsh.check import (
+    BUILTIN_NAMES,
+    BUILTIN_STRUCTS,
 )
 
+# ============================================================
+# PYTHON BUILTINS
+# ============================================================
 
-def _is_empty_body(body: list[Stmt]) -> bool:
-    """Check if body is empty or contains only NoOp statements."""
-    return not body or all(isinstance(s, NoOp) for s in body)
-
-
-# Python builtins that shouldn't be shadowed by variable names
 _PYTHON_BUILTINS = frozenset(
     {
         "abs",
@@ -207,995 +151,18 @@ _PYTHON_BUILTINS = frozenset(
     }
 )
 
-# Builtin types that have static methods (don't rename when used as method receiver)
-_BUILTIN_TYPES = frozenset(
-    {"dict", "list", "set", "tuple", "str", "int", "float", "bool", "bytes"}
-)
-
 
 def _safe_name(name: str) -> str:
-    """Rename variables that shadow Python builtins."""
     if name in _PYTHON_BUILTINS:
         return name + "_"
     return name
 
 
-def _struct_is_emitted(struct: Struct) -> bool:
-    """Check if struct should be emitted (not empty or has special properties)."""
-    is_empty = not struct.fields and not struct.methods and not struct.doc
-    return not (is_empty and not struct.is_exception and not struct.implements)
+# ============================================================
+# OPERATOR MAPS
+# ============================================================
 
-
-class PythonBackend:
-    """Emit Python code from IR."""
-
-    def __init__(self) -> None:
-        self.indent: int = 0
-        self.lines: list[str] = []
-        self.receiver_name: str | None = None
-
-    def emit(self, module: Module) -> str:
-        """Emit Python code from IR Module."""
-        self.indent = 0
-        self.lines = []
-        self._emit_module(module)
-        return "\n".join(self.lines)
-
-    def _line(self, text: str = "") -> None:
-        if text:
-            self.lines.append("    " * self.indent + text)
-        else:
-            self.lines.append("")
-
-    def _emit_module(self, module: Module) -> None:
-        needs_protocol = bool(module.interfaces)
-        needs_intptr = ir_contains_call(module, "_intPtr")
-        needs_dataclass = any(
-            _struct_is_emitted(s) and not s.is_exception for s in module.structs
-        )
-        needs_field = any(
-            _struct_is_emitted(s)
-            and any(
-                fld.default is None and isinstance(fld.typ, (Slice, Array, Map, Set))
-                for fld in s.fields
-            )
-            for s in module.structs
-        )
-
-        if module.doc:
-            if "\n" in module.doc:
-                self._line('"""' + module.doc + '"""')
-            else:
-                self._line(f'"""{module.doc}"""')
-            self._line()
-
-        plain_imports: list[str] = []
-        from_imports: list[str] = []
-        if module.entrypoint is not None:
-            plain_imports.append("import sys")
-        if needs_dataclass and needs_field:
-            from_imports.append("from dataclasses import dataclass, field")
-        elif needs_dataclass:
-            from_imports.append("from dataclasses import dataclass")
-        elif needs_field:
-            from_imports.append("from dataclasses import field")
-        if needs_protocol:
-            from_imports.append("from typing import Protocol")
-
-        if plain_imports or from_imports:
-            for line in plain_imports:
-                self._line(line)
-            if plain_imports and from_imports:
-                self._line()
-            for line in from_imports:
-                self._line(line)
-            self._line()
-        # Ensure two blank lines before the first top-level definition/class.
-        self._line()
-
-        need_blank = False
-        if needs_intptr:
-            self._line("def _intPtr(val: int) -> int | None:")
-            self._line("    return None if val == -1 else val")
-            need_blank = True
-
-        if module.constants:
-            if need_blank:
-                self._line()
-            for const in module.constants:
-                self._emit_constant(const)
-            need_blank = True
-        for iface in module.interfaces:
-            if need_blank:
-                self._line()
-                self._line()
-            self._emit_interface(iface)
-            need_blank = True
-        for struct in module.structs:
-            if need_blank:
-                self._line()
-                self._line()
-            self._emit_struct(struct)
-            need_blank = True
-        for func in module.functions:
-            if need_blank:
-                self._line()
-                self._line()
-            self._emit_function(func)
-            need_blank = True
-        for stmt in module.statements:
-            if need_blank:
-                self._line()
-            self._emit_stmt(stmt)
-            need_blank = True
-        if module.entrypoint is not None:
-            self._line()
-            self._line()
-            self._emit_stmt(module.entrypoint)
-
-    def _emit_constant(self, const: Constant) -> None:
-        typ = self._type(const.typ)
-        val = self._expr(const.value)
-        self._line(f"{const.name}: {typ} = {val}")
-
-    def _emit_interface(self, iface: InterfaceDef) -> None:
-        self._line(f"class {iface.name}(Protocol):")
-        self.indent += 1
-        if not iface.methods:
-            self._line("pass")
-        for method in iface.methods:
-            params = self._params(method.params, with_self=True)
-            ret = self._type(method.ret)
-            self._line(f"def {method.name}({params}) -> {ret}: ...")
-        self.indent -= 1
-
-    def _emit_struct(self, struct: Struct) -> None:
-        # Skip empty shell classes (constants are already module-level)
-        is_empty = not struct.fields and not struct.methods and not struct.doc
-        if is_empty and not struct.is_exception and not struct.implements:
-            return
-        base_list = list(struct.implements) if struct.implements else []
-        if struct.is_exception:
-            exc_base = struct.embedded_type if struct.embedded_type else "Exception"
-            base_list.insert(0, exc_base)
-        else:
-            self._line("@dataclass")
-        bases = ", ".join(base_list)
-        if bases:
-            self._line(f"class {struct.name}({bases}):")
-        else:
-            self._line(f"class {struct.name}:")
-        self.indent += 1
-        if struct.doc:
-            self._line(f'"""{struct.doc}"""')
-        if not struct.fields and not struct.methods:
-            self._line("pass")
-        for fld in struct.fields:
-            self._emit_field(fld)
-        for i, method in enumerate(struct.methods):
-            if i > 0 or struct.fields:
-                self._line()
-            self._emit_method(method)
-        self.indent -= 1
-
-    def _emit_field(self, fld: Field) -> None:
-        typ = self._type(fld.typ)
-        if fld.default is not None:
-            default = self._expr(fld.default)
-        else:
-            default = self._field_default(fld.typ)
-        self._line(f"{fld.name}: {typ} = {default}")
-
-    def _emit_function(self, func: Function) -> None:
-        if func.doc:
-            pass  # We'll put docstring inside
-        params = self._params(func.params, with_self=False)
-        ret = self._type(func.ret)
-        self._line(f"def {func.name}({params}) -> {ret}:")
-        self.indent += 1
-        if func.doc:
-            self._line(f'"""{func.doc}"""')
-        if _is_empty_body(func.body):
-            self._line("pass")
-        for stmt in func.body:
-            self._emit_stmt(stmt)
-        self.indent -= 1
-
-    def _emit_method(self, func: Function) -> None:
-        params = self._params(func.params, with_self=True)
-        ret = self._type(func.ret)
-        self._line(f"def {func.name}({params}) -> {ret}:")
-        self.indent += 1
-        if func.doc:
-            self._line(f'"""{func.doc}"""')
-        if func.receiver:
-            self.receiver_name = func.receiver.name
-        if _is_empty_body(func.body):
-            self._line("pass")
-        for stmt in func.body:
-            self._emit_stmt(stmt)
-        self.receiver_name = None
-        self.indent -= 1
-
-    def _params(self, params: list[Param], with_self: bool) -> str:
-        parts = []
-        if with_self:
-            parts.append("self")
-        for p in params:
-            typ = self._type(p.typ)
-            parts.append(f"{_safe_name(p.name)}: {typ}")
-        return ", ".join(parts)
-
-    def _emit_stmt(self, stmt: Stmt) -> None:
-        match stmt:
-            case VarDecl(name=name, typ=typ, value=value):
-                py_type = self._type(typ)
-                safe = _safe_name(name)
-                if value is not None:
-                    val = self._expr(value)
-                    self._line(f"{safe}: {py_type} = {val}")
-                else:
-                    self._line(f"{safe}: {py_type}")
-            case Assign(target=target, value=value):
-                lv = self._lvalue(target)
-                val = self._expr(value)
-                self._line(f"{lv} = {val}")
-            case TupleAssign(targets=targets, value=value):
-                lvalues = ", ".join(self._lvalue(t) for t in targets)
-                val = self._expr(value)
-                self._line(f"{lvalues} = {val}")
-            case OpAssign(target=target, op=op, value=value):
-                lv = self._lvalue(target)
-                val = self._expr(value)
-                self._line(f"{lv} {op}= {val}")
-            case NoOp():
-                pass  # No output for NoOp
-            case ExprStmt(expr=expr):
-                self._line(self._expr(expr))
-            case Return(value=value):
-                if value is not None:
-                    self._line(f"return {self._expr(value)}")
-                else:
-                    self._line("return")
-            case If(cond=cond, then_body=then_body, else_body=else_body, init=init):
-                if init is not None:
-                    self._emit_stmt(init)
-                self._line(f"if {self._expr(cond)}:")
-                self.indent += 1
-                if _is_empty_body(then_body):
-                    self._line("pass")
-                for s in then_body:
-                    self._emit_stmt(s)
-                self.indent -= 1
-                self._emit_else_body(else_body)
-            case TypeSwitch(expr=expr, binding=binding, cases=cases, default=default):
-                self._emit_type_switch(expr, binding, cases, default)
-            case Match(expr=expr, cases=cases, default=default):
-                self._emit_match(expr, cases, default)
-            case ForRange(index=index, value=value, iterable=iterable, body=body):
-                self._emit_for_range(index, value, iterable, body)
-            case ForClassic(init=init, cond=cond, post=post, body=body):
-                self._emit_for_classic(init, cond, post, body)
-            case While(cond=cond, body=body):
-                self._line(f"while {self._expr(cond)}:")
-                self.indent += 1
-                if _is_empty_body(body):
-                    self._line("pass")
-                for s in body:
-                    self._emit_stmt(s)
-                self.indent -= 1
-            case Break(label=_):
-                self._line("break")
-            case Continue(label=_):
-                self._line("continue")
-            case Block(body=body):
-                for s in body:
-                    self._emit_stmt(s)
-            case TryCatch(
-                body=body,
-                catches=catches,
-                reraise=reraise,
-            ):
-                self._emit_try_catch(body, catches, reraise)
-            case Assert(test=test, message=message):
-                if message is not None:
-                    self._line(f"assert {self._expr(test)}, {self._expr(message)}")
-                else:
-                    self._line(f"assert {self._expr(test)}")
-            case Raise(
-                error_type=error_type, message=message, pos=pos, reraise_var=reraise_var
-            ):
-                if reraise_var:
-                    self._line(f"raise {reraise_var}")
-                else:
-                    msg = self._expr(message)
-                    p = self._expr(pos)
-                    self._line(f"raise {error_type}({msg}, {p})")
-            case SoftFail():
-                self._line("return None")
-            case EntryPoint(function_name=function_name):
-                self._line('if __name__ == "__main__":')
-                self.indent += 1
-                self._line(f"sys.exit({function_name}())")
-                self.indent -= 1
-            case _:
-                raise NotImplementedError("Unknown statement")
-
-    def _emit_type_switch(
-        self, expr: Expr, binding: str, cases: list[TypeCase], default: list[Stmt]
-    ) -> None:
-        var = self._expr(expr)
-        for i, case in enumerate(cases):
-            type_name = self._type_name_for_check(case.typ)
-            keyword = "if" if i == 0 else "elif"
-            self._line(f"{keyword} isinstance({var}, {type_name}):")
-            self.indent += 1
-            self._line(f"{binding} = {var}")
-            if _is_empty_body(case.body):
-                self._line("pass")
-            for s in case.body:
-                self._emit_stmt(s)
-            self.indent -= 1
-        if default:
-            self._line("else:")
-            self.indent += 1
-            for s in default:
-                self._emit_stmt(s)
-            self.indent -= 1
-
-    def _emit_match(
-        self, expr: Expr, cases: list[MatchCase], default: list[Stmt]
-    ) -> None:
-        self._line(f"match {self._expr(expr)}:")
-        self.indent += 1
-        for case in cases:
-            patterns = " | ".join(self._expr(p) for p in case.patterns)
-            self._line(f"case {patterns}:")
-            self.indent += 1
-            if _is_empty_body(case.body):
-                self._line("pass")
-            for s in case.body:
-                self._emit_stmt(s)
-            self.indent -= 1
-        if default:
-            self._line("case _:")
-            self.indent += 1
-            for s in default:
-                self._emit_stmt(s)
-            self.indent -= 1
-        self.indent -= 1
-
-    def _emit_for_range(
-        self,
-        index: str | None,
-        value: str | None,
-        iterable: Expr,
-        body: list[Stmt],
-    ) -> None:
-        iter_expr = self._expr(iterable)
-        # Wrap with (... or []) if iterable might be None (Optional type or field access)
-        if isinstance(iterable.typ, Optional) or isinstance(iterable, FieldAccess):
-            iter_expr = f"({iter_expr} or [])"
-        idx = _safe_name(index) if index else None
-        val = _safe_name(value) if value else None
-
-        # Fold tuple-unpacking prelude:
-        #   for _item in xs:
-        #       a = _item[0]
-        #       b = _item[1]
-        # into:
-        #   for a, b in xs:
-        if idx is None and value is not None and value.startswith("_"):
-            unpacked: list[str] = []
-            i = 0
-            while i < len(body):
-                stmt = body[i]
-                if not isinstance(stmt, Assign):
-                    break
-                if not isinstance(stmt.target, VarLV):
-                    break
-                if not isinstance(stmt.value, FieldAccess):
-                    break
-                field_access = stmt.value
-                if (
-                    not isinstance(field_access.obj, Var)
-                    or field_access.obj.name != value
-                ):
-                    break
-                field = field_access.field
-                if not (field.startswith("F") and field[1:].isdigit()):
-                    break
-                if int(field[1:]) != i:
-                    break
-                unpacked.append(_safe_name(stmt.target.name))
-                i += 1
-            if i >= 2:
-                targets = ", ".join(unpacked)
-                self._line(f"for {targets} in {iter_expr}:")
-                self.indent += 1
-                rest = body[i:]
-                if _is_empty_body(rest):
-                    self._line("pass")
-                for s in rest:
-                    self._emit_stmt(s)
-                self.indent -= 1
-                return
-
-        if idx is not None and val is not None:
-            if isinstance(iterable, Call) and iterable.func in ("enumerate", "zip"):
-                self._line(f"for {idx}, {val} in {iter_expr}:")
-            else:
-                self._line(f"for {idx}, {val} in enumerate({iter_expr}):")
-        elif val is not None:
-            self._line(f"for {val} in {iter_expr}:")
-        elif idx is not None:
-            self._line(f"for {idx} in range(len({iter_expr})):")
-        else:
-            self._line(f"for _ in {iter_expr}:")
-        self.indent += 1
-        if _is_empty_body(body):
-            self._line("pass")
-        for s in body:
-            self._emit_stmt(s)
-        self.indent -= 1
-
-    def _emit_for_classic(
-        self,
-        init: Stmt | None,
-        cond: Expr | None,
-        post: Stmt | None,
-        body: list[Stmt],
-    ) -> None:
-        # Check for simple iteration pattern: for i := 0; i < len(x); i++
-        if (range_info := _extract_range_pattern(init, cond, post)) is not None:
-            var_name, iterable_expr = range_info
-            self._line(
-                f"for {_safe_name(var_name)} in range(len({self._expr(iterable_expr)})):"
-            )
-            self.indent += 1
-            if _is_empty_body(body):
-                self._line("pass")
-            for s in body:
-                self._emit_stmt(s)
-            self.indent -= 1
-            return
-        # Fallback: emit as while loop
-        if init is not None:
-            self._emit_stmt(init)
-        cond_str = self._expr(cond) if cond else "True"
-        self._line(f"while {cond_str}:")
-        self.indent += 1
-        if _is_empty_body(body) and post is None:
-            self._line("pass")
-        for s in body:
-            self._emit_stmt(s)
-        if post is not None:
-            self._emit_stmt(post)
-        self.indent -= 1
-
-    def _emit_try_catch(
-        self,
-        body: list[Stmt],
-        catches: list[CatchClause],
-        reraise: bool,
-    ) -> None:
-        self._line("try:")
-        self.indent += 1
-        if _is_empty_body(body):
-            self._line("pass")
-        for s in body:
-            self._emit_stmt(s)
-        self.indent -= 1
-        for clause in catches:
-            var = _safe_name(clause.var) if clause.var else "_e"
-            exc_type = (
-                clause.typ.name if isinstance(clause.typ, StructRef) else "Exception"
-            )
-            self._line(f"except {exc_type} as {var}:")
-            self.indent += 1
-            if _is_empty_body(clause.body) and not reraise:
-                self._line("pass")
-            for s in clause.body:
-                self._emit_stmt(s)
-            if reraise:
-                self._line("raise")
-            self.indent -= 1
-
-    def _emit_else_body(self, else_body: list[Stmt]) -> None:
-        """Emit else body, converting single-If else to elif chains."""
-        if _is_empty_body(else_body):
-            return
-        # Check for elif pattern: else body is single If statement
-        if len(else_body) == 1 and isinstance(else_body[0], If):
-            elif_stmt = else_body[0]
-            if elif_stmt.init is not None:
-                self._emit_stmt(elif_stmt.init)
-            self._line(f"elif {self._expr(elif_stmt.cond)}:")
-            self.indent += 1
-            if _is_empty_body(elif_stmt.then_body):
-                self._line("pass")
-            for s in elif_stmt.then_body:
-                self._emit_stmt(s)
-            self.indent -= 1
-            # Recurse for more elif/else
-            self._emit_else_body(elif_stmt.else_body)
-        else:
-            self._line("else:")
-            self.indent += 1
-            for s in else_body:
-                self._emit_stmt(s)
-            self.indent -= 1
-
-    def _expr(self, expr: Expr) -> str:
-        match expr:
-            case IntLit(value=value, format=fmt):
-                if fmt == "hex":
-                    return hex(value)
-                if fmt == "oct":
-                    return oct(value)
-                if fmt == "bin":
-                    return bin(value)
-                return str(value)
-            case FloatLit(value=value, format=fmt):
-                if fmt == "exp":
-                    return "%g" % value
-                return str(value)
-            case StringLit(value=value):
-                return _string_literal(value)
-            case BoolLit(value=value):
-                return "True" if value else "False"
-            case NilLit():
-                return "None"
-            case Var(name=name):
-                if name == self.receiver_name:
-                    return "self"
-                return _safe_name(name)
-            case FieldAccess(obj=obj, field=field):
-                # Convert tuple field access (F0, F1, etc.) to index access
-                if field.startswith("F") and field[1:].isdigit():
-                    return f"{self._expr(obj)}[{field[1:]}]"
-                return f"{self._expr(obj)}.{field}"
-            case FuncRef(name=name, obj=obj):
-                if obj is not None:
-                    return f"{self._expr(obj)}.{name}"
-                return name
-            case Index(obj=obj, index=index):
-                # Detect len(x) - N pattern for negative indexing
-                if neg_idx := self._negative_index(obj, index):
-                    return f"{self._expr(obj)}[{neg_idx}]"
-                return f"{self._expr(obj)}[{self._expr(index)}]"
-            case SliceExpr(obj=obj, low=low, high=high, step=step):
-                return self._slice_expr(obj, low, high, step)
-            case ParseInt(string=s, base=b):
-                return f"int({self._expr(s)}, {self._expr(b)})"
-            case IntToStr(value=v):
-                return f"str({self._expr(v)})"
-            case CharClassify(kind=kind, char=char):
-                method_map = {
-                    "digit": "isdigit",
-                    "alpha": "isalpha",
-                    "alnum": "isalnum",
-                    "space": "isspace",
-                    "upper": "isupper",
-                    "lower": "islower",
-                }
-                return f"{self._expr(char)}.{method_map[kind]}()"
-            case TrimChars(string=s, chars=chars, mode=mode):
-                method_map = {"left": "lstrip", "right": "rstrip", "both": "strip"}
-                return f"{self._expr(s)}.{method_map[mode]}({self._expr(chars)})"
-            case Call(func=func, args=args, reverse=reverse):
-                args_str = ", ".join(self._expr(a) for a in args)
-                if reverse:
-                    if args_str:
-                        return f"{func}({args_str}, reverse=True)"
-                    return f"{func}(reverse=True)"
-                return f"{func}({args_str})"
-            case MethodCall(
-                obj=obj,
-                method=method,
-                args=args,
-                receiver_type=receiver_type,
-                reverse=reverse,
-            ):
-                args_str = ", ".join(self._expr(a) for a in args)
-                py_method = _method_name(method, receiver_type)
-                # For builtin type static methods (dict.fromkeys, etc.), don't rename
-                if isinstance(obj, Var) and obj.name in _BUILTIN_TYPES:
-                    obj_str = obj.name
-                else:
-                    obj_str = self._expr(obj)
-                # Wrap receiver in parens for compound expressions (BinaryOp, UnaryOp, etc.)
-                if isinstance(obj, (BinaryOp, UnaryOp, Ternary)):
-                    obj_str = f"({obj_str})"
-                if reverse:
-                    if args_str:
-                        return f"{obj_str}.{py_method}({args_str}, reverse=True)"
-                    return f"{obj_str}.{py_method}(reverse=True)"
-                return f"{obj_str}.{py_method}({args_str})"
-            case StaticCall(on_type=on_type, method=method, args=args):
-                args_str = ", ".join(self._expr(a) for a in args)
-                type_name = self._type_name_for_check(on_type)
-                return f"{type_name}.{method}({args_str})"
-            case Truthy(expr=e):
-                return self._expr(e)
-            case BinaryOp(op=op, left=left, right=right):
-                py_op = _binary_op(op)
-                left_str = self._maybe_paren(left, op, is_left=True)
-                right_str = self._maybe_paren(right, op, is_left=False)
-                return f"{left_str} {py_op} {right_str}"
-            case UnaryOp(op=op, operand=operand):
-                py_op = _unary_op(op)
-                # 'not' has lower precedence than comparisons, so no parens needed
-                if op == "!" and isinstance(operand, (BinaryOp, ChainedCompare)):
-                    if isinstance(operand, ChainedCompare):
-                        return f"{py_op}{self._expr(operand)}"
-                    # Only need parens for and/or (lower precedence than not)
-                    if operand.op in ("and", "or", "&&", "||"):
-                        return f"{py_op}({self._expr(operand)})"
-                    return f"{py_op}{self._expr(operand)}"
-                # Other unary ops: wrap compound expressions
-                if isinstance(operand, (BinaryOp, Ternary)):
-                    return f"{py_op}({self._expr(operand)})"
-                return f"{py_op}{self._expr(operand)}"
-            case Ternary(cond=cond, then_expr=then_expr, else_expr=else_expr):
-                return f"{self._expr(then_expr)} if {self._cond_expr(cond)} else {self._expr(else_expr)}"
-            case MinExpr(left=left, right=right):
-                return f"min({self._expr(left)}, {self._expr(right)})"
-            case MaxExpr(left=left, right=right):
-                return f"max({self._expr(left)}, {self._expr(right)})"
-            case ChainedCompare(operands=operands, ops=ops):
-                parts = [self._expr(operands[0])]
-                for op, operand in zip(ops, operands[1:]):
-                    parts.append(f" {op} {self._expr(operand)}")
-                return "".join(parts)
-            case Cast(expr=inner, to_type=to_type):
-                # Cast from list[int] (bytearray) to string needs bytes().decode()
-                if to_type == Primitive(kind="string") and isinstance(inner.typ, Slice):
-                    return (
-                        f'bytes({self._expr(inner)}).decode("utf-8", errors="replace")'
-                    )
-                # Cast from rune to string is chr() in Python
-                if to_type == Primitive(kind="string") and inner.typ == Primitive(
-                    kind="rune"
-                ):
-                    return f"chr({self._expr(inner)})"
-                # Cast to string is str() in Python
-                if to_type == Primitive(kind="string"):
-                    return f"str({self._expr(inner)})"
-                # Cast from string to []byte is .encode() in Python
-                if isinstance(to_type, Slice) and to_type.element == Primitive(
-                    kind="byte"
-                ):
-                    return f'{self._expr(inner)}.encode("utf-8")'
-                # Cast from string/char/byte to int is ord() in Python
-                if to_type == Primitive(kind="int") and inner.typ in (
-                    Primitive(kind="string"),
-                    Primitive(kind="byte"),
-                    Primitive(kind="rune"),
-                ):
-                    return f"ord({self._expr(inner)})"
-                # Cast from float to int needs int() in Python
-                if to_type == Primitive(kind="int") and inner.typ == Primitive(
-                    kind="float"
-                ):
-                    return f"int({self._expr(inner)})"
-                # Cast to float needs float() in Python
-                if to_type == Primitive(kind="float"):
-                    return f"float({self._expr(inner)})"
-                # Most casts in Python are no-ops
-                return self._expr(inner)
-            case TypeAssert(expr=inner):
-                # Python doesn't have type assertions at runtime
-                return self._expr(inner)
-            case IsType(expr=inner, tested_type=tested_type):
-                type_name = self._type_name_for_check(tested_type)
-                return f"isinstance({self._expr(inner)}, {type_name})"
-            case IsNil(expr=inner, negated=negated):
-                op = "is not" if negated else "is"
-                return f"{self._expr(inner)} {op} None"
-            case Len(expr=inner):
-                return f"len({self._expr(inner)})"
-            case MakeSlice(element_type=element_type, length=length):
-                if length is not None:
-                    zero = self._zero_value(element_type)
-                    return f"[{zero}] * {self._expr(length)}"
-                return "[]"
-            case MakeMap():
-                return "{}"
-            case SliceLit(element_type=elem_type, elements=elements):
-                elems = ", ".join(self._expr(e) for e in elements)
-                # Bytes literals: emit as bytes([...]) in Python
-                if elem_type == BYTE:
-                    return f"bytes([{elems}])"
-                return f"[{elems}]"
-            case MapLit(entries=entries):
-                if not entries:
-                    return "{}"
-                pairs = ", ".join(
-                    f"{self._expr(k)}: {self._expr(v)}" for k, v in entries
-                )
-                return f"{{{pairs}}}"
-            case SetLit(elements=elements):
-                if not elements:
-                    return "set()"
-                elems = ", ".join(self._expr(e) for e in elements)
-                return f"{{{elems}}}"
-            case ListComp(element=element, generators=generators):
-                elem = self._expr(element)
-                gen_parts = self._comp_generators(generators)
-                return f"[{elem} {gen_parts}]"
-            case SetComp(element=element, generators=generators):
-                elem = self._expr(element)
-                gen_parts = self._comp_generators(generators)
-                return f"{{{elem} {gen_parts}}}"
-            case DictComp(key=key, value=value, generators=generators):
-                k, v = self._expr(key), self._expr(value)
-                gen_parts = self._comp_generators(generators)
-                return f"{{{k}: {v} {gen_parts}}}"
-            case StructLit(struct_name=struct_name, fields=fields):
-                # Skip None fields to use dataclass defaults
-                non_none = [
-                    (k, v) for k, v in fields.items() if not isinstance(v, NilLit)
-                ]
-                args = ", ".join(f"{k}={self._expr(v)}" for k, v in non_none)
-                return f"{struct_name}({args})"
-            case TupleLit(elements=elements):
-                elems = ", ".join(self._expr(e) for e in elements)
-                if len(elements) == 1:
-                    return f"({elems},)"
-                return f"({elems})"
-            case StringConcat(parts=parts):
-                return " + ".join(self._expr(p) for p in parts)
-            case StringFormat(template=template, args=args):
-                return self._format_string(template, args)
-            case SliceConvert(source=source):
-                return self._expr(source)
-            case _:
-                raise NotImplementedError("Unknown expression")
-
-    def _comp_generators(self, generators: list[CompGenerator]) -> str:
-        """Emit generator clauses for a comprehension."""
-        parts = []
-        for gen in generators:
-            var = ", ".join(_safe_name(t) for t in gen.targets)
-            iter_str = self._expr(gen.iterable)
-            part = f"for {var} in {iter_str}"
-            for cond in gen.conditions:
-                part += f" if {self._expr(cond)}"
-            parts.append(part)
-        return " ".join(parts)
-
-    def _slice_expr(
-        self, obj: Expr, low: Expr | None, high: Expr | None, step: Expr | None = None
-    ) -> str:
-        obj_str = self._expr(obj)
-        # Detect len(x) - N pattern for negative slice bounds
-        if low and (neg_idx := self._negative_index(obj, low)):
-            low_str = neg_idx
-        else:
-            low_str = self._expr(low) if low else ""
-        if high and (neg_idx := self._negative_index(obj, high)):
-            high_str = neg_idx
-        else:
-            high_str = self._expr(high) if high else ""
-        if step:
-            step_str = self._expr(step)
-            return f"{obj_str}[{low_str}:{high_str}:{step_str}]"
-        return f"{obj_str}[{low_str}:{high_str}]"
-
-    def _negative_index(self, obj: Expr, index: Expr) -> str | None:
-        """Detect len(obj) - N and return -N as string, or None if no match."""
-        if not isinstance(index, BinaryOp) or index.op != "-":
-            return None
-        if not isinstance(index.left, Len) or not isinstance(index.right, IntLit):
-            return None
-        # Check if len() argument matches the object being indexed
-        if self._expr(index.left.expr) != self._expr(obj):
-            return None
-        return f"-{index.right.value}"
-
-    def _format_string(self, template: str, args: list[Expr]) -> str:
-        # First escape literal braces that aren't placeholders
-        # Replace {N} with a marker, escape all other braces, then restore
-        markers = {}
-        result = template
-        for i in range(len(args)):
-            marker = f"\x00PLACEHOLDER{i}\x00"
-            markers[marker] = i
-            result = result.replace(f"{{{i}}}", marker, 1)
-        # Also mark %v placeholders
-        pv_markers = []
-        while "%v" in result:
-            marker = f"\x00PV{len(pv_markers)}\x00"
-            pv_markers.append(marker)
-            result = result.replace("%v", marker, 1)
-        # Escape literal braces for f-string
-        result = result.replace("{", "{{").replace("}", "}}")
-        # Restore placeholders as f-string interpolations
-        for marker, i in markers.items():
-            if i < len(args):
-                result = result.replace(marker, f"{{{self._expr(args[i])}}}")
-        for j, marker in enumerate(pv_markers):
-            if j < len(args):
-                result = result.replace(marker, f"{{{self._expr(args[j])}}}")
-        # Use triple quotes for multi-line strings, escape quotes otherwise
-        if "\n" in result:
-            return f'f"""{result}"""'
-        result = result.replace('"', '\\"')
-        return f'f"{result}"'
-
-    def _lvalue(self, lv: LValue) -> str:
-        match lv:
-            case VarLV(name=name):
-                if name == self.receiver_name:
-                    return "self"
-                return _safe_name(name)
-            case FieldLV(obj=obj, field=field):
-                return f"{self._expr(obj)}.{field}"
-            case IndexLV(obj=obj, index=index):
-                if neg_idx := self._negative_index(obj, index):
-                    return f"{self._expr(obj)}[{neg_idx}]"
-                return f"{self._expr(obj)}[{self._expr(index)}]"
-            case SliceLV(obj=obj, low=low, high=high, step=step):
-                return self._slice_expr(obj, low, high, step)
-            case DerefLV(ptr=ptr):
-                return self._expr(ptr)
-            case _:
-                raise NotImplementedError("Unknown lvalue")
-
-    def _type(self, typ: Type) -> str:
-        match typ:
-            case Primitive(kind=kind):
-                return _primitive_type(kind)
-            case Slice(element=element):
-                return f"list[{self._type(element)}]"
-            case Array(element=element, size=size):
-                # Python doesn't distinguish arrays; use list
-                return f"list[{self._type(element)}]"
-            case Map(key=key, value=value):
-                return f"dict[{self._type(key)}, {self._type(value)}]"
-            case Set(element=element):
-                return f"set[{self._type(element)}]"
-            case Tuple(elements=elements):
-                parts = ", ".join(self._type(e) for e in elements)
-                return f"tuple[{parts}]"
-            case Pointer(target=target):
-                return self._type(target)
-            case Optional(inner=inner):
-                return f"{self._type(inner)} | None"
-            case StructRef(name=name):
-                return name
-            case InterfaceRef(name=name):
-                return name
-            case Union(name=name, variants=variants):
-                if name:
-                    return name
-                parts = " | ".join(self._type(v) for v in variants)
-                return parts
-            case FuncType(params=params, ret=ret):
-                # Use Callable from typing
-                params_str = ", ".join(self._type(p) for p in params)
-                return f"Callable[[{params_str}], {self._type(ret)}]"
-            case StringSlice():
-                return "str"
-            case _:
-                raise NotImplementedError("Unknown type")
-
-    def _type_name_for_check(self, typ: Type) -> str:
-        match typ:
-            case StructRef(name=name):
-                return name
-            case InterfaceRef(name=name):
-                return name
-            case _:
-                return self._type(typ)
-
-    def _zero_value(self, typ: Type) -> str:
-        match typ:
-            case Primitive(kind="int") | Primitive(kind="byte"):
-                return "0"
-            case Primitive(kind="float"):
-                return "0.0"
-            case Primitive(kind="bool"):
-                return "False"
-            case Primitive(kind="string"):
-                return '""'
-            case _:
-                return "None"
-
-    def _field_default(self, typ: Type) -> str:
-        """Generate default value for dataclass field."""
-        match typ:
-            case Slice() | Array():
-                return "field(default_factory=list)"
-            case Map():
-                return "field(default_factory=dict)"
-            case Set():
-                return "field(default_factory=set)"
-            case _:
-                return self._zero_value(typ)
-
-    def _cond_expr(self, expr: Expr) -> str:
-        """Emit a condition expression for ternary - no parens needed."""
-        return self._expr(expr)
-
-    def _maybe_paren(self, expr: Expr, parent_op: str, is_left: bool) -> str:
-        """Wrap expression in parens if needed for operator precedence."""
-        cmp_ops = ("==", "!=", "<", ">", "<=", ">=")
-        match expr:
-            case BinaryOp(op=child_op):
-                if _needs_parens(child_op, parent_op, is_left):
-                    return f"({self._expr(expr)})"
-            case Ternary():
-                return f"({self._expr(expr)})"
-            case UnaryOp(op="!"):
-                # 'not' has lower precedence than comparisons, so wrap in parens
-                if parent_op in cmp_ops:
-                    return f"({self._expr(expr)})"
-            case UnaryOp(op="-" | "+"):
-                # ** binds tighter than unary -, so (-2)**3 != -2**3
-                if parent_op == "**" and is_left:
-                    return f"({self._expr(expr)})"
-            case IsNil():
-                # 'is/is not' creates chained comparison if nested in comparison
-                if parent_op in cmp_ops:
-                    return f"({self._expr(expr)})"
-            case ChainedCompare():
-                # Chained comparisons need parens when nested in another comparison
-                if parent_op in cmp_ops:
-                    return f"({self._expr(expr)})"
-        return self._expr(expr)
-
-
-def _primitive_type(kind: str) -> str:
-    match kind:
-        case "string":
-            return "str"
-        case "int":
-            return "int"
-        case "float":
-            return "float"
-        case "bool":
-            return "bool"
-        case "byte":
-            return "int"
-        case "rune":
-            return "str"
-        case "void":
-            return "None"
-        case _:
-            raise NotImplementedError(f"Unknown primitive: {kind}")
-
-
-def _method_name(method: str, receiver_type: Type) -> str:
-    """Convert method name based on receiver type."""
-    if isinstance(receiver_type, Slice) and method == "append":
-        return "append"
-    return method
-
-
-def _binary_op(op: str) -> str:
-    match op:
-        case "&&":
-            return "and"
-        case "||":
-            return "or"
-        case _:
-            return op
-
-
-def _unary_op(op: str) -> str:
-    match op:
-        case "!":
-            return "not "
-        case "&" | "*":
-            return ""  # Python has no address-of/deref; objects are references
-        case _:
-            return op
-
-
-# Precedence levels (higher = binds tighter)
-_PRECEDENCE = {
+_PRECEDENCE: dict[str, int] = {
     "or": 1,
     "||": 1,
     "and": 2,
@@ -1206,6 +173,8 @@ _PRECEDENCE = {
     ">": 3,
     "<=": 3,
     ">=": 3,
+    "in": 3,
+    "not in": 3,
     "|": 4,
     "^": 5,
     "&": 6,
@@ -1220,65 +189,1398 @@ _PRECEDENCE = {
     "**": 11,
 }
 
+_CMP_OPS = frozenset(("==", "!=", "<", ">", "<=", ">="))
+
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
-    """Determine if a child binary op needs parens inside a parent binary op."""
     child_prec = _PRECEDENCE.get(child_op, 0)
     parent_prec = _PRECEDENCE.get(parent_op, 0)
     if child_prec < parent_prec:
         return True
-    # Python chained comparisons: a != b == c means (a != b) and (b == c)
-    # To prevent this, wrap comparison inside comparison
-    cmp_ops = ("==", "!=", "<", ">", "<=", ">=")
-    if child_op in cmp_ops and parent_op in cmp_ops:
+    if child_op in _CMP_OPS and parent_op in _CMP_OPS:
         return True
     return False
 
 
-def _string_literal(value: str) -> str:
-    return f'"{escape_string(value)}"'
+# ============================================================
+# IMPORT SCANNING
+# ============================================================
 
 
-def _extract_range_pattern(
-    init: Stmt | None, cond: Expr | None, post: Stmt | None
-) -> tuple[str, Expr] | None:
-    """Extract simple range iteration pattern: for i := 0; i < len(x); i++.
+def _scan_imports(
+    module: TModule,
+) -> tuple[bool, bool, bool, bool, bool]:
+    """Return (needs_sys, needs_dataclass, needs_field, needs_math, needs_os)."""
+    needs_sys = False
+    needs_dataclass = False
+    needs_field = False
+    needs_math = False
+    needs_os = False
+    for decl in module.decls:
+        if isinstance(decl, TStructDecl):
+            if decl.name not in BUILTIN_STRUCTS:
+                needs_dataclass = True
+                for fld in decl.fields:
+                    if isinstance(fld.typ, (TListType, TMapType, TSetType)):
+                        needs_field = True
+        if isinstance(decl, (TFnDecl, TStructDecl)):
+            result = _scan_decl_builtins(decl)
+            if result[0]:
+                needs_sys = True
+            if result[1]:
+                needs_math = True
+            if result[2]:
+                needs_os = True
+    return needs_sys, needs_dataclass, needs_field, needs_math, needs_os
 
-    Returns (var_name, iterable_expr) if pattern matches, None otherwise.
-    """
-    if init is None or cond is None or post is None:
+
+_SYS_BUILTINS = frozenset(
+    {
+        "WriteErr",
+        "WritelnErr",
+        "ReadAll",
+        "ReadBytes",
+        "ReadBytesN",
+        "Args",
+        "Exit",
+    }
+)
+
+_MATH_BUILTINS = frozenset({"IsNaN", "IsInf"})
+
+_OS_BUILTINS = frozenset({"GetEnv"})
+
+
+def _scan_decl_builtins(decl: TDecl) -> tuple[bool, bool, bool]:
+    """Scan a declaration for sys/math/os builtin usage."""
+    needs_sys = False
+    needs_math = False
+    needs_os = False
+    stmts: list[TStmt] = []
+    if isinstance(decl, TFnDecl):
+        stmts = decl.body
+    elif isinstance(decl, TStructDecl):
+        for m in decl.methods:
+            r = _scan_decl_builtins(m)
+            if r[0]:
+                needs_sys = True
+            if r[1]:
+                needs_math = True
+            if r[2]:
+                needs_os = True
+        return needs_sys, needs_math, needs_os
+    for name in _collect_builtin_calls(stmts):
+        if name in _SYS_BUILTINS:
+            needs_sys = True
+        if name in _MATH_BUILTINS:
+            needs_math = True
+        if name in _OS_BUILTINS:
+            needs_os = True
+    return needs_sys, needs_math, needs_os
+
+
+def _collect_builtin_calls(stmts: list[TStmt]) -> set[str]:
+    """Collect builtin function names called in statements."""
+    out: set[str] = set()
+    for stmt in stmts:
+        _collect_builtin_calls_stmt(stmt, out)
+    return out
+
+
+def _collect_builtin_calls_stmt(stmt: TStmt, out: set[str]) -> None:
+    if isinstance(stmt, TExprStmt):
+        _collect_builtin_calls_expr(stmt.expr, out)
+    elif isinstance(stmt, TLetStmt):
+        if stmt.value is not None:
+            _collect_builtin_calls_expr(stmt.value, out)
+    elif isinstance(stmt, TAssignStmt):
+        _collect_builtin_calls_expr(stmt.value, out)
+    elif isinstance(stmt, TOpAssignStmt):
+        _collect_builtin_calls_expr(stmt.value, out)
+    elif isinstance(stmt, TTupleAssignStmt):
+        _collect_builtin_calls_expr(stmt.value, out)
+    elif isinstance(stmt, TReturnStmt):
+        if stmt.value is not None:
+            _collect_builtin_calls_expr(stmt.value, out)
+    elif isinstance(stmt, TThrowStmt):
+        _collect_builtin_calls_expr(stmt.expr, out)
+    elif isinstance(stmt, TIfStmt):
+        _collect_builtin_calls_expr(stmt.cond, out)
+        for s in stmt.then_body:
+            _collect_builtin_calls_stmt(s, out)
+        if stmt.else_body is not None:
+            for s in stmt.else_body:
+                _collect_builtin_calls_stmt(s, out)
+    elif isinstance(stmt, TWhileStmt):
+        _collect_builtin_calls_expr(stmt.cond, out)
+        for s in stmt.body:
+            _collect_builtin_calls_stmt(s, out)
+    elif isinstance(stmt, TForStmt):
+        if isinstance(stmt.iterable, TRange):
+            for a in stmt.iterable.args:
+                _collect_builtin_calls_expr(a, out)
+        else:
+            _collect_builtin_calls_expr(stmt.iterable, out)
+        for s in stmt.body:
+            _collect_builtin_calls_stmt(s, out)
+    elif isinstance(stmt, TTryStmt):
+        for s in stmt.body:
+            _collect_builtin_calls_stmt(s, out)
+        for catch in stmt.catches:
+            for s in catch.body:
+                _collect_builtin_calls_stmt(s, out)
+        if stmt.finally_body is not None:
+            for s in stmt.finally_body:
+                _collect_builtin_calls_stmt(s, out)
+    elif isinstance(stmt, TMatchStmt):
+        _collect_builtin_calls_expr(stmt.expr, out)
+        for case in stmt.cases:
+            for s in case.body:
+                _collect_builtin_calls_stmt(s, out)
+        if stmt.default is not None:
+            for s in stmt.default.body:
+                _collect_builtin_calls_stmt(s, out)
+
+
+def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
+    if isinstance(expr, TCall):
+        if isinstance(expr.func, TVar) and expr.func.name in BUILTIN_NAMES:
+            out.add(expr.func.name)
+        _collect_builtin_calls_expr(expr.func, out)
+        for a in expr.args:
+            _collect_builtin_calls_expr(a.value, out)
+    elif isinstance(expr, TBinaryOp):
+        _collect_builtin_calls_expr(expr.left, out)
+        _collect_builtin_calls_expr(expr.right, out)
+    elif isinstance(expr, TUnaryOp):
+        _collect_builtin_calls_expr(expr.operand, out)
+    elif isinstance(expr, TTernary):
+        _collect_builtin_calls_expr(expr.cond, out)
+        _collect_builtin_calls_expr(expr.then_expr, out)
+        _collect_builtin_calls_expr(expr.else_expr, out)
+    elif isinstance(expr, TFieldAccess):
+        _collect_builtin_calls_expr(expr.obj, out)
+    elif isinstance(expr, TTupleAccess):
+        _collect_builtin_calls_expr(expr.obj, out)
+    elif isinstance(expr, TIndex):
+        _collect_builtin_calls_expr(expr.obj, out)
+        _collect_builtin_calls_expr(expr.index, out)
+    elif isinstance(expr, TSlice):
+        _collect_builtin_calls_expr(expr.obj, out)
+        _collect_builtin_calls_expr(expr.low, out)
+        _collect_builtin_calls_expr(expr.high, out)
+    elif isinstance(expr, TListLit):
+        for e in expr.elements:
+            _collect_builtin_calls_expr(e, out)
+    elif isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            _collect_builtin_calls_expr(e, out)
+    elif isinstance(expr, TSetLit):
+        for e in expr.elements:
+            _collect_builtin_calls_expr(e, out)
+    elif isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            _collect_builtin_calls_expr(k, out)
+            _collect_builtin_calls_expr(v, out)
+    elif isinstance(expr, TFnLit):
+        if isinstance(expr.body, list):
+            for s in expr.body:
+                _collect_builtin_calls_stmt(s, out)
+        else:
+            _collect_builtin_calls_expr(expr.body, out)
+
+
+# ============================================================
+# EMITTER
+# ============================================================
+
+
+class _PythonEmitter:
+    def __init__(self, struct_names: set[str]) -> None:
+        self.struct_names = struct_names
+        self.indent: int = 0
+        self.lines: list[str] = []
+        self.self_name: str | None = None
+        self.var_types: dict[str, TType] = {}
+
+    def _line(self, text: str = "") -> None:
+        if text:
+            self.lines.append("    " * self.indent + text)
+        else:
+            self.lines.append("")
+
+    def output(self) -> str:
+        return "\n".join(self.lines)
+
+    # ── Module ────────────────────────────────────────────────
+
+    def emit_module(self, module: TModule) -> None:
+        needs_sys, needs_dataclass, needs_field, needs_math, needs_os = _scan_imports(
+            module
+        )
+        plain_imports: list[str] = []
+        from_imports: list[str] = []
+        if needs_sys:
+            plain_imports.append("import sys")
+        if needs_os:
+            plain_imports.append("import os")
+        if needs_math:
+            plain_imports.append("import math")
+        if needs_dataclass and needs_field:
+            from_imports.append("from dataclasses import dataclass, field")
+        elif needs_dataclass:
+            from_imports.append("from dataclasses import dataclass")
+        if plain_imports or from_imports:
+            for line in plain_imports:
+                self._line(line)
+            if plain_imports and from_imports:
+                self._line()
+            for line in from_imports:
+                self._line(line)
+            self._line()
+        self._line()
+        need_blank = False
+        for decl in module.decls:
+            if isinstance(decl, TInterfaceDecl):
+                continue
+            if need_blank:
+                self._line()
+                self._line()
+            if isinstance(decl, TStructDecl):
+                self._emit_struct(decl)
+                need_blank = True
+            elif isinstance(decl, TEnumDecl):
+                self._emit_enum(decl)
+                need_blank = True
+            elif isinstance(decl, TFnDecl):
+                self._emit_fn(decl)
+                need_blank = True
+
+    # ── Enum ──────────────────────────────────────────────────
+
+    def _emit_enum(self, decl: TEnumDecl) -> None:
+        self._line("class " + decl.name + ":")
+        self.indent += 1
+        for i, variant in enumerate(decl.variants):
+            self._line(variant + " = " + str(i))
+        self.indent -= 1
+
+    # ── Struct ────────────────────────────────────────────────
+
+    def _emit_struct(self, decl: TStructDecl) -> None:
+        is_error = decl.name in BUILTIN_STRUCTS
+        if not is_error and decl.parent is not None:
+            if decl.parent in BUILTIN_STRUCTS:
+                is_error = True
+        if is_error:
+            self._emit_error_struct(decl)
+        else:
+            self._emit_data_struct(decl)
+
+    def _emit_error_struct(self, decl: TStructDecl) -> None:
+        self._line("class " + decl.name + "(Exception):")
+        self.indent += 1
+        params = ["self"]
+        for fld in decl.fields:
+            params.append(_safe_name(fld.name) + ": " + self._type(fld.typ))
+        self._line("def __init__(" + ", ".join(params) + ") -> None:")
+        self.indent += 1
+        if decl.fields:
+            msg_field = None
+            for fld in decl.fields:
+                if fld.name == "message":
+                    msg_field = fld
+                    break
+            if msg_field is not None:
+                self._line("super().__init__(" + _safe_name(msg_field.name) + ")")
+            else:
+                self._line("super().__init__()")
+            for fld in decl.fields:
+                safe = _safe_name(fld.name)
+                self._line("self." + safe + " = " + safe)
+        else:
+            self._line("pass")
+        self.indent -= 1
+        for i, method in enumerate(decl.methods):
+            self._line()
+            self._emit_method(method)
+        self.indent -= 1
+
+    def _emit_data_struct(self, decl: TStructDecl) -> None:
+        self._line("@dataclass")
+        bases: list[str] = []
+        if decl.parent is not None:
+            bases.append(decl.parent)
+        if bases:
+            self._line("class " + decl.name + "(" + ", ".join(bases) + "):")
+        else:
+            self._line("class " + decl.name + ":")
+        self.indent += 1
+        if not decl.fields and not decl.methods:
+            self._line("pass")
+        for fld in decl.fields:
+            self._emit_field(fld)
+        for i, method in enumerate(decl.methods):
+            if i > 0 or decl.fields:
+                self._line()
+            self._emit_method(method)
+        self.indent -= 1
+
+    def _emit_field(self, fld: TFieldDecl) -> None:
+        typ_str = self._type(fld.typ)
+        default = self._field_default(fld.typ)
+        self._line(fld.name + ": " + typ_str + " = " + default)
+
+    def _field_default(self, typ: TType) -> str:
+        if isinstance(typ, TListType):
+            return "field(default_factory=list)"
+        if isinstance(typ, TMapType):
+            return "field(default_factory=dict)"
+        if isinstance(typ, TSetType):
+            return "field(default_factory=set)"
+        return self._zero_value(typ)
+
+    def _zero_value(self, typ: TType) -> str:
+        if isinstance(typ, TPrimitive):
+            if typ.kind == "int" or typ.kind == "byte":
+                return "0"
+            if typ.kind == "float":
+                return "0.0"
+            if typ.kind == "bool":
+                return "False"
+            if typ.kind == "string" or typ.kind == "rune":
+                return '""'
+            if typ.kind == "bytes":
+                return 'b""'
+        return "None"
+
+    # ── Function / Method ─────────────────────────────────────
+
+    def _emit_fn(self, decl: TFnDecl) -> None:
+        old_var_types = self.var_types.copy()
+        for p in decl.params:
+            if p.typ is not None:
+                self.var_types[p.name] = p.typ
+        params = self._params(decl.params, with_self=False)
+        ret = self._type(decl.ret)
+        self._line("def " + decl.name + "(" + params + ") -> " + ret + ":")
+        self.indent += 1
+        if not decl.body:
+            self._line("pass")
+        self._emit_stmts(decl.body)
+        self.indent -= 1
+        self.var_types = old_var_types
+
+    def _emit_method(self, decl: TFnDecl) -> None:
+        old_var_types = self.var_types.copy()
+        for p in decl.params:
+            if p.typ is not None:
+                self.var_types[p.name] = p.typ
+        params = self._params(decl.params, with_self=True)
+        ret = self._type(decl.ret)
+        self._line("def " + decl.name + "(" + params + ") -> " + ret + ":")
+        self.indent += 1
+        old_self = self.self_name
+        if decl.params and decl.params[0].typ is None:
+            self.self_name = decl.params[0].name
+        if not decl.body:
+            self._line("pass")
+        self._emit_stmts(decl.body)
+        self.self_name = old_self
+        self.indent -= 1
+        self.var_types = old_var_types
+
+    def _params(self, params: list[TParam], with_self: bool) -> str:
+        parts: list[str] = []
+        for p in params:
+            if p.typ is None:
+                if with_self:
+                    parts.append("self")
+                continue
+            parts.append(_safe_name(p.name) + ": " + self._type(p.typ))
+        return ", ".join(parts)
+
+    # ── Statements ────────────────────────────────────────────
+
+    def _emit_stmts(self, stmts: list[TStmt]) -> None:
+        """Emit a statement list with look-ahead for comprehension patterns."""
+        i = 0
+        while i < len(stmts):
+            stmt = stmts[i]
+            if isinstance(stmt, TLetStmt) and i + 1 < len(stmts):
+                next_stmt = stmts[i + 1]
+                if isinstance(next_stmt, TForStmt):
+                    prov = next_stmt.annotations.get("provenance", "")
+                    if prov in (
+                        "list_comprehension",
+                        "dict_comprehension",
+                        "set_comprehension",
+                    ):
+                        comp = self._try_comprehension(stmt, next_stmt, prov)
+                        if comp is not None:
+                            self._line(comp)
+                            i += 2
+                            continue
+            self._emit_stmt(stmt)
+            i += 1
+
+    def _try_comprehension(
+        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+    ) -> str | None:
+        """Try to emit a comprehension from a let + for pair."""
+        acc = _safe_name(let_stmt.name)
+        binding = for_stmt.binding
+        if isinstance(for_stmt.iterable, TRange):
+            args = ", ".join(self._expr(a) for a in for_stmt.iterable.args)
+            iterable = "range(" + args + ")"
+        else:
+            iterable = self._expr(for_stmt.iterable)
+        binders = ", ".join(_safe_name(b) for b in binding)
+        iter_is_map = not isinstance(for_stmt.iterable, TRange) and self._is_map_type(
+            for_stmt.iterable
+        )
+        if iter_is_map:
+            iterable += ".items()"
+        elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
+            iterable = "enumerate(" + iterable + ")"
+        body = for_stmt.body
+        if prov == "list_comprehension":
+            if len(body) == 1 and isinstance(body[0], TExprStmt):
+                call = body[0].expr
+                if self._is_append_to(call, let_stmt.name):
+                    val = self._expr(call.args[1].value)
+                    return (
+                        acc + " = [" + val + " for " + binders + " in " + iterable + "]"
+                    )
+            if len(body) == 1 and isinstance(body[0], TIfStmt):
+                if_stmt = body[0]
+                if len(if_stmt.then_body) == 1 and isinstance(
+                    if_stmt.then_body[0], TExprStmt
+                ):
+                    call = if_stmt.then_body[0].expr
+                    if self._is_append_to(call, let_stmt.name):
+                        val = self._expr(call.args[1].value)
+                        guard = self._expr(if_stmt.cond)
+                        return (
+                            acc
+                            + " = ["
+                            + val
+                            + " for "
+                            + binders
+                            + " in "
+                            + iterable
+                            + " if "
+                            + guard
+                            + "]"
+                        )
+        elif prov == "dict_comprehension":
+            if len(body) == 1 and isinstance(body[0], TAssignStmt):
+                target = body[0].target
+                if isinstance(target, TIndex):
+                    key = self._expr(target.index)
+                    val = self._expr(body[0].value)
+                    return (
+                        acc
+                        + " = {"
+                        + key
+                        + ": "
+                        + val
+                        + " for "
+                        + binders
+                        + " in "
+                        + iterable
+                        + "}"
+                    )
+        elif prov == "set_comprehension":
+            if len(body) == 1 and isinstance(body[0], TExprStmt):
+                call = body[0].expr
+                if self._is_add_to(call, let_stmt.name):
+                    val = self._expr(call.args[1].value)
+                    return (
+                        acc + " = {" + val + " for " + binders + " in " + iterable + "}"
+                    )
         return None
-    # Check init: i := 0
-    if not isinstance(init, VarDecl):
+
+    def _is_append_to(self, expr: TExpr, name: str) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Append"
+            and isinstance(expr.args[0].value, TVar)
+            and expr.args[0].value.name == name
+        )
+
+    def _is_add_to(self, expr: TExpr, name: str) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Add"
+            and isinstance(expr.args[0].value, TVar)
+            and expr.args[0].value.name == name
+        )
+
+    def _emit_stmt(self, stmt: TStmt) -> None:
+        if isinstance(stmt, TLetStmt):
+            self._emit_let(stmt)
+        elif isinstance(stmt, TAssignStmt):
+            self._line(self._expr(stmt.target) + " = " + self._expr(stmt.value))
+        elif isinstance(stmt, TTupleAssignStmt):
+            self._emit_tuple_assign(stmt)
+        elif isinstance(stmt, TOpAssignStmt):
+            self._line(
+                self._expr(stmt.target) + " " + stmt.op + " " + self._expr(stmt.value)
+            )
+        elif isinstance(stmt, TExprStmt):
+            self._emit_expr_stmt(stmt)
+        elif isinstance(stmt, TReturnStmt):
+            if stmt.value is not None:
+                self._line("return " + self._expr(stmt.value))
+            else:
+                self._line("return")
+        elif isinstance(stmt, TThrowStmt):
+            self._line("raise " + self._expr(stmt.expr))
+        elif isinstance(stmt, TBreakStmt):
+            self._line("break")
+        elif isinstance(stmt, TContinueStmt):
+            self._line("continue")
+        elif isinstance(stmt, TIfStmt):
+            self._emit_if(stmt)
+        elif isinstance(stmt, TWhileStmt):
+            self._emit_while(stmt)
+        elif isinstance(stmt, TForStmt):
+            self._emit_for(stmt)
+        elif isinstance(stmt, TTryStmt):
+            self._emit_try(stmt)
+        elif isinstance(stmt, TMatchStmt):
+            self._emit_match(stmt)
+
+    def _emit_let(self, stmt: TLetStmt) -> None:
+        safe = _safe_name(stmt.name)
+        typ_str = self._type(stmt.typ)
+        self.var_types[stmt.name] = stmt.typ
+        unused = stmt.annotations.get("liveness.initial_value_unused", False)
+        if stmt.value is not None and not unused:
+            self._line(safe + ": " + typ_str + " = " + self._expr(stmt.value))
+        else:
+            self._line(safe + ": " + typ_str)
+
+    def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
+        unused_str = str(stmt.annotations.get("liveness.tuple_unused_indices", ""))
+        unused_indices: set[int] = set()
+        if unused_str:
+            for s in unused_str.split(","):
+                if s:
+                    unused_indices.add(int(s))
+        parts: list[str] = []
+        for i, t in enumerate(stmt.targets):
+            if i in unused_indices:
+                parts.append("_")
+            else:
+                parts.append(self._expr(t))
+        self._line(", ".join(parts) + " = " + self._expr(stmt.value))
+
+    def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
+        expr = stmt.expr
+        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
+            name = expr.func.name
+            if name == "Assert":
+                args = expr.args
+                cond = self._expr(args[0].value)
+                if len(args) > 1:
+                    msg = self._expr(args[1].value)
+                    self._line("assert " + cond + ", " + msg)
+                else:
+                    self._line("assert " + cond)
+                return
+            if name == "Delete":
+                args = expr.args
+                self._line(
+                    self._expr(args[0].value)
+                    + ".pop("
+                    + self._expr(args[1].value)
+                    + ", None)"
+                )
+                return
+        self._line(self._expr(expr))
+
+    def _emit_if(self, stmt: TIfStmt) -> None:
+        if stmt.annotations.get("provenance") == "truthiness":
+            truth = self._truthiness_expr(stmt.cond)
+            if truth is not None:
+                self._line("if " + truth + ":")
+            else:
+                self._line("if " + self._expr(stmt.cond) + ":")
+        else:
+            self._line("if " + self._expr(stmt.cond) + ":")
+        self.indent += 1
+        if not stmt.then_body:
+            self._line("pass")
+        self._emit_stmts(stmt.then_body)
+        self.indent -= 1
+        self._emit_else_body(stmt.else_body)
+
+    def _truthiness_expr(self, cond: TExpr) -> str | None:
+        """Extract truthiness target: Len(xs) > 0 → xs, s != "" → s."""
+        if isinstance(cond, TBinaryOp):
+            if (
+                cond.op == ">"
+                and isinstance(cond.right, TIntLit)
+                and cond.right.value == 0
+                and isinstance(cond.left, TCall)
+                and isinstance(cond.left.func, TVar)
+                and cond.left.func.name == "Len"
+            ):
+                return self._expr(cond.left.args[0].value)
+            if (
+                cond.op == "!="
+                and isinstance(cond.right, TStringLit)
+                and cond.right.value == ""
+            ):
+                return self._expr(cond.left)
         return None
-    if not isinstance(init.value, IntLit) or init.value.value != 0:
+
+    def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
+        if else_body is None or not else_body:
+            return
+        if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
+            elif_stmt = else_body[0]
+            self._line("elif " + self._expr(elif_stmt.cond) + ":")
+            self.indent += 1
+            if not elif_stmt.then_body:
+                self._line("pass")
+            self._emit_stmts(elif_stmt.then_body)
+            self.indent -= 1
+            self._emit_else_body(elif_stmt.else_body)
+        else:
+            self._line("else:")
+            self.indent += 1
+            self._emit_stmts(else_body)
+            self.indent -= 1
+
+    def _emit_while(self, stmt: TWhileStmt) -> None:
+        self._line("while " + self._expr(stmt.cond) + ":")
+        self.indent += 1
+        if not stmt.body:
+            self._line("pass")
+        self._emit_stmts(stmt.body)
+        self.indent -= 1
+
+    def _emit_for(self, stmt: TForStmt) -> None:
+        binding = stmt.binding
+        if isinstance(stmt.iterable, TRange):
+            args = ", ".join(self._expr(a) for a in stmt.iterable.args)
+            binders = ", ".join(_safe_name(b) for b in binding)
+            self._line("for " + binders + " in range(" + args + "):")
+        elif len(binding) == 1:
+            self._line(
+                "for "
+                + _safe_name(binding[0])
+                + " in "
+                + self._expr(stmt.iterable)
+                + ":"
+            )
+        elif len(binding) == 2:
+            iter_is_map = self._is_map_type(stmt.iterable)
+            method = ".items()" if iter_is_map else ""
+            wrapper = "" if iter_is_map else "enumerate("
+            suffix = "" if iter_is_map else ")"
+            self._line(
+                "for "
+                + _safe_name(binding[0])
+                + ", "
+                + _safe_name(binding[1])
+                + " in "
+                + wrapper
+                + self._expr(stmt.iterable)
+                + method
+                + suffix
+                + ":"
+            )
+        else:
+            binders = ", ".join(_safe_name(b) for b in binding)
+            self._line("for " + binders + " in " + self._expr(stmt.iterable) + ":")
+        self.indent += 1
+        if not stmt.body:
+            self._line("pass")
+        self._emit_stmts(stmt.body)
+        self.indent -= 1
+
+    def _is_map_type(self, expr: TExpr) -> bool:
+        """Check if an expression refers to a variable with map type."""
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TMapType)
+        return False
+
+    def _emit_try(self, stmt: TTryStmt) -> None:
+        self._line("try:")
+        self.indent += 1
+        if not stmt.body:
+            self._line("pass")
+        self._emit_stmts(stmt.body)
+        self.indent -= 1
+        for catch in stmt.catches:
+            self._emit_catch(catch)
+        if stmt.finally_body is not None:
+            self._line("finally:")
+            self.indent += 1
+            if not stmt.finally_body:
+                self._line("pass")
+            self._emit_stmts(stmt.finally_body)
+            self.indent -= 1
+
+    def _emit_catch(self, catch: TCatch) -> None:
+        types: list[str] = []
+        for t in catch.types:
+            if isinstance(t, TIdentType):
+                types.append(t.name)
+            else:
+                types.append(self._type(t))
+        if len(types) == 1:
+            type_str = types[0]
+        else:
+            type_str = "(" + ", ".join(types) + ")"
+        unused = catch.annotations.get("liveness.catch_var_unused", False)
+        if unused:
+            self._line("except " + type_str + ":")
+        else:
+            self._line("except " + type_str + " as " + _safe_name(catch.name) + ":")
+        self.indent += 1
+        if not catch.body:
+            self._line("pass")
+        self._emit_stmts(catch.body)
+        self.indent -= 1
+
+    def _emit_match(self, stmt: TMatchStmt) -> None:
+        expr_str = self._expr(stmt.expr)
+        first = True
+        for case in stmt.cases:
+            self._emit_match_case(case, expr_str, first)
+            first = False
+        if stmt.default is not None:
+            self._emit_match_default(stmt.default, expr_str, first)
+
+    def _emit_match_case(self, case: TMatchCase, expr_str: str, first: bool) -> None:
+        pat = case.pattern
+        keyword = "if" if first else "elif"
+        if isinstance(pat, TPatternType):
+            type_name = self._pattern_type_name(pat.type_name)
+            self._line(keyword + " isinstance(" + expr_str + ", " + type_name + "):")
+            self.indent += 1
+            unused = pat.annotations.get("liveness.match_var_unused", False)
+            if not unused:
+                self._line(_safe_name(pat.name) + " = " + expr_str)
+            if not case.body:
+                if unused:
+                    self._line("pass")
+            self._emit_stmts(case.body)
+            self.indent -= 1
+        elif isinstance(pat, TPatternEnum):
+            self._line(
+                keyword
+                + " "
+                + expr_str
+                + " == "
+                + pat.enum_name
+                + "."
+                + pat.variant
+                + ":"
+            )
+            self.indent += 1
+            if not case.body:
+                self._line("pass")
+            self._emit_stmts(case.body)
+            self.indent -= 1
+        elif isinstance(pat, TPatternNil):
+            self._line(keyword + " " + expr_str + " is None:")
+            self.indent += 1
+            if not case.body:
+                self._line("pass")
+            self._emit_stmts(case.body)
+            self.indent -= 1
+
+    def _emit_match_default(
+        self, default: TDefault, expr_str: str, first: bool
+    ) -> None:
+        if first:
+            self._line("if True:")
+        else:
+            self._line("else:")
+        self.indent += 1
+        if default.name is not None:
+            unused = default.annotations.get("liveness.match_var_unused", False)
+            if not unused:
+                self._line(_safe_name(default.name) + " = " + expr_str)
+        if not default.body:
+            self._line("pass")
+        self._emit_stmts(default.body)
+        self.indent -= 1
+
+    def _pattern_type_name(self, typ: TType) -> str:
+        if isinstance(typ, TIdentType):
+            return typ.name
+        return self._type(typ)
+
+    # ── Expressions ───────────────────────────────────────────
+
+    def _expr(self, expr: TExpr) -> str:
+        if isinstance(expr, TIntLit):
+            return self._int_lit(expr)
+        if isinstance(expr, TFloatLit):
+            return expr.raw
+        if isinstance(expr, TStringLit):
+            return '"' + escape_string(expr.value) + '"'
+        if isinstance(expr, TBoolLit):
+            return "True" if expr.value else "False"
+        if isinstance(expr, TNilLit):
+            return "None"
+        if isinstance(expr, TByteLit):
+            return expr.raw
+        if isinstance(expr, TBytesLit):
+            return self._bytes_lit(expr)
+        if isinstance(expr, TRuneLit):
+            return '"' + escape_string(expr.value) + '"'
+        if isinstance(expr, TVar):
+            if expr.name == self.self_name:
+                return "self"
+            return _safe_name(expr.name)
+        if isinstance(expr, TFieldAccess):
+            return self._expr(expr.obj) + "." + expr.field
+        if isinstance(expr, TTupleAccess):
+            return self._expr(expr.obj) + "[" + str(expr.index) + "]"
+        if isinstance(expr, TIndex):
+            if expr.annotations.get("provenance") == "negative_index":
+                neg = self._negative_index(expr)
+                if neg is not None:
+                    return self._expr(expr.obj) + "[" + neg + "]"
+            return self._expr(expr.obj) + "[" + self._expr(expr.index) + "]"
+        if isinstance(expr, TSlice):
+            return self._slice(expr)
+        if isinstance(expr, TBinaryOp):
+            return self._binary(expr)
+        if isinstance(expr, TUnaryOp):
+            return self._unary(expr)
+        if isinstance(expr, TTernary):
+            return (
+                self._expr(expr.then_expr)
+                + " if "
+                + self._expr(expr.cond)
+                + " else "
+                + self._expr(expr.else_expr)
+            )
+        if isinstance(expr, TListLit):
+            elems = ", ".join(self._expr(e) for e in expr.elements)
+            return "[" + elems + "]"
+        if isinstance(expr, TMapLit):
+            if not expr.entries:
+                return "{}"
+            pairs = ", ".join(
+                self._expr(k) + ": " + self._expr(v) for k, v in expr.entries
+            )
+            return "{" + pairs + "}"
+        if isinstance(expr, TSetLit):
+            if not expr.elements:
+                return "set()"
+            elems = ", ".join(self._expr(e) for e in expr.elements)
+            return "{" + elems + "}"
+        if isinstance(expr, TTupleLit):
+            elems = ", ".join(self._expr(e) for e in expr.elements)
+            if len(expr.elements) == 1:
+                return "(" + elems + ",)"
+            return "(" + elems + ")"
+        if isinstance(expr, TFnLit):
+            return self._fn_lit(expr)
+        if isinstance(expr, TCall):
+            return self._call(expr)
+        raise NotImplementedError("unknown expression")
+
+    def _int_lit(self, expr: TIntLit) -> str:
+        raw = expr.raw
+        if raw.startswith("0x") or raw.startswith("0X"):
+            return raw
+        if raw.startswith("0o") or raw.startswith("0O"):
+            return raw
+        if raw.startswith("0b") or raw.startswith("0B"):
+            return raw
+        return str(expr.value)
+
+    def _bytes_lit(self, expr: TBytesLit) -> str:
+        parts: list[str] = []
+        for b in expr.value:
+            if 32 <= b < 127 and b != ord("\\") and b != ord('"'):
+                parts.append(chr(b))
+            else:
+                h = hex(b)[2:]
+                if len(h) == 1:
+                    h = "0" + h
+                parts.append("\\x" + h)
+        return 'b"' + "".join(parts) + '"'
+
+    def _slice(self, expr: TSlice) -> str:
+        obj = self._expr(expr.obj)
+        prov = expr.annotations.get("provenance", "")
+        low = self._expr(expr.low)
+        high = self._expr(expr.high)
+        if prov == "open_start" and self._is_zero(expr.low):
+            low = ""
+        if prov == "open_end" and self._is_len_call(expr.high):
+            high = ""
+        return obj + "[" + low + ":" + high + "]"
+
+    def _negative_index(self, expr: TIndex) -> str | None:
+        """Pattern-match Len(x) - n → -n for negative indexing."""
+        idx = expr.index
+        if isinstance(idx, TBinaryOp) and idx.op == "-":
+            if (
+                isinstance(idx.left, TCall)
+                and isinstance(idx.left.func, TVar)
+                and idx.left.func.name == "Len"
+            ):
+                return "-" + self._expr(idx.right)
         return None
-    var_name = init.name
-    # Check cond: i < len(x)
-    if not isinstance(cond, BinaryOp) or cond.op != "<":
+
+    def _is_zero(self, expr: TExpr) -> bool:
+        return isinstance(expr, TIntLit) and expr.value == 0
+
+    def _is_len_call(self, expr: TExpr) -> bool:
+        if isinstance(expr, TCall):
+            if isinstance(expr.func, TVar) and expr.func.name == "Len":
+                return True
+        return False
+
+    def _binary(self, expr: TBinaryOp) -> str:
+        op = expr.op
+        # chained comparison: a OP1 b && b OP2 c → a OP1 b OP2 c
+        if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
+            chained = self._chain_comparison(expr)
+            if chained is not None:
+                return chained
+        # nil comparisons → is / is not
+        if op == "==" and isinstance(expr.right, TNilLit):
+            return self._maybe_paren(expr.left, op, is_left=True) + " is None"
+        if op == "!=" and isinstance(expr.right, TNilLit):
+            return self._maybe_paren(expr.left, op, is_left=True) + " is not None"
+        if op == "==" and isinstance(expr.left, TNilLit):
+            return self._maybe_paren(expr.right, op, is_left=False) + " is None"
+        if op == "!=" and isinstance(expr.left, TNilLit):
+            return self._maybe_paren(expr.right, op, is_left=False) + " is not None"
+        py_op = op
+        if op == "&&":
+            py_op = "and"
+        elif op == "||":
+            py_op = "or"
+        left_str = self._maybe_paren(expr.left, op, is_left=True)
+        right_str = self._maybe_paren(expr.right, op, is_left=False)
+        return left_str + " " + py_op + " " + right_str
+
+    def _unary(self, expr: TUnaryOp) -> str:
+        op = expr.op
+        if op == "!":
+            if (
+                isinstance(expr.operand, TCall)
+                and isinstance(expr.operand.func, TVar)
+                and expr.operand.func.name == "Contains"
+                and expr.operand.annotations.get("provenance") == "not_in_operator"
+            ):
+                return (
+                    self._a(expr.operand.args, 1)
+                    + " not in "
+                    + self._a(expr.operand.args, 0)
+                )
+            py_op = "not "
+            if isinstance(expr.operand, (TBinaryOp,)):
+                if expr.operand.op in ("&&", "||", "and", "or"):
+                    return py_op + "(" + self._expr(expr.operand) + ")"
+                return py_op + self._expr(expr.operand)
+            if isinstance(expr.operand, (TTernary,)):
+                return py_op + "(" + self._expr(expr.operand) + ")"
+            return py_op + self._expr(expr.operand)
+        if isinstance(expr.operand, (TBinaryOp, TTernary)):
+            return op + "(" + self._expr(expr.operand) + ")"
+        return op + self._expr(expr.operand)
+
+    def _chain_comparison(self, expr: TBinaryOp) -> str | None:
+        """a OP1 b && b OP2 c → a OP1 b OP2 c."""
+        left = expr.left
+        right = expr.right
+        if (
+            isinstance(left, TBinaryOp)
+            and isinstance(right, TBinaryOp)
+            and left.op in _CMP_OPS
+            and right.op in _CMP_OPS
+        ):
+            return (
+                self._expr(left.left)
+                + " "
+                + left.op
+                + " "
+                + self._expr(left.right)
+                + " "
+                + right.op
+                + " "
+                + self._expr(right.right)
+            )
         return None
-    if not isinstance(cond.left, Var) or cond.left.name != var_name:
-        return None
-    if not isinstance(cond.right, Len):
-        return None
-    iterable_expr = cond.right.expr
-    # Check post: i = i + 1 or i += 1
-    if isinstance(post, OpAssign):
-        if post.op != "+" or not isinstance(post.target, VarLV):
-            return None
-        if post.target.name != var_name:
-            return None
-        if not isinstance(post.value, IntLit) or post.value.value != 1:
-            return None
-    elif isinstance(post, Assign):
-        if not isinstance(post.target, VarLV) or post.target.name != var_name:
-            return None
-        if not isinstance(post.value, BinaryOp) or post.value.op != "+":
-            return None
-        if not isinstance(post.value.left, Var) or post.value.left.name != var_name:
-            return None
-        if not isinstance(post.value.right, IntLit) or post.value.right.value != 1:
-            return None
-    else:
-        return None
-    return (var_name, iterable_expr)
+
+    def _maybe_paren(self, expr: TExpr, parent_op: str, is_left: bool) -> str:
+        if isinstance(expr, TBinaryOp):
+            if _needs_parens(expr.op, parent_op, is_left):
+                return "(" + self._expr(expr) + ")"
+        elif isinstance(expr, TTernary):
+            return "(" + self._expr(expr) + ")"
+        elif isinstance(expr, TUnaryOp):
+            if expr.op == "!" and parent_op in _CMP_OPS:
+                return "(" + self._expr(expr) + ")"
+            if expr.op in ("-", "+") and parent_op == "**" and is_left:
+                return "(" + self._expr(expr) + ")"
+        return self._expr(expr)
+
+    def _fn_lit(self, expr: TFnLit) -> str:
+        params = ", ".join(_safe_name(p.name) for p in expr.params if p.typ is not None)
+        if isinstance(expr.body, list):
+            # Block body — emit as nested def
+            # This is rare, but handle it
+            name = "_fn"
+            self._line("def " + name + "(" + params + "):")
+            self.indent += 1
+            if not expr.body:
+                self._line("pass")
+            for s in expr.body:
+                self._emit_stmt(s)
+            self.indent -= 1
+            return name
+        return "lambda " + params + ": " + self._expr(expr.body)
+
+    # ── Calls ─────────────────────────────────────────────────
+
+    def _call(self, expr: TCall) -> str:
+        func = expr.func
+        args = expr.args
+        # Builtin call
+        if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
+            return self._builtin_call(func.name, args)
+        # Struct constructor
+        if isinstance(func, TVar) and func.name in self.struct_names:
+            return self._struct_call(func.name, args)
+        # Method call
+        if isinstance(func, TFieldAccess):
+            return self._method_call(func, args)
+        # Regular call
+        fn_name = self._expr(func)
+        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        return fn_name + "(" + arg_strs + ")"
+
+    def _struct_call(self, name: str, args: list[TArg]) -> str:
+        parts: list[str] = []
+        for a in args:
+            if a.name is not None:
+                parts.append(a.name + "=" + self._expr(a.value))
+            else:
+                parts.append(self._expr(a.value))
+        return name + "(" + ", ".join(parts) + ")"
+
+    def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
+        obj_str = self._expr(func.obj)
+        if isinstance(func.obj, (TBinaryOp, TUnaryOp, TTernary)):
+            obj_str = "(" + obj_str + ")"
+        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        return obj_str + "." + func.field + "(" + arg_strs + ")"
+
+    def _builtin_call(self, name: str, args: list[TArg]) -> str:
+        # Method-on-first-arg
+        if name == "Append":
+            return self._a(args, 0) + ".append(" + self._a(args, 1) + ")"
+        if name == "Insert":
+            return (
+                self._a(args, 0)
+                + ".insert("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ")"
+            )
+        if name == "Pop":
+            return self._a(args, 0) + ".pop()"
+        if name == "RemoveAt":
+            return self._a(args, 0) + ".pop(" + self._a(args, 1) + ")"
+        if name == "IndexOf":
+            obj = self._a(args, 0)
+            val = self._a(args, 1)
+            return obj + ".index(" + val + ") if " + val + " in " + obj + " else -1"
+        if name == "Upper":
+            return self._a(args, 0) + ".upper()"
+        if name == "Lower":
+            return self._a(args, 0) + ".lower()"
+        if name == "Trim":
+            return self._a(args, 0) + ".strip(" + self._a(args, 1) + ")"
+        if name == "TrimStart":
+            return self._a(args, 0) + ".lstrip(" + self._a(args, 1) + ")"
+        if name == "TrimEnd":
+            return self._a(args, 0) + ".rstrip(" + self._a(args, 1) + ")"
+        if name == "Split":
+            return self._a(args, 0) + ".split(" + self._a(args, 1) + ")"
+        if name == "SplitN":
+            obj = self._a(args, 0)
+            sep = self._a(args, 1)
+            n_expr = args[2].value
+            if isinstance(n_expr, TIntLit):
+                return obj + ".split(" + sep + ", " + str(n_expr.value - 1) + ")"
+            return obj + ".split(" + sep + ", " + self._a(args, 2) + " - 1)"
+        if name == "SplitWhitespace":
+            return self._a(args, 0) + ".split()"
+        if name == "Join":
+            return self._a(args, 0) + ".join(" + self._a(args, 1) + ")"
+        if name == "Find":
+            return self._a(args, 0) + ".find(" + self._a(args, 1) + ")"
+        if name == "RFind":
+            return self._a(args, 0) + ".rfind(" + self._a(args, 1) + ")"
+        if name == "Count":
+            return self._a(args, 0) + ".count(" + self._a(args, 1) + ")"
+        if name == "Replace":
+            return (
+                self._a(args, 0)
+                + ".replace("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ")"
+            )
+        if name == "StartsWith":
+            return self._a(args, 0) + ".startswith(" + self._a(args, 1) + ")"
+        if name == "EndsWith":
+            return self._a(args, 0) + ".endswith(" + self._a(args, 1) + ")"
+        if name == "IsDigit":
+            return self._a(args, 0) + ".isdigit()"
+        if name == "IsAlpha":
+            return self._a(args, 0) + ".isalpha()"
+        if name == "IsAlnum":
+            return self._a(args, 0) + ".isalnum()"
+        if name == "IsSpace":
+            return self._a(args, 0) + ".isspace()"
+        if name == "IsUpper":
+            return self._a(args, 0) + ".isupper()"
+        if name == "IsLower":
+            return self._a(args, 0) + ".islower()"
+        if name == "Encode":
+            return self._a(args, 0) + '.encode("utf-8")'
+        if name == "Decode":
+            return self._a(args, 0) + '.decode("utf-8")'
+        if name == "Add":
+            return self._a(args, 0) + ".add(" + self._a(args, 1) + ")"
+        if name == "Remove":
+            return self._a(args, 0) + ".discard(" + self._a(args, 1) + ")"
+        if name == "Get":
+            if len(args) == 3:
+                return (
+                    self._a(args, 0)
+                    + ".get("
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
+            return self._a(args, 0) + ".get(" + self._a(args, 1) + ")"
+        if name == "Delete":
+            return self._a(args, 0) + ".pop(" + self._a(args, 1) + ", None)"
+        if name == "Merge":
+            return "{**" + self._a(args, 0) + ", **" + self._a(args, 1) + "}"
+        if name == "Keys":
+            return "list(" + self._a(args, 0) + ".keys())"
+        if name == "Values":
+            return "list(" + self._a(args, 0) + ".values())"
+        if name == "Items":
+            return "list(" + self._a(args, 0) + ".items())"
+        # Direct functions
+        if name == "Len":
+            return "len(" + self._a(args, 0) + ")"
+        if name == "Abs":
+            return "abs(" + self._a(args, 0) + ")"
+        if name == "Min":
+            return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "Max":
+            return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "Sum":
+            return "sum(" + self._a(args, 0) + ")"
+        if name == "Round":
+            return "round(" + self._a(args, 0) + ")"
+        if name == "DivMod":
+            return "divmod(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "Sorted":
+            return "sorted(" + self._a(args, 0) + ")"
+        if name == "Reversed":
+            return "list(reversed(" + self._a(args, 0) + "))"
+        if name == "Map":
+            if len(args) == 0:
+                return "{}"
+            return "list(map(" + self._a(args, 0) + ", " + self._a(args, 1) + "))"
+        if name == "Set":
+            if len(args) == 0:
+                return "set()"
+            return "set(" + self._a(args, 0) + ")"
+        if name == "ToString":
+            return "str(" + self._a(args, 0) + ")"
+        if name == "ParseInt":
+            return "int(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "ParseFloat":
+            return "float(" + self._a(args, 0) + ")"
+        if name == "FormatInt":
+            return self._format_int(args)
+        if name == "RuneFromInt":
+            return "chr(" + self._a(args, 0) + ")"
+        if name == "RuneToInt":
+            return "ord(" + self._a(args, 0) + ")"
+        if name == "IntToFloat":
+            return "float(" + self._a(args, 0) + ")"
+        if name == "FloatToInt":
+            return "int(" + self._a(args, 0) + ")"
+        if name == "ByteToInt":
+            return self._a(args, 0)
+        if name == "IntToByte":
+            return self._a(args, 0)
+        if name == "Unwrap":
+            return self._a(args, 0)
+        if name == "IsNaN":
+            return "math.isnan(" + self._a(args, 0) + ")"
+        if name == "IsInf":
+            return "math.isinf(" + self._a(args, 0) + ")"
+        # I/O
+        if name == "WriteOut":
+            return "print(" + self._a(args, 0) + ', end="")'
+        if name == "WriteErr":
+            return "print(" + self._a(args, 0) + ', end="", file=sys.stderr)'
+        if name == "WritelnOut":
+            return "print(" + self._a(args, 0) + ")"
+        if name == "WritelnErr":
+            return "print(" + self._a(args, 0) + ", file=sys.stderr)"
+        if name == "ReadLine":
+            return "input()"
+        if name == "ReadAll":
+            return "sys.stdin.read()"
+        if name == "ReadBytes":
+            return "sys.stdin.buffer.read()"
+        if name == "ReadBytesN":
+            return "sys.stdin.buffer.read(" + self._a(args, 0) + ")"
+        if name == "Args":
+            return "sys.argv[1:]"
+        if name == "GetEnv":
+            return "os.environ.get(" + self._a(args, 0) + ', "")'
+        if name == "Exit":
+            return "sys.exit(" + self._a(args, 0) + ")"
+        # Operator forms
+        if name == "Pow":
+            return self._a(args, 0) + " ** " + self._a(args, 1)
+        if name == "Contains":
+            return self._a(args, 1) + " in " + self._a(args, 0)
+        if name == "Concat":
+            return self._a(args, 0) + " + " + self._a(args, 1)
+        if name == "Repeat":
+            return self._a(args, 0) + " * " + self._a(args, 1)
+        if name == "Format":
+            return self._format_call(args)
+        if name == "Assert":
+            cond = self._a(args, 0)
+            if len(args) > 1:
+                return "assert " + cond + ", " + self._a(args, 1)
+            return "assert " + cond
+        # Fallback
+        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        return name + "(" + arg_strs + ")"
+
+    def _a(self, args: list[TArg], i: int) -> str:
+        return self._expr(args[i].value)
+
+    def _format_int(self, args: list[TArg]) -> str:
+        n = self._a(args, 0)
+        base_expr = args[1].value
+        if isinstance(base_expr, TIntLit):
+            if base_expr.value == 16:
+                return "format(" + n + ', "x")'
+            if base_expr.value == 8:
+                return "format(" + n + ', "o")'
+            if base_expr.value == 2:
+                return "format(" + n + ', "b")'
+        base = self._a(args, 1)
+        return "_format_int(" + n + ", " + base + ")"
+
+    def _format_call(self, args: list[TArg]) -> str:
+        template_expr = args[0].value
+        if not isinstance(template_expr, TStringLit):
+            arg_strs = ", ".join(self._expr(a.value) for a in args)
+            return "Format(" + arg_strs + ")"
+        template = template_expr.value
+        fmt_args = args[1:]
+        # Replace sequential {} placeholders with markers
+        markers: dict[str, int] = {}
+        result = template
+        for i in range(len(fmt_args)):
+            marker = "\x00PH" + str(i) + "\x00"
+            markers[marker] = i
+            result = result.replace("{}", marker, 1)
+        # Escape remaining literal braces
+        result = result.replace("{", "{{").replace("}", "}}")
+        # Restore placeholders as f-string interpolations
+        for marker, i in markers.items():
+            result = result.replace(marker, "{" + self._expr(fmt_args[i].value) + "}")
+        result = result.replace('"', '\\"')
+        return 'f"' + result + '"'
+
+    # ── Types ─────────────────────────────────────────────────
+
+    def _type(self, typ: TType) -> str:
+        if isinstance(typ, TPrimitive):
+            return self._primitive_type(typ.kind)
+        if isinstance(typ, TListType):
+            return "list[" + self._type(typ.element) + "]"
+        if isinstance(typ, TMapType):
+            return "dict[" + self._type(typ.key) + ", " + self._type(typ.value) + "]"
+        if isinstance(typ, TSetType):
+            return "set[" + self._type(typ.element) + "]"
+        if isinstance(typ, TTupleType):
+            parts = ", ".join(self._type(e) for e in typ.elements)
+            return "tuple[" + parts + "]"
+        if isinstance(typ, TIdentType):
+            return typ.name
+        if isinstance(typ, TOptionalType):
+            return self._type(typ.inner) + " | None"
+        if isinstance(typ, TUnionType):
+            return " | ".join(self._type(m) for m in typ.members)
+        if isinstance(typ, TFuncType):
+            return "object"
+        return "object"
+
+    def _primitive_type(self, kind: str) -> str:
+        if kind == "int":
+            return "int"
+        if kind == "float":
+            return "float"
+        if kind == "bool":
+            return "bool"
+        if kind == "string":
+            return "str"
+        if kind == "byte":
+            return "int"
+        if kind == "rune":
+            return "str"
+        if kind == "bytes":
+            return "bytes"
+        if kind == "void":
+            return "None"
+        if kind == "obj":
+            return "object"
+        if kind == "nil":
+            return "None"
+        return "object"
+
+
+# ============================================================
+# PUBLIC API
+# ============================================================
+
+
+def emit_python(module: TModule) -> str:
+    struct_names = {
+        decl.name for decl in module.decls if isinstance(decl, TStructDecl)
+    } | set(BUILTIN_STRUCTS.keys())
+    emitter = _PythonEmitter(struct_names)
+    emitter.emit_module(module)
+    return emitter.output()

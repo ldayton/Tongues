@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import sys
 
-from .frontend_v2.parse import parse, ParseError
-from .frontend_v2.subset import verify as verify_subset
-from .frontend_v2.names import NameInfo, NameTable, resolve_names
-from .frontend_v2.signatures import SignatureResult, collect_signatures
-from .frontend_v2.fields import FieldResult, collect_fields
-from .frontend_v2.hierarchy import HierarchyResult, build_hierarchy
-from .frontend_v2.inference import InferenceResult, run_inference
+from .frontend.parse import parse, ParseError
+from .frontend.subset import verify as verify_subset
+from .frontend.names import NameInfo, NameTable, resolve_names
+from .frontend.signatures import SignatureResult, collect_signatures
+from .frontend.fields import FieldResult, collect_fields
+from .frontend.hierarchy import HierarchyResult, build_hierarchy
+from .frontend.inference import InferenceResult, run_inference
 
 TARGETS: list[str] = [
     "c",
@@ -362,17 +362,17 @@ def run_pipeline(
         print(to_json(ast_dict))
         return 0
     # Phase 9: Lowering
-    # TODO: wire frontend_v2.lowering — produces TModule, set strict flags on it
+    # TODO: wire frontend.lowering — produces TModule, set strict flags on it
     if stop_at == "lowering":
         print("error: phase not yet implemented", file=sys.stderr)
         return 1
     # Phases 10-16: Analyze
-    # TODO: wire middleend_v2
+    # TODO: wire middleend
     if stop_at == "analyze":
         print("error: phase not yet implemented", file=sys.stderr)
         return 1
     # Phase 17: Backend
-    # TODO: wire backend_v2
+    # TODO: wire backend
     print("error: phase not yet implemented", file=sys.stderr)
     return 1
 

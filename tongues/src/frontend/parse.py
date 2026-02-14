@@ -3491,11 +3491,11 @@ def make_constant_from_token(tok: Token) -> ASTNode:
     return node
 
 
-def parse_number_value(s: str) -> int | float:
+def parse_number_value(s: str) -> int | float | complex:
     """Parse a number literal string to value."""
     s = s.replace("_", "")
     if s.endswith(("j", "J")):
-        return float(s[:-1])
+        return complex(0, float(s[:-1]))
     if "." in s or (
         "e" in s.lower() and not s.startswith(("0x", "0X", "0b", "0B", "0o", "0O"))
     ):
@@ -4225,4 +4225,12 @@ def parse(source: str) -> ASTNode:
     """Parse Python source to dict-based AST."""
     tokens = tokenize(source)
     parser = Parser(tokens)
-    return parser.parse_module()
+    module = parser.parse_module()
+    if parser.current().type != TK_ENDMARKER:
+        tok = parser.current()
+        raise ParseError(
+            "unexpected token '" + tok.value + "' at line " + str(tok.lineno),
+            tok.lineno,
+            tok.col,
+        )
+    return module

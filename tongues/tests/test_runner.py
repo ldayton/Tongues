@@ -1,4 +1,4 @@
-"""Test runner for Tongues v2 test phases."""
+"""Test runner for Tongues test phases."""
 
 import signal
 import subprocess
@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from src.frontend_v2.fields import collect_fields
-from src.frontend_v2.hierarchy import build_hierarchy
-from src.frontend_v2.inference import run_inference
-from src.frontend_v2.names import resolve_names
-from src.frontend_v2.parse import parse
-from src.frontend_v2.signatures import collect_signatures
-from src.frontend_v2.subset import verify as verify_subset
+from src.frontend.fields import collect_fields
+from src.frontend.hierarchy import build_hierarchy
+from src.frontend.inference import run_inference
+from src.frontend.names import resolve_names
+from src.frontend.parse import parse
+from src.frontend.signatures import collect_signatures
+from src.frontend.subset import verify as verify_subset
 
 TONGUES_DIR = Path(__file__).parent.parent.parent
 
@@ -138,15 +138,15 @@ def check_cli_assertions(
                 f"expected empty stdout, got {result.stdout[:200]!r}"
             )
 
-from src.backend_v2.perl import emit_perl as emit_perl_v2
-from src.backend_v2.python import emit_python as emit_python_v2
-from src.middleend_v2.callgraph import analyze_callgraph
-from src.middleend_v2.hoisting import analyze_hoisting
-from src.middleend_v2.liveness import analyze_liveness
-from src.middleend_v2.ownership import analyze_ownership
-from src.middleend_v2.returns import analyze_returns
-from src.middleend_v2.scope import analyze_scope
-from src.middleend_v2.strings import analyze_strings
+from src.backend.perl import emit_perl as emit_perl
+from src.backend.python import emit_python as emit_python
+from src.middleend.callgraph import analyze_callgraph
+from src.middleend.hoisting import analyze_hoisting
+from src.middleend.liveness import analyze_liveness
+from src.middleend.ownership import analyze_ownership
+from src.middleend.returns import analyze_returns
+from src.middleend.scope import analyze_scope
+from src.middleend.strings import analyze_strings
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.ast import (
     TCall,
@@ -164,33 +164,33 @@ TESTS_DIR = Path(__file__).parent
 # fmt: off
 TESTS = {
     "cli": {
-        "cli_v2":       {"dir": "02_v2_cli",       "run": "cli"},
+        "cli":       {"dir": "02_cli",       "run": "cli"},
     },
     "frontend": {
-        "parse_v2":     {"dir": "03_v2_parse",     "run": "phase"},
-        "subset_v2":    {"dir": "04_v2_subset",    "run": "phase"},
-        "names_v2":     {"dir": "05_v2_names",     "run": "phase"},
-        "sigs_v2":      {"dir": "06_v2_signatures", "run": "phase"},
-        "fields_v2":    {"dir": "07_v2_fields",    "run": "phase"},
-        "hierarchy_v2": {"dir": "08_v2_hierarchy", "run": "phase"},
-        "inference_v2": {"dir": "09_v2_inference", "run": "phase"},
-        "lowering_v2":  {"dir": "10_v2_lowering",  "run": "lowering"},
+        "parse":     {"dir": "03_parse",     "run": "phase"},
+        "subset":    {"dir": "04_subset",    "run": "phase"},
+        "names":     {"dir": "05_names",     "run": "phase"},
+        "sigs":      {"dir": "06_signatures", "run": "phase"},
+        "fields":    {"dir": "07_fields",    "run": "phase"},
+        "hierarchy": {"dir": "08_hierarchy", "run": "phase"},
+        "inference": {"dir": "09_inference", "run": "phase"},
+        "lowering":  {"dir": "10_lowering",  "run": "lowering"},
     },
     "taytsh": {
-        "type_checking_v2": {"dir": "13_v2_type_checking", "run": "phase"},
+        "type_checking": {"dir": "13_type_checking", "run": "phase"},
     },
     "middleend": {
-        "scope_v2":     {"dir": "14_v2_scope",     "run": "phase"},
-        "returns_v2":   {"dir": "15_v2_returns",   "run": "phase"},
-        "liveness_v2":  {"dir": "16_v2_liveness",  "run": "phase"},
-        "strings_v2":   {"dir": "17_v2_strings",   "run": "phase"},
-        "hoisting_v2":  {"dir": "18_v2_hoisting",  "run": "phase"},
-        "ownership_v2": {"dir": "19_v2_ownership", "run": "phase"},
-        "callgraph_v2": {"dir": "20_v2_callgraph", "run": "phase"},
+        "scope":     {"dir": "14_scope",     "run": "phase"},
+        "returns":   {"dir": "15_returns",   "run": "phase"},
+        "liveness":  {"dir": "16_liveness",  "run": "phase"},
+        "strings":   {"dir": "17_strings",   "run": "phase"},
+        "hoisting":  {"dir": "18_hoisting",  "run": "phase"},
+        "ownership": {"dir": "19_ownership", "run": "phase"},
+        "callgraph": {"dir": "20_callgraph", "run": "phase"},
     },
     "backend": {
-        "codegen_v2_python": {"dir": "21_v2_codegen", "run": "codegen_v2_python"},
-        "codegen_v2_perl": {"dir": "21_v2_codegen", "run": "codegen_v2_perl"},
+        "codegen_python": {"dir": "21_codegen", "run": "codegen_python"},
+        "codegen_perl": {"dir": "21_codegen", "run": "codegen_perl"},
     },
 }
 # fmt: on
@@ -284,8 +284,8 @@ def parse_codegen_file(path: Path) -> list[tuple[str, str, dict[str, str]]]:
     return result
 
 
-def discover_codegen_v2_tests(test_dir: Path, lang: str) -> list[tuple[str, str, str]]:
-    """Find v2 codegen tests for a language, returns (test_id, input, expected)."""
+def discover_codegen_tests(test_dir: Path, lang: str) -> list[tuple[str, str, str]]:
+    """Find codegen tests for a language, returns (test_id, input, expected)."""
     results = []
     for test_file in sorted(test_dir.glob("*.tests")):
         tests = parse_codegen_file(test_file)
@@ -298,7 +298,7 @@ def discover_codegen_v2_tests(test_dir: Path, lang: str) -> list[tuple[str, str,
                 pytest.fail(
                     f"{test_file.name}:{name} missing '--- {lang}' expected block"
                 )
-            test_id = f"{test_file.stem}/{name}[{lang}-v2]"
+            test_id = f"{test_file.stem}/{name}[{lang}]"
             results.append((test_id, input_code, expected))
     return results
 
@@ -449,11 +449,11 @@ def contains_normalized(haystack: str, needle: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# v2 runners
+# Phase runners
 # ---------------------------------------------------------------------------
 
 
-def run_parse_v2(source: str) -> PhaseResult:
+def run_parse(source: str) -> PhaseResult:
     """Run the Python frontend parser, return ok/error result."""
     try:
         signal.alarm(PARSE_TIMEOUT)
@@ -465,7 +465,7 @@ def run_parse_v2(source: str) -> PhaseResult:
         signal.alarm(0)
 
 
-def run_subset_v2(source: str) -> PhaseResult:
+def run_subset(source: str) -> PhaseResult:
     """Run subset verification on Python source."""
     try:
         ast_dict = parse(source)
@@ -478,7 +478,7 @@ def run_subset_v2(source: str) -> PhaseResult:
     )
 
 
-def run_names_v2(source: str) -> PhaseResult:
+def run_names(source: str) -> PhaseResult:
     """Run name resolution on Python source."""
     try:
         ast_dict = parse(source)
@@ -491,7 +491,7 @@ def run_names_v2(source: str) -> PhaseResult:
     )
 
 
-def run_sigs_v2(source: str) -> PhaseResult:
+def run_sigs(source: str) -> PhaseResult:
     """Run signature collection on Python source."""
     try:
         ast_dict = parse(source)
@@ -524,7 +524,7 @@ def run_sigs_v2(source: str) -> PhaseResult:
     return PhaseResult(data=sig_result.to_dict())
 
 
-def run_fields_v2(source: str) -> PhaseResult:
+def run_fields(source: str) -> PhaseResult:
     """Run field collection on Python source."""
     try:
         ast_dict = parse(source)
@@ -571,7 +571,7 @@ def run_fields_v2(source: str) -> PhaseResult:
     return PhaseResult(data=field_result.to_dict())
 
 
-def run_hierarchy_v2(source: str) -> PhaseResult:
+def run_hierarchy(source: str) -> PhaseResult:
     """Run hierarchy analysis on Python source."""
     try:
         ast_dict = parse(source)
@@ -600,7 +600,7 @@ def run_hierarchy_v2(source: str) -> PhaseResult:
     return PhaseResult(data=hier_result.to_dict())
 
 
-def run_inference_v2(source: str) -> PhaseResult:
+def run_inference(source: str) -> PhaseResult:
     """Run the full Python frontend pipeline (phases 2-9), checking inference errors."""
     try:
         ast_dict = parse(source)
@@ -644,7 +644,7 @@ def run_inference_v2(source: str) -> PhaseResult:
     field_errors = field_result.errors()
     if field_errors:
         return PhaseResult(errors=[str(e) for e in field_errors])
-    from src.frontend_v2.hierarchy import build_hierarchy
+    from src.frontend.hierarchy import build_hierarchy
     hier_result = build_hierarchy(known_classes, class_bases)
     hier_errors = hier_result.errors()
     if hier_errors:
@@ -656,7 +656,7 @@ def run_inference_v2(source: str) -> PhaseResult:
     return PhaseResult()
 
 
-def run_type_checking_v2(source: str) -> PhaseResult:
+def run_type_checking(source: str) -> PhaseResult:
     """Run the Taytsh type checker on Taytsh source."""
     try:
         module = taytsh_parse(source)
@@ -710,12 +710,12 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         field_errors = field_result.errors()
         if field_errors:
             return (None, str(field_errors[0]))
-        from src.frontend_v2.hierarchy import build_hierarchy
+        from src.frontend.hierarchy import build_hierarchy
         hier_result = build_hierarchy(known_classes, class_bases)
         hier_errors = hier_result.errors()
         if hier_errors:
             return (None, str(hier_errors[0]))
-        from src.frontend_v2.lowering import lower
+        from src.frontend.lowering import lower
         from src.taytsh.emit import to_source
         module, lower_errors = lower(ast_dict, sig_result, field_result, hier_result, known_classes, class_bases, source)
         if lower_errors:
@@ -736,7 +736,7 @@ def _run_taytsh_pipeline(source):
     return None, module, checker
 
 
-def run_returns_v2(source: str) -> PhaseResult:
+def run_returns(source: str) -> PhaseResult:
     err, module, checker = _run_taytsh_pipeline(source)
     if err:
         return err
@@ -744,7 +744,7 @@ def run_returns_v2(source: str) -> PhaseResult:
     return PhaseResult(data=serialize_annotations(module, "returns"))
 
 
-def run_scope_v2(source: str) -> PhaseResult:
+def run_scope(source: str) -> PhaseResult:
     err, module, checker = _run_taytsh_pipeline(source)
     if err:
         return err
@@ -752,7 +752,7 @@ def run_scope_v2(source: str) -> PhaseResult:
     return PhaseResult(data=serialize_annotations(module, "scope"))
 
 
-def run_liveness_v2(source: str) -> PhaseResult:
+def run_liveness(source: str) -> PhaseResult:
     err, module, checker = _run_taytsh_pipeline(source)
     if err:
         return err
@@ -761,7 +761,7 @@ def run_liveness_v2(source: str) -> PhaseResult:
     return PhaseResult(data=serialize_annotations(module, "liveness"))
 
 
-def run_strings_v2(source: str) -> PhaseResult:
+def run_strings(source: str) -> PhaseResult:
     err, module, checker = _run_taytsh_pipeline(source)
     if err:
         return err
@@ -771,7 +771,7 @@ def run_strings_v2(source: str) -> PhaseResult:
     return PhaseResult(data=serialize_annotations(module, "strings"))
 
 
-def run_hoisting_v2(source: str) -> PhaseResult:
+def run_hoisting(source: str) -> PhaseResult:
     err, module, checker = _run_taytsh_pipeline(source)
     if err:
         return err
@@ -779,7 +779,7 @@ def run_hoisting_v2(source: str) -> PhaseResult:
     return PhaseResult(data=serialize_annotations(module, "hoisting"))
 
 
-def run_ownership_v2(source: str) -> PhaseResult:
+def run_ownership(source: str) -> PhaseResult:
     err, module, checker = _run_taytsh_pipeline(source)
     if err:
         return err
@@ -882,7 +882,7 @@ def _serialize_callgraph(module, checker):
     return result
 
 
-def run_callgraph_v2(source: str) -> PhaseResult:
+def run_callgraph(source: str) -> PhaseResult:
     err, module, checker = _run_taytsh_pipeline(source)
     if err:
         return err
@@ -890,8 +890,8 @@ def run_callgraph_v2(source: str) -> PhaseResult:
     return PhaseResult(data=_serialize_callgraph(module, checker))
 
 
-def _transpile_v2_with_emitter(source: str, emitter) -> tuple[str | None, str | None]:
-    """Transpile Taytsh source for backend v2. Returns (output, error)."""
+def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source. Returns (output, error)."""
     try:
         signal.alarm(PARSE_TIMEOUT)
         module = taytsh_parse(source)
@@ -911,14 +911,14 @@ def _transpile_v2_with_emitter(source: str, emitter) -> tuple[str | None, str | 
         return (None, str(e))
 
 
-def transpile_code_v2_python(source: str) -> tuple[str | None, str | None]:
-    """Transpile Taytsh source using python backend v2. Returns (output, error)."""
-    return _transpile_v2_with_emitter(source, emit_python_v2)
+def transpile_code_python(source: str) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source using python backend. Returns (output, error)."""
+    return _transpile_with_emitter(source, emit_python)
 
 
-def transpile_code_v2_perl(source: str) -> tuple[str | None, str | None]:
-    """Transpile Taytsh source using perl backend v2. Returns (output, error)."""
-    return _transpile_v2_with_emitter(source, emit_perl_v2)
+def transpile_code_perl(source: str) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source using perl backend. Returns (output, error)."""
+    return _transpile_with_emitter(source, emit_perl)
 
 
 # ---------------------------------------------------------------------------
@@ -927,8 +927,8 @@ def transpile_code_v2_perl(source: str) -> tuple[str | None, str | None]:
 
 
 @pytest.fixture
-def transpiled_output_v2_python(codegen_v2_python_input: str) -> str:
-    output, err = transpile_code_v2_python(codegen_v2_python_input)
+def transpiled_output_python(codegen_python_input: str) -> str:
+    output, err = transpile_code_python(codegen_python_input)
     if err is not None:
         pytest.fail(f"Transpile error: {err}")
     if output is None:
@@ -937,8 +937,8 @@ def transpiled_output_v2_python(codegen_v2_python_input: str) -> str:
 
 
 @pytest.fixture
-def transpiled_output_v2_perl(codegen_v2_perl_input: str) -> str:
-    output, err = transpile_code_v2_perl(codegen_v2_perl_input)
+def transpiled_output_perl(codegen_perl_input: str) -> str:
+    output, err = transpile_code_perl(codegen_perl_input)
     if err is not None:
         pytest.fail(f"Transpile error: {err}")
     if output is None:
@@ -956,10 +956,10 @@ def pytest_generate_tests(metafunc):
         for name, cfg in section.items():
             test_dir = TESTS_DIR / cfg["dir"]
             run = cfg["run"]
-            if run == "cli" and "cli_v2_spec" in metafunc.fixturenames:
+            if run == "cli" and "cli_spec" in metafunc.fixturenames:
                 tests = discover_cli_tests(test_dir)
                 params = [pytest.param(spec, id=tid) for tid, spec in tests]
-                metafunc.parametrize("cli_v2_spec", params)
+                metafunc.parametrize("cli_spec", params)
             elif run == "phase":
                 fixture = f"{name}_input"
                 if fixture in metafunc.fixturenames:
@@ -973,22 +973,22 @@ def pytest_generate_tests(metafunc):
                     params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in specs]
                     metafunc.parametrize(f"{fixture},{name}_expected", params)
             elif (
-                run == "codegen_v2_python"
-                and "codegen_v2_python_input" in metafunc.fixturenames
+                run == "codegen_python"
+                and "codegen_python_input" in metafunc.fixturenames
             ):
-                tests = discover_codegen_v2_tests(test_dir, "python")
+                tests = discover_codegen_tests(test_dir, "python")
                 params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
                 metafunc.parametrize(
-                    "codegen_v2_python_input,codegen_v2_python_expected", params
+                    "codegen_python_input,codegen_python_expected", params
                 )
             elif (
-                run == "codegen_v2_perl"
-                and "codegen_v2_perl_input" in metafunc.fixturenames
+                run == "codegen_perl"
+                and "codegen_perl_input" in metafunc.fixturenames
             ):
-                tests = discover_codegen_v2_tests(test_dir, "perl")
+                tests = discover_codegen_tests(test_dir, "perl")
                 params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
                 metafunc.parametrize(
-                    "codegen_v2_perl_input,codegen_v2_perl_expected", params
+                    "codegen_perl_input,codegen_perl_expected", params
                 )
 
 
@@ -997,60 +997,60 @@ def pytest_generate_tests(metafunc):
 # ---------------------------------------------------------------------------
 
 
-def test_cli_v2(cli_v2_spec: dict) -> None:
-    result = run_cli(cli_v2_spec)
-    check_cli_assertions(result, cli_v2_spec["assertions"])
+def test_cli(cli_spec: dict) -> None:
+    result = run_cli(cli_spec)
+    check_cli_assertions(result, cli_spec["assertions"])
 
 
-def test_parse_v2(parse_v2_input, parse_v2_expected):
+def test_parse(parse_input, parse_expected):
     check_expected(
-        parse_v2_expected, run_parse_v2(parse_v2_input), "parse_v2", lenient_errors=True
+        parse_expected, run_parse(parse_input), "parse", lenient_errors=True
     )
 
 
-def test_subset_v2(subset_v2_input, subset_v2_expected):
-    check_expected(subset_v2_expected, run_subset_v2(subset_v2_input), "subset_v2")
+def test_subset(subset_input, subset_expected):
+    check_expected(subset_expected, run_subset(subset_input), "subset")
 
 
-def test_names_v2(names_v2_input, names_v2_expected):
-    check_expected(names_v2_expected, run_names_v2(names_v2_input), "names_v2")
+def test_names(names_input, names_expected):
+    check_expected(names_expected, run_names(names_input), "names")
 
 
-def test_sigs_v2(sigs_v2_input, sigs_v2_expected):
-    check_expected(sigs_v2_expected, run_sigs_v2(sigs_v2_input), "sigs_v2")
+def test_sigs(sigs_input, sigs_expected):
+    check_expected(sigs_expected, run_sigs(sigs_input), "sigs")
 
 
-def test_fields_v2(fields_v2_input, fields_v2_expected):
-    check_expected(fields_v2_expected, run_fields_v2(fields_v2_input), "fields_v2")
+def test_fields(fields_input, fields_expected):
+    check_expected(fields_expected, run_fields(fields_input), "fields")
 
 
-def test_hierarchy_v2(hierarchy_v2_input, hierarchy_v2_expected):
+def test_hierarchy(hierarchy_input, hierarchy_expected):
     check_expected(
-        hierarchy_v2_expected, run_hierarchy_v2(hierarchy_v2_input), "hierarchy_v2"
+        hierarchy_expected, run_hierarchy(hierarchy_input), "hierarchy"
     )
 
 
-def test_inference_v2(inference_v2_input, inference_v2_expected):
+def test_inference(inference_input, inference_expected):
     check_expected(
-        inference_v2_expected,
-        run_inference_v2(inference_v2_input),
-        "inference_v2",
+        inference_expected,
+        run_inference(inference_input),
+        "inference",
         lenient_errors=True,
     )
 
 
-def test_type_checking_v2(type_checking_v2_input, type_checking_v2_expected):
+def test_type_checking(type_checking_input, type_checking_expected):
     check_expected(
-        type_checking_v2_expected,
-        run_type_checking_v2(type_checking_v2_input),
-        "type_checking_v2",
+        type_checking_expected,
+        run_type_checking(type_checking_input),
+        "type_checking",
     )
 
 
-def test_lowering_v2(lowering_v2_input, lowering_v2_expected):
-    output, err = lower_to_taytsh(lowering_v2_input)
-    if lowering_v2_expected.startswith("error:"):
-        expected_msg = lowering_v2_expected[6:].strip()
+def test_lowering(lowering_input, lowering_expected):
+    output, err = lower_to_taytsh(lowering_input)
+    if lowering_expected.startswith("error:"):
+        expected_msg = lowering_expected[6:].strip()
         if err is None:
             pytest.fail(f"Expected error containing '{expected_msg}', got success")
         if expected_msg and expected_msg.lower() not in (err or "").lower():
@@ -1060,71 +1060,71 @@ def test_lowering_v2(lowering_v2_input, lowering_v2_expected):
         pytest.fail(f"Lowering error: {err}")
     if output is None:
         pytest.fail("No output from lowering")
-    if not contains_normalized(output, lowering_v2_expected):
+    if not contains_normalized(output, lowering_expected):
         pytest.fail(
             "Expected not found in output:\n"
-            f"--- expected ---\n{lowering_v2_expected}\n"
+            f"--- expected ---\n{lowering_expected}\n"
             f"--- got ---\n{output}"
         )
 
 
-def test_returns_v2(returns_v2_input, returns_v2_expected):
-    check_expected(returns_v2_expected, run_returns_v2(returns_v2_input), "returns_v2")
+def test_returns(returns_input, returns_expected):
+    check_expected(returns_expected, run_returns(returns_input), "returns")
 
 
-def test_scope_v2(scope_v2_input, scope_v2_expected):
-    check_expected(scope_v2_expected, run_scope_v2(scope_v2_input), "scope_v2")
+def test_scope(scope_input, scope_expected):
+    check_expected(scope_expected, run_scope(scope_input), "scope")
 
 
-def test_liveness_v2(liveness_v2_input, liveness_v2_expected):
+def test_liveness(liveness_input, liveness_expected):
     check_expected(
-        liveness_v2_expected, run_liveness_v2(liveness_v2_input), "liveness_v2"
+        liveness_expected, run_liveness(liveness_input), "liveness"
     )
 
 
-def test_strings_v2(strings_v2_input, strings_v2_expected):
-    check_expected(strings_v2_expected, run_strings_v2(strings_v2_input), "strings_v2")
+def test_strings(strings_input, strings_expected):
+    check_expected(strings_expected, run_strings(strings_input), "strings")
 
 
-def test_hoisting_v2(hoisting_v2_input, hoisting_v2_expected):
+def test_hoisting(hoisting_input, hoisting_expected):
     check_expected(
-        hoisting_v2_expected, run_hoisting_v2(hoisting_v2_input), "hoisting_v2"
+        hoisting_expected, run_hoisting(hoisting_input), "hoisting"
     )
 
 
-def test_ownership_v2(ownership_v2_input, ownership_v2_expected):
+def test_ownership(ownership_input, ownership_expected):
     check_expected(
-        ownership_v2_expected, run_ownership_v2(ownership_v2_input), "ownership_v2"
+        ownership_expected, run_ownership(ownership_input), "ownership"
     )
 
 
-def test_callgraph_v2(callgraph_v2_input, callgraph_v2_expected):
+def test_callgraph(callgraph_input, callgraph_expected):
     check_expected(
-        callgraph_v2_expected, run_callgraph_v2(callgraph_v2_input), "callgraph_v2"
+        callgraph_expected, run_callgraph(callgraph_input), "callgraph"
     )
 
 
-def test_codegen_v2_python(
-    codegen_v2_python_input: str,
-    codegen_v2_python_expected: str,
-    transpiled_output_v2_python: str,
+def test_codegen_python(
+    codegen_python_input: str,
+    codegen_python_expected: str,
+    transpiled_output_python: str,
 ):
-    if not contains_normalized(transpiled_output_v2_python, codegen_v2_python_expected):
+    if not contains_normalized(transpiled_output_python, codegen_python_expected):
         pytest.fail(
             "Expected not found in output:\n"
-            f"--- expected ---\n{codegen_v2_python_expected}\n"
-            f"--- got ---\n{transpiled_output_v2_python}"
+            f"--- expected ---\n{codegen_python_expected}\n"
+            f"--- got ---\n{transpiled_output_python}"
         )
 
 
-def test_codegen_v2_perl(
-    codegen_v2_perl_input: str,
-    codegen_v2_perl_expected: str,
-    transpiled_output_v2_perl: str,
+def test_codegen_perl(
+    codegen_perl_input: str,
+    codegen_perl_expected: str,
+    transpiled_output_perl: str,
 ):
-    if not contains_normalized(transpiled_output_v2_perl, codegen_v2_perl_expected):
+    if not contains_normalized(transpiled_output_perl, codegen_perl_expected):
         pytest.fail(
             "Expected not found in output:\n"
-            f"--- expected ---\n{codegen_v2_perl_expected}\n"
-            f"--- got ---\n{transpiled_output_v2_perl}"
+            f"--- expected ---\n{codegen_perl_expected}\n"
+            f"--- got ---\n{transpiled_output_perl}"
         )

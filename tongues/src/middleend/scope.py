@@ -1,609 +1,1043 @@
-"""Scope analysis: declarations, reassignments, param modifications.
+"""Scope analysis pass for Taytsh IR.
 
-Annotations added:
-    VarDecl.is_reassigned: bool  - variable is assigned after its declaration
-    VarDecl.assignment_count: int - number of assignments after declaration
-    Param.is_modified: bool      - parameter is assigned/mutated in function body
-    Param.is_unused: bool        - parameter is never referenced in function body
-    Assign.is_declaration: bool  - first assignment to a new variable
-    TupleAssign.is_declaration: bool - first assignment to new variables
-    TupleAssign.new_targets: list[str] - which targets are new declarations
+Analyzes each function body independently, writing annotations onto AST nodes
+for reassignment/constness, parameter modification/unused, narrowed types,
+interface detection, and function reference detection.
 """
 
-from ..ir import (
-    Assert,
-    Assign,
-    BinaryOp,
-    Block,
-    Call,
-    Cast,
-    DerefLV,
-    Expr,
-    ExprStmt,
-    FieldAccess,
-    FieldLV,
-    ForClassic,
-    ForRange,
-    Function,
-    Index,
-    IndexLV,
-    InterfaceRef,
-    IsNil,
-    IsType,
-    Len,
-    MakeSlice,
-    MapLit,
-    Match,
-    MethodCall,
-    Module,
-    OpAssign,
-    Param,
-    Return,
-    SetLit,
-    SliceExpr,
-    SliceLit,
-    StaticCall,
-    Stmt,
-    StringConcat,
-    StringFormat,
-    StructLit,
-    Ternary,
-    TryCatch,
-    TupleAssign,
-    TupleLit,
-    TypeAssert,
-    TypeSwitch,
-    UnaryOp,
-    Var,
-    VarDecl,
-    VarLV,
-    While,
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from ..taytsh.ast import (
+    TAssignStmt,
+    TBinaryOp,
+    TBoolLit,
+    TByteLit,
+    TBytesLit,
+    TCall,
+    TCatch,
+    TDefault,
+    TExpr,
+    TExprStmt,
+    TFieldAccess,
+    TFloatLit,
+    TFnDecl,
+    TFnLit,
+    TForStmt,
+    TIfStmt,
+    TIndex,
+    TIntLit,
+    TLetStmt,
+    TListLit,
+    TMapLit,
+    TMatchStmt,
+    TModule,
+    TNilLit,
+    TOpAssignStmt,
+    TParam,
+    TPatternEnum,
+    TPatternNil,
+    TPatternType,
+    TRange,
+    TReturnStmt,
+    TRuneLit,
+    TSetLit,
+    TSlice,
+    TStmt,
+    TStringLit,
+    TStructDecl,
+    TThrowStmt,
+    TTernary,
+    TTupleAccess,
+    TTupleAssignStmt,
+    TTupleLit,
+    TTryStmt,
+    TUnaryOp,
+    TVar,
+    TWhileStmt,
+)
+from ..taytsh.check import (
+    BOOL_T,
+    BUILTIN_NAMES,
+    BYTE_T,
+    BYTES_T,
+    Checker,
+    FLOAT_T,
+    INT_T,
+    InterfaceT,
+    ListT,
+    MapT,
+    NIL_T,
+    OBJ_T,
+    RUNE_T,
+    STRING_T,
+    SetT,
+    StructT,
+    TupleT,
+    Type,
+    UnionT,
+    VOID_T,
+    contains_nil,
+    normalize_union,
+    remove_nil,
+    type_eq,
+    type_name,
 )
 
-
-def analyze_scope(module: Module) -> None:
-    """Analyze variable scope: declarations, reassignments, param modifications."""
-    for func in module.functions:
-        _analyze_function(func)
-    for struct in module.structs:
-        for method in struct.methods:
-            _analyze_function(method)
-
-
-def _collect_assigned_vars(stmts: list[Stmt]) -> set[str]:
-    """Collect variable names that are assigned in a list of statements."""
-    result: set[str] = set()
-    for stmt in stmts:
-        if isinstance(stmt, Assign):
-            if isinstance(stmt.target, VarLV):
-                result.add(stmt.target.name)
-        elif isinstance(stmt, TupleAssign):
-            for target in stmt.targets:
-                if isinstance(target, VarLV):
-                    result.add(target.name)
-        elif isinstance(stmt, If):
-            result.update(_collect_assigned_vars(stmt.then_body))
-            result.update(_collect_assigned_vars(stmt.else_body))
-        elif isinstance(stmt, While):
-            result.update(_collect_assigned_vars(stmt.body))
-        elif isinstance(stmt, ForRange):
-            result.update(_collect_assigned_vars(stmt.body))
-        elif isinstance(stmt, ForClassic):
-            result.update(_collect_assigned_vars(stmt.body))
-        elif isinstance(stmt, Block):
-            result.update(_collect_assigned_vars(stmt.body))
-        elif isinstance(stmt, TryCatch):
-            result.update(_collect_assigned_vars(stmt.body))
-            for clause in stmt.catches:
-                result.update(_collect_assigned_vars(clause.body))
-    return result
+# Built-in functions whose first argument is mutated in-place.
+_MUTATING_BUILTINS: set[str] = {
+    "Append",
+    "Insert",
+    "Pop",
+    "RemoveAt",
+    "Delete",
+    "Add",
+    "Remove",
+}
 
 
-def _scope_visit_expr(result: set[str], expr: Expr | None) -> None:
-    """Visit an expression and collect variable names into result."""
-    if expr is None:
+# ============================================================
+# BINDING INFO
+# ============================================================
+
+
+@dataclass
+class _BindingInfo:
+    """One binding tracked during the walk."""
+
+    node: TParam | TLetStmt | TForStmt | TPatternType | TDefault | TCatch
+    declared_type: Type
+    is_param: bool
+    binder_name: str | None = None
+    reassigned: bool = False
+    modified: bool = False
+    used: bool = False
+
+
+# ============================================================
+# SCOPE CONTEXT
+# ============================================================
+
+
+@dataclass
+class _ScopeCtx:
+    checker: Checker
+    top_level_fns: set[str]
+    bindings: dict[str, _BindingInfo]
+    narrowings: dict[str, Type]
+
+
+def _fork_ctx(
+    ctx: _ScopeCtx, extra_narrowings: dict[str, Type] | None = None
+) -> _ScopeCtx:
+    """Fork context with independent narrowings but shared bindings."""
+    new_narrowings = dict(ctx.narrowings)
+    if extra_narrowings is not None:
+        new_narrowings.update(extra_narrowings)
+    return _ScopeCtx(
+        checker=ctx.checker,
+        top_level_fns=ctx.top_level_fns,
+        bindings=ctx.bindings,
+        narrowings=new_narrowings,
+    )
+
+
+# ============================================================
+# TYPE RESOLUTION FOR EXPRESSIONS
+# ============================================================
+
+
+def _resolve_expr_type(expr: TExpr, ctx: _ScopeCtx) -> Type | None:
+    """Resolve the type of an expression for iterable/call target analysis."""
+    if isinstance(expr, TVar):
+        if expr.name in ctx.narrowings:
+            return ctx.narrowings[expr.name]
+        if expr.name in ctx.bindings:
+            return ctx.bindings[expr.name].declared_type
+        if expr.name in ctx.checker.functions:
+            return ctx.checker.functions[expr.name]
+        if expr.name in ctx.checker.types:
+            return ctx.checker.types[expr.name]
+        return None
+    if isinstance(expr, TIntLit):
+        return INT_T
+    if isinstance(expr, TFloatLit):
+        return FLOAT_T
+    if isinstance(expr, TBoolLit):
+        return BOOL_T
+    if isinstance(expr, TByteLit):
+        return BYTE_T
+    if isinstance(expr, TStringLit):
+        return STRING_T
+    if isinstance(expr, TRuneLit):
+        return RUNE_T
+    if isinstance(expr, TBytesLit):
+        return BYTES_T
+    if isinstance(expr, TNilLit):
+        return NIL_T
+    if isinstance(expr, TListLit):
+        if len(expr.elements) > 0:
+            elem_t = _resolve_expr_type(expr.elements[0], ctx)
+            if elem_t is not None:
+                return ListT(kind="list", element=elem_t)
+        return None
+    if isinstance(expr, TMapLit):
+        if len(expr.entries) > 0:
+            kt = _resolve_expr_type(expr.entries[0][0], ctx)
+            vt = _resolve_expr_type(expr.entries[0][1], ctx)
+            if kt is not None and vt is not None:
+                return MapT(kind="map", key=kt, value=vt)
+        return None
+    if isinstance(expr, TSetLit):
+        if len(expr.elements) > 0:
+            elem_t = _resolve_expr_type(expr.elements[0], ctx)
+            if elem_t is not None:
+                return SetT(kind="set", element=elem_t)
+        return None
+    if isinstance(expr, TTupleLit):
+        elems: list[Type] = []
+        for e in expr.elements:
+            t = _resolve_expr_type(e, ctx)
+            if t is None:
+                return None
+            elems.append(t)
+
+        return TupleT(kind="tuple", elements=elems)
+    if isinstance(expr, TCall):
+        return _resolve_call_return_type(expr, ctx)
+    if isinstance(expr, TFieldAccess):
+        obj_t = _resolve_expr_type(expr.obj, ctx)
+        if obj_t is not None and isinstance(obj_t, StructT):
+            if expr.field in obj_t.fields:
+                return obj_t.fields[expr.field]
+        return None
+    if isinstance(expr, TIndex):
+        obj_t = _resolve_expr_type(expr.obj, ctx)
+        if obj_t is not None:
+            if isinstance(obj_t, ListT):
+                return obj_t.element
+            if isinstance(obj_t, MapT):
+                return obj_t.value
+            if type_eq(obj_t, STRING_T):
+                return RUNE_T
+            if type_eq(obj_t, BYTES_T):
+                return BYTE_T
+        return None
+    if isinstance(expr, TSlice):
+        obj_t = _resolve_expr_type(expr.obj, ctx)
+        if obj_t is not None:
+            if isinstance(obj_t, ListT):
+                return obj_t
+            if type_eq(obj_t, STRING_T):
+                return STRING_T
+            if type_eq(obj_t, BYTES_T):
+                return BYTES_T
+        return None
+    return None
+
+
+def _resolve_call_return_type(expr: TCall, ctx: _ScopeCtx) -> Type | None:
+    """Resolve return type of a call expression."""
+    if isinstance(expr.func, TVar):
+        name = expr.func.name
+        if name in ctx.checker.functions:
+            return ctx.checker.functions[name].ret
+        if name in ctx.checker.types:
+            return ctx.checker.types[name]
+        # Check builtins — simplified, just handle the common ones
+        if name in BUILTIN_NAMES:
+            return _resolve_builtin_return(name, expr, ctx)
+        return None
+    if isinstance(expr.func, TFieldAccess):
+        obj_t = _resolve_expr_type(expr.func.obj, ctx)
+        if obj_t is not None and isinstance(obj_t, StructT):
+            if expr.func.field in obj_t.methods:
+                return obj_t.methods[expr.func.field].ret
+        return None
+    return None
+
+
+def _resolve_builtin_return(name: str, expr: TCall, ctx: _ScopeCtx) -> Type | None:
+    """Resolve return type for common built-in calls."""
+    if name == "Len":
+        return INT_T
+    if name in ("Append", "Insert", "RemoveAt", "Delete", "Add", "Remove"):
+        return VOID_T
+    if name == "Pop":
+        if len(expr.args) > 0:
+            t = _resolve_expr_type(expr.args[0].value, ctx)
+            if t is not None and isinstance(t, ListT):
+                return t.element
+        return None
+    if name == "ToString":
+        return STRING_T
+    if name in ("Keys", "Values"):
+        if len(expr.args) > 0:
+            t = _resolve_expr_type(expr.args[0].value, ctx)
+            if t is not None and isinstance(t, MapT):
+                if name == "Keys":
+                    return ListT(kind="list", element=t.key)
+                return ListT(kind="list", element=t.value)
+        return None
+    if name == "Sorted" or name == "Reversed":
+        if len(expr.args) > 0:
+            return _resolve_expr_type(expr.args[0].value, ctx)
+        return None
+    if name in (
+        "Concat",
+        "Upper",
+        "Lower",
+        "Join",
+        "Replace",
+        "Trim",
+        "TrimStart",
+        "TrimEnd",
+    ):
+        return STRING_T
+    if name in ("Split", "SplitN", "SplitWhitespace"):
+        return ListT(kind="list", element=STRING_T)
+    if name == "Args":
+        return ListT(kind="list", element=STRING_T)
+    return None
+
+
+# ============================================================
+# FOR-BINDER TYPE RESOLUTION
+# ============================================================
+
+
+def _resolve_for_binder_types(stmt: TForStmt, ctx: _ScopeCtx) -> dict[str, Type] | None:
+    """Resolve types for for-loop binder variables. Returns name->type map or None."""
+    if isinstance(stmt.iterable, TRange):
+        result: dict[str, Type] = {}
+        for b in stmt.binding:
+            result[b] = INT_T
+        return result
+    iter_type = _resolve_expr_type(stmt.iterable, ctx)
+    if iter_type is None:
+        return None
+    result2: dict[str, Type] = {}
+    if isinstance(iter_type, ListT):
+        if len(stmt.binding) == 1:
+            result2[stmt.binding[0]] = iter_type.element
+        elif len(stmt.binding) == 2:
+            result2[stmt.binding[0]] = INT_T
+            result2[stmt.binding[1]] = iter_type.element
+    elif type_eq(iter_type, STRING_T):
+        if len(stmt.binding) == 1:
+            result2[stmt.binding[0]] = RUNE_T
+        elif len(stmt.binding) == 2:
+            result2[stmt.binding[0]] = INT_T
+            result2[stmt.binding[1]] = RUNE_T
+    elif type_eq(iter_type, BYTES_T):
+        if len(stmt.binding) == 1:
+            result2[stmt.binding[0]] = BYTE_T
+        elif len(stmt.binding) == 2:
+            result2[stmt.binding[0]] = INT_T
+            result2[stmt.binding[1]] = BYTE_T
+    elif isinstance(iter_type, MapT):
+        if len(stmt.binding) == 1:
+            result2[stmt.binding[0]] = iter_type.key
+        elif len(stmt.binding) == 2:
+            result2[stmt.binding[0]] = iter_type.key
+            result2[stmt.binding[1]] = iter_type.value
+    elif isinstance(iter_type, SetT):
+        if len(stmt.binding) == 1:
+            result2[stmt.binding[0]] = iter_type.element
+    else:
+        return None
+    return result2 if len(result2) > 0 else None
+
+
+# ============================================================
+# GET BASE VARIABLE
+# ============================================================
+
+
+def _get_base_var(expr: TExpr) -> str | None:
+    """Extract the root variable name from x, x.f, x[i], x.f.g[i] chains."""
+    if isinstance(expr, TVar):
+        return expr.name
+    if isinstance(expr, TFieldAccess):
+        return _get_base_var(expr.obj)
+    if isinstance(expr, TIndex):
+        return _get_base_var(expr.obj)
+    if isinstance(expr, TTupleAccess):
+        return _get_base_var(expr.obj)
+    return None
+
+
+# ============================================================
+# ASSIGNMENT TARGET ANALYSIS
+# ============================================================
+
+
+def _check_assign_target(target: TExpr, ctx: _ScopeCtx) -> None:
+    """Process an assignment target for reassignment/mutation tracking."""
+    if isinstance(target, TVar):
+        name = target.name
+        if name in ctx.bindings:
+            info = ctx.bindings[name]
+            info.reassigned = True
+            if info.is_param:
+                info.modified = True
+    elif isinstance(target, (TFieldAccess, TIndex, TTupleAccess)):
+        base = _get_base_var(target)
+        if base is not None and base in ctx.bindings:
+            info = ctx.bindings[base]
+            if info.is_param:
+                info.modified = True
+
+
+def _check_call_mutation(expr: TCall, ctx: _ScopeCtx) -> None:
+    """Check if a call mutates a parameter (mutating builtins or void methods)."""
+    # Mutating builtin: first arg is the mutated collection
+    if isinstance(expr.func, TVar) and expr.func.name in _MUTATING_BUILTINS:
+        if len(expr.args) > 0:
+            base = _get_base_var(expr.args[0].value)
+            if base is not None and base in ctx.bindings:
+                info = ctx.bindings[base]
+                if info.is_param:
+                    info.modified = True
+    # Void-returning method on a parameter: p.Method(...)
+    if isinstance(expr.func, TFieldAccess):
+        base = _get_base_var(expr.func.obj)
+        if base is not None and base in ctx.bindings:
+            info = ctx.bindings[base]
+            if info.is_param:
+                obj_type = info.declared_type
+                if isinstance(obj_type, StructT):
+                    method_name = expr.func.field
+                    if method_name in obj_type.methods:
+                        method_fn = obj_type.methods[method_name]
+                        if type_eq(method_fn.ret, VOID_T):
+                            info.modified = True
+
+
+# ============================================================
+# WALK EXPRESSIONS
+# ============================================================
+
+
+def _walk_expr(expr: TExpr, ctx: _ScopeCtx) -> None:
+    """Walk an expression, recording uses and writing use-site annotations."""
+    if isinstance(expr, TVar):
+        name = expr.name
+        if name in ctx.bindings:
+            info = ctx.bindings[name]
+            if info.is_param:
+                info.used = True
+            # Determine effective type at this use site
+            effective_type = ctx.narrowings.get(name, info.declared_type)
+            if isinstance(effective_type, InterfaceT):
+                expr.annotations["scope.is_interface"] = True
+            if not type_eq(effective_type, info.declared_type):
+                expr.annotations["scope.narrowed_type"] = type_name(effective_type)
+        elif name in ctx.top_level_fns and name not in BUILTIN_NAMES:
+            expr.annotations["scope.is_function_ref"] = True
         return
-    if isinstance(expr, Var):
-        result.add(expr.name)
-    # Visit children based on expression type
-    if isinstance(expr, FieldAccess):
-        _scope_visit_expr(result, expr.obj)
-    elif isinstance(expr, Index):
-        _scope_visit_expr(result, expr.obj)
-        _scope_visit_expr(result, expr.index)
-    elif isinstance(expr, SliceExpr):
-        _scope_visit_expr(result, expr.obj)
-        _scope_visit_expr(result, expr.low)
-        _scope_visit_expr(result, expr.high)
-    elif isinstance(expr, BinaryOp):
-        _scope_visit_expr(result, expr.left)
-        _scope_visit_expr(result, expr.right)
-    elif isinstance(expr, UnaryOp):
-        _scope_visit_expr(result, expr.operand)
-    elif isinstance(expr, Ternary):
-        _scope_visit_expr(result, expr.cond)
-        _scope_visit_expr(result, expr.then_expr)
-        _scope_visit_expr(result, expr.else_expr)
-    elif isinstance(expr, Call):
-        for arg in expr.args:
-            _scope_visit_expr(result, arg)
-    elif isinstance(expr, MethodCall):
-        _scope_visit_expr(result, expr.obj)
-        for arg in expr.args:
-            _scope_visit_expr(result, arg)
-    elif isinstance(expr, StaticCall):
-        for arg in expr.args:
-            _scope_visit_expr(result, arg)
-    elif isinstance(expr, Cast):
-        _scope_visit_expr(result, expr.expr)
-    elif isinstance(expr, TypeAssert):
-        _scope_visit_expr(result, expr.expr)
-    elif isinstance(expr, IsType):
-        _scope_visit_expr(result, expr.expr)
-    elif isinstance(expr, IsNil):
-        _scope_visit_expr(result, expr.expr)
-    elif isinstance(expr, Len):
-        _scope_visit_expr(result, expr.expr)
-    elif isinstance(expr, MakeSlice):
-        _scope_visit_expr(result, expr.length)
-        _scope_visit_expr(result, expr.capacity)
-    elif isinstance(expr, SliceLit):
-        for elem in expr.elements:
-            _scope_visit_expr(result, elem)
-    elif isinstance(expr, MapLit):
+    if isinstance(expr, TBinaryOp):
+        _walk_expr(expr.left, ctx)
+        _walk_expr(expr.right, ctx)
+    elif isinstance(expr, TUnaryOp):
+        _walk_expr(expr.operand, ctx)
+    elif isinstance(expr, TTernary):
+        _walk_expr(expr.cond, ctx)
+        _walk_expr(expr.then_expr, ctx)
+        _walk_expr(expr.else_expr, ctx)
+    elif isinstance(expr, TFieldAccess):
+        _walk_expr(expr.obj, ctx)
+    elif isinstance(expr, TTupleAccess):
+        _walk_expr(expr.obj, ctx)
+    elif isinstance(expr, TIndex):
+        _walk_expr(expr.obj, ctx)
+        _walk_expr(expr.index, ctx)
+    elif isinstance(expr, TSlice):
+        _walk_expr(expr.obj, ctx)
+        _walk_expr(expr.low, ctx)
+        _walk_expr(expr.high, ctx)
+    elif isinstance(expr, TCall):
+        _check_call_mutation(expr, ctx)
+        _walk_expr(expr.func, ctx)
+        for a in expr.args:
+            _walk_expr(a.value, ctx)
+    elif isinstance(expr, TListLit):
+        for e in expr.elements:
+            _walk_expr(e, ctx)
+    elif isinstance(expr, TMapLit):
         for k, v in expr.entries:
-            _scope_visit_expr(result, k)
-            _scope_visit_expr(result, v)
-    elif isinstance(expr, SetLit):
-        for elem in expr.elements:
-            _scope_visit_expr(result, elem)
-    elif isinstance(expr, StructLit):
-        for v in expr.fields.values():
-            _scope_visit_expr(result, v)
-    elif isinstance(expr, TupleLit):
-        for elem in expr.elements:
-            _scope_visit_expr(result, elem)
-    elif isinstance(expr, StringConcat):
-        for part in expr.parts:
-            _scope_visit_expr(result, part)
-    elif isinstance(expr, StringFormat):
-        for arg in expr.args:
-            _scope_visit_expr(result, arg)
+            _walk_expr(k, ctx)
+            _walk_expr(v, ctx)
+    elif isinstance(expr, TSetLit):
+        for e in expr.elements:
+            _walk_expr(e, ctx)
+    elif isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            _walk_expr(e, ctx)
+    elif isinstance(expr, TFnLit):
+        _analyze_fn_lit(expr, ctx)
 
 
-def _scope_visit_stmt(result: set[str], stmt: Stmt) -> None:
-    """Visit a statement and collect variable names into result."""
-    if isinstance(stmt, VarDecl):
-        if stmt.value:
-            _scope_visit_expr(result, stmt.value)
-    elif isinstance(stmt, Assign):
-        _scope_visit_expr(result, stmt.value)
-        if isinstance(stmt.target, IndexLV):
-            _scope_visit_expr(result, stmt.target.obj)
-            _scope_visit_expr(result, stmt.target.index)
-        elif isinstance(stmt.target, FieldLV):
-            _scope_visit_expr(result, stmt.target.obj)
-        elif isinstance(stmt.target, DerefLV):
-            _scope_visit_expr(result, stmt.target.ptr)
-    elif isinstance(stmt, OpAssign):
-        _scope_visit_expr(result, stmt.value)
-        if isinstance(stmt.target, IndexLV):
-            _scope_visit_expr(result, stmt.target.obj)
-            _scope_visit_expr(result, stmt.target.index)
-        elif isinstance(stmt.target, FieldLV):
-            _scope_visit_expr(result, stmt.target.obj)
-        elif isinstance(stmt.target, DerefLV):
-            _scope_visit_expr(result, stmt.target.ptr)
-    elif isinstance(stmt, TupleAssign):
-        _scope_visit_expr(result, stmt.value)
-    elif isinstance(stmt, ExprStmt):
-        _scope_visit_expr(result, stmt.expr)
-    elif isinstance(stmt, Return):
-        if stmt.value:
-            _scope_visit_expr(result, stmt.value)
-    elif isinstance(stmt, Assert):
-        _scope_visit_expr(result, stmt.test)
-        if stmt.message:
-            _scope_visit_expr(result, stmt.message)
-    elif isinstance(stmt, If):
-        _scope_visit_expr(result, stmt.cond)
-        if stmt.init:
-            _scope_visit_stmt(result, stmt.init)
-        for s in stmt.then_body:
-            _scope_visit_stmt(result, s)
-        for s in stmt.else_body:
-            _scope_visit_stmt(result, s)
-    elif isinstance(stmt, While):
-        _scope_visit_expr(result, stmt.cond)
-        for s in stmt.body:
-            _scope_visit_stmt(result, s)
-    elif isinstance(stmt, ForRange):
-        _scope_visit_expr(result, stmt.iterable)
-        for s in stmt.body:
-            _scope_visit_stmt(result, s)
-    elif isinstance(stmt, ForClassic):
-        if stmt.init:
-            _scope_visit_stmt(result, stmt.init)
-        if stmt.cond:
-            _scope_visit_expr(result, stmt.cond)
-        if stmt.post:
-            _scope_visit_stmt(result, stmt.post)
-        for s in stmt.body:
-            _scope_visit_stmt(result, s)
-    elif isinstance(stmt, Block):
-        for s in stmt.body:
-            _scope_visit_stmt(result, s)
-    elif isinstance(stmt, TryCatch):
-        for s in stmt.body:
-            _scope_visit_stmt(result, s)
-        for clause in stmt.catches:
-            for s in clause.body:
-                _scope_visit_stmt(result, s)
-    elif isinstance(stmt, Match):
-        _scope_visit_expr(result, stmt.expr)
-        for case in stmt.cases:
-            for s in case.body:
-                _scope_visit_stmt(result, s)
-        for s in stmt.default:
-            _scope_visit_stmt(result, s)
-    elif isinstance(stmt, TypeSwitch):
-        _scope_visit_expr(result, stmt.expr)
-        for case in stmt.cases:
-            for s in case.body:
-                _scope_visit_stmt(result, s)
-        for s in stmt.default:
-            _scope_visit_stmt(result, s)
+def _analyze_fn_lit(expr: TFnLit, parent_ctx: _ScopeCtx) -> None:
+    """Analyze a function literal with its own independent scope."""
+    ctx = _ScopeCtx(
+        checker=parent_ctx.checker,
+        top_level_fns=parent_ctx.top_level_fns,
+        bindings={},
+        narrowings={},
+    )
+    for p in expr.params:
+        if p.typ is not None:
+            pt = parent_ctx.checker.resolve_type(p.typ)
+            ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
+    if isinstance(expr.body, list):
+        _walk_stmts(expr.body, ctx)
+    else:
+        _walk_expr(expr.body, ctx)
+    _stamp_bindings(ctx)
 
 
-def _collect_used_vars(stmts: list[Stmt]) -> set[str]:
-    """Collect all variable names referenced in statements and expressions."""
-    result: set[str] = set()
-    for stmt in stmts:
-        _scope_visit_stmt(result, stmt)
-    return result
+# ============================================================
+# WALK STATEMENTS
+# ============================================================
 
 
-class _ScopeContext:
-    """Context for scope analysis, holding shared state."""
-
-    def __init__(self, params: dict[str, Param], assigned: set[str]) -> None:
-        self.declared: dict[str, VarDecl | Assign] = {}
-        self.params: dict[str, Param] = params
-        self.assigned: set[str] = assigned
+def _walk_stmts(stmts: list[TStmt], ctx: _ScopeCtx) -> None:
+    for s in stmts:
+        _walk_stmt(s, ctx)
 
 
-def _scope_mark_reassigned(ctx: _ScopeContext, name: str) -> None:
-    """Mark a variable as reassigned."""
-    if name in ctx.declared:
-        decl = ctx.declared[name]
-        decl.is_reassigned = True
-        decl.assignment_count += 1
-    elif name in ctx.params:
-        ctx.params[name].is_modified = True
-
-
-def _scope_is_new_declaration(
-    ctx: _ScopeContext,
-    lv: VarLV | IndexLV | FieldLV | DerefLV,
-    local_assigned: set[str],
-) -> bool:
-    """Check if this lvalue represents a first assignment to a variable."""
-    if isinstance(lv, VarLV):
-        return lv.name not in ctx.params and lv.name not in local_assigned
-    return False
-
-
-def _scope_check_lvalue(
-    ctx: _ScopeContext, lv: VarLV | IndexLV | FieldLV | DerefLV
-) -> None:
-    """Mark the base variable of an lvalue as modified."""
-    if isinstance(lv, VarLV):
-        _scope_mark_reassigned(ctx, lv.name)
-    elif isinstance(lv, IndexLV):
-        if isinstance(lv.obj, Var):
-            _scope_mark_reassigned(ctx, lv.obj.name)
-    elif isinstance(lv, FieldLV):
-        if isinstance(lv.obj, Var):
-            _scope_mark_reassigned(ctx, lv.obj.name)
-    elif isinstance(lv, DerefLV):
-        if isinstance(lv.ptr, Var):
-            _scope_mark_reassigned(ctx, lv.ptr.name)
-
-
-def _scope_check_expr(ctx: _ScopeContext, expr: Expr | None) -> None:
-    """Check for mutating method calls on declared variables."""
-    if expr is None:
-        return
-    if isinstance(expr, MethodCall):
-        if isinstance(expr.obj, Var):
-            _scope_mark_reassigned(ctx, expr.obj.name)
-        _scope_check_expr(ctx, expr.obj)
-        for arg in expr.args:
-            _scope_check_expr(ctx, arg)
-
-
-def _scope_check_stmt(ctx: _ScopeContext, stmt: Stmt, local_assigned: set[str]) -> None:
-    """Check a statement for declarations and reassignments."""
-    if isinstance(stmt, VarDecl):
-        stmt.is_reassigned = False
-        stmt.assignment_count = 0
-        ctx.declared[stmt.name] = stmt
-        local_assigned.add(stmt.name)
-        if stmt.value:
-            _scope_check_expr(ctx, stmt.value)
-    elif isinstance(stmt, Assign):
-        stmt.is_declaration = _scope_is_new_declaration(
-            ctx, stmt.target, local_assigned
+def _walk_stmt(stmt: TStmt, ctx: _ScopeCtx) -> None:
+    if isinstance(stmt, TLetStmt):
+        if stmt.value is not None:
+            _walk_expr(stmt.value, ctx)
+        declared_type = ctx.checker.resolve_type(stmt.typ)
+        ctx.bindings[stmt.name] = _BindingInfo(
+            node=stmt, declared_type=declared_type, is_param=False
         )
-        if isinstance(stmt.target, VarLV) and stmt.is_declaration:
-            local_assigned.add(stmt.target.name)
-            stmt.is_reassigned = False
-            stmt.assignment_count = 0
-            ctx.declared[stmt.target.name] = stmt
+
+    elif isinstance(stmt, TAssignStmt):
+        _walk_expr(stmt.value, ctx)
+        _check_assign_target(stmt.target, ctx)
+        # Walk the target for variable uses (field/index chains)
+        _walk_assign_target_uses(stmt.target, ctx)
+        # Map index assignment: m[k] = v mutates m if it's a param
+        if isinstance(stmt.target, TIndex):
+            base = _get_base_var(stmt.target.obj)
+            if base is not None and base in ctx.bindings:
+                info = ctx.bindings[base]
+                if info.is_param:
+                    info.modified = True
+
+    elif isinstance(stmt, TOpAssignStmt):
+        _walk_expr(stmt.value, ctx)
+        if isinstance(stmt.target, TVar):
+            name = stmt.target.name
+            if name in ctx.bindings:
+                info = ctx.bindings[name]
+                info.reassigned = True
+                if info.is_param:
+                    info.modified = True
         else:
-            _scope_check_lvalue(ctx, stmt.target)
-        _scope_check_expr(ctx, stmt.value)
-    elif isinstance(stmt, OpAssign):
-        _scope_check_lvalue(ctx, stmt.target)
-        _scope_check_expr(ctx, stmt.value)
-    elif isinstance(stmt, TupleAssign):
-        all_new = True
-        new_targets: list[str] = []
-        for target in stmt.targets:
-            if isinstance(target, VarLV):
-                if (
-                    target.name in ctx.assigned
-                    or target.name in ctx.declared
-                    or target.name in ctx.params
-                    or target.name in local_assigned
-                ):
-                    all_new = False
-                else:
-                    new_targets.append(target.name)
-                    local_assigned.add(target.name)
-            else:
-                all_new = False
-        stmt.is_declaration = all_new
-        stmt.new_targets = new_targets
-        for target in stmt.targets:
-            if isinstance(target, VarLV) and not stmt.is_declaration:
-                _scope_mark_reassigned(ctx, target.name)
-        _scope_check_expr(ctx, stmt.value)
-    elif isinstance(stmt, ExprStmt):
-        _scope_check_expr(ctx, stmt.expr)
-    elif isinstance(stmt, Return):
-        if stmt.value:
-            _scope_check_expr(ctx, stmt.value)
-    elif isinstance(stmt, Assert):
-        _scope_check_expr(ctx, stmt.test)
-        if stmt.message:
-            _scope_check_expr(ctx, stmt.message)
-    elif isinstance(stmt, If):
-        _scope_check_expr(ctx, stmt.cond)
-        if stmt.init:
-            _scope_check_stmt(ctx, stmt.init, local_assigned)
-        then_assigned: set[str] = set(local_assigned)
+            # For field/index op-assign, it's mutation not reassignment
+            base = _get_base_var(stmt.target)
+            if base is not None and base in ctx.bindings:
+                info = ctx.bindings[base]
+                if info.is_param:
+                    info.modified = True
+        _walk_assign_target_uses(stmt.target, ctx)
+
+    elif isinstance(stmt, TTupleAssignStmt):
+        _walk_expr(stmt.value, ctx)
+        for t in stmt.targets:
+            _check_assign_target(t, ctx)
+
+    elif isinstance(stmt, TReturnStmt):
+        if stmt.value is not None:
+            _walk_expr(stmt.value, ctx)
+
+    elif isinstance(stmt, TThrowStmt):
+        _walk_expr(stmt.expr, ctx)
+
+    elif isinstance(stmt, TExprStmt):
+        _walk_expr(stmt.expr, ctx)
+
+    elif isinstance(stmt, TIfStmt):
+        _walk_expr(stmt.cond, ctx)
+        _walk_if_stmt(stmt, ctx)
+
+    elif isinstance(stmt, TWhileStmt):
+        _walk_expr(stmt.cond, ctx)
+        _walk_stmts(stmt.body, ctx)
+
+    elif isinstance(stmt, TForStmt):
+        _walk_for_stmt(stmt, ctx)
+
+    elif isinstance(stmt, TMatchStmt):
+        _walk_match_stmt(stmt, ctx)
+
+    elif isinstance(stmt, TTryStmt):
+        _walk_try_stmt(stmt, ctx)
+
+
+def _walk_assign_target_uses(target: TExpr, ctx: _ScopeCtx) -> None:
+    """Walk assignment target sub-expressions for use tracking (not the top-level var)."""
+    if isinstance(target, TFieldAccess):
+        _walk_expr(target.obj, ctx)
+    elif isinstance(target, TIndex):
+        _walk_expr(target.obj, ctx)
+        _walk_expr(target.index, ctx)
+    elif isinstance(target, TTupleAccess):
+        _walk_expr(target.obj, ctx)
+    # TVar targets: don't count the target itself as a "use" for unused tracking
+
+
+# ============================================================
+# IF STATEMENT — NARROWING
+# ============================================================
+
+
+def _walk_if_stmt(stmt: TIfStmt, ctx: _ScopeCtx) -> None:
+    """Handle if-stmt with potential nil narrowing."""
+    narrowed_name: str | None = None
+    then_narrowings: dict[str, Type] = {}
+    else_narrowings: dict[str, Type] = {}
+
+    if isinstance(stmt.cond, TBinaryOp):
+        var_node: TVar | None = None
+        is_nil_check = False
+        is_neq = False
+
+        if stmt.cond.op in ("!=", "=="):
+            if isinstance(stmt.cond.left, TVar) and isinstance(
+                stmt.cond.right, TNilLit
+            ):
+                var_node = stmt.cond.left
+                is_nil_check = True
+                is_neq = stmt.cond.op == "!="
+            elif isinstance(stmt.cond.right, TVar) and isinstance(
+                stmt.cond.left, TNilLit
+            ):
+                var_node = stmt.cond.right
+                is_nil_check = True
+                is_neq = stmt.cond.op == "!="
+
+        if is_nil_check and var_node is not None:
+            name = var_node.name
+            if name in ctx.bindings:
+                declared = ctx.bindings[name].declared_type
+                if contains_nil(declared):
+                    narrowed_name = name
+                    non_nil = remove_nil(declared)
+                    if is_neq:
+                        then_narrowings[name] = non_nil
+                        else_narrowings[name] = NIL_T
+                    else:
+                        then_narrowings[name] = NIL_T
+                        else_narrowings[name] = non_nil
+
+    then_ctx = _fork_ctx(ctx, then_narrowings)
+    _walk_stmts(stmt.then_body, then_ctx)
+
+    if stmt.else_body is not None:
+        else_ctx = _fork_ctx(ctx, else_narrowings)
+        _walk_stmts(stmt.else_body, else_ctx)
+
+
+# ============================================================
+# FOR STATEMENT
+# ============================================================
+
+
+def _walk_for_stmt(stmt: TForStmt, ctx: _ScopeCtx) -> None:
+    """Handle for-stmt: register binders, walk iterable and body."""
+    # Walk the iterable expression first
+    if isinstance(stmt.iterable, TRange):
+        for a in stmt.iterable.args:
+            _walk_expr(a, ctx)
+    else:
+        _walk_expr(stmt.iterable, ctx)
+
+    # Resolve binder types and register them
+    binder_types = _resolve_for_binder_types(stmt, ctx)
+    for bname in stmt.binding:
+        btype = binder_types.get(bname) if binder_types is not None else None
+        if btype is None:
+            btype = OBJ_T
+        ctx.bindings[bname] = _BindingInfo(
+            node=stmt,
+            declared_type=btype,
+            is_param=False,
+            binder_name=bname,
+        )
+
+    _walk_stmts(stmt.body, ctx)
+
+
+# ============================================================
+# MATCH STATEMENT
+# ============================================================
+
+
+def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
+    """Handle match-stmt: walk scrutinee, then each case with its binding."""
+    _walk_expr(stmt.expr, ctx)
+
+    scrutinee_type = _resolve_expr_type(stmt.expr, ctx)
+    covered_types: list[Type] = []
+
+    for case in stmt.cases:
+        pat = case.pattern
+        case_ctx = _fork_ctx(ctx)
+
+        if isinstance(pat, TPatternType):
+            case_type = ctx.checker.resolve_type(pat.type_name)
+            covered_types.append(case_type)
+            case_ctx.bindings[pat.name] = _BindingInfo(
+                node=pat, declared_type=case_type, is_param=False
+            )
+        elif isinstance(pat, TPatternEnum):
+            enum_type = ctx.checker.types.get(pat.enum_name)
+            if enum_type is not None:
+                covered_types.append(enum_type)
+        elif isinstance(pat, TPatternNil):
+            covered_types.append(NIL_T)
+
+        _walk_stmts(case.body, case_ctx)
+
+        if isinstance(pat, TPatternType):
+            iface = _detect_case_interface(pat.name, case.body, case_ctx)
+            pat.annotations["scope.case_interface"] = iface
+
+    if stmt.default is not None:
+        dflt = stmt.default
+        dflt_ctx = _fork_ctx(ctx)
+        if dflt.name is not None:
+            residual = _compute_residual_type(scrutinee_type, covered_types, ctx)
+            dflt_ctx.bindings[dflt.name] = _BindingInfo(
+                node=dflt, declared_type=residual, is_param=False
+            )
+        _walk_stmts(dflt.body, dflt_ctx)
+        if dflt.name is not None:
+            iface = _detect_case_interface(dflt.name, dflt.body, dflt_ctx)
+            dflt.annotations["scope.case_interface"] = iface
+
+
+def _detect_case_interface(binding_name: str, body: list[TStmt], ctx: _ScopeCtx) -> str:
+    """Detect if a case binding is used through an interface in the body.
+
+    Returns the interface name or "" if none.
+    """
+    for stmt in body:
+        result = _scan_stmt_for_interface_use(binding_name, stmt, ctx)
+        if result:
+            return result
+    return ""
+
+
+def _scan_stmt_for_interface_use(name: str, stmt: TStmt, ctx: _ScopeCtx) -> str | None:
+    if isinstance(stmt, TExprStmt):
+        return _scan_expr_for_interface_use(name, stmt.expr, ctx)
+    if isinstance(stmt, TReturnStmt) and stmt.value is not None:
+        return _scan_expr_for_interface_use(name, stmt.value, ctx)
+    if isinstance(stmt, TThrowStmt):
+        return _scan_expr_for_interface_use(name, stmt.expr, ctx)
+    if isinstance(stmt, TLetStmt) and stmt.value is not None:
+        return _scan_expr_for_interface_use(name, stmt.value, ctx)
+    if isinstance(stmt, TAssignStmt):
+        r = _scan_expr_for_interface_use(name, stmt.value, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, stmt.target, ctx)
+    if isinstance(stmt, TOpAssignStmt):
+        r = _scan_expr_for_interface_use(name, stmt.value, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, stmt.target, ctx)
+    if isinstance(stmt, TTupleAssignStmt):
+        r = _scan_expr_for_interface_use(name, stmt.value, ctx)
+        if r:
+            return r
+        for t in stmt.targets:
+            r = _scan_expr_for_interface_use(name, t, ctx)
+            if r:
+                return r
+    if isinstance(stmt, TIfStmt):
+        r = _scan_expr_for_interface_use(name, stmt.cond, ctx)
+        if r:
+            return r
         for s in stmt.then_body:
-            _scope_check_stmt(ctx, s, then_assigned)
-        else_assigned: set[str] = set(local_assigned)
-        for s in stmt.else_body:
-            _scope_check_stmt(ctx, s, else_assigned)
-    elif isinstance(stmt, While):
-        _scope_check_expr(ctx, stmt.cond)
+            r = _scan_stmt_for_interface_use(name, s, ctx)
+            if r:
+                return r
+        if stmt.else_body is not None:
+            for s in stmt.else_body:
+                r = _scan_stmt_for_interface_use(name, s, ctx)
+                if r:
+                    return r
+    if isinstance(stmt, TWhileStmt):
+        r = _scan_expr_for_interface_use(name, stmt.cond, ctx)
+        if r:
+            return r
         for s in stmt.body:
-            _scope_check_stmt(ctx, s, local_assigned)
-    elif isinstance(stmt, ForRange):
+            r = _scan_stmt_for_interface_use(name, s, ctx)
+            if r:
+                return r
+    if isinstance(stmt, TForStmt):
         for s in stmt.body:
-            _scope_check_stmt(ctx, s, local_assigned)
-    elif isinstance(stmt, ForClassic):
-        if stmt.init:
-            _scope_check_stmt(ctx, stmt.init, local_assigned)
-        if stmt.cond:
-            _scope_check_expr(ctx, stmt.cond)
-        if stmt.post:
-            _scope_check_stmt(ctx, stmt.post, local_assigned)
+            r = _scan_stmt_for_interface_use(name, s, ctx)
+            if r:
+                return r
+    if isinstance(stmt, TTryStmt):
         for s in stmt.body:
-            _scope_check_stmt(ctx, s, local_assigned)
-    elif isinstance(stmt, Block):
-        for s in stmt.body:
-            _scope_check_stmt(ctx, s, local_assigned)
-    elif isinstance(stmt, TryCatch):
-        try_assigned: set[str] = set(local_assigned)
-        for s in stmt.body:
-            _scope_check_stmt(ctx, s, try_assigned)
-        catch_assigned: set[str] = set(local_assigned)
-        for clause in stmt.catches:
-            for s in clause.body:
-                _scope_check_stmt(ctx, s, catch_assigned)
-    elif isinstance(stmt, Match):
-        _scope_check_expr(ctx, stmt.expr)
-        for case in stmt.cases:
-            case_assigned: set[str] = set(local_assigned)
-            for s in case.body:
-                _scope_check_stmt(ctx, s, case_assigned)
-        default_assigned: set[str] = set(local_assigned)
-        for s in stmt.default:
-            _scope_check_stmt(ctx, s, default_assigned)
-    elif isinstance(stmt, TypeSwitch):
-        _scope_check_expr(ctx, stmt.expr)
-        for case in stmt.cases:
-            case_assigned: set[str] = set(local_assigned)
-            for s in case.body:
-                _scope_check_stmt(ctx, s, case_assigned)
-        default_assigned: set[str] = set(local_assigned)
-        for s in stmt.default:
-            _scope_check_stmt(ctx, s, default_assigned)
+            r = _scan_stmt_for_interface_use(name, s, ctx)
+            if r:
+                return r
+        for catch in stmt.catches:
+            for s in catch.body:
+                r = _scan_stmt_for_interface_use(name, s, ctx)
+                if r:
+                    return r
+    return None
 
 
-def _interface_visit_expr(expr: Expr | None) -> None:
-    """Set is_interface=True on expressions typed as InterfaceRef."""
-    if expr is None:
-        return
-    if isinstance(expr.typ, InterfaceRef):
-        expr.is_interface = True
-    # Recurse into child expressions
-    if isinstance(expr, FieldAccess):
-        _interface_visit_expr(expr.obj)
-    elif isinstance(expr, Index):
-        _interface_visit_expr(expr.obj)
-        _interface_visit_expr(expr.index)
-    elif isinstance(expr, SliceExpr):
-        _interface_visit_expr(expr.obj)
-        _interface_visit_expr(expr.low)
-        _interface_visit_expr(expr.high)
-    elif isinstance(expr, BinaryOp):
-        _interface_visit_expr(expr.left)
-        _interface_visit_expr(expr.right)
-    elif isinstance(expr, UnaryOp):
-        _interface_visit_expr(expr.operand)
-    elif isinstance(expr, Ternary):
-        _interface_visit_expr(expr.cond)
-        _interface_visit_expr(expr.then_expr)
-        _interface_visit_expr(expr.else_expr)
-    elif isinstance(expr, Call):
-        for arg in expr.args:
-            _interface_visit_expr(arg)
-    elif isinstance(expr, MethodCall):
-        _interface_visit_expr(expr.obj)
-        for arg in expr.args:
-            _interface_visit_expr(arg)
-    elif isinstance(expr, StaticCall):
-        for arg in expr.args:
-            _interface_visit_expr(arg)
-    elif isinstance(expr, Cast):
-        _interface_visit_expr(expr.expr)
-    elif isinstance(expr, TypeAssert):
-        _interface_visit_expr(expr.expr)
-    elif isinstance(expr, IsType):
-        _interface_visit_expr(expr.expr)
-    elif isinstance(expr, IsNil):
-        _interface_visit_expr(expr.expr)
-    elif isinstance(expr, Len):
-        _interface_visit_expr(expr.expr)
-    elif isinstance(expr, MakeSlice):
-        _interface_visit_expr(expr.length)
-        _interface_visit_expr(expr.capacity)
-    elif isinstance(expr, SliceLit):
-        for elem in expr.elements:
-            _interface_visit_expr(elem)
-    elif isinstance(expr, MapLit):
+def _scan_expr_for_interface_use(name: str, expr: TExpr, ctx: _ScopeCtx) -> str | None:
+    """Check if `name` is passed to a function parameter typed as an interface."""
+    if isinstance(expr, TCall):
+        # Check each argument: is it `name` passed to an interface-typed param?
+        result = _check_call_interface_arg(name, expr, ctx)
+        if result:
+            return result
+        # Recurse into sub-expressions
+        r = _scan_expr_for_interface_use(name, expr.func, ctx)
+        if r:
+            return r
+        for a in expr.args:
+            r = _scan_expr_for_interface_use(name, a.value, ctx)
+            if r:
+                return r
+        return None
+    if isinstance(expr, TBinaryOp):
+        r = _scan_expr_for_interface_use(name, expr.left, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, expr.right, ctx)
+    if isinstance(expr, TUnaryOp):
+        return _scan_expr_for_interface_use(name, expr.operand, ctx)
+    if isinstance(expr, TTernary):
+        r = _scan_expr_for_interface_use(name, expr.cond, ctx)
+        if r:
+            return r
+        r = _scan_expr_for_interface_use(name, expr.then_expr, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, expr.else_expr, ctx)
+    if isinstance(expr, TFieldAccess):
+        return _scan_expr_for_interface_use(name, expr.obj, ctx)
+    if isinstance(expr, TIndex):
+        r = _scan_expr_for_interface_use(name, expr.obj, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, expr.index, ctx)
+    if isinstance(expr, TSlice):
+        r = _scan_expr_for_interface_use(name, expr.obj, ctx)
+        if r:
+            return r
+        r = _scan_expr_for_interface_use(name, expr.low, ctx)
+        if r:
+            return r
+        return _scan_expr_for_interface_use(name, expr.high, ctx)
+    if isinstance(expr, TListLit):
+        for e in expr.elements:
+            r = _scan_expr_for_interface_use(name, e, ctx)
+            if r:
+                return r
+    if isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            r = _scan_expr_for_interface_use(name, e, ctx)
+            if r:
+                return r
+    if isinstance(expr, TMapLit):
         for k, v in expr.entries:
-            _interface_visit_expr(k)
-            _interface_visit_expr(v)
-    elif isinstance(expr, SetLit):
-        for elem in expr.elements:
-            _interface_visit_expr(elem)
-    elif isinstance(expr, StructLit):
-        for v in expr.fields.values():
-            _interface_visit_expr(v)
-    elif isinstance(expr, TupleLit):
-        for elem in expr.elements:
-            _interface_visit_expr(elem)
-    elif isinstance(expr, StringConcat):
-        for part in expr.parts:
-            _interface_visit_expr(part)
-    elif isinstance(expr, StringFormat):
-        for arg in expr.args:
-            _interface_visit_expr(arg)
+            r = _scan_expr_for_interface_use(name, k, ctx)
+            if r:
+                return r
+            r = _scan_expr_for_interface_use(name, v, ctx)
+            if r:
+                return r
+    if isinstance(expr, TSetLit):
+        for e in expr.elements:
+            r = _scan_expr_for_interface_use(name, e, ctx)
+            if r:
+                return r
+    return None
 
 
-def _interface_visit_stmt(stmt: Stmt) -> None:
-    """Visit a statement and annotate interface-typed expressions."""
-    if isinstance(stmt, VarDecl):
-        if stmt.value:
-            _interface_visit_expr(stmt.value)
-    elif isinstance(stmt, Assign):
-        _interface_visit_expr(stmt.value)
-    elif isinstance(stmt, OpAssign):
-        _interface_visit_expr(stmt.value)
-    elif isinstance(stmt, TupleAssign):
-        _interface_visit_expr(stmt.value)
-    elif isinstance(stmt, ExprStmt):
-        _interface_visit_expr(stmt.expr)
-    elif isinstance(stmt, Return):
-        if stmt.value:
-            _interface_visit_expr(stmt.value)
-    elif isinstance(stmt, Assert):
-        _interface_visit_expr(stmt.test)
-        if stmt.message:
-            _interface_visit_expr(stmt.message)
-    elif isinstance(stmt, If):
-        _interface_visit_expr(stmt.cond)
-        if stmt.init:
-            _interface_visit_stmt(stmt.init)
-        for s in stmt.then_body:
-            _interface_visit_stmt(s)
-        for s in stmt.else_body:
-            _interface_visit_stmt(s)
-    elif isinstance(stmt, While):
-        _interface_visit_expr(stmt.cond)
-        for s in stmt.body:
-            _interface_visit_stmt(s)
-    elif isinstance(stmt, ForRange):
-        _interface_visit_expr(stmt.iterable)
-        for s in stmt.body:
-            _interface_visit_stmt(s)
-    elif isinstance(stmt, ForClassic):
-        if stmt.init:
-            _interface_visit_stmt(stmt.init)
-        if stmt.cond:
-            _interface_visit_expr(stmt.cond)
-        if stmt.post:
-            _interface_visit_stmt(stmt.post)
-        for s in stmt.body:
-            _interface_visit_stmt(s)
-    elif isinstance(stmt, Block):
-        for s in stmt.body:
-            _interface_visit_stmt(s)
-    elif isinstance(stmt, TryCatch):
-        for s in stmt.body:
-            _interface_visit_stmt(s)
-        for clause in stmt.catches:
-            for s in clause.body:
-                _interface_visit_stmt(s)
-    elif isinstance(stmt, Match):
-        _interface_visit_expr(stmt.expr)
-        for case in stmt.cases:
-            for s in case.body:
-                _interface_visit_stmt(s)
-        for s in stmt.default:
-            _interface_visit_stmt(s)
-    elif isinstance(stmt, TypeSwitch):
-        _interface_visit_expr(stmt.expr)
-        for case in stmt.cases:
-            for s in case.body:
-                _interface_visit_stmt(s)
-        for s in stmt.default:
-            _interface_visit_stmt(s)
+def _check_call_interface_arg(name: str, call: TCall, ctx: _ScopeCtx) -> str | None:
+    """If `name` is passed as an argument to an interface-typed parameter, return the interface name."""
+    # Resolve param types for the called function
+    param_types: list[Type] | None = None
+    if isinstance(call.func, TVar):
+        fname = call.func.name
+        if fname in ctx.checker.functions:
+            param_types = ctx.checker.functions[fname].params
+        elif fname in ctx.checker.types:
+            t = ctx.checker.types[fname]
+            if isinstance(t, StructT):
+                param_types = list(t.fields.values())
+    elif isinstance(call.func, TFieldAccess):
+        obj_t = _resolve_expr_type(call.func.obj, ctx)
+        if obj_t is not None and isinstance(obj_t, StructT):
+            mname = call.func.field
+            if mname in obj_t.methods:
+                # Skip self param
+                param_types = obj_t.methods[mname].params[1:]
+    if param_types is None:
+        return None
+    for i, arg in enumerate(call.args):
+        if isinstance(arg.value, TVar) and arg.value.name == name:
+            if i < len(param_types) and isinstance(param_types[i], InterfaceT):
+                return param_types[i].name
+    return None
 
 
-def _annotate_interface_types(stmts: list[Stmt]) -> None:
-    """Set is_interface=True on expressions typed as InterfaceRef."""
-    for stmt in stmts:
-        _interface_visit_stmt(stmt)
+def _compute_residual_type(
+    scrutinee: Type | None, covered: list[Type], ctx: _ScopeCtx
+) -> Type:
+    """Compute the residual type for a default arm (scrutinee minus covered)."""
+    if scrutinee is None:
+        return OBJ_T
+
+    if isinstance(scrutinee, InterfaceT):
+        remaining: list[Type] = []
+        for variant_name in scrutinee.variants:
+            vt = ctx.checker.types.get(variant_name)
+            if vt is None:
+                continue
+            is_covered = any(type_eq(vt, c) for c in covered)
+            if not is_covered:
+                remaining.append(vt)
+        if len(remaining) == 0:
+            return OBJ_T
+        if len(remaining) == 1:
+            return remaining[0]
+        return normalize_union(remaining)
+
+    if isinstance(scrutinee, UnionT):
+        remaining2: list[Type] = []
+        for m in scrutinee.members:
+            is_covered = False
+            for c in covered:
+                if type_eq(m, c):
+                    is_covered = True
+                    break
+                if isinstance(m, StructT) and isinstance(c, InterfaceT):
+                    if m.parent == c.name:
+                        is_covered = True
+                        break
+            if not is_covered:
+                remaining2.append(m)
+        if len(remaining2) == 0:
+            return OBJ_T
+        if len(remaining2) == 1:
+            return remaining2[0]
+        return normalize_union(remaining2)
+
+    return OBJ_T
 
 
-def _analyze_function(func: Function) -> None:
-    """Analyze a single function for reassignments."""
-    params: dict[str, Param] = {}
-    for p in func.params:
-        params[p.name] = p
-    assigned: set[str] = set()
-    for p in func.params:
-        p.is_modified = False
-        p.is_unused = False
-        assigned.add(p.name)
-    used_vars: set[str] = _collect_used_vars(func.body)
-    ctx = _ScopeContext(params, assigned)
-    func_assigned: set[str] = set()
-    for stmt in func.body:
-        _scope_check_stmt(ctx, stmt, func_assigned)
-    for p in func.params:
-        if p.name not in used_vars:
-            p.is_unused = True
-    # Annotate interface-typed expressions
-    _annotate_interface_types(func.body)
+# ============================================================
+# TRY STATEMENT
+# ============================================================
 
 
-# Import If here to avoid circular import at module level
-from ..ir import If  # noqa: E402
+def _walk_try_stmt(stmt: TTryStmt, ctx: _ScopeCtx) -> None:
+    _walk_stmts(stmt.body, ctx)
+    for catch in stmt.catches:
+        catch_ctx = _fork_ctx(ctx)
+        if len(catch.types) == 1:
+            catch_type = ctx.checker.resolve_type(catch.types[0])
+        else:
+            members: list[Type] = []
+            for ct in catch.types:
+                members.append(ctx.checker.resolve_type(ct))
+            catch_type = normalize_union(members)
+        catch_ctx.bindings[catch.name] = _BindingInfo(
+            node=catch, declared_type=catch_type, is_param=False
+        )
+        _walk_stmts(catch.body, catch_ctx)
+    if stmt.finally_body is not None:
+        _walk_stmts(stmt.finally_body, ctx)
+
+
+# ============================================================
+# STAMP ANNOTATIONS
+# ============================================================
+
+
+def _stamp_bindings(ctx: _ScopeCtx) -> None:
+    """Write final annotations onto binding declaration nodes."""
+    for name, info in ctx.bindings.items():
+        node = info.node
+        if info.binder_name is not None:
+            # For-binder: composite keys on the TForStmt node
+            bname = info.binder_name
+            node.annotations[f"scope.binder.{bname}.is_reassigned"] = info.reassigned
+            node.annotations[f"scope.binder.{bname}.is_const"] = not info.reassigned
+        else:
+            node.annotations["scope.is_reassigned"] = info.reassigned
+            node.annotations["scope.is_const"] = not info.reassigned
+        if info.is_param:
+            node.annotations["scope.is_modified"] = info.modified
+            node.annotations["scope.is_unused"] = not info.used
+
+
+# ============================================================
+# FUNCTION ANALYSIS
+# ============================================================
+
+
+def _analyze_fn(decl: TFnDecl, ctx: _ScopeCtx, self_type: Type | None = None) -> None:
+    """Analyze a single function declaration."""
+    fn_ctx = _ScopeCtx(
+        checker=ctx.checker,
+        top_level_fns=ctx.top_level_fns,
+        bindings={},
+        narrowings={},
+    )
+    for p in decl.params:
+        if p.typ is not None:
+            pt = ctx.checker.resolve_type(p.typ)
+        elif p.name == "self" and self_type is not None:
+            pt = self_type
+        else:
+            continue
+        fn_ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
+    _walk_stmts(decl.body, fn_ctx)
+    _stamp_bindings(fn_ctx)
+
+
+# ============================================================
+# PUBLIC API
+# ============================================================
+
+
+def analyze_scope(module: TModule, checker: Checker) -> None:
+    """Run scope analysis on all functions in the module."""
+    top_level_fns: set[str] = set(checker.functions.keys())
+
+    base_ctx = _ScopeCtx(
+        checker=checker,
+        top_level_fns=top_level_fns,
+        bindings={},
+        narrowings={},
+    )
+
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            _analyze_fn(decl, base_ctx)
+        elif isinstance(decl, TStructDecl):
+            st = checker.types.get(decl.name)
+            for method in decl.methods:
+                _analyze_fn(method, base_ctx, self_type=st)
