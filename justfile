@@ -71,7 +71,7 @@ test-lowering-local:
 
 # Run middleend tests locally
 test-middleend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph" -v
 
 # Run backend tests (codegen + apptests) locally
 test-backend-local:
@@ -201,7 +201,7 @@ test-lowering:
 test-middleend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph" -v
 
 # Run backend tests (codegen + apptests) in Docker
 test-backend:
