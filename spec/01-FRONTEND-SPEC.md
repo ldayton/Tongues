@@ -1,4 +1,4 @@
-# Tongues Frontend v2
+# Tongues Frontend
 
 The frontend accepts Python source and produces a Taytsh Module. It operates in nine sequential phases: accept input via the CLI, parse the source into a dict-based AST, enforce subset restrictions, resolve names, collect signatures, infer field types, build the class hierarchy, run bidirectional type inference, and lower the typed AST to Taytsh IR. Each phase completes before the next starts. Phase outputs accumulate — later phases read the outputs of all prior phases.
 

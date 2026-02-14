@@ -1,4 +1,4 @@
-# Tongues Middleend v2
+# Tongues Middleend
 
 The middleend is a pipeline of analysis passes over Taytsh IR. Every pass reads the IR and annotations from prior passes, then writes new annotations. No pass modifies IR structure — the tree the lowerer produces is the tree backends read.
 
@@ -16,7 +16,7 @@ All passes are intra-procedural (per-function) except callgraph, which is inter-
 
 ### 1. Scope
 
-Spec: scope-spec-v2.md
+Spec: scope-spec.md
 
 Foundation pass. Binding-level facts for every declaration site, use-site facts for every identifier reference.
 
@@ -55,7 +55,7 @@ Depends on: scope (reads scope.is_unused to avoid redundant work, but can run in
 
 ### 4. Strings
 
-Spec: strings-spec-v2.md
+Spec: strings-spec.md
 
 String content classification and usage analysis. Tells backends when rune-decoding machinery can be skipped.
 
@@ -98,7 +98,7 @@ Skippable for GC targets. The pass is a no-op when the target set excludes C, Ru
 
 ### 7. Callgraph
 
-Spec: callgraph-spec-v2.md
+Spec: callgraph-spec.md
 
 Inter-procedural call graph analysis. Throw type propagation, recursion detection, tail call identification.
 

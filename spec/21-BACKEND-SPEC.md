@@ -1,4 +1,4 @@
-# Tongues Backend Specification v2
+# Tongues Backend Specification
 
 A Tongues backend walks the annotated Taytsh IR and emits source code for one target language. It reads the IR tree and its annotations (written by the lowerer and middleend passes). It never modifies the IR.
 
