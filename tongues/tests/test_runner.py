@@ -192,8 +192,6 @@ TESTS = {
     "backend": {
         "codegen_python": {"dir": "21_codegen", "run": "codegen_python"},
         "codegen_perl":   {"dir": "21_codegen", "run": "codegen_perl"},
-    },
-    "app": {
         "app":            {"dir": "22_app",     "run": "app"},
     },
 }

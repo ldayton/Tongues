@@ -73,9 +73,9 @@ test-lowering-local:
 test-middleend-local:
     uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
 
-# Run codegen tests locally
+# Run codegen and app tests locally
 test-codegen-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_codegen -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
 
 # Run taytsh tests locally
 test-taytsh-local:
@@ -203,11 +203,11 @@ test-middleend:
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
 
-# Run codegen tests in Docker
+# Run codegen and app tests in Docker
 test-codegen:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_codegen -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
 
 # Run taytsh tests in Docker
 test-taytsh:
@@ -348,7 +348,7 @@ check-local:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering typecheck middleend codegen taytsh; do
+    for t in versions fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend codegen taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
