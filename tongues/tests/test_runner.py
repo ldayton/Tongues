@@ -1,5 +1,6 @@
 """Test runner for Tongues test phases."""
 
+import shutil
 import signal
 import subprocess
 import sys
@@ -141,6 +142,7 @@ def check_cli_assertions(
 
 from src.backend.perl import emit_perl as emit_perl
 from src.backend.python import emit_python as emit_python
+from src.backend.ruby import emit_ruby as emit_ruby
 from src.middleend.callgraph import analyze_callgraph
 from src.middleend.hoisting import analyze_hoisting
 from src.middleend.liveness import analyze_liveness
@@ -157,7 +159,7 @@ from src.taytsh.ast import (
     TVar,
     serialize_annotations,
 )
-from src.taytsh.check import Checker, StructT, check_with_info
+from src.taytsh.check import StructT, check_with_info
 
 PARSE_TIMEOUT = 5
 TESTS_DIR = Path(__file__).parent
@@ -191,10 +193,25 @@ TESTS = {
     },
     "backend": {
         "codegen_python": {"dir": "21_codegen", "run": "codegen_python"},
-        "codegen_perl": {"dir": "21_codegen", "run": "codegen_perl"},
+        "codegen_perl":   {"dir": "21_codegen", "run": "codegen_perl"},
+    },
+    "app": {
+        "app":            {"dir": "22_app",     "run": "app"},
     },
 }
 # fmt: on
+
+EMITTERS = {
+    "python": emit_python,
+    "perl": emit_perl,
+    "ruby": emit_ruby,
+}
+
+RUNTIMES = {
+    "python": [sys.executable],
+    "perl": ["perl"],
+    "ruby": ["ruby"],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -941,6 +958,39 @@ def transpile_code_perl(source: str) -> tuple[str | None, str | None]:
     return _transpile_with_emitter(source, emit_perl)
 
 
+def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
+    """Transpile Python apptest source to target language. Returns (output, error)."""
+    taytsh_text, err = lower_to_taytsh(source)
+    if err is not None:
+        return (None, err)
+    emitter = EMITTERS.get(target)
+    if emitter is None:
+        return (None, f"no emitter for target '{target}'")
+    return _transpile_with_emitter(taytsh_text, emitter)
+
+
+def discover_app_tests(
+    test_dir: Path, targets: list[str]
+) -> list[tuple[str, Path, str]]:
+    """Find all app tests. Returns (test_id, source_path, target)."""
+    results = []
+    for test_file in sorted(test_dir.glob("apptest_*.py")):
+        for target in targets:
+            test_id = f"{test_file.stem}[{target}]"
+            results.append((test_id, test_file, target))
+    return results
+
+
+def _available_targets() -> list[str]:
+    """Return targets whose runtimes are available."""
+    available = []
+    for target in sorted(RUNTIMES):
+        cmd = RUNTIMES[target]
+        if target == "python" or shutil.which(cmd[0]):
+            available.append(target)
+    return available
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -1007,6 +1057,14 @@ def pytest_generate_tests(metafunc):
                 tests = discover_codegen_tests(test_dir, "perl")
                 params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
                 metafunc.parametrize("codegen_perl_input,codegen_perl_expected", params)
+            elif run == "app" and "app_source" in metafunc.fixturenames:
+                target_opt = metafunc.config.getoption("--target", default=None)
+                targets = target_opt if target_opt else _available_targets()
+                tests = discover_app_tests(test_dir, targets)
+                params = [
+                    pytest.param(path, target, id=tid) for tid, path, target in tests
+                ]
+                metafunc.parametrize("app_source,app_target", params)
 
 
 # ---------------------------------------------------------------------------
@@ -1132,4 +1190,25 @@ def test_codegen_perl(
             "Expected not found in output:\n"
             f"--- expected ---\n{codegen_perl_expected}\n"
             f"--- got ---\n{transpiled_output_perl}"
+        )
+
+
+def test_app(app_source: Path, app_target: str) -> None:
+    source = app_source.read_text()
+    output, err = transpile_app(source, app_target)
+    if err is not None:
+        pytest.fail(f"Transpile error ({app_target}): {err}")
+    runtime = RUNTIMES[app_target]
+    result = subprocess.run(
+        runtime,
+        input=output.encode(),
+        capture_output=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace")
+        stdout = result.stdout.decode(errors="replace")
+        pytest.fail(
+            f"App test failed with exit {result.returncode}\n"
+            f"stdout:\n{stdout}\nstderr:\n{stderr}"
         )

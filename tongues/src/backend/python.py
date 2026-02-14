@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .util import escape_string
 from ..taytsh.ast import (
+    Ann,
     TArg,
     TAssignStmt,
     TBinaryOp,
@@ -156,6 +157,14 @@ def _safe_name(name: str) -> str:
     if name in _PYTHON_BUILTINS:
         return name + "_"
     return name
+
+
+def _restore_name(name: str, annotations: Ann) -> str:
+    """Restore original Python name from annotation, then apply target safety."""
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_name(str(annotations[key]))
+    return _safe_name(name)
 
 
 # ============================================================
@@ -597,7 +606,9 @@ class _PythonEmitter:
                 if with_self:
                     parts.append("self")
                 continue
-            parts.append(_safe_name(p.name) + ": " + self._type(p.typ))
+            parts.append(
+                _restore_name(p.name, p.annotations) + ": " + self._type(p.typ)
+            )
         return ", ".join(parts)
 
     # ── Statements ────────────────────────────────────────────
@@ -628,14 +639,14 @@ class _PythonEmitter:
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> str | None:
         """Try to emit a comprehension from a let + for pair."""
-        acc = _safe_name(let_stmt.name)
+        acc = _restore_name(let_stmt.name, let_stmt.annotations)
         binding = for_stmt.binding
         if isinstance(for_stmt.iterable, TRange):
             args = ", ".join(self._expr(a) for a in for_stmt.iterable.args)
             iterable = "range(" + args + ")"
         else:
             iterable = self._expr(for_stmt.iterable)
-        binders = ", ".join(_safe_name(b) for b in binding)
+        binders = ", ".join(_restore_name(b, for_stmt.annotations) for b in binding)
         iter_is_map = not isinstance(for_stmt.iterable, TRange) and self._is_map_type(
             for_stmt.iterable
         )
@@ -755,7 +766,7 @@ class _PythonEmitter:
             self._emit_match(stmt)
 
     def _emit_let(self, stmt: TLetStmt) -> None:
-        safe = _safe_name(stmt.name)
+        safe = _restore_name(stmt.name, stmt.annotations)
         typ_str = self._type(stmt.typ)
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused", False)
@@ -867,14 +878,15 @@ class _PythonEmitter:
 
     def _emit_for(self, stmt: TForStmt) -> None:
         binding = stmt.binding
+        ann = stmt.annotations
         if isinstance(stmt.iterable, TRange):
             args = ", ".join(self._expr(a) for a in stmt.iterable.args)
-            binders = ", ".join(_safe_name(b) for b in binding)
+            binders = ", ".join(_restore_name(b, ann) for b in binding)
             self._line("for " + binders + " in range(" + args + "):")
         elif len(binding) == 1:
             self._line(
                 "for "
-                + _safe_name(binding[0])
+                + _restore_name(binding[0], ann)
                 + " in "
                 + self._expr(stmt.iterable)
                 + ":"
@@ -886,9 +898,9 @@ class _PythonEmitter:
             suffix = "" if iter_is_map else ")"
             self._line(
                 "for "
-                + _safe_name(binding[0])
+                + _restore_name(binding[0], ann)
                 + ", "
-                + _safe_name(binding[1])
+                + _restore_name(binding[1], ann)
                 + " in "
                 + wrapper
                 + self._expr(stmt.iterable)
@@ -897,7 +909,7 @@ class _PythonEmitter:
                 + ":"
             )
         else:
-            binders = ", ".join(_safe_name(b) for b in binding)
+            binders = ", ".join(_restore_name(b, ann) for b in binding)
             self._line("for " + binders + " in " + self._expr(stmt.iterable) + ":")
         self.indent += 1
         if not stmt.body:
@@ -944,7 +956,13 @@ class _PythonEmitter:
         if unused:
             self._line("except " + type_str + ":")
         else:
-            self._line("except " + type_str + " as " + _safe_name(catch.name) + ":")
+            self._line(
+                "except "
+                + type_str
+                + " as "
+                + _restore_name(catch.name, catch.annotations)
+                + ":"
+            )
         self.indent += 1
         if not catch.body:
             self._line("pass")
@@ -1043,7 +1061,7 @@ class _PythonEmitter:
         if isinstance(expr, TVar):
             if expr.name == self.self_name:
                 return "self"
-            return _safe_name(expr.name)
+            return _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
             return self._expr(expr.obj) + "." + expr.field
         if isinstance(expr, TTupleAccess):
@@ -1236,7 +1254,11 @@ class _PythonEmitter:
         return self._expr(expr)
 
     def _fn_lit(self, expr: TFnLit) -> str:
-        params = ", ".join(_safe_name(p.name) for p in expr.params if p.typ is not None)
+        params = ", ".join(
+            _restore_name(p.name, p.annotations)
+            for p in expr.params
+            if p.typ is not None
+        )
         if isinstance(expr.body, list):
             # Block body — emit as nested def
             # This is rare, but handle it

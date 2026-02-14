@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .util import to_snake
 from ..taytsh.ast import (
+    Ann,
     TArg,
     TAssignStmt,
     TBinaryOp,
@@ -113,6 +114,14 @@ def _safe_name(name: str) -> str:
     if safe in _PERL_RESERVED:
         return safe + "_"
     return safe
+
+
+def _restore_name(name: str, annotations: Ann) -> str:
+    """Restore original Python name from annotation, then apply target safety."""
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_name(str(annotations[key]))
+    return _safe_name(name)
 
 
 def _escape_perl_string(value: str) -> str:
@@ -378,7 +387,7 @@ class _PerlEmitter:
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
-                args.append("$" + _safe_name(p.name))
+                args.append("$" + _restore_name(p.name, p.annotations))
         self._line("sub " + _safe_name(decl.name) + " {")
         self.indent += 1
         if args:
@@ -397,7 +406,7 @@ class _PerlEmitter:
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
-                args.append("$" + _safe_name(p.name))
+                args.append("$" + _restore_name(p.name, p.annotations))
         self._line("sub " + _safe_name(decl.name) + " {")
         self.indent += 1
         self._line("my (" + ", ".join(args) + ") = @_;")
@@ -437,7 +446,7 @@ class _PerlEmitter:
     def _try_comprehension(
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> str | None:
-        acc = "$" + _safe_name(let_stmt.name)
+        acc = "$" + _restore_name(let_stmt.name, let_stmt.annotations)
         iterable = self._expr(for_stmt.iterable)
         body = for_stmt.body
         if prov == "list_comprehension":
@@ -547,7 +556,7 @@ class _PerlEmitter:
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
             self.var_types[stmt.name] = stmt.typ
-            safe = "$" + _safe_name(stmt.name)
+            safe = "$" + _restore_name(stmt.name, stmt.annotations)
             unused = stmt.annotations.get("liveness.initial_value_unused", False)
             if stmt.value is not None and not unused:
                 self._line("my " + safe + " = " + self._expr(stmt.value) + ";")
@@ -735,14 +744,18 @@ class _PerlEmitter:
 
     def _emit_for(self, stmt: TForStmt) -> None:
         if isinstance(stmt.iterable, TRange):
-            self._emit_for_range(stmt.binding, stmt.iterable.args, stmt.body)
+            self._emit_for_range(
+                stmt.binding, stmt.iterable.args, stmt.body, stmt.annotations
+            )
         else:
-            self._emit_for_iter(stmt.binding, stmt.iterable, stmt.body)
+            self._emit_for_iter(
+                stmt.binding, stmt.iterable, stmt.body, stmt.annotations
+            )
 
     def _emit_for_range(
-        self, binding: list[str], args: list[TExpr], body: list[TStmt]
+        self, binding: list[str], args: list[TExpr], body: list[TStmt], ann: Ann
     ) -> None:
-        var_name = _safe_name(binding[0]) if binding else "_i"
+        var_name = _restore_name(binding[0], ann) if binding else "_i"
         if len(args) == 1:
             start = "0"
             end = self._expr(args[0])
@@ -778,17 +791,17 @@ class _PerlEmitter:
         self._line("for (my " + i + " = " + st + "; " + cond + "; " + inc + ") {")
         self.indent += 1
         if len(binding) >= 2:
-            self._line("my $" + _safe_name(binding[1]) + " = " + i + ";")
+            self._line("my $" + _restore_name(binding[1], ann) + " = " + i + ";")
         self._emit_stmts(body)
         self.indent -= 1
         self._line("}")
 
     def _emit_for_iter(
-        self, binding: list[str], iterable: TExpr, body: list[TStmt]
+        self, binding: list[str], iterable: TExpr, body: list[TStmt], ann: Ann
     ) -> None:
         it = self._expr(iterable)
         if len(binding) == 1:
-            name = "$" + _safe_name(binding[0])
+            name = "$" + _restore_name(binding[0], ann)
             if self._is_map_expr(iterable):
                 self._line("for my " + name + " (keys %{" + it + "}) {")
             elif self._is_set_expr(iterable):
@@ -803,8 +816,8 @@ class _PerlEmitter:
             self._line("}")
             return
         if len(binding) == 2:
-            first = "$" + _safe_name(binding[0])
-            second = "$" + _safe_name(binding[1])
+            first = "$" + _restore_name(binding[0], ann)
+            second = "$" + _restore_name(binding[1], ann)
             if self._is_map_expr(iterable):
                 self._line("for my " + first + " (keys %{" + it + "}) {")
                 self.indent += 1
@@ -869,14 +882,26 @@ class _PerlEmitter:
                 if not has_chain:
                     unused = catch.annotations.get("liveness.catch_var_unused", False)
                     if not unused:
-                        self._line("my $" + _safe_name(catch.name) + " = " + err + ";")
+                        self._line(
+                            "my $"
+                            + _restore_name(catch.name, catch.annotations)
+                            + " = "
+                            + err
+                            + ";"
+                        )
                     self._emit_stmts(catch.body)
                     return
                 self._line("} else {")
                 self.indent += 1
                 unused = catch.annotations.get("liveness.catch_var_unused", False)
                 if not unused:
-                    self._line("my $" + _safe_name(catch.name) + " = " + err + ";")
+                    self._line(
+                        "my $"
+                        + _restore_name(catch.name, catch.annotations)
+                        + " = "
+                        + err
+                        + ";"
+                    )
                 self._emit_stmts(catch.body)
                 self.indent -= 1
                 has_default = True
@@ -889,7 +914,13 @@ class _PerlEmitter:
             self.indent += 1
             unused = catch.annotations.get("liveness.catch_var_unused", False)
             if not unused:
-                self._line("my $" + _safe_name(catch.name) + " = " + err + ";")
+                self._line(
+                    "my $"
+                    + _restore_name(catch.name, catch.annotations)
+                    + " = "
+                    + err
+                    + ";"
+                )
             self._emit_stmts(catch.body)
             self.indent -= 1
         if has_chain:
@@ -1041,8 +1072,8 @@ class _PerlEmitter:
             if expr.name in self.var_alias:
                 return self.var_alias[expr.name]
             if expr.name in self.function_names and expr.name not in self.var_types:
-                return "\\&" + _safe_name(expr.name)
-            return "$" + _safe_name(expr.name)
+                return "\\&" + _restore_name(expr.name, expr.annotations)
+            return "$" + _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
             if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
                 return expr.obj.name + "::" + expr.field
@@ -1248,7 +1279,9 @@ class _PerlEmitter:
 
     def _fn_lit(self, expr: TFnLit) -> str:
         params = ", ".join(
-            "$" + _safe_name(p.name) for p in expr.params if p.typ is not None
+            "$" + _restore_name(p.name, p.annotations)
+            for p in expr.params
+            if p.typ is not None
         )
         if isinstance(expr.body, list):
             return self._fn_lit_block(expr.body, params)
@@ -1299,7 +1332,7 @@ class _PerlEmitter:
                 return "return;"
             return "return " + self._expr(stmt.value) + ";"
         if isinstance(stmt, TLetStmt):
-            n = "$" + _safe_name(stmt.name)
+            n = "$" + _restore_name(stmt.name, stmt.annotations)
             if stmt.value is not None:
                 return "my " + n + " = " + self._expr(stmt.value) + ";"
             return "my " + n + " = " + self._zero_value(stmt.typ) + ";"

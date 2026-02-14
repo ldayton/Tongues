@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .util import escape_string, to_snake
 from ..taytsh.ast import (
+    Ann,
     TArg,
     TAssignStmt,
     TBinaryOp,
@@ -201,6 +202,14 @@ def _safe_name(name: str) -> str:
     if name in _RUBY_RESERVED:
         return name + "_"
     return name
+
+
+def _restore_name(name: str, annotations: Ann) -> str:
+    """Restore original Python name from annotation, then apply target safety."""
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_name(str(annotations[key]))
+    return _safe_name(name)
 
 
 def _safe_type_name(name: str) -> str:
@@ -693,7 +702,7 @@ class _RubyEmitter:
         for p in params:
             if p.typ is None:
                 continue
-            parts.append(_safe_name(p.name))
+            parts.append(_restore_name(p.name, p.annotations))
         return ", ".join(parts)
 
     # ── Statements ────────────────────────────────────────────
@@ -722,9 +731,9 @@ class _RubyEmitter:
     def _try_comprehension(
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> str | None:
-        acc = _safe_name(let_stmt.name)
+        acc = _restore_name(let_stmt.name, let_stmt.annotations)
         binding = for_stmt.binding
-        binders = ", ".join(_safe_name(b) for b in binding)
+        binders = ", ".join(_restore_name(b, for_stmt.annotations) for b in binding)
         if isinstance(for_stmt.iterable, TRange):
             args = ", ".join(self._expr(a) for a in for_stmt.iterable.args)
             self._needs_range_helper = True
@@ -738,7 +747,11 @@ class _RubyEmitter:
             pass  # Ruby hash.each gives |k, v|
         elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
             iterable += ".each_with_index"
-            binders = _safe_name(binding[1]) + ", " + _safe_name(binding[0])
+            binders = (
+                _restore_name(binding[1], for_stmt.annotations)
+                + ", "
+                + _restore_name(binding[0], for_stmt.annotations)
+            )
         body = for_stmt.body
         if prov == "list_comprehension":
             if len(body) == 1 and isinstance(body[0], TExprStmt):
@@ -869,7 +882,7 @@ class _RubyEmitter:
             self._emit_match(stmt)
 
     def _emit_let(self, stmt: TLetStmt) -> None:
-        safe = _safe_name(stmt.name)
+        safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused", False)
         if stmt.value is not None and not unused:
@@ -955,14 +968,18 @@ class _RubyEmitter:
 
     def _emit_for(self, stmt: TForStmt) -> None:
         binding = stmt.binding
+        ann = stmt.annotations
         if isinstance(stmt.iterable, TRange):
             self._needs_range_helper = True
             args = ", ".join(self._expr(a) for a in stmt.iterable.args)
-            binders = ", ".join(_safe_name(b) for b in binding)
+            binders = ", ".join(_restore_name(b, ann) for b in binding)
             self._line("_range(" + args + ").each do |" + binders + "|")
         elif len(binding) == 1:
             self._line(
-                self._expr(stmt.iterable) + ".each do |" + _safe_name(binding[0]) + "|"
+                self._expr(stmt.iterable)
+                + ".each do |"
+                + _restore_name(binding[0], ann)
+                + "|"
             )
         elif len(binding) == 2:
             iter_is_map = self._is_map_type(stmt.iterable)
@@ -970,22 +987,22 @@ class _RubyEmitter:
                 self._line(
                     self._expr(stmt.iterable)
                     + ".each do |"
-                    + _safe_name(binding[0])
+                    + _restore_name(binding[0], ann)
                     + ", "
-                    + _safe_name(binding[1])
+                    + _restore_name(binding[1], ann)
                     + "|"
                 )
             else:
                 self._line(
                     self._expr(stmt.iterable)
                     + ".each_with_index do |"
-                    + _safe_name(binding[1])
+                    + _restore_name(binding[1], ann)
                     + ", "
-                    + _safe_name(binding[0])
+                    + _restore_name(binding[0], ann)
                     + "|"
                 )
         else:
-            binders = ", ".join(_safe_name(b) for b in binding)
+            binders = ", ".join(_restore_name(b, ann) for b in binding)
             self._line(self._expr(stmt.iterable) + ".each do |" + binders + "|")
         self.indent += 1
         if not stmt.body:
@@ -1030,7 +1047,12 @@ class _RubyEmitter:
         if unused:
             self._line("rescue " + type_str)
         else:
-            self._line("rescue " + type_str + " => " + _safe_name(catch.name))
+            self._line(
+                "rescue "
+                + type_str
+                + " => "
+                + _restore_name(catch.name, catch.annotations)
+            )
         self.indent += 1
         if not catch.body:
             self._line("nil")
@@ -1141,8 +1163,8 @@ class _RubyEmitter:
             if expr.name == self.self_name:
                 return "self"
             if expr.name in self.fn_names:
-                return "method(:" + _safe_name(expr.name) + ")"
-            return _safe_name(expr.name)
+                return "method(:" + _restore_name(expr.name, expr.annotations) + ")"
+            return _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
             return self._expr(expr.obj) + "." + _safe_name(expr.field)
         if isinstance(expr, TTupleAccess):
@@ -1351,7 +1373,11 @@ class _RubyEmitter:
         return self._expr(expr)
 
     def _fn_lit(self, expr: TFnLit) -> str:
-        params = ", ".join(_safe_name(p.name) for p in expr.params if p.typ is not None)
+        params = ", ".join(
+            _restore_name(p.name, p.annotations)
+            for p in expr.params
+            if p.typ is not None
+        )
         if isinstance(expr.body, list):
             self._line("_fn = lambda { |" + params + "|")
             self.indent += 1

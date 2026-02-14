@@ -5,11 +5,11 @@ def f() -> int:
 return 42
 ---
 
-=== hex literal preserved
+=== hex literal lowered to decimal
 def f() -> int:
     return 0xff
 ---
-0xff
+255
 ---
 
 === float literal

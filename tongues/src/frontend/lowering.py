@@ -85,6 +85,58 @@ ASTNode = dict[str, object]
 _P0 = Pos(0, 0)
 _EMPTY_ANN: Ann = {}
 
+TAYTSH_KEYWORDS: set[str] = {
+    "bool",
+    "break",
+    "byte",
+    "bytes",
+    "case",
+    "catch",
+    "continue",
+    "default",
+    "else",
+    "enum",
+    "false",
+    "finally",
+    "float",
+    "fn",
+    "for",
+    "if",
+    "in",
+    "int",
+    "interface",
+    "let",
+    "list",
+    "map",
+    "match",
+    "nil",
+    "range",
+    "return",
+    "rune",
+    "set",
+    "string",
+    "struct",
+    "throw",
+    "true",
+    "try",
+    "void",
+    "while",
+}
+
+
+def _safe_name(name: str) -> str:
+    """Rename if name collides with a Taytsh keyword."""
+    if name in TAYTSH_KEYWORDS:
+        return name + "_"
+    return name
+
+
+def _name_ann(safe: str, original: str) -> Ann:
+    """Annotation recording the original Python name, if renamed."""
+    if safe == original:
+        return _EMPTY_ANN
+    return {"name.original." + safe: original}
+
 
 # ---------------------------------------------------------------------------
 # Type dict to TType conversion
@@ -770,15 +822,9 @@ def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if isinstance(val, bool):
         return TBoolLit(_P0, val, _EMPTY_ANN)
     if isinstance(val, int):
-        raw = _get_source_text(ctx, node)
-        if raw == "":
-            raw = str(val)
-        return TIntLit(_P0, val, raw, _EMPTY_ANN)
+        return TIntLit(_P0, val, str(val), _EMPTY_ANN)
     if isinstance(val, float):
-        raw = _get_source_text(ctx, node)
-        if raw == "":
-            raw = str(val)
-        return TFloatLit(_P0, val, raw, _EMPTY_ANN)
+        return TFloatLit(_P0, val, repr(val), _EMPTY_ANN)
     if isinstance(val, str):
         return TStringLit(_P0, val, _EMPTY_ANN)
     if isinstance(val, bytes):
@@ -797,7 +843,8 @@ def _lower_name(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return TBoolLit(_P0, False, _EMPTY_ANN)
     if name == "None":
         return TNilLit(_P0, _EMPTY_ANN)
-    return TVar(_P0, name, _EMPTY_ANN)
+    safe = _safe_name(name)
+    return TVar(_P0, safe, _name_ann(safe, name))
 
 
 def _lower_attribute(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -1197,7 +1244,8 @@ def _lower_name_call(
         if isinstance(a, dict):
             lowered_args.append(TArg(_P0, None, _lower_expr(a, env, ctx)))
         i += 1
-    return TCall(_P0, TVar(_P0, fname, _EMPTY_ANN), lowered_args, _EMPTY_ANN)
+    safe = _safe_name(fname)
+    return TCall(_P0, TVar(_P0, safe, _name_ann(safe, fname)), lowered_args, _EMPTY_ANN)
 
 
 def _has_keyword_true(keywords: list[object], name: str) -> bool:
@@ -1799,11 +1847,13 @@ def _expand_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         return [TReturnStmt(_P0, TListLit(_P0, [], _EMPTY_ANN), _EMPTY_ANN)]
     target = _get_dict(gen, "target")
     iter_node = _get_dict(gen, "iter")
-    target_name = _get_str(target, "id")
+    orig_name = _get_str(target, "id")
+    target_name = _safe_name(orig_name)
+    t_ann = _name_ann(target_name, orig_name)
     iter_expr = _lower_expr(iter_node, env, ctx)
     # Add loop var to env
     comp_env = env.copy()
-    comp_env.declared.add(target_name)
+    comp_env.declared.add(orig_name)
     elt_expr = _lower_expr(elt, comp_env, ctx)
     result_var = TVar(_P0, "__result__", _EMPTY_ANN)
     # Build: let __result__: list[...] = []
@@ -1824,7 +1874,7 @@ def _expand_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if len(ifs) > 0 and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
         body = [TIfStmt(_P0, cond, body, None, _EMPTY_ANN)]
-    for_stmt = TForStmt(_P0, [target_name], iter_expr, body, _EMPTY_ANN)
+    for_stmt = TForStmt(_P0, [target_name], iter_expr, body, t_ann)
     # Return __result__
     return_stmt = TReturnStmt(_P0, result_var, _EMPTY_ANN)
     return [let_stmt, for_stmt, return_stmt]
@@ -1952,13 +2002,15 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             return [TExprStmt(_P0, expr, _EMPTY_ANN)]
         value = _lower_expr(value_node, env, ctx)
         val_type = _infer_expr_type(value_node, env, ctx)
+        safe = _safe_name(name)
+        ann = _name_ann(safe, name)
         if name not in env.declared:
             env.declared.add(name)
             env.var_types[name] = val_type
             ttype = _type_dict_to_ttype(val_type)
-            return [TLetStmt(_P0, name, ttype, value, _EMPTY_ANN)]
+            return [TLetStmt(_P0, safe, ttype, value, ann)]
         # Re-assignment
-        target = TVar(_P0, name, _EMPTY_ANN)
+        target = TVar(_P0, safe, ann)
         return [TAssignStmt(_P0, target, value, _EMPTY_ANN)]
     # Attribute assignment: obj.field = expr
     if _is_ast(target_node, "Attribute"):
@@ -2005,7 +2057,8 @@ def _lower_tuple_assign(
                 if isinstance(e, dict) and _is_ast(e, "Name"):
                     name = _get_str(e, "id")
                     env.declared.add(name)
-                    targets.append(TVar(_P0, name, _EMPTY_ANN))
+                    safe = _safe_name(name)
+                    targets.append(TVar(_P0, safe, _name_ann(safe, name)))
                 i += 1
             return [TTupleAssignStmt(_P0, targets, value, _EMPTY_ANN)]
     value = _lower_expr(value_node, env, ctx)
@@ -2016,7 +2069,8 @@ def _lower_tuple_assign(
         if isinstance(e, dict) and _is_ast(e, "Name"):
             name = _get_str(e, "id")
             env.declared.add(name)
-            targets.append(TVar(_P0, name, _EMPTY_ANN))
+            safe = _safe_name(name)
+            targets.append(TVar(_P0, safe, _name_ann(safe, name)))
         i += 1
     return [TTupleAssignStmt(_P0, targets, value, _EMPTY_ANN)]
 
@@ -2040,10 +2094,12 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     ttype = _type_dict_to_ttype(type_dict)
     env.declared.add(name)
     env.var_types[name] = type_dict
+    safe = _safe_name(name)
+    ann = _name_ann(safe, name)
     val: TExpr | None = None
     if isinstance(value_node, dict):
         val = _lower_expr(value_node, env, ctx)
-    return [TLetStmt(_P0, name, ttype, val, _EMPTY_ANN)]
+    return [TLetStmt(_P0, safe, ttype, val, ann)]
 
 
 def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -2150,7 +2206,8 @@ def _lower_isinstance_chain(
     if len(chain) == 0:
         return []
     var_name = chain[0][0]
-    expr = TVar(_P0, var_name, _EMPTY_ANN)
+    sv = _safe_name(var_name)
+    expr = TVar(_P0, sv, _name_ann(sv, var_name))
     cases: list[TMatchCase] = []
     i = 0
     while i < len(chain):
@@ -2200,31 +2257,38 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if _is_ast(func, "Attribute") and _get_str(func, "attr") == "items":
             obj_node = _get_dict(func, "value")
             iter_expr = _lower_expr(obj_node, env, ctx)
-            binding = _extract_binding(target_node)
+            binding, b_ann = _extract_binding(target_node)
             body_stmts = _lower_stmts(body, env, ctx)
-            return [TForStmt(_P0, binding, iter_expr, body_stmts, _EMPTY_ANN)]
+            return [TForStmt(_P0, binding, iter_expr, body_stmts, b_ann)]
     # Regular iteration: for x in xs
-    binding = _extract_binding(target_node)
+    binding, b_ann = _extract_binding(target_node)
     iter_expr = _lower_expr(iter_node, env, ctx)
     body_stmts = _lower_stmts(body, env, ctx)
-    return [TForStmt(_P0, binding, iter_expr, body_stmts, _EMPTY_ANN)]
+    return [TForStmt(_P0, binding, iter_expr, body_stmts, b_ann)]
 
 
-def _extract_binding(target_node: ASTNode) -> list[str]:
-    """Extract binding names from a for target."""
+def _extract_binding(target_node: ASTNode) -> tuple[list[str], Ann]:
+    """Extract binding names from a for target, renaming Taytsh keywords."""
     if _is_ast(target_node, "Name"):
-        return [_get_str(target_node, "id")]
+        orig = _get_str(target_node, "id")
+        safe = _safe_name(orig)
+        return ([safe], _name_ann(safe, orig))
     if _is_ast(target_node, "Tuple"):
         elts = _get_list(target_node, "elts")
         names: list[str] = []
+        ann: Ann = {}
         i = 0
         while i < len(elts):
             e = elts[i]
             if isinstance(e, dict) and _is_ast(e, "Name"):
-                names.append(_get_str(e, "id"))
+                orig = _get_str(e, "id")
+                safe = _safe_name(orig)
+                names.append(safe)
+                if safe != orig:
+                    ann["name.original." + safe] = orig
             i += 1
-        return names
-    return ["_"]
+        return (names, ann)
+    return (["_"], _EMPTY_ANN)
 
 
 def _lower_for_range(
@@ -2236,7 +2300,7 @@ def _lower_for_range(
 ) -> list[TStmt]:
     """Lower for i in range(...)."""
     args = _get_list(iter_node, "args")
-    binding = _extract_binding(target_node)
+    binding, b_ann = _extract_binding(target_node)
     range_args: list[TExpr] = []
     i = 0
     while i < len(args):
@@ -2245,7 +2309,7 @@ def _lower_for_range(
             range_args.append(_lower_expr(a, env, ctx))
         i += 1
     body_stmts = _lower_stmts(body, env, ctx)
-    return [TForStmt(_P0, binding, TRange(_P0, range_args), body_stmts, _EMPTY_ANN)]
+    return [TForStmt(_P0, binding, TRange(_P0, range_args), body_stmts, b_ann)]
 
 
 def _lower_for_enumerate(
@@ -2262,14 +2326,14 @@ def _lower_for_enumerate(
     inner = args[0]
     if not isinstance(inner, dict):
         return []
-    binding = _extract_binding(target_node)
+    binding, b_ann = _extract_binding(target_node)
     iter_expr = _lower_expr(inner, env, ctx)
     # For enumerate over strings, change last binding to "ch"
     inner_type = _infer_expr_type(inner, env, ctx)
     if _is_type_dict(inner_type, ["string"]) and len(binding) == 2:
         binding = [binding[0], "ch"]
     body_stmts = _lower_stmts(body, env, ctx)
-    return [TForStmt(_P0, binding, iter_expr, body_stmts, _EMPTY_ANN)]
+    return [TForStmt(_P0, binding, iter_expr, body_stmts, b_ann)]
 
 
 def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -2323,7 +2387,10 @@ def _lower_try(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                     tname = _get_str(exc_type_node, "id")
                     exc_types.append(TIdentType(_P0, tname))
             catch_body = _lower_stmts(_get_list(h, "body"), env, ctx)
-            catches.append(TCatch(_P0, catch_name, exc_types, catch_body, _EMPTY_ANN))
+            sc = _safe_name(catch_name)
+            catches.append(
+                TCatch(_P0, sc, exc_types, catch_body, _name_ann(sc, catch_name))
+            )
         i += 1
     finally_body: list[TStmt] | None = None
     if len(finalbody) > 0:
@@ -2376,7 +2443,8 @@ def _build_function(
         while i < len(func_info.params):
             p = func_info.params[i]
             ttype = _type_dict_to_ttype(p.typ)
-            params.append(TParam(_P0, p.name, ttype, _EMPTY_ANN))
+            sp = _safe_name(p.name)
+            params.append(TParam(_P0, sp, ttype, _name_ann(sp, p.name)))
             func_env.var_types[p.name] = p.typ
             func_env.declared.add(p.name)
             i += 1
@@ -2416,7 +2484,8 @@ def _build_method(
             p = func_info.params[i]
             if p.name != "self":
                 ttype = _type_dict_to_ttype(p.typ)
-                params.append(TParam(_P0, p.name, ttype, _EMPTY_ANN))
+                sp = _safe_name(p.name)
+                params.append(TParam(_P0, sp, ttype, _name_ann(sp, p.name)))
                 func_env.var_types[p.name] = p.typ
                 func_env.declared.add(p.name)
             i += 1
