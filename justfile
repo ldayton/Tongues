@@ -73,8 +73,8 @@ test-lowering-local:
 test-middleend-local:
     uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
 
-# Run codegen and app tests locally
-test-codegen-local:
+# Run backend tests (codegen + apptests) locally
+test-backend-local:
     uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
 
 # Run taytsh tests locally
@@ -123,7 +123,7 @@ check:
     just test-inference && results[inference]=✅ || { results[inference]=❌; failed=1; }
     just test-lowering && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
     just test-middleend && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
-    just test-codegen && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-backend && results[backend]=✅ || { results[backend]=❌; failed=1; }
     just test-taytsh && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
@@ -131,7 +131,7 @@ check:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend codegen taytsh; do
+    for t in fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
@@ -203,8 +203,8 @@ test-middleend:
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or test_strings or test_hoisting or test_ownership or test_callgraph" -v
 
-# Run codegen and app tests in Docker
-test-codegen:
+# Run backend tests (codegen + apptests) in Docker
+test-backend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
@@ -284,7 +284,7 @@ versions:
     exit $failed
 
 # Run all tests in Docker
-test: test-codegen test-taytsh
+test: test-backend test-taytsh
 
 # Run all tests locally (requires matching runtime versions)
 test-local:
@@ -302,7 +302,7 @@ test-local:
     just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
     just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
     just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
-    just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
@@ -310,7 +310,7 @@ test-local:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend codegen taytsh; do
+    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
@@ -340,7 +340,7 @@ check-local:
     just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
     just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
     just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
-    just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
@@ -348,7 +348,7 @@ check-local:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend codegen taytsh; do
+    for t in versions fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

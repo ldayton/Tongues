@@ -13,19 +13,14 @@ JavaScript and TypeScript share most code in `jslike.py` and should be worked on
 ### Local (requires matching runtime versions)
 
 ```bash
-# Codegen tests (output correctness)
-just test-codegen-local
-
-# Apptests (end-to-end execution)
-just test-apptests-local           # all languages
-just test-apptests-local python    # single language
+# Backend tests (codegen + apptests)
+just test-backend-local
 ```
 
 ### Docker
 
 ```bash
-just test-codegen                  # codegen tests
-just test-apptests python          # single language
+just test-backend                  # backend tests
 just test                          # all languages
 ```
 
@@ -60,7 +55,7 @@ uv run --directory tongues pytest tests/test_15_app.py --target javascript --tar
 
 ## CI
 
-CI runs `just check` (fmt, lint, subset, test-codegen, then test-apptests for all languages).
+CI runs `just check` (fmt, lint, subset, then frontend/middleend/backend/taytsh tests).
 
 ## Other Commands
 
