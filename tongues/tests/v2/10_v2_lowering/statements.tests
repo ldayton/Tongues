@@ -1,0 +1,224 @@
+=== return literal
+def f() -> int:
+    return 42
+---
+return 42
+---
+
+=== variable declaration inferred
+def f() -> int:
+    x = 10
+    return x
+---
+let x: int = 10
+---
+
+=== annotated declaration
+def f() -> None:
+    x: int = 10
+    _ = x
+---
+let x: int = 10
+---
+
+=== augmented assignment
+def f() -> None:
+    x = 0
+    x += 1
+---
+x += 1
+---
+
+=== if statement
+def f(x: int) -> str:
+    if x > 0:
+        return "pos"
+    return "other"
+---
+if x > 0 {
+    return "pos"
+}
+---
+
+=== if else
+def f(x: int) -> str:
+    if x > 0:
+        return "pos"
+    else:
+        return "neg"
+---
+if x > 0 {
+    return "pos"
+} else {
+    return "neg"
+}
+---
+
+=== while loop
+def f() -> int:
+    n = 10
+    while n > 0:
+        n -= 1
+    return n
+---
+while n > 0 {
+    n -= 1
+}
+---
+
+=== for range single arg
+def f() -> int:
+    s = 0
+    for i in range(10):
+        s += i
+    return s
+---
+for i in range(10) {
+---
+
+=== for range two args
+def f() -> int:
+    s = 0
+    for i in range(1, 10):
+        s += i
+    return s
+---
+for i in range(1, 10) {
+---
+
+=== for range negative step
+def f() -> None:
+    for i in range(10, 0, -1):
+        print(str(i))
+---
+for i in range(10, 0, -1) {
+---
+
+=== for over list
+def f(xs: list[int]) -> int:
+    s = 0
+    for x in xs:
+        s += x
+    return s
+---
+for x in xs {
+---
+
+=== for with index over list
+def f(xs: list[int]) -> None:
+    for i, x in enumerate(xs):
+        print(str(i))
+---
+for i, x in xs {
+---
+
+=== break and continue
+def f() -> None:
+    while True:
+        if True:
+            break
+        continue
+---
+break
+---
+
+=== try catch
+class MyError(Exception):
+    def __init__(self, msg: str) -> None:
+        self.msg = msg
+def f() -> int:
+    try:
+        return 1
+    except MyError as e:
+        return 0
+---
+try {
+    return 1
+} catch e: MyError {
+    return 0
+}
+---
+
+=== raise exception
+class MyError(Exception):
+    def __init__(self, msg: str) -> None:
+        self.msg = msg
+def f() -> None:
+    raise MyError("fail")
+---
+throw MyError("fail")
+---
+
+=== assert no message
+def f(x: int) -> None:
+    assert x > 0
+---
+Assert(x > 0)
+---
+
+=== assert with message
+def f(x: int) -> None:
+    assert x > 0, "must be positive"
+---
+Assert(x > 0, "must be positive")
+---
+
+=== print
+def f() -> None:
+    print("hello")
+---
+WritelnOut("hello")
+---
+
+=== print no newline
+def f() -> None:
+    print("hi", end="")
+---
+WriteOut("hi")
+---
+
+=== print stderr
+import sys
+def f() -> None:
+    print("err", file=sys.stderr)
+---
+WritelnErr("err")
+---
+
+=== isinstance chain becomes match
+class Node:
+    def __init__(self) -> None:
+        pass
+class Leaf(Node):
+    def __init__(self, val: int) -> None:
+        self.val = val
+class Branch(Node):
+    def __init__(self, left: Node, right: Node) -> None:
+        self.left = left
+        self.right = right
+def f(n: Node) -> int:
+    if isinstance(n, Leaf):
+        return n.val
+    elif isinstance(n, Branch):
+        return 0
+    return -1
+---
+match n {
+    case leaf: Leaf {
+---
+
+=== tuple assignment
+def f() -> int:
+    a, b = divmod(10, 3)
+    return a
+---
+a, b = DivMod(10, 3)
+---
+
+=== optional annotated declaration
+def f() -> None:
+    x: str | None = None
+    _ = x
+---
+let x: string? = nil
+---

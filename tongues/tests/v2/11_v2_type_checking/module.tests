@@ -1,0 +1,66 @@
+=== valid minimal program
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== missing Main function
+fn Helper() -> void {
+}
+---
+error: missing Main
+---
+
+=== Main with parameters rejected
+fn Main(x: int) -> void {
+}
+---
+error: Main must take no parameters
+---
+
+=== Main non-void return rejected
+fn Main() -> int {
+    return 0
+}
+---
+error: Main must return void
+---
+
+=== duplicate function name
+fn Foo() -> void {
+}
+fn Foo() -> int {
+    return 0
+}
+fn Main() -> void {
+}
+---
+error: duplicate
+---
+
+=== duplicate struct name
+struct Pt {
+    x: int
+}
+struct Pt {
+    y: int
+}
+fn Main() -> void {
+}
+---
+error: duplicate
+---
+
+=== duplicate enum name
+enum Color {
+    Red
+}
+enum Color {
+    Blue
+}
+fn Main() -> void {
+}
+---
+error: duplicate
+---

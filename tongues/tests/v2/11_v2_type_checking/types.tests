@@ -1,0 +1,228 @@
+=== int variable
+fn Main() -> void {
+    let x: int = 42
+}
+---
+ok
+---
+
+=== float variable
+fn Main() -> void {
+    let x: float = 3.14
+}
+---
+ok
+---
+
+=== bool variable
+fn Main() -> void {
+    let x: bool = true
+}
+---
+ok
+---
+
+=== string variable
+fn Main() -> void {
+    let s: string = "hello"
+}
+---
+ok
+---
+
+=== rune variable
+fn Main() -> void {
+    let c: rune = 'x'
+}
+---
+ok
+---
+
+=== byte variable
+fn Main() -> void {
+    let b: byte = 0xff
+}
+---
+ok
+---
+
+=== bytes variable
+fn Main() -> void {
+    let b: bytes = b"\x89PNG"
+}
+---
+ok
+---
+
+=== optional variable with nil
+fn Main() -> void {
+    let x: int? = nil
+}
+---
+ok
+---
+
+=== optional variable with value
+fn Main() -> void {
+    let x: int? = 42
+}
+---
+ok
+---
+
+=== list variable
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+}
+---
+ok
+---
+
+=== map variable
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+}
+---
+ok
+---
+
+=== set variable
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+}
+---
+ok
+---
+
+=== tuple variable
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+}
+---
+ok
+---
+
+=== union variable
+fn Main() -> void {
+    let v: int | string = 42
+}
+---
+ok
+---
+
+=== void not a value type
+fn Main() -> void {
+    let x: void
+}
+---
+error: void
+---
+
+=== let without init requires zero value for struct
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt
+}
+---
+error: initializer required
+---
+
+=== let without init allowed for int
+fn Main() -> void {
+    let x: int
+}
+---
+ok
+---
+
+=== let without init allowed for string
+fn Main() -> void {
+    let s: string
+}
+---
+ok
+---
+
+=== let without init allowed for list
+fn Main() -> void {
+    let xs: list[int]
+}
+---
+ok
+---
+
+=== let without init allowed for optional
+fn Main() -> void {
+    let x: int?
+}
+---
+ok
+---
+
+=== let without init allowed for map
+fn Main() -> void {
+    let m: map[string, int]
+}
+---
+ok
+---
+
+=== let without init allowed for set
+fn Main() -> void {
+    let s: set[int]
+}
+---
+ok
+---
+
+=== type mismatch in let
+fn Main() -> void {
+    let x: int = "hello"
+}
+---
+error: cannot assign
+---
+
+=== no implicit bool to int
+fn Main() -> void {
+    let x: int = true
+}
+---
+error: cannot assign
+---
+
+=== no implicit int to float
+fn Main() -> void {
+    let x: float = 42
+}
+---
+error: cannot assign
+---
+
+=== fn type variable
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    let y: int = f(21)
+}
+---
+ok
+---
+
+=== enum variable
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color = Color.Red
+}
+---
+ok
+---

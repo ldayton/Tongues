@@ -1,0 +1,525 @@
+=== Len on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let n: int = Len(xs)
+}
+---
+ok
+---
+
+=== Len on string
+fn Main() -> void {
+    let n: int = Len("hello")
+}
+---
+ok
+---
+
+=== Len on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let n: int = Len(m)
+}
+---
+ok
+---
+
+=== Append to list
+fn Main() -> void {
+    let xs: list[int]
+    Append(xs, 42)
+}
+---
+ok
+---
+
+=== Append type mismatch
+fn Main() -> void {
+    let xs: list[int]
+    Append(xs, "hello")
+}
+---
+error:
+---
+
+=== Contains on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let b: bool = Contains(xs, 2)
+}
+---
+ok
+---
+
+=== Contains on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let b: bool = Contains(m, "a")
+}
+---
+ok
+---
+
+=== Contains on string
+fn Main() -> void {
+    let b: bool = Contains("hello", "ell")
+}
+---
+ok
+---
+
+=== Get from map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int? = Get(m, "a")
+}
+---
+ok
+---
+
+=== Get from map with default
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int = Get(m, "a", 0)
+}
+---
+ok
+---
+
+=== IntToFloat conversion
+fn Main() -> void {
+    let f: float = IntToFloat(42)
+}
+---
+ok
+---
+
+=== FloatToInt conversion
+fn Main() -> void {
+    let n: int = FloatToInt(3.14)
+}
+---
+ok
+---
+
+=== ToString universal
+fn Main() -> void {
+    let a: string = ToString(42)
+    let b: string = ToString(3.14)
+    let c: string = ToString(true)
+    let d: string = ToString("hello")
+}
+---
+ok
+---
+
+=== Format with correct args
+fn Main() -> void {
+    let s: string = Format("hello {}", "world")
+}
+---
+ok
+---
+
+=== Assert with bool
+fn Main() -> void {
+    Assert(true)
+    Assert(1 > 0, "positive")
+}
+---
+ok
+---
+
+=== Sorted on ordered type
+fn Main() -> void {
+    let xs: list[int] = [3, 1, 2]
+    let ys: list[int] = Sorted(xs)
+}
+---
+ok
+---
+
+=== Reversed list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let ys: list[int] = Reversed(xs)
+}
+---
+ok
+---
+
+=== ReadLine returns optional string
+fn Main() -> void {
+    let line: string? = ReadLine()
+}
+---
+ok
+---
+
+=== WritelnOut with string
+fn Main() -> void {
+    WritelnOut("hello")
+}
+---
+ok
+---
+
+=== Exit with int
+fn Main() -> void {
+    Exit(0)
+}
+---
+ok
+---
+
+=== Concat strings
+fn Main() -> void {
+    let s: string = Concat("hello", " world")
+}
+---
+ok
+---
+
+=== Abs on int
+fn Main() -> void {
+    let x: int = Abs(-42)
+}
+---
+ok
+---
+
+=== Min and Max
+fn Main() -> void {
+    let a: int = Min(1, 2)
+    let b: int = Max(1, 2)
+}
+---
+ok
+---
+
+=== Pow int
+fn Main() -> void {
+    let x: int = Pow(2, 10)
+}
+---
+ok
+---
+
+=== Split string
+fn Main() -> void {
+    let parts: list[string] = Split("a,b,c", ",")
+}
+---
+ok
+---
+
+=== Join strings
+fn Main() -> void {
+    let s: string = Join(",", ["a", "b", "c"])
+}
+---
+ok
+---
+
+=== Keys Values Items
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let ks: list[string] = Keys(m)
+    let vs: list[int] = Values(m)
+    let is: list[(string, int)] = Items(m)
+}
+---
+ok
+---
+
+=== Unwrap optional
+fn Main() -> void {
+    let x: int? = 42
+    let y: int = Unwrap(x)
+}
+---
+ok
+---
+
+=== RuneFromInt and RuneToInt
+fn Main() -> void {
+    let c: rune = RuneFromInt(65)
+    let n: int = RuneToInt(c)
+}
+---
+ok
+---
+
+=== ByteToInt and IntToByte
+fn Main() -> void {
+    let b: byte = 0xff
+    let n: int = ByteToInt(b)
+    let b2: byte = IntToByte(n)
+}
+---
+ok
+---
+
+=== Encode and Decode
+fn Main() -> void {
+    let b: bytes = Encode("hello")
+    let s: string = Decode(b)
+}
+---
+ok
+---
+
+=== IsNaN and IsInf
+fn Main() -> void {
+    let a: bool = IsNaN(0.0)
+    let b: bool = IsInf(0.0)
+}
+---
+ok
+---
+
+=== Add to set
+fn Main() -> void {
+    let s: set[int] = Set()
+    Add(s, 42)
+}
+---
+ok
+---
+
+=== Remove from set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    Remove(s, 2)
+}
+---
+ok
+---
+
+=== Delete from map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    Delete(m, "a")
+}
+---
+ok
+---
+
+=== Merge maps
+fn Main() -> void {
+    let a: map[string, int] = {"a": 1}
+    let b: map[string, int] = {"b": 2}
+    let c: map[string, int] = Merge(a, b)
+}
+---
+ok
+---
+
+=== Insert into list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    Insert(xs, 0, 42)
+}
+---
+ok
+---
+
+=== Pop from list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let v: int = Pop(xs)
+}
+---
+ok
+---
+
+=== IndexOf in list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let i: int = IndexOf(xs, 2)
+}
+---
+ok
+---
+
+=== RemoveAt from list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    RemoveAt(xs, 0)
+}
+---
+ok
+---
+
+=== Repeat string
+fn Main() -> void {
+    let s: string = Repeat("ab", 3)
+}
+---
+ok
+---
+
+=== Repeat list
+fn Main() -> void {
+    let xs: list[int] = Repeat([1, 2], 3)
+}
+---
+ok
+---
+
+=== Find and RFind
+fn Main() -> void {
+    let a: int = Find("hello", "ll")
+    let b: int = RFind("hello", "l")
+}
+---
+ok
+---
+
+=== StartsWith and EndsWith
+fn Main() -> void {
+    let a: bool = StartsWith("hello", "he")
+    let b: bool = EndsWith("hello", "lo")
+}
+---
+ok
+---
+
+=== Upper and Lower
+fn Main() -> void {
+    let a: string = Upper("hello")
+    let b: string = Lower("HELLO")
+}
+---
+ok
+---
+
+=== Trim functions
+fn Main() -> void {
+    let a: string = Trim("  hello  ", " ")
+    let b: string = TrimStart("  hello", " ")
+    let c: string = TrimEnd("hello  ", " ")
+}
+---
+ok
+---
+
+=== Count occurrences
+fn Main() -> void {
+    let n: int = Count("abcabc", "abc")
+}
+---
+ok
+---
+
+=== Replace string
+fn Main() -> void {
+    let s: string = Replace("hello", "l", "r")
+}
+---
+ok
+---
+
+=== ParseInt and ParseFloat
+fn Main() -> void {
+    let n: int = ParseInt("42", 10)
+    let f: float = ParseFloat("3.14")
+}
+---
+ok
+---
+
+=== ReadAll and ReadBytes
+fn Main() -> void {
+    let s: string = ReadAll()
+}
+---
+ok
+---
+
+=== Args returns list string
+fn Main() -> void {
+    let args: list[string] = Args()
+}
+---
+ok
+---
+
+=== GetEnv returns optional string
+fn Main() -> void {
+    let home: string? = GetEnv("HOME")
+}
+---
+ok
+---
+
+=== DivMod returns tuple
+fn Main() -> void {
+    let result: (int, int) = DivMod(17, 5)
+}
+---
+ok
+---
+
+=== Round Floor Ceil
+fn Main() -> void {
+    let a: int = Round(3.5)
+    let b: int = Floor(3.7)
+    let c: int = Ceil(3.2)
+}
+---
+ok
+---
+
+=== Sqrt
+fn Main() -> void {
+    let x: float = Sqrt(4.0)
+}
+---
+ok
+---
+
+=== Sum
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let total: int = Sum(xs)
+}
+---
+ok
+---
+
+=== SplitWhitespace
+fn Main() -> void {
+    let parts: list[string] = SplitWhitespace("a b  c")
+}
+---
+ok
+---
+
+=== character classification
+fn Main() -> void {
+    let a: bool = IsDigit("5")
+    let b: bool = IsAlpha("a")
+    let c: bool = IsAlnum("a1")
+    let d: bool = IsSpace(" ")
+}
+---
+ok
+---
+
+=== Reverse string
+fn Main() -> void {
+    let s: string = Reverse("hello")
+}
+---
+ok
+---
+
+=== built-in error struct construction
+fn Main() -> void {
+    let e: ValueError = ValueError("bad")
+    WritelnErr(e.message)
+}
+---
+ok
+---

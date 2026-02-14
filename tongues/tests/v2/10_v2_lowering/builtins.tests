@@ -1,0 +1,117 @@
+=== len of list
+def f(xs: list[int]) -> int:
+    return len(xs)
+---
+return Len(xs)
+---
+
+=== len of string
+def f(s: str) -> int:
+    return len(s)
+---
+return Len(s)
+---
+
+=== min two args
+def f(a: int, b: int) -> int:
+    return min(a, b)
+---
+Min(a, b)
+---
+
+=== max two args
+def f(a: int, b: int) -> int:
+    return max(a, b)
+---
+Max(a, b)
+---
+
+=== abs
+def f(x: int) -> int:
+    return abs(x)
+---
+Abs(x)
+---
+
+=== int from string
+def f(s: str) -> int:
+    return int(s)
+---
+ParseInt(s, 10)
+---
+
+=== int with base
+def f(s: str) -> int:
+    return int(s, 16)
+---
+ParseInt(s, 16)
+---
+
+=== float from string
+def f(s: str) -> float:
+    return float(s)
+---
+ParseFloat(s)
+---
+
+=== str from int
+def f(n: int) -> str:
+    return str(n)
+---
+ToString(n)
+---
+
+=== chr builtin
+def f(n: int) -> str:
+    return chr(n)
+---
+RuneFromInt(n)
+---
+
+=== ord builtin
+def f(c: str) -> int:
+    return ord(c)
+---
+RuneToInt(c)
+---
+
+=== sorted list
+def f(xs: list[int]) -> list[int]:
+    return sorted(xs)
+---
+Sorted(xs)
+---
+
+=== sorted reversed
+def f(xs: list[int]) -> list[int]:
+    return sorted(xs, reverse=True)
+---
+Reversed(Sorted(xs))
+---
+
+=== bool from int
+def f(n: int) -> bool:
+    return bool(n)
+---
+n != 0
+---
+
+=== isinstance
+class Node:
+    def __init__(self) -> None:
+        pass
+class Leaf(Node):
+    def __init__(self, val: int) -> None:
+        self.val = val
+def f(n: Node) -> bool:
+    return isinstance(n, Leaf)
+---
+Leaf
+---
+
+=== list copy
+def f(xs: list[int]) -> list[int]:
+    return list(xs)
+---
+xs[0:Len(xs)]
+---

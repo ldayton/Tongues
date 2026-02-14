@@ -1,0 +1,196 @@
+=== string index yields rune
+def f(s: str) -> str:
+    return s[0]
+---
+s[0]
+---
+
+=== string length is rune count
+def f(s: str) -> int:
+    return len(s)
+---
+Len(s)
+---
+
+=== string slice is substring
+def f(s: str) -> str:
+    return s[1:3]
+---
+s[1:3]
+---
+
+=== string concat
+def f(a: str, b: str) -> str:
+    return a + b
+---
+Concat(a, b)
+---
+
+=== string find
+def f(s: str, sub: str) -> int:
+    return s.find(sub)
+---
+Find(s, sub)
+---
+
+=== string rfind
+def f(s: str, sub: str) -> int:
+    return s.rfind(sub)
+---
+RFind(s, sub)
+---
+
+=== string split on separator
+def f(s: str) -> list[str]:
+    return s.split(",")
+---
+Split(s, ",")
+---
+
+=== string split whitespace
+def f(s: str) -> list[str]:
+    return s.split()
+---
+SplitWhitespace(s)
+---
+
+=== string replace
+def f(s: str) -> str:
+    return s.replace("a", "b")
+---
+Replace(s, "a", "b")
+---
+
+=== string count
+def f(s: str, sub: str) -> int:
+    return s.count(sub)
+---
+Count(s, sub)
+---
+
+=== string startswith
+def f(s: str) -> bool:
+    return s.startswith("pre")
+---
+StartsWith(s, "pre")
+---
+
+=== string endswith
+def f(s: str) -> bool:
+    return s.endswith("suf")
+---
+EndsWith(s, "suf")
+---
+
+=== string repeat
+def f(s: str) -> str:
+    return s * 3
+---
+Repeat(s, 3)
+---
+
+=== string strip both
+def f(s: str) -> str:
+    return s.strip(" ")
+---
+Trim(s, " ")
+---
+
+=== string lstrip
+def f(s: str) -> str:
+    return s.lstrip(" ")
+---
+TrimStart(s, " ")
+---
+
+=== string rstrip
+def f(s: str) -> str:
+    return s.rstrip(" ")
+---
+TrimEnd(s, " ")
+---
+
+=== string lower
+def f(s: str) -> str:
+    return s.lower()
+---
+Lower(s)
+---
+
+=== string upper
+def f(s: str) -> str:
+    return s.upper()
+---
+Upper(s)
+---
+
+=== string join
+def f(parts: list[str]) -> str:
+    return ",".join(parts)
+---
+Join(",", parts)
+---
+
+=== isdigit
+def f(c: str) -> bool:
+    return c.isdigit()
+---
+IsDigit(c)
+---
+
+=== isalpha
+def f(c: str) -> bool:
+    return c.isalpha()
+---
+IsAlpha(c)
+---
+
+=== isalnum
+def f(c: str) -> bool:
+    return c.isalnum()
+---
+IsAlnum(c)
+---
+
+=== isspace
+def f(c: str) -> bool:
+    return c.isspace()
+---
+IsSpace(c)
+---
+
+=== bytes decode
+def f(b: bytes) -> str:
+    return b.decode("utf-8")
+---
+Decode(b)
+---
+
+=== string encode
+def f(s: str) -> bytes:
+    return s.encode("utf-8")
+---
+Encode(s)
+---
+
+=== string startswith tuple
+def f(s: str) -> bool:
+    return s.startswith(("a", "b"))
+---
+StartsWith(s, "a") || StartsWith(s, "b")
+---
+
+=== string endswith tuple
+def f(s: str) -> bool:
+    return s.endswith(("x", "y"))
+---
+EndsWith(s, "x") || EndsWith(s, "y")
+---
+
+=== enumerate string
+def f(s: str) -> None:
+    for i, c in enumerate(s):
+        print(str(i))
+---
+for i, ch in s {
+---

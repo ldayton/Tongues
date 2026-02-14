@@ -1,0 +1,174 @@
+=== int addition
+def f(a: int, b: int) -> int:
+    return a + b
+---
+return a + b
+---
+
+=== int subtraction
+def f(a: int, b: int) -> int:
+    return a - b
+---
+return a - b
+---
+
+=== int multiplication
+def f(a: int, b: int) -> int:
+    return a * b
+---
+return a * b
+---
+
+=== string concat
+def f(a: str, b: str) -> str:
+    return a + b
+---
+Concat(a, b)
+---
+
+=== floor division
+def f(a: int, b: int) -> int:
+    return a // b
+---
+FloorDiv(a, b)
+---
+
+=== true division int to float
+def f(a: int, b: int) -> float:
+    return a / b
+---
+IntToFloat(a) / IntToFloat(b)
+---
+
+=== python modulo
+def f(a: int, b: int) -> int:
+    return a % b
+---
+PythonMod(a, b)
+---
+
+=== power
+def f(a: int, b: int) -> int:
+    return a ** b
+---
+Pow(a, b)
+---
+
+=== bitwise and
+def f(a: int, b: int) -> int:
+    return a & b
+---
+a & b
+---
+
+=== bitwise or
+def f(a: int, b: int) -> int:
+    return a | b
+---
+a | b
+---
+
+=== bitwise xor
+def f(a: int, b: int) -> int:
+    return a ^ b
+---
+a ^ b
+---
+
+=== left shift
+def f(a: int, b: int) -> int:
+    return a << b
+---
+a << b
+---
+
+=== arithmetic right shift
+def f(a: int, b: int) -> int:
+    return a >> b
+---
+a >> b
+---
+
+=== bitwise not
+def f(a: int) -> int:
+    return ~a
+---
+~a
+---
+
+=== unary negate
+def f(a: int) -> int:
+    return -a
+---
+return -a
+---
+
+=== logical not
+def f(a: bool) -> bool:
+    return not a
+---
+!a
+---
+
+=== logical and
+def f(a: bool, b: bool) -> bool:
+    return a and b
+---
+a && b
+---
+
+=== logical or
+def f(a: bool, b: bool) -> bool:
+    return a or b
+---
+a || b
+---
+
+=== equality
+def f(a: int, b: int) -> bool:
+    return a == b
+---
+a == b
+---
+
+=== inequality
+def f(a: int, b: int) -> bool:
+    return a != b
+---
+a != b
+---
+
+=== less than
+def f(a: int, b: int) -> bool:
+    return a < b
+---
+a < b
+---
+
+=== greater than
+def f(a: int, b: int) -> bool:
+    return a > b
+---
+a > b
+---
+
+=== less equal
+def f(a: int, b: int) -> bool:
+    return a <= b
+---
+a <= b
+---
+
+=== greater equal
+def f(a: int, b: int) -> bool:
+    return a >= b
+---
+a >= b
+---
+
+=== divmod
+def f(a: int, b: int) -> tuple[int, int]:
+    return divmod(a, b)
+---
+(FloorDiv(a, b), PythonMod(a, b))
+---

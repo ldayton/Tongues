@@ -1,0 +1,130 @@
+=== struct assignable to interface
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+fn Draw(s: Shape) -> void {
+}
+fn Main() -> void {
+    let c: Circle = Circle(IntToFloat(5))
+    Draw(c)
+}
+---
+ok
+---
+
+=== nil assignable to optional
+fn Main() -> void {
+    let x: int? = nil
+}
+---
+ok
+---
+
+=== type assignable to union member
+fn Main() -> void {
+    let v: int | string = 42
+    v = "hello"
+}
+---
+ok
+---
+
+=== non-member not assignable to union
+fn Main() -> void {
+    let v: int | string = true
+}
+---
+error: cannot assign
+---
+
+=== list not covariant
+interface Animal {}
+struct Dog : Animal {
+    name: string
+}
+fn Foo(xs: list[Animal]) -> void {
+}
+fn Main() -> void {
+    let dogs: list[Dog]
+    Append(dogs, Dog("Rex"))
+    Foo(dogs)
+}
+---
+error: cannot pass
+---
+
+=== nil narrowing in if
+fn Main() -> void {
+    let x: int? = 42
+    if x != nil {
+        let y: int = x
+    }
+}
+---
+ok
+---
+
+=== nil narrowing in else
+fn Main() -> void {
+    let x: int? = 42
+    if x == nil {
+    } else {
+        let y: int = x
+    }
+}
+---
+ok
+---
+
+=== without narrowing optional not assignable to non-optional
+fn Main() -> void {
+    let x: int? = 42
+    let y: int = x
+}
+---
+error: cannot assign
+---
+
+=== struct to interface variable
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Literal(42)
+}
+---
+ok
+---
+
+=== wrong struct not assignable to interface
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct Other {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Other(42)
+}
+---
+error: cannot assign
+---
+
+=== union narrowing in match
+fn Main() -> void {
+    let v: int | string = 42
+    match v {
+        case n: int {
+            let x: int = n
+        }
+        case s: string {
+            let y: string = s
+        }
+    }
+}
+---
+ok
+---
