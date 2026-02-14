@@ -1,0 +1,224 @@
+=== walrus in parens
+(x := 1)
+---
+ok
+---
+
+=== walrus in tuple
+(a := 1, a + 1)
+---
+ok
+---
+
+=== walrus in if
+if (x := f()):
+    x
+---
+ok
+---
+
+=== walrus in while
+while (line := read()):
+    line
+---
+ok
+---
+
+=== walrus in comprehension condition
+[y for x in xs if (y := f(x))]
+---
+ok
+---
+
+=== walrus lambda not allowed
+(lambda: x := 1)
+---
+error: parse
+---
+
+=== walrus lambda paren not allowed
+((lambda: x) := 1)
+---
+error: parse
+---
+
+=== walrus subscript not allowed
+(a[i] := x)
+---
+error: parse
+---
+
+=== walrus subscript paren not allowed
+((a[i]) := x)
+---
+error: parse
+---
+
+=== walrus call not allowed
+(a(i) := x)
+---
+error: parse
+---
+
+=== walrus attribute not allowed
+(a.b := c)
+---
+error: parse
+---
+
+=== walrus attr in comp target not allowed
+[(i.i:= 0) for ((i), j) in range(5)]
+---
+error: parse
+---
+
+=== walrus in comp target not allowed
+[i:= 0 for i, j in range(5)]
+---
+error: parse
+---
+
+=== walrus in nested comp target not allowed
+[(i:= 0) for ((i), j) in range(5)]
+---
+error: parse
+---
+
+=== walrus in nested comp trailing comma not allowed
+[(i:= 0) for ((i), j), in range(5)]
+---
+error: parse
+---
+
+=== walrus in nested comp attr target not allowed
+[(i:= 0) for ((i), j.i), in range(5)]
+---
+error: parse
+---
+
+=== walrus in nested comp list not allowed
+[[(i:= i) for j in range(5)] for i in range(5)]
+---
+error: parse
+---
+
+=== walrus in comp condition shadows not allowed
+[i for i, j in range(5) if True or (i:= 1)]
+---
+error: parse
+---
+
+=== walrus in and comp condition not allowed
+[False and (i:= 0) for i, j in range(5)]
+---
+error: parse
+---
+
+=== walrus in comp iter not allowed
+[i+1 for i in (i:= range(5))]
+---
+error: parse
+---
+
+=== walrus in comp iter different name not allowed
+[i+1 for i in (j:= range(5))]
+---
+error: parse
+---
+
+=== walrus in lambda iter not allowed
+[i+1 for i in (lambda: (j:= range(5)))()]
+---
+error: parse
+---
+
+=== walrus in class comp not allowed
+class Example:
+ [(j := i) for i in range(5)]
+---
+error: parse
+---
+
+=== walrus await not allowed
+(await a := x)
+---
+error: parse
+---
+
+=== walrus await paren not allowed
+((await a) := x)
+---
+error: parse
+---
+
+=== walrus tuple target not allowed
+((a, b) := (1, 2))
+---
+error: parse
+---
+
+=== walrus list target not allowed
+([a, b] := [1, 2])
+---
+error: parse
+---
+
+=== walrus set target not allowed
+({a, b} := {1, 2})
+---
+error: parse
+---
+
+=== walrus dict target not allowed
+({a: b} := {1: 2})
+---
+error: parse
+---
+
+=== walrus expr target not allowed
+(a + b := 1)
+---
+error: parse
+---
+
+=== walrus True not allowed
+(True := 1)
+---
+error: parse
+---
+
+=== walrus False not allowed
+(False := 1)
+---
+error: parse
+---
+
+=== walrus None not allowed
+(None := 1)
+---
+error: parse
+---
+
+=== walrus debug not allowed
+(__debug__ := 1)
+---
+error: parse
+---
+
+=== walrus in dict key not allowed
+{a:="a": b:=1}
+---
+error: parse
+---
+
+=== walrus in dictcomp key not allowed
+{y:=1: 2 for x in range(5)}
+---
+error: parse
+---
+
+=== walrus in slice not allowed
+a[b:=0:1:2]
+---
+error: parse
+---

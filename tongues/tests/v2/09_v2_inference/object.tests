@@ -1,0 +1,137 @@
+=== assign int to object
+def f() -> object:
+    x: object = 42
+    return x
+---
+ok
+---
+
+=== assign str to object
+def f() -> object:
+    x: object = "hello"
+    return x
+---
+ok
+---
+
+=== assign bool to object
+def f() -> object:
+    x: object = True
+    return x
+---
+ok
+---
+
+=== object parameter accepts int
+def show(x: object) -> str:
+    if isinstance(x, int):
+        return str(x)
+    return "other"
+def f() -> str:
+    return show(42)
+---
+ok
+---
+
+=== object parameter accepts str
+def show(x: object) -> str:
+    if isinstance(x, str):
+        return x
+    return "other"
+def f() -> str:
+    return show("hello")
+---
+ok
+---
+
+=== isinstance narrows object to int
+def f(x: object) -> int:
+    if isinstance(x, int):
+        return x + 1
+    return 0
+---
+ok
+---
+
+=== isinstance narrows object to str
+def f(x: object) -> str:
+    if isinstance(x, str):
+        return x.upper()
+    return ""
+---
+ok
+---
+
+=== isinstance chain on object
+def f(x: object) -> str:
+    if isinstance(x, int):
+        return str(x)
+    if isinstance(x, str):
+        return x
+    return repr(x)
+---
+ok
+---
+
+=== assert isinstance narrows object
+def f(x: object) -> int:
+    assert isinstance(x, int)
+    return x + 1
+---
+ok
+---
+
+=== object in list
+def f() -> list[object]:
+    xs: list[object] = []
+    xs.append(42)
+    xs.append("hello")
+    return xs
+---
+ok
+---
+
+=== object as dict value
+def f() -> dict[str, object]:
+    d: dict[str, object] = {}
+    d["num"] = 42
+    d["name"] = "hello"
+    return d
+---
+ok
+---
+
+=== un-narrowed object arithmetic not allowed
+def f(x: object) -> int:
+    return x + 1
+---
+error: object
+---
+
+=== un-narrowed object method call not allowed
+def f(x: object) -> str:
+    return x.upper()
+---
+error: object
+---
+
+=== un-narrowed object subscript not allowed
+def f(x: object) -> int:
+    return x[0]
+---
+error: object
+---
+
+=== un-narrowed object comparison allowed
+def f(x: object, y: object) -> bool:
+    return x == y
+---
+ok
+---
+
+=== repr on object allowed
+def f(x: object) -> str:
+    return repr(x)
+---
+ok
+---

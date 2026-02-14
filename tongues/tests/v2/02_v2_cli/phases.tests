@@ -1,0 +1,126 @@
+=== stop-at parse
+args: --stop-at parse
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "_type"
+stdout-contains: "Module"
+---
+
+=== stop-at subset
+args: --stop-at subset
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-empty: true
+---
+
+=== stop-at names
+args: --stop-at names
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "names"
+stdout-contains: "scopes"
+---
+
+=== stop-at signatures
+args: --stop-at signatures
+class Foo:
+    def bar(self, x: int) -> int:
+        return x
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "functions"
+stdout-contains: "methods"
+---
+
+=== stop-at fields
+args: --stop-at fields
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "classes"
+---
+
+=== stop-at hierarchy
+args: --stop-at hierarchy
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "ancestors"
+stdout-contains: "root"
+---
+
+=== stop-at inference
+args: --stop-at inference
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "_type"
+stdout-contains: "Module"
+---
+
+=== stop-at lowering
+args: --stop-at lowering
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "_type"
+stdout-contains: "Module"
+stdout-contains: "functions"
+---
+
+=== stop-at analyze
+args: --stop-at analyze
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "_type"
+stdout-contains: "Module"
+stdout-contains: "functions"
+---
+
+=== early failure parse error stops pipeline
+args: --stop-at inference
+def (
+---
+exit: 1
+stdout-empty: true
+---
+
+=== early failure subset violation stops pipeline
+args: --stop-at lowering
+f = lambda x: x + 1
+---
+exit: 1
+stdout-empty: true
+---
+
+=== early failure names error stops pipeline
+args: --stop-at analyze
+def f(x: int) -> int:
+    return y
+---
+exit: 1
+stdout-empty: true
+---
+
+=== subset pass no output
+args: --stop-at subset
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-empty: true
+---

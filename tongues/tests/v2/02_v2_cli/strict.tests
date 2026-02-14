@@ -1,0 +1,66 @@
+=== strict enables strict-math
+args: --strict --stop-at lowering
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "strict_math"
+---
+
+=== strict enables strict-tostring
+args: --strict --stop-at lowering
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "strict_tostring"
+---
+
+=== strict-math flag alone
+args: --strict-math --stop-at lowering
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "strict_math"
+---
+
+=== strict-tostring flag alone
+args: --strict-tostring --stop-at lowering
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "strict_tostring"
+---
+
+=== pragma strict-math
+args: --stop-at lowering
+@@["strict_math"]
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "strict_math"
+---
+
+=== pragma strict-tostring
+args: --stop-at lowering
+@@["strict_tostring"]
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "strict_tostring"
+---
+
+=== pragma both strict modes
+args: --stop-at lowering
+@@["strict_math", "strict_tostring"]
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+stdout-contains: "strict_math"
+stdout-contains: "strict_tostring"
+---

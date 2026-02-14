@@ -1,0 +1,649 @@
+=== undefined name
+def f() -> int:
+    return x
+---
+error: not defined
+---
+
+=== undefined name in expression
+def f() -> int:
+    y: int = 1
+    return x + y
+---
+error: 'x' is not defined
+---
+
+=== parameter in scope
+def f(x: int) -> int:
+    return x
+---
+ok
+---
+
+=== multiple parameters
+def f(x: int, y: int) -> int:
+    return x + y
+---
+ok
+---
+
+=== local variable
+def f() -> int:
+    x: int = 1
+    return x
+---
+ok
+---
+
+=== local assign without annotation
+def f() -> int:
+    x = 1
+    return x
+---
+ok
+---
+
+=== for loop variable
+def f() -> int:
+    total: int = 0
+    i = 0
+    while i < 10:
+        total = total + i
+        i = i + 1
+    return total
+---
+ok
+---
+
+=== for loop target in scope
+def f(items: list[int]) -> int:
+    total: int = 0
+    for x in items:
+        total = total + x
+    return total
+---
+ok
+---
+
+=== class method self field
+class Foo:
+    def __init__(self) -> None:
+        self.x: int = 1
+    def get(self) -> int:
+        return self.x
+---
+ok
+---
+
+=== class method self parameter
+class Foo:
+    def set(self, value: int) -> None:
+        self.x = value
+---
+ok
+---
+
+=== method parameter in scope
+class Foo:
+    def add(self, x: int, y: int) -> int:
+        return x + y
+---
+ok
+---
+
+=== builtin allowed
+def f(items: list[int]) -> int:
+    return len(items)
+---
+ok
+---
+
+=== builtin range
+def f() -> int:
+    total: int = 0
+    for i in range(10):
+        total = total + i
+    return total
+---
+ok
+---
+
+=== builtin print
+def f() -> None:
+    print("hello")
+---
+ok
+---
+
+=== builtin isinstance
+def f(x: object) -> bool:
+    return isinstance(x, int)
+---
+ok
+---
+
+=== function calls function
+def helper() -> int:
+    return 1
+def main() -> int:
+    return helper()
+---
+ok
+---
+
+=== function instantiates class
+class Foo:
+    def __init__(self) -> None:
+        pass
+def make() -> Foo:
+    return Foo()
+---
+ok
+---
+
+=== constant in function
+MAX_SIZE: int = 100
+def f() -> int:
+    return MAX_SIZE
+---
+ok
+---
+
+=== redefinition function
+def f() -> int:
+    return 1
+def f() -> int:
+    return 2
+---
+error: already defined
+---
+
+=== redefinition class
+class Foo:
+    pass
+class Foo:
+    pass
+---
+error: already defined
+---
+
+=== redefinition function and class
+def Foo() -> int:
+    return 1
+class Foo:
+    pass
+---
+error: already defined
+---
+
+=== tuple unpack in for
+def f(items: list[tuple[int, int]]) -> int:
+    total: int = 0
+    for x, y in items:
+        total = total + x + y
+    return total
+---
+ok
+---
+
+=== tuple unpack in assign
+def f() -> int:
+    x, y = 1, 2
+    return x + y
+---
+ok
+---
+
+=== empty function
+def f() -> None:
+    pass
+---
+ok
+---
+
+=== class with no methods
+class Empty:
+    pass
+---
+ok
+---
+
+=== class field annotation
+class Foo:
+    x: int
+    def get(self) -> int:
+        return self.x
+---
+ok
+---
+
+=== parameter shadows builtin
+def f(len: int) -> int:
+    return len
+---
+warning: shadows builtin
+---
+
+=== parameter no shadow
+def f(x: int) -> int:
+    return x
+---
+ok
+---
+
+=== forward reference function
+def main() -> int:
+    return helper()
+def helper() -> int:
+    return 1
+---
+ok
+---
+
+=== forward reference class
+def make() -> Foo:
+    return Foo()
+class Foo:
+    def __init__(self) -> None:
+        pass
+---
+ok
+---
+
+=== multiple forward references
+def a() -> int:
+    return b() + c()
+def b() -> int:
+    return 1
+def c() -> int:
+    return 2
+---
+ok
+---
+
+=== import sys binding
+import sys
+def f() -> list[str]:
+    return sys.argv
+---
+ok
+---
+
+=== import os binding
+import os
+def f() -> str:
+    return os.getenv("HOME", "")
+---
+ok
+---
+
+=== import re binding
+import re
+def f(s: str) -> bool:
+    return re.match("abc", s) is not None
+---
+ok
+---
+
+=== from import binding
+from dataclasses import dataclass
+@dataclass
+class Foo:
+    x: int
+---
+ok
+---
+
+=== from import alias binding
+from dataclasses import dataclass as dc
+@dc
+class Foo:
+    x: int
+---
+ok
+---
+
+=== local import binding
+def f() -> None:
+    from dataclasses import dataclass
+    pass
+---
+ok
+---
+
+=== except variable binding
+def f() -> str:
+    try:
+        x: int = 1
+    except Exception as e:
+        return str(e)
+    return ""
+---
+ok
+---
+
+=== comprehension variable does not leak
+def f(items: list[int]) -> int:
+    result: list[int] = [x for x in items]
+    return x
+---
+error: not defined
+---
+
+=== comprehension does not shadow outer variable
+def f(items: list[int]) -> int:
+    x: int = 5
+    result: list[int] = [x for x in items]
+    return x
+---
+ok
+---
+
+=== set comprehension variable does not leak
+def f(items: list[int]) -> int:
+    result: set[int] = {x for x in items}
+    return x
+---
+error: not defined
+---
+
+=== dict comprehension variable does not leak
+def f(items: list[tuple[str, int]]) -> str:
+    result: dict[str, int] = {k: v for k, v in items}
+    return k
+---
+error: not defined
+---
+
+=== walrus scopes to function from comprehension
+def f(items: list[int]) -> int:
+    result: list[int] = [y for x in items if (y := x + 1) > 0]
+    return y
+---
+ok
+---
+
+=== walrus in if condition
+def f(x: int) -> int:
+    if (y := x + 1) > 0:
+        return y
+    return 0
+---
+ok
+---
+
+=== walrus in while condition
+import sys
+def f() -> str:
+    result: str = ""
+    while (line := sys.stdin.readline()) != "":
+        result = result + line
+    return result
+---
+ok
+---
+
+=== comprehension variable not walrus does not leak
+def f(items: list[int]) -> int:
+    result: list[int] = [x for x in items if (y := x) > 0]
+    return x
+---
+error: not defined
+---
+
+=== match case name capture
+def f(x: int) -> int:
+    match x:
+        case n:
+            return n
+---
+ok
+---
+
+=== match case as pattern
+def f(x: object) -> int:
+    match x:
+        case int() as n:
+            return n
+        case _:
+            return 0
+---
+ok
+---
+
+=== match case multiple bindings
+def f(x: tuple[int, int]) -> int:
+    match x:
+        case (a, b):
+            return a + b
+---
+ok
+---
+
+=== local shadows module variable
+x: int = 1
+def f() -> int:
+    x: int = 2
+    return x
+---
+ok
+---
+
+=== local shadows module function
+def helper() -> int:
+    return 1
+def f() -> int:
+    helper: int = 2
+    return helper
+---
+ok
+---
+
+=== module variable visible across functions
+x: int = 10
+def f() -> int:
+    return x
+def g() -> int:
+    return x + 1
+---
+ok
+---
+
+=== redefinition variable and function
+x: int = 1
+def x() -> int:
+    return 1
+---
+error: already defined
+---
+
+=== redefinition variable and class
+x: int = 1
+class x:
+    pass
+---
+error: already defined
+---
+
+=== nested tuple unpack
+def f() -> int:
+    a, (b, c) = 1, (2, 3)
+    return a + b + c
+---
+ok
+---
+
+=== for loop nested tuple unpack
+def f(items: list[tuple[int, tuple[int, int]]]) -> int:
+    total: int = 0
+    for a, (b, c) in items:
+        total = total + a + b + c
+    return total
+---
+ok
+---
+
+=== loop variable visible after loop
+def f(items: list[int]) -> int:
+    for x in items:
+        pass
+    return x
+---
+ok
+---
+
+=== cross class reference
+class Point:
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+class Line:
+    def __init__(self, start: Point, end: Point) -> None:
+        self.start = start
+        self.end = end
+---
+ok
+---
+
+=== class references class defined later
+class Line:
+    def __init__(self, start: Point, end: Point) -> None:
+        self.start = start
+        self.end = end
+class Point:
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+---
+ok
+---
+
+=== match class pattern binding
+class Foo:
+    def __init__(self, x: int) -> None:
+        self.x = x
+def f(obj: Foo) -> int:
+    match obj:
+        case Foo(x=y):
+            return y
+    return 0
+---
+ok
+---
+
+=== match pattern with guard
+def f(x: int) -> int:
+    match x:
+        case n if n > 0:
+            return n
+        case _:
+            return 0
+---
+ok
+---
+
+=== class inheritance
+class Base:
+    pass
+class Child(Base):
+    pass
+---
+ok
+---
+
+=== class inheritance undefined base
+class Child(Unknown):
+    pass
+---
+error: not defined
+---
+
+=== class forward reference in inheritance
+class Child(Parent):
+    pass
+class Parent:
+    pass
+---
+ok
+---
+
+=== forward reference to module variable
+def f() -> int:
+    return x
+x: int = 10
+---
+ok
+---
+
+=== nested comprehension
+def f(xss: list[list[int]]) -> list[int]:
+    return [x for xs in xss for x in xs]
+---
+ok
+---
+
+=== nested comprehension outer variable does not leak
+def f(xss: list[list[int]]) -> int:
+    result: list[int] = [x for xs in xss for x in xs]
+    return xs
+---
+error: not defined
+---
+
+=== nested comprehension inner variable does not leak
+def f(xss: list[list[int]]) -> int:
+    result: list[int] = [x for xs in xss for x in xs]
+    return x
+---
+error: not defined
+---
+
+=== local variable shadows builtin
+def f() -> int:
+    len: int = 5
+    return len
+---
+ok
+---
+
+=== except variable visible after block
+def f() -> str:
+    try:
+        x: int = 1
+    except Exception as e:
+        pass
+    return e
+---
+ok
+---
+
+=== multiple names from import
+from typing import Optional, List
+def f(x: Optional[int]) -> List[int]:
+    return []
+---
+ok
+---
+
+=== augmented assignment on undefined name
+def f() -> int:
+    x += 1
+    return x
+---
+error: not defined
+---
+
+=== generator expression variable does not leak
+def f(items: list[int]) -> int:
+    total: int = sum(x for x in items)
+    return x
+---
+error: not defined
+---
+
+=== module name used without import
+def f() -> list[str]:
+    return sys.argv
+---
+error: not defined
+---

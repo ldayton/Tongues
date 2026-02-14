@@ -1,0 +1,957 @@
+=== incomplete expression
+1 +
+---
+error: parse
+---
+
+=== invalid character
+?
+---
+error: parse
+---
+
+=== continue outside loop
+continue
+---
+error: parse
+---
+
+=== break outside loop
+break
+---
+error: parse
+---
+
+=== return outside function
+return
+---
+error: parse
+---
+
+=== yield outside function
+yield
+---
+error: parse
+---
+
+=== generator in call with other args
+f(x for x in bar, 1)
+---
+error: parse
+---
+
+=== trailing comma in from import
+from foo import a,
+---
+error: parse
+---
+
+=== future import unknown
+from __future__ import whatever
+---
+error: parse
+---
+
+=== future import braces
+from __future__ import braces
+---
+error: parse
+---
+
+=== non-default after default param
+def f(x=3, y): pass
+---
+error: parse
+---
+
+=== non-default after default lambda
+lambda x=3, y: x
+---
+error: parse
+---
+
+=== assign to debug
+__debug__ = 1
+---
+error: parse
+---
+
+=== with as debug
+with x() as __debug__: pass
+---
+error: parse
+---
+
+=== annotate empty list
+[]: int
+---
+error: parse
+---
+
+=== annotate list elements
+[a, b]: int
+---
+error: parse
+---
+
+=== annotate empty tuple
+(): int
+---
+error: parse
+---
+
+=== annotate nested empty tuple
+(()): int
+---
+error: parse
+---
+
+=== annotate double nested empty tuple
+((())): int
+---
+error: parse
+---
+
+=== annotate empty dict
+{}: int
+---
+error: parse
+---
+
+=== annotate True
+True: int
+---
+error: parse
+---
+
+=== annotate tuple
+(a, b): int
+---
+error: parse
+---
+
+=== annotate starred
+*star,: int
+---
+error: parse
+---
+
+=== annotate multiple targets
+a, b: int = 3
+---
+error: parse
+---
+
+=== call with unary in keyword
+foo(+a=3)
+---
+error: parse
+---
+
+=== call with lambda as keyword target
+f(lambda: 1=1)
+---
+error: parse
+---
+
+=== duplicate keyword argument
+f(x=1, x=2)
+---
+error: parse
+---
+
+=== kwargs before positional
+f(**x, y)
+---
+error: parse
+---
+
+=== keyword after positional after keyword
+f(x=2, y)
+---
+error: parse
+---
+
+=== kwargs before args
+f(**x, *y)
+---
+error: parse
+---
+
+=== positional after kwargs
+f(**x, y=3, z)
+---
+error: parse
+---
+
+=== augassign tuple
+a, b += 3
+---
+error: parse
+---
+
+=== augassign paren tuple
+(a, b) += 3
+---
+error: parse
+---
+
+=== augassign list
+[a, b] += 3
+---
+error: parse
+---
+
+=== augassign list with literal
+[a, 1] += 3
+---
+error: parse
+---
+
+=== augassign call
+f() += 1
+---
+error: parse
+---
+
+=== augassign lambda
+lambda x:None+=1
+---
+error: parse
+---
+
+=== augassign empty dict
+{} += 1
+---
+error: parse
+---
+
+=== augassign dict literal
+{a:b} += 1
+---
+error: parse
+---
+
+=== augassign set literal
+{1} += 1
+---
+error: parse
+---
+
+=== augassign set splat
+{*x} += 1
+---
+error: parse
+---
+
+=== augassign trailing comma tuple
+(x,) += 1
+---
+error: parse
+---
+
+=== augassign conditional
+(x, y if a else q) += 1
+---
+error: parse
+---
+
+=== augassign empty list
+[] += 1
+---
+error: parse
+---
+
+=== augassign list literal
+[1,2] += 1
+---
+error: parse
+---
+
+=== augassign None
+None += 1
+---
+error: parse
+---
+
+=== augassign ellipsis
+... += 1
+---
+error: parse
+---
+
+=== augassign comparison
+a > 1 += 1
+---
+error: parse
+---
+
+=== augassign string
+"test" += 1
+---
+error: parse
+---
+
+=== augassign number
+1 += 1
+---
+error: parse
+---
+
+=== augassign float
+1.0 += 1
+---
+error: parse
+---
+
+=== augassign yield
+(yield) += 1
+---
+error: parse
+---
+
+=== augassign yield from
+(yield from x) += 1
+---
+error: parse
+---
+
+=== augassign ternary
+(x if x else y) += 1
+---
+error: parse
+---
+
+=== augassign call result
+a() += 1
+---
+error: parse
+---
+
+=== augassign binary op
+a + b += 1
+---
+error: parse
+---
+
+=== augassign unary
++a += 1
+---
+error: parse
+---
+
+=== augassign and expr
+a and b += 1
+---
+error: parse
+---
+
+=== augassign starred
+*a += 1
+---
+error: parse
+---
+
+=== augassign fstring
+f"xxx" += 1
+---
+error: parse
+---
+
+=== assign to lambda
+lambda a: 1 = 1
+---
+error: parse
+---
+
+=== assign to list comp
+[x for x in y] = 1
+---
+error: parse
+---
+
+=== assign to set comp
+{x for x in y} = 1
+---
+error: parse
+---
+
+=== assign to dict comp
+{x:x for x in y} = 1
+---
+error: parse
+---
+
+=== assign to generator
+(x for x in y) = 1
+---
+error: parse
+---
+
+=== assign to None
+None = 1
+---
+error: parse
+---
+
+=== assign to ellipsis
+... = 1
+---
+error: parse
+---
+
+=== assign to comparison
+a == b = 1
+---
+error: parse
+---
+
+=== assign to set
+{a, b} = 1
+---
+error: parse
+---
+
+=== assign to dict
+{a: b} = 1
+---
+error: parse
+---
+
+=== assign to number
+1 = 1
+---
+error: parse
+---
+
+=== assign to string
+"" = 1
+---
+error: parse
+---
+
+=== assign to bytes
+b"" = 1
+---
+error: parse
+---
+
+=== assign to concat strings
+"" "" = 1
+---
+error: parse
+---
+
+=== assign to bitor
+1 | 1 = 3
+---
+error: parse
+---
+
+=== assign to power
+1**1 = 3
+---
+error: parse
+---
+
+=== assign to invert
+~ 1 = 3
+---
+error: parse
+---
+
+=== assign to not
+not 1 = 3
+---
+error: parse
+---
+
+=== assign to and
+1 and 1 = 3
+---
+error: parse
+---
+
+=== assign to yield in function
+def foo(): (yield 1) = 3
+---
+error: parse
+---
+
+=== assign to yield expr in function
+def foo(): x = yield 1 = 3
+---
+error: parse
+---
+
+=== assign to await
+async def foo(): await x = 3
+---
+error: parse
+---
+
+=== assign to ternary
+(a if a else a) = a
+---
+error: parse
+---
+
+=== assign with literal in tuple
+a, 1 = x
+---
+error: parse
+---
+
+=== assign to call
+foo() = 1
+---
+error: parse
+---
+
+=== with call as target
+with x as foo(): pass
+---
+error: parse
+---
+
+=== del with literal
+del bar, 1
+---
+error: parse
+---
+
+=== for with literal target
+for x, 1 in []: pass
+---
+error: parse
+---
+
+=== for with not as target
+for (not 1) in []: pass
+---
+error: parse
+---
+
+=== listcomp with literal target
+[x for 1 in y]
+---
+error: parse
+---
+
+=== listcomp with literal in tuple target
+[x for a, 3 in y]
+---
+error: parse
+---
+
+=== genexp with literal target
+(x for 1 in y)
+---
+error: parse
+---
+
+=== setcomp with literal target
+{x for 1 in y}
+---
+error: parse
+---
+
+=== dictcomp with literal target
+{x:x for 1 in y}
+---
+error: parse
+---
+
+=== multiple starred in unpack
+*a, *b = 3, 3
+---
+error: parse
+---
+
+=== yield from in async
+async def foo(): yield from []
+---
+error: parse
+---
+
+=== yield from outside function
+yield from []
+---
+error: parse
+---
+
+=== starred alone
+*a = 3
+---
+error: parse
+---
+
+=== del starred
+del *a, b
+---
+error: parse
+---
+
+=== star only param
+def x(*): pass
+---
+error: parse
+---
+
+=== kwargs in dictcomp
+{**{} for a in [1]}
+---
+error: parse
+---
+
+=== True in unpack target
+(True,) = x
+---
+error: parse
+---
+
+=== False in nested unpack
+([False], a) = x
+---
+error: parse
+---
+
+=== star import in function
+def x(): from math import *
+---
+error: parse
+---
+
+=== del expression
+del x + y
+---
+error: parse
+---
+
+=== del call
+del x(y)
+---
+error: parse
+---
+
+=== del await
+async def foo(): del await x
+---
+error: parse
+---
+
+=== del yield
+def foo(): del (yield x)
+---
+error: parse
+---
+
+=== del listcomp
+del [x for x in range(10)]
+---
+error: parse
+---
+
+=== del starred
+del *x
+---
+error: parse
+---
+
+=== del starred trailing
+del *x,
+---
+error: parse
+---
+
+=== del starred paren
+del (*x,)
+---
+error: parse
+---
+
+=== del starred list
+del [*x]
+---
+error: parse
+---
+
+=== del with starred
+del x, *y
+---
+error: parse
+---
+
+=== del starred attr
+del *x.y,
+---
+error: parse
+---
+
+=== del starred subscript
+del *x[y],
+---
+error: parse
+---
+
+=== del starred slice
+del *x[y::], z
+---
+error: parse
+---
+
+=== del nested starred
+del x, (y, *z)
+---
+error: parse
+---
+
+=== del starred in nested list
+del (x, *[y, z])
+---
+error: parse
+---
+
+=== del deeply nested starred
+del [x, *(y, [*z])]
+---
+error: parse
+---
+
+=== del empty dict
+del {}
+---
+error: parse
+---
+
+=== del set
+del {x}
+---
+error: parse
+---
+
+=== del set multi
+del {x, y}
+---
+error: parse
+---
+
+=== del set starred
+del {x, *y}
+---
+error: parse
+---
+
+=== starred alone expr
+*x
+---
+error: parse
+---
+
+=== starred in parens
+(*x)
+---
+error: parse
+---
+
+=== starred nested parens
+((*x))
+---
+error: parse
+---
+
+=== starred in addition
+1 + (*x)
+---
+error: parse
+---
+
+=== starred before semicolon
+*x; 1
+---
+error: parse
+---
+
+=== starred after semicolon
+1; *x
+---
+error: parse
+---
+
+=== starred after newline
+1
+*x
+---
+error: parse
+---
+
+=== starred assign rhs
+x = *y
+---
+error: parse
+---
+
+=== starred annotated assign
+x: int = *y
+---
+error: parse
+---
+
+=== return starred
+def foo(): return *x
+---
+error: parse
+---
+
+=== yield starred
+def foo(): yield *x
+---
+error: parse
+---
+
+=== starred in fstring
+f"{*x}"
+---
+error: parse
+---
+
+=== starred for target
+for *x in 1: pass
+---
+error: parse
+---
+
+=== starred listcomp target
+[1 for *x in 1]
+---
+error: parse
+---
+
+=== starred in empty listcomp
+[*[] for a in [1]]
+---
+error: parse
+---
+
+=== str bytes concat
+"s" b""
+---
+error: parse
+---
+
+=== str bytes str concat
+"s" b"" ""
+---
+error: parse
+---
+
+=== bytes str bytes str
+b"" "" b"" ""
+---
+error: parse
+---
+
+=== fstring bytes concat
+f"s" b""
+---
+error: parse
+---
+
+=== bytes fstring concat
+b"s" f""
+---
+error: parse
+---
+
+=== unterminated triple double
+"""
+---
+error: parse
+---
+
+=== unterminated double
+"
+---
+error: parse
+---
+
+=== unterminated triple single
+'''
+---
+error: parse
+---
+
+=== unterminated single
+'
+---
+error: parse
+---
+
+=== backslash not continuation
+\blub
+---
+error: parse
+---
+
+=== duplicate param name
+def f(x, x): pass
+---
+error: parse
+---
+
+=== nonlocal at module level
+nonlocal a
+---
+error: parse
+---
+
+=== unexpected indent
+ foo
+---
+error: parse
+---
+
+=== del None
+del None
+---
+error: parse
+---
+
+=== del True
+del True
+---
+error: parse
+---
+
+=== del False
+del False
+---
+error: parse
+---
+
+=== del ellipsis
+del ...
+---
+error: parse
+---
+
+=== class with generator base
+class X(base for base in bases): pass
+---
+error: parse
+---
+
+=== async yield and return
+async def foo():
+ yield x
+ return 1
+---
+error: parse
+---
+
+=== await in nested non-async
+async def bla():
+ def x():  await bla()
+---
+error: parse
+---
