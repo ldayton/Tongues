@@ -1,0 +1,440 @@
+=== simple function
+def f(x: int) -> str:
+    return str(x)
+---
+functions.f.return_type.kind = string
+functions.f.params.0.name = x
+functions.f.params.0.typ.kind = int
+---
+
+=== multiple params
+def f(x: int, y: str, z: bool) -> float:
+    return 1.0
+---
+functions.f.params.length = 3
+functions.f.params.0.name = x
+functions.f.params.0.typ.kind = int
+functions.f.params.1.name = y
+functions.f.params.1.typ.kind = string
+functions.f.params.2.name = z
+functions.f.params.2.typ.kind = bool
+functions.f.return_type.kind = float
+---
+
+=== void return
+def f() -> None:
+    pass
+---
+functions.f.params.length = 0
+functions.f.return_type.kind = void
+---
+
+=== list param
+def f(xs: list[int]) -> int:
+    return len(xs)
+---
+functions.f.params.0.typ._type = Slice
+functions.f.params.0.typ.element.kind = int
+---
+
+=== dict param
+def f(d: dict[str, int]) -> int:
+    return 0
+---
+functions.f.params.0.typ._type = Map
+functions.f.params.0.typ.key.kind = string
+functions.f.params.0.typ.value.kind = int
+---
+
+=== set return
+def f() -> set[str]:
+    return set()
+---
+functions.f.return_type._type = Set
+functions.f.return_type.element.kind = string
+---
+
+=== optional param
+def f(x: int | None) -> int:
+    return 0
+---
+functions.f.params.0.typ._type = Optional
+functions.f.params.0.typ.inner.kind = int
+---
+
+=== tuple param
+def f(t: tuple[int, str, bool]) -> int:
+    return 0
+---
+functions.f.params.0.typ._type = Tuple
+functions.f.params.0.typ.elements.length = 3
+functions.f.params.0.typ.elements.0.kind = int
+functions.f.params.0.typ.elements.1.kind = string
+functions.f.params.0.typ.elements.2.kind = bool
+---
+
+=== variadic tuple
+def f(x: tuple[int, ...]) -> None:
+    pass
+---
+functions.f.params.0.typ._type = Tuple
+functions.f.params.0.typ.variadic = true
+functions.f.params.0.typ.elements.0.kind = int
+---
+
+=== callable param
+from typing import Callable
+def f(handler: Callable[[int, str], bool]) -> None:
+    pass
+---
+functions.f.params.0.typ._type = FuncType
+functions.f.params.0.typ.params.0.kind = int
+functions.f.params.0.typ.params.1.kind = string
+functions.f.params.0.typ.ret.kind = bool
+---
+
+=== bytes type
+def f(data: bytes) -> int:
+    return len(data)
+---
+functions.f.params.0.typ._type = Slice
+functions.f.params.0.typ.element.kind = byte
+---
+
+=== frozenset type
+def f(x: frozenset[int]) -> None:
+    pass
+---
+functions.f.params.0.typ._type = Set
+functions.f.params.0.typ.element.kind = int
+---
+
+=== nested collection types
+def f(x: list[dict[str, list[int]]]) -> None:
+    pass
+---
+functions.f.params.0.typ._type = Slice
+functions.f.params.0.typ.element._type = Map
+functions.f.params.0.typ.element.key.kind = string
+functions.f.params.0.typ.element.value._type = Slice
+functions.f.params.0.typ.element.value.element.kind = int
+---
+
+=== optional from typing
+from typing import Optional
+def f(x: Optional[int]) -> None:
+    pass
+---
+functions.f.params.0.typ._type = Optional
+functions.f.params.0.typ.inner.kind = int
+---
+
+=== non-none union
+class Base:
+    def __init__(self) -> None:
+        pass
+class A(Base):
+    def __init__(self) -> None:
+        pass
+class B(Base):
+    def __init__(self) -> None:
+        pass
+def f(x: A | B) -> None:
+    pass
+---
+functions.f.params.0.typ._type = InterfaceRef
+---
+
+=== union dedup
+from typing import Union
+def f(x: Union[int, int]) -> int:
+    return x
+---
+functions.f.params.0.typ.kind = int
+---
+
+=== struct ref return
+class Point:
+    def __init__(self, x: int) -> None:
+        self.x = x
+def origin() -> Point:
+    return Point(0)
+---
+functions.origin.return_type._type = Pointer
+functions.origin.return_type.target._type = StructRef
+functions.origin.return_type.target.name = Point
+---
+
+=== forward reference return
+def make() -> Foo:
+    return Foo(0)
+class Foo:
+    def __init__(self, x: int) -> None:
+        self.x = x
+---
+functions.make.return_type._type = Pointer
+functions.make.return_type.target._type = StructRef
+functions.make.return_type.target.name = Foo
+---
+
+=== forward reference param
+def f(x: Foo) -> None:
+    pass
+class Foo:
+    def __init__(self, val: int) -> None:
+        self.val = val
+---
+ok
+---
+
+=== default int
+def f(x: int = 0) -> int:
+    return x
+---
+functions.f.params.0.has_default = true
+functions.f.params.0.default_value._type = IntLit
+functions.f.params.0.default_value.value = 0
+---
+
+=== default string
+def f(x: str = "hello") -> str:
+    return x
+---
+functions.f.params.0.has_default = true
+functions.f.params.0.default_value._type = StringLit
+functions.f.params.0.default_value.value = hello
+---
+
+=== default bool
+def f(x: bool = True) -> bool:
+    return x
+---
+functions.f.params.0.has_default = true
+functions.f.params.0.default_value._type = BoolLit
+functions.f.params.0.default_value.value = true
+---
+
+=== default none
+def f(x: int | None = None) -> int:
+    return 0
+---
+functions.f.params.0.has_default = true
+functions.f.params.0.default_value._type = NilLit
+---
+
+=== no default
+def f(x: int) -> int:
+    return x
+---
+functions.f.params.0.has_default = false
+functions.f.params.0.default_value = null
+---
+
+=== mixed defaults
+def f(a: int, b: int = 1, c: str = "") -> None:
+    pass
+---
+functions.f.params.0.has_default = false
+functions.f.params.1.has_default = true
+functions.f.params.1.default_value.value = 1
+functions.f.params.2.has_default = true
+functions.f.params.2.default_value.value =
+---
+
+=== default modifier pos_or_kw
+def f(a: int, b: str) -> None:
+    pass
+---
+functions.f.params.0.modifier = pos_or_kw
+functions.f.params.1.modifier = pos_or_kw
+---
+
+=== positional only param
+def f(a: int, /, b: str) -> None:
+    pass
+---
+functions.f.params.0.name = a
+functions.f.params.0.modifier = positional
+functions.f.params.1.name = b
+functions.f.params.1.modifier = pos_or_kw
+---
+
+=== keyword only param
+def f(a: int, *, b: str) -> None:
+    pass
+---
+functions.f.params.0.name = a
+functions.f.params.0.modifier = pos_or_kw
+functions.f.params.1.name = b
+functions.f.params.1.modifier = keyword
+---
+
+=== mixed param modifiers
+def f(a: int, /, b: str, *, c: bool) -> None:
+    pass
+---
+functions.f.params.length = 3
+functions.f.params.0.name = a
+functions.f.params.0.modifier = positional
+functions.f.params.1.name = b
+functions.f.params.1.modifier = pos_or_kw
+functions.f.params.2.name = c
+functions.f.params.2.modifier = keyword
+---
+
+=== method basic
+class Foo:
+    def get(self) -> int:
+        return 0
+---
+methods.Foo.get.is_method = true
+methods.Foo.get.receiver_type = Foo
+methods.Foo.get.params.length = 0
+methods.Foo.get.return_type.kind = int
+---
+
+=== method with params
+class Foo:
+    def add(self, x: int, y: int) -> int:
+        return x + y
+---
+methods.Foo.add.params.length = 2
+methods.Foo.add.params.0.name = x
+methods.Foo.add.params.1.name = y
+methods.Foo.add.is_method = true
+---
+
+=== init method
+class Foo:
+    def __init__(self, x: int, y: str) -> None:
+        self.x = x
+        self.y = y
+---
+methods.Foo.__init__.params.length = 2
+methods.Foo.__init__.params.0.name = x
+methods.Foo.__init__.params.0.typ.kind = int
+methods.Foo.__init__.params.1.name = y
+methods.Foo.__init__.params.1.typ.kind = string
+methods.Foo.__init__.return_type.kind = void
+---
+
+=== self excluded from params
+class Foo:
+    def m(self, x: int) -> None:
+        pass
+---
+methods.Foo.m.params.length = 1
+methods.Foo.m.params.0.name = x
+---
+
+=== method default value
+class Foo:
+    def inc(self, n: int = 1) -> int:
+        return n
+---
+methods.Foo.inc.params.0.has_default = true
+methods.Foo.inc.params.0.default_value._type = IntLit
+methods.Foo.inc.params.0.default_value.value = 1
+---
+
+=== function not method
+def f(x: int) -> int:
+    return x
+---
+functions.f.is_method = false
+functions.f.receiver_type =
+---
+
+=== multiple functions
+def add(a: int, b: int) -> int:
+    return a + b
+def negate(x: int) -> int:
+    return -x
+---
+functions.add.params.length = 2
+functions.negate.params.length = 1
+functions.add.return_type.kind = int
+functions.negate.return_type.kind = int
+---
+
+=== multiple classes
+class Foo:
+    def get(self) -> int:
+        return 0
+class Bar:
+    def name(self) -> str:
+        return ""
+---
+methods.Foo.get.return_type.kind = int
+methods.Bar.name.return_type.kind = string
+---
+
+=== function and method coexist
+class Foo:
+    def get(self) -> int:
+        return 0
+def helper() -> int:
+    return 1
+---
+functions.helper.return_type.kind = int
+methods.Foo.get.return_type.kind = int
+---
+
+=== mutated list param becomes pointer
+class Foo:
+    def mutate(self, items: list[int]) -> None:
+        items.append(1)
+---
+methods.Foo.mutate.params.0.typ._type = Pointer
+methods.Foo.mutate.params.0.typ.target._type = Slice
+methods.Foo.mutate.params.0.typ.target.element.kind = int
+---
+
+=== non-mutated list param stays slice
+def f(items: list[int]) -> int:
+    return len(items)
+---
+functions.f.params.0.typ._type = Slice
+---
+
+=== ok simple
+def f() -> None:
+    pass
+---
+ok
+---
+
+=== error wrong arity list
+def f(x: list[int, str]) -> None:
+    pass
+---
+error: list requires 1 type argument
+---
+
+=== error wrong arity dict
+def f(x: dict[str]) -> None:
+    pass
+---
+error: dict requires 2 type argument
+---
+
+=== error unknown type
+def f(x: Nonexistent) -> None:
+    pass
+---
+error: unknown type
+---
+
+=== error missing return type
+def f(x: int):
+    return x
+---
+error: missing return type annotation
+---
+
+=== error missing param type
+def f(x) -> int:
+    return x
+---
+error: missing type annotation
+---

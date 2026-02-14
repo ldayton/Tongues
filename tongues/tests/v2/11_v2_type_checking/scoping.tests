@@ -1,0 +1,98 @@
+=== variable in scope
+fn Main() -> void {
+    let x: int = 42
+    let y: int = x
+}
+---
+ok
+---
+
+=== undefined name
+fn Main() -> void {
+    let x: int = y
+}
+---
+error: undefined name
+---
+
+=== variable not accessible after block scope
+fn Main() -> void {
+    if true {
+        let x: int = 42
+    }
+    let y: int = x
+}
+---
+error: undefined name
+---
+
+=== shadowing parameter rejected
+fn Foo(x: int) -> void {
+    let x: int = 10
+}
+fn Main() -> void {
+}
+---
+error: shadows
+---
+
+=== shadowing outer variable rejected
+fn Main() -> void {
+    let x: int = 1
+    if true {
+        let x: int = 2
+    }
+}
+---
+error: shadows
+---
+
+=== reserved name as variable rejected
+fn Main() -> void {
+    let Len: int = 42
+}
+---
+error: reserved name
+---
+
+=== reserved name as parameter rejected
+fn Foo(Append: int) -> void {
+}
+fn Main() -> void {
+}
+---
+error: reserved name
+---
+
+=== discard allowed multiple times
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    for _, _ in m {
+    }
+}
+---
+ok
+---
+
+=== loop variable scoped to body
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+    }
+    let y: int = x
+}
+---
+error: undefined name
+---
+
+=== catch binding scoped to block
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+    }
+    let s: string = e.message
+}
+---
+error: undefined name
+---

@@ -1,0 +1,170 @@
+=== function call
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {
+    let x: int = Add(1, 2)
+}
+---
+ok
+---
+
+=== arity mismatch too many
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {
+    let x: int = Add(1, 2, 3)
+}
+---
+error: expected 2 arguments, got 3
+---
+
+=== arity mismatch too few
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Main() -> void {
+    let x: int = Add(1)
+}
+---
+error: expected 2 arguments, got 1
+---
+
+=== argument type mismatch
+fn Foo(x: int) -> void {
+}
+fn Main() -> void {
+    Foo("hello")
+}
+---
+error: cannot pass
+---
+
+=== named arguments
+fn Greet(name: string, greeting: string) -> string {
+    return Concat(greeting, Concat(" ", name))
+}
+fn Main() -> void {
+    let s: string = Greet(greeting: "hi", name: "world")
+}
+---
+ok
+---
+
+=== cannot mix positional and named
+fn Greet(name: string, greeting: string) -> string {
+    return Concat(greeting, Concat(" ", name))
+}
+fn Main() -> void {
+    let s: string = Greet("world", greeting: "hi")
+}
+---
+error: cannot mix positional and named
+---
+
+=== unknown parameter name
+fn Foo(x: int) -> void {
+}
+fn Main() -> void {
+    Foo(y: 42)
+}
+---
+error: no parameter
+---
+
+=== struct constructor positional
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, 2)
+}
+---
+ok
+---
+
+=== struct constructor named
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(y: 2, x: 1)
+}
+---
+ok
+---
+
+=== method call
+struct Counter {
+    value: int
+    fn Get(self) -> int {
+        return self.value
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    let v: int = c.Get()
+}
+---
+ok
+---
+
+=== call non-function
+fn Main() -> void {
+    let x: int = 42
+    x()
+}
+---
+error: cannot call
+---
+
+=== function literal no capture
+fn Apply(xs: list[int], f: fn[int, int]) -> list[int] {
+    let result: list[int]
+    for x in xs {
+        Append(result, f(x))
+    }
+    return result
+}
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let doubled: list[int] = Apply(xs, (x: int) -> int => x * 2)
+}
+---
+ok
+---
+
+=== closure capture rejected
+fn Main() -> void {
+    let offset: int = 10
+    let f: fn[int, int] = (x: int) -> int => x + offset
+}
+---
+error: cannot capture
+---
+
+=== function as value
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    let y: int = f(21)
+}
+---
+ok
+---
+
+=== function literal block body
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int {
+        return x * 2
+    }
+    let y: int = f(21)
+}
+---
+ok
+---

@@ -1,0 +1,729 @@
+=== abs allowed
+def f(x: int) -> int:
+    return abs(x)
+---
+ok
+---
+
+=== min allowed
+def f(a: int, b: int) -> int:
+    return min(a, b)
+---
+ok
+---
+
+=== max allowed
+def f(a: int, b: int) -> int:
+    return max(a, b)
+---
+ok
+---
+
+=== sum allowed
+def f(xs: list[int]) -> int:
+    return sum(xs)
+---
+ok
+---
+
+=== round allowed
+def f(x: float) -> int:
+    return round(x)
+---
+ok
+---
+
+=== divmod allowed
+def f(a: int, b: int) -> tuple[int, int]:
+    return divmod(a, b)
+---
+ok
+---
+
+=== pow allowed
+def f(a: int, b: int) -> int:
+    return pow(a, b)
+---
+ok
+---
+
+=== int conversion allowed
+def f(s: str) -> int:
+    return int(s)
+---
+ok
+---
+
+=== float conversion allowed
+def f(s: str) -> float:
+    return float(s)
+---
+ok
+---
+
+=== str conversion allowed
+def f(x: int) -> str:
+    return str(x)
+---
+ok
+---
+
+=== bool conversion allowed
+def f(x: int) -> bool:
+    return bool(x)
+---
+ok
+---
+
+=== bytes conversion allowed
+def f(s: str) -> bytes:
+    return bytes(s, "utf-8")
+---
+ok
+---
+
+=== chr allowed
+def f(x: int) -> str:
+    return chr(x)
+---
+ok
+---
+
+=== ord allowed
+def f(c: str) -> int:
+    return ord(c)
+---
+ok
+---
+
+=== list constructor allowed
+def f() -> list[int]:
+    return list()
+---
+ok
+---
+
+=== dict constructor allowed
+def f() -> dict[str, int]:
+    return dict()
+---
+ok
+---
+
+=== set constructor allowed
+def f() -> set[int]:
+    return set()
+---
+ok
+---
+
+=== tuple constructor allowed
+def f(xs: list[int]) -> tuple[int, ...]:
+    return tuple(xs)
+---
+ok
+---
+
+=== frozenset constructor allowed
+def f(xs: list[int]) -> frozenset[int]:
+    return frozenset(xs)
+---
+ok
+---
+
+=== len allowed
+def f(xs: list[int]) -> int:
+    return len(xs)
+---
+ok
+---
+
+=== sorted allowed
+def f(xs: list[int]) -> list[int]:
+    return sorted(xs)
+---
+ok
+---
+
+=== isinstance allowed
+def f(x: object) -> bool:
+    return isinstance(x, int)
+---
+ok
+---
+
+=== range in for loop allowed
+def f() -> int:
+    total: int = 0
+    for i in range(10):
+        total = total + i
+    return total
+---
+ok
+---
+
+=== enumerate in for loop allowed
+def f(xs: list[int]) -> int:
+    total: int = 0
+    for i, x in enumerate(xs):
+        total = total + i + x
+    return total
+---
+ok
+---
+
+=== enumerate with start in for loop allowed
+def f(xs: list[str]) -> int:
+    total: int = 0
+    for i, x in enumerate(xs, start=1):
+        total += i
+    return total
+---
+ok
+---
+
+=== enumerate in list comprehension allowed
+def f(xs: list[int]) -> list[tuple[int, int]]:
+    return list(enumerate(xs))
+---
+ok
+---
+
+=== zip in for loop allowed
+def f(xs: list[int], ys: list[int]) -> int:
+    total: int = 0
+    for x, y in zip(xs, ys):
+        total = total + x + y
+    return total
+---
+ok
+---
+
+=== zip in list comprehension allowed
+def f(xs: list[int], ys: list[int]) -> list[tuple[int, int]]:
+    return list(zip(xs, ys))
+---
+ok
+---
+
+=== reversed allowed
+def f(xs: list[int]) -> list[int]:
+    return list(reversed(xs))
+---
+ok
+---
+
+=== repr allowed
+def f(x: object) -> str:
+    return repr(x)
+---
+ok
+---
+
+=== ascii allowed
+def f(x: object) -> str:
+    return ascii(x)
+---
+ok
+---
+
+=== bin allowed
+def f(x: int) -> str:
+    return bin(x)
+---
+ok
+---
+
+=== hex allowed
+def f(x: int) -> str:
+    return hex(x)
+---
+ok
+---
+
+=== oct allowed
+def f(x: int) -> str:
+    return oct(x)
+---
+ok
+---
+
+=== all allowed
+def f(xs: list[bool]) -> bool:
+    return all(xs)
+---
+ok
+---
+
+=== any allowed
+def f(xs: list[bool]) -> bool:
+    return any(xs)
+---
+ok
+---
+
+=== slice allowed
+def f(xs: list[int]) -> list[int]:
+    s = slice(1, 3)
+    return xs[s]
+---
+ok
+---
+
+=== object allowed
+class Foo(object):
+    pass
+---
+ok
+---
+
+=== super allowed
+class Base:
+    def __init__(self) -> None:
+        pass
+class Child(Base):
+    def __init__(self) -> None:
+        super().__init__()
+---
+ok
+---
+
+=== print allowed
+def f() -> None:
+    print("hello")
+---
+ok
+---
+
+=== print with end allowed
+def f() -> None:
+    print("hello", end="")
+---
+ok
+---
+
+=== print with file allowed
+import sys
+def f() -> None:
+    print("error", file=sys.stderr)
+---
+ok
+---
+
+=== sorted with reverse allowed
+def f(xs: list[int]) -> list[int]:
+    return sorted(xs, reverse=True)
+---
+ok
+---
+
+=== generator expression in list allowed
+def f(xs: list[int]) -> list[int]:
+    return list(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in tuple allowed
+def f(xs: list[int]) -> tuple[int, ...]:
+    return tuple(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in set allowed
+def f(xs: list[int]) -> set[int]:
+    return set(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in frozenset allowed
+def f(xs: list[int]) -> frozenset[int]:
+    return frozenset(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in dict allowed
+def f(xs: list[str]) -> dict[str, int]:
+    return dict((x, len(x)) for x in xs)
+---
+ok
+---
+
+=== generator expression in sum allowed
+def f(xs: list[int]) -> int:
+    return sum(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in any allowed
+def f(xs: list[int]) -> bool:
+    return any(x > 0 for x in xs)
+---
+ok
+---
+
+=== generator expression in all allowed
+def f(xs: list[int]) -> bool:
+    return all(x > 0 for x in xs)
+---
+ok
+---
+
+=== generator expression in min allowed
+def f(xs: list[int]) -> int:
+    return min(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in max allowed
+def f(xs: list[int]) -> int:
+    return max(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in sorted allowed
+def f(xs: list[int]) -> list[int]:
+    return sorted(x * 2 for x in xs)
+---
+ok
+---
+
+=== generator expression in join allowed
+def f(xs: list[str]) -> str:
+    return ",".join(s.upper() for s in xs)
+---
+ok
+---
+
+=== type not allowed
+def f(x: object) -> object:
+    return type(x)
+---
+error: type()
+---
+
+=== getattr not allowed
+def f(x: object) -> object:
+    return getattr(x, "foo")
+---
+error: getattr
+---
+
+=== setattr not allowed
+def f(x: object) -> None:
+    setattr(x, "foo", 1)
+---
+error: setattr
+---
+
+=== hasattr not allowed
+def f(x: object) -> bool:
+    return hasattr(x, "foo")
+---
+error: hasattr
+---
+
+=== delattr not allowed
+def f(x: object) -> None:
+    delattr(x, "foo")
+---
+error: delattr
+---
+
+=== vars not allowed
+def f(x: object) -> object:
+    return vars(x)
+---
+error: vars
+---
+
+=== dir not allowed
+def f(x: object) -> object:
+    return dir(x)
+---
+error: dir
+---
+
+=== globals not allowed
+def f() -> object:
+    return globals()
+---
+error: globals
+---
+
+=== locals not allowed
+def f() -> object:
+    return locals()
+---
+error: locals
+---
+
+=== id not allowed
+def f(x: object) -> int:
+    return id(x)
+---
+error: id
+---
+
+=== callable not allowed
+def f(x: object) -> bool:
+    return callable(x)
+---
+error: callable
+---
+
+=== eval not allowed
+def f(s: str) -> object:
+    return eval(s)
+---
+error: eval
+---
+
+=== exec not allowed
+def f(s: str) -> None:
+    exec(s)
+---
+error: exec
+---
+
+=== compile not allowed
+def f(s: str) -> object:
+    return compile(s, "<string>", "eval")
+---
+error: compile
+---
+
+=== __import__ not allowed
+def f(name: str) -> object:
+    return __import__(name)
+---
+error: __import__
+---
+
+=== iter not allowed
+def f(xs: list[int]) -> object:
+    return iter(xs)
+---
+error: iter
+---
+
+=== next not allowed
+def f(xs: list[int]) -> int:
+    it = iter(xs)
+    return next(it)
+---
+error: iter
+---
+
+=== map not allowed
+def f(xs: list[int]) -> object:
+    return map(str, xs)
+---
+error: map
+---
+
+=== filter not allowed
+def f(xs: list[int]) -> object:
+    return filter(bool, xs)
+---
+error: filter
+---
+
+=== open not allowed
+def f() -> object:
+    return open("file.txt")
+---
+error: open
+---
+
+=== input not allowed
+def f() -> str:
+    return input()
+---
+error: input
+---
+
+=== issubclass not allowed
+def f() -> bool:
+    return issubclass(int, object)
+---
+error: issubclass
+---
+
+=== hash not allowed
+def f(x: str) -> int:
+    return hash(x)
+---
+error: hash
+---
+
+=== format not allowed
+def f(x: int) -> str:
+    return format(x, "d")
+---
+error: format
+---
+
+=== memoryview not allowed
+def f(b: bytes) -> object:
+    return memoryview(b)
+---
+error: memoryview
+---
+
+=== complex not allowed
+def f() -> object:
+    return complex(1, 2)
+---
+error: complex
+---
+
+=== aiter not allowed
+def f(xs: list[int]) -> object:
+    return aiter(xs)
+---
+error: aiter
+---
+
+=== anext not allowed
+def f(xs: list[int]) -> object:
+    return anext(xs)
+---
+error: anext
+---
+
+=== breakpoint not allowed
+def f() -> None:
+    breakpoint()
+---
+error: breakpoint
+---
+
+=== help not allowed
+def f() -> None:
+    help(int)
+---
+error: help
+---
+
+=== exit not allowed
+def f() -> None:
+    exit(0)
+---
+error: exit
+---
+
+=== quit not allowed
+def f() -> None:
+    quit(0)
+---
+error: quit
+---
+
+=== min with key not allowed
+def f(xs: list[str]) -> str:
+    return min(xs, key=len)
+---
+error: key
+---
+
+=== min with default not allowed
+def f(xs: list[int]) -> int:
+    return min(xs, default=0)
+---
+error: default
+---
+
+=== max with key not allowed
+def f(xs: list[str]) -> str:
+    return max(xs, key=len)
+---
+error: key
+---
+
+=== max with default not allowed
+def f(xs: list[int]) -> int:
+    return max(xs, default=0)
+---
+error: default
+---
+
+=== sorted with key not allowed
+def f(xs: list[str]) -> list[str]:
+    return sorted(xs, key=len)
+---
+error: key
+---
+
+=== print multiple values not allowed
+def f() -> None:
+    print("a", "b", "c")
+---
+error: print
+---
+
+=== print with sep not allowed
+def f() -> None:
+    print("hello", sep=",")
+---
+error: sep
+---
+
+=== enumerate assigned not allowed
+def f(xs: list[int]) -> object:
+    e = enumerate(xs)
+    return e
+---
+error: enumerate
+---
+
+=== enumerate returned not allowed
+def f(xs: list[int]) -> object:
+    return enumerate(xs)
+---
+error: enumerate
+---
+
+=== zip assigned not allowed
+def f(xs: list[int], ys: list[int]) -> object:
+    z = zip(xs, ys)
+    return z
+---
+error: zip
+---
+
+=== zip returned not allowed
+def f(xs: list[int], ys: list[int]) -> object:
+    return zip(xs, ys)
+---
+error: zip
+---
+
+=== generator expression assigned not allowed
+def f(xs: list[int]) -> None:
+    g = (x * 2 for x in xs)
+---
+error: generator
+---
+
+=== generator expression returned not allowed
+def f(xs: list[int]) -> object:
+    return (x * 2 for x in xs)
+---
+error: generator
+---
+
+=== generator expression in non-eager call not allowed
+def foo(x: object) -> None:
+    pass
+def f(xs: list[int]) -> None:
+    foo(x * 2 for x in xs)
+---
+error: generator
+---

@@ -1,0 +1,135 @@
+=== simple function
+def f(x: int) -> str:
+    return str(x)
+---
+fn f(x: int) -> string {
+    return ToString(x)
+}
+---
+
+=== void function
+def greet(name: str) -> None:
+    print(name)
+---
+fn greet(name: string) -> void {
+---
+
+=== module constant
+MAX_SIZE = 100
+def f() -> int:
+    return MAX_SIZE
+---
+let MAX_SIZE: int = 100
+---
+
+=== dataclass struct
+from dataclasses import dataclass
+@dataclass
+class Point:
+    x: int
+    y: int
+def f() -> Point:
+    return Point(1, 2)
+---
+struct Point {
+    x: int
+    y: int
+}
+---
+
+=== struct with method
+from dataclasses import dataclass
+@dataclass
+class Counter:
+    val: int
+    def get(self) -> int:
+        return self.val
+def f() -> None:
+    c = Counter(0)
+    _ = c.get()
+---
+fn get(self) -> int {
+    return self.val
+}
+---
+
+=== exception struct
+class MyError(Exception):
+    def __init__(self, msg: str) -> None:
+        self.msg = msg
+def f() -> None:
+    raise MyError("fail")
+---
+struct MyError {
+    message: string
+}
+---
+
+=== hierarchy interface
+class Node:
+    def __init__(self) -> None:
+        pass
+class Leaf(Node):
+    def __init__(self, val: int) -> None:
+        self.val = val
+class Branch(Node):
+    def __init__(self, left: Node, right: Node) -> None:
+        self.left = left
+        self.right = right
+def f() -> None:
+    pass
+---
+interface Node {}
+---
+
+=== struct implements interface
+class Node:
+    def __init__(self) -> None:
+        pass
+class Leaf(Node):
+    def __init__(self, val: int) -> None:
+        self.val = val
+def f() -> None:
+    pass
+---
+struct Leaf : Node {
+    val: int
+}
+---
+
+=== entry point
+def main() -> None:
+    print("hi")
+if __name__ == "__main__":
+    main()
+---
+fn Main() -> void {
+    WritelnOut("hi")
+}
+---
+
+=== class constant lowered
+from dataclasses import dataclass
+@dataclass
+class Direction:
+    NORTH = 0
+    SOUTH = 1
+def f() -> int:
+    return Direction.NORTH
+---
+let Direction_NORTH: int = 0
+---
+
+=== multiple functions preserve order
+def first() -> int:
+    return 1
+def second() -> int:
+    return 2
+---
+fn first() -> int {
+    return 1
+}
+fn second() -> int {
+    return 2
+}
+---

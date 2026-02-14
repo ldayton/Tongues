@@ -1,0 +1,248 @@
+=== match interface exhaustive
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+fn Eval(n: Node) -> int {
+    match n {
+        case lit: Literal {
+            return lit.value
+        }
+        case bin: BinOp {
+            return Eval(bin.left) + Eval(bin.right)
+        }
+    }
+}
+fn Main() -> void {
+    let n: Node = Literal(42)
+    WritelnOut(ToString(Eval(n)))
+}
+---
+ok
+---
+
+=== match enum exhaustive
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Name(c: Color) -> string {
+    match c {
+        case Color.Red {
+            return "red"
+        }
+        case Color.Green {
+            return "green"
+        }
+        case Color.Blue {
+            return "blue"
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Name(Color.Red))
+}
+---
+ok
+---
+
+=== match enum with default
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn IsRed(c: Color) -> bool {
+    match c {
+        case Color.Red {
+            return true
+        }
+        default {
+            return false
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(ToString(IsRed(Color.Red)))
+}
+---
+ok
+---
+
+=== match non-exhaustive
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+fn Eval(n: Node) -> int {
+    match n {
+        case lit: Literal {
+            return lit.value
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: non-exhaustive match
+---
+
+=== match optional
+fn Show(x: int?) -> string {
+    match x {
+        case v: int {
+            return ToString(v)
+        }
+        case nil {
+            return "nil"
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Show(42))
+    WritelnOut(Show(nil))
+}
+---
+ok
+---
+
+=== match duplicate case
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Foo(c: Color) -> void {
+    match c {
+        case Color.Red {
+        }
+        case Color.Red {
+        }
+        default {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: duplicate case
+---
+
+=== cannot match on primitive
+fn Main() -> void {
+    let x: int = 42
+    match x {
+        default {
+        }
+    }
+}
+---
+error: cannot match on int
+---
+
+=== match union
+fn Describe(v: int | string) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: string {
+            return s
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(42))
+}
+---
+ok
+---
+
+=== default must be last
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+fn Foo(n: Node) -> void {
+    match n {
+        default {
+        }
+        case lit: Literal {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: default must be last
+---
+
+=== match with default binding
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+fn Foo(n: Node) -> string {
+    match n {
+        case lit: Literal {
+            return ToString(lit.value)
+        }
+        default o {
+            return ToString(o)
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== cannot match on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    match xs {
+        default {
+        }
+    }
+}
+---
+error: cannot match on list
+---
+
+=== cannot match on struct
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, 2)
+    match p {
+        default {
+        }
+    }
+}
+---
+error: cannot match
+---

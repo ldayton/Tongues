@@ -547,6 +547,7 @@ BUILTIN_NAMES: set[str] = {
     # Math
     "IsNaN",
     "IsInf",
+    "Sqrt",
 }
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
@@ -671,7 +672,7 @@ class Checker:
             return
         # Check current scope for duplicate
         if len(self.scopes) > 0 and name in self.scopes[-1]:
-            self.error("'" + name + "' already declared in this scope", pos)
+            self.error("'" + name + "' shadows outer binding", pos)
             return
         # Check outer scopes for shadowing
         i = len(self.scopes) - 2
@@ -945,7 +946,7 @@ class Checker:
         if isinstance(target, TVar) and target.name == "self":
             return "cannot assign to self"
         if isinstance(target, TTupleAccess):
-            return "tuple elements are immutable"
+            return "cannot assign to tuple element"
         if isinstance(target, TIndex):
             obj_type = self.check_expr(target.obj, None)
             if obj_type is not None and type_eq(obj_type, STRING_T):
@@ -1097,6 +1098,9 @@ class Checker:
             if not type_eq(self.current_fn_ret, VOID_T):
                 self.error("missing return value in non-void function", stmt.pos)
         else:
+            if type_eq(self.current_fn_ret, VOID_T):
+                self.error("cannot return value from void function", stmt.pos)
+                return
             val_type = self.check_expr(stmt.value, self.current_fn_ret)
             if val_type is not None and not is_assignable(
                 val_type, self.current_fn_ret
@@ -1329,7 +1333,7 @@ class Checker:
                     else:
                         key = pat.enum_name + "." + pat.variant
                         if key in covered:
-                            self.error("duplicate match case: " + key, pat.pos)
+                            self.error("duplicate case", pat.pos)
                         covered.append(key)
                 else:
                     self.error("'" + pat.enum_name + "' is not an enum", pat.pos)
@@ -1349,7 +1353,7 @@ class Checker:
                 )
             key2 = _type_key(case_type)
             if key2 in covered:
-                self.error("duplicate match case: " + type_name(case_type), pat.pos)
+                self.error("duplicate case", pat.pos)
             covered.append(key2)
             # For interface cases in a union, also mark all struct variants covered
             if isinstance(case_type, InterfaceT):
@@ -1571,7 +1575,12 @@ class Checker:
                 )
                 return None
             if left.kind not in (TY_INT, TY_FLOAT, TY_BYTE, TY_RUNE, TY_STRING):
-                self.error("ordering not defined for " + type_name(left), pos)
+                msg = (
+                    "not defined for union"
+                    if isinstance(left, UnionT)
+                    else "ordering not defined for " + type_name(left)
+                )
+                self.error(msg, pos)
                 return None
             return BOOL_T
         # Arithmetic: +, -, *, /, % — int, float, byte; same type
@@ -1711,6 +1720,8 @@ class Checker:
             field_type = self._union_field_type(obj_type, expr.field)
             if field_type is not None:
                 return field_type
+        if obj_type.kind == TY_OBJ:
+            return OBJ_T
         self.error(
             "cannot access field '" + expr.field + "' on " + type_name(obj_type),
             expr.pos,
@@ -1792,7 +1803,12 @@ class Checker:
                     expr.pos,
                 )
             return obj_type.value
-        self.error("cannot index " + type_name(obj_type), expr.pos)
+        msg = (
+            "cannot index union"
+            if isinstance(obj_type, UnionT)
+            else "cannot index " + type_name(obj_type)
+        )
+        self.error(msg, expr.pos)
         return None
 
     def check_slice(self, expr: TSlice) -> Type | None:
@@ -1834,7 +1850,7 @@ class Checker:
                 pnames = self.fn_param_names.get(expr.func.name)
                 return self.check_fn_call(resolved, expr.args, expr.pos, pnames)
             if resolved is not None:
-                self.error("'" + expr.func.name + "' is not callable", expr.pos)
+                self.error("cannot call " + type_name(resolved), expr.pos)
                 return None
             return None
         # Method call: TCall with TFieldAccess func
@@ -2897,7 +2913,9 @@ class Checker:
             if not require(1):
                 return None
             t = arg(0)
-            if t is not None and not (type_eq(t, STRING_T) or type_eq(t, BYTES_T)):
+            if t is not None and not (
+                type_eq(t, STRING_T) or type_eq(t, BYTES_T) or type_eq(t, OBJ_T)
+            ):
                 self.error(name + " requires string or bytes", pos)
             return VOID_T
         if name == "ReadLine":
@@ -2971,6 +2989,7 @@ class Checker:
                 if contains_nil(t):
                     return remove_nil(t)
                 self.error("Unwrap requires optional type", pos)
+                return t
             return None
 
         # ── Math extras ──
@@ -2981,6 +3000,13 @@ class Checker:
             if t is not None and not type_eq(t, FLOAT_T):
                 self.error(name + " requires float", pos)
             return BOOL_T
+        if name == "Sqrt":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, FLOAT_T):
+                self.error("Sqrt requires float", pos)
+            return FLOAT_T
 
         self.error("unknown built-in function: " + name, pos)
         return None

@@ -33,15 +33,15 @@ Immutable types (`int`, `float`, `bool`, `byte`, `rune`, `string`, `bytes`, tupl
 
 The pass classifies each binding based on how its value originates and flows:
 
-| Pattern | `ownership.kind` | Rationale |
-| ------- | ----------------- | --------- |
-| Constructor call (`Foo(...)`) | `owned` | caller creates the value |
-| Collection literal (`[...]`, `{...}`) | `owned` | caller creates the value |
-| Function return value | `owned` | ownership transfers to caller |
-| Parameter (default) | `borrowed` | caller retains ownership |
-| Field access (`x.field`) | `borrowed` | owner is the containing struct |
-| Index expression (`xs[i]`) | `borrowed` | owner is the containing collection |
-| Ambiguous / multiply-assigned | `shared` | runtime reference counting needed |
+| Pattern                               | `ownership.kind` | Rationale                          |
+| ------------------------------------- | ---------------- | ---------------------------------- |
+| Constructor call (`Foo(...)`)         | `owned`          | caller creates the value           |
+| Collection literal (`[...]`, `{...}`) | `owned`          | caller creates the value           |
+| Function return value                 | `owned`          | ownership transfers to caller      |
+| Parameter (default)                   | `borrowed`       | caller retains ownership           |
+| Field access (`x.field`)              | `borrowed`       | owner is the containing struct     |
+| Index expression (`xs[i]`)            | `borrowed`       | owner is the containing collection |
+| Ambiguous / multiply-assigned         | `shared`         | runtime reference counting needed  |
 
 A binding starts with an initial classification from its origin. Subsequent assignments may change the classification — a binding that receives values from multiple sources with different ownership is conservatively marked `shared`.
 
@@ -51,21 +51,21 @@ This section is normative: it defines the annotation keys, value types, attachme
 
 Attachment points (by syntax):
 
-| Syntax | Annotation attachment point |
-| ------ | --------------------------- |
-| `fn F(p: T, ...) { ... }` | each parameter binding `p` |
-| `let x: T = expr` | the `let` binding `x` |
-| `for x in xs { ... }` / `for i, x in xs { ... }` | loop binder(s) `i`, `x` |
-| `case v: T { ... }` / `default v { ... }` | case binding `v` |
-| `catch e: E { ... }` / `catch e { ... }` | catch binding `e` |
-| any expression | the expression node |
+| Syntax                                           | Annotation attachment point |
+| ------------------------------------------------ | --------------------------- |
+| `fn F(p: T, ...) { ... }`                        | each parameter binding `p`  |
+| `let x: T = expr`                                | the `let` binding `x`       |
+| `for x in xs { ... }` / `for i, x in xs { ... }` | loop binder(s) `i`, `x`     |
+| `case v: T { ... }` / `default v { ... }`        | case binding `v`            |
+| `catch e: E { ... }` / `catch e { ... }`         | catch binding `e`           |
+| any expression                                   | the expression node         |
 
 ### Binding annotations
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
-| `ownership.kind` | `string` | binding declaration node | `"owned"`, `"borrowed"`, or `"shared"` |
-| `ownership.region` | `string` | binding declaration node | lifetime region identifier |
+| Key                | Type     | Applies to               | Meaning                                |
+| ------------------ | -------- | ------------------------ | -------------------------------------- |
+| `ownership.kind`   | `string` | binding declaration node | `"owned"`, `"borrowed"`, or `"shared"` |
+| `ownership.region` | `string` | binding declaration node | lifetime region identifier             |
 
 **`ownership.kind`** classifies how the binding relates to the value's lifetime:
 
@@ -81,8 +81,8 @@ Both `ownership.kind` and `ownership.region` MUST be present on every binding de
 
 ### Expression annotations
 
-| Key | Type | Applies to | Meaning |
-| --- | ---- | ---------- | ------- |
+| Key                 | Type   | Applies to      | Meaning                                       |
+| ------------------- | ------ | --------------- | --------------------------------------------- |
 | `ownership.escapes` | `bool` | expression node | `true` if the value escapes the current scope |
 
 A value **escapes** its scope when it is stored somewhere that outlives the scope in which it was created:

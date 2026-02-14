@@ -1,0 +1,225 @@
+=== subclass assignable to base type
+class Node:
+    pass
+class Expr(Node):
+    pass
+def f() -> Node:
+    e: Node = Expr()
+    return e
+---
+ok
+---
+
+=== parameter typed as base accepts subclass
+class Node:
+    pass
+class Expr(Node):
+    def __init__(self) -> None:
+        self.value: int = 0
+def process(n: Node) -> None:
+    pass
+def f() -> None:
+    process(Expr())
+---
+ok
+---
+
+=== union of subclasses resolved to root
+class Node:
+    pass
+class Expr(Node):
+    pass
+class Stmt(Node):
+    pass
+def f(flag: bool) -> Node:
+    if flag:
+        return Expr()
+    return Stmt()
+---
+ok
+---
+
+=== concrete return type from function
+class Node:
+    pass
+class Expr(Node):
+    pass
+def make() -> Expr:
+    return Expr()
+def f() -> Expr:
+    return make()
+---
+ok
+---
+
+=== hierarchy root as parameter with isinstance
+class Node:
+    pass
+class Expr(Node):
+    def eval(self) -> int:
+        return 0
+class Stmt(Node):
+    pass
+def process(n: Node) -> int:
+    if isinstance(n, Expr):
+        return n.eval()
+    return -1
+---
+ok
+---
+
+=== subclass method not accessible on base type
+class Node:
+    pass
+class Expr(Node):
+    def eval(self) -> int:
+        return 0
+def f(n: Node) -> int:
+    return n.eval()
+---
+error: eval
+---
+
+=== list of base type accepts subclass elements
+class Node:
+    pass
+class Expr(Node):
+    pass
+class Stmt(Node):
+    pass
+def f() -> list[Node]:
+    items: list[Node] = []
+    items.append(Expr())
+    items.append(Stmt())
+    return items
+---
+ok
+---
+
+=== optional struct field allowed
+from dataclasses import dataclass
+@dataclass
+class Node:
+    value: int
+    child: "Node | None"
+def f() -> Node:
+    return Node(value=1, child=None)
+---
+ok
+---
+
+=== non-optional struct rejects None
+from dataclasses import dataclass
+@dataclass
+class Pair:
+    x: int
+    y: int
+def f() -> Pair:
+    p: Pair | None = None
+    assert p is not None
+    return p
+---
+ok
+---
+
+=== narrowing from base to multiple subclasses
+class Node:
+    pass
+class Expr(Node):
+    def eval(self) -> int:
+        return 0
+class Stmt(Node):
+    def execute(self) -> None:
+        pass
+def f(n: Node) -> int:
+    if isinstance(n, Expr):
+        return n.eval()
+    if isinstance(n, Stmt):
+        n.execute()
+    return -1
+---
+ok
+---
+
+=== deep hierarchy allowed
+class Node:
+    pass
+class Expr(Node):
+    pass
+class BinOp(Expr):
+    def __init__(self) -> None:
+        self.left: int = 0
+        self.right: int = 0
+def f(n: Node) -> int:
+    if isinstance(n, BinOp):
+        return n.left + n.right
+    return 0
+---
+ok
+---
+
+=== return subclass where base expected
+class Node:
+    pass
+class Expr(Node):
+    pass
+def f() -> Node:
+    return Expr()
+---
+ok
+---
+
+=== base type variable reassigned to different subclass
+class Node:
+    pass
+class Expr(Node):
+    pass
+class Stmt(Node):
+    pass
+def f(flag: bool) -> Node:
+    n: Node = Expr()
+    if flag:
+        n = Stmt()
+    return n
+---
+ok
+---
+
+=== kind-based narrowing in hierarchy
+from dataclasses import dataclass
+class Node:
+    pass
+@dataclass
+class Add(Node):
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Sub(Node):
+    kind: str
+    left: int
+    right: int
+def eval(n: Node) -> int:
+    if isinstance(n, Add):
+        return n.left + n.right
+    if isinstance(n, Sub):
+        return n.left - n.right
+    return 0
+---
+ok
+---
+
+=== interface field widening with None
+class Token:
+    pass
+class Ident(Token):
+    pass
+from dataclasses import dataclass
+@dataclass
+class Parser:
+    current: Token
+def f() -> Parser:
+    return Parser(current=None)
+---
+ok
+---
