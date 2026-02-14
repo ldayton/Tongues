@@ -128,40 +128,45 @@ let done: bool = true
 
 Target representations:
 
-| Target     | `int`     | `float`   | Notes                              |
-| ---------- | --------- | --------- | ---------------------------------- |
-| C          | `int64_t` | `double`  |                                    |
-| C#         | `long`    | `double`  |                                    |
-| Dart       | `int`     | `double`  |                                    |
-| Go         | `int`     | `float64` | `int` is 64-bit on modern targets  |
-| Java       | `long`    | `double`  |                                    |
-| JavaScript | `number`  | `number`  | IEEE 754 double; 53-bit int range  |
-| Lua        | `integer` | `number`  |                                    |
-| Perl       | scalar    | scalar    |                                    |
-| PHP        | `int`     | `float`   | 64-bit on modern targets           |
-| Python     | `int`     | `float`   | int is arbitrary precision         |
-| Ruby       | `Integer` | `Float`   | Integer is arbitrary precision     |
-| Rust       | `i64`     | `f64`     |                                    |
-| Swift      | `Int`     | `Double`  | `Int` is 64-bit on modern targets  |
-| TypeScript | `number`  | `number`  | IEEE 754 double; 53-bit int range  |
-| Zig        | `i64`     | `f64`     | `f64` is IEEE-compliant by default |
+| Target     | `int`     | `float`   | Notes                                                        |
+| ---------- | --------- | --------- | ------------------------------------------------------------ |
+| C          | `int64_t` | `double`  |                                                              |
+| C#         | `long`    | `double`  |                                                              |
+| Dart       | `int`     | `double`  |                                                              |
+| Go         | `int`     | `float64` | `int` is 64-bit on modern targets                            |
+| Java       | `long`    | `double`  |                                                              |
+| JavaScript | `number`  | `number`  | IEEE 754 double; 53-bit int range; strict math uses `BigInt` |
+| Lua        | `integer` | `number`  |                                                              |
+| Perl       | scalar    | scalar    |                                                              |
+| PHP        | `int`     | `float`   | 64-bit on modern targets                                     |
+| Python     | `int`     | `float`   | int is arbitrary precision                                   |
+| Ruby       | `Integer` | `Float`   | Integer is arbitrary precision                               |
+| Rust       | `i64`     | `f64`     |                                                              |
+| Swift      | `Int`     | `Double`  | `Int` is 64-bit on modern targets                            |
+| TypeScript | `number`  | `number`  | IEEE 754 double; 53-bit int range; strict math uses `BigInt` |
+| Zig        | `i64`     | `f64`     | `f64` is IEEE-compliant by default                           |
 
 ### Functions
 
-| Function       | Signature                | Description                                              |
-| -------------- | ------------------------ | -------------------------------------------------------- |
-| `Abs(x)`       | `T -> T`                 | absolute value                                           |
-| `Min(a, b)`    | `T, T -> T`              | smaller of two values                                    |
-| `Max(a, b)`    | `T, T -> T`              | larger of two values                                     |
-| `Sum(xs)`      | `list[T] -> T`           | sum of elements                                          |
-| `Pow(a, b)`    | `T, T -> T`              | exponentiation                                           |
-| `Round(x)`     | `float -> int`           | round to nearest integer                                 |
-| `Floor(x)`     | `float -> int`           | largest integer ≤ x                                      |
-| `Ceil(x)`      | `float -> int`           | smallest integer ≥ x                                     |
-| `Sqrt(x)`      | `float -> float`         | square root; IEEE 754 correctly rounded                  |
-| `DivMod(a, b)` | `int, int -> (int, int)` | quotient and remainder (truncating, same as `/` and `%`) |
+| Function            | Signature                | Description                                              |
+| ------------------- | ------------------------ | -------------------------------------------------------- |
+| `Abs(x)`            | `T -> T`                 | absolute value                                           |
+| `Min(a, b)`         | `T, T -> T`              | smaller of two values                                    |
+| `Max(a, b)`         | `T, T -> T`              | larger of two values                                     |
+| `Sum(xs)`           | `list[T] -> T`           | sum of elements                                          |
+| `Pow(a, b)`         | `T, T -> T`              | exponentiation                                           |
+| `Round(x)`          | `float -> int`           | round to nearest integer                                 |
+| `Floor(x)`          | `float -> int`           | largest integer ≤ x                                      |
+| `Ceil(x)`           | `float -> int`           | smallest integer ≥ x                                     |
+| `Sqrt(x)`           | `float -> float`         | square root; IEEE 754 correctly rounded                  |
+| `DivMod(a, b)`      | `int, int -> (int, int)` | quotient and remainder (truncating, same as `/` and `%`) |
+| `WrappingAdd(a, b)` | `int, int -> int`        | addition wrapping mod 2^64; strict math only             |
+| `WrappingSub(a, b)` | `int, int -> int`        | subtraction wrapping mod 2^64; strict math only          |
+| `WrappingMul(a, b)` | `int, int -> int`        | multiplication wrapping mod 2^64; strict math only       |
 
 `T` in `Min`, `Max` is `int`, `float`, or `byte`. `T` in `Abs`, `Sum`, `Pow` is `int` or `float`. `Sqrt`, `Floor`, and `Ceil` are `float` only. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
+
+`WrappingAdd`, `WrappingSub`, and `WrappingMul` are available only in strict math mode. They return the unique value in [-2^63, 2^63) congruent to the mathematical result modulo 2^64. These exist to support software floating-point implementation — see Strict Math.
 
 ## Bytes
 
@@ -223,6 +228,7 @@ let abs: int = x > 0 ? x : -x
 | `&`      | `T, T`       | `T`    | 7    | left  | bitwise and (int, byte)                                                            |
 | `<<`     | `T, int`     | `T`    | 8    | left  | left shift (int, byte); right operand must be non-negative                         |
 | `>>`     | `T, int`     | `T`    | 8    | left  | arithmetic right shift (int, byte); right operand non-negative                     |
+| `>>>`    | `T, int`     | `T`    | 8    | left  | logical right shift (int, byte); right operand non-negative; strict math only      |
 | `+`      | `T, T`       | `T`    | 9    | left  | addition (int, float, byte)                                                        |
 | `-`      | `T, T`       | `T`    | 9    | left  | subtraction (int, float, byte)                                                     |
 | `*`      | `T, T`       | `T`    | 10   | left  | multiplication (int, float, byte)                                                  |
@@ -232,7 +238,7 @@ let abs: int = x > 0 ? x : -x
 | `!`      | `bool`       | `bool` | 11   | right | logical not                                                                        |
 | `~`      | `T`          | `T`    | 11   | right | bitwise complement (int, byte)                                                     |
 
-All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. For float `%`, result is IEEE 754 remainder (`fmod`); sign follows dividend; behavior with zero divisor is unspecified. Byte arithmetic wraps mod 256. String comparisons are lexicographic.
+All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. For float `%`, result is IEEE 754 remainder (`fmod`); sign follows dividend; behavior with zero divisor is unspecified. Byte arithmetic wraps mod 256. String comparisons are lexicographic. `>>>` (logical right shift) zero-fills from the left, unlike `>>` which sign-extends. `>>>` is available only in strict math mode — see Strict Math.
 
 Comparisons are binary — `a < b < c` is not valid. Python's chained comparisons are desugared by the lowerer into `&&`-connected binary comparisons. A middleend raising pass can reconstruct chains for targets that support them (Python).
 
@@ -1242,36 +1248,34 @@ Floats are IEEE 754 binary64 (double precision) on all targets.
 
 ### Strict Math
 
-The `--strict-math` flag enables bit-identical arithmetic across targets. All 11 strict-mode targets produce exactly the same integer and float results for the same inputs.
-
-Excluded targets:
-
-| Target     | Reason                                                    |
-| ---------- | --------------------------------------------------------- |
-| JavaScript | 53-bit integer range; cannot represent 64-bit integers    |
-| TypeScript | same as JavaScript                                        |
-| C#         | .NET JIT performs FMA contraction; no in-code opt-out     |
-| Swift      | LLVM backend performs FMA contraction; no in-code opt-out |
+The `--strict-math` flag enables bit-identical arithmetic across all 15 targets. Every target produces exactly the same integer and float results for the same inputs.
 
 When strict math is enabled:
 
-| Property                          | Default mode        | Strict mode         |
-| --------------------------------- | ------------------- | ------------------- |
-| Integer width                     | at least 53 bits    | exactly 64 bits     |
-| Integer overflow                  | unspecified         | traps               |
-| Shift ≥ 64                        | unspecified         | traps               |
-| Negation of `INT64_MIN`           | unspecified         | traps               |
-| `Pow(int, int)` overflow          | unspecified         | traps               |
-| `Pow(int, int)` negative exponent | unspecified         | traps               |
-| `Min`/`Max` with NaN              | backends may differ | NaN propagates      |
-| `Round`                           | half-away-from-zero | half-away-from-zero |
-| Float `%` with zero divisor       | unspecified         | traps               |
-| `Sorted` with NaN                 | unspecified         | traps               |
-| Available targets                 | all 15              | 11                  |
+| Property                          | Default mode        | Strict mode          |
+| --------------------------------- | ------------------- | -------------------- |
+| Integer width                     | at least 53 bits    | exactly 64 bits      |
+| Integer overflow                  | unspecified         | traps                |
+| Shift ≥ 64                        | unspecified         | traps                |
+| Negation of `INT64_MIN`           | unspecified         | traps                |
+| `Pow(int, int)` overflow          | unspecified         | traps                |
+| `Pow(int, int)` negative exponent | unspecified         | traps                |
+| `Min`/`Max` with NaN              | backends may differ | NaN propagates       |
+| `Round`                           | half-away-from-zero | half-away-from-zero  |
+| Float `%` with zero divisor       | unspecified         | traps                |
+| `Sorted` with NaN                 | unspecified         | traps                |
+| `>>>` (logical right shift)       | not available       | zero-fills from left |
+| `WrappingAdd/Sub/Mul`             | not available       | wraps mod 2^64       |
+| Float implementation              | hardware IEEE 754   | software float       |
+| Available targets                 | all 15              | all 15               |
 
-Strict mode integers are signed two's complement, exactly 64 bits. Overflow on any integer operation — addition, subtraction, multiplication, negation, left shift, exponentiation — is a runtime error. Targets with arbitrary-precision integers (Python, Ruby) emit range checks to enforce 64-bit bounds. Targets with native overflow detection use it: Rust (`checked_add`), Java (`Math.addExact`), C (`__builtin_add_overflow`), Zig (`@addWithOverflow`). Remaining targets (Go, Dart, Lua, PHP, Perl) emit manual comparison checks.
+Strict mode integers are signed two's complement, exactly 64 bits. Overflow on any integer operation — addition, subtraction, multiplication, negation, left shift, exponentiation — is a runtime error. Targets with arbitrary-precision integers (Python, Ruby) emit range checks to enforce 64-bit bounds. JavaScript and TypeScript use `BigInt` for all integer operations in strict mode, with range checks to enforce 64-bit bounds — the same approach as Python and Ruby. Targets with native overflow detection use it: Rust (`checked_add`), Java (`Math.addExact`), C (`__builtin_add_overflow`), Zig (`@addWithOverflow`). Remaining targets (Go, Dart, Lua, PHP, Perl) emit manual comparison checks.
 
-Strict mode floats are IEEE 754 binary64, same as default mode. Basic operations (`+`, `-`, `*`, `/`) are already bit-identical across all targets by IEEE 754 mandate. Strict mode additionally specifies `Min`, `Max`, and float `%` behavior — backends emit inline wrappers where the native function disagrees. FMA contraction is controlled per-target: C (`#pragma STDC FP_CONTRACT OFF`), Zig (`f64` is IEEE-compliant by default), Rust (no contraction by default). Interpreted and VM targets (Python, Ruby, Go, Java, Dart, Lua, PHP, Perl) do not perform FMA contraction.
+Strict mode floats are IEEE 754 binary64, implemented via software floating-point. All float operations — arithmetic, comparison, conversion — are performed by a softfloat library written in Taytsh using only strict-mode integer operations. Since strict-mode integers are already bit-identical across targets, and softfloat uses only integer operations, float results are bit-identical by construction. Hardware FMA contraction, library differences, and compiler optimizations cannot affect results because no native float operations are used at runtime.
+
+The softfloat library is transpiled alongside user code to each target language. Float literals are converted to their IEEE 754 bit patterns at compile time by the lowerer. `ParseFloat` and `ToString` for floats are implemented within the softfloat library.
+
+Two additional primitives exist to support the softfloat implementation. `>>>` (logical right shift) zero-fills from the left, unlike `>>` which sign-extends — softfloat manipulates bit patterns where arithmetic shift would corrupt the upper bits. `WrappingAdd`, `WrappingSub`, and `WrappingMul` perform two's complement arithmetic modulo 2^64 without trapping — softfloat routinely overflows during intermediate calculations. Both `>>>` and the wrapping functions are available only in strict math mode.
 
 `Pow(float, float)` with non-integer exponent is not available in strict mode — underlying `exp`/`log` implementations are not mandated by IEEE 754 and differ across targets. Integer exponents use binary exponentiation (emitted inline, exact within 64-bit range).
 
@@ -1315,7 +1319,7 @@ The strict tostring flag is stored on the Module node (see Source Metadata).
 
 ### Strict
 
-`--strict` enables `--strict-math` and `--strict-tostring`. The available target set is the intersection — 11 targets (excluding JavaScript, TypeScript, C#, and Swift, per `--strict-math` restrictions).
+`--strict` enables `--strict-math` and `--strict-tostring`. The available target set is all 15 targets.
 
 ### Pragmas
 
@@ -1545,7 +1549,7 @@ CompOp     = '==' | '!=' | '<' | '<=' | '>' | '>='
 BitOr      = BitXor ( '|' BitXor )*
 BitXor     = BitAnd ( '^' BitAnd )*
 BitAnd     = Shift ( '&' Shift )*
-Shift      = Sum ( ( '<<' | '>>' ) Sum )*
+Shift      = Sum ( ( '<<' | '>>' | '>>>' ) Sum )*
 Sum        = Product ( ( '+' | '-' ) Product )*
 Product    = Unary ( ( '*' | '/' | '%' ) Unary )*
 Unary      = ( '-' | '!' | '~' ) Unary

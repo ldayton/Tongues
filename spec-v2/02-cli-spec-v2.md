@@ -67,9 +67,9 @@ Three flags control cross-target consistency. Strict flags are stored on the Tay
 
 | Flag                | Effect                                                      |
 | ------------------- | ----------------------------------------------------------- |
-| `--strict-math`     | Bit-identical arithmetic across targets (11 targets)        |
+| `--strict-math`     | Bit-identical arithmetic across targets (all 15 targets)    |
 | `--strict-tostring` | Canonical `ToString` format across targets (all 15 targets) |
-| `--strict`          | Enables both (11 targets)                                   |
+| `--strict`          | Enables both (all 15 targets)                               |
 
 Strict mode can also be set within source files via pragmas:
 

@@ -1,0 +1,248 @@
+=== bool truthiness allowed
+def f(flag: bool) -> int:
+    if flag:
+        return 1
+    return 0
+---
+ok
+---
+
+=== optional truthiness allowed
+def f(x: int | None) -> int:
+    if x:
+        return x
+    return 0
+---
+ok
+---
+
+=== optional str truthiness not allowed
+def f(s: str | None) -> str:
+    if s:
+        return s
+    return "default"
+---
+error: ambiguous
+---
+
+=== list truthiness allowed
+def f(xs: list[int]) -> int:
+    if xs:
+        return xs[0]
+    return 0
+---
+ok
+---
+
+=== str truthiness allowed
+def f(s: str) -> int:
+    if s:
+        return len(s)
+    return 0
+---
+ok
+---
+
+=== dict truthiness allowed
+def f(d: dict[str, int]) -> int:
+    if d:
+        return 1
+    return 0
+---
+ok
+---
+
+=== set truthiness allowed
+def f(s: set[int]) -> int:
+    if s:
+        return 1
+    return 0
+---
+ok
+---
+
+=== while with bool allowed
+def f(n: int) -> int:
+    result: int = 0
+    running: bool = True
+    while running:
+        result += 1
+        if result >= n:
+            running = False
+    return result
+---
+ok
+---
+
+=== while with optional allowed
+def f(x: int | None) -> int:
+    total: int = 0
+    while x:
+        total += x
+        x = None
+    return total
+---
+ok
+---
+
+=== and with bools allowed
+def f(a: bool, b: bool) -> bool:
+    return a and b
+---
+ok
+---
+
+=== or with bools allowed
+def f(a: bool, b: bool) -> bool:
+    return a or b
+---
+ok
+---
+
+=== not with bool allowed
+def f(x: bool) -> bool:
+    return not x
+---
+ok
+---
+
+=== optional in and expression allowed
+def f(x: int | None) -> int:
+    return x and x + 1 or 0
+---
+ok
+---
+
+=== ternary with bool condition allowed
+def f(flag: bool, a: int, b: int) -> int:
+    return a if flag else b
+---
+ok
+---
+
+=== ternary with optional condition allowed
+def f(x: int | None, a: int, b: int) -> int:
+    return a if x else b
+---
+ok
+---
+
+=== list or none ambiguous not allowed
+def f(xs: list[int] | None) -> int:
+    if xs:
+        return xs[0]
+    return 0
+---
+error: ambiguous
+---
+
+=== dict or none ambiguous not allowed
+def f(d: dict[str, int] | None) -> int:
+    if d:
+        return 1
+    return 0
+---
+error: ambiguous
+---
+
+=== set or none ambiguous not allowed
+def f(s: set[int] | None) -> int:
+    if s:
+        return 1
+    return 0
+---
+error: ambiguous
+---
+
+=== str or none ambiguous not allowed
+def f(s: str | None) -> int:
+    if s:
+        return len(s)
+    return 0
+---
+error: ambiguous
+---
+
+=== int truthiness not allowed
+def f(x: int) -> int:
+    if x:
+        return x
+    return 0
+---
+error: truthiness
+---
+
+=== float truthiness not allowed
+def f(x: float) -> int:
+    if x:
+        return 1
+    return 0
+---
+error: truthiness
+---
+
+=== explicit none check for optional list allowed
+def f(xs: list[int] | None) -> int:
+    if xs is not None:
+        if xs:
+            return xs[0]
+    return 0
+---
+ok
+---
+
+=== explicit none check for optional dict allowed
+def f(d: dict[str, int] | None) -> int:
+    if d is not None:
+        if d:
+            return 1
+    return 0
+---
+ok
+---
+
+=== explicit len check allowed
+def f(xs: list[int] | None) -> int:
+    if xs is not None and len(xs) > 0:
+        return xs[0]
+    return 0
+---
+ok
+---
+
+=== any with generator uses truthiness
+def f(xs: list[int]) -> bool:
+    return any(x > 0 for x in xs)
+---
+ok
+---
+
+=== all with generator uses truthiness
+def f(xs: list[int]) -> bool:
+    return all(x > 0 for x in xs)
+---
+ok
+---
+
+=== filter-like comprehension with optional
+def f(xs: list[int | None]) -> list[int]:
+    return [x for x in xs if x]
+---
+ok
+---
+
+=== filter-like comprehension with explicit check
+def f(xs: list[int | None]) -> list[int]:
+    return [x for x in xs if x is not None]
+---
+ok
+---
+
+=== walrus with truthiness allowed
+def f(d: dict[str, int], key: str) -> int:
+    if (val := d.get(key)):
+        return val
+    return 0
+---
+ok
+---
