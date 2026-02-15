@@ -1,0 +1,14 @@
+=== unused tuple target becomes underscore
+q, _ = divmod(17, 5)
+
+=== all tuple targets used
+q, r = divmod(17, 5)
+
+=== initial value suppressed when overwritten
+x = int(sys.stdin.read(), 10)
+
+=== initial value kept when read before overwrite
+x: int = 0
+
+=== Unwrap on optional
+v: int = x

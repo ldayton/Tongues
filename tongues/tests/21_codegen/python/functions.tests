@@ -1,0 +1,8 @@
+=== function as value
+return f(x)
+
+=== function literal expression body
+result: int = Apply(lambda x: x * 2, 10)
+
+=== function literal block body
+def _fn(x):

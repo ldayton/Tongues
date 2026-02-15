@@ -1,0 +1,29 @@
+=== function as value
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Main() -> void {
+    WritelnOut(ToString(Apply(Double, 5)))
+}
+
+=== function literal expression body
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Main() -> void {
+    let result: int = Apply((x: int) -> int => x * 2, 10)
+    WritelnOut(ToString(result))
+}
+
+=== function literal block body
+fn Apply(f: fn[int, void], x: int) -> void {
+    f(x)
+}
+fn Main() -> void {
+    Apply((x: int) -> void {
+        WritelnOut(ToString(x))
+    }, 42)
+}

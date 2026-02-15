@@ -1295,7 +1295,7 @@ The `--strict-tostring` flag specifies a canonical `ToString` format for every t
 | Property                   | Default mode  | Strict mode                                             |
 | -------------------------- | ------------- | ------------------------------------------------------- |
 | `int`                      | target-native | decimal, e.g. `"42"`, `"-7"`                            |
-| `float`                    | target-native | shortest round-trip                                     |
+| `float`                    | target-native | 17-digit round-trip                                     |
 | `float` special values     | target-native | `"NaN"`, `"Inf"`, `"-Inf"`                              |
 | `float` negative zero      | target-native | `"-0.0"`                                                |
 | `bool`                     | target-native | `"true"` / `"false"`                                    |
@@ -1314,7 +1314,7 @@ The `--strict-tostring` flag specifies a canonical `ToString` format for every t
 | struct `ToString` override | n/a           | `ToString(self)` method                                 |
 | Available targets          | all 15        | all 15                                                  |
 
-"Shortest round-trip" means the fewest decimal digits such that parsing the string back produces the exact same float — algorithms like Ryū compute this. Backends that lack a native shortest-round-trip conversion emit a custom formatter.
+"17-digit round-trip" means always printing exactly 17 significant decimal digits — enough to guarantee that parsing the string back produces the exact same float64 bit pattern. This avoids the complexity of shortest-representation algorithms (Ryū, Grisu3) while remaining deterministic across all targets using only integer arithmetic on the float's bit pattern.
 
 In composite contexts (collections, tuples, struct fields), `string` values are quoted with `"` and `rune` values are quoted with `'`. All other types are unquoted. This avoids ambiguity when parsing ToString output visually.
 

@@ -1,0 +1,78 @@
+=== IO functions
+fn Main() -> void {
+    WriteOut("no newline")
+    WritelnOut("with newline")
+    WritelnErr("error")
+}
+
+=== ReadAll and ReadLine
+fn Main() -> void {
+    let all: string = ReadAll()
+    WritelnOut(all)
+}
+
+=== ReadLine returns optional
+fn Main() -> void {
+    let line: string? = ReadLine()
+    if line != nil {
+        WritelnOut(line)
+    }
+}
+
+=== ReadFile emits open idiom
+fn Main() -> void {
+    let data: string | bytes = ReadFile("input.txt")
+    WritelnOut(ToString(data))
+}
+
+=== WriteFile emits open idiom
+fn Main() -> void {
+    WriteFile("output.txt", "hello")
+}
+
+=== ReadBytesN
+fn Main() -> void {
+    let chunk: bytes = ReadBytesN(1024)
+    WritelnOut(ToString(Len(chunk)))
+}
+
+=== Args and GetEnv
+fn Main() -> void {
+    let args: list[string] = Args()
+    let home: string? = GetEnv("HOME")
+    WritelnOut(ToString(Len(args)))
+}
+
+=== Exit call
+fn Main() -> void {
+    Exit(1)
+}
+
+=== Encode and Decode
+fn Main() -> void {
+    let b: bytes = Encode("hello")
+    let s: string = Decode(b)
+    WritelnOut(s)
+}
+
+=== bytes indexing
+fn Main() -> void {
+    let b: bytes = Encode("hello")
+    let first: byte = b[0]
+    WritelnOut(ToString(ByteToInt(first)))
+}
+
+=== bytes slicing
+fn Main() -> void {
+    let b: bytes = Encode("hello")
+    let part: bytes = b[1:3]
+    WritelnOut(ToString(Len(part)))
+}
+
+=== Concat on bytes
+fn Main() -> void {
+    let a: bytes = Encode("hello")
+    let b: bytes = Encode(" world")
+    let c: bytes = Concat(a, b)
+    WritelnOut(ToString(Len(c)))
+}

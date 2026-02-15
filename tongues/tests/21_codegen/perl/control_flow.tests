@@ -1,0 +1,80 @@
+=== if-else chain
+if ($x > 0) {
+    return "positive";
+} elsif ($x == 0) {
+    return "zero";
+} else {
+    return "negative";
+}
+
+=== while loop
+while ($n > 0) {
+    $total += $n;
+    $n -= 1;
+}
+
+=== while true with break
+while (1) {
+
+=== for range single arg
+for my $i (0 .. 9) {
+    $total += $i;
+}
+
+=== for range two args
+for my $i (5 .. 9) {
+    $total += $i;
+}
+
+=== for range three args
+for my $i (reverse 1 .. 10) {
+    say(("" . $i));
+}
+
+=== for over list single var
+for my $x (@{$xs}) {
+    say(("" . $x));
+}
+
+=== for over map keys
+for my $k (keys %{$m}) {
+    say($k);
+}
+
+=== for over map key-value pairs
+for my $k (keys %{$m}) {
+    my $v = $m->{$k};
+    say(sprintf("%s: %s", $k, ("" . $v)));
+}
+
+=== for over string characters
+for my $ch (split(//, "hello")) {
+    say(("" . ord($ch)));
+}
+
+=== for over set
+for my $v (keys %{$s}) {
+    say(("" . $v));
+}
+
+=== break and continue
+if ($x == 3) {
+    next;
+}
+if ($x == 5) {
+    last;
+}
+
+=== enumerate over list
+for my $i (0 .. $#{$xs}) {
+    my $v = $xs->[$i];
+    say(sprintf("%s: %s", ("" . $i), $v));
+}
+
+=== negated condition
+if (!$done) {
+    say("not done");
+}
+
+=== ternary expression
+return ($x < $lo ? $lo : ($x > $hi ? $hi : $x));

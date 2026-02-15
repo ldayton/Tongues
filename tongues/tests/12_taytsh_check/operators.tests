@@ -432,3 +432,47 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== valid: logical right shift
+@@["strict_math"]
+fn Main() -> void {
+    let a: int = 1 >>> 2
+}
+---
+ok
+---
+
+=== valid: byte logical right shift
+@@["strict_math"]
+fn Main() -> void {
+    let a: byte = 0xf0 >>> 4
+}
+---
+ok
+---
+
+=== error: logical right shift on float
+@@["strict_math"]
+fn Main() -> void {
+    let a: float = 1.0 >>> 2
+}
+---
+error: must be int or byte
+---
+
+=== error: logical right shift by float
+@@["strict_math"]
+fn Main() -> void {
+    let a: int = 1 >>> 2.0
+}
+---
+error: must be int
+---
+
+=== error: logical right shift without strict math
+fn Main() -> void {
+    let a: int = 1 >>> 2
+}
+---
+error: requires strict_math
+---

@@ -1,0 +1,43 @@
+=== match default binds scrutinee value
+if value.is_a?(Integer)
+  n = value
+  return n.to_s
+else
+  x = value
+  return x.to_s
+end
+
+=== unused match binding is omitted
+if value.is_a?(Integer)
+  return "int"
+
+=== match on optional with nil case
+if x.nil?
+  return "absent"
+
+=== match on enum
+if c == Color::Red
+  return "red"
+
+=== match on interface
+if s.is_a?(Circle)
+  c = s
+  return 3.14159 * c.radius * c.radius
+
+=== match on union with three types
+if v.is_a?(Integer)
+
+=== match with default no binding
+else
+  return false
+end
+
+=== nil narrowing after check
+if !x.nil?
+  return x + 1
+
+=== nil check with early return
+if x.nil?
+  return 0
+end
+return x * 2

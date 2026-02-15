@@ -1,0 +1,40 @@
+=== match default binds scrutinee value
+if isinstance(value, int):
+    n = value
+    return str(n)
+else:
+    x = value
+    return str(x)
+
+=== unused match binding is omitted
+if isinstance(value, int):
+    return "int"
+
+=== match on optional with nil case
+elif x is None:
+    return "absent"
+
+=== match on enum
+if c == Color.Red:
+    return "red"
+
+=== match on interface
+if isinstance(s, Circle):
+    c = s
+    return 3.14159 * c.radius * c.radius
+
+=== match on union with three types
+if isinstance(v, int):
+
+=== match with default no binding
+else:
+    return False
+
+=== nil narrowing after check
+if x is not None:
+    return x + 1
+
+=== nil check with early return
+if x is None:
+    return 0
+return x * 2

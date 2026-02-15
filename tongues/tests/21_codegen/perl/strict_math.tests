@@ -1,0 +1,100 @@
+=== checked int add
+my $c = checked_add_i64($a, $b);
+say(("" . $c));
+
+=== checked int sub
+my $c = checked_sub_i64($a, $b);
+say(("" . $c));
+
+=== checked int mul
+my $c = checked_mul_i64($a, $b);
+say(("" . $c));
+
+=== checked int negate
+my $y = checked_neg_i64($x);
+say(("" . $y));
+
+=== checked left shift
+my $y = checked_shl_i64($x, 4);
+say(("" . $y));
+
+=== checked right shift
+my $y = checked_shr_i64($x, 4);
+say(("" . $y));
+
+=== logical right shift
+my $y = logical_shr_i64($x, 1);
+say(("" . $y));
+
+=== wrapping add
+my $b = wrapping_add($a, 1);
+say(("" . $b));
+
+=== wrapping sub
+my $b = wrapping_sub($min, 1);
+say(("" . $b));
+
+=== wrapping mul
+my $b = wrapping_mul($max, 2);
+say(("" . $b));
+
+=== checked pow
+my $x = checked_pow_i64(2, 10);
+say(("" . $x));
+
+=== checked int compound add
+$x = checked_add_i64($x, 5);
+say(("" . $x));
+
+=== checked int compound sub
+$x = checked_sub_i64($x, 3);
+say(("" . $x));
+
+=== checked int compound mul
+$x = checked_mul_i64($x, 3);
+say(("" . $x));
+
+=== float mod by zero traps
+sub main {
+my $caught = 0;
+my $__ok0 = eval {
+my $x = strict_fmod(1.0, 0.0);
+1;
+};
+if (!$__ok0) {
+my $__err1 = $@;
+$caught = 1;
+}
+say(("" . $caught));
+}
+
+=== min with nan propagates
+my $nan = 0.0 / 0.0;
+my $x = strict_min_f64($nan, 1.0);
+say(("" . (($x != $x) ? 1 : 0)));
+
+=== max with nan propagates
+my $nan = 0.0 / 0.0;
+my $x = strict_max_f64($nan, 1.0);
+say(("" . (($x != $x) ? 1 : 0)));
+
+=== sorted with nan traps
+sub main {
+my $nan = 0.0 / 0.0;
+my $caught = 0;
+my $__ok0 = eval {
+my $xs = strict_sorted_f64([1.0, $nan, 2.0]);
+1;
+};
+if (!$__ok0) {
+my $__err1 = $@;
+$caught = 1;
+}
+say(("" . $caught));
+}
+
+=== non-strict ops unchanged
+my $x = 1.5 + 2.5;
+my $y = checked_div_i64(10, 3);
+my $z = checked_rem_i64(10, 3);
+say(("" . $y));

@@ -1,0 +1,16 @@
+=== unused tuple target becomes underscore
+($q, undef) = (int(17 / 5), 17 % 5);
+
+=== all tuple targets used
+($q, $r) = (int(17 / 5), 17 % 5);
+
+=== initial value suppressed when overwritten
+$x = do { my $__s = do { local $/; scalar(<STDIN>) }; my $__b = 10; $__b == 10 ? int($__s) : $__b == 16 ? hex($__s) : $__b == 8 ? oct($__s) : $__b == 2 ? oct('0b' . $__s) : int($__s) };
+say(("" . $x));
+
+=== initial value kept when read before overwrite
+my $x = 0;
+
+=== Unwrap on optional
+my $v = $x;
+say(("" . $v));

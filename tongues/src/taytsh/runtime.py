@@ -644,6 +644,9 @@ _RESERVED_BINDINGS: set[str] = {
     "Pow",
     "Round",
     "DivMod",
+    "WrappingAdd",
+    "WrappingSub",
+    "WrappingMul",
     "IsNaN",
     "IsInf",
     "RuneFromInt",
@@ -2434,7 +2437,7 @@ class TypeChecker:
                 return TY_INT
             raise TaytshTypeError("bitwise requires same operand types", pos)
 
-        if op in ("<<", ">>"):
+        if op in ("<<", ">>", ">>>"):
             if not (ty_eq(left, TY_INT) or ty_eq(left, TY_BYTE)):
                 raise TaytshTypeError("shift requires int/byte on left", pos)
             if not ty_eq(right, TY_INT):
@@ -3502,6 +3505,9 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "IsNaN": _builtin_simple("IsNaN", (TY_FLOAT,), TY_BOOL),
     "IsInf": _builtin_simple("IsInf", (TY_FLOAT,), TY_BOOL),
     "DivMod": _builtin_simple("DivMod", (TY_INT, TY_INT), TyTuple((TY_INT, TY_INT))),
+    "WrappingAdd": _builtin_simple("WrappingAdd", (TY_INT, TY_INT), TY_INT),
+    "WrappingSub": _builtin_simple("WrappingSub", (TY_INT, TY_INT), TY_INT),
+    "WrappingMul": _builtin_simple("WrappingMul", (TY_INT, TY_INT), TY_INT),
     "Abs": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_abs),
     "Min": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_min),
     "Max": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_max),
@@ -4765,7 +4771,7 @@ class Runtime:
                 return VByte(result) if is_byte_only else VInt(result)
             raise TaytshRuntimeFault("invalid bitwise operands", pos)
 
-        if op in ("<<", ">>"):
+        if op in ("<<", ">>", ">>>"):
             if not isinstance(right, VInt):
                 raise TaytshRuntimeFault("shift amount not int", pos)
             shift = right.value
@@ -4781,9 +4787,18 @@ class Runtime:
                     ):
                         self._throw_err("ValueError", "integer overflow")
                     return VInt(result)
+                if op == ">>>":
+                    unsigned = left.value & 0xFFFFFFFFFFFFFFFF
+                    result = unsigned >> shift
+                    if result > _INT64_MAX:
+                        result -= 1 << 64
+                    return VInt(result)
                 return VInt(left.value >> shift)
             if isinstance(left, VByte):
-                val = (left.value << shift) if op == "<<" else (left.value >> shift)
+                if op == "<<":
+                    val = left.value << shift
+                else:
+                    val = left.value >> shift
                 return VByte(val & 0xFF)
             raise TaytshRuntimeFault("invalid shift operands", pos)
 
@@ -5082,6 +5097,35 @@ def _bi_divmod(rt: Runtime, args: list[Value]) -> Value:
     q = int(a.value / b.value)  # truncate toward zero
     r = a.value - q * b.value
     return VTuple((VInt(q), VInt(r)), TyTuple((TY_INT, TY_INT)))
+
+
+def _wrap_i64(val: int) -> int:
+    """Wrap an arbitrary Python int to signed int64 range."""
+    val = val & 0xFFFFFFFFFFFFFFFF
+    if val > _INT64_MAX:
+        val -= 1 << 64
+    return val
+
+
+def _bi_wrapping_add(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VInt) or not isinstance(b, VInt):
+        raise TaytshRuntimeFault("WrappingAdd expects int, int", None)
+    return VInt(_wrap_i64(a.value + b.value))
+
+
+def _bi_wrapping_sub(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VInt) or not isinstance(b, VInt):
+        raise TaytshRuntimeFault("WrappingSub expects int, int", None)
+    return VInt(_wrap_i64(a.value - b.value))
+
+
+def _bi_wrapping_mul(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VInt) or not isinstance(b, VInt):
+        raise TaytshRuntimeFault("WrappingMul expects int, int", None)
+    return VInt(_wrap_i64(a.value * b.value))
 
 
 def _bi_abs(rt: Runtime, args: list[Value]) -> Value:
@@ -5995,6 +6039,9 @@ _BUILTIN_RUNTIME: dict[str, Callable[[Runtime, list[Value]], Value]] = {
     "IsNaN": _bi_isnan,
     "IsInf": _bi_isinf,
     "DivMod": _bi_divmod,
+    "WrappingAdd": _bi_wrapping_add,
+    "WrappingSub": _bi_wrapping_sub,
+    "WrappingMul": _bi_wrapping_mul,
     "Abs": _bi_abs,
     "Min": _bi_min,
     "Max": _bi_max,

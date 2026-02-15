@@ -786,9 +786,9 @@ class Parser:
         return left
 
     def parse_shift(self) -> TExpr:
-        """Shift = Sum ( ( '<<' | '>>' ) Sum )*"""
+        """Shift = Sum ( ( '<<' | '>>' | '>>>' ) Sum )*"""
         left = self.parse_sum()
-        while self.at("<<") or self.at(">>"):
+        while self.at("<<") or self.at(">>>") or self.at(">>"):
             op = self.advance().value
             right = self.parse_sum()
             left = TBinaryOp(left.pos, op, left, right, {})

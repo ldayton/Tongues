@@ -1,0 +1,35 @@
+=== IO functions
+$stdout.write("no newline")
+
+=== ReadAll and ReadLine
+all = $stdin.read
+
+=== ReadLine returns optional
+line = $stdin.gets&.chomp
+
+=== ReadFile emits open idiom
+File.read("input.txt")
+
+=== WriteFile emits open idiom
+File.write("output.txt", "hello")
+
+=== ReadBytesN
+chunk = $stdin.binmode.read(1024).bytes
+
+=== Args and GetEnv
+args = ARGV
+
+=== Exit call
+exit(1)
+
+=== Encode and Decode
+b = "hello".encode("utf-8").bytes
+
+=== bytes indexing
+first = b[0]
+
+=== bytes slicing
+part = b[1...3]
+
+=== Concat on bytes
+c = a + b

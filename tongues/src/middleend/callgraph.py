@@ -481,7 +481,7 @@ def _check_op_throws(
     if strict_math and op in _STRICT_INT_OPS:
         if left_t is None or type_eq(left_t, INT_T):
             _add_throws({"ValueError"}, throws, caught_filter)
-    if strict_math and op == "<<":
+    if strict_math and op in ("<<", ">>>"):
         if left_t is None or type_eq(left_t, INT_T):
             _add_throws({"ValueError"}, throws, caught_filter)
 

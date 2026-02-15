@@ -1,0 +1,98 @@
+=== struct construction and field access
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(1, 2)
+    WritelnOut(ToString(p.x + p.y))
+}
+
+=== struct method call
+struct Counter {
+    n: int
+
+    fn Inc(self) -> void {
+        self.n += 1
+    }
+
+    fn Value(self) -> int {
+        return self.n
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.Inc()
+    WritelnOut(ToString(c.Value()))
+}
+
+=== field assignment
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(0, 0)
+    p.x = 10
+    p.y = 20
+    WritelnOut(ToString(p.x + p.y))
+}
+
+=== nested struct access
+struct Inner {
+    value: int
+}
+struct Outer {
+    inner: Inner
+}
+fn Main() -> void {
+    let o: Outer = Outer(Inner(42))
+    WritelnOut(ToString(o.inner.value))
+}
+
+=== struct with interface field
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+struct Branch : Node {
+    left: Node
+    right: Node
+}
+fn Eval(n: Node) -> int {
+    match n {
+        case l: Leaf {
+            return l.value
+        }
+        case b: Branch {
+            return Eval(b.left) + Eval(b.right)
+        }
+    }
+}
+fn Main() -> void {
+    let tree: Node = Branch(Leaf(1), Leaf(2))
+    WritelnOut(ToString(Eval(tree)))
+}
+
+=== enum comparison
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color = Color.Red
+    if c == Color.Red {
+        WritelnOut("red")
+    }
+}
+
+=== named struct construction
+struct Point {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Point = Point(y: 2, x: 1)
+    WritelnOut(ToString(p.x + p.y))
+}

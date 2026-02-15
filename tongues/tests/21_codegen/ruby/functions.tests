@@ -1,0 +1,10 @@
+=== function as value
+return f.call(x)
+
+=== function literal expression body
+result = apply(lambda { |x| x * 2 }, 10)
+
+=== function literal block body
+apply(lambda { |x|
+  puts(x.to_s)
+}, 42)

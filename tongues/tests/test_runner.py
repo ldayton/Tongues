@@ -191,8 +191,7 @@ TESTS = {
         "callgraph": {"dir": "20_callgraph", "run": "phase"},
     },
     "backend": {
-        "codegen_python": {"dir": "21_codegen", "run": "codegen_python"},
-        "codegen_perl":   {"dir": "21_codegen", "run": "codegen_perl"},
+        "codegen":        {"dir": "21_codegen", "run": "codegen"},
         "app":            {"dir": "22_app",     "run": "app"},
     },
     "taytsh": {
@@ -272,54 +271,53 @@ def discover_specs(test_dir: Path) -> list[tuple[str, str, str]]:
     return results
 
 
-def parse_codegen_file(path: Path) -> list[tuple[str, str, dict[str, str]]]:
-    """Parse .tests file into (name, input, {lang: expected}) tuples."""
+def parse_simple_tests(path: Path) -> list[tuple[str, str]]:
+    """Parse a file of '=== name' + content blocks into (name, content) pairs."""
     lines = path.read_text().split("\n")
-    result: list[tuple[str, str, dict[str, str]]] = []
+    result: list[tuple[str, str]] = []
     i = 0
     while i < len(lines):
-        line = lines[i]
-        if line.startswith("=== "):
-            test_name = line[4:].strip()
+        if lines[i].startswith("=== "):
+            name = lines[i][4:].strip()
             i += 1
-            input_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                input_lines.append(lines[i])
+            content_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("=== "):
+                content_lines.append(lines[i])
                 i += 1
-            expected_by_lang: dict[str, str] = {}
-            while i < len(lines) and lines[i].startswith("--- "):
-                lang = lines[i][4:].strip()
-                i += 1
-                expected_lines: list[str] = []
-                while i < len(lines) and not lines[i].startswith("---"):
-                    expected_lines.append(lines[i])
-                    i += 1
-                expected_by_lang[lang] = "\n".join(expected_lines)
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            test_input = "\n".join(input_lines)
-            result.append((test_name, test_input, expected_by_lang))
+            content = "\n".join(content_lines).strip()
+            result.append((name, content))
         else:
             i += 1
     return result
 
 
 def discover_codegen_tests(test_dir: Path, lang: str) -> list[tuple[str, str, str]]:
-    """Find codegen tests for a language, returns (test_id, input, expected)."""
+    """Join base/*.tests with {lang}/*.tests by name. Fails on mismatch."""
+    base_dir = test_dir / "base"
+    lang_dir = test_dir / lang
     results = []
-    for test_file in sorted(test_dir.glob("*.tests")):
-        tests = parse_codegen_file(test_file)
-        # Skip files that are for other languages (e.g. perl.tests vs python.tests).
-        if not any(lang in expected_by_lang for _, _, expected_by_lang in tests):
+    for base_file in sorted(base_dir.glob("*.tests")):
+        lang_file = lang_dir / base_file.name
+        base_tests = parse_simple_tests(base_file)
+        if not base_tests:
             continue
-        for name, input_code, expected_by_lang in tests:
-            expected = expected_by_lang.get(lang)
-            if expected is None:
-                pytest.fail(
-                    f"{test_file.name}:{name} missing '--- {lang}' expected block"
-                )
-            test_id = f"{test_file.stem}/{name}[{lang}]"
-            results.append((test_id, input_code, expected))
+        if not lang_file.exists():
+            pytest.fail(f"{lang}/{base_file.name} missing")
+        lang_tests = parse_simple_tests(lang_file)
+        base_names = [n for n, _ in base_tests]
+        lang_names = [n for n, _ in lang_tests]
+        if base_names != lang_names:
+            base_set, lang_set = set(base_names), set(lang_names)
+            missing = base_set - lang_set
+            extra = lang_set - base_set
+            pytest.fail(
+                f"{base_file.name}: base/lang name mismatch for {lang}\n"
+                f"  missing: {missing}\n  extra: {extra}"
+            )
+        lang_by_name = dict(lang_tests)
+        for name, source in base_tests:
+            test_id = f"{base_file.stem}/{name}[{lang}]"
+            results.append((test_id, source, lang_by_name[name]))
     return results
 
 
@@ -983,14 +981,12 @@ def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | Non
         return (None, str(e))
 
 
-def transpile_code_python(source: str) -> tuple[str | None, str | None]:
-    """Transpile Taytsh source using python backend. Returns (output, error)."""
-    return _transpile_with_emitter(source, emit_python)
-
-
-def transpile_code_perl(source: str) -> tuple[str | None, str | None]:
-    """Transpile Taytsh source using perl backend. Returns (output, error)."""
-    return _transpile_with_emitter(source, emit_perl)
+def transpile_code(source: str, lang: str) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source to the given language. Returns (output, error)."""
+    emitter = EMITTERS.get(lang)
+    if emitter is None:
+        return (None, f"no emitter for '{lang}'")
+    return _transpile_with_emitter(source, emitter)
 
 
 def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
@@ -1032,18 +1028,8 @@ def _available_targets() -> list[str]:
 
 
 @pytest.fixture
-def transpiled_output_python(codegen_python_input: str) -> str:
-    output, err = transpile_code_python(codegen_python_input)
-    if err is not None:
-        pytest.fail(f"Transpile error: {err}")
-    if output is None:
-        pytest.fail("No output from transpiler")
-    return output
-
-
-@pytest.fixture
-def transpiled_output_perl(codegen_perl_input: str) -> str:
-    output, err = transpile_code_perl(codegen_perl_input)
+def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
+    output, err = transpile_code(codegen_input, codegen_lang)
     if err is not None:
         pytest.fail(f"Transpile error: {err}")
     if output is None:
@@ -1077,21 +1063,33 @@ def pytest_generate_tests(metafunc):
                     specs = discover_specs(test_dir)
                     params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in specs]
                     metafunc.parametrize(f"{fixture},{name}_expected", params)
-            elif (
-                run == "codegen_python"
-                and "codegen_python_input" in metafunc.fixturenames
-            ):
-                tests = discover_codegen_tests(test_dir, "python")
-                params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
+            elif run == "codegen" and "codegen_input" in metafunc.fixturenames:
+                dirs = {
+                    d.name
+                    for d in test_dir.iterdir()
+                    if d.is_dir() and d.name != "base"
+                }
+                langs = sorted(dirs & set(EMITTERS))
+                all_tests = []
+                for lang in langs:
+                    for tid, inp, exp in discover_codegen_tests(test_dir, lang):
+                        all_tests.append(pytest.param(inp, exp, lang, id=tid))
+                for lang in sorted(set(EMITTERS) - dirs):
+                    base_dir = test_dir / "base"
+                    for base_file in sorted(base_dir.glob("*.tests")):
+                        for name, _ in parse_simple_tests(base_file):
+                            tid = f"{base_file.stem}/{name}[{lang}]"
+                            all_tests.append(
+                                pytest.param(
+                                    "",
+                                    "",
+                                    lang,
+                                    id=tid,
+                                )
+                            )
                 metafunc.parametrize(
-                    "codegen_python_input,codegen_python_expected", params
+                    "codegen_input,codegen_expected,codegen_lang", all_tests
                 )
-            elif (
-                run == "codegen_perl" and "codegen_perl_input" in metafunc.fixturenames
-            ):
-                tests = discover_codegen_tests(test_dir, "perl")
-                params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
-                metafunc.parametrize("codegen_perl_input,codegen_perl_expected", params)
             elif run == "taytsh_app" and "taytsh_app" in metafunc.fixturenames:
                 apps = discover_taytsh_apps(test_dir)
                 params = [pytest.param(p, id=p.stem) for p in apps]
@@ -1111,9 +1109,6 @@ def pytest_generate_tests(metafunc):
 # ---------------------------------------------------------------------------
 
 
-IMPLEMENTED_BACKENDS = {"python", "perl", "ruby"}
-
-
 def _cli_needs_backend(spec: dict) -> bool:
     """True if the test will reach the backend (no --stop-at, expects exit 0)."""
     args = spec["args"]
@@ -1125,7 +1120,7 @@ def _cli_needs_backend(spec: dict) -> bool:
     if "--target" not in args:
         return False
     target = args[args.index("--target") + 1]
-    return target not in IMPLEMENTED_BACKENDS
+    return target not in EMITTERS
 
 
 def test_cli(cli_spec: dict) -> None:
@@ -1226,29 +1221,17 @@ def test_callgraph(callgraph_input, callgraph_expected):
     check_expected(callgraph_expected, run_callgraph(callgraph_input), "callgraph")
 
 
-def test_codegen_python(
-    codegen_python_input: str,
-    codegen_python_expected: str,
-    transpiled_output_python: str,
+def test_codegen(
+    codegen_input: str,
+    codegen_expected: str,
+    codegen_lang: str,
+    transpiled_output: str,
 ):
-    if not contains_normalized(transpiled_output_python, codegen_python_expected):
+    if not contains_normalized(transpiled_output, codegen_expected):
         pytest.fail(
             "Expected not found in output:\n"
-            f"--- expected ---\n{codegen_python_expected}\n"
-            f"--- got ---\n{transpiled_output_python}"
-        )
-
-
-def test_codegen_perl(
-    codegen_perl_input: str,
-    codegen_perl_expected: str,
-    transpiled_output_perl: str,
-):
-    if not contains_normalized(transpiled_output_perl, codegen_perl_expected):
-        pytest.fail(
-            "Expected not found in output:\n"
-            f"--- expected ---\n{codegen_perl_expected}\n"
-            f"--- got ---\n{transpiled_output_perl}"
+            f"--- expected ---\n{codegen_expected}\n"
+            f"--- got ---\n{transpiled_output}"
         )
 
 

@@ -1,0 +1,99 @@
+=== delete on map is missing-key safe
+m.delete("k")
+
+=== Append on list
+xs.push(3)
+
+=== Get with default on map
+v = m.fetch("b", 0)
+
+=== Get without default returns optional
+v = m["b"]
+
+=== Keys Values Items on map
+ks = m.keys
+
+=== Contains on map
+if m.key?("a")
+
+=== IndexOf on list
+idx = xs.index(20) || -1
+
+=== Pop and RemoveAt
+last_ = xs.pop
+xs.delete_at(0)
+
+=== Insert on list
+xs.insert(1, 2)
+
+=== Add and Remove on set
+s.add(4)
+s.delete(1)
+
+=== Merge maps
+c = a.merge(b)
+
+=== set literal
+s = Set[1, 2, 3]
+
+=== map literal and index
+m = {"a" => 1, "b" => 2}
+
+=== empty map and set via constructors
+m = {}
+
+=== tuple construction and access
+pair = [1, "hello"]
+
+=== index assignment on list
+xs[0] = 99
+
+=== index assignment on map
+m["b"] = 2
+
+=== list slicing
+mid = xs[1...4]
+
+=== nested collection access
+m["a"][0]
+
+=== Sorted and Reversed
+s = xs.sort
+r = xs.reverse
+
+=== Sorted on string list
+s = xs.sort
+
+=== Sum on list
+puts(xs.sum.to_s)
+
+=== negative index via Len subtraction
+puts(xs[xs.length - 1].to_s)
+
+=== open-end slice
+tail = xs[1...xs.length]
+
+=== open-start slice
+head = xs[0...3]
+
+=== list comprehension
+xs.each do |x|
+  doubled.push(x * 2)
+end
+
+=== list comprehension with filter
+xs.each do |x|
+  if x % 2 == 0
+    evens.push(x)
+  end
+end
+
+=== dict comprehension
+keys.each_with_index do |k, i|
+  m[k] = i
+end
+
+=== set comprehension
+xs.each do |x|
+  unique.add(x)
+end

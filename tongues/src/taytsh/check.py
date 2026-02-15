@@ -606,6 +606,9 @@ BUILTIN_NAMES: set[str] = {
     # Arithmetic
     "FloorDiv",
     "PythonMod",
+    "WrappingAdd",
+    "WrappingSub",
+    "WrappingMul",
     # Bytes constructors
     "Bytes",
     "BytesFrom",
@@ -725,6 +728,7 @@ class Checker:
         self.current_fn_ret: Type | None = None
         self.in_loop: bool = False
         self.current_struct: StructT | None = None
+        self.strict_math: bool = False
         # Register built-in error structs
         for name, fields in BUILTIN_STRUCTS.items():
             st = StructT(
@@ -1738,8 +1742,11 @@ class Checker:
                 self.error(op + " not defined for " + type_name(left), pos)
                 return None
             return left
-        # Shifts: <<, >> — left is int/byte, right is int
-        if op in ("<<", ">>"):
+        # Shifts: <<, >>, >>> — left is int/byte, right is int
+        if op == ">>>" and not self.strict_math:
+            self.error(">>> requires strict_math mode", pos)
+            return None
+        if op in ("<<", ">>", ">>>"):
             if left.kind not in (TY_INT, TY_BYTE):
                 self.error(
                     "left operand of "
@@ -2557,6 +2564,19 @@ class Checker:
             if t2 is not None and not type_eq(t2, INT_T):
                 self.error("DivMod requires int", pos)
             return TupleT(kind="tuple", elements=[INT_T, INT_T])
+        if name in ("WrappingAdd", "WrappingSub", "WrappingMul"):
+            if not self.strict_math:
+                self.error(name + " requires strict_math mode", pos)
+                return None
+            if not require(2):
+                return None
+            t1 = arg(0)
+            t2 = arg(1)
+            if t1 is not None and not type_eq(t1, INT_T):
+                self.error(name + " requires int", pos)
+            if t2 is not None and not type_eq(t2, INT_T):
+                self.error(name + " requires int", pos)
+            return INT_T
 
         # ── Bytes ──
         if name == "Encode":
@@ -3370,6 +3390,7 @@ class Checker:
 def check(module: TModule) -> list[CheckError]:
     """Type-check a parsed TModule. Returns a list of errors (empty = ok)."""
     checker = Checker()
+    checker.strict_math = module.strict_math
     checker.collect_declarations(module)
     if len(checker.errors) > 0:
         return checker.errors
@@ -3381,6 +3402,7 @@ def check(module: TModule) -> list[CheckError]:
 def check_with_info(module: TModule) -> tuple[list[CheckError], Checker]:
     """Type-check and return both errors and the Checker (for downstream passes)."""
     checker = Checker()
+    checker.strict_math = module.strict_math
     checker.collect_declarations(module)
     if len(checker.errors) > 0:
         return (checker.errors, checker)

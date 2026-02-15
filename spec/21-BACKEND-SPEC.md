@@ -13,6 +13,14 @@ Each backend is a tree walker. For each IR node type, the backend has an emitter
 
 These are not phases — they happen together during the single tree walk. The emitter for a `for` node might check provenance, read scope annotations, and pattern-match the body, all in one method.
 
+## Idiomatic Output
+
+Every backend emits unconditionally idiomatic output by default. `for i in range(n)` becomes `for i in 0..n` in Rust, `for (int i = 0; i < n; i++)` in Java, `map[K]V{"a": 1}` becomes `HashMap::from(...)` in Rust — regardless of annotations. This is the backend's native translation of IR constructs into the target's natural forms.
+
+Provenance annotations are an upgrade path. The lowerer desugars Python idioms into simpler IR — `x[-1]` becomes `x[Len(x) - 1]`, `[x*2 for x in xs]` becomes a loop with `Append`. Without provenance, the backend emits the desugared form literally in target-native syntax, which is correct and already idiomatic. With provenance, backends that have a corresponding higher-level form can raise the output: Python reconstructs `x[-1]`, Go emits `xs[:n]` instead of `xs[0:n]`, Dart emits collection-for instead of a loop.
+
+Without provenance, emit the IR literally in target-native syntax. With provenance, reconstruct the higher-level idiom when the target supports it.
+
 ## Annotation Consumption
 
 ### scope.*

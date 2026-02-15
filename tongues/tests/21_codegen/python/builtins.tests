@@ -1,0 +1,35 @@
+=== math functions
+print(str(abs(-5)))
+
+=== float math functions
+r: int = round(3.7)
+
+=== conversion functions
+f: float = float(42)
+
+=== ParseInt and ParseFloat
+n: int = int("42", 10)
+
+=== FormatInt
+hex_: str = format(255, "x")
+
+=== RuneToInt and RuneFromInt
+n: int = ord("A")
+
+=== IsNaN and IsInf
+print(str(math.isnan(x)))
+
+=== Len on various types
+print(str(len("hello")))
+
+=== DivMod
+q, r = divmod(17, 5)
+
+=== Sqrt function
+math.sqrt(2.0)
+
+=== Floor function
+math.floor(3.7)
+
+=== Ceil function
+math.ceil(3.2)

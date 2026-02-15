@@ -1,0 +1,35 @@
+=== IO functions
+print("with newline")
+
+=== ReadAll and ReadLine
+import sys
+
+=== ReadLine returns optional
+if line is not None:
+
+=== ReadFile emits open idiom
+open("input.txt")
+
+=== WriteFile emits open idiom
+open("output.txt", "w")
+
+=== ReadBytesN
+sys.stdin.buffer.read(1024)
+
+=== Args and GetEnv
+args: list[str] = sys.argv[1:]
+
+=== Exit call
+sys.exit(1)
+
+=== Encode and Decode
+b: bytes = "hello".encode("utf-8")
+
+=== bytes indexing
+b[0]
+
+=== bytes slicing
+b[1:3]
+
+=== Concat on bytes
+a + b

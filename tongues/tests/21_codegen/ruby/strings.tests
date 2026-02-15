@@ -1,0 +1,47 @@
+=== string multiply via Repeat
+s = "ab" * 3
+
+=== list multiply via Repeat
+xs = [0] * 5
+
+=== Contains on string
+if s.include?("world")
+
+=== Split and Join
+parts = "a,b,c".split(",", -1)
+
+=== string Find
+idx = "hello world".index("world") || -1
+
+=== Replace on string
+s = "aabbcc".gsub("bb", "XX")
+
+=== Upper and Lower
+puts("hello".upcase)
+
+=== StartsWith and EndsWith
+puts(s.start_with?("hello").to_s)
+
+=== Trim functions
+s = "  hello  ".gsub(/^[ ]+|[ ]+$/, "")
+
+=== Count and RFind on string
+c = "abcabc".scan("abc").length
+
+=== SplitN and SplitWhitespace
+parts = "a,b,c,d".split(",", 2)
+
+=== Concat strings
+s = "hello" + " world"
+
+=== string indexing and slicing
+ch = s[0]
+
+=== format string becomes f-string
+return "hello, %s" % name
+
+=== Reverse on string
+s = "hello".reverse
+
+=== string classification functions
+puts("123".match?(/^\d+$/).to_s)

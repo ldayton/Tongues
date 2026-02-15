@@ -338,6 +338,14 @@ fn Main() -> void {
 ok
 ---
 
+=== logical right shift
+fn Main() -> void {
+    let x: int = a >>> 1
+}
+---
+ok
+---
+
 === empty braces error
 fn Main() -> void {
     let x: int = {}

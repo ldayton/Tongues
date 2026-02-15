@@ -1,0 +1,150 @@
+=== unused catch variable is omitted
+fn Main() -> void {
+    try {
+        ParseInt("x", 10)
+    } catch e: ValueError {
+        WritelnOut("bad")
+    }
+}
+
+=== used catch variable is kept
+fn Main() -> void {
+    try {
+        ParseInt("x", 10)
+    } catch e: ValueError {
+        WritelnOut(e.message)
+    }
+}
+
+=== try with finally
+fn Main() -> void {
+    try {
+        WritelnOut("try")
+    } catch e: ValueError {
+        WritelnOut("catch")
+    } finally {
+        WritelnOut("finally")
+    }
+}
+
+=== try with multiple catch clauses
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("x", 10)
+        WritelnOut(ToString(n))
+    } catch e: ValueError {
+        WritelnOut("value error")
+    } catch e: KeyError {
+        WritelnOut("key error")
+    }
+}
+
+=== re-throw in catch
+fn Main() -> void {
+    try {
+        ParseInt("x", 10)
+    } catch e: ValueError {
+        throw e
+    }
+}
+
+=== catch-all without type
+struct AppError {
+    message: string
+}
+fn Fail() -> void {
+    throw AppError("boom")
+}
+fn Main() -> void {
+    try {
+        Fail()
+    } catch e {
+        WritelnOut(e.message)
+    }
+}
+
+=== catch-all after typed catch
+struct ErrA {
+    message: string
+}
+struct ErrB {
+    message: string
+}
+fn Risky(x: int) -> void {
+    if x > 0 {
+        throw ErrA("a")
+    }
+    throw ErrB("b")
+}
+fn Main() -> void {
+    try {
+        Risky(1)
+    } catch e: ErrA {
+        WritelnOut("got A")
+    } catch e {
+        WritelnOut(e.message)
+    }
+}
+
+=== throw and catch struct
+struct AppError {
+    message: string
+}
+fn Fail() -> void {
+    throw AppError("boom")
+}
+fn Main() -> void {
+    try {
+        Fail()
+    } catch e: AppError {
+        WritelnOut(e.message)
+    }
+}
+
+=== catch union of both error types
+struct ErrA {
+    message: string
+}
+struct ErrB {
+    message: string
+}
+fn Risky() -> void {
+    throw ErrA("a")
+}
+fn Main() -> void {
+    try {
+        Risky()
+    } catch e: ErrA | ErrB {
+        WritelnOut(e.message)
+    }
+}
+
+=== catch union of types
+struct ErrA {
+    message: string
+}
+struct ErrB {
+    message: string
+}
+fn Risky() -> void {
+    throw ErrA("a")
+}
+fn Main() -> void {
+    try {
+        Risky()
+    } catch e: ErrA | ErrB {
+        WritelnOut(e.message)
+    }
+}
+
+=== Assert with message
+fn Main() -> void {
+    let x: int = 42
+    Assert(x > 0, "must be positive")
+}
+
+=== Assert without message
+fn Main() -> void {
+    let x: int = 42
+    Assert(x > 0)
+}

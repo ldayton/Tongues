@@ -1,0 +1,65 @@
+=== unused catch variable is omitted
+if (ref($__err1) eq 'ValueError') {
+    say("bad");
+}
+
+=== used catch variable is kept
+if (ref($__err1) eq 'ValueError') {
+    my $e = $__err1;
+    say($e->{message});
+}
+
+=== try with finally
+if (!$__ok0) {
+    my $__err1 = $@;
+    if (ref($__err1) eq 'ValueError') {
+        say("catch");
+    }
+}
+say("finally");
+
+=== try with multiple catch clauses
+if (ref($__err1) eq 'ValueError') {
+    say("value error");
+} elsif (ref($__err1) eq 'KeyError') {
+    say("key error");
+}
+
+=== re-throw in catch
+die $e;
+
+=== catch-all without type
+my $e = $__err1;
+say($e->{message});
+
+=== catch-all after typed catch
+if (ref($__err1) eq 'ErrA') {
+    say("got A");
+} else {
+    my $e = $__err1;
+    say($e->{message});
+}
+
+=== throw and catch struct
+if (ref($__err1) eq 'AppError') {
+    my $e = $__err1;
+    say($e->{message});
+}
+
+=== catch union of both error types
+if (ref($__err1) eq 'ErrA' || ref($__err1) eq 'ErrB') {
+    my $e = $__err1;
+    say($e->{message});
+}
+
+=== catch union of types
+if (ref($__err1) eq 'ErrA' || ref($__err1) eq 'ErrB') {
+    my $e = $__err1;
+    say($e->{message});
+}
+
+=== Assert with message
+die("must be positive") unless ($x > 0);
+
+=== Assert without message
+die("assertion failed") unless ($x > 0);

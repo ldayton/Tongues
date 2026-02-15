@@ -108,6 +108,7 @@ class _Emitter:
         "&": _PREC_BITAND,
         "<<": _PREC_SHIFT,
         ">>": _PREC_SHIFT,
+        ">>>": _PREC_SHIFT,
         "+": _PREC_SUM,
         "-": _PREC_SUM,
         "*": _PREC_PRODUCT,

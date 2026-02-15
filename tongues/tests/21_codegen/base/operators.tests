@@ -1,0 +1,71 @@
+=== in operator emits pythonic form
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    if Contains(xs, 2) {
+        WritelnOut("found")
+    }
+}
+
+=== not in operator
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    if !Contains(xs, 2) {
+        WritelnOut("missing")
+    }
+}
+
+=== boolean operators
+fn Main() -> void {
+    let a: bool = true
+    let b: bool = false
+    WritelnOut(ToString(a && b))
+    WritelnOut(ToString(a || b))
+    WritelnOut(ToString(!a))
+}
+
+=== bitwise operators
+fn Main() -> void {
+    let x: int = 255
+    let y: int = x & 15
+    let z: int = x | 256
+    let w: int = x ^ 15
+    let s: int = x << 2
+    let r: int = x >> 4
+    let c: int = ~x
+    WritelnOut(ToString(y))
+}
+
+=== compound assignment operators
+fn Main() -> void {
+    let x: int = 10
+    x += 5
+    x -= 2
+    x *= 3
+    x /= 2
+    x %= 7
+    WritelnOut(ToString(x))
+}
+
+=== chained comparison
+fn InRange(x: int) -> bool {
+    return 0 <= x && x <= 255
+}
+fn Main() -> void {
+    WritelnOut(ToString(InRange(42)))
+}
+
+=== truthiness check on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    if Len(xs) > 0 {
+        WritelnOut("nonempty")
+    }
+}
+
+=== truthiness check on string
+fn Main() -> void {
+    let s: string = "hello"
+    if s != "" {
+        WritelnOut(s)
+    }
+}
