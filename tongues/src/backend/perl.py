@@ -1648,8 +1648,12 @@ class _PerlEmitter:
         if name == "Abs":
             return "abs(" + self._a(args, 0) + ")"
         if name == "Min":
+            if len(args) == 1:
+                return "min(@{" + self._a(args, 0) + "})"
             return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Max":
+            if len(args) == 1:
+                return "max(@{" + self._a(args, 0) + "})"
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sum":
             return "(sum(@{" + self._a(args, 0) + "}) // 0)"
@@ -1934,15 +1938,15 @@ class _PerlEmitter:
         if isinstance(expr, TFloatLit):
             return TPrimitive(expr.pos, "float")
         if isinstance(expr, TListLit):
-            return TListType(expr.pos, TPrimitive(expr.pos, "obj"))
+            return TListType(expr.pos, TPrimitive(expr.pos, "int"))
         if isinstance(expr, TTupleLit):
-            return TTupleType(expr.pos, [TPrimitive(expr.pos, "obj")])
+            return TTupleType(expr.pos, [TPrimitive(expr.pos, "int")])
         if isinstance(expr, TMapLit):
             return TMapType(
-                expr.pos, TPrimitive(expr.pos, "obj"), TPrimitive(expr.pos, "obj")
+                expr.pos, TPrimitive(expr.pos, "int"), TPrimitive(expr.pos, "int")
             )
         if isinstance(expr, TSetLit):
-            return TSetType(expr.pos, TPrimitive(expr.pos, "obj"))
+            return TSetType(expr.pos, TPrimitive(expr.pos, "int"))
         return None
 
     def _is_string_expr(self, expr: TExpr) -> bool:

@@ -11,7 +11,7 @@ def f(x: int | None) -> None:
     if x:
         print("has value")
 ---
-IsNil(x, negated=True)
+IsNil(x, negated: True)
 ---
 
 === string truthy is non-empty
@@ -87,5 +87,5 @@ IsNil(x)
 def f(x: int | None) -> bool:
     return x is not None
 ---
-IsNil(x, negated=True)
+!IsNil(x)
 ---

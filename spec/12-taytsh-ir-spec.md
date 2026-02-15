@@ -191,10 +191,12 @@ let rest: bytes = buf[1:10]
 
 | Function       | Signature               | Description   |
 | -------------- | ----------------------- | ------------- |
-| `Len(b)`       | `bytes -> int`          | byte count    |
-| `Concat(a, b)` | `bytes, bytes -> bytes` | concatenation |
-| `Encode(s)`    | `string -> bytes`       | UTF-8 encode  |
-| `Decode(b)`    | `bytes -> string`       | UTF-8 decode  |
+| `Len(b)`        | `bytes -> int`          | byte count             |
+| `Concat(a, b)`  | `bytes, bytes -> bytes` | concatenation          |
+| `Bytes(n)`      | `int -> bytes`          | n zero bytes           |
+| `BytesFrom(xs)` | `list[byte] -> bytes`   | bytes from byte list   |
+| `Encode(s)`     | `string -> bytes`       | UTF-8 encode           |
+| `Decode(b)`     | `bytes -> string`       | UTF-8 decode           |
 
 ## Operators
 
@@ -739,7 +741,9 @@ let n: int = Len(xs)
 | `Contains(xs, v)`  | `list[T], T -> bool`      | membership test                                    |
 | `Repeat(xs, n)`    | `list[T], int -> list[T]` | repeat list n times; n ≤ 0 yields empty list       |
 | `Reversed(xs)`     | `list[T] -> list[T]`      | new list in reverse order                          |
-| `Sorted(xs)`       | `list[T] -> list[T]`      | new list in ascending order                        |
+| `Sorted(xs)`              | `list[T] -> list[T]`      | new list in ascending order                        |
+| `Concat(a, b)`            | `list[T], list[T] -> list[T]` | concatenation                                  |
+| `RangeList(start, end, step)` | `int, int, int -> list[int]` | list from range                              |
 
 `Sorted` requires `T` to be an ordered type (`int`, `float`, `byte`, `rune`, `string`).
 
@@ -792,7 +796,10 @@ let empty: set[string] = Set()
 | `Set()`          | `-> set[T]`         | empty set (type from context) |
 | `Add(s, v)`      | `set[T], T -> void` | add element                   |
 | `Remove(s, v)`   | `set[T], T -> void` | remove element                |
-| `Contains(s, v)` | `set[T], T -> bool` | membership test               |
+| `Contains(s, v)`      | `set[T], T -> bool`         | membership test               |
+| `Union(a, b)`         | `set[T], set[T] -> set[T]`  | elements in either            |
+| `Intersection(a, b)`  | `set[T], set[T] -> set[T]`  | elements in both              |
+| `Difference(a, b)`    | `set[T], set[T] -> set[T]`  | elements in a not b           |
 
 ## Collection Equality
 

@@ -1583,8 +1583,12 @@ class _RubyEmitter:
                 return "(" + a + ").abs"
             return a + ".abs"
         if name == "Min":
+            if len(args) == 1:
+                return self._a(args, 0) + ".min"
             return "[" + self._a(args, 0) + ", " + self._a(args, 1) + "].min"
         if name == "Max":
+            if len(args) == 1:
+                return self._a(args, 0) + ".max"
             return "[" + self._a(args, 0) + ", " + self._a(args, 1) + "].max"
         if name == "Sum":
             return self._a(args, 0) + ".sum"

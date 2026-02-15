@@ -378,9 +378,6 @@ def py_type_to_type_dict(
     # bytes -> Slice(byte)
     if s == "bytes" or s == "bytearray":
         return {"_type": "Slice", "element": {"kind": "byte"}}
-    # object -> InterfaceRef("any") per spec
-    if s == "object":
-        return {"_type": "InterfaceRef", "name": "any"}
     # Known class -> Pointer(StructRef)
     if s in known_classes:
         return {"_type": "Pointer", "target": {"_type": "StructRef", "name": s}}

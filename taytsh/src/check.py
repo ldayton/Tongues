@@ -405,6 +405,30 @@ def is_assignable(source: Type, target: Type) -> bool:
                 break
         if all_ok:
             return True
+    # Source with obj element → assignable to same container (empty literal)
+    if isinstance(source, ListT) and isinstance(target, ListT) and source.element.kind == TY_OBJ:
+        return True
+    if isinstance(source, MapT) and isinstance(target, MapT):
+        if source.key.kind == TY_OBJ and source.value.kind == TY_OBJ:
+            return True
+        if is_assignable(source.key, target.key) and is_assignable(source.value, target.value):
+            return True
+    if isinstance(source, SetT) and isinstance(target, SetT) and source.element.kind == TY_OBJ:
+        return True
+    # Tuple element-by-element assignability
+    if isinstance(source, TupleT) and isinstance(target, TupleT):
+        if len(source.elements) == len(target.elements):
+            ok = True
+            for i in range(len(source.elements)):
+                if not is_assignable(source.elements[i], target.elements[i]):
+                    ok = False
+                    break
+            if ok:
+                return True
+    # list[T] assignable to tuple of T elements (tuple augmented assignment)
+    if isinstance(source, ListT) and isinstance(target, TupleT):
+        if target.elements and all(is_assignable(source.element, e) for e in target.elements):
+            return True
     return False
 
 
@@ -415,13 +439,18 @@ def is_assignable(source: Type, target: Type) -> bool:
 
 def is_hashable(t: Type) -> bool:
     """Check if a type is hashable (valid as map key or set element)."""
-    if t.kind in (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_BYTES, TY_STRING, TY_RUNE):
+    if t.kind in (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_BYTES, TY_STRING, TY_RUNE, TY_NIL):
         return True
     if isinstance(t, EnumT):
         return True
     if isinstance(t, TupleT):
         for e in t.elements:
             if not is_hashable(e):
+                return False
+        return True
+    if isinstance(t, UnionT):
+        for m in t.members:
+            if not is_hashable(m):
                 return False
         return True
     return False
@@ -517,10 +546,15 @@ BUILTIN_NAMES: set[str] = {
     "Values",
     "Items",
     "Merge",
+    "PopItem",
+    "MapFromKeys",
     # Sets
     "Set",
     "Add",
     "Remove",
+    "Union",
+    "Intersection",
+    "Difference",
     # Conversions
     "IntToFloat",
     "FloatToInt",
@@ -551,8 +585,25 @@ BUILTIN_NAMES: set[str] = {
     # Arithmetic
     "FloorDiv",
     "PythonMod",
+    # Bytes constructors
+    "Bytes",
+    "BytesFrom",
+    # Range-to-list
+    "RangeList",
+    # Map constructor
+    "MapFromPairs",
+    # List comparison
+    "ListCompare",
+    # Zip
+    "Zip",
+    # Set from iterable
+    "SetFromList",
+    # String to char list
+    "Chars",
     # Mutation
     "ReplaceSlice",
+    # Nil check
+    "IsNil",
 }
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
@@ -1546,7 +1597,9 @@ class Checker:
 
     def check_binary_op(self, expr: TBinaryOp) -> Type | None:
         left = self.check_expr(expr.left, None)
-        right = self.check_expr(expr.right, None)
+        # For ==, pass left type as expected for right to help literal inference
+        right_expected = left if expr.op in ("==", "!=") else None
+        right = self.check_expr(expr.right, right_expected)
         if left is None or right is None:
             return None
         return self.check_binary_op_types(expr.op, left, right, expr.pos)
@@ -1569,26 +1622,57 @@ class Checker:
                 )
                 return None
             return BOOL_T
-        # Equality: same type
+        # Equality: same type (or compatible — tuples, lists, obj)
         if op in ("==", "!="):
             if not type_eq(left, right) and not (
                 is_assignable(left, right) or is_assignable(right, left)
             ):
+                # Allow comparing tuples of different sizes
+                if isinstance(left, TupleT) and isinstance(right, TupleT):
+                    return BOOL_T
+                # Allow comparing any two lists
+                if isinstance(left, ListT) and isinstance(right, ListT):
+                    return BOOL_T
+                # Allow comparing any two maps
+                if isinstance(left, MapT) and isinstance(right, MapT):
+                    return BOOL_T
+                # Allow comparing any two sets
+                if isinstance(left, SetT) and isinstance(right, SetT):
+                    return BOOL_T
+                # Allow comparing tuple and list (single-element tuple lowered to list)
+                if isinstance(left, (TupleT, ListT)) and isinstance(right, (TupleT, ListT)):
+                    return BOOL_T
+                # Allow comparing with obj
+                if left.kind == TY_OBJ or right.kind == TY_OBJ:
+                    return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
                     pos,
                 )
                 return None
             return BOOL_T
-        # Ordering: int, float, byte, rune, string — same type
+        # Ordering: int, float, byte, rune, string, list, tuple — same type
         if op in ("<", "<=", ">", ">="):
             if not type_eq(left, right):
+                # Allow comparing tuples of different sizes, or tuple with list
+                if isinstance(left, (TupleT, ListT)) and isinstance(right, (TupleT, ListT)):
+                    return BOOL_T
+                # Allow comparing with obj
+                if left.kind == TY_OBJ or right.kind == TY_OBJ:
+                    return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
                     pos,
                 )
                 return None
-            if left.kind not in (TY_INT, TY_FLOAT, TY_BYTE, TY_RUNE, TY_STRING):
+            if left.kind not in (
+                TY_INT,
+                TY_FLOAT,
+                TY_BYTE,
+                TY_BYTES,
+                TY_RUNE,
+                TY_STRING,
+            ):
                 msg = (
                     "not defined for union"
                     if isinstance(left, UnionT)
@@ -1808,14 +1892,17 @@ class Checker:
                 )
             return BYTE_T
         if isinstance(obj_type, MapT):
-            if idx_type is not None and not type_eq(idx_type, obj_type.key):
-                self.error(
-                    "map key must be "
-                    + type_name(obj_type.key)
-                    + ", got "
-                    + type_name(idx_type),
-                    expr.pos,
-                )
+            if idx_type is not None and not is_assignable(idx_type, obj_type.key):
+                # Allow numeric interchangeability for map keys
+                numeric = (TY_INT, TY_FLOAT, TY_BOOL)
+                if not (idx_type.kind in numeric and obj_type.key.kind in numeric):
+                    self.error(
+                        "map key must be "
+                        + type_name(obj_type.key)
+                        + ", got "
+                        + type_name(idx_type),
+                        expr.pos,
+                    )
             return obj_type.value
         msg = (
             "cannot index union"
@@ -1837,6 +1924,8 @@ class Checker:
             self.error("slice bound must be int, got " + type_name(high_type), expr.pos)
         if isinstance(obj_type, ListT):
             return obj_type
+        if isinstance(obj_type, TupleT) and obj_type.elements:
+            return ListT(kind="list", element=obj_type.elements[0])
         if type_eq(obj_type, STRING_T):
             return STRING_T
         if type_eq(obj_type, BYTES_T):
@@ -2065,8 +2154,7 @@ class Checker:
         if len(expr.elements) == 0:
             if expected is not None and isinstance(expected, ListT):
                 return expected
-            self.error("cannot infer type of empty list literal", expr.pos)
-            return None
+            return ListT(kind="list", element=OBJ_T)
         # Use expected element type if available
         elem_expected: Type | None = None
         if expected is not None and isinstance(expected, ListT):
@@ -2115,13 +2203,16 @@ class Checker:
             return None
         check_key = key_expected if key_expected is not None else key_type
         check_val = val_expected if val_expected is not None else val_type
+        # For map literal keys, allow bool↔int (Python: True==1, False==0)
+        _map_compat = {TY_BOOL, TY_INT}
         i = 1
         while i < len(expr.entries):
             ki, vi = expr.entries[i]
             kt = self.check_expr(ki, check_key)
             vt = self.check_expr(vi, check_val)
             if kt is not None and not is_assignable(kt, check_key):
-                self.error("map keys must have same type", ki.pos)
+                if not (kt.kind in _map_compat and check_key.kind in _map_compat):
+                    self.error("map keys must have same type", ki.pos)
             if vt is not None and not is_assignable(vt, check_val):
                 self.error("map values must have same type", vi.pos)
             i += 1
@@ -2367,6 +2458,13 @@ class Checker:
                 self.error("Abs requires int or float", pos)
             return t
         if name == "Min" or name == "Max":
+            if n == 1:
+                t = arg(0)
+                if t is not None and isinstance(t, ListT):
+                    return t.element
+                if t is not None:
+                    self.error(name + " with 1 argument requires list", pos)
+                return None
             if not require(2):
                 return None
             t1 = arg(0)
@@ -2477,7 +2575,21 @@ class Checker:
                     return STRING_T
                 if type_eq(t1, BYTES_T) and type_eq(t2, BYTES_T):
                     return BYTES_T
-                self.error("Concat requires two strings or two bytes", pos)
+                if isinstance(t1, ListT) and isinstance(t2, ListT):
+                    return t1
+                if isinstance(t1, ListT) and t2.kind == TY_OBJ:
+                    return t1
+                if t1.kind == TY_OBJ and isinstance(t2, ListT):
+                    return t2
+                if isinstance(t1, (ListT, TupleT)) and isinstance(t2, (ListT, TupleT)):
+                    if isinstance(t1, ListT):
+                        return t1
+                    if isinstance(t2, ListT):
+                        return t2
+                    return ListT(kind="list", element=t1.elements[0] if t1.elements else OBJ_T)
+                self.error(
+                    "Concat requires two strings, two bytes, or two lists", pos
+                )
             return STRING_T
 
         # ── Append ──
@@ -2490,9 +2602,12 @@ class Checker:
                 if not isinstance(t1, ListT):
                     self.error("Append requires list as first argument", pos)
                 elif t2 is not None and not is_assignable(t2, t1.element):
-                    self.error(
-                        "cannot append " + type_name(t2) + " to " + type_name(t1), pos
-                    )
+                    # Allow byte↔int for list operations (Python bytes iterate as int)
+                    byte_int = {TY_BYTE, TY_INT}
+                    if not (t2.kind in byte_int and t1.element.kind in byte_int):
+                        self.error(
+                            "cannot append " + type_name(t2) + " to " + type_name(t1), pos
+                        )
             return VOID_T
 
         # ── Insert ──
@@ -2521,8 +2636,10 @@ class Checker:
             t = arg(0)
             if t is not None and isinstance(t, ListT):
                 return t.element
+            if t is not None and isinstance(t, SetT):
+                return t.element
             if t is not None:
-                self.error("Pop requires list", pos)
+                self.error("Pop requires list or set", pos)
             return None
 
         # ── RemoveAt ──
@@ -2586,8 +2703,12 @@ class Checker:
                         )
                 elif type_eq(t1, STRING_T):
                     pass
+                elif type_eq(t1, BYTES_T):
+                    pass
+                elif isinstance(t1, TupleT):
+                    pass
                 else:
-                    self.error("Contains requires list, set, map, or string", pos)
+                    self.error("Contains requires list, set, map, string, or bytes", pos)
             return BOOL_T
 
         # ── Get ──
@@ -2670,16 +2791,42 @@ class Checker:
                 and isinstance(t2, MapT)
             ):
                 if not type_eq(t1, t2):
-                    self.error(
-                        "Merge maps must be same type, got "
-                        + type_name(t1)
-                        + " and "
-                        + type_name(t2),
-                        pos,
-                    )
+                    # Allow merge with obj-typed empty map
+                    if t1.key.kind != TY_OBJ and t2.key.kind != TY_OBJ:
+                        self.error(
+                            "Merge maps must be same type, got "
+                            + type_name(t1)
+                            + " and "
+                            + type_name(t2),
+                            pos,
+                        )
                 return t1
             if t1 is not None and isinstance(t1, MapT):
                 return t1
+            return None
+
+        # ── PopItem ──
+        if name == "PopItem":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and isinstance(t, MapT):
+                return TupleT(kind="tuple", elements=[t.key, t.value])
+            if t is not None:
+                self.error("PopItem requires map", pos)
+            return None
+
+        # ── MapFromKeys ──
+        if name == "MapFromKeys":
+            if not require(2):
+                return None
+            t1 = arg(0)
+            t2 = arg(1)
+            if t1 is not None and isinstance(t1, ListT):
+                val_ty = t2 if t2 is not None else OBJ_T
+                return MapT(kind="map", key=t1.element, value=val_ty)
+            if t1 is not None:
+                self.error("MapFromKeys requires list as first argument", pos)
             return None
 
         # ── Map() / Set() ──
@@ -2688,15 +2835,13 @@ class Checker:
                 return None
             if expected is not None and isinstance(expected, MapT):
                 return expected
-            self.error("cannot infer type of Map()", pos)
-            return None
+            return MapT(kind="map", key=OBJ_T, value=OBJ_T)
         if name == "Set":
             if not require(0):
                 return None
             if expected is not None and isinstance(expected, SetT):
                 return expected
-            self.error("cannot infer type of Set()", pos)
-            return None
+            return SetT(kind="set", element=OBJ_T)
 
         # ── Add / Remove (set) ──
         if name == "Add":
@@ -2728,6 +2873,128 @@ class Checker:
                     )
             return VOID_T
 
+        # ── Union / Intersection / Difference ──
+        if name in ("Union", "Intersection", "Difference"):
+            if not require(2):
+                return None
+            t1 = arg(0)
+            t2 = arg(1)
+            if t1 is not None and not isinstance(t1, SetT):
+                self.error(name + " requires set as first argument", pos)
+                return None
+            if t2 is not None and not isinstance(t2, SetT):
+                self.error(name + " requires set as second argument", pos)
+                return None
+            if (
+                t1 is not None
+                and t2 is not None
+                and isinstance(t1, SetT)
+                and isinstance(t2, SetT)
+            ):
+                if not type_eq(t1, t2):
+                    if t1.element.kind != TY_OBJ and t2.element.kind != TY_OBJ:
+                        self.error(
+                            name
+                            + " sets must be same type, got "
+                            + type_name(t1)
+                            + " and "
+                            + type_name(t2),
+                            pos,
+                        )
+                return t1
+            if t1 is not None and isinstance(t1, SetT):
+                return t1
+            return None
+
+        # ── Bytes / BytesFrom ──
+        if name == "Bytes":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, INT_T):
+                self.error("Bytes requires int", pos)
+            return BYTES_T
+        if name == "BytesFrom":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None:
+                if not isinstance(t, ListT):
+                    self.error("BytesFrom requires list", pos)
+            return BYTES_T
+
+        # ── RangeList ──
+        if name == "RangeList":
+            if not require(3):
+                return None
+            i = 0
+            while i < 3:
+                t = arg(i)
+                if t is not None and not type_eq(t, INT_T):
+                    self.error("RangeList requires int arguments", pos)
+                i += 1
+            return ListT(kind="list", element=INT_T)
+
+        # ── MapFromPairs ──
+        if name == "MapFromPairs":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None:
+                if isinstance(t, ListT) and isinstance(t.element, TupleT):
+                    elems = t.element.elements
+                    if len(elems) == 2:
+                        return MapT(kind="map", key=elems[0], value=elems[1])
+                self.error("MapFromPairs requires list of 2-tuples", pos)
+            return None
+
+        # ── ListCompare ──
+        if name == "ListCompare":
+            if not require(2):
+                return None
+            t1 = arg(0)
+            t2 = arg(1)
+            if t1 is not None and not isinstance(t1, ListT):
+                self.error("ListCompare requires list as first argument", pos)
+            if t2 is not None and not isinstance(t2, ListT):
+                self.error("ListCompare requires list as second argument", pos)
+            return INT_T
+
+        # ── Zip ──
+        if name == "Zip":
+            if not require(2):
+                return None
+            t1 = arg(0)
+            t2 = arg(1)
+            if t1 is not None and not isinstance(t1, ListT):
+                self.error("Zip requires list as first argument", pos)
+                return None
+            if t2 is not None and not isinstance(t2, ListT):
+                self.error("Zip requires list as second argument", pos)
+                return None
+            if t1 is not None and t2 is not None and isinstance(t1, ListT) and isinstance(t2, ListT):
+                return ListT(kind="list", element=TupleT(kind="tuple", elements=[t1.element, t2.element]))
+            return None
+
+        # ── SetFromList ──
+        if name == "SetFromList":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None:
+                if isinstance(t, ListT):
+                    return SetT(kind="set", element=t.element)
+                self.error("SetFromList requires list argument", pos)
+            return None
+
+        if name == "Chars":
+            if not require(1):
+                return None
+            t = arg(0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("Chars requires string argument", pos)
+            return ListT(kind="list", element=STRING_T)
+
         # ── Repeat ──
         if name == "Repeat":
             if not require(2):
@@ -2739,9 +3006,13 @@ class Checker:
             if t1 is not None:
                 if type_eq(t1, STRING_T):
                     return STRING_T
+                if type_eq(t1, BYTES_T):
+                    return BYTES_T
                 if isinstance(t1, ListT):
                     return t1
-                self.error("Repeat requires string or list", pos)
+                if isinstance(t1, TupleT) and t1.elements:
+                    return ListT(kind="list", element=t1.elements[0])
+                self.error("Repeat requires string, bytes, or list", pos)
             return None
 
         if name == "Reverse":
@@ -2776,8 +3047,18 @@ class Checker:
                 ):
                     self.error("Sorted requires ordered type", pos)
                 return t
+            if t is not None and isinstance(t, SetT):
+                if t.element.kind not in (
+                    TY_INT,
+                    TY_FLOAT,
+                    TY_BYTE,
+                    TY_RUNE,
+                    TY_STRING,
+                ):
+                    self.error("Sorted requires ordered type", pos)
+                return ListT(kind="list", element=t.element)
             if t is not None:
-                self.error("Sorted requires list", pos)
+                self.error("Sorted requires list or set", pos)
             return None
 
         # ── String functions ──
@@ -3036,6 +3317,12 @@ class Checker:
             if t is not None and not type_eq(t, FLOAT_T):
                 self.error("Sqrt requires float", pos)
             return FLOAT_T
+
+        # ── IsNil ──
+        if name == "IsNil":
+            if not require(1):
+                return None
+            return BOOL_T
 
         self.error("unknown built-in function: " + name, pos)
         return None

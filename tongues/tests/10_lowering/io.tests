@@ -2,14 +2,14 @@
 def f(x: int) -> None:
     print(x)
 ---
-Print(x, newline=True)
+Print(x, newline: True)
 ---
 
 === print without newline
 def f(x: int) -> None:
     print(x, end="")
 ---
-Print(x, newline=False)
+Print(x, newline: False)
 ---
 
 === print to stderr
@@ -17,7 +17,7 @@ import sys
 def f(x: int) -> None:
     print(x, file=sys.stderr)
 ---
-Print(x, stderr=True)
+Print(x, stderr: True)
 ---
 
 === readline

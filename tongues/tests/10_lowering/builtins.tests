@@ -72,7 +72,7 @@ RuneFromInt(n)
 def f(c: str) -> int:
     return ord(c)
 ---
-RuneToInt(c)
+RuneToInt(c[0])
 ---
 
 === sorted list

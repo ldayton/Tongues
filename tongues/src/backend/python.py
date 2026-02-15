@@ -1432,8 +1432,12 @@ class _PythonEmitter:
         if name == "Abs":
             return "abs(" + self._a(args, 0) + ")"
         if name == "Min":
+            if len(args) == 1:
+                return "min(" + self._a(args, 0) + ")"
             return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Max":
+            if len(args) == 1:
+                return "max(" + self._a(args, 0) + ")"
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sum":
             return "sum(" + self._a(args, 0) + ")"
@@ -1601,8 +1605,6 @@ class _PythonEmitter:
             return "bytes"
         if kind == "void":
             return "None"
-        if kind == "obj":
-            return "object"
         if kind == "nil":
             return "None"
         return "object"

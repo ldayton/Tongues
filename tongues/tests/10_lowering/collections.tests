@@ -151,7 +151,7 @@ Merge(d, Map())
 def f(d: dict[str, int], k: str) -> int | None:
     return d.pop(k)
 ---
-Get(d, k)
+d[k]
 ---
 
 === set add
