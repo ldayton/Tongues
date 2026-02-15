@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 
 # ============================================================
@@ -830,6 +830,11 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, object]:
         if escapes:
             d["escapes"] = escapes
     return d
+
+
+def to_dict(module: TModule) -> dict[str, object]:
+    """Serialize a TModule to a plain dict tree via dataclasses.asdict."""
+    return asdict(module)
 
 
 def serialize_annotations(module: TModule, prefix: str) -> dict[str, dict[str, object]]:

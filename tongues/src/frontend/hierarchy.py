@@ -1,119 +1,295 @@
-"""Phase 7: Class hierarchy analysis."""
+"""Phase 7: Class hierarchy analysis.
+
+Build the class hierarchy and classify structs. Detects the hierarchy root,
+marks node subclasses and exception subclasses, validates no cycles exist.
+
+Written in the Tongues subset (no generators, closures, lambdas, getattr).
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from ..ir import SymbolTable
+# Type alias for AST dict nodes
+ASTNode = dict[str, object]
 
 
-def _detect_cycles(symbols: SymbolTable) -> None:
-    """Raise if any class has a cycle in its inheritance chain."""
-    for name in symbols.structs:
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
+
+
+class HierarchyError:
+    """An error found during hierarchy analysis."""
+
+    def __init__(self, lineno: int, col: int, message: str) -> None:
+        self.lineno: int = lineno
+        self.col: int = col
+        self.message: str = message
+
+    def __repr__(self) -> str:
+        return (
+            "error:"
+            + str(self.lineno)
+            + ":"
+            + str(self.col)
+            + ": [hierarchy] "
+            + self.message
+        )
+
+
+class HierarchyResult:
+    """Result of hierarchy analysis."""
+
+    def __init__(self) -> None:
+        self.hierarchy_root: str | None = None
+        self.node_types: list[str] = []
+        self.exception_types: list[str] = []
+        self.ancestors: dict[str, list[str]] = {}
+        self._errors: list[HierarchyError] = []
+
+    def add_error(self, lineno: int, col: int, message: str) -> None:
+        self._errors.append(HierarchyError(lineno, col, message))
+
+    def errors(self) -> list[HierarchyError]:
+        return self._errors
+
+    def is_node(self, name: str) -> bool:
+        """Check if name is a node type."""
+        i = 0
+        while i < len(self.node_types):
+            if self.node_types[i] == name:
+                return True
+            i += 1
+        return False
+
+    def is_exception(self, name: str) -> bool:
+        """Check if name is an exception type."""
+        i = 0
+        while i < len(self.exception_types):
+            if self.exception_types[i] == name:
+                return True
+            i += 1
+        return False
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to nested dicts for test assertions."""
+        d: dict[str, object] = {
+            "root": self.hierarchy_root,
+            "node_types": list(self.node_types),
+            "exception_types": list(self.exception_types),
+        }
+        ancestors: dict[str, object] = {}
+        akeys = list(self.ancestors.keys())
+        i = 0
+        while i < len(akeys):
+            ancestors[akeys[i]] = list(self.ancestors[akeys[i]])
+            i += 1
+        d["ancestors"] = ancestors
+        return d
+
+
+# ---------------------------------------------------------------------------
+# Cycle detection
+# ---------------------------------------------------------------------------
+
+
+def _detect_cycles(
+    class_bases: dict[str, list[str]],
+    errors: list[HierarchyError],
+) -> bool:
+    """Check for cycles in the inheritance graph. Returns True if cycle found."""
+    ckeys = list(class_bases.keys())
+    i = 0
+    while i < len(ckeys):
+        name = ckeys[i]
         visited: set[str] = set()
-        current = name
-        while current:
+        current: str | None = name
+        while current is not None:
             if current in visited:
-                raise RuntimeError("cycle in inheritance")
+                errors.append(HierarchyError(0, 0, "cycle in inheritance: " + name))
+                return True
             visited.add(current)
-            info = symbols.structs.get(current)
-            if not info or not info.bases:
-                break
-            current = info.bases[0]
+            bases = class_bases.get(current)
+            if bases is not None and len(bases) > 0:
+                current = bases[0]
+            else:
+                current = None
+        i += 1
+    return False
 
 
-def is_exception_subclass(
-    name: str, symbols: SymbolTable, _seen: set[str] | None = None
+# ---------------------------------------------------------------------------
+# Exception subclass detection
+# ---------------------------------------------------------------------------
+
+
+def _is_exception_subclass(
+    name: str,
+    class_bases: dict[str, list[str]],
+    cache: dict[str, bool],
 ) -> bool:
     """Check if a class is an Exception subclass (directly or transitively)."""
     if name == "Exception":
         return True
-    if _seen is None:
-        _seen = set()
-    if name in _seen:
+    if name in cache:
+        return cache[name]
+    bases = class_bases.get(name)
+    if bases is None or len(bases) == 0:
+        cache[name] = False
         return False
-    _seen.add(name)
-    info = symbols.structs.get(name)
-    if not info:
-        return False
-    return any(is_exception_subclass(base, symbols, _seen) for base in info.bases)
+    i = 0
+    while i < len(bases):
+        if _is_exception_subclass(bases[i], class_bases, cache):
+            cache[name] = True
+            return True
+        i += 1
+    cache[name] = False
+    return False
 
 
-def find_hierarchy_root(symbols: SymbolTable) -> str | None:
-    """Find the single root of the class hierarchy (e.g., "Node").
+# ---------------------------------------------------------------------------
+# Hierarchy root detection
+# ---------------------------------------------------------------------------
 
-    Returns the name of the class that:
-    - Has no base classes
-    - Is used as a base class (directly or transitively)
-    - Is the only such root (returns None if multiple or none)
+
+def _find_hierarchy_root(
+    known_classes: set[str],
+    class_bases: dict[str, list[str]],
+    exception_cache: dict[str, bool],
+) -> str | None:
+    """Find the single root of the class hierarchy.
+
+    A class is the root if it has no base classes, is used as a base by
+    at least one other class, and is the only such root. Exception classes
+    and their subclasses are excluded.
     """
+    # Find all classes used as a base
     used_as_base: set[str] = set()
-    for info in symbols.structs.values():
-        for base in info.bases:
-            if base != "Exception" and not is_exception_subclass(base, symbols):
+    ckeys = list(class_bases.keys())
+    i = 0
+    while i < len(ckeys):
+        name = ckeys[i]
+        bases = class_bases[name]
+        j = 0
+        while j < len(bases):
+            base = bases[j]
+            if base != "Exception" and not _is_exception_subclass(
+                base, class_bases, exception_cache
+            ):
                 used_as_base.add(base)
-    roots = [
-        n
-        for n in used_as_base
-        if symbols.structs.get(n) and len(symbols.structs[n].bases) == 0
-    ]
-    return roots[0] if len(roots) == 1 else None
+            j += 1
+        i += 1
+    # Find roots: used as base, no base themselves, in known_classes
+    roots: list[str] = []
+    ukeys = list(used_as_base)
+    i = 0
+    while i < len(ukeys):
+        name = ukeys[i]
+        if name in known_classes:
+            bases = class_bases.get(name)
+            if bases is None or len(bases) == 0:
+                roots.append(name)
+        i += 1
+    if len(roots) == 1:
+        return roots[0]
+    return None
 
 
-def is_node_subclass(
+# ---------------------------------------------------------------------------
+# Node subclass detection
+# ---------------------------------------------------------------------------
+
+
+def _is_node_subclass(
     name: str,
-    symbols: SymbolTable,
-    hierarchy_root: str | None = None,
-    _seen: set[str] | None = None,
+    hierarchy_root: str,
+    class_bases: dict[str, list[str]],
+    cache: dict[str, bool],
 ) -> bool:
-    """Check if a class is a Node subclass (directly or transitively)."""
-    if hierarchy_root is None:
-        hierarchy_root = find_hierarchy_root(symbols)
-    if hierarchy_root is None:
-        return False
+    """Check if a class is a node subclass (transitively inherits from root)."""
     if name == hierarchy_root:
         return True
-    if _seen is None:
-        _seen = set()
-    if name in _seen:
+    if name in cache:
+        return cache[name]
+    bases = class_bases.get(name)
+    if bases is None or len(bases) == 0:
+        cache[name] = False
         return False
-    _seen.add(name)
-    info = symbols.structs.get(name)
-    if not info:
-        return False
-    return any(
-        is_node_subclass(base, symbols, hierarchy_root, _seen) for base in info.bases
+    i = 0
+    while i < len(bases):
+        if _is_node_subclass(bases[i], hierarchy_root, class_bases, cache):
+            cache[name] = True
+            return True
+        i += 1
+    cache[name] = False
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+
+def build_hierarchy(
+    known_classes: set[str],
+    class_bases: dict[str, list[str]],
+) -> HierarchyResult:
+    """Build the class hierarchy and classify structs.
+
+    Args:
+        known_classes: Set of known class names.
+        class_bases: Dict mapping class name to list of base class names.
+    """
+    result = HierarchyResult()
+    # Validate base classes exist
+    ckeys = list(class_bases.keys())
+    i = 0
+    while i < len(ckeys):
+        name = ckeys[i]
+        bases = class_bases[name]
+        j = 0
+        while j < len(bases):
+            base = bases[j]
+            if base != "Exception" and base not in known_classes:
+                result.add_error(0, 0, "'" + base + "' is not defined")
+                return result
+            j += 1
+        i += 1
+    # Detect cycles
+    if _detect_cycles(class_bases, result._errors):
+        return result
+    # Build ancestor lists (direct bases only)
+    i = 0
+    while i < len(ckeys):
+        name = ckeys[i]
+        bases = class_bases.get(name, [])
+        ancestors: list[str] = []
+        j = 0
+        while j < len(bases):
+            if bases[j] != "Exception":
+                ancestors.append(bases[j])
+            j += 1
+        result.ancestors[name] = ancestors
+        i += 1
+    # Detect exception subclasses
+    exception_cache: dict[str, bool] = {}
+    i = 0
+    while i < len(ckeys):
+        name = ckeys[i]
+        if _is_exception_subclass(name, class_bases, exception_cache):
+            result.exception_types.append(name)
+        i += 1
+    # Find hierarchy root
+    result.hierarchy_root = _find_hierarchy_root(
+        known_classes, class_bases, exception_cache
     )
-
-
-class SubtypeRel:
-    """Pre-computed subtype relations for efficient lookups."""
-
-    def __init__(self, hierarchy_root: str | None = None) -> None:
-        self.hierarchy_root: str | None = hierarchy_root
-        self.node_types: set[str] = set()
-        self.exception_types: set[str] = set()
-
-    def is_node(self, name: str) -> bool:
-        return name in self.node_types
-
-    def is_exception(self, name: str) -> bool:
-        return name in self.exception_types
-
-
-def build_hierarchy(symbols: SymbolTable) -> SubtypeRel:
-    """Phase 7: Build class hierarchy and mark subtype flags."""
-    _detect_cycles(symbols)
-    hierarchy_root = find_hierarchy_root(symbols)
-    rel = SubtypeRel(hierarchy_root=hierarchy_root)
-    for name, info in symbols.structs.items():
-        # Mark Node subclasses
-        info.is_node = is_node_subclass(name, symbols, hierarchy_root)
-        if info.is_node:
-            rel.node_types.add(name)
-        # Mark Exception subclasses
-        info.is_exception = is_exception_subclass(name, symbols)
-        if info.is_exception:
-            rel.exception_types.add(name)
-    return rel
+    # Classify node types
+    if result.hierarchy_root is not None:
+        node_cache: dict[str, bool] = {}
+        i = 0
+        while i < len(ckeys):
+            name = ckeys[i]
+            if _is_node_subclass(name, result.hierarchy_root, class_bases, node_cache):
+                result.node_types.append(name)
+            i += 1
+    return result

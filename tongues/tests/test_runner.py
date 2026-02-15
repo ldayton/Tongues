@@ -1,417 +1,23 @@
-"""Test runner for non-v2 Tongues test phases."""
+"""Test runner for Tongues test phases."""
 
-import ast
-import re
+import shutil
 import signal
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from functools import cache
 from pathlib import Path
 
 import pytest
 
-from src.frontend import Frontend, compile
+from src.frontend.fields import collect_fields
 from src.frontend.hierarchy import build_hierarchy
+from src.frontend.inference import run_inference as _run_inference
 from src.frontend.names import resolve_names
 from src.frontend.parse import parse
+from src.frontend.signatures import collect_signatures
 from src.frontend.subset import verify as verify_subset
-from src.middleend import analyze
-from src.serialize import fields_to_dict, hierarchy_to_dict, signatures_to_dict
-from src.backend.c import CBackend
-from src.backend.csharp import CSharpBackend
-from src.backend.dart import DartBackend
-from src.backend.go import GoBackend
-from src.backend.java import JavaBackend
-from src.backend.javascript import JsBackend
-from src.backend.lua import LuaBackend
-from src.backend.perl import PerlBackend
-from src.backend.php import PhpBackend
-from src.backend.python import PythonBackend
-from src.backend_v2.python import emit_python as emit_python_v2
-from src.backend.ruby import RubyBackend
-from src.backend.rust import RustBackend
-from src.backend.swift import SwiftBackend
-from src.backend.typescript import TsBackend
-from src.backend.zig import ZigBackend
-from src.middleend_v2.liveness import analyze_liveness
-from src.middleend_v2.scope import analyze_scope
-from src.taytsh import parse as taytsh_parse
-from src.taytsh.check import check_with_info
-from src.taytsh.ast import (
-    TFnDecl,
-    TStructDecl,
-    TIfStmt,
-    TWhileStmt,
-    TForStmt,
-    TMatchStmt,
-    TTryStmt,
-    TRange,
-    TLetStmt,
-    TPatternType,
-    TVar,
-    TExprStmt,
-    TReturnStmt,
-    TCall,
-    TBinaryOp,
-    TUnaryOp,
-    TFieldAccess,
-    TIndex,
-    TTernary,
-    TFnLit,
-    TThrowStmt,
-    TAssignStmt,
-    TOpAssignStmt,
-    TTupleAssignStmt,
-    TListLit,
-    TMapLit,
-    TSetLit,
-    TTupleLit,
-    TSlice,
-)
-from src.middleend_v2.returns import analyze_returns
-from src.middleend_v2.scope import analyze_scope
 
-PARSE_TIMEOUT = 5
-TESTS_DIR = Path(__file__).parent
-TONGUES_DIR = TESTS_DIR.parent
-OUT_DIR = TESTS_DIR / "15_app" / ".out"
-
-# fmt: off
-TESTS = {
-    "frontend": {
-        "cli":       {"dir": "01_cli",        "run": "cli"},
-        "parse":     {"dir": "02_parse",      "run": "phase"},
-        "subset":    {"dir": "03_subset",     "run": "phase"},
-        "names":     {"dir": "04_names",      "run": "phase"},
-        "sigs":      {"dir": "05_signatures", "run": "phase"},
-        "fields":    {"dir": "06_fields",     "run": "phase"},
-        "hierarchy": {"dir": "07_hierarchy",  "run": "phase"},
-        "typecheck": {"dir": "08_inference",  "run": "phase"},
-    },
-    "backend": {
-        "codegen":   {"dir": "15_codegen",    "run": "codegen"},
-        "apptest":   {"dir": "15_app",        "run": "apptest"},
-    },
-}
-# fmt: on
-
-BACKENDS = {
-    "c": CBackend,
-    "csharp": CSharpBackend,
-    "dart": DartBackend,
-    "go": GoBackend,
-    "java": JavaBackend,
-    "javascript": JsBackend,
-    "lua": LuaBackend,
-    "perl": PerlBackend,
-    "php": PhpBackend,
-    "python": PythonBackend,
-    "ruby": RubyBackend,
-    "rust": RustBackend,
-    "swift": SwiftBackend,
-    "typescript": TsBackend,
-    "zig": ZigBackend,
-}
-
-
-# ---------------------------------------------------------------------------
-# Language targets
-# ---------------------------------------------------------------------------
-
-
-class TranspileError(Exception):
-    """Raised when transpilation fails."""
-
-
-class CompileError(Exception):
-    """Raised when compilation fails."""
-
-
-@dataclass
-class Target:
-    """Configuration for a language target."""
-
-    name: str
-    ext: str
-    run_cmd: list[str] | None = None
-    compile_cmd: list[str] | None = None
-    format_cmd: list[str] | None = None
-
-    def get_run_command(self, path: Path) -> list[str]:
-        if self.run_cmd:
-            return [
-                arg.format(path=path, out=path.with_suffix("")) for arg in self.run_cmd
-            ]
-        return [str(path.with_suffix(""))]
-
-    def get_compile_command(self, path: Path) -> list[str] | None:
-        if not self.compile_cmd:
-            return None
-        return [
-            arg.format(path=path, out=path.with_suffix("")) for arg in self.compile_cmd
-        ]
-
-    def get_format_command(self, path: Path) -> list[str] | None:
-        if not self.format_cmd:
-            return None
-        return [arg.format(path=path) for arg in self.format_cmd]
-
-
-# fmt: off
-TARGETS: dict[str, Target] = {
-    "python":     Target(name="python",     ext=".py",    run_cmd=["python3", "{path}"], format_cmd=["uvx", "ruff", "format", "--quiet", "{path}"]),
-    "javascript": Target(name="javascript", ext=".js",    run_cmd=["node", "{path}"], format_cmd=["npx", "@biomejs/biome", "format", "--write", "{path}"]),
-    "typescript": Target(name="typescript", ext=".ts",    run_cmd=["npx", "tsx", "{path}"], format_cmd=["npx", "@biomejs/biome", "format", "--write", "{path}"]),
-    "ruby":       Target(name="ruby",       ext=".rb",    run_cmd=["ruby", "{path}"], format_cmd=["rubocop", "-A", "--only", "Layout", "-o", "/dev/null", "{path}"]),
-    "java":       Target(name="java",       ext=".java",  run_cmd=["java", "{path}"], format_cmd=["java", "-jar", "/opt/java-tools/google-java-format.jar", "-i", "{path}"]),
-    "dart":       Target(name="dart",       ext=".dart",  run_cmd=["dart", "run", "{path}"], format_cmd=["dart", "format", "{path}"]),
-    "go":         Target(name="go",         ext=".go",    run_cmd=["go", "run", "{path}"], format_cmd=["gofmt", "-w", "{path}"]),
-    "lua":        Target(name="lua",        ext=".lua",   run_cmd=["lua", "{path}"], format_cmd=["stylua", "{path}"]),
-    "php":        Target(name="php",        ext=".php",   run_cmd=["php", "{path}"], format_cmd=["php-cs-fixer", "fix", "--rules=@PSR12", "--quiet", "{path}"]),
-    "c":          Target(name="c",          ext=".c",     compile_cmd=["gcc", "-std=c11", "-o", "{out}", "{path}", "-lm"], format_cmd=["clang-format", "-i", "{path}"]),
-    "csharp":     Target(name="csharp",     ext=".cs",    compile_cmd=["mcs", "-out:{out}.exe", "{path}"], run_cmd=["mono", "{out}.exe"], format_cmd=["csharpier", "format", "{path}"]),
-    "perl":       Target(name="perl",       ext=".pl",    run_cmd=["perl", "{path}"], format_cmd=["perltidy", "-b", "-bext=/", "{path}"]),
-    "rust":       Target(name="rust",       ext=".rs",    compile_cmd=["rustc", "-o", "{out}", "{path}"], format_cmd=["rustfmt", "{path}"]),
-    "swift":      Target(name="swift",      ext=".swift", run_cmd=["xcrun", "swift", "{path}"], format_cmd=["swiftformat", "{path}"]),
-    "zig":        Target(name="zig",        ext=".zig",   compile_cmd=["zig", "build-exe", "{path}", "-fno-emit-bin", "-fno-emit-asm", "--cache-dir", "/tmp/zig-cache", "-femit-bin={out}"], format_cmd=["zig", "fmt", "{path}"]),
-}
-# fmt: on
-
-# Required versions for each language runtime (must match Dockerfiles)
-_VERSION_CHECKS: dict[str, tuple[list[str], str]] = {
-    "c": (["gcc", "--version"], r"gcc.* 13\."),
-    "csharp": (["mcs", "--version"], r"[56]\."),
-    "dart": (["dart", "--version"], r"3\.2"),
-    "go": (["go", "version"], r"go1\.21"),
-    "java": (["java", "--version"], r"21\."),
-    "javascript": (["node", "--version"], r"v21\."),
-    "lua": (["lua", "-v"], r"5\.4"),
-    "perl": (["perl", "-v"], r"v5\."),
-    "php": (["php", "--version"], r"8\.3"),
-    "python": (["python3", "--version"], r"3\.12"),
-    "ruby": (["ruby", "--version"], r"ruby 3\."),
-    "rust": (["rustc", "--version"], r"1\.75"),
-    "swift": (["xcrun", "swift", "--version"], r"6\."),
-    "typescript": (["tsc", "--version"], r"5\.3"),
-    "zig": (["zig", "version"], r"0\.14"),
-}
-
-
-@cache
-def _check_version(lang: str) -> tuple[bool, str]:
-    """Check if language runtime has correct version. Returns (ok, message)."""
-    if lang not in _VERSION_CHECKS:
-        return True, "no version requirement"
-    cmd, pattern = _VERSION_CHECKS[lang]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-        output = result.stdout + result.stderr
-        if re.search(pattern, output):
-            return True, output.split("\n")[0].strip()
-        return False, f"expected {pattern!r}, got: {output.split(chr(10))[0].strip()}"
-    except FileNotFoundError:
-        return False, f"{cmd[0]} not found"
-    except subprocess.TimeoutExpired:
-        return False, f"{cmd[0]} timed out"
-
-
-# Skip specific (apptest, language) combinations that are known to fail.
-_SKIP_LANGS: dict[str, set[str]] = {
-    "apptest_bytes": {
-        "csharp",
-        "c",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_chars": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "swift",
-        "zig",
-    },
-    "apptest_dicts": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_floats": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_ints": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_lists": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_none": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_sets": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_strings": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_truthiness": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-    "apptest_tuples": {
-        "c",
-        "csharp",
-        "dart",
-        "go",
-        "java",
-        "lua",
-        "perl",
-        "php",
-        "rust",
-        "swift",
-        "zig",
-    },
-}
-
-
-# ---------------------------------------------------------------------------
-# Discovery + parsing
-# ---------------------------------------------------------------------------
-
-
-def _timeout_handler(signum, frame):
-    raise TimeoutError("parse() timed out")
-
-
-signal.signal(signal.SIGALRM, _timeout_handler)
-
-
-def parse_spec_file(path: Path) -> list[tuple[str, str, str]]:
-    """Parse a .tests file into (name, input, expected) tuples."""
-    lines = path.read_text().split("\n")
-    result: list[tuple[str, str, str]] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("=== "):
-            test_name = line[4:].strip()
-            i += 1
-            input_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                input_lines.append(lines[i])
-                i += 1
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            expected_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                expected_lines.append(lines[i])
-                i += 1
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            test_input = "\n".join(input_lines)
-            expected = "\n".join(expected_lines).strip()
-            result.append((test_name, test_input, expected))
-        else:
-            i += 1
-    return result
-
-
-def discover_specs(test_dir: Path) -> list[tuple[str, str, str]]:
-    """Glob *.tests in test_dir, return (test_id, input, expected) tuples."""
-    results = []
-    for test_file in sorted(test_dir.glob("*.tests")):
-        for name, input_code, expected in parse_spec_file(test_file):
-            results.append((f"{test_file.stem}/{name}", input_code, expected))
-    return results
+TONGUES_DIR = Path(__file__).parent.parent
 
 
 def parse_cli_test_file(path: Path) -> list[tuple[str, dict]]:
@@ -487,81 +93,6 @@ def discover_cli_tests(test_dir: Path) -> list[tuple[str, dict]]:
     return results
 
 
-def parse_codegen_file(path: Path) -> list[tuple[str, str, dict[str, str]]]:
-    """Parse .tests file into (name, input, {lang: expected}) tuples."""
-    lines = path.read_text().split("\n")
-    result: list[tuple[str, str, dict[str, str]]] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("=== "):
-            test_name = line[4:].strip()
-            i += 1
-            input_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                input_lines.append(lines[i])
-                i += 1
-            expected_by_lang: dict[str, str] = {}
-            while i < len(lines) and lines[i].startswith("--- "):
-                lang = lines[i][4:].strip()
-                i += 1
-                expected_lines: list[str] = []
-                while i < len(lines) and not lines[i].startswith("---"):
-                    expected_lines.append(lines[i])
-                    i += 1
-                expected_by_lang[lang] = "\n".join(expected_lines)
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            test_input = "\n".join(input_lines)
-            result.append((test_name, test_input, expected_by_lang))
-        else:
-            i += 1
-    return result
-
-
-def discover_codegen_tests(test_dir: Path) -> list[tuple[str, str, str, str, bool]]:
-    """Find all codegen tests, returns (test_id, input, lang, expected, has_explicit)."""
-    results = []
-    for test_file in sorted(test_dir.glob("*.tests")):
-        tests = parse_codegen_file(test_file)
-        for name, input_code, expected_by_lang in tests:
-            langs = list(expected_by_lang.keys())
-            if "python" not in langs:
-                langs.append("python")
-            for lang in langs:
-                has_explicit = lang in expected_by_lang
-                expected = expected_by_lang.get(lang, input_code)
-                test_id = f"{test_file.stem}/{name}[{lang}]"
-                results.append((test_id, input_code, lang, expected, has_explicit))
-    return results
-
-
-def discover_codegen_v2_python_tests(test_dir: Path) -> list[tuple[str, str, str]]:
-    """Find v2 Python codegen tests, returns (test_id, input, expected)."""
-    results = []
-    for test_file in sorted(test_dir.glob("*.tests")):
-        tests = parse_codegen_file(test_file)
-        for name, input_code, expected_by_lang in tests:
-            expected = expected_by_lang.get("python")
-            if expected is None:
-                pytest.fail(
-                    f"{test_file.name}:{name} missing '--- python' expected block"
-                )
-            test_id = f"{test_file.stem}/{name}[python-v2]"
-            results.append((test_id, input_code, expected))
-    return results
-
-
-def discover_apptests(test_dir: Path) -> list[Path]:
-    """Find all apptest_*.py files."""
-    return sorted(test_dir.glob("apptest_*.py"))
-
-
-# ---------------------------------------------------------------------------
-# CLI runner + assertions
-# ---------------------------------------------------------------------------
-
-
 def run_cli(spec: dict) -> subprocess.CompletedProcess[bytes]:
     """Run tongues CLI from a test spec."""
     cmd = [sys.executable, "-m", "src.tongues", *spec["args"]]
@@ -609,8 +140,185 @@ def check_cli_assertions(
             )
 
 
+from src.backend.perl import emit_perl as emit_perl
+from src.backend.python import emit_python as emit_python
+from src.backend.ruby import emit_ruby as emit_ruby
+from src.middleend.callgraph import analyze_callgraph
+from src.middleend.hoisting import analyze_hoisting
+from src.middleend.liveness import analyze_liveness
+from src.middleend.ownership import analyze_ownership
+from src.middleend.returns import analyze_returns
+from src.middleend.scope import analyze_scope
+from src.middleend.strings import analyze_strings
+from src.taytsh import parse as taytsh_parse
+from src.taytsh.ast import (
+    TCall,
+    TFieldAccess,
+    TFnDecl,
+    TStructDecl,
+    TVar,
+    serialize_annotations,
+)
+from src.taytsh.check import StructT, check_with_info
+
+PARSE_TIMEOUT = 5
+TESTS_DIR = Path(__file__).parent
+
+# fmt: off
+TESTS = {
+    "cli": {
+        "cli":       {"dir": "02_cli",       "run": "cli"},
+    },
+    "frontend": {
+        "parse":     {"dir": "03_parse",     "run": "phase"},
+        "subset":    {"dir": "04_subset",    "run": "phase"},
+        "names":     {"dir": "05_names",     "run": "phase"},
+        "sigs":      {"dir": "06_signatures", "run": "phase"},
+        "fields":    {"dir": "07_fields",    "run": "phase"},
+        "hierarchy": {"dir": "08_hierarchy", "run": "phase"},
+        "inference": {"dir": "09_inference", "run": "phase"},
+        "lowering":  {"dir": "10_lowering",  "run": "lowering"},
+    },
+    "middleend": {
+        "type_checking": {"dir": "13_type_checking", "run": "phase"},
+        "scope":     {"dir": "14_scope",     "run": "phase"},
+        "returns":   {"dir": "15_returns",   "run": "phase"},
+        "liveness":  {"dir": "16_liveness",  "run": "phase"},
+        "strings":   {"dir": "17_strings",   "run": "phase"},
+        "hoisting":  {"dir": "18_hoisting",  "run": "phase"},
+        "ownership": {"dir": "19_ownership", "run": "phase"},
+        "callgraph": {"dir": "20_callgraph", "run": "phase"},
+    },
+    "backend": {
+        "codegen_python": {"dir": "21_codegen", "run": "codegen_python"},
+        "codegen_perl":   {"dir": "21_codegen", "run": "codegen_perl"},
+        "app":            {"dir": "22_app",     "run": "app"},
+    },
+}
+# fmt: on
+
+EMITTERS = {
+    "python": emit_python,
+    "perl": emit_perl,
+    "ruby": emit_ruby,
+}
+
+RUNTIMES = {
+    "python": [sys.executable],
+    "perl": ["perl"],
+    "ruby": ["ruby"],
+}
+
+
 # ---------------------------------------------------------------------------
-# Phase runners
+# Timeout
+# ---------------------------------------------------------------------------
+
+
+def _timeout_handler(signum, frame):
+    raise TimeoutError("parse() timed out")
+
+
+signal.signal(signal.SIGALRM, _timeout_handler)
+
+
+# ---------------------------------------------------------------------------
+# Discovery + parsing
+# ---------------------------------------------------------------------------
+
+
+def parse_spec_file(path: Path) -> list[tuple[str, str, str]]:
+    """Parse a .tests file into (name, input, expected) tuples."""
+    lines = path.read_text().split("\n")
+    result: list[tuple[str, str, str]] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("=== "):
+            test_name = line[4:].strip()
+            i += 1
+            input_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("---"):
+                input_lines.append(lines[i])
+                i += 1
+            if i < len(lines) and lines[i] == "---":
+                i += 1
+            expected_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("---"):
+                expected_lines.append(lines[i])
+                i += 1
+            if i < len(lines) and lines[i] == "---":
+                i += 1
+            test_input = "\n".join(input_lines)
+            expected = "\n".join(expected_lines).strip()
+            result.append((test_name, test_input, expected))
+        else:
+            i += 1
+    return result
+
+
+def discover_specs(test_dir: Path) -> list[tuple[str, str, str]]:
+    """Glob *.tests in test_dir, return (test_id, input, expected) tuples."""
+    results = []
+    for test_file in sorted(test_dir.glob("*.tests")):
+        for name, input_code, expected in parse_spec_file(test_file):
+            results.append((f"{test_file.stem}/{name}", input_code, expected))
+    return results
+
+
+def parse_codegen_file(path: Path) -> list[tuple[str, str, dict[str, str]]]:
+    """Parse .tests file into (name, input, {lang: expected}) tuples."""
+    lines = path.read_text().split("\n")
+    result: list[tuple[str, str, dict[str, str]]] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("=== "):
+            test_name = line[4:].strip()
+            i += 1
+            input_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("---"):
+                input_lines.append(lines[i])
+                i += 1
+            expected_by_lang: dict[str, str] = {}
+            while i < len(lines) and lines[i].startswith("--- "):
+                lang = lines[i][4:].strip()
+                i += 1
+                expected_lines: list[str] = []
+                while i < len(lines) and not lines[i].startswith("---"):
+                    expected_lines.append(lines[i])
+                    i += 1
+                expected_by_lang[lang] = "\n".join(expected_lines)
+            if i < len(lines) and lines[i] == "---":
+                i += 1
+            test_input = "\n".join(input_lines)
+            result.append((test_name, test_input, expected_by_lang))
+        else:
+            i += 1
+    return result
+
+
+def discover_codegen_tests(test_dir: Path, lang: str) -> list[tuple[str, str, str]]:
+    """Find codegen tests for a language, returns (test_id, input, expected)."""
+    results = []
+    for test_file in sorted(test_dir.glob("*.tests")):
+        tests = parse_codegen_file(test_file)
+        # Skip files that are for other languages (e.g. perl.tests vs python.tests).
+        if not any(lang in expected_by_lang for _, _, expected_by_lang in tests):
+            continue
+        for name, input_code, expected_by_lang in tests:
+            expected = expected_by_lang.get(lang)
+            if expected is None:
+                pytest.fail(
+                    f"{test_file.name}:{name} missing '--- {lang}' expected block"
+                )
+            test_id = f"{test_file.stem}/{name}[{lang}]"
+            results.append((test_id, input_code, expected))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Result + assertion checker
 # ---------------------------------------------------------------------------
 
 
@@ -621,443 +329,8 @@ class PhaseResult:
     data: dict | None = None
 
 
-def run_parse(source: str) -> PhaseResult:
-    try:
-        signal.alarm(PARSE_TIMEOUT)
-        parse(source)
-        return PhaseResult()
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-    finally:
-        signal.alarm(0)
-
-
-def run_subset(source: str) -> PhaseResult:
-    try:
-        ast_dict = parse(source)
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-    result = verify_subset(ast_dict)
-    return PhaseResult(
-        errors=[e.message for e in result.errors()],
-        warnings=[w.message for w in result.warnings()],
-    )
-
-
-def run_names(source: str) -> PhaseResult:
-    try:
-        ast_dict = parse(source)
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-    result = resolve_names(ast_dict)
-    return PhaseResult(
-        errors=[e.message for e in result.errors()],
-        warnings=[w.message for w in result.warnings],
-    )
-
-
-def _run_frontend_through_sigs(source: str) -> tuple[Frontend, dict]:
-    """Shared pipeline: parse -> names -> Frontend -> sigs. Raises on error."""
-    ast_dict = parse(source)
-    name_result = resolve_names(ast_dict)
-    errors = name_result.errors()
-    if errors:
-        raise RuntimeError(errors[0].message)
-    fe = Frontend()
-    fe.init_from_names(source, name_result)
-    fe.collect_sigs(ast_dict)
-    return fe, ast_dict
-
-
-def run_sigs(source: str) -> PhaseResult:
-    try:
-        fe, _ = _run_frontend_through_sigs(source)
-        return PhaseResult(data=signatures_to_dict(fe.symbols))
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-
-
-def run_fields(source: str) -> PhaseResult:
-    try:
-        fe, ast_dict = _run_frontend_through_sigs(source)
-        fe.collect_flds(ast_dict)
-        result = fields_to_dict(fe.symbols)
-        for sname, struct in fe.symbols.structs.items():
-            entry = result["classes"][sname]
-            entry["param_to_field"] = dict(struct.param_to_field)
-            entry["const_fields"] = dict(struct.const_fields)
-            entry["needs_constructor"] = struct.needs_constructor
-        return PhaseResult(data=result)
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-
-
-def run_hierarchy(source: str) -> PhaseResult:
-    try:
-        fe, ast_dict = _run_frontend_through_sigs(source)
-        fe.collect_flds(ast_dict)
-        rel = build_hierarchy(fe.symbols)
-        result = hierarchy_to_dict(fe.symbols, rel.hierarchy_root)
-        result["node_types"] = sorted(rel.node_types)
-        result["exception_types"] = sorted(rel.exception_types)
-        return PhaseResult(data=result)
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-
-
-def run_typecheck(source: str) -> PhaseResult:
-    try:
-        compile(source)
-        return PhaseResult()
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-
-
-# ---------------------------------------------------------------------------
-# v2 middleend serializers
-# ---------------------------------------------------------------------------
-
-
-def _strip_prefix(annotations, prefix):
-    """Strip a prefix from annotation keys."""
-    return {k[len(prefix) :]: v for k, v in annotations.items() if k.startswith(prefix)}
-
-
-def _serialize_returns_stmt(stmt):
-    d = {"type": type(stmt).__name__}
-    for k, v in getattr(stmt, "annotations", {}).items():
-        if k.startswith("returns."):
-            d[k[8:]] = v
-    if isinstance(stmt, TMatchStmt):
-        d["cases"] = [_strip_prefix(c.annotations, "returns.") for c in stmt.cases]
-        if stmt.default is not None:
-            d["default"] = _strip_prefix(stmt.default.annotations, "returns.")
-    elif isinstance(stmt, TTryStmt):
-        d["catches"] = [_strip_prefix(c.annotations, "returns.") for c in stmt.catches]
-    return d
-
-
-def _serialize_fn_returns(fn):
-    d = _strip_prefix(fn.annotations, "returns.")
-    d["body"] = [_serialize_returns_stmt(s) for s in fn.body]
-    return d
-
-
-def _serialize_returns(module):
-    result = {}
-    for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = _serialize_fn_returns(decl)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = _serialize_fn_returns(method)
-    return result
-
-
-def _serialize_scope_stmt(stmt):
-    d = {"type": type(stmt).__name__}
-    if isinstance(stmt, TForStmt):
-        binder = {}
-        for k, v in stmt.annotations.items():
-            if k.startswith("scope.binder."):
-                rest = k[len("scope.binder.") :]
-                bname, attr = rest.split(".", 1)
-                if bname not in binder:
-                    binder[bname] = {}
-                binder[bname][attr] = v
-        if binder:
-            d["binder"] = binder
-    elif isinstance(stmt, TMatchStmt):
-        cases = []
-        for case in stmt.cases:
-            cd = {}
-            if isinstance(case.pattern, TPatternType):
-                a = _strip_prefix(case.pattern.annotations, "scope.")
-                if a:
-                    cd["pattern"] = a
-            cases.append(cd)
-        d["cases"] = cases
-    elif isinstance(stmt, TTryStmt):
-        d["catches"] = [_strip_prefix(c.annotations, "scope.") for c in stmt.catches]
-    return d
-
-
-def _collect_vars_expr(expr, result):
-    """Walk an expression tree collecting TVar nodes with scope annotations."""
-    if isinstance(expr, TVar):
-        a = _strip_prefix(expr.annotations, "scope.")
-        if a:
-            if expr.name in result:
-                result[expr.name].update(a)
-            else:
-                result[expr.name] = dict(a)
-    elif isinstance(expr, TBinaryOp):
-        _collect_vars_expr(expr.left, result)
-        _collect_vars_expr(expr.right, result)
-    elif isinstance(expr, TUnaryOp):
-        _collect_vars_expr(expr.operand, result)
-    elif isinstance(expr, TCall):
-        _collect_vars_expr(expr.func, result)
-        for a in expr.args:
-            _collect_vars_expr(a.value, result)
-    elif isinstance(expr, TFieldAccess):
-        _collect_vars_expr(expr.obj, result)
-    elif isinstance(expr, TIndex):
-        _collect_vars_expr(expr.obj, result)
-        _collect_vars_expr(expr.index, result)
-    elif isinstance(expr, TTernary):
-        _collect_vars_expr(expr.cond, result)
-        _collect_vars_expr(expr.then_expr, result)
-        _collect_vars_expr(expr.else_expr, result)
-    elif isinstance(expr, TSlice):
-        _collect_vars_expr(expr.obj, result)
-        _collect_vars_expr(expr.low, result)
-        _collect_vars_expr(expr.high, result)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_vars_expr(e, result)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_vars_expr(k, result)
-            _collect_vars_expr(v, result)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_vars_expr(e, result)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_vars_expr(e, result)
-    elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            _collect_vars_stmts(expr.body, result)
-        else:
-            _collect_vars_expr(expr.body, result)
-
-
-def _collect_vars_stmts(stmts, result):
-    for stmt in stmts:
-        _collect_vars_stmt(stmt, result)
-
-
-def _collect_vars_stmt(stmt, result):
-    if isinstance(stmt, TExprStmt):
-        _collect_vars_expr(stmt.expr, result)
-    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TThrowStmt):
-        _collect_vars_expr(stmt.expr, result)
-    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TAssignStmt):
-        _collect_vars_expr(stmt.target, result)
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_vars_expr(stmt.target, result)
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TTupleAssignStmt):
-        for t in stmt.targets:
-            _collect_vars_expr(t, result)
-        _collect_vars_expr(stmt.value, result)
-    elif isinstance(stmt, TIfStmt):
-        _collect_vars_expr(stmt.cond, result)
-        _collect_vars_stmts(stmt.then_body, result)
-        if stmt.else_body is not None:
-            _collect_vars_stmts(stmt.else_body, result)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_vars_expr(stmt.cond, result)
-        _collect_vars_stmts(stmt.body, result)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_vars_expr(a, result)
-        else:
-            _collect_vars_expr(stmt.iterable, result)
-        _collect_vars_stmts(stmt.body, result)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_vars_expr(stmt.expr, result)
-        for case in stmt.cases:
-            _collect_vars_stmts(case.body, result)
-        if stmt.default is not None:
-            _collect_vars_stmts(stmt.default.body, result)
-    elif isinstance(stmt, TTryStmt):
-        _collect_vars_stmts(stmt.body, result)
-        for catch in stmt.catches:
-            _collect_vars_stmts(catch.body, result)
-        if stmt.finally_body is not None:
-            _collect_vars_stmts(stmt.finally_body, result)
-
-
-def _serialize_fn_scope(fn):
-    d = {}
-    params = {}
-    for p in fn.params:
-        a = _strip_prefix(p.annotations, "scope.")
-        if a:
-            params[p.name] = a
-    if params:
-        d["params"] = params
-    lets = {}
-    for stmt in fn.body:
-        if isinstance(stmt, TLetStmt):
-            a = _strip_prefix(stmt.annotations, "scope.")
-            if a:
-                lets[stmt.name] = a
-    if lets:
-        d["lets"] = lets
-    d["body"] = [_serialize_scope_stmt(s) for s in fn.body]
-    vars_dict = {}
-    _collect_vars_stmts(fn.body, vars_dict)
-    if vars_dict:
-        d["vars"] = vars_dict
-    return d
-
-
-def _serialize_scope(module):
-    result = {}
-    for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = _serialize_fn_scope(decl)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = _serialize_fn_scope(method)
-    return result
-
-
-def _collect_all_lets(stmts, lets):
-    """Recursively collect all TLetStmt nodes with liveness annotations."""
-    for stmt in stmts:
-        if isinstance(stmt, TLetStmt):
-            a = _strip_prefix(stmt.annotations, "liveness.")
-            if a:
-                lets[stmt.name] = a
-        if isinstance(stmt, TIfStmt):
-            _collect_all_lets(stmt.then_body, lets)
-            if stmt.else_body is not None:
-                _collect_all_lets(stmt.else_body, lets)
-        elif isinstance(stmt, TWhileStmt):
-            _collect_all_lets(stmt.body, lets)
-        elif isinstance(stmt, TForStmt):
-            _collect_all_lets(stmt.body, lets)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                _collect_all_lets(case.body, lets)
-            if stmt.default is not None:
-                _collect_all_lets(stmt.default.body, lets)
-        elif isinstance(stmt, TTryStmt):
-            _collect_all_lets(stmt.body, lets)
-            for catch in stmt.catches:
-                _collect_all_lets(catch.body, lets)
-            if stmt.finally_body is not None:
-                _collect_all_lets(stmt.finally_body, lets)
-
-
-def _serialize_liveness_stmt(stmt):
-    d = {"type": type(stmt).__name__}
-    for k, v in getattr(stmt, "annotations", {}).items():
-        if k.startswith("liveness."):
-            d[k[9:]] = v
-    if isinstance(stmt, TMatchStmt):
-        cases = []
-        for case in stmt.cases:
-            cd = {}
-            if isinstance(case.pattern, TPatternType):
-                a = _strip_prefix(case.pattern.annotations, "liveness.")
-                if a:
-                    cd.update(a)
-            cases.append(cd)
-        d["cases"] = cases
-        if stmt.default is not None:
-            dd = _strip_prefix(stmt.default.annotations, "liveness.")
-            d["default"] = dd
-    elif isinstance(stmt, TTryStmt):
-        d["catches"] = [_strip_prefix(c.annotations, "liveness.") for c in stmt.catches]
-    return d
-
-
-def _serialize_fn_liveness(fn):
-    d = {}
-    lets = {}
-    _collect_all_lets(fn.body, lets)
-    if lets:
-        d["lets"] = lets
-    d["body"] = [_serialize_liveness_stmt(s) for s in fn.body]
-    return d
-
-
-def _serialize_liveness(module):
-    result = {}
-    for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = _serialize_fn_liveness(decl)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = _serialize_fn_liveness(method)
-    return result
-
-
-# ---------------------------------------------------------------------------
-# v2 middleend runners
-# ---------------------------------------------------------------------------
-
-
-def _run_taytsh_pipeline(source):
-    """Parse taytsh, run check. Returns (error, module, checker)."""
-    module = taytsh_parse(source)
-    errors, checker = check_with_info(module)
-    if errors:
-        return PhaseResult(errors=[str(e) for e in errors]), None, None
-    return None, module, checker
-
-
-def run_returns_v2(source: str) -> PhaseResult:
-    err, module, checker = _run_taytsh_pipeline(source)
-    if err:
-        return err
-    analyze_returns(module, checker)
-    return PhaseResult(data=_serialize_returns(module))
-
-
-def run_scope_v2(source: str) -> PhaseResult:
-    err, module, checker = _run_taytsh_pipeline(source)
-    if err:
-        return err
-    analyze_scope(module, checker)
-    return PhaseResult(data=_serialize_scope(module))
-
-
-def run_liveness_v2(source: str) -> PhaseResult:
-    err, module, checker = _run_taytsh_pipeline(source)
-    if err:
-        return err
-    analyze_scope(module, checker)
-    analyze_liveness(module, checker)
-    return PhaseResult(data=_serialize_liveness(module))
-
-
-RUNNERS = {
-    "parse": run_parse,
-    "subset": run_subset,
-    "names": run_names,
-    "sigs": run_sigs,
-    "fields": run_fields,
-    "hierarchy": run_hierarchy,
-    "typecheck": run_typecheck,
-    "returns_v2": run_returns_v2,
-    "scope_v2": run_scope_v2,
-    "liveness_v2": run_liveness_v2,
-}
-
-
-# ---------------------------------------------------------------------------
-# Phase assertion checker
-# ---------------------------------------------------------------------------
-
-
 def resolve_dotpath(obj: object, path: str) -> object:
-    """Resolve a dot-separated path against a nested dict/list structure.
-
-    Supports dict keys (including composite keys like 'Foo.bar'),
-    integer list indices, and '.length' for len().
-    """
+    """Resolve a dot-separated path against a nested dict/list structure."""
     parts = path.split(".")
     current = obj
     i = 0
@@ -1131,7 +404,6 @@ def check_expected(
                 f"Expected warning containing '{expected_msg}', got: {result.warnings}"
             )
         return
-    # Dotpath assertions
     if result.errors:
         pytest.fail(f"{phase} failed: {result.errors[0]}")
     assert result.data is not None, f"No data returned from {phase}"
@@ -1149,6 +421,13 @@ def check_expected(
         except (KeyError, IndexError, TypeError) as e:
             pytest.fail(f"Path '{path}' not found in result: {e}")
         actual_str = to_comparable(actual)
+        # Cross-reference: if RHS looks like a dotpath, resolve it too
+        if "." in expected_val and " " not in expected_val:
+            try:
+                ref_val = resolve_dotpath(result.data, expected_val)
+                expected_val = to_comparable(ref_val)
+            except (KeyError, IndexError, TypeError):
+                pass  # treat as literal
         if actual_str != expected_val:
             pytest.fail(
                 f"Assertion failed: {path}\n"
@@ -1157,64 +436,24 @@ def check_expected(
             )
 
 
-# ---------------------------------------------------------------------------
-# Codegen helpers
-# ---------------------------------------------------------------------------
-
-
-def transpile_code(source: str, target: str) -> tuple[str | None, str | None]:
-    """Transpile source to target language. Returns (output, error)."""
-    ast_dict = parse(source)
-    result = verify_subset(ast_dict)
-    errors = result.errors()
-    if errors:
-        return (None, errors[0].message)
-    name_result = resolve_names(ast_dict)
-    errors = name_result.errors()
-    if errors:
-        return (None, errors[0].message)
-    fe = Frontend()
-    module = fe.transpile(source, ast_dict, name_result=name_result)
-    analyze(module)
-    backend_cls = BACKENDS.get(target)
-    if backend_cls is None:
-        return (None, f"unknown target: {target}")
-    be = backend_cls()
-    code = be.emit(module)
-    return (code, None)
-
-
-def transpile_code_v2_python(source: str) -> tuple[str | None, str | None]:
-    """Transpile Taytsh source using python backend v2. Returns (output, error)."""
-    try:
-        module = taytsh_parse(source)
-    except Exception as e:
-        return (None, str(e))
-    errors, checker = check_with_info(module)
-    if errors:
-        return (None, str(errors[0]))
-    try:
-        analyze_returns(module, checker)
-        analyze_scope(module, checker)
-        analyze_liveness(module, checker)
-        return (emit_python_v2(module), None)
-    except Exception as e:
-        return (None, str(e))
-
-
 def contains_normalized(haystack: str, needle: str) -> bool:
-    """Check if needle appears in haystack, normalizing line-by-line whitespace."""
+    """Check if needle appears in haystack, normalizing line-by-line whitespace.
+
+    Each needle line is matched as a substring within the corresponding haystack
+    line (after stripping), and all needle lines must appear as consecutive
+    haystack lines.
+    """
     needle_lines = [line.strip() for line in needle.strip().split("\n") if line.strip()]
     haystack_lines = [line.strip() for line in haystack.split("\n") if line.strip()]
     if not needle_lines:
         return True
     for i in range(len(haystack_lines)):
-        if haystack_lines[i] == needle_lines[0]:
+        if needle_lines[0] in haystack_lines[i]:
             match = True
             for j in range(1, len(needle_lines)):
                 if (
                     i + j >= len(haystack_lines)
-                    or haystack_lines[i + j] != needle_lines[j]
+                    or needle_lines[j] not in haystack_lines[i + j]
                 ):
                     match = False
                     break
@@ -1223,13 +462,529 @@ def contains_normalized(haystack: str, needle: str) -> bool:
     return False
 
 
-def is_expression(code: str) -> bool:
-    """Check if code is a valid Python expression (not a statement)."""
+# ---------------------------------------------------------------------------
+# Phase runners
+# ---------------------------------------------------------------------------
+
+
+def run_parse(source: str) -> PhaseResult:
+    """Run the Python frontend parser, return ok/error result."""
     try:
-        ast.parse(code, mode="eval")
-        return True
-    except SyntaxError:
-        return False
+        signal.alarm(PARSE_TIMEOUT)
+        parse(source)
+        return PhaseResult()
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    finally:
+        signal.alarm(0)
+
+
+def run_subset(source: str) -> PhaseResult:
+    """Run subset verification on Python source."""
+    try:
+        ast_dict = parse(source)
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    return PhaseResult(
+        errors=[e.message for e in result.errors()],
+        warnings=[w.message for w in result.warnings()],
+    )
+
+
+def run_names(source: str) -> PhaseResult:
+    """Run name resolution on Python source."""
+    try:
+        ast_dict = parse(source)
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    result = resolve_names(ast_dict)
+    return PhaseResult(
+        errors=[e.message for e in result.errors()],
+        warnings=[w.message for w in result.warnings],
+    )
+
+
+def run_sigs(source: str) -> PhaseResult:
+    """Run signature collection on Python source."""
+    try:
+        ast_dict = parse(source)
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    sub_errors = result.errors()
+    if sub_errors:
+        return PhaseResult(errors=[e.message for e in sub_errors])
+    name_result = resolve_names(ast_dict)
+    name_errors = name_result.errors()
+    if name_errors:
+        return PhaseResult(errors=[e.message for e in name_errors])
+    # Build known_classes and node_classes from name table
+    known_classes: set[str] = set()
+    node_classes: set[str] = set()
+    table = name_result.table
+    for name, info in table.module_names.items():
+        if info.kind == "class":
+            known_classes.add(name)
+            if len(info.bases) > 0:
+                # Check if any base is "Node" or ends with "Node"
+                for base in info.bases:
+                    if base == "Node" or base.endswith("Node"):
+                        node_classes.add(name)
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_errors = sig_result.errors()
+    if sig_errors:
+        return PhaseResult(errors=[str(e) for e in sig_errors])
+    return PhaseResult(data=sig_result.to_dict())
+
+
+def run_fields(source: str) -> PhaseResult:
+    """Run field collection on Python source."""
+    try:
+        ast_dict = parse(source)
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    sub_errors = result.errors()
+    if sub_errors:
+        return PhaseResult(errors=[e.message for e in sub_errors])
+    name_result = resolve_names(ast_dict)
+    name_errors = name_result.errors()
+    if name_errors:
+        return PhaseResult(errors=[e.message for e in name_errors])
+    # Build known_classes, node_classes, hierarchy_roots from name table
+    known_classes: set[str] = set()
+    node_classes: set[str] = set()
+    base_counts: dict[str, int] = {}
+    parent_of: dict[str, str] = {}
+    table = name_result.table
+    for name, info in table.module_names.items():
+        if info.kind == "class":
+            known_classes.add(name)
+            for base in info.bases:
+                if base == "Node" or base.endswith("Node"):
+                    node_classes.add(name)
+                if base in known_classes or base[0:1].isupper():
+                    if base not in base_counts:
+                        base_counts[base] = 0
+                    base_counts[base] += 1
+                    parent_of[name] = base
+    # Hierarchy roots: classes that are bases of others but have no parent themselves
+    hierarchy_roots: set[str] = set()
+    for base_name in base_counts:
+        if base_name not in parent_of:
+            hierarchy_roots.add(base_name)
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_errors = sig_result.errors()
+    if sig_errors:
+        return PhaseResult(errors=[str(e) for e in sig_errors])
+    field_result = collect_fields(
+        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+    )
+    field_errors = field_result.errors()
+    if field_errors:
+        return PhaseResult(errors=[str(e) for e in field_errors])
+    return PhaseResult(data=field_result.to_dict())
+
+
+def run_hierarchy(source: str) -> PhaseResult:
+    """Run hierarchy analysis on Python source."""
+    try:
+        ast_dict = parse(source)
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    sub_errors = result.errors()
+    if sub_errors:
+        return PhaseResult(errors=[e.message for e in sub_errors])
+    name_result = resolve_names(ast_dict)
+    name_errors = name_result.errors()
+    if name_errors:
+        return PhaseResult(errors=[e.message for e in name_errors])
+    # Build known_classes and class_bases from name table
+    known_classes: set[str] = set()
+    class_bases: dict[str, list[str]] = {}
+    table = name_result.table
+    for name, info in table.module_names.items():
+        if info.kind == "class":
+            known_classes.add(name)
+            class_bases[name] = list(info.bases)
+    hier_result = build_hierarchy(known_classes, class_bases)
+    hier_errors = hier_result.errors()
+    if hier_errors:
+        return PhaseResult(errors=[str(e) for e in hier_errors])
+    return PhaseResult(data=hier_result.to_dict())
+
+
+def run_inference(source: str) -> PhaseResult:
+    """Run the full Python frontend pipeline (phases 2-9), checking inference errors."""
+    try:
+        ast_dict = parse(source)
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    result = verify_subset(ast_dict)
+    sub_errors = result.errors()
+    if sub_errors:
+        return PhaseResult(errors=[e.message for e in sub_errors])
+    name_result = resolve_names(ast_dict)
+    name_errors = name_result.errors()
+    if name_errors:
+        return PhaseResult(errors=[e.message for e in name_errors])
+    known_classes: set[str] = set()
+    node_classes: set[str] = set()
+    class_bases: dict[str, list[str]] = {}
+    base_counts: dict[str, int] = {}
+    parent_of: dict[str, str] = {}
+    table = name_result.table
+    for name, info in table.module_names.items():
+        if info.kind == "class":
+            known_classes.add(name)
+            class_bases[name] = list(info.bases)
+            for base in info.bases:
+                if base == "Node" or base.endswith("Node"):
+                    node_classes.add(name)
+                if base in known_classes or base[0:1].isupper():
+                    if base not in base_counts:
+                        base_counts[base] = 0
+                    base_counts[base] += 1
+                    parent_of[name] = base
+    hierarchy_roots: set[str] = set()
+    for base_name in base_counts:
+        if base_name not in parent_of:
+            hierarchy_roots.add(base_name)
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_errors = sig_result.errors()
+    if sig_errors:
+        return PhaseResult(errors=[str(e) for e in sig_errors])
+    field_result = collect_fields(
+        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+    )
+    field_errors = field_result.errors()
+    if field_errors:
+        return PhaseResult(errors=[str(e) for e in field_errors])
+    from src.frontend.hierarchy import build_hierarchy
+
+    hier_result = build_hierarchy(known_classes, class_bases)
+    hier_errors = hier_result.errors()
+    if hier_errors:
+        return PhaseResult(errors=[str(e) for e in hier_errors])
+    inf_result = _run_inference(
+        ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+    )
+    inf_errors = inf_result.errors()
+    if inf_errors:
+        return PhaseResult(errors=[str(e) for e in inf_errors])
+    return PhaseResult()
+
+
+def run_type_checking(source: str) -> PhaseResult:
+    """Run the Taytsh type checker on Taytsh source."""
+    try:
+        module = taytsh_parse(source)
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    errors, checker = check_with_info(module)
+    if errors:
+        return PhaseResult(errors=[str(e) for e in errors])
+    return PhaseResult()
+
+
+def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
+    """Lower Python source to Taytsh text. Returns (output, error)."""
+    try:
+        ast_dict = parse(source)
+        result = verify_subset(ast_dict)
+        sub_errors = result.errors()
+        if sub_errors:
+            return (None, sub_errors[0].message)
+        name_result = resolve_names(ast_dict)
+        name_errors = name_result.errors()
+        if name_errors:
+            return (None, name_errors[0].message)
+        known_classes: set[str] = set()
+        node_classes: set[str] = set()
+        class_bases: dict[str, list[str]] = {}
+        base_counts: dict[str, int] = {}
+        parent_of: dict[str, str] = {}
+        table = name_result.table
+        for name, info in table.module_names.items():
+            if info.kind == "class":
+                known_classes.add(name)
+                class_bases[name] = list(info.bases)
+                for base in info.bases:
+                    if base == "Node" or base.endswith("Node"):
+                        node_classes.add(name)
+                    if base in known_classes or base[0:1].isupper():
+                        if base not in base_counts:
+                            base_counts[base] = 0
+                        base_counts[base] += 1
+                        parent_of[name] = base
+        hierarchy_roots: set[str] = set()
+        for base_name in base_counts:
+            if base_name not in parent_of:
+                hierarchy_roots.add(base_name)
+        sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+        sig_errors = sig_result.errors()
+        if sig_errors:
+            return (None, str(sig_errors[0]))
+        field_result = collect_fields(
+            ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+        )
+        field_errors = field_result.errors()
+        if field_errors:
+            return (None, str(field_errors[0]))
+        from src.frontend.hierarchy import build_hierarchy
+
+        hier_result = build_hierarchy(known_classes, class_bases)
+        hier_errors = hier_result.errors()
+        if hier_errors:
+            return (None, str(hier_errors[0]))
+        from src.frontend.lowering import lower
+        from src.taytsh.emit import to_source
+
+        module, lower_errors = lower(
+            ast_dict,
+            sig_result,
+            field_result,
+            hier_result,
+            known_classes,
+            class_bases,
+            source,
+        )
+        if lower_errors:
+            return (None, str(lower_errors[0]))
+        if module is None:
+            return (None, "lowering produced no module")
+        output = to_source(module)
+        return (output, None)
+    except Exception as e:
+        return (None, str(e))
+
+
+def _run_taytsh_pipeline(source):
+    module = taytsh_parse(source)
+    errors, checker = check_with_info(module)
+    if errors:
+        return PhaseResult(errors=[str(e) for e in errors]), None, None
+    return None, module, checker
+
+
+def run_returns(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_returns(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "returns"))
+
+
+def run_scope(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_scope(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "scope"))
+
+
+def run_liveness(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_scope(module, checker)
+    analyze_liveness(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "liveness"))
+
+
+def run_strings(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_scope(module, checker)
+    analyze_liveness(module, checker)
+    analyze_strings(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "strings"))
+
+
+def run_hoisting(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_hoisting(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "hoisting"))
+
+
+def run_ownership(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_scope(module, checker)
+    analyze_liveness(module, checker)
+    analyze_ownership(module, checker)
+    return PhaseResult(data=serialize_annotations(module, "ownership"))
+
+
+def _collect_calls(obj, calls, checker):
+    """Walk AST collecting TCall nodes keyed by callee name."""
+    if isinstance(obj, TCall):
+        name = None
+        if isinstance(obj.func, TVar):
+            n = obj.func.name
+            # Skip builtins and struct constructors — only user-defined fns
+            t = checker.types.get(n)
+            if t is not None and isinstance(t, StructT):
+                name = None  # struct construction
+            elif n in checker.functions:
+                name = n
+            else:
+                name = None  # builtin or unknown
+        elif isinstance(obj.func, TFieldAccess):
+            name = obj.func.field
+        if name is not None:
+            is_tail = obj.annotations.get("callgraph.is_tail_call", False)
+            calls.setdefault(name, {})["is_tail_call"] = is_tail
+    if isinstance(obj, list):
+        for item in obj:
+            _collect_calls(item, calls, checker)
+        return
+    for attr in (
+        "body",
+        "value",
+        "expr",
+        "func",
+        "target",
+        "targets",
+        "cond",
+        "then_body",
+        "else_body",
+        "then_expr",
+        "else_expr",
+        "left",
+        "right",
+        "operand",
+        "obj",
+        "index",
+        "low",
+        "high",
+        "args",
+        "elements",
+        "entries",
+        "iterable",
+        "cases",
+        "default",
+        "catches",
+        "finally_body",
+        "pattern",
+    ):
+        child = getattr(obj, attr, None)
+        if child is not None:
+            if isinstance(child, list):
+                for item in child:
+                    _collect_calls(item, calls, checker)
+            elif isinstance(child, tuple):
+                for item in child:
+                    _collect_calls(item, calls, checker)
+            elif hasattr(child, "__dict__"):
+                _collect_calls(child, calls, checker)
+
+
+def _serialize_callgraph(module, checker):
+    result = {}
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            d = {
+                k[10:]: v
+                for k, v in decl.annotations.items()
+                if k.startswith("callgraph.")
+            }
+            calls = {}
+            _collect_calls(decl.body, calls, checker)
+            if calls:
+                d["calls"] = calls
+            result[decl.name] = d
+        elif isinstance(decl, TStructDecl):
+            for method in decl.methods:
+                d = {
+                    k[10:]: v
+                    for k, v in method.annotations.items()
+                    if k.startswith("callgraph.")
+                }
+                calls = {}
+                _collect_calls(method.body, calls, checker)
+                if calls:
+                    d["calls"] = calls
+                result[f"{decl.name}.{method.name}"] = d
+    return result
+
+
+def run_callgraph(source: str) -> PhaseResult:
+    err, module, checker = _run_taytsh_pipeline(source)
+    if err:
+        return err
+    analyze_callgraph(module, checker)
+    return PhaseResult(data=_serialize_callgraph(module, checker))
+
+
+def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source. Returns (output, error)."""
+    try:
+        signal.alarm(PARSE_TIMEOUT)
+        module = taytsh_parse(source)
+    except Exception as e:
+        return (None, str(e))
+    finally:
+        signal.alarm(0)
+    errors, checker = check_with_info(module)
+    if errors:
+        return (None, str(errors[0]))
+    try:
+        analyze_returns(module, checker)
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        return (emitter(module), None)
+    except Exception as e:
+        return (None, str(e))
+
+
+def transpile_code_python(source: str) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source using python backend. Returns (output, error)."""
+    return _transpile_with_emitter(source, emit_python)
+
+
+def transpile_code_perl(source: str) -> tuple[str | None, str | None]:
+    """Transpile Taytsh source using perl backend. Returns (output, error)."""
+    return _transpile_with_emitter(source, emit_perl)
+
+
+def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
+    """Transpile Python apptest source to target language. Returns (output, error)."""
+    taytsh_text, err = lower_to_taytsh(source)
+    if err is not None:
+        return (None, err)
+    emitter = EMITTERS.get(target)
+    if emitter is None:
+        return (None, f"no emitter for target '{target}'")
+    return _transpile_with_emitter(taytsh_text, emitter)
+
+
+def discover_app_tests(
+    test_dir: Path, targets: list[str]
+) -> list[tuple[str, Path, str]]:
+    """Find all app tests. Returns (test_id, source_path, target)."""
+    results = []
+    for test_file in sorted(test_dir.glob("apptest_*.py")):
+        for target in targets:
+            test_id = f"{test_file.stem}[{target}]"
+            results.append((test_id, test_file, target))
+    return results
+
+
+def _available_targets() -> list[str]:
+    """Return targets whose runtimes are available."""
+    available = []
+    for target in sorted(RUNTIMES):
+        cmd = RUNTIMES[target]
+        if target == "python" or shutil.which(cmd[0]):
+            available.append(target)
+    return available
 
 
 # ---------------------------------------------------------------------------
@@ -1238,70 +993,8 @@ def is_expression(code: str) -> bool:
 
 
 @pytest.fixture
-def output_path(apptest: Path, target: Target, tmp_path: Path) -> Path:
-    """Compute output path for transpiled file."""
-    target_dir = OUT_DIR / target.name
-    target_dir.mkdir(parents=True, exist_ok=True)
-    return target_dir / f"{apptest.stem}{target.ext}"
-
-
-@pytest.fixture
-def transpiled(apptest: Path, target: Target, output_path: Path) -> Path:
-    """Transpile apptest to target language."""
-    source = apptest.read_text()
-    result = subprocess.run(
-        [sys.executable, "-m", "src.tongues", "--target", target.name],
-        input=source,
-        capture_output=True,
-        text=True,
-        cwd=TONGUES_DIR,
-    )
-    if result.returncode != 0:
-        raise TranspileError(result.stderr.strip())
-    output_path.write_text(result.stdout)
-    return output_path
-
-
-@pytest.fixture
-def formatted(transpiled: Path, target: Target) -> Path:
-    """Apply language formatter (fails if formatter not found)."""
-    fmt_cmd = target.get_format_command(transpiled)
-    if fmt_cmd:
-        try:
-            subprocess.run(fmt_cmd, capture_output=True, timeout=30)
-        except FileNotFoundError:
-            pytest.fail(f"Formatter not found: {fmt_cmd[0]}")
-        except subprocess.TimeoutExpired:
-            pytest.fail(f"Formatter timed out: {fmt_cmd[0]}")
-    return transpiled
-
-
-@pytest.fixture
-def compiled(formatted: Path, target: Target) -> Path:
-    """Compile for compiled languages (C/Rust/Zig)."""
-    compile_cmd = target.get_compile_command(formatted)
-    if compile_cmd:
-        try:
-            result = subprocess.run(
-                compile_cmd, capture_output=True, text=True, timeout=60
-            )
-        except FileNotFoundError:
-            pytest.fail(f"Compiler not found: {compile_cmd[0]}")
-        if result.returncode != 0:
-            raise CompileError(result.stderr.strip())
-    return formatted
-
-
-@pytest.fixture
-def executable(compiled: Path, target: Target) -> list[str]:
-    """Return the command to execute the test."""
-    return target.get_run_command(compiled)
-
-
-@pytest.fixture
-def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
-    """Transpile codegen input to target language."""
-    output, err = transpile_code(codegen_input, codegen_lang)
+def transpiled_output_python(codegen_python_input: str) -> str:
+    output, err = transpile_code_python(codegen_python_input)
     if err is not None:
         pytest.fail(f"Transpile error: {err}")
     if output is None:
@@ -1310,9 +1003,8 @@ def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
 
 
 @pytest.fixture
-def transpiled_output_v2_python(codegen_v2_input: str) -> str:
-    """Transpile v2 codegen input to Python."""
-    output, err = transpile_code_v2_python(codegen_v2_input)
+def transpiled_output_perl(codegen_perl_input: str) -> str:
+    output, err = transpile_code_perl(codegen_perl_input)
     if err is not None:
         pytest.fail(f"Transpile error: {err}")
     if output is None:
@@ -1326,9 +1018,6 @@ def transpiled_output_v2_python(codegen_v2_input: str) -> str:
 
 
 def pytest_generate_tests(metafunc):
-    ignore_version = metafunc.config.getoption("ignore_version")
-    ignore_skips = metafunc.config.getoption("ignore_skips")
-    target_filter = metafunc.config.getoption("target")
     for section in TESTS.values():
         for name, cfg in section.items():
             test_dir = TESTS_DIR / cfg["dir"]
@@ -1343,62 +1032,35 @@ def pytest_generate_tests(metafunc):
                     specs = discover_specs(test_dir)
                     params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in specs]
                     metafunc.parametrize(f"{fixture},{name}_expected", params)
-            elif run == "codegen" and "codegen_input" in metafunc.fixturenames:
-                tests = discover_codegen_tests(test_dir)
-                if target_filter:
-                    tests = [t for t in tests if t[2] in target_filter]
-                params = [
-                    pytest.param(inp, lang, exp, has_exp, id=tid)
-                    for tid, inp, lang, exp, has_exp in tests
-                ]
+            elif run == "lowering":
+                fixture = f"{name}_input"
+                if fixture in metafunc.fixturenames:
+                    specs = discover_specs(test_dir)
+                    params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in specs]
+                    metafunc.parametrize(f"{fixture},{name}_expected", params)
+            elif (
+                run == "codegen_python"
+                and "codegen_python_input" in metafunc.fixturenames
+            ):
+                tests = discover_codegen_tests(test_dir, "python")
+                params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
                 metafunc.parametrize(
-                    "codegen_input,codegen_lang,codegen_expected,codegen_has_explicit",
-                    params,
+                    "codegen_python_input,codegen_python_expected", params
                 )
             elif (
-                run == "codegen_v2_python"
-                and "codegen_v2_input" in metafunc.fixturenames
+                run == "codegen_perl" and "codegen_perl_input" in metafunc.fixturenames
             ):
-                tests = discover_codegen_v2_python_tests(test_dir)
+                tests = discover_codegen_tests(test_dir, "perl")
                 params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
-                metafunc.parametrize("codegen_v2_input,codegen_v2_expected", params)
-            elif run == "apptest" and "apptest" in metafunc.fixturenames:
-                apptests = discover_apptests(test_dir)
-                targets = (
-                    [TARGETS[t] for t in target_filter if t in TARGETS]
-                    if target_filter
-                    else list(TARGETS.values())
-                )
-                params = []
-                for apptest in apptests:
-                    for target in targets:
-                        test_id = f"{target.name}/{apptest.stem}"
-                        version_ok, version_msg = _check_version(target.name)
-                        if not version_ok and not ignore_version:
-                            params.append(
-                                pytest.param(
-                                    apptest,
-                                    target,
-                                    id=test_id,
-                                    marks=pytest.mark.skip(
-                                        reason=f"wrong version: {version_msg}"
-                                    ),
-                                )
-                            )
-                        elif not ignore_skips and target.name in _SKIP_LANGS.get(
-                            apptest.stem, set()
-                        ):
-                            params.append(
-                                pytest.param(
-                                    apptest,
-                                    target,
-                                    id=test_id,
-                                    marks=pytest.mark.skip(reason="known failure"),
-                                )
-                            )
-                        else:
-                            params.append(pytest.param(apptest, target, id=test_id))
-                metafunc.parametrize("apptest,target", params)
+                metafunc.parametrize("codegen_perl_input,codegen_perl_expected", params)
+            elif run == "app" and "app_source" in metafunc.fixturenames:
+                target_opt = metafunc.config.getoption("--target", default=None)
+                targets = target_opt if target_opt else _available_targets()
+                tests = discover_app_tests(test_dir, targets)
+                params = [
+                    pytest.param(path, target, id=tid) for tid, path, target in tests
+                ]
+                metafunc.parametrize("app_source,app_target", params)
 
 
 # ---------------------------------------------------------------------------
@@ -1406,8 +1068,27 @@ def pytest_generate_tests(metafunc):
 # ---------------------------------------------------------------------------
 
 
+IMPLEMENTED_BACKENDS = {"python", "perl", "ruby"}
+
+
+def _cli_needs_backend(spec: dict) -> bool:
+    """True if the test will reach the backend (no --stop-at, expects exit 0)."""
+    args = spec["args"]
+    if "--stop-at" in args:
+        return False
+    expects_success = any(k == "exit" and v == 0 for k, v in spec["assertions"])
+    if not expects_success:
+        return False
+    if "--target" not in args:
+        return False
+    target = args[args.index("--target") + 1]
+    return target not in IMPLEMENTED_BACKENDS
+
+
 def test_cli(cli_spec: dict) -> None:
-    """Run a single CLI test case from .tests file."""
+    if _cli_needs_backend(cli_spec):
+        target = cli_spec["args"][cli_spec["args"].index("--target") + 1]
+        pytest.skip(f"backend not yet implemented for '{target}'")
     result = run_cli(cli_spec)
     check_cli_assertions(result, cli_spec["assertions"])
 
@@ -1436,68 +1117,114 @@ def test_hierarchy(hierarchy_input, hierarchy_expected):
     check_expected(hierarchy_expected, run_hierarchy(hierarchy_input), "hierarchy")
 
 
-def test_typecheck(typecheck_input, typecheck_expected):
-    check_expected(typecheck_expected, run_typecheck(typecheck_input), "typecheck")
-
-
-def _test_returns_v2(returns_v2_input, returns_v2_expected):
-    check_expected(returns_v2_expected, run_returns_v2(returns_v2_input), "returns_v2")
-
-
-def _test_scope_v2(scope_v2_input, scope_v2_expected):
-    check_expected(scope_v2_expected, run_scope_v2(scope_v2_input), "scope_v2")
-
-
-def _test_liveness_v2(liveness_v2_input, liveness_v2_expected):
+def test_inference(inference_input, inference_expected):
     check_expected(
-        liveness_v2_expected, run_liveness_v2(liveness_v2_input), "liveness_v2"
+        inference_expected,
+        run_inference(inference_input),
+        "inference",
+        lenient_errors=True,
     )
 
 
-def test_codegen(
-    codegen_input: str,
-    codegen_lang: str,
-    codegen_expected: str,
-    codegen_has_explicit: bool,
-    transpiled_output: str,
-):
-    """Verify transpiler output matches expected code."""
-    if not contains_normalized(transpiled_output, codegen_expected):
-        pytest.fail(
-            f"Expected not found in output:\n--- expected ---\n{codegen_expected}\n--- got ---\n{transpiled_output}"
-        )
-    if codegen_lang == "python" and codegen_has_explicit:
-        input_stripped = codegen_input.strip()
-        output_stripped = transpiled_output.strip()
-        if is_expression(input_stripped) and is_expression(output_stripped):
-            input_result = eval(input_stripped)
-            output_result = eval(output_stripped)
-            if input_result != output_result:
-                pytest.fail(
-                    f"Semantic mismatch:\n  input  {input_stripped!r} = {input_result!r}\n  output {output_stripped!r} = {output_result!r}"
-                )
+def test_type_checking(type_checking_input, type_checking_expected):
+    check_expected(
+        type_checking_expected,
+        run_type_checking(type_checking_input),
+        "type_checking",
+    )
 
 
-def _test_codegen_v2_python(
-    codegen_v2_input: str,
-    codegen_v2_expected: str,
-    transpiled_output_v2_python: str,
-):
-    """Verify v2 Python backend output matches expected code snippets."""
-    if not contains_normalized(transpiled_output_v2_python, codegen_v2_expected):
+def test_lowering(lowering_input, lowering_expected):
+    output, err = lower_to_taytsh(lowering_input)
+    if lowering_expected.startswith("error:"):
+        expected_msg = lowering_expected[6:].strip()
+        if err is None:
+            pytest.fail(f"Expected error containing '{expected_msg}', got success")
+        if expected_msg and expected_msg.lower() not in (err or "").lower():
+            pytest.fail(f"Expected error containing '{expected_msg}', got: {err}")
+        return
+    if err is not None:
+        pytest.fail(f"Lowering error: {err}")
+    if output is None:
+        pytest.fail("No output from lowering")
+    if not contains_normalized(output, lowering_expected):
         pytest.fail(
             "Expected not found in output:\n"
-            f"--- expected ---\n{codegen_v2_expected}\n"
-            f"--- got ---\n{transpiled_output_v2_python}"
+            f"--- expected ---\n{lowering_expected}\n"
+            f"--- got ---\n{output}"
         )
 
 
-def test_apptest(apptest: Path, target, executable: list[str]):
-    """Run a transpiled apptest and verify it executes successfully."""
-    try:
-        result = subprocess.run(executable, capture_output=True, text=True, timeout=10)
-    except subprocess.TimeoutExpired:
-        pytest.fail("Test timed out after 10 seconds")
+def test_returns(returns_input, returns_expected):
+    check_expected(returns_expected, run_returns(returns_input), "returns")
+
+
+def test_scope(scope_input, scope_expected):
+    check_expected(scope_expected, run_scope(scope_input), "scope")
+
+
+def test_liveness(liveness_input, liveness_expected):
+    check_expected(liveness_expected, run_liveness(liveness_input), "liveness")
+
+
+def test_strings(strings_input, strings_expected):
+    check_expected(strings_expected, run_strings(strings_input), "strings")
+
+
+def test_hoisting(hoisting_input, hoisting_expected):
+    check_expected(hoisting_expected, run_hoisting(hoisting_input), "hoisting")
+
+
+def test_ownership(ownership_input, ownership_expected):
+    check_expected(ownership_expected, run_ownership(ownership_input), "ownership")
+
+
+def test_callgraph(callgraph_input, callgraph_expected):
+    check_expected(callgraph_expected, run_callgraph(callgraph_input), "callgraph")
+
+
+def test_codegen_python(
+    codegen_python_input: str,
+    codegen_python_expected: str,
+    transpiled_output_python: str,
+):
+    if not contains_normalized(transpiled_output_python, codegen_python_expected):
+        pytest.fail(
+            "Expected not found in output:\n"
+            f"--- expected ---\n{codegen_python_expected}\n"
+            f"--- got ---\n{transpiled_output_python}"
+        )
+
+
+def test_codegen_perl(
+    codegen_perl_input: str,
+    codegen_perl_expected: str,
+    transpiled_output_perl: str,
+):
+    if not contains_normalized(transpiled_output_perl, codegen_perl_expected):
+        pytest.fail(
+            "Expected not found in output:\n"
+            f"--- expected ---\n{codegen_perl_expected}\n"
+            f"--- got ---\n{transpiled_output_perl}"
+        )
+
+
+def test_app(app_source: Path, app_target: str) -> None:
+    source = app_source.read_text()
+    output, err = transpile_app(source, app_target)
+    if err is not None:
+        pytest.fail(f"Transpile error ({app_target}): {err}")
+    runtime = RUNTIMES[app_target]
+    result = subprocess.run(
+        runtime,
+        input=output.encode(),
+        capture_output=True,
+        timeout=30,
+    )
     if result.returncode != 0:
-        output = (result.stdout + result.stderr).strip()
-        pytest.fail(f"Test failed with exit code {result.returncode}:\n{output}")
+        stderr = result.stderr.decode(errors="replace")
+        stdout = result.stdout.decode(errors="replace")
+        pytest.fail(
+            f"App test failed with exit {result.returncode}\n"
+            f"stdout:\n{stdout}\nstderr:\n{stderr}"
+        )

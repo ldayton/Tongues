@@ -1,0 +1,93 @@
+=== print with newline
+def f(x: int) -> None:
+    print(x)
+---
+Print(x, newline: True)
+---
+
+=== print without newline
+def f(x: int) -> None:
+    print(x, end="")
+---
+Print(x, newline: False)
+---
+
+=== print to stderr
+import sys
+def f(x: int) -> None:
+    print(x, file=sys.stderr)
+---
+Print(x, stderr: True)
+---
+
+=== readline
+import sys
+def f() -> str:
+    return sys.stdin.readline()
+---
+ReadLine()
+---
+
+=== read all stdin
+import sys
+def f() -> str:
+    return sys.stdin.read()
+---
+ReadAll()
+---
+
+=== read bytes
+import sys
+def f() -> bytes:
+    return sys.stdin.buffer.read()
+---
+ReadBytes()
+---
+
+=== read n bytes
+import sys
+def f(n: int) -> bytes:
+    return sys.stdin.buffer.read(n)
+---
+ReadBytesN(n)
+---
+
+=== write stdout bytes
+import sys
+def f(b: bytes) -> None:
+    sys.stdout.buffer.write(b)
+---
+WriteOut(b)
+---
+
+=== write stderr bytes
+import sys
+def f(b: bytes) -> None:
+    sys.stderr.buffer.write(b)
+---
+WriteErr(b)
+---
+
+=== sys argv
+import sys
+def f() -> list[str]:
+    return sys.argv
+---
+Args()
+---
+
+=== getenv no default
+import os
+def f(name: str) -> str | None:
+    return os.getenv(name)
+---
+GetEnv(name)
+---
+
+=== getenv with default
+import os
+def f(name: str) -> str:
+    return os.getenv(name, "fallback")
+---
+GetEnv(name, "fallback")
+---

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Tongues CLI entry point."""
+"""Tongues CLI entry point with project-level verification support."""
+import os
 import sys
 
 if not ((3, 12) <= sys.version_info < (4, 0)):
@@ -11,5 +12,102 @@ from pathlib import Path
 # Add project root to path (resolve symlinks for Homebrew compatibility)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.tonguesw import main
-sys.exit(main())
+from src.tongues import main
+from src.frontend.parse import parse
+from src.frontend.subset import (
+    verify as verify_subset,
+    extract_imports,
+    ProjectVerifyResult,
+)
+
+
+def should_skip_file(source: str) -> bool:
+    """Check if file has a tongues: skip directive in first 5 lines."""
+    for line in source.split("\n", 5)[:5]:
+        if "tongues: skip" in line:
+            return True
+    return False
+
+
+def resolve_import(
+    importing_file: str, module: str, level: int, project_root: str
+) -> str | None:
+    """Resolve an import to a file path."""
+    if level > 0:
+        dir_path = os.path.dirname(importing_file)
+        up = level - 1
+        while up > 0:
+            dir_path = os.path.dirname(dir_path)
+            up -= 1
+        if module:
+            rel_path = os.path.join(dir_path, *module.split("."))
+        else:
+            rel_path = dir_path
+    else:
+        rel_path = os.path.join(project_root, *module.split("."))
+    init_path = os.path.join(rel_path, "__init__.py")
+    if os.path.isfile(init_path):
+        return init_path
+    module_path = rel_path + ".py"
+    if os.path.isfile(module_path):
+        return module_path
+    return None
+
+
+def verify_project(path: str) -> ProjectVerifyResult:
+    """Verify a project directory or single file for subset compliance."""
+    result = ProjectVerifyResult()
+    if os.path.isfile(path):
+        with open(path) as f:
+            source = f.read()
+        if should_skip_file(source):
+            return result
+        result.file_results[path] = verify_subset(parse(source))
+        return result
+
+    project_root = path
+    pending: list[str] = []
+    visited: set[str] = set()
+    for entry in os.listdir(project_root):
+        if entry.endswith(".py"):
+            full_path = os.path.join(project_root, entry)
+            if os.path.isfile(full_path):
+                pending.append(full_path)
+
+    while pending:
+        file_path = pending.pop()
+        if file_path in visited:
+            continue
+        visited.add(file_path)
+        with open(file_path) as f:
+            source = f.read()
+        if should_skip_file(source):
+            continue
+        ast_dict = parse(source)
+        result.file_results[file_path] = verify_subset(ast_dict)
+        for imp in extract_imports(ast_dict):
+            if imp.level == 0:
+                continue
+            resolved = resolve_import(file_path, imp.module, imp.level, project_root)
+            if resolved is not None and resolved not in visited:
+                pending.append(resolved)
+    return result
+
+
+if __name__ == "__main__":
+    # Check for --verify flag (project-level verification, not in subset)
+    if "--verify" in sys.argv:
+        idx = sys.argv.index("--verify")
+        verify_path = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else None
+        if verify_path is None:
+            print("error: --verify requires a path argument", file=sys.stderr)
+            sys.exit(2)
+        result = verify_project(verify_path)
+        errors = result.errors()
+        if errors:
+            for e in errors:
+                print(e, file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
+
+    sys.exit(main())

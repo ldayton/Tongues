@@ -1,385 +1,589 @@
-"""Hoisting analysis: compute variables needing hoisting for Go emission."""
+"""Hoisting analysis pass for Taytsh IR.
 
-from ..ir import (
-    Assign,
-    Block,
-    ForClassic,
-    ForRange,
-    Function,
-    If,
-    Match,
-    Module,
-    Primitive,
-    Slice,
-    Stmt,
-    TryCatch,
-    Tuple,
-    TupleAssign,
-    Type,
-    TypeSwitch,
-    VarDecl,
-    VarLV,
-    While,
+Analyzes each function body independently, writing annotations for variable
+hoisting (Go pre-declaration), continue detection (Lua workarounds), and
+rune variable collection (Go string indexing).
+"""
+
+from __future__ import annotations
+
+from ..taytsh.ast import (
+    TAssignStmt,
+    TBinaryOp,
+    TBreakStmt,
+    TCall,
+    TContinueStmt,
+    TExpr,
+    TExprStmt,
+    TFieldAccess,
+    TFnDecl,
+    TForStmt,
+    TIfStmt,
+    TIndex,
+    TLetStmt,
+    TListLit,
+    TMapLit,
+    TMatchStmt,
+    TModule,
+    TOpAssignStmt,
+    TRange,
+    TReturnStmt,
+    TSetLit,
+    TSlice,
+    TStmt,
+    TStructDecl,
+    TTernary,
+    TThrowStmt,
+    TTryStmt,
+    TTupleAccess,
+    TTupleAssignStmt,
+    TTupleLit,
+    TUnaryOp,
+    TVar,
+    TWhileStmt,
 )
-
-from .returns import always_returns
-from .scope import _collect_assigned_vars, _collect_used_vars
-from .type_flow import join_types
+from ..taytsh.check import Checker, StructT, Type, type_name, STRING_T, type_eq
 
 
-def analyze_hoisting(module: Module) -> None:
-    """Run hoisting analysis on all functions."""
-    hierarchy_root = module.hierarchy_root
-    for func in module.functions:
-        _analyze_hoisting(func, hierarchy_root)
-    for struct in module.structs:
-        for method in struct.methods:
-            _analyze_hoisting(method, hierarchy_root)
+# ============================================================
+# RUNE VARIABLE COLLECTION
+# ============================================================
 
 
-def _merge_var_types(
-    result: dict[str, Type | None],
-    new_vars: dict[str, Type | None],
-    hierarchy_root: str | None = None,
+def _check_self_field_rune(
+    fa: TFieldAccess, bindings: dict[str, Type], out: set[str]
 ) -> None:
-    """Merge new_vars into result, using type joining for conflicts."""
-    for name, typ in new_vars.items():
-        if name in result:
-            result[name] = join_types(result[name], typ, hierarchy_root)
+    """If fa is self.field and the field is string-typed, add field name to rune vars."""
+    if isinstance(fa.obj, TVar) and fa.obj.name == "self":
+        self_t = bindings.get("self")
+        if self_t is not None and isinstance(self_t, StructT):
+            field_t = self_t.fields.get(fa.field)
+            if field_t is not None and type_eq(field_t, STRING_T):
+                out.add(fa.field)
+
+
+def _collect_rune_expr(expr: TExpr, bindings: dict[str, Type], out: set[str]) -> None:
+    """Find string-typed vars used as base of TIndex/TSlice."""
+    if isinstance(expr, TIndex):
+        if isinstance(expr.obj, TVar):
+            t = bindings.get(expr.obj.name)
+            if t is not None and type_eq(t, STRING_T):
+                out.add(expr.obj.name)
+        elif isinstance(expr.obj, TFieldAccess):
+            _check_self_field_rune(expr.obj, bindings, out)
+        _collect_rune_expr(expr.obj, bindings, out)
+        _collect_rune_expr(expr.index, bindings, out)
+        return
+    if isinstance(expr, TSlice):
+        if isinstance(expr.obj, TVar):
+            t = bindings.get(expr.obj.name)
+            if t is not None and type_eq(t, STRING_T):
+                out.add(expr.obj.name)
+        elif isinstance(expr.obj, TFieldAccess):
+            _check_self_field_rune(expr.obj, bindings, out)
+        _collect_rune_expr(expr.obj, bindings, out)
+        _collect_rune_expr(expr.low, bindings, out)
+        _collect_rune_expr(expr.high, bindings, out)
+        return
+    if isinstance(expr, TBinaryOp):
+        _collect_rune_expr(expr.left, bindings, out)
+        _collect_rune_expr(expr.right, bindings, out)
+    elif isinstance(expr, TUnaryOp):
+        _collect_rune_expr(expr.operand, bindings, out)
+    elif isinstance(expr, TTernary):
+        _collect_rune_expr(expr.cond, bindings, out)
+        _collect_rune_expr(expr.then_expr, bindings, out)
+        _collect_rune_expr(expr.else_expr, bindings, out)
+    elif isinstance(expr, TFieldAccess):
+        _collect_rune_expr(expr.obj, bindings, out)
+    elif isinstance(expr, TTupleAccess):
+        _collect_rune_expr(expr.obj, bindings, out)
+    elif isinstance(expr, TCall):
+        _collect_rune_expr(expr.func, bindings, out)
+        for a in expr.args:
+            _collect_rune_expr(a.value, bindings, out)
+    elif isinstance(expr, TListLit):
+        for e in expr.elements:
+            _collect_rune_expr(e, bindings, out)
+    elif isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            _collect_rune_expr(e, bindings, out)
+    elif isinstance(expr, TSetLit):
+        for e in expr.elements:
+            _collect_rune_expr(e, bindings, out)
+    elif isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            _collect_rune_expr(k, bindings, out)
+            _collect_rune_expr(v, bindings, out)
+
+
+def _collect_rune_stmt(stmt: TStmt, bindings: dict[str, Type], out: set[str]) -> None:
+    """Walk a statement for rune variable uses."""
+    if isinstance(stmt, TLetStmt):
+        if stmt.value is not None:
+            _collect_rune_expr(stmt.value, bindings, out)
+    elif isinstance(stmt, TAssignStmt):
+        _collect_rune_expr(stmt.value, bindings, out)
+        _collect_rune_expr(stmt.target, bindings, out)
+    elif isinstance(stmt, TOpAssignStmt):
+        _collect_rune_expr(stmt.value, bindings, out)
+        _collect_rune_expr(stmt.target, bindings, out)
+    elif isinstance(stmt, TTupleAssignStmt):
+        _collect_rune_expr(stmt.value, bindings, out)
+        for t in stmt.targets:
+            _collect_rune_expr(t, bindings, out)
+    elif isinstance(stmt, TExprStmt):
+        _collect_rune_expr(stmt.expr, bindings, out)
+    elif isinstance(stmt, TReturnStmt):
+        if stmt.value is not None:
+            _collect_rune_expr(stmt.value, bindings, out)
+    elif isinstance(stmt, TThrowStmt):
+        _collect_rune_expr(stmt.expr, bindings, out)
+    elif isinstance(stmt, TIfStmt):
+        _collect_rune_expr(stmt.cond, bindings, out)
+        _collect_rune_stmts(stmt.then_body, bindings, out)
+        if stmt.else_body is not None:
+            _collect_rune_stmts(stmt.else_body, bindings, out)
+    elif isinstance(stmt, TWhileStmt):
+        _collect_rune_expr(stmt.cond, bindings, out)
+        _collect_rune_stmts(stmt.body, bindings, out)
+    elif isinstance(stmt, TForStmt):
+        if isinstance(stmt.iterable, TRange):
+            for a in stmt.iterable.args:
+                _collect_rune_expr(a, bindings, out)
         else:
-            result[name] = typ
+            _collect_rune_expr(stmt.iterable, bindings, out)
+        _collect_rune_stmts(stmt.body, bindings, out)
+    elif isinstance(stmt, TTryStmt):
+        _collect_rune_stmts(stmt.body, bindings, out)
+        for catch in stmt.catches:
+            _collect_rune_stmts(catch.body, bindings, out)
+        if stmt.finally_body is not None:
+            _collect_rune_stmts(stmt.finally_body, bindings, out)
+    elif isinstance(stmt, TMatchStmt):
+        _collect_rune_expr(stmt.expr, bindings, out)
+        for case in stmt.cases:
+            _collect_rune_stmts(case.body, bindings, out)
+        if stmt.default is not None:
+            _collect_rune_stmts(stmt.default.body, bindings, out)
 
 
-def _vars_first_assigned_in(
-    stmts: list[Stmt], already_declared: set[str], hierarchy_root: str | None = None
-) -> dict[str, Type | None]:
-    """Find variables first assigned in these statements (not already declared)."""
-    result: dict[str, Type | None] = {}
-    for stmt in stmts:
-        if isinstance(stmt, Assign) and stmt.is_declaration:
-            if isinstance(stmt.target, VarLV):
-                name = stmt.target.name
-                if name not in already_declared:
-                    # Prefer decl_typ (unified type from frontend) over value.typ
-                    new_type = (
-                        stmt.decl_typ if stmt.decl_typ is not None else stmt.value.typ
-                    )
-                    if name in result:
-                        result[name] = join_types(
-                            result[name], new_type, hierarchy_root
-                        )
-                    else:
-                        result[name] = new_type
-        elif isinstance(stmt, TupleAssign) and stmt.is_declaration:
-            for i, target in enumerate(stmt.targets):
-                if isinstance(target, VarLV):
-                    name = target.name
-                    if name not in already_declared and name not in result:
-                        # Type from tuple element if available
-                        val_typ = stmt.value.typ
-                        if isinstance(val_typ, Tuple) and i < len(val_typ.elements):
-                            result[name] = val_typ.elements[i]
-                        else:
-                            result[name] = None
-        # Recurse into nested structures
-        elif isinstance(stmt, If):
-            # For sibling branches, use the SAME already_declared set (before processing either branch)
-            # This allows the same variable to be assigned in both branches with different types
-            branch_declared = already_declared | set(result.keys())
-            _merge_var_types(
-                result,
-                _vars_first_assigned_in(
-                    stmt.then_body, branch_declared, hierarchy_root
-                ),
-                hierarchy_root,
-            )
-            _merge_var_types(
-                result,
-                _vars_first_assigned_in(
-                    stmt.else_body, branch_declared, hierarchy_root
-                ),
-                hierarchy_root,
-            )
-        elif isinstance(stmt, While):
-            _merge_var_types(
-                result,
-                _vars_first_assigned_in(
-                    stmt.body, already_declared | set(result.keys()), hierarchy_root
-                ),
-                hierarchy_root,
-            )
-        elif isinstance(stmt, ForRange):
-            _merge_var_types(
-                result,
-                _vars_first_assigned_in(
-                    stmt.body, already_declared | set(result.keys()), hierarchy_root
-                ),
-                hierarchy_root,
-            )
-        elif isinstance(stmt, ForClassic):
-            _merge_var_types(
-                result,
-                _vars_first_assigned_in(
-                    stmt.body, already_declared | set(result.keys()), hierarchy_root
-                ),
-                hierarchy_root,
-            )
-        elif isinstance(stmt, Block):
-            _merge_var_types(
-                result,
-                _vars_first_assigned_in(
-                    stmt.body, already_declared | set(result.keys()), hierarchy_root
-                ),
-                hierarchy_root,
-            )
-        elif isinstance(stmt, TryCatch):
-            # For try/catch, use the same pattern as if/else - both branches start fresh
-            branch_declared = already_declared | set(result.keys())
-            _merge_var_types(
-                result,
-                _vars_first_assigned_in(stmt.body, branch_declared, hierarchy_root),
-                hierarchy_root,
-            )
-            for clause in stmt.catches:
-                _merge_var_types(
-                    result,
-                    _vars_first_assigned_in(
-                        clause.body, branch_declared, hierarchy_root
-                    ),
-                    hierarchy_root,
-                )
-    return result
-
-
-def _filter_hoisted_vars(
-    inner_new: dict[str, Type | None], used_after: set[str]
-) -> list[tuple[str, Type | None]]:
-    """Filter variables that need hoisting (assigned inside AND used after)."""
-    result: list[tuple[str, Type | None]] = []
-    for name, typ in inner_new.items():
-        if name in used_after:
-            result.append((name, typ))
-    return result
-
-
-def _update_declared_from_hoisted(
-    declared: set[str], needs_hoisting: list[tuple[str, Type | None]]
+def _collect_rune_stmts(
+    stmts: list[TStmt], bindings: dict[str, Type], out: set[str]
 ) -> None:
-    """Update declared set with hoisted variable names."""
-    for name, _ in needs_hoisting:
-        declared.add(name)
-
-
-def _collect_conflicting_loop_vars(
-    stmts: list[Stmt], all_func_assigned: set[str]
-) -> list[tuple[str, Type | None]]:
-    """Collect ForRange loop variables that conflict with function-level assignments."""
-    result: list[tuple[str, Type | None]] = []
     for stmt in stmts:
-        if isinstance(stmt, ForRange):
-            if stmt.value and stmt.value in all_func_assigned:
-                elem_type: Type | None = None
-                if isinstance(stmt.iterable.typ, Slice):
-                    elem_type = stmt.iterable.typ.element
-                elif (
-                    isinstance(stmt.iterable.typ, Primitive)
-                    and stmt.iterable.typ.kind == "string"
-                ):
-                    elem_type = Primitive("string")
-                result.append((stmt.value, elem_type))
-            if stmt.index and stmt.index in all_func_assigned:
-                result.append((stmt.index, Primitive("int")))
-            result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
-        elif isinstance(stmt, If):
-            result.extend(
-                _collect_conflicting_loop_vars(stmt.then_body, all_func_assigned)
-            )
-            result.extend(
-                _collect_conflicting_loop_vars(stmt.else_body, all_func_assigned)
-            )
-        elif isinstance(stmt, While):
-            result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
-        elif isinstance(stmt, ForClassic):
-            result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
-        elif isinstance(stmt, Block):
-            result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
-        elif isinstance(stmt, TryCatch):
-            result.extend(_collect_conflicting_loop_vars(stmt.body, all_func_assigned))
-            for clause in stmt.catches:
-                result.extend(
-                    _collect_conflicting_loop_vars(clause.body, all_func_assigned)
-                )
-        elif isinstance(stmt, (Match, TypeSwitch)):
+        _collect_rune_stmt(stmt, bindings, out)
+
+
+def _collect_rune_vars(stmts: list[TStmt], bindings: dict[str, Type]) -> set[str]:
+    out: set[str] = set()
+    _collect_rune_stmts(stmts, bindings, out)
+    return out
+
+
+# ============================================================
+# CONTINUE DETECTION
+# ============================================================
+
+
+def _has_continue(stmts: list[TStmt]) -> bool:
+    """Check for TContinueStmt, stopping at nested loops."""
+    for stmt in stmts:
+        if isinstance(stmt, TContinueStmt):
+            return True
+        if isinstance(stmt, TIfStmt):
+            if _has_continue(stmt.then_body):
+                return True
+            if stmt.else_body is not None and _has_continue(stmt.else_body):
+                return True
+        elif isinstance(stmt, TTryStmt):
+            if _has_continue(stmt.body):
+                return True
+            for catch in stmt.catches:
+                if _has_continue(catch.body):
+                    return True
+        elif isinstance(stmt, TMatchStmt):
             for case in stmt.cases:
-                result.extend(
-                    _collect_conflicting_loop_vars(case.body, all_func_assigned)
-                )
-            result.extend(
-                _collect_conflicting_loop_vars(stmt.default, all_func_assigned)
-            )
+                if _has_continue(case.body):
+                    return True
+            if stmt.default is not None and _has_continue(stmt.default.body):
+                return True
+        # TWhileStmt/TForStmt: don't recurse — nested loops own their continues
+    return False
+
+
+def _has_break(stmts: list[TStmt]) -> bool:
+    """Check for TBreakStmt targeting an enclosing loop, stopping at nested loops."""
+    for stmt in stmts:
+        if isinstance(stmt, TBreakStmt):
+            return True
+        if isinstance(stmt, TIfStmt):
+            if _has_break(stmt.then_body):
+                return True
+            if stmt.else_body is not None and _has_break(stmt.else_body):
+                return True
+        elif isinstance(stmt, TTryStmt):
+            if _has_break(stmt.body):
+                return True
+            for catch in stmt.catches:
+                if _has_break(catch.body):
+                    return True
+        elif isinstance(stmt, TMatchStmt):
+            # Nested match does NOT intercept break — recurse through it
+            for case in stmt.cases:
+                if _has_break(case.body):
+                    return True
+            if stmt.default is not None and _has_break(stmt.default.body):
+                return True
+        # TWhileStmt/TForStmt: don't recurse — nested loops own their breaks
+    return False
+
+
+# ============================================================
+# COLLECT LET DECLARATIONS INSIDE CONTROL STRUCTURES
+# ============================================================
+
+
+def _collect_let_decls(
+    stmts: list[TStmt], declared: set[str], checker: Checker
+) -> dict[str, str]:
+    """Recursively find TLetStmt inside stmts, returning {name: type_string} for undeclared names."""
+    result: dict[str, str] = {}
+    for stmt in stmts:
+        if isinstance(stmt, TLetStmt):
+            if stmt.name not in declared:
+                resolved = checker.resolve_type(stmt.typ)
+                result[stmt.name] = type_name(resolved)
+        if isinstance(stmt, TIfStmt):
+            result.update(_collect_let_decls(stmt.then_body, declared, checker))
+            if stmt.else_body is not None:
+                result.update(_collect_let_decls(stmt.else_body, declared, checker))
+        elif isinstance(stmt, TWhileStmt):
+            result.update(_collect_let_decls(stmt.body, declared, checker))
+        elif isinstance(stmt, TForStmt):
+            result.update(_collect_let_decls(stmt.body, declared, checker))
+        elif isinstance(stmt, TTryStmt):
+            result.update(_collect_let_decls(stmt.body, declared, checker))
+            for catch in stmt.catches:
+                result.update(_collect_let_decls(catch.body, declared, checker))
+        elif isinstance(stmt, TMatchStmt):
+            for case in stmt.cases:
+                result.update(_collect_let_decls(case.body, declared, checker))
+            if stmt.default is not None:
+                result.update(_collect_let_decls(stmt.default.body, declared, checker))
     return result
 
 
-def _analyze_stmts(
-    func_name: str,
-    stmts: list[Stmt],
-    outer_declared: set[str],
-    all_func_assigned: set[str] | None = None,
-    hierarchy_root: str | None = None,
-) -> None:
-    """Analyze statements, annotating nodes that need hoisting."""
-    declared = set(outer_declared)
-    if all_func_assigned is None:
-        all_func_assigned = set()
+# ============================================================
+# COLLECT USED VARIABLE NAMES
+# ============================================================
+
+
+def _collect_expr_var_names(expr: TExpr, out: set[str]) -> None:
+    """Collect all TVar.name references in an expression."""
+    if isinstance(expr, TVar):
+        out.add(expr.name)
+        return
+    if isinstance(expr, TBinaryOp):
+        _collect_expr_var_names(expr.left, out)
+        _collect_expr_var_names(expr.right, out)
+    elif isinstance(expr, TUnaryOp):
+        _collect_expr_var_names(expr.operand, out)
+    elif isinstance(expr, TTernary):
+        _collect_expr_var_names(expr.cond, out)
+        _collect_expr_var_names(expr.then_expr, out)
+        _collect_expr_var_names(expr.else_expr, out)
+    elif isinstance(expr, TFieldAccess):
+        _collect_expr_var_names(expr.obj, out)
+    elif isinstance(expr, TTupleAccess):
+        _collect_expr_var_names(expr.obj, out)
+    elif isinstance(expr, TIndex):
+        _collect_expr_var_names(expr.obj, out)
+        _collect_expr_var_names(expr.index, out)
+    elif isinstance(expr, TSlice):
+        _collect_expr_var_names(expr.obj, out)
+        _collect_expr_var_names(expr.low, out)
+        _collect_expr_var_names(expr.high, out)
+    elif isinstance(expr, TCall):
+        _collect_expr_var_names(expr.func, out)
+        for a in expr.args:
+            _collect_expr_var_names(a.value, out)
+    elif isinstance(expr, TListLit):
+        for e in expr.elements:
+            _collect_expr_var_names(e, out)
+    elif isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            _collect_expr_var_names(e, out)
+    elif isinstance(expr, TSetLit):
+        for e in expr.elements:
+            _collect_expr_var_names(e, out)
+    elif isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            _collect_expr_var_names(k, out)
+            _collect_expr_var_names(v, out)
+
+
+def _collect_target_read_names(target: TExpr, out: set[str]) -> None:
+    """Collect var names read by an assignment target."""
+    if isinstance(target, TVar):
+        out.add(target.name)
+        return
+    if isinstance(target, TIndex):
+        _collect_expr_var_names(target.obj, out)
+        _collect_expr_var_names(target.index, out)
+    elif isinstance(target, TFieldAccess):
+        _collect_expr_var_names(target.obj, out)
+    elif isinstance(target, TTupleAccess):
+        _collect_expr_var_names(target.obj, out)
+
+
+def _collect_stmt_var_names(stmt: TStmt, out: set[str]) -> None:
+    """Collect variable names in read positions within a statement."""
+    if isinstance(stmt, TLetStmt):
+        if stmt.value is not None:
+            _collect_expr_var_names(stmt.value, out)
+    elif isinstance(stmt, TAssignStmt):
+        _collect_expr_var_names(stmt.value, out)
+        _collect_target_read_names(stmt.target, out)
+    elif isinstance(stmt, TOpAssignStmt):
+        _collect_expr_var_names(stmt.value, out)
+        _collect_expr_var_names(stmt.target, out)
+    elif isinstance(stmt, TTupleAssignStmt):
+        _collect_expr_var_names(stmt.value, out)
+        for t in stmt.targets:
+            _collect_target_read_names(t, out)
+    elif isinstance(stmt, TExprStmt):
+        _collect_expr_var_names(stmt.expr, out)
+    elif isinstance(stmt, TReturnStmt):
+        if stmt.value is not None:
+            _collect_expr_var_names(stmt.value, out)
+    elif isinstance(stmt, TThrowStmt):
+        _collect_expr_var_names(stmt.expr, out)
+    elif isinstance(stmt, TIfStmt):
+        _collect_expr_var_names(stmt.cond, out)
+        for s in stmt.then_body:
+            _collect_stmt_var_names(s, out)
+        if stmt.else_body is not None:
+            for s in stmt.else_body:
+                _collect_stmt_var_names(s, out)
+    elif isinstance(stmt, TWhileStmt):
+        _collect_expr_var_names(stmt.cond, out)
+        for s in stmt.body:
+            _collect_stmt_var_names(s, out)
+    elif isinstance(stmt, TForStmt):
+        if isinstance(stmt.iterable, TRange):
+            for a in stmt.iterable.args:
+                _collect_expr_var_names(a, out)
+        else:
+            _collect_expr_var_names(stmt.iterable, out)
+        for s in stmt.body:
+            _collect_stmt_var_names(s, out)
+    elif isinstance(stmt, TTryStmt):
+        for s in stmt.body:
+            _collect_stmt_var_names(s, out)
+        for catch in stmt.catches:
+            for s in catch.body:
+                _collect_stmt_var_names(s, out)
+        if stmt.finally_body is not None:
+            for s in stmt.finally_body:
+                _collect_stmt_var_names(s, out)
+    elif isinstance(stmt, TMatchStmt):
+        _collect_expr_var_names(stmt.expr, out)
+        for case in stmt.cases:
+            for s in case.body:
+                _collect_stmt_var_names(s, out)
+        if stmt.default is not None:
+            for s in stmt.default.body:
+                _collect_stmt_var_names(s, out)
+
+
+def _collect_used_vars(stmts: list[TStmt]) -> set[str]:
+    """Recursively collect all variable names referenced in statements."""
+    out: set[str] = set()
+    for stmt in stmts:
+        _collect_stmt_var_names(stmt, out)
+    return out
+
+
+# ============================================================
+# HOISTED VARS SERIALIZATION
+# ============================================================
+
+
+def _serialize_hoisted(pairs: list[tuple[str, str]]) -> str:
+    """Serialize [(name, type_str)] to "x:int;y:string"."""
+    parts: list[str] = []
+    for name, typ in pairs:
+        parts.append(name + ":" + typ)
+    return ";".join(parts)
+
+
+# ============================================================
+# MAIN STATEMENT WALKER
+# ============================================================
+
+
+def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> None:
+    """Walk statements, annotating control structures with hoisted_vars and has_continue."""
     for i, stmt in enumerate(stmts):
-        if isinstance(stmt, TryCatch):
-            catch_stmts: list[Stmt] = []
-            for clause in stmt.catches:
-                catch_stmts.extend(clause.body)
-            inner_new = _vars_first_assigned_in(
-                stmt.body + catch_stmts, declared, hierarchy_root
-            )
-            used_after = _collect_used_vars(stmts[i + 1 :])
-            needs_hoisting = _filter_hoisted_vars(inner_new, used_after)
-            stmt.hoisted_vars = needs_hoisting
-            _update_declared_from_hoisted(declared, needs_hoisting)
-            _analyze_stmts(
-                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
-            )
-            for clause in stmt.catches:
-                _analyze_stmts(
-                    func_name, clause.body, declared, all_func_assigned, hierarchy_root
-                )
-        elif isinstance(stmt, If):
-            inner_new = _vars_first_assigned_in(
-                stmt.then_body + stmt.else_body, declared, hierarchy_root
-            )
-            used_after = _collect_used_vars(stmts[i + 1 :])
-            then_new = _vars_first_assigned_in(stmt.then_body, declared, hierarchy_root)
-            else_used = _collect_used_vars(stmt.else_body)
-            needs_hoisting: list[tuple[str, Type | None]] = []
-            for name, typ in inner_new.items():
-                if name in used_after:
-                    needs_hoisting.append((name, typ))
-                elif name in then_new and name in else_used:
-                    needs_hoisting.append((name, typ))
-            stmt.hoisted_vars = needs_hoisting
-            _update_declared_from_hoisted(declared, needs_hoisting)
-            if stmt.init:
-                _analyze_stmts(
-                    func_name, [stmt.init], declared, all_func_assigned, hierarchy_root
-                )
-            _analyze_stmts(
-                func_name, stmt.then_body, declared, all_func_assigned, hierarchy_root
-            )
-            _analyze_stmts(
-                func_name, stmt.else_body, declared, all_func_assigned, hierarchy_root
-            )
-        elif isinstance(stmt, VarDecl):
+        if isinstance(stmt, TLetStmt):
             declared.add(stmt.name)
-        elif isinstance(stmt, Assign) and stmt.is_declaration:
-            if isinstance(stmt.target, VarLV):
-                declared.add(stmt.target.name)
-        elif isinstance(stmt, TupleAssign) and stmt.is_declaration:
-            for target in stmt.targets:
-                if isinstance(target, VarLV):
-                    declared.add(target.name)
-        elif isinstance(stmt, While):
-            inner_new = _vars_first_assigned_in(stmt.body, declared, hierarchy_root)
-            used_after = _collect_used_vars(stmts[i + 1 :])
-            needs_hoisting = _filter_hoisted_vars(inner_new, used_after)
-            # Also hoist ForRange loop variables that conflict with function-level assignments
-            loop_var_conflicts = _collect_conflicting_loop_vars(
-                stmt.body, all_func_assigned
-            )
-            for var_tuple in loop_var_conflicts:
-                if var_tuple not in needs_hoisting:
-                    needs_hoisting.append(var_tuple)
-            stmt.hoisted_vars = needs_hoisting
-            _update_declared_from_hoisted(declared, needs_hoisting)
-            _analyze_stmts(
-                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
-            )
-        elif isinstance(stmt, ForRange):
-            inner_new = _vars_first_assigned_in(stmt.body, declared, hierarchy_root)
-            used_after = _collect_used_vars(stmts[i + 1 :])
-            needs_hoisting = _filter_hoisted_vars(inner_new, used_after)
-            # Note: Loop variable hoisting is now handled at the enclosing While level
-            # by _collect_conflicting_loop_vars
-            stmt.hoisted_vars = needs_hoisting
-            _update_declared_from_hoisted(declared, needs_hoisting)
-            _analyze_stmts(
-                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
-            )
-        elif isinstance(stmt, ForClassic):
-            if stmt.init:
-                _analyze_stmts(
-                    func_name, [stmt.init], declared, all_func_assigned, hierarchy_root
-                )
-            _analyze_stmts(
-                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
-            )
-        elif isinstance(stmt, Block):
-            _analyze_stmts(
-                func_name, stmt.body, declared, all_func_assigned, hierarchy_root
-            )
-        elif isinstance(stmt, (Match, TypeSwitch)):
-            non_returning_stmts: list[Stmt] = []
-            all_case_stmts: list[Stmt] = []
+            continue
+
+        is_control = isinstance(
+            stmt, (TIfStmt, TTryStmt, TWhileStmt, TForStmt, TMatchStmt)
+        )
+        if not is_control:
+            continue
+
+        if isinstance(stmt, TWhileStmt):
+            stmt.annotations["hoisting.has_continue"] = _has_continue(stmt.body)
+        elif isinstance(stmt, TForStmt):
+            stmt.annotations["hoisting.has_continue"] = _has_continue(stmt.body)
+        elif isinstance(stmt, TMatchStmt):
+            all_case_stmts: list[TStmt] = []
             for case in stmt.cases:
                 all_case_stmts.extend(case.body)
-                if not always_returns(case.body):
-                    non_returning_stmts.extend(case.body)
-            all_case_stmts.extend(stmt.default)
-            if not always_returns(stmt.default):
-                non_returning_stmts.extend(stmt.default)
-            inner_new = _vars_first_assigned_in(
-                non_returning_stmts, declared, hierarchy_root
-            )
-            # Also get all assignments in ALL case bodies (including returning ones)
-            all_inner = _vars_first_assigned_in(
-                all_case_stmts, declared, hierarchy_root
-            )
-            used_after = _collect_used_vars(stmts[i + 1 :])
-            assigned_after = _collect_assigned_vars(stmts[i + 1 :])
-            needs_hoisting: list[tuple[str, Type | None]] = []
-            # Hoist if assigned inside AND (used or assigned) after
-            for name, typ in inner_new.items():
-                if name in used_after or name in assigned_after:
-                    needs_hoisting.append((name, typ))
-            # Also hoist if assigned in ANY case AND assigned after (to avoid C# shadowing)
-            for name, typ in all_inner.items():
-                if name in assigned_after and (name, typ) not in needs_hoisting:
-                    needs_hoisting.append((name, typ))
-            # Also hoist ForRange loop variables that conflict with function-level assignments
-            loop_var_conflicts = _collect_conflicting_loop_vars(
-                all_case_stmts, all_func_assigned
-            )
-            for var_tuple in loop_var_conflicts:
-                if var_tuple not in needs_hoisting:
-                    needs_hoisting.append(var_tuple)
-            stmt.hoisted_vars = needs_hoisting
-            _update_declared_from_hoisted(declared, needs_hoisting)
+            if stmt.default is not None:
+                all_case_stmts.extend(stmt.default.body)
+            stmt.annotations["hoisting.has_break"] = _has_break(all_case_stmts)
+
+        # Collect let decls inside this control structure
+        inner_decls = _collect_let_decls(_get_control_bodies(stmt), declared, checker)
+
+        # Collect vars used after this structure
+        after_used = _collect_used_vars(stmts[i + 1 :])
+
+        # Intersection: variables declared inside but used after
+        hoisted: list[tuple[str, str]] = []
+        for name in sorted(inner_decls):
+            if name in after_used:
+                hoisted.append((name, inner_decls[name]))
+
+        stmt.annotations["hoisting.hoisted_vars"] = _serialize_hoisted(hoisted)
+
+        # Add hoisted names to declared set so they aren't re-hoisted at outer levels
+        for name, _ in hoisted:
+            declared.add(name)
+
+        # Recurse into children
+        _recurse_control_children(stmt, declared, checker)
+
+
+def _get_control_bodies(stmt: TStmt) -> list[TStmt]:
+    """Gather all inner statements of a control structure into a flat list."""
+    result: list[TStmt] = []
+    if isinstance(stmt, TIfStmt):
+        result.extend(stmt.then_body)
+        if stmt.else_body is not None:
+            result.extend(stmt.else_body)
+    elif isinstance(stmt, TTryStmt):
+        result.extend(stmt.body)
+        for catch in stmt.catches:
+            result.extend(catch.body)
+    elif isinstance(stmt, TWhileStmt):
+        result.extend(stmt.body)
+    elif isinstance(stmt, TForStmt):
+        result.extend(stmt.body)
+    elif isinstance(stmt, TMatchStmt):
+        for case in stmt.cases:
+            result.extend(case.body)
+        if stmt.default is not None:
+            result.extend(stmt.default.body)
+    return result
+
+
+def _recurse_control_children(
+    stmt: TStmt, declared: set[str], checker: Checker
+) -> None:
+    """Recurse into the bodies of a control structure."""
+    if isinstance(stmt, TIfStmt):
+        _analyze_stmts(stmt.then_body, set(declared), checker)
+        if stmt.else_body is not None:
+            _analyze_stmts(stmt.else_body, set(declared), checker)
+    elif isinstance(stmt, TTryStmt):
+        _analyze_stmts(stmt.body, set(declared), checker)
+        for catch in stmt.catches:
+            _analyze_stmts(catch.body, set(declared), checker)
+    elif isinstance(stmt, TWhileStmt):
+        _analyze_stmts(stmt.body, set(declared), checker)
+    elif isinstance(stmt, TForStmt):
+        child_declared = set(declared)
+        for b in stmt.binding:
+            child_declared.add(b)
+        _analyze_stmts(stmt.body, child_declared, checker)
+    elif isinstance(stmt, TMatchStmt):
+        for case in stmt.cases:
+            _analyze_stmts(case.body, set(declared), checker)
+        if stmt.default is not None:
+            _analyze_stmts(stmt.default.body, set(declared), checker)
+
+
+# ============================================================
+# PER-FUNCTION ANALYSIS
+# ============================================================
+
+
+def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) -> None:
+    """Run hoisting analysis on a single function."""
+    # Build bindings map from params and let statements
+    bindings: dict[str, Type] = {}
+    for p in decl.params:
+        if p.typ is not None:
+            bindings[p.name] = checker.resolve_type(p.typ)
+        elif p.name == "self" and self_type is not None:
+            bindings[p.name] = self_type
+    _collect_fn_let_bindings(decl.body, bindings, checker)
+
+    # Rune vars
+    rune_vars = _collect_rune_vars(decl.body, bindings)
+    names = sorted(rune_vars)
+    decl.annotations["hoisting.rune_vars"] = ",".join(names)
+
+    # Hoisted vars and has_continue
+    declared: set[str] = set()
+    for p in decl.params:
+        declared.add(p.name)
+    _analyze_stmts(decl.body, declared, checker)
+
+
+def _collect_fn_let_bindings(
+    stmts: list[TStmt], bindings: dict[str, Type], checker: Checker
+) -> None:
+    """Recursively collect all let bindings in a function to build the type map."""
+    for stmt in stmts:
+        if isinstance(stmt, TLetStmt):
+            bindings[stmt.name] = checker.resolve_type(stmt.typ)
+        if isinstance(stmt, TIfStmt):
+            _collect_fn_let_bindings(stmt.then_body, bindings, checker)
+            if stmt.else_body is not None:
+                _collect_fn_let_bindings(stmt.else_body, bindings, checker)
+        elif isinstance(stmt, TWhileStmt):
+            _collect_fn_let_bindings(stmt.body, bindings, checker)
+        elif isinstance(stmt, TForStmt):
+            _collect_fn_let_bindings(stmt.body, bindings, checker)
+        elif isinstance(stmt, TTryStmt):
+            _collect_fn_let_bindings(stmt.body, bindings, checker)
+            for catch in stmt.catches:
+                _collect_fn_let_bindings(catch.body, bindings, checker)
+        elif isinstance(stmt, TMatchStmt):
             for case in stmt.cases:
-                _analyze_stmts(
-                    func_name, case.body, declared, all_func_assigned, hierarchy_root
-                )
-            _analyze_stmts(
-                func_name, stmt.default, declared, all_func_assigned, hierarchy_root
-            )
+                _collect_fn_let_bindings(case.body, bindings, checker)
+            if stmt.default is not None:
+                _collect_fn_let_bindings(stmt.default.body, bindings, checker)
 
 
-def _analyze_hoisting(func: Function, hierarchy_root: str | None = None) -> None:
-    """Annotate TryCatch and If nodes with variables needing hoisting."""
-    func_name = func.name
-    func_declared: set[str] = set()
-    for p in func.params:
-        func_declared.add(p.name)
-    for stmt in func.body:
-        if isinstance(stmt, VarDecl):
-            func_declared.add(stmt.name)
-    # Collect ALL variables assigned anywhere in the function
-    all_func_assigned = _collect_assigned_vars(func.body)
-    _analyze_stmts(
-        func_name, func.body, func_declared, all_func_assigned, hierarchy_root
-    )
+# ============================================================
+# PUBLIC API
+# ============================================================
+
+
+def analyze_hoisting(module: TModule, checker: Checker) -> None:
+    """Run hoisting analysis on all functions in the module."""
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            _analyze_fn(decl, checker)
+        elif isinstance(decl, TStructDecl):
+            st = checker.types.get(decl.name)
+            for method in decl.methods:
+                _analyze_fn(method, checker, self_type=st)

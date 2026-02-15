@@ -158,10 +158,13 @@ class _Emitter:
             self._emit_struct_decl(decl)
             return
         if isinstance(decl, TInterfaceDecl):
-            self._emit_line("interface " + decl.name + " { }")
+            self._emit_line("interface " + decl.name + " {}")
             return
         if isinstance(decl, TEnumDecl):
             self._emit_enum_decl(decl)
+            return
+        if isinstance(decl, TLetStmt):
+            self._emit_stmt(decl)
             return
         raise TypeError("unhandled decl type")
 
@@ -366,9 +369,10 @@ class _Emitter:
         idx = 0
         while idx < len(stmt.catches):
             c = stmt.catches[idx]
-            self._emit_line(
-                "} catch " + c.name + ": " + self._render_catch_types(c.types) + " {"
-            )
+            catch_hdr = "} catch " + c.name
+            if c.types:
+                catch_hdr += ": " + self._render_catch_types(c.types)
+            self._emit_line(catch_hdr + " {")
             self._emit_stmt_block(c.body)
             idx += 1
 
@@ -451,6 +455,12 @@ class _Emitter:
 
     # ── Exprs ───────────────────────────────────────────────
 
+    def _render_named_arg_value(self, expr: TExpr) -> str:
+        """Render a named arg value — booleans are capitalized (True/False)."""
+        if isinstance(expr, TBoolLit):
+            return "True" if expr.value else "False"
+        return self._render_expr(expr, self._PREC_TERNARY)
+
     def _expr_prec(self, expr: TExpr) -> int:
         if isinstance(expr, TTernary):
             return self._PREC_TERNARY
@@ -520,6 +530,8 @@ class _Emitter:
             return f"{c} ? {t} : {e}"
         if isinstance(expr, TUnaryOp):
             operand = self._render_expr(expr.operand, self._PREC_UNARY, "right")
+            if expr.op == "-" and operand.startswith("-"):
+                return f"-({operand})"
             return f"{expr.op}{operand}"
         if isinstance(expr, TBinaryOp):
             op_prec = self._BIN_PREC[expr.op]
@@ -548,9 +560,8 @@ class _Emitter:
                 if a.name is None:
                     args.append(self._render_expr(a.value, self._PREC_TERNARY))
                 else:
-                    args.append(
-                        f"{a.name}: {self._render_expr(a.value, self._PREC_TERNARY)}"
-                    )
+                    val = self._render_named_arg_value(a.value)
+                    args.append(f"{a.name}: {val}")
             return f"{func}({', '.join(args)})"
         if isinstance(expr, TListLit):
             parts3: list[str] = []
@@ -563,12 +574,12 @@ class _Emitter:
                 ks = self._render_expr(k, self._PREC_TERNARY)
                 vs = self._render_expr(v, self._PREC_TERNARY)
                 entries.append(f"{ks}: {vs}")
-            return "{ " + ", ".join(entries) + " }"
+            return "{" + ", ".join(entries) + "}"
         if isinstance(expr, TSetLit):
             elems: list[str] = []
             for e3 in expr.elements:
                 elems.append(self._render_expr(e3, self._PREC_TERNARY))
-            return "{ " + ", ".join(elems) + " }"
+            return "{" + ", ".join(elems) + "}"
         if isinstance(expr, TTupleLit):
             if len(expr.elements) < 2:
                 raise ValueError("tuple literal must have 2+ elements")
@@ -691,7 +702,10 @@ class _Emitter:
         if isinstance(stmt, TTryStmt):
             out2 = f"try {self._render_inline_block(stmt.body)}"
             for c2 in stmt.catches:
-                out2 += f" catch {c2.name}: {self._render_catch_types(c2.types)} {self._render_inline_block(c2.body)}"
+                catch_suffix = (
+                    f": {self._render_catch_types(c2.types)}" if c2.types else ""
+                )
+                out2 += f" catch {c2.name}{catch_suffix} {self._render_inline_block(c2.body)}"
             if stmt.finally_body is not None:
                 out2 += f" finally {self._render_inline_block(stmt.finally_body)}"
             return out2

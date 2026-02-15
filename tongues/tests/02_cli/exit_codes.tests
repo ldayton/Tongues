@@ -1,0 +1,89 @@
+=== success
+args: --target python
+def add(a: int, b: int) -> int:
+    return a + b
+---
+exit: 0
+---
+
+=== compilation error parse failure
+args: --target python
+def f(x) -> int:
+    return x
+---
+exit: 1
+---
+
+=== compilation error subset violation
+args: --target python
+f = lambda x: x + 1
+---
+exit: 1
+---
+
+=== compilation error type error
+args: --target python
+def f(x) -> int:
+    return x
+---
+exit: 1
+---
+
+=== compilation error names undefined
+args: --target python
+def f(x: int) -> int:
+    return y
+---
+exit: 1
+---
+
+=== unknown target exit 2
+args: --target brainfuck
+def f(x: int) -> int:
+    return x
+---
+exit: 2
+stderr: error: unknown target 'brainfuck'
+---
+
+=== unknown phase exit 2
+args: --stop-at nonexistent
+def f(x: int) -> int:
+    return x
+---
+exit: 2
+stderr: error: unknown phase 'nonexistent'
+---
+
+=== unknown flag exit 2
+args: --verbose
+def f(x: int) -> int:
+    return x
+---
+exit: 2
+stderr: error: unknown flag '--verbose'
+---
+
+=== no target exit 2
+args:
+def f(x: int) -> int:
+    return x
+---
+exit: 2
+stderr: error: --target is required
+---
+
+=== empty input exit 2
+args: --target python
+---
+exit: 2
+stderr: error: no input provided
+---
+
+=== invalid utf-8 exit 1
+args: --target python
+stdin-bytes: ff fe
+---
+exit: 1
+stderr: error: invalid utf-8 in input
+---

@@ -1026,6 +1026,8 @@ class TypeChecker:
                 if allow_void:
                     return TY_VOID
                 raise TaytshTypeError("void is not a value type", pos)
+            if typ.kind == "obj":
+                return TY_OBJ
             raise TaytshTypeError(f"unknown primitive type '{typ.kind}'", pos)
 
         if isinstance(typ, TListType):
@@ -2782,7 +2784,32 @@ def _tc_concat(
         return TY_STRING
     if ty_eq(aty, TY_BYTES) and ty_eq(bty, TY_BYTES):
         return TY_BYTES
-    raise TaytshTypeError("Concat requires (string, string) or (bytes, bytes)", pos)
+    if isinstance(aty, TyList) and isinstance(bty, TyList):
+        return aty
+    raise TaytshTypeError(
+        "Concat requires (string, string), (bytes, bytes), or (list, list)", pos
+    )
+
+
+def _tc_starts_ends_with(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if len(args) != 2:
+        raise TaytshTypeError("StartsWith/EndsWith expects 2 arguments", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
+    if (ty_eq(aty, TY_STRING) and ty_eq(bty, TY_STRING)) or (
+        ty_eq(aty, TY_BYTES) and ty_eq(bty, TY_BYTES)
+    ):
+        return TY_BOOL
+    raise TaytshTypeError(
+        "StartsWith/EndsWith requires matching string or bytes args", pos
+    )
 
 
 def _tc_abs(
@@ -3078,7 +3105,35 @@ class _ListToListTC:
 
 
 _tc_reversed = _ListToListTC("Reversed").check
-_tc_sorted = _ListToListTC("Sorted").check
+
+
+def _tc_sorted(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Sorted", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("Sorted expects 1 argument", pos)
+    expected_arg: Ty | None = expected if isinstance(expected, TyList) else None
+    if (
+        expected_arg is None
+        and isinstance(args[0].value, TListLit)
+        and not args[0].value.elements
+    ):
+        expected_arg = TyList(TY_INT)
+    lty = tc._type_expr(
+        args[0].value, env, expected=expected_arg, allow_capture=allow_capture
+    )
+    if isinstance(lty, TyList):
+        return lty
+    if isinstance(lty, TySet):
+        return TyList(lty.element)
+    raise TaytshTypeError("Sorted requires list or set", pos)
 
 
 def _tc_delete(
@@ -3158,6 +3213,22 @@ def _tc_items(
     return TyList(TyTuple((mty.key, mty.value)))
 
 
+def _tc_pop_item(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if len(args) != 1:
+        raise TaytshTypeError("PopItem expects 1 argument", pos)
+    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(mty, TyMap):
+        raise TaytshTypeError("PopItem requires a map", pos)
+    return TyTuple((mty.key, mty.value))
+
+
 def _tc_merge(
     tc: TypeChecker,
     args: list[TArg],
@@ -3225,6 +3296,196 @@ def _tc_set_remove(
     return TY_VOID
 
 
+def _tc_set_binop(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+    name: str,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError(f"named args not supported for {name}", pos)
+    if len(args) != 2:
+        raise TaytshTypeError(f"{name} expects 2 arguments", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
+    if not isinstance(aty, TySet):
+        raise TaytshTypeError(f"{name} first argument must be a set", pos)
+    if not isinstance(bty, TySet):
+        raise TaytshTypeError(f"{name} second argument must be a set", pos)
+    return aty
+
+
+def _tc_union(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    return _tc_set_binop(tc, args, env, expected, allow_capture, pos, "Union")
+
+
+def _tc_intersection(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    return _tc_set_binop(tc, args, env, expected, allow_capture, pos, "Intersection")
+
+
+def _tc_difference(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    return _tc_set_binop(tc, args, env, expected, allow_capture, pos, "Difference")
+
+
+def _tc_bytes_ctor(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Bytes", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("Bytes expects 1 argument", pos)
+    aty = tc._type_expr(
+        args[0].value, env, expected=TY_INT, allow_capture=allow_capture
+    )
+    if not ty_eq(aty, TY_INT):
+        raise TaytshTypeError("Bytes requires int argument", pos)
+    return TY_BYTES
+
+
+def _tc_bytes_from(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for BytesFrom", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("BytesFrom expects 1 argument", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if not isinstance(aty, TyList):
+        raise TaytshTypeError("BytesFrom requires list", pos)
+    return TY_BYTES
+
+
+def _tc_range_list(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for RangeList", pos)
+    if len(args) != 3:
+        raise TaytshTypeError("RangeList expects 3 arguments", pos)
+    for a in args:
+        aty = tc._type_expr(a.value, env, expected=TY_INT, allow_capture=allow_capture)
+        if not ty_eq(aty, TY_INT):
+            raise TaytshTypeError("RangeList requires int arguments", a.pos)
+    return TyList(TY_INT)
+
+
+def _tc_map_from_pairs(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for MapFromPairs", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("MapFromPairs expects 1 argument", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if isinstance(aty, TyList) and isinstance(aty.element, TyTuple):
+        elems = aty.element.elements
+        if len(elems) == 2:
+            return TyMap(elems[0], elems[1])
+    raise TaytshTypeError("MapFromPairs requires list of 2-tuples", pos)
+
+
+def _tc_list_compare(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for ListCompare", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("ListCompare expects 2 arguments", pos)
+    for a in args:
+        aty = tc._type_expr(a.value, env, allow_capture=allow_capture)
+        if not isinstance(aty, TyList):
+            raise TaytshTypeError("ListCompare requires list arguments", a.pos)
+    return TY_INT
+
+
+def _tc_set_from_list(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for SetFromList", pos)
+    if len(args) != 1:
+        raise TaytshTypeError("SetFromList expects 1 argument", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    if isinstance(aty, TyList):
+        return TySet(aty.element)
+    raise TaytshTypeError("SetFromList requires list argument", pos)
+
+
+def _tc_zip(
+    tc: TypeChecker,
+    args: list[TArg],
+    env: _TypeEnv,
+    expected: Ty | None,
+    allow_capture: bool,
+    pos: Pos,
+) -> Ty:
+    if any(a.name is not None for a in args):
+        raise TaytshTypeError("named args not supported for Zip", pos)
+    if len(args) != 2:
+        raise TaytshTypeError("Zip expects 2 arguments", pos)
+    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
+    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
+    if not isinstance(aty, TyList):
+        raise TaytshTypeError("Zip requires list as first argument", pos)
+    if not isinstance(bty, TyList):
+        raise TaytshTypeError("Zip requires list as second argument", pos)
+    return TyList(TyTuple((aty.element, bty.element)))
+
+
 _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "ToString": _Builtin(FnSig((TY_OBJ,), TY_STRING), _tc_tostring),
     "Len": _Builtin(FnSig((TY_OBJ,), TY_INT), _tc_len),
@@ -3275,8 +3536,10 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "RFind": _builtin_simple("RFind", (TY_STRING, TY_STRING), TY_INT),
     "Count": _builtin_simple("Count", (TY_STRING, TY_STRING), TY_INT),
     "Replace": _builtin_simple("Replace", (TY_STRING, TY_STRING, TY_STRING), TY_STRING),
-    "StartsWith": _builtin_simple("StartsWith", (TY_STRING, TY_STRING), TY_BOOL),
-    "EndsWith": _builtin_simple("EndsWith", (TY_STRING, TY_STRING), TY_BOOL),
+    "StartsWith": _Builtin(
+        FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with
+    ),
+    "EndsWith": _Builtin(FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with),
     "Encode": _builtin_simple("Encode", (TY_STRING,), TY_BYTES),
     "Decode": _builtin_simple("Decode", (TY_BYTES,), TY_STRING),
     # String — polymorphic
@@ -3304,9 +3567,29 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "Values": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_values),
     "Items": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_items),
     "Merge": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_merge),
+    "PopItem": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_pop_item),
+    "MapFromKeys": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _builtin_simple),
     # Set — polymorphic
     "Add": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_set_add),
     "Remove": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_set_remove),
+    "Union": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_union),
+    "Intersection": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_intersection),
+    "Difference": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_difference),
+    # Bytes constructors
+    "Bytes": _Builtin(FnSig((TY_INT,), TY_BYTES), _tc_bytes_ctor),
+    "BytesFrom": _Builtin(FnSig((TY_OBJ,), TY_BYTES), _tc_bytes_from),
+    # Range-to-list
+    "RangeList": _Builtin(FnSig((TY_INT, TY_INT, TY_INT), TY_OBJ), _tc_range_list),
+    # Map constructor
+    "MapFromPairs": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_map_from_pairs),
+    # List comparison
+    "ListCompare": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_INT), _tc_list_compare),
+    # Zip
+    "Zip": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_zip),
+    # Set from iterable
+    "SetFromList": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_set_from_list),
+    # String to char list
+    "Chars": _builtin_simple("Chars", (TY_STRING,), TY_OBJ),
     # I/O
     "WriteOut": _builtin_simple("WriteOut", (_TY_STR_OR_BYTES,), TY_VOID),
     "WriteErr": _builtin_simple("WriteErr", (_TY_STR_OR_BYTES,), TY_VOID),
@@ -5089,6 +5372,8 @@ def _bi_replace(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_starts_with(rt: Runtime, args: list[Value]) -> Value:
     s, pre = args[0], args[1]
+    if isinstance(s, VBytes) and isinstance(pre, VBytes):
+        return VBool(s.value.startswith(pre.value))
     if not isinstance(s, VString) or not isinstance(pre, VString):
         raise TaytshRuntimeFault("StartsWith expects string, string", None)
     return VBool(s.value.startswith(pre.value))
@@ -5096,6 +5381,8 @@ def _bi_starts_with(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_ends_with(rt: Runtime, args: list[Value]) -> Value:
     s, suf = args[0], args[1]
+    if isinstance(s, VBytes) and isinstance(suf, VBytes):
+        return VBool(s.value.endswith(suf.value))
     if not isinstance(s, VString) or not isinstance(suf, VString):
         raise TaytshRuntimeFault("EndsWith expects string, string", None)
     return VBool(s.value.endswith(suf.value))
@@ -5121,7 +5408,28 @@ def _bi_concat(rt: Runtime, args: list[Value]) -> Value:
         return VString(a.value + b.value)
     if isinstance(a, VBytes) and isinstance(b, VBytes):
         return VBytes(a.value + b.value)
-    raise TaytshRuntimeFault("Concat expects matching string or bytes", None)
+    a_elems = (
+        a.elements
+        if isinstance(a, VList)
+        else list(a.elements)
+        if isinstance(a, VTuple)
+        else None
+    )
+    b_elems = (
+        b.elements
+        if isinstance(b, VList)
+        else list(b.elements)
+        if isinstance(b, VTuple)
+        else None
+    )
+    if a_elems is not None and b_elems is not None:
+        merged = list(a_elems) + list(b_elems)
+        if isinstance(a, VList):
+            return VList(merged, a.typ)
+        if isinstance(b, VList):
+            return VList(merged, b.typ)
+        return VList(merged, TyList(a.typ.elements[0] if a.typ.elements else TY_OBJ))
+    raise TaytshRuntimeFault("Concat expects matching string, bytes, or list", None)
 
 
 def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
@@ -5132,6 +5440,9 @@ def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
         return VString(a.value * max(0, n.value))
     if isinstance(a, VList):
         return VList(list(a.elements) * max(0, n.value), a.typ)
+    if isinstance(a, VTuple):
+        elem_ty = a.typ.elements[0] if a.typ.elements else TY_OBJ
+        return VList(list(a.elements) * max(0, n.value), TyList(elem_ty))
     raise TaytshRuntimeFault("Repeat expects string or list", None)
 
 
@@ -5287,8 +5598,13 @@ def _sort_key(v: Value) -> tuple[int, object]:
 
 def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
+    if isinstance(xs, VSet):
+        elems = list(xs.elements)
+        decorated = [(_sort_key(e), i, e) for i, e in enumerate(elems)]
+        decorated.sort()
+        return VList([e for _, _, e in decorated], TyList(xs.typ.element))
     if not isinstance(xs, VList):
-        raise TaytshRuntimeFault("Sorted expects list", None)
+        raise TaytshRuntimeFault("Sorted expects list or set", None)
     if rt.module.strict_math:
         for e in xs.elements:
             if isinstance(e, VFloat) and _isnan(e.value):
@@ -5335,6 +5651,30 @@ def _bi_items(rt: Runtime, args: list[Value]) -> Value:
     return VList(elems, TyList(pair_ty))
 
 
+def _bi_map_from_keys(rt: Runtime, args: list[Value]) -> Value:
+    keys_val, default_val = args[0], args[1]
+    if not isinstance(keys_val, VList):
+        raise TaytshRuntimeFault("MapFromKeys expects list", None)
+    entries: dict[Value, Value] = {}
+    for k in keys_val.elements:
+        entries[k] = default_val
+    key_ty = keys_val.typ.element if isinstance(keys_val.typ, TyList) else TY_OBJ
+    val_ty = default_val.runtime_type() if not isinstance(default_val, VNil) else TY_OBJ
+    return VMap(entries, TyMap(key_ty, val_ty))
+
+
+def _bi_pop_item(rt: Runtime, args: list[Value]) -> Value:
+    m = args[0]
+    if not isinstance(m, VMap):
+        raise TaytshRuntimeFault("PopItem expects map", None)
+    if len(m.entries) == 0:
+        raise TaytshRuntimeFault("PopItem on empty map", None)
+    last_key = list(m.entries.keys())[-1]
+    last_val = m.entries.pop(last_key)
+    pair_ty = TyTuple((m.typ.key, m.typ.value))
+    return VTuple((last_key, last_val), pair_ty)
+
+
 def _bi_merge(rt: Runtime, args: list[Value]) -> Value:
     m1, m2 = args[0], args[1]
     if not isinstance(m1, VMap) or not isinstance(m2, VMap):
@@ -5363,6 +5703,149 @@ def _bi_remove(rt: Runtime, args: list[Value]) -> Value:
         raise TaytshRuntimeFault("Remove expects set", None)
     s.elements.discard(_as_hashable(v))
     return VNil()
+
+
+def _bi_union(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VSet) or not isinstance(b, VSet):
+        raise TaytshRuntimeFault("Union expects two sets", None)
+    return VSet(a.elements | b.elements, a.typ)
+
+
+def _bi_intersection(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VSet) or not isinstance(b, VSet):
+        raise TaytshRuntimeFault("Intersection expects two sets", None)
+    return VSet(a.elements & b.elements, a.typ)
+
+
+def _bi_difference(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VSet) or not isinstance(b, VSet):
+        raise TaytshRuntimeFault("Difference expects two sets", None)
+    return VSet(a.elements - b.elements, a.typ)
+
+
+def _bi_bytes_ctor(rt: Runtime, args: list[Value]) -> Value:
+    n = args[0]
+    if not isinstance(n, VInt):
+        raise TaytshRuntimeFault("Bytes expects int", None)
+    return VBytes(b"\x00" * n.value)
+
+
+def _bi_bytes_from(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("BytesFrom expects list", None)
+    result: list[int] = []
+    for v in xs.elements:
+        if isinstance(v, VByte):
+            result.append(v.value)
+        elif isinstance(v, VInt):
+            result.append(v.value & 0xFF)
+        else:
+            raise TaytshRuntimeFault("BytesFrom element must be byte or int", None)
+    return VBytes(bytes(result))
+
+
+def _bi_range_list(rt: Runtime, args: list[Value]) -> Value:
+    start, end, step = args[0], args[1], args[2]
+    if (
+        not isinstance(start, VInt)
+        or not isinstance(end, VInt)
+        or not isinstance(step, VInt)
+    ):
+        raise TaytshRuntimeFault("RangeList expects int, int, int", None)
+    elements: list[Value] = [VInt(i) for i in range(start.value, end.value, step.value)]
+    return VList(elements, TyList(TY_INT))
+
+
+def _bi_map_from_pairs(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("MapFromPairs expects list", None)
+    entries: dict[object, Value] = {}
+    key_typ = TY_OBJ
+    val_typ = TY_OBJ
+    for v in xs.elements:
+        if not isinstance(v, VTuple) or len(v.elements) != 2:
+            raise TaytshRuntimeFault("MapFromPairs elements must be 2-tuples", None)
+        k, val = v.elements
+        entries[_as_hashable(k)] = val
+    if isinstance(xs.typ, TyList) and isinstance(xs.typ.element, TyTuple):
+        elems = xs.typ.element.elements
+        if len(elems) == 2:
+            key_typ = elems[0]
+            val_typ = elems[1]
+    return VMap(entries, TyMap(key_typ, val_typ))
+
+
+def _bi_list_compare(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VList) or not isinstance(b, VList):
+        raise TaytshRuntimeFault("ListCompare expects two lists", None)
+    min_len = min(len(a.elements), len(b.elements))
+    i = 0
+    while i < min_len:
+        av = a.elements[i]
+        bv = b.elements[i]
+        c = _compare_values(av, bv)
+        if c != 0:
+            return VInt(c)
+        i += 1
+    if len(a.elements) < len(b.elements):
+        return VInt(-1)
+    if len(a.elements) > len(b.elements):
+        return VInt(1)
+    return VInt(0)
+
+
+def _bi_set_from_list(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    if not isinstance(xs, VList):
+        raise TaytshRuntimeFault("SetFromList expects list", None)
+    elements: set[object] = set()
+    for v in xs.elements:
+        elements.add(_as_hashable(v))
+    return VSet(elements, TySet(xs.typ.element))
+
+
+def _bi_chars(rt: Runtime, args: list[Value]) -> Value:
+    s = args[0]
+    if not isinstance(s, VString):
+        raise TaytshRuntimeFault("Chars expects string", None)
+    return VList([VString(c) for c in s.value], TyList(TY_STRING))
+
+
+def _bi_zip(rt: Runtime, args: list[Value]) -> Value:
+    a, b = args[0], args[1]
+    if not isinstance(a, VList) or not isinstance(b, VList):
+        raise TaytshRuntimeFault("Zip expects two lists", None)
+    min_len = min(len(a.elements), len(b.elements))
+    elem_ty = TyTuple((a.typ.element, b.typ.element))
+    result: list[Value] = []
+    i = 0
+    while i < min_len:
+        result.append(VTuple([a.elements[i], b.elements[i]], elem_ty))
+        i += 1
+    return VList(result, TyList(elem_ty))
+
+
+def _compare_values(a: Value, b: Value) -> int:
+    """Compare two values, returning -1, 0, or 1."""
+    if isinstance(a, VInt) and isinstance(b, VInt):
+        return -1 if a.value < b.value else (1 if a.value > b.value else 0)
+    if isinstance(a, VFloat) and isinstance(b, VFloat):
+        return -1 if a.value < b.value else (1 if a.value > b.value else 0)
+    if isinstance(a, VString) and isinstance(b, VString):
+        return -1 if a.value < b.value else (1 if a.value > b.value else 0)
+    if isinstance(a, VByte) and isinstance(b, VByte):
+        return -1 if a.value < b.value else (1 if a.value > b.value else 0)
+    if isinstance(a, VBool) and isinstance(b, VBool):
+        ai = 1 if a.value else 0
+        bi = 1 if b.value else 0
+        return -1 if ai < bi else (1 if ai > bi else 0)
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -5568,9 +6051,28 @@ _BUILTIN_RUNTIME: dict[str, Callable[[Runtime, list[Value]], Value]] = {
     "Values": _bi_values,
     "Items": _bi_items,
     "Merge": _bi_merge,
+    "PopItem": _bi_pop_item,
+    "MapFromKeys": _bi_map_from_keys,
     # Set
     "Add": _bi_add,
     "Remove": _bi_remove,
+    "Union": _bi_union,
+    "Intersection": _bi_intersection,
+    "Difference": _bi_difference,
+    # Bytes constructors
+    "Bytes": _bi_bytes_ctor,
+    "BytesFrom": _bi_bytes_from,
+    # Range-to-list
+    "RangeList": _bi_range_list,
+    # Map constructor
+    "MapFromPairs": _bi_map_from_pairs,
+    # List comparison
+    "ListCompare": _bi_list_compare,
+    # Zip
+    "Zip": _bi_zip,
+    # Set from iterable
+    "SetFromList": _bi_set_from_list,
+    "Chars": _bi_chars,
     # I/O
     "WriteOut": _bi_write_out,
     "WriteErr": _bi_write_err,

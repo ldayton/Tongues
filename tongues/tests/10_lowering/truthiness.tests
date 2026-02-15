@@ -1,0 +1,91 @@
+=== bool condition used directly
+def f(b: bool) -> None:
+    if b:
+        print("yes")
+---
+if b {
+---
+
+=== optional nil check
+def f(x: int | None) -> None:
+    if x:
+        print("has value")
+---
+IsNil(x, negated: True)
+---
+
+=== string truthy is non-empty
+def f(s: str) -> None:
+    if s:
+        print(s)
+---
+s != ""
+---
+
+=== list truthy is non-empty
+def f(xs: list[int]) -> None:
+    if xs:
+        print("non-empty")
+---
+Len(xs) != 0
+---
+
+=== dict truthy is non-empty
+def f(d: dict[str, int]) -> None:
+    if d:
+        print("non-empty")
+---
+Len(d) != 0
+---
+
+=== set truthy is non-empty
+def f(s: set[int]) -> None:
+    if s:
+        print("non-empty")
+---
+Len(s) != 0
+---
+
+=== int truthy is non-zero
+def f(n: int) -> None:
+    if n:
+        print("non-zero")
+---
+n != 0
+---
+
+=== float truthy is non-zero
+def f(x: float) -> None:
+    if x:
+        print("non-zero")
+---
+x != 0.0
+---
+
+=== not on optional
+def f(x: int | None) -> bool:
+    return not x
+---
+IsNil(x)
+---
+
+=== not on non-bool
+def f(s: str) -> bool:
+    return not s
+---
+!
+---
+
+=== is None
+def f(x: int | None) -> bool:
+    return x is None
+---
+IsNil(x)
+---
+
+=== is not None
+def f(x: int | None) -> bool:
+    return x is not None
+---
+!IsNil(x)
+---

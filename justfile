@@ -61,17 +61,21 @@ test-fields-local:
 test-hierarchy-local:
     uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
 
-# Run type-check tests locally
-test-typecheck-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_typecheck -v
+# Run inference tests locally
+test-inference-local:
+    uv run --directory tongues pytest tests/test_runner.py -k test_inference -v
 
-# Run codegen tests locally
-test-codegen-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_codegen -v
+# Run lowering tests locally
+test-lowering-local:
+    uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
 
-# Run apptests locally for a specific language (or all if not specified)
-test-apptests-local lang="":
-    uv run --directory tongues pytest tests/test_runner.py -k test_apptest {{ if lang != "" { "--target " + lang } else { "" } }} -v
+# Run middleend tests locally
+test-middleend-local:
+    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph" -v
+
+# Run backend tests (codegen + apptests) locally
+test-backend-local:
+    uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
 
 # Run taytsh tests locally
 test-taytsh-local:
@@ -116,24 +120,19 @@ check:
     just test-signatures && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-fields && results[fields]=✅ || { results[fields]=❌; failed=1; }
     just test-hierarchy && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
-    just test-typecheck && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
-    just test-codegen && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-inference && results[inference]=✅ || { results[inference]=❌; failed=1; }
+    just test-lowering && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
+    just test-middleend && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
+    just test-backend && results[backend]=✅ || { results[backend]=❌; failed=1; }
     just test-taytsh && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
-    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        just test-apptests "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
-    done
     echo ""
     echo "══════════════════════════════════════"
     echo "           CHECK SUMMARY"
     echo "══════════════════════════════════════"
-    printf "%-12s %s\n" "TARGET" "STATUS"
-    printf "%-12s %s\n" "──────" "──────"
-    for t in fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy typecheck codegen taytsh; do
-        printf "%-12s %s\n" "$t" "${results[$t]}"
-    done
-    echo "──────────── ──────"
-    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        printf "%-12s %s\n" "$lang" "${results[$lang]}"
+    printf "%-14s %s\n" "TARGET" "STATUS"
+    printf "%-14s %s\n" "──────" "──────"
+    for t in fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
+        printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
     if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
@@ -186,23 +185,29 @@ test-hierarchy:
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
 
-# Run type-check tests in Docker
-test-typecheck:
+# Run inference tests in Docker
+test-inference:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_typecheck -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_inference -v
 
-# Run codegen tests in Docker (uses python image)
-test-codegen:
+# Run lowering tests in Docker
+test-lowering:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_codegen -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
 
-# Run apptests in Docker for a language (image must have python+uv installed)
-test-apptests lang:
-    docker build -t tongues-{{lang}} docker/{{lang}}
-    docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} \
-        uv run --directory tongues pytest tests/test_runner.py -k test_apptest --target {{lang}} -v
+# Run middleend tests in Docker
+test-middleend:
+    docker build -t tongues-python docker/python
+    docker run --rm -v "$(pwd):/workspace" tongues-python \
+        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph" -v
+
+# Run backend tests (codegen + apptests) in Docker
+test-backend:
+    docker build -t tongues-python docker/python
+    docker run --rm -v "$(pwd):/workspace" tongues-python \
+        uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
 
 # Run taytsh tests in Docker
 test-taytsh:
@@ -279,22 +284,7 @@ versions:
     exit $failed
 
 # Run all tests in Docker
-test: test-codegen test-taytsh \
-    (test-apptests "c") \
-    (test-apptests "csharp") \
-    (test-apptests "dart") \
-    (test-apptests "go") \
-    (test-apptests "java") \
-    (test-apptests "javascript") \
-    (test-apptests "lua") \
-    (test-apptests "perl") \
-    (test-apptests "php") \
-    (test-apptests "python") \
-    (test-apptests "ruby") \
-    (test-apptests "rust") \
-    (test-apptests "swift") \
-    (test-apptests "typescript") \
-    (test-apptests "zig")
+test: test-backend test-taytsh
 
 # Run all tests locally (requires matching runtime versions)
 test-local:
@@ -309,24 +299,19 @@ test-local:
     just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-fields-local && results[fields]=✅ || { results[fields]=❌; failed=1; }
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
-    just test-typecheck-local && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
-    just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
+    just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
+    just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
+    just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
-    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
-    done
     echo ""
     echo "══════════════════════════════════════"
     echo "         TEST-LOCAL SUMMARY"
     echo "══════════════════════════════════════"
-    printf "%-12s %s\n" "TARGET" "STATUS"
-    printf "%-12s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy typecheck codegen taytsh; do
-        printf "%-12s %s\n" "$t" "${results[$t]}"
-    done
-    echo "──────────── ──────"
-    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        printf "%-12s %s\n" "$lang" "${results[$lang]}"
+    printf "%-14s %s\n" "TARGET" "STATUS"
+    printf "%-14s %s\n" "──────" "──────"
+    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh; do
+        printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
     if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
@@ -352,24 +337,19 @@ check-local:
     just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-fields-local && results[fields]=✅ || { results[fields]=❌; failed=1; }
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
-    just test-typecheck-local && results[typecheck]=✅ || { results[typecheck]=❌; failed=1; }
-    just test-codegen-local && results[codegen]=✅ || { results[codegen]=❌; failed=1; }
+    just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
+    just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
+    just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
+    just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
-    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        just test-apptests-local "$lang" && results[$lang]=✅ || { results[$lang]=❌; failed=1; }
-    done
     echo ""
     echo "══════════════════════════════════════"
     echo "        CHECK-LOCAL SUMMARY"
     echo "══════════════════════════════════════"
-    printf "%-12s %s\n" "TARGET" "STATUS"
-    printf "%-12s %s\n" "──────" "──────"
-    for t in versions fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy typecheck codegen taytsh; do
-        printf "%-12s %s\n" "$t" "${results[$t]}"
-    done
-    echo "──────────── ──────"
-    for lang in c csharp dart go java javascript lua perl php python ruby rust swift typescript zig; do
-        printf "%-12s %s\n" "$lang" "${results[$lang]}"
+    printf "%-14s %s\n" "TARGET" "STATUS"
+    printf "%-14s %s\n" "──────" "──────"
+    for t in versions fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
+        printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
     if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
