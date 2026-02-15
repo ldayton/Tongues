@@ -397,3 +397,55 @@ def f64_div(a: int, b: int) -> int:
         exp_z = exp_z - 1
         sig_z = sig_z << 1
     return round_pack_to_f64(sign_z, exp_z, sig_z)
+
+
+# ---------------------------------------------------------------------------
+# Layer 6: Square root
+# ---------------------------------------------------------------------------
+
+
+def _isqrt_125(n: int) -> int:
+    """Integer square root of a 125–126 bit value via Newton's method."""
+    x: int = 1 << 63
+    while True:
+        x1: int = (x + n // x) >> 1
+        if x1 >= x:
+            return x
+        x = x1
+
+
+def f64_sqrt(a: int) -> int:
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    if exp_a == 0x7FF:
+        if sig_a != 0:
+            return a | 0x0008000000000000
+        if sign_a == 0:
+            return a
+        return DEFAULT_NAN
+    if sign_a != 0:
+        if (exp_a | sig_a) == 0:
+            return a
+        return DEFAULT_NAN
+    if exp_a == 0:
+        if sig_a == 0:
+            return a
+        norm: tuple[int, int] = norm_subnormal_f64_sig(sig_a)
+        exp_a = norm[0]
+        sig_a = norm[1]
+    exp_z: int = ((exp_a - 0x3FF) >> 1) + 0x3FE
+    sig_a = sig_a | 0x0010000000000000
+    if (exp_a & 1) == 0:
+        sig_a = sig_a << 1
+    n: int = sig_a << 72
+    q: int = _isqrt_125(n)
+    rem: int = n - q * q
+    if rem < 0:
+        q = q - 1
+        rem = n - q * q
+    sig_z: int = q | (1 if rem != 0 else 0)
+    if sig_z < 0x4000000000000000:
+        exp_z = exp_z - 1
+        sig_z = sig_z << 1
+    return round_pack_to_f64(0, exp_z, sig_z)
