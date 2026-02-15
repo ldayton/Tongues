@@ -17,13 +17,13 @@ end
 while true
 
 === for range single arg
-_range(10).each do |i|
+(0...10).each do |i|
 
 === for range two args
-_range(5, 10).each do |i|
+(5...10).each do |i|
 
 === for range three args
-_range(10, 0, -1).each do |i|
+10.downto(1).each do |i|
 
 === for over list single var
 xs.each do |x|

@@ -47,7 +47,7 @@ until done
 return "hello, #{name}"
 
 === nil coalesce (raised)
-return x.nil? ? 0 : x
+return x || 0
 
 === Get with default using defined-or (raised)
 v = m.fetch("b", 0)
