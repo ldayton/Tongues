@@ -341,3 +341,59 @@ def f64_mul(a: int, b: int) -> int:
         exp_z = exp_z - 1
         sig_z = sig_z << 1
     return round_pack_to_f64(sign_z, exp_z, sig_z)
+
+
+# ---------------------------------------------------------------------------
+# Layer 5: Division
+# ---------------------------------------------------------------------------
+
+
+def f64_div(a: int, b: int) -> int:
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    sign_b: int = sign_f64(b)
+    exp_b: int = exp_f64(b)
+    sig_b: int = frac_f64(b)
+    sign_z: int = sign_a ^ sign_b
+    if exp_a == 0x7FF:
+        if sig_a != 0:
+            return propagate_nan_f64(a, b)
+        if exp_b == 0x7FF:
+            if sig_b != 0:
+                return propagate_nan_f64(a, b)
+            return DEFAULT_NAN
+        return pack_f64(sign_z, 0x7FF, 0)
+    if exp_b == 0x7FF:
+        if sig_b != 0:
+            return propagate_nan_f64(a, b)
+        return pack_f64(sign_z, 0, 0)
+    if exp_b == 0:
+        if sig_b == 0:
+            if (exp_a | sig_a) == 0:
+                return DEFAULT_NAN
+            return pack_f64(sign_z, 0x7FF, 0)
+        norm: tuple[int, int] = norm_subnormal_f64_sig(sig_b)
+        exp_b = norm[0]
+        sig_b = norm[1]
+    if exp_a == 0:
+        if sig_a == 0:
+            return pack_f64(sign_z, 0, 0)
+        norm = norm_subnormal_f64_sig(sig_a)
+        exp_a = norm[0]
+        sig_a = norm[1]
+    exp_z: int = exp_a - exp_b + 0x3FE
+    sig_a = sig_a | 0x0010000000000000
+    sig_b = sig_b | 0x0010000000000000
+    if sig_a < sig_b:
+        exp_z = exp_z - 1
+        dividend: int = sig_a << 63
+    else:
+        dividend = sig_a << 62
+    q: int = dividend // sig_b
+    r: int = dividend - q * sig_b
+    sig_z: int = q | (1 if r != 0 else 0)
+    if sig_z < 0x4000000000000000:
+        exp_z = exp_z - 1
+        sig_z = sig_z << 1
+    return round_pack_to_f64(sign_z, exp_z, sig_z)
