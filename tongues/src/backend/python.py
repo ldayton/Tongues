@@ -255,7 +255,7 @@ _SYS_BUILTINS = frozenset(
     }
 )
 
-_MATH_BUILTINS = frozenset({"IsNaN", "IsInf"})
+_MATH_BUILTINS = frozenset({"IsNaN", "IsInf", "Sqrt", "Floor", "Ceil"})
 
 _OS_BUILTINS = frozenset({"GetEnv"})
 
@@ -405,8 +405,11 @@ def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
 
 
 class _PythonEmitter:
-    def __init__(self, struct_names: set[str]) -> None:
+    def __init__(
+        self, struct_names: set[str], struct_fields: dict[str, list[str]]
+    ) -> None:
         self.struct_names = struct_names
+        self.struct_fields = struct_fields
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -948,7 +951,9 @@ class _PythonEmitter:
                 types.append(t.name)
             else:
                 types.append(self._type(t))
-        if len(types) == 1:
+        if not types:
+            type_str = "Exception"
+        elif len(types) == 1:
             type_str = types[0]
         else:
             type_str = "(" + ", ".join(types) + ")"
@@ -1293,12 +1298,19 @@ class _PythonEmitter:
         return fn_name + "(" + arg_strs + ")"
 
     def _struct_call(self, name: str, args: list[TArg]) -> str:
+        has_named = any(a.name is not None for a in args)
+        if has_named:
+            ordered = self.struct_fields.get(name, [])
+            if ordered:
+                named: dict[str, str] = {}
+                for a in args:
+                    if a.name is not None:
+                        named[a.name] = self._expr(a.value)
+                vals = [named.get(f, "None") for f in ordered]
+                return name + "(" + ", ".join(vals) + ")"
         parts: list[str] = []
         for a in args:
-            if a.name is not None:
-                parts.append(a.name + "=" + self._expr(a.value))
-            else:
-                parts.append(self._expr(a.value))
+            parts.append(self._expr(a.value))
         return name + "(" + ", ".join(parts) + ")"
 
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
@@ -1449,6 +1461,8 @@ class _PythonEmitter:
             return "sorted(" + self._a(args, 0) + ")"
         if name == "Reversed":
             return "list(reversed(" + self._a(args, 0) + "))"
+        if name == "Reverse":
+            return self._a(args, 0) + "[::-1]"
         if name == "Map":
             if len(args) == 0:
                 return "{}"
@@ -1479,6 +1493,12 @@ class _PythonEmitter:
             return self._a(args, 0)
         if name == "Unwrap":
             return self._a(args, 0)
+        if name == "Sqrt":
+            return "math.sqrt(" + self._a(args, 0) + ")"
+        if name == "Floor":
+            return "math.floor(" + self._a(args, 0) + ")"
+        if name == "Ceil":
+            return "math.ceil(" + self._a(args, 0) + ")"
         if name == "IsNaN":
             return "math.isnan(" + self._a(args, 0) + ")"
         if name == "IsInf":
@@ -1500,6 +1520,13 @@ class _PythonEmitter:
             return "sys.stdin.buffer.read()"
         if name == "ReadBytesN":
             return "sys.stdin.buffer.read(" + self._a(args, 0) + ")"
+        if name == "ReadFile":
+            p = self._a(args, 0)
+            return "open(" + p + ").read()"
+        if name == "WriteFile":
+            p = self._a(args, 0)
+            d = self._a(args, 1)
+            return "open(" + p + ', "w").write(' + d + ")"
         if name == "Args":
             return "sys.argv[1:]"
         if name == "GetEnv":
@@ -1616,9 +1643,12 @@ class _PythonEmitter:
 
 
 def emit_python(module: TModule) -> str:
-    struct_names = {
-        decl.name for decl in module.decls if isinstance(decl, TStructDecl)
-    } | set(BUILTIN_STRUCTS.keys())
-    emitter = _PythonEmitter(struct_names)
+    struct_names: set[str] = set(BUILTIN_STRUCTS.keys())
+    struct_fields: dict[str, list[str]] = {}
+    for decl in module.decls:
+        if isinstance(decl, TStructDecl):
+            struct_names.add(decl.name)
+            struct_fields[decl.name] = [f.name for f in decl.fields]
+    emitter = _PythonEmitter(struct_names, struct_fields)
     emitter.emit_module(module)
     return emitter.output()

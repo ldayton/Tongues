@@ -291,9 +291,7 @@ def parse_simple_tests(path: Path) -> list[tuple[str, str]]:
     return result
 
 
-def discover_codegen_tests(
-    test_dir: Path, lang: str
-) -> list[tuple[str, str, str]]:
+def discover_codegen_tests(test_dir: Path, lang: str) -> list[tuple[str, str, str]]:
     """Join base/*.tests with {lang}/*.tests by name. Fails on mismatch."""
     base_dir = test_dir / "base"
     lang_dir = test_dir / lang
@@ -1081,10 +1079,17 @@ def pytest_generate_tests(metafunc):
                     for base_file in sorted(base_dir.glob("*.tests")):
                         for name, _ in parse_simple_tests(base_file):
                             tid = f"{base_file.stem}/{name}[{lang}]"
-                            all_tests.append(pytest.param(
-                                "", "", lang, id=tid,
-                            ))
-                metafunc.parametrize("codegen_input,codegen_expected,codegen_lang", all_tests)
+                            all_tests.append(
+                                pytest.param(
+                                    "",
+                                    "",
+                                    lang,
+                                    id=tid,
+                                )
+                            )
+                metafunc.parametrize(
+                    "codegen_input,codegen_expected,codegen_lang", all_tests
+                )
             elif run == "taytsh_app" and "taytsh_app" in metafunc.fixturenames:
                 apps = discover_taytsh_apps(test_dir)
                 params = [pytest.param(p, id=p.stem) for p in apps]
