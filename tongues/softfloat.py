@@ -132,6 +132,22 @@ def norm_round_pack_to_f64(sign: int, exp: int, sig: int) -> int:
     return round_pack_to_f64(sign, exp, sig << shift_dist)
 
 
+def mul64_to_128(a: int, b: int) -> tuple[int, int]:
+    """Multiply two 64-bit unsigned values, return (high64, low64)."""
+    a_lo: int = a & 0xFFFFFFFF
+    a_hi: int = lsr64(a, 32)
+    b_lo: int = b & 0xFFFFFFFF
+    b_hi: int = lsr64(b, 32)
+    p0: int = a_lo * b_lo
+    p1: int = a_hi * b_lo
+    p2: int = a_lo * b_hi
+    p3: int = a_hi * b_hi
+    mid: int = p1 + p2
+    lo: int = p0 + ((mid & 0xFFFFFFFF) << 32)
+    hi: int = p3 + (mid >> 32) + (lo >> 64)
+    return (hi & MASK64, lo & MASK64)
+
+
 def propagate_nan_f64(a: int, b: int) -> int:
     """NaN propagation — prefer first NaN, made quiet."""
     qa: int = a | 0x0008000000000000
@@ -277,3 +293,51 @@ def f64_sub(a: int, b: int) -> int:
     if sign_a == sign_b:
         return sub_mags_f64(a, b, sign_a)
     return add_mags_f64(a, b, sign_a)
+
+
+# ---------------------------------------------------------------------------
+# Layer 4: Multiplication
+# ---------------------------------------------------------------------------
+
+
+def f64_mul(a: int, b: int) -> int:
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    sign_b: int = sign_f64(b)
+    exp_b: int = exp_f64(b)
+    sig_b: int = frac_f64(b)
+    sign_z: int = sign_a ^ sign_b
+    if exp_a == 0x7FF:
+        if sig_a != 0 or (exp_b == 0x7FF and sig_b != 0):
+            return propagate_nan_f64(a, b)
+        if (exp_b | sig_b) == 0:
+            return DEFAULT_NAN
+        return pack_f64(sign_z, 0x7FF, 0)
+    if exp_b == 0x7FF:
+        if sig_b != 0:
+            return propagate_nan_f64(a, b)
+        if (exp_a | sig_a) == 0:
+            return DEFAULT_NAN
+        return pack_f64(sign_z, 0x7FF, 0)
+    if exp_a == 0:
+        if sig_a == 0:
+            return pack_f64(sign_z, 0, 0)
+        norm: tuple[int, int] = norm_subnormal_f64_sig(sig_a)
+        exp_a = norm[0]
+        sig_a = norm[1]
+    if exp_b == 0:
+        if sig_b == 0:
+            return pack_f64(sign_z, 0, 0)
+        norm = norm_subnormal_f64_sig(sig_b)
+        exp_b = norm[0]
+        sig_b = norm[1]
+    exp_z: int = exp_a + exp_b - 0x3FF
+    sig_a = (sig_a | 0x0010000000000000) << 10
+    sig_b = (sig_b | 0x0010000000000000) << 11
+    prod: tuple[int, int] = mul64_to_128(sig_a, sig_b)
+    sig_z: int = prod[0] | (1 if prod[1] != 0 else 0)
+    if sig_z < 0x4000000000000000:
+        exp_z = exp_z - 1
+        sig_z = sig_z << 1
+    return round_pack_to_f64(sign_z, exp_z, sig_z)
