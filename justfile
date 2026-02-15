@@ -1,29 +1,11 @@
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
 # Verify all transpiler source is subset-compliant
-subset: subset-tongues subset-taytsh
-
-# Verify tongues source is subset-compliant
-subset-tongues:
+subset:
     #!/usr/bin/env bash
     set -euo pipefail
     failed=0
     for f in $(find tongues/src -name '*.py'); do
-        [ ! -s "$f" ] && continue
-        if ! uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>/dev/null; then
-            echo "FAIL: $f"
-            uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>&1 | head -5
-            failed=1
-        fi
-    done
-    exit $failed
-
-# Verify taytsh source is subset-compliant
-subset-taytsh:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    failed=0
-    for f in $(find taytsh/src -name '*.py'); do
         [ ! -s "$f" ] && continue
         if ! uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>/dev/null; then
             echo "FAIL: $f"
@@ -79,40 +61,23 @@ test-backend-local:
 
 # Run taytsh tests locally
 test-taytsh-local:
-    uv run --directory taytsh pytest tests/test_runner.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" -v
 
-# Lint all (--fix to apply changes)
-lint *ARGS: (lint-tongues ARGS) (lint-taytsh ARGS)
-
-# Lint tongues (--fix to apply changes)
-lint-tongues *ARGS:
+# Lint (--fix to apply changes)
+lint *ARGS:
     uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
 
-# Lint taytsh (--fix to apply changes)
-lint-taytsh *ARGS:
-    uv run --directory taytsh ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
-
-# Format all (--fix to apply changes)
-fmt *ARGS: (fmt-tongues ARGS) (fmt-taytsh ARGS)
-
-# Format tongues (--fix to apply changes)
-fmt-tongues *ARGS:
+# Format (--fix to apply changes)
+fmt *ARGS:
     uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
-
-# Format taytsh (--fix to apply changes)
-fmt-taytsh *ARGS:
-    uv run --directory taytsh ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
 
 check:
     #!/usr/bin/env bash
     declare -A results
     failed=0
-    just fmt-tongues && results[fmt-tongues]=✅ || { results[fmt-tongues]=❌; failed=1; }
-    just fmt-taytsh && results[fmt-taytsh]=✅ || { results[fmt-taytsh]=❌; failed=1; }
-    just lint-tongues && results[lint-tongues]=✅ || { results[lint-tongues]=❌; failed=1; }
-    just lint-taytsh && results[lint-taytsh]=✅ || { results[lint-taytsh]=❌; failed=1; }
-    just subset-tongues && results[subset-tongues]=✅ || { results[subset-tongues]=❌; failed=1; }
-    just subset-taytsh && results[subset-taytsh]=✅ || { results[subset-taytsh]=❌; failed=1; }
+    just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
+    just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
+    just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
     just test-cli && results[cli]=✅ || { results[cli]=❌; failed=1; }
     just test-parse && results[parse]=✅ || { results[parse]=❌; failed=1; }
     just test-subset && results[subset-tests]=✅ || { results[subset-tests]=❌; failed=1; }
@@ -131,7 +96,7 @@ check:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
+    for t in fmt lint subset cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
@@ -213,7 +178,7 @@ test-backend:
 test-taytsh:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory taytsh pytest tests/test_runner.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" -v
 
 # Check if formatters are installed
 formatters:
@@ -324,12 +289,9 @@ check-local:
     declare -A results
     failed=0
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
-    just fmt-tongues && results[fmt-tongues]=✅ || { results[fmt-tongues]=❌; failed=1; }
-    just fmt-taytsh && results[fmt-taytsh]=✅ || { results[fmt-taytsh]=❌; failed=1; }
-    just lint-tongues && results[lint-tongues]=✅ || { results[lint-tongues]=❌; failed=1; }
-    just lint-taytsh && results[lint-taytsh]=✅ || { results[lint-taytsh]=❌; failed=1; }
-    just subset-tongues && results[subset-tongues]=✅ || { results[subset-tongues]=❌; failed=1; }
-    just subset-taytsh && results[subset-taytsh]=✅ || { results[subset-taytsh]=❌; failed=1; }
+    just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
+    just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
+    just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
     just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
     just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
     just test-subset-local && results[subset-tests]=✅ || { results[subset-tests]=❌; failed=1; }
@@ -348,7 +310,7 @@ check-local:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions fmt-tongues fmt-taytsh lint-tongues lint-taytsh subset-tongues subset-taytsh cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
+    for t in versions fmt lint subset cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

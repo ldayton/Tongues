@@ -95,6 +95,11 @@ def verify_project(path: str) -> ProjectVerifyResult:
 
 
 if __name__ == "__main__":
+    # Dispatch taytsh subcommand
+    if len(sys.argv) > 1 and sys.argv[1] == "taytsh":
+        from src.taytsh.cli import main as taytsh_main
+        sys.exit(taytsh_main(sys.argv[2:]))
+
     # Check for --verify flag (project-level verification, not in subset)
     if "--verify" in sys.argv:
         idx = sys.argv.index("--verify")

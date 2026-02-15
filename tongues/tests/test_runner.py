@@ -150,7 +150,8 @@ from src.middleend.ownership import analyze_ownership
 from src.middleend.returns import analyze_returns
 from src.middleend.scope import analyze_scope
 from src.middleend.strings import analyze_strings
-from src.taytsh import parse as taytsh_parse
+from src.taytsh import check as taytsh_check_fn, parse as taytsh_parse
+from src.taytsh.runtime import run as taytsh_run
 from src.taytsh.ast import (
     TCall,
     TFieldAccess,
@@ -193,6 +194,11 @@ TESTS = {
         "codegen_python": {"dir": "21_codegen", "run": "codegen_python"},
         "codegen_perl":   {"dir": "21_codegen", "run": "codegen_perl"},
         "app":            {"dir": "22_app",     "run": "app"},
+    },
+    "taytsh": {
+        "taytsh_parse": {"dir": "11_taytsh_parse", "run": "phase"},
+        "taytsh_check": {"dir": "12_taytsh_check", "run": "phase"},
+        "taytsh_app":   {"dir": "23_taytsh_app",   "run": "taytsh_app"},
     },
 }
 # fmt: on
@@ -923,6 +929,39 @@ def run_callgraph(source: str) -> PhaseResult:
     return PhaseResult(data=_serialize_callgraph(module, checker))
 
 
+def run_taytsh_parse(source: str) -> PhaseResult:
+    try:
+        signal.alarm(PARSE_TIMEOUT)
+        module = taytsh_parse(source)
+        return PhaseResult(
+            data={
+                "strict_math": module.strict_math,
+                "strict_tostring": module.strict_tostring,
+            }
+        )
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    finally:
+        signal.alarm(0)
+
+
+def run_taytsh_check(source: str) -> PhaseResult:
+    try:
+        signal.alarm(PARSE_TIMEOUT)
+        errors = taytsh_check_fn(source)
+        if errors:
+            return PhaseResult(errors=[str(e) for e in errors])
+        return PhaseResult()
+    except Exception as e:
+        return PhaseResult(errors=[str(e)])
+    finally:
+        signal.alarm(0)
+
+
+def discover_taytsh_apps(test_dir: Path) -> list[Path]:
+    return sorted(test_dir.glob("*.ty"))
+
+
 def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | None]:
     """Transpile Taytsh source. Returns (output, error)."""
     try:
@@ -1053,6 +1092,10 @@ def pytest_generate_tests(metafunc):
                 tests = discover_codegen_tests(test_dir, "perl")
                 params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in tests]
                 metafunc.parametrize("codegen_perl_input,codegen_perl_expected", params)
+            elif run == "taytsh_app" and "taytsh_app" in metafunc.fixturenames:
+                apps = discover_taytsh_apps(test_dir)
+                params = [pytest.param(p, id=p.stem) for p in apps]
+                metafunc.parametrize("taytsh_app", params)
             elif run == "app" and "app_source" in metafunc.fixturenames:
                 target_opt = metafunc.config.getoption("--target", default=None)
                 targets = target_opt if target_opt else _available_targets()
@@ -1207,6 +1250,33 @@ def test_codegen_perl(
             f"--- expected ---\n{codegen_perl_expected}\n"
             f"--- got ---\n{transpiled_output_perl}"
         )
+
+
+def test_taytsh_parse(taytsh_parse_input, taytsh_parse_expected):
+    check_expected(
+        taytsh_parse_expected,
+        run_taytsh_parse(taytsh_parse_input),
+        "taytsh_parse",
+        lenient_errors=True,
+    )
+
+
+def test_taytsh_check(taytsh_check_input, taytsh_check_expected):
+    check_expected(
+        taytsh_check_expected,
+        run_taytsh_check(taytsh_check_input),
+        "taytsh_check",
+        lenient_errors=True,
+    )
+
+
+def test_taytsh_app(taytsh_app: Path):
+    source = taytsh_app.read_text()
+    module = taytsh_parse(source)
+    result = taytsh_run(module)
+    if result.exit_code != 0:
+        output = (result.stdout + result.stderr).decode(errors="replace").strip()
+        pytest.fail(f"Exit code {result.exit_code}:\n{output}")
 
 
 def test_app(app_source: Path, app_target: str) -> None:
