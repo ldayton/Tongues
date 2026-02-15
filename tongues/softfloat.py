@@ -449,3 +449,173 @@ def f64_sqrt(a: int) -> int:
         exp_z = exp_z - 1
         sig_z = sig_z << 1
     return round_pack_to_f64(0, exp_z, sig_z)
+
+
+# ---------------------------------------------------------------------------
+# Layer 7: Remainder
+# ---------------------------------------------------------------------------
+
+
+def f64_fmod(a: int, b: int) -> int:
+    """Truncating remainder: a - trunc(a/b) * b. Sign follows dividend."""
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    exp_b: int = exp_f64(b)
+    sig_b: int = frac_f64(b)
+    if exp_a == 0x7FF:
+        if sig_a != 0 or (exp_b == 0x7FF and sig_b != 0):
+            return propagate_nan_f64(a, b)
+        return DEFAULT_NAN
+    if exp_b == 0x7FF:
+        if sig_b != 0:
+            return propagate_nan_f64(a, b)
+        return a
+    if exp_b == 0:
+        if sig_b == 0:
+            return DEFAULT_NAN
+        norm: tuple[int, int] = norm_subnormal_f64_sig(sig_b)
+        exp_b = norm[0]
+        sig_b = norm[1]
+    if exp_a == 0:
+        if sig_a == 0:
+            return a
+        norm = norm_subnormal_f64_sig(sig_a)
+        exp_a = norm[0]
+        sig_a = norm[1]
+    sig_a = sig_a | 0x0010000000000000
+    sig_b = sig_b | 0x0010000000000000
+    exp_diff: int = exp_a - exp_b
+    if exp_diff < 0:
+        return a
+    r: int = (sig_a << exp_diff) % sig_b
+    if r == 0:
+        return pack_f64(sign_a, 0, 0)
+    return norm_round_pack_to_f64(sign_a, exp_b - 1, r << 10)
+
+
+# ---------------------------------------------------------------------------
+# Layer 8: Sign operations, comparisons, conversions
+# ---------------------------------------------------------------------------
+
+
+def f64_neg(a: int) -> int:
+    return a ^ F64_SIGN
+
+
+def f64_abs(a: int) -> int:
+    return a & 0x7FFFFFFFFFFFFFFF
+
+
+def is_inf_f64(ui: int) -> bool:
+    return (ui & 0x7FFFFFFFFFFFFFFF) == F64_INF
+
+
+def f64_eq(a: int, b: int) -> bool:
+    if is_nan_f64(a) or is_nan_f64(b):
+        return False
+    ua: int = a & 0x7FFFFFFFFFFFFFFF
+    ub: int = b & 0x7FFFFFFFFFFFFFFF
+    if ua == 0 and ub == 0:
+        return True
+    return a == b
+
+
+def f64_lt(a: int, b: int) -> bool:
+    if is_nan_f64(a) or is_nan_f64(b):
+        return False
+    sign_a: int = sign_f64(a)
+    sign_b: int = sign_f64(b)
+    ua: int = a & 0x7FFFFFFFFFFFFFFF
+    ub: int = b & 0x7FFFFFFFFFFFFFFF
+    if ua == 0 and ub == 0:
+        return False
+    if sign_a != sign_b:
+        return sign_a == 1
+    if sign_a == 0:
+        return ua < ub
+    return ua > ub
+
+
+def f64_le(a: int, b: int) -> bool:
+    if is_nan_f64(a) or is_nan_f64(b):
+        return False
+    sign_a: int = sign_f64(a)
+    sign_b: int = sign_f64(b)
+    ua: int = a & 0x7FFFFFFFFFFFFFFF
+    ub: int = b & 0x7FFFFFFFFFFFFFFF
+    if ua == 0 and ub == 0:
+        return True
+    if sign_a != sign_b:
+        return sign_a == 1
+    if sign_a == 0:
+        return ua <= ub
+    return ua >= ub
+
+
+def f64_min(a: int, b: int) -> int:
+    """Min with NaN propagation for strict mode."""
+    if is_nan_f64(a):
+        return a | 0x0008000000000000
+    if is_nan_f64(b):
+        return b | 0x0008000000000000
+    if f64_lt(a, b):
+        return a
+    return b
+
+
+def f64_max(a: int, b: int) -> int:
+    """Max with NaN propagation for strict mode."""
+    if is_nan_f64(a):
+        return a | 0x0008000000000000
+    if is_nan_f64(b):
+        return b | 0x0008000000000000
+    if f64_lt(b, a):
+        return a
+    return b
+
+
+def i64_to_f64(n: int) -> int:
+    """Convert a signed 64-bit integer to float64."""
+    if n == 0:
+        return F64_ZERO
+    sign_z: int = 0
+    if n < 0:
+        sign_z = 1
+        n = 0 - n
+    if n >= 0x8000000000000000:
+        return pack_f64(sign_z, 0x43E, 0)
+    return norm_round_pack_to_f64(sign_z, 0x43C, n)
+
+
+def f64_to_i64(a: int) -> int:
+    """Convert float64 to signed 64-bit integer, truncating toward zero.
+
+    Returns INT64_MAX/MIN for NaN/inf/overflow — caller should check first.
+    """
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    if exp_a == 0x7FF:
+        if sign_a == 0:
+            return 0x7FFFFFFFFFFFFFFF
+        return -(1 << 63)
+    if exp_a == 0:
+        return 0
+    sig_a = sig_a | 0x0010000000000000
+    shift: int = exp_a - 0x433
+    if shift >= 0:
+        if shift > 10:
+            if shift == 11 and sig_a == 0x0010000000000000 and sign_a != 0:
+                return -(1 << 63)
+            if sign_a == 0:
+                return 0x7FFFFFFFFFFFFFFF
+            return -(1 << 63)
+        result: int = sig_a << shift
+    else:
+        if (0 - shift) >= 53:
+            return 0
+        result = sig_a >> (0 - shift)
+    if sign_a != 0:
+        result = 0 - result
+    return result
