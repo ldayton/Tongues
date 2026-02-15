@@ -81,7 +81,7 @@ TY_STRING: str = "string"
 TY_RUNE: str = "rune"
 TY_NIL: str = "nil"
 TY_VOID: str = "void"
-TY_OBJ: str = "obj"
+TY_ERROR: str = "error"
 
 
 @dataclass
@@ -151,7 +151,7 @@ STRING_T: Type = Type(kind=TY_STRING)
 RUNE_T: Type = Type(kind=TY_RUNE)
 NIL_T: Type = Type(kind=TY_NIL)
 VOID_T: Type = Type(kind=TY_VOID)
-OBJ_T: Type = Type(kind=TY_OBJ)
+ERROR_T: Type = Type(kind=TY_ERROR)
 
 _PRIMITIVE_MAP: dict[str, Type] = {
     "int": INT_T,
@@ -321,10 +321,10 @@ def normalize_union(members: list[Type]) -> Type:
                 break
         if not found:
             deduped.append(m)
-    # Absorb obj
+    # Absorb error
     for m in deduped:
-        if m.kind == TY_OBJ and not isinstance(m, (StructT, InterfaceT, EnumT)):
-            return OBJ_T
+        if m.kind == TY_ERROR:
+            return ERROR_T
     if len(deduped) == 1:
         return deduped[0]
     return UnionT(kind="union", members=deduped)
@@ -385,8 +385,8 @@ def is_assignable(source: Type, target: Type) -> bool:
     # Source is struct, target is its interface
     if isinstance(source, StructT) and isinstance(target, InterfaceT):
         return source.parent == target.name
-    # Target is obj (the universal supertype)
-    if target.kind == TY_OBJ and not isinstance(target, (StructT, InterfaceT, EnumT)):
+    # Error type: assignable to/from anything (prevents cascading)
+    if source.kind == TY_ERROR or target.kind == TY_ERROR:
         return True
     # Source is nil, target contains nil
     if source.kind == TY_NIL and contains_nil(target):
@@ -405,15 +405,15 @@ def is_assignable(source: Type, target: Type) -> bool:
                 break
         if all_ok:
             return True
-    # Source with obj element → assignable to same container (empty literal)
+    # Source with error element → assignable to same container (empty literal)
     if (
         isinstance(source, ListT)
         and isinstance(target, ListT)
-        and source.element.kind == TY_OBJ
+        and source.element.kind == TY_ERROR
     ):
         return True
     if isinstance(source, MapT) and isinstance(target, MapT):
-        if source.key.kind == TY_OBJ and source.value.kind == TY_OBJ:
+        if source.key.kind == TY_ERROR and source.value.kind == TY_ERROR:
             return True
         if is_assignable(source.key, target.key) and is_assignable(
             source.value, target.value
@@ -422,7 +422,7 @@ def is_assignable(source: Type, target: Type) -> bool:
     if (
         isinstance(source, SetT)
         and isinstance(target, SetT)
-        and source.element.kind == TY_OBJ
+        and source.element.kind == TY_ERROR
     ):
         return True
     # Tuple element-by-element assignability
@@ -480,7 +480,7 @@ def is_hashable(t: Type) -> bool:
 def has_zero_value(t: Type) -> bool:
     if t.kind in (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_BYTES, TY_STRING, TY_RUNE):
         return True
-    if t.kind == TY_OBJ and not isinstance(t, (StructT, InterfaceT, EnumT)):
+    if t.kind == TY_ERROR:
         return True
     if isinstance(t, ListT):
         return True
@@ -788,7 +788,7 @@ class Checker:
             result = _PRIMITIVE_MAP.get(t.kind)
             if result is None:
                 self.error("unknown primitive type '" + t.kind + "'", t.pos)
-                return OBJ_T
+                return ERROR_T
             return result
         if isinstance(t, TListType):
             elem = self.resolve_type(t.element)
@@ -821,7 +821,7 @@ class Checker:
         if isinstance(t, TFuncType):
             if len(t.params) < 1:
                 self.error("fn type must have at least a return type", t.pos)
-                return OBJ_T
+                return ERROR_T
             params: list[Type] = []
             i = 0
             while i < len(t.params) - 1:
@@ -836,7 +836,7 @@ class Checker:
             if t.name in self.types:
                 return self.types[t.name]
             self.error("unknown type '" + t.name + "'", t.pos)
-            return OBJ_T
+            return ERROR_T
         if isinstance(t, TUnionType):
             members: list[Type] = []
             for m in t.members:
@@ -849,7 +849,7 @@ class Checker:
             inner = self.resolve_type(t.inner)
             return make_optional(inner)
         self.error("unhandled type node", t.pos)
-        return OBJ_T
+        return ERROR_T
 
     # ── Pass 1: Collect declarations ──────────────────────────
 
@@ -1319,7 +1319,7 @@ class Checker:
         else:
             self.error("cannot iterate over " + type_name(iter_type), pos)
             for b in binding:
-                self.declare(b, OBJ_T, pos)
+                self.declare(b, ERROR_T, pos)
 
     def check_match_stmt(self, stmt: TMatchStmt) -> None:
         scrutinee_type = self.check_expr(stmt.expr, None)
@@ -1350,7 +1350,7 @@ class Checker:
             return True
         if isinstance(t, UnionT):
             return True
-        if t.kind == TY_OBJ and not isinstance(t, (StructT, InterfaceT, EnumT)):
+        if t.kind == TY_ERROR:
             return True
         return False
 
@@ -1373,7 +1373,7 @@ class Checker:
                     if type_eq(case_type, m):
                         return True
             return False
-        if scrutinee.kind == TY_OBJ:
+        if scrutinee.kind == TY_ERROR:
             return True
         return False
 
@@ -1494,7 +1494,7 @@ class Checker:
             return normalize_union(remaining2)
         if isinstance(scrutinee, EnumT):
             return scrutinee
-        return OBJ_T
+        return ERROR_T
 
     def check_exhaustiveness(
         self, scrutinee: Type, covered: list[str], pos: Pos
@@ -1518,8 +1518,8 @@ class Checker:
                         required.append(m.name + "." + v)
                 else:
                     required.append(_type_key(m))
-        elif type_eq(scrutinee, OBJ_T):
-            self.error("non-exhaustive match on obj: default case required", pos)
+        elif type_eq(scrutinee, ERROR_T):
+            self.error("non-exhaustive match: default case required", pos)
             return
         else:
             return
@@ -1534,11 +1534,11 @@ class Checker:
         self.enter_scope()
         self.check_stmts(stmt.body)
         self.exit_scope()
-        seen_obj = False
+        seen_catch_all = False
         for catch in stmt.catches:
             self.enter_scope()
             if len(catch.types) == 0:
-                catch_type = OBJ_T
+                catch_type = ERROR_T
             elif len(catch.types) == 1:
                 catch_type = self.resolve_type(catch.types[0])
             else:
@@ -1546,12 +1546,10 @@ class Checker:
                 for ct in catch.types:
                     members.append(self.resolve_type(ct))
                 catch_type = normalize_union(members)
-            if seen_obj:
+            if seen_catch_all:
                 self.error("unreachable catch after catch-all", catch.pos)
-            if type_eq(catch_type, OBJ_T) and not isinstance(
-                catch_type, (StructT, InterfaceT, EnumT)
-            ):
-                seen_obj = True
+            if type_eq(catch_type, ERROR_T):
+                seen_catch_all = True
             self.declare(catch.name, catch_type, catch.pos)
             self.check_stmts(catch.body)
             self.exit_scope()
@@ -1643,7 +1641,7 @@ class Checker:
                 )
                 return None
             return BOOL_T
-        # Equality: same type (or compatible — tuples, lists, obj)
+        # Equality: same type (or compatible — tuples, lists, error)
         if op in ("==", "!="):
             if not type_eq(left, right) and not (
                 is_assignable(left, right) or is_assignable(right, left)
@@ -1665,8 +1663,8 @@ class Checker:
                     right, (TupleT, ListT)
                 ):
                     return BOOL_T
-                # Allow comparing with obj
-                if left.kind == TY_OBJ or right.kind == TY_OBJ:
+                # Allow comparing with error type
+                if left.kind == TY_ERROR or right.kind == TY_ERROR:
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
@@ -1682,8 +1680,8 @@ class Checker:
                     right, (TupleT, ListT)
                 ):
                     return BOOL_T
-                # Allow comparing with obj
-                if left.kind == TY_OBJ or right.kind == TY_OBJ:
+                # Allow comparing with error type
+                if left.kind == TY_ERROR or right.kind == TY_ERROR:
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
@@ -1843,8 +1841,8 @@ class Checker:
             field_type = self._union_field_type(obj_type, expr.field)
             if field_type is not None:
                 return field_type
-        if obj_type.kind == TY_OBJ:
-            return OBJ_T
+        if obj_type.kind == TY_ERROR:
+            return ERROR_T
         self.error(
             "cannot access field '" + expr.field + "' on " + type_name(obj_type),
             expr.pos,
@@ -2179,7 +2177,7 @@ class Checker:
         if len(expr.elements) == 0:
             if expected is not None and isinstance(expected, ListT):
                 return expected
-            return ListT(kind="list", element=OBJ_T)
+            return ListT(kind="list", element=ERROR_T)
         # Use expected element type if available
         elem_expected: Type | None = None
         if expected is not None and isinstance(expected, ListT):
@@ -2285,7 +2283,7 @@ class Checker:
                 params.append(self.resolve_type(p.typ))
             else:
                 self.error("fn literal parameter must have a type", p.pos)
-                params.append(OBJ_T)
+                params.append(ERROR_T)
         ret = self.resolve_type(expr.ret)
         # Check for captured variables (no closures allowed)
         param_names: set[str] = set()
@@ -2602,9 +2600,9 @@ class Checker:
                     return BYTES_T
                 if isinstance(t1, ListT) and isinstance(t2, ListT):
                     return t1
-                if isinstance(t1, ListT) and t2.kind == TY_OBJ:
+                if isinstance(t1, ListT) and t2.kind == TY_ERROR:
                     return t1
-                if t1.kind == TY_OBJ and isinstance(t2, ListT):
+                if t1.kind == TY_ERROR and isinstance(t2, ListT):
                     return t2
                 if isinstance(t1, (ListT, TupleT)) and isinstance(t2, (ListT, TupleT)):
                     if isinstance(t1, ListT):
@@ -2612,7 +2610,7 @@ class Checker:
                     if isinstance(t2, ListT):
                         return t2
                     return ListT(
-                        kind="list", element=t1.elements[0] if t1.elements else OBJ_T
+                        kind="list", element=t1.elements[0] if t1.elements else ERROR_T
                     )
                 self.error("Concat requires two strings, two bytes, or two lists", pos)
             return STRING_T
@@ -2819,8 +2817,8 @@ class Checker:
                 and isinstance(t2, MapT)
             ):
                 if not type_eq(t1, t2):
-                    # Allow merge with obj-typed empty map
-                    if t1.key.kind != TY_OBJ and t2.key.kind != TY_OBJ:
+                    # Allow merge with empty map
+                    if t1.key.kind != TY_ERROR and t2.key.kind != TY_ERROR:
                         self.error(
                             "Merge maps must be same type, got "
                             + type_name(t1)
@@ -2851,7 +2849,7 @@ class Checker:
             t1 = arg(0)
             t2 = arg(1)
             if t1 is not None and isinstance(t1, ListT):
-                val_ty = t2 if t2 is not None else OBJ_T
+                val_ty = t2 if t2 is not None else ERROR_T
                 return MapT(kind="map", key=t1.element, value=val_ty)
             if t1 is not None:
                 self.error("MapFromKeys requires list as first argument", pos)
@@ -2863,13 +2861,13 @@ class Checker:
                 return None
             if expected is not None and isinstance(expected, MapT):
                 return expected
-            return MapT(kind="map", key=OBJ_T, value=OBJ_T)
+            return MapT(kind="map", key=ERROR_T, value=ERROR_T)
         if name == "Set":
             if not require(0):
                 return None
             if expected is not None and isinstance(expected, SetT):
                 return expected
-            return SetT(kind="set", element=OBJ_T)
+            return SetT(kind="set", element=ERROR_T)
 
         # ── Add / Remove (set) ──
         if name == "Add":
@@ -2920,7 +2918,7 @@ class Checker:
                 and isinstance(t2, SetT)
             ):
                 if not type_eq(t1, t2):
-                    if t1.element.kind != TY_OBJ and t2.element.kind != TY_OBJ:
+                    if t1.element.kind != TY_ERROR and t2.element.kind != TY_ERROR:
                         self.error(
                             name
                             + " sets must be same type, got "
@@ -3260,7 +3258,7 @@ class Checker:
                 return None
             t = arg(0)
             if t is not None and not (
-                type_eq(t, STRING_T) or type_eq(t, BYTES_T) or type_eq(t, OBJ_T)
+                type_eq(t, STRING_T) or type_eq(t, BYTES_T) or type_eq(t, ERROR_T)
             ):
                 self.error(name + " requires string or bytes", pos)
             return VOID_T

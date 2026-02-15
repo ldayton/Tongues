@@ -68,7 +68,7 @@ from ..taytsh.check import (
     ListT,
     MapT,
     NIL_T,
-    OBJ_T,
+    ERROR_T,
     RUNE_T,
     STRING_T,
     SetT,
@@ -383,7 +383,7 @@ def _resolve_for_binder_types(
 
 def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
     if scrutinee is None:
-        return OBJ_T
+        return ERROR_T
     if isinstance(scrutinee, UnionT):
         remaining: list[Type] = []
         for m in scrutinee.members:
@@ -395,13 +395,13 @@ def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
             if not is_covered:
                 remaining.append(m)
         if len(remaining) == 0:
-            return OBJ_T
+            return ERROR_T
         if len(remaining) == 1:
             return remaining[0]
         return normalize_union(remaining)
     for c in covered:
         if type_eq(scrutinee, c):
-            return OBJ_T
+            return ERROR_T
     return scrutinee
 
 
@@ -926,7 +926,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         for bname in stmt.binding:
             btype = binder_types.get(bname) if binder_types is not None else None
             if btype is None:
-                btype = OBJ_T
+                btype = ERROR_T
             ctx.var_types[bname] = btype
             if _contains_string_type(btype):
                 _register_string_binding(

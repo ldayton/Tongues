@@ -63,6 +63,10 @@ test-backend-local:
 test-taytsh-local:
     uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" -v
 
+# Run all tests locally in a single pytest invocation
+test-all-local:
+    uv run --directory tongues pytest tests/test_runner.py -v
+
 # Lint (--fix to apply changes)
 lint *ARGS:
     uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
@@ -292,25 +296,14 @@ check-local:
     just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
     just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
     just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
-    just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
-    just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
-    just test-subset-local && results[subset-tests]=✅ || { results[subset-tests]=❌; failed=1; }
-    just test-names-local && results[names]=✅ || { results[names]=❌; failed=1; }
-    just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
-    just test-fields-local && results[fields]=✅ || { results[fields]=❌; failed=1; }
-    just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
-    just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
-    just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
-    just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
-    just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
-    just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
+    just test-all-local && results[tests]=✅ || { results[tests]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "        CHECK-LOCAL SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions fmt lint subset cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
+    for t in versions fmt lint subset tests; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

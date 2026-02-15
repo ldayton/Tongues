@@ -7,7 +7,6 @@ fn Main() -> void {
     let e: bytes
     let f: string
     let g: rune
-    let h: obj
 }
 ---
 ok

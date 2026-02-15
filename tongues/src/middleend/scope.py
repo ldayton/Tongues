@@ -69,7 +69,7 @@ from ..taytsh.check import (
     ListT,
     MapT,
     NIL_T,
-    OBJ_T,
+    ERROR_T,
     RUNE_T,
     STRING_T,
     SetT,
@@ -677,7 +677,7 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _ScopeCtx) -> None:
     for bname in stmt.binding:
         btype = binder_types.get(bname) if binder_types is not None else None
         if btype is None:
-            btype = OBJ_T
+            btype = ERROR_T
         ctx.bindings[bname] = _BindingInfo(
             node=stmt,
             declared_type=btype,
@@ -920,7 +920,7 @@ def _compute_residual_type(
 ) -> Type:
     """Compute the residual type for a default arm (scrutinee minus covered)."""
     if scrutinee is None:
-        return OBJ_T
+        return ERROR_T
 
     if isinstance(scrutinee, InterfaceT):
         remaining: list[Type] = []
@@ -932,7 +932,7 @@ def _compute_residual_type(
             if not is_covered:
                 remaining.append(vt)
         if len(remaining) == 0:
-            return OBJ_T
+            return ERROR_T
         if len(remaining) == 1:
             return remaining[0]
         return normalize_union(remaining)
@@ -952,12 +952,12 @@ def _compute_residual_type(
             if not is_covered:
                 remaining2.append(m)
         if len(remaining2) == 0:
-            return OBJ_T
+            return ERROR_T
         if len(remaining2) == 1:
             return remaining2[0]
         return normalize_union(remaining2)
 
-    return OBJ_T
+    return ERROR_T
 
 
 # ============================================================

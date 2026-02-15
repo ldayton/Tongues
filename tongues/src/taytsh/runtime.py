@@ -241,7 +241,8 @@ TY_BYTES = TyPrim("bytes")
 TY_STRING = TyPrim("string")
 TY_RUNE = TyPrim("rune")
 TY_VOID = TyPrim("void")  # return-only marker
-TY_OBJ = TyPrim("obj")
+TY_ERROR = TyPrim("error")
+TY_POLY = TyPrim("poly")
 TY_NIL = TyPrim("nil")
 
 
@@ -277,8 +278,8 @@ def ty_is_nil(t: Ty) -> bool:
     return isinstance(t, TyPrim) and t.kind == "nil"
 
 
-def ty_is_obj(t: Ty) -> bool:
-    return isinstance(t, TyPrim) and t.kind == "obj"
+def ty_is_error(t: Ty) -> bool:
+    return isinstance(t, TyPrim) and t.kind == "error"
 
 
 def ty_union(members: Iterable[Ty]) -> Ty:
@@ -288,9 +289,9 @@ def ty_union(members: Iterable[Ty]) -> Ty:
             flat.extend(m.members)
         else:
             flat.append(m)
-    # absorb obj
-    if any(ty_is_obj(m) for m in flat):
-        return TY_OBJ
+    # absorb error
+    if any(ty_is_error(m) for m in flat):
+        return TY_ERROR
     # dedup
     uniq: dict[tuple[object, ...], Ty] = {}
     for m in flat:
@@ -311,7 +312,7 @@ def ty_without_nil(t: Ty) -> Ty:
 
 
 def ty_has_nil(t: Ty) -> bool:
-    if ty_is_nil(t) or ty_is_obj(t):
+    if ty_is_nil(t) or ty_is_error(t):
         return True
     if isinstance(t, TyUnion):
         return any(ty_has_nil(m) for m in t.members)
@@ -897,7 +898,7 @@ def _build_index(module: TModule) -> ModuleIndex:
                 raise TaytshTypeError(
                     f"duplicate field '{f.name}' in struct '{s.name}'", f.pos
                 )
-            fi = FieldInfo(f.name, TY_OBJ, f)  # placeholder ty resolved later
+            fi = FieldInfo(f.name, TY_ERROR, f)  # placeholder ty resolved later
             field_map[f.name] = fi
             fields.append(fi)
 
@@ -1026,8 +1027,6 @@ class TypeChecker:
                 if allow_void:
                     return TY_VOID
                 raise TaytshTypeError("void is not a value type", pos)
-            if typ.kind == "obj":
-                return TY_OBJ
             raise TaytshTypeError(f"unknown primitive type '{typ.kind}'", pos)
 
         if isinstance(typ, TListType):
@@ -1497,7 +1496,7 @@ class TypeChecker:
                     raise TaytshTypeError("void cannot be caught", c.pos)
                 c_ty = ty_union(types)
             else:
-                c_ty = TY_OBJ
+                c_ty = TY_ERROR
             env.push_scope()
             try:
                 env.bind(c.name, c_ty, pos=c.pos)
@@ -1715,7 +1714,7 @@ class TypeChecker:
             else:
                 env.push_scope()
                 try:
-                    env.bind(st.default.name, TY_OBJ, pos=st.default.pos)
+                    env.bind(st.default.name, TY_ERROR, pos=st.default.pos)
                     self._check_block(
                         st.default.body,
                         env,
@@ -1727,9 +1726,9 @@ class TypeChecker:
                     env.pop_scope()
 
         # Exhaustiveness
-        if ty_eq(scrut_ty, TY_OBJ):
+        if ty_is_error(scrut_ty):
             if st.default is None:
-                raise TaytshTypeError("match on obj requires default", st.pos)
+                raise TaytshTypeError("match requires default", st.pos)
             return
         if isinstance(scrut_ty, TyEnum):
             enum = self.index.enums[scrut_ty.name]
@@ -1809,7 +1808,7 @@ class TypeChecker:
             raise TaytshTypeError("non-exhaustive match", st.pos)
 
     def _match_case_possible(self, scrutinee: Ty, case_ty: Ty) -> bool:
-        if ty_eq(scrutinee, TY_OBJ):
+        if ty_is_error(scrutinee):
             return True
         if ty_eq(scrutinee, case_ty):
             return True
@@ -1994,7 +1993,7 @@ class TypeChecker:
                 if isinstance(expected, TyList):
                     self.expr_types[_expr_key(expr)] = expected
                     return expected
-                fallback = TyList(TY_OBJ)
+                fallback = TyList(TY_ERROR)
                 self.expr_types[_expr_key(expr)] = fallback
                 return fallback
             if isinstance(expected, TyList):
@@ -2393,8 +2392,8 @@ class TypeChecker:
                 return TY_BOOL
             if ty_is_nil(right) and ty_has_nil(left):
                 return TY_BOOL
-            # Allow obj == T and T == obj
-            if ty_is_obj(left) or ty_is_obj(right):
+            # Allow error type comparisons
+            if ty_is_error(left) or ty_is_error(right):
                 return TY_BOOL
             # Allow byte == int and int == byte
             if (ty_eq(left, TY_BYTE) and ty_eq(right, TY_INT)) or (
@@ -2505,14 +2504,14 @@ class TypeChecker:
             return all(self._has_zero_value(t) for t in typ.elements)
         if isinstance(typ, TyUnion):
             return any(ty_is_nil(m) for m in typ.members)
-        if ty_eq(typ, TY_OBJ):
+        if ty_eq(typ, TY_ERROR):
             return True
         return False
 
     def _assignable(self, src: Ty, dst: Ty) -> bool:
         if ty_eq(src, dst):
             return True
-        if ty_is_obj(dst):
+        if ty_is_error(src) or ty_is_error(dst):
             return True
         if ty_is_nil(src):
             return ty_has_nil(dst)
@@ -3487,13 +3486,13 @@ def _tc_zip(
 
 
 _BUILTIN_DISPATCH: dict[str, _Builtin] = {
-    "ToString": _Builtin(FnSig((TY_OBJ,), TY_STRING), _tc_tostring),
-    "Len": _Builtin(FnSig((TY_OBJ,), TY_INT), _tc_len),
-    "Map": _Builtin(FnSig((), TyMap(TY_OBJ, TY_OBJ)), _tc_map_ctor),
-    "Set": _Builtin(FnSig((), TySet(TY_OBJ)), _tc_set_ctor),
-    "Get": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_get),
-    "Contains": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_BOOL), _tc_contains),
-    "Unwrap": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_unwrap),
+    "ToString": _Builtin(FnSig((TY_POLY,), TY_STRING), _tc_tostring),
+    "Len": _Builtin(FnSig((TY_POLY,), TY_INT), _tc_len),
+    "Map": _Builtin(FnSig((), TyMap(TY_POLY, TY_POLY)), _tc_map_ctor),
+    "Set": _Builtin(FnSig((), TySet(TY_POLY)), _tc_set_ctor),
+    "Get": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_get),
+    "Contains": _Builtin(FnSig((TY_POLY, TY_POLY), TY_BOOL), _tc_contains),
+    "Unwrap": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_unwrap),
     "Assert": _Builtin(FnSig((TY_BOOL,), TY_VOID), _tc_assert),
     # Numeric
     "Round": _builtin_simple("Round", (TY_FLOAT,), TY_INT),
@@ -3503,11 +3502,11 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "IsNaN": _builtin_simple("IsNaN", (TY_FLOAT,), TY_BOOL),
     "IsInf": _builtin_simple("IsInf", (TY_FLOAT,), TY_BOOL),
     "DivMod": _builtin_simple("DivMod", (TY_INT, TY_INT), TyTuple((TY_INT, TY_INT))),
-    "Abs": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_abs),
-    "Min": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_min),
-    "Max": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_max),
-    "Sum": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_sum),
-    "Pow": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_pow),
+    "Abs": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_abs),
+    "Min": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_min),
+    "Max": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_max),
+    "Sum": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_sum),
+    "Pow": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_pow),
     # Conversions
     "IntToFloat": _builtin_simple("IntToFloat", (TY_INT,), TY_FLOAT),
     "FloatToInt": _builtin_simple("FloatToInt", (TY_FLOAT,), TY_INT),
@@ -3543,8 +3542,8 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "Encode": _builtin_simple("Encode", (TY_STRING,), TY_BYTES),
     "Decode": _builtin_simple("Decode", (TY_BYTES,), TY_STRING),
     # String — polymorphic
-    "Concat": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_concat),
-    "Repeat": _Builtin(FnSig((TY_OBJ, TY_INT), TY_OBJ), _tc_repeat),
+    "Concat": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_concat),
+    "Repeat": _Builtin(FnSig((TY_POLY, TY_INT), TY_POLY), _tc_repeat),
     "Format": _Builtin(FnSig((TY_STRING,), TY_STRING), _tc_format),
     # Character tests
     "IsDigit": _builtin_simple("IsDigit", (_TY_STR_OR_RUNE,), TY_BOOL),
@@ -3554,42 +3553,42 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "IsUpper": _builtin_simple("IsUpper", (_TY_STR_OR_RUNE,), TY_BOOL),
     "IsLower": _builtin_simple("IsLower", (_TY_STR_OR_RUNE,), TY_BOOL),
     # List — polymorphic
-    "Append": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_append),
-    "Insert": _Builtin(FnSig((TY_OBJ, TY_INT, TY_OBJ), TY_VOID), _tc_insert),
-    "Pop": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_pop),
-    "RemoveAt": _Builtin(FnSig((TY_OBJ, TY_INT), TY_VOID), _tc_remove_at),
-    "IndexOf": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_INT), _tc_index_of),
-    "Reversed": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_reversed),
-    "Sorted": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_sorted),
+    "Append": _Builtin(FnSig((TY_POLY, TY_POLY), TY_VOID), _tc_append),
+    "Insert": _Builtin(FnSig((TY_POLY, TY_INT, TY_POLY), TY_VOID), _tc_insert),
+    "Pop": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_pop),
+    "RemoveAt": _Builtin(FnSig((TY_POLY, TY_INT), TY_VOID), _tc_remove_at),
+    "IndexOf": _Builtin(FnSig((TY_POLY, TY_POLY), TY_INT), _tc_index_of),
+    "Reversed": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_reversed),
+    "Sorted": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_sorted),
     # Map — polymorphic
-    "Delete": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_delete),
-    "Keys": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_keys),
-    "Values": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_values),
-    "Items": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_items),
-    "Merge": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_merge),
-    "PopItem": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_pop_item),
-    "MapFromKeys": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _builtin_simple),
+    "Delete": _Builtin(FnSig((TY_POLY, TY_POLY), TY_VOID), _tc_delete),
+    "Keys": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_keys),
+    "Values": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_values),
+    "Items": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_items),
+    "Merge": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_merge),
+    "PopItem": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_pop_item),
+    "MapFromKeys": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _builtin_simple),
     # Set — polymorphic
-    "Add": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_set_add),
-    "Remove": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_VOID), _tc_set_remove),
-    "Union": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_union),
-    "Intersection": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_intersection),
-    "Difference": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_difference),
+    "Add": _Builtin(FnSig((TY_POLY, TY_POLY), TY_VOID), _tc_set_add),
+    "Remove": _Builtin(FnSig((TY_POLY, TY_POLY), TY_VOID), _tc_set_remove),
+    "Union": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_union),
+    "Intersection": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_intersection),
+    "Difference": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_difference),
     # Bytes constructors
     "Bytes": _Builtin(FnSig((TY_INT,), TY_BYTES), _tc_bytes_ctor),
-    "BytesFrom": _Builtin(FnSig((TY_OBJ,), TY_BYTES), _tc_bytes_from),
+    "BytesFrom": _Builtin(FnSig((TY_POLY,), TY_BYTES), _tc_bytes_from),
     # Range-to-list
-    "RangeList": _Builtin(FnSig((TY_INT, TY_INT, TY_INT), TY_OBJ), _tc_range_list),
+    "RangeList": _Builtin(FnSig((TY_INT, TY_INT, TY_INT), TY_POLY), _tc_range_list),
     # Map constructor
-    "MapFromPairs": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_map_from_pairs),
+    "MapFromPairs": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_map_from_pairs),
     # List comparison
-    "ListCompare": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_INT), _tc_list_compare),
+    "ListCompare": _Builtin(FnSig((TY_POLY, TY_POLY), TY_INT), _tc_list_compare),
     # Zip
-    "Zip": _Builtin(FnSig((TY_OBJ, TY_OBJ), TY_OBJ), _tc_zip),
+    "Zip": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_zip),
     # Set from iterable
-    "SetFromList": _Builtin(FnSig((TY_OBJ,), TY_OBJ), _tc_set_from_list),
+    "SetFromList": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_set_from_list),
     # String to char list
-    "Chars": _builtin_simple("Chars", (TY_STRING,), TY_OBJ),
+    "Chars": _builtin_simple("Chars", (TY_STRING,), TyList(TY_STRING)),
     # I/O
     "WriteOut": _builtin_simple("WriteOut", (_TY_STR_OR_BYTES,), TY_VOID),
     "WriteErr": _builtin_simple("WriteErr", (_TY_STR_OR_BYTES,), TY_VOID),
@@ -3949,7 +3948,7 @@ class Runtime:
             return VString("")
         if ty_eq(typ, TY_RUNE):
             return VRune("\0")
-        if ty_eq(typ, TY_OBJ) or ty_is_nil(typ):
+        if ty_eq(typ, TY_ERROR) or ty_is_nil(typ):
             return VNil()
         if isinstance(typ, TyList):
             return VList([], typ)
@@ -4139,7 +4138,7 @@ class Runtime:
                                     ]
                                 )
                             else:
-                                c_ty = TY_OBJ
+                                c_ty = TY_ERROR
                             env.bind(c.name, c_ty, s.value)
                             self._eval_block(c.body, env, fn_ret=fn_ret)
                         except _Signal as inner:
@@ -4190,7 +4189,7 @@ class Runtime:
                 return
             env.push_scope()
             try:
-                env.bind(st.default.name, TY_OBJ, v)
+                env.bind(st.default.name, TY_ERROR, v)
                 self._eval_block(st.default.body, env, fn_ret=fn_ret)
             finally:
                 env.pop_scope()
@@ -4665,7 +4664,7 @@ class Runtime:
         return VStruct(s.name, fields)
 
     def _matches_type(self, v: Value, typ: Ty) -> bool:
-        if ty_eq(typ, TY_OBJ):
+        if ty_is_error(typ):
             return True
         if ty_is_nil(typ):
             return isinstance(v, VNil)
@@ -5428,7 +5427,7 @@ def _bi_concat(rt: Runtime, args: list[Value]) -> Value:
             return VList(merged, a.typ)
         if isinstance(b, VList):
             return VList(merged, b.typ)
-        return VList(merged, TyList(a.typ.elements[0] if a.typ.elements else TY_OBJ))
+        return VList(merged, TyList(a.typ.elements[0] if a.typ.elements else TY_ERROR))
     raise TaytshRuntimeFault("Concat expects matching string, bytes, or list", None)
 
 
@@ -5441,7 +5440,7 @@ def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(a, VList):
         return VList(list(a.elements) * max(0, n.value), a.typ)
     if isinstance(a, VTuple):
-        elem_ty = a.typ.elements[0] if a.typ.elements else TY_OBJ
+        elem_ty = a.typ.elements[0] if a.typ.elements else TY_ERROR
         return VList(list(a.elements) * max(0, n.value), TyList(elem_ty))
     raise TaytshRuntimeFault("Repeat expects string or list", None)
 
@@ -5658,8 +5657,10 @@ def _bi_map_from_keys(rt: Runtime, args: list[Value]) -> Value:
     entries: dict[Value, Value] = {}
     for k in keys_val.elements:
         entries[k] = default_val
-    key_ty = keys_val.typ.element if isinstance(keys_val.typ, TyList) else TY_OBJ
-    val_ty = default_val.runtime_type() if not isinstance(default_val, VNil) else TY_OBJ
+    key_ty = keys_val.typ.element if isinstance(keys_val.typ, TyList) else TY_ERROR
+    val_ty = (
+        default_val.runtime_type() if not isinstance(default_val, VNil) else TY_ERROR
+    )
     return VMap(entries, TyMap(key_ty, val_ty))
 
 
@@ -5765,8 +5766,8 @@ def _bi_map_from_pairs(rt: Runtime, args: list[Value]) -> Value:
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("MapFromPairs expects list", None)
     entries: dict[object, Value] = {}
-    key_typ = TY_OBJ
-    val_typ = TY_OBJ
+    key_typ = TY_ERROR
+    val_typ = TY_ERROR
     for v in xs.elements:
         if not isinstance(v, VTuple) or len(v.elements) != 2:
             raise TaytshRuntimeFault("MapFromPairs elements must be 2-tuples", None)
