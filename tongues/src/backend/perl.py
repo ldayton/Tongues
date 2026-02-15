@@ -758,39 +758,70 @@ class _PerlEmitter:
         self, binding: list[str], args: list[TExpr], body: list[TStmt], ann: Ann
     ) -> None:
         var_name = _restore_name(binding[0], ann) if binding else "_i"
+        i = "$" + var_name
         if len(args) == 1:
-            start = "0"
-            end = self._expr(args[0])
-            step = "1"
+            end_val = self._static_int(args[0])
+            if end_val is not None:
+                range_expr = "0 .. " + str(end_val - 1)
+            else:
+                range_expr = "0 .. " + self._expr(args[0]) + " - 1"
         elif len(args) == 2:
             start = self._expr(args[0])
-            end = self._expr(args[1])
-            step = "1"
+            end_val = self._static_int(args[1])
+            if end_val is not None:
+                range_expr = start + " .. " + str(end_val - 1)
+            else:
+                range_expr = start + " .. " + self._expr(args[1]) + " - 1"
         else:
-            start = self._expr(args[0])
-            end = self._expr(args[1])
-            step = self._expr(args[2])
-        i = "$" + var_name
-        idx = self.tmp_counter
-        self.tmp_counter += 1
-        st = "$__start" + str(idx)
-        en = "$__end" + str(idx)
-        sp = "$__step" + str(idx)
-        step_val = self._static_int(args[2]) if len(args) >= 3 else 1
-        self._line("my " + st + " = " + start + ";")
-        self._line("my " + en + " = " + end + ";")
-        if step_val is None or len(args) >= 3:
-            self._line("my " + sp + " = " + step + ";")
-        if step_val is not None and step_val >= 0:
-            cond = i + " < " + en
-            inc = i + " += " + ("1" if step_val == 1 else sp)
-        elif step_val is not None:
-            cond = i + " > " + en
-            inc = i + " += " + sp
-        else:
-            cond = "(" + sp + " >= 0 ? " + i + " < " + en + " : " + i + " > " + en + ")"
-            inc = i + " += " + sp
-        self._line("for (my " + i + " = " + st + "; " + cond + "; " + inc + ") {")
+            step_val = self._static_int(args[2])
+            if step_val is not None and step_val < 0:
+                end_val = self._static_int(args[1])
+                if end_val is not None:
+                    range_expr = (
+                        "reverse " + str(end_val + 1) + " .. " + self._expr(args[0])
+                    )
+                else:
+                    range_expr = (
+                        "reverse "
+                        + self._expr(args[1])
+                        + " + 1 .. "
+                        + self._expr(args[0])
+                    )
+            else:
+                start = self._expr(args[0])
+                end = self._expr(args[1])
+                step = self._expr(args[2])
+                idx = self.tmp_counter
+                self.tmp_counter += 1
+                st = "$__start" + str(idx)
+                en = "$__end" + str(idx)
+                sp = "$__step" + str(idx)
+                self._line("my " + st + " = " + start + ";")
+                self._line("my " + en + " = " + end + ";")
+                self._line("my " + sp + " = " + step + ";")
+                cond = (
+                    "("
+                    + sp
+                    + " >= 0 ? "
+                    + i
+                    + " < "
+                    + en
+                    + " : "
+                    + i
+                    + " > "
+                    + en
+                    + ")"
+                )
+                inc = i + " += " + sp
+                self._line(
+                    "for (my " + i + " = " + st + "; " + cond + "; " + inc + ") {"
+                )
+                self.indent += 1
+                self._emit_stmts(body)
+                self.indent -= 1
+                self._line("}")
+                return
+        self._line("for my " + i + " (" + range_expr + ") {")
         self.indent += 1
         if len(binding) >= 2:
             self._line("my $" + _restore_name(binding[1], ann) + " = " + i + ";")
@@ -1213,7 +1244,7 @@ class _PerlEmitter:
                 and expr.operand.func.name == "Contains"
                 and expr.operand.annotations.get("provenance") == "not_in_operator"
             ):
-                return "!(" + self._builtin_call("Contains", expr.operand.args) + ")"
+                return "!" + self._builtin_call("Contains", expr.operand.args)
             inner = self._expr(expr.operand)
             if isinstance(expr.operand, (TBinaryOp, TTernary)):
                 return "!(" + inner + ")"
@@ -1802,13 +1833,12 @@ class _PerlEmitter:
             return "(" + self._expr(left) + " . " + self._expr(right) + ")"
         if name == "Repeat":
             if self._is_list_expr(args[0].value):
-                return (
-                    "do { my $__r = []; for (1 .. "
-                    + self._a(args, 1)
-                    + ") { push(@{$__r}, @{"
-                    + self._a(args, 0)
-                    + "}); } $__r }"
-                )
+                elem = args[0].value
+                if isinstance(elem, TListLit) and len(elem.elements) == 1:
+                    inner = self._expr(elem.elements[0])
+                else:
+                    inner = "@{" + self._a(args, 0) + "}"
+                return "[(" + inner + ") x " + self._a(args, 1) + "]"
             return "(" + self._a(args, 0) + " x " + self._a(args, 1) + ")"
         if name == "Format":
             if ann and ann.get("provenance") == "f_string":
@@ -1830,15 +1860,7 @@ class _PerlEmitter:
         if self._is_map_expr(container) or self._is_set_expr(container):
             return "exists(" + c + "->{" + n + "})"
         cmp_op = "eq" if self._is_string_expr(needle) else "=="
-        return (
-            "do { my $__f = 0; for (@{"
-            + c
-            + "}) { if ($_ "
-            + cmp_op
-            + " "
-            + n
-            + ") { $__f = 1; last; } } $__f }"
-        )
+        return "grep { $_ " + cmp_op + " " + n + " } @{" + c + "}"
 
     def _len_call(self, expr: TExpr) -> str:
         s = self._expr(expr)
