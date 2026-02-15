@@ -31,11 +31,11 @@ b = wrapping_add(a, 1)
 puts(b.to_s)
 
 === wrapping sub
-b = wrapping_sub(min_, 1)
+b = wrapping_sub(min, 1)
 puts(b.to_s)
 
 === wrapping mul
-b = wrapping_mul(max_, 2)
+b = wrapping_mul(max, 2)
 puts(b.to_s)
 
 === checked pow
@@ -55,33 +55,37 @@ x = checked_mul_i64(x, 3)
 puts(x.to_s)
 
 === float mod by zero traps
+def main()
 caught = false
 begin
-  x = strict_fmod(1.0, 0.0)
-rescue StandardError
-  caught = true
+x = strict_fmod(1.0, 0.0)
+rescue
+caught = true
 end
 puts(caught.to_s)
+end
 
 === min with nan propagates
-nan = Float::NAN
+nan = 0.0 / 0.0
 x = strict_min_f64(nan, 1.0)
 puts(x.nan?.to_s)
 
 === max with nan propagates
-nan = Float::NAN
+nan = 0.0 / 0.0
 x = strict_max_f64(nan, 1.0)
 puts(x.nan?.to_s)
 
 === sorted with nan traps
-nan = Float::NAN
+def main()
+nan = 0.0 / 0.0
 caught = false
 begin
-  xs = strict_sorted_f64([1.0, nan, 2.0])
-rescue StandardError
-  caught = true
+xs = strict_sorted_f64([1.0, nan, 2.0])
+rescue
+caught = true
 end
 puts(caught.to_s)
+end
 
 === non-strict ops unchanged
 x = 1.5 + 2.5

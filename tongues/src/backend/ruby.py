@@ -497,6 +497,27 @@ def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
 
 
 # ============================================================
+# STRICT MATH
+# ============================================================
+
+_STRICT_INT_BINARY: dict[str, str] = {
+    "+": "checked_add_i64",
+    "-": "checked_sub_i64",
+    "*": "checked_mul_i64",
+    "/": "checked_div_i64",
+    "%": "checked_rem_i64",
+    "<<": "checked_shl_i64",
+    ">>": "checked_shr_i64",
+    ">>>": "logical_shr_i64",
+}
+
+_STRICT_INT_COMPOUND: dict[str, str] = {
+    "+=": "checked_add_i64",
+    "-=": "checked_sub_i64",
+    "*=": "checked_mul_i64",
+}
+
+# ============================================================
 # EMITTER
 # ============================================================
 
@@ -508,11 +529,14 @@ class _RubyEmitter:
         fn_names: set[str],
         struct_fields: dict[str, list[str]],
         enum_names: set[str],
+        *,
+        strict_math: bool = False,
     ) -> None:
         self.struct_names = struct_names
         self.fn_names = fn_names
         self.struct_fields = struct_fields
         self.enum_names = enum_names
+        self.strict_math = strict_math
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -864,9 +888,24 @@ class _RubyEmitter:
         elif isinstance(stmt, TTupleAssignStmt):
             self._emit_tuple_assign(stmt)
         elif isinstance(stmt, TOpAssignStmt):
-            self._line(
-                self._expr(stmt.target) + " " + stmt.op + " " + self._expr(stmt.value)
-            )
+            if (
+                self.strict_math
+                and stmt.op in _STRICT_INT_COMPOUND
+                and self._is_int_expr(stmt.target)
+            ):
+                fn = _STRICT_INT_COMPOUND[stmt.op]
+                tgt = self._expr(stmt.target)
+                self._line(
+                    tgt + " = " + fn + "(" + tgt + ", " + self._expr(stmt.value) + ")"
+                )
+            else:
+                self._line(
+                    self._expr(stmt.target)
+                    + " "
+                    + stmt.op
+                    + " "
+                    + self._expr(stmt.value)
+                )
         elif isinstance(stmt, TExprStmt):
             self._emit_expr_stmt(stmt)
         elif isinstance(stmt, TReturnStmt):
@@ -1127,6 +1166,42 @@ class _RubyEmitter:
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "string"
+        return False
+
+    def _is_int_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TIntLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "int"
+        if isinstance(expr, TBinaryOp):
+            return self._is_int_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
+            return self._is_int_expr(expr.operand)
+        return False
+
+    def _is_float_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TFloatLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "float"
+        if isinstance(expr, TBinaryOp):
+            return self._is_float_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op == "-":
+            return self._is_float_expr(expr.operand)
+        return False
+
+    def _is_float_list(self, expr: TExpr) -> bool:
+        if isinstance(expr, TListLit) and expr.elements:
+            return self._is_float_expr(expr.elements[0])
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return (
+                isinstance(typ, TListType)
+                and isinstance(typ.element, TPrimitive)
+                and typ.element.kind == "float"
+            )
         return False
 
     def _emit_try(self, stmt: TTryStmt) -> None:
@@ -1393,6 +1468,26 @@ class _RubyEmitter:
 
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
+        if self.strict_math and op in _STRICT_INT_BINARY:
+            if self._is_int_expr(expr.left) and self._is_int_expr(expr.right):
+                fn = _STRICT_INT_BINARY[op]
+                return (
+                    fn
+                    + "("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+        if self.strict_math and op == "%":
+            if self._is_float_expr(expr.left) or self._is_float_expr(expr.right):
+                return (
+                    "strict_fmod("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
         # Chained comparison
         if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
             chained = self._chain_comparison(expr)
@@ -1464,6 +1559,8 @@ class _RubyEmitter:
 
     def _unary(self, expr: TUnaryOp) -> str:
         op = expr.op
+        if self.strict_math and op == "-" and self._is_int_expr(expr.operand):
+            return "checked_neg_i64(" + self._expr(expr.operand) + ")"
         if op == "!":
             if (
                 isinstance(expr.operand, TCall)
@@ -1718,10 +1815,26 @@ class _RubyEmitter:
                 return "(" + a + ").abs"
             return a + ".abs"
         if name == "Min":
+            if (
+                self.strict_math
+                and len(args) == 2
+                and self._is_float_expr(args[0].value)
+            ):
+                return (
+                    "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             if len(args) == 1:
                 return self._a(args, 0) + ".min"
             return "[" + self._a(args, 0) + ", " + self._a(args, 1) + "].min"
         if name == "Max":
+            if (
+                self.strict_math
+                and len(args) == 2
+                and self._is_float_expr(args[0].value)
+            ):
+                return (
+                    "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             if len(args) == 1:
                 return self._a(args, 0) + ".max"
             return "[" + self._a(args, 0) + ", " + self._a(args, 1) + "].max"
@@ -1732,6 +1845,8 @@ class _RubyEmitter:
         if name == "DivMod":
             return self._a(args, 0) + ".divmod(" + self._a(args, 1) + ")"
         if name == "Sorted":
+            if self.strict_math and self._is_float_list(args[0].value):
+                return "strict_sorted_f64(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".sort"
         if name == "Reversed":
             return self._a(args, 0) + ".reverse"
@@ -1809,6 +1924,14 @@ class _RubyEmitter:
             return "exit(" + self._a(args, 0) + ")"
         # Operator forms
         if name == "Pow":
+            if self.strict_math and self._is_int_expr(args[0].value):
+                return (
+                    "checked_pow_i64("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ")"
+                )
             return self._a(args, 0) + " ** " + self._a(args, 1)
         if name == "Contains":
             if self._is_map_type(args[0].value):
@@ -1895,6 +2018,12 @@ def emit_ruby(module: TModule) -> str:
                 fn_names.add(m.name)
         elif isinstance(decl, TEnumDecl):
             enum_names.add(decl.name)
-    emitter = _RubyEmitter(struct_names, fn_names, struct_fields, enum_names)
+    emitter = _RubyEmitter(
+        struct_names,
+        fn_names,
+        struct_fields,
+        enum_names,
+        strict_math=module.strict_math,
+    )
     emitter.emit_module(module)
     return emitter.output()
