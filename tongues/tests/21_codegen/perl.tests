@@ -448,7 +448,7 @@ fn Main() -> void {
 }
 --- perl
 my $unique = do { my $__s = {}; $__s->{$_} = 1 for @{$xs}; $__s };
-say(("" . scalar(keys %{$unique})));
+say(("" . scalar(keys %{ +$unique })));
 ---
 
 === enumerate over list

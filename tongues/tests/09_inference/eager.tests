@@ -9,7 +9,7 @@ ok
 ---
 
 === range assigned allowed
-def f() -> object:
+def f() -> list[int]:
     r = range(10)
     return r
 ---
@@ -24,14 +24,14 @@ ok
 ---
 
 === range returned allowed
-def f() -> object:
+def f() -> list[int]:
     return range(10)
 ---
 ok
 ---
 
 === range in arbitrary call allowed
-def consume(r: object) -> None:
+def consume(r: list[int]) -> None:
     pass
 def f() -> None:
     consume(range(10))

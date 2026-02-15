@@ -647,6 +647,8 @@ class _PerlEmitter:
                 k = self._a(expr.args, 1)
                 self._line("delete " + m + "->{" + k + "};")
                 return
+        if isinstance(expr, TStringLit):
+            return
         self._line(self._expr(expr) + ";")
 
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
@@ -1168,8 +1170,10 @@ class _PerlEmitter:
                 return "substr(" + obj + ", " + low + ")"
             return "substr(" + obj + ", " + low + ", (" + high + ") - (" + low + "))"
         if prov == "open_end" and self._is_len_call(expr.high):
-            return "[ @{" + obj + "}[" + low + " .. $#{" + obj + "}] ]"
-        return "[ @{" + obj + "}[" + low + " .. (" + high + ") - 1] ]"
+            safe = self._deref_safe(obj)
+            return "[ @{" + safe + "}[" + low + " .. $#{" + safe + "}] ]"
+        safe = self._deref_safe(obj)
+        return "[ @{" + safe + "}[" + low + " .. (" + high + ") - 1] ]"
 
     def _negative_index(self, expr: TIndex) -> str | None:
         idx = expr.index
@@ -1214,7 +1218,7 @@ class _PerlEmitter:
             if isinstance(expr.operand, (TBinaryOp, TTernary)):
                 return "!(" + inner + ")"
             return "!" + inner
-        if isinstance(expr.operand, (TBinaryOp, TTernary)):
+        if isinstance(expr.operand, (TBinaryOp, TTernary, TUnaryOp)):
             return expr.op + "(" + self._expr(expr.operand) + ")"
         return expr.op + self._expr(expr.operand)
 
@@ -1632,7 +1636,9 @@ class _PerlEmitter:
         if name == "Delete":
             return "delete " + self._a(args, 0) + "->{" + self._a(args, 1) + "}"
         if name == "Merge":
-            return "{ %{" + self._a(args, 0) + "}, %{" + self._a(args, 1) + "} }"
+            a0 = self._deref_safe(self._a(args, 0))
+            a1 = self._deref_safe(self._a(args, 1))
+            return "{ %{" + a0 + "}, %{" + a1 + "} }"
         if name == "Keys":
             return "[keys %{" + self._a(args, 0) + "}]"
         if name == "Values":
@@ -1839,8 +1845,16 @@ class _PerlEmitter:
         if self._is_string_expr(expr) or self._is_bytes_expr(expr):
             return "length(" + s + ")"
         if self._is_map_expr(expr) or self._is_set_expr(expr):
-            return "scalar(keys %{" + s + "})"
-        return "scalar(@{" + s + "})"
+            return "scalar(keys %{ +" + s + " })"
+        return "scalar(@{" + self._deref_safe(s) + "})"
+
+    def _deref_safe(self, s: str) -> str:
+        """Wrap expressions that are ambiguous inside @{} / %{} deref."""
+        if s.startswith("do ") or s.startswith("do{"):
+            return "(" + s + ")"
+        if s == "{}":
+            return "({})"
+        return s
 
     def _a(self, args: list[TArg], i: int) -> str:
         return self._expr(args[i].value)
@@ -1952,6 +1966,9 @@ class _PerlEmitter:
     def _is_string_expr(self, expr: TExpr) -> bool:
         if isinstance(expr, (TStringLit, TRuneLit)):
             return True
+        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
+            if expr.func.name == "ToString":
+                return True
         typ = self._expr_type(expr)
         return _is_string_type(typ)
 
@@ -1978,12 +1995,18 @@ class _PerlEmitter:
     def _is_map_expr(self, expr: TExpr) -> bool:
         if isinstance(expr, TMapLit):
             return True
+        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
+            if expr.func.name == "Map" or expr.func.name == "Merge":
+                return True
         typ = self._expr_type(expr)
         return _is_map_type(typ)
 
     def _is_set_expr(self, expr: TExpr) -> bool:
         if isinstance(expr, TSetLit):
             return True
+        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
+            if expr.func.name == "Set":
+                return True
         typ = self._expr_type(expr)
         return _is_set_type(typ)
 

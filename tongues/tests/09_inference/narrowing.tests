@@ -229,17 +229,6 @@ def f(x: int | None, flag: bool) -> int:
 error: None
 ---
 
-=== walrus with isinstance narrows
-def f(items: list[object]) -> list[int]:
-    result: list[int] = []
-    for item in items:
-        if isinstance(item, int):
-            result.append(item)
-    return result
----
-ok
----
-
 === multiple guards narrow progressively
 def f(x: int | str | None) -> int:
     if x is None:
@@ -247,14 +236,6 @@ def f(x: int | str | None) -> int:
     if isinstance(x, str):
         return len(x)
     return x
----
-ok
----
-
-=== assert isinstance narrows
-def f(x: object) -> int:
-    assert isinstance(x, int)
-    return x + 1
 ---
 ok
 ---

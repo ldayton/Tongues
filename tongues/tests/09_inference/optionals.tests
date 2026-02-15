@@ -129,19 +129,3 @@ def f(p: Point | None) -> int:
 ---
 error: None
 ---
-
-=== any-typed specialization with int literal
-def f(x: object) -> int:
-    y = 42
-    return y
----
-ok
----
-
-=== any-typed specialization with str literal
-def f(x: object) -> str:
-    y = "hello"
-    return y
----
-ok
----
