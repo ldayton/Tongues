@@ -1,0 +1,57 @@
+=== string multiply via Repeat
+my $s = ("ab" x 3);
+
+=== list multiply via Repeat
+my $xs = do { my $__r = []; for (1 .. 5) { push(@{$__r}, @{[0]}); } $__r };
+say(("" . scalar(@{$xs})));
+
+=== Contains on string
+if (index($s, "world") >= 0) {
+    say("found");
+}
+
+=== Split and Join
+my $parts = do { my $__s = "a,b,c"; my $__sep = ","; [split(/\Q$__sep\E/, $__s)] };
+my $joined = join("-", @{$parts});
+
+=== string Find
+my $idx = index("hello world", "world");
+
+=== Replace on string
+my $s = do { my $__s = "aabbcc"; $__s =~ s/bb/XX/g; $__s };
+
+=== Upper and Lower
+say(uc("hello"));
+
+=== StartsWith and EndsWith
+say(("" . (($s =~ /^\Qhello\E/) ? 1 : 0)));
+say(("" . (($s =~ /\Qworld\E$/) ? 1 : 0)));
+
+=== Trim functions
+my $s = do { my $__t = "  hello  "; $__t =~ s/^[ ]+|[ ]+$//g; $__t };
+my $s2 = do { my $__t = "  hello"; $__t =~ s/^[ ]+//; $__t };
+my $s3 = do { my $__t = "hello  "; $__t =~ s/[ ]+$//; $__t };
+
+=== Count and RFind on string
+my $c = () = "abcabc" =~ /abc/g;
+my $r = rindex("abcabc", "abc");
+
+=== SplitN and SplitWhitespace
+my $parts = [split(/\Q,\E/, "a,b,c,d", 2)];
+my $words = [grep { length($_) > 0 } split(/\s+/, "  hello   world  ")];
+
+=== Concat strings
+my $s = ("hello" . " world");
+
+=== string indexing and slicing
+my $ch = substr($s, 0, 1);
+
+=== format string becomes f-string
+return sprintf("hello, %s", $name);
+
+=== Reverse on string
+my $s = scalar(reverse("hello"));
+
+=== string classification functions
+say(("" . ("123" =~ /^\d+$/ ? 1 : 0)));
+say(("" . ("abc" =~ /^[A-Za-z]+$/ ? 1 : 0)));

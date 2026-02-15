@@ -1,0 +1,20 @@
+=== struct construction and field access
+p: Point = Point(1, 2)
+
+=== struct method call
+c.Inc()
+
+=== field assignment
+p.x = 10
+
+=== nested struct access
+print(str(o.inner.value))
+
+=== struct with interface field
+return Eval(b.left) + Eval(b.right)
+
+=== enum comparison
+if c == Color.Red:
+
+=== named struct construction
+Point(1, 2)

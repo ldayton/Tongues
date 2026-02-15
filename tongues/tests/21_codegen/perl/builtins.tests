@@ -1,0 +1,39 @@
+=== math functions
+say(("" . abs(-5)));
+
+=== float math functions
+my $r = int(3.7 + (3.7 >= 0 ? 0.5 : -0.5));
+
+=== conversion functions
+my $f = 42.0;
+my $n = int(3.14);
+my $b = chr(65);
+my $i = ord($b);
+
+=== ParseInt and ParseFloat
+my $n = do { my $__s = "42"; my $__b = 10; $__b == 10 ? int($__s) : $__b == 16 ? hex($__s) : $__b == 8 ? oct($__s) : $__b == 2 ? oct('0b' . $__s) : int($__s) };
+
+=== FormatInt
+my $hex = sprintf('%x', 255);
+
+=== RuneToInt and RuneFromInt
+my $n = ord("A");
+
+=== IsNaN and IsInf
+say(("" . (($x != $x) ? 1 : 0)));
+say(("" . (POSIX::isinf($y) ? 1 : 0)));
+
+=== Len on various types
+say(("" . length("hello")));
+
+=== DivMod
+($q, $r) = (int(17 / 5), 17 % 5);
+
+=== Sqrt function
+my $x = sqrt(2.0);
+
+=== Floor function
+my $n = floor(3.7);
+
+=== Ceil function
+my $n = ceil(3.2);

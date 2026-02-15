@@ -1,0 +1,86 @@
+=== delete on map is missing-key safe
+m.pop("k", None)
+
+=== Append on list
+xs.append(3)
+
+=== Get with default on map
+v: int = m.get("b", 0)
+
+=== Get without default returns optional
+v: int | None = m.get("b")
+
+=== Keys Values Items on map
+ks: list[str] = list(m.keys())
+
+=== Contains on map
+if "a" in m:
+
+=== IndexOf on list
+idx: int = xs.index(20) if 20 in xs else -1
+
+=== Pop and RemoveAt
+last: int = xs.pop()
+
+=== Insert on list
+xs.insert(1, 2)
+
+=== Add and Remove on set
+s.add(4)
+
+=== Merge maps
+c: dict[str, int] = {**a, **b}
+
+=== set literal
+s: set[int] = {1, 2, 3}
+
+=== map literal and index
+m: dict[str, int] = {"a": 1, "b": 2}
+
+=== empty map and set via constructors
+m: dict[str, int] = {}
+
+=== tuple construction and access
+pair: tuple[int, str] = (1, "hello")
+
+=== index assignment on list
+xs[0] = 99
+
+=== index assignment on map
+m["b"] = 2
+
+=== list slicing
+mid: list[int] = xs[1:4]
+
+=== nested collection access
+m["a"][0]
+
+=== Sorted and Reversed
+s: list[int] = sorted(xs)
+
+=== Sorted on string list
+sorted(xs)
+
+=== Sum on list
+print(str(sum(xs)))
+
+=== negative index via Len subtraction
+print(str(xs[len(xs) - 1]))
+
+=== open-end slice
+tail: list[int] = xs[1:len(xs)]
+
+=== open-start slice
+head: list[int] = xs[0:3]
+
+=== list comprehension
+doubled.append(x * 2)
+
+=== list comprehension with filter
+evens.append(x)
+
+=== dict comprehension
+m[k] = i
+
+=== set comprehension
+unique.add(x)

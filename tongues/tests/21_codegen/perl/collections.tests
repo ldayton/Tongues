@@ -1,0 +1,109 @@
+=== delete on map is missing-key safe
+delete $m->{"k"};
+
+=== Append on list
+push(@{$xs}, 3);
+
+=== Get with default on map
+my $v = (exists $m->{"b"} ? $m->{"b"} : 0);
+
+=== Get without default returns optional
+my $v = $m->{"b"};
+
+=== Keys Values Items on map
+my $ks = [keys %{$m}];
+my $vs = [values %{$m}];
+my $ps = do { my $__m = $m; [map { [$_, $__m->{$_}] } keys %{$__m}] };
+
+=== Contains on map
+if (exists($m->{"a"})) {
+    say("found");
+}
+
+=== IndexOf on list
+my $idx = do {
+    my $__i = 0;
+    my $__r = -1;
+    for my $v (@{$xs}) { if ($v == 20) { $__r = $__i; last; } $__i += 1; }
+    $__r;
+};
+
+=== Pop and RemoveAt
+my $last_ = pop(@{$xs});
+splice(@{$xs}, 0, 1);
+
+=== Insert on list
+splice(@{$xs}, 1, 0, 2);
+
+=== Add and Remove on set
+$s->{4} = 1;
+delete $s->{1};
+
+=== Merge maps
+my $c = { %{$a}, %{$b} };
+
+=== set literal
+my $s = do { my $__s = {}; $__s->{$_} = 1 for (1, 2, 3); $__s };
+
+=== map literal and index
+my $m = { "a" => 1, "b" => 2 };
+
+=== empty map and set via constructors
+my $m = {};
+
+=== tuple construction and access
+my $pair = [1, "hello"];
+
+=== index assignment on list
+$xs->[0] = 99;
+
+=== index assignment on map
+$m->{"b"} = 2;
+
+=== list slicing
+my $mid = [ @{$xs}[1 .. (4) - 1] ];
+
+=== nested collection access
+my $v = $m->{"a"}->[0];
+
+=== Sorted and Reversed
+my $s = [sort { $a <=> $b } @{$xs}];
+my $r = [reverse @{$xs}];
+
+=== Sorted on string list
+my $s = [sort @{$xs}];
+
+=== Sum on list
+say(("" . (sum(@{$xs}) // 0)));
+
+=== negative index via Len subtraction
+say(("" . $xs->[scalar(@{$xs}) - 1]));
+
+=== open-end slice
+my $tail = [ @{$xs}[1 .. (scalar(@{$xs})) - 1] ];
+
+=== open-start slice
+my $head = [ @{$xs}[0 .. (3) - 1] ];
+
+=== list comprehension
+for my $x (@{$xs}) {
+    push(@{$doubled}, $x * 2);
+}
+
+=== list comprehension with filter
+for my $x (@{$xs}) {
+    if ($x % 2 == 0) {
+        push(@{$evens}, $x);
+    }
+}
+
+=== dict comprehension
+for my $i (0 .. $#{$keys}) {
+    my $k = $keys->[$i];
+    $m->{$k} = $i;
+}
+
+=== set comprehension
+for my $x (@{$xs}) {
+    $unique->{$x} = 1;
+}

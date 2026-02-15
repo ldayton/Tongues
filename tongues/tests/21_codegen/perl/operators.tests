@@ -1,0 +1,38 @@
+=== in operator emits pythonic form
+if (do { my $__f = 0; for (@{$xs}) { if ($_ == 2) { $__f = 1; last; } } $__f }) {
+    say("found");
+}
+
+=== not in operator
+if (!do { my $__f = 0; for (@{$xs}) { if ($_ == 2) { $__f = 1; last; } } $__f }) {
+    say("missing");
+}
+
+=== boolean operators
+say(("" . ($a && $b)));
+say(("" . ($a || $b)));
+say(("" . (!$a)));
+
+=== bitwise operators
+my $y = $x & 15;
+my $z = $x | 256;
+my $w = $x ^ 15;
+
+=== compound assignment operators
+$x += 5;
+
+=== chained comparison
+sub in_range {
+    my ($x) = @_;
+    return 0 <= $x && $x <= 255;
+}
+
+=== truthiness check on list
+if (scalar(@{$xs}) > 0) {
+    say("nonempty");
+}
+
+=== truthiness check on string
+if ($s ne "") {
+    say($s);
+}

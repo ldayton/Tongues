@@ -1,0 +1,53 @@
+=== not in operator (raised)
+if 2 not in xs:
+
+=== negative index via Len subtraction (raised)
+print(str(xs[-1]))
+
+=== open-end slice (raised)
+tail: list[int] = xs[1:]
+
+=== open-start slice (raised)
+head: list[int] = xs[:3]
+
+=== truthiness check on list (raised)
+if xs:
+
+=== truthiness check on string (raised)
+if s:
+
+=== chained comparison (raised)
+return 0 <= x <= 255
+
+=== list comprehension (raised)
+doubled = [x * 2 for x in xs]
+
+=== list comprehension with filter (raised)
+evens = [x for x in xs if x % 2 == 0]
+
+=== dict comprehension (raised)
+m = {k: i for i, k in enumerate(keys)}
+
+=== set comprehension (raised)
+unique = {x for x in xs}
+
+=== truthiness check on map (raised)
+if m:
+
+=== truthiness check on set (raised)
+if s:
+
+=== negated condition (raised)
+if not done:
+
+=== negated while (raised)
+while not done:
+
+=== format string with interpolation (raised)
+f"hello, {name}"
+
+=== nil coalesce (raised)
+x if x is not None else 0
+
+=== Get with default using defined-or (raised)
+m.get("b", 0)

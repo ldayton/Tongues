@@ -1,0 +1,47 @@
+=== string multiply via Repeat
+s: str = "ab" * 3
+
+=== list multiply via Repeat
+xs: list[int] = [0] * 5
+
+=== Contains on string
+if "world" in s:
+
+=== Split and Join
+parts: list[str] = "a,b,c".split(",")
+
+=== string Find
+idx: int = "hello world".find("world")
+
+=== Replace on string
+s: str = "aabbcc".replace("bb", "XX")
+
+=== Upper and Lower
+print("hello".upper())
+
+=== StartsWith and EndsWith
+print(str(s.startswith("hello")))
+
+=== Trim functions
+s: str = "  hello  ".strip(" ")
+
+=== Count and RFind on string
+c: int = "abcabc".count("abc")
+
+=== SplitN and SplitWhitespace
+parts: list[str] = "a,b,c,d".split(",", 1)
+
+=== Concat strings
+s: str = "hello" + " world"
+
+=== string indexing and slicing
+sub: str = s[1:4]
+
+=== format string becomes f-string
+return f"hello, {name}"
+
+=== Reverse on string
+"hello"[::-1]
+
+=== string classification functions
+print(str("123".isdigit()))

@@ -1,0 +1,84 @@
+=== math functions
+fn Main() -> void {
+    WritelnOut(ToString(Abs(-5)))
+    WritelnOut(ToString(Min(3, 7)))
+    WritelnOut(ToString(Max(3, 7)))
+    WritelnOut(ToString(Pow(2, 10)))
+}
+
+=== float math functions
+fn Main() -> void {
+    let r: int = Round(3.7)
+    WritelnOut(ToString(r))
+}
+
+=== conversion functions
+fn Main() -> void {
+    let f: float = IntToFloat(42)
+    let n: int = FloatToInt(3.14)
+    let b: byte = IntToByte(65)
+    let i: int = ByteToInt(b)
+    WritelnOut(ToString(f))
+}
+
+=== ParseInt and ParseFloat
+fn Main() -> void {
+    let n: int = ParseInt("42", 10)
+    let f: float = ParseFloat("3.14")
+    WritelnOut(ToString(n))
+}
+
+=== FormatInt
+fn Main() -> void {
+    let hex: string = FormatInt(255, 16)
+    WritelnOut(hex)
+}
+
+=== RuneToInt and RuneFromInt
+fn Main() -> void {
+    let n: int = RuneToInt('A')
+    let c: rune = RuneFromInt(65)
+    WritelnOut(ToString(n))
+}
+
+=== IsNaN and IsInf
+fn Main() -> void {
+    let x: float = 0.0 / 0.0
+    let y: float = 1.0 / 0.0
+    WritelnOut(ToString(IsNaN(x)))
+    WritelnOut(ToString(IsInf(y)))
+}
+
+=== Len on various types
+fn Main() -> void {
+    WritelnOut(ToString(Len("hello")))
+    WritelnOut(ToString(Len([1, 2, 3])))
+    WritelnOut(ToString(Len({"a": 1})))
+    WritelnOut(ToString(Len({1, 2})))
+}
+
+=== DivMod
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(Format("{} {}", ToString(q), ToString(r)))
+}
+
+=== Sqrt function
+fn Main() -> void {
+    let x: float = Sqrt(2.0)
+    WritelnOut(ToString(x))
+}
+
+=== Floor function
+fn Main() -> void {
+    let n: int = Floor(3.7)
+    WritelnOut(ToString(n))
+}
+
+=== Ceil function
+fn Main() -> void {
+    let n: int = Ceil(3.2)
+    WritelnOut(ToString(n))
+}

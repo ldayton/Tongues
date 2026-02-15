@@ -1,0 +1,74 @@
+=== match default binds scrutinee value
+if (looks_like_number($value)) {
+    my $n = $value;
+    return ("" . $n);
+} else {
+    my $x = $value;
+    return ("" . $x);
+}
+
+=== unused match binding is omitted
+if (looks_like_number($value)) {
+    return "int";
+} else {
+    my $s = $value;
+    return $s;
+}
+
+=== match on optional with nil case
+if (defined($x)) {
+    my $v = $x;
+    return ("" . $v);
+} else {
+    return "absent";
+}
+
+=== match on enum
+if ($c == Color::Red) {
+    return "red";
+} elsif ($c == Color::Green) {
+    return "green";
+} else {
+    return "blue";
+}
+
+=== match on interface
+if (eval { $s->isa('Circle') }) {
+    my $c = $s;
+    return 3.14159 * $c->{radius} * $c->{radius};
+} else {
+    my $r = $s;
+    return $r->{w} * $r->{h};
+}
+
+=== match on union with three types
+if (looks_like_number($v)) {
+    my $n = $v;
+    return sprintf("int: %s", ("" . $n));
+} elsif (!ref($v) && !looks_like_number($v)) {
+    my $s = $v;
+    return sprintf("str: %s", $s);
+} else {
+    my $b = $v;
+    return sprintf("bool: %s", ("" . $b));
+}
+
+=== match with default no binding
+if ($d == Dir::North) {
+    return 1;
+} elsif ($d == Dir::South) {
+    return 1;
+} else {
+    return 0;
+}
+
+=== nil narrowing after check
+if (defined($x)) {
+    return $x + 1;
+}
+
+=== nil check with early return
+if (!defined($x)) {
+    return 0;
+}
+return $x * 2;

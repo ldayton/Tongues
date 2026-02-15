@@ -1,0 +1,25 @@
+=== struct construction and field access
+my $p = Point->new(1, 2);
+
+=== struct method call
+my $c = Counter->new(0);
+$c->inc();
+say(("" . $c->value()));
+
+=== field assignment
+$p->{x} = 10;
+$p->{y} = 20;
+
+=== nested struct access
+say(("" . $o->{inner}->{value}));
+
+=== struct with interface field
+return eval($b->{left}) + eval($b->{right});
+
+=== enum comparison
+if ($c == Color::Red) {
+    say("red");
+}
+
+=== named struct construction
+my $p = Point->new(1, 2);
