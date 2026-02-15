@@ -1,0 +1,47 @@
+=== if-else chain
+elif x == 0:
+    return "zero"
+
+=== while loop
+while n > 0:
+    total += n
+    n -= 1
+
+=== while true with break
+while True:
+
+=== for range single arg
+for i in range(10):
+
+=== for range two args
+for i in range(5, 10):
+
+=== for range three args
+for i in range(10, 0, -1):
+
+=== for over list single var
+for x in xs:
+
+=== for over map keys
+for k in m:
+
+=== for over map key-value pairs
+for k, v in m.items():
+
+=== for over string characters
+for ch in "hello":
+
+=== for over set
+for v in s:
+
+=== break and continue
+continue
+
+=== enumerate over list
+for i, v in enumerate(xs):
+
+=== negated condition
+if not done:
+
+=== ternary expression
+return lo if x < lo else hi if x > hi else x

@@ -1,0 +1,111 @@
+=== string multiply via Repeat
+fn Main() -> void {
+    let s: string = Repeat("ab", 3)
+    WritelnOut(s)
+}
+
+=== list multiply via Repeat
+fn Main() -> void {
+    let xs: list[int] = Repeat([0], 5)
+    WritelnOut(ToString(Len(xs)))
+}
+
+=== Contains on string
+fn Main() -> void {
+    let s: string = "hello world"
+    if Contains(s, "world") {
+        WritelnOut("found")
+    }
+}
+
+=== Split and Join
+fn Main() -> void {
+    let parts: list[string] = Split("a,b,c", ",")
+    let joined: string = Join("-", parts)
+    WritelnOut(joined)
+}
+
+=== string Find
+fn Main() -> void {
+    let idx: int = Find("hello world", "world")
+    WritelnOut(ToString(idx))
+}
+
+=== Replace on string
+fn Main() -> void {
+    let s: string = Replace("aabbcc", "bb", "XX")
+    WritelnOut(s)
+}
+
+=== Upper and Lower
+fn Main() -> void {
+    WritelnOut(Upper("hello"))
+    WritelnOut(Lower("HELLO"))
+}
+
+=== StartsWith and EndsWith
+fn Main() -> void {
+    let s: string = "hello world"
+    WritelnOut(ToString(StartsWith(s, "hello")))
+    WritelnOut(ToString(EndsWith(s, "world")))
+}
+
+=== Trim functions
+fn Main() -> void {
+    let s: string = Trim("  hello  ", " ")
+    let s2: string = TrimStart("  hello", " ")
+    let s3: string = TrimEnd("hello  ", " ")
+    WritelnOut(s)
+}
+
+=== Count and RFind on string
+fn Main() -> void {
+    let c: int = Count("abcabc", "abc")
+    let r: int = RFind("abcabc", "abc")
+    WritelnOut(ToString(c))
+}
+
+=== SplitN and SplitWhitespace
+fn Main() -> void {
+    let parts: list[string] = SplitN("a,b,c,d", ",", 2)
+    let words: list[string] = SplitWhitespace("  hello   world  ")
+    WritelnOut(ToString(Len(parts)))
+}
+
+=== Concat strings
+fn Main() -> void {
+    let s: string = Concat("hello", " world")
+    WritelnOut(s)
+}
+
+=== string indexing and slicing
+fn Main() -> void {
+    let s: string = "hello"
+    let ch: rune = s[0]
+    let sub: string = s[1:4]
+    WritelnOut(ToString(RuneToInt(ch)))
+}
+
+=== format string becomes f-string
+fn Greet(name: string) -> string {
+    return Format("hello, {}", name)
+}
+fn Main() -> void {
+    WritelnOut(Greet("world"))
+}
+
+=== Reverse on string
+fn Main() -> void {
+    let s: string = Reverse("hello")
+    WritelnOut(s)
+}
+
+=== string classification functions
+fn Main() -> void {
+    WritelnOut(ToString(IsDigit("123")))
+    WritelnOut(ToString(IsAlpha("abc")))
+    WritelnOut(ToString(IsAlnum("abc123")))
+    WritelnOut(ToString(IsSpace(" ")))
+    WritelnOut(ToString(IsUpper("ABC")))
+    WritelnOut(ToString(IsLower("abc")))
+}

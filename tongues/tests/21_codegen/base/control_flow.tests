@@ -1,0 +1,138 @@
+=== if-else chain
+fn Classify(x: int) -> string {
+    if x > 0 {
+        return "positive"
+    } else if x == 0 {
+        return "zero"
+    } else {
+        return "negative"
+    }
+}
+fn Main() -> void {
+    WritelnOut(Classify(5))
+}
+
+=== while loop
+fn Main() -> void {
+    let n: int = 10
+    let total: int = 0
+    while n > 0 {
+        total += n
+        n -= 1
+    }
+    WritelnOut(ToString(total))
+}
+
+=== while true with break
+fn Main() -> void {
+    let n: int = 0
+    while true {
+        n += 1
+        if n >= 5 {
+            break
+        }
+    }
+    WritelnOut(ToString(n))
+}
+
+=== for range single arg
+fn Main() -> void {
+    let total: int = 0
+    for i in range(10) {
+        total += i
+    }
+    WritelnOut(ToString(total))
+}
+
+=== for range two args
+fn Main() -> void {
+    let total: int = 0
+    for i in range(5, 10) {
+        total += i
+    }
+    WritelnOut(ToString(total))
+}
+
+=== for range three args
+fn Main() -> void {
+    for i in range(10, 0, -1) {
+        WritelnOut(ToString(i))
+    }
+}
+
+=== for over list single var
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        WritelnOut(ToString(x))
+    }
+}
+
+=== for over map keys
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    for k in m {
+        WritelnOut(k)
+    }
+}
+
+=== for over map key-value pairs
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    for k, v in m {
+        WritelnOut(Format("{}: {}", k, ToString(v)))
+    }
+}
+
+=== for over string characters
+fn Main() -> void {
+    for ch in "hello" {
+        WritelnOut(ToString(RuneToInt(ch)))
+    }
+}
+
+=== for over set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    for v in s {
+        WritelnOut(ToString(v))
+    }
+}
+
+=== break and continue
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    for x in xs {
+        if x == 3 {
+            continue
+        }
+        if x == 5 {
+            break
+        }
+        WritelnOut(ToString(x))
+    }
+}
+
+=== enumerate over list
+fn Main() -> void {
+    let xs: list[string] = ["a", "b", "c"]
+    for i, v in xs {
+        WritelnOut(Format("{}: {}", ToString(i), v))
+    }
+}
+
+=== negated condition
+fn Main() -> void {
+    let done: bool = false
+    if !done {
+        WritelnOut("not done")
+    }
+}
+
+=== ternary expression
+fn Clamp(x: int, lo: int, hi: int) -> int {
+    return x < lo ? lo : (x > hi ? hi : x)
+}
+fn Main() -> void {
+    WritelnOut(ToString(Clamp(5, 0, 10)))
+}

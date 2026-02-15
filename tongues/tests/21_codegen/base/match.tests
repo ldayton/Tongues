@@ -1,0 +1,154 @@
+=== match default binds scrutinee value
+fn Show(value: int | string | bool) -> string {
+    match value {
+        case n: int {
+            return ToString(n)
+        }
+        default x {
+            return ToString(x)
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Show(1))
+}
+
+=== unused match binding is omitted
+fn Show(value: int | string) -> string {
+    match value {
+        case n: int {
+            return "int"
+        }
+        case s: string {
+            return s
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Show(1))
+}
+
+=== match on optional with nil case
+fn Describe(x: int?) -> string {
+    match x {
+        case v: int {
+            return ToString(v)
+        }
+        case nil {
+            return "absent"
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(nil))
+}
+
+=== match on enum
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Name(c: Color) -> string {
+    match c {
+        case Color.Red {
+            return "red"
+        }
+        case Color.Green {
+            return "green"
+        }
+        case Color.Blue {
+            return "blue"
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Name(Color.Red))
+}
+
+=== match on interface
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+struct Rect : Shape {
+    w: float
+    h: float
+}
+fn Area(s: Shape) -> float {
+    match s {
+        case c: Circle {
+            return 3.14159 * c.radius * c.radius
+        }
+        case r: Rect {
+            return r.w * r.h
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(ToString(Area(Circle(1.0))))
+}
+
+=== match on union with three types
+fn Describe(v: int | string | bool) -> string {
+    match v {
+        case n: int {
+            return Format("int: {}", ToString(n))
+        }
+        case s: string {
+            return Format("str: {}", s)
+        }
+        case b: bool {
+            return Format("bool: {}", ToString(b))
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(42))
+}
+
+=== match with default no binding
+enum Dir {
+    North
+    South
+    East
+    West
+}
+fn IsVertical(d: Dir) -> bool {
+    match d {
+        case Dir.North {
+            return true
+        }
+        case Dir.South {
+            return true
+        }
+        default {
+            return false
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(ToString(IsVertical(Dir.North)))
+}
+
+=== nil narrowing after check
+fn Safe(x: int?) -> int {
+    if x != nil {
+        return x + 1
+    }
+    return 0
+}
+fn Main() -> void {
+    WritelnOut(ToString(Safe(5)))
+}
+
+=== nil check with early return
+fn MustGet(x: int?) -> int {
+    if x == nil {
+        return 0
+    }
+    return Unwrap(x) * 2
+}
+fn Main() -> void {
+    WritelnOut(ToString(MustGet(nil)))
+}

@@ -1,0 +1,37 @@
+=== unused tuple target becomes underscore
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(ToString(q))
+}
+
+=== all tuple targets used
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(17, 5)
+    WritelnOut(ToString(q + r))
+}
+
+=== initial value suppressed when overwritten
+fn Main() -> void {
+    let x: int = 0
+    x = ParseInt(ReadAll(), 10)
+    WritelnOut(ToString(x))
+}
+
+=== initial value kept when read before overwrite
+fn Main() -> void {
+    let x: int = 0
+    WritelnOut(ToString(x))
+    x = 1
+    WritelnOut(ToString(x))
+}
+
+=== Unwrap on optional
+fn Main() -> void {
+    let x: int? = 42
+    let v: int = Unwrap(x)
+    WritelnOut(ToString(v))
+}

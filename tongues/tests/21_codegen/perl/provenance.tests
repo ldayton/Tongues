@@ -1,0 +1,77 @@
+=== not in operator (raised)
+if (!grep { $_ == 2 } @{$xs}) {
+    say("missing");
+}
+
+=== negative index via Len subtraction (raised)
+say(("" . $xs->[-1]));
+
+=== open-end slice (raised)
+my $tail = [ @{$xs}[1 .. $#{$xs}] ];
+say(("" . scalar(@{$tail})));
+
+=== open-start slice (raised)
+my $head = [ @{$xs}[0 .. (3) - 1] ];
+say(("" . scalar(@{$head})));
+
+=== truthiness check on list (raised)
+if (@{$xs}) {
+    say("nonempty");
+}
+
+=== truthiness check on string (raised)
+if ($s) {
+    say($s);
+}
+
+=== chained comparison (raised)
+sub in_range {
+    my ($x) = @_;
+    return 0 <= $x && $x <= 255;
+}
+
+=== list comprehension (raised)
+my $doubled = [map { $_ * 2 } @{$xs}];
+say(("" . scalar(@{$doubled})));
+
+=== list comprehension with filter (raised)
+my $evens = [grep { $_ % 2 == 0 } @{$xs}];
+say(("" . scalar(@{$evens})));
+
+=== dict comprehension (raised)
+my $m = do {
+    my $__m = {};
+    for my $i (0 .. $#{$keys}) { my $k = $keys->[$i]; $__m->{$k} = $i; }
+    $__m;
+};
+
+=== set comprehension (raised)
+my $unique = do { my $__s = {}; $__s->{$_} = 1 for @{$xs}; $__s };
+say(("" . scalar(keys %{ +$unique })));
+
+=== truthiness check on map (raised)
+if (%{$m}) {
+    say("nonempty");
+}
+
+=== truthiness check on set (raised)
+if (%{$s}) {
+    say("nonempty");
+}
+
+=== negated condition (raised)
+unless ($done) {
+    say("not done");
+}
+
+=== negated while (raised)
+until ($done) {
+
+=== format string with interpolation (raised)
+return "hello, $name";
+
+=== nil coalesce (raised)
+return ($x // 0);
+
+=== Get with default using defined-or (raised)
+my $v = ($m->{"b"} // 0);

@@ -1,0 +1,23 @@
+=== in operator emits pythonic form
+if 2 in xs:
+
+=== not in operator
+if not 2 in xs:
+
+=== boolean operators
+print(str(a and b))
+
+=== bitwise operators
+y: int = x & 15
+
+=== compound assignment operators
+x += 5
+
+=== chained comparison
+return 0 <= x and x <= 255
+
+=== truthiness check on list
+if len(xs) > 0:
+
+=== truthiness check on string
+if s != "":

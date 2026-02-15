@@ -1,0 +1,11 @@
+=== function as value
+return $f->($x);
+
+=== function literal expression body
+my $result = apply(sub { my ($x) = @_; return $x * 2; }, 10);
+
+=== function literal block body
+apply(sub {
+    my ($x) = @_;
+    say(("" . $x));
+}, 42);

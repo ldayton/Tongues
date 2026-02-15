@@ -1,0 +1,221 @@
+=== delete on map is missing-key safe
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    Delete(m, "k")
+}
+
+=== Append on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    Append(xs, 3)
+    WritelnOut(ToString(Len(xs)))
+}
+
+=== Get with default on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int = Get(m, "b", 0)
+    WritelnOut(ToString(v))
+}
+
+=== Get without default returns optional
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int? = Get(m, "b")
+    WritelnOut(ToString(v))
+}
+
+=== Keys Values Items on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let ks: list[string] = Keys(m)
+    let vs: list[int] = Values(m)
+    let ps: list[(string, int)] = Items(m)
+    WritelnOut(ToString(Len(ks)))
+}
+
+=== Contains on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    if Contains(m, "a") {
+        WritelnOut("found")
+    }
+}
+
+=== IndexOf on list
+fn Main() -> void {
+    let xs: list[int] = [10, 20, 30]
+    let idx: int = IndexOf(xs, 20)
+    WritelnOut(ToString(idx))
+}
+
+=== Pop and RemoveAt
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let last: int = Pop(xs)
+    RemoveAt(xs, 0)
+    WritelnOut(ToString(last))
+}
+
+=== Insert on list
+fn Main() -> void {
+    let xs: list[int] = [1, 3]
+    Insert(xs, 1, 2)
+    WritelnOut(ToString(Len(xs)))
+}
+
+=== Add and Remove on set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    Add(s, 4)
+    Remove(s, 1)
+    WritelnOut(ToString(Len(s)))
+}
+
+=== Merge maps
+fn Main() -> void {
+    let a: map[string, int] = {"x": 1}
+    let b: map[string, int] = {"y": 2}
+    let c: map[string, int] = Merge(a, b)
+    WritelnOut(ToString(Len(c)))
+}
+
+=== set literal
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    WritelnOut(ToString(Len(s)))
+}
+
+=== map literal and index
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let v: int = m["a"]
+    m["c"] = 3
+    WritelnOut(ToString(v))
+}
+
+=== empty map and set via constructors
+fn Main() -> void {
+    let m: map[string, int] = Map()
+    let s: set[int] = Set()
+    WritelnOut(ToString(Len(m)))
+}
+
+=== tuple construction and access
+fn Main() -> void {
+    let pair: (int, string) = (1, "hello")
+    let x: int = pair.0
+    let y: string = pair.1
+    WritelnOut(Format("{} {}", ToString(x), y))
+}
+
+=== index assignment on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] = 99
+    WritelnOut(ToString(xs[0]))
+}
+
+=== index assignment on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    m["b"] = 2
+    WritelnOut(ToString(m["b"]))
+}
+
+=== list slicing
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let mid: list[int] = xs[1:4]
+    WritelnOut(ToString(Len(mid)))
+}
+
+=== nested collection access
+fn Main() -> void {
+    let m: map[string, list[int]] = {"a": [1, 2, 3]}
+    let v: int = m["a"][0]
+    WritelnOut(ToString(v))
+}
+
+=== Sorted and Reversed
+fn Main() -> void {
+    let xs: list[int] = [3, 1, 2]
+    let s: list[int] = Sorted(xs)
+    let r: list[int] = Reversed(xs)
+    WritelnOut(ToString(Len(s)))
+}
+
+=== Sorted on string list
+fn Main() -> void {
+    let xs: list[string] = ["banana", "apple", "cherry"]
+    let s: list[string] = Sorted(xs)
+    WritelnOut(ToString(Len(s)))
+}
+
+=== Sum on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    WritelnOut(ToString(Sum(xs)))
+}
+
+=== negative index via Len subtraction
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    WritelnOut(ToString(xs[Len(xs) - 1]))
+}
+
+=== open-end slice
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4]
+    let tail: list[int] = xs[1:Len(xs)]
+    WritelnOut(ToString(Len(tail)))
+}
+
+=== open-start slice
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4]
+    let head: list[int] = xs[0:3]
+    WritelnOut(ToString(Len(head)))
+}
+
+=== list comprehension
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let doubled: list[int]
+    for x in xs {
+        Append(doubled, x * 2)
+    }
+    WritelnOut(ToString(Len(doubled)))
+}
+
+=== list comprehension with filter
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let evens: list[int]
+    for x in xs {
+        if x % 2 == 0 {
+            Append(evens, x)
+        }
+    }
+    WritelnOut(ToString(Len(evens)))
+}
+
+=== dict comprehension
+fn Main() -> void {
+    let keys: list[string] = ["a", "b", "c"]
+    let m: map[string, int]
+    for i, k in keys {
+        m[k] = i
+    }
+    WritelnOut(ToString(Len(m)))
+}
+
+=== set comprehension
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 2, 3]
+    let unique: set[int]
+    for x in xs {
+        Add(unique, x)
+    }
+    WritelnOut(ToString(Len(unique)))
+}

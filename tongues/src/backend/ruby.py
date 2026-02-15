@@ -128,9 +128,11 @@ _RUBY_RESERVED = frozenset(
         "catch",
         "throw",
         "format",
+        "hex",
+        "last",
         "puts",
         "print",
-        "p",
+        "eval",
         "gets",
         "require",
         "load",
@@ -500,9 +502,17 @@ def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
 
 
 class _RubyEmitter:
-    def __init__(self, struct_names: set[str], fn_names: set[str]) -> None:
+    def __init__(
+        self,
+        struct_names: set[str],
+        fn_names: set[str],
+        struct_fields: dict[str, list[str]],
+        enum_names: set[str],
+    ) -> None:
         self.struct_names = struct_names
         self.fn_names = fn_names
+        self.struct_fields = struct_fields
+        self.enum_names = enum_names
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -735,9 +745,7 @@ class _RubyEmitter:
         binding = for_stmt.binding
         binders = ", ".join(_restore_name(b, for_stmt.annotations) for b in binding)
         if isinstance(for_stmt.iterable, TRange):
-            args = ", ".join(self._expr(a) for a in for_stmt.iterable.args)
-            self._needs_range_helper = True
-            iterable = "_range(" + args + ")"
+            iterable = self._ruby_range(for_stmt.iterable)
         else:
             iterable = self._expr(for_stmt.iterable)
         iter_is_map = not isinstance(for_stmt.iterable, TRange) and self._is_map_type(
@@ -816,6 +824,8 @@ class _RubyEmitter:
                 call = body[0].expr
                 if self._is_add_to(call, let_stmt.name):
                     val = self._expr(call.args[1].value)
+                    if val == binders:
+                        return acc + " = Set.new(" + iterable + ")"
                     return (
                         acc
                         + " = Set.new("
@@ -914,9 +924,9 @@ class _RubyEmitter:
                 cond = self._expr(args[0].value)
                 if len(args) > 1:
                     msg = self._expr(args[1].value)
-                    self._line('raise "AssertionError: #{' + msg + '}" unless ' + cond)
+                    self._line("raise " + msg + " unless " + cond)
                 else:
-                    self._line('raise "AssertionError" unless ' + cond)
+                    self._line('raise "assertion failed" unless ' + cond)
                 return
             if name == "Delete":
                 args = expr.args
@@ -930,6 +940,31 @@ class _RubyEmitter:
         self._line(self._expr(expr))
 
     def _emit_if(self, stmt: TIfStmt) -> None:
+        prov = stmt.annotations.get("provenance", "")
+        if prov == "truthiness":
+            cond_str = self._truthiness(stmt.cond)
+            if cond_str is not None:
+                self._line("if " + cond_str)
+                self.indent += 1
+                if not stmt.then_body:
+                    self._line("nil")
+                self._emit_stmts(stmt.then_body)
+                self.indent -= 1
+                self._emit_else_body(stmt.else_body)
+                self._line("end")
+                return
+        if prov == "negated_condition":
+            inner = self._negate_inner(stmt.cond)
+            if inner is not None:
+                self._line("unless " + inner)
+                self.indent += 1
+                if not stmt.then_body:
+                    self._line("nil")
+                self._emit_stmts(stmt.then_body)
+                self.indent -= 1
+                self._emit_else_body(stmt.else_body)
+                self._line("end")
+                return
         self._line("if " + self._expr(stmt.cond))
         self.indent += 1
         if not stmt.then_body:
@@ -938,6 +973,43 @@ class _RubyEmitter:
         self.indent -= 1
         self._emit_else_body(stmt.else_body)
         self._line("end")
+
+    def _truthiness(self, cond: TExpr) -> str | None:
+        if isinstance(cond, TBinaryOp):
+            if (
+                cond.op == ">"
+                and isinstance(cond.right, TIntLit)
+                and cond.right.value == 0
+            ):
+                if (
+                    isinstance(cond.left, TCall)
+                    and isinstance(cond.left.func, TVar)
+                    and cond.left.func.name == "Len"
+                ):
+                    obj = self._expr(cond.left.args[0].value)
+                    return "!" + obj + ".empty?"
+            if (
+                cond.op == "!="
+                and isinstance(cond.right, TStringLit)
+                and cond.right.value == ""
+            ):
+                return "!" + self._expr(cond.left) + ".empty?"
+        return None
+
+    def _nil_coalesce_lhs(self, expr: TTernary) -> str | None:
+        cond = expr.cond
+        if (
+            isinstance(cond, TBinaryOp)
+            and cond.op == "!="
+            and isinstance(cond.right, TNilLit)
+        ):
+            return self._expr(cond.left)
+        return None
+
+    def _negate_inner(self, cond: TExpr) -> str | None:
+        if isinstance(cond, TUnaryOp) and cond.op == "!":
+            return self._expr(cond.operand)
+        return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
         if else_body is None or not else_body:
@@ -958,6 +1030,18 @@ class _RubyEmitter:
             self.indent -= 1
 
     def _emit_while(self, stmt: TWhileStmt) -> None:
+        prov = stmt.annotations.get("provenance", "")
+        if prov == "negated_while":
+            inner = self._negate_inner(stmt.cond)
+            if inner is not None:
+                self._line("until " + inner)
+                self.indent += 1
+                if not stmt.body:
+                    self._line("nil")
+                self._emit_stmts(stmt.body)
+                self.indent -= 1
+                self._line("end")
+                return
         self._line("while " + self._expr(stmt.cond))
         self.indent += 1
         if not stmt.body:
@@ -970,16 +1054,20 @@ class _RubyEmitter:
         binding = stmt.binding
         ann = stmt.annotations
         if isinstance(stmt.iterable, TRange):
-            self._needs_range_helper = True
-            args = ", ".join(self._expr(a) for a in stmt.iterable.args)
             binders = ", ".join(_restore_name(b, ann) for b in binding)
-            self._line("_range(" + args + ").each do |" + binders + "|")
+            r = stmt.iterable
+            iterable = self._ruby_range(r)
+            self._line(iterable + ".each do |" + binders + "|")
         elif len(binding) == 1:
+            iter_str = self._expr(stmt.iterable)
+            if self._is_map_type(stmt.iterable):
+                method = ".each_key"
+            elif self._is_string_type(stmt.iterable):
+                method = ".each_char"
+            else:
+                method = ".each"
             self._line(
-                self._expr(stmt.iterable)
-                + ".each do |"
-                + _restore_name(binding[0], ann)
-                + "|"
+                iter_str + method + " do |" + _restore_name(binding[0], ann) + "|"
             )
         elif len(binding) == 2:
             iter_is_map = self._is_map_type(stmt.iterable)
@@ -1011,10 +1099,34 @@ class _RubyEmitter:
         self.indent -= 1
         self._line("end")
 
+    def _ruby_range(self, r: TRange) -> str:
+        if len(r.args) == 1:
+            return "(0..." + self._expr(r.args[0]) + ")"
+        if len(r.args) == 2:
+            return "(" + self._expr(r.args[0]) + "..." + self._expr(r.args[1]) + ")"
+        start = self._expr(r.args[0])
+        end_expr = r.args[1]
+        step = r.args[2]
+        if isinstance(step, TUnaryOp) and step.op == "-":
+            if isinstance(end_expr, TIntLit):
+                adjusted = str(end_expr.value + 1)
+            else:
+                adjusted = self._expr(end_expr) + " + 1"
+            return start + ".downto(" + adjusted + ")"
+        return "(0..." + self._expr(r.args[0]) + ")"
+
     def _is_map_type(self, expr: TExpr) -> bool:
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
+        return False
+
+    def _is_string_type(self, expr: TExpr) -> bool:
+        if isinstance(expr, TStringLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "string"
         return False
 
     def _emit_try(self, stmt: TTryStmt) -> None:
@@ -1045,14 +1157,19 @@ class _RubyEmitter:
         type_str = ", ".join(types)
         unused = catch.annotations.get("liveness.catch_var_unused", False)
         if unused:
-            self._line("rescue " + type_str)
-        else:
+            if type_str:
+                self._line("rescue " + type_str)
+            else:
+                self._line("rescue")
+        elif type_str:
             self._line(
                 "rescue "
                 + type_str
                 + " => "
                 + _restore_name(catch.name, catch.annotations)
             )
+        else:
+            self._line("rescue => " + _restore_name(catch.name, catch.annotations))
         self.indent += 1
         if not catch.body:
             self._line("nil")
@@ -1166,6 +1283,8 @@ class _RubyEmitter:
                 return "method(:" + _restore_name(expr.name, expr.annotations) + ")"
             return _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
+            if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
+                return expr.obj.name + "::" + expr.field
             return self._expr(expr.obj) + "." + _safe_name(expr.field)
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
@@ -1182,12 +1301,20 @@ class _RubyEmitter:
         if isinstance(expr, TUnaryOp):
             return self._unary(expr)
         if isinstance(expr, TTernary):
+            prov = expr.annotations.get("provenance", "")
+            if prov == "none_coalesce":
+                lhs = self._nil_coalesce_lhs(expr)
+                if lhs is not None:
+                    return lhs + " || " + self._expr(expr.else_expr)
+            else_str = self._expr(expr.else_expr)
+            if isinstance(expr.else_expr, TTernary):
+                else_str = "(" + else_str + ")"
             return (
                 self._expr(expr.cond)
                 + " ? "
                 + self._expr(expr.then_expr)
                 + " : "
-                + self._expr(expr.else_expr)
+                + else_str
             )
         if isinstance(expr, TListLit):
             elems = ", ".join(self._expr(e) for e in expr.elements)
@@ -1379,13 +1506,18 @@ class _RubyEmitter:
             if p.typ is not None
         )
         if isinstance(expr.body, list):
-            self._line("_fn = lambda { |" + params + "|")
+            old_lines = self.lines
+            self.lines = []
             self.indent += 1
             for s in expr.body:
                 self._emit_stmt(s)
             self.indent -= 1
-            self._line("}")
-            return "_fn"
+            body_lines = self.lines
+            self.lines = old_lines
+            result = "lambda { |" + params + "|\n"
+            result += "\n".join(body_lines) + "\n"
+            result += "  " * self.indent + "}"
+            return result
         return "lambda { |" + params + "| " + self._expr(expr.body) + " }"
 
     # ── Calls ─────────────────────────────────────────────────
@@ -1415,10 +1547,13 @@ class _RubyEmitter:
         return fn_expr + ".call"
 
     def _struct_call(self, name: str, args: list[TArg]) -> str:
+        fields = self.struct_fields.get(name, [])
         parts: list[str] = []
-        for a in args:
+        for i, a in enumerate(args):
             if a.name is not None:
                 parts.append(_safe_name(a.name) + ": " + self._expr(a.value))
+            elif i < len(fields):
+                parts.append(_safe_name(fields[i]) + ": " + self._expr(a.value))
             else:
                 parts.append(self._expr(a.value))
         return _safe_type_name(name) + ".new(" + ", ".join(parts) + ")"
@@ -1466,7 +1601,7 @@ class _RubyEmitter:
         if name == "IndexOf":
             obj = self._a(args, 0)
             val = self._a(args, 1)
-            return "(" + obj + ".index(" + val + ") || -1)"
+            return obj + ".index(" + val + ") || -1"
         # String operations
         if name == "Upper":
             return self._a(args, 0) + ".upcase"
@@ -1474,16 +1609,16 @@ class _RubyEmitter:
             return self._a(args, 0) + ".downcase"
         if name == "Trim":
             a0 = self._a(args, 0)
-            a1 = self._a(args, 1)
-            return a0 + ".gsub(/\\A[" + a1 + "]+|[" + a1 + "]+\\z/, '')"
+            chars = self._trim_chars(args[1].value)
+            return a0 + ".gsub(/^[" + chars + "]+|[" + chars + ']+$/, "")'
         if name == "TrimStart":
             a0 = self._a(args, 0)
-            a1 = self._a(args, 1)
-            return a0 + ".gsub(/\\A[" + a1 + "]+/, '')"
+            chars = self._trim_chars(args[1].value)
+            return a0 + ".gsub(/^[" + chars + ']+/, "")'
         if name == "TrimEnd":
             a0 = self._a(args, 0)
-            a1 = self._a(args, 1)
-            return a0 + ".gsub(/[" + a1 + "]+\\z/, '')"
+            chars = self._trim_chars(args[1].value)
+            return a0 + ".gsub(/[" + chars + ']+$/, "")'
         if name == "Split":
             return self._a(args, 0) + ".split(" + self._a(args, 1) + ", -1)"
         if name == "SplitN":
@@ -1498,9 +1633,9 @@ class _RubyEmitter:
         if name == "Join":
             return self._a(args, 0) + ".join(" + self._a(args, 1) + ")"
         if name == "Find":
-            return "(" + self._a(args, 0) + ".index(" + self._a(args, 1) + ") || -1)"
+            return self._a(args, 0) + ".index(" + self._a(args, 1) + ") || -1"
         if name == "RFind":
-            return "(" + self._a(args, 0) + ".rindex(" + self._a(args, 1) + ") || -1)"
+            return self._a(args, 0) + ".rindex(" + self._a(args, 1) + ") || -1"
         if name == "Count":
             return self._a(args, 0) + ".scan(" + self._a(args, 1) + ").length"
         if name == "Replace":
@@ -1517,13 +1652,13 @@ class _RubyEmitter:
         if name == "EndsWith":
             return self._a(args, 0) + ".end_with?(" + self._a(args, 1) + ")"
         if name == "IsDigit":
-            return self._a(args, 0) + r".match?(/\A\d+\z/)"
+            return self._a(args, 0) + r".match?(/^\d+$/)"
         if name == "IsAlpha":
-            return self._a(args, 0) + r".match?(/\A[[:alpha:]]+\z/)"
+            return self._a(args, 0) + r".match?(/^[[:alpha:]]+$/)"
         if name == "IsAlnum":
-            return self._a(args, 0) + r".match?(/\A[[:alnum:]]+\z/)"
+            return self._a(args, 0) + r".match?(/^[[:alnum:]]+$/)"
         if name == "IsSpace":
-            return self._a(args, 0) + r".match?(/\A\s+\z/)"
+            return self._a(args, 0) + r".match?(/^\s+$/)"
         if name == "IsUpper":
             a = self._a(args, 0)
             return "(" + a + ".match?(/[[:alpha:]]/) && " + a + " == " + a + ".upcase)"
@@ -1610,11 +1745,12 @@ class _RubyEmitter:
                 return "Set.new"
             return "Set.new(" + self._a(args, 0) + ".to_a)"
         if name == "ToString":
-            return self._a(args, 0) + ".to_s"
+            a = self._a(args, 0)
+            if isinstance(args[0].value, (TBinaryOp, TTernary)):
+                return "(" + a + ").to_s"
+            return a + ".to_s"
         if name == "ParseInt":
             base = self._a(args, 1)
-            if base == "10":
-                return self._a(args, 0) + ".to_i"
             return self._a(args, 0) + ".to_i(" + base + ")"
         if name == "ParseFloat":
             return self._a(args, 0) + ".to_f"
@@ -1629,11 +1765,17 @@ class _RubyEmitter:
         if name == "FloatToInt":
             return self._a(args, 0) + ".to_i"
         if name == "ByteToInt":
-            return self._a(args, 0)
+            return self._a(args, 0) + ".ord"
         if name == "IntToByte":
-            return self._a(args, 0)
+            return "[" + self._a(args, 0) + "].pack('U')"
         if name == "Unwrap":
             return self._a(args, 0)
+        if name == "Sqrt":
+            return "Math.sqrt(" + self._a(args, 0) + ")"
+        if name == "Floor":
+            return self._a(args, 0) + ".floor"
+        if name == "Ceil":
+            return self._a(args, 0) + ".ceil"
         if name == "IsNaN":
             return self._a(args, 0) + ".nan?"
         if name == "IsInf":
@@ -1659,33 +1801,39 @@ class _RubyEmitter:
             return "ARGV"
         if name == "GetEnv":
             return "ENV.fetch(" + self._a(args, 0) + ', "")'
+        if name == "ReadFile":
+            return "File.read(" + self._a(args, 0) + ")"
+        if name == "WriteFile":
+            return "File.write(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Exit":
             return "exit(" + self._a(args, 0) + ")"
         # Operator forms
         if name == "Pow":
             return self._a(args, 0) + " ** " + self._a(args, 1)
         if name == "Contains":
-            prov = call.annotations.get("provenance", "")
-            if prov == "in_operator":
-                return self._a(args, 0) + ".include?(" + self._a(args, 1) + ")"
+            if self._is_map_type(args[0].value):
+                return self._a(args, 0) + ".key?(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".include?(" + self._a(args, 1) + ")"
         if name == "Concat":
             return self._a(args, 0) + " + " + self._a(args, 1)
         if name == "Format":
-            return self._format_call(args)
+            return self._format_call(args, call)
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
-                return (
-                    'raise "AssertionError: #{' + self._a(args, 1) + '}" unless ' + cond
-                )
-            return 'raise "AssertionError" unless ' + cond
+                return "raise " + self._a(args, 1) + " unless " + cond
+            return 'raise "assertion failed" unless ' + cond
         # Fallback
         arg_strs = ", ".join(self._expr(a.value) for a in args)
         return _safe_name(name) + "(" + arg_strs + ")"
 
     def _a(self, args: list[TArg], i: int) -> str:
         return self._expr(args[i].value)
+
+    def _trim_chars(self, expr: TExpr) -> str:
+        if isinstance(expr, TStringLit):
+            return expr.value
+        return self._expr(expr)
 
     def _format_int(self, args: list[TArg]) -> str:
         n = self._a(args, 0)
@@ -1700,23 +1848,30 @@ class _RubyEmitter:
         base = self._a(args, 1)
         return n + ".to_s(" + base + ")"
 
-    def _format_call(self, args: list[TArg]) -> str:
+    def _format_call(self, args: list[TArg], call: TCall) -> str:
         template_expr = args[0].value
         if not isinstance(template_expr, TStringLit):
             arg_strs = ", ".join(self._expr(a.value) for a in args)
             return "format_(" + arg_strs + ")"
         template = template_expr.value
         fmt_args = args[1:]
-        markers: dict[str, int] = {}
-        result = template
-        for i in range(len(fmt_args)):
-            marker = "\x00PH" + str(i) + "\x00"
-            markers[marker] = i
-            result = result.replace("{}", marker, 1)
-        result = _escape_ruby_string(result)
-        for marker, i in markers.items():
-            result = result.replace(marker, "#{" + self._expr(fmt_args[i].value) + "}")
-        return '"' + result + '"'
+        prov = call.annotations.get("provenance", "")
+        if prov == "f_string":
+            parts: list[str] = []
+            rest = template
+            idx = 0
+            while "{}" in rest and idx < len(fmt_args):
+                before, rest = rest.split("{}", 1)
+                parts.append(_escape_ruby_string(before))
+                parts.append("#{" + self._expr(fmt_args[idx].value) + "}")
+                idx += 1
+            parts.append(_escape_ruby_string(rest))
+            return '"' + "".join(parts) + '"'
+        escaped = _escape_ruby_string(template).replace("{}", "%s")
+        arg_strs = [self._expr(a.value) for a in fmt_args]
+        if len(arg_strs) == 1:
+            return '"' + escaped + '" % ' + arg_strs[0]
+        return '"' + escaped + '" % [' + ", ".join(arg_strs) + "]"
 
 
 # ============================================================
@@ -1728,13 +1883,18 @@ def emit_ruby(module: TModule) -> str:
     struct_names = {
         decl.name for decl in module.decls if isinstance(decl, TStructDecl)
     } | set(BUILTIN_STRUCTS.keys())
+    struct_fields: dict[str, list[str]] = {}
+    enum_names: set[str] = set()
     fn_names: set[str] = set()
     for decl in module.decls:
         if isinstance(decl, TFnDecl):
             fn_names.add(decl.name)
         elif isinstance(decl, TStructDecl):
+            struct_fields[decl.name] = [f.name for f in decl.fields]
             for m in decl.methods:
                 fn_names.add(m.name)
-    emitter = _RubyEmitter(struct_names, fn_names)
+        elif isinstance(decl, TEnumDecl):
+            enum_names.add(decl.name)
+    emitter = _RubyEmitter(struct_names, fn_names, struct_fields, enum_names)
     emitter.emit_module(module)
     return emitter.output()

@@ -797,3 +797,65 @@ fn Main() -> void {
 ---
 error: FormatInt requires int
 ---
+
+=== valid: WrappingAdd WrappingSub WrappingMul
+@@["strict_math"]
+fn Main() -> void {
+    let a: int = WrappingAdd(1, 2)
+    let b: int = WrappingSub(3, 1)
+    let c: int = WrappingMul(2, 3)
+}
+---
+ok
+---
+
+=== error: WrappingAdd wrong type
+@@["strict_math"]
+fn Main() -> void {
+    let a: float = WrappingAdd(1.0, 2.0)
+}
+---
+error: WrappingAdd requires int
+---
+
+=== error: WrappingSub wrong type
+@@["strict_math"]
+fn Main() -> void {
+    let a: string = WrappingSub("a", "b")
+}
+---
+error: WrappingSub requires int
+---
+
+=== error: WrappingMul wrong type
+@@["strict_math"]
+fn Main() -> void {
+    let a: float = WrappingMul(1.0, 2.0)
+}
+---
+error: WrappingMul requires int
+---
+
+=== error: WrappingAdd without strict math
+fn Main() -> void {
+    let a: int = WrappingAdd(1, 2)
+}
+---
+error: requires strict_math
+---
+
+=== error: WrappingSub without strict math
+fn Main() -> void {
+    let a: int = WrappingSub(3, 1)
+}
+---
+error: requires strict_math
+---
+
+=== error: WrappingMul without strict math
+fn Main() -> void {
+    let a: int = WrappingMul(2, 3)
+}
+---
+error: requires strict_math
+---

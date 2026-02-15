@@ -1,0 +1,35 @@
+=== IO functions
+print("no newline");
+
+=== ReadAll and ReadLine
+my $all = do { local $/; scalar(<STDIN>) };
+
+=== ReadLine returns optional
+my $line = scalar(<STDIN>);
+
+=== ReadFile emits open idiom
+my $data = do { my $__p = "input.txt"; open(my $__fh, '<', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d };
+
+=== WriteFile emits open idiom
+do { my $__p = "output.txt"; my $__d = "hello"; open(my $__fh, '>', $__p) or die $__p; print $__fh $__d; close($__fh) };
+
+=== ReadBytesN
+my $chunk = do { read(STDIN, my $__b, 1024); $__b };
+
+=== Args and GetEnv
+my $args = [@ARGV];
+
+=== Exit call
+exit(1);
+
+=== Encode and Decode
+my $b = encode('UTF-8', "hello");
+
+=== bytes indexing
+my $first = substr($b, 0, 1);
+
+=== bytes slicing
+my $part = substr($b, 1, (3) - (1));
+
+=== Concat on bytes
+my $c = ($a . $b);

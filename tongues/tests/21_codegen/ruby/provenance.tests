@@ -1,0 +1,53 @@
+=== not in operator (raised)
+if !xs.include?(2)
+
+=== negative index via Len subtraction (raised)
+puts(xs[-1].to_s)
+
+=== open-end slice (raised)
+tail = xs[1..]
+
+=== open-start slice (raised)
+head = xs[0...3]
+
+=== truthiness check on list (raised)
+if !xs.empty?
+
+=== truthiness check on string (raised)
+if !s.empty?
+
+=== chained comparison (raised)
+return 0 <= x && x <= 255
+
+=== list comprehension (raised)
+doubled = xs.map { |x| x * 2 }
+
+=== list comprehension with filter (raised)
+evens = xs.select { |x| x % 2 == 0 }
+
+=== dict comprehension (raised)
+m = keys.each_with_index.map { |k, i| [k, i] }.to_h
+
+=== set comprehension (raised)
+unique = Set.new(xs)
+
+=== truthiness check on map (raised)
+if !m.empty?
+
+=== truthiness check on set (raised)
+if !s.empty?
+
+=== negated condition (raised)
+unless done
+
+=== negated while (raised)
+until done
+
+=== format string with interpolation (raised)
+return "hello, #{name}"
+
+=== nil coalesce (raised)
+return x || 0
+
+=== Get with default using defined-or (raised)
+v = m.fetch("b", 0)

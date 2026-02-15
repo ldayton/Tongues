@@ -1,0 +1,14 @@
+=== unused tuple target becomes underscore
+q, _ = 17.divmod(5)
+
+=== all tuple targets used
+q, r = 17.divmod(5)
+
+=== initial value suppressed when overwritten
+x = $stdin.read.to_i(10)
+
+=== initial value kept when read before overwrite
+x = 0
+
+=== Unwrap on optional
+v = x
