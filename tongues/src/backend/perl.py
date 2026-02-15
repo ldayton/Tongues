@@ -272,6 +272,24 @@ def _is_bytes_type(typ: TType | None) -> bool:
     return _is_primitive(typ, "bytes")
 
 
+_STRICT_INT_BINARY: dict[str, str] = {
+    "+": "checked_add_i64",
+    "-": "checked_sub_i64",
+    "*": "checked_mul_i64",
+    "/": "checked_div_i64",
+    "%": "checked_rem_i64",
+    "<<": "checked_shl_i64",
+    ">>": "checked_shr_i64",
+    ">>>": "logical_shr_i64",
+}
+
+_STRICT_INT_COMPOUND: dict[str, str] = {
+    "+=": "checked_add_i64",
+    "-=": "checked_sub_i64",
+    "*=": "checked_mul_i64",
+}
+
+
 class _PerlEmitter:
     def __init__(
         self,
@@ -279,11 +297,14 @@ class _PerlEmitter:
         enum_names: set[str],
         function_names: set[str],
         struct_fields: dict[str, list[str]],
+        *,
+        strict_math: bool = False,
     ) -> None:
         self.struct_names = struct_names
         self.enum_names = enum_names
         self.function_names = function_names
         self.struct_fields = struct_fields
+        self.strict_math = strict_math
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -568,6 +589,11 @@ class _PerlEmitter:
             return
         if isinstance(stmt, TOpAssignStmt):
             op = stmt.op
+            if self.strict_math and op in _STRICT_INT_COMPOUND and self._is_int_expr(stmt.target):
+                fn = _STRICT_INT_COMPOUND[op]
+                tgt = self._target(stmt.target)
+                self._line(tgt + " = " + fn + "(" + tgt + ", " + self._expr(stmt.value) + ");")
+                return
             if op == "+=" and self._is_string_expr(stmt.target):
                 op = ".="
             self._line(
@@ -1219,6 +1245,13 @@ class _PerlEmitter:
 
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
+        if self.strict_math and op in _STRICT_INT_BINARY:
+            if self._is_int_expr(expr.left) and self._is_int_expr(expr.right):
+                fn = _STRICT_INT_BINARY[op]
+                return fn + "(" + self._expr(expr.left) + ", " + self._expr(expr.right) + ")"
+        if self.strict_math and op == "%":
+            if self._is_float_expr(expr.left) or self._is_float_expr(expr.right):
+                return "strict_fmod(" + self._expr(expr.left) + ", " + self._expr(expr.right) + ")"
         if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
             chained = self._chain_comparison(expr)
             if chained is not None:
@@ -1237,6 +1270,8 @@ class _PerlEmitter:
         return left + " " + perl_op + " " + right
 
     def _unary(self, expr: TUnaryOp) -> str:
+        if self.strict_math and expr.op == "-" and self._is_int_expr(expr.operand):
+            return "checked_neg_i64(" + self._expr(expr.operand) + ")"
         if expr.op == "!":
             if (
                 isinstance(expr.operand, TCall)
@@ -1685,10 +1720,14 @@ class _PerlEmitter:
         if name == "Abs":
             return "abs(" + self._a(args, 0) + ")"
         if name == "Min":
+            if self.strict_math and len(args) == 2 and self._is_float_expr(args[0].value):
+                return "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             if len(args) == 1:
                 return "min(@{" + self._a(args, 0) + "})"
             return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Max":
+            if self.strict_math and len(args) == 2 and self._is_float_expr(args[0].value):
+                return "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             if len(args) == 1:
                 return "max(@{" + self._a(args, 0) + "})"
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -1720,6 +1759,8 @@ class _PerlEmitter:
             )
         if name == "Sorted":
             inner = args[0].value
+            if self.strict_math and self._is_float_list(inner):
+                return "strict_sorted_f64(" + self._a(args, 0) + ")"
             typ = self._expr_type(inner)
             if isinstance(typ, TListType) and _is_string_type(typ.element):
                 return "[sort @{" + self._a(args, 0) + "}]"
@@ -1822,6 +1863,8 @@ class _PerlEmitter:
         if name == "Exit":
             return "exit(" + self._a(args, 0) + ")"
         if name == "Pow":
+            if self.strict_math and self._is_int_expr(args[0].value):
+                return "checked_pow_i64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return "(" + self._a(args, 0) + " ** " + self._a(args, 1) + ")"
         if name == "Contains":
             return self._contains_expr(args[0].value, args[1].value)
@@ -2032,6 +2075,36 @@ class _PerlEmitter:
         typ = self._expr_type(expr)
         return _is_set_type(typ)
 
+    def _is_int_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TIntLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "int"
+        if isinstance(expr, TBinaryOp):
+            return self._is_int_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
+            return self._is_int_expr(expr.operand)
+        return False
+
+    def _is_float_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TFloatLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "float"
+        if isinstance(expr, TBinaryOp):
+            return self._is_float_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op == "-":
+            return self._is_float_expr(expr.operand)
+        return False
+
+    def _is_float_list(self, expr: TExpr) -> bool:
+        if isinstance(expr, TListLit) and expr.elements:
+            return self._is_float_expr(expr.elements[0])
+        typ = self._expr_type(expr)
+        return isinstance(typ, TListType) and _is_primitive(typ.element, "float")
+
     def _static_int(self, expr: TExpr) -> int | None:
         if isinstance(expr, TIntLit):
             return expr.value
@@ -2119,6 +2192,9 @@ def emit_perl(module: TModule) -> str:
             struct_fields[decl.name] = [f.name for f in decl.fields]
             for method in decl.methods:
                 function_names.add(method.name)
-    emitter = _PerlEmitter(struct_names, enum_names, function_names, struct_fields)
+    emitter = _PerlEmitter(
+        struct_names, enum_names, function_names, struct_fields,
+        strict_math=module.strict_math,
+    )
     emitter.emit_module(module)
     return emitter.output()
