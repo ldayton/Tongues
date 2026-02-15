@@ -589,10 +589,16 @@ class _PerlEmitter:
             return
         if isinstance(stmt, TOpAssignStmt):
             op = stmt.op
-            if self.strict_math and op in _STRICT_INT_COMPOUND and self._is_int_expr(stmt.target):
+            if (
+                self.strict_math
+                and op in _STRICT_INT_COMPOUND
+                and self._is_int_expr(stmt.target)
+            ):
                 fn = _STRICT_INT_COMPOUND[op]
                 tgt = self._target(stmt.target)
-                self._line(tgt + " = " + fn + "(" + tgt + ", " + self._expr(stmt.value) + ");")
+                self._line(
+                    tgt + " = " + fn + "(" + tgt + ", " + self._expr(stmt.value) + ");"
+                )
                 return
             if op == "+=" and self._is_string_expr(stmt.target):
                 op = ".="
@@ -1248,10 +1254,23 @@ class _PerlEmitter:
         if self.strict_math and op in _STRICT_INT_BINARY:
             if self._is_int_expr(expr.left) and self._is_int_expr(expr.right):
                 fn = _STRICT_INT_BINARY[op]
-                return fn + "(" + self._expr(expr.left) + ", " + self._expr(expr.right) + ")"
+                return (
+                    fn
+                    + "("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
         if self.strict_math and op == "%":
             if self._is_float_expr(expr.left) or self._is_float_expr(expr.right):
-                return "strict_fmod(" + self._expr(expr.left) + ", " + self._expr(expr.right) + ")"
+                return (
+                    "strict_fmod("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
         if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
             chained = self._chain_comparison(expr)
             if chained is not None:
@@ -1720,14 +1739,26 @@ class _PerlEmitter:
         if name == "Abs":
             return "abs(" + self._a(args, 0) + ")"
         if name == "Min":
-            if self.strict_math and len(args) == 2 and self._is_float_expr(args[0].value):
-                return "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            if (
+                self.strict_math
+                and len(args) == 2
+                and self._is_float_expr(args[0].value)
+            ):
+                return (
+                    "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             if len(args) == 1:
                 return "min(@{" + self._a(args, 0) + "})"
             return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Max":
-            if self.strict_math and len(args) == 2 and self._is_float_expr(args[0].value):
-                return "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            if (
+                self.strict_math
+                and len(args) == 2
+                and self._is_float_expr(args[0].value)
+            ):
+                return (
+                    "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             if len(args) == 1:
                 return "max(@{" + self._a(args, 0) + "})"
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -1864,7 +1895,13 @@ class _PerlEmitter:
             return "exit(" + self._a(args, 0) + ")"
         if name == "Pow":
             if self.strict_math and self._is_int_expr(args[0].value):
-                return "checked_pow_i64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                return (
+                    "checked_pow_i64("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ")"
+                )
             return "(" + self._a(args, 0) + " ** " + self._a(args, 1) + ")"
         if name == "Contains":
             return self._contains_expr(args[0].value, args[1].value)
@@ -2193,7 +2230,10 @@ def emit_perl(module: TModule) -> str:
             for method in decl.methods:
                 function_names.add(method.name)
     emitter = _PerlEmitter(
-        struct_names, enum_names, function_names, struct_fields,
+        struct_names,
+        enum_names,
+        function_names,
+        struct_fields,
         strict_math=module.strict_math,
     )
     emitter.emit_module(module)
