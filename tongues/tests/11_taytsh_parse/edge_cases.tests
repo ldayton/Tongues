@@ -465,21 +465,6 @@ fn Main() -> void {
 ok
 ---
 
-=== match with obj type
-fn Main() -> void {
-    match v {
-        case n: int {
-            WritelnOut("int")
-        }
-        case s: obj {
-            WritelnOut("obj")
-        }
-    }
-}
----
-ok
----
-
 === match with nil type
 fn Main() -> void {
     match v {

@@ -40,10 +40,6 @@ Types are resolved from parse-time AST type nodes into checked type objects duri
 | `EnumT`      | `name`, `variants`                    | `EnumName`      |
 | `UnionT`     | `members`                             | `A \| B`        |
 
-### `obj` Rejection
-
-`obj` exists in the type system as a resolved type but is forbidden in user-written Taytsh code. Any occurrence of `obj` in a type position — variable declarations, parameters, return types, struct fields, collection element types, function types, union members, optionals, match case types, catch types — is rejected. `obj` is an internal concept from the frontend's `interface("any")` that should not appear in well-formed IR.
-
 ### `void` Restrictions
 
 `void` is valid only as a function return type (after `->`) or as the last element of an `fn[...]` type. It cannot appear as a variable type, parameter type, collection element type, tuple element type, union member, or optional base.
@@ -68,8 +64,7 @@ Parse-time type AST nodes are resolved to checked types during declaration colle
 
 1. **Flatten**: nested unions are expanded (`A | (B | C)` → `A | B | C`)
 2. **Deduplicate**: identical members are collapsed (`A | A` → `A`)
-3. **Absorb obj**: if any member is `obj`, the entire union collapses to `obj`
-4. **Reduce**: a single remaining member becomes that type (not a 1-element union)
+3. **Reduce**: a single remaining member becomes that type (not a 1-element union)
 
 ### Double Optional
 
@@ -169,7 +164,6 @@ A type `source` is assignable to `target` when:
 | ------------------- | ------------------------------------------------------------ |
 | Identity            | types are structurally equal                                 |
 | Struct → Interface  | source is a struct whose `parent` matches the interface name |
-| Any → `obj`         | target is `obj` (universal supertype)                        |
 | `nil` → Optional    | source is `nil` and target contains `nil`                    |
 | Type → Union member | source is assignable to any member of target union           |
 | Union → Union       | every member of source is assignable to target               |
@@ -408,7 +402,6 @@ Only certain types can be the scrutinee of a `match`:
 | Enum       | yes       | `EnumName.Variant` values    |
 | Union      | yes       | member types                 |
 | Optional   | yes       | inner type + `nil`           |
-| `obj`      | yes       | requires `default`           |
 | Primitive  | no        | `cannot match on int`        |
 | Collection | no        | `cannot match on list`       |
 | Struct     | no        | `cannot match on StructName` |
@@ -607,7 +600,6 @@ All errors carry a line and column position from the AST node that caused the er
 | Assign to tuple element     | `cannot assign to tuple element`       |
 | Initializer required        | `initializer required`                 |
 | `void` as value type        | `void is not a value type`             |
-| `obj` in type position      | (rejected)                             |
 | Double optional             | `double optional`                      |
 | Single-element tuple        | `tuple requires at least two elements` |
 | Non-exhaustive match        | `non-exhaustive match`                 |
@@ -650,6 +642,5 @@ All errors carry a line and column position from the AST node that caused the er
 - No closures — function literals reference only local bindings and top-level names
 - Module has exactly one `Main` function with correct signature
 - `void` restricted to return-type position
-- `obj` rejected in user-written type positions
 - Union types normalized (flattened, deduplicated)
 - All built-in function calls validated for arity and argument types
