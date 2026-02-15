@@ -15,10 +15,7 @@ import struct
 import pytest
 
 from src.backend.softfloat import (
-    DEFAULT_NAN,
-    F64_INF,
     F64_SIGN,
-    MASK64,
     f64_abs,
     f64_add,
     f64_ceil,
@@ -38,7 +35,6 @@ from src.backend.softfloat import (
     f64_to_i64,
     f64_to_str,
     i64_to_f64,
-    is_inf_f64,
     is_nan_f64,
     str_to_f64,
 )
