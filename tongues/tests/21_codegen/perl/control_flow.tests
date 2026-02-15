@@ -17,24 +17,17 @@ while ($n > 0) {
 while (1) {
 
 === for range single arg
-my $__start0 = 0;
-my $__end0 = 10;
-for (my $i = $__start0; $i < $__end0; $i += 1) {
+for my $i (0 .. 9) {
     $total += $i;
 }
 
 === for range two args
-my $__start0 = 5;
-my $__end0 = 10;
-for (my $i = $__start0; $i < $__end0; $i += 1) {
+for my $i (5 .. 9) {
     $total += $i;
 }
 
 === for range three args
-my $__start0 = 10;
-my $__end0 = 0;
-my $__step0 = -1;
-for (my $i = $__start0; $i > $__end0; $i += $__step0) {
+for my $i (reverse 1 .. 10) {
     say(("" . $i));
 }
 

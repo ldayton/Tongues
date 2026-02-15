@@ -2,7 +2,7 @@
 my $s = ("ab" x 3);
 
 === list multiply via Repeat
-my $xs = do { my $__r = []; for (1 .. 5) { push(@{$__r}, @{[0]}); } $__r };
+my $xs = [(0) x 5];
 say(("" . scalar(@{$xs})));
 
 === Contains on string

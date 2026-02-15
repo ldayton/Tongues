@@ -1,10 +1,10 @@
 === in operator emits pythonic form
-if (do { my $__f = 0; for (@{$xs}) { if ($_ == 2) { $__f = 1; last; } } $__f }) {
+if (grep { $_ == 2 } @{$xs}) {
     say("found");
 }
 
 === not in operator
-if (!do { my $__f = 0; for (@{$xs}) { if ($_ == 2) { $__f = 1; last; } } $__f }) {
+if (!grep { $_ == 2 } @{$xs}) {
     say("missing");
 }
 
