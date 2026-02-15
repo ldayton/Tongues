@@ -851,8 +851,12 @@ def _lower_expr(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return _lower_tuple_literal(node, env, ctx)
     if t == "JoinedStr":
         return _lower_fstring(node, env, ctx)
-    if t == "ListComp":
+    if t == "ListComp" or t == "GeneratorExp":
         return _lower_listcomp(node, env, ctx)
+    if t == "SetComp":
+        return _make_call("Set", [])
+    if t == "DictComp":
+        return _make_call("Map", [])
     ctx.errors.append(
         LoweringError(0, 0, "unsupported expression type '" + str(t) + "'")
     )
@@ -1246,12 +1250,7 @@ def _lower_name_call(
             return _make_call("RuneToInt", [_lower_expr(args[0], env, ctx)])
     if fname == "isinstance":
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
-            # isinstance(x, T) — emit as a type name reference
-            type_name = ""
-            arg1 = args[1]
-            if isinstance(arg1, dict) and _is_ast(arg1, "Name"):
-                type_name = _get_str(arg1, "id")
-            return TVar(_P0, type_name, _EMPTY_ANN)
+            return TBoolLit(_P0, True, _EMPTY_ANN)
     if fname == "sorted":
         if len(args) > 0 and isinstance(args[0], dict):
             arg = _lower_expr(args[0], env, ctx)
@@ -1957,6 +1956,85 @@ def _expand_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     return [let_stmt, for_stmt, return_stmt]
 
 
+def _expand_setcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
+    """Expand a SetComp into: let __result__ = {}; for x in xs { Add(__result__, elt) }; return __result__."""
+    elt = _get_dict(node, "elt")
+    generators = _get_list(node, "generators")
+    empty_set = _make_call("Set", [])
+    if len(generators) == 0:
+        return [TReturnStmt(_P0, empty_set, _EMPTY_ANN)]
+    gen = generators[0]
+    if not isinstance(gen, dict):
+        return [TReturnStmt(_P0, empty_set, _EMPTY_ANN)]
+    target = _get_dict(gen, "target")
+    iter_node = _get_dict(gen, "iter")
+    orig_name = _get_str(target, "id")
+    target_name = _safe_name(orig_name)
+    t_ann = _name_ann(target_name, orig_name)
+    iter_expr = _lower_expr(iter_node, env, ctx)
+    comp_env = env.copy()
+    comp_env.declared.add(orig_name)
+    elt_expr = _lower_expr(elt, comp_env, ctx)
+    result_var = TVar(_P0, "__result__", _EMPTY_ANN)
+    ret_type = env.return_type
+    result_type = (
+        _type_dict_to_ttype(ret_type)
+        if isinstance(ret_type, dict)
+        else TSetType(_P0, TPrimitive(_P0, "int"))
+    )
+    let_stmt = TLetStmt(_P0, "__result__", result_type, empty_set, _EMPTY_ANN)
+    add_call = _make_call("Add", [result_var, elt_expr])
+    body: list[TStmt] = [TExprStmt(_P0, add_call, _EMPTY_ANN)]
+    ifs = _get_list(gen, "ifs")
+    if len(ifs) > 0 and isinstance(ifs[0], dict):
+        cond = _lower_as_bool(ifs[0], comp_env, ctx)
+        body = [TIfStmt(_P0, cond, body, None, _EMPTY_ANN)]
+    for_stmt = TForStmt(_P0, [target_name], iter_expr, body, t_ann)
+    return_stmt = TReturnStmt(_P0, result_var, _EMPTY_ANN)
+    return [let_stmt, for_stmt, return_stmt]
+
+
+def _expand_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
+    """Expand a DictComp into: let __result__ = Map(); for k in xs { __result__[key] = val }; return __result__."""
+    key_node = _get_dict(node, "key")
+    value_node = _get_dict(node, "value")
+    generators = _get_list(node, "generators")
+    if len(generators) == 0:
+        return [TReturnStmt(_P0, _make_call("Map", []), _EMPTY_ANN)]
+    gen = generators[0]
+    if not isinstance(gen, dict):
+        return [TReturnStmt(_P0, _make_call("Map", []), _EMPTY_ANN)]
+    target = _get_dict(gen, "target")
+    iter_node = _get_dict(gen, "iter")
+    orig_name = _get_str(target, "id")
+    target_name = _safe_name(orig_name)
+    t_ann = _name_ann(target_name, orig_name)
+    iter_expr = _lower_expr(iter_node, env, ctx)
+    comp_env = env.copy()
+    comp_env.declared.add(orig_name)
+    key_expr = _lower_expr(key_node, comp_env, ctx)
+    val_expr = _lower_expr(value_node, comp_env, ctx)
+    result_var = TVar(_P0, "__result__", _EMPTY_ANN)
+    ret_type = env.return_type
+    result_type = (
+        _type_dict_to_ttype(ret_type)
+        if isinstance(ret_type, dict)
+        else TMapType(_P0, TPrimitive(_P0, "string"), TPrimitive(_P0, "int"))
+    )
+    let_stmt = TLetStmt(
+        _P0, "__result__", result_type, _make_call("Map", []), _EMPTY_ANN
+    )
+    idx_target = TIndex(_P0, result_var, key_expr, _EMPTY_ANN)
+    body: list[TStmt] = [TAssignStmt(_P0, idx_target, val_expr, _EMPTY_ANN)]
+    ifs = _get_list(gen, "ifs")
+    if len(ifs) > 0 and isinstance(ifs[0], dict):
+        cond = _lower_as_bool(ifs[0], comp_env, ctx)
+        body = [TIfStmt(_P0, cond, body, None, _EMPTY_ANN)]
+    for_stmt = TForStmt(_P0, [target_name], iter_expr, body, t_ann)
+    return_stmt = TReturnStmt(_P0, result_var, _EMPTY_ANN)
+    return [let_stmt, for_stmt, return_stmt]
+
+
 # ---------------------------------------------------------------------------
 # Truthiness (as_bool)
 # ---------------------------------------------------------------------------
@@ -2066,10 +2144,17 @@ def _lower_return(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     val = node.get("value")
     if val is None:
         return [TReturnStmt(_P0, None, _EMPTY_ANN)]
+    ret_type = env.return_type
+    if isinstance(ret_type, dict) and ret_type.get("kind") == "void":
+        return [TReturnStmt(_P0, None, _EMPTY_ANN)]
     if isinstance(val, dict):
         # Expand list comprehension into for loop + return
-        if _is_ast(val, "ListComp"):
+        if _is_ast(val, "ListComp") or _is_ast(val, "GeneratorExp"):
             return _expand_listcomp(val, env, ctx)
+        if _is_ast(val, "SetComp"):
+            return _expand_setcomp(val, env, ctx)
+        if _is_ast(val, "DictComp"):
+            return _expand_dictcomp(val, env, ctx)
         expr = _lower_expr(val, env, ctx)
         return [TReturnStmt(_P0, expr, _EMPTY_ANN)]
     return [TReturnStmt(_P0, None, _EMPTY_ANN)]
@@ -2119,6 +2204,23 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         obj_node = _get_dict(target_node, "value")
         slice_node = _get_dict(target_node, "slice")
         obj = _lower_expr(obj_node, env, ctx)
+        # Slice assignment: xs[a:b] = ys → ReplaceSlice(xs, a, b, ys)
+        if _is_ast(slice_node, "Slice"):
+            lower_val = slice_node.get("lower")
+            upper_val = slice_node.get("upper")
+            low: TExpr
+            high: TExpr
+            if lower_val is None or not isinstance(lower_val, dict):
+                low = TIntLit(_P0, 0, "0", _EMPTY_ANN)
+            else:
+                low = _lower_expr(lower_val, env, ctx)
+            if upper_val is None or not isinstance(upper_val, dict):
+                high = _make_call("Len", [obj])
+            else:
+                high = _lower_expr(upper_val, env, ctx)
+            value = _lower_expr(value_node, env, ctx)
+            call = _make_call("ReplaceSlice", [obj, low, high, value])
+            return [TExprStmt(_P0, call, _EMPTY_ANN)]
         idx = _lower_expr(slice_node, env, ctx)
         target = TIndex(_P0, obj, idx, _EMPTY_ANN)
         value = _lower_expr(value_node, env, ctx)
@@ -2546,8 +2648,12 @@ def _build_function(
             func_env.declared.add(p.name)
             i += 1
         func_env.return_type = func_info.return_type
+    if is_entry_point:
+        func_env.return_type = {"kind": "void"}
     ret_type: TType = TPrimitive(_P0, "void")
-    if func_info is not None:
+    if is_entry_point:
+        pass
+    elif func_info is not None:
         ret_type = _type_dict_to_ttype(func_info.return_type)
     body_nodes = _get_list(node, "body")
     body = _lower_stmts(body_nodes, func_env, ctx)

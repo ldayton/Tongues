@@ -94,6 +94,7 @@ _MUTATING_BUILTINS: set[str] = {
     "Delete",
     "Add",
     "Remove",
+    "ReplaceSlice",
 }
 
 
@@ -262,7 +263,15 @@ def _resolve_builtin_return(name: str, expr: TCall, ctx: _ScopeCtx) -> Type | No
     """Resolve return type for common built-in calls."""
     if name == "Len":
         return INT_T
-    if name in ("Append", "Insert", "RemoveAt", "Delete", "Add", "Remove"):
+    if name in (
+        "Append",
+        "Insert",
+        "RemoveAt",
+        "Delete",
+        "Add",
+        "Remove",
+        "ReplaceSlice",
+    ):
         return VOID_T
     if name == "Pop":
         if len(expr.args) > 0:
@@ -270,6 +279,10 @@ def _resolve_builtin_return(name: str, expr: TCall, ctx: _ScopeCtx) -> Type | No
             if t is not None and isinstance(t, ListT):
                 return t.element
         return None
+    if name in ("FloorDiv", "PythonMod"):
+        if len(expr.args) > 0:
+            return _resolve_expr_type(expr.args[0].value, ctx)
+        return INT_T
     if name == "ToString":
         return STRING_T
     if name in ("Keys", "Values"):

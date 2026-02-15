@@ -1309,6 +1309,10 @@ class _PythonEmitter:
         return obj_str + "." + func.field + "(" + arg_strs + ")"
 
     def _builtin_call(self, name: str, args: list[TArg]) -> str:
+        if name == "FloorDiv":
+            return self._a(args, 0) + " // " + self._a(args, 1)
+        if name == "PythonMod":
+            return self._a(args, 0) + " % " + self._a(args, 1)
         # Method-on-first-arg
         if name == "Append":
             return self._a(args, 0) + ".append(" + self._a(args, 1) + ")"
@@ -1325,6 +1329,16 @@ class _PythonEmitter:
             return self._a(args, 0) + ".pop()"
         if name == "RemoveAt":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ")"
+        if name == "ReplaceSlice":
+            return (
+                self._a(args, 0)
+                + "["
+                + self._a(args, 1)
+                + ":"
+                + self._a(args, 2)
+                + "] = "
+                + self._a(args, 3)
+            )
         if name == "IndexOf":
             obj = self._a(args, 0)
             val = self._a(args, 1)

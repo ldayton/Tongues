@@ -176,6 +176,12 @@ def _walk_call(expr: TCall, ctx: _OwnershipCtx) -> None:
             if len(expr.args) > 2:
                 _walk_expr(expr.args[2].value, ctx, True)
             return
+        if name == "ReplaceSlice":
+            if len(expr.args) > 0:
+                _walk_expr(expr.args[0].value, ctx, False)
+            for i in range(1, len(expr.args)):
+                _walk_expr(expr.args[i].value, ctx, True)
+            return
     if isinstance(expr.func, TFieldAccess):
         _walk_expr(expr.func.obj, ctx, False)
     else:

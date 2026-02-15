@@ -1386,6 +1386,12 @@ class _PerlEmitter:
     def _builtin_call(
         self, name: str, args: list[TArg], ann: dict | None = None
     ) -> str:
+        if name == "FloorDiv":
+            return "POSIX::floor(" + self._a(args, 0) + " / " + self._a(args, 1) + ")"
+        if name == "PythonMod":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return "((" + a + " % " + b + ") + " + b + ") % " + b
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":
@@ -1402,6 +1408,20 @@ class _PerlEmitter:
             return "pop(@{" + self._a(args, 0) + "})"
         if name == "RemoveAt":
             return "splice(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ", 1)"
+        if name == "ReplaceSlice":
+            return (
+                "splice(@{"
+                + self._a(args, 0)
+                + "}, "
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + " - "
+                + self._a(args, 1)
+                + ", @{"
+                + self._a(args, 3)
+                + "})"
+            )
         if name == "IndexOf":
             arr = self._a(args, 0)
             val = self._a(args, 1)

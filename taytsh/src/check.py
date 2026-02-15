@@ -548,6 +548,11 @@ BUILTIN_NAMES: set[str] = {
     "IsNaN",
     "IsInf",
     "Sqrt",
+    # Arithmetic
+    "FloorDiv",
+    "PythonMod",
+    # Mutation
+    "ReplaceSlice",
 }
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
@@ -563,6 +568,8 @@ BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
     "NilError": {"message": STRING_T},
     "ValueError": {"message": STRING_T},
     "IOError": {"message": STRING_T},
+    "Exception": {"message": STRING_T},
+    "BaseException": {"message": STRING_T},
 }
 
 
@@ -2397,6 +2404,21 @@ class Checker:
                 if t1.kind not in (TY_INT, TY_FLOAT):
                     self.error("Pow requires int or float", pos)
             return t1
+        if name == "FloorDiv" or name == "PythonMod":
+            if not require(2):
+                return None
+            t1 = arg(0)
+            t2 = arg(1)
+            if t1 is not None and t1.kind not in (TY_INT, TY_FLOAT):
+                self.error(name + " requires int or float", pos)
+            return t1
+        if name == "ReplaceSlice":
+            if not require(4):
+                return None
+            t1 = arg(0)
+            if t1 is not None and not isinstance(t1, ListT):
+                self.error("ReplaceSlice requires list as first argument", pos)
+            return VOID_T
         if name in ("Round", "Floor", "Ceil"):
             if not require(1):
                 return None

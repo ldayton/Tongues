@@ -1433,6 +1433,10 @@ class _RubyEmitter:
         return obj_str + "." + _safe_name(func.field)
 
     def _builtin_call(self, name: str, args: list[TArg], call: TCall) -> str:
+        if name == "FloorDiv":
+            return "(" + self._a(args, 0) + " / " + self._a(args, 1) + ").floor"
+        if name == "PythonMod":
+            return self._a(args, 0) + " % " + self._a(args, 1)
         # List operations
         if name == "Append":
             return self._a(args, 0) + ".push(" + self._a(args, 1) + ")"
@@ -1449,6 +1453,16 @@ class _RubyEmitter:
             return self._a(args, 0) + ".pop"
         if name == "RemoveAt":
             return self._a(args, 0) + ".delete_at(" + self._a(args, 1) + ")"
+        if name == "ReplaceSlice":
+            return (
+                self._a(args, 0)
+                + "["
+                + self._a(args, 1)
+                + "..."
+                + self._a(args, 2)
+                + "] = "
+                + self._a(args, 3)
+            )
         if name == "IndexOf":
             obj = self._a(args, 0)
             val = self._a(args, 1)
