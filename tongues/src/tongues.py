@@ -555,6 +555,10 @@ def parse_args() -> tuple[str, str | None, bool, bool, str | None, str | None]:
 
 def main() -> int:
     """Main entry point."""
+    if len(sys.argv) > 1 and sys.argv[1] == "taytsh":
+        from .taytsh.cli import main as taytsh_main
+
+        return taytsh_main(sys.argv[2:])
     target, stop_at, strict_math, strict_tostring, input_file, output_file = (
         parse_args()
     )

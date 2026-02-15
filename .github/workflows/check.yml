@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just fmt fmt-taytsh lint lint-taytsh subset
+      - run: just fmt lint subset
 
   frontend:
     runs-on: ubuntu-latest
@@ -47,6 +47,7 @@ jobs:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
       - run: just test-middleend-local
+      - run: just test-taytsh-local
 
   backend:
     runs-on: ubuntu-latest
@@ -60,24 +61,12 @@ jobs:
       - uses: extractions/setup-just@v3
       - run: just test-backend-local
 
-  taytsh:
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
-      - run: just test-taytsh-local
-
   check:
     if: always()
-    needs: [lint, frontend, middleend, backend, taytsh]
+    needs: [lint, frontend, middleend, backend]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          if [[ "${{ needs.lint.result }}" != "success" || "${{ needs.frontend.result }}" != "success" || "${{ needs.middleend.result }}" != "success" || "${{ needs.backend.result }}" != "success" || "${{ needs.taytsh.result }}" != "success" ]]; then
+          if [[ "${{ needs.lint.result }}" != "success" || "${{ needs.frontend.result }}" != "success" || "${{ needs.middleend.result }}" != "success" || "${{ needs.backend.result }}" != "success" ]]; then
             exit 1
           fi
