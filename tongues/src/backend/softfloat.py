@@ -619,3 +619,280 @@ def f64_to_i64(a: int) -> int:
     if sign_a != 0:
         result = 0 - result
     return result
+
+
+def f64_floor(a: int) -> int:
+    """Floor: largest integer <= x. Returns INT64_MAX/MIN for NaN/inf/overflow."""
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    if exp_a == 0x7FF:
+        if sign_a == 0:
+            return 0x7FFFFFFFFFFFFFFF
+        return -(1 << 63)
+    if exp_a == 0:
+        if sig_a == 0:
+            return 0
+        if sign_a != 0:
+            return -1
+        return 0
+    e: int = exp_a - 1023
+    if e < 0:
+        if sign_a != 0:
+            return -1
+        return 0
+    if e >= 52:
+        return f64_to_i64(a)
+    m: int = sig_a | 0x0010000000000000
+    frac_bits: int = 52 - e
+    int_part: int = m >> frac_bits
+    has_frac: bool = (m & ((1 << frac_bits) - 1)) != 0
+    if sign_a != 0:
+        if has_frac:
+            return 0 - (int_part + 1)
+        return 0 - int_part
+    return int_part
+
+
+def f64_ceil(a: int) -> int:
+    """Ceil: smallest integer >= x. Returns INT64_MAX/MIN for NaN/inf/overflow."""
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    if exp_a == 0x7FF:
+        if sign_a == 0:
+            return 0x7FFFFFFFFFFFFFFF
+        return -(1 << 63)
+    if exp_a == 0:
+        if sig_a == 0:
+            return 0
+        if sign_a != 0:
+            return 0
+        return 1
+    e: int = exp_a - 1023
+    if e < 0:
+        if sign_a != 0:
+            return 0
+        return 1
+    if e >= 52:
+        return f64_to_i64(a)
+    m: int = sig_a | 0x0010000000000000
+    frac_bits: int = 52 - e
+    int_part: int = m >> frac_bits
+    has_frac: bool = (m & ((1 << frac_bits) - 1)) != 0
+    if sign_a != 0:
+        return 0 - int_part
+    if has_frac:
+        return int_part + 1
+    return int_part
+
+
+def f64_round(a: int) -> int:
+    """Round half-away-from-zero. Returns INT64_MAX/MIN for NaN/inf/overflow."""
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    if exp_a == 0x7FF:
+        if sign_a == 0:
+            return 0x7FFFFFFFFFFFFFFF
+        return -(1 << 63)
+    if exp_a == 0:
+        return 0
+    e: int = exp_a - 1023
+    if e < -1:
+        return 0
+    if e == -1:
+        if sign_a != 0:
+            return -1
+        return 1
+    if e >= 52:
+        return f64_to_i64(a)
+    m: int = sig_a | 0x0010000000000000
+    frac_bits: int = 52 - e
+    int_part: int = m >> frac_bits
+    half_bit: int = (m >> (frac_bits - 1)) & 1
+    if half_bit != 0:
+        if sign_a != 0:
+            return 0 - (int_part + 1)
+        return int_part + 1
+    if sign_a != 0:
+        return 0 - int_part
+    return int_part
+
+
+# ---------------------------------------------------------------------------
+# Layer 9: Float-to-string (17-digit round-trip)
+# ---------------------------------------------------------------------------
+
+
+def f64_to_str(a: int) -> str:
+    """Convert float64 to string with exactly 17 significant digits."""
+    sign_a: int = sign_f64(a)
+    exp_a: int = exp_f64(a)
+    sig_a: int = frac_f64(a)
+    if exp_a == 0x7FF:
+        if sig_a != 0:
+            return "NaN"
+        if sign_a != 0:
+            return "-Inf"
+        return "Inf"
+    if (exp_a | sig_a) == 0:
+        if sign_a != 0:
+            return "-0.0"
+        return "0.0"
+    if exp_a == 0:
+        e: int = -1074
+        m: int = sig_a
+    else:
+        e = exp_a - 1075
+        m = sig_a | 0x0010000000000000
+    if e >= 0:
+        big: int = m << e
+        d_len: int = len(str(big))
+        dec_exp: int = d_len - 1
+    else:
+        neg_e: int = 0 - e
+        big = m * pow(5, neg_e)
+        d_len = len(str(big))
+        dec_exp = d_len - 1 - neg_e
+    if d_len > 17:
+        cut: int = d_len - 17
+        divisor: int = pow(10, cut)
+        half: int = divisor >> 1
+        q: int = big // divisor
+        r: int = big - q * divisor
+        if r > half:
+            q = q + 1
+        elif r == half:
+            if (q & 1) != 0:
+                q = q + 1
+        if len(str(q)) > 17:
+            q = q // 10
+            dec_exp = dec_exp + 1
+        digits: str = str(q)
+    elif d_len < 17:
+        digits = str(big * pow(10, 17 - d_len))
+    else:
+        digits = str(big)
+    prefix: str = ""
+    if sign_a != 0:
+        prefix = "-"
+    exp_sign: str = "+"
+    exp_abs: int = dec_exp
+    if dec_exp < 0:
+        exp_sign = "-"
+        exp_abs = 0 - dec_exp
+    exp_str: str = str(exp_abs)
+    if len(exp_str) < 2:
+        exp_str = "0" + exp_str
+    return prefix + digits[0] + "." + digits[1:] + "e" + exp_sign + exp_str
+
+
+# ---------------------------------------------------------------------------
+# Layer 10: String-to-float (ParseFloat)
+# ---------------------------------------------------------------------------
+
+
+def _bit_length(n: int) -> int:
+    """Number of bits in a positive integer (0 returns 0)."""
+    bits: int = 0
+    while n > MASK64:
+        bits = bits + 64
+        n = n >> 64
+    if n == 0:
+        return bits
+    return bits + 64 - count_leading_zeros64(n)
+
+
+def str_to_f64(s: str) -> int:
+    """Parse a decimal string to float64. Returns DEFAULT_NAN on invalid input."""
+    slen: int = len(s)
+    if slen == 0:
+        return DEFAULT_NAN
+    pos: int = 0
+    sign: int = 0
+    if s[0] == "-":
+        sign = 1
+        pos = 1
+    elif s[0] == "+":
+        pos = 1
+    rest: str = s[pos:]
+    if rest == "NaN":
+        return DEFAULT_NAN
+    if rest == "Inf" or rest == "Infinity":
+        return pack_f64(sign, 0x7FF, 0)
+    sig: int = 0
+    dec_places: int = 0
+    has_dot: bool = False
+    has_digits: bool = False
+    while pos < slen:
+        c: str = s[pos]
+        if c == ".":
+            if has_dot:
+                return DEFAULT_NAN
+            has_dot = True
+            pos = pos + 1
+            continue
+        if c < "0" or c > "9":
+            break
+        has_digits = True
+        sig = sig * 10 + (ord(c) - 48)
+        if has_dot:
+            dec_places = dec_places + 1
+        pos = pos + 1
+    if not has_digits:
+        return DEFAULT_NAN
+    exp_val: int = 0
+    if pos < slen and (s[pos] == "e" or s[pos] == "E"):
+        pos = pos + 1
+        if pos >= slen:
+            return DEFAULT_NAN
+        exp_sign: int = 1
+        if pos < slen and s[pos] == "-":
+            exp_sign = -1
+            pos = pos + 1
+        elif pos < slen and s[pos] == "+":
+            pos = pos + 1
+        if pos >= slen or s[pos] < "0" or s[pos] > "9":
+            return DEFAULT_NAN
+        while pos < slen and s[pos] >= "0" and s[pos] <= "9":
+            exp_val = exp_val * 10 + (ord(s[pos]) - 48)
+            pos = pos + 1
+        exp_val = exp_val * exp_sign
+    if pos != slen:
+        return DEFAULT_NAN
+    dec_exp: int = exp_val - dec_places
+    if sig == 0:
+        return pack_f64(sign, 0, 0)
+    sig_digits: int = len(str(sig))
+    if dec_exp + sig_digits > 310:
+        return pack_f64(sign, 0x7FF, 0)
+    if dec_exp + sig_digits < -325:
+        return pack_f64(sign, 0, 0)
+    if dec_exp >= 0:
+        num: int = sig * pow(10, dec_exp)
+        den: int = 1
+    else:
+        num = sig
+        den = pow(10, 0 - dec_exp)
+    bl_num: int = _bit_length(num)
+    bl_den: int = _bit_length(den)
+    shift: int = 63 - (bl_num - bl_den)
+    if shift > 0:
+        num = num << shift
+    elif shift < 0:
+        den = den << (0 - shift)
+    power: int = 0 - shift
+    q: int = num // den
+    while q >= (1 << 63):
+        den = den << 1
+        power = power + 1
+        q = num // den
+    while q < (1 << 62):
+        num = num << 1
+        power = power - 1
+        q = num // den
+    r: int = num - q * den
+    sig_z: int = q | (1 if r != 0 else 0)
+    exp_z: int = power + 0x43C
+    return round_pack_to_f64(sign, exp_z, sig_z)
