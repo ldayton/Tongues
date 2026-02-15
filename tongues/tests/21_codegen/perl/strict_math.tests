@@ -1,0 +1,147 @@
+=== checked int add
+sub Main {
+    my $a = 1;
+    my $b = 2;
+    my $c = checked_add_i64($a, $b);
+    WritelnOut(ToString($c));
+}
+
+=== checked int sub
+sub Main {
+    my $a = 5;
+    my $b = 3;
+    my $c = checked_sub_i64($a, $b);
+    WritelnOut(ToString($c));
+}
+
+=== checked int mul
+sub Main {
+    my $a = 3;
+    my $b = 7;
+    my $c = checked_mul_i64($a, $b);
+    WritelnOut(ToString($c));
+}
+
+=== checked int negate
+sub Main {
+    my $x = 42;
+    my $y = checked_neg_i64($x);
+    WritelnOut(ToString($y));
+}
+
+=== checked left shift
+sub Main {
+    my $x = 1;
+    my $y = checked_shl_i64($x, 4);
+    WritelnOut(ToString($y));
+}
+
+=== checked right shift
+sub Main {
+    my $x = 256;
+    my $y = checked_shr_i64($x, 4);
+    WritelnOut(ToString($y));
+}
+
+=== logical right shift
+sub Main {
+    my $x = checked_sub_i64(0, 1);
+    my $y = logical_shr_i64($x, 1);
+    WritelnOut(ToString($y));
+}
+
+=== wrapping add
+sub Main {
+    my $a = 9223372036854775807;
+    my $b = WrappingAdd($a, 1);
+    WritelnOut(ToString($b));
+}
+
+=== wrapping sub
+sub Main {
+    my $max = 9223372036854775807;
+    my $min = checked_sub_i64(checked_sub_i64(0, $max), 1);
+    my $b = WrappingSub($min, 1);
+    WritelnOut(ToString($b));
+}
+
+=== wrapping mul
+sub Main {
+    my $max = 9223372036854775807;
+    my $b = WrappingMul($max, 2);
+    WritelnOut(ToString($b));
+}
+
+=== checked pow
+sub Main {
+    my $x = checked_pow_i64(2, 10);
+    WritelnOut(ToString($x));
+}
+
+=== checked int compound add
+sub Main {
+    my $x = 10;
+    $x = checked_add_i64($x, 5);
+    WritelnOut(ToString($x));
+}
+
+=== checked int compound sub
+sub Main {
+    my $x = 10;
+    $x = checked_sub_i64($x, 3);
+    WritelnOut(ToString($x));
+}
+
+=== checked int compound mul
+sub Main {
+    my $x = 10;
+    $x = checked_mul_i64($x, 3);
+    WritelnOut(ToString($x));
+}
+
+=== float mod by zero traps
+sub Main {
+    my $caught = 0;
+    eval {
+        my $x = strict_fmod(1.0, 0.0);
+        1;
+    } or do {
+        $caught = 1;
+    };
+    WritelnOut(ToString($caught));
+}
+
+=== min with nan propagates
+sub Main {
+    my $nan = 0.0 / 0.0;
+    my $x = strict_min_f64($nan, 1.0);
+    WritelnOut(ToString(IsNaN($x)));
+}
+
+=== max with nan propagates
+sub Main {
+    my $nan = 0.0 / 0.0;
+    my $x = strict_max_f64($nan, 1.0);
+    WritelnOut(ToString(IsNaN($x)));
+}
+
+=== sorted with nan traps
+sub Main {
+    my $nan = 0.0 / 0.0;
+    my $caught = 0;
+    eval {
+        my $xs = strict_sorted_f64([1.0, $nan, 2.0]);
+        1;
+    } or do {
+        $caught = 1;
+    };
+    WritelnOut(ToString($caught));
+}
+
+=== non-strict ops unchanged
+sub Main {
+    my $x = 1.5 + 2.5;
+    my $y = checked_div_i64(10, 3);
+    my $z = checked_rem_i64(10, 3);
+    WritelnOut(ToString($y));
+}

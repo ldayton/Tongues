@@ -1,0 +1,88 @@
+=== checked int add
+c: int = checked_add_i64(a, b)
+print(str(c))
+
+=== checked int sub
+c: int = checked_sub_i64(a, b)
+print(str(c))
+
+=== checked int mul
+c: int = checked_mul_i64(a, b)
+print(str(c))
+
+=== checked int negate
+y: int = checked_neg_i64(x)
+print(str(y))
+
+=== checked left shift
+y: int = checked_shl_i64(x, 4)
+print(str(y))
+
+=== checked right shift
+y: int = checked_shr_i64(x, 4)
+print(str(y))
+
+=== logical right shift
+y: int = logical_shr_i64(x, 1)
+print(str(y))
+
+=== wrapping add
+b: int = WrappingAdd(a, 1)
+print(str(b))
+
+=== wrapping sub
+b: int = WrappingSub(min_, 1)
+print(str(b))
+
+=== wrapping mul
+b: int = WrappingMul(max_, 2)
+print(str(b))
+
+=== checked pow
+x: int = checked_pow_i64(2, 10)
+print(str(x))
+
+=== checked int compound add
+x = checked_add_i64(x, 5)
+print(str(x))
+
+=== checked int compound sub
+x = checked_sub_i64(x, 3)
+print(str(x))
+
+=== checked int compound mul
+x = checked_mul_i64(x, 3)
+print(str(x))
+
+=== float mod by zero traps
+caught: bool = False
+try:
+    x: float = strict_fmod(1.0, 0.0)
+except Exception:
+    caught = True
+print(str(caught))
+
+=== min with nan propagates
+nan: float = float("nan")
+x: float = strict_min_f64(nan, 1.0)
+print(str(math.isnan(x)))
+
+=== max with nan propagates
+nan: float = float("nan")
+x: float = strict_max_f64(nan, 1.0)
+print(str(math.isnan(x)))
+
+=== sorted with nan traps
+nan: float = float("nan")
+caught: bool = False
+try:
+    xs: list[float] = strict_sorted_f64([1.0, nan, 2.0])
+except Exception:
+    caught = True
+print(str(caught))
+
+=== non-strict ops unchanged
+x: float = 1.5 + 2.5
+y: int = checked_div_i64(10, 3)
+z: int = checked_rem_i64(10, 3)
+print(str(y))

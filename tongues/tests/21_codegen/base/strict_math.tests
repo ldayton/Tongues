@@ -1,0 +1,164 @@
+=== checked int add
+@@["strict_math"]
+fn Main() -> void {
+    let a: int = 1
+    let b: int = 2
+    let c: int = a + b
+    WritelnOut(ToString(c))
+}
+
+=== checked int sub
+@@["strict_math"]
+fn Main() -> void {
+    let a: int = 5
+    let b: int = 3
+    let c: int = a - b
+    WritelnOut(ToString(c))
+}
+
+=== checked int mul
+@@["strict_math"]
+fn Main() -> void {
+    let a: int = 3
+    let b: int = 7
+    let c: int = a * b
+    WritelnOut(ToString(c))
+}
+
+=== checked int negate
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 42
+    let y: int = -x
+    WritelnOut(ToString(y))
+}
+
+=== checked left shift
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 1
+    let y: int = x << 4
+    WritelnOut(ToString(y))
+}
+
+=== checked right shift
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 256
+    let y: int = x >> 4
+    WritelnOut(ToString(y))
+}
+
+=== logical right shift
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 0 - 1
+    let y: int = x >>> 1
+    WritelnOut(ToString(y))
+}
+
+=== wrapping add
+@@["strict_math"]
+fn Main() -> void {
+    let a: int = 9223372036854775807
+    let b: int = WrappingAdd(a, 1)
+    WritelnOut(ToString(b))
+}
+
+=== wrapping sub
+@@["strict_math"]
+fn Main() -> void {
+    let max: int = 9223372036854775807
+    let min: int = 0 - max - 1
+    let b: int = WrappingSub(min, 1)
+    WritelnOut(ToString(b))
+}
+
+=== wrapping mul
+@@["strict_math"]
+fn Main() -> void {
+    let max: int = 9223372036854775807
+    let b: int = WrappingMul(max, 2)
+    WritelnOut(ToString(b))
+}
+
+=== checked pow
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = Pow(2, 10)
+    WritelnOut(ToString(x))
+}
+
+=== checked int compound add
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 10
+    x += 5
+    WritelnOut(ToString(x))
+}
+
+=== checked int compound sub
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 10
+    x -= 3
+    WritelnOut(ToString(x))
+}
+
+=== checked int compound mul
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 10
+    x *= 3
+    WritelnOut(ToString(x))
+}
+
+=== float mod by zero traps
+@@["strict_math"]
+fn Main() -> void {
+    let caught: bool = false
+    try {
+        let x: float = 1.0 % 0.0
+    } catch e {
+        caught = true
+    }
+    WritelnOut(ToString(caught))
+}
+
+=== min with nan propagates
+@@["strict_math"]
+fn Main() -> void {
+    let nan: float = 0.0 / 0.0
+    let x: float = Min(nan, 1.0)
+    WritelnOut(ToString(IsNaN(x)))
+}
+
+=== max with nan propagates
+@@["strict_math"]
+fn Main() -> void {
+    let nan: float = 0.0 / 0.0
+    let x: float = Max(nan, 1.0)
+    WritelnOut(ToString(IsNaN(x)))
+}
+
+=== sorted with nan traps
+@@["strict_math"]
+fn Main() -> void {
+    let nan: float = 0.0 / 0.0
+    let caught: bool = false
+    try {
+        let xs: list[float] = Sorted([1.0, nan, 2.0])
+    } catch e {
+        caught = true
+    }
+    WritelnOut(ToString(caught))
+}
+
+=== non-strict ops unchanged
+@@["strict_math"]
+fn Main() -> void {
+    let x: float = 1.5 + 2.5
+    let y: int = 10 / 3
+    let z: int = 10 % 3
+    WritelnOut(ToString(y))
+}

@@ -1,0 +1,90 @@
+=== checked int add
+c = checked_add_i64(a, b)
+puts(c.to_s)
+
+=== checked int sub
+c = checked_sub_i64(a, b)
+puts(c.to_s)
+
+=== checked int mul
+c = checked_mul_i64(a, b)
+puts(c.to_s)
+
+=== checked int negate
+y = checked_neg_i64(x)
+puts(y.to_s)
+
+=== checked left shift
+y = checked_shl_i64(x, 4)
+puts(y.to_s)
+
+=== checked right shift
+y = checked_shr_i64(x, 4)
+puts(y.to_s)
+
+=== logical right shift
+y = logical_shr_i64(x, 1)
+puts(y.to_s)
+
+=== wrapping add
+b = wrapping_add(a, 1)
+puts(b.to_s)
+
+=== wrapping sub
+b = wrapping_sub(min_, 1)
+puts(b.to_s)
+
+=== wrapping mul
+b = wrapping_mul(max_, 2)
+puts(b.to_s)
+
+=== checked pow
+x = checked_pow_i64(2, 10)
+puts(x.to_s)
+
+=== checked int compound add
+x = checked_add_i64(x, 5)
+puts(x.to_s)
+
+=== checked int compound sub
+x = checked_sub_i64(x, 3)
+puts(x.to_s)
+
+=== checked int compound mul
+x = checked_mul_i64(x, 3)
+puts(x.to_s)
+
+=== float mod by zero traps
+caught = false
+begin
+  x = strict_fmod(1.0, 0.0)
+rescue StandardError
+  caught = true
+end
+puts(caught.to_s)
+
+=== min with nan propagates
+nan = Float::NAN
+x = strict_min_f64(nan, 1.0)
+puts(x.nan?.to_s)
+
+=== max with nan propagates
+nan = Float::NAN
+x = strict_max_f64(nan, 1.0)
+puts(x.nan?.to_s)
+
+=== sorted with nan traps
+nan = Float::NAN
+caught = false
+begin
+  xs = strict_sorted_f64([1.0, nan, 2.0])
+rescue StandardError
+  caught = true
+end
+puts(caught.to_s)
+
+=== non-strict ops unchanged
+x = 1.5 + 2.5
+y = checked_div_i64(10, 3)
+z = checked_rem_i64(10, 3)
+puts(y.to_s)

@@ -404,12 +404,34 @@ def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
 # ============================================================
 
 
+_STRICT_INT_BINARY = {
+    "+": "checked_add_i64",
+    "-": "checked_sub_i64",
+    "*": "checked_mul_i64",
+    "/": "checked_div_i64",
+    "%": "checked_rem_i64",
+    "<<": "checked_shl_i64",
+    ">>": "checked_shr_i64",
+    ">>>": "logical_shr_i64",
+}
+
+_STRICT_INT_COMPOUND = {
+    "+=": "checked_add_i64",
+    "-=": "checked_sub_i64",
+    "*=": "checked_mul_i64",
+}
+
+
 class _PythonEmitter:
     def __init__(
-        self, struct_names: set[str], struct_fields: dict[str, list[str]]
+        self,
+        struct_names: set[str],
+        struct_fields: dict[str, list[str]],
+        strict_math: bool = False,
     ) -> None:
         self.struct_names = struct_names
         self.struct_fields = struct_fields
+        self.strict_math = strict_math
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -741,9 +763,30 @@ class _PythonEmitter:
         elif isinstance(stmt, TTupleAssignStmt):
             self._emit_tuple_assign(stmt)
         elif isinstance(stmt, TOpAssignStmt):
-            self._line(
-                self._expr(stmt.target) + " " + stmt.op + " " + self._expr(stmt.value)
-            )
+            if (
+                self.strict_math
+                and stmt.op in _STRICT_INT_COMPOUND
+                and self._is_int_expr(stmt.target)
+            ):
+                fn = _STRICT_INT_COMPOUND[stmt.op]
+                self._line(
+                    self._expr(stmt.target)
+                    + " = "
+                    + fn
+                    + "("
+                    + self._expr(stmt.target)
+                    + ", "
+                    + self._expr(stmt.value)
+                    + ")"
+                )
+            else:
+                self._line(
+                    self._expr(stmt.target)
+                    + " "
+                    + stmt.op
+                    + " "
+                    + self._expr(stmt.value)
+                )
         elif isinstance(stmt, TExprStmt):
             self._emit_expr_stmt(stmt)
         elif isinstance(stmt, TReturnStmt):
@@ -919,6 +962,39 @@ class _PythonEmitter:
             self._line("pass")
         self._emit_stmts(stmt.body)
         self.indent -= 1
+
+    def _is_int_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TIntLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "int"
+        if isinstance(expr, TBinaryOp):
+            return self._is_int_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
+            return self._is_int_expr(expr.operand)
+        return False
+
+    def _is_float_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TFloatLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "float"
+        if isinstance(expr, TBinaryOp):
+            return self._is_float_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op == "-":
+            return self._is_float_expr(expr.operand)
+        return False
+
+    def _is_float_list(self, expr: TExpr) -> bool:
+        if isinstance(expr, TListLit) and expr.elements:
+            return self._is_float_expr(expr.elements[0])
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            if isinstance(typ, TListType) and isinstance(typ.element, TPrimitive):
+                return typ.element.kind == "float"
+        return False
 
     def _is_map_type(self, expr: TExpr) -> bool:
         """Check if an expression refers to a variable with map type."""
@@ -1173,6 +1249,34 @@ class _PythonEmitter:
 
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
+        # 0.0 / 0.0 raises ZeroDivisionError in Python; emit float("nan")
+        if (
+            op == "/"
+            and isinstance(expr.left, TFloatLit)
+            and expr.left.value == 0.0
+            and isinstance(expr.right, TFloatLit)
+            and expr.right.value == 0.0
+        ):
+            return 'float("nan")'
+        if self.strict_math:
+            if op in _STRICT_INT_BINARY and self._is_int_expr(expr.left):
+                fn = _STRICT_INT_BINARY[op]
+                return (
+                    fn
+                    + "("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+            if op == "%" and self._is_float_expr(expr.left):
+                return (
+                    "strict_fmod("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
         # chained comparison: a OP1 b && b OP2 c → a OP1 b OP2 c
         if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
             chained = self._chain_comparison(expr)
@@ -1198,6 +1302,8 @@ class _PythonEmitter:
 
     def _unary(self, expr: TUnaryOp) -> str:
         op = expr.op
+        if self.strict_math and op == "-" and self._is_int_expr(expr.operand):
+            return "checked_neg_i64(" + self._expr(expr.operand) + ")"
         if op == "!":
             if (
                 isinstance(expr.operand, TCall)
@@ -1444,10 +1550,26 @@ class _PythonEmitter:
         if name == "Abs":
             return "abs(" + self._a(args, 0) + ")"
         if name == "Min":
+            if (
+                self.strict_math
+                and len(args) == 2
+                and self._is_float_expr(args[0].value)
+            ):
+                return (
+                    "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             if len(args) == 1:
                 return "min(" + self._a(args, 0) + ")"
             return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Max":
+            if (
+                self.strict_math
+                and len(args) == 2
+                and self._is_float_expr(args[0].value)
+            ):
+                return (
+                    "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             if len(args) == 1:
                 return "max(" + self._a(args, 0) + ")"
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -1458,6 +1580,8 @@ class _PythonEmitter:
         if name == "DivMod":
             return "divmod(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sorted":
+            if self.strict_math and self._is_float_list(args[0].value):
+                return "strict_sorted_f64(" + self._a(args, 0) + ")"
             return "sorted(" + self._a(args, 0) + ")"
         if name == "Reversed":
             return "list(reversed(" + self._a(args, 0) + "))"
@@ -1535,6 +1659,14 @@ class _PythonEmitter:
             return "sys.exit(" + self._a(args, 0) + ")"
         # Operator forms
         if name == "Pow":
+            if self.strict_math and self._is_int_expr(args[0].value):
+                return (
+                    "checked_pow_i64("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ")"
+                )
             return self._a(args, 0) + " ** " + self._a(args, 1)
         if name == "Contains":
             return self._a(args, 1) + " in " + self._a(args, 0)
@@ -1649,6 +1781,8 @@ def emit_python(module: TModule) -> str:
         if isinstance(decl, TStructDecl):
             struct_names.add(decl.name)
             struct_fields[decl.name] = [f.name for f in decl.fields]
-    emitter = _PythonEmitter(struct_names, struct_fields)
+    emitter = _PythonEmitter(
+        struct_names, struct_fields, strict_math=module.strict_math
+    )
     emitter.emit_module(module)
     return emitter.output()
