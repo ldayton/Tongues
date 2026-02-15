@@ -2807,7 +2807,9 @@ def _tc_starts_ends_with(
         ty_eq(aty, TY_BYTES) and ty_eq(bty, TY_BYTES)
     ):
         return TY_BOOL
-    raise TaytshTypeError("StartsWith/EndsWith requires matching string or bytes args", pos)
+    raise TaytshTypeError(
+        "StartsWith/EndsWith requires matching string or bytes args", pos
+    )
 
 
 def _tc_abs(
@@ -3361,7 +3363,9 @@ def _tc_bytes_ctor(
         raise TaytshTypeError("named args not supported for Bytes", pos)
     if len(args) != 1:
         raise TaytshTypeError("Bytes expects 1 argument", pos)
-    aty = tc._type_expr(args[0].value, env, expected=TY_INT, allow_capture=allow_capture)
+    aty = tc._type_expr(
+        args[0].value, env, expected=TY_INT, allow_capture=allow_capture
+    )
     if not ty_eq(aty, TY_INT):
         raise TaytshTypeError("Bytes requires int argument", pos)
     return TY_BYTES
@@ -3532,7 +3536,9 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "RFind": _builtin_simple("RFind", (TY_STRING, TY_STRING), TY_INT),
     "Count": _builtin_simple("Count", (TY_STRING, TY_STRING), TY_INT),
     "Replace": _builtin_simple("Replace", (TY_STRING, TY_STRING, TY_STRING), TY_STRING),
-    "StartsWith": _Builtin(FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with),
+    "StartsWith": _Builtin(
+        FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with
+    ),
     "EndsWith": _Builtin(FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with),
     "Encode": _builtin_simple("Encode", (TY_STRING,), TY_BYTES),
     "Decode": _builtin_simple("Decode", (TY_BYTES,), TY_STRING),
@@ -5402,8 +5408,20 @@ def _bi_concat(rt: Runtime, args: list[Value]) -> Value:
         return VString(a.value + b.value)
     if isinstance(a, VBytes) and isinstance(b, VBytes):
         return VBytes(a.value + b.value)
-    a_elems = a.elements if isinstance(a, VList) else list(a.elements) if isinstance(a, VTuple) else None
-    b_elems = b.elements if isinstance(b, VList) else list(b.elements) if isinstance(b, VTuple) else None
+    a_elems = (
+        a.elements
+        if isinstance(a, VList)
+        else list(a.elements)
+        if isinstance(a, VTuple)
+        else None
+    )
+    b_elems = (
+        b.elements
+        if isinstance(b, VList)
+        else list(b.elements)
+        if isinstance(b, VTuple)
+        else None
+    )
     if a_elems is not None and b_elems is not None:
         merged = list(a_elems) + list(b_elems)
         if isinstance(a, VList):
@@ -5732,7 +5750,11 @@ def _bi_bytes_from(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_range_list(rt: Runtime, args: list[Value]) -> Value:
     start, end, step = args[0], args[1], args[2]
-    if not isinstance(start, VInt) or not isinstance(end, VInt) or not isinstance(step, VInt):
+    if (
+        not isinstance(start, VInt)
+        or not isinstance(end, VInt)
+        or not isinstance(step, VInt)
+    ):
         raise TaytshRuntimeFault("RangeList expects int, int, int", None)
     elements: list[Value] = [VInt(i) for i in range(start.value, end.value, step.value)]
     return VList(elements, TyList(TY_INT))

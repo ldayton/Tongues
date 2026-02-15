@@ -702,7 +702,9 @@ class _Emitter:
         if isinstance(stmt, TTryStmt):
             out2 = f"try {self._render_inline_block(stmt.body)}"
             for c2 in stmt.catches:
-                catch_suffix = f": {self._render_catch_types(c2.types)}" if c2.types else ""
+                catch_suffix = (
+                    f": {self._render_catch_types(c2.types)}" if c2.types else ""
+                )
                 out2 += f" catch {c2.name}{catch_suffix} {self._render_inline_block(c2.body)}"
             if stmt.finally_body is not None:
                 out2 += f" finally {self._render_inline_block(stmt.finally_body)}"

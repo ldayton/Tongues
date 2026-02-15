@@ -406,14 +406,24 @@ def is_assignable(source: Type, target: Type) -> bool:
         if all_ok:
             return True
     # Source with obj element → assignable to same container (empty literal)
-    if isinstance(source, ListT) and isinstance(target, ListT) and source.element.kind == TY_OBJ:
+    if (
+        isinstance(source, ListT)
+        and isinstance(target, ListT)
+        and source.element.kind == TY_OBJ
+    ):
         return True
     if isinstance(source, MapT) and isinstance(target, MapT):
         if source.key.kind == TY_OBJ and source.value.kind == TY_OBJ:
             return True
-        if is_assignable(source.key, target.key) and is_assignable(source.value, target.value):
+        if is_assignable(source.key, target.key) and is_assignable(
+            source.value, target.value
+        ):
             return True
-    if isinstance(source, SetT) and isinstance(target, SetT) and source.element.kind == TY_OBJ:
+    if (
+        isinstance(source, SetT)
+        and isinstance(target, SetT)
+        and source.element.kind == TY_OBJ
+    ):
         return True
     # Tuple element-by-element assignability
     if isinstance(source, TupleT) and isinstance(target, TupleT):
@@ -427,7 +437,9 @@ def is_assignable(source: Type, target: Type) -> bool:
                 return True
     # list[T] assignable to tuple of T elements (tuple augmented assignment)
     if isinstance(source, ListT) and isinstance(target, TupleT):
-        if target.elements and all(is_assignable(source.element, e) for e in target.elements):
+        if target.elements and all(
+            is_assignable(source.element, e) for e in target.elements
+        ):
             return True
     return False
 
@@ -439,7 +451,16 @@ def is_assignable(source: Type, target: Type) -> bool:
 
 def is_hashable(t: Type) -> bool:
     """Check if a type is hashable (valid as map key or set element)."""
-    if t.kind in (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_BYTES, TY_STRING, TY_RUNE, TY_NIL):
+    if t.kind in (
+        TY_INT,
+        TY_FLOAT,
+        TY_BOOL,
+        TY_BYTE,
+        TY_BYTES,
+        TY_STRING,
+        TY_RUNE,
+        TY_NIL,
+    ):
         return True
     if isinstance(t, EnumT):
         return True
@@ -1640,7 +1661,9 @@ class Checker:
                 if isinstance(left, SetT) and isinstance(right, SetT):
                     return BOOL_T
                 # Allow comparing tuple and list (single-element tuple lowered to list)
-                if isinstance(left, (TupleT, ListT)) and isinstance(right, (TupleT, ListT)):
+                if isinstance(left, (TupleT, ListT)) and isinstance(
+                    right, (TupleT, ListT)
+                ):
                     return BOOL_T
                 # Allow comparing with obj
                 if left.kind == TY_OBJ or right.kind == TY_OBJ:
@@ -1655,7 +1678,9 @@ class Checker:
         if op in ("<", "<=", ">", ">="):
             if not type_eq(left, right):
                 # Allow comparing tuples of different sizes, or tuple with list
-                if isinstance(left, (TupleT, ListT)) and isinstance(right, (TupleT, ListT)):
+                if isinstance(left, (TupleT, ListT)) and isinstance(
+                    right, (TupleT, ListT)
+                ):
                     return BOOL_T
                 # Allow comparing with obj
                 if left.kind == TY_OBJ or right.kind == TY_OBJ:
@@ -2586,10 +2611,10 @@ class Checker:
                         return t1
                     if isinstance(t2, ListT):
                         return t2
-                    return ListT(kind="list", element=t1.elements[0] if t1.elements else OBJ_T)
-                self.error(
-                    "Concat requires two strings, two bytes, or two lists", pos
-                )
+                    return ListT(
+                        kind="list", element=t1.elements[0] if t1.elements else OBJ_T
+                    )
+                self.error("Concat requires two strings, two bytes, or two lists", pos)
             return STRING_T
 
         # ── Append ──
@@ -2606,7 +2631,8 @@ class Checker:
                     byte_int = {TY_BYTE, TY_INT}
                     if not (t2.kind in byte_int and t1.element.kind in byte_int):
                         self.error(
-                            "cannot append " + type_name(t2) + " to " + type_name(t1), pos
+                            "cannot append " + type_name(t2) + " to " + type_name(t1),
+                            pos,
                         )
             return VOID_T
 
@@ -2708,7 +2734,9 @@ class Checker:
                 elif isinstance(t1, TupleT):
                     pass
                 else:
-                    self.error("Contains requires list, set, map, string, or bytes", pos)
+                    self.error(
+                        "Contains requires list, set, map, string, or bytes", pos
+                    )
             return BOOL_T
 
         # ── Get ──
@@ -2972,8 +3000,16 @@ class Checker:
             if t2 is not None and not isinstance(t2, ListT):
                 self.error("Zip requires list as second argument", pos)
                 return None
-            if t1 is not None and t2 is not None and isinstance(t1, ListT) and isinstance(t2, ListT):
-                return ListT(kind="list", element=TupleT(kind="tuple", elements=[t1.element, t2.element]))
+            if (
+                t1 is not None
+                and t2 is not None
+                and isinstance(t1, ListT)
+                and isinstance(t2, ListT)
+            ):
+                return ListT(
+                    kind="list",
+                    element=TupleT(kind="tuple", elements=[t1.element, t2.element]),
+                )
             return None
 
         # ── SetFromList ──
