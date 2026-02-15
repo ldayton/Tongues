@@ -129,6 +129,89 @@ fn TestSortedNaNTraps() -> void {
     Assert(caught, "expected Sorted(list[float]) trap when list contains NaN")
 }
 
+fn TestLogicalRightShift() -> void {
+    -- positive numbers: same as >>
+    Assert(8 >>> 2 == 2, "8 >>> 2 == 2")
+    Assert(255 >>> 4 == 15, "255 >>> 4 == 15")
+
+    -- zero shift is identity
+    Assert(42 >>> 0 == 42, "42 >>> 0 == 42")
+
+    -- negative numbers: differs from >> by zero-filling from left
+    let neg: int = 0 - 1
+    let result: int = neg >>> 1
+    Assert(result > 0, "(-1) >>> 1 should be positive (zero-filled)")
+    Assert(result == 9223372036854775807, "(-1) >>> 1 == INT64_MAX")
+
+    -- shift by 63: only sign bit matters
+    let min: int = 0 - 9223372036854775807 - 1
+    Assert(min >>> 63 == 1, "INT64_MIN >>> 63 == 1")
+    Assert(1 >>> 63 == 0, "1 >>> 63 == 0")
+}
+
+fn TestLogicalRightShiftGE64Traps() -> void {
+    let caught: bool = false
+    try {
+        let x: int = 1 >>> 64
+    } catch e {
+        caught = true
+    }
+    Assert(caught, "expected shift trap for 1>>>64")
+
+    caught = false
+    try {
+        let x: int = 1 >>> 100
+    } catch e {
+        caught = true
+    }
+    Assert(caught, "expected shift trap for 1>>>100")
+}
+
+fn TestWrappingAdd() -> void {
+    -- normal case: no overflow
+    Assert(WrappingAdd(1, 2) == 3, "WrappingAdd(1, 2) == 3")
+
+    -- overflow: max + 1 wraps to min
+    let max: int = 9223372036854775807
+    let min: int = 0 - max - 1
+    Assert(WrappingAdd(max, 1) == min, "WrappingAdd(max, 1) == min")
+
+    -- overflow: max + max wraps to -2
+    Assert(WrappingAdd(max, max) == 0 - 2, "WrappingAdd(max, max) == -2")
+
+    -- zero identity
+    Assert(WrappingAdd(42, 0) == 42, "WrappingAdd(42, 0) == 42")
+}
+
+fn TestWrappingSub() -> void {
+    -- normal case: no underflow
+    Assert(WrappingSub(5, 3) == 2, "WrappingSub(5, 3) == 2")
+
+    -- underflow: min - 1 wraps to max
+    let max: int = 9223372036854775807
+    let min: int = 0 - max - 1
+    Assert(WrappingSub(min, 1) == max, "WrappingSub(min, 1) == max")
+
+    -- zero identity
+    Assert(WrappingSub(42, 0) == 42, "WrappingSub(42, 0) == 42")
+}
+
+fn TestWrappingMul() -> void {
+    -- normal case: no overflow
+    Assert(WrappingMul(3, 7) == 21, "WrappingMul(3, 7) == 21")
+
+    -- overflow: large * 2 wraps
+    let max: int = 9223372036854775807
+    let min: int = 0 - max - 1
+    Assert(WrappingMul(max, 2) == 0 - 2, "WrappingMul(max, 2) == -2")
+
+    -- zero absorbs
+    Assert(WrappingMul(max, 0) == 0, "WrappingMul(max, 0) == 0")
+
+    -- min * -1 wraps back to min (since |min| > max)
+    Assert(WrappingMul(min, 0 - 1) == min, "WrappingMul(min, -1) == min")
+}
+
 fn Main() -> void {
     TestIntAddOverflowTraps()
     TestIntSubOverflowTraps()
@@ -140,5 +223,10 @@ fn Main() -> void {
     TestMinMaxNaNPropagates()
     TestFloatModByZeroTraps()
     TestSortedNaNTraps()
+    TestLogicalRightShift()
+    TestLogicalRightShiftGE64Traps()
+    TestWrappingAdd()
+    TestWrappingSub()
+    TestWrappingMul()
 }
 

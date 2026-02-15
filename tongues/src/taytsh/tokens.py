@@ -57,6 +57,7 @@ KEYWORDS: set[str] = {
 MULTI_OPS: list[str] = [
     "<<=",
     ">>=",
+    ">>>",
     "->",
     "=>",
     "&&",
