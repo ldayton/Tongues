@@ -1,0 +1,23 @@
+=== struct construction and field access
+p = Point.new(x: 1, y: 2)
+
+=== struct method call
+c = Counter.new(n: 0)
+c.inc
+puts(c.value.to_s)
+
+=== field assignment
+p.x = 10
+p.y = 20
+
+=== nested struct access
+puts(o.inner.value.to_s)
+
+=== struct with interface field
+return eval_(b.left) + eval_(b.right)
+
+=== enum comparison
+if c == Color::Red
+
+=== named struct construction
+p = Point.new(y: 2, x: 1)

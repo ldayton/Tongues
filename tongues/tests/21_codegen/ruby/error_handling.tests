@@ -1,0 +1,40 @@
+=== unused catch variable is omitted
+rescue ArgumentError
+
+=== used catch variable is kept
+rescue ArgumentError => e
+
+=== try with finally
+ensure
+  puts("finally")
+
+=== try with multiple catch clauses
+rescue ArgumentError
+
+=== re-throw in catch
+raise e
+
+=== catch-all without type
+rescue => e
+
+=== catch-all after typed catch
+rescue ErrA
+  puts("got A")
+rescue => e
+  puts(e.message)
+
+=== throw and catch struct
+rescue AppError => e
+  puts(e.message)
+
+=== catch union of both error types
+rescue ErrA, ErrB => e
+
+=== catch union of types
+rescue ErrA, ErrB => e
+
+=== Assert with message
+raise "must be positive" unless x > 0
+
+=== Assert without message
+raise "assertion failed" unless x > 0

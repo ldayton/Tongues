@@ -1,0 +1,57 @@
+=== if-else chain
+if x > 0
+  return "positive"
+elsif x == 0
+  return "zero"
+else
+  return "negative"
+end
+
+=== while loop
+while n > 0
+  total += n
+  n -= 1
+end
+
+=== while true with break
+while true
+
+=== for range single arg
+_range(10).each do |i|
+
+=== for range two args
+_range(5, 10).each do |i|
+
+=== for range three args
+_range(10, 0, -1).each do |i|
+
+=== for over list single var
+xs.each do |x|
+
+=== for over map keys
+m.each_key do |k|
+
+=== for over map key-value pairs
+m.each do |k, v|
+
+=== for over string characters
+"hello".each_char do |ch|
+
+=== for over set
+s.each do |v|
+
+=== break and continue
+next
+end
+if x == 5
+  break
+end
+
+=== enumerate over list
+xs.each_with_index do |v, i|
+
+=== negated condition
+if !done
+
+=== ternary expression
+return x < lo ? lo : (x > hi ? hi : x)

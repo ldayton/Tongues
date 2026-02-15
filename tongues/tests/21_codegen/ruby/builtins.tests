@@ -1,0 +1,38 @@
+=== math functions
+puts((-5).abs.to_s)
+
+=== float math functions
+r = 3.7.round
+
+=== conversion functions
+f = 42.to_f
+n = 3.14.to_i
+b = [65].pack('U')
+i = b.ord
+
+=== ParseInt and ParseFloat
+n = "42".to_i(10)
+
+=== FormatInt
+hex_ = 255.to_s(16)
+
+=== RuneToInt and RuneFromInt
+n = "A".ord
+
+=== IsNaN and IsInf
+puts(x.nan?.to_s)
+
+=== Len on various types
+puts("hello".length.to_s)
+
+=== DivMod
+q, r = 17.divmod(5)
+
+=== Sqrt function
+x = Math.sqrt(2.0)
+
+=== Floor function
+n = 3.7.floor
+
+=== Ceil function
+n = 3.2.ceil
