@@ -483,9 +483,11 @@ def _dependency_order(files: list[str], deps: dict[str, list[str]]) -> list[str]
     return result
 
 
-def _collect_module_names(ast_dict: dict[str, object]) -> list[tuple[str, int, int]]:
-    """Collect (name, lineno, col) for module-level ClassDef, FunctionDef, Assign, AnnAssign."""
-    result: list[tuple[str, int, int]] = []
+def _collect_module_names(
+    ast_dict: dict[str, object],
+) -> list[tuple[str, int, int, dict[str, object]]]:
+    """Collect (name, lineno, col, stmt) for module-level definitions."""
+    result: list[tuple[str, int, int, dict[str, object]]] = []
     body = ast_dict.get("body", [])
     if not isinstance(body, list):
         return result
@@ -505,11 +507,11 @@ def _collect_module_names(ast_dict: dict[str, object]) -> list[tuple[str, int, i
         if node_type == "ClassDef":
             name = stmt.get("name", "")
             if isinstance(name, str) and name != "":
-                result.append((name, lineno, col))
+                result.append((name, lineno, col, stmt))
         elif node_type == "FunctionDef":
             name = stmt.get("name", "")
             if isinstance(name, str) and name != "":
-                result.append((name, lineno, col))
+                result.append((name, lineno, col, stmt))
         elif node_type == "Assign":
             targets = stmt.get("targets", [])
             if isinstance(targets, list):
@@ -519,14 +521,14 @@ def _collect_module_names(ast_dict: dict[str, object]) -> list[tuple[str, int, i
                     if isinstance(target, dict) and target.get("_type") == "Name":
                         tid = target.get("id", "")
                         if isinstance(tid, str) and tid != "":
-                            result.append((tid, lineno, col))
+                            result.append((tid, lineno, col, stmt))
                     j += 1
         elif node_type == "AnnAssign":
             target = stmt.get("target", {})
             if isinstance(target, dict) and target.get("_type") == "Name":
                 tid = target.get("id", "")
                 if isinstance(tid, str) and tid != "":
-                    result.append((tid, lineno, col))
+                    result.append((tid, lineno, col, stmt))
         i += 1
     return result
 
@@ -570,17 +572,319 @@ def _detect_collisions(
     return errors
 
 
-def _rewrite_names(node: dict[str, object], rename_map: dict[str, str]) -> None:
-    """Recursively rename Name nodes per rename_map. In-place."""
-    work: list[object] = [node]
+def _ast_equal(a: object, b: object) -> bool:
+    """Deep structural comparison of AST nodes, ignoring position metadata."""
+    ignore: set[str] = {
+        "lineno",
+        "col_offset",
+        "end_lineno",
+        "end_col_offset",
+        "_source_file",
+        "_remove",
+    }
+    work_a: list[object] = [a]
+    work_b: list[object] = [b]
+    wi = 0
+    while wi < len(work_a):
+        x = work_a[wi]
+        y = work_b[wi]
+        if isinstance(x, dict) and isinstance(y, dict):
+            x_keys: list[str] = []
+            xk = list(x.keys())
+            ki = 0
+            while ki < len(xk):
+                if xk[ki] not in ignore:
+                    x_keys.append(xk[ki])
+                ki += 1
+            y_keys: list[str] = []
+            yk = list(y.keys())
+            ki = 0
+            while ki < len(yk):
+                if yk[ki] not in ignore:
+                    y_keys.append(yk[ki])
+                ki += 1
+            if len(x_keys) != len(y_keys):
+                return False
+            x_keys.sort()
+            y_keys.sort()
+            ki = 0
+            while ki < len(x_keys):
+                if x_keys[ki] != y_keys[ki]:
+                    return False
+                ki += 1
+            ki = 0
+            while ki < len(x_keys):
+                work_a.append(x[x_keys[ki]])
+                work_b.append(y[y_keys[ki]])
+                ki += 1
+        elif isinstance(x, list) and isinstance(y, list):
+            if len(x) != len(y):
+                return False
+            li = 0
+            while li < len(x):
+                work_a.append(x[li])
+                work_b.append(y[li])
+                li += 1
+        else:
+            if x != y:
+                return False
+        wi += 1
+    return True
+
+
+def _collect_definition_refs(node: dict[str, object]) -> set[str]:
+    """Collect all Name.id values referenced in a definition's body."""
+    refs: set[str] = set()
+    node_type = node.get("_type", "")
+    seeds: list[object] = []
+    if node_type == "FunctionDef":
+        body = node.get("body", [])
+        if isinstance(body, list):
+            seeds.append(body)
+        args = node.get("args")
+        if isinstance(args, dict):
+            seeds.append(args)
+        returns = node.get("returns")
+        if returns is not None:
+            seeds.append(returns)
+        deco = node.get("decorator_list", [])
+        if isinstance(deco, list):
+            seeds.append(deco)
+    elif node_type == "ClassDef":
+        body = node.get("body", [])
+        if isinstance(body, list):
+            seeds.append(body)
+        bases = node.get("bases", [])
+        if isinstance(bases, list):
+            seeds.append(bases)
+        deco = node.get("decorator_list", [])
+        if isinstance(deco, list):
+            seeds.append(deco)
+    elif node_type == "Assign":
+        value = node.get("value")
+        if value is not None:
+            seeds.append(value)
+    elif node_type == "AnnAssign":
+        value = node.get("value")
+        if value is not None:
+            seeds.append(value)
+        ann = node.get("annotation")
+        if ann is not None:
+            seeds.append(ann)
+    work: list[object] = list(seeds)
     wi = 0
     while wi < len(work):
         item = work[wi]
         if isinstance(item, dict):
             if item.get("_type") == "Name":
                 nid = item.get("id")
+                if isinstance(nid, str):
+                    refs.add(nid)
+            keys = list(item.keys())
+            ki = 0
+            while ki < len(keys):
+                val = item[keys[ki]]
+                if isinstance(val, dict) or isinstance(val, list):
+                    work.append(val)
+                ki += 1
+        elif isinstance(item, list):
+            li = 0
+            while li < len(item):
+                child = item[li]
+                if isinstance(child, dict) or isinstance(child, list):
+                    work.append(child)
+                li += 1
+        wi += 1
+    return refs
+
+
+def _compute_module_stems(paths: list[str]) -> dict[str, str]:
+    """Compute unique module stems for each file path."""
+    raw_stems: dict[str, str] = {}
+    i = 0
+    while i < len(paths):
+        path = paths[i]
+        slash_idx = path.rfind("/")
+        if slash_idx >= 0:
+            filename = path[slash_idx + 1 :]
+            parent = path[:slash_idx]
+        else:
+            filename = path
+            parent = ""
+        if filename == "__init__.py":
+            parent_slash = parent.rfind("/")
+            if parent_slash >= 0:
+                stem = parent[parent_slash + 1 :]
+            else:
+                stem = parent
+            if stem == "":
+                stem = "__init__"
+        else:
+            if filename.endswith(".py"):
+                stem = filename[:-3]
+            else:
+                stem = filename
+        raw_stems[path] = stem
+        i += 1
+    stem_to_paths: dict[str, list[str]] = {}
+    i = 0
+    while i < len(paths):
+        path = paths[i]
+        stem = raw_stems[path]
+        if stem not in stem_to_paths:
+            stem_to_paths[stem] = []
+        stem_to_paths[stem].append(path)
+        i += 1
+    result: dict[str, str] = {}
+    skeys = list(stem_to_paths.keys())
+    si = 0
+    while si < len(skeys):
+        stem = skeys[si]
+        colliding = stem_to_paths[stem]
+        if len(colliding) == 1:
+            result[colliding[0]] = stem
+        else:
+            ci = 0
+            while ci < len(colliding):
+                path = colliding[ci]
+                slash_idx = path.rfind("/")
+                if slash_idx >= 0:
+                    parent = path[:slash_idx]
+                    parent_slash = parent.rfind("/")
+                    if parent_slash >= 0:
+                        parent_name = parent[parent_slash + 1 :]
+                    else:
+                        parent_name = parent
+                    result[path] = parent_name + "_" + stem
+                else:
+                    result[path] = stem
+                ci += 1
+        si += 1
+    return result
+
+
+def _prefix_name(name: str, stem: str) -> str:
+    """Compute prefixed name for collision resolution."""
+    if len(name) > 0 and name[0] == "_":
+        return "_" + stem + "_" + name[1:]
+    return stem + "_" + name
+
+
+def _plan_collision_resolution(
+    file_names: dict[str, list[tuple[str, int, int, dict[str, object]]]],
+    stems: dict[str, str],
+) -> tuple[set[str], dict[str, dict[str, str]]]:
+    """Plan collision resolution. Returns (dedup_names, file_renames)."""
+    name_to_defs: dict[str, list[tuple[str, dict[str, object]]]] = {}
+    fkeys = list(file_names.keys())
+    fi = 0
+    while fi < len(fkeys):
+        f = fkeys[fi]
+        names = file_names[f]
+        ni = 0
+        while ni < len(names):
+            name = names[ni][0]
+            ast_node = names[ni][3]
+            if name not in name_to_defs:
+                name_to_defs[name] = []
+            name_to_defs[name].append((f, ast_node))
+            ni += 1
+        fi += 1
+    dedup_candidates: set[str] = set()
+    file_renames: dict[str, dict[str, str]] = {}
+    nkeys = list(name_to_defs.keys())
+    ni = 0
+    while ni < len(nkeys):
+        name = nkeys[ni]
+        defs = name_to_defs[name]
+        if len(defs) > 1:
+            all_equal = True
+            di = 1
+            while di < len(defs):
+                if not _ast_equal(defs[0][1], defs[di][1]):
+                    all_equal = False
+                    break
+                di += 1
+            if all_equal:
+                dedup_candidates.add(name)
+            else:
+                di = 0
+                while di < len(defs):
+                    f = defs[di][0]
+                    stem = stems[f]
+                    prefixed = _prefix_name(name, stem)
+                    if f not in file_renames:
+                        file_renames[f] = {}
+                    file_renames[f][name] = prefixed
+                    di += 1
+        ni += 1
+    changed = True
+    while changed:
+        changed = False
+        all_prefixed: set[str] = set()
+        rkeys = list(file_renames.keys())
+        ri = 0
+        while ri < len(rkeys):
+            rmap = file_renames[rkeys[ri]]
+            mk = list(rmap.keys())
+            mi = 0
+            while mi < len(mk):
+                all_prefixed.add(mk[mi])
+                mi += 1
+            ri += 1
+        to_demote: list[str] = []
+        dedup_list = list(dedup_candidates)
+        di = 0
+        while di < len(dedup_list):
+            name = dedup_list[di]
+            defs = name_to_defs[name]
+            refs = _collect_definition_refs(defs[0][1])
+            ref_list = list(refs)
+            ri = 0
+            unsafe = False
+            while ri < len(ref_list):
+                if ref_list[ri] in all_prefixed:
+                    unsafe = True
+                    break
+                ri += 1
+            if unsafe:
+                to_demote.append(name)
+            di += 1
+        dmi = 0
+        while dmi < len(to_demote):
+            name = to_demote[dmi]
+            dedup_candidates.discard(name)
+            defs = name_to_defs[name]
+            di = 0
+            while di < len(defs):
+                f = defs[di][0]
+                stem = stems[f]
+                prefixed = _prefix_name(name, stem)
+                if f not in file_renames:
+                    file_renames[f] = {}
+                file_renames[f][name] = prefixed
+                di += 1
+            changed = True
+            dmi += 1
+    return (dedup_candidates, file_renames)
+
+
+def _rewrite_names(node: dict[str, object], rename_map: dict[str, str]) -> None:
+    """Recursively rename Name nodes and definition names per rename_map. In-place."""
+    work: list[object] = [node]
+    wi = 0
+    while wi < len(work):
+        item = work[wi]
+        if isinstance(item, dict):
+            ntype = item.get("_type")
+            if ntype == "Name":
+                nid = item.get("id")
                 if isinstance(nid, str) and nid in rename_map:
                     item["id"] = rename_map[nid]
+            elif ntype == "FunctionDef" or ntype == "ClassDef":
+                def_name = item.get("name")
+                if isinstance(def_name, str) and def_name in rename_map:
+                    item["name"] = rename_map[def_name]
             keys = list(item.keys())
             ki = 0
             while ki < len(keys):
@@ -601,7 +905,7 @@ def _rewrite_names(node: dict[str, object], rename_map: dict[str, str]) -> None:
 def _rewrite_module_attrs(
     node: dict[str, object],
     module_bindings: dict[str, str],
-    file_names: dict[str, set[str]],
+    file_name_map: dict[str, dict[str, str]],
 ) -> list[str]:
     """Rewrite module.attr Attribute nodes to plain Name nodes. Returns errors."""
     errors: list[str] = []
@@ -630,8 +934,12 @@ def _rewrite_module_attrs(
                                 attr = val.get("attr", "")
                                 if not isinstance(attr, str):
                                     attr = ""
-                                target_names = file_names.get(target_file)
-                                if target_names is not None and attr in target_names:
+                                target_name_map = file_name_map.get(target_file)
+                                if (
+                                    target_name_map is not None
+                                    and attr in target_name_map
+                                ):
+                                    final_name = target_name_map[attr]
                                     lineno = val.get("lineno", 0)
                                     col = val.get("col_offset", 0)
                                     end_lineno = val.get("end_lineno", 0)
@@ -639,7 +947,7 @@ def _rewrite_module_attrs(
                                     source_file = val.get("_source_file", "")
                                     val.clear()
                                     val["_type"] = "Name"
-                                    val["id"] = attr
+                                    val["id"] = final_name
                                     val["ctx"] = {"_type": "Load"}
                                     val["lineno"] = lineno
                                     val["col_offset"] = col
@@ -647,7 +955,7 @@ def _rewrite_module_attrs(
                                     val["end_col_offset"] = end_col
                                     if source_file != "":
                                         val["_source_file"] = source_file
-                                elif target_names is not None:
+                                elif target_name_map is not None:
                                     lineno = val.get("lineno", 0)
                                     col = val.get("col_offset", 0)
                                     errors.append(
@@ -778,41 +1086,46 @@ def merge_project(
         i += 1
     if len(errors) > 0:
         return (None, errors)
-    # Collect module names per file
-    all_file_names: dict[str, list[tuple[str, int, int]]] = {}
+    # Collect module names per file (with AST nodes)
+    all_file_names: dict[str, list[tuple[str, int, int, dict[str, object]]]] = {}
     i = 0
     while i < len(file_asts):
         path = file_asts[i][0]
         ast_dict = file_asts[i][1]
         all_file_names[path] = _collect_module_names(ast_dict)
         i += 1
-    # Detect collisions
-    collision_errors = _detect_collisions(all_file_names)
-    if len(collision_errors) > 0:
-        return (None, collision_errors)
-    # Build name sets for module-attr rewriting
-    file_name_sets: dict[str, set[str]] = {}
-    fkeys = list(all_file_names.keys())
-    i = 0
-    while i < len(fkeys):
-        f = fkeys[i]
-        names = all_file_names[f]
-        name_set: set[str] = set()
-        j = 0
-        while j < len(names):
-            name_set.add(names[j][0])
-            j += 1
-        file_name_sets[f] = name_set
-        i += 1
-    # Dependency order
+    # Compute module stems and plan collision resolution
     file_list: list[str] = []
     i = 0
     while i < len(file_asts):
         file_list.append(file_asts[i][0])
         i += 1
+    stems = _compute_module_stems(file_list)
+    dedup_names, file_renames = _plan_collision_resolution(all_file_names, stems)
+    # Build file_name_map for _rewrite_module_attrs
+    file_name_map: dict[str, dict[str, str]] = {}
+    fkeys = list(all_file_names.keys())
+    i = 0
+    while i < len(fkeys):
+        f = fkeys[i]
+        names = all_file_names[f]
+        name_map: dict[str, str] = {}
+        j = 0
+        while j < len(names):
+            original = names[j][0]
+            f_renames = file_renames.get(f, {})
+            if original in f_renames:
+                name_map[original] = f_renames[original]
+            else:
+                name_map[original] = original
+            j += 1
+        file_name_map[f] = name_map
+        i += 1
+    # Dependency order
     ordered = _dependency_order(file_list, deps)
     # Merge
     merged_body: list[dict[str, object]] = []
+    dedup_seen: set[str] = set()
     oi = 0
     while oi < len(ordered):
         path = ordered[oi]
@@ -857,13 +1170,16 @@ def merge_project(
                                 if isinstance(asname, str) and asname != ""
                                 else name
                             )
-                            # Find the resolved path for this name
                             if ni < len(resolved):
                                 rpath = resolved[ni][0]
                                 if rpath != "":
                                     module_bindings[bound] = rpath
                     ni += 1
             else:
+                source_file = ""
+                if len(resolved) > 0:
+                    source_file = resolved[0][0]
+                source_renames = file_renames.get(source_file, {})
                 ni = 0
                 while ni < len(names_list):
                     alias = names_list[ni]
@@ -876,16 +1192,25 @@ def merge_project(
                                 if isinstance(asname, str) and asname != ""
                                 else name
                             )
-                            if bound != name:
+                            if name in source_renames:
+                                rename_map[bound] = source_renames[name]
+                            elif bound != name:
                                 rename_map[bound] = name
                     ni += 1
             ei += 1
+        # Add own collision renames (override import renames for local defs)
+        own_renames = file_renames.get(path, {})
+        okeys = list(own_renames.keys())
+        oki = 0
+        while oki < len(okeys):
+            rename_map[okeys[oki]] = own_renames[okeys[oki]]
+            oki += 1
         # Apply rewrites
         if len(rename_map) > 0:
             _rewrite_names(ast_dict, rename_map)
         if len(module_bindings) > 0:
             rewrite_errors = _rewrite_module_attrs(
-                ast_dict, module_bindings, file_name_sets
+                ast_dict, module_bindings, file_name_map
             )
             ri = 0
             while ri < len(rewrite_errors):
@@ -896,17 +1221,48 @@ def merge_project(
         while ei < len(import_entries):
             import_entries[ei][0]["_remove"] = True
             ei += 1
-        # Filter body: remove project imports, tag all nodes with _source_file
+        # Mark dedup duplicate definitions (keep first occurrence)
+        bi = 0
+        while bi < len(body):
+            bstmt = body[bi]
+            if isinstance(bstmt, dict):
+                stype = bstmt.get("_type", "")
+                def_name = ""
+                if stype == "ClassDef" or stype == "FunctionDef":
+                    n = bstmt.get("name", "")
+                    if isinstance(n, str):
+                        def_name = n
+                elif stype == "Assign":
+                    targets = bstmt.get("targets", [])
+                    if isinstance(targets, list) and len(targets) > 0:
+                        t = targets[0]
+                        if isinstance(t, dict) and t.get("_type") == "Name":
+                            n = t.get("id", "")
+                            if isinstance(n, str):
+                                def_name = n
+                elif stype == "AnnAssign":
+                    target = bstmt.get("target", {})
+                    if isinstance(target, dict) and target.get("_type") == "Name":
+                        n = target.get("id", "")
+                        if isinstance(n, str):
+                            def_name = n
+                if def_name != "" and def_name in dedup_names:
+                    if def_name in dedup_seen:
+                        bstmt["_remove"] = True
+                    else:
+                        dedup_seen.add(def_name)
+            bi += 1
+        # Filter body: remove project imports and dedup dups, tag _source_file
         new_body: list[dict[str, object]] = []
         bi = 0
         while bi < len(body):
-            stmt = body[bi]
-            if isinstance(stmt, dict) and stmt.get("_remove") is True:
+            bstmt = body[bi]
+            if isinstance(bstmt, dict) and bstmt.get("_remove") is True:
                 bi += 1
                 continue
-            if isinstance(stmt, dict):
-                _tag_source_file(stmt, path)
-            new_body.append(stmt)
+            if isinstance(bstmt, dict):
+                _tag_source_file(bstmt, path)
+            new_body.append(bstmt)
             bi += 1
         mi = 0
         while mi < len(new_body):

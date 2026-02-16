@@ -8,11 +8,16 @@ import pytest
 
 from src.frontend.parse import parse
 from src.tongues import (
+    _ast_equal,
     _classify_import,
+    _collect_definition_refs,
     _collect_module_names,
+    _compute_module_stems,
     _dependency_order,
     _detect_collisions,
     _parse_project_input,
+    _plan_collision_resolution,
+    _prefix_name,
     _resolve_project_import,
     _rewrite_names,
     _rewrite_module_attrs,
@@ -318,12 +323,19 @@ class TestMergeProject:
         assert "foo" in names
         assert "bar" in names
 
-    def test_collision(self):
+    def test_collision_resolved(self):
         file_asts = _parse_files(_load_fixture("collision"))
         merged, errors = merge_project(file_asts)
-        assert merged is None
-        assert len(errors) > 0
-        assert any("Token" in e for e in errors)
+        assert errors == []
+        assert merged is not None
+        # Both Token classes should be prefixed
+        names = []
+        for s in merged["body"]:
+            if isinstance(s, dict) and s.get("_type") == "ClassDef":
+                names.append(s["name"])
+        assert "a_Token" in names
+        assert "b_Token" in names
+        assert "Token" not in names
 
     def test_alias_rewriting(self):
         file_asts = _parse_files(_load_fixture("alias"))
@@ -424,11 +436,10 @@ class TestProjectCLI:
         result = self._run(files, ["--stop-at", "names"])
         assert result.returncode == 0, result.stderr.decode()
 
-    def test_collision_error(self):
+    def test_collision_resolved(self):
         files = _load_fixture("collision")
         result = self._run(files, ["--stop-at", "subset"])
-        assert result.returncode == 1
-        assert b"duplicate name" in result.stderr
+        assert result.returncode == 0, result.stderr.decode()
 
     def test_unresolved_error(self):
         files = _load_fixture("unresolved")
@@ -487,8 +498,8 @@ class TestRewriteModuleAttrsError:
             "    return defs.Nonexistent()\n"
         )
         module_bindings = {"defs": "defs.py"}
-        file_names = {"defs.py": {"Token"}}
-        errors = _rewrite_module_attrs(ast, module_bindings, file_names)
+        file_name_map = {"defs.py": {"Token": "Token"}}
+        errors = _rewrite_module_attrs(ast, module_bindings, file_name_map)
         assert len(errors) > 0
         assert any("Nonexistent" in e for e in errors)
         assert any("defs.py" in e for e in errors)
@@ -502,8 +513,8 @@ class TestRewriteModuleAttrsError:
             "    return defs.Token('x')\n"
         )
         module_bindings = {"defs": "defs.py"}
-        file_names = {"defs.py": {"Token"}}
-        errors = _rewrite_module_attrs(ast, module_bindings, file_names)
+        file_name_map = {"defs.py": {"Token": "Token"}}
+        errors = _rewrite_module_attrs(ast, module_bindings, file_name_map)
         assert errors == []
 
     def test_bad_attr_via_merge(self):
@@ -658,3 +669,378 @@ class TestProjectPragmas:
         ]
         result = self._run(files, ["--target", "python", "--strict"])
         assert result.returncode == 0, result.stderr.decode()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _ast_equal
+# ---------------------------------------------------------------------------
+
+
+class TestAstEqual:
+    def test_identical_dicts(self):
+        a = {"_type": "Name", "id": "foo", "lineno": 1}
+        b = {"_type": "Name", "id": "foo", "lineno": 5}
+        assert _ast_equal(a, b)
+
+    def test_differ_in_value(self):
+        a = {"_type": "Name", "id": "foo"}
+        b = {"_type": "Name", "id": "bar"}
+        assert not _ast_equal(a, b)
+
+    def test_differ_in_position_still_equal(self):
+        a = {"_type": "Constant", "value": 1, "lineno": 1, "col_offset": 0}
+        b = {"_type": "Constant", "value": 1, "lineno": 99, "col_offset": 42}
+        assert _ast_equal(a, b)
+
+    def test_nested_dicts(self):
+        a = {"_type": "Assign", "value": {"_type": "Constant", "value": 1, "lineno": 1}}
+        b = {"_type": "Assign", "value": {"_type": "Constant", "value": 1, "lineno": 9}}
+        assert _ast_equal(a, b)
+
+    def test_nested_differ(self):
+        a = {"_type": "Assign", "value": {"_type": "Constant", "value": 1}}
+        b = {"_type": "Assign", "value": {"_type": "Constant", "value": 2}}
+        assert not _ast_equal(a, b)
+
+    def test_lists_equal(self):
+        a = {"_type": "Module", "body": [{"_type": "Pass"}, {"_type": "Pass"}]}
+        b = {"_type": "Module", "body": [{"_type": "Pass"}, {"_type": "Pass"}]}
+        assert _ast_equal(a, b)
+
+    def test_lists_differ_length(self):
+        a = {"_type": "Module", "body": [{"_type": "Pass"}]}
+        b = {"_type": "Module", "body": [{"_type": "Pass"}, {"_type": "Pass"}]}
+        assert not _ast_equal(a, b)
+
+    def test_source_file_ignored(self):
+        a = {"_type": "Name", "id": "x", "_source_file": "a.py"}
+        b = {"_type": "Name", "id": "x", "_source_file": "b.py"}
+        assert _ast_equal(a, b)
+
+    def test_different_keys(self):
+        a = {"_type": "Name", "id": "x"}
+        b = {"_type": "Name", "id": "x", "extra": True}
+        assert not _ast_equal(a, b)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _collect_definition_refs
+# ---------------------------------------------------------------------------
+
+
+class TestCollectDefinitionRefs:
+    def test_function_with_refs(self):
+        ast = parse("def foo(x: int) -> int:\n    return bar(x)\n")
+        func = ast["body"][0]
+        refs = _collect_definition_refs(func)
+        assert "bar" in refs
+        assert "int" in refs
+
+    def test_simple_constant(self):
+        ast = parse("X: int = 42\n")
+        stmt = ast["body"][0]
+        refs = _collect_definition_refs(stmt)
+        assert "int" in refs
+
+    def test_class_with_bases(self):
+        ast = parse("class Foo(Base):\n    def method(self) -> None:\n        pass\n")
+        cls = ast["body"][0]
+        refs = _collect_definition_refs(cls)
+        assert "Base" in refs
+
+    def test_assign_value_refs(self):
+        ast = parse("x: list[str] = make_list()\n")
+        stmt = ast["body"][0]
+        refs = _collect_definition_refs(stmt)
+        assert "make_list" in refs
+        assert "list" in refs
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _compute_module_stems
+# ---------------------------------------------------------------------------
+
+
+class TestComputeModuleStems:
+    def test_unique_stems(self):
+        paths = ["a.py", "b.py", "c.py"]
+        stems = _compute_module_stems(paths)
+        assert stems == {"a.py": "a", "b.py": "b", "c.py": "c"}
+
+    def test_conflicting_stems(self):
+        paths = ["frontend/parse.py", "taytsh/parse.py"]
+        stems = _compute_module_stems(paths)
+        assert stems["frontend/parse.py"] == "frontend_parse"
+        assert stems["taytsh/parse.py"] == "taytsh_parse"
+
+    def test_init_py(self):
+        paths = ["pkg/__init__.py", "other.py"]
+        stems = _compute_module_stems(paths)
+        assert stems["pkg/__init__.py"] == "pkg"
+        assert stems["other.py"] == "other"
+
+    def test_init_conflict(self):
+        paths = ["pkg/__init__.py", "pkg.py"]
+        stems = _compute_module_stems(paths)
+        # Both would be "pkg" — should be disambiguated
+        vals = list(stems.values())
+        assert len(set(vals)) == 2
+
+    def test_no_extension(self):
+        paths = ["noext"]
+        stems = _compute_module_stems(paths)
+        assert stems["noext"] == "noext"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _prefix_name
+# ---------------------------------------------------------------------------
+
+
+class TestPrefixName:
+    def test_private(self):
+        assert _prefix_name("_helper", "scope") == "_scope_helper"
+
+    def test_public(self):
+        assert _prefix_name("Token", "parse") == "parse_Token"
+
+    def test_dunder_private(self):
+        assert _prefix_name("__private", "mod") == "_mod__private"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _plan_collision_resolution
+# ---------------------------------------------------------------------------
+
+
+class TestPlanCollisionResolution:
+    def _make_names(self, source):
+        """Parse source and return _collect_module_names result."""
+        return _collect_module_names(parse(source))
+
+    def test_all_identical_dedup(self):
+        a_names = self._make_names("X: int = 1\n")
+        b_names = self._make_names("X: int = 1\n")
+        file_names = {"a.py": a_names, "b.py": b_names}
+        stems = {"a.py": "a", "b.py": "b"}
+        dedup, renames = _plan_collision_resolution(file_names, stems)
+        assert "X" in dedup
+        assert renames == {} or all("X" not in v for v in renames.values())
+
+    def test_all_different_prefix(self):
+        a_names = self._make_names("X: int = 1\n")
+        b_names = self._make_names("X: int = 2\n")
+        file_names = {"a.py": a_names, "b.py": b_names}
+        stems = {"a.py": "a", "b.py": "b"}
+        dedup, renames = _plan_collision_resolution(file_names, stems)
+        assert "X" not in dedup
+        assert renames["a.py"]["X"] == "a_X"
+        assert renames["b.py"]["X"] == "b_X"
+
+    def test_no_collision(self):
+        a_names = self._make_names("X: int = 1\n")
+        b_names = self._make_names("Y: int = 2\n")
+        file_names = {"a.py": a_names, "b.py": b_names}
+        stems = {"a.py": "a", "b.py": "b"}
+        dedup, renames = _plan_collision_resolution(file_names, stems)
+        assert len(dedup) == 0
+        assert renames == {}
+
+    def test_unsafe_dedup_demoted(self):
+        a_names = self._make_names(
+            "def _helper() -> int:\n    return 1\n"
+            "\n"
+            "def wrapper() -> int:\n    return _helper()\n"
+        )
+        b_names = self._make_names(
+            "def _helper() -> int:\n    return 2\n"
+            "\n"
+            "def wrapper() -> int:\n    return _helper()\n"
+        )
+        file_names = {"a.py": a_names, "b.py": b_names}
+        stems = {"a.py": "a", "b.py": "b"}
+        dedup, renames = _plan_collision_resolution(file_names, stems)
+        # _helper is different → prefixed
+        assert "_helper" not in dedup
+        # wrapper is identical but refs _helper which is prefixed → demoted
+        assert "wrapper" not in dedup
+        assert "wrapper" in renames.get("a.py", {})
+        assert "wrapper" in renames.get("b.py", {})
+
+
+# ---------------------------------------------------------------------------
+# Integration: collision resolution merges
+# ---------------------------------------------------------------------------
+
+
+class TestPrefixedMerge:
+    def test_private_prefix(self):
+        """Two files with same private fn get prefixed."""
+        file_asts = _parse_files(_load_fixture("prefix_private"))
+        merged, errors = merge_project(file_asts)
+        assert errors == []
+        assert merged is not None
+        names = [
+            s["name"]
+            for s in merged["body"]
+            if isinstance(s, dict) and s.get("_type") == "FunctionDef"
+        ]
+        assert "_a_helper" in names
+        assert "_b_helper" in names
+        assert "_helper" not in names
+        assert "use_a" in names
+        assert "use_b" in names
+
+    def test_private_refs_updated(self):
+        """References to _helper in each file are updated to the prefixed version."""
+        file_asts = _parse_files(_load_fixture("prefix_private"))
+        merged, errors = merge_project(file_asts)
+        assert errors == []
+        # Collect all Name.id references
+        name_ids = set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                if node.get("_type") == "Name":
+                    name_ids.add(node.get("id"))
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(merged)
+        assert "_helper" not in name_ids
+        assert "_a_helper" in name_ids
+        assert "_b_helper" in name_ids
+
+
+class TestDedupMerge:
+    def test_dedup_keeps_one_copy(self):
+        """Two files with identical constant produce one copy."""
+        file_asts = _parse_files(_load_fixture("dedup"))
+        merged, errors = merge_project(file_asts)
+        assert errors == []
+        assert merged is not None
+        # Count occurrences of ASTNode definition (Assign, not AnnAssign)
+        count = 0
+        for s in merged["body"]:
+            if isinstance(s, dict) and s.get("_type") == "Assign":
+                targets = s.get("targets", [])
+                if isinstance(targets, list) and len(targets) > 0:
+                    t = targets[0]
+                    if isinstance(t, dict) and t.get("id") == "ASTNode":
+                        count += 1
+        assert count == 1
+
+    def test_dedup_both_functions_present(self):
+        file_asts = _parse_files(_load_fixture("dedup"))
+        merged, errors = merge_project(file_asts)
+        assert errors == []
+        names = [
+            s["name"]
+            for s in merged["body"]
+            if isinstance(s, dict) and s.get("_type") == "FunctionDef"
+        ]
+        assert "make_a" in names
+        assert "make_b" in names
+
+
+class TestPrefixedImport:
+    def test_import_refs_updated(self):
+        """File importing a prefixed name gets its references updated."""
+        file_asts = _parse_files(_load_fixture("prefix_import"))
+        merged, errors = merge_project(file_asts)
+        assert errors == []
+        assert merged is not None
+        # LibFoo alias should resolve to lib_Foo (the prefixed name)
+        name_ids = set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                if node.get("_type") == "Name":
+                    name_ids.add(node.get("id"))
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(merged)
+        assert "lib_Foo" in name_ids
+        assert "LibFoo" not in name_ids
+        assert "Foo" not in name_ids
+
+    def test_both_classes_present(self):
+        file_asts = _parse_files(_load_fixture("prefix_import"))
+        merged, errors = merge_project(file_asts)
+        assert errors == []
+        class_names = [
+            s["name"]
+            for s in merged["body"]
+            if isinstance(s, dict) and s.get("_type") == "ClassDef"
+        ]
+        assert "lib_Foo" in class_names
+        assert "app_Foo" in class_names
+
+
+class TestPrefixedModuleAttr:
+    def test_module_attr_uses_prefixed_name(self):
+        """from . import defs; defs.Token uses the prefixed name."""
+        file_asts = _parse_files(_load_fixture("prefix_module_attr"))
+        merged, errors = merge_project(file_asts)
+        assert errors == []
+        assert merged is not None
+        # After merge, defs.Token should be rewritten to defs_Token
+        name_ids = set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                if node.get("_type") == "Name":
+                    name_ids.add(node.get("id"))
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(merged)
+        assert "defs_Token" in name_ids
+        # No unrewritten module.attr references should remain
+        found_attr = False
+
+        def walk_attr(node):
+            nonlocal found_attr
+            if isinstance(node, dict):
+                if node.get("_type") == "Attribute":
+                    val = node.get("value", {})
+                    if isinstance(val, dict) and val.get("id") == "defs":
+                        found_attr = True
+                for v in node.values():
+                    walk_attr(v)
+            elif isinstance(node, list):
+                for item in node:
+                    walk_attr(item)
+
+        walk_attr(merged)
+        assert not found_attr
+
+
+class TestUnsafeDedupMerge:
+    def test_wrapper_demoted_to_prefix(self):
+        """Identical wrapper() calling different _helper() gets prefixed."""
+        file_asts = _parse_files(_load_fixture("unsafe_dedup"))
+        merged, errors = merge_project(file_asts)
+        assert errors == []
+        assert merged is not None
+        names = [
+            s["name"]
+            for s in merged["body"]
+            if isinstance(s, dict) and s.get("_type") == "FunctionDef"
+        ]
+        assert "_a_helper" in names
+        assert "_b_helper" in names
+        assert "a_wrapper" in names
+        assert "b_wrapper" in names
+        assert "_helper" not in names
+        assert "wrapper" not in names
