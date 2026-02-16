@@ -71,6 +71,14 @@ ALLOWED_BUILTINS: set[str] = {
     "AttributeError",
     "RuntimeError",
     "AssertionError",
+    "OSError",
+    "ZeroDivisionError",
+    "OverflowError",
+    "FileNotFoundError",
+    "UnicodeDecodeError",
+    "StopIteration",
+    # I/O
+    "open",
     # print is handled specially
     "print",
 }
@@ -631,6 +639,23 @@ class NameResolver:
             )
             self.result.table.add_local(class_name, func_name, info)
             i += 1
+        # Collect keyword-only parameters
+        kw_list = args_node.get("kwonlyargs", [])
+        i = 0
+        while i < len(kw_list):
+            arg = kw_list[i]
+            arg_name = arg.get("arg", "")
+            lineno = arg.get("lineno", 0)
+            col = arg.get("col_offset", 0)
+            if arg_name in ALLOWED_BUILTINS:
+                self.warning(
+                    arg, "shadowing", "parameter '" + arg_name + "' shadows builtin"
+                )
+            info = NameInfo(
+                arg_name, "parameter", "local", lineno, col, class_name, func_name
+            )
+            self.result.table.add_local(class_name, func_name, info)
+            i += 1
         # Collect local variables from body
         body = func_node.get("body", [])
         self.collect_locals_from_body(body, class_name, func_name)
@@ -735,6 +760,18 @@ class NameResolver:
                     if isinstance(case_node, dict):
                         pattern = case_node.get("pattern", {})
                         self.collect_pattern_names(pattern, class_name, func_name, node)
+                    k += 1
+            elif node_type == "With":
+                items = node.get("items", [])
+                k = 0
+                while k < len(items):
+                    item = items[k]
+                    if isinstance(item, dict):
+                        opt_vars = item.get("optional_vars")
+                        if opt_vars is not None:
+                            self.collect_assign_target(
+                                opt_vars, class_name, func_name, node
+                            )
                     k += 1
             elif node_type == "NamedExpr":
                 # Walrus operator: (x := expr)
