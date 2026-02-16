@@ -1017,6 +1017,47 @@ def _tag_source_file(node: dict[str, object], source_file: str) -> None:
         wi += 1
 
 
+def _stdlib_import_seen(
+    names_list: object,
+    stdlib_seen: set[str],
+) -> bool:
+    """Check if all bound names in an import are already seen. Adds unseen to set.
+
+    Returns True if every name was already in stdlib_seen (skip the import).
+    When only some names are new, removes already-seen aliases from the list.
+    """
+    if not isinstance(names_list, list):
+        return False
+    new_indices: list[int] = []
+    ni = 0
+    while ni < len(names_list):
+        alias = names_list[ni]
+        if isinstance(alias, dict):
+            name = alias.get("name", "")
+            asname = alias.get("asname")
+            bound = asname if isinstance(asname, str) and asname != "" else name
+            if isinstance(bound, str) and bound != "":
+                if bound not in stdlib_seen:
+                    new_indices.append(ni)
+                    stdlib_seen.add(bound)
+        ni += 1
+    if len(new_indices) == 0:
+        return True
+    if len(new_indices) < len(names_list):
+        # Partial overlap: keep only new aliases
+        kept: list[object] = []
+        ki = 0
+        while ki < len(new_indices):
+            kept.append(names_list[new_indices[ki]])
+            ki += 1
+        names_list.clear()
+        ki = 0
+        while ki < len(kept):
+            names_list.append(kept[ki])
+            ki += 1
+    return False
+
+
 def merge_project(
     file_asts: list[tuple[str, dict[str, object]]],
 ) -> tuple[dict[str, object] | None, list[str]]:
@@ -1126,6 +1167,7 @@ def merge_project(
     # Merge
     merged_body: list[dict[str, object]] = []
     dedup_seen: set[str] = set()
+    stdlib_seen: set[str] = set()
     oi = 0
     while oi < len(ordered):
         path = ordered[oi]
@@ -1252,7 +1294,7 @@ def merge_project(
                     else:
                         dedup_seen.add(def_name)
             bi += 1
-        # Filter body: remove project imports and dedup dups, tag _source_file
+        # Filter body: remove project imports, dedup dups, dedup stdlib imports
         new_body: list[dict[str, object]] = []
         bi = 0
         while bi < len(body):
@@ -1260,6 +1302,21 @@ def merge_project(
             if isinstance(bstmt, dict) and bstmt.get("_remove") is True:
                 bi += 1
                 continue
+            # Deduplicate stdlib imports
+            if isinstance(bstmt, dict):
+                skip_stdlib = False
+                btype = bstmt.get("_type", "")
+                if btype == "ImportFrom" and _classify_import(bstmt) == "stdlib":
+                    skip_stdlib = _stdlib_import_seen(
+                        bstmt.get("names", []), stdlib_seen
+                    )
+                elif btype == "Import":
+                    skip_stdlib = _stdlib_import_seen(
+                        bstmt.get("names", []), stdlib_seen
+                    )
+                if skip_stdlib:
+                    bi += 1
+                    continue
             if isinstance(bstmt, dict):
                 _tag_source_file(bstmt, path)
             new_body.append(bstmt)
