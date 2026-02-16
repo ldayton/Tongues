@@ -1260,6 +1260,25 @@ def merge_project(
                                 rename_map[bound] = name
                     ni += 1
             ei += 1
+        # If __init__.py defines names matching module bindings,
+        # bare references should resolve to the init definitions
+        if len(module_bindings) > 0:
+            slash_idx = path.rfind("/")
+            if slash_idx >= 0:
+                init_path = path[:slash_idx] + "/__init__.py"
+                init_names = file_name_map.get(init_path)
+                if init_names is not None:
+                    new_mb: dict[str, str] = {}
+                    mb_keys = list(module_bindings.keys())
+                    mbi = 0
+                    while mbi < len(mb_keys):
+                        bound = mb_keys[mbi]
+                        if bound in init_names:
+                            rename_map[bound] = init_names[bound]
+                        else:
+                            new_mb[bound] = module_bindings[bound]
+                        mbi += 1
+                    module_bindings = new_mb
         # Add own collision renames (override import renames for local defs)
         own_renames = file_renames.get(path, {})
         okeys = list(own_renames.keys())
