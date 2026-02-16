@@ -665,6 +665,32 @@ def _rewrite_module_attrs(
     return errors
 
 
+def _tag_source_file(node: dict[str, object], source_file: str) -> None:
+    """Tag all dict nodes in the subtree with _source_file."""
+    work: list[object] = [node]
+    wi = 0
+    while wi < len(work):
+        item = work[wi]
+        if isinstance(item, dict):
+            if "_type" in item:
+                item["_source_file"] = source_file
+            keys = list(item.keys())
+            ki = 0
+            while ki < len(keys):
+                val = item[keys[ki]]
+                if isinstance(val, dict) or isinstance(val, list):
+                    work.append(val)
+                ki += 1
+        elif isinstance(item, list):
+            li = 0
+            while li < len(item):
+                child = item[li]
+                if isinstance(child, dict) or isinstance(child, list):
+                    work.append(child)
+                li += 1
+        wi += 1
+
+
 def merge_project(
     file_asts: list[tuple[str, dict[str, object]]],
 ) -> tuple[dict[str, object] | None, list[str]]:
@@ -840,7 +866,7 @@ def merge_project(
             stmt_id = id(import_entries[ei][0])
             project_stmts.add(stmt_id)
             ei += 1
-        # Filter body: remove project imports, tag nodes with _source_file
+        # Filter body: remove project imports, tag all nodes with _source_file
         new_body: list[dict[str, object]] = []
         bi = 0
         while bi < len(body):
@@ -849,7 +875,7 @@ def merge_project(
                 bi += 1
                 continue
             if isinstance(stmt, dict):
-                stmt["_source_file"] = path
+                _tag_source_file(stmt, path)
             new_body.append(stmt)
             bi += 1
         mi = 0

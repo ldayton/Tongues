@@ -460,3 +460,194 @@ class TestProjectCLI:
         files = _load_fixture("nested")
         result = self._run(files, ["--target", "python"])
         assert result.returncode == 0, result.stderr.decode()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _rewrite_module_attrs error path
+# ---------------------------------------------------------------------------
+
+
+class TestRewriteModuleAttrsError:
+    def test_unknown_attr_error(self):
+        """module.Nonexistent should produce an error when attr not in target file's names."""
+        ast = parse(
+            "from . import defs\n"
+            "\n"
+            "def make() -> defs.Nonexistent:\n"
+            "    return defs.Nonexistent()\n"
+        )
+        module_bindings = {"defs": "defs.py"}
+        file_names = {"defs.py": {"Token"}}
+        errors = _rewrite_module_attrs(ast, module_bindings, file_names)
+        assert len(errors) > 0
+        assert any("Nonexistent" in e for e in errors)
+        assert any("defs.py" in e for e in errors)
+
+    def test_valid_attr_no_error(self):
+        """module.Token should rewrite cleanly when Token exists in target."""
+        ast = parse(
+            "from . import defs\n"
+            "\n"
+            "def make() -> defs.Token:\n"
+            "    return defs.Token('x')\n"
+        )
+        module_bindings = {"defs": "defs.py"}
+        file_names = {"defs.py": {"Token"}}
+        errors = _rewrite_module_attrs(ast, module_bindings, file_names)
+        assert errors == []
+
+    def test_bad_attr_via_merge(self):
+        """End-to-end: merge_project should report error for nonexistent attr."""
+        file_asts = _parse_files(_load_fixture("bad_attr"))
+        merged, errors = merge_project(file_asts)
+        assert merged is None
+        assert len(errors) > 0
+        assert any("Nonexistent" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# gather_project_files via bin/tongues subprocess
+# ---------------------------------------------------------------------------
+
+
+class TestGatherProjectFiles:
+    def _run_bin(self, fixture_dir, extra_args=None):
+        args = [sys.executable, str(TONGUES_DIR / "bin" / "tongues")]
+        if extra_args:
+            args.extend(extra_args)
+        args.append(str(fixture_dir))
+        return subprocess.run(args, capture_output=True, cwd=TONGUES_DIR)
+
+    def test_skips_hidden_files(self):
+        """Hidden .py files should not be gathered."""
+        result = self._run_bin(
+            FIXTURES / "gather_test", ["--stop-at", "parse"]
+        )
+        output = result.stdout.decode()
+        assert "hidden" not in output.lower() or "visible" in output
+        # The hidden file defines 'hidden', it should NOT appear
+        assert ".hidden_file.py" not in output
+
+    def test_skips_pycache(self):
+        """__pycache__ .py files should not be gathered."""
+        result = self._run_bin(
+            FIXTURES / "gather_test", ["--stop-at", "parse"]
+        )
+        output = result.stdout.decode()
+        assert "cached" not in output
+
+    def test_skips_tongues_skip(self):
+        """Files with tongues: skip should not be gathered."""
+        result = self._run_bin(
+            FIXTURES / "gather_test", ["--stop-at", "parse"]
+        )
+        output = result.stdout.decode()
+        assert "skipped" not in output
+
+    def test_includes_visible(self):
+        """Normal .py files should be gathered."""
+        result = self._run_bin(
+            FIXTURES / "gather_test", ["--stop-at", "parse"]
+        )
+        assert result.returncode == 0, result.stderr.decode()
+        output = result.stdout.decode()
+        assert "visible" in output
+
+    def test_empty_dir(self):
+        """Directory with no .py files should error."""
+        result = self._run_bin(
+            FIXTURES / "empty", ["--stop-at", "subset"]
+        )
+        assert result.returncode != 0
+        assert b"no .py files" in result.stderr
+
+    def test_skip_fixture_only_has_b(self):
+        """The skip/ fixture should only gather b.py (a.py has tongues: skip)."""
+        result = self._run_bin(
+            FIXTURES / "skip", ["--stop-at", "parse"]
+        )
+        assert result.returncode == 0, result.stderr.decode()
+        output = result.stdout.decode()
+        assert "b.py" in output
+        # a.py should be skipped entirely — its content should not appear
+        assert "requests" not in output
+
+
+# ---------------------------------------------------------------------------
+# _source_file in error output
+# ---------------------------------------------------------------------------
+
+
+class TestSourceFileErrorFormat:
+    def _run(self, files, extra_args=None):
+        args = [sys.executable, "-m", "src.tongues", "--project"]
+        if extra_args:
+            args.extend(extra_args)
+        stdin_data = _nul_encode(files)
+        return subprocess.run(
+            args, input=stdin_data, capture_output=True, cwd=TONGUES_DIR
+        )
+
+    def test_subset_error_includes_source_file(self):
+        """Subset violation in merged project should include the source filename."""
+        files = _load_fixture("subset_error")
+        result = self._run(files, ["--stop-at", "subset"])
+        assert result.returncode == 1
+        stderr = result.stderr.decode()
+        # b.py has unannotated param — error should mention b.py
+        assert "b.py:" in stderr
+
+    def test_names_error_includes_source_file(self):
+        """Name resolution error in merged project should include source filename."""
+        # Construct inline: b.py references undefined name
+        files = [
+            ("a.py", "def foo(x: int) -> int:\n    return x\n"),
+            ("b.py", "from .a import foo\n\ndef bar() -> int:\n    return baz()\n"),
+        ]
+        result = self._run(files, ["--stop-at", "names"])
+        assert result.returncode == 1
+        stderr = result.stderr.decode()
+        assert "b.py:" in stderr
+
+
+# ---------------------------------------------------------------------------
+# --project with pragma interaction
+# ---------------------------------------------------------------------------
+
+
+class TestProjectPragmas:
+    def _run(self, files, extra_args=None):
+        args = [sys.executable, "-m", "src.tongues", "--project"]
+        if extra_args:
+            args.extend(extra_args)
+        stdin_data = _nul_encode(files)
+        return subprocess.run(
+            args, input=stdin_data, capture_output=True, cwd=TONGUES_DIR
+        )
+
+    def test_strict_math_pragma_propagates(self):
+        """@@["strict_math"] in one file should enable strict math for the whole project."""
+        files = [
+            ("a.py", '@@["strict_math"]\ndef foo(x: int) -> int:\n    return x + 1\n'),
+            ("b.py", "from .a import foo\n\ndef bar(x: int) -> int:\n    return foo(x)\n"),
+        ]
+        # Should compile without error — pragma is recognized
+        result = self._run(files, ["--target", "python"])
+        assert result.returncode == 0, result.stderr.decode()
+
+    def test_strict_tostring_pragma_propagates(self):
+        """@@["strict_tostring"] in one file should enable strict tostring for the whole project."""
+        files = [
+            ("a.py", '@@["strict_tostring"]\ndef foo(x: int) -> int:\n    return x + 1\n'),
+            ("b.py", "from .a import foo\n\ndef bar(x: int) -> int:\n    return foo(x)\n"),
+        ]
+        result = self._run(files, ["--target", "python"])
+        assert result.returncode == 0, result.stderr.decode()
+
+    def test_strict_flag_with_project(self):
+        """--strict flag should work with --project."""
+        files = [
+            ("a.py", "def foo(x: int) -> int:\n    return x + 1\n"),
+        ]
+        result = self._run(files, ["--target", "python", "--strict"])
+        assert result.returncode == 0, result.stderr.decode()
