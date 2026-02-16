@@ -335,6 +335,10 @@ def _split_union_members(s: str) -> list[str]:
     return result
 
 
+# Type alias expansions, populated by collect_signatures()
+_TYPE_ALIASES: dict[str, str] = {}
+
+
 # Primitive type mapping: Python name -> dict kind
 _PRIM_MAP: dict[str, str] = {
     "int": "int",
@@ -361,6 +365,11 @@ def py_type_to_type_dict(
     s = py_type.strip()
     if s == "":
         return {"_type": "InterfaceRef", "name": "any"}
+    # Expand type aliases
+    if s in _TYPE_ALIASES:
+        return py_type_to_type_dict(
+            _TYPE_ALIASES[s], known_classes, errors, lineno, col
+        )
     # Check for union (A | B) — only if the split produces multiple top-level members
     if " | " in s:
         members = _split_union_members(s)
@@ -965,14 +974,17 @@ def collect_signatures(
     tree: ASTNode,
     known_classes: set[str],
     node_classes: set[str],
+    type_aliases: dict[str, str] | None = None,
 ) -> SignatureResult:
-    """Collect function and method signatures from the module AST.
-
-    Args:
-        tree: The module AST dict.
-        known_classes: Set of known class names from the name table.
-        node_classes: Set of class names that are Node subclasses.
-    """
+    """Collect function and method signatures from the module AST."""
+    if type_aliases is None:
+        type_aliases = {}
+    _TYPE_ALIASES.clear()
+    ta_keys = list(type_aliases.keys())
+    tai = 0
+    while tai < len(ta_keys):
+        _TYPE_ALIASES[ta_keys[tai]] = type_aliases[ta_keys[tai]]
+        tai += 1
     result = SignatureResult()
     body = tree.get("body", [])
     if not isinstance(body, list):

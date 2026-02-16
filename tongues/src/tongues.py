@@ -11,7 +11,7 @@ from .frontend.subset import (
     ALLOWED_FROM_MODULES,
 )
 from .frontend.names import NameInfo, NameTable, resolve_names
-from .frontend.signatures import collect_signatures
+from .frontend.signatures import annotation_to_str, collect_signatures
 from .frontend.fields import collect_fields
 from .frontend.hierarchy import build_hierarchy
 from .frontend.inference import run_inference
@@ -1403,7 +1403,7 @@ def _pipeline_post_parse(
     while ki < len(mkeys):
         mname = mkeys[ki]
         info = name_result.table.module_names[mname]
-        if info.kind == "class" or info.kind == "type_alias":
+        if info.kind == "class":
             known_classes.add(mname)
             bi = 0
             while bi < len(info.bases):
@@ -1412,7 +1412,28 @@ def _pipeline_post_parse(
                     node_classes.add(mname)
                 bi += 1
         ki += 1
-    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    # Collect type alias definitions from AST
+    type_aliases: dict[str, str] = {}
+    ta_body = ast_dict.get("body", [])
+    if isinstance(ta_body, list):
+        tai = 0
+        while tai < len(ta_body):
+            ta_stmt = ta_body[tai]
+            if isinstance(ta_stmt, dict) and ta_stmt.get("_type") == "Assign":
+                ta_targets = ta_stmt.get("targets", [])
+                if isinstance(ta_targets, list) and len(ta_targets) == 1:
+                    ta_target = ta_targets[0]
+                    if isinstance(ta_target, dict) and ta_target.get("_type") == "Name":
+                        ta_name = ta_target.get("id", "")
+                        if isinstance(ta_name, str):
+                            ta_info = name_result.table.module_names.get(ta_name)
+                            if ta_info is not None and ta_info.kind == "type_alias":
+                                ta_value = ta_stmt.get("value", {})
+                                ta_str = annotation_to_str(ta_value)
+                                if ta_str != "":
+                                    type_aliases[ta_name] = ta_str
+            tai += 1
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes, type_aliases)
     errors = sig_result.errors()
     if len(errors) > 0:
         _print_errors(errors)
