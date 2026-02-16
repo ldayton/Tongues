@@ -763,10 +763,30 @@ def _compute_module_stems(paths: list[str]) -> dict[str, str]:
     return result
 
 
+def _is_all_caps(name: str) -> bool:
+    """Check if name follows ALL_CAPS convention."""
+    if len(name) == 0:
+        return False
+    has_letter = False
+    i = 0
+    while i < len(name):
+        c = name[i]
+        if c != "_" and not c.isupper() and not c.isdigit():
+            return False
+        if c.isupper():
+            has_letter = True
+        i += 1
+    return has_letter
+
+
 def _prefix_name(name: str, stem: str) -> str:
     """Compute prefixed name for collision resolution."""
     if len(name) > 0 and name[0] == "_":
+        if _is_all_caps(name[1:]):
+            return "_" + stem.upper() + "_" + name[1:]
         return "_" + stem + "_" + name[1:]
+    if _is_all_caps(name):
+        return stem.upper() + "_" + name
     return stem + "_" + name
 
 

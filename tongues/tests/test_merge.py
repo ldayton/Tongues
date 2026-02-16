@@ -807,6 +807,15 @@ class TestPrefixName:
     def test_dunder_private(self):
         assert _prefix_name("__private", "mod") == "_mod__private"
 
+    def test_all_caps_public(self):
+        assert _prefix_name("TY_ERROR", "runtime") == "RUNTIME_TY_ERROR"
+
+    def test_all_caps_private(self):
+        assert _prefix_name("_MAX_SIZE", "util") == "_UTIL_MAX_SIZE"
+
+    def test_single_letter_caps(self):
+        assert _prefix_name("X", "a") == "A_X"
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: _plan_collision_resolution
@@ -834,8 +843,8 @@ class TestPlanCollisionResolution:
         stems = {"a.py": "a", "b.py": "b"}
         dedup, renames = _plan_collision_resolution(file_names, stems)
         assert "X" not in dedup
-        assert renames["a.py"]["X"] == "a_X"
-        assert renames["b.py"]["X"] == "b_X"
+        assert renames["a.py"]["X"] == "A_X"
+        assert renames["b.py"]["X"] == "B_X"
 
     def test_no_collision(self):
         a_names = self._make_names("X: int = 1\n")
