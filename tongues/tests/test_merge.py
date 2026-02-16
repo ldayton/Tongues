@@ -73,7 +73,12 @@ class TestClassifyImport:
         assert _classify_import(node) == "stdlib"
 
     def test_collections_abc_is_stdlib(self):
-        node = {"_type": "ImportFrom", "module": "collections.abc", "level": 0, "names": []}
+        node = {
+            "_type": "ImportFrom",
+            "module": "collections.abc",
+            "level": 0,
+            "names": [],
+        }
         assert _classify_import(node) == "stdlib"
 
     def test_future_is_stdlib(self):
@@ -172,7 +177,12 @@ class TestDependencyOrder:
 
     def test_diamond(self):
         files = ["a.py", "b.py", "c.py", "d.py"]
-        deps = {"a.py": [], "b.py": ["a.py"], "c.py": ["a.py"], "d.py": ["b.py", "c.py"]}
+        deps = {
+            "a.py": [],
+            "b.py": ["a.py"],
+            "c.py": ["a.py"],
+            "d.py": ["b.py", "c.py"],
+        }
         result = _dependency_order(files, deps)
         assert result.index("d.py") < result.index("b.py")
         assert result.index("d.py") < result.index("c.py")
@@ -520,9 +530,7 @@ class TestGatherProjectFiles:
 
     def test_skips_hidden_files(self):
         """Hidden .py files should not be gathered."""
-        result = self._run_bin(
-            FIXTURES / "gather_test", ["--stop-at", "parse"]
-        )
+        result = self._run_bin(FIXTURES / "gather_test", ["--stop-at", "parse"])
         output = result.stdout.decode()
         assert "hidden" not in output.lower() or "visible" in output
         # The hidden file defines 'hidden', it should NOT appear
@@ -530,42 +538,32 @@ class TestGatherProjectFiles:
 
     def test_skips_pycache(self):
         """__pycache__ .py files should not be gathered."""
-        result = self._run_bin(
-            FIXTURES / "gather_test", ["--stop-at", "parse"]
-        )
+        result = self._run_bin(FIXTURES / "gather_test", ["--stop-at", "parse"])
         output = result.stdout.decode()
         assert "cached" not in output
 
     def test_skips_tongues_skip(self):
         """Files with tongues: skip should not be gathered."""
-        result = self._run_bin(
-            FIXTURES / "gather_test", ["--stop-at", "parse"]
-        )
+        result = self._run_bin(FIXTURES / "gather_test", ["--stop-at", "parse"])
         output = result.stdout.decode()
         assert "skipped" not in output
 
     def test_includes_visible(self):
         """Normal .py files should be gathered."""
-        result = self._run_bin(
-            FIXTURES / "gather_test", ["--stop-at", "parse"]
-        )
+        result = self._run_bin(FIXTURES / "gather_test", ["--stop-at", "parse"])
         assert result.returncode == 0, result.stderr.decode()
         output = result.stdout.decode()
         assert "visible" in output
 
     def test_empty_dir(self):
         """Directory with no .py files should error."""
-        result = self._run_bin(
-            FIXTURES / "empty", ["--stop-at", "subset"]
-        )
+        result = self._run_bin(FIXTURES / "empty", ["--stop-at", "subset"])
         assert result.returncode != 0
         assert b"no .py files" in result.stderr
 
     def test_skip_fixture_only_has_b(self):
         """The skip/ fixture should only gather b.py (a.py has tongues: skip)."""
-        result = self._run_bin(
-            FIXTURES / "skip", ["--stop-at", "parse"]
-        )
+        result = self._run_bin(FIXTURES / "skip", ["--stop-at", "parse"])
         assert result.returncode == 0, result.stderr.decode()
         output = result.stdout.decode()
         assert "b.py" in output
@@ -629,7 +627,10 @@ class TestProjectPragmas:
         """@@["strict_math"] in one file should enable strict math for the whole project."""
         files = [
             ("a.py", '@@["strict_math"]\ndef foo(x: int) -> int:\n    return x + 1\n'),
-            ("b.py", "from .a import foo\n\ndef bar(x: int) -> int:\n    return foo(x)\n"),
+            (
+                "b.py",
+                "from .a import foo\n\ndef bar(x: int) -> int:\n    return foo(x)\n",
+            ),
         ]
         # Should compile without error — pragma is recognized
         result = self._run(files, ["--target", "python"])
@@ -638,8 +639,14 @@ class TestProjectPragmas:
     def test_strict_tostring_pragma_propagates(self):
         """@@["strict_tostring"] in one file should enable strict tostring for the whole project."""
         files = [
-            ("a.py", '@@["strict_tostring"]\ndef foo(x: int) -> int:\n    return x + 1\n'),
-            ("b.py", "from .a import foo\n\ndef bar(x: int) -> int:\n    return foo(x)\n"),
+            (
+                "a.py",
+                '@@["strict_tostring"]\ndef foo(x: int) -> int:\n    return x + 1\n',
+            ),
+            (
+                "b.py",
+                "from .a import foo\n\ndef bar(x: int) -> int:\n    return foo(x)\n",
+            ),
         ]
         result = self._run(files, ["--target", "python"])
         assert result.returncode == 0, result.stderr.decode()

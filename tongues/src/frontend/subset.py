@@ -55,11 +55,19 @@ class VerifyResult:
         self.violations: list[Violation] = []
         self.node_count: int = 0
 
-    def add_error(self, lineno: int, col: int, category: str, message: str, source_file: str = "") -> None:
-        self.violations.append(Violation(lineno, col, category, message, False, source_file))
+    def add_error(
+        self, lineno: int, col: int, category: str, message: str, source_file: str = ""
+    ) -> None:
+        self.violations.append(
+            Violation(lineno, col, category, message, False, source_file)
+        )
 
-    def add_warning(self, lineno: int, col: int, category: str, message: str, source_file: str = "") -> None:
-        self.violations.append(Violation(lineno, col, category, message, True, source_file))
+    def add_warning(
+        self, lineno: int, col: int, category: str, message: str, source_file: str = ""
+    ) -> None:
+        self.violations.append(
+            Violation(lineno, col, category, message, True, source_file)
+        )
 
     def errors(self) -> list[Violation]:
         result: list[Violation] = []

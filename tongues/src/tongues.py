@@ -5,7 +5,11 @@ from __future__ import annotations
 import sys
 
 from .frontend.parse import parse, ParseError
-from .frontend.subset import verify as verify_subset, IMPORT_ONLY_MODULES, ALLOWED_FROM_MODULES
+from .frontend.subset import (
+    verify as verify_subset,
+    IMPORT_ONLY_MODULES,
+    ALLOWED_FROM_MODULES,
+)
 from .frontend.names import NameInfo, NameTable, resolve_names
 from .frontend.signatures import collect_signatures
 from .frontend.fields import collect_fields
@@ -391,7 +395,9 @@ def _resolve_project_import(
                     elif init_path in universe:
                         results.append((init_path, ""))
                     else:
-                        results.append(("", importing_file + ": unresolved import: " + name))
+                        results.append(
+                            ("", importing_file + ": unresolved import: " + name)
+                        )
                 i += 1
             return results
     else:
@@ -611,9 +617,15 @@ def _rewrite_module_attrs(
                 if isinstance(val, dict):
                     if val.get("_type") == "Attribute":
                         value_node = val.get("value")
-                        if isinstance(value_node, dict) and value_node.get("_type") == "Name":
+                        if (
+                            isinstance(value_node, dict)
+                            and value_node.get("_type") == "Name"
+                        ):
                             mod_name = value_node.get("id", "")
-                            if isinstance(mod_name, str) and mod_name in module_bindings:
+                            if (
+                                isinstance(mod_name, str)
+                                and mod_name in module_bindings
+                            ):
                                 target_file = module_bindings[mod_name]
                                 attr = val.get("attr", "")
                                 if not isinstance(attr, str):
@@ -639,9 +651,15 @@ def _rewrite_module_attrs(
                                     lineno = val.get("lineno", 0)
                                     col = val.get("col_offset", 0)
                                     errors.append(
-                                        str(lineno) + ":" + str(col)
-                                        + ": '" + mod_name + "." + attr
-                                        + "' does not exist in " + target_file
+                                        str(lineno)
+                                        + ":"
+                                        + str(col)
+                                        + ": '"
+                                        + mod_name
+                                        + "."
+                                        + attr
+                                        + "' does not exist in "
+                                        + target_file
                                     )
                                 else:
                                     work.append(val)
@@ -704,7 +722,9 @@ def merge_project(
         i += 1
     # Classify imports and resolve project imports
     deps: dict[str, list[str]] = {}
-    file_import_info: dict[str, list[tuple[dict[str, object], str, list[tuple[str, str]]]]] = {}
+    file_import_info: dict[
+        str, list[tuple[dict[str, object], str, list[tuple[str, str]]]]
+    ] = {}
     i = 0
     while i < len(file_asts):
         path = file_asts[i][0]
@@ -732,7 +752,9 @@ def merge_project(
                     names_list = stmt.get("names", [])
                     if not isinstance(names_list, list):
                         names_list = []
-                    resolved = _resolve_project_import(path, module, level, names_list, universe)
+                    resolved = _resolve_project_import(
+                        path, module, level, names_list, universe
+                    )
                     import_entries.append((stmt, module, resolved))
                     k = 0
                     while k < len(resolved):
@@ -830,7 +852,11 @@ def merge_project(
                         name = alias.get("name", "")
                         asname = alias.get("asname")
                         if isinstance(name, str) and name != "" and name != "*":
-                            bound = asname if isinstance(asname, str) and asname != "" else name
+                            bound = (
+                                asname
+                                if isinstance(asname, str) and asname != ""
+                                else name
+                            )
                             # Find the resolved path for this name
                             if ni < len(resolved):
                                 rpath = resolved[ni][0]
@@ -845,7 +871,11 @@ def merge_project(
                         name = alias.get("name", "")
                         asname = alias.get("asname")
                         if isinstance(name, str) and name != "" and name != "*":
-                            bound = asname if isinstance(asname, str) and asname != "" else name
+                            bound = (
+                                asname
+                                if isinstance(asname, str) and asname != ""
+                                else name
+                            )
                             if bound != name:
                                 rename_map[bound] = name
                     ni += 1
@@ -854,24 +884,24 @@ def merge_project(
         if len(rename_map) > 0:
             _rewrite_names(ast_dict, rename_map)
         if len(module_bindings) > 0:
-            rewrite_errors = _rewrite_module_attrs(ast_dict, module_bindings, file_name_sets)
+            rewrite_errors = _rewrite_module_attrs(
+                ast_dict, module_bindings, file_name_sets
+            )
             ri = 0
             while ri < len(rewrite_errors):
                 errors.append(path + ":" + rewrite_errors[ri])
                 ri += 1
-        # Build set of project import stmts to remove
-        project_stmts: set[int] = set()
+        # Mark project import stmts for removal
         ei = 0
         while ei < len(import_entries):
-            stmt_id = id(import_entries[ei][0])
-            project_stmts.add(stmt_id)
+            import_entries[ei][0]["_remove"] = True
             ei += 1
         # Filter body: remove project imports, tag all nodes with _source_file
         new_body: list[dict[str, object]] = []
         bi = 0
         while bi < len(body):
             stmt = body[bi]
-            if isinstance(stmt, dict) and id(stmt) in project_stmts:
+            if isinstance(stmt, dict) and stmt.get("_remove") is True:
                 bi += 1
                 continue
             if isinstance(stmt, dict):
@@ -1149,7 +1179,15 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
     if target not in TARGETS:
         print("error: unknown target '" + target + "'", file=sys.stderr)
         sys.exit(2)
-    return (target, stop_at, strict_math, strict_tostring, project, input_file, output_file)
+    return (
+        target,
+        stop_at,
+        strict_math,
+        strict_tostring,
+        project,
+        input_file,
+        output_file,
+    )
 
 
 def _parse_project_input(data: str) -> list[tuple[str, str]]:

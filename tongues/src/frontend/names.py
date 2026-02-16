@@ -184,10 +184,16 @@ class NameResult:
         self.violations: list[NameViolation] = []
         self.warnings: list[NameViolation] = []
 
-    def add_error(self, lineno: int, col: int, category: str, message: str, source_file: str = "") -> None:
-        self.violations.append(NameViolation(lineno, col, category, message, source_file))
+    def add_error(
+        self, lineno: int, col: int, category: str, message: str, source_file: str = ""
+    ) -> None:
+        self.violations.append(
+            NameViolation(lineno, col, category, message, source_file)
+        )
 
-    def add_warning(self, lineno: int, col: int, category: str, message: str, source_file: str = "") -> None:
+    def add_warning(
+        self, lineno: int, col: int, category: str, message: str, source_file: str = ""
+    ) -> None:
         self.warnings.append(NameViolation(lineno, col, category, message, source_file))
 
     def errors(self) -> list[NameViolation]:
