@@ -343,6 +343,7 @@ _PRIM_MAP: dict[str, str] = {
     "float": "float",
     "byte": "byte",
     "None": "void",
+    "object": "any",
 }
 
 
@@ -378,6 +379,23 @@ def py_type_to_type_dict(
     # bytes -> Slice(byte)
     if s == "bytes" or s == "bytearray":
         return {"_type": "Slice", "element": {"kind": "byte"}}
+    # Bare collection types (no subscript) -> any element
+    if s == "list":
+        return {"_type": "Slice", "element": {"_type": "InterfaceRef", "name": "any"}}
+    if s == "dict":
+        return {
+            "_type": "Map",
+            "key": {"_type": "InterfaceRef", "name": "any"},
+            "value": {"_type": "InterfaceRef", "name": "any"},
+        }
+    if s == "set" or s == "frozenset":
+        return {"_type": "Set", "element": {"_type": "InterfaceRef", "name": "any"}}
+    if s == "tuple":
+        return {
+            "_type": "Tuple",
+            "elements": [{"_type": "InterfaceRef", "name": "any"}],
+            "variadic": True,
+        }
     # Known class -> Pointer(StructRef)
     if s in known_classes:
         return {"_type": "Pointer", "target": {"_type": "StructRef", "name": s}}
@@ -491,6 +509,33 @@ def _resolve_subscript(
                     j += 1
         ret = py_type_to_type_dict(args[1], known_classes, errors, lineno, col)
         return {"_type": "FuncType", "params": param_types, "ret": ret}
+    # Sequence/Iterable[T] -> Slice(T)
+    if base == "Sequence" or base == "Iterable":
+        if len(args) != 1:
+            errors.append(
+                SignatureError(
+                    lineno,
+                    col,
+                    base + " requires 1 type argument, got " + str(len(args)),
+                )
+            )
+            return {"_type": "InterfaceRef", "name": "any"}
+        elem = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
+        return {"_type": "Slice", "element": elem}
+    # Mapping[K, V] -> Map(K, V)
+    if base == "Mapping":
+        if len(args) != 2:
+            errors.append(
+                SignatureError(
+                    lineno,
+                    col,
+                    "Mapping requires 2 type arguments, got " + str(len(args)),
+                )
+            )
+            return {"_type": "InterfaceRef", "name": "any"}
+        key = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
+        val = py_type_to_type_dict(args[1], known_classes, errors, lineno, col)
+        return {"_type": "Map", "key": key, "value": val}
     # Unknown subscript base
     errors.append(SignatureError(lineno, col, "unknown type '" + base + "'"))
     return {"_type": "InterfaceRef", "name": "any"}
@@ -875,14 +920,17 @@ def extract_func_info(
     # Return type
     returns = node.get("returns")
     if returns is None:
-        errors.append(
-            SignatureError(
-                lineno,
-                0,
-                "function '" + func_name + "' missing return type annotation",
+        if func_name == "__init__":
+            returns = {"_type": "Constant", "value": None}
+        else:
+            errors.append(
+                SignatureError(
+                    lineno,
+                    0,
+                    "function '" + func_name + "' missing return type annotation",
+                )
             )
-        )
-        return None
+            return None
     py_return = annotation_to_str(returns)
     return_type = py_type_to_type_dict(py_return, known_classes, errors, lineno, 0)
     if had_error:

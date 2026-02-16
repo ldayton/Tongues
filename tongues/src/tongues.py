@@ -1403,7 +1403,7 @@ def _pipeline_post_parse(
     while ki < len(mkeys):
         mname = mkeys[ki]
         info = name_result.table.module_names[mname]
-        if info.kind == "class":
+        if info.kind == "class" or info.kind == "type_alias":
             known_classes.add(mname)
             bi = 0
             while bi < len(info.bases):
