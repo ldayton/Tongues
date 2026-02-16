@@ -349,7 +349,7 @@ def _resolve_all_call_targets(
             if obj_t.parent is not None:
                 iface = checker.types.get(obj_t.parent)
                 if iface is not None and isinstance(iface, InterfaceT):
-                    targets = []
+                    targets: list[str] = []
                     for variant_name in iface.variants:
                         vkey = f"{variant_name}.{func.field}"
                         if vkey in fn_decls:
@@ -357,7 +357,7 @@ def _resolve_all_call_targets(
                     if targets:
                         return targets
         if obj_t is not None and isinstance(obj_t, InterfaceT):
-            targets = []
+            targets: list[str] = []
             for variant_name in obj_t.variants:
                 vkey = f"{variant_name}.{func.field}"
                 if vkey in fn_decls:

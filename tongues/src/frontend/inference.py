@@ -327,16 +327,8 @@ def _is_assignable(
             e_name = _struct_name(expected)
             if a_name == e_name:
                 return True
-            if hier.is_node(a_name) and hier.is_node(e_name):
-                ancestors = hier.ancestors.get(a_name)
-                if ancestors is not None:
-                    j = 0
-                    while j < len(ancestors):
-                        if ancestors[j] == e_name:
-                            return True
-                        j += 1
-                # Deep ancestor check
-                return _is_ancestor(a_name, e_name, hier)
+            if _is_ancestor(a_name, e_name, hier):
+                return True
         # Struct assignable to InterfaceRef (hierarchy root)
         if expected.get("_type") == "InterfaceRef":
             if hier.is_node(a_name):
@@ -689,8 +681,17 @@ def _synth_attribute(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, o
     attr = node.get("attr")
     if not isinstance(value, dict) or not isinstance(attr, str):
         return _ANY_TYPE
+    path = _attr_path(node)
+    if path != "":
+        narrowed = env.get_type(path)
+        if narrowed is not None:
+            return narrowed
     obj_type = _synth_expr(value, env, ctx)
-    return _resolve_attr(obj_type, attr, value, env, ctx)
+    result = _resolve_attr(obj_type, attr, value, env, ctx)
+    if _is_optional(result):
+        if path != "" and env.is_attr_guarded(path):
+            return _unwrap_optional(result)
+    return result
 
 
 def _resolve_attr(
@@ -1110,6 +1111,8 @@ def _synth_method_call(
     if attr_type.get("_type") == "FuncType":
         ret = attr_type.get("ret")
         if isinstance(ret, dict):
+            if attr == "get" and len(args) >= 2 and _is_optional(ret):
+                return _unwrap_optional(ret)
             return ret
     # Direct method return type from sig table
     sname = _struct_name(obj_type)
@@ -1295,9 +1298,14 @@ def _synth_boolop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, obje
 
 
 def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+    test = node.get("test")
     body = node.get("body")
+    then_env = env.copy()
+    if isinstance(test, dict):
+        dummy_else = env.copy()
+        _extract_narrowing(test, then_env, dummy_else, ctx)
     if isinstance(body, dict):
-        return _synth_expr(body, env, ctx)
+        return _synth_expr(body, then_env, ctx)
     return _ANY_TYPE
 
 
@@ -2099,14 +2107,17 @@ def _check_call_args(
 ) -> None:
     """Check argument types against function parameters."""
     params = func_info.params
-    # Count required params
+    # Count positional params (exclude keyword-only)
+    n_positional = 0
     n_required = 0
     j = 0
     while j < len(params):
-        if not params[j].has_default:
-            n_required += 1
+        if params[j].modifier != "keyword":
+            n_positional += 1
+            if not params[j].has_default:
+                n_required += 1
         j += 1
-    if len(args) < n_required or len(args) > len(params):
+    if len(args) < n_required or len(args) > n_positional:
         ctx.result.add_error(
             lineno,
             0,
@@ -2298,6 +2309,20 @@ def _validate_if(
         j = 0
         while j < len(gkeys):
             env.guarded_attrs.add(gkeys[j])
+            j += 1
+    elif not then_returns and len(orelse) == 0:
+        # If-without-else, then doesn't return: merge agreed narrowings
+        ekeys = list(else_env.types.keys())
+        j = 0
+        while j < len(ekeys):
+            k = ekeys[j]
+            else_t = else_env.types[k]
+            then_t = then_env.types.get(k)
+            if then_t is not None and _type_eq(else_t, then_t):
+                env.types[k] = else_t
+                es = else_env.source_types.get(k, "")
+                if es != "":
+                    env.source_types[k] = es
             j += 1
     return then_returns and else_returns
 
@@ -2609,6 +2634,32 @@ def _extract_narrowing(
         return
 
 
+def _attr_path(node: ASTNode) -> str:
+    """Build dotted path from nested Attribute nodes, e.g. 'expr.obj'."""
+    parts: list[str] = []
+    cur = node
+    while _is_type(cur, ["Attribute"]):
+        a = cur.get("attr")
+        if not isinstance(a, str):
+            return ""
+        parts.append(a)
+        v = cur.get("value")
+        if not isinstance(v, dict):
+            return ""
+        cur = v
+    if not _is_type(cur, ["Name"]):
+        return ""
+    base = cur.get("id")
+    if not isinstance(base, str) or base == "":
+        return ""
+    result = base
+    i = len(parts) - 1
+    while i >= 0:
+        result = result + "." + parts[i]
+        i -= 1
+    return result
+
+
 def _narrow_isinstance(
     test: ASTNode,
     then_env: TypeEnv,
@@ -2623,10 +2674,12 @@ def _narrow_isinstance(
     type_arg = args[1]
     if not isinstance(target, dict) or not isinstance(type_arg, dict):
         return
-    # Get the variable name
+    # Get the variable name (or dotted attribute path)
     name = ""
     if _is_type(target, ["Name"]):
         name = str(target.get("id", ""))
+    elif _is_type(target, ["Attribute"]):
+        name = _attr_path(target)
     if name == "":
         return
     # Get the narrowed type name
@@ -2706,60 +2759,54 @@ def _narrow_compare(
             name = str(left.get("id", ""))
             if name != "":
                 _narrow_to_non_none(name, then_env, ctx)
-        # x.attr is not None
+        # x.attr is not None (including multi-level like x.y.z)
         if _is_type(left, ["Attribute"]):
-            value_node = left.get("value")
-            attr = left.get("attr")
-            if (
-                isinstance(value_node, dict)
-                and _is_type(value_node, ["Name"])
-                and isinstance(attr, str)
-            ):
-                obj_name = str(value_node.get("id", ""))
-                if obj_name != "":
-                    then_env.guard_attr(obj_name + "." + attr)
+            path = _attr_path(left)
+            if path != "":
+                then_env.guard_attr(path)
         return
-    # x.attr is None
+    # x.attr is None (including multi-level like x.y.z)
     if op_type == "Is" and _is_type(comp, ["Constant"]) and comp.get("value") is None:
         if _is_type(left, ["Attribute"]):
-            value_node = left.get("value")
-            attr = left.get("attr")
-            if (
-                isinstance(value_node, dict)
-                and _is_type(value_node, ["Name"])
-                and isinstance(attr, str)
-            ):
-                obj_name = str(value_node.get("id", ""))
-                if obj_name != "":
-                    else_env.guard_attr(obj_name + "." + attr)
+            path = _attr_path(left)
+            if path != "":
+                else_env.guard_attr(path)
         return
-    # x.kind == "value" (kind discrimination)
+    # x.kind == "value" (kind discrimination on union types)
     if op_type == "Eq":
         if _is_type(left, ["Attribute"]):
             attr = left.get("attr")
             if isinstance(attr, str) and attr == "kind":
-                # Validate kind value against known types
                 comp_value = comp.get("value")
                 if isinstance(comp_value, str):
-                    found = False
-                    all_classes = list(ctx.known_classes)
-                    j = 0
-                    while j < len(all_classes):
-                        if all_classes[j].lower() == comp_value.lower():
-                            found = True
-                            break
-                        j += 1
-                    if not found:
-                        k_lineno = test.get("lineno", 0)
-                        if not isinstance(k_lineno, int):
-                            k_lineno = 0
-                        ctx.result.add_error(
-                            k_lineno,
-                            0,
-                            "kind value '"
-                            + comp_value
-                            + "' does not match any known type",
-                        )
+                    obj_node = left.get("value")
+                    is_union = False
+                    if isinstance(obj_node, dict) and _is_type(obj_node, ["Name"]):
+                        obj_name = obj_node.get("id")
+                        if isinstance(obj_name, str):
+                            src = then_env.get_source(obj_name)
+                            if src != "" and _is_union_source(src):
+                                is_union = True
+                    if is_union:
+                        found = False
+                        all_classes = list(ctx.known_classes)
+                        j = 0
+                        while j < len(all_classes):
+                            if all_classes[j].lower() == comp_value.lower():
+                                found = True
+                                break
+                            j += 1
+                        if not found:
+                            k_lineno = test.get("lineno", 0)
+                            if not isinstance(k_lineno, int):
+                                k_lineno = 0
+                            ctx.result.add_error(
+                                k_lineno,
+                                0,
+                                "kind value '"
+                                + comp_value
+                                + "' does not match any known type",
+                            )
                 return
 
 
