@@ -20,17 +20,23 @@ class Violation:
         category: str,
         message: str,
         is_warning: bool,
+        source_file: str = "",
     ):
         self.lineno: int = lineno
         self.col: int = col
         self.category: str = category
         self.message: str = message
         self.is_warning: bool = is_warning
+        self.source_file: str = source_file
 
     def __repr__(self) -> str:
         prefix = "warning" if self.is_warning else "error"
+        file_prefix = ""
+        if self.source_file != "":
+            file_prefix = self.source_file + ":"
         return (
-            prefix
+            file_prefix
+            + prefix
             + ":"
             + str(self.lineno)
             + ":"
@@ -49,11 +55,11 @@ class VerifyResult:
         self.violations: list[Violation] = []
         self.node_count: int = 0
 
-    def add_error(self, lineno: int, col: int, category: str, message: str) -> None:
-        self.violations.append(Violation(lineno, col, category, message, False))
+    def add_error(self, lineno: int, col: int, category: str, message: str, source_file: str = "") -> None:
+        self.violations.append(Violation(lineno, col, category, message, False, source_file))
 
-    def add_warning(self, lineno: int, col: int, category: str, message: str) -> None:
-        self.violations.append(Violation(lineno, col, category, message, True))
+    def add_warning(self, lineno: int, col: int, category: str, message: str, source_file: str = "") -> None:
+        self.violations.append(Violation(lineno, col, category, message, True, source_file))
 
     def errors(self) -> list[Violation]:
         result: list[Violation] = []
@@ -395,12 +401,18 @@ class Verifier:
     def error(self, node: ASTNode, category: str, message: str) -> None:
         lineno = node.get("lineno", 0)
         col = node.get("col_offset", 0)
-        self.result.add_error(lineno, col, category, message)
+        source_file = node.get("_source_file", "")
+        if not isinstance(source_file, str):
+            source_file = ""
+        self.result.add_error(lineno, col, category, message, source_file)
 
     def warning(self, node: ASTNode, category: str, message: str) -> None:
         lineno = node.get("lineno", 0)
         col = node.get("col_offset", 0)
-        self.result.add_warning(lineno, col, category, message)
+        source_file = node.get("_source_file", "")
+        if not isinstance(source_file, str):
+            source_file = ""
+        self.result.add_warning(lineno, col, category, message, source_file)
 
     def visit(self, node: ASTNode) -> None:
         """Dispatch to appropriate visit method."""
