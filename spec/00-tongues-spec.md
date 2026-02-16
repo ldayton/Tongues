@@ -8,7 +8,7 @@ The frontend parses Python, checks the subset, resolves names and types, then lo
 
 - **Self-hosting**: the compiler is written in the subset it accepts
 - **Append-only**: the lowerer produces IR; middleend passes add annotations but never modify the tree; backends only read
-- **Closed-world**: single-file compilation; all types, implementations, and call targets are visible
+- **Closed-world**: all types, implementations, and call targets are visible within the compilation unit (one file or a merged project)
 
 ## Supported Output Languages
 
@@ -32,10 +32,13 @@ The frontend parses Python, checks the subset, resolves names and types, then lo
 
 ## Pipeline Overview
 
+Input is a single source file or a directory. When a directory is given, phase 3a gathers, resolves, and merges all `.py` files into a single AST before proceeding. Output is always a single file.
+
 | Phase | Stage     | Module                   | Description                                    |
 | :---: | --------- | ------------------------ | ---------------------------------------------- |
 |   1   | cli       | `tongues.py`             | Parse arguments, read input, invoke pipeline   |
 |   2   | frontend  | `frontend/parse.py`      | Tokenize and parse source; produce dict AST    |
+|  3a   | frontend  | `tongues.py`             | Project merge: gather, resolve imports, merge (multi-file only) |
 |   3   | frontend  | `frontend/subset.py`     | Reject unsupported Python features             |
 |   4   | frontend  | `frontend/names.py`      | Scope analysis and name binding                |
 |   5   | frontend  | `frontend/signatures.py` | Type syntax parsing and kind checking          |

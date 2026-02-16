@@ -6,7 +6,7 @@ Scope analysis and name binding. Builds a symbol table mapping every name refere
 
 ## Inputs
 
-- **AST**: dict-based AST from phase 2
+- **AST**: dict-based AST from phase 2 (single-file) or the merged AST from phase 3a (project mode)
 
 ## Scope Model
 

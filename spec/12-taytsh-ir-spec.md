@@ -27,7 +27,7 @@ fn Main() -> void {
 
 `Main` is the program entrypoint. It takes no parameters and returns `void`. Command-line arguments and environment variables are accessed via `Args()` and `GetEnv()`.
 
-A valid program must contain exactly one `Main` function. Normal return from `Main` implies exit code 0.
+An executable program must contain exactly one `Main` function. A module without `Main` is valid for library compilation but cannot run standalone. Normal return from `Main` implies exit code 0.
 
 ## Type System
 
