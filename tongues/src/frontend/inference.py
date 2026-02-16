@@ -673,6 +673,10 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object
         return {"_type": "FuncType", "params": [_ANY_TYPE], "ret": _INT_TYPE}
     if name == "bool":
         return {"_type": "FuncType", "params": [_ANY_TYPE], "ret": _BOOL_TYPE}
+    # Module-level variable
+    mod_var = ctx.module_vars.get(name)
+    if mod_var is not None:
+        return mod_var
     return _ANY_TYPE
 
 
@@ -1520,6 +1524,7 @@ class _InferCtx:
         self.known_classes: set[str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
         self.result: InferenceResult = result
+        self.module_vars: dict[str, dict[str, object]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -1719,6 +1724,9 @@ def _validate_assign(
                                 + _type_name(existing),
                             )
                             return
+                        if not _type_eq(val_type, existing):
+                            source = _infer_source(value, env, ctx)
+                            env.set(name, val_type, source)
                     else:
                         # First assignment: infer type
                         # Empty collection without annotation is error
@@ -3285,6 +3293,29 @@ def run_inference(
     body = tree.get("body", [])
     if not isinstance(body, list):
         return result
+    # Collect module-level annotated variable types
+    i = 0
+    while i < len(body):
+        node = body[i]
+        if isinstance(node, dict) and node.get("_type") == "AnnAssign":
+            target = node.get("target")
+            annotation = node.get("annotation")
+            if (
+                isinstance(target, dict)
+                and target.get("_type") == "Name"
+                and isinstance(annotation, dict)
+            ):
+                var_name = target.get("id")
+                if isinstance(var_name, str):
+                    ann_str = annotation_to_str(annotation)
+                    if ann_str != "":
+                        sig_errors: list[SignatureError] = []
+                        var_type = py_type_to_type_dict(
+                            ann_str, known_classes, sig_errors, 0, 0
+                        )
+                        if len(sig_errors) == 0:
+                            ctx.module_vars[var_name] = var_type
+        i += 1
     i = 0
     while i < len(body):
         node = body[i]
