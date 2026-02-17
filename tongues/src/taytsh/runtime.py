@@ -2,7 +2,7 @@
 
 This is a spec-faithful (as practical) interpreter for the Taytsh textual IR
 defined in spec/taytsh.md.
-"""
+"""  # tongues: skip
 
 from __future__ import annotations
 
@@ -4205,7 +4205,7 @@ class Runtime:
     def _eval_for(self, st: TForStmt, env: _RuntimeEnv, *, fn_ret: Ty) -> None:
         if isinstance(st.iterable, TRange):
             ints = [self._eval_expr(a, env) for a in st.iterable.args]
-            vals = []
+            vals: list[int] = []
             for iv in ints:
                 if not isinstance(iv, VInt):
                     raise TaytshRuntimeFault(

@@ -171,7 +171,7 @@ def _to_json(obj: object, indent: int, level: int) -> str:
     if isinstance(obj, dict):
         if len(obj) == 0:
             return "{}"
-        parts = []
+        parts: list[str] = []
         pad = " " * (indent * (level + 1))
         pad_close = " " * (indent * level)
         keys = list(obj.keys())
@@ -243,7 +243,7 @@ def _name_table_to_dict(table: NameTable) -> dict[str, object]:
             scope_key = str(lkey[0]) + ":" + str(lkey[1])
         else:
             scope_key = str(lkey[1])
-        scope_names = {}
+        scope_names: dict[str, object] = {}
         skeys = list(table.local_names[lkey].keys())
         j = 0
         while j < len(skeys):
@@ -1649,11 +1649,12 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
         else:
             print("error: --target is required", file=sys.stderr)
             sys.exit(2)
-    if target not in TARGETS:
-        print("error: unknown target '" + target + "'", file=sys.stderr)
+    target_str: str = target if target is not None else ""
+    if target_str not in TARGETS:
+        print("error: unknown target '" + target_str + "'", file=sys.stderr)
         sys.exit(2)
     return (
-        target,
+        target_str,
         stop_at,
         strict_math,
         strict_tostring,

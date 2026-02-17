@@ -761,7 +761,7 @@ class _PerlEmitter:
         return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
-        if else_body is None or not else_body:
+        if else_body is None or len(else_body) == 0:
             return
         if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
             elif_stmt = else_body[0]
@@ -1012,8 +1012,9 @@ class _PerlEmitter:
             is_last = idx == num_cases - 1 and not has_default
             self._emit_match_case(case, expr, first, is_last, has_nil_case)
             first = False
-        if has_default:
-            self._emit_match_default(stmt.default, expr, first)
+        default = stmt.default
+        if default is not None:
+            self._emit_match_default(default, expr, first)
         elif not first:
             self._line("}")
 
@@ -1694,7 +1695,7 @@ class _PerlEmitter:
             return "delete " + self._a(args, 0) + "->{" + self._a(args, 1) + "}"
         if name == "Get":
             if len(args) == 3:
-                if ann and ann.get("provenance") == "dict_get_default":
+                if ann is not None and ann.get("provenance") == "dict_get_default":
                     return (
                         "("
                         + self._a(args, 0)
@@ -1921,7 +1922,7 @@ class _PerlEmitter:
                 return "[(" + inner + ") x " + self._a(args, 1) + "]"
             return "(" + self._a(args, 0) + " x " + self._a(args, 1) + ")"
         if name == "Format":
-            if ann and ann.get("provenance") == "f_string":
+            if ann is not None and ann.get("provenance") == "f_string":
                 return self._format_interpolated(args)
             return self._format_call(args)
         if name == "Assert":

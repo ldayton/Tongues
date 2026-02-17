@@ -1,4 +1,4 @@
-"""Taytsh CLI — parse and run .ty files."""
+"""Taytsh CLI — parse and run .ty files."""  # tongues: skip
 
 from __future__ import annotations
 

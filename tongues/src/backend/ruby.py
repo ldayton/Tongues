@@ -340,7 +340,7 @@ def _scan_stmt_for_needs(stmt: TStmt, flags: list[bool]) -> None:
             _scan_expr_for_needs(stmt.value, flags)
     elif isinstance(stmt, TIfStmt):
         _scan_stmts_for_needs(stmt.then_body, flags)
-        if stmt.else_body:
+        if stmt.else_body is not None and len(stmt.else_body) > 0:
             _scan_stmts_for_needs(stmt.else_body, flags)
     elif isinstance(stmt, TWhileStmt):
         _scan_stmts_for_needs(stmt.body, flags)
@@ -617,7 +617,7 @@ class _RubyEmitter:
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, is_error=True)
+            self._emit_initialize(decl.fields, True)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -642,7 +642,7 @@ class _RubyEmitter:
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, is_error=False)
+            self._emit_initialize(decl.fields, False)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -1051,7 +1051,7 @@ class _RubyEmitter:
         return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
-        if else_body is None or not else_body:
+        if else_body is None or len(else_body) == 0:
             return
         if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
             elif_stmt = else_body[0]
