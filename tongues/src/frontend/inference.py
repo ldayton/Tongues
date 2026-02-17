@@ -198,7 +198,11 @@ def _type_eq(a: dict[str, object], b: dict[str, object]) -> bool:
 
 
 def _is_any(t: dict[str, object]) -> bool:
-    return t.get("_type") == "InterfaceRef" and t.get("name") == "any"
+    if t.get("_type") == "InterfaceRef" and t.get("name") == "any":
+        return True
+    if t.get("kind") == "any":
+        return True
+    return False
 
 
 def _is_optional(t: dict[str, object]) -> bool:
