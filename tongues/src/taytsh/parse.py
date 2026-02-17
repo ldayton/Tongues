@@ -474,7 +474,7 @@ class Parser:
 
     def parse_stmt(self) -> TStmt:
         advisory, semantic = self.parse_annotations()
-        ann = {**advisory, **semantic}
+        ann: dict[str, bool | int | str | tuple[int, int]] = {**advisory, **semantic}
         tok = self.current()
         if tok.value == "let":
             stmt: TStmt = self.parse_let_stmt()
@@ -827,7 +827,7 @@ class Parser:
     def parse_postfix(self) -> TExpr:
         """Postfix = Annotation* Primary ( Suffix )*"""
         advisory, semantic = self.parse_annotations()
-        ann = {**advisory, **semantic}
+        ann: dict[str, bool | int | str | tuple[int, int]] = {**advisory, **semantic}
         expr = self.parse_primary()
         while True:
             if self.at("."):

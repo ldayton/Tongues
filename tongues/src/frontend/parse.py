@@ -959,7 +959,8 @@ class Parser:
             if self.func_depth > 0:
                 raise self.error("import * only allowed at module level")
             self.advance()
-            names.append({"_type": JStr("alias"), "name": JStr("*"), "asname": JNull()})
+            star_alias: ASTNode = {"_type": JStr("alias"), "name": JStr("*"), "asname": JNull()}
+            names.append(star_alias)
         elif self.match_op("("):
             self.advance()
             names = self.parse_import_as_names()
@@ -1034,7 +1035,8 @@ class Parser:
             self.advance()
             asname = self.expect(TK_NAME).value
         asname_v: JsonValue = JStr(asname) if asname is not None else JNull()
-        return {"_type": JStr("alias"), "name": JStr(name), "asname": asname_v}
+        result: ASTNode = {"_type": JStr("alias"), "name": JStr(name), "asname": asname_v}
+        return result
 
     def parse_import_as_names(self) -> list[ASTNode]:
         """Parse import names: a as b, c as d."""
@@ -1056,7 +1058,8 @@ class Parser:
             self.advance()
             asname = self.expect(TK_NAME).value
         asname_v: JsonValue = JStr(asname) if asname is not None else JNull()
-        return {"_type": JStr("alias"), "name": JStr(name), "asname": asname_v}
+        result: ASTNode = {"_type": JStr("alias"), "name": JStr(name), "asname": asname_v}
+        return result
 
     def parse_assert_stmt(self) -> ASTNode:
         """Parse assert statement."""
@@ -1520,7 +1523,7 @@ class Parser:
 
         vararg_v: JsonValue = _wrap_node(vararg) if vararg is not None else JNull()
         kwarg_v: JsonValue = _wrap_node(kwarg) if kwarg is not None else JNull()
-        return {
+        result: ASTNode = {
             "_type": JStr("arguments"),
             "posonlyargs": _wrap_nodes(posonlyargs),
             "args": _wrap_nodes(args),
@@ -1530,6 +1533,7 @@ class Parser:
             "kwarg": kwarg_v,
             "defaults": _wrap_nodes(defaults),
         }
+        return result
 
     def parse_arg(self) -> ASTNode:
         """Parse a single argument with optional annotation."""

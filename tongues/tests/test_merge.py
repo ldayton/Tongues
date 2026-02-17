@@ -7,6 +7,10 @@ from pathlib import Path
 import pytest
 
 from src.frontend.parse import parse
+from src.frontend.types import (
+    JBool, JDict, JInt, JList, JNull, JStr,
+    get_str, get_int, get_node, get_nodes,
+)
 from src.tongues import (
     _ast_equal,
     _classify_import,
@@ -62,44 +66,44 @@ def _parse_files(files: list[tuple[str, str]]) -> list[tuple[str, dict]]:
 
 class TestClassifyImport:
     def test_relative_is_project(self):
-        node = {"_type": "ImportFrom", "module": "foo", "level": 1, "names": []}
+        node = {"_type": JStr("ImportFrom"), "module": JStr("foo"), "level": JInt(1), "names": JList([])}
         assert _classify_import(node) == "project"
 
     def test_bare_relative_is_project(self):
-        node = {"_type": "ImportFrom", "module": None, "level": 1, "names": []}
+        node = {"_type": JStr("ImportFrom"), "module": JNull(), "level": JInt(1), "names": JList([])}
         assert _classify_import(node) == "project"
 
     def test_typing_is_stdlib(self):
-        node = {"_type": "ImportFrom", "module": "typing", "level": 0, "names": []}
+        node = {"_type": JStr("ImportFrom"), "module": JStr("typing"), "level": JInt(0), "names": JList([])}
         assert _classify_import(node) == "stdlib"
 
     def test_dataclasses_is_stdlib(self):
-        node = {"_type": "ImportFrom", "module": "dataclasses", "level": 0, "names": []}
+        node = {"_type": JStr("ImportFrom"), "module": JStr("dataclasses"), "level": JInt(0), "names": JList([])}
         assert _classify_import(node) == "stdlib"
 
     def test_collections_abc_is_stdlib(self):
         node = {
-            "_type": "ImportFrom",
-            "module": "collections.abc",
-            "level": 0,
-            "names": [],
+            "_type": JStr("ImportFrom"),
+            "module": JStr("collections.abc"),
+            "level": JInt(0),
+            "names": JList([]),
         }
         assert _classify_import(node) == "stdlib"
 
     def test_future_is_stdlib(self):
-        node = {"_type": "ImportFrom", "module": "__future__", "level": 0, "names": []}
+        node = {"_type": JStr("ImportFrom"), "module": JStr("__future__"), "level": JInt(0), "names": JList([])}
         assert _classify_import(node) == "stdlib"
 
     def test_unknown_absolute_is_project(self):
-        node = {"_type": "ImportFrom", "module": "mylib.utils", "level": 0, "names": []}
+        node = {"_type": JStr("ImportFrom"), "module": JStr("mylib.utils"), "level": JInt(0), "names": JList([])}
         assert _classify_import(node) == "project"
 
     def test_sys_is_stdlib(self):
-        node = {"_type": "ImportFrom", "module": "sys", "level": 0, "names": []}
+        node = {"_type": JStr("ImportFrom"), "module": JStr("sys"), "level": JInt(0), "names": JList([])}
         assert _classify_import(node) == "stdlib"
 
     def test_os_is_stdlib(self):
-        node = {"_type": "ImportFrom", "module": "os", "level": 0, "names": []}
+        node = {"_type": JStr("ImportFrom"), "module": JStr("os"), "level": JInt(0), "names": JList([])}
         assert _classify_import(node) == "stdlib"
 
 
@@ -116,7 +120,7 @@ class TestResolveProjectImport:
 
     def test_relative_bare_import(self):
         universe = {"a.py", "b.py"}
-        names = [{"name": "a", "asname": None}]
+        names = [{"name": JStr("a"), "asname": JNull()}]
         result = _resolve_project_import("b.py", "", 1, names, universe)
         assert result == [("a.py", "")]
 
@@ -270,14 +274,15 @@ class TestRewriteNames:
     def test_simple_rename(self):
         ast = parse("from .a import Token as Tok\nx: Tok = Tok('hi')\n")
         _rewrite_names(ast, {"Tok": "Token"})
-        body = ast["body"]
+        body = get_nodes(ast, "body")
         ann = body[1]
-        assert ann["target"]["id"] == "Token" or ann["annotation"]["id"] == "Token"
+        assert get_str(ann, "id") == "Token" or get_str(get_node(ann, "target"), "id") == "Token" or get_str(get_node(ann, "annotation"), "id") == "Token"
 
     def test_no_match(self):
         ast = parse("x: int = 0\n")
         _rewrite_names(ast, {"Foo": "Bar"})
-        assert ast["body"][0]["target"]["id"] == "x"
+        body = get_nodes(ast, "body")
+        assert get_str(get_node(body[0], "target"), "id") == "x"
 
 
 # ---------------------------------------------------------------------------
@@ -313,12 +318,12 @@ class TestMergeProject:
         merged, errors = merge_project(file_asts)
         assert errors == []
         assert merged is not None
-        assert merged["_type"] == "Module"
-        body = merged["body"]
+        assert get_str(merged, "_type") == "Module"
+        body = get_nodes(merged, "body")
         names = [
-            s.get("name", s.get("targets", [{}])[0].get("id", ""))
+            get_str(s, "name") or get_str(get_nodes(s, "targets")[0], "id") if get_nodes(s, "targets") else get_str(s, "name")
             for s in body
-            if isinstance(s, dict) and s.get("_type") in ("FunctionDef", "ClassDef")
+            if get_str(s, "_type") in ("FunctionDef", "ClassDef")
         ]
         assert "foo" in names
         assert "bar" in names
@@ -330,9 +335,9 @@ class TestMergeProject:
         assert merged is not None
         # Both Token classes should be prefixed
         names = []
-        for s in merged["body"]:
-            if isinstance(s, dict) and s.get("_type") == "ClassDef":
-                names.append(s["name"])
+        for s in get_nodes(merged, "body"):
+            if get_str(s, "_type") == "ClassDef":
+                names.append(get_str(s, "name"))
         assert "a_Token" in names
         assert "b_Token" in names
         assert "Token" not in names
@@ -348,8 +353,13 @@ class TestMergeProject:
 
         def walk(node):
             nonlocal found_tok
-            if isinstance(node, dict):
-                if node.get("_type") == "Name" and node.get("id") == "Tok":
+            if isinstance(node, JDict):
+                walk(node.entries)
+            elif isinstance(node, JList):
+                for item in node.items:
+                    walk(item)
+            elif isinstance(node, dict):
+                if get_str(node, "_type") == "Name" and get_str(node, "id") == "Tok":
                     found_tok = True
                 for v in node.values():
                     walk(v)
@@ -370,10 +380,15 @@ class TestMergeProject:
 
         def walk(node):
             nonlocal found_attr
-            if isinstance(node, dict):
-                if node.get("_type") == "Attribute":
-                    val = node.get("value", {})
-                    if isinstance(val, dict) and val.get("id") == "parse":
+            if isinstance(node, JDict):
+                walk(node.entries)
+            elif isinstance(node, JList):
+                for item in node.items:
+                    walk(item)
+            elif isinstance(node, dict):
+                if get_str(node, "_type") == "Attribute":
+                    val = node.get("value")
+                    if isinstance(val, JDict) and get_str(val.entries, "id") == "parse":
                         found_attr = True
                 for v in node.values():
                     walk(v)
@@ -407,7 +422,7 @@ class TestMergeProject:
         file_asts = _parse_files(_load_fixture("basic"))
         merged, errors = merge_project(file_asts)
         assert errors == []
-        for stmt in merged["body"]:
+        for stmt in get_nodes(merged, "body"):
             assert "_source_file" in stmt
 
 
@@ -731,26 +746,26 @@ class TestAstEqual:
 class TestCollectDefinitionRefs:
     def test_function_with_refs(self):
         ast = parse("def foo(x: int) -> int:\n    return bar(x)\n")
-        func = ast["body"][0]
+        func = get_nodes(ast, "body")[0]
         refs = _collect_definition_refs(func)
         assert "bar" in refs
         assert "int" in refs
 
     def test_simple_constant(self):
         ast = parse("X: int = 42\n")
-        stmt = ast["body"][0]
+        stmt = get_nodes(ast, "body")[0]
         refs = _collect_definition_refs(stmt)
         assert "int" in refs
 
     def test_class_with_bases(self):
         ast = parse("class Foo(Base):\n    def method(self) -> None:\n        pass\n")
-        cls = ast["body"][0]
+        cls = get_nodes(ast, "body")[0]
         refs = _collect_definition_refs(cls)
         assert "Base" in refs
 
     def test_assign_value_refs(self):
         ast = parse("x: list[str] = make_list()\n")
-        stmt = ast["body"][0]
+        stmt = get_nodes(ast, "body")[0]
         refs = _collect_definition_refs(stmt)
         assert "make_list" in refs
         assert "list" in refs
@@ -890,9 +905,9 @@ class TestPrefixedMerge:
         assert errors == []
         assert merged is not None
         names = [
-            s["name"]
-            for s in merged["body"]
-            if isinstance(s, dict) and s.get("_type") == "FunctionDef"
+            get_str(s, "name")
+            for s in get_nodes(merged, "body")
+            if get_str(s, "_type") == "FunctionDef"
         ]
         assert "_a_helper" in names
         assert "_b_helper" in names
@@ -909,9 +924,14 @@ class TestPrefixedMerge:
         name_ids = set()
 
         def walk(node):
-            if isinstance(node, dict):
-                if node.get("_type") == "Name":
-                    name_ids.add(node.get("id"))
+            if isinstance(node, JDict):
+                walk(node.entries)
+            elif isinstance(node, JList):
+                for item in node.items:
+                    walk(item)
+            elif isinstance(node, dict):
+                if get_str(node, "_type") == "Name":
+                    name_ids.add(get_str(node, "id"))
                 for v in node.values():
                     walk(v)
             elif isinstance(node, list):
@@ -933,12 +953,12 @@ class TestDedupMerge:
         assert merged is not None
         # Count occurrences of ASTNode definition (Assign, not AnnAssign)
         count = 0
-        for s in merged["body"]:
-            if isinstance(s, dict) and s.get("_type") == "Assign":
-                targets = s.get("targets", [])
-                if isinstance(targets, list) and len(targets) > 0:
+        for s in get_nodes(merged, "body"):
+            if get_str(s, "_type") == "Assign":
+                targets = get_nodes(s, "targets")
+                if len(targets) > 0:
                     t = targets[0]
-                    if isinstance(t, dict) and t.get("id") == "ASTNode":
+                    if get_str(t, "id") == "ASTNode":
                         count += 1
         assert count == 1
 
@@ -947,9 +967,9 @@ class TestDedupMerge:
         merged, errors = merge_project(file_asts)
         assert errors == []
         names = [
-            s["name"]
-            for s in merged["body"]
-            if isinstance(s, dict) and s.get("_type") == "FunctionDef"
+            get_str(s, "name")
+            for s in get_nodes(merged, "body")
+            if get_str(s, "_type") == "FunctionDef"
         ]
         assert "make_a" in names
         assert "make_b" in names
@@ -966,9 +986,14 @@ class TestPrefixedImport:
         name_ids = set()
 
         def walk(node):
-            if isinstance(node, dict):
-                if node.get("_type") == "Name":
-                    name_ids.add(node.get("id"))
+            if isinstance(node, JDict):
+                walk(node.entries)
+            elif isinstance(node, JList):
+                for item in node.items:
+                    walk(item)
+            elif isinstance(node, dict):
+                if get_str(node, "_type") == "Name":
+                    name_ids.add(get_str(node, "id"))
                 for v in node.values():
                     walk(v)
             elif isinstance(node, list):
@@ -985,9 +1010,9 @@ class TestPrefixedImport:
         merged, errors = merge_project(file_asts)
         assert errors == []
         class_names = [
-            s["name"]
-            for s in merged["body"]
-            if isinstance(s, dict) and s.get("_type") == "ClassDef"
+            get_str(s, "name")
+            for s in get_nodes(merged, "body")
+            if get_str(s, "_type") == "ClassDef"
         ]
         assert "lib_Foo" in class_names
         assert "app_Foo" in class_names
@@ -1004,9 +1029,14 @@ class TestPrefixedModuleAttr:
         name_ids = set()
 
         def walk(node):
-            if isinstance(node, dict):
-                if node.get("_type") == "Name":
-                    name_ids.add(node.get("id"))
+            if isinstance(node, JDict):
+                walk(node.entries)
+            elif isinstance(node, JList):
+                for item in node.items:
+                    walk(item)
+            elif isinstance(node, dict):
+                if get_str(node, "_type") == "Name":
+                    name_ids.add(get_str(node, "id"))
                 for v in node.values():
                     walk(v)
             elif isinstance(node, list):
@@ -1020,10 +1050,15 @@ class TestPrefixedModuleAttr:
 
         def walk_attr(node):
             nonlocal found_attr
-            if isinstance(node, dict):
-                if node.get("_type") == "Attribute":
-                    val = node.get("value", {})
-                    if isinstance(val, dict) and val.get("id") == "defs":
+            if isinstance(node, JDict):
+                walk_attr(node.entries)
+            elif isinstance(node, JList):
+                for item in node.items:
+                    walk_attr(item)
+            elif isinstance(node, dict):
+                if get_str(node, "_type") == "Attribute":
+                    val = node.get("value")
+                    if isinstance(val, JDict) and get_str(val.entries, "id") == "defs":
                         found_attr = True
                 for v in node.values():
                     walk_attr(v)
@@ -1043,9 +1078,9 @@ class TestUnsafeDedupMerge:
         assert errors == []
         assert merged is not None
         names = [
-            s["name"]
-            for s in merged["body"]
-            if isinstance(s, dict) and s.get("_type") == "FunctionDef"
+            get_str(s, "name")
+            for s in get_nodes(merged, "body")
+            if get_str(s, "_type") == "FunctionDef"
         ]
         assert "_a_helper" in names
         assert "_b_helper" in names

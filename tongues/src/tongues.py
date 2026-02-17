@@ -1137,27 +1137,25 @@ def _stdlib_import_seen(
     """
     if not isinstance(names_list, list):
         return False
-    ni = 0
-    while ni < len(names_list):
-        alias = names_list[ni]
-        if isinstance(alias, JDict):
-            names_list[ni] = alias.entries
-        ni += 1
     new_indices: list[int] = []
     ni = 0
     while ni < len(names_list):
-        alias = names_list[ni]
-        if isinstance(alias, dict):
-            name = get_str(alias, "name")
-            v = alias.get("asname")
-            asname = ""
-            if isinstance(v, JStr):
-                asname = v.value
-            bound = asname if asname != "" else name
-            if bound != "":
-                if bound not in stdlib_seen:
-                    new_indices.append(ni)
-                    stdlib_seen.add(bound)
+        alias_raw = names_list[ni]
+        alias: ASTNode = {}
+        if isinstance(alias_raw, JDict):
+            alias = alias_raw.entries
+        elif isinstance(alias_raw, dict):
+            alias = alias_raw
+        name = get_str(alias, "name")
+        v = alias.get("asname")
+        asname = ""
+        if isinstance(v, JStr):
+            asname = v.value
+        bound = asname if asname != "" else name
+        if bound != "":
+            if bound not in stdlib_seen:
+                new_indices.append(ni)
+                stdlib_seen.add(bound)
         ni += 1
     if len(new_indices) == 0:
         return True

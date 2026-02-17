@@ -647,7 +647,7 @@ def _collect_init_fields(
                             if isinstance(value, JDict):
                                 value_node = value.entries
                             else:
-                                value_node = {}
+                                value_node: ASTNode = {}
                             if not (
                                 _is_type(value_node, ["Name"])
                                 and get_str(value_node, "id") in param_types
@@ -825,7 +825,7 @@ def _collect_class_fields(
                         if isinstance(v, JDict):
                             value_node = v.entries
                         else:
-                            value_node = {}
+                            value_node: ASTNode = {}
                         if _is_field_call_default_factory(value_node):
                             result.add_error(
                                 lineno, 0, "field(default_factory=...) not allowed"
