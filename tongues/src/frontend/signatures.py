@@ -42,7 +42,6 @@ from .types import (
     ASTNode,
     get_str,
     get_int,
-    get_bool,
     get_node,
     get_nodes,
     get_jlist,
@@ -74,20 +73,21 @@ class ParamInfo:
         self.default_value: TypeNode | None = default_value
         self.modifier: str = modifier
 
-    def to_dict(self) -> dict[str, object]:
-        """Serialize to a dict for test assertions."""
-        dv: dict[str, object] | None = None
+    def to_dict(self) -> JsonValue:
+        """Serialize to a JsonValue dict for test assertions."""
+        dv: JsonValue = JNull()
         if self.default_value is not None:
             dv = typenode_to_dict(self.default_value)
-        d: dict[str, object] = {
-            "name": self.name,
-            "typ": typenode_to_dict(self.typ),
-            "py_type": self.py_type,
-            "has_default": self.has_default,
-            "default_value": dv,
-            "modifier": self.modifier,
-        }
-        return d
+        return JDict(
+            {
+                "name": JStr(self.name),
+                "typ": typenode_to_dict(self.typ),
+                "py_type": JStr(self.py_type),
+                "has_default": JBool(self.has_default),
+                "default_value": dv,
+                "modifier": JStr(self.modifier),
+            }
+        )
 
 
 class FuncInfo:
@@ -109,21 +109,22 @@ class FuncInfo:
         self.is_method: bool = is_method
         self.receiver_type: str = receiver_type
 
-    def to_dict(self) -> dict[str, object]:
-        """Serialize to a dict for test assertions."""
-        param_dicts: list[object] = []
+    def to_dict(self) -> JsonValue:
+        """Serialize to a JsonValue dict for test assertions."""
+        param_dicts: list[JsonValue] = []
         i = 0
         while i < len(self.params):
             param_dicts.append(self.params[i].to_dict())
             i += 1
-        d: dict[str, object] = {
-            "params": param_dicts,
-            "return_type": typenode_to_dict(self.return_type),
-            "return_py_type": self.return_py_type,
-            "is_method": self.is_method,
-            "receiver_type": self.receiver_type,
-        }
-        return d
+        return JDict(
+            {
+                "params": JList(param_dicts),
+                "return_type": typenode_to_dict(self.return_type),
+                "return_py_type": JStr(self.return_py_type),
+                "is_method": JBool(self.is_method),
+                "receiver_type": JStr(self.receiver_type),
+            }
+        )
 
 
 class SignatureError:
@@ -167,35 +168,35 @@ class SignatureResult:
     def errors(self) -> list[SignatureError]:
         return self._errors
 
-    def to_dict(self) -> dict[str, object]:
-        """Serialize to nested dicts for test assertions."""
-        funcs: dict[str, object] = {}
+    def to_dict(self) -> JsonValue:
+        """Serialize to nested JsonValue dicts for test assertions."""
+        funcs: dict[str, JsonValue] = {}
         fkeys = list(self.functions.keys())
         i = 0
         while i < len(fkeys):
             name = fkeys[i]
             funcs[name] = self.functions[name].to_dict()
             i += 1
-        meths: dict[str, object] = {}
+        meths: dict[str, JsonValue] = {}
         ckeys = list(self.methods.keys())
         i = 0
         while i < len(ckeys):
             cname = ckeys[i]
-            class_methods: dict[str, object] = {}
+            class_methods: dict[str, JsonValue] = {}
             mkeys = list(self.methods[cname].keys())
             j = 0
             while j < len(mkeys):
                 mname = mkeys[j]
                 class_methods[mname] = self.methods[cname][mname].to_dict()
                 j += 1
-            meths[cname] = class_methods
+            meths[cname] = JDict(class_methods)
             i += 1
-        result: dict[str, object] = {}
+        result: dict[str, JsonValue] = {}
         if len(funcs) > 0:
-            result["functions"] = funcs
+            result["functions"] = JDict(funcs)
         if len(meths) > 0:
-            result["methods"] = meths
-        return result
+            result["methods"] = JDict(meths)
+        return JDict(result)
 
 
 # ---------------------------------------------------------------------------

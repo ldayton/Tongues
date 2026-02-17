@@ -287,7 +287,7 @@ class ChildB(B):
         pass
 ---
 root = null
-node_types.length = 0
+node_types.length = 4
 ancestors.ChildA.0 = A
 ancestors.ChildB.0 = B
 ---

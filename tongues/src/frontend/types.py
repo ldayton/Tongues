@@ -357,68 +357,82 @@ def type_name(t: TypeNode) -> str:
     return "unknown"
 
 
-def typenode_to_dict(t: TypeNode) -> dict[str, object]:
-    """Convert a TypeNode to the legacy dict format for test serialization."""
+def typenode_to_dict(t: TypeNode) -> JsonValue:
+    """Convert a TypeNode to a JsonValue dict for serialization."""
     if isinstance(t, PrimitiveType):
-        return {"kind": t.kind}
+        return JDict({"kind": JStr(t.kind)})
     if isinstance(t, SliceType):
-        return {"_type": "Slice", "element": typenode_to_dict(t.element)}
+        return JDict({"_type": JStr("Slice"), "element": typenode_to_dict(t.element)})
     if isinstance(t, MapType):
-        return {
-            "_type": "Map",
-            "key": typenode_to_dict(t.key),
-            "value": typenode_to_dict(t.value),
-        }
+        return JDict(
+            {
+                "_type": JStr("Map"),
+                "key": typenode_to_dict(t.key),
+                "value": typenode_to_dict(t.value),
+            }
+        )
     if isinstance(t, SetType):
-        return {"_type": "Set", "element": typenode_to_dict(t.element)}
+        return JDict({"_type": JStr("Set"), "element": typenode_to_dict(t.element)})
     if isinstance(t, TupleType):
-        elems: list[object] = []
+        elems: list[JsonValue] = []
         i = 0
         while i < len(t.elements):
             elems.append(typenode_to_dict(t.elements[i]))
             i += 1
-        return {"_type": "Tuple", "elements": elems, "variadic": t.variadic}
+        return JDict(
+            {
+                "_type": JStr("Tuple"),
+                "elements": JList(elems),
+                "variadic": JBool(t.variadic),
+            }
+        )
     if isinstance(t, OptionalType):
-        return {"_type": "Optional", "inner": typenode_to_dict(t.inner)}
+        return JDict({"_type": JStr("Optional"), "inner": typenode_to_dict(t.inner)})
     if isinstance(t, PointerType):
-        return {"_type": "Pointer", "target": typenode_to_dict(t.target)}
+        return JDict({"_type": JStr("Pointer"), "target": typenode_to_dict(t.target)})
     if isinstance(t, StructRef):
-        return {"_type": "StructRef", "name": t.name}
+        return JDict({"_type": JStr("StructRef"), "name": JStr(t.name)})
     if isinstance(t, InterfaceRef):
-        return {"_type": "InterfaceRef", "name": t.name}
+        return JDict({"_type": JStr("InterfaceRef"), "name": JStr(t.name)})
     if isinstance(t, FuncType):
-        params: list[object] = []
+        params: list[JsonValue] = []
         i = 0
         while i < len(t.params):
             params.append(typenode_to_dict(t.params[i]))
             i += 1
-        return {"_type": "FuncType", "params": params, "ret": typenode_to_dict(t.ret)}
+        return JDict(
+            {
+                "_type": JStr("FuncType"),
+                "params": JList(params),
+                "ret": typenode_to_dict(t.ret),
+            }
+        )
     if isinstance(t, UnionType):
-        variants: list[object] = []
+        variants: list[JsonValue] = []
         i = 0
         while i < len(t.variants):
             variants.append(typenode_to_dict(t.variants[i]))
             i += 1
-        return {"_type": "Union", "members": variants}
+        return JDict({"_type": JStr("Union"), "members": JList(variants)})
     if isinstance(t, NilLit):
-        return {"_type": "NilLit"}
+        return JDict({"_type": JStr("NilLit")})
     if isinstance(t, BoolLit):
-        return {"_type": "BoolLit", "value": t.value}
+        return JDict({"_type": JStr("BoolLit"), "value": JBool(t.value)})
     if isinstance(t, IntLit):
-        return {"_type": "IntLit", "value": t.value}
+        return JDict({"_type": JStr("IntLit"), "value": JInt(t.value)})
     if isinstance(t, FloatLit):
-        return {"_type": "FloatLit", "value": t.value}
+        return JDict({"_type": JStr("FloatLit"), "value": JFloat(t.value)})
     if isinstance(t, StringLit):
-        return {"_type": "StringLit", "value": t.value}
+        return JDict({"_type": JStr("StringLit"), "value": JStr(t.value)})
     if isinstance(t, ListLit):
-        return {"_type": "ListLit", "elements": []}
+        return JDict({"_type": JStr("ListLit"), "elements": JList([])})
     if isinstance(t, MapLit):
-        return {"_type": "MapLit", "entries": []}
+        return JDict({"_type": JStr("MapLit"), "entries": JList([])})
     if isinstance(t, SetLit):
-        return {"_type": "SetLit", "elements": []}
+        return JDict({"_type": JStr("SetLit"), "elements": JList([])})
     if isinstance(t, TupleLit):
-        return {"_type": "TupleLit", "elements": []}
-    return {"_type": "InterfaceRef", "name": "any"}
+        return JDict({"_type": JStr("TupleLit"), "elements": JList([])})
+    return JDict({"_type": JStr("InterfaceRef"), "name": JStr("any")})
 
 
 # Commonly used singleton types

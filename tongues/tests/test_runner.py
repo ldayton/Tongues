@@ -16,6 +16,7 @@ from src.frontend.names import resolve_names
 from src.frontend.parse import parse
 from src.frontend.signatures import collect_signatures
 from src.frontend.subset import verify as verify_subset
+from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 
 TONGUES_DIR = Path(__file__).parent.parent
 
@@ -333,28 +334,47 @@ class PhaseResult:
     data: dict | None = None
 
 
+def _unwrap_jvalue(obj: object) -> object:
+    """Unwrap JsonValue types to plain Python equivalents."""
+    if isinstance(obj, JDict):
+        return obj.entries
+    if isinstance(obj, JList):
+        return obj.items
+    if isinstance(obj, JStr):
+        return obj.value
+    if isinstance(obj, JInt):
+        return obj.value
+    if isinstance(obj, JFloat):
+        return obj.value
+    if isinstance(obj, JBool):
+        return obj.value
+    if isinstance(obj, JNull):
+        return None
+    return obj
+
+
 def resolve_dotpath(obj: object, path: str) -> object:
     """Resolve a dot-separated path against a nested dict/list structure."""
     parts = path.split(".")
-    current = obj
+    current = _unwrap_jvalue(obj)
     i = 0
     while i < len(parts):
         part = parts[i]
         if part == "length":
             return len(current)
         if isinstance(current, list):
-            current = current[int(part)]
+            current = _unwrap_jvalue(current[int(part)])
             i += 1
         elif isinstance(current, dict):
             if part in current:
-                current = current[part]
+                current = _unwrap_jvalue(current[part])
                 i += 1
             else:
                 found = False
                 for j in range(i + 1, len(parts)):
                     composite = ".".join(parts[i : j + 1])
                     if composite in current:
-                        current = current[composite]
+                        current = _unwrap_jvalue(current[composite])
                         i = j + 1
                         found = True
                         break

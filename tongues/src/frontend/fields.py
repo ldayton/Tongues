@@ -38,10 +38,8 @@ from .types import (
     ASTNode,
     get_str,
     get_int,
-    get_bool,
     get_node,
     get_nodes,
-    get_jlist,
     has_key,
 )
 from .signatures import (
@@ -73,18 +71,19 @@ class FieldInfo:
         self.has_default: bool = has_default
         self.default: TypeNode | None = default
 
-    def to_dict(self) -> dict[str, object]:
-        """Serialize to a dict for test assertions."""
-        dv: dict[str, object] | None = None
+    def to_dict(self) -> JsonValue:
+        """Serialize to a JsonValue dict for test assertions."""
+        dv: JsonValue = JNull()
         if self.default is not None:
             dv = typenode_to_dict(self.default)
-        d: dict[str, object] = {
-            "typ": typenode_to_dict(self.typ),
-            "py_name": self.py_name,
-            "has_default": self.has_default,
-            "default": dv,
-        }
-        return d
+        return JDict(
+            {
+                "typ": typenode_to_dict(self.typ),
+                "py_name": JStr(self.py_name),
+                "has_default": JBool(self.has_default),
+                "default": dv,
+            }
+        )
 
 
 class ClassInfo:
@@ -100,24 +99,42 @@ class ClassInfo:
         self.kw_only: bool = False
         self.needs_constructor: bool = False
 
-    def to_dict(self) -> dict[str, object]:
-        """Serialize to a dict for test assertions."""
-        fields: dict[str, object] = {}
+    def to_dict(self) -> JsonValue:
+        """Serialize to a JsonValue dict for test assertions."""
+        fields: dict[str, JsonValue] = {}
         fkeys = list(self.fields.keys())
         i = 0
         while i < len(fkeys):
             fields[fkeys[i]] = self.fields[fkeys[i]].to_dict()
             i += 1
-        d: dict[str, object] = {
-            "fields": fields,
-            "init_params": list(self.init_params),
-            "param_to_field": dict(self.param_to_field),
-            "const_fields": dict(self.const_fields),
-            "is_dataclass": self.is_dataclass,
-            "kw_only": self.kw_only,
-            "needs_constructor": self.needs_constructor,
-        }
-        return d
+        init_params_jv: list[JsonValue] = []
+        j = 0
+        while j < len(self.init_params):
+            init_params_jv.append(JStr(self.init_params[j]))
+            j += 1
+        ptf: dict[str, JsonValue] = {}
+        ptf_keys = list(self.param_to_field.keys())
+        j = 0
+        while j < len(ptf_keys):
+            ptf[ptf_keys[j]] = JStr(self.param_to_field[ptf_keys[j]])
+            j += 1
+        cf: dict[str, JsonValue] = {}
+        cf_keys = list(self.const_fields.keys())
+        j = 0
+        while j < len(cf_keys):
+            cf[cf_keys[j]] = JStr(self.const_fields[cf_keys[j]])
+            j += 1
+        return JDict(
+            {
+                "fields": JDict(fields),
+                "init_params": JList(init_params_jv),
+                "param_to_field": JDict(ptf),
+                "const_fields": JDict(cf),
+                "is_dataclass": JBool(self.is_dataclass),
+                "kw_only": JBool(self.kw_only),
+                "needs_constructor": JBool(self.needs_constructor),
+            }
+        )
 
 
 class FieldError:
@@ -162,15 +179,15 @@ class FieldResult:
     def errors(self) -> list[FieldError]:
         return self._errors
 
-    def to_dict(self) -> dict[str, object]:
-        """Serialize to nested dicts for test assertions."""
-        classes: dict[str, object] = {}
+    def to_dict(self) -> JsonValue:
+        """Serialize to nested JsonValue dicts for test assertions."""
+        classes: dict[str, JsonValue] = {}
         ckeys = list(self.classes.keys())
         i = 0
         while i < len(ckeys):
             classes[ckeys[i]] = self.classes[ckeys[i]].to_dict()
             i += 1
-        return {"classes": classes}
+        return JDict({"classes": JDict(classes)})
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +400,10 @@ def _check_no_field_assign_in_block(block: list[ASTNode]) -> str | None:
                 target = targets[j]
                 if _is_type(target, ["Attribute"]):
                     val_node = get_node(target, "value")
-                    if _is_type(val_node, ["Name"]) and get_str(val_node, "id") == "self":
+                    if (
+                        _is_type(val_node, ["Name"])
+                        and get_str(val_node, "id") == "self"
+                    ):
                         attr = get_str(target, "attr")
                         if attr != "":
                             return attr
@@ -420,7 +440,10 @@ def _check_no_new_fields_outside_init(
                 target = targets[j]
                 if _is_type(target, ["Attribute"]):
                     val_node = get_node(target, "value")
-                    if _is_type(val_node, ["Name"]) and get_str(val_node, "id") == "self":
+                    if (
+                        _is_type(val_node, ["Name"])
+                        and get_str(val_node, "id") == "self"
+                    ):
                         fname = get_str(target, "attr")
                         if fname != "" and fname not in known_fields:
                             return fname
@@ -602,10 +625,7 @@ def _collect_init_fields(
             target = get_node(stmt, "target")
             if _is_type(target, ["Attribute"]):
                 val_node = get_node(target, "value")
-                if (
-                    _is_type(val_node, ["Name"])
-                    and get_str(val_node, "id") == "self"
-                ):
+                if _is_type(val_node, ["Name"]) and get_str(val_node, "id") == "self":
                     field_name = get_str(target, "attr")
                     if field_name != "":
                         ann = stmt.get("annotation")
@@ -674,9 +694,8 @@ def _collect_init_fields(
                                 and get_str(value, "id") != ""
                                 and get_str(value, "id") in param_types
                             )
-                            is_const_str = (
-                                _is_type(value, ["Constant"])
-                                and isinstance(value.get("value"), JStr)
+                            is_const_str = _is_type(value, ["Constant"]) and isinstance(
+                                value.get("value"), JStr
                             )
                             if is_simple_param:
                                 param_name = get_str(value, "id")
@@ -845,10 +864,7 @@ def _collect_class_fields(
     i = 0
     while i < len(body):
         stmt = body[i]
-        if (
-            _is_type(stmt, ["FunctionDef"])
-            and get_str(stmt, "name") == "__init__"
-        ):
+        if _is_type(stmt, ["FunctionDef"]) and get_str(stmt, "name") == "__init__":
             has_init = True
             _collect_init_fields(
                 stmt, info, known_classes, func_return_types, result._errors
@@ -876,10 +892,7 @@ def _collect_class_fields(
     i = 0
     while i < len(body):
         stmt = body[i]
-        if (
-            _is_type(stmt, ["FunctionDef"])
-            and get_str(stmt, "name") != "__init__"
-        ):
+        if _is_type(stmt, ["FunctionDef"]) and get_str(stmt, "name") != "__init__":
             bad = _check_no_new_fields_outside_init(stmt, known_field_set)
             if bad is not None:
                 result.add_error(

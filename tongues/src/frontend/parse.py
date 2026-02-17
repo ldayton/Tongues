@@ -4,8 +4,19 @@ Written in the Tongues subset with no external dependencies.
 """
 
 from .types import (
-    JsonValue, JStr, JInt, JFloat, JBool, JNull, JList, JDict,
-    ASTNode, get_str, get_int, get_bool, get_float, get_node, get_nodes, get_jlist, has_key,
+    JsonValue,
+    JStr,
+    JInt,
+    JFloat,
+    JBool,
+    JNull,
+    JList,
+    JDict,
+    ASTNode,
+    get_str,
+    get_int,
+    get_node,
+    get_nodes,
 )
 
 
@@ -756,7 +767,11 @@ class Parser:
             "TypeAlias",
             tok.lineno,
             tok.col,
-            {"name": _wrap_node(name_node), "type_params": _wrap_nodes(type_params), "value": _wrap_node(value)},
+            {
+                "name": _wrap_node(name_node),
+                "type_params": _wrap_nodes(type_params),
+                "value": _wrap_node(value),
+            },
         )
         end_from_node(node, value)
         return node
@@ -780,7 +795,10 @@ class Parser:
                     body.append(stmt)
             self.skip_newlines()
         node = make_node(
-            "Module", tok.lineno, tok.col, {"body": _wrap_nodes(body), "type_ignores": JList([])}
+            "Module",
+            tok.lineno,
+            tok.col,
+            {"body": _wrap_nodes(body), "type_ignores": JList([])},
         )
         if len(body) > 0:
             end_from_node(node, body[len(body) - 1])
@@ -959,7 +977,11 @@ class Parser:
             if self.func_depth > 0:
                 raise self.error("import * only allowed at module level")
             self.advance()
-            star_alias: ASTNode = {"_type": JStr("alias"), "name": JStr("*"), "asname": JNull()}
+            star_alias: ASTNode = {
+                "_type": JStr("alias"),
+                "name": JStr("*"),
+                "asname": JNull(),
+            }
             names.append(star_alias)
         elif self.match_op("("):
             self.advance()
@@ -1035,7 +1057,11 @@ class Parser:
             self.advance()
             asname = self.expect(TK_NAME).value
         asname_v: JsonValue = JStr(asname) if asname is not None else JNull()
-        result: ASTNode = {"_type": JStr("alias"), "name": JStr(name), "asname": asname_v}
+        result: ASTNode = {
+            "_type": JStr("alias"),
+            "name": JStr(name),
+            "asname": asname_v,
+        }
         return result
 
     def parse_import_as_names(self) -> list[ASTNode]:
@@ -1058,7 +1084,11 @@ class Parser:
             self.advance()
             asname = self.expect(TK_NAME).value
         asname_v: JsonValue = JStr(asname) if asname is not None else JNull()
-        result: ASTNode = {"_type": JStr("alias"), "name": JStr(name), "asname": asname_v}
+        result: ASTNode = {
+            "_type": JStr("alias"),
+            "name": JStr(name),
+            "asname": asname_v,
+        }
         return result
 
     def parse_assert_stmt(self) -> ASTNode:
@@ -1070,7 +1100,9 @@ class Parser:
             self.advance()
             msg = self.parse_test()
         msg_v: JsonValue = _wrap_node(msg) if msg is not None else JNull()
-        node = make_node("Assert", tok.lineno, tok.col, {"test": _wrap_node(test), "msg": msg_v})
+        node = make_node(
+            "Assert", tok.lineno, tok.col, {"test": _wrap_node(test), "msg": msg_v}
+        )
         if msg is not None:
             end_from_node(node, msg)
         else:
@@ -1082,7 +1114,9 @@ class Parser:
         tok = self.expect("del")
         targets = self.parse_exprlist()
         set_context_list(targets, "Del")
-        node = make_node("Delete", tok.lineno, tok.col, {"targets": _wrap_nodes(targets)})
+        node = make_node(
+            "Delete", tok.lineno, tok.col, {"targets": _wrap_nodes(targets)}
+        )
         if len(targets) > 0:
             end_from_node(node, targets[len(targets) - 1])
         else:
@@ -1120,7 +1154,8 @@ class Parser:
         tok = self.current()
         yield_expr = self.parse_yield_expr()
         return end_from_node(
-            make_node("Expr", tok.lineno, tok.col, {"value": _wrap_node(yield_expr)}), yield_expr
+            make_node("Expr", tok.lineno, tok.col, {"value": _wrap_node(yield_expr)}),
+            yield_expr,
         )
 
     def parse_yield_expr(self) -> ASTNode:
@@ -1135,7 +1170,10 @@ class Parser:
             value = self.parse_test()
             self.func_has_yield = True
             return end_from_node(
-                make_node("YieldFrom", tok.lineno, tok.col, {"value": _wrap_node(value)}), value
+                make_node(
+                    "YieldFrom", tok.lineno, tok.col, {"value": _wrap_node(value)}
+                ),
+                value,
             )
         value: ASTNode | None = None
         if (
@@ -1247,7 +1285,11 @@ class Parser:
                         "AugAssign",
                         tok.lineno,
                         tok.col,
-                        {"target": _wrap_node(target), "op": _wrap_node(op), "value": _wrap_node(value)},
+                        {
+                            "target": _wrap_node(target),
+                            "op": _wrap_node(op),
+                            "value": _wrap_node(value),
+                        },
                     ),
                     value,
                 )
@@ -1294,7 +1336,10 @@ class Parser:
                 j += 1
             return end_from_node(
                 make_node(
-                    "Assign", tok.lineno, tok.col, {"targets": _wrap_nodes(targets), "value": _wrap_node(value)}
+                    "Assign",
+                    tok.lineno,
+                    tok.col,
+                    {"targets": _wrap_nodes(targets), "value": _wrap_node(value)},
                 ),
                 value,
             )
@@ -1303,7 +1348,8 @@ class Parser:
         if isinstance(target, dict) and get_str(target, "_type") == "Starred":
             raise self.error("starred expression is not allowed here")
         return end_from_node(
-            make_node("Expr", tok.lineno, tok.col, {"value": _wrap_node(target)}), target
+            make_node("Expr", tok.lineno, tok.col, {"value": _wrap_node(target)}),
+            target,
         )
 
     # --- Compound statements ---
@@ -1350,7 +1396,11 @@ class Parser:
                     "TypeVar",
                     tok.lineno,
                     tok.col,
-                    {"name": JStr(name_tok.value), "bound": bound_v, "default_value": JNull()},
+                    {
+                        "name": JStr(name_tok.value),
+                        "bound": bound_v,
+                        "default_value": JNull(),
+                    },
                 )
                 end_from_token(node, name_tok)
             if self.match_op("="):
@@ -1656,7 +1706,14 @@ class Parser:
             orelse = self.parse_suite()
 
         node = make_node(
-            "If", tok.lineno, tok.col, {"test": _wrap_node(test), "body": _wrap_nodes(body), "orelse": _wrap_nodes(orelse)}
+            "If",
+            tok.lineno,
+            tok.col,
+            {
+                "test": _wrap_node(test),
+                "body": _wrap_nodes(body),
+                "orelse": _wrap_nodes(orelse),
+            },
         )
         last = orelse if len(orelse) > 0 else body
         if len(last) > 0:
@@ -1681,7 +1738,14 @@ class Parser:
             orelse = self.parse_suite()
 
         node = make_node(
-            "If", tok.lineno, tok.col, {"test": _wrap_node(test), "body": _wrap_nodes(body), "orelse": _wrap_nodes(orelse)}
+            "If",
+            tok.lineno,
+            tok.col,
+            {
+                "test": _wrap_node(test),
+                "body": _wrap_nodes(body),
+                "orelse": _wrap_nodes(orelse),
+            },
         )
         last = orelse if len(orelse) > 0 else body
         if len(last) > 0:
@@ -1705,7 +1769,14 @@ class Parser:
             orelse = self.parse_suite()
 
         node = make_node(
-            "While", tok.lineno, tok.col, {"test": _wrap_node(test), "body": _wrap_nodes(body), "orelse": _wrap_nodes(orelse)}
+            "While",
+            tok.lineno,
+            tok.col,
+            {
+                "test": _wrap_node(test),
+                "body": _wrap_nodes(body),
+                "orelse": _wrap_nodes(orelse),
+            },
         )
         last = orelse if len(orelse) > 0 else body
         if len(last) > 0:
@@ -1737,7 +1808,12 @@ class Parser:
             "For",
             tok.lineno,
             tok.col,
-            {"target": _wrap_node(target), "iter": _wrap_node(iter_expr), "body": _wrap_nodes(body), "orelse": _wrap_nodes(orelse)},
+            {
+                "target": _wrap_node(target),
+                "iter": _wrap_node(iter_expr),
+                "body": _wrap_nodes(body),
+                "orelse": _wrap_nodes(orelse),
+            },
         )
         last = orelse if len(orelse) > 0 else body
         if len(last) > 0:
@@ -1776,13 +1852,19 @@ class Parser:
 
             self.expect_op(":")
             handler_body = self.parse_suite()
-            exc_type_v: JsonValue = _wrap_node(exc_type) if exc_type is not None else JNull()
+            exc_type_v: JsonValue = (
+                _wrap_node(exc_type) if exc_type is not None else JNull()
+            )
             exc_name_v: JsonValue = JStr(exc_name) if exc_name is not None else JNull()
             handler_node = make_node(
                 "ExceptHandler",
                 handler_tok.lineno,
                 handler_tok.col,
-                {"type": exc_type_v, "name": exc_name_v, "body": _wrap_nodes(handler_body)},
+                {
+                    "type": exc_type_v,
+                    "name": exc_name_v,
+                    "body": _wrap_nodes(handler_body),
+                },
             )
             if len(handler_body) > 0:
                 end_from_node(handler_node, handler_body[len(handler_body) - 1])
@@ -1837,7 +1919,12 @@ class Parser:
 
         self.expect_op(":")
         body = self.parse_suite()
-        node = make_node("With", tok.lineno, tok.col, {"items": _wrap_nodes(items), "body": _wrap_nodes(body)})
+        node = make_node(
+            "With",
+            tok.lineno,
+            tok.col,
+            {"items": _wrap_nodes(items), "body": _wrap_nodes(body)},
+        )
         if len(body) > 0:
             end_from_node(node, body[len(body) - 1])
         return node
@@ -1850,7 +1937,9 @@ class Parser:
             self.advance()
             optional_vars = self.parse_exprlist_single()
             set_context(optional_vars, "Store")
-        ov_v: JsonValue = _wrap_node(optional_vars) if optional_vars is not None else JNull()
+        ov_v: JsonValue = (
+            _wrap_node(optional_vars) if optional_vars is not None else JNull()
+        )
         return {
             "_type": JStr("withitem"),
             "context_expr": _wrap_node(context_expr),
@@ -1872,7 +1961,10 @@ class Parser:
 
         self.expect(TK_DEDENT)
         node = make_node(
-            "Match", tok.lineno, tok.col, {"subject": _wrap_node(subject), "cases": _wrap_nodes(cases)}
+            "Match",
+            tok.lineno,
+            tok.col,
+            {"subject": _wrap_node(subject), "cases": _wrap_nodes(cases)},
         )
         if len(cases) > 0:
             last_case = cases[len(cases) - 1]
@@ -1892,7 +1984,12 @@ class Parser:
         self.expect_op(":")
         body = self.parse_suite()
         guard_v: JsonValue = _wrap_node(guard) if guard is not None else JNull()
-        return {"_type": JStr("match_case"), "pattern": _wrap_node(pattern), "guard": guard_v, "body": _wrap_nodes(body)}
+        return {
+            "_type": JStr("match_case"),
+            "pattern": _wrap_node(pattern),
+            "guard": guard_v,
+            "body": _wrap_nodes(body),
+        }
 
     def parse_pattern(self) -> ASTNode:
         """Parse a match pattern."""
@@ -1915,7 +2012,11 @@ class Parser:
         if self.match("as"):
             self.advance()
             name_tok = self.expect(TK_NAME)
-            return {"_type": JStr("MatchAs"), "pattern": _wrap_node(pattern), "name": JStr(name_tok.value)}
+            return {
+                "_type": JStr("MatchAs"),
+                "pattern": _wrap_node(pattern),
+                "name": JStr(name_tok.value),
+            }
         return pattern
 
     def parse_closed_pattern(self) -> ASTNode:
@@ -1925,10 +2026,16 @@ class Parser:
         # Literal patterns
         if tok.type == TK_NUMBER:
             self.advance()
-            return {"_type": JStr("MatchValue"), "value": _wrap_node(make_constant_from_token(tok))}
+            return {
+                "_type": JStr("MatchValue"),
+                "value": _wrap_node(make_constant_from_token(tok)),
+            }
         if tok.type == TK_STRING:
             self.advance()
-            return {"_type": JStr("MatchValue"), "value": _wrap_node(make_constant_from_token(tok))}
+            return {
+                "_type": JStr("MatchValue"),
+                "value": _wrap_node(make_constant_from_token(tok)),
+            }
         if tok.value == "None":
             self.advance()
             return {"_type": JStr("MatchSingleton"), "value": JNull()}
@@ -1949,7 +2056,10 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": JDict({"_type": JStr("USub")}), "operand": _wrap_node(const)},
+                    {
+                        "op": JDict({"_type": JStr("USub")}),
+                        "operand": _wrap_node(const),
+                    },
                 ),
                 const,
             )
@@ -2047,7 +2157,10 @@ class Parser:
         parts = name.split(".")
         cls: ASTNode = end_from_token(
             make_node(
-                "Name", tok.lineno, tok.col, {"id": JStr(parts[0]), "ctx": JDict({"_type": JStr("Load")})}
+                "Name",
+                tok.lineno,
+                tok.col,
+                {"id": JStr(parts[0]), "ctx": JDict({"_type": JStr("Load")})},
             ),
             tok,
         )
@@ -2058,7 +2171,11 @@ class Parser:
                     "Attribute",
                     tok.lineno,
                     tok.col,
-                    {"value": _wrap_node(cls), "attr": JStr(parts[i]), "ctx": JDict({"_type": JStr("Load")})},
+                    {
+                        "value": _wrap_node(cls),
+                        "attr": JStr(parts[i]),
+                        "ctx": JDict({"_type": JStr("Load")}),
+                    },
                 ),
                 tok,
             )
@@ -2161,7 +2278,8 @@ class Parser:
                 )
             if tok.value == "True":
                 return end_from_token(
-                    make_node("Constant", tok.lineno, tok.col, {"value": JBool(True)}), tok
+                    make_node("Constant", tok.lineno, tok.col, {"value": JBool(True)}),
+                    tok,
                 )
             return end_from_token(
                 make_node("Constant", tok.lineno, tok.col, {"value": JBool(False)}), tok
@@ -2175,7 +2293,10 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": JDict({"_type": JStr("USub")}), "operand": _wrap_node(const)},
+                    {
+                        "op": JDict({"_type": JStr("USub")}),
+                        "operand": _wrap_node(const),
+                    },
                 ),
                 const,
             )
@@ -2184,7 +2305,10 @@ class Parser:
         parts = name.split(".")
         result: ASTNode = end_from_token(
             make_node(
-                "Name", tok.lineno, tok.col, {"id": JStr(parts[0]), "ctx": JDict({"_type": JStr("Load")})}
+                "Name",
+                tok.lineno,
+                tok.col,
+                {"id": JStr(parts[0]), "ctx": JDict({"_type": JStr("Load")})},
             ),
             self.prev_token(),
         )
@@ -2195,7 +2319,11 @@ class Parser:
                     "Attribute",
                     tok.lineno,
                     tok.col,
-                    {"value": _wrap_node(result), "attr": JStr(parts[i]), "ctx": JDict({"_type": JStr("Load")})},
+                    {
+                        "value": _wrap_node(result),
+                        "attr": JStr(parts[i]),
+                        "ctx": JDict({"_type": JStr("Load")}),
+                    },
                 ),
                 self.prev_token(),
             )
@@ -2280,7 +2408,11 @@ class Parser:
                     "IfExp",
                     tok.lineno,
                     tok.col,
-                    {"test": _wrap_node(condition), "body": _wrap_node(expr), "orelse": _wrap_node(orelse)},
+                    {
+                        "test": _wrap_node(condition),
+                        "body": _wrap_node(expr),
+                        "orelse": _wrap_node(orelse),
+                    },
                 ),
                 orelse,
             )
@@ -2296,7 +2428,12 @@ class Parser:
         self.expect_op(":")
         body = self.parse_test()
         return end_from_node(
-            make_node("Lambda", tok.lineno, tok.col, {"args": _wrap_node(params), "body": _wrap_node(body)}),
+            make_node(
+                "Lambda",
+                tok.lineno,
+                tok.col,
+                {"args": _wrap_node(params), "body": _wrap_node(body)},
+            ),
             body,
         )
 
@@ -2406,7 +2543,10 @@ class Parser:
             return values[0]
         return end_from_node(
             make_node(
-                "BoolOp", tok.lineno, tok.col, {"op": JDict({"_type": JStr("Or")}), "values": _wrap_nodes(values)}
+                "BoolOp",
+                tok.lineno,
+                tok.col,
+                {"op": JDict({"_type": JStr("Or")}), "values": _wrap_nodes(values)},
             ),
             values[len(values) - 1],
         )
@@ -2442,7 +2582,10 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": JDict({"_type": JStr("Not")}), "operand": _wrap_node(operand)},
+                    {
+                        "op": JDict({"_type": JStr("Not")}),
+                        "operand": _wrap_node(operand),
+                    },
                 ),
                 operand,
             )
@@ -2469,7 +2612,11 @@ class Parser:
                 "Compare",
                 tok.lineno,
                 tok.col,
-                {"left": _wrap_node(left), "ops": _wrap_nodes(ops), "comparators": _wrap_nodes(comparators)},
+                {
+                    "left": _wrap_node(left),
+                    "ops": _wrap_nodes(ops),
+                    "comparators": _wrap_nodes(comparators),
+                },
             ),
             comparators[len(comparators) - 1],
         )
@@ -2522,7 +2669,11 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": _wrap_node(left), "op": JDict({"_type": JStr("BitOr")}), "right": _wrap_node(right)},
+                    {
+                        "left": _wrap_node(left),
+                        "op": JDict({"_type": JStr("BitOr")}),
+                        "right": _wrap_node(right),
+                    },
                 ),
                 right,
             )
@@ -2540,7 +2691,11 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": _wrap_node(left), "op": JDict({"_type": JStr("BitXor")}), "right": _wrap_node(right)},
+                    {
+                        "left": _wrap_node(left),
+                        "op": JDict({"_type": JStr("BitXor")}),
+                        "right": _wrap_node(right),
+                    },
                 ),
                 right,
             )
@@ -2558,7 +2713,11 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": _wrap_node(left), "op": JDict({"_type": JStr("BitAnd")}), "right": _wrap_node(right)},
+                    {
+                        "left": _wrap_node(left),
+                        "op": JDict({"_type": JStr("BitAnd")}),
+                        "right": _wrap_node(right),
+                    },
                 ),
                 right,
             )
@@ -2577,7 +2736,11 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": _wrap_node(left), "op": JDict({"_type": JStr(op_type)}), "right": _wrap_node(right)},
+                    {
+                        "left": _wrap_node(left),
+                        "op": JDict({"_type": JStr(op_type)}),
+                        "right": _wrap_node(right),
+                    },
                 ),
                 right,
             )
@@ -2596,7 +2759,11 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": _wrap_node(left), "op": JDict({"_type": JStr(op_type)}), "right": _wrap_node(right)},
+                    {
+                        "left": _wrap_node(left),
+                        "op": JDict({"_type": JStr(op_type)}),
+                        "right": _wrap_node(right),
+                    },
                 ),
                 right,
             )
@@ -2627,7 +2794,11 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": _wrap_node(left), "op": JDict({"_type": JStr(op_type)}), "right": _wrap_node(right)},
+                    {
+                        "left": _wrap_node(left),
+                        "op": JDict({"_type": JStr(op_type)}),
+                        "right": _wrap_node(right),
+                    },
                 ),
                 right,
             )
@@ -2644,7 +2815,10 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": JDict({"_type": JStr("UAdd")}), "operand": _wrap_node(operand)},
+                    {
+                        "op": JDict({"_type": JStr("UAdd")}),
+                        "operand": _wrap_node(operand),
+                    },
                 ),
                 operand,
             )
@@ -2656,7 +2830,10 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": JDict({"_type": JStr("USub")}), "operand": _wrap_node(operand)},
+                    {
+                        "op": JDict({"_type": JStr("USub")}),
+                        "operand": _wrap_node(operand),
+                    },
                 ),
                 operand,
             )
@@ -2668,7 +2845,10 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": JDict({"_type": JStr("Invert")}), "operand": _wrap_node(operand)},
+                    {
+                        "op": JDict({"_type": JStr("Invert")}),
+                        "operand": _wrap_node(operand),
+                    },
                 ),
                 operand,
             )
@@ -2686,7 +2866,11 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": _wrap_node(base), "op": JDict({"_type": JStr("Pow")}), "right": _wrap_node(exp)},
+                    {
+                        "left": _wrap_node(base),
+                        "op": JDict({"_type": JStr("Pow")}),
+                        "right": _wrap_node(exp),
+                    },
                 ),
                 exp,
             )
@@ -2701,7 +2885,8 @@ class Parser:
             self.advance()
             value = self.parse_atom_expr()
             return end_from_node(
-                make_node("Await", tok.lineno, tok.col, {"value": _wrap_node(value)}), value
+                make_node("Await", tok.lineno, tok.col, {"value": _wrap_node(value)}),
+                value,
             )
         return self.parse_atom_expr()
 
@@ -2734,7 +2919,11 @@ class Parser:
                 "Call",
                 tok.lineno,
                 tok.col,
-                {"func": _wrap_node(func), "args": _wrap_nodes(args), "keywords": _wrap_nodes(keywords)},
+                {
+                    "func": _wrap_node(func),
+                    "args": _wrap_nodes(args),
+                    "keywords": _wrap_nodes(keywords),
+                },
             ),
             close,
         )
@@ -2756,7 +2945,13 @@ class Parser:
             if self.match_op("**"):
                 self.advance()
                 value = self.parse_test()
-                keywords.append({"_type": JStr("keyword"), "arg": JNull(), "value": _wrap_node(value)})
+                keywords.append(
+                    {
+                        "_type": JStr("keyword"),
+                        "arg": JNull(),
+                        "value": _wrap_node(value),
+                    }
+                )
                 has_kwargs = True
                 continue
 
@@ -2774,7 +2969,10 @@ class Parser:
                             "Starred",
                             star_tok.lineno,
                             star_tok.col,
-                            {"value": _wrap_node(value), "ctx": JDict({"_type": JStr("Load")})},
+                            {
+                                "value": _wrap_node(value),
+                                "ctx": JDict({"_type": JStr("Load")}),
+                            },
                         ),
                         value,
                     )
@@ -2789,7 +2987,13 @@ class Parser:
                 if name in seen_keywords:
                     raise self.error("keyword argument repeated: " + name)
                 seen_keywords.add(name)
-                keywords.append({"_type": JStr("keyword"), "arg": JStr(name), "value": _wrap_node(value)})
+                keywords.append(
+                    {
+                        "_type": JStr("keyword"),
+                        "arg": JStr(name),
+                        "value": _wrap_node(value),
+                    }
+                )
                 has_keyword = True
                 continue
 
@@ -2881,7 +3085,10 @@ class Parser:
             return items[0]
         return end_from_node(
             make_node(
-                "Tuple", tok.lineno, tok.col, {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})}
+                "Tuple",
+                tok.lineno,
+                tok.col,
+                {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})},
             ),
             items[len(items) - 1],
         )
@@ -2968,7 +3175,11 @@ class Parser:
                 "Subscript",
                 tok.lineno,
                 tok.col,
-                {"value": _wrap_node(value), "slice": _wrap_node(slice_node), "ctx": JDict({"_type": JStr("Load")})},
+                {
+                    "value": _wrap_node(value),
+                    "slice": _wrap_node(slice_node),
+                    "ctx": JDict({"_type": JStr("Load")}),
+                },
             ),
             close,
         )
@@ -3024,7 +3235,10 @@ class Parser:
         upper_v: JsonValue = _wrap_node(upper) if upper is not None else JNull()
         step_v: JsonValue = _wrap_node(step) if step is not None else JNull()
         node = make_node(
-            "Slice", tok.lineno, tok.col, {"lower": lower_v, "upper": upper_v, "step": step_v}
+            "Slice",
+            tok.lineno,
+            tok.col,
+            {"lower": lower_v, "upper": upper_v, "step": step_v},
         )
         if step is not None:
             end_from_node(node, step)
@@ -3045,7 +3259,11 @@ class Parser:
                 "Attribute",
                 tok.lineno,
                 tok.col,
-                {"value": _wrap_node(value), "attr": JStr(name_tok.value), "ctx": JDict({"_type": JStr("Load")})},
+                {
+                    "value": _wrap_node(value),
+                    "attr": JStr(name_tok.value),
+                    "ctx": JDict({"_type": JStr("Load")}),
+                },
             ),
             name_tok,
         )
@@ -3108,7 +3326,10 @@ class Parser:
                         "GeneratorExp",
                         tok.lineno,
                         tok.col,
-                        {"elt": _wrap_node(first), "generators": _wrap_nodes(generators)},
+                        {
+                            "elt": _wrap_node(first),
+                            "generators": _wrap_nodes(generators),
+                        },
                     ),
                     close,
                 )
@@ -3127,7 +3348,10 @@ class Parser:
                         "Tuple",
                         tok.lineno,
                         tok.col,
-                        {"elts": _wrap_nodes(elts), "ctx": JDict({"_type": JStr("Load")})},
+                        {
+                            "elts": _wrap_nodes(elts),
+                            "ctx": JDict({"_type": JStr("Load")}),
+                        },
                     ),
                     close,
                 )
@@ -3168,7 +3392,10 @@ class Parser:
                         "ListComp",
                         tok.lineno,
                         tok.col,
-                        {"elt": _wrap_node(first), "generators": _wrap_nodes(generators)},
+                        {
+                            "elt": _wrap_node(first),
+                            "generators": _wrap_nodes(generators),
+                        },
                     ),
                     close,
                 )
@@ -3238,7 +3465,8 @@ class Parser:
         if self.match_op("..."):
             self.advance()
             return end_from_token(
-                make_node("Constant", tok.lineno, tok.col, {"value": JStr("Ellipsis")}), tok
+                make_node("Constant", tok.lineno, tok.col, {"value": JStr("Ellipsis")}),
+                tok,
             )
 
         raise self.error(
@@ -3252,7 +3480,12 @@ class Parser:
         if self.match_op("}"):
             close = self.advance()
             return end_from_token(
-                make_node("Dict", tok.lineno, tok.col, {"keys": JList([]), "values": JList([])}),
+                make_node(
+                    "Dict",
+                    tok.lineno,
+                    tok.col,
+                    {"keys": JList([]), "values": JList([])},
+                ),
                 close,
             )
 
@@ -3303,7 +3536,10 @@ class Parser:
             close = self.expect_op("}")
             return end_from_token(
                 make_node(
-                    "Dict", tok.lineno, tok.col, {"keys": _wrap_opt_nodes(keys), "values": _wrap_nodes(values)}
+                    "Dict",
+                    tok.lineno,
+                    tok.col,
+                    {"keys": _wrap_opt_nodes(keys), "values": _wrap_nodes(values)},
                 ),
                 close,
             )
@@ -3401,7 +3637,9 @@ class Parser:
                 j += 1
             last_str = strings[len(strings) - 1]
             return end_from_token(
-                make_node("JoinedStr", tok.lineno, tok.col, {"values": _wrap_nodes(values)}),
+                make_node(
+                    "JoinedStr", tok.lineno, tok.col, {"values": _wrap_nodes(values)}
+                ),
                 last_str,
             )
 
@@ -3453,7 +3691,10 @@ class Parser:
             return items[0]
         return end_from_node(
             make_node(
-                "Tuple", tok.lineno, tok.col, {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})}
+                "Tuple",
+                tok.lineno,
+                tok.col,
+                {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})},
             ),
             items[len(items) - 1],
         )
@@ -3493,7 +3734,10 @@ class Parser:
             return items[0]
         return end_from_node(
             make_node(
-                "Tuple", tok.lineno, tok.col, {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})}
+                "Tuple",
+                tok.lineno,
+                tok.col,
+                {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})},
             ),
             items[len(items) - 1],
         )
@@ -3973,9 +4217,7 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
                         fstr_v = JStr(processed)
                     else:
                         fstr_v = JStr(repr(processed))
-                    values.append(
-                        make_node("Constant", lineno, col, {"value": fstr_v})
-                    )
+                    values.append(make_node("Constant", lineno, col, {"value": fstr_v}))
                 current_str = ""
             expr_str, conversion, format_spec_str, new_i = _fstring_find_expr_end(
                 content, i + 1, lineno, col
@@ -4004,12 +4246,18 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
                     fmt_spec = make_node(
                         "JoinedStr", lineno, col, {"values": _wrap_nodes(fmt_values)}
                     )
-            fmt_spec_v: JsonValue = _wrap_node(fmt_spec) if fmt_spec is not None else JNull()
+            fmt_spec_v: JsonValue = (
+                _wrap_node(fmt_spec) if fmt_spec is not None else JNull()
+            )
             fmt_value = make_node(
                 "FormattedValue",
                 lineno,
                 col,
-                {"value": _wrap_node(expr_node), "conversion": JInt(conv_int), "format_spec": fmt_spec_v},
+                {
+                    "value": _wrap_node(expr_node),
+                    "conversion": JInt(conv_int),
+                    "format_spec": fmt_spec_v,
+                },
             )
             values.append(fmt_value)
             i = new_i
@@ -4018,7 +4266,9 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
         i += 1
     if len(current_str) > 0:
         if is_raw:
-            values.append(make_node("Constant", lineno, col, {"value": JStr(current_str)}))
+            values.append(
+                make_node("Constant", lineno, col, {"value": JStr(current_str)})
+            )
         else:
             processed = process_escapes(current_str, False, lineno, col)
             tail_v: JsonValue
@@ -4182,7 +4432,9 @@ def _check_async_generator_return(body: list[ASTNode], func_tok: Token) -> None:
                         lineno = func_tok.lineno
                     if col == 0:
                         col = func_tok.col
-                    raise ParseError("'return' with value in async generator", lineno, col)
+                    raise ParseError(
+                        "'return' with value in async generator", lineno, col
+                    )
             if stype in ("If", "While"):
                 _check_async_generator_return(get_nodes(stmt, "body"), func_tok)
                 _check_async_generator_return(get_nodes(stmt, "orelse"), func_tok)

@@ -103,16 +103,13 @@ from .types import (
     JBool,
     JFloat,
     JDict,
-    JList,
     JNull,
     ASTNode,
     get_str,
     get_int,
     get_bool,
-    get_float,
     get_node,
     get_nodes,
-    get_jlist,
     has_key,
 )
 
@@ -555,15 +552,13 @@ def _node_pos(node: ASTNode) -> Pos:
     return Pos(get_int(node, "lineno"), get_int(node, "col_offset"))
 
 
-def _is_ast(node: object, type_name: str) -> bool:
+def _is_ast(node: JsonValue, type_name: str) -> bool:
     """Check if node is a dict-AST of given type."""
     if isinstance(node, JDict):
         return get_str(node.entries, "_type") == type_name
     if isinstance(node, dict):
         return get_str(node, "_type") == type_name
     return False
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -1545,8 +1540,12 @@ def _lower_single_compare(
                 left_node, op_type, comp_node, left_elts, right_elts, env, ctx
             )
     # None == X or X == None (non-optional) → false/true
-    left_is_none = _is_ast(left_node, "Constant") and isinstance(left_node.get("value"), JNull)
-    right_is_none = _is_ast(comp_node, "Constant") and isinstance(comp_node.get("value"), JNull)
+    left_is_none = _is_ast(left_node, "Constant") and isinstance(
+        left_node.get("value"), JNull
+    )
+    right_is_none = _is_ast(comp_node, "Constant") and isinstance(
+        comp_node.get("value"), JNull
+    )
     if left_is_none != right_is_none:
         # One side is None, other is not
         other_type = _infer_expr_type(
@@ -1692,7 +1691,9 @@ def _lower_unaryop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if op_type == "Not":
         operand_type = _infer_expr_type(operand_node, env, ctx)
         # not None → True
-        if _is_ast(operand_node, "Constant") and isinstance(operand_node.get("value"), JNull):
+        if _is_ast(operand_node, "Constant") and isinstance(
+            operand_node.get("value"), JNull
+        ):
             return TBoolLit(_P0, True, _EMPTY_ANN)
         if _is_optional_type(operand_type):
             # not x (optional) → IsNil(x)
@@ -1967,7 +1968,9 @@ def _lower_name_call(
                     s_jv = args[0].get("value")
                     if isinstance(s_jv, JStr):
                         return TListLit(
-                            _P0, [TStringLit(_P0, c, _EMPTY_ANN) for c in s_jv.value], _EMPTY_ANN
+                            _P0,
+                            [TStringLit(_P0, c, _EMPTY_ANN) for c in s_jv.value],
+                            _EMPTY_ANN,
                         )
                 return _make_call("Chars", [_lower_expr(args[0], env, ctx)])
             # list(zip(...)) → Zip(...)
@@ -2011,7 +2014,9 @@ def _lower_name_call(
             if _is_type_dict(arg_type, ["string"]) and _is_ast(args[0], "Constant"):
                 s_jv = args[0].get("value")
                 if isinstance(s_jv, JStr):
-                    chars: list[TExpr] = [TStringLit(_P0, c, _EMPTY_ANN) for c in s_jv.value]
+                    chars: list[TExpr] = [
+                        TStringLit(_P0, c, _EMPTY_ANN) for c in s_jv.value
+                    ]
                     return _make_call("SetFromList", [TListLit(_P0, chars, _EMPTY_ANN)])
             # set(list_expr) → SetFromList(list_expr)
             if _is_type_dict(arg_type, ["Slice"]):
@@ -2031,7 +2036,9 @@ def _lower_name_call(
                 s_jv = args[0].get("value")
                 if isinstance(s_jv, JStr):
                     return TListLit(
-                        _P0, [TStringLit(_P0, c, _EMPTY_ANN) for c in s_jv.value], _EMPTY_ANN
+                        _P0,
+                        [TStringLit(_P0, c, _EMPTY_ANN) for c in s_jv.value],
+                        _EMPTY_ANN,
                     )
             # tuple(set) → Sorted(set)
             if _is_type_dict(arg_type, ["Set"]):
@@ -2654,7 +2661,10 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             low = TIntLit(_P0, 0, "0", _EMPTY_ANN)
         elif isinstance(lower_jv, JDict):
             lower_val = lower_jv.entries
-            if isinstance(lower_val.get("value"), JNull) and get_str(lower_val, "_type") != "Constant":
+            if (
+                isinstance(lower_val.get("value"), JNull)
+                and get_str(lower_val, "_type") != "Constant"
+            ):
                 low = _lower_expr(lower_val, env, ctx)
             else:
                 low = _lower_expr(lower_val, env, ctx)
@@ -2664,7 +2674,10 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             high = _len_expr(obj, obj_type)
         elif isinstance(upper_jv, JDict):
             upper_val = upper_jv.entries
-            if isinstance(upper_val.get("value"), JNull) and get_str(upper_val, "_type") != "Constant":
+            if (
+                isinstance(upper_val.get("value"), JNull)
+                and get_str(upper_val, "_type") != "Constant"
+            ):
                 high = _lower_expr(upper_val, env, ctx)
             else:
                 high = _lower_expr(upper_val, env, ctx)
@@ -2736,14 +2749,18 @@ def _lower_ifexp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             if op_type == "Is":
                 comps = get_nodes(test, "comparators")
                 if len(comps) == 1 and isinstance(comps[0], dict):
-                    if _is_ast(comps[0], "Constant") and isinstance(comps[0].get("value"), JNull):
+                    if _is_ast(comps[0], "Constant") and isinstance(
+                        comps[0].get("value"), JNull
+                    ):
                         orelse_type = _infer_expr_type(orelse, env, ctx)
                         if _is_optional_type(orelse_type):
                             else_expr = _make_call("Unwrap", [else_expr])
             if op_type == "IsNot":
                 comps = get_nodes(test, "comparators")
                 if len(comps) == 1 and isinstance(comps[0], dict):
-                    if _is_ast(comps[0], "Constant") and isinstance(comps[0].get("value"), JNull):
+                    if _is_ast(comps[0], "Constant") and isinstance(
+                        comps[0].get("value"), JNull
+                    ):
                         body_type = _infer_expr_type(body, env, ctx)
                         if _is_optional_type(body_type):
                             then_expr = _make_call("Unwrap", [then_expr])
@@ -3725,7 +3742,9 @@ def _ensure_set_expr(arg_node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if _is_ast(arg_node, "Constant"):
             s_jv = arg_node.get("value")
             if isinstance(s_jv, JStr):
-                chars: list[TExpr] = [TStringLit(_P0, c, _EMPTY_ANN) for c in s_jv.value]
+                chars: list[TExpr] = [
+                    TStringLit(_P0, c, _EMPTY_ANN) for c in s_jv.value
+                ]
                 return _make_call("SetFromList", [TListLit(_P0, chars, _EMPTY_ANN)])
         return _make_call(
             "SetFromList", [_make_call("Chars", [_lower_expr(arg_node, env, ctx)])]
@@ -3959,8 +3978,8 @@ def _build_struct(
 ) -> TDecl | None:
     """Build a TStructDecl or TInterfaceDecl from a ClassDef node."""
     name = get_str(node, "name")
-    # Check if this is the hierarchy root → interface
-    if ctx.hier_result.hierarchy_root == name:
+    # Check if this is a hierarchy root → interface
+    if ctx.hier_result.is_hierarchy_root(name):
         return TInterfaceDecl(_P0, name, _EMPTY_ANN)
     # Get bases
     bases = get_nodes(node, "bases")
@@ -3981,7 +4000,7 @@ def _build_struct(
         is_exception = True
     if ctx.hier_result.is_node(name):
         if parent is None:
-            parent = ctx.hier_result.hierarchy_root
+            parent = ctx.hier_result.root_of(name)
     # Build fields
     fields: list[TFieldDecl] = []
     cls_info = ctx.field_result.classes.get(name)

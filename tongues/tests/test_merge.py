@@ -8,8 +8,16 @@ import pytest
 
 from src.frontend.parse import parse
 from src.frontend.types import (
-    JBool, JDict, JInt, JList, JNull, JStr,
-    get_str, get_int, get_node, get_nodes,
+    JBool,
+    JDict,
+    JInt,
+    JList,
+    JNull,
+    JStr,
+    get_str,
+    get_int,
+    get_node,
+    get_nodes,
 )
 from src.tongues import (
     _ast_equal,
@@ -66,19 +74,39 @@ def _parse_files(files: list[tuple[str, str]]) -> list[tuple[str, dict]]:
 
 class TestClassifyImport:
     def test_relative_is_project(self):
-        node = {"_type": JStr("ImportFrom"), "module": JStr("foo"), "level": JInt(1), "names": JList([])}
+        node = {
+            "_type": JStr("ImportFrom"),
+            "module": JStr("foo"),
+            "level": JInt(1),
+            "names": JList([]),
+        }
         assert _classify_import(node) == "project"
 
     def test_bare_relative_is_project(self):
-        node = {"_type": JStr("ImportFrom"), "module": JNull(), "level": JInt(1), "names": JList([])}
+        node = {
+            "_type": JStr("ImportFrom"),
+            "module": JNull(),
+            "level": JInt(1),
+            "names": JList([]),
+        }
         assert _classify_import(node) == "project"
 
     def test_typing_is_stdlib(self):
-        node = {"_type": JStr("ImportFrom"), "module": JStr("typing"), "level": JInt(0), "names": JList([])}
+        node = {
+            "_type": JStr("ImportFrom"),
+            "module": JStr("typing"),
+            "level": JInt(0),
+            "names": JList([]),
+        }
         assert _classify_import(node) == "stdlib"
 
     def test_dataclasses_is_stdlib(self):
-        node = {"_type": JStr("ImportFrom"), "module": JStr("dataclasses"), "level": JInt(0), "names": JList([])}
+        node = {
+            "_type": JStr("ImportFrom"),
+            "module": JStr("dataclasses"),
+            "level": JInt(0),
+            "names": JList([]),
+        }
         assert _classify_import(node) == "stdlib"
 
     def test_collections_abc_is_stdlib(self):
@@ -91,19 +119,39 @@ class TestClassifyImport:
         assert _classify_import(node) == "stdlib"
 
     def test_future_is_stdlib(self):
-        node = {"_type": JStr("ImportFrom"), "module": JStr("__future__"), "level": JInt(0), "names": JList([])}
+        node = {
+            "_type": JStr("ImportFrom"),
+            "module": JStr("__future__"),
+            "level": JInt(0),
+            "names": JList([]),
+        }
         assert _classify_import(node) == "stdlib"
 
     def test_unknown_absolute_is_project(self):
-        node = {"_type": JStr("ImportFrom"), "module": JStr("mylib.utils"), "level": JInt(0), "names": JList([])}
+        node = {
+            "_type": JStr("ImportFrom"),
+            "module": JStr("mylib.utils"),
+            "level": JInt(0),
+            "names": JList([]),
+        }
         assert _classify_import(node) == "project"
 
     def test_sys_is_stdlib(self):
-        node = {"_type": JStr("ImportFrom"), "module": JStr("sys"), "level": JInt(0), "names": JList([])}
+        node = {
+            "_type": JStr("ImportFrom"),
+            "module": JStr("sys"),
+            "level": JInt(0),
+            "names": JList([]),
+        }
         assert _classify_import(node) == "stdlib"
 
     def test_os_is_stdlib(self):
-        node = {"_type": JStr("ImportFrom"), "module": JStr("os"), "level": JInt(0), "names": JList([])}
+        node = {
+            "_type": JStr("ImportFrom"),
+            "module": JStr("os"),
+            "level": JInt(0),
+            "names": JList([]),
+        }
         assert _classify_import(node) == "stdlib"
 
 
@@ -276,7 +324,11 @@ class TestRewriteNames:
         _rewrite_names(ast, {"Tok": "Token"})
         body = get_nodes(ast, "body")
         ann = body[1]
-        assert get_str(ann, "id") == "Token" or get_str(get_node(ann, "target"), "id") == "Token" or get_str(get_node(ann, "annotation"), "id") == "Token"
+        assert (
+            get_str(ann, "id") == "Token"
+            or get_str(get_node(ann, "target"), "id") == "Token"
+            or get_str(get_node(ann, "annotation"), "id") == "Token"
+        )
 
     def test_no_match(self):
         ast = parse("x: int = 0\n")
@@ -321,7 +373,9 @@ class TestMergeProject:
         assert get_str(merged, "_type") == "Module"
         body = get_nodes(merged, "body")
         names = [
-            get_str(s, "name") or get_str(get_nodes(s, "targets")[0], "id") if get_nodes(s, "targets") else get_str(s, "name")
+            get_str(s, "name") or get_str(get_nodes(s, "targets")[0], "id")
+            if get_nodes(s, "targets")
+            else get_str(s, "name")
             for s in body
             if get_str(s, "_type") in ("FunctionDef", "ClassDef")
         ]

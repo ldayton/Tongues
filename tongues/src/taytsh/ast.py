@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
+from ..frontend.types import JsonValue, JStr, JInt, JFloat, JBool, JNull, JList, JDict
+
 
 # ============================================================
 # Annotation type alias (not a runtime construct, just for brevity)
@@ -772,24 +774,108 @@ def _sa_stmt_type_name(stmt: TStmt) -> str:
     return "TStmt"
 
 
-def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, object]:
-    d: dict[str, object] = {"type": _sa_stmt_type_name(stmt)}
+def _wrap_value(
+    v: bool | int | float | str | tuple[int, int] | bytes | None,
+) -> JsonValue:
+    """Wrap a raw Python value as a JsonValue."""
+    if v is None:
+        return JNull()
+    if isinstance(v, bool):
+        return JBool(v)
+    if isinstance(v, int):
+        return JInt(v)
+    if isinstance(v, float):
+        return JFloat(v)
+    if isinstance(v, str):
+        return JStr(v)
+    if isinstance(v, bytes):
+        items: list[JsonValue] = []
+        i = 0
+        while i < len(v):
+            items.append(JInt(v[i]))
+            i += 1
+        return JList(items)
+    if isinstance(v, tuple):
+        return JList([JInt(v[0]), JInt(v[1])])
+    return JNull()
+
+
+def _wrap_ann(ann: Ann) -> JsonValue:
+    """Wrap an Ann dict as a JDict."""
+    d: dict[str, JsonValue] = {}
+    keys = list(ann.keys())
+    i = 0
+    while i < len(keys):
+        d[keys[i]] = _wrap_value(ann[keys[i]])
+        i += 1
+    return JDict(d)
+
+
+def _wrap_raw(obj: JsonValue) -> JsonValue:
+    """Recursively wrap a raw Python value tree (from asdict) as JsonValue."""
+    if obj is None:
+        return JNull()
+    if isinstance(obj, bool):
+        return JBool(obj)
+    if isinstance(obj, int):
+        return JInt(obj)
+    if isinstance(obj, float):
+        return JFloat(obj)
+    if isinstance(obj, str):
+        return JStr(obj)
+    if isinstance(obj, bytes):
+        items: list[JsonValue] = []
+        i = 0
+        while i < len(obj):
+            items.append(JInt(obj[i]))
+            i += 1
+        return JList(items)
+    if isinstance(obj, tuple):
+        items: list[JsonValue] = []
+        i = 0
+        while i < len(obj):
+            items.append(_wrap_raw(obj[i]))
+            i += 1
+        return JList(items)
+    if isinstance(obj, list):
+        items: list[JsonValue] = []
+        i = 0
+        while i < len(obj):
+            items.append(_wrap_raw(obj[i]))
+            i += 1
+        return JList(items)
+    if isinstance(obj, dict):
+        d: dict[str, JsonValue] = {}
+        keys = list(obj.keys())
+        i = 0
+        while i < len(keys):
+            d[keys[i]] = _wrap_raw(obj[keys[i]])
+            i += 1
+        return JDict(d)
+    return JNull()
+
+
+def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, JsonValue]:
+    d: dict[str, JsonValue] = {"type": JStr(_sa_stmt_type_name(stmt))}
     ann = _sa_strip(stmt.annotations, pfx, plen)
-    binder: dict[str, dict[str, object]] = {}
+    binder: dict[str, dict[str, JsonValue]] = {}
     for k, v in ann.items():
         if k.startswith("binder."):
             rest = k[7:]
             dot = rest.find(".")
             if dot != -1:
-                binder.setdefault(rest[:dot], {})[rest[dot + 1 :]] = v
+                binder.setdefault(rest[:dot], {})[rest[dot + 1 :]] = _wrap_value(v)
             else:
-                d[k] = v
+                d[k] = _wrap_value(v)
         else:
-            d[k] = v
+            d[k] = _wrap_value(v)
     if binder:
-        d["binder"] = binder
+        bd: dict[str, JsonValue] = {}
+        for bk, bv in binder.items():
+            bd[bk] = JDict(bv)
+        d["binder"] = JDict(bd)
     if isinstance(stmt, TMatchStmt):
-        cases: list[Ann] = []
+        cases: list[JsonValue] = []
         for case in stmt.cases:
             cd: Ann = _sa_strip(case.annotations, pfx, plen)
             if isinstance(case.pattern, TPatternType):
@@ -797,57 +883,75 @@ def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, object]:
                 cd.update(pat)
                 for ka, va in pat.items():
                     cd["pattern." + ka] = va
-            cases.append(cd)
-        d["cases"] = cases
+            cases.append(_wrap_ann(cd))
+        d["cases"] = JList(cases)
         if stmt.default is not None:
-            d["default"] = _sa_strip(stmt.default.annotations, pfx, plen)
+            d["default"] = _wrap_ann(_sa_strip(stmt.default.annotations, pfx, plen))
     elif isinstance(stmt, TTryStmt):
-        d["catches"] = [_sa_strip(c.annotations, pfx, plen) for c in stmt.catches]
+        catches: list[JsonValue] = [
+            _wrap_ann(_sa_strip(c.annotations, pfx, plen)) for c in stmt.catches
+        ]
+        d["catches"] = JList(catches)
     return d
 
 
-def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, object]:
-    d: dict[str, object] = _sa_strip(fn.annotations, pfx, plen)
+def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
+    raw_ann = _sa_strip(fn.annotations, pfx, plen)
+    d: dict[str, JsonValue] = {}
+    for k, v in raw_ann.items():
+        d[k] = _wrap_value(v)
     params: dict[str, Ann] = {}
     for p in fn.params:
         a = _sa_strip(p.annotations, pfx, plen)
         if a:
             params[p.name] = a
     if params:
-        d["params"] = params
+        pd: dict[str, JsonValue] = {}
+        for pk, pv in params.items():
+            pd[pk] = _wrap_ann(pv)
+        d["params"] = JDict(pd)
     lets: dict[str, Ann] = {}
     _sa_collect_lets(fn.body, lets, pfx, plen)
     if lets:
-        d["lets"] = lets
-    d["body"] = [_sa_serialize_stmt(s, pfx, plen) for s in fn.body]
+        ld: dict[str, JsonValue] = {}
+        for lk, lv in lets.items():
+            ld[lk] = _wrap_ann(lv)
+        d["lets"] = JDict(ld)
+    body_items: list[JsonValue] = [
+        JDict(_sa_serialize_stmt(s, pfx, plen)) for s in fn.body
+    ]
+    d["body"] = JList(body_items)
     vars_dict: dict[str, Ann] = {}
     _sa_collect_vars_stmts(fn.body, vars_dict, pfx, plen)
     if vars_dict:
-        d["vars"] = vars_dict
-        escapes: dict[str, bool] = {
-            n: True for n, a in vars_dict.items() if a.get("escapes")
+        vd: dict[str, JsonValue] = {}
+        for vk, vv in vars_dict.items():
+            vd[vk] = _wrap_ann(vv)
+        d["vars"] = JDict(vd)
+        escapes: dict[str, JsonValue] = {
+            n: JBool(True) for n, a in vars_dict.items() if a.get("escapes")
         }
         if escapes:
-            d["escapes"] = escapes
+            d["escapes"] = JDict(escapes)
     return d
 
 
-def to_dict(module: TModule) -> dict[str, object]:
-    """Serialize a TModule to a plain dict tree via dataclasses.asdict."""
-    return asdict(module)
+def to_dict(module: TModule) -> JsonValue:
+    """Serialize a TModule to a JsonValue tree via dataclasses.asdict."""
+    return _wrap_raw(asdict(module))
 
 
-def serialize_annotations(module: TModule, prefix: str) -> dict[str, dict[str, object]]:
+def serialize_annotations(module: TModule, prefix: str) -> dict[str, JsonValue]:
     """Serialize all annotations matching prefix from every function into nested dicts."""
     pfx = prefix + "."
     plen = len(pfx)
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, JsonValue] = {}
     for decl in module.decls:
         if isinstance(decl, TFnDecl):
-            result[decl.name] = _sa_serialize_fn(decl, pfx, plen)
+            result[decl.name] = JDict(_sa_serialize_fn(decl, pfx, plen))
         elif isinstance(decl, TStructDecl):
             for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = _sa_serialize_fn(
-                    method, pfx, plen
+                result[f"{decl.name}.{method.name}"] = JDict(
+                    _sa_serialize_fn(method, pfx, plen)
                 )
     return result

@@ -41,23 +41,17 @@ from .types import (
     BYTES_TYPE,
     is_any,
     type_name as _type_name_fn,
-    JsonValue,
     JStr,
     JInt,
     JBool,
     JFloat,
-    JDict,
-    JList,
     JNull,
     ASTNode,
     get_str,
     get_int,
     get_bool,
-    get_float,
     get_node,
     get_nodes,
-    get_jlist,
-    has_key,
 )
 
 
@@ -118,7 +112,7 @@ def _is_null_value(node: ASTNode) -> bool:
     return v is None or isinstance(v, JNull)
 
 
-def _is_type(node: object, type_names: list[str]) -> bool:
+def _is_type(node: ASTNode, type_names: list[str]) -> bool:
     if not isinstance(node, dict):
         return False
     t = get_str(node, "_type")
@@ -1241,7 +1235,7 @@ def _iteration_element(t: TypeNode) -> TypeNode:
     return ANY_TYPE
 
 
-def _bind_target(target: object, typ: TypeNode, env: TypeEnv) -> None:
+def _bind_target(target: ASTNode, typ: TypeNode, env: TypeEnv) -> None:
     """Bind an assignment target (Name or Tuple) to a type."""
     if not isinstance(target, dict):
         return
@@ -1450,9 +1444,7 @@ def _validate_assign(
                         source = _infer_source(value, env, ctx)
                         env.set(name, val_type, source)
                 else:
-                    if _is_empty_collection(value) and is_any(
-                        _element_type(val_type)
-                    ):
+                    if _is_empty_collection(value) and is_any(_element_type(val_type)):
                         ctx.result.add_error(
                             lineno,
                             0,
@@ -1969,11 +1961,16 @@ def _validate_if(
             k = ekeys[j]
             else_t = else_env.types[k]
             then_t = then_env.types.get(k)
-            if then_t is not None and _type_eq(else_t, then_t):
-                env.types[k] = else_t
-                es = else_env.source_types.get(k, "")
-                if es != "":
-                    env.source_types[k] = es
+            if then_t is not None:
+                if _type_eq(else_t, then_t):
+                    env.types[k] = else_t
+                    es = else_env.source_types.get(k, "")
+                    if es != "":
+                        env.source_types[k] = es
+                elif _is_assignable(then_t, else_t, ctx.hier_result):
+                    env.types[k] = else_t
+                elif _is_assignable(else_t, then_t, ctx.hier_result):
+                    env.types[k] = then_t
             j += 1
     return then_returns and else_returns
 
@@ -2206,11 +2203,7 @@ def _extract_narrowing(
     if t == "NamedExpr":
         target = get_node(test, "target")
         value = get_node(test, "value")
-        if (
-            len(target) > 0
-            and len(value) > 0
-            and _is_type(target, ["Name"])
-        ):
+        if len(target) > 0 and len(value) > 0 and _is_type(target, ["Name"]):
             name = get_str(target, "id")
             if name != "":
                 vt = _synth_expr(value, then_env, ctx)
@@ -2510,9 +2503,7 @@ def _check_generator_escape_return(
                     wrapper = get_str(func, "id")
                     if wrapper != "" and wrapper in _EAGER_CONSUMERS:
                         return False
-                ctx.result.add_error(
-                    lineno, 0, "cannot return generator expression"
-                )
+                ctx.result.add_error(lineno, 0, "cannot return generator expression")
                 return True
             j += 1
     return False
@@ -2565,9 +2556,9 @@ def _validate_list_literal(
                     + _type_name(exp_elem),
                 )
                 return
-        elif not _is_assignable(
-            et, first_type, ctx.hier_result
-        ) and not _is_assignable(first_type, et, ctx.hier_result):
+        elif not _is_assignable(et, first_type, ctx.hier_result) and not _is_assignable(
+            first_type, et, ctx.hier_result
+        ):
             ctx.result.add_error(
                 lineno,
                 0,
@@ -2588,6 +2579,7 @@ def _validate_dict_literal(
     expected: TypeNode | None,
 ) -> None:
     """Check dict literal for mixed key/value types."""
+    exp_vt: TypeNode | None = None
     if expected is not None:
         check_exp = expected
         if isinstance(check_exp, OptionalType):
@@ -2595,6 +2587,7 @@ def _validate_dict_literal(
         if isinstance(check_exp, MapType):
             if is_any(check_exp.value):
                 return
+            exp_vt = check_exp.value
     keys = get_nodes(node, "keys")
     values = get_nodes(node, "values")
     if len(keys) < 2:
@@ -2611,9 +2604,16 @@ def _validate_dict_literal(
             return
         if j < len(values):
             vt = _synth_expr(values[j], env, ctx)
-            if not _is_assignable(vt, first_vt, ctx.hier_result):
-                ctx.result.add_error(lineno, 0, "mixed value types in dict literal")
-                return
+            if exp_vt is not None:
+                if not _is_assignable(vt, exp_vt, ctx.hier_result):
+                    ctx.result.add_error(lineno, 0, "mixed value types in dict literal")
+                    return
+            elif not _is_assignable(vt, first_vt, ctx.hier_result):
+                if _is_assignable(first_vt, vt, ctx.hier_result):
+                    first_vt = vt
+                else:
+                    ctx.result.add_error(lineno, 0, "mixed value types in dict literal")
+                    return
         j += 1
 
 

@@ -8,6 +8,8 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
+from .types import JsonValue, JStr, JList, JDict, JNull
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -45,6 +47,7 @@ class HierarchyResult:
 
     def __init__(self) -> None:
         self.hierarchy_root: str | None = None
+        self.hierarchy_roots: list[str] = []
         self.node_types: list[str] = []
         self.exception_types: list[str] = []
         self.ancestors: dict[str, list[str]] = {}
@@ -57,6 +60,34 @@ class HierarchyResult:
 
     def errors(self) -> list[HierarchyError]:
         return self._errors
+
+    def is_hierarchy_root(self, name: str) -> bool:
+        """Check if name is any hierarchy root."""
+        i = 0
+        while i < len(self.hierarchy_roots):
+            if self.hierarchy_roots[i] == name:
+                return True
+            i += 1
+        return False
+
+    def root_of(self, name: str) -> str | None:
+        """Find the hierarchy root for a node type (transitive)."""
+        i = 0
+        while i < len(self.hierarchy_roots):
+            root = self.hierarchy_roots[i]
+            if name == root:
+                return root
+            cur = name
+            while True:
+                ancestors = self.ancestors.get(cur)
+                if ancestors is None or len(ancestors) == 0:
+                    break
+                parent = ancestors[0]
+                if parent == root:
+                    return root
+                cur = parent
+            i += 1
+        return None
 
     def is_node(self, name: str) -> bool:
         """Check if name is a node type."""
@@ -76,21 +107,40 @@ class HierarchyResult:
             i += 1
         return False
 
-    def to_dict(self) -> dict[str, object]:
-        """Serialize to nested dicts for test assertions."""
-        d: dict[str, object] = {
-            "root": self.hierarchy_root,
-            "node_types": list(self.node_types),
-            "exception_types": list(self.exception_types),
-        }
-        ancestors: dict[str, object] = {}
+    def to_dict(self) -> JsonValue:
+        """Serialize to nested JsonValue dicts for test assertions."""
+        root_jv: JsonValue = JNull()
+        if self.hierarchy_root is not None:
+            root_jv = JStr(self.hierarchy_root)
+        node_types_jv: list[JsonValue] = []
+        i = 0
+        while i < len(self.node_types):
+            node_types_jv.append(JStr(self.node_types[i]))
+            i += 1
+        exception_types_jv: list[JsonValue] = []
+        i = 0
+        while i < len(self.exception_types):
+            exception_types_jv.append(JStr(self.exception_types[i]))
+            i += 1
+        ancestors: dict[str, JsonValue] = {}
         akeys = list(self.ancestors.keys())
         i = 0
         while i < len(akeys):
-            ancestors[akeys[i]] = list(self.ancestors[akeys[i]])
+            ancestor_list: list[JsonValue] = []
+            j = 0
+            while j < len(self.ancestors[akeys[i]]):
+                ancestor_list.append(JStr(self.ancestors[akeys[i]][j]))
+                j += 1
+            ancestors[akeys[i]] = JList(ancestor_list)
             i += 1
-        d["ancestors"] = ancestors
-        return d
+        return JDict(
+            {
+                "root": root_jv,
+                "node_types": JList(node_types_jv),
+                "exception_types": JList(exception_types_jv),
+                "ancestors": JDict(ancestors),
+            }
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -160,15 +210,15 @@ def _is_exception_subclass(
 # ---------------------------------------------------------------------------
 
 
-def _find_hierarchy_root(
+def _find_hierarchy_roots(
     known_classes: set[str],
     class_bases: dict[str, list[str]],
     exception_cache: dict[str, bool],
-) -> str | None:
-    """Find the single root of the class hierarchy.
+) -> list[str]:
+    """Find all roots of class hierarchies.
 
-    A class is the root if it has no base classes, is used as a base by
-    at least one other class, and is the only such root. Exception classes
+    A class is a root if it has no base classes, is used as a base by
+    at least one other class, and is a known class. Exception classes
     and their subclasses are excluded.
     """
     # Find all classes used as a base
@@ -198,9 +248,7 @@ def _find_hierarchy_root(
             if bases is None or len(bases) == 0:
                 roots.append(name)
         i += 1
-    if len(roots) == 1:
-        return roots[0]
-    return None
+    return roots
 
 
 # ---------------------------------------------------------------------------
@@ -292,17 +340,23 @@ def build_hierarchy(
         if _is_exception_subclass(name, class_bases, exception_cache):
             result.exception_types.append(name)
         i += 1
-    # Find hierarchy root
-    result.hierarchy_root = _find_hierarchy_root(
+    # Find hierarchy roots
+    result.hierarchy_roots = _find_hierarchy_roots(
         known_classes, class_bases, exception_cache
     )
+    if len(result.hierarchy_roots) == 1:
+        result.hierarchy_root = result.hierarchy_roots[0]
     # Classify node types
-    if result.hierarchy_root is not None:
+    ri = 0
+    while ri < len(result.hierarchy_roots):
+        root = result.hierarchy_roots[ri]
         node_cache: dict[str, bool] = {}
         i = 0
         while i < len(ckeys):
             name = ckeys[i]
-            if _is_node_subclass(name, result.hierarchy_root, class_bases, node_cache):
-                result.node_types.append(name)
+            if _is_node_subclass(name, root, class_bases, node_cache):
+                if not result.is_node(name):
+                    result.node_types.append(name)
             i += 1
+        ri += 1
     return result

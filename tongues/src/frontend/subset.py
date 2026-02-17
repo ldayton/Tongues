@@ -7,7 +7,6 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 from typing import Callable
 
 from .types import (
-    JsonValue,
     JStr,
     JInt,
     JBool,
@@ -1008,7 +1007,10 @@ class Verifier:
         # Check tuple unpack from variable (allowed if guarded by `if var:`)
         if len(targets) == 1:
             target = targets[0]
-            if get_str(target, "_type") == "Tuple" and get_str(value, "_type") == "Name":
+            if (
+                get_str(target, "_type") == "Tuple"
+                and get_str(value, "_type") == "Name"
+            ):
                 var_name = get_str(value, "id")
                 if var_name not in self.guarded_vars:
                     self.error(
@@ -1103,7 +1105,10 @@ class Verifier:
             if get_str(call, "_type") != "Call":
                 return False
             func = get_node(call, "func")
-            if get_str(func, "_type") != "Attribute" or get_str(func, "attr") != "write":
+            if (
+                get_str(func, "_type") != "Attribute"
+                or get_str(func, "attr") != "write"
+            ):
                 return False
             if get_name_id(get_node(func, "value")) != handle:
                 return False
@@ -1318,11 +1323,7 @@ class Verifier:
                 self.error(
                     node,
                     "import",
-                    "import "
-                    + name
-                    + " as "
-                    + asname
-                    + ": module aliases not allowed",
+                    "import " + name + " as " + asname + ": module aliases not allowed",
                 )
             elif name not in IMPORT_ONLY_MODULES:
                 self.error(

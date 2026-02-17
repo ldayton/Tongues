@@ -14,7 +14,6 @@ from .types import (
     JDict,
     JList,
     JStr,
-    JsonValue,
     get_int,
     get_node,
     get_nodes,
@@ -459,7 +458,10 @@ class NameResolver:
             elif node_type == "If":
                 # Handle TYPE_CHECKING blocks - imports inside are module-level
                 test = get_node(stmt, "test")
-                if get_str(test, "_type") == "Name" and get_str(test, "id") == "TYPE_CHECKING":
+                if (
+                    get_str(test, "_type") == "Name"
+                    and get_str(test, "id") == "TYPE_CHECKING"
+                ):
                     if_body = get_nodes(stmt, "body")
                     j = 0
                     while j < len(if_body):
@@ -527,7 +529,10 @@ class NameResolver:
         j = 0
         while j < len(body):
             stmt = body[j]
-            if get_str(stmt, "_type") == "FunctionDef" and get_str(stmt, "name") == "__init__":
+            if (
+                get_str(stmt, "_type") == "FunctionDef"
+                and get_str(stmt, "name") == "__init__"
+            ):
                 self.collect_init_fields(class_name, stmt)
             j += 1
 

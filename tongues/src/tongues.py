@@ -17,8 +17,21 @@ from .frontend.hierarchy import build_hierarchy
 from .frontend.inference import run_inference
 from .frontend.lowering import lower
 from .frontend.types import (
-    JsonValue, JStr, JInt, JFloat, JBool, JNull, JList, JDict,
-    ASTNode, get_str, get_int, get_bool, get_node, get_nodes, get_jlist, has_key,
+    JsonValue,
+    JStr,
+    JInt,
+    JFloat,
+    JBool,
+    JNull,
+    JList,
+    JDict,
+    ASTNode,
+    get_str,
+    get_int,
+    get_bool,
+    get_node,
+    get_nodes,
+    has_key,
 )
 from .taytsh.ast import to_dict as module_to_dict
 from .taytsh.check import Checker
@@ -147,10 +160,8 @@ def _json_escape(s: str) -> str:
     return "".join(result)
 
 
-def _to_json(obj: object, indent: int, level: int) -> str:
-    """Recursively serialize an object to JSON string."""
-    if obj is None:
-        return "null"
+def _to_json(obj: JsonValue, indent: int, level: int) -> str:
+    """Recursively serialize a JsonValue to JSON string."""
     if isinstance(obj, JNull):
         return "null"
     if isinstance(obj, JBool):
@@ -190,93 +201,61 @@ def _to_json(obj: object, indent: int, level: int) -> str:
             parts.append(pad + key_str + ": " + val_str)
             i += 1
         return "{\n" + ",\n".join(parts) + "\n" + pad_close + "}"
-    if isinstance(obj, bool):
-        if obj:
-            return "true"
-        return "false"
-    if isinstance(obj, int):
-        return str(obj)
-    if isinstance(obj, float):
-        return str(obj)
-    if isinstance(obj, str):
-        return '"' + _json_escape(obj) + '"'
-    if isinstance(obj, list):
-        if len(obj) == 0:
-            return "[]"
-        parts: list[str] = []
-        pad = " " * (indent * (level + 1))
-        pad_close = " " * (indent * level)
-        i = 0
-        while i < len(obj):
-            parts.append(pad + _to_json(obj[i], indent, level + 1))
-            i += 1
-        return "[\n" + ",\n".join(parts) + "\n" + pad_close + "]"
-    if isinstance(obj, dict):
-        if len(obj) == 0:
-            return "{}"
-        parts: list[str] = []
-        pad = " " * (indent * (level + 1))
-        pad_close = " " * (indent * level)
-        keys = list(obj.keys())
-        i = 0
-        while i < len(keys):
-            k = keys[i]
-            v = obj[k]
-            key_str = '"' + _json_escape(str(k)) + '"'
-            val_str = _to_json(v, indent, level + 1)
-            parts.append(pad + key_str + ": " + val_str)
-            i += 1
-        return "{\n" + ",\n".join(parts) + "\n" + pad_close + "}"
     return '"<unserializable>"'
 
 
-def to_json(obj: object) -> str:
-    """Serialize object to pretty-printed JSON."""
+def to_json(obj: JsonValue) -> str:
+    """Serialize JsonValue to pretty-printed JSON."""
     return _to_json(obj, 2, 0)
 
 
 # --- Name table serialization ---
 
 
-def _name_info_to_dict(info: NameInfo) -> dict[str, object]:
-    """Convert a NameInfo to a serializable dict."""
-    d: dict[str, object] = {
-        "kind": info.kind,
-        "scope": info.scope,
-        "lineno": info.lineno,
-        "col": info.col,
+def _name_info_to_dict(info: NameInfo) -> JsonValue:
+    """Convert a NameInfo to a JsonValue dict."""
+    d: dict[str, JsonValue] = {
+        "kind": JStr(info.kind),
+        "scope": JStr(info.scope),
+        "lineno": JInt(info.lineno),
+        "col": JInt(info.col),
     }
     if info.decl_class != "":
-        d["decl_class"] = info.decl_class
+        d["decl_class"] = JStr(info.decl_class)
     if info.decl_func != "":
-        d["decl_func"] = info.decl_func
+        d["decl_func"] = JStr(info.decl_func)
     if len(info.bases) > 0:
-        d["bases"] = info.bases
-    return d
+        bases_jv: list[JsonValue] = []
+        bi = 0
+        while bi < len(info.bases):
+            bases_jv.append(JStr(info.bases[bi]))
+            bi += 1
+        d["bases"] = JList(bases_jv)
+    return JDict(d)
 
 
-def _name_table_to_dict(table: NameTable) -> dict[str, object]:
+def _name_table_to_dict(table: NameTable) -> JsonValue:
     """Convert a NameTable to spec-compliant format: {"names": {...}, "scopes": [...]}."""
-    names: dict[str, object] = {}
+    names: dict[str, JsonValue] = {}
     keys = list(table.module_names.keys())
     i = 0
     while i < len(keys):
         name = keys[i]
         names[name] = _name_info_to_dict(table.module_names[name])
         i += 1
-    scopes: list[object] = []
+    scopes: list[JsonValue] = []
     ckeys = list(table.class_names.keys())
     i = 0
     while i < len(ckeys):
         cname = ckeys[i]
-        scope_names: dict[str, object] = {}
+        scope_names: dict[str, JsonValue] = {}
         mkeys = list(table.class_names[cname].keys())
         j = 0
         while j < len(mkeys):
             mname = mkeys[j]
             scope_names[mname] = _name_info_to_dict(table.class_names[cname][mname])
             j += 1
-        scopes.append({"scope": cname, "names": scope_names})
+        scopes.append(JDict({"scope": JStr(cname), "names": JDict(scope_names)}))
         i += 1
     lkeys = list(table.local_names.keys())
     i = 0
@@ -286,19 +265,19 @@ def _name_table_to_dict(table: NameTable) -> dict[str, object]:
             scope_key = str(lkey[0]) + ":" + str(lkey[1])
         else:
             scope_key = str(lkey[1])
-        scope_names: dict[str, object] = {}
+        scope_names: dict[str, JsonValue] = {}
         skeys = list(table.local_names[lkey].keys())
         j = 0
         while j < len(skeys):
             sname = skeys[j]
             scope_names[sname] = _name_info_to_dict(table.local_names[lkey][sname])
             j += 1
-        scopes.append({"scope": scope_key, "names": scope_names})
+        scopes.append(JDict({"scope": JStr(scope_key), "names": JDict(scope_names)}))
         i += 1
-    result: dict[str, object] = {"names": names}
+    result: dict[str, JsonValue] = {"names": JDict(names)}
     if len(scopes) > 0:
-        result["scopes"] = scopes
-    return result
+        result["scopes"] = JList(scopes)
+    return JDict(result)
 
 
 # --- Pragma extraction ---
@@ -343,11 +322,11 @@ def _extract_pragmas(
 # --- Error reporting ---
 
 
-def _print_errors(errors: list[object]) -> None:
-    """Print a list of error objects to stderr."""
+def _print_errors(errors: list[str]) -> None:
+    """Print error strings to stderr."""
     i = 0
     while i < len(errors):
-        print(str(errors[i]), file=sys.stderr)
+        print(errors[i], file=sys.stderr)
         i += 1
 
 
@@ -595,7 +574,7 @@ def _detect_collisions(
     return errors
 
 
-def _ast_equal(a: object, b: object) -> bool:
+def _ast_equal(a: ASTNode, b: ASTNode) -> bool:
     """Deep structural comparison of AST nodes, ignoring position metadata."""
     ignore: set[str] = {
         "lineno",
@@ -605,8 +584,8 @@ def _ast_equal(a: object, b: object) -> bool:
         "_source_file",
         "_remove",
     }
-    work_a: list[object] = [a]
-    work_b: list[object] = [b]
+    work_a: list[JsonValue] = [JDict(a)]
+    work_b: list[JsonValue] = [JDict(b)]
     wi = 0
     while wi < len(work_a):
         x = work_a[wi]
@@ -687,7 +666,7 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
     """Collect all Name.id values referenced in a definition's body."""
     refs: set[str] = set()
     node_type = get_str(node, "_type")
-    seeds: list[object] = []
+    seeds: list[JsonValue] = []
     if node_type == "FunctionDef":
         body_val = node.get("body")
         if isinstance(body_val, JList):
@@ -722,7 +701,7 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
         ann_val = node.get("annotation")
         if ann_val is not None and not isinstance(ann_val, JNull):
             seeds.append(ann_val)
-    work: list[object] = list(seeds)
+    work: list[JsonValue] = list(seeds)
     wi = 0
     while wi < len(work):
         item = work[wi]
@@ -950,7 +929,7 @@ def _plan_collision_resolution(
 
 def _rewrite_names(node: ASTNode, rename_map: dict[str, str]) -> None:
     """Recursively rename Name nodes and definition names per rename_map. In-place."""
-    work: list[object] = [node]
+    work: list[JsonValue] = [JDict(node)]
     wi = 0
     while wi < len(work):
         item = work[wi]
@@ -996,7 +975,7 @@ def _rewrite_module_attrs(
 ) -> list[str]:
     """Rewrite module.attr Attribute nodes to plain Name nodes. Returns errors."""
     errors: list[str] = []
-    work: list[object] = [node]
+    work: list[JsonValue] = [JDict(node)]
     wi = 0
     while wi < len(work):
         item = work[wi]
@@ -1050,7 +1029,9 @@ def _rewrite_module_attrs(
                                         val["end_lineno"] = end_lineno
                                     if end_col is not None:
                                         val["end_col_offset"] = end_col
-                                    if source_file is not None and not isinstance(source_file, JNull):
+                                    if source_file is not None and not isinstance(
+                                        source_file, JNull
+                                    ):
                                         val["_source_file"] = source_file
                                 elif target_name_map is not None:
                                     lineno_i = get_int(val, "lineno")
@@ -1094,7 +1075,7 @@ def _rewrite_module_attrs(
 
 def _tag_source_file(node: ASTNode, source_file: str) -> None:
     """Tag all dict nodes in the subtree with _source_file."""
-    work: list[object] = [node]
+    work: list[JsonValue] = [JDict(node)]
     wi = 0
     while wi < len(work):
         item = work[wi]
@@ -1127,7 +1108,7 @@ def _tag_source_file(node: ASTNode, source_file: str) -> None:
 
 
 def _stdlib_import_seen(
-    names_list: object,
+    names_list: list[JsonValue],
     stdlib_seen: set[str],
 ) -> bool:
     """Check if all bound names in an import are already seen. Adds unseen to set.
@@ -1160,7 +1141,7 @@ def _stdlib_import_seen(
     if len(new_indices) == 0:
         return True
     if len(new_indices) < len(names_list):
-        kept: list[object] = []
+        kept: list[JsonValue] = []
         ki = 0
         while ki < len(new_indices):
             kept.append(names_list[new_indices[ki]])
@@ -1184,9 +1165,7 @@ def merge_project(
         universe.add(file_asts[i][0])
         i += 1
     deps: dict[str, list[str]] = {}
-    file_import_info: dict[
-        str, list[tuple[ASTNode, str, list[tuple[str, str]]]]
-    ] = {}
+    file_import_info: dict[str, list[tuple[ASTNode, str, list[tuple[str, str]]]]] = {}
     i = 0
     while i < len(file_asts):
         path = file_asts[i][0]
@@ -1439,16 +1418,26 @@ def _pipeline_post_parse(
 ) -> tuple[int, str]:
     """Run pipeline phases after parsing. Returns (exit_code, output)."""
     result = verify_subset(ast_dict)
-    errors = result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    subset_errors = result.errors()
+    if len(subset_errors) > 0:
+        err_strs: list[str] = []
+        sei = 0
+        while sei < len(subset_errors):
+            err_strs.append(str(subset_errors[sei]))
+            sei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "subset":
         return (0, "")
     name_result = resolve_names(ast_dict)
-    errors = name_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    name_errors = name_result.errors()
+    if len(name_errors) > 0:
+        err_strs: list[str] = []
+        nei = 0
+        while nei < len(name_errors):
+            err_strs.append(str(name_errors[nei]))
+            nei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "names":
         return (0, to_json(_name_table_to_dict(name_result.table)))
@@ -1483,7 +1472,7 @@ def _pipeline_post_parse(
                         ta_info = name_result.table.module_names.get(ta_name)
                         if ta_info is not None and ta_info.kind == "type_alias":
                             ta_value_v = ta_stmt.get("value")
-                            ta_value: object = ta_value_v
+                            ta_value: JsonValue | ASTNode | None = ta_value_v
                             if isinstance(ta_value_v, JDict):
                                 ta_value = ta_value_v.entries
                             ta_str = annotation_to_str(ta_value)
@@ -1491,9 +1480,14 @@ def _pipeline_post_parse(
                                 type_aliases[ta_name] = ta_str
         tai += 1
     sig_result = collect_signatures(ast_dict, known_classes, node_classes, type_aliases)
-    errors = sig_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    sig_errors = sig_result.errors()
+    if len(sig_errors) > 0:
+        err_strs: list[str] = []
+        sei = 0
+        while sei < len(sig_errors):
+            err_strs.append(str(sig_errors[sei]))
+            sei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "signatures":
         return (0, to_json(sig_result.to_dict()))
@@ -1525,9 +1519,14 @@ def _pipeline_post_parse(
     field_result = collect_fields(
         ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
     )
-    errors = field_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    field_errors = field_result.errors()
+    if len(field_errors) > 0:
+        err_strs: list[str] = []
+        fei = 0
+        while fei < len(field_errors):
+            err_strs.append(str(field_errors[fei]))
+            fei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "fields":
         return (0, to_json(field_result.to_dict()))
@@ -1551,21 +1550,31 @@ def _pipeline_post_parse(
                 class_source_files[csf_name] = csf_sf
         csf_i += 1
     hier_result = build_hierarchy(known_classes, class_bases, class_source_files)
-    errors = hier_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    hier_errors = hier_result.errors()
+    if len(hier_errors) > 0:
+        err_strs: list[str] = []
+        hei = 0
+        while hei < len(hier_errors):
+            err_strs.append(str(hier_errors[hei]))
+            hei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "hierarchy":
         return (0, to_json(hier_result.to_dict()))
     inf_result = run_inference(
         ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
     )
-    errors = inf_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    inf_errors = inf_result.errors()
+    if len(inf_errors) > 0:
+        err_strs: list[str] = []
+        iei = 0
+        while iei < len(inf_errors):
+            err_strs.append(str(inf_errors[iei]))
+            iei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "inference":
-        return (0, to_json(ast_dict))
+        return (0, to_json(JDict(ast_dict)))
     module, lower_errors = lower(
         ast_dict,
         sig_result,
@@ -1576,7 +1585,12 @@ def _pipeline_post_parse(
         source,
     )
     if len(lower_errors) > 0:
-        _print_errors(lower_errors)
+        err_strs: list[str] = []
+        lei = 0
+        while lei < len(lower_errors):
+            err_strs.append(str(lower_errors[lei]))
+            lei += 1
+        _print_errors(err_strs)
         return (1, "")
     if module is None:
         print("error: lowering produced no module", file=sys.stderr)
@@ -1590,11 +1604,21 @@ def _pipeline_post_parse(
     checker = Checker()
     checker.collect_declarations(module)
     if len(checker.errors) > 0:
-        _print_errors(checker.errors)
+        err_strs: list[str] = []
+        cei = 0
+        while cei < len(checker.errors):
+            err_strs.append(str(checker.errors[cei]))
+            cei += 1
+        _print_errors(err_strs)
         return (1, "")
     checker.check_bodies(module)
     if len(checker.errors) > 0:
-        _print_errors(checker.errors)
+        err_strs: list[str] = []
+        cei = 0
+        while cei < len(checker.errors):
+            err_strs.append(str(checker.errors[cei]))
+            cei += 1
+        _print_errors(err_strs)
         return (1, "")
     analyze_returns(module, checker)
     analyze_scope(module, checker)
@@ -1607,9 +1631,7 @@ def _pipeline_post_parse(
         return (0, emit_perl(module))
     if target == "ruby":
         return (0, emit_ruby(module))
-    print(
-        "error: backend not yet implemented for '" + target + "'", file=sys.stderr
-    )
+    print("error: backend not yet implemented for '" + target + "'", file=sys.stderr)
     return (1, "")
 
 
@@ -1636,7 +1658,7 @@ def run_pipeline(
         )
         return (1, "")
     if stop_at == "parse":
-        return (0, to_json(ast_dict))
+        return (0, to_json(JDict(ast_dict)))
     return _pipeline_post_parse(
         ast_dict, source, target, stop_at, strict_math, strict_tostring
     )
@@ -1802,12 +1824,14 @@ def main_project(
         file_asts.append((path, ast_dict))
         i += 1
     if stop_at == "parse":
-        items: list[dict[str, object]] = []
+        items: list[JsonValue] = []
         j = 0
         while j < len(file_asts):
-            items.append({"path": file_asts[j][0], "ast": file_asts[j][1]})
+            items.append(
+                JDict({"path": JStr(file_asts[j][0]), "ast": JDict(file_asts[j][1])})
+            )
             j += 1
-        output = to_json(items)
+        output = to_json(JList(items))
         return write_output(output, output_file)
     merged_ast, merge_errors = merge_project(file_asts)
     if len(merge_errors) > 0:
