@@ -1367,7 +1367,9 @@ class _PythonEmitter:
             for p in expr.params
             if p.typ is not None
         )
-        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(expr.body[0], TExprStmt):
+        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
+            expr.body[0], TExprStmt
+        ):
             return "lambda " + params + ": " + self._expr(expr.body[0].expr)
         name = "_fn"
         self._line("def " + name + "(" + params + "):")

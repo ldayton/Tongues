@@ -945,7 +945,9 @@ class _PerlEmitter:
             cond = self._catch_condition(catch, err)
             if cond is None:
                 if not has_chain:
-                    unused = catch.annotations.get("liveness.catch_var_unused") == "true"
+                    unused = (
+                        catch.annotations.get("liveness.catch_var_unused") == "true"
+                    )
                     if not unused:
                         self._line(
                             "my $"
@@ -1373,7 +1375,9 @@ class _PerlEmitter:
             for p in expr.params
             if p.typ is not None
         )
-        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(expr.body[0], TExprStmt):
+        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
+            expr.body[0], TExprStmt
+        ):
             if params:
                 return (
                     "sub { my ("

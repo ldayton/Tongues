@@ -2149,12 +2149,12 @@ class TypeChecker:
             env.bind(p.name, sig.params[i], pos=p.pos)
         is_arrow = lit.annotations.get("fn_lit.arrow") == "true"
         if is_arrow and isinstance(lit.body[0], TExprStmt):
-            self._type_expr(lit.body[0].expr, env, expected=sig.ret, allow_capture=False)
+            self._type_expr(
+                lit.body[0].expr, env, expected=sig.ret, allow_capture=False
+            )
             return
         # allow_capture=False because we only bound params; outer locals are not present.
-        self._check_block(
-            lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False
-        )
+        self._check_block(lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False)
         if not ty_eq(sig.ret, TY_VOID) and not self._block_always_returns(lit.body):
             raise TaytshTypeError(
                 "function literal may fall off without returning", lit.pos

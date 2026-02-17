@@ -15,7 +15,6 @@ from .ast import (
     TBytesLit,
     TCall,
     TContinueStmt,
-    TDecl,
     TDefault,
     TEnumDecl,
     TModuleItem,
@@ -592,7 +591,9 @@ class _Emitter:
         if isinstance(expr, TFnLit):
             params = self._render_param_list(expr.params)
             ret = self._render_type(expr.ret)
-            if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(expr.body[0], TExprStmt):
+            if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
+                expr.body[0], TExprStmt
+            ):
                 return f"({params}) -> {ret} => {self._render_expr(expr.body[0].expr, self._PREC_TERNARY)}"
             body = self._render_inline_block(expr.body)
             return f"({params}) -> {ret} {body}"

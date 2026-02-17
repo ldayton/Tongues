@@ -437,16 +437,22 @@ def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> 
             continue
 
         if isinstance(stmt, TWhileStmt):
-            stmt.annotations["hoisting.has_continue"] = "true" if _has_continue(stmt.body) else "false"
+            stmt.annotations["hoisting.has_continue"] = (
+                "true" if _has_continue(stmt.body) else "false"
+            )
         elif isinstance(stmt, TForStmt):
-            stmt.annotations["hoisting.has_continue"] = "true" if _has_continue(stmt.body) else "false"
+            stmt.annotations["hoisting.has_continue"] = (
+                "true" if _has_continue(stmt.body) else "false"
+            )
         elif isinstance(stmt, TMatchStmt):
             all_case_stmts: list[TStmt] = []
             for case in stmt.cases:
                 all_case_stmts.extend(case.body)
             if stmt.default is not None:
                 all_case_stmts.extend(stmt.default.body)
-            stmt.annotations["hoisting.has_break"] = "true" if _has_break(all_case_stmts) else "false"
+            stmt.annotations["hoisting.has_break"] = (
+                "true" if _has_break(all_case_stmts) else "false"
+            )
 
         # Collect let decls inside this control structure
         inner_decls = _collect_let_decls(_get_control_bodies(stmt), declared, checker)

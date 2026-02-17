@@ -448,7 +448,9 @@ def _detect_recursion(
 
         for key in scc:
             decl = fn_decls[key]
-            decl.annotations["callgraph.is_recursive"] = "true" if is_recursive else "false"
+            decl.annotations["callgraph.is_recursive"] = (
+                "true" if is_recursive else "false"
+            )
             decl.annotations["callgraph.recursive_group"] = group_id
 
     return sccs, key_to_scc

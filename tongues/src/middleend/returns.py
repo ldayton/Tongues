@@ -318,18 +318,24 @@ def _walk_block(stmts: list[TStmt], ctx: _ReturnsCtx) -> bool:
             for case in stmt.cases:
                 case_ctx = _fork_ctx(ctx)
                 case_returns = _walk_block(case.body, case_ctx)
-                case.annotations["returns.always_returns"] = "true" if case_returns else "false"
+                case.annotations["returns.always_returns"] = (
+                    "true" if case_returns else "false"
+                )
                 if not case_returns:
                     all_return = False
                     survivors.append(case_ctx)
             if stmt.default is not None:
                 dflt_ctx = _fork_ctx(ctx)
                 dflt_returns = _walk_block(stmt.default.body, dflt_ctx)
-                stmt.default.annotations["returns.always_returns"] = "true" if dflt_returns else "false"
+                stmt.default.annotations["returns.always_returns"] = (
+                    "true" if dflt_returns else "false"
+                )
                 if not dflt_returns:
                     all_return = False
                     survivors.append(dflt_ctx)
-            stmt.annotations["returns.always_returns"] = "true" if all_return else "false"
+            stmt.annotations["returns.always_returns"] = (
+                "true" if all_return else "false"
+            )
             if all_return:
                 return True
             _merge_branch_narrowings(ctx, survivors)
@@ -339,12 +345,16 @@ def _walk_block(stmts: list[TStmt], ctx: _ReturnsCtx) -> bool:
             all_catches_return = True
             for catch in stmt.catches:
                 catch_returns = _walk_block(catch.body, ctx)
-                catch.annotations["returns.always_returns"] = "true" if catch_returns else "false"
+                catch.annotations["returns.always_returns"] = (
+                    "true" if catch_returns else "false"
+                )
                 if not catch_returns:
                     all_catches_return = False
             combined = body_returns and all_catches_return
             stmt.annotations["returns.always_returns"] = "true" if combined else "false"
-            stmt.annotations["returns.body_has_return"] = "true" if _contains_return(stmt.body) else "false"
+            stmt.annotations["returns.body_has_return"] = (
+                "true" if _contains_return(stmt.body) else "false"
+            )
             if _contains_return(stmt.body) or any(
                 _contains_return(c.body) for c in stmt.catches
             ):
@@ -389,8 +399,12 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
     )
     always = _walk_block(decl.body, ctx)
     decl.annotations["returns.always_returns"] = "true" if always else "false"
-    decl.annotations["returns.needs_named_returns"] = "true" if fn_results.needs_named_returns else "false"
-    decl.annotations["returns.may_return_nil"] = "true" if fn_results.may_return_nil else "false"
+    decl.annotations["returns.needs_named_returns"] = (
+        "true" if fn_results.needs_named_returns else "false"
+    )
+    decl.annotations["returns.may_return_nil"] = (
+        "true" if fn_results.may_return_nil else "false"
+    )
 
 
 # ============================================================

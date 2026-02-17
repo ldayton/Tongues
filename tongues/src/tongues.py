@@ -1000,9 +1000,7 @@ def _rewrite_module_attrs(
                                     val_entries.clear()
                                     val_entries["_type"] = JStr("Name")
                                     val_entries["id"] = JStr(final_name)
-                                    val_entries["ctx"] = JDict(
-                                        {"_type": JStr("Load")}
-                                    )
+                                    val_entries["ctx"] = JDict({"_type": JStr("Load")})
                                     if lineno is not None:
                                         val_entries["lineno"] = lineno
                                     if col is not None:
@@ -1011,9 +1009,8 @@ def _rewrite_module_attrs(
                                         val_entries["end_lineno"] = end_lineno
                                     if end_col is not None:
                                         val_entries["end_col_offset"] = end_col
-                                    if (
-                                        source_file is not None
-                                        and not isinstance(source_file, JNull)
+                                    if source_file is not None and not isinstance(
+                                        source_file, JNull
                                     ):
                                         val_entries["_source_file"] = source_file
                                 elif target_name_map is not None:

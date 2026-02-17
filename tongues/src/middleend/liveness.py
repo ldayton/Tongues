@@ -276,9 +276,11 @@ def _analyze_initial_value_in_stmts(stmts: list[TStmt]) -> None:
     """Analyze statements for TLetStmt with unused initial values."""
     for i, stmt in enumerate(stmts):
         if isinstance(stmt, TLetStmt):
-            stmt.annotations["liveness.initial_value_unused"] = "true" if _is_written_before_read(
-                stmt.name, stmts[i + 1 :]
-            ) else "false"
+            stmt.annotations["liveness.initial_value_unused"] = (
+                "true"
+                if _is_written_before_read(stmt.name, stmts[i + 1 :])
+                else "false"
+            )
         if isinstance(stmt, TIfStmt):
             _analyze_initial_value_in_stmts(stmt.then_body)
             if stmt.else_body is not None:
@@ -308,7 +310,11 @@ def _analyze_catch_and_match_bindings(stmts: list[TStmt]) -> None:
     for stmt in stmts:
         if isinstance(stmt, TTryStmt):
             for catch in stmt.catches:
-                catch.annotations["liveness.catch_var_unused"] = "false" if _binding_used_in_stmts(catch.name, catch.body) else "true"
+                catch.annotations["liveness.catch_var_unused"] = (
+                    "false"
+                    if _binding_used_in_stmts(catch.name, catch.body)
+                    else "true"
+                )
             _analyze_catch_and_match_bindings(stmt.body)
             for catch in stmt.catches:
                 _analyze_catch_and_match_bindings(catch.body)
@@ -318,11 +324,19 @@ def _analyze_catch_and_match_bindings(stmts: list[TStmt]) -> None:
             for case in stmt.cases:
                 pat = case.pattern
                 if isinstance(pat, TPatternType):
-                    pat.annotations["liveness.match_var_unused"] = "false" if _binding_used_in_stmts(pat.name, case.body) else "true"
+                    pat.annotations["liveness.match_var_unused"] = (
+                        "false"
+                        if _binding_used_in_stmts(pat.name, case.body)
+                        else "true"
+                    )
                 _analyze_catch_and_match_bindings(case.body)
             if stmt.default is not None:
                 if stmt.default.name is not None:
-                    stmt.default.annotations["liveness.match_var_unused"] = "false" if _binding_used_in_stmts(stmt.default.name, stmt.default.body) else "true"
+                    stmt.default.annotations["liveness.match_var_unused"] = (
+                        "false"
+                        if _binding_used_in_stmts(stmt.default.name, stmt.default.body)
+                        else "true"
+                    )
                 _analyze_catch_and_match_bindings(stmt.default.body)
         elif isinstance(stmt, TIfStmt):
             _analyze_catch_and_match_bindings(stmt.then_body)

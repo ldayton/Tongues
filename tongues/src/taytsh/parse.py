@@ -1007,4 +1007,6 @@ class Parser:
             return TFnLit(pos, params, ret, body, {})
         self.expect("=>")
         expr = self.parse_expr()
-        return TFnLit(pos, params, ret, [TExprStmt(pos, expr, {})], {"fn_lit.arrow": "true"})
+        return TFnLit(
+            pos, params, ret, [TExprStmt(pos, expr, {})], {"fn_lit.arrow": "true"}
+        )

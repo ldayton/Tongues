@@ -993,10 +993,16 @@ def _stamp_bindings(ctx: _ScopeCtx) -> None:
         if info.binder_name is not None:
             # For-binder: composite keys on the TForStmt node
             bname = info.binder_name
-            node.annotations[f"scope.binder.{bname}.is_reassigned"] = "true" if info.reassigned else "false"
-            node.annotations[f"scope.binder.{bname}.is_const"] = "false" if info.reassigned else "true"
+            node.annotations[f"scope.binder.{bname}.is_reassigned"] = (
+                "true" if info.reassigned else "false"
+            )
+            node.annotations[f"scope.binder.{bname}.is_const"] = (
+                "false" if info.reassigned else "true"
+            )
         else:
-            node.annotations["scope.is_reassigned"] = "true" if info.reassigned else "false"
+            node.annotations["scope.is_reassigned"] = (
+                "true" if info.reassigned else "false"
+            )
             node.annotations["scope.is_const"] = "false" if info.reassigned else "true"
         if info.is_param:
             node.annotations["scope.is_modified"] = "true" if info.modified else "false"

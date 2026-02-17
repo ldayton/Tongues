@@ -1071,14 +1071,22 @@ def _stamp_bindings(ctx: _StringsCtx) -> None:
         if info.binder_name is not None:
             b = info.binder_name
             info.node.annotations[f"strings.binder.{b}.content"] = info.content
-            info.node.annotations[f"strings.binder.{b}.indexed"] = "true" if info.indexed else "false"
-            info.node.annotations[f"strings.binder.{b}.iterated"] = "true" if info.iterated else "false"
-            info.node.annotations[f"strings.binder.{b}.len_called"] = "true" if info.len_called else "false"
+            info.node.annotations[f"strings.binder.{b}.indexed"] = (
+                "true" if info.indexed else "false"
+            )
+            info.node.annotations[f"strings.binder.{b}.iterated"] = (
+                "true" if info.iterated else "false"
+            )
+            info.node.annotations[f"strings.binder.{b}.len_called"] = (
+                "true" if info.len_called else "false"
+            )
             continue
         info.node.annotations["strings.content"] = info.content
         info.node.annotations["strings.indexed"] = "true" if info.indexed else "false"
         info.node.annotations["strings.iterated"] = "true" if info.iterated else "false"
-        info.node.annotations["strings.len_called"] = "true" if info.len_called else "false"
+        info.node.annotations["strings.len_called"] = (
+            "true" if info.len_called else "false"
+        )
 
 
 def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) -> None:
