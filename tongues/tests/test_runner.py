@@ -332,6 +332,7 @@ class PhaseResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     data: dict | None = None
+    reveals: list[tuple[int, str]] = field(default_factory=list)
 
 
 def _unwrap_jvalue(obj: object) -> object:
@@ -400,12 +401,45 @@ def to_comparable(value: object) -> str:
     return str(value)
 
 
+def _check_reveals(
+    assertions: list[tuple[int, str]], actuals: list[tuple[int, str]]
+) -> None:
+    for lineno, expected_type in assertions:
+        found = False
+        for actual_line, actual_type in actuals:
+            if actual_line == lineno:
+                if actual_type != expected_type:
+                    pytest.fail(
+                        f"reveal_type at line {lineno}: expected '{expected_type}', got '{actual_type}'"
+                    )
+                found = True
+                break
+        if not found:
+            pytest.fail(f"No reveal_type found at line {lineno}")
+
+
 def check_expected(
     expected: str, result: PhaseResult, phase: str, *, lenient_errors: bool = False
 ) -> None:
+    reveal_assertions: list[tuple[int, str]] = []
+    verdict_lines: list[str] = []
+    for line in expected.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("reveal:"):
+            rest = stripped[7:]
+            eq_pos = rest.index("=")
+            lineno = int(rest[:eq_pos].strip())
+            expected_type = rest[eq_pos + 1 :].strip()
+            reveal_assertions.append((lineno, expected_type))
+        else:
+            verdict_lines.append(line)
+    expected = "\n".join(verdict_lines).strip()
+    if not expected:
+        expected = "ok"
     if expected == "ok":
         if result.errors:
             pytest.fail(f"Expected ok, got error: {result.errors[0]}")
+        _check_reveals(reveal_assertions, result.reveals)
         return
     if expected.startswith("error:"):
         expected_msg = expected[6:].strip()
@@ -698,7 +732,7 @@ def run_inference(source: str) -> PhaseResult:
     inf_errors = inf_result.errors()
     if inf_errors:
         return PhaseResult(errors=[str(e) for e in inf_errors])
-    return PhaseResult()
+    return PhaseResult(reveals=inf_result.reveals())
 
 
 def run_type_checking(source: str) -> PhaseResult:

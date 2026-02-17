@@ -91,14 +91,21 @@ class InferenceResult:
 
     def __init__(self) -> None:
         self._errors: list[InferenceError] = []
+        self._reveals: list[tuple[int, str]] = []
 
     def add_error(
         self, lineno: int, col: int, message: str, source_file: str = ""
     ) -> None:
         self._errors.append(InferenceError(lineno, col, message, source_file))
 
+    def add_reveal(self, lineno: int, type_str: str) -> None:
+        self._reveals.append((lineno, type_str))
+
     def errors(self) -> list[InferenceError]:
         return self._errors
+
+    def reveals(self) -> list[tuple[int, str]]:
+        return self._reveals
 
 
 # ---------------------------------------------------------------------------
@@ -1664,6 +1671,12 @@ def _validate_expr_stmt(
         func = get_node(value, "func")
         if len(func) > 0 and _is_type(func, ["Name"]):
             fname = get_str(func, "id")
+            if fname == "reveal_type":
+                args = get_nodes(value, "args")
+                if len(args) == 1:
+                    typ = _synth_expr(args[0], env, ctx)
+                    ctx.result.add_reveal(lineno, _type_name(typ))
+                return
             if (
                 fname != ""
                 and fname not in _EAGER_CONSUMERS

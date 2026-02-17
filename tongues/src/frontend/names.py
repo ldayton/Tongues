@@ -90,6 +90,8 @@ ALLOWED_BUILTINS: set[str] = {
     "open",
     # print is handled specially
     "print",
+    # Type introspection (test-only)
+    "reveal_type",
 }
 
 

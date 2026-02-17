@@ -320,3 +320,18 @@ def f() -> None:
 ---
 ok
 ---
+
+=== reveal_type basic
+def f(x: int) -> None:
+    reveal_type(x)
+---
+reveal:2 = int
+---
+
+=== reveal_type after isinstance narrowing
+def f(x: int | str) -> None:
+    if isinstance(x, int):
+        reveal_type(x)
+---
+reveal:3 = int
+---
