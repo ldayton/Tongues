@@ -86,9 +86,22 @@ def _is_type(node: object, type_names: list[str]) -> bool:
     return False
 
 
+def _is_bytes_type(t: dict[str, object]) -> bool:
+    """Check if t represents bytes (either {"kind": "bytes"} or Slice(byte))."""
+    if t.get("kind") == "bytes":
+        return True
+    if t.get("_type") == "Slice":
+        elem = t.get("element")
+        if isinstance(elem, dict) and elem.get("kind") == "byte":
+            return True
+    return False
+
+
 def _type_eq(a: dict[str, object], b: dict[str, object]) -> bool:
     """Check structural equality of two type dicts."""
     if a == b:
+        return True
+    if _is_bytes_type(a) and _is_bytes_type(b):
         return True
     a_kind = a.get("kind")
     b_kind = b.get("kind")
