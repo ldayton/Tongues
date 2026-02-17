@@ -396,6 +396,18 @@ def _is_assignable(
                     be = b_elems[0]
                     if isinstance(ae, dict) and isinstance(be, dict):
                         return _is_assignable(ae, be, hier)
+            if not a_var and b_var:
+                if len(b_elems) > 0:
+                    be = b_elems[0]
+                    if isinstance(be, dict):
+                        j = 0
+                        while j < len(a_elems):
+                            ae = a_elems[j]
+                            if isinstance(ae, dict):
+                                if not _is_assignable(ae, be, hier):
+                                    return False
+                            j += 1
+                        return True
             if not a_var and not b_var:
                 if len(a_elems) != len(b_elems):
                     return False
