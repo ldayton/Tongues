@@ -11,6 +11,23 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 from __future__ import annotations
 
 
+from .types import (
+    TypeNode,
+    PrimitiveType,
+    SliceType,
+    MapType,
+    SetType,
+    TupleType,
+    OptionalType,
+    PointerType,
+    StructRef,
+    InterfaceRef,
+    FuncType,
+    BoolLit,
+    IntLit,
+    StringLit,
+    typenode_to_dict,
+)
 from .signatures import (
     SignatureResult,
     annotation_to_str,
@@ -32,24 +49,27 @@ class FieldInfo:
     def __init__(
         self,
         name: str,
-        typ: dict[str, object],
+        typ: TypeNode,
         py_name: str,
         has_default: bool,
-        default: dict[str, object] | None,
+        default: TypeNode | None,
     ) -> None:
         self.name: str = name
-        self.typ: dict[str, object] = typ
+        self.typ: TypeNode = typ
         self.py_name: str = py_name
         self.has_default: bool = has_default
-        self.default: dict[str, object] | None = default
+        self.default: TypeNode | None = default
 
     def to_dict(self) -> dict[str, object]:
         """Serialize to a dict for test assertions."""
+        dv: dict[str, object] | None = None
+        if self.default is not None:
+            dv = typenode_to_dict(self.default)
         d: dict[str, object] = {
-            "typ": self.typ,
+            "typ": typenode_to_dict(self.typ),
             "py_name": self.py_name,
             "has_default": self.has_default,
-            "default": self.default,
+            "default": dv,
         }
         return d
 
@@ -176,47 +196,40 @@ def _dict_walk(node: ASTNode) -> list[ASTNode]:
 # ---------------------------------------------------------------------------
 
 
-def _unwrap_field_type(typ: dict[str, object]) -> dict[str, object]:
+def _unwrap_field_type(typ: TypeNode) -> TypeNode:
     """Unwrap Pointer(StructRef(X)) → StructRef(X) and Slice(byte) → bytes."""
-    if typ.get("_type") == "Pointer":
-        target = typ.get("target")
-        if isinstance(target, dict) and target.get("_type") == "StructRef":
-            return target
-    if typ.get("_type") == "Slice":
-        element = typ.get("element")
-        if isinstance(element, dict) and element.get("kind") == "byte":
-            return {"kind": "bytes"}
+    if isinstance(typ, PointerType):
+        if isinstance(typ.target, StructRef):
+            return typ.target
+    if isinstance(typ, SliceType):
+        if isinstance(typ.element, PrimitiveType) and typ.element.kind == "byte":
+            return PrimitiveType("bytes")
     return typ
 
 
-def _type_kind_str(typ: dict[str, object]) -> str:
+def _type_kind_str(typ: TypeNode) -> str:
     """Short string for a type, used in error messages."""
-    kind = typ.get("kind")
-    if isinstance(kind, str):
-        if kind == "string":
+    if isinstance(typ, PrimitiveType):
+        if typ.kind == "string":
             return "str"
-        return kind
-    t = typ.get("_type")
-    if t == "Slice":
+        return typ.kind
+    if isinstance(typ, SliceType):
         return "list"
-    if t == "Map":
+    if isinstance(typ, MapType):
         return "dict"
-    if t == "Set":
+    if isinstance(typ, SetType):
         return "set"
-    if t == "Tuple":
+    if isinstance(typ, TupleType):
         return "tuple"
-    if t == "Optional":
+    if isinstance(typ, OptionalType):
         return "Optional"
-    if t == "StructRef":
-        name = typ.get("name", "")
-        if isinstance(name, str):
-            return name
-        return "struct"
-    if t == "InterfaceRef":
+    if isinstance(typ, StructRef):
+        return typ.name
+    if isinstance(typ, InterfaceRef):
         return "interface"
-    if t == "FuncType":
+    if isinstance(typ, FuncType):
         return "Callable"
-    if t == "Pointer":
+    if isinstance(typ, PointerType):
         return "Pointer"
     return "unknown"
 
@@ -226,17 +239,17 @@ def _type_kind_str(typ: dict[str, object]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _make_default_expr(node: ASTNode) -> dict[str, object] | None:
-    """Convert a constant AST node to a default value dict."""
+def _make_default_expr(node: ASTNode) -> TypeNode | None:
+    """Convert a constant AST node to a default value TypeNode."""
     if not _is_type(node, ["Constant"]):
         return None
     v = node.get("value")
     if isinstance(v, bool):
-        return {"_type": "BoolLit", "value": v}
+        return BoolLit(v)
     if isinstance(v, int):
-        return {"_type": "IntLit", "value": v}
+        return IntLit(v)
     if isinstance(v, str):
-        return {"_type": "StringLit", "value": v}
+        return StringLit(v)
     return None
 
 
@@ -420,8 +433,8 @@ def _infer_type_from_value(
     func_return_types: dict[str, str],
     errors: list[FieldError],
     lineno: int,
-) -> dict[str, object] | None:
-    """Infer a type dict from an expression AST node. Returns None if cannot infer."""
+) -> TypeNode | None:
+    """Infer a TypeNode from an expression AST node. Returns None if cannot infer."""
     if not isinstance(node, dict):
         return None
     t = node.get("_type")
@@ -429,21 +442,20 @@ def _infer_type_from_value(
     if t == "Constant":
         v = node.get("value")
         if v is None:
-            return {"kind": "void"}
+            return PrimitiveType("void")
         if isinstance(v, bool):
-            return {"kind": "bool"}
+            return PrimitiveType("bool")
         if isinstance(v, int):
-            return {"kind": "int"}
+            return PrimitiveType("int")
         if isinstance(v, float):
-            return {"kind": "float"}
+            return PrimitiveType("float")
         if isinstance(v, str):
-            return {"kind": "string"}
+            return PrimitiveType("string")
     # Name reference — could be a param
     if t == "Name":
         name = node.get("id")
         if isinstance(name, str) and name in param_types:
             py_type = param_types[name]
-            dummy_errors: list[object] = []
             from .signatures import SignatureError
 
             sig_errors: list[SignatureError] = []
@@ -462,7 +474,7 @@ def _infer_type_from_value(
             if isinstance(func_name, str):
                 # Constructor call
                 if func_name in known_classes:
-                    return {"_type": "StructRef", "name": func_name}
+                    return StructRef(func_name)
                 # Known function call
                 if func_name in func_return_types:
                     py_ret = func_return_types[func_name]
@@ -482,7 +494,6 @@ def _infer_type_from_value(
             left_t = _infer_type_from_value(
                 left, param_types, known_classes, func_return_types, errors, lineno
             )
-            # Remove any errors added during operand inference (we just want the type)
             if left_t is not None:
                 return left_t
         return None
@@ -495,17 +506,13 @@ def _infer_type_from_value(
             )
     # List/Dict/Set/Tuple literal — basic type without element info
     if t == "List":
-        return {"_type": "Slice", "element": {"_type": "InterfaceRef", "name": "any"}}
+        return SliceType(InterfaceRef("any"))
     if t == "Dict":
-        return {
-            "_type": "Map",
-            "key": {"_type": "InterfaceRef", "name": "any"},
-            "value": {"_type": "InterfaceRef", "name": "any"},
-        }
+        return MapType(InterfaceRef("any"), InterfaceRef("any"))
     if t == "Set":
-        return {"_type": "Set", "element": {"_type": "InterfaceRef", "name": "any"}}
+        return SetType(InterfaceRef("any"))
     if t == "Tuple":
-        return {"_type": "Tuple", "elements": [], "variadic": False}
+        return TupleType([], False)
     return None
 
 
@@ -728,7 +735,7 @@ def _collect_init_fields(
                                 elif is_const_str:
                                     info.fields[field_name] = FieldInfo(
                                         name=field_name,
-                                        typ={"kind": "string"},
+                                        typ=PrimitiveType("string"),
                                         py_name=field_name,
                                         has_default=False,
                                         default=None,
@@ -841,7 +848,7 @@ def _collect_class_fields(
                     )
                     typ = _unwrap_field_type(typ)
                     has_default = False
-                    default_expr: dict[str, object] | None = None
+                    default_expr: TypeNode | None = None
                     value_node = stmt.get("value")
                     if value_node is not None and isinstance(value_node, dict):
                         if _is_field_call_default_factory(value_node):

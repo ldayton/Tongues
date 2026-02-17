@@ -19,6 +19,28 @@ from .signatures import (
 )
 from .fields import FieldResult
 from .hierarchy import HierarchyResult
+from .types import (
+    TypeNode,
+    PrimitiveType,
+    SliceType,
+    MapType,
+    SetType,
+    TupleType,
+    OptionalType,
+    PointerType,
+    StructRef,
+    InterfaceRef,
+    FuncType,
+    ANY_TYPE,
+    INT_TYPE,
+    FLOAT_TYPE,
+    BOOL_TYPE,
+    STR_TYPE,
+    VOID_TYPE,
+    BYTES_TYPE,
+    is_any,
+    type_name as _type_name_fn,
+)
 
 # Type alias for AST dict nodes
 ASTNode = dict[str, object]
@@ -62,25 +84,8 @@ class InferenceResult:
 
 
 # ---------------------------------------------------------------------------
-# Type dict helpers
+# Type helpers
 # ---------------------------------------------------------------------------
-
-_ANY_TYPE: dict[str, object] = {"_type": "InterfaceRef", "name": "any"}
-_INT_TYPE: dict[str, object] = {"kind": "int"}
-_FLOAT_TYPE: dict[str, object] = {"kind": "float"}
-_BOOL_TYPE: dict[str, object] = {"kind": "bool"}
-_STR_TYPE: dict[str, object] = {"kind": "string"}
-_BYTES_TYPE: dict[str, object] = {"_type": "Slice", "element": {"kind": "byte"}}
-_VOID_TYPE: dict[str, object] = {"kind": "void"}
-
-
-def _make_func_type(params: list[object], ret: object) -> dict[str, object]:
-    """Build a FuncType dict without triggering mixed-value-type checks."""
-    result: dict[str, object] = {}
-    result["_type"] = "FuncType"
-    result["params"] = params
-    result["ret"] = ret
-    return result
 
 
 def _is_type(node: object, type_names: list[str]) -> bool:
@@ -95,220 +100,63 @@ def _is_type(node: object, type_names: list[str]) -> bool:
     return False
 
 
-def _is_bytes_type(t: dict[str, object]) -> bool:
-    """Check if t represents bytes (either {"kind": "bytes"} or Slice(byte))."""
-    if t.get("kind") == "bytes":
+def _is_bytes_type(t: TypeNode) -> bool:
+    """Check if t represents bytes (either PrimitiveType("bytes") or SliceType(byte))."""
+    if isinstance(t, PrimitiveType) and t.kind == "bytes":
         return True
-    if t.get("_type") == "Slice":
-        elem = t.get("element")
-        if isinstance(elem, dict) and elem.get("kind") == "byte":
+    if isinstance(t, SliceType):
+        if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
             return True
     return False
 
 
-def _type_eq(a: dict[str, object], b: dict[str, object]) -> bool:
-    """Check structural equality of two type dicts."""
-    if a == b:
-        return True
+def _type_eq(a: TypeNode, b: TypeNode) -> bool:
+    """Check structural equality of two TypeNodes."""
     if _is_bytes_type(a) and _is_bytes_type(b):
         return True
-    a_kind = a.get("kind")
-    b_kind = b.get("kind")
-    if a_kind is not None or b_kind is not None:
-        return a_kind == b_kind
-    a_type = a.get("_type")
-    b_type = b.get("_type")
-    if a_type != b_type:
+    if isinstance(a, PrimitiveType) and isinstance(b, PrimitiveType):
+        return a.kind == b.kind
+    if isinstance(a, PrimitiveType) or isinstance(b, PrimitiveType):
         return False
-    if a_type == "Slice":
-        ae = a.get("element")
-        be = b.get("element")
-        if isinstance(ae, dict) and isinstance(be, dict):
-            return _type_eq(ae, be)
-        return False
-    if a_type == "Map":
-        ak = a.get("key")
-        bk = b.get("key")
-        av = a.get("value")
-        bv = b.get("value")
-        if (
-            isinstance(ak, dict)
-            and isinstance(bk, dict)
-            and isinstance(av, dict)
-            and isinstance(bv, dict)
-        ):
-            return _type_eq(ak, bk) and _type_eq(av, bv)
-        return False
-    if a_type == "Set":
-        ae = a.get("element")
-        be = b.get("element")
-        if isinstance(ae, dict) and isinstance(be, dict):
-            return _type_eq(ae, be)
-        return False
-    if a_type == "Optional":
-        ai = a.get("inner")
-        bi = b.get("inner")
-        if isinstance(ai, dict) and isinstance(bi, dict):
-            return _type_eq(ai, bi)
-        return False
-    if a_type == "Tuple":
-        a_elems = a.get("elements")
-        b_elems = b.get("elements")
-        a_var = a.get("variadic", False)
-        b_var = b.get("variadic", False)
-        if a_var != b_var:
+    if isinstance(a, SliceType) and isinstance(b, SliceType):
+        return _type_eq(a.element, b.element)
+    if isinstance(a, MapType) and isinstance(b, MapType):
+        return _type_eq(a.key, b.key) and _type_eq(a.value, b.value)
+    if isinstance(a, SetType) and isinstance(b, SetType):
+        return _type_eq(a.element, b.element)
+    if isinstance(a, OptionalType) and isinstance(b, OptionalType):
+        return _type_eq(a.inner, b.inner)
+    if isinstance(a, TupleType) and isinstance(b, TupleType):
+        if a.variadic != b.variadic:
             return False
-        if not isinstance(a_elems, list) or not isinstance(b_elems, list):
-            return False
-        if len(a_elems) != len(b_elems):
+        if len(a.elements) != len(b.elements):
             return False
         j = 0
-        while j < len(a_elems):
-            ae = a_elems[j]
-            be = b_elems[j]
-            if isinstance(ae, dict) and isinstance(be, dict):
-                if not _type_eq(ae, be):
-                    return False
-            else:
+        while j < len(a.elements):
+            if not _type_eq(a.elements[j], b.elements[j]):
                 return False
             j += 1
         return True
-    if a_type == "Pointer":
-        at = a.get("target")
-        bt = b.get("target")
-        if isinstance(at, dict) and isinstance(bt, dict):
-            return _type_eq(at, bt)
-        return False
-    if a_type == "StructRef":
-        return a.get("name") == b.get("name")
-    if a_type == "InterfaceRef":
-        return a.get("name") == b.get("name")
-    if a_type == "FuncType":
-        ap = a.get("params")
-        bp = b.get("params")
-        ar = a.get("ret")
-        br = b.get("ret")
-        if not isinstance(ap, list) or not isinstance(bp, list):
-            return False
-        if len(ap) != len(bp):
+    if isinstance(a, PointerType) and isinstance(b, PointerType):
+        return _type_eq(a.target, b.target)
+    if isinstance(a, StructRef) and isinstance(b, StructRef):
+        return a.name == b.name
+    if isinstance(a, InterfaceRef) and isinstance(b, InterfaceRef):
+        return a.name == b.name
+    if isinstance(a, FuncType) and isinstance(b, FuncType):
+        if len(a.params) != len(b.params):
             return False
         j = 0
-        while j < len(ap):
-            if isinstance(ap[j], dict) and isinstance(bp[j], dict):
-                if not _type_eq(ap[j], bp[j]):
-                    return False
-            else:
+        while j < len(a.params):
+            if not _type_eq(a.params[j], b.params[j]):
                 return False
             j += 1
-        if isinstance(ar, dict) and isinstance(br, dict):
-            return _type_eq(ar, br)
-        return False
+        return _type_eq(a.ret, b.ret)
     return a == b
 
 
-def _is_any(t: dict[str, object]) -> bool:
-    if t.get("_type") == "InterfaceRef" and t.get("name") == "any":
-        return True
-    if t.get("kind") == "any":
-        return True
-    return False
-
-
-def _is_optional(t: dict[str, object]) -> bool:
-    return t.get("_type") == "Optional"
-
-
-def _unwrap_optional(t: dict[str, object]) -> dict[str, object]:
-    inner = t.get("inner")
-    if isinstance(inner, dict):
-        return inner
-    return _ANY_TYPE
-
-
-def _is_struct_pointer(t: dict[str, object]) -> bool:
-    if t.get("_type") == "Pointer":
-        target = t.get("target")
-        if isinstance(target, dict) and target.get("_type") == "StructRef":
-            return True
-    return False
-
-
-def _struct_name(t: dict[str, object]) -> str:
-    """Extract struct name from Pointer(StructRef(name)) or StructRef(name)."""
-    if t.get("_type") == "Pointer":
-        target = t.get("target")
-        if isinstance(target, dict) and target.get("_type") == "StructRef":
-            name = target.get("name")
-            if isinstance(name, str):
-                return name
-    if t.get("_type") == "StructRef":
-        name = t.get("name")
-        if isinstance(name, str):
-            return name
-    return ""
-
-
-def _type_name(t: dict[str, object]) -> str:
-    """Human-readable type name for error messages."""
-    kind = t.get("kind")
-    if isinstance(kind, str):
-        if kind == "string":
-            return "str"
-        return kind
-    tt = t.get("_type")
-    if tt == "Slice":
-        elem = t.get("element")
-        if isinstance(elem, dict):
-            return "list[" + _type_name(elem) + "]"
-        return "list"
-    if tt == "Map":
-        k = t.get("key")
-        v = t.get("value")
-        if isinstance(k, dict) and isinstance(v, dict):
-            return "dict[" + _type_name(k) + ", " + _type_name(v) + "]"
-        return "dict"
-    if tt == "Set":
-        elem = t.get("element")
-        if isinstance(elem, dict):
-            return "set[" + _type_name(elem) + "]"
-        return "set"
-    if tt == "Tuple":
-        elems = t.get("elements")
-        if isinstance(elems, list) and len(elems) > 0:
-            parts: list[str] = []
-            j = 0
-            while j < len(elems):
-                e = elems[j]
-                if isinstance(e, dict):
-                    parts.append(_type_name(e))
-                j += 1
-            if t.get("variadic"):
-                return "tuple[" + ", ".join(parts) + ", ...]"
-            return "tuple[" + ", ".join(parts) + "]"
-        return "tuple"
-    if tt == "Optional":
-        inner = t.get("inner")
-        if isinstance(inner, dict):
-            return _type_name(inner) + " | None"
-        return "Optional"
-    if tt == "Pointer":
-        target = t.get("target")
-        if isinstance(target, dict):
-            return _type_name(target)
-        return "Pointer"
-    if tt == "StructRef":
-        name = t.get("name")
-        if isinstance(name, str):
-            return name
-        return "struct"
-    if tt == "InterfaceRef":
-        name = t.get("name")
-        if name == "any":
-            return "object"
-        return "interface"
-    if tt == "FuncType":
-        return "Callable"
-    return "unknown"
+def _type_name(t: TypeNode) -> str:
+    return _type_name_fn(t)
 
 
 # ---------------------------------------------------------------------------
@@ -317,155 +165,113 @@ def _type_name(t: dict[str, object]) -> str:
 
 
 def _is_assignable(
-    actual: dict[str, object],
-    expected: dict[str, object],
+    actual: TypeNode,
+    expected: TypeNode,
     hier: HierarchyResult,
 ) -> bool:
     """Check if actual is assignable to expected."""
     if _type_eq(actual, expected):
         return True
-    if _is_any(actual) or _is_any(expected):
+    if is_any(actual) or is_any(expected):
         return True
     # void (None literal) assignable to Optional
-    if actual.get("kind") == "void":
-        if _is_optional(expected):
+    if isinstance(actual, PrimitiveType) and actual.kind == "void":
+        if isinstance(expected, OptionalType):
             return True
-        # void assignable to interface (for hierarchy widening like Token = None)
-        if expected.get("_type") == "InterfaceRef":
+        if isinstance(expected, InterfaceRef):
             return True
         return False
     # bool <: int <: float
-    if actual.get("kind") == "bool" and expected.get("kind") == "int":
-        return True
-    if actual.get("kind") == "bool" and expected.get("kind") == "float":
-        return True
-    if actual.get("kind") == "int" and expected.get("kind") == "float":
-        return True
+    if isinstance(actual, PrimitiveType) and isinstance(expected, PrimitiveType):
+        if actual.kind == "bool" and expected.kind == "int":
+            return True
+        if actual.kind == "bool" and expected.kind == "float":
+            return True
+        if actual.kind == "int" and expected.kind == "float":
+            return True
     # T assignable to T?
-    if _is_optional(expected):
-        inner = _unwrap_optional(expected)
-        if _is_assignable(actual, inner, hier):
+    if isinstance(expected, OptionalType):
+        if _is_assignable(actual, expected.inner, hier):
             return True
     # Collection assignable to Pointer(collection) (mutated param)
-    if expected.get("_type") == "Pointer":
-        target = expected.get("target")
-        if isinstance(target, dict) and target.get("_type") != "StructRef":
-            if _is_assignable(actual, target, hier):
+    if isinstance(expected, PointerType):
+        if not isinstance(expected.target, StructRef):
+            if _is_assignable(actual, expected.target, hier):
                 return True
     # Pointer(collection) assignable to plain collection (forwarding mutated param)
-    if actual.get("_type") == "Pointer":
-        target = actual.get("target")
-        if isinstance(target, dict) and target.get("_type") != "StructRef":
-            if _is_assignable(target, expected, hier):
+    if isinstance(actual, PointerType):
+        if not isinstance(actual.target, StructRef):
+            if _is_assignable(actual.target, expected, hier):
                 return True
     # Struct hierarchy: subclass assignable to base / interface
-    if _is_struct_pointer(actual):
-        a_name = _struct_name(actual)
-        if _is_struct_pointer(expected):
-            e_name = _struct_name(expected)
+    a_name = _struct_name(actual)
+    e_name = _struct_name(expected)
+    if isinstance(actual, PointerType) and isinstance(actual.target, StructRef):
+        if isinstance(expected, PointerType) and isinstance(expected.target, StructRef):
             if a_name == e_name:
                 return True
             if _is_ancestor(a_name, e_name, hier):
                 return True
-        # Struct assignable to InterfaceRef (hierarchy root)
-        if expected.get("_type") == "InterfaceRef":
+        if isinstance(expected, InterfaceRef):
             if hier.is_node(a_name):
                 return True
     # StructRef without Pointer wrapper
-    if actual.get("_type") == "StructRef":
-        a_name = _struct_name(actual)
-        if expected.get("_type") == "InterfaceRef":
+    if isinstance(actual, StructRef):
+        if isinstance(expected, InterfaceRef):
             if hier.is_node(a_name):
                 return True
-        if expected.get("_type") == "StructRef":
-            e_name = _struct_name(expected)
+        if isinstance(expected, StructRef):
             if a_name == e_name:
                 return True
             if _is_ancestor(a_name, e_name, hier):
                 return True
-        if _is_struct_pointer(expected):
-            e_name = _struct_name(expected)
+        if isinstance(expected, PointerType) and isinstance(expected.target, StructRef):
             if a_name == e_name:
                 return True
             if _is_ancestor(a_name, e_name, hier):
                 return True
     # Collection element assignability (invariant but check same direction)
-    if actual.get("_type") == "Slice" and expected.get("_type") == "Slice":
-        ae = actual.get("element")
-        be = expected.get("element")
-        if isinstance(ae, dict) and isinstance(be, dict):
-            return _is_assignable(ae, be, hier)
-    if actual.get("_type") == "Map" and expected.get("_type") == "Map":
-        ak = actual.get("key")
-        bk = expected.get("key")
-        av = actual.get("value")
-        bv = expected.get("value")
-        if (
-            isinstance(ak, dict)
-            and isinstance(bk, dict)
-            and isinstance(av, dict)
-            and isinstance(bv, dict)
-        ):
-            return _is_assignable(ak, bk, hier) and _is_assignable(av, bv, hier)
-    if actual.get("_type") == "Set" and expected.get("_type") == "Set":
-        ae = actual.get("element")
-        be = expected.get("element")
-        if isinstance(ae, dict) and isinstance(be, dict):
-            return _is_assignable(ae, be, hier)
+    if isinstance(actual, SliceType) and isinstance(expected, SliceType):
+        return _is_assignable(actual.element, expected.element, hier)
+    if isinstance(actual, MapType) and isinstance(expected, MapType):
+        return _is_assignable(actual.key, expected.key, hier) and _is_assignable(
+            actual.value, expected.value, hier
+        )
+    if isinstance(actual, SetType) and isinstance(expected, SetType):
+        return _is_assignable(actual.element, expected.element, hier)
     # Tuple assignability
-    if actual.get("_type") == "Tuple" and expected.get("_type") == "Tuple":
-        a_elems = actual.get("elements")
-        b_elems = expected.get("elements")
-        a_var = actual.get("variadic", False)
-        b_var = expected.get("variadic", False)
-        if isinstance(a_elems, list) and isinstance(b_elems, list):
-            if a_var and b_var:
-                if len(a_elems) > 0 and len(b_elems) > 0:
-                    ae = a_elems[0]
-                    be = b_elems[0]
-                    if isinstance(ae, dict) and isinstance(be, dict):
-                        return _is_assignable(ae, be, hier)
-            if not a_var and b_var:
-                if len(b_elems) > 0:
-                    be = b_elems[0]
-                    if isinstance(be, dict):
-                        j = 0
-                        while j < len(a_elems):
-                            ae = a_elems[j]
-                            if isinstance(ae, dict):
-                                if not _is_assignable(ae, be, hier):
-                                    return False
-                            j += 1
-                        return True
-            if not a_var and not b_var:
-                if len(a_elems) != len(b_elems):
-                    return False
+    if isinstance(actual, TupleType) and isinstance(expected, TupleType):
+        if actual.variadic and expected.variadic:
+            if len(actual.elements) > 0 and len(expected.elements) > 0:
+                return _is_assignable(actual.elements[0], expected.elements[0], hier)
+        if not actual.variadic and expected.variadic:
+            if len(expected.elements) > 0:
+                be = expected.elements[0]
                 j = 0
-                while j < len(a_elems):
-                    ae = a_elems[j]
-                    be = b_elems[j]
-                    if isinstance(ae, dict) and isinstance(be, dict):
-                        if not _is_assignable(ae, be, hier):
-                            return False
+                while j < len(actual.elements):
+                    if not _is_assignable(actual.elements[j], be, hier):
+                        return False
                     j += 1
                 return True
-    # FuncType assignability
-    if actual.get("_type") == "FuncType" and expected.get("_type") == "FuncType":
-        ap = actual.get("params")
-        bp = expected.get("params")
-        ar = actual.get("ret")
-        br = expected.get("ret")
-        if isinstance(ap, list) and isinstance(bp, list):
-            if len(ap) != len(bp):
+        if not actual.variadic and not expected.variadic:
+            if len(actual.elements) != len(expected.elements):
                 return False
             j = 0
-            while j < len(ap):
-                if isinstance(ap[j], dict) and isinstance(bp[j], dict):
-                    if not _is_assignable(bp[j], ap[j], hier):
-                        return False
+            while j < len(actual.elements):
+                if not _is_assignable(actual.elements[j], expected.elements[j], hier):
+                    return False
                 j += 1
-        if isinstance(ar, dict) and isinstance(br, dict):
-            return _is_assignable(ar, br, hier)
+            return True
+    # FuncType assignability
+    if isinstance(actual, FuncType) and isinstance(expected, FuncType):
+        if len(actual.params) != len(expected.params):
+            return False
+        j = 0
+        while j < len(actual.params):
+            if not _is_assignable(expected.params[j], actual.params[j], hier):
+                return False
+            j += 1
+        return _is_assignable(actual.ret, expected.ret, hier)
     return False
 
 
@@ -486,6 +292,15 @@ def _is_ancestor(child: str, ancestor: str, hier: HierarchyResult) -> bool:
                 return True
             j += 1
         current = bases[0]
+
+
+def _struct_name(t: TypeNode) -> str:
+    """Extract struct name from Pointer(StructRef(name)) or StructRef(name)."""
+    if isinstance(t, PointerType) and isinstance(t.target, StructRef):
+        return t.target.name
+    if isinstance(t, StructRef):
+        return t.name
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -568,7 +383,7 @@ class TypeEnv:
     """Flow-sensitive type environment for a function body."""
 
     def __init__(self) -> None:
-        self.types: dict[str, dict[str, object]] = {}
+        self.types: dict[str, TypeNode] = {}
         self.source_types: dict[str, str] = {}
         self.guarded_attrs: set[str] = set()
 
@@ -591,17 +406,17 @@ class TypeEnv:
             i += 1
         return env
 
-    def set(self, name: str, typ: dict[str, object], source: str) -> None:
+    def set(self, name: str, typ: TypeNode, source: str) -> None:
         self.types[name] = typ
         self.source_types[name] = source
 
-    def get_type(self, name: str) -> dict[str, object] | None:
+    def get_type(self, name: str) -> TypeNode | None:
         return self.types.get(name)
 
     def get_source(self, name: str) -> str:
         return self.source_types.get(name, "")
 
-    def narrow(self, name: str, typ: dict[str, object], source: str) -> None:
+    def narrow(self, name: str, typ: TypeNode, source: str) -> None:
         self.types[name] = typ
         self.source_types[name] = source
 
@@ -637,10 +452,10 @@ def _synth_expr(
     node: ASTNode,
     env: TypeEnv,
     ctx: _InferCtx,
-) -> dict[str, object]:
+) -> TypeNode:
     """Synthesize the type of an expression node."""
     if not isinstance(node, dict):
-        return _ANY_TYPE
+        return ANY_TYPE
     t = node.get("_type")
     if t == "Constant":
         return _synth_constant(node)
@@ -657,7 +472,7 @@ def _synth_expr(
     if t == "UnaryOp":
         return _synth_unaryop(node, env, ctx)
     if t == "Compare":
-        return _BOOL_TYPE
+        return BOOL_TYPE
     if t == "BoolOp":
         return _synth_boolop(node, env, ctx)
     if t == "IfExp":
@@ -677,72 +492,72 @@ def _synth_expr(
     if t == "DictComp":
         return _synth_dictcomp(node, env, ctx)
     if t == "GeneratorExp":
-        return _ANY_TYPE
+        return ANY_TYPE
     if t == "JoinedStr":
-        return _STR_TYPE
+        return STR_TYPE
     if t == "FormattedValue":
-        return _STR_TYPE
+        return STR_TYPE
     if t == "NamedExpr":
         return _synth_namedexpr(node, env, ctx)
     if t == "Starred":
-        return _ANY_TYPE
-    return _ANY_TYPE
+        return ANY_TYPE
+    return ANY_TYPE
 
 
-def _synth_constant(node: ASTNode) -> dict[str, object]:
+def _synth_constant(node: ASTNode) -> TypeNode:
     v = node.get("value")
     if v is None:
-        return _VOID_TYPE
+        return VOID_TYPE
     if isinstance(v, bool):
-        return _BOOL_TYPE
+        return BOOL_TYPE
     if isinstance(v, int):
-        return _INT_TYPE
+        return INT_TYPE
     if isinstance(v, float):
-        return _FLOAT_TYPE
+        return FLOAT_TYPE
     if isinstance(v, str):
-        return _STR_TYPE
+        return STR_TYPE
     if isinstance(v, bytes):
-        return _BYTES_TYPE
-    return _ANY_TYPE
+        return BYTES_TYPE
+    return ANY_TYPE
 
 
-def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     name = node.get("id")
     if not isinstance(name, str):
-        return _ANY_TYPE
+        return ANY_TYPE
     typ = env.get_type(name)
     if typ is not None:
         return typ
     # User-defined function reference -> FuncType
     func_info = ctx.sig_result.functions.get(name)
     if func_info is not None:
-        params: list[object] = []
+        params: list[TypeNode] = []
         j = 0
         while j < len(func_info.params):
             params.append(func_info.params[j].typ)
             j += 1
-        return _make_func_type(params, func_info.return_type)
+        return FuncType(params, func_info.return_type)
     # Builtin function references
     if name == "len":
-        return _make_func_type([_ANY_TYPE], _INT_TYPE)
+        return FuncType([ANY_TYPE], INT_TYPE)
     if name == "str":
-        return _make_func_type([_ANY_TYPE], _STR_TYPE)
+        return FuncType([ANY_TYPE], STR_TYPE)
     if name == "int":
-        return _make_func_type([_ANY_TYPE], _INT_TYPE)
+        return FuncType([ANY_TYPE], INT_TYPE)
     if name == "bool":
-        return _make_func_type([_ANY_TYPE], _BOOL_TYPE)
+        return FuncType([ANY_TYPE], BOOL_TYPE)
     # Module-level variable
     mod_var = ctx.module_vars.get(name)
     if mod_var is not None:
         return mod_var
-    return _ANY_TYPE
+    return ANY_TYPE
 
 
-def _synth_attribute(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_attribute(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     value = node.get("value")
     attr = node.get("attr")
     if not isinstance(value, dict) or not isinstance(attr, str):
-        return _ANY_TYPE
+        return ANY_TYPE
     path = _attr_path(node)
     if path != "":
         narrowed = env.get_type(path)
@@ -750,27 +565,25 @@ def _synth_attribute(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, o
             return narrowed
     obj_type = _synth_expr(value, env, ctx)
     result = _resolve_attr(obj_type, attr, value, env, ctx)
-    if _is_optional(result):
+    if isinstance(result, OptionalType):
         if path != "" and env.is_attr_guarded(path):
-            return _unwrap_optional(result)
+            return result.inner
     return result
 
 
 def _resolve_attr(
-    obj_type: dict[str, object],
+    obj_type: TypeNode,
     attr: str,
     value_node: ASTNode,
     env: TypeEnv,
     ctx: _InferCtx,
-) -> dict[str, object]:
+) -> TypeNode:
     """Resolve attribute access on a type."""
     # Unwrap Pointer to collection (not struct)
-    if obj_type.get("_type") == "Pointer":
-        target = obj_type.get("target")
-        if isinstance(target, dict) and target.get("_type") != "StructRef":
-            obj_type = target
+    if isinstance(obj_type, PointerType) and not isinstance(obj_type.target, StructRef):
+        obj_type = obj_type.target
     # String methods
-    if obj_type.get("kind") == "string":
+    if isinstance(obj_type, PrimitiveType) and obj_type.kind == "string":
         if (
             attr == "upper"
             or attr == "lower"
@@ -778,143 +591,120 @@ def _resolve_attr(
             or attr == "lstrip"
             or attr == "rstrip"
         ):
-            return _make_func_type([], _STR_TYPE)
+            return FuncType([], STR_TYPE)
         if attr == "split":
-            split_ret: dict[str, object] = {"_type": "Slice", "element": _STR_TYPE}
-            return _make_func_type([], split_ret)
+            return FuncType([], SliceType(STR_TYPE))
         if attr == "join":
-            join_param: dict[str, object] = {"_type": "Slice", "element": _STR_TYPE}
-            return _make_func_type([join_param], _STR_TYPE)
+            return FuncType([SliceType(STR_TYPE)], STR_TYPE)
         if attr == "replace" or attr == "format":
-            return _make_func_type([_STR_TYPE], _STR_TYPE)
+            return FuncType([STR_TYPE], STR_TYPE)
         if attr == "startswith" or attr == "endswith":
-            return _make_func_type([_STR_TYPE], _BOOL_TYPE)
+            return FuncType([STR_TYPE], BOOL_TYPE)
         if attr == "find" or attr == "index" or attr == "count":
-            return _make_func_type([_STR_TYPE], _INT_TYPE)
-        return _ANY_TYPE
+            return FuncType([STR_TYPE], INT_TYPE)
+        return ANY_TYPE
     # List methods
-    if obj_type.get("_type") == "Slice":
-        elem = obj_type.get("element")
-        if not isinstance(elem, dict):
-            elem = _ANY_TYPE
+    if isinstance(obj_type, SliceType):
+        elem = obj_type.element
         if attr == "append":
-            return _make_func_type([elem], _VOID_TYPE)
+            return FuncType([elem], VOID_TYPE)
         if attr == "extend":
-            ext_param: dict[str, object] = {"_type": "Slice", "element": elem}
-            return _make_func_type([ext_param], _VOID_TYPE)
+            return FuncType([SliceType(elem)], VOID_TYPE)
         if attr == "insert":
-            return _make_func_type([_INT_TYPE, elem], _VOID_TYPE)
+            return FuncType([INT_TYPE, elem], VOID_TYPE)
         if attr == "pop":
-            return _make_func_type([], elem)
+            return FuncType([], elem)
         if attr == "copy":
-            return _make_func_type([], obj_type)
+            return FuncType([], obj_type)
         if attr == "sort":
-            return _make_func_type([], _VOID_TYPE)
+            return FuncType([], VOID_TYPE)
         if attr == "reverse":
-            return _make_func_type([], _VOID_TYPE)
+            return FuncType([], VOID_TYPE)
         if attr == "clear":
-            return _make_func_type([], _VOID_TYPE)
+            return FuncType([], VOID_TYPE)
         if attr == "count":
-            return _make_func_type([elem], _INT_TYPE)
+            return FuncType([elem], INT_TYPE)
         if attr == "index":
-            return _make_func_type([elem], _INT_TYPE)
+            return FuncType([elem], INT_TYPE)
         if attr == "remove":
-            return _make_func_type([elem], _VOID_TYPE)
-        return _ANY_TYPE
+            return FuncType([elem], VOID_TYPE)
+        return ANY_TYPE
     # Dict methods
-    if obj_type.get("_type") == "Map":
-        key_t = obj_type.get("key")
-        val_t = obj_type.get("value")
-        if not isinstance(key_t, dict):
-            key_t = _ANY_TYPE
-        if not isinstance(val_t, dict):
-            val_t = _ANY_TYPE
+    if isinstance(obj_type, MapType):
+        key_t = obj_type.key
+        val_t = obj_type.value
         if attr == "get":
-            get_ret: dict[str, object] = {"_type": "Optional", "inner": val_t}
-            return _make_func_type([key_t], get_ret)
+            return FuncType([key_t], OptionalType(val_t))
         if attr == "keys":
-            keys_ret: dict[str, object] = {"_type": "Slice", "element": key_t}
-            return _make_func_type([], keys_ret)
+            return FuncType([], SliceType(key_t))
         if attr == "values":
-            vals_ret: dict[str, object] = {"_type": "Slice", "element": val_t}
-            return _make_func_type([], vals_ret)
+            return FuncType([], SliceType(val_t))
         if attr == "items":
-            items_elem: dict[str, object] = {
-                "_type": "Tuple",
-                "elements": [key_t, val_t],
-                "variadic": False,
-            }
-            items_ret: dict[str, object] = {"_type": "Slice", "element": items_elem}
-            return _make_func_type([], items_ret)
+            items_elem = TupleType([key_t, val_t], False)
+            return FuncType([], SliceType(items_elem))
         if attr == "pop":
-            return _make_func_type([key_t], val_t)
+            return FuncType([key_t], val_t)
         if attr == "update":
-            return _make_func_type([obj_type], _VOID_TYPE)
+            return FuncType([obj_type], VOID_TYPE)
         if attr == "copy":
-            return _make_func_type([], obj_type)
+            return FuncType([], obj_type)
         if attr == "clear":
-            return _make_func_type([], _VOID_TYPE)
+            return FuncType([], VOID_TYPE)
         if attr == "setdefault":
-            return _make_func_type([key_t, val_t], val_t)
-        return _ANY_TYPE
+            return FuncType([key_t, val_t], val_t)
+        return ANY_TYPE
     # Set methods
-    if obj_type.get("_type") == "Set":
-        elem = obj_type.get("element")
-        if not isinstance(elem, dict):
-            elem = _ANY_TYPE
+    if isinstance(obj_type, SetType):
+        elem = obj_type.element
         if attr == "add":
-            return _make_func_type([elem], _VOID_TYPE)
+            return FuncType([elem], VOID_TYPE)
         if attr == "remove" or attr == "discard":
-            return _make_func_type([elem], _VOID_TYPE)
+            return FuncType([elem], VOID_TYPE)
         if attr == "union" or attr == "intersection" or attr == "difference":
-            return _make_func_type([obj_type], obj_type)
+            return FuncType([obj_type], obj_type)
         if attr == "copy":
-            return _make_func_type([], obj_type)
+            return FuncType([], obj_type)
         if attr == "clear":
-            return _make_func_type([], _VOID_TYPE)
-        return _ANY_TYPE
+            return FuncType([], VOID_TYPE)
+        return ANY_TYPE
     # Struct field access
     sname = _struct_name(obj_type)
     if sname != "":
         return _resolve_struct_attr(sname, attr, ctx)
     # Optional: error handled by validator
-    if _is_optional(obj_type):
-        inner = _unwrap_optional(obj_type)
-        return _resolve_attr(inner, attr, value_node, env, ctx)
-    return _ANY_TYPE
+    if isinstance(obj_type, OptionalType):
+        return _resolve_attr(obj_type.inner, attr, value_node, env, ctx)
+    return ANY_TYPE
 
 
-def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> dict[str, object]:
+def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
     """Resolve attribute on a struct type."""
-    # Check fields
     cls = ctx.field_result.classes.get(sname)
     if cls is not None:
         fld = cls.fields.get(attr)
         if fld is not None:
             return fld.typ
-        # Check const fields (kind)
         if attr in cls.const_fields:
-            return _STR_TYPE
-    # Check methods — return FuncType (consistent with builtin method resolution)
+            return STR_TYPE
     methods = ctx.sig_result.methods.get(sname)
     if methods is not None:
         method = methods.get(attr)
         if method is not None:
-            params: list[object] = []
+            params: list[TypeNode] = []
             j = 0
             while j < len(method.params):
                 if method.params[j].name != "self":
                     params.append(method.params[j].typ)
                 j += 1
-            return _make_func_type(params, method.return_type)
-    return _ANY_TYPE
+            return FuncType(params, method.return_type)
+    return ANY_TYPE
 
 
-def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     """Synthesize return type of a call."""
     func = node.get("func")
     if not isinstance(func, dict):
-        return _ANY_TYPE
+        return ANY_TYPE
     args = node.get("args", [])
     if not isinstance(args, list):
         args: list[ASTNode] = []
@@ -928,11 +718,9 @@ def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object
         return _synth_method_call(func, args, node, env, ctx)
     # Callable variable
     func_type = _synth_expr(func, env, ctx)
-    if func_type.get("_type") == "FuncType":
-        ret = func_type.get("ret")
-        if isinstance(ret, dict):
-            return ret
-    return _ANY_TYPE
+    if isinstance(func_type, FuncType):
+        return func_type.ret
+    return ANY_TYPE
 
 
 def _synth_name_call(
@@ -941,42 +729,37 @@ def _synth_name_call(
     node: ASTNode,
     env: TypeEnv,
     ctx: _InferCtx,
-) -> dict[str, object]:
+) -> TypeNode:
     """Synthesize return type for a direct function call."""
-    # Builtin constructors/conversions
     if fname == "int":
-        return _INT_TYPE
+        return INT_TYPE
     if fname == "float":
-        return _FLOAT_TYPE
+        return FLOAT_TYPE
     if fname == "str":
-        return _STR_TYPE
+        return STR_TYPE
     if fname == "bool":
-        return _BOOL_TYPE
+        return BOOL_TYPE
     if fname == "len":
-        return _INT_TYPE
+        return INT_TYPE
     if fname == "abs":
-        return _INT_TYPE
+        return INT_TYPE
     if fname == "ord":
-        return _INT_TYPE
+        return INT_TYPE
     if fname == "chr":
-        return _STR_TYPE
+        return STR_TYPE
     if fname == "repr":
-        return _STR_TYPE
+        return STR_TYPE
     if fname == "round":
-        return _INT_TYPE
+        return INT_TYPE
     if fname == "sum":
-        return _INT_TYPE
+        return INT_TYPE
     if fname == "min" or fname == "max":
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                # min/max on a collection returns element type
-                if ft.get("_type") == "Slice":
-                    elem = ft.get("element")
-                    if isinstance(elem, dict):
-                        return elem
-                # min/max on scalars: if mixed bool+int, return int
+                if isinstance(ft, SliceType):
+                    return ft.element
                 if len(args) >= 2:
                     has_int = False
                     has_bool = False
@@ -985,23 +768,22 @@ def _synth_name_call(
                         a = args[j]
                         if isinstance(a, dict):
                             at = _synth_expr(a, env, ctx)
-                            if at.get("kind") == "int":
+                            if isinstance(at, PrimitiveType) and at.kind == "int":
                                 has_int = True
-                            if at.get("kind") == "bool":
+                            if isinstance(at, PrimitiveType) and at.kind == "bool":
                                 has_bool = True
                         j += 1
                     if has_int or has_bool:
-                        return _INT_TYPE
+                        return INT_TYPE
                 return ft
-        return _INT_TYPE
+        return INT_TYPE
     if fname == "isinstance":
-        return _BOOL_TYPE
+        return BOOL_TYPE
     if fname == "hash":
-        return _INT_TYPE
+        return INT_TYPE
     if fname == "range":
-        return _ANY_TYPE  # range is special, not a true iterator
+        return ANY_TYPE
     if fname == "enumerate":
-        # Returns iterator of (int, T)
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
@@ -1009,25 +791,16 @@ def _synth_name_call(
                 elem = _element_type(ft)
                 return {
                     "_type": "_Iterator",
-                    "element": {
-                        "_type": "Tuple",
-                        "elements": [_INT_TYPE, elem],
-                        "variadic": False,
-                    },
+                    "element": TupleType([INT_TYPE, elem], False),
                     "source": "enumerate",
                 }
         return {
             "_type": "_Iterator",
-            "element": {
-                "_type": "Tuple",
-                "elements": [_INT_TYPE, _ANY_TYPE],
-                "variadic": False,
-            },
+            "element": TupleType([INT_TYPE, ANY_TYPE], False),
             "source": "enumerate",
         }
     if fname == "zip":
-        # Returns iterator of tuples
-        elems: list[object] = []
+        elems: list[TypeNode] = []
         j = 0
         while j < len(args):
             a = args[j]
@@ -1037,7 +810,7 @@ def _synth_name_call(
             j += 1
         return {
             "_type": "_Iterator",
-            "element": {"_type": "Tuple", "elements": elems, "variadic": False},
+            "element": TupleType(elems, False),
             "source": "zip",
         }
     if fname == "reversed":
@@ -1047,87 +820,80 @@ def _synth_name_call(
                 ft = _synth_expr(first, env, ctx)
                 elem = _element_type(ft)
                 return {"_type": "_Iterator", "element": elem, "source": "reversed"}
-        return {"_type": "_Iterator", "element": _ANY_TYPE, "source": "reversed"}
+        return {"_type": "_Iterator", "element": ANY_TYPE, "source": "reversed"}
     if fname == "sorted":
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                # If iterator, unwrap
-                if ft.get("_type") == "_Iterator":
+                if isinstance(ft, dict) and ft.get("_type") == "_Iterator":
                     elem = ft.get("element")
-                    if isinstance(elem, dict):
-                        return {"_type": "Slice", "element": elem}
+                    if isinstance(elem, TypeNode):
+                        return SliceType(elem)
                 elem = _element_type(ft)
-                return {"_type": "Slice", "element": elem}
-        return {"_type": "Slice", "element": _ANY_TYPE}
+                return SliceType(elem)
+        return SliceType(ANY_TYPE)
     if fname == "list":
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                if ft.get("_type") == "_Iterator":
+                if isinstance(ft, dict) and ft.get("_type") == "_Iterator":
                     elem = ft.get("element")
-                    if isinstance(elem, dict):
-                        return {"_type": "Slice", "element": elem}
+                    if isinstance(elem, TypeNode):
+                        return SliceType(elem)
                 elem = _element_type(ft)
-                return {"_type": "Slice", "element": elem}
-        return {"_type": "Slice", "element": _ANY_TYPE}
+                return SliceType(elem)
+        return SliceType(ANY_TYPE)
     if fname == "tuple":
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                if ft.get("_type") == "_Iterator":
+                if isinstance(ft, dict) and ft.get("_type") == "_Iterator":
                     elem = ft.get("element")
-                    if isinstance(elem, dict):
-                        return {"_type": "Tuple", "elements": [elem], "variadic": True}
+                    if isinstance(elem, TypeNode):
+                        return TupleType([elem], True)
                 elem = _element_type(ft)
-                return {"_type": "Tuple", "elements": [elem], "variadic": True}
-        return {"_type": "Tuple", "elements": [], "variadic": False}
+                return TupleType([elem], True)
+        return TupleType([], False)
     if fname == "set":
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
                 elem = _element_type(ft)
-                return {"_type": "Set", "element": elem}
-        return {"_type": "Set", "element": _ANY_TYPE}
+                return SetType(elem)
+        return SetType(ANY_TYPE)
     if fname == "dict":
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                if ft.get("_type") == "_Iterator":
+                if isinstance(ft, dict) and ft.get("_type") == "_Iterator":
                     elem = ft.get("element")
-                    if isinstance(elem, dict) and elem.get("_type") == "Tuple":
-                        telems = elem.get("elements")
-                        if isinstance(telems, list) and len(telems) >= 2:
-                            k = telems[0]
-                            v = telems[1]
-                            if isinstance(k, dict) and isinstance(v, dict):
-                                return {"_type": "Map", "key": k, "value": v}
-        return {"_type": "Map", "key": _ANY_TYPE, "value": _ANY_TYPE}
+                    if isinstance(elem, TupleType):
+                        if len(elem.elements) >= 2:
+                            return MapType(elem.elements[0], elem.elements[1])
+        return MapType(ANY_TYPE, ANY_TYPE)
     if fname == "any" or fname == "all":
-        return _BOOL_TYPE
+        return BOOL_TYPE
     if fname == "divmod":
-        return {"_type": "Tuple", "elements": [_INT_TYPE, _INT_TYPE], "variadic": False}
+        return TupleType([INT_TYPE, INT_TYPE], False)
     if fname == "print":
-        return _VOID_TYPE
+        return VOID_TYPE
     # User-defined function
     func_info = ctx.sig_result.functions.get(fname)
     if func_info is not None:
         return func_info.return_type
     # Class constructor
     if fname in ctx.known_classes:
-        return {"_type": "Pointer", "target": {"_type": "StructRef", "name": fname}}
+        return PointerType(StructRef(fname))
     # Callable variable
     typ = env.get_type(fname)
-    if typ is not None and typ.get("_type") == "FuncType":
-        ret = typ.get("ret")
-        if isinstance(ret, dict):
-            return ret
-    return _ANY_TYPE
+    if typ is not None and isinstance(typ, FuncType):
+        return typ.ret
+    return ANY_TYPE
 
 
 def _synth_method_call(
@@ -1136,23 +902,25 @@ def _synth_method_call(
     node: ASTNode,
     env: TypeEnv,
     ctx: _InferCtx,
-) -> dict[str, object]:
+) -> TypeNode:
     """Synthesize return type of a method call (obj.method(...))."""
     obj = func.get("value")
     attr = func.get("attr")
     if not isinstance(obj, dict) or not isinstance(attr, str):
-        return _ANY_TYPE
+        return ANY_TYPE
     obj_type = _synth_expr(obj, env, ctx)
     # String join special case
-    if obj_type.get("kind") == "string" and attr == "join":
-        return _STR_TYPE
+    if (
+        isinstance(obj_type, PrimitiveType)
+        and obj_type.kind == "string"
+        and attr == "join"
+    ):
+        return STR_TYPE
     attr_type = _resolve_attr(obj_type, attr, obj, env, ctx)
-    if attr_type.get("_type") == "FuncType":
-        ret = attr_type.get("ret")
-        if isinstance(ret, dict):
-            if attr == "get" and len(args) >= 2 and _is_optional(ret):
-                return _unwrap_optional(ret)
-            return ret
+    if isinstance(attr_type, FuncType):
+        if attr == "get" and len(args) >= 2 and isinstance(attr_type.ret, OptionalType):
+            return attr_type.ret.inner
+        return attr_type.ret
     # Direct method return type from sig table
     sname = _struct_name(obj_type)
     if sname != "":
@@ -1164,179 +932,168 @@ def _synth_method_call(
     return attr_type
 
 
-def _element_type(t: dict[str, object]) -> dict[str, object]:
+def _element_type(t: TypeNode) -> TypeNode:
     """Get the element type of a collection."""
-    if t.get("_type") == "Slice":
-        elem = t.get("element")
-        if isinstance(elem, dict):
-            return elem
-    if t.get("_type") == "Set":
-        elem = t.get("element")
-        if isinstance(elem, dict):
-            return elem
-    if t.get("_type") == "Map":
-        key = t.get("key")
-        if isinstance(key, dict):
-            return key
-    if t.get("_type") == "Tuple":
-        elems = t.get("elements")
-        if isinstance(elems, list) and len(elems) > 0:
-            e = elems[0]
-            if isinstance(e, dict):
-                return e
-    if t.get("kind") == "string":
-        return _STR_TYPE
-    return _ANY_TYPE
+    if isinstance(t, SliceType):
+        return t.element
+    if isinstance(t, SetType):
+        return t.element
+    if isinstance(t, MapType):
+        return t.key
+    if isinstance(t, TupleType):
+        if len(t.elements) > 0:
+            return t.elements[0]
+    if isinstance(t, PrimitiveType) and t.kind == "string":
+        return STR_TYPE
+    return ANY_TYPE
 
 
-def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     value = node.get("value")
     slc = node.get("slice")
     if not isinstance(value, dict):
-        return _ANY_TYPE
+        return ANY_TYPE
     obj_type = _synth_expr(value, env, ctx)
     # String indexing
-    if obj_type.get("kind") == "string":
-        if isinstance(slc, dict) and _is_type(slc, ["Slice"]):
-            return _STR_TYPE
-        return _STR_TYPE
+    if isinstance(obj_type, PrimitiveType) and obj_type.kind == "string":
+        return STR_TYPE
     # List indexing
-    if obj_type.get("_type") == "Slice":
-        elem = obj_type.get("element")
+    if isinstance(obj_type, SliceType):
         if isinstance(slc, dict) and _is_type(slc, ["Slice"]):
             return obj_type
-        if isinstance(elem, dict):
-            return elem
+        return obj_type.element
     # Dict indexing
-    if obj_type.get("_type") == "Map":
-        val = obj_type.get("value")
-        if isinstance(val, dict):
-            return val
+    if isinstance(obj_type, MapType):
+        return obj_type.value
     # Tuple indexing
-    if obj_type.get("_type") == "Tuple":
-        elems = obj_type.get("elements")
-        variadic = obj_type.get("variadic", False)
-        if isinstance(elems, list):
-            if variadic and len(elems) > 0:
-                e = elems[0]
-                if isinstance(e, dict):
-                    return e
-            if isinstance(slc, dict) and _is_type(slc, ["Constant"]):
-                idx = slc.get("value")
-                if isinstance(idx, int) and not isinstance(idx, bool):
-                    if 0 <= idx < len(elems):
-                        e = elems[idx]
-                        if isinstance(e, dict):
-                            return e
-                    elif idx < 0 and -idx <= len(elems):
-                        e = elems[len(elems) + idx]
-                        if isinstance(e, dict):
-                            return e
-                    else:
-                        t_lineno = node.get("lineno", 0)
-                        if not isinstance(t_lineno, int):
-                            t_lineno = 0
-                        ctx.result.add_error(
-                            t_lineno,
-                            0,
-                            "tuple index "
-                            + str(idx)
-                            + " out of bounds for tuple of length "
-                            + str(len(elems)),
-                        )
-    return _ANY_TYPE
+    if isinstance(obj_type, TupleType):
+        if obj_type.variadic and len(obj_type.elements) > 0:
+            return obj_type.elements[0]
+        if isinstance(slc, dict) and _is_type(slc, ["Constant"]):
+            idx = slc.get("value")
+            if isinstance(idx, int) and not isinstance(idx, bool):
+                if 0 <= idx < len(obj_type.elements):
+                    return obj_type.elements[idx]
+                elif idx < 0 and -idx <= len(obj_type.elements):
+                    return obj_type.elements[len(obj_type.elements) + idx]
+                else:
+                    t_lineno = node.get("lineno", 0)
+                    if not isinstance(t_lineno, int):
+                        t_lineno = 0
+                    ctx.result.add_error(
+                        t_lineno,
+                        0,
+                        "tuple index "
+                        + str(idx)
+                        + " out of bounds for tuple of length "
+                        + str(len(obj_type.elements)),
+                    )
+    return ANY_TYPE
 
 
-def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     left = node.get("left")
     right = node.get("right")
     op = node.get("op", {})
     if not isinstance(left, dict) or not isinstance(right, dict):
-        return _ANY_TYPE
+        return ANY_TYPE
     lt = _synth_expr(left, env, ctx)
     rt = _synth_expr(right, env, ctx)
     op_type = ""
     if isinstance(op, dict):
         op_type = str(op.get("_type", ""))
     # String concatenation
-    if lt.get("kind") == "string" and rt.get("kind") == "string":
-        return _STR_TYPE
+    if (
+        isinstance(lt, PrimitiveType)
+        and lt.kind == "string"
+        and isinstance(rt, PrimitiveType)
+        and rt.kind == "string"
+    ):
+        return STR_TYPE
     # List concatenation
-    if lt.get("_type") == "Slice" and rt.get("_type") == "Slice":
-        le = lt.get("element")
-        re = rt.get("element")
-        if isinstance(le, dict) and isinstance(re, dict):
-            if not _is_assignable(le, re, ctx.hier_result) and not _is_assignable(
-                re, le, ctx.hier_result
-            ):
-                b_lineno = node.get("lineno", 0)
-                if not isinstance(b_lineno, int):
-                    b_lineno = 0
-                ctx.result.add_error(
-                    b_lineno,
-                    0,
-                    "cannot concatenate list["
-                    + _type_name(le)
-                    + "] and list["
-                    + _type_name(re)
-                    + "]",
-                )
+    if isinstance(lt, SliceType) and isinstance(rt, SliceType):
+        if not _is_assignable(
+            lt.element, rt.element, ctx.hier_result
+        ) and not _is_assignable(rt.element, lt.element, ctx.hier_result):
+            b_lineno = node.get("lineno", 0)
+            if not isinstance(b_lineno, int):
+                b_lineno = 0
+            ctx.result.add_error(
+                b_lineno,
+                0,
+                "cannot concatenate list["
+                + _type_name(lt.element)
+                + "] and list["
+                + _type_name(rt.element)
+                + "]",
+            )
         return lt
     # Numeric
-    lt_num = lt.get("kind") in ("int", "float", "bool")
-    rt_num = rt.get("kind") in ("int", "float", "bool")
+    lt_num = isinstance(lt, PrimitiveType) and lt.kind in ("int", "float", "bool")
+    rt_num = isinstance(rt, PrimitiveType) and rt.kind in ("int", "float", "bool")
     if lt_num and rt_num:
-        # Bitwise ops on bools
         if op_type in ("BitAnd", "BitOr", "BitXor"):
-            if lt.get("kind") == "bool" and rt.get("kind") == "bool":
-                return _BOOL_TYPE
-            return _INT_TYPE
-        if lt.get("kind") == "float" or rt.get("kind") == "float":
-            return _FLOAT_TYPE
-        return _INT_TYPE
+            if (
+                isinstance(lt, PrimitiveType)
+                and lt.kind == "bool"
+                and isinstance(rt, PrimitiveType)
+                and rt.kind == "bool"
+            ):
+                return BOOL_TYPE
+            return INT_TYPE
+        if (isinstance(lt, PrimitiveType) and lt.kind == "float") or (
+            isinstance(rt, PrimitiveType) and rt.kind == "float"
+        ):
+            return FLOAT_TYPE
+        return INT_TYPE
     # String * int
-    if lt.get("kind") == "string" and (
-        rt.get("kind") == "int" or rt.get("kind") == "bool"
+    if (
+        isinstance(lt, PrimitiveType)
+        and lt.kind == "string"
+        and isinstance(rt, PrimitiveType)
+        and (rt.kind == "int" or rt.kind == "bool")
     ):
-        return _STR_TYPE
-    if (lt.get("kind") == "int" or lt.get("kind") == "bool") and rt.get(
-        "kind"
-    ) == "string":
-        return _STR_TYPE
-    return _ANY_TYPE
+        return STR_TYPE
+    if (
+        isinstance(lt, PrimitiveType)
+        and (lt.kind == "int" or lt.kind == "bool")
+        and isinstance(rt, PrimitiveType)
+        and rt.kind == "string"
+    ):
+        return STR_TYPE
+    return ANY_TYPE
 
 
-def _synth_unaryop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_unaryop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     operand = node.get("operand")
     op = node.get("op", {})
     if not isinstance(operand, dict):
-        return _ANY_TYPE
+        return ANY_TYPE
     ot = _synth_expr(operand, env, ctx)
     if isinstance(op, dict):
         op_type = op.get("_type", "")
         if op_type == "Not":
-            return _BOOL_TYPE
+            return BOOL_TYPE
         if op_type == "USub" or op_type == "UAdd":
-            if ot.get("kind") == "bool":
-                return _INT_TYPE
+            if isinstance(ot, PrimitiveType) and ot.kind == "bool":
+                return INT_TYPE
             return ot
         if op_type == "Invert":
-            return _INT_TYPE
+            return INT_TYPE
     return ot
 
 
-def _synth_boolop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_boolop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     values = node.get("values", [])
     if not isinstance(values, list) or len(values) == 0:
-        return _ANY_TYPE
-    # Return type of last value (simplified)
+        return ANY_TYPE
     last = values[len(values) - 1]
     if isinstance(last, dict):
         return _synth_expr(last, env, ctx)
-    return _ANY_TYPE
+    return ANY_TYPE
 
 
-def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     test = node.get("test")
     body = node.get("body")
     then_env = env.copy()
@@ -1345,99 +1102,99 @@ def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, objec
         _extract_narrowing(test, then_env, dummy_else, ctx)
     if isinstance(body, dict):
         return _synth_expr(body, then_env, ctx)
-    return _ANY_TYPE
+    return ANY_TYPE
 
 
-def _synth_list(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_list(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     elts = node.get("elts", [])
     if not isinstance(elts, list) or len(elts) == 0:
-        return {"_type": "Slice", "element": _ANY_TYPE}
+        return SliceType(ANY_TYPE)
     first = elts[0]
     if isinstance(first, dict):
-        return {"_type": "Slice", "element": _synth_expr(first, env, ctx)}
-    return {"_type": "Slice", "element": _ANY_TYPE}
+        return SliceType(_synth_expr(first, env, ctx))
+    return SliceType(ANY_TYPE)
 
 
-def _synth_dict(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_dict(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     keys = node.get("keys", [])
     values = node.get("values", [])
     if not isinstance(keys, list) or not isinstance(values, list):
-        return {"_type": "Map", "key": _ANY_TYPE, "value": _ANY_TYPE}
+        return MapType(ANY_TYPE, ANY_TYPE)
     if len(keys) == 0:
-        return {"_type": "Map", "key": _ANY_TYPE, "value": _ANY_TYPE}
+        return MapType(ANY_TYPE, ANY_TYPE)
     k = keys[0]
     v = values[0]
-    kt = _ANY_TYPE
-    vt = _ANY_TYPE
+    kt = ANY_TYPE
+    vt = ANY_TYPE
     if isinstance(k, dict):
         kt = _synth_expr(k, env, ctx)
     if isinstance(v, dict):
         vt = _synth_expr(v, env, ctx)
-    return {"_type": "Map", "key": kt, "value": vt}
+    return MapType(kt, vt)
 
 
-def _synth_set(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_set(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     elts = node.get("elts", [])
     if not isinstance(elts, list) or len(elts) == 0:
-        return {"_type": "Set", "element": _ANY_TYPE}
+        return SetType(ANY_TYPE)
     first = elts[0]
     if isinstance(first, dict):
-        return {"_type": "Set", "element": _synth_expr(first, env, ctx)}
-    return {"_type": "Set", "element": _ANY_TYPE}
+        return SetType(_synth_expr(first, env, ctx))
+    return SetType(ANY_TYPE)
 
 
-def _synth_tuple(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_tuple(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     elts = node.get("elts", [])
     if not isinstance(elts, list):
-        return {"_type": "Tuple", "elements": [], "variadic": False}
-    elems: list[object] = []
+        return TupleType([], False)
+    elems: list[TypeNode] = []
     i = 0
     while i < len(elts):
         e = elts[i]
         if isinstance(e, dict):
             elems.append(_synth_expr(e, env, ctx))
         else:
-            elems.append(_ANY_TYPE)
+            elems.append(ANY_TYPE)
         i += 1
-    return {"_type": "Tuple", "elements": elems, "variadic": False}
+    return TupleType(elems, False)
 
 
-def _synth_listcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_listcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     elt = node.get("elt")
     generators = node.get("generators", [])
     comp_env = env.copy()
     if isinstance(generators, list):
         _bind_comprehension_vars(generators, comp_env, ctx)
     if isinstance(elt, dict):
-        return {"_type": "Slice", "element": _synth_expr(elt, comp_env, ctx)}
-    return {"_type": "Slice", "element": _ANY_TYPE}
+        return SliceType(_synth_expr(elt, comp_env, ctx))
+    return SliceType(ANY_TYPE)
 
 
-def _synth_setcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_setcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     elt = node.get("elt")
     generators = node.get("generators", [])
     comp_env = env.copy()
     if isinstance(generators, list):
         _bind_comprehension_vars(generators, comp_env, ctx)
     if isinstance(elt, dict):
-        return {"_type": "Set", "element": _synth_expr(elt, comp_env, ctx)}
-    return {"_type": "Set", "element": _ANY_TYPE}
+        return SetType(_synth_expr(elt, comp_env, ctx))
+    return SetType(ANY_TYPE)
 
 
-def _synth_dictcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_dictcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     key = node.get("key")
     value = node.get("value")
     generators = node.get("generators", [])
     comp_env = env.copy()
     if isinstance(generators, list):
         _bind_comprehension_vars(generators, comp_env, ctx)
-    kt = _ANY_TYPE
-    vt = _ANY_TYPE
+    kt = ANY_TYPE
+    vt = ANY_TYPE
     if isinstance(key, dict):
         kt = _synth_expr(key, comp_env, ctx)
     if isinstance(value, dict):
         vt = _synth_expr(value, comp_env, ctx)
-    return {"_type": "Map", "key": kt, "value": vt}
+    return MapType(kt, vt)
 
 
 def _bind_comprehension_vars(
@@ -1454,7 +1211,6 @@ def _bind_comprehension_vars(
                 iter_type = _synth_expr(iter_node, env, ctx)
                 elem = _iteration_element(iter_type)
                 _bind_target(target, elem, env)
-            # Process ifs for narrowing (e.g. [x for x in xs if x is not None])
             ifs = gen.get("ifs", [])
             if isinstance(ifs, list):
                 j = 0
@@ -1467,11 +1223,11 @@ def _bind_comprehension_vars(
         i += 1
 
 
-def _synth_namedexpr(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object]:
+def _synth_namedexpr(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     target = node.get("target")
     value = node.get("value")
     if not isinstance(value, dict):
-        return _ANY_TYPE
+        return ANY_TYPE
     vt = _synth_expr(value, env, ctx)
     if isinstance(target, dict) and _is_type(target, ["Name"]):
         name = target.get("id")
@@ -1485,37 +1241,29 @@ def _synth_namedexpr(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, o
 # ---------------------------------------------------------------------------
 
 
-def _iteration_element(t: dict[str, object]) -> dict[str, object]:
+def _iteration_element(t: TypeNode) -> TypeNode:
     """Get the element type when iterating over a type."""
-    if t.get("_type") == "_Iterator":
+    # Handle _Iterator dicts (these are still dicts, not TypeNode)
+    if isinstance(t, dict) and t.get("_type") == "_Iterator":
         elem = t.get("element")
-        if isinstance(elem, dict):
+        if isinstance(elem, TypeNode):
             return elem
-    if t.get("_type") == "Slice":
-        elem = t.get("element")
-        if isinstance(elem, dict):
-            return elem
-    if t.get("_type") == "Set":
-        elem = t.get("element")
-        if isinstance(elem, dict):
-            return elem
-    if t.get("_type") == "Map":
-        key = t.get("key")
-        if isinstance(key, dict):
-            return key
-    if t.get("_type") == "Tuple":
-        variadic = t.get("variadic", False)
-        elems = t.get("elements")
-        if variadic and isinstance(elems, list) and len(elems) > 0:
-            e = elems[0]
-            if isinstance(e, dict):
-                return e
-    if t.get("kind") == "string":
-        return _STR_TYPE
-    return _ANY_TYPE
+        return ANY_TYPE
+    if isinstance(t, SliceType):
+        return t.element
+    if isinstance(t, SetType):
+        return t.element
+    if isinstance(t, MapType):
+        return t.key
+    if isinstance(t, TupleType):
+        if t.variadic and len(t.elements) > 0:
+            return t.elements[0]
+    if isinstance(t, PrimitiveType) and t.kind == "string":
+        return STR_TYPE
+    return ANY_TYPE
 
 
-def _bind_target(target: object, typ: dict[str, object], env: TypeEnv) -> None:
+def _bind_target(target: object, typ: TypeNode, env: TypeEnv) -> None:
     """Bind an assignment target (Name or Tuple) to a type."""
     if not isinstance(target, dict):
         return
@@ -1525,15 +1273,11 @@ def _bind_target(target: object, typ: dict[str, object], env: TypeEnv) -> None:
             env.set(name, typ, _type_name(typ))
     elif _is_type(target, ["Tuple", "List"]):
         elts = target.get("elts", [])
-        if isinstance(elts, list) and typ.get("_type") == "Tuple":
-            telems = typ.get("elements")
-            if isinstance(telems, list):
-                j = 0
-                while j < len(elts) and j < len(telems):
-                    e = telems[j]
-                    if isinstance(e, dict):
-                        _bind_target(elts[j], e, env)
-                    j += 1
+        if isinstance(elts, list) and isinstance(typ, TupleType):
+            j = 0
+            while j < len(elts) and j < len(typ.elements):
+                _bind_target(elts[j], typ.elements[j], env)
+                j += 1
 
 
 # ---------------------------------------------------------------------------
@@ -1559,7 +1303,7 @@ class _InferCtx:
         self.known_classes: set[str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
         self.result: InferenceResult = result
-        self.module_vars: dict[str, dict[str, object]] = {}
+        self.module_vars: dict[str, TypeNode] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -1572,7 +1316,6 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
     func_name = func_node.get("name", "")
     if not isinstance(func_name, str):
         func_name = ""
-    # Look up signature
     func_info: FuncInfo | None = None
     if receiver != "":
         methods = ctx.sig_result.methods.get(receiver)
@@ -1582,19 +1325,14 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
         func_info = ctx.sig_result.functions.get(func_name)
     if func_info is None:
         return
-    # Build initial type environment from parameters
     env = TypeEnv()
     i = 0
     while i < len(func_info.params):
         p = func_info.params[i]
         env.set(p.name, p.typ, p.py_type)
         i += 1
-    # If method, add self
     if receiver != "":
-        self_type: dict[str, object] = {
-            "_type": "Pointer",
-            "target": {"_type": "StructRef", "name": receiver},
-        }
+        self_type = PointerType(StructRef(receiver))
         env.set("self", self_type, receiver)
     body = func_node.get("body", [])
     if not isinstance(body, list):
@@ -1671,7 +1409,6 @@ def _validate_stmt(
         _validate_match(stmt, env, func_info, ctx)
         return False
     if t == "FunctionDef":
-        # Nested function: error
         lineno = stmt.get("lineno", 0)
         if not isinstance(lineno, int):
             lineno = 0
@@ -1691,22 +1428,17 @@ def _validate_return(
     lineno = stmt.get("lineno", 0)
     if not isinstance(lineno, int):
         lineno = 0
-    # Check iterator escape
     if _check_iterator_escape_return(value, env, ctx, lineno):
         return
-    # Check generator escape
     if _check_generator_escape_return(value, env, ctx, lineno):
         return
-    # Check for unguarded access on optional/union/object
     _validate_expr_access(value, env, ctx, lineno)
     if len(ctx.result._errors) > 0:
         return
-    # Validate call arguments in return expression
     if _is_type(value, ["Call"]):
         _validate_call_args(value, env, ctx, lineno)
         if len(ctx.result._errors) > 0:
             return
-    # Validate literal types
     _validate_return_value(value, func_info.return_type, env, ctx, lineno)
     if len(ctx.result._errors) > 0:
         return
@@ -1730,7 +1462,6 @@ def _validate_assign(
     lineno = stmt.get("lineno", 0)
     if not isinstance(lineno, int):
         lineno = 0
-    # Check iterator escape on assignment
     if len(targets) == 1:
         tgt = targets[0]
         if isinstance(tgt, dict) and _is_type(tgt, ["Name"]):
@@ -1748,14 +1479,11 @@ def _validate_assign(
                 if isinstance(name, str):
                     existing = env.get_type(name)
                     if existing is not None:
-                        # Re-assignment: update type
                         if not _type_eq(val_type, existing):
                             source = _infer_source(value, env, ctx)
                             env.set(name, val_type, source)
                     else:
-                        # First assignment: infer type
-                        # Empty collection without annotation is error
-                        if _is_empty_collection(value) and _is_any(
+                        if _is_empty_collection(value) and is_any(
                             _element_type(val_type)
                         ):
                             ctx.result.add_error(
@@ -1769,13 +1497,10 @@ def _validate_assign(
                         source = _infer_source(value, env, ctx)
                         env.set(name, val_type, source)
             elif _is_type(tgt, ["Tuple", "List"]):
-                # Tuple unpacking
                 _validate_unpack(tgt, val_type, value, env, ctx, lineno)
             elif _is_type(tgt, ["Subscript"]):
-                # d[key] = value
                 _validate_subscript_assign(tgt, val_type, env, ctx, lineno)
             elif _is_type(tgt, ["Attribute"]):
-                # obj.attr = value (self.field = value)
                 pass
         i += 1
 
@@ -1837,7 +1562,7 @@ def _infer_source(value: ASTNode, env: TypeEnv, ctx: _InferCtx) -> str:
 
 def _validate_unpack(
     target: ASTNode,
-    val_type: dict[str, object],
+    val_type: TypeNode,
     value: ASTNode,
     env: TypeEnv,
     ctx: _InferCtx,
@@ -1847,40 +1572,30 @@ def _validate_unpack(
     elts = target.get("elts", [])
     if not isinstance(elts, list):
         return
-    # Check for optional tuple
-    if _is_optional(val_type):
+    if isinstance(val_type, OptionalType):
         ctx.result.add_error(lineno, 0, "cannot unpack optional tuple without guard")
         return
-    if val_type.get("_type") != "Tuple":
-        # Could be unpacking from non-tuple (e.g. some other iterable)
-        # Allow and bind with any
+    if not isinstance(val_type, TupleType):
         j = 0
         while j < len(elts):
-            _bind_target(elts[j], _ANY_TYPE, env)
+            _bind_target(elts[j], ANY_TYPE, env)
             j += 1
         return
-    telems = val_type.get("elements")
-    variadic = val_type.get("variadic", False)
-    if not isinstance(telems, list):
-        return
-    if variadic:
-        # Variadic tuple: bind all targets with element type
-        elem = _ANY_TYPE
-        if len(telems) > 0:
-            e = telems[0]
-            if isinstance(e, dict):
-                elem = e
+    if val_type.variadic:
+        elem = ANY_TYPE
+        if len(val_type.elements) > 0:
+            elem = val_type.elements[0]
         j = 0
         while j < len(elts):
             _bind_target(elts[j], elem, env)
             j += 1
         return
-    if len(elts) != len(telems):
+    if len(elts) != len(val_type.elements):
         ctx.result.add_error(
             lineno,
             0,
             "cannot unpack tuple of "
-            + str(len(telems))
+            + str(len(val_type.elements))
             + " elements into "
             + str(len(elts))
             + " targets",
@@ -1888,15 +1603,13 @@ def _validate_unpack(
         return
     j = 0
     while j < len(elts):
-        e = telems[j]
-        if isinstance(e, dict):
-            _bind_target(elts[j], e, env)
+        _bind_target(elts[j], val_type.elements[j], env)
         j += 1
 
 
 def _validate_subscript_assign(
     target: ASTNode,
-    val_type: dict[str, object],
+    val_type: TypeNode,
     env: TypeEnv,
     ctx: _InferCtx,
     lineno: int,
@@ -1907,43 +1620,38 @@ def _validate_subscript_assign(
     if not isinstance(value, dict):
         return
     obj_type = _synth_expr(value, env, ctx)
-    if obj_type.get("_type") == "Map":
-        key_t = obj_type.get("key")
-        val_t = obj_type.get("value")
-        if isinstance(key_t, dict) and isinstance(slc, dict):
+    if isinstance(obj_type, MapType):
+        if isinstance(slc, dict):
             key_actual = _synth_expr(slc, env, ctx)
-            if not _is_assignable(key_actual, key_t, ctx.hier_result):
+            if not _is_assignable(key_actual, obj_type.key, ctx.hier_result):
                 ctx.result.add_error(
                     lineno,
                     0,
                     "cannot assign "
                     + _type_name(key_actual)
                     + " key to "
-                    + _type_name(key_t),
+                    + _type_name(obj_type.key),
                 )
                 return
-        if isinstance(val_t, dict):
-            if not _is_assignable(val_type, val_t, ctx.hier_result):
-                ctx.result.add_error(
-                    lineno,
-                    0,
-                    "cannot assign "
-                    + _type_name(val_type)
-                    + " value to "
-                    + _type_name(val_t),
-                )
-    elif obj_type.get("_type") == "Slice":
-        elem = obj_type.get("element")
-        if isinstance(elem, dict):
-            if not _is_assignable(val_type, elem, ctx.hier_result):
-                ctx.result.add_error(
-                    lineno,
-                    0,
-                    "cannot assign "
-                    + _type_name(val_type)
-                    + " to list element "
-                    + _type_name(elem),
-                )
+        if not _is_assignable(val_type, obj_type.value, ctx.hier_result):
+            ctx.result.add_error(
+                lineno,
+                0,
+                "cannot assign "
+                + _type_name(val_type)
+                + " value to "
+                + _type_name(obj_type.value),
+            )
+    elif isinstance(obj_type, SliceType):
+        if not _is_assignable(val_type, obj_type.element, ctx.hier_result):
+            ctx.result.add_error(
+                lineno,
+                0,
+                "cannot assign "
+                + _type_name(val_type)
+                + " to list element "
+                + _type_name(obj_type.element),
+            )
 
 
 def _validate_ann_assign(
@@ -1989,7 +1697,6 @@ def _validate_aug_assign(
     lineno = stmt.get("lineno", 0)
     if not isinstance(lineno, int):
         lineno = 0
-    # For augmented assignment, just check that the value type is compatible
     _synth_expr(value, env, ctx)
 
 
@@ -2002,7 +1709,6 @@ def _validate_expr_stmt(
     lineno = stmt.get("lineno", 0)
     if not isinstance(lineno, int):
         lineno = 0
-    # Check iterator escape in expression statement
     if _is_type(value, ["Call"]):
         func = value.get("func")
         if isinstance(func, dict) and _is_type(func, ["Name"]):
@@ -2012,7 +1718,6 @@ def _validate_expr_stmt(
                 and fname not in _EAGER_CONSUMERS
                 and fname not in _ITERATOR_FUNCS
             ):
-                # Check args for iterator escape
                 args = value.get("args", [])
                 if isinstance(args, list):
                     j = 0
@@ -2022,7 +1727,6 @@ def _validate_expr_stmt(
                             _check_iterator_escape_arg(arg, fname, env, ctx, lineno)
                             _check_generator_escape_arg(arg, fname, env, ctx, lineno)
                         j += 1
-        # Method call: check for generator in join
         if isinstance(func, dict) and _is_type(func, ["Attribute"]):
             attr = func.get("attr")
             if isinstance(attr, str):
@@ -2033,13 +1737,11 @@ def _validate_expr_stmt(
                         arg = args[j]
                         if isinstance(arg, dict):
                             if attr == "join":
-                                pass  # join is allowed for generators
+                                pass
                             else:
                                 _check_generator_escape_arg(arg, attr, env, ctx, lineno)
                         j += 1
-    # Validate the expression for type errors
     _synth_expr(value, env, ctx)
-    # Check method call argument types
     _validate_call_args(value, env, ctx, lineno)
 
 
@@ -2053,7 +1755,6 @@ def _validate_call_args(
     args = node.get("args", [])
     if not isinstance(func, dict) or not isinstance(args, list):
         return
-    # Direct function call
     if _is_type(func, ["Name"]):
         fname = func.get("id")
         if not isinstance(fname, str):
@@ -2062,39 +1763,33 @@ def _validate_call_args(
         if func_info is not None:
             _check_call_args(func_info, args, env, ctx, lineno)
             return
-        # Constructor call
         if fname in ctx.known_classes:
-            # Constructors checked by field types
             return
-        # Callable variable
         ftype = env.get_type(fname)
-        if ftype is not None and ftype.get("_type") == "FuncType":
+        if ftype is not None and isinstance(ftype, FuncType):
             _check_func_type_args(ftype, args, env, ctx, lineno)
             return
-        # Builtin len check
         if fname == "len":
             if len(args) > 0:
                 a = args[0]
                 if isinstance(a, dict):
                     at = _synth_expr(a, env, ctx)
-                    if (
-                        at.get("kind") == "int"
-                        or at.get("kind") == "float"
-                        or at.get("kind") == "bool"
+                    if isinstance(at, PrimitiveType) and at.kind in (
+                        "int",
+                        "float",
+                        "bool",
                     ):
                         ctx.result.add_error(
                             lineno,
                             0,
                             "len() requires a sized type, got " + _type_name(at),
                         )
-    # Method call (obj.method)
     if _is_type(func, ["Attribute"]):
         obj = func.get("value")
         attr = func.get("attr")
         if not isinstance(obj, dict) or not isinstance(attr, str):
             return
         obj_type = _synth_expr(obj, env, ctx)
-        # Unbound method: ClassName.method()
         if _is_type(obj, ["Name"]):
             obj_name = obj.get("id")
             if isinstance(obj_name, str) and obj_name in ctx.known_classes:
@@ -2106,7 +1801,6 @@ def _validate_call_args(
                         "cannot call method without self: " + obj_name + "." + attr,
                     )
                     return
-        # Check method argument types
         sname = _struct_name(obj_type)
         if sname != "":
             methods = ctx.sig_result.methods.get(sname)
@@ -2116,18 +1810,16 @@ def _validate_call_args(
             if method is not None:
                 _check_call_args(method, args, env, ctx, lineno)
                 return
-            # Method not found on this struct — check if subclass has it
             if _subclass_has_method(sname, attr, ctx):
                 ctx.result.add_error(
                     lineno, 0, "method '" + attr + "' not accessible on " + sname
                 )
                 return
-        # Unwrap Pointer for collection method checking
         check_type = obj_type
-        if obj_type.get("_type") == "Pointer":
-            ptarget = obj_type.get("target")
-            if isinstance(ptarget, dict) and ptarget.get("_type") != "StructRef":
-                check_type = ptarget
+        if isinstance(obj_type, PointerType) and not isinstance(
+            obj_type.target, StructRef
+        ):
+            check_type = obj_type.target
         _validate_collection_method_args(check_type, attr, args, env, ctx, lineno)
 
 
@@ -2140,7 +1832,6 @@ def _check_call_args(
 ) -> None:
     """Check argument types against function parameters."""
     params = func_info.params
-    # Count positional params (exclude keyword-only)
     n_positional = 0
     n_required = 0
     j = 0
@@ -2179,47 +1870,43 @@ def _check_call_args(
 
 
 def _check_func_type_args(
-    ftype: dict[str, object],
+    ftype: FuncType,
     args: list[object],
     env: TypeEnv,
     ctx: _InferCtx,
     lineno: int,
 ) -> None:
     """Check args against a FuncType."""
-    params = ftype.get("params")
-    if not isinstance(params, list):
-        return
-    if len(args) != len(params):
+    if len(args) != len(ftype.params):
         ctx.result.add_error(
             lineno,
             0,
-            "expected " + str(len(params)) + " arguments, got " + str(len(args)),
+            "expected " + str(len(ftype.params)) + " arguments, got " + str(len(args)),
         )
         return
     j = 0
     while j < len(args):
         arg = args[j]
-        if isinstance(arg, dict) and j < len(params):
+        if isinstance(arg, dict) and j < len(ftype.params):
             actual = _synth_expr(arg, env, ctx)
-            expected = params[j]
-            if isinstance(expected, dict):
-                if not _is_assignable(actual, expected, ctx.hier_result):
-                    ctx.result.add_error(
-                        lineno,
-                        0,
-                        "argument "
-                        + str(j + 1)
-                        + " has type "
-                        + _type_name(actual)
-                        + ", expected "
-                        + _type_name(expected),
-                    )
-                    return
+            expected = ftype.params[j]
+            if not _is_assignable(actual, expected, ctx.hier_result):
+                ctx.result.add_error(
+                    lineno,
+                    0,
+                    "argument "
+                    + str(j + 1)
+                    + " has type "
+                    + _type_name(actual)
+                    + ", expected "
+                    + _type_name(expected),
+                )
+                return
         j += 1
 
 
 def _validate_collection_method_args(
-    obj_type: dict[str, object],
+    obj_type: TypeNode,
     method: str,
     args: list[object],
     env: TypeEnv,
@@ -2227,10 +1914,8 @@ def _validate_collection_method_args(
     lineno: int,
 ) -> None:
     """Validate collection method argument types."""
-    if obj_type.get("_type") == "Slice":
-        elem = obj_type.get("element")
-        if not isinstance(elem, dict):
-            return
+    if isinstance(obj_type, SliceType):
+        elem = obj_type.element
         if method == "append":
             if len(args) > 0:
                 a = args[0]
@@ -2274,10 +1959,8 @@ def _validate_collection_method_args(
                             + " to list element "
                             + _type_name(elem),
                         )
-    elif obj_type.get("_type") == "Set":
-        elem = obj_type.get("element")
-        if not isinstance(elem, dict):
-            return
+    elif isinstance(obj_type, SetType):
+        elem = obj_type.element
         if method == "add":
             if len(args) > 0:
                 a = args[0]
@@ -2311,10 +1994,8 @@ def _validate_if(
     lineno = stmt.get("lineno", 0)
     if not isinstance(lineno, int):
         lineno = 0
-    # Check truthiness
     if isinstance(test, dict):
         _check_truthiness(test, env, ctx, lineno)
-    # Extract narrowing
     then_env = env.copy()
     else_env = env.copy()
     if isinstance(test, dict):
@@ -2325,9 +2006,7 @@ def _validate_if(
     else_returns = False
     if len(orelse) > 0:
         else_returns = _validate_stmts(orelse, else_env, func_info, ctx)
-    # If then branch returns, else narrowing flows to continuation
     if then_returns and not else_returns:
-        # Propagate else env narrowings to outer env
         ekeys = list(else_env.types.keys())
         j = 0
         while j < len(ekeys):
@@ -2344,7 +2023,6 @@ def _validate_if(
             env.guarded_attrs.add(gkeys[j])
             j += 1
     elif not then_returns and len(orelse) == 0:
-        # If-without-else, then doesn't return: merge agreed narrowings
         ekeys = list(else_env.types.keys())
         j = 0
         while j < len(ekeys):
@@ -2398,7 +2076,6 @@ def _validate_assert(
     test = stmt.get("test")
     if not isinstance(test, dict):
         return
-    # Assert narrows in place (not branching)
     dummy_else = env.copy()
     _extract_narrowing(test, env, dummy_else, ctx)
 
@@ -2453,10 +2130,8 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
     if not isinstance(test, dict):
         return
     t = test.get("_type")
-    # Comparisons are always bool, no truthiness check needed
     if t == "Compare":
         return
-    # isinstance is always bool
     if t == "Call":
         func = test.get("func")
         if (
@@ -2465,7 +2140,6 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
             and func.get("id") == "isinstance"
         ):
             return
-    # BoolOp: check each value
     if t == "BoolOp":
         values = test.get("values", [])
         if isinstance(values, list):
@@ -2476,7 +2150,6 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
                     _check_truthiness(v, env, ctx, lineno)
                 j += 1
         return
-    # UnaryOp Not: check operand
     if t == "UnaryOp":
         op = test.get("op", {})
         if isinstance(op, dict) and op.get("_type") == "Not":
@@ -2484,7 +2157,6 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
             if isinstance(operand, dict):
                 _check_truthiness(operand, env, ctx, lineno)
             return
-    # NamedExpr: check the value's type
     if t == "NamedExpr":
         value = test.get("value")
         if isinstance(value, dict):
@@ -2496,49 +2168,42 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
 
 
 def _check_type_truthiness(
-    typ: dict[str, object],
+    typ: TypeNode,
     env: TypeEnv,
     node: ASTNode,
     ctx: _InferCtx,
     lineno: int,
 ) -> None:
     """Check if a type has unambiguous truthiness."""
-    # Bool is always fine
-    if typ.get("kind") == "bool":
+    if isinstance(typ, PrimitiveType) and typ.kind == "bool":
         return
-    # int/float: rejected
-    if typ.get("kind") == "int":
+    if isinstance(typ, PrimitiveType) and typ.kind == "int":
         ctx.result.add_error(
             lineno, 0, "truthiness of int not allowed (zero is valid data)"
         )
         return
-    if typ.get("kind") == "float":
+    if isinstance(typ, PrimitiveType) and typ.kind == "float":
         ctx.result.add_error(
             lineno, 0, "truthiness of float not allowed (zero is valid data)"
         )
         return
-    # Optional: check if inner is ambiguous
-    if _is_optional(typ):
-        inner = _unwrap_optional(typ)
-        inner_kind = inner.get("kind")
-        # Optional[int] is OK (means "is not None")
-        if inner_kind == "int" or inner_kind == "float" or inner_kind == "bool":
+    if isinstance(typ, OptionalType):
+        inner = typ.inner
+        if isinstance(inner, PrimitiveType) and inner.kind in ("int", "float", "bool"):
             return
-        # Optional[str|list|dict|set] is ambiguous
-        if inner_kind == "string":
+        if isinstance(inner, PrimitiveType) and inner.kind == "string":
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional str")
             return
-        if inner.get("_type") == "Slice":
+        if isinstance(inner, SliceType):
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional list")
             return
-        if inner.get("_type") == "Map":
+        if isinstance(inner, MapType):
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional dict")
             return
-        if inner.get("_type") == "Set":
+        if isinstance(inner, SetType):
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional set")
             return
         return
-    # Source type check for optionals that became InterfaceRef
     source = ""
     if _is_type(node, ["Name"]):
         name = node.get("id")
@@ -2551,22 +2216,18 @@ def _check_type_truthiness(
             if nn == "str":
                 ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional str")
                 return
-    # list/str/dict/set: allowed
-    if typ.get("kind") == "string":
+    if isinstance(typ, PrimitiveType) and typ.kind == "string":
         return
-    if typ.get("_type") == "Slice":
+    if isinstance(typ, SliceType):
         return
-    if typ.get("_type") == "Map":
+    if isinstance(typ, MapType):
         return
-    if typ.get("_type") == "Set":
+    if isinstance(typ, SetType):
         return
-    # any/interface: allow (for walrus, etc.)
-    if _is_any(typ):
+    if is_any(typ):
         return
-    if typ.get("_type") == "InterfaceRef":
+    if isinstance(typ, InterfaceRef):
         return
-    # Struct types: generally not allowed in truthiness
-    # But we allow it if it could be optional
 
 
 # ---------------------------------------------------------------------------
@@ -2584,7 +2245,6 @@ def _extract_narrowing(
     if not isinstance(test, dict):
         return
     t = test.get("_type")
-    # isinstance(x, T)
     if t == "Call":
         func = test.get("func")
         if (
@@ -2594,11 +2254,9 @@ def _extract_narrowing(
         ):
             _narrow_isinstance(test, then_env, else_env, ctx)
             return
-    # x is None / x is not None
     if t == "Compare":
         _narrow_compare(test, then_env, else_env, ctx)
         return
-    # not expr: swap then/else
     if t == "UnaryOp":
         op = test.get("op", {})
         if isinstance(op, dict) and op.get("_type") == "Not":
@@ -2606,7 +2264,6 @@ def _extract_narrowing(
             if isinstance(operand, dict):
                 _extract_narrowing(operand, else_env, then_env, ctx)
             return
-    # BoolOp and/or
     if t == "BoolOp":
         op = test.get("op", {})
         if isinstance(op, dict):
@@ -2622,7 +2279,6 @@ def _extract_narrowing(
                         j += 1
                 return
             if op_t == "Or":
-                # isinstance(x,A) or isinstance(x,B): extract union for then-branch
                 values = test.get("values", [])
                 if isinstance(values, list):
                     _narrow_or_isinstance(values, then_env, ctx)
@@ -2633,7 +2289,6 @@ def _extract_narrowing(
                             _extract_narrowing(v, then_env, else_env, ctx)
                         j += 1
                 return
-    # NamedExpr (walrus): if (val := func()): narrows val
     if t == "NamedExpr":
         target = test.get("target")
         value = test.get("value")
@@ -2647,22 +2302,17 @@ def _extract_narrowing(
                 vt = _synth_expr(value, then_env, ctx)
                 then_env.set(name, vt, _type_name(vt))
                 else_env.set(name, vt, _type_name(vt))
-                # If return type is optional, narrow to non-None in then branch
-                if _is_optional(vt):
-                    inner = _unwrap_optional(vt)
-                    then_env.set(name, inner, _type_name(inner))
+                if isinstance(vt, OptionalType):
+                    then_env.set(name, vt.inner, _type_name(vt.inner))
         return
-    # Name by itself: truthiness narrowing for optionals
     if t == "Name":
         name = test.get("id")
         if isinstance(name, str):
             typ = then_env.get_type(name)
             source = then_env.get_source(name)
-            if typ is not None and _is_optional(typ):
-                inner = _unwrap_optional(typ)
-                then_env.narrow(name, inner, _type_name(inner))
+            if typ is not None and isinstance(typ, OptionalType):
+                then_env.narrow(name, typ.inner, _type_name(typ.inner))
             elif source != "" and _is_optional_source(source):
-                # Source-tracked optional
                 non_none = _non_none_parts(source)
                 if len(non_none) == 1:
                     sig_errors: list[SignatureError] = []
@@ -2713,7 +2363,6 @@ def _narrow_isinstance(
     type_arg = args[1]
     if not isinstance(target, dict) or not isinstance(type_arg, dict):
         return
-    # Get the variable name (or dotted attribute path)
     name = ""
     if _is_type(target, ["Name"]):
         name = str(target.get("id", ""))
@@ -2721,17 +2370,14 @@ def _narrow_isinstance(
         name = _attr_path(target)
     if name == "":
         return
-    # Get the narrowed type name
     narrow_name = ""
     if _is_type(type_arg, ["Name"]):
         narrow_name = str(type_arg.get("id", ""))
     if narrow_name == "":
         return
-    # Build narrowed type
     sig_errors: list[SignatureError] = []
     narrowed = py_type_to_type_dict(narrow_name, ctx.known_classes, sig_errors, 0, 0)
     then_env.narrow(name, narrowed, narrow_name)
-    # Else branch: narrow to remaining union members
     source = else_env.get_source(name)
     if source != "" and _is_union_source(source):
         parts = _split_union_parts(source)
@@ -2779,20 +2425,16 @@ def _narrow_compare(
     if not isinstance(op, dict) or not isinstance(comp, dict):
         return
     op_type = op.get("_type", "")
-    # x is None
     if op_type == "Is" and _is_type(comp, ["Constant"]) and comp.get("value") is None:
         if _is_type(left, ["Name"]):
             name = str(left.get("id", ""))
             if name != "":
-                # then: x is None (unchanged)
-                # else: x is not None (narrow to non-None)
                 _narrow_to_non_none(name, else_env, ctx)
         if _is_type(left, ["Attribute"]):
             path = _attr_path(left)
             if path != "":
                 else_env.guard_attr(path)
         return
-    # x is not None
     if (
         op_type == "IsNot"
         and _is_type(comp, ["Constant"])
@@ -2802,20 +2444,17 @@ def _narrow_compare(
             name = str(left.get("id", ""))
             if name != "":
                 _narrow_to_non_none(name, then_env, ctx)
-        # x.attr is not None (including multi-level like x.y.z)
         if _is_type(left, ["Attribute"]):
             path = _attr_path(left)
             if path != "":
                 then_env.guard_attr(path)
         return
-    # x.attr is None (including multi-level like x.y.z)
     if op_type == "Is" and _is_type(comp, ["Constant"]) and comp.get("value") is None:
         if _is_type(left, ["Attribute"]):
             path = _attr_path(left)
             if path != "":
                 else_env.guard_attr(path)
         return
-    # x.kind == "value" (kind discrimination on union types)
     if op_type == "Eq":
         if _is_type(left, ["Attribute"]):
             attr = left.get("attr")
@@ -2857,9 +2496,8 @@ def _narrow_to_non_none(name: str, env: TypeEnv, ctx: _InferCtx) -> None:
     """Narrow a variable to its non-None part."""
     typ = env.get_type(name)
     source = env.get_source(name)
-    if typ is not None and _is_optional(typ):
-        inner = _unwrap_optional(typ)
-        env.narrow(name, inner, _type_name(inner))
+    if typ is not None and isinstance(typ, OptionalType):
+        env.narrow(name, typ.inner, _type_name(typ.inner))
         return
     if source != "" and _is_optional_source(source):
         non_none = _non_none_parts(source)
@@ -2882,7 +2520,6 @@ def _narrow_or_isinstance(
     values: list[object], then_env: TypeEnv, ctx: _InferCtx
 ) -> None:
     """Handle isinstance(x,A) or isinstance(x,B) in then branch."""
-    # Just allow isinstance narrowing for individual values
     pass
 
 
@@ -2920,18 +2557,16 @@ def _check_iterator_escape_assign(
 def _check_iterator_escape_return(
     value: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
 ) -> bool:
-    # Check if value is an iterator call
     fname = _is_iterator_call(value)
     if fname != "":
         ctx.result.add_error(lineno, 0, "cannot return " + fname + "()")
         return True
-    # Check if value is wrapped in an eager consumer
     if _is_type(value, ["Call"]):
         func = value.get("func")
         if isinstance(func, dict) and _is_type(func, ["Name"]):
             wrapper = func.get("id")
             if isinstance(wrapper, str) and wrapper in _EAGER_CONSUMERS:
-                return False  # Wrapped in consumer, OK
+                return False
     return False
 
 
@@ -2962,7 +2597,6 @@ def _check_generator_escape_return(
     if _is_generator_expr(value):
         ctx.result.add_error(lineno, 0, "cannot return generator expression")
         return True
-    # Check if it's a call wrapping a generator
     if _is_type(value, ["Call"]):
         func = value.get("func")
         args = value.get("args", [])
@@ -2973,13 +2607,11 @@ def _check_generator_escape_return(
         ):
             wrapper = func.get("id")
             if isinstance(wrapper, str) and wrapper in _EAGER_CONSUMERS:
-                return False  # Eager consumer wrapping generator is OK
-            # str.join wrapping
+                return False
         if isinstance(func, dict) and _is_type(func, ["Attribute"]):
             attr = func.get("attr")
             if isinstance(attr, str) and attr == "join":
-                return False  # join wrapping generator is OK
-        # Check args for generator escape
+                return False
         if isinstance(args, list):
             j = 0
             while j < len(args):
@@ -3016,20 +2648,15 @@ def _validate_list_literal(
     env: TypeEnv,
     ctx: _InferCtx,
     lineno: int,
-    expected: dict[str, object] | None = None,
+    expected: TypeNode | None = None,
 ) -> None:
     """Check list literal for mixed types."""
-    # Union-typed list context allows mixed literals
-    if expected is not None and expected.get("_type") == "Slice":
-        elem_t = expected.get("element")
-        if isinstance(elem_t, dict) and _is_any(elem_t):
+    if expected is not None and isinstance(expected, SliceType):
+        if is_any(expected.element):
             return
-    # When expected element type is available, check against it
-    exp_elem: dict[str, object] | None = None
-    if expected is not None and expected.get("_type") == "Slice":
-        ee = expected.get("element")
-        if isinstance(ee, dict):
-            exp_elem = ee
+    exp_elem: TypeNode | None = None
+    if expected is not None and isinstance(expected, SliceType):
+        exp_elem = expected.element
     elts = node.get("elts", [])
     if not isinstance(elts, list) or len(elts) < 2:
         return
@@ -3073,18 +2700,15 @@ def _validate_dict_literal(
     env: TypeEnv,
     ctx: _InferCtx,
     lineno: int,
-    expected: dict[str, object] | None,
+    expected: TypeNode | None,
 ) -> None:
     """Check dict literal for mixed key/value types."""
     if expected is not None:
         check_exp = expected
-        if check_exp.get("_type") == "Optional":
-            inner = check_exp.get("inner")
-            if isinstance(inner, dict):
-                check_exp = inner
-        if check_exp.get("_type") == "Map":
-            exp_val = check_exp.get("value")
-            if isinstance(exp_val, dict) and _is_any(exp_val):
+        if isinstance(check_exp, OptionalType):
+            check_exp = check_exp.inner
+        if isinstance(check_exp, MapType):
+            if is_any(check_exp.value):
                 return
     keys = node.get("keys", [])
     values = node.get("values", [])
@@ -3120,7 +2744,7 @@ def _validate_dict_literal(
 
 def _validate_return_value(
     value: ASTNode,
-    expected: dict[str, object],
+    expected: TypeNode,
     env: TypeEnv,
     ctx: _InferCtx,
     lineno: int,
@@ -3155,8 +2779,7 @@ def _check_needs_narrowing(
     typ = env.get_type(name)
     if typ is None:
         return
-    # Optional (IR type level)
-    if _is_optional(typ):
+    if isinstance(typ, OptionalType):
         if context == "arithmetic":
             ctx.result.add_error(
                 lineno, 0, "cannot use optional type in arithmetic (may be None)"
@@ -3172,7 +2795,6 @@ def _check_needs_narrowing(
                 lineno, 0, "cannot subscript optional type (may be None)"
             )
         return
-    # Source-tracked optional
     if source != "" and _is_optional_source(source):
         if context == "arithmetic":
             ctx.result.add_error(
@@ -3189,7 +2811,6 @@ def _check_needs_narrowing(
                 lineno, 0, "cannot subscript optional type (may be None)"
             )
         return
-    # Source-tracked non-optional union
     if source != "" and _is_union_source(source):
         if context == "attribute" and attr_name != "":
             if _all_members_have_attr(source, attr_name, ctx):
@@ -3213,7 +2834,6 @@ def _check_needs_narrowing(
                 lineno, 0, "cannot subscript union type without narrowing"
             )
         return
-    # Explicit object type
     if source == "object":
         if context == "arithmetic":
             ctx.result.add_error(
@@ -3240,7 +2860,6 @@ def _validate_expr_access(
     if len(ctx.result._errors) > 0:
         return
     t = node.get("_type")
-    # BinOp: check operands
     if t == "BinOp":
         left = node.get("left")
         right = node.get("right")
@@ -3257,7 +2876,6 @@ def _validate_expr_access(
         if isinstance(right, dict):
             _validate_expr_access(right, env, ctx, lineno)
         return
-    # Attribute: check object (kind access is always allowed)
     if t == "Attribute":
         value = node.get("value")
         attr = node.get("attr")
@@ -3269,14 +2887,12 @@ def _validate_expr_access(
         if isinstance(value, dict):
             _validate_expr_access(value, env, ctx, lineno)
         return
-    # Subscript: check value
     if t == "Subscript":
         value = node.get("value")
         if isinstance(value, dict):
             _check_needs_narrowing(value, env, ctx, lineno, "subscript", "")
             _validate_expr_access(value, env, ctx, lineno)
         return
-    # Call: recurse into func and args
     if t == "Call":
         func = node.get("func")
         if isinstance(func, dict):
@@ -3359,7 +2975,6 @@ def run_inference(
     body = tree.get("body", [])
     if not isinstance(body, list):
         return result
-    # Collect module-level annotated variable types
     i = 0
     while i < len(body):
         node = body[i]

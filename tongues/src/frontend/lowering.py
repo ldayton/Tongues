@@ -79,6 +79,25 @@ from .signatures import (
 )
 from .fields import FieldResult
 from .hierarchy import HierarchyResult
+from .types import (
+    TypeNode,
+    PrimitiveType,
+    SliceType,
+    MapType,
+    SetType,
+    TupleType,
+    OptionalType,
+    PointerType,
+    StructRef,
+    InterfaceRef,
+    FuncType,
+    UnionType,
+    INT_TYPE,
+    FLOAT_TYPE,
+    BOOL_TYPE,
+    STR_TYPE,
+    VOID_TYPE,
+)
 
 # Type alias for AST dict nodes
 ASTNode = dict[str, object]
@@ -144,140 +163,104 @@ def _name_ann(safe: str, original: str) -> Ann:
 # ---------------------------------------------------------------------------
 
 
-def _type_dict_to_ttype(td: dict[str, object]) -> TType:
-    """Convert a type dict (from signatures/inference) to a Taytsh TType node."""
-    kind = td.get("kind")
-    if isinstance(kind, str):
-        return TPrimitive(_P0, kind)
-    _type = td.get("_type")
-    if _type == "Slice":
-        elem = td.get("element")
-        if isinstance(elem, dict):
-            if elem.get("kind") == "byte":
-                return TPrimitive(_P0, "bytes")
-            return TListType(_P0, _type_dict_to_ttype(elem))
-        return TListType(_P0, TPrimitive(_P0, "int"))
-    if _type == "Map":
-        key = td.get("key")
-        val = td.get("value")
-        if isinstance(key, dict) and isinstance(val, dict):
-            val_ttype = _type_dict_to_ttype(val)
-            if isinstance(val_ttype, TPrimitive) and val_ttype.kind == "void":
-                val_ttype = TPrimitive(_P0, "nil")
-            return TMapType(_P0, _type_dict_to_ttype(key), val_ttype)
-        return TMapType(_P0, TPrimitive(_P0, "string"), TPrimitive(_P0, "int"))
-    if _type == "Set":
-        elem = td.get("element")
-        if isinstance(elem, dict):
-            return TSetType(_P0, _type_dict_to_ttype(elem))
-        return TSetType(_P0, TPrimitive(_P0, "int"))
-    if _type == "Tuple":
-        variadic = td.get("variadic", False)
-        elems = td.get("elements")
-        if variadic and isinstance(elems, list) and len(elems) > 0:
-            e = elems[0]
-            if isinstance(e, dict):
-                return TListType(_P0, _type_dict_to_ttype(e))
-        if isinstance(elems, list):
-            parts: list[TType] = []
-            i = 0
-            while i < len(elems):
-                e = elems[i]
-                if isinstance(e, dict):
-                    parts.append(_type_dict_to_ttype(e))
-                i += 1
-            if len(parts) >= 2:
-                return TTupleType(_P0, parts)
-            if len(parts) == 1:
-                return TListType(_P0, parts[0])
+def _typenode_to_ttype(t: TypeNode) -> TType:
+    """Convert a TypeNode (from signatures/inference) to a Taytsh TType node."""
+    if isinstance(t, PrimitiveType):
+        return TPrimitive(_P0, t.kind)
+    if isinstance(t, SliceType):
+        if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
+            return TPrimitive(_P0, "bytes")
+        return TListType(_P0, _typenode_to_ttype(t.element))
+    if isinstance(t, MapType):
+        val_ttype = _typenode_to_ttype(t.value)
+        if isinstance(val_ttype, TPrimitive) and val_ttype.kind == "void":
+            val_ttype = TPrimitive(_P0, "nil")
+        return TMapType(_P0, _typenode_to_ttype(t.key), val_ttype)
+    if isinstance(t, SetType):
+        return TSetType(_P0, _typenode_to_ttype(t.element))
+    if isinstance(t, TupleType):
+        if t.variadic and len(t.elements) > 0:
+            return TListType(_P0, _typenode_to_ttype(t.elements[0]))
+        parts: list[TType] = []
+        i = 0
+        while i < len(t.elements):
+            parts.append(_typenode_to_ttype(t.elements[i]))
+            i += 1
+        if len(parts) >= 2:
+            return TTupleType(_P0, parts)
+        if len(parts) == 1:
+            return TListType(_P0, parts[0])
         return TPrimitive(_P0, "void")
-    if _type == "Optional":
-        inner = td.get("inner")
-        if isinstance(inner, dict):
-            return TOptionalType(_P0, _type_dict_to_ttype(inner))
-        return TOptionalType(_P0, TPrimitive(_P0, "int"))
-    if _type == "Pointer":
-        target = td.get("target")
-        if isinstance(target, dict):
-            target_type = target.get("_type")
-            if target_type == "StructRef":
-                name = target.get("name")
-                if isinstance(name, str):
-                    return TIdentType(_P0, name)
-            else:
-                return _type_dict_to_ttype(target)
-        return TPrimitive(_P0, "void")
-    if _type == "StructRef":
-        name = td.get("name")
-        if isinstance(name, str):
-            return TIdentType(_P0, name)
-        return TPrimitive(_P0, "void")
-    if _type == "InterfaceRef":
-        name = td.get("name")
-        if isinstance(name, str):
-            return TIdentType(_P0, name)
-        return TPrimitive(_P0, "void")
-    if _type == "FuncType":
-        params = td.get("params")
-        ret = td.get("ret")
+    if isinstance(t, OptionalType):
+        return TOptionalType(_P0, _typenode_to_ttype(t.inner))
+    if isinstance(t, PointerType):
+        if isinstance(t.target, StructRef):
+            return TIdentType(_P0, t.target.name)
+        return _typenode_to_ttype(t.target)
+    if isinstance(t, StructRef):
+        return TIdentType(_P0, t.name)
+    if isinstance(t, InterfaceRef):
+        return TIdentType(_P0, t.name)
+    if isinstance(t, FuncType):
         fn_parts: list[TType] = []
-        if isinstance(params, list):
-            i = 0
-            while i < len(params):
-                p = params[i]
-                if isinstance(p, dict):
-                    fn_parts.append(_type_dict_to_ttype(p))
-                i += 1
-        if isinstance(ret, dict):
-            fn_parts.append(_type_dict_to_ttype(ret))
-        else:
-            fn_parts.append(TPrimitive(_P0, "void"))
+        i = 0
+        while i < len(t.params):
+            fn_parts.append(_typenode_to_ttype(t.params[i]))
+            i += 1
+        fn_parts.append(_typenode_to_ttype(t.ret))
         return TFuncType(_P0, fn_parts)
-    if _type == "Union":
-        members = td.get("members")
-        if isinstance(members, list):
-            parts2: list[TType] = []
-            i = 0
-            while i < len(members):
-                m = members[i]
-                if isinstance(m, dict):
-                    parts2.append(_type_dict_to_ttype(m))
-                i += 1
-            if len(parts2) >= 2:
-                return TUnionType(_P0, parts2)
+    if isinstance(t, UnionType):
+        parts2: list[TType] = []
+        i = 0
+        while i < len(t.variants):
+            parts2.append(_typenode_to_ttype(t.variants[i]))
+            i += 1
+        if len(parts2) >= 2:
+            return TUnionType(_P0, parts2)
         return TPrimitive(_P0, "void")
     return TPrimitive(_P0, "void")
 
 
-def _unwrap_pointer(td: dict[str, object]) -> dict[str, object]:
-    """Unwrap Pointer wrapper to get the actual type dict."""
-    if td.get("_type") == "Pointer":
-        target = td.get("target")
-        if isinstance(target, dict):
-            return target
+def _unwrap_pointer(td: TypeNode) -> TypeNode:
+    """Unwrap Pointer wrapper to get the actual type."""
+    if isinstance(td, PointerType):
+        return td.target
     return td
 
 
-def _type_dict_kind(td: dict[str, object]) -> str:
-    """Get the kind string from a type dict for dispatch."""
-    kind = td.get("kind")
-    if isinstance(kind, str):
-        return kind
-    _type = td.get("_type")
-    if _type == "Pointer":
-        target = td.get("target")
-        if isinstance(target, dict):
-            return _type_dict_kind(target)
-        return "Pointer"
-    if _type == "Tuple" and td.get("variadic"):
+def _type_dict_kind(td: TypeNode) -> str:
+    """Get the kind string from a TypeNode for dispatch."""
+    if isinstance(td, PrimitiveType):
+        return td.kind
+    if isinstance(td, PointerType):
+        return _type_dict_kind(td.target)
+    if isinstance(td, TupleType) and td.variadic:
         return "Slice"
-    if isinstance(_type, str):
-        return _type
+    if isinstance(td, SliceType):
+        return "Slice"
+    if isinstance(td, MapType):
+        return "Map"
+    if isinstance(td, SetType):
+        return "Set"
+    if isinstance(td, TupleType):
+        return "Tuple"
+    if isinstance(td, OptionalType):
+        return "Optional"
+    if isinstance(td, StructRef):
+        return "StructRef"
+    if isinstance(td, InterfaceRef):
+        return "InterfaceRef"
+    if isinstance(td, FuncType):
+        return "FuncType"
+    if isinstance(td, UnionType):
+        return "Union"
     return "unknown"
 
 
-def _is_type_dict(td: dict[str, object], names: list[str]) -> bool:
-    """Check if type dict matches any of the given kind/type names."""
+def _is_type_dict(td: TypeNode | None, names: list[str]) -> bool:
+    """Check if TypeNode matches any of the given kind/type names."""
+    if td is None:
+        return False
     k = _type_dict_kind(td)
     i = 0
     while i < len(names):
@@ -287,19 +270,20 @@ def _is_type_dict(td: dict[str, object], names: list[str]) -> bool:
     return False
 
 
-def _is_optional_type(td: dict[str, object]) -> bool:
-    return td.get("_type") == "Optional"
+def _is_optional_type(td: TypeNode) -> bool:
+    return isinstance(td, OptionalType)
 
 
-def _is_variadic_tuple(td: dict[str, object]) -> bool:
-    return td.get("_type") == "Tuple" and td.get("variadic") is True
+def _is_variadic_tuple(td: TypeNode) -> bool:
+    return isinstance(td, TupleType) and td.variadic
 
 
-def _is_single_elem_tuple(td: dict[str, object]) -> bool:
-    if td.get("_type") != "Tuple" or td.get("variadic"):
+def _is_single_elem_tuple(td: TypeNode) -> bool:
+    if not isinstance(td, TupleType):
         return False
-    elems = td.get("elements")
-    return isinstance(elems, list) and len(elems) == 1
+    if td.variadic:
+        return False
+    return len(td.elements) == 1
 
 
 def _is_set_of_genexpr(node: object) -> bool:
@@ -364,18 +348,21 @@ def _expand_genexpr_to_set_add(
     return [for_stmt]
 
 
-def _is_map_type(td: dict[str, object]) -> bool:
-    return td.get("_type") == "Map"
+def _is_map_type(td: TypeNode) -> bool:
+    return isinstance(td, MapType)
 
 
 def _lower_dict_literal_typed(
-    node: ASTNode, type_dict: dict[str, object], env: _Env, ctx: _LowerCtx
+    node: ASTNode, type_dict: TypeNode, env: _Env, ctx: _LowerCtx
 ) -> TExpr:
     """Lower a Dict literal with known target type, converting bool keys to int when needed."""
     keys = _get_list(node, "keys")
     values = _get_list(node, "values")
-    key_td = type_dict.get("key")
-    key_is_int = isinstance(key_td, dict) and key_td.get("kind") == "int"
+    key_is_int = (
+        isinstance(type_dict, MapType)
+        and isinstance(type_dict.key, PrimitiveType)
+        and type_dict.key.kind == "int"
+    )
     entries: list[tuple[TExpr, TExpr]] = []
     i = 0
     while i < len(keys):
@@ -399,16 +386,15 @@ def _lower_dict_literal_typed(
     return TMapLit(_P0, entries, _EMPTY_ANN)
 
 
-def _is_bytes_slice(td: dict[str, object]) -> bool:
-    if td.get("_type") == "Slice":
-        elem = td.get("element")
-        if isinstance(elem, dict) and elem.get("kind") == "byte":
+def _is_bytes_slice(td: TypeNode) -> bool:
+    if isinstance(td, SliceType):
+        if isinstance(td.element, PrimitiveType) and td.element.kind == "byte":
             return True
     return False
 
 
-def _default_value_for_type(td: dict[str, object]) -> TExpr:
-    """Return a zero/default value for a given type dict."""
+def _default_value_for_type(td: TypeNode) -> TExpr:
+    """Return a zero/default value for a given TypeNode."""
     kind = _type_dict_kind(td)
     if kind == "float":
         return TFloatLit(_P0, 0.0, "0.0", _EMPTY_ANN)
@@ -416,31 +402,27 @@ def _default_value_for_type(td: dict[str, object]) -> TExpr:
         return TStringLit(_P0, "", _EMPTY_ANN)
     if kind == "bool":
         return TBoolLit(_P0, False, _EMPTY_ANN)
-    if kind == "Tuple":
-        elems = td.get("elements")
-        if isinstance(elems, list) and len(elems) >= 2:
-            parts: list[TExpr] = []
-            for e in elems:
-                if isinstance(e, dict):
-                    parts.append(_default_value_for_type(e))
-            return TTupleLit(_P0, parts, _EMPTY_ANN)
+    if isinstance(td, TupleType) and len(td.elements) >= 2:
+        parts: list[TExpr] = []
+        i = 0
+        while i < len(td.elements):
+            parts.append(_default_value_for_type(td.elements[i]))
+            i += 1
+        return TTupleLit(_P0, parts, _EMPTY_ANN)
     return TIntLit(_P0, 0, "0", _EMPTY_ANN)
 
 
-def _types_comparable(left: dict[str, object], right: dict[str, object]) -> bool:
+def _types_comparable(left: TypeNode, right: TypeNode) -> bool:
     """Check if two types can be compared for equality."""
     lk = _type_dict_kind(left)
     rk = _type_dict_kind(right)
     if lk == rk:
         return True
-    # Numeric coercions: bool/int/float/byte are cross-comparable
     numeric = {"bool", "int", "float", "byte"}
     if lk in numeric and rk in numeric:
         return True
-    # Optional can compare with its inner type or nil
     if _is_optional_type(left) or _is_optional_type(right):
         return True
-    # Collections of same kind
     if lk in ("Slice", "Map", "Set", "Tuple") and rk in (
         "Slice",
         "Map",
@@ -451,35 +433,26 @@ def _types_comparable(left: dict[str, object], right: dict[str, object]) -> bool
     return False
 
 
-def _is_struct_type(td: dict[str, object]) -> bool:
-    _type = td.get("_type")
-    if _type == "Pointer":
-        target = td.get("target")
-        if isinstance(target, dict):
-            return target.get("_type") == "StructRef"
-    if _type == "StructRef":
+def _is_struct_type(td: TypeNode) -> bool:
+    if isinstance(td, PointerType):
+        return isinstance(td.target, StructRef)
+    if isinstance(td, StructRef):
         return True
     return False
 
 
-def _struct_name(td: dict[str, object]) -> str:
-    """Get struct name from type dict."""
-    _type = td.get("_type")
-    if _type == "Pointer":
-        target = td.get("target")
-        if isinstance(target, dict):
-            name = target.get("name")
-            if isinstance(name, str):
-                return name
-    if _type == "StructRef":
-        name = td.get("name")
-        if isinstance(name, str):
-            return name
+def _struct_name(td: TypeNode) -> str:
+    """Get struct name from TypeNode."""
+    if isinstance(td, PointerType):
+        if isinstance(td.target, StructRef):
+            return td.target.name
+    if isinstance(td, StructRef):
+        return td.name
     return ""
 
 
-def _is_interface_type(td: dict[str, object]) -> bool:
-    return td.get("_type") == "InterfaceRef"
+def _is_interface_type(td: TypeNode) -> bool:
+    return isinstance(td, InterfaceRef)
 
 
 # ---------------------------------------------------------------------------
@@ -533,9 +506,9 @@ class _Env:
     """Scope-level environment for variable tracking."""
 
     def __init__(self) -> None:
-        self.var_types: dict[str, dict[str, object]] = {}
+        self.var_types: dict[str, TypeNode] = {}
         self.declared: set[str] = set()
-        self.return_type: dict[str, object] = {"kind": "void"}
+        self.return_type: TypeNode = VOID_TYPE
 
     def copy(self) -> _Env:
         env = _Env()
@@ -623,48 +596,46 @@ def _get_source_text(ctx: _LowerCtx, node: ASTNode) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _get_param_type(param: ParamInfo) -> dict[str, object]:
+def _get_param_type(param: ParamInfo) -> TypeNode:
     return param.typ
 
 
-def _func_return_type(ctx: _LowerCtx, name: str) -> dict[str, object]:
+def _func_return_type(ctx: _LowerCtx, name: str) -> TypeNode:
     """Get return type of a function from signatures."""
     info = ctx.sig_result.functions.get(name)
     if info is not None:
         return info.return_type
-    return {"kind": "void"}
+    return VOID_TYPE
 
 
-def _method_return_type(
-    ctx: _LowerCtx, class_name: str, method_name: str
-) -> dict[str, object]:
+def _method_return_type(ctx: _LowerCtx, class_name: str, method_name: str) -> TypeNode:
     """Get return type of a method from signatures."""
     class_methods = ctx.sig_result.methods.get(class_name)
     if class_methods is not None:
         info = class_methods.get(method_name)
         if info is not None:
             return info.return_type
-    return {"kind": "void"}
+    return VOID_TYPE
 
 
-def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, object]:
+def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Infer the type of an expression node from context."""
     t = node.get("_type")
     if t == "Constant":
         val = node.get("value")
         if isinstance(val, bool):
-            return {"kind": "bool"}
+            return BOOL_TYPE
         if isinstance(val, int):
-            return {"kind": "int"}
+            return INT_TYPE
         if isinstance(val, float):
-            return {"kind": "float"}
+            return FLOAT_TYPE
         if isinstance(val, str):
-            return {"kind": "string"}
+            return STR_TYPE
         if isinstance(val, bytes):
-            return {"kind": "bytes"}
+            return PrimitiveType("bytes")
         if val is None:
-            return {"kind": "void"}
-        return {"kind": "void"}
+            return VOID_TYPE
+        return VOID_TYPE
     if t == "Name":
         name = _get_str(node, "id")
         vt = env.var_types.get(name)
@@ -672,13 +643,13 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
             return vt
         fi = ctx.sig_result.functions.get(name)
         if fi is not None:
-            param_types: list[object] = []
+            param_types: list[TypeNode] = []
             j = 0
             while j < len(fi.params):
                 param_types.append(fi.params[j].typ)
                 j += 1
-            return {"_type": "FuncType", "params": param_types, "ret": fi.return_type}
-        return {"kind": "void"}
+            return FuncType(param_types, fi.return_type)
+        return VOID_TYPE
     if t == "Attribute":
         attr = _get_str(node, "attr")
         obj_node = _get_dict(node, "value")
@@ -690,62 +661,55 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
                 field_info = cls_info.fields.get(attr)
                 if field_info is not None:
                     return field_info.typ
-        return {"kind": "void"}
+        return VOID_TYPE
     if t == "Call":
         func = _get_dict(node, "func")
         if _is_ast(func, "Name"):
             fname = _get_str(func, "id")
             if fname == "len":
-                return {"kind": "int"}
+                return INT_TYPE
             if fname == "min" or fname == "max" or fname == "abs":
                 call_args = _get_list(node, "args")
                 if len(call_args) > 0 and isinstance(call_args[0], dict):
                     at = _infer_expr_type(call_args[0], env, ctx)
                     if _is_type_dict(at, ["bool"]):
-                        return {"kind": "int"}
+                        return INT_TYPE
                     return at
-                return {"kind": "int"}
+                return INT_TYPE
             if fname == "int":
-                return {"kind": "int"}
+                return INT_TYPE
             if fname == "float":
-                return {"kind": "float"}
+                return FLOAT_TYPE
             if fname == "str":
-                return {"kind": "string"}
+                return STR_TYPE
             if fname == "bool":
-                return {"kind": "bool"}
+                return BOOL_TYPE
             if fname == "chr":
-                return {"kind": "string"}
+                return STR_TYPE
             if fname == "ord":
-                return {"kind": "int"}
+                return INT_TYPE
             if fname == "isinstance":
-                return {"kind": "bool"}
+                return BOOL_TYPE
             if fname == "bytes":
-                return {"kind": "bytes"}
+                return PrimitiveType("bytes")
             if fname == "sorted":
                 args = _get_list(node, "args")
                 if len(args) > 0 and isinstance(args[0], dict):
                     at = _infer_expr_type(args[0], env, ctx)
                     return at
-                return {"_type": "Slice", "element": {"kind": "int"}}
+                return SliceType(INT_TYPE)
             if fname == "list":
                 args = _get_list(node, "args")
                 if len(args) > 0 and isinstance(args[0], dict):
                     at = _infer_expr_type(args[0], env, ctx)
                     return at
-                return {"_type": "Slice", "element": {"kind": "int"}}
+                return SliceType(INT_TYPE)
             if fname == "divmod":
-                return {
-                    "_type": "Tuple",
-                    "elements": [{"kind": "int"}, {"kind": "int"}],
-                    "variadic": False,
-                }
+                return TupleType([INT_TYPE, INT_TYPE], False)
             if fname == "set":
-                return {"_type": "Set", "element": {"kind": "int"}}
+                return SetType(INT_TYPE)
             if fname in ctx.known_classes:
-                return {
-                    "_type": "Pointer",
-                    "target": {"_type": "StructRef", "name": fname},
-                }
+                return PointerType(StructRef(fname))
             rt = _func_return_type(ctx, fname)
             return rt
         if _is_ast(func, "Attribute"):
@@ -755,7 +719,6 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
             if _is_struct_type(obj_t):
                 sname = _struct_name(obj_t)
                 return _method_return_type(ctx, sname, method_name)
-            # String methods
             if _is_type_dict(obj_t, ["string"]):
                 if (
                     method_name == "find"
@@ -763,11 +726,11 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
                     or method_name == "index"
                     or method_name == "count"
                 ):
-                    return {"kind": "int"}
+                    return INT_TYPE
                 if method_name == "split":
-                    return {"_type": "Slice", "element": {"kind": "string"}}
+                    return SliceType(STR_TYPE)
                 if method_name == "startswith" or method_name == "endswith":
-                    return {"kind": "bool"}
+                    return BOOL_TYPE
                 if (
                     method_name == "isdigit"
                     or method_name == "isalpha"
@@ -776,67 +739,53 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
                     or method_name == "isupper"
                     or method_name == "islower"
                 ):
-                    return {"kind": "bool"}
+                    return BOOL_TYPE
                 if method_name == "encode":
-                    return {"kind": "bytes"}
-                return {"kind": "string"}
-            # List methods
+                    return PrimitiveType("bytes")
+                return STR_TYPE
             if _is_type_dict(obj_t, ["Slice"]):
                 if method_name == "pop":
-                    elem = obj_t.get("element")
-                    if isinstance(elem, dict):
-                        return elem
-                    return {"kind": "int"}
+                    if isinstance(obj_t, SliceType):
+                        return obj_t.element
+                    return INT_TYPE
                 if method_name == "index":
-                    return {"kind": "int"}
+                    return INT_TYPE
                 if method_name == "copy":
                     return obj_t
-                return {"kind": "void"}
-            # Dict methods
+                return VOID_TYPE
             if _is_type_dict(obj_t, ["Map"]):
                 if method_name == "get":
-                    val_t = obj_t.get("value")
-                    if isinstance(val_t, dict):
-                        return {"_type": "Optional", "inner": val_t}
-                    return {"kind": "void"}
+                    if isinstance(obj_t, MapType):
+                        return OptionalType(obj_t.value)
+                    return VOID_TYPE
                 if method_name == "keys":
-                    key_t = obj_t.get("key")
-                    if isinstance(key_t, dict):
-                        return {"_type": "Slice", "element": key_t}
-                    return {"_type": "Slice", "element": {"kind": "string"}}
+                    if isinstance(obj_t, MapType):
+                        return SliceType(obj_t.key)
+                    return SliceType(STR_TYPE)
                 if method_name == "values":
-                    val_t = obj_t.get("value")
-                    if isinstance(val_t, dict):
-                        return {"_type": "Slice", "element": val_t}
-                    return {"_type": "Slice", "element": {"kind": "int"}}
+                    if isinstance(obj_t, MapType):
+                        return SliceType(obj_t.value)
+                    return SliceType(INT_TYPE)
                 if method_name == "items":
-                    key_t = obj_t.get("key")
-                    val_t = obj_t.get("value")
-                    if isinstance(key_t, dict) and isinstance(val_t, dict):
-                        return {
-                            "_type": "Slice",
-                            "element": {
-                                "_type": "Tuple",
-                                "elements": [key_t, val_t],
-                                "variadic": False,
-                            },
-                        }
-                    return {"_type": "Slice", "element": {"kind": "void"}}
+                    if isinstance(obj_t, MapType):
+                        return SliceType(TupleType([obj_t.key, obj_t.value], False))
+                    return SliceType(VOID_TYPE)
                 if method_name == "pop":
-                    val_t = obj_t.get("value")
-                    if isinstance(val_t, dict):
-                        return {"_type": "Optional", "inner": val_t}
-                    return {"kind": "void"}
+                    if isinstance(obj_t, MapType):
+                        return OptionalType(obj_t.value)
+                    return VOID_TYPE
                 if method_name == "copy":
                     return obj_t
-                return {"kind": "void"}
-            # Bytes methods
+                return VOID_TYPE
             if _is_type_dict(obj_t, ["Slice"]):
-                elem = obj_t.get("element")
-                if isinstance(elem, dict) and elem.get("kind") == "byte":
+                if (
+                    isinstance(obj_t, SliceType)
+                    and isinstance(obj_t.element, PrimitiveType)
+                    and obj_t.element.kind == "byte"
+                ):
                     if method_name == "decode":
-                        return {"kind": "string"}
-        return {"kind": "void"}
+                        return STR_TYPE
+        return VOID_TYPE
     if t == "BinOp":
         op = _get_dict(node, "op")
         op_type = op.get("_type", "")
@@ -846,10 +795,10 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
         rt = _infer_expr_type(right_node, env, ctx)
         if op_type == "Add":
             if _is_type_dict(lt, ["string"]):
-                return {"kind": "string"}
+                return STR_TYPE
             if _is_type_dict(lt, ["float"]):
-                return {"kind": "float"}
-            return {"kind": "int"}
+                return FLOAT_TYPE
+            return INT_TYPE
         if (
             op_type == "Sub"
             or op_type == "Mult"
@@ -858,14 +807,14 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
             or op_type == "Pow"
         ):
             if _is_type_dict(lt, ["float"]) or _is_type_dict(rt, ["float"]):
-                return {"kind": "float"}
+                return FLOAT_TYPE
             if op_type == "Mult" and _is_type_dict(lt, ["string"]):
-                return {"kind": "string"}
+                return STR_TYPE
             if op_type == "Mult" and _is_type_dict(lt, ["Slice"]):
                 return lt
-            return {"kind": "int"}
+            return INT_TYPE
         if op_type == "Div":
-            return {"kind": "float"}
+            return FLOAT_TYPE
         if (
             op_type == "BitAnd"
             or op_type == "BitOr"
@@ -873,11 +822,10 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
             or op_type == "LShift"
             or op_type == "RShift"
         ):
-            # BitOr on dicts → dict merge
             if _is_type_dict(lt, ["Map"]):
                 return lt
-            return {"kind": "int"}
-        return {"kind": "int"}
+            return INT_TYPE
+        return INT_TYPE
     if t == "BoolOp":
         vals = _get_list(node, "values")
         all_bools = True
@@ -887,23 +835,23 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
                 if not _is_type_dict(bvt, ["bool"]):
                     all_bools = False
         if all_bools:
-            return {"kind": "bool"}
+            return BOOL_TYPE
         if len(vals) > 0 and isinstance(vals[0], dict):
             return _infer_expr_type(vals[0], env, ctx)
-        return {"kind": "bool"}
+        return BOOL_TYPE
     if t == "Compare":
-        return {"kind": "bool"}
+        return BOOL_TYPE
     if t == "UnaryOp":
         op = _get_dict(node, "op")
         op_type = op.get("_type", "")
         if op_type == "Not":
-            return {"kind": "bool"}
+            return BOOL_TYPE
         operand = _get_dict(node, "operand")
         result = _infer_expr_type(operand, env, ctx)
         if (op_type == "USub" or op_type == "Invert") and _is_type_dict(
             result, ["bool"]
         ):
-            return {"kind": "int"}
+            return INT_TYPE
         return result
     if t == "IfExp":
         body = _get_dict(node, "body")
@@ -915,69 +863,64 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> dict[str, obje
             slc = _get_dict(node, "slice")
             if _is_ast(slc, "Slice"):
                 return obj_t
-            elem = obj_t.get("element")
-            if isinstance(elem, dict):
-                return elem
+            if isinstance(obj_t, SliceType):
+                return obj_t.element
         if _is_type_dict(obj_t, ["Map"]):
-            val = obj_t.get("value")
-            if isinstance(val, dict):
-                return val
+            if isinstance(obj_t, MapType):
+                return obj_t.value
         if _is_type_dict(obj_t, ["Tuple"]):
-            elems = obj_t.get("elements")
             slc = _get_dict(node, "slice")
-            if _is_ast(slc, "Constant"):
+            if _is_ast(slc, "Constant") and isinstance(obj_t, TupleType):
                 idx_val = slc.get("value")
-                if isinstance(idx_val, int) and isinstance(elems, list):
-                    if 0 <= idx_val < len(elems):
-                        e = elems[idx_val]
-                        if isinstance(e, dict):
-                            return e
+                if isinstance(idx_val, int):
+                    if 0 <= idx_val < len(obj_t.elements):
+                        return obj_t.elements[idx_val]
         if _is_type_dict(obj_t, ["string"]):
             slc = _get_dict(node, "slice")
             if _is_ast(slc, "Slice"):
-                return {"kind": "string"}
-            return {"kind": "string"}
+                return STR_TYPE
+            return STR_TYPE
         if _is_type_dict(obj_t, ["bytes"]):
             slc = _get_dict(node, "slice")
             if _is_ast(slc, "Slice"):
-                return {"kind": "bytes"}
-            return {"kind": "int"}
-        return {"kind": "void"}
+                return PrimitiveType("bytes")
+            return INT_TYPE
+        return VOID_TYPE
     if t == "List":
         elts = _get_list(node, "elts")
-        elem_type: dict[str, object] = {"kind": "void"}
+        elem_type: TypeNode = VOID_TYPE
         if len(elts) > 0 and isinstance(elts[0], dict):
             elem_type = _infer_expr_type(elts[0], env, ctx)
-        return {"_type": "Slice", "element": elem_type}
+        return SliceType(elem_type)
     if t == "Dict":
         ks = _get_list(node, "keys")
         vs = _get_list(node, "values")
-        key_type: dict[str, object] = {"kind": "void"}
-        val_type: dict[str, object] = {"kind": "void"}
+        key_type: TypeNode = VOID_TYPE
+        val_type: TypeNode = VOID_TYPE
         if len(ks) > 0 and isinstance(ks[0], dict):
             key_type = _infer_expr_type(ks[0], env, ctx)
         if len(vs) > 0 and isinstance(vs[0], dict):
             val_type = _infer_expr_type(vs[0], env, ctx)
-        return {"_type": "Map", "key": key_type, "value": val_type}
+        return MapType(key_type, val_type)
     if t == "Set":
         elts = _get_list(node, "elts")
-        elem_type2: dict[str, object] = {"kind": "void"}
+        elem_type2: TypeNode = VOID_TYPE
         if len(elts) > 0 and isinstance(elts[0], dict):
             elem_type2 = _infer_expr_type(elts[0], env, ctx)
-        return {"_type": "Set", "element": elem_type2}
+        return SetType(elem_type2)
     if t == "Tuple":
         elts = _get_list(node, "elts")
-        parts: list[object] = []
+        parts: list[TypeNode] = []
         i = 0
         while i < len(elts):
             e = elts[i]
             if isinstance(e, dict):
                 parts.append(_infer_expr_type(e, env, ctx))
             i += 1
-        return {"_type": "Tuple", "elements": parts, "variadic": False}
+        return TupleType(parts, False)
     if t == "JoinedStr":
-        return {"kind": "string"}
-    return {"kind": "void"}
+        return STR_TYPE
+    return VOID_TYPE
 
 
 # ---------------------------------------------------------------------------
@@ -995,11 +938,10 @@ def _make_call(name: str, args: list[TExpr]) -> TCall:
     return TCall(_P0, TVar(_P0, name, _EMPTY_ANN), targs, _EMPTY_ANN)
 
 
-def _len_expr(obj: TExpr, obj_type: dict[str, object]) -> TExpr:
+def _len_expr(obj: TExpr, obj_type: TypeNode) -> TExpr:
     """Len(obj) for most types, literal int for fixed-size tuples."""
-    if _is_type_dict(obj_type, ["Tuple"]):
-        elems = obj_type.get("elements")
-        n = len(elems) if isinstance(elems, list) else 0
+    if isinstance(obj_type, TupleType):
+        n = len(obj_type.elements)
         return TIntLit(_P0, n, str(n), _EMPTY_ANN)
     return _make_call("Len", [obj])
 
@@ -1149,8 +1091,8 @@ def _bool_to_int(expr: TExpr) -> TExpr:
 def _coerce_arithmetic(
     left: TExpr,
     right: TExpr,
-    left_type: ASTNode | None,
-    right_type: ASTNode | None,
+    left_type: TypeNode | None,
+    right_type: TypeNode | None,
 ) -> tuple[TExpr, TExpr]:
     """Insert bool→int and int→float coercions for arithmetic operands."""
     lt_bool = _is_type_dict(left_type, ["bool"])
@@ -1653,8 +1595,8 @@ def _lower_single_compare(
 def _coerce_compare(
     left: TExpr,
     right: TExpr,
-    left_type: ASTNode | None,
-    right_type: ASTNode | None,
+    left_type: TypeNode | None,
+    right_type: TypeNode | None,
 ) -> tuple[TExpr, TExpr]:
     """Insert coercions for comparison operands."""
     lt_bool = _is_type_dict(left_type, ["bool"])
@@ -1735,11 +1677,10 @@ def _lower_in_expr(
     # Type mismatch on map keys → always false
     left_type = _infer_expr_type(left_node, env, ctx)
     right_type = _infer_expr_type(right_node, env, ctx)
-    if right_type is not None and _is_type_dict(right_type, ["Map"]):
-        key_td = right_type.get("key")
-        if isinstance(key_td, dict) and left_type is not None:
+    if _is_type_dict(right_type, ["Map"]):
+        if isinstance(right_type, MapType):
             lk = _type_dict_kind(left_type)
-            rk = _type_dict_kind(key_td)
+            rk = _type_dict_kind(right_type.key)
             if lk != "" and rk != "" and lk != rk:
                 return TBoolLit(_P0, False, _EMPTY_ANN)
     left = _lower_expr(left_node, env, ctx)
@@ -1820,9 +1761,8 @@ def _lower_name_call(
     if fname == "len":
         if len(args) > 0 and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
-            if _is_type_dict(arg_type, ["Tuple"]):
-                elems = arg_type.get("elements")
-                n = len(elems) if isinstance(elems, list) else 0
+            if isinstance(arg_type, TupleType):
+                n = len(arg_type.elements)
                 return TIntLit(_P0, n, str(n), _EMPTY_ANN)
             if _is_ast(args[0], "Tuple"):
                 elts = _get_list(args[0], "elts")
@@ -1940,9 +1880,8 @@ def _lower_name_call(
                 )
             if _is_type_dict(arg_type, ["bool"]):
                 return arg
-            if _is_type_dict(arg_type, ["Tuple"]):
-                elems = arg_type.get("elements")
-                if isinstance(elems, list) and len(elems) > 0:
+            if isinstance(arg_type, TupleType):
+                if len(arg_type.elements) > 0:
                     return TBoolLit(_P0, True, _EMPTY_ANN)
                 return TBoolLit(_P0, False, _EMPTY_ANN)
             if _is_type_dict(arg_type, ["bytes", "Slice", "Map", "Set"]):
@@ -2952,11 +2891,7 @@ def _expand_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     result_var = TVar(_P0, "__result__", _EMPTY_ANN)
     # Build: let __result__: list[...] = []
     ret_type = env.return_type
-    result_type = (
-        _type_dict_to_ttype(ret_type)
-        if isinstance(ret_type, dict)
-        else TListType(_P0, TPrimitive(_P0, "int"))
-    )
+    result_type: TType = _typenode_to_ttype(ret_type)
     let_stmt = TLetStmt(
         _P0, "__result__", result_type, TListLit(_P0, [], _EMPTY_ANN), _EMPTY_ANN
     )
@@ -2995,11 +2930,7 @@ def _expand_setcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     elt_expr = _lower_expr(elt, comp_env, ctx)
     result_var = TVar(_P0, "__result__", _EMPTY_ANN)
     ret_type = env.return_type
-    result_type = (
-        _type_dict_to_ttype(ret_type)
-        if isinstance(ret_type, dict)
-        else TSetType(_P0, TPrimitive(_P0, "int"))
-    )
+    result_type: TType = _typenode_to_ttype(ret_type)
     let_stmt = TLetStmt(_P0, "__result__", result_type, empty_set, _EMPTY_ANN)
     add_call = _make_call("Add", [result_var, elt_expr])
     body: list[TStmt] = [TExprStmt(_P0, add_call, _EMPTY_ANN)]
@@ -3034,11 +2965,7 @@ def _expand_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     val_expr = _lower_expr(value_node, comp_env, ctx)
     result_var = TVar(_P0, "__result__", _EMPTY_ANN)
     ret_type = env.return_type
-    result_type = (
-        _type_dict_to_ttype(ret_type)
-        if isinstance(ret_type, dict)
-        else TMapType(_P0, TPrimitive(_P0, "string"), TPrimitive(_P0, "int"))
-    )
+    result_type: TType = _typenode_to_ttype(ret_type)
     let_stmt = TLetStmt(
         _P0, "__result__", result_type, _make_call("Map", []), _EMPTY_ANN
     )
@@ -3085,9 +3012,8 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return TBinaryOp(
             _P0, "!=", expr, TFloatLit(_P0, 0.0, "0.0", _EMPTY_ANN), _EMPTY_ANN
         )
-    if _is_type_dict(expr_type, ["Tuple"]):
-        elems = expr_type.get("elements")
-        if isinstance(elems, list) and len(elems) > 0:
+    if isinstance(expr_type, TupleType):
+        if len(expr_type.elements) > 0:
             return TBoolLit(_P0, True, _EMPTY_ANN)
         return TBoolLit(_P0, False, _EMPTY_ANN)
     if _is_type_dict(expr_type, ["bytes", "Slice", "Map", "Set"]):
@@ -3168,7 +3094,7 @@ def _lower_return(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if val is None:
         return [TReturnStmt(_P0, None, _EMPTY_ANN)]
     ret_type = env.return_type
-    if isinstance(ret_type, dict) and ret_type.get("kind") == "void":
+    if isinstance(ret_type, PrimitiveType) and ret_type.kind == "void":
         return [TReturnStmt(_P0, None, _EMPTY_ANN)]
     if isinstance(val, dict):
         # Expand list comprehension into for loop + return
@@ -3209,7 +3135,7 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if name not in env.declared:
             env.declared.add(name)
             env.var_types[name] = val_type
-            ttype = _type_dict_to_ttype(val_type)
+            ttype = _typenode_to_ttype(val_type)
             stmts: list[TStmt] = [TLetStmt(_P0, safe, ttype, value, ann)]
             stmts.extend(_method_side_effects(value_node, env, ctx))
             return stmts
@@ -3266,7 +3192,7 @@ def _lower_tuple_assign(
         if _is_ast(vfunc, "Name") and _get_str(vfunc, "id") == "divmod":
             vargs = _get_list(value_node, "args")
             lowered_args: list[TExpr] = []
-            arg_types: list[ASTNode | None] = []
+            arg_types: list[TypeNode | None] = []
             ai = 0
             while ai < len(vargs):
                 a = vargs[ai]
@@ -3275,7 +3201,7 @@ def _lower_tuple_assign(
                     la = _lower_expr(a, env, ctx)
                     if _is_type_dict(at, ["bool"]):
                         la = _bool_to_int(la)
-                        at = {"kind": "int"}
+                        at = INT_TYPE
                     lowered_args.append(la)
                     arg_types.append(at)
                 ai += 1
@@ -3311,7 +3237,7 @@ def _lower_tuple_assign(
                     ann = _name_ann(safe, name)
                     if name not in env.declared:
                         env.declared.add(name)
-                        env.var_types[name] = {"kind": result_kind}
+                        env.var_types[name] = PrimitiveType(result_kind)
                         prim = TPrimitive(_P0, result_kind)
                         init: TExpr = TIntLit(_P0, 0, "0", _EMPTY_ANN)
                         if use_float:
@@ -3323,13 +3249,12 @@ def _lower_tuple_assign(
             return stmts
     value = _lower_expr(value_node, env, ctx)
     val_type = _infer_expr_type(value_node, env, ctx)
-    elem_types: list[dict[str, object]] = []
-    if _is_type_dict(val_type, ["Tuple"]):
-        raw = val_type.get("elements")
-        if isinstance(raw, list):
-            for et in raw:
-                if isinstance(et, dict):
-                    elem_types.append(et)
+    elem_types: list[TypeNode] = []
+    if isinstance(val_type, TupleType):
+        i2 = 0
+        while i2 < len(val_type.elements):
+            elem_types.append(val_type.elements[i2])
+            i2 += 1
     stmts: list[TStmt] = []
     targets: list[TExpr] = []
     i = 0
@@ -3341,9 +3266,9 @@ def _lower_tuple_assign(
             ann = _name_ann(safe, name)
             if name not in env.declared:
                 env.declared.add(name)
-                et = elem_types[i] if i < len(elem_types) else {"kind": "int"}
+                et = elem_types[i] if i < len(elem_types) else INT_TYPE
                 env.var_types[name] = et
-                ttype = _type_dict_to_ttype(et)
+                ttype = _typenode_to_ttype(et)
                 init = _default_value_for_type(et)
                 stmts.append(TLetStmt(_P0, safe, ttype, init, ann))
             targets.append(TVar(_P0, safe, ann))
@@ -3364,11 +3289,11 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     ann_str = ""
     if isinstance(ann_node, dict):
         ann_str = annotation_to_str(ann_node)
-    type_dict: dict[str, object] = {"kind": "void"}
+    type_dict: TypeNode = VOID_TYPE
     if ann_str != "":
         errors: list[object] = []
         type_dict = py_type_to_type_dict(ann_str, ctx.known_classes, [], 0, 0)
-    ttype = _type_dict_to_ttype(type_dict)
+    ttype = _typenode_to_ttype(type_dict)
     if isinstance(ttype, TPrimitive) and ttype.kind == "void":
         ttype = TPrimitive(_P0, "nil")
     env.declared.add(name)
@@ -3380,7 +3305,7 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if isinstance(value_node, dict):
         # void-returning function assigned to optional → call + nil
         val_type = _infer_expr_type(value_node, env, ctx)
-        if _is_type_dict(val_type, ["void"]) and _is_optional_type(type_dict):
+        if _is_type_dict(val_type, ["void"]) and isinstance(type_dict, OptionalType):
             val = _lower_expr(value_node, env, ctx)
             stmts.append(TExprStmt(_P0, val, _EMPTY_ANN))
             val = TNilLit(_P0, _EMPTY_ANN)
@@ -3604,10 +3529,7 @@ def _lower_isinstance_chain(
         binding_name = type_name[0].lower() + type_name[1:] if type_name else type_name
         # Create narrowed env for the case body
         case_env = env.copy()
-        case_env.var_types[var_name] = {
-            "_type": "Pointer",
-            "target": {"_type": "StructRef", "name": type_name},
-        }
+        case_env.var_types[var_name] = PointerType(StructRef(type_name))
         case_body = _lower_stmts(body_stmts, case_env, ctx)
         pattern = TPatternType(
             _P0, binding_name, TIdentType(_P0, type_name), _EMPTY_ANN
@@ -3651,13 +3573,9 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             return [TForStmt(_P0, binding, iter_expr, body_stmts, b_ann)]
     # Tuple iteration: for x in t → for x in [t.0, t.1, ...]
     iter_type = _infer_expr_type(iter_node, env, ctx)
-    if (
-        iter_type is not None
-        and iter_type.get("_type") == "Tuple"
-        and not iter_type.get("variadic")
-    ):
-        elems = iter_type.get("elements")
-        if isinstance(elems, list) and len(elems) > 0:
+    if isinstance(iter_type, TupleType) and not iter_type.variadic:
+        elems = iter_type.elements
+        if len(elems) > 0:
             iter_lowered = _lower_expr(iter_node, env, ctx)
             items: list[TExpr] = []
             j = 0
@@ -3737,13 +3655,9 @@ def _lower_for_enumerate(
     binding, b_ann = _extract_binding(target_node)
     inner_type = _infer_expr_type(inner, env, ctx)
     # Enumerate over fixed-size tuple → enumerate over list of accesses
-    if (
-        inner_type is not None
-        and inner_type.get("_type") == "Tuple"
-        and not inner_type.get("variadic")
-    ):
-        elems = inner_type.get("elements")
-        if isinstance(elems, list) and len(elems) > 0:
+    if isinstance(inner_type, TupleType) and not inner_type.variadic:
+        elems = inner_type.elements
+        if len(elems) > 0:
             iter_lowered = _lower_expr(inner, env, ctx)
             items_list: list[TExpr] = []
             j = 0
@@ -3996,7 +3910,7 @@ def _build_function(
         i = 0
         while i < len(func_info.params):
             p = func_info.params[i]
-            ttype = _type_dict_to_ttype(p.typ)
+            ttype = _typenode_to_ttype(p.typ)
             sp = _safe_name(p.name)
             params.append(TParam(_P0, sp, ttype, _name_ann(sp, p.name)))
             func_env.var_types[p.name] = p.typ
@@ -4004,12 +3918,12 @@ def _build_function(
             i += 1
         func_env.return_type = func_info.return_type
     if is_entry_point:
-        func_env.return_type = {"kind": "void"}
+        func_env.return_type = VOID_TYPE
     ret_type: TType = TPrimitive(_P0, "void")
     if is_entry_point:
         pass
     elif func_info is not None:
-        ret_type = _type_dict_to_ttype(func_info.return_type)
+        ret_type = _typenode_to_ttype(func_info.return_type)
     body_nodes = _get_list(node, "body")
     body = _lower_stmts(body_nodes, func_env, ctx)
     return TFnDecl(_P0, name, params, ret_type, body, _EMPTY_ANN)
@@ -4029,10 +3943,7 @@ def _build_method(
     params: list[TParam] = []
     func_env = env.copy()
     # Add self param
-    self_type = {
-        "_type": "Pointer",
-        "target": {"_type": "StructRef", "name": class_name},
-    }
+    self_type: TypeNode = PointerType(StructRef(class_name))
     func_env.var_types["self"] = self_type
     func_env.declared.add("self")
     params.append(TParam(_P0, "self", None, _EMPTY_ANN))
@@ -4041,7 +3952,7 @@ def _build_method(
         while i < len(func_info.params):
             p = func_info.params[i]
             if p.name != "self":
-                ttype = _type_dict_to_ttype(p.typ)
+                ttype = _typenode_to_ttype(p.typ)
                 sp = _safe_name(p.name)
                 params.append(TParam(_P0, sp, ttype, _name_ann(sp, p.name)))
                 func_env.var_types[p.name] = p.typ
@@ -4050,7 +3961,7 @@ def _build_method(
         func_env.return_type = func_info.return_type
     ret_type: TType = TPrimitive(_P0, "void")
     if func_info is not None:
-        ret_type = _type_dict_to_ttype(func_info.return_type)
+        ret_type = _typenode_to_ttype(func_info.return_type)
     body_nodes = _get_list(node, "body")
     body = _lower_stmts(body_nodes, func_env, ctx)
     return TFnDecl(_P0, name, params, ret_type, body, _EMPTY_ANN)
@@ -4104,7 +4015,7 @@ def _build_struct(
                 fname = fkeys[j]
                 finfo = cls_info.fields.get(fname)
                 if finfo is not None:
-                    ftype = _type_dict_to_ttype(finfo.typ)
+                    ftype = _typenode_to_ttype(finfo.typ)
                     fields.append(TFieldDecl(_P0, fname, ftype))
                 j += 1
     # Build methods
@@ -4141,7 +4052,7 @@ def _build_constants(body: list[object], ctx: _LowerCtx) -> list[TDecl | TStmt]:
                     if name == name.upper() and name != "_" and len(name) > 1:
                         value_node = _get_dict(node, "value")
                         val_type = _infer_expr_type(value_node, _Env(), ctx)
-                        ttype = _type_dict_to_ttype(val_type)
+                        ttype = _typenode_to_ttype(val_type)
                         value = _lower_expr(value_node, _Env(), ctx)
                         result.append(TLetStmt(_P0, name, ttype, value, _EMPTY_ANN))
         # Class-level constants
@@ -4160,7 +4071,7 @@ def _build_constants(body: list[object], ctx: _LowerCtx) -> list[TDecl | TStmt]:
                             if fname == fname.upper() and len(fname) > 1:
                                 value_node = _get_dict(item, "value")
                                 val_type = _infer_expr_type(value_node, _Env(), ctx)
-                                ttype = _type_dict_to_ttype(val_type)
+                                ttype = _typenode_to_ttype(val_type)
                                 value = _lower_expr(value_node, _Env(), ctx)
                                 const_name = class_name + "_" + fname
                                 result.append(

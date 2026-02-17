@@ -1,13 +1,37 @@
 """Phase 5: Function and method signature collection.
 
 Collect function and method signatures. Parse Python type annotations into
-type dicts, classify parameter kinds, record default values, and detect
+TypeNode objects, classify parameter kinds, record default values, and detect
 mutated parameters.
 
 Written in the Tongues subset (no generators, closures, lambdas, getattr).
 """
 
 from __future__ import annotations
+
+from .types import (
+    TypeNode,
+    PrimitiveType,
+    SliceType,
+    MapType,
+    SetType,
+    TupleType,
+    OptionalType,
+    PointerType,
+    StructRef,
+    InterfaceRef,
+    FuncType,
+    NilLit,
+    BoolLit,
+    IntLit,
+    FloatLit,
+    StringLit,
+    ListLit,
+    MapLit,
+    SetLit,
+    TupleLit,
+    typenode_to_dict,
+)
 
 
 # Type alias for AST dict nodes
@@ -25,27 +49,30 @@ class ParamInfo:
     def __init__(
         self,
         name: str,
-        typ: dict[str, object],
+        typ: TypeNode,
         py_type: str,
         has_default: bool,
-        default_value: dict[str, object] | None,
+        default_value: TypeNode | None,
         modifier: str,
     ) -> None:
         self.name: str = name
-        self.typ: dict[str, object] = typ
+        self.typ: TypeNode = typ
         self.py_type: str = py_type
         self.has_default: bool = has_default
-        self.default_value: dict[str, object] | None = default_value
+        self.default_value: TypeNode | None = default_value
         self.modifier: str = modifier
 
     def to_dict(self) -> dict[str, object]:
         """Serialize to a dict for test assertions."""
+        dv: dict[str, object] | None = None
+        if self.default_value is not None:
+            dv = typenode_to_dict(self.default_value)
         d: dict[str, object] = {
             "name": self.name,
-            "typ": self.typ,
+            "typ": typenode_to_dict(self.typ),
             "py_type": self.py_type,
             "has_default": self.has_default,
-            "default_value": self.default_value,
+            "default_value": dv,
             "modifier": self.modifier,
         }
         return d
@@ -58,14 +85,14 @@ class FuncInfo:
         self,
         name: str,
         params: list[ParamInfo],
-        return_type: dict[str, object],
+        return_type: TypeNode,
         return_py_type: str,
         is_method: bool,
         receiver_type: str,
     ) -> None:
         self.name: str = name
         self.params: list[ParamInfo] = params
-        self.return_type: dict[str, object] = return_type
+        self.return_type: TypeNode = return_type
         self.return_py_type: str = return_py_type
         self.is_method: bool = is_method
         self.receiver_type: str = receiver_type
@@ -79,7 +106,7 @@ class FuncInfo:
             i += 1
         d: dict[str, object] = {
             "params": param_dicts,
-            "return_type": self.return_type,
+            "return_type": typenode_to_dict(self.return_type),
             "return_py_type": self.return_py_type,
             "is_method": self.is_method,
             "receiver_type": self.receiver_type,
@@ -339,7 +366,7 @@ def _split_union_members(s: str) -> list[str]:
 _TYPE_ALIASES: dict[str, str] = {}
 
 
-# Primitive type mapping: Python name -> dict kind
+# Primitive type mapping: Python name -> kind string
 _PRIM_MAP: dict[str, str] = {
     "int": "int",
     "str": "string",
@@ -357,14 +384,11 @@ def py_type_to_type_dict(
     errors: list[SignatureError],
     lineno: int,
     col: int,
-) -> dict[str, object]:
-    """Convert a Python type string to a type dict.
-
-    Returns a type dict like {"kind": "int"} or {"_type": "Slice", "element": {...}}.
-    """
+) -> TypeNode:
+    """Convert a Python type string to a TypeNode."""
     s = py_type.strip()
     if s == "":
-        return {"_type": "InterfaceRef", "name": "any"}
+        return InterfaceRef("any")
     # Expand type aliases
     if s in _TYPE_ALIASES:
         return py_type_to_type_dict(
@@ -384,32 +408,24 @@ def py_type_to_type_dict(
         return _resolve_subscript(base, inner, known_classes, errors, lineno, col)
     # Primitives
     if s in _PRIM_MAP:
-        return {"kind": _PRIM_MAP[s]}
+        return PrimitiveType(_PRIM_MAP[s])
     # bytes -> Slice(byte)
     if s == "bytes" or s == "bytearray":
-        return {"_type": "Slice", "element": {"kind": "byte"}}
+        return SliceType(PrimitiveType("byte"))
     # Bare collection types (no subscript) -> any element
     if s == "list":
-        return {"_type": "Slice", "element": {"_type": "InterfaceRef", "name": "any"}}
+        return SliceType(InterfaceRef("any"))
     if s == "dict":
-        return {
-            "_type": "Map",
-            "key": {"_type": "InterfaceRef", "name": "any"},
-            "value": {"_type": "InterfaceRef", "name": "any"},
-        }
+        return MapType(InterfaceRef("any"), InterfaceRef("any"))
     if s == "set" or s == "frozenset":
-        return {"_type": "Set", "element": {"_type": "InterfaceRef", "name": "any"}}
+        return SetType(InterfaceRef("any"))
     if s == "tuple":
-        return {
-            "_type": "Tuple",
-            "elements": [{"_type": "InterfaceRef", "name": "any"}],
-            "variadic": True,
-        }
+        return TupleType([InterfaceRef("any")], True)
     # Known class -> Pointer(StructRef)
     if s in known_classes:
-        return {"_type": "Pointer", "target": {"_type": "StructRef", "name": s}}
+        return PointerType(StructRef(s))
     errors.append(SignatureError(lineno, col, "unknown type '" + s + "'"))
-    return {"_type": "InterfaceRef", "name": "any"}
+    return InterfaceRef("any")
 
 
 def _resolve_subscript(
@@ -419,7 +435,7 @@ def _resolve_subscript(
     errors: list[SignatureError],
     lineno: int,
     col: int,
-) -> dict[str, object]:
+) -> TypeNode:
     """Resolve a subscripted type like list[int], dict[str, int], etc."""
     args = _split_type_args(inner)
     if base == "list":
@@ -431,9 +447,9 @@ def _resolve_subscript(
                     "list requires 1 type argument, got " + str(len(args)),
                 )
             )
-            return {"_type": "InterfaceRef", "name": "any"}
+            return InterfaceRef("any")
         elem = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
-        return {"_type": "Slice", "element": elem}
+        return SliceType(elem)
     if base == "dict":
         if len(args) != 2:
             errors.append(
@@ -443,10 +459,10 @@ def _resolve_subscript(
                     "dict requires 2 type arguments, got " + str(len(args)),
                 )
             )
-            return {"_type": "InterfaceRef", "name": "any"}
+            return InterfaceRef("any")
         key = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
         val = py_type_to_type_dict(args[1], known_classes, errors, lineno, col)
-        return {"_type": "Map", "key": key, "value": val}
+        return MapType(key, val)
     if base == "set" or base == "frozenset":
         if len(args) != 1:
             errors.append(
@@ -456,27 +472,27 @@ def _resolve_subscript(
                     base + " requires 1 type argument, got " + str(len(args)),
                 )
             )
-            return {"_type": "InterfaceRef", "name": "any"}
+            return InterfaceRef("any")
         elem = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
-        return {"_type": "Set", "element": elem}
+        return SetType(elem)
     if base == "tuple":
         if len(args) == 0:
             errors.append(
                 SignatureError(lineno, col, "tuple requires at least 1 type argument")
             )
-            return {"_type": "InterfaceRef", "name": "any"}
+            return InterfaceRef("any")
         # Check for variadic tuple: tuple[T, ...]
         if len(args) == 2 and args[1] == "...":
             elem = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
-            return {"_type": "Tuple", "elements": [elem], "variadic": True}
-        elems: list[object] = []
+            return TupleType([elem], True)
+        elems: list[TypeNode] = []
         i = 0
         while i < len(args):
             elems.append(
                 py_type_to_type_dict(args[i], known_classes, errors, lineno, col)
             )
             i += 1
-        return {"_type": "Tuple", "elements": elems, "variadic": False}
+        return TupleType(elems, False)
     if base == "Optional":
         if len(args) != 1:
             errors.append(
@@ -486,9 +502,9 @@ def _resolve_subscript(
                     "Optional requires 1 type argument, got " + str(len(args)),
                 )
             )
-            return {"_type": "InterfaceRef", "name": "any"}
+            return InterfaceRef("any")
         inner_t = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
-        return {"_type": "Optional", "inner": inner_t}
+        return OptionalType(inner_t)
     if base == "Union":
         return _resolve_union(args, known_classes, errors, lineno, col)
     if base == "Callable":
@@ -500,10 +516,10 @@ def _resolve_subscript(
                     "Callable requires 2 type arguments, got " + str(len(args)),
                 )
             )
-            return {"_type": "InterfaceRef", "name": "any"}
+            return InterfaceRef("any")
         # First arg is a list of param types like [int, str]
         param_str = args[0].strip()
-        param_types: list[object] = []
+        param_types: list[TypeNode] = []
         if param_str.startswith("[") and param_str.endswith("]"):
             param_inner = param_str[1:-1].strip()
             if param_inner != "":
@@ -517,7 +533,7 @@ def _resolve_subscript(
                     )
                     j += 1
         ret = py_type_to_type_dict(args[1], known_classes, errors, lineno, col)
-        return {"_type": "FuncType", "params": param_types, "ret": ret}
+        return FuncType(param_types, ret)
     # Sequence/Iterable[T] -> Slice(T)
     if base == "Sequence" or base == "Iterable":
         if len(args) != 1:
@@ -528,9 +544,9 @@ def _resolve_subscript(
                     base + " requires 1 type argument, got " + str(len(args)),
                 )
             )
-            return {"_type": "InterfaceRef", "name": "any"}
+            return InterfaceRef("any")
         elem = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
-        return {"_type": "Slice", "element": elem}
+        return SliceType(elem)
     # Mapping[K, V] -> Map(K, V)
     if base == "Mapping":
         if len(args) != 2:
@@ -541,13 +557,13 @@ def _resolve_subscript(
                     "Mapping requires 2 type arguments, got " + str(len(args)),
                 )
             )
-            return {"_type": "InterfaceRef", "name": "any"}
+            return InterfaceRef("any")
         key = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
         val = py_type_to_type_dict(args[1], known_classes, errors, lineno, col)
-        return {"_type": "Map", "key": key, "value": val}
+        return MapType(key, val)
     # Unknown subscript base
     errors.append(SignatureError(lineno, col, "unknown type '" + base + "'"))
-    return {"_type": "InterfaceRef", "name": "any"}
+    return InterfaceRef("any")
 
 
 def _resolve_union(
@@ -556,7 +572,7 @@ def _resolve_union(
     errors: list[SignatureError],
     lineno: int,
     col: int,
-) -> dict[str, object]:
+) -> TypeNode:
     """Resolve a union type from its member strings."""
     # Deduplicate
     unique: list[str] = []
@@ -583,11 +599,11 @@ def _resolve_union(
         i += 1
     if has_none and len(non_none) == 1:
         inner = py_type_to_type_dict(non_none[0], known_classes, errors, lineno, col)
-        return {"_type": "Optional", "inner": inner}
+        return OptionalType(inner)
     if has_none and len(non_none) > 1:
         # Optional of a union — wrap the union in Optional
         inner = _resolve_non_none_union(non_none, known_classes, errors, lineno, col)
-        return {"_type": "Optional", "inner": inner}
+        return OptionalType(inner)
     # Non-None union -> InterfaceRef
     return _resolve_non_none_union(unique, known_classes, errors, lineno, col)
 
@@ -598,9 +614,9 @@ def _resolve_non_none_union(
     errors: list[SignatureError],
     lineno: int,
     col: int,
-) -> dict[str, object]:
+) -> TypeNode:
     """Resolve a union with no None members to an InterfaceRef."""
-    return {"_type": "InterfaceRef", "name": "any"}
+    return InterfaceRef("any")
 
 
 # ---------------------------------------------------------------------------
@@ -608,23 +624,23 @@ def _resolve_non_none_union(
 # ---------------------------------------------------------------------------
 
 
-def _lower_default(node: ASTNode) -> dict[str, object] | None:
-    """Lower a default value AST node to an expression dict."""
+def _lower_default(node: ASTNode) -> TypeNode | None:
+    """Lower a default value AST node to a literal TypeNode."""
     if not isinstance(node, dict):
         return None
     t = node.get("_type")
     if t == "Constant":
         v = node.get("value")
         if v is None:
-            return {"_type": "NilLit"}
+            return NilLit()
         if isinstance(v, bool):
-            return {"_type": "BoolLit", "value": v}
+            return BoolLit(v)
         if isinstance(v, int):
-            return {"_type": "IntLit", "value": v}
+            return IntLit(v)
         if isinstance(v, float):
-            return {"_type": "FloatLit", "value": v}
+            return FloatLit(v)
         if isinstance(v, str):
-            return {"_type": "StringLit", "value": v}
+            return StringLit(v)
     if t == "UnaryOp":
         op = node.get("op", {})
         if isinstance(op, dict) and op.get("_type") == "USub":
@@ -632,17 +648,17 @@ def _lower_default(node: ASTNode) -> dict[str, object] | None:
             if isinstance(operand, dict) and operand.get("_type") == "Constant":
                 v = operand.get("value")
                 if isinstance(v, int):
-                    return {"_type": "IntLit", "value": -v}
+                    return IntLit(-v)
                 if isinstance(v, float):
-                    return {"_type": "FloatLit", "value": -v}
+                    return FloatLit(-v)
     if t == "List":
-        return {"_type": "ListLit", "elements": []}
+        return ListLit([])
     if t == "Dict":
-        return {"_type": "MapLit", "entries": []}
+        return MapLit([])
     if t == "Set":
-        return {"_type": "SetLit", "elements": []}
+        return SetLit([])
     if t == "Tuple":
-        return {"_type": "TupleLit", "elements": []}
+        return TupleLit([])
     return None
 
 
@@ -726,18 +742,18 @@ def detect_mutated_params(node: ASTNode) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
-# Type dict helpers
+# TypeNode helpers
 # ---------------------------------------------------------------------------
 
 
-def _is_slice_type(typ: dict[str, object]) -> bool:
-    """Check if a type dict is a Slice (list) type."""
-    return typ.get("_type") == "Slice"
+def _is_slice_type(typ: TypeNode) -> bool:
+    """Check if a TypeNode is a Slice (list) type."""
+    return isinstance(typ, SliceType)
 
 
-def _wrap_pointer(typ: dict[str, object]) -> dict[str, object]:
+def _wrap_pointer(typ: TypeNode) -> TypeNode:
     """Wrap a type in a Pointer."""
-    return {"_type": "Pointer", "target": typ}
+    return PointerType(typ)
 
 
 # ---------------------------------------------------------------------------
@@ -782,7 +798,7 @@ def _make_param(
     # Wrap mutated list params in Pointer
     if param_name in mutated_params and _is_slice_type(typ):
         typ = _wrap_pointer(typ)
-    default_value: dict[str, object] | None = None
+    default_value: TypeNode | None = None
     if has_default and default_node is not None and isinstance(default_node, dict):
         default_value = _lower_default(default_node)
     return ParamInfo(
