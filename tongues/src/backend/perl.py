@@ -120,7 +120,7 @@ def _restore_name(name: str, annotations: Ann) -> str:
     """Restore original Python name from annotation, then apply target safety."""
     key = "name.original." + name
     if key in annotations:
-        return _safe_name(str(annotations[key]))
+        return _safe_name(annotations[key])
     return _safe_name(name)
 
 
@@ -578,7 +578,7 @@ class _PerlEmitter:
         if isinstance(stmt, TLetStmt):
             self.var_types[stmt.name] = stmt.typ
             safe = "$" + _restore_name(stmt.name, stmt.annotations)
-            unused = stmt.annotations.get("liveness.initial_value_unused", False)
+            unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if stmt.value is not None and not unused:
                 self._line("my " + safe + " = " + self._expr(stmt.value) + ";")
             else:
@@ -684,7 +684,7 @@ class _PerlEmitter:
         self._line(self._expr(expr) + ";")
 
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
-        unused_str = str(stmt.annotations.get("liveness.tuple_unused_indices", ""))
+        unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
         if unused_str:
             for s in unused_str.split(","):
@@ -945,7 +945,7 @@ class _PerlEmitter:
             cond = self._catch_condition(catch, err)
             if cond is None:
                 if not has_chain:
-                    unused = catch.annotations.get("liveness.catch_var_unused", False)
+                    unused = catch.annotations.get("liveness.catch_var_unused") == "true"
                     if not unused:
                         self._line(
                             "my $"
@@ -958,7 +958,7 @@ class _PerlEmitter:
                     return
                 self._line("} else {")
                 self.indent += 1
-                unused = catch.annotations.get("liveness.catch_var_unused", False)
+                unused = catch.annotations.get("liveness.catch_var_unused") == "true"
                 if not unused:
                     self._line(
                         "my $"
@@ -977,7 +977,7 @@ class _PerlEmitter:
             else:
                 self._line("} elsif (" + cond + ") {")
             self.indent += 1
-            unused = catch.annotations.get("liveness.catch_var_unused", False)
+            unused = catch.annotations.get("liveness.catch_var_unused") == "true"
             if not unused:
                 self._line(
                     "my $"
@@ -1031,7 +1031,7 @@ class _PerlEmitter:
             self._line("} else {")
             self.indent += 1
             if isinstance(pat, TPatternType):
-                unused = pat.annotations.get("liveness.match_var_unused", False)
+                unused = pat.annotations.get("liveness.match_var_unused") == "true"
                 if not unused:
                     self._line("my $" + _safe_name(pat.name) + " = " + expr + ";")
             self._emit_stmts(case.body)
@@ -1042,7 +1042,7 @@ class _PerlEmitter:
             cond = self._type_match_cond(pat.type_name, expr, has_nil_case)
             self._line(keyword + " (" + cond + ") {")
             self.indent += 1
-            unused = pat.annotations.get("liveness.match_var_unused", False)
+            unused = pat.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
                 self._line("my $" + _safe_name(pat.name) + " = " + expr + ";")
             self._emit_stmts(case.body)
@@ -1100,7 +1100,7 @@ class _PerlEmitter:
             self._line("} else {")
         self.indent += 1
         if default.name is not None:
-            unused = default.annotations.get("liveness.match_var_unused", False)
+            unused = default.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
                 self._line("my $" + _safe_name(default.name) + " = " + expr + ";")
         self._emit_stmts(default.body)
@@ -1224,7 +1224,7 @@ class _PerlEmitter:
 
     def _slice(self, expr: TSlice) -> str:
         obj = self._expr(expr.obj)
-        prov = str(expr.annotations.get("provenance", ""))
+        prov = expr.annotations.get("provenance", "")
         low = self._expr(expr.low)
         high = self._expr(expr.high)
         if prov == "open_start" and self._is_zero(expr.low):
@@ -1373,17 +1373,17 @@ class _PerlEmitter:
             for p in expr.params
             if p.typ is not None
         )
-        if isinstance(expr.body, list):
-            return self._fn_lit_block(expr.body, params)
-        if params:
-            return (
-                "sub { my ("
-                + params
-                + ") = @_; return "
-                + self._expr(expr.body)
-                + "; }"
-            )
-        return "sub { return " + self._expr(expr.body) + "; }"
+        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(expr.body[0], TExprStmt):
+            if params:
+                return (
+                    "sub { my ("
+                    + params
+                    + ") = @_; return "
+                    + self._expr(expr.body[0].expr)
+                    + "; }"
+                )
+            return "sub { return " + self._expr(expr.body[0].expr) + "; }"
+        return self._fn_lit_block(expr.body, params)
 
     def _fn_lit_block(self, stmts: list[TStmt], params: str) -> str:
         pad = "    " * (self.indent + 1)

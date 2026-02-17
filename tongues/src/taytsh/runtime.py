@@ -2147,24 +2147,18 @@ class TypeChecker:
         env.push_scope()
         for i, p in enumerate(lit.params):
             env.bind(p.name, sig.params[i], pos=p.pos)
+        is_arrow = lit.annotations.get("fn_lit.arrow") == "true"
+        if is_arrow and isinstance(lit.body[0], TExprStmt):
+            self._type_expr(lit.body[0].expr, env, expected=sig.ret, allow_capture=False)
+            return
         # allow_capture=False because we only bound params; outer locals are not present.
-        if isinstance(lit.body, list):
-            self._check_block(
-                lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False
+        self._check_block(
+            lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False
+        )
+        if not ty_eq(sig.ret, TY_VOID) and not self._block_always_returns(lit.body):
+            raise TaytshTypeError(
+                "function literal may fall off without returning", lit.pos
             )
-            if not ty_eq(sig.ret, TY_VOID) and not self._block_always_returns(lit.body):
-                raise TaytshTypeError(
-                    "function literal may fall off without returning", lit.pos
-                )
-        else:
-            body_ty = self._type_expr(
-                lit.body, env, expected=sig.ret, allow_capture=False
-            )
-            if not self._assignable(body_ty, sig.ret):
-                raise TaytshTypeError(
-                    f"cannot return '{body_ty.display()}' from function literal returning '{sig.ret.display()}'",
-                    lit.pos,
-                )
 
     def _type_call(
         self,
@@ -4576,19 +4570,20 @@ class Runtime:
         env.push_scope()
         for i, p in enumerate(lit.params):
             env.bind(p.name, sig.params[i], args[i])
-        if isinstance(lit.body, list):
-            try:
-                self._eval_block(lit.body, env, fn_ret=sig.ret)
-            except _Return as r:
-                if ty_eq(sig.ret, TY_VOID):
-                    return VNil()
-                if r.value is None:
-                    raise TaytshRuntimeFault("missing return value", lit.pos)
-                return r.value
+        is_arrow = lit.annotations.get("fn_lit.arrow") == "true"
+        if is_arrow and isinstance(lit.body[0], TExprStmt):
+            return self._eval_expr(lit.body[0].expr, env, expected=sig.ret)
+        try:
+            self._eval_block(lit.body, env, fn_ret=sig.ret)
+        except _Return as r:
             if ty_eq(sig.ret, TY_VOID):
                 return VNil()
-            raise TaytshRuntimeFault("function literal fell off", lit.pos)
-        return self._eval_expr(lit.body, env, expected=sig.ret)
+            if r.value is None:
+                raise TaytshRuntimeFault("missing return value", lit.pos)
+            return r.value
+        if ty_eq(sig.ret, TY_VOID):
+            return VNil()
+        raise TaytshRuntimeFault("function literal fell off", lit.pos)
 
     def _eval_call(
         self, call: TCall, env: _RuntimeEnv, *, expected: Ty | None

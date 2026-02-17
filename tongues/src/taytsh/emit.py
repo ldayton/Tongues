@@ -18,6 +18,7 @@ from .ast import (
     TDecl,
     TDefault,
     TEnumDecl,
+    TModuleItem,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -43,6 +44,7 @@ from .ast import (
     TOpAssignStmt,
     TOptionalType,
     TParam,
+    TPattern,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -151,7 +153,7 @@ class _Emitter:
 
     # ── Decls ───────────────────────────────────────────────
 
-    def _emit_decl(self, decl: TDecl) -> None:
+    def _emit_decl(self, decl: TModuleItem) -> None:
         if isinstance(decl, TFnDecl):
             self._emit_fn_decl(decl)
             return
@@ -385,7 +387,7 @@ class _Emitter:
 
     # ── Patterns / TypeNames ────────────────────────────────
 
-    def _render_pattern(self, pat: TPatternType | TPatternEnum | TPatternNil) -> str:
+    def _render_pattern(self, pat: TPattern) -> str:
         if isinstance(pat, TPatternNil):
             return "nil"
         if isinstance(pat, TPatternEnum):
@@ -590,10 +592,10 @@ class _Emitter:
         if isinstance(expr, TFnLit):
             params = self._render_param_list(expr.params)
             ret = self._render_type(expr.ret)
-            if isinstance(expr.body, list):
-                body = self._render_inline_block(expr.body)
-                return f"({params}) -> {ret} {body}"
-            return f"({params}) -> {ret} => {self._render_expr(expr.body, self._PREC_TERNARY)}"
+            if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(expr.body[0], TExprStmt):
+                return f"({params}) -> {ret} => {self._render_expr(expr.body[0].expr, self._PREC_TERNARY)}"
+            body = self._render_inline_block(expr.body)
+            return f"({params}) -> {ret} {body}"
 
         raise TypeError("unhandled expr type")
 

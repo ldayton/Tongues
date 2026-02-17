@@ -444,11 +444,11 @@ def _walk_expr(expr: TExpr, ctx: _ScopeCtx) -> None:
             # Determine effective type at this use site
             effective_type = ctx.narrowings.get(name, info.declared_type)
             if isinstance(effective_type, InterfaceT):
-                expr.annotations["scope.is_interface"] = True
+                expr.annotations["scope.is_interface"] = "true"
             if not type_eq(effective_type, info.declared_type):
                 expr.annotations["scope.narrowed_type"] = type_name(effective_type)
         elif name in ctx.top_level_fns and name not in BUILTIN_NAMES:
-            expr.annotations["scope.is_function_ref"] = True
+            expr.annotations["scope.is_function_ref"] = "true"
         return
     if isinstance(expr, TBinaryOp):
         _walk_expr(expr.left, ctx)
@@ -504,10 +504,7 @@ def _analyze_fn_lit(expr: TFnLit, parent_ctx: _ScopeCtx) -> None:
         if p.typ is not None:
             pt = parent_ctx.checker.resolve_type(p.typ)
             ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
-    if isinstance(expr.body, list):
-        _walk_stmts(expr.body, ctx)
-    else:
-        _walk_expr(expr.body, ctx)
+    _walk_stmts(expr.body, ctx)
     _stamp_bindings(ctx)
 
 
@@ -996,14 +993,14 @@ def _stamp_bindings(ctx: _ScopeCtx) -> None:
         if info.binder_name is not None:
             # For-binder: composite keys on the TForStmt node
             bname = info.binder_name
-            node.annotations[f"scope.binder.{bname}.is_reassigned"] = info.reassigned
-            node.annotations[f"scope.binder.{bname}.is_const"] = not info.reassigned
+            node.annotations[f"scope.binder.{bname}.is_reassigned"] = "true" if info.reassigned else "false"
+            node.annotations[f"scope.binder.{bname}.is_const"] = "false" if info.reassigned else "true"
         else:
-            node.annotations["scope.is_reassigned"] = info.reassigned
-            node.annotations["scope.is_const"] = not info.reassigned
+            node.annotations["scope.is_reassigned"] = "true" if info.reassigned else "false"
+            node.annotations["scope.is_const"] = "false" if info.reassigned else "true"
         if info.is_param:
-            node.annotations["scope.is_modified"] = info.modified
-            node.annotations["scope.is_unused"] = not info.used
+            node.annotations["scope.is_modified"] = "true" if info.modified else "false"
+            node.annotations["scope.is_unused"] = "false" if info.used else "true"
 
 
 # ============================================================

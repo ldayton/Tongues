@@ -115,7 +115,7 @@ class _StringsCtx:
     list_string_types: dict[str, Type]
     list_string_sources: dict[str, list[_Source]]
     decl_order: list[str]
-    loop_nodes: list[TForStmt | TWhileStmt]
+    loop_nodes: list[TStmt]
 
 
 def _join_content(a: str | None, b: str) -> str:
@@ -800,10 +800,7 @@ def _walk_expr_usage(expr: TExpr, ctx: _StringsCtx) -> None:
         for e in expr.elements:
             _walk_expr_usage(e, ctx)
     elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            _walk_stmts(expr.body, ctx, set())
-        else:
-            _walk_expr_usage(expr.body, ctx)
+        _walk_stmts(expr.body, ctx, set())
 
 
 def _compute_builder(
@@ -835,7 +832,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
             _register_string_binding(
                 ctx, stmt.name, stmt, declared_t, base_unknown=False
             )
-            dead = bool(stmt.annotations.get("liveness.initial_value_unused", False))
+            dead = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if not dead:
                 if stmt.value is None:
                     _add_string_source(ctx, stmt.name, _Source(kind="zero"))
@@ -1074,14 +1071,14 @@ def _stamp_bindings(ctx: _StringsCtx) -> None:
         if info.binder_name is not None:
             b = info.binder_name
             info.node.annotations[f"strings.binder.{b}.content"] = info.content
-            info.node.annotations[f"strings.binder.{b}.indexed"] = info.indexed
-            info.node.annotations[f"strings.binder.{b}.iterated"] = info.iterated
-            info.node.annotations[f"strings.binder.{b}.len_called"] = info.len_called
+            info.node.annotations[f"strings.binder.{b}.indexed"] = "true" if info.indexed else "false"
+            info.node.annotations[f"strings.binder.{b}.iterated"] = "true" if info.iterated else "false"
+            info.node.annotations[f"strings.binder.{b}.len_called"] = "true" if info.len_called else "false"
             continue
         info.node.annotations["strings.content"] = info.content
-        info.node.annotations["strings.indexed"] = info.indexed
-        info.node.annotations["strings.iterated"] = info.iterated
-        info.node.annotations["strings.len_called"] = info.len_called
+        info.node.annotations["strings.indexed"] = "true" if info.indexed else "false"
+        info.node.annotations["strings.iterated"] = "true" if info.iterated else "false"
+        info.node.annotations["strings.len_called"] = "true" if info.len_called else "false"
 
 
 def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) -> None:

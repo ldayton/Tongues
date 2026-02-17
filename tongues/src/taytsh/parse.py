@@ -43,6 +43,7 @@ from .ast import (
     TOpAssignStmt,
     TOptionalType,
     TParam,
+    TPattern,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -178,10 +179,10 @@ class Parser:
 
     # ── Annotations ───────────────────────────────────────────
 
-    def _parse_ann_entries(self) -> dict[str, bool | int | str | tuple[int, int]]:
+    def _parse_ann_entries(self) -> dict[str, str]:
         """Parse '[' AnnEntry ( ',' AnnEntry )* ']' and return entries dict."""
         self.expect("[")
-        entries: dict[str, bool | int | str | tuple[int, int]] = {}
+        entries: dict[str, str] = {}
         if self.at("]"):
             raise self.error("annotation must have at least one entry")
         self._parse_ann_entry(entries)
@@ -191,9 +192,7 @@ class Parser:
         self.expect("]")
         return entries
 
-    def _parse_ann_entry(
-        self, entries: dict[str, bool | int | str | tuple[int, int]]
-    ) -> None:
+    def _parse_ann_entry(self, entries: dict[str, str]) -> None:
         """Parse STRING ( '=' AnnValue )? into entries."""
         tok = self.current()
         if tok.type != TK_STRING:
@@ -204,9 +203,9 @@ class Parser:
             self.advance()
             entries[key] = self._parse_ann_value()
         else:
-            entries[key] = True
+            entries[key] = "true"
 
-    def _parse_ann_value(self) -> bool | int | str | tuple[int, int]:
+    def _parse_ann_value(self) -> str:
         """Parse AnnValue: STRING | INT | 'true' | 'false' | '(' INT ',' INT ')'."""
         tok = self.current()
         if tok.type == TK_STRING:
@@ -214,13 +213,13 @@ class Parser:
             return tok.value
         if tok.type == TK_INT:
             self.advance()
-            return int(tok.value)
+            return tok.value
         if tok.value == "true":
             self.advance()
-            return True
+            return "true"
         if tok.value == "false":
             self.advance()
-            return False
+            return "false"
         if tok.value == "(":
             self.advance()
             a_tok = self.current()
@@ -233,18 +232,13 @@ class Parser:
                 raise self.error("expected integer in annotation tuple")
             self.advance()
             self.expect(")")
-            return (int(a_tok.value), int(b_tok.value))
+            return a_tok.value + "," + b_tok.value
         raise self.error("expected annotation value, got '" + tok.value + "'")
 
-    def parse_annotations(
-        self,
-    ) -> tuple[
-        dict[str, bool | int | str | tuple[int, int]],
-        dict[str, bool | int | str | tuple[int, int]],
-    ]:
+    def parse_annotations(self) -> tuple[dict[str, str], dict[str, str]]:
         """Parse zero or more @[...] or @@[...]. Returns (advisory, semantic)."""
-        advisory: dict[str, bool | int | str | tuple[int, int]] = {}
-        semantic: dict[str, bool | int | str | tuple[int, int]] = {}
+        advisory: dict[str, str] = {}
+        semantic: dict[str, str] = {}
         while self.at("@"):
             if self.peek(1).value == "@":
                 self.advance()
@@ -268,9 +262,9 @@ class Parser:
             advisory, semantic = self.parse_annotations()
             decl = self.parse_decl()
             if not seen_decl:
-                if semantic.get("strict_math"):
+                if semantic.get("strict_math") == "true":
                     strict_math = True
-                if semantic.get("strict_tostring"):
+                if semantic.get("strict_tostring") == "true":
                     strict_tostring = True
                 semantic = {}
                 seen_decl = True
@@ -474,7 +468,7 @@ class Parser:
 
     def parse_stmt(self) -> TStmt:
         advisory, semantic = self.parse_annotations()
-        ann: dict[str, bool | int | str | tuple[int, int]] = {**advisory, **semantic}
+        ann: dict[str, str] = {**advisory, **semantic}
         tok = self.current()
         if tok.value == "let":
             stmt: TStmt = self.parse_let_stmt()
@@ -549,7 +543,7 @@ class Parser:
             second_name = self.expect_ident()
             binding.append(second_name.value)
         self.expect("in")
-        iterable: TExpr | TRange
+        iterable: TExpr
         if self.at("range"):
             iterable = self.parse_range()
         else:
@@ -566,7 +560,7 @@ class Parser:
             self.advance()
             args.append(self.parse_expr())
         self.expect(")")
-        return TRange(pos, args)
+        return TRange(pos, args, {})
 
     def parse_match_stmt(self) -> TMatchStmt:
         pos = self._pos()
@@ -597,7 +591,7 @@ class Parser:
         body = self.parse_block()
         return TMatchCase(pos, pattern, body, {})
 
-    def parse_pattern(self) -> TPatternType | TPatternEnum | TPatternNil:
+    def parse_pattern(self) -> TPattern:
         pos = self._pos()
         if self.at("nil"):
             self.advance()
@@ -827,7 +821,7 @@ class Parser:
     def parse_postfix(self) -> TExpr:
         """Postfix = Annotation* Primary ( Suffix )*"""
         advisory, semantic = self.parse_annotations()
-        ann: dict[str, bool | int | str | tuple[int, int]] = {**advisory, **semantic}
+        ann: dict[str, str] = {**advisory, **semantic}
         expr = self.parse_primary()
         while True:
             if self.at("."):
@@ -1009,8 +1003,8 @@ class Parser:
         self.expect("->")
         ret = self.parse_type()
         if self.at("{"):
-            body: list[TStmt] | TExpr = self.parse_block()
+            body = self.parse_block()
             return TFnLit(pos, params, ret, body, {})
         self.expect("=>")
-        body = self.parse_expr()
-        return TFnLit(pos, params, ret, body, {})
+        expr = self.parse_expr()
+        return TFnLit(pos, params, ret, [TExprStmt(pos, expr, {})], {"fn_lit.arrow": "true"})

@@ -11,7 +11,7 @@ from ..frontend.types import JsonValue, JStr, JInt, JFloat, JBool, JNull, JList,
 # Annotation type alias (not a runtime construct, just for brevity)
 # ============================================================
 
-Ann = dict[str, bool | int | str | tuple[int, int]]
+Ann = dict[str, str]
 
 
 # ============================================================
@@ -104,15 +104,25 @@ class TOptionalType(TType):
 
 
 # ============================================================
+# MODULE ITEM BASE
+# ============================================================
+
+
+@dataclass
+class TModuleItem:
+    """Base for top-level module items (declarations and statements)."""
+
+    pos: Pos
+
+
+# ============================================================
 # DECLARATIONS
 # ============================================================
 
 
 @dataclass
-class TDecl:
+class TDecl(TModuleItem):
     """Base for all declarations."""
-
-    pos: Pos
 
 
 @dataclass
@@ -177,7 +187,7 @@ class TEnumDecl(TDecl):
 class TModule:
     """Top-level module — list of declarations."""
 
-    decls: list[TDecl | TStmt]
+    decls: list[TModuleItem]
     strict_math: bool = False
     strict_tostring: bool = False
 
@@ -188,10 +198,8 @@ class TModule:
 
 
 @dataclass
-class TStmt:
+class TStmt(TModuleItem):
     """Base for all statements."""
-
-    pos: Pos
 
 
 @dataclass
@@ -290,47 +298,42 @@ class TWhileStmt(TStmt):
 
 
 @dataclass
-class TRange:
-    """range(args) — 1 to 3 args."""
-
-    pos: Pos
-    args: list[TExpr]
-
-
-@dataclass
 class TForStmt(TStmt):
     """for binding in iterable/range { ... }."""
 
     binding: list[str]
-    iterable: TExpr | TRange
+    iterable: TExpr
     body: list[TStmt]
     annotations: Ann
 
 
 @dataclass
-class TPatternType:
-    """case name: TypeName."""
+class TPattern:
+    """Base for all match patterns."""
 
     pos: Pos
+
+
+@dataclass
+class TPatternType(TPattern):
+    """case name: TypeName."""
+
     name: str
     type_name: TType
     annotations: Ann
 
 
 @dataclass
-class TPatternEnum:
+class TPatternEnum(TPattern):
     """case EnumName.Variant."""
 
-    pos: Pos
     enum_name: str
     variant: str
 
 
 @dataclass
-class TPatternNil:
+class TPatternNil(TPattern):
     """case nil."""
-
-    pos: Pos
 
 
 @dataclass
@@ -338,7 +341,7 @@ class TMatchCase:
     """case Pattern { ... }."""
 
     pos: Pos
-    pattern: TPatternType | TPatternEnum | TPatternNil
+    pattern: TPattern
     body: list[TStmt]
     annotations: Ann
 
@@ -394,6 +397,14 @@ class TExpr:
     """Base for all expressions."""
 
     pos: Pos
+
+
+@dataclass
+class TRange(TExpr):
+    """range(args) — 1 to 3 args."""
+
+    args: list[TExpr]
+    annotations: Ann
 
 
 @dataclass
@@ -588,11 +599,11 @@ class TTupleLit(TExpr):
 
 @dataclass
 class TFnLit(TExpr):
-    """(params) -> RetType { body } or (params) -> RetType => expr."""
+    """(params) -> RetType { body }."""
 
     params: list[TParam]
     ret: TType
-    body: list[TStmt] | TExpr
+    body: list[TStmt]
     annotations: Ann
 
 
@@ -679,10 +690,7 @@ def _sa_collect_vars_expr(
         for e in expr.elements:
             _sa_collect_vars_expr(e, result, pfx, plen)
     elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            _sa_collect_vars_stmts(expr.body, result, pfx, plen)
-        else:
-            _sa_collect_vars_expr(expr.body, result, pfx, plen)
+        _sa_collect_vars_stmts(expr.body, result, pfx, plen)
 
 
 def _sa_collect_vars_stmt(
@@ -774,30 +782,9 @@ def _sa_stmt_type_name(stmt: TStmt) -> str:
     return "TStmt"
 
 
-def _wrap_value(
-    v: bool | int | float | str | tuple[int, int] | bytes | None,
-) -> JsonValue:
-    """Wrap a raw Python value as a JsonValue."""
-    if v is None:
-        return JNull()
-    if isinstance(v, bool):
-        return JBool(v)
-    if isinstance(v, int):
-        return JInt(v)
-    if isinstance(v, float):
-        return JFloat(v)
-    if isinstance(v, str):
-        return JStr(v)
-    if isinstance(v, bytes):
-        items: list[JsonValue] = []
-        i = 0
-        while i < len(v):
-            items.append(JInt(v[i]))
-            i += 1
-        return JList(items)
-    if isinstance(v, tuple):
-        return JList([JInt(v[0]), JInt(v[1])])
-    return JNull()
+def _wrap_value(v: str) -> JsonValue:
+    """Wrap an annotation string value as a JsonValue."""
+    return JStr(v)
 
 
 def _wrap_ann(ann: Ann) -> JsonValue:
@@ -806,7 +793,7 @@ def _wrap_ann(ann: Ann) -> JsonValue:
     keys = list(ann.keys())
     i = 0
     while i < len(keys):
-        d[keys[i]] = _wrap_value(ann[keys[i]])
+        d[keys[i]] = JStr(ann[keys[i]])
         i += 1
     return JDict(d)
 

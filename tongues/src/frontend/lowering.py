@@ -44,6 +44,7 @@ from ..taytsh.ast import (
     TMatchCase,
     TMatchStmt,
     TModule,
+    TModuleItem,
     TNilLit,
     TOpAssignStmt,
     TOptionalType,
@@ -338,7 +339,7 @@ def _expand_genexpr_to_set_add(
                 if isinstance(ra, dict):
                     range_lowered.append(_lower_expr(ra, env, ctx))
                 ri += 1
-            iter_expr: TExpr | TRange = TRange(_P0, range_lowered)
+            iter_expr: TExpr = TRange(_P0, range_lowered, {})
         else:
             iter_expr = _lower_expr(iter_node, env, ctx)
     else:
@@ -3637,7 +3638,7 @@ def _lower_for_range(
             range_args.append(_lower_expr(a, env, ctx))
         i += 1
     body_stmts = _lower_stmts(body, env, ctx)
-    return [TForStmt(_P0, binding, TRange(_P0, range_args), body_stmts, b_ann)]
+    return [TForStmt(_P0, binding, TRange(_P0, range_args, {}), body_stmts, b_ann)]
 
 
 def _lower_for_enumerate(
@@ -4038,9 +4039,9 @@ def _build_struct(
     return TStructDecl(_P0, name, parent, fields, methods, _EMPTY_ANN)
 
 
-def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TDecl | TStmt]:
+def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
     """Extract module-level and class-level constants."""
-    result: list[TDecl | TStmt] = []
+    result: list[TModuleItem] = []
     i = 0
     while i < len(body):
         node = body[i]
@@ -4134,7 +4135,7 @@ def _is_name_main_check(node: ASTNode) -> bool:
 def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
     """Build a TModule from the top-level AST."""
     body = get_nodes(tree, "body")
-    decls: list[TDecl | TStmt] = []
+    decls: list[TModuleItem] = []
     entry_point_func = _detect_entry_point(body)
     # Build constants first
     constants = _build_constants(body, ctx)

@@ -670,26 +670,26 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
     if node_type == "FunctionDef":
         body_val = node.get("body")
         if isinstance(body_val, JList):
-            seeds.append(body_val.items)
+            seeds.append(body_val)
         args_val = node.get("args")
         if isinstance(args_val, JDict):
-            seeds.append(args_val.entries)
+            seeds.append(args_val)
         returns_val = node.get("returns")
         if returns_val is not None and not isinstance(returns_val, JNull):
             seeds.append(returns_val)
         deco_val = node.get("decorator_list")
         if isinstance(deco_val, JList):
-            seeds.append(deco_val.items)
+            seeds.append(deco_val)
     elif node_type == "ClassDef":
         body_val = node.get("body")
         if isinstance(body_val, JList):
-            seeds.append(body_val.items)
+            seeds.append(body_val)
         bases_val = node.get("bases")
         if isinstance(bases_val, JList):
-            seeds.append(bases_val.items)
+            seeds.append(bases_val)
         deco_val = node.get("decorator_list")
         if isinstance(deco_val, JList):
-            seeds.append(deco_val.items)
+            seeds.append(deco_val)
     elif node_type == "Assign":
         value_val = node.get("value")
         if value_val is not None and not isinstance(value_val, JNull):
@@ -706,30 +706,23 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
     while wi < len(work):
         item = work[wi]
         if isinstance(item, JDict):
-            item = item.entries
-        if isinstance(item, JList):
-            item = item.items
-        if isinstance(item, dict):
-            if get_str(item, "_type") == "Name":
-                nid = get_str(item, "id")
+            entries = item.entries
+            if get_str(entries, "_type") == "Name":
+                nid = get_str(entries, "id")
                 if nid != "":
                     refs.add(nid)
-            keys = list(item.keys())
+            keys = list(entries.keys())
             ki = 0
             while ki < len(keys):
-                val = item[keys[ki]]
+                val = entries[keys[ki]]
                 if isinstance(val, JDict) or isinstance(val, JList):
                     work.append(val)
-                elif isinstance(val, dict) or isinstance(val, list):
-                    work.append(val)
                 ki += 1
-        elif isinstance(item, list):
+        elif isinstance(item, JList):
             li = 0
-            while li < len(item):
-                child = item[li]
+            while li < len(item.items):
+                child = item.items[li]
                 if isinstance(child, JDict) or isinstance(child, JList):
-                    work.append(child)
-                elif isinstance(child, dict) or isinstance(child, list):
                     work.append(child)
                 li += 1
         wi += 1
@@ -934,35 +927,28 @@ def _rewrite_names(node: ASTNode, rename_map: dict[str, str]) -> None:
     while wi < len(work):
         item = work[wi]
         if isinstance(item, JDict):
-            item = item.entries
-        if isinstance(item, JList):
-            item = item.items
-        if isinstance(item, dict):
-            ntype = get_str(item, "_type")
+            entries = item.entries
+            ntype = get_str(entries, "_type")
             if ntype == "Name":
-                nid = get_str(item, "id")
+                nid = get_str(entries, "id")
                 if nid != "" and nid in rename_map:
-                    item["id"] = JStr(rename_map[nid])
+                    entries["id"] = JStr(rename_map[nid])
             elif ntype == "FunctionDef" or ntype == "ClassDef":
-                def_name = get_str(item, "name")
+                def_name = get_str(entries, "name")
                 if def_name != "" and def_name in rename_map:
-                    item["name"] = JStr(rename_map[def_name])
-            keys = list(item.keys())
+                    entries["name"] = JStr(rename_map[def_name])
+            keys = list(entries.keys())
             ki = 0
             while ki < len(keys):
-                val = item[keys[ki]]
+                val = entries[keys[ki]]
                 if isinstance(val, JDict) or isinstance(val, JList):
                     work.append(val)
-                elif isinstance(val, dict) or isinstance(val, list):
-                    work.append(val)
                 ki += 1
-        elif isinstance(item, list):
+        elif isinstance(item, JList):
             li = 0
-            while li < len(item):
-                child = item[li]
+            while li < len(item.items):
+                child = item.items[li]
                 if isinstance(child, JDict) or isinstance(child, JList):
-                    work.append(child)
-                elif isinstance(child, dict) or isinstance(child, list):
                     work.append(child)
                 li += 1
         wi += 1
@@ -980,24 +966,18 @@ def _rewrite_module_attrs(
     while wi < len(work):
         item = work[wi]
         if isinstance(item, JDict):
-            item = item.entries
-        if isinstance(item, JList):
-            item = item.items
-        if isinstance(item, dict):
-            keys = list(item.keys())
+            entries = item.entries
+            keys = list(entries.keys())
             ki = 0
             while ki < len(keys):
-                val = item[keys[ki]]
+                val = entries[keys[ki]]
                 if isinstance(val, JDict):
-                    val = val.entries
-                if isinstance(val, dict):
-                    if get_str(val, "_type") == "Attribute":
-                        value_node_v = val.get("value")
+                    val_entries = val.entries
+                    if get_str(val_entries, "_type") == "Attribute":
+                        value_node_v = val_entries.get("value")
                         value_node: ASTNode | None = None
                         if isinstance(value_node_v, JDict):
                             value_node = value_node_v.entries
-                        elif isinstance(value_node_v, dict):
-                            value_node = value_node_v
                         if (
                             value_node is not None
                             and get_str(value_node, "_type") == "Name"
@@ -1005,37 +985,40 @@ def _rewrite_module_attrs(
                             mod_name = get_str(value_node, "id")
                             if mod_name != "" and mod_name in module_bindings:
                                 target_file = module_bindings[mod_name]
-                                attr = get_str(val, "attr")
+                                attr = get_str(val_entries, "attr")
                                 target_name_map = file_name_map.get(target_file)
                                 if (
                                     target_name_map is not None
                                     and attr in target_name_map
                                 ):
                                     final_name = target_name_map[attr]
-                                    lineno = val.get("lineno")
-                                    col = val.get("col_offset")
-                                    end_lineno = val.get("end_lineno")
-                                    end_col = val.get("end_col_offset")
-                                    source_file = val.get("_source_file")
-                                    val.clear()
-                                    val["_type"] = JStr("Name")
-                                    val["id"] = JStr(final_name)
-                                    val["ctx"] = JDict({"_type": JStr("Load")})
+                                    lineno = val_entries.get("lineno")
+                                    col = val_entries.get("col_offset")
+                                    end_lineno = val_entries.get("end_lineno")
+                                    end_col = val_entries.get("end_col_offset")
+                                    source_file = val_entries.get("_source_file")
+                                    val_entries.clear()
+                                    val_entries["_type"] = JStr("Name")
+                                    val_entries["id"] = JStr(final_name)
+                                    val_entries["ctx"] = JDict(
+                                        {"_type": JStr("Load")}
+                                    )
                                     if lineno is not None:
-                                        val["lineno"] = lineno
+                                        val_entries["lineno"] = lineno
                                     if col is not None:
-                                        val["col_offset"] = col
+                                        val_entries["col_offset"] = col
                                     if end_lineno is not None:
-                                        val["end_lineno"] = end_lineno
+                                        val_entries["end_lineno"] = end_lineno
                                     if end_col is not None:
-                                        val["end_col_offset"] = end_col
-                                    if source_file is not None and not isinstance(
-                                        source_file, JNull
+                                        val_entries["end_col_offset"] = end_col
+                                    if (
+                                        source_file is not None
+                                        and not isinstance(source_file, JNull)
                                     ):
-                                        val["_source_file"] = source_file
+                                        val_entries["_source_file"] = source_file
                                 elif target_name_map is not None:
-                                    lineno_i = get_int(val, "lineno")
-                                    col_i = get_int(val, "col_offset")
+                                    lineno_i = get_int(val_entries, "lineno")
+                                    col_i = get_int(val_entries, "col_offset")
                                     errors.append(
                                         str(lineno_i)
                                         + ":"
@@ -1056,17 +1039,13 @@ def _rewrite_module_attrs(
                     else:
                         work.append(val)
                 elif isinstance(val, JList):
-                    work.append(val.items)
-                elif isinstance(val, list):
                     work.append(val)
                 ki += 1
-        elif isinstance(item, list):
+        elif isinstance(item, JList):
             li = 0
-            while li < len(item):
-                child = item[li]
+            while li < len(item.items):
+                child = item.items[li]
                 if isinstance(child, JDict) or isinstance(child, JList):
-                    work.append(child)
-                elif isinstance(child, dict) or isinstance(child, list):
                     work.append(child)
                 li += 1
         wi += 1
@@ -1080,28 +1059,21 @@ def _tag_source_file(node: ASTNode, source_file: str) -> None:
     while wi < len(work):
         item = work[wi]
         if isinstance(item, JDict):
-            item = item.entries
-        if isinstance(item, JList):
-            item = item.items
-        if isinstance(item, dict):
-            if has_key(item, "_type"):
-                item["_source_file"] = JStr(source_file)
-            keys = list(item.keys())
+            entries = item.entries
+            if has_key(entries, "_type"):
+                entries["_source_file"] = JStr(source_file)
+            keys = list(entries.keys())
             ki = 0
             while ki < len(keys):
-                val = item[keys[ki]]
+                val = entries[keys[ki]]
                 if isinstance(val, JDict) or isinstance(val, JList):
                     work.append(val)
-                elif isinstance(val, dict) or isinstance(val, list):
-                    work.append(val)
                 ki += 1
-        elif isinstance(item, list):
+        elif isinstance(item, JList):
             li = 0
-            while li < len(item):
-                child = item[li]
+            while li < len(item.items):
+                child = item.items[li]
                 if isinstance(child, JDict) or isinstance(child, JList):
-                    work.append(child)
-                elif isinstance(child, dict) or isinstance(child, list):
                     work.append(child)
                 li += 1
         wi += 1

@@ -2304,13 +2304,8 @@ class Checker:
             if p.typ is not None:
                 pt = self.resolve_type(p.typ)
                 self.declare(p.name, pt, p.pos)
-        if isinstance(expr.body, list):
-            # Check for captures before checking body
-            self.check_closure_captures(expr.body, param_names, expr.pos)
-            self.check_stmts(expr.body)
-        else:
-            self.check_closure_captures_expr(expr.body, param_names, expr.pos)
-            self.check_expr(expr.body, ret)
+        self.check_closure_captures(expr.body, param_names, expr.pos)
+        self.check_stmts(expr.body)
         self.exit_scope()
         self.current_fn_ret = old_ret
         return FnT(kind="fn", params=params, ret=ret)
@@ -2385,11 +2380,8 @@ class Checker:
             inner_params: set[str] = set(param_names)
             for p in expr.params:
                 inner_params.add(p.name)
-            if isinstance(expr.body, list):
-                for s in expr.body:
-                    self._scan_stmt_for_captures(s, inner_params, pos)
-            else:
-                self._scan_expr_for_captures(expr.body, inner_params, pos)
+            for s in expr.body:
+                self._scan_stmt_for_captures(s, inner_params, pos)
 
     def _scan_stmt_for_captures(
         self, stmt: TStmt, param_names: set[str], pos: Pos
