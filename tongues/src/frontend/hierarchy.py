@@ -9,10 +9,6 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 from __future__ import annotations
 
 
-# Type alias for AST dict nodes
-ASTNode = dict[str, object]
-
-
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------

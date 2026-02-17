@@ -31,11 +31,23 @@ from .types import (
     SetLit,
     TupleLit,
     typenode_to_dict,
+    JsonValue,
+    JStr,
+    JInt,
+    JBool,
+    JFloat,
+    JDict,
+    JList,
+    JNull,
+    ASTNode,
+    get_str,
+    get_int,
+    get_bool,
+    get_node,
+    get_nodes,
+    get_jlist,
+    has_key,
 )
-
-
-# Type alias for AST dict nodes
-ASTNode = dict[str, object]
 
 
 # ---------------------------------------------------------------------------
@@ -191,11 +203,13 @@ class SignatureResult:
 # ---------------------------------------------------------------------------
 
 
-def _is_type(node: object, type_names: list[str]) -> bool:
+def _is_type(node: JsonValue | ASTNode, type_names: list[str]) -> bool:
     """Check if node is one of the given AST types."""
+    if isinstance(node, JDict):
+        node = node.entries
     if not isinstance(node, dict):
         return False
-    t = node.get("_type")
+    t = get_str(node, "_type")
     i = 0
     while i < len(type_names):
         if t == type_names[i]:
@@ -213,14 +227,14 @@ def _dict_walk(node: ASTNode) -> list[ASTNode]:
         key = keys[i]
         if not key.startswith("_"):
             value = node[key]
-            if isinstance(value, dict) and "_type" in value:
-                result = result + _dict_walk(value)
-            elif isinstance(value, list):
+            if isinstance(value, JDict) and has_key(value.entries, "_type"):
+                result = result + _dict_walk(value.entries)
+            elif isinstance(value, JList):
                 j = 0
-                while j < len(value):
-                    item = value[j]
-                    if isinstance(item, dict) and "_type" in item:
-                        result = result + _dict_walk(item)
+                while j < len(value.items):
+                    item = value.items[j]
+                    if isinstance(item, JDict) and has_key(item.entries, "_type"):
+                        result = result + _dict_walk(item.entries)
                     j += 1
         i += 1
     return result
@@ -231,30 +245,36 @@ def _dict_walk(node: ASTNode) -> list[ASTNode]:
 # ---------------------------------------------------------------------------
 
 
-def annotation_to_str(node: object) -> str:
+def annotation_to_str(node: JsonValue | ASTNode | None) -> str:
     """Convert a type annotation AST node to its string representation."""
     if node is None:
         return ""
+    if isinstance(node, JDict):
+        node = node.entries
+    if isinstance(node, JNull):
+        return ""
     if not isinstance(node, dict):
         return ""
-    node_t = node.get("_type")
+    node_t = get_str(node, "_type")
     if node_t == "Name":
-        v = node.get("id", "")
-        if isinstance(v, str):
-            return v
-        return ""
+        return get_str(node, "id")
     if node_t == "Constant":
         v = node.get("value")
-        if v is None:
+        if v is None or isinstance(v, JNull):
             return "None"
-        s_v = str(v)
-        if s_v == "Ellipsis":
-            return "..."
-        return s_v
+        if isinstance(v, JStr):
+            if v.value == "Ellipsis":
+                return "..."
+            return v.value
+        if isinstance(v, JInt):
+            return str(v.value)
+        if isinstance(v, JFloat):
+            return str(v.value)
+        if isinstance(v, JBool):
+            return str(v.value)
+        return ""
     if node_t == "List":
-        elts = node.get("elts", [])
-        if not isinstance(elts, list):
-            return "[]"
+        elts = get_nodes(node, "elts")
         parts: list[str] = []
         i = 0
         while i < len(elts):
@@ -262,12 +282,11 @@ def annotation_to_str(node: object) -> str:
             i += 1
         return "[" + ", ".join(parts) + "]"
     if node_t == "Subscript":
-        base = annotation_to_str(node.get("value"))
-        slc = node.get("slice", {})
-        if isinstance(slc, dict) and slc.get("_type") == "Tuple":
-            elts = slc.get("elts", [])
-            if not isinstance(elts, list):
-                return base + "[]"
+        value_node = get_node(node, "value")
+        base = annotation_to_str(value_node)
+        slc = get_node(node, "slice")
+        if get_str(slc, "_type") == "Tuple":
+            elts = get_nodes(slc, "elts")
             parts: list[str] = []
             i = 0
             while i < len(elts):
@@ -276,16 +295,15 @@ def annotation_to_str(node: object) -> str:
             return base + "[" + ", ".join(parts) + "]"
         return base + "[" + annotation_to_str(slc) + "]"
     if node_t == "BinOp":
-        op = node.get("op", {})
-        if isinstance(op, dict) and op.get("_type") == "BitOr":
-            left = annotation_to_str(node.get("left"))
-            right = annotation_to_str(node.get("right"))
+        op = get_node(node, "op")
+        if get_str(op, "_type") == "BitOr":
+            left_node = get_node(node, "left")
+            right_node = get_node(node, "right")
+            left = annotation_to_str(left_node)
+            right = annotation_to_str(right_node)
             return left + " | " + right
     if node_t == "Attribute":
-        v = node.get("attr", "")
-        if isinstance(v, str):
-            return v
-        return ""
+        return get_str(node, "attr")
     return ""
 
 
@@ -381,7 +399,6 @@ _PRIM_MAP: dict[str, str] = {
     "float": "float",
     "byte": "byte",
     "None": "void",
-    "object": "any",
 }
 
 
@@ -416,6 +433,9 @@ def py_type_to_type_dict(
     # Primitives
     if s in _PRIM_MAP:
         return PrimitiveType(_PRIM_MAP[s])
+    # object -> any interface
+    if s == "object":
+        return InterfaceRef("any")
     # bytes -> Slice(byte)
     if s == "bytes" or s == "bytearray":
         return SliceType(PrimitiveType("byte"))
@@ -635,29 +655,29 @@ def _lower_default(node: ASTNode) -> TypeNode | None:
     """Lower a default value AST node to a literal TypeNode."""
     if not isinstance(node, dict):
         return None
-    t = node.get("_type")
+    t = get_str(node, "_type")
     if t == "Constant":
         v = node.get("value")
-        if v is None:
+        if v is None or isinstance(v, JNull):
             return NilLit()
-        if isinstance(v, bool):
-            return BoolLit(v)
-        if isinstance(v, int):
-            return IntLit(v)
-        if isinstance(v, float):
-            return FloatLit(v)
-        if isinstance(v, str):
-            return StringLit(v)
+        if isinstance(v, JBool):
+            return BoolLit(v.value)
+        if isinstance(v, JInt):
+            return IntLit(v.value)
+        if isinstance(v, JFloat):
+            return FloatLit(v.value)
+        if isinstance(v, JStr):
+            return StringLit(v.value)
     if t == "UnaryOp":
-        op = node.get("op", {})
-        if isinstance(op, dict) and op.get("_type") == "USub":
-            operand = node.get("operand", {})
-            if isinstance(operand, dict) and operand.get("_type") == "Constant":
+        op = get_node(node, "op")
+        if get_str(op, "_type") == "USub":
+            operand = get_node(node, "operand")
+            if get_str(operand, "_type") == "Constant":
                 v = operand.get("value")
-                if isinstance(v, int):
-                    return IntLit(-v)
-                if isinstance(v, float):
-                    return FloatLit(-v)
+                if isinstance(v, JInt):
+                    return IntLit(-v.value)
+                if isinstance(v, JFloat):
+                    return FloatLit(-v.value)
     if t == "List":
         return ListLit([])
     if t == "Dict":
@@ -677,73 +697,62 @@ def _lower_default(node: ASTNode) -> TypeNode | None:
 def detect_mutated_params(node: ASTNode) -> set[str]:
     """Detect which parameters are mutated in the function body."""
     mutated: set[str] = set()
-    args = node.get("args", {})
-    if not isinstance(args, dict):
+    args_node = get_node(node, "args")
+    if len(args_node) == 0:
         return mutated
-    # Collect all param names (excluding self)
     param_names: set[str] = set()
-    posonlyargs = args.get("posonlyargs", [])
-    regular_args = args.get("args", [])
-    kwonlyargs = args.get("kwonlyargs", [])
-    if isinstance(posonlyargs, list):
-        i = 0
-        while i < len(posonlyargs):
-            a = posonlyargs[i]
-            if isinstance(a, dict):
-                name = a.get("arg")
-                if isinstance(name, str) and name != "self":
-                    param_names.add(name)
-            i += 1
-    if isinstance(regular_args, list):
-        i = 0
-        while i < len(regular_args):
-            a = regular_args[i]
-            if isinstance(a, dict):
-                name = a.get("arg")
-                if isinstance(name, str) and name != "self":
-                    param_names.add(name)
-            i += 1
-    if isinstance(kwonlyargs, list):
-        i = 0
-        while i < len(kwonlyargs):
-            a = kwonlyargs[i]
-            if isinstance(a, dict):
-                name = a.get("arg")
-                if isinstance(name, str) and name != "self":
-                    param_names.add(name)
-            i += 1
-    # Walk the function body looking for mutations
+    posonlyargs = get_nodes(args_node, "posonlyargs")
+    regular_args = get_nodes(args_node, "args")
+    kwonlyargs = get_nodes(args_node, "kwonlyargs")
+    i = 0
+    while i < len(posonlyargs):
+        a = posonlyargs[i]
+        name = get_str(a, "arg")
+        if name != "" and name != "self":
+            param_names.add(name)
+        i += 1
+    i = 0
+    while i < len(regular_args):
+        a = regular_args[i]
+        name = get_str(a, "arg")
+        if name != "" and name != "self":
+            param_names.add(name)
+        i += 1
+    i = 0
+    while i < len(kwonlyargs):
+        a = kwonlyargs[i]
+        name = get_str(a, "arg")
+        if name != "" and name != "self":
+            param_names.add(name)
+        i += 1
     all_nodes = _dict_walk(node)
     i = 0
     while i < len(all_nodes):
         stmt = all_nodes[i]
-        # param.append(...), param.extend(...), param.clear(), param.pop()
         if _is_type(stmt, ["Expr"]):
-            val = stmt.get("value")
-            if isinstance(val, dict) and _is_type(val, ["Call"]):
-                func = val.get("func")
-                if isinstance(func, dict) and _is_type(func, ["Attribute"]):
-                    attr = func.get("attr")
+            val = get_node(stmt, "value")
+            if _is_type(val, ["Call"]):
+                func = get_node(val, "func")
+                if _is_type(func, ["Attribute"]):
+                    attr = get_str(func, "attr")
                     if attr in ("append", "extend", "clear", "pop"):
-                        obj = func.get("value")
-                        if isinstance(obj, dict) and _is_type(obj, ["Name"]):
-                            obj_id = obj.get("id")
-                            if isinstance(obj_id, str) and obj_id in param_names:
+                        obj = get_node(func, "value")
+                        if _is_type(obj, ["Name"]):
+                            obj_id = get_str(obj, "id")
+                            if obj_id != "" and obj_id in param_names:
                                 mutated.add(obj_id)
-        # param[i] = ...
         if _is_type(stmt, ["Assign"]):
-            targets = stmt.get("targets", [])
-            if isinstance(targets, list):
-                j = 0
-                while j < len(targets):
-                    target = targets[j]
-                    if isinstance(target, dict) and _is_type(target, ["Subscript"]):
-                        obj = target.get("value")
-                        if isinstance(obj, dict) and _is_type(obj, ["Name"]):
-                            obj_id = obj.get("id")
-                            if isinstance(obj_id, str) and obj_id in param_names:
-                                mutated.add(obj_id)
-                    j += 1
+            targets = get_nodes(stmt, "targets")
+            j = 0
+            while j < len(targets):
+                target = targets[j]
+                if _is_type(target, ["Subscript"]):
+                    obj = get_node(target, "value")
+                    if _is_type(obj, ["Name"]):
+                        obj_id = get_str(obj, "id")
+                        if obj_id != "" and obj_id in param_names:
+                            mutated.add(obj_id)
+                j += 1
         i += 1
     return mutated
 
@@ -772,22 +781,19 @@ def _make_param(
     arg: ASTNode,
     modifier: str,
     has_default: bool,
-    default_node: object,
+    default_node: ASTNode | None,
     mutated_params: set[str],
     known_classes: set[str],
     errors: list[SignatureError],
     func_name: str,
 ) -> ParamInfo | None:
     """Build a ParamInfo from an AST arg node. Returns None on error."""
-    if not isinstance(arg, dict):
-        return None
-    param_name = arg.get("arg")
-    if not isinstance(param_name, str):
+    param_name = get_str(arg, "arg")
+    if param_name == "":
         return None
     annotation = arg.get("annotation")
-    lineno_val = arg.get("lineno", 0)
-    lineno = lineno_val if isinstance(lineno_val, int) else 0
-    if annotation is None:
+    lineno = get_int(arg, "lineno")
+    if annotation is None or isinstance(annotation, JNull):
         errors.append(
             SignatureError(
                 lineno,
@@ -802,11 +808,10 @@ def _make_param(
         return None
     py_type = annotation_to_str(annotation)
     typ = py_type_to_type_dict(py_type, known_classes, errors, lineno, 0)
-    # Wrap mutated list params in Pointer
     if param_name in mutated_params and _is_slice_type(typ):
         typ = _wrap_pointer(typ)
     default_value: TypeNode | None = None
-    if has_default and default_node is not None and isinstance(default_node, dict):
+    if has_default and default_node is not None:
         default_value = _lower_default(default_node)
     return ParamInfo(
         name=param_name,
@@ -826,60 +831,38 @@ def extract_func_info(
     receiver_type: str,
 ) -> FuncInfo | None:
     """Extract function signature information from a FunctionDef AST node."""
-    func_name = node.get("name", "")
-    if not isinstance(func_name, str):
-        func_name = ""
-    lineno_val = node.get("lineno", 0)
-    lineno = lineno_val if isinstance(lineno_val, int) else 0
+    func_name = get_str(node, "name")
+    lineno = get_int(node, "lineno")
     mutated_params = detect_mutated_params(node)
     params: list[ParamInfo] = []
-    args = node.get("args", {})
-    if not isinstance(args, dict):
-        args = {}
-    # Positional-only params (before /)
-    posonlyargs = args.get("posonlyargs", [])
-    if not isinstance(posonlyargs, list):
-        posonlyargs: list[ASTNode] = []
-    # Regular params (between / and *)
-    regular_args = args.get("args", [])
-    if not isinstance(regular_args, list):
-        regular_args: list[ASTNode] = []
-    # Keyword-only params (after *)
-    kwonlyargs = args.get("kwonlyargs", [])
-    if not isinstance(kwonlyargs, list):
-        kwonlyargs: list[ASTNode] = []
-    # Defaults apply to the tail of posonlyargs + regular_args
-    defaults = args.get("defaults", [])
-    if not isinstance(defaults, list):
-        defaults: list[ASTNode] = []
-    # kw_defaults is parallel to kwonlyargs (None entries for no default)
-    kw_defaults = args.get("kw_defaults", [])
-    if not isinstance(kw_defaults, list):
-        kw_defaults: list[ASTNode] = []
+    args = get_node(node, "args")
+    posonlyargs = get_nodes(args, "posonlyargs")
+    regular_args = get_nodes(args, "args")
+    kwonlyargs = get_nodes(args, "kwonlyargs")
+    defaults = get_nodes(args, "defaults")
+    kw_defaults = get_jlist(args, "kw_defaults")
     # Filter self from params
     non_self_posonly: list[ASTNode] = []
     i = 0
     while i < len(posonlyargs):
         a = posonlyargs[i]
-        if isinstance(a, dict) and a.get("arg") != "self":
+        if get_str(a, "arg") != "self":
             non_self_posonly.append(a)
         i += 1
     non_self_regular: list[ASTNode] = []
     i = 0
     while i < len(regular_args):
         a = regular_args[i]
-        if isinstance(a, dict) and a.get("arg") != "self":
+        if get_str(a, "arg") != "self":
             non_self_regular.append(a)
         i += 1
-    # defaults covers the tail of posonlyargs + regular_args combined
     n_positional = len(non_self_posonly) + len(non_self_regular)
     n_defaults = len(defaults)
     had_error = False
-    # Positional-only params
     i = 0
     while i < len(non_self_posonly):
         has_default = i >= n_positional - n_defaults
-        default_node: object = None
+        default_node: ASTNode | None = None
         if has_default:
             default_idx = i - (n_positional - n_defaults)
             if default_idx >= 0 and default_idx < len(defaults):
@@ -899,7 +882,6 @@ def extract_func_info(
         else:
             had_error = True
         i += 1
-    # Regular params
     i = 0
     while i < len(non_self_regular):
         global_i = len(non_self_posonly) + i
@@ -924,16 +906,16 @@ def extract_func_info(
         else:
             had_error = True
         i += 1
-    # Keyword-only params
     i = 0
     while i < len(kwonlyargs):
         has_default = False
         default_node = None
         if i < len(kw_defaults):
             kw_def = kw_defaults[i]
-            if kw_def is not None:
+            if not isinstance(kw_def, JNull):
                 has_default = True
-                default_node = kw_def
+                if isinstance(kw_def, JDict):
+                    default_node = kw_def.entries
         p = _make_param(
             kwonlyargs[i],
             "keyword",
@@ -949,11 +931,17 @@ def extract_func_info(
         else:
             had_error = True
         i += 1
-    # Return type
     returns = node.get("returns")
-    if returns is None:
+    if returns is None or isinstance(returns, JNull):
         if func_name == "__init__":
-            returns = {"_type": "Constant", "value": None}
+            returns_node: ASTNode = {
+                "_type": JStr("Constant"),
+                "value": JNull(),
+            }
+            py_return = annotation_to_str(returns_node)
+            return_type = py_type_to_type_dict(
+                py_return, known_classes, errors, lineno, 0
+            )
         else:
             errors.append(
                 SignatureError(
@@ -963,8 +951,9 @@ def extract_func_info(
                 )
             )
             return None
-    py_return = annotation_to_str(returns)
-    return_type = py_type_to_type_dict(py_return, known_classes, errors, lineno, 0)
+    else:
+        py_return = annotation_to_str(returns)
+        return_type = py_type_to_type_dict(py_return, known_classes, errors, lineno, 0)
     if had_error:
         return None
     return FuncInfo(
@@ -1009,19 +998,12 @@ def collect_signatures(
         _TYPE_ALIASES[ta_keys[tai]] = type_aliases[ta_keys[tai]]
         tai += 1
     result = SignatureResult()
-    body = tree.get("body", [])
-    if not isinstance(body, list):
-        return result
+    body = get_nodes(tree, "body")
     i = 0
     while i < len(body):
         node = body[i]
-        if not isinstance(node, dict):
-            i += 1
-            continue
-        t = node.get("_type")
-        sf = node.get("_source_file", "")
-        if not isinstance(sf, str):
-            sf = ""
+        t = get_str(node, "_type")
+        sf = get_str(node, "_source_file")
         if t == "FunctionDef":
             err_before = len(result._errors)
             info = extract_func_info(node, known_classes, result._errors, False, "")
@@ -1032,20 +1014,14 @@ def collect_signatures(
             if info is not None:
                 result.functions[info.name] = info
         elif t == "ClassDef":
-            class_name = node.get("name", "")
-            if not isinstance(class_name, str):
-                class_name = ""
-            class_body = node.get("body", [])
-            if not isinstance(class_body, list):
-                class_body: list[ASTNode] = []
+            class_name = get_str(node, "name")
+            class_body = get_nodes(node, "body")
             class_methods: dict[str, FuncInfo] = {}
             j = 0
             while j < len(class_body):
                 stmt = class_body[j]
-                if isinstance(stmt, dict) and stmt.get("_type") == "FunctionDef":
-                    stmt_sf = stmt.get("_source_file", "")
-                    if not isinstance(stmt_sf, str):
-                        stmt_sf = ""
+                if get_str(stmt, "_type") == "FunctionDef":
+                    stmt_sf = get_str(stmt, "_source_file")
                     if stmt_sf == "":
                         stmt_sf = sf
                     err_before = len(result._errors)
@@ -1061,7 +1037,6 @@ def collect_signatures(
                 j += 1
             if len(class_methods) > 0:
                 result.methods[class_name] = class_methods
-            # Build method-to-struct mapping for Node subclasses
             if class_name in node_classes:
                 mkeys = list(class_methods.keys())
                 j = 0

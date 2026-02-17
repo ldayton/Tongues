@@ -175,6 +175,123 @@ class TupleLit(TypeNode):
 
 
 # ============================================================
+# JSON VALUE ADT (replaces `object` in AST dicts)
+# ============================================================
+
+
+@dataclass
+class JsonValue:
+    """Base for JSON-compatible values in AST dicts and serialization."""
+
+
+@dataclass
+class JStr(JsonValue):
+    value: str
+
+
+@dataclass
+class JInt(JsonValue):
+    value: int
+
+
+@dataclass
+class JFloat(JsonValue):
+    value: float
+
+
+@dataclass
+class JBool(JsonValue):
+    value: bool
+
+
+@dataclass
+class JNull(JsonValue):
+    pass
+
+
+@dataclass
+class JList(JsonValue):
+    items: list[JsonValue]
+
+
+@dataclass
+class JDict(JsonValue):
+    entries: dict[str, JsonValue]
+
+
+# Type alias for AST dict nodes
+ASTNode = dict[str, JsonValue]
+
+
+# ============================================================
+# AST ACCESSOR HELPERS
+# ============================================================
+
+
+def get_str(node: dict[str, JsonValue], key: str) -> str:
+    v = node.get(key)
+    if isinstance(v, JStr):
+        return v.value
+    return ""
+
+
+def get_int(node: dict[str, JsonValue], key: str) -> int:
+    v = node.get(key)
+    if isinstance(v, JInt):
+        return v.value
+    return 0
+
+
+def get_float(node: dict[str, JsonValue], key: str) -> float:
+    v = node.get(key)
+    if isinstance(v, JFloat):
+        return v.value
+    return 0.0
+
+
+def get_bool(node: dict[str, JsonValue], key: str) -> bool:
+    v = node.get(key)
+    if isinstance(v, JBool):
+        return v.value
+    return False
+
+
+def get_node(node: dict[str, JsonValue], key: str) -> dict[str, JsonValue]:
+    """Get a nested AST node (unwraps JDict)."""
+    v = node.get(key)
+    if isinstance(v, JDict):
+        return v.entries
+    return {}
+
+
+def get_nodes(node: dict[str, JsonValue], key: str) -> list[dict[str, JsonValue]]:
+    """Get a list of nested AST nodes (unwraps JList of JDicts)."""
+    v = node.get(key)
+    if isinstance(v, JList):
+        result: list[dict[str, JsonValue]] = []
+        i = 0
+        while i < len(v.items):
+            item = v.items[i]
+            if isinstance(item, JDict):
+                result.append(item.entries)
+            i += 1
+        return result
+    return []
+
+
+def get_jlist(node: dict[str, JsonValue], key: str) -> list[JsonValue]:
+    """Get raw JsonValue list (for mixed-type lists)."""
+    v = node.get(key)
+    if isinstance(v, JList):
+        return v.items
+    return []
+
+
+def has_key(node: dict[str, JsonValue], key: str) -> bool:
+    return node.get(key) is not None
+
+
+# ============================================================
 # HELPERS
 # ============================================================
 

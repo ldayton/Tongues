@@ -3,8 +3,46 @@
 Written in the Tongues subset with no external dependencies.
 """
 
-# Type aliases
-ASTNode = dict[str, object]
+from .types import (
+    JsonValue, JStr, JInt, JFloat, JBool, JNull, JList, JDict,
+    ASTNode, get_str, get_int, get_bool, get_float, get_node, get_nodes, get_jlist, has_key,
+)
+
+
+def _wrap_node(d: ASTNode) -> JDict:
+    return JDict(d)
+
+
+def _wrap_nodes(lst: list[ASTNode]) -> JList:
+    items: list[JsonValue] = []
+    i = 0
+    while i < len(lst):
+        items.append(JDict(lst[i]))
+        i += 1
+    return JList(items)
+
+
+def _wrap_strs(lst: list[str]) -> JList:
+    items: list[JsonValue] = []
+    i = 0
+    while i < len(lst):
+        items.append(JStr(lst[i]))
+        i += 1
+    return JList(items)
+
+
+def _wrap_opt_nodes(lst: list[ASTNode | None]) -> JList:
+    """Wrap a list that may contain None entries (e.g. kw_defaults, dict keys)."""
+    items: list[JsonValue] = []
+    i = 0
+    while i < len(lst):
+        v = lst[i]
+        if v is None:
+            items.append(JNull())
+        else:
+            items.append(JDict(v))
+        i += 1
+    return JList(items)
 
 
 class ParseError(Exception):
@@ -639,8 +677,8 @@ class Parser:
                 "assignment expression within a comprehension cannot be used in a class body"
             )
         if self.comp_depth > 0 and len(self.comp_target_names) > 0:
-            name = target.get("id") if isinstance(target, dict) else None
-            if isinstance(name, str):
+            name = get_str(target, "id") if isinstance(target, dict) else ""
+            if len(name) > 0:
                 i = 0
                 while i < len(self.comp_target_names):
                     if name in self.comp_target_names[i]:
@@ -708,7 +746,7 @@ class Parser:
             "Name",
             name_tok.lineno,
             name_tok.col,
-            {"id": name_tok.value, "ctx": {"_type": "Store"}},
+            {"id": JStr(name_tok.value), "ctx": JDict({"_type": JStr("Store")})},
         )
         end_from_token(name_node, name_tok)
         type_params = self.parse_type_params()
@@ -718,7 +756,7 @@ class Parser:
             "TypeAlias",
             tok.lineno,
             tok.col,
-            {"name": name_node, "type_params": type_params, "value": value},
+            {"name": _wrap_node(name_node), "type_params": _wrap_nodes(type_params), "value": _wrap_node(value)},
         )
         end_from_node(node, value)
         return node
@@ -742,7 +780,7 @@ class Parser:
                     body.append(stmt)
             self.skip_newlines()
         node = make_node(
-            "Module", tok.lineno, tok.col, {"body": body, "type_ignores": []}
+            "Module", tok.lineno, tok.col, {"body": _wrap_nodes(body), "type_ignores": JList([])}
         )
         if len(body) > 0:
             end_from_node(node, body[len(body) - 1])
@@ -856,9 +894,10 @@ class Parser:
             and not self.match(TK_ENDMARKER)
         ):
             value = self.parse_testlist_star_expr()
-            if isinstance(value, dict) and value.get("_type") == "Starred":
+            if isinstance(value, dict) and get_str(value, "_type") == "Starred":
                 raise self.error("starred expression is not allowed here")
-        node = make_node("Return", tok.lineno, tok.col, {"value": value})
+        rv: JsonValue = _wrap_node(value) if value is not None else JNull()
+        node = make_node("Return", tok.lineno, tok.col, {"value": rv})
         if value is not None:
             end_from_node(node, value)
         else:
@@ -879,7 +918,9 @@ class Parser:
             if self.match("from"):
                 self.advance()
                 cause = self.parse_test()
-        node = make_node("Raise", tok.lineno, tok.col, {"exc": exc, "cause": cause})
+        exc_v: JsonValue = _wrap_node(exc) if exc is not None else JNull()
+        cause_v: JsonValue = _wrap_node(cause) if cause is not None else JNull()
+        node = make_node("Raise", tok.lineno, tok.col, {"exc": exc_v, "cause": cause_v})
         if cause is not None:
             end_from_node(node, cause)
         elif exc is not None:
@@ -892,7 +933,7 @@ class Parser:
         """Parse import statement."""
         tok = self.expect("import")
         names = self.parse_dotted_as_names()
-        node = make_node("Import", tok.lineno, tok.col, {"names": names})
+        node = make_node("Import", tok.lineno, tok.col, {"names": _wrap_nodes(names)})
         end_from_token(node, self.prev_token())
         return node
 
@@ -918,7 +959,7 @@ class Parser:
             if self.func_depth > 0:
                 raise self.error("import * only allowed at module level")
             self.advance()
-            names.append({"_type": "alias", "name": "*", "asname": None})
+            names.append({"_type": JStr("alias"), "name": JStr("*"), "asname": JNull()})
         elif self.match_op("("):
             self.advance()
             names = self.parse_import_as_names()
@@ -945,8 +986,8 @@ class Parser:
             while i < len(names):
                 nm = names[i]
                 if isinstance(nm, dict):
-                    fname = nm.get("name")
-                    if isinstance(fname, str):
+                    fname = get_str(nm, "name")
+                    if len(fname) > 0:
                         if fname == "braces":
                             raise self.error("not a chance")
                         if fname not in _FUTURE_FEATURES:
@@ -955,11 +996,12 @@ class Parser:
                             )
                 i += 1
 
+        module_v: JsonValue = JStr(module) if module is not None else JNull()
         node = make_node(
             "ImportFrom",
             tok.lineno,
             tok.col,
-            {"module": module, "names": names, "level": level},
+            {"module": module_v, "names": _wrap_nodes(names), "level": JInt(level)},
         )
         end_from_token(node, self.prev_token())
         return node
@@ -991,7 +1033,8 @@ class Parser:
         if self.match("as"):
             self.advance()
             asname = self.expect(TK_NAME).value
-        return {"_type": "alias", "name": name, "asname": asname}
+        asname_v: JsonValue = JStr(asname) if asname is not None else JNull()
+        return {"_type": JStr("alias"), "name": JStr(name), "asname": asname_v}
 
     def parse_import_as_names(self) -> list[ASTNode]:
         """Parse import names: a as b, c as d."""
@@ -1012,7 +1055,8 @@ class Parser:
         if self.match("as"):
             self.advance()
             asname = self.expect(TK_NAME).value
-        return {"_type": "alias", "name": name, "asname": asname}
+        asname_v: JsonValue = JStr(asname) if asname is not None else JNull()
+        return {"_type": JStr("alias"), "name": JStr(name), "asname": asname_v}
 
     def parse_assert_stmt(self) -> ASTNode:
         """Parse assert statement."""
@@ -1022,7 +1066,8 @@ class Parser:
         if self.match_op(","):
             self.advance()
             msg = self.parse_test()
-        node = make_node("Assert", tok.lineno, tok.col, {"test": test, "msg": msg})
+        msg_v: JsonValue = _wrap_node(msg) if msg is not None else JNull()
+        node = make_node("Assert", tok.lineno, tok.col, {"test": _wrap_node(test), "msg": msg_v})
         if msg is not None:
             end_from_node(node, msg)
         else:
@@ -1034,7 +1079,7 @@ class Parser:
         tok = self.expect("del")
         targets = self.parse_exprlist()
         set_context_list(targets, "Del")
-        node = make_node("Delete", tok.lineno, tok.col, {"targets": targets})
+        node = make_node("Delete", tok.lineno, tok.col, {"targets": _wrap_nodes(targets)})
         if len(targets) > 0:
             end_from_node(node, targets[len(targets) - 1])
         else:
@@ -1049,7 +1094,7 @@ class Parser:
         while self.match_op(","):
             self.advance()
             names.append(self.expect(TK_NAME).value)
-        node = make_node("Global", tok.lineno, tok.col, {"names": names})
+        node = make_node("Global", tok.lineno, tok.col, {"names": _wrap_strs(names)})
         end_from_token(node, self.prev_token())
         return node
 
@@ -1063,7 +1108,7 @@ class Parser:
         while self.match_op(","):
             self.advance()
             names.append(self.expect(TK_NAME).value)
-        node = make_node("Nonlocal", tok.lineno, tok.col, {"names": names})
+        node = make_node("Nonlocal", tok.lineno, tok.col, {"names": _wrap_strs(names)})
         end_from_token(node, self.prev_token())
         return node
 
@@ -1072,7 +1117,7 @@ class Parser:
         tok = self.current()
         yield_expr = self.parse_yield_expr()
         return end_from_node(
-            make_node("Expr", tok.lineno, tok.col, {"value": yield_expr}), yield_expr
+            make_node("Expr", tok.lineno, tok.col, {"value": _wrap_node(yield_expr)}), yield_expr
         )
 
     def parse_yield_expr(self) -> ASTNode:
@@ -1087,7 +1132,7 @@ class Parser:
             value = self.parse_test()
             self.func_has_yield = True
             return end_from_node(
-                make_node("YieldFrom", tok.lineno, tok.col, {"value": value}), value
+                make_node("YieldFrom", tok.lineno, tok.col, {"value": _wrap_node(value)}), value
             )
         value: ASTNode | None = None
         if (
@@ -1097,10 +1142,11 @@ class Parser:
             and not self.match(TK_ENDMARKER)
         ):
             value = self.parse_testlist_star_expr()
-            if isinstance(value, dict) and value.get("_type") == "Starred":
+            if isinstance(value, dict) and get_str(value, "_type") == "Starred":
                 raise self.error("starred expression is not allowed here")
         self.func_has_yield = True
-        node = make_node("Yield", tok.lineno, tok.col, {"value": value})
+        yv: JsonValue = _wrap_node(value) if value is not None else JNull()
+        node = make_node("Yield", tok.lineno, tok.col, {"value": yv})
         if value is not None:
             end_from_node(node, value)
         else:
@@ -1123,13 +1169,13 @@ class Parser:
             validate_target(target, "Store", False, True, False)
             self.check_walrus_scope(target)
             if "ctx" in target:
-                target["ctx"] = {"_type": "Store"}
+                target["ctx"] = JDict({"_type": JStr("Store")})
             return end_from_node(
                 make_node(
                     "NamedExpr",
                     tok.lineno,
                     tok.col,
-                    {"target": target, "value": value},
+                    {"target": _wrap_node(target), "value": _wrap_node(value)},
                 ),
                 value,
             )
@@ -1142,23 +1188,24 @@ class Parser:
             if self.match_op("="):
                 self.advance()
                 value = self.parse_testlist_star_expr()
-                if isinstance(value, dict) and value.get("_type") == "Starred":
+                if isinstance(value, dict) and get_str(value, "_type") == "Starred":
                     raise self.error("starred expression is not allowed here")
             validate_target(target, "Store", False, False, True)
             if "ctx" in target:
-                target["ctx"] = {"_type": "Store"}
+                target["ctx"] = JDict({"_type": JStr("Store")})
             simple = 1
-            if target.get("_type") != "Name":
+            if get_str(target, "_type") != "Name":
                 simple = 0
+            ann_val: JsonValue = _wrap_node(value) if value is not None else JNull()
             node = make_node(
                 "AnnAssign",
                 tok.lineno,
                 tok.col,
                 {
-                    "target": target,
-                    "annotation": annotation,
-                    "value": value,
-                    "simple": simple,
+                    "target": _wrap_node(target),
+                    "annotation": _wrap_node(annotation),
+                    "value": ann_val,
+                    "simple": JInt(simple),
                 },
             )
             if value is not None:
@@ -1190,14 +1237,14 @@ class Parser:
                 value = self.parse_testlist_star_expr()
                 validate_target(target, "Store", True, False, False)
                 if "ctx" in target:
-                    target["ctx"] = {"_type": "Store"}
+                    target["ctx"] = JDict({"_type": JStr("Store")})
                 op = augassign_op(op_tok.value)
                 return end_from_node(
                     make_node(
                         "AugAssign",
                         tok.lineno,
                         tok.col,
-                        {"target": target, "op": op, "value": value},
+                        {"target": _wrap_node(target), "op": _wrap_node(op), "value": _wrap_node(value)},
                     ),
                     value,
                 )
@@ -1213,48 +1260,47 @@ class Parser:
             # Last one is the value
             value = targets.pop()
             # Validate starred in value (RHS)
-            if isinstance(value, dict) and value.get("_type") == "Starred":
+            if isinstance(value, dict) and get_str(value, "_type") == "Starred":
                 raise self.error("starred expression is not allowed here")
             # Validate starred in targets
             j = 0
             while j < len(targets):
                 t = targets[j]
                 if isinstance(t, dict):
-                    tt = t.get("_type")
+                    tt = get_str(t, "_type")
                     if tt == "Starred":
                         raise self.error(
                             "starred assignment target must be in a list or tuple"
                         )
                     if tt in ("Tuple", "List"):
-                        telts = t.get("elts")
-                        if isinstance(telts, list):
-                            star_count = 0
-                            si = 0
-                            while si < len(telts):
-                                if (
-                                    isinstance(telts[si], dict)
-                                    and telts[si].get("_type") == "Starred"
-                                ):
-                                    star_count += 1
-                                si += 1
-                            if star_count > 1:
-                                raise self.error(
-                                    "multiple starred expressions in assignment"
-                                )
+                        telts = get_nodes(t, "elts")
+                        star_count = 0
+                        si = 0
+                        while si < len(telts):
+                            if (
+                                isinstance(telts[si], dict)
+                                and get_str(telts[si], "_type") == "Starred"
+                            ):
+                                star_count += 1
+                            si += 1
+                        if star_count > 1:
+                            raise self.error(
+                                "multiple starred expressions in assignment"
+                            )
                 set_context(targets[j], "Store")
                 j += 1
             return end_from_node(
                 make_node(
-                    "Assign", tok.lineno, tok.col, {"targets": targets, "value": value}
+                    "Assign", tok.lineno, tok.col, {"targets": _wrap_nodes(targets), "value": _wrap_node(value)}
                 ),
                 value,
             )
 
         # Just an expression
-        if isinstance(target, dict) and target.get("_type") == "Starred":
+        if isinstance(target, dict) and get_str(target, "_type") == "Starred":
             raise self.error("starred expression is not allowed here")
         return end_from_node(
-            make_node("Expr", tok.lineno, tok.col, {"value": target}), target
+            make_node("Expr", tok.lineno, tok.col, {"value": _wrap_node(target)}), target
         )
 
     # --- Compound statements ---
@@ -1277,7 +1323,7 @@ class Parser:
                     "ParamSpec",
                     tok.lineno,
                     tok.col,
-                    {"name": name_tok.value, "default_value": None},
+                    {"name": JStr(name_tok.value), "default_value": JNull()},
                 )
                 end_from_token(node, name_tok)
             elif self.match_op("*"):
@@ -1287,7 +1333,7 @@ class Parser:
                     "TypeVarTuple",
                     tok.lineno,
                     tok.col,
-                    {"name": name_tok.value, "default_value": None},
+                    {"name": JStr(name_tok.value), "default_value": JNull()},
                 )
                 end_from_token(node, name_tok)
             else:
@@ -1296,17 +1342,18 @@ class Parser:
                 if self.match_op(":"):
                     self.advance()
                     bound = self.parse_test()
+                bound_v: JsonValue = _wrap_node(bound) if bound is not None else JNull()
                 node = make_node(
                     "TypeVar",
                     tok.lineno,
                     tok.col,
-                    {"name": name_tok.value, "bound": bound, "default_value": None},
+                    {"name": JStr(name_tok.value), "bound": bound_v, "default_value": JNull()},
                 )
                 end_from_token(node, name_tok)
             if self.match_op("="):
                 self.advance()
                 default = self.parse_test()
-                node["default_value"] = default
+                node["default_value"] = _wrap_node(default)
                 end_from_node(node, default)
             params.append(node)
         self.expect_op("]")
@@ -1339,17 +1386,18 @@ class Parser:
         self.loop_depth = saved_loop_depth
         self.async_depth = saved_async_depth
         self.func_has_yield = saved_has_yield
+        returns_v: JsonValue = _wrap_node(returns) if returns is not None else JNull()
         node = make_node(
             "FunctionDef",
             tok.lineno,
             tok.col,
             {
-                "name": name,
-                "args": params,
-                "body": body,
-                "decorator_list": [],
-                "returns": returns,
-                "type_params": type_params,
+                "name": JStr(name),
+                "args": _wrap_node(params),
+                "body": _wrap_nodes(body),
+                "decorator_list": JList([]),
+                "returns": returns_v,
+                "type_params": _wrap_nodes(type_params),
             },
         )
         if len(body) > 0:
@@ -1361,21 +1409,21 @@ class Parser:
         tok = self.expect("async")
         if self.match("def"):
             func = self.parse_funcdef(is_async=True)
-            func["_type"] = "AsyncFunctionDef"
-            func["lineno"] = tok.lineno
-            func["col_offset"] = tok.col
+            func["_type"] = JStr("AsyncFunctionDef")
+            func["lineno"] = JInt(tok.lineno)
+            func["col_offset"] = JInt(tok.col)
             return func
         if self.match("for"):
             for_stmt = self.parse_for_stmt()
-            for_stmt["_type"] = "AsyncFor"
-            for_stmt["lineno"] = tok.lineno
-            for_stmt["col_offset"] = tok.col
+            for_stmt["_type"] = JStr("AsyncFor")
+            for_stmt["lineno"] = JInt(tok.lineno)
+            for_stmt["col_offset"] = JInt(tok.col)
             return for_stmt
         if self.match("with"):
             with_stmt = self.parse_with_stmt()
-            with_stmt["_type"] = "AsyncWith"
-            with_stmt["lineno"] = tok.lineno
-            with_stmt["col_offset"] = tok.col
+            with_stmt["_type"] = JStr("AsyncWith")
+            with_stmt["lineno"] = JInt(tok.lineno)
+            with_stmt["col_offset"] = JInt(tok.col)
             return with_stmt
         raise self.error("expected 'def', 'for', or 'with' after 'async'")
 
@@ -1422,8 +1470,8 @@ class Parser:
                 in_kwonly = True
                 if self.match(TK_NAME):
                     vararg = self.parse_arg()
-                    pname = vararg.get("arg")
-                    if isinstance(pname, str):
+                    pname = get_str(vararg, "arg")
+                    if len(pname) > 0:
                         if pname in seen_names:
                             raise self.error("duplicate argument '" + pname + "'")
                         seen_names.add(pname)
@@ -1436,8 +1484,8 @@ class Parser:
             if self.match_op("**"):
                 self.advance()
                 kwarg = self.parse_arg()
-                pname = kwarg.get("arg")
-                if isinstance(pname, str):
+                pname = get_str(kwarg, "arg")
+                if len(pname) > 0:
                     if pname in seen_names:
                         raise self.error("duplicate argument '" + pname + "'")
                     seen_names.add(pname)
@@ -1445,8 +1493,8 @@ class Parser:
 
             # Regular argument
             arg = self.parse_arg()
-            pname = arg.get("arg")
-            if isinstance(pname, str):
+            pname = get_str(arg, "arg")
+            if len(pname) > 0:
                 if pname in seen_names:
                     raise self.error("duplicate argument '" + pname + "'")
                 seen_names.add(pname)
@@ -1470,15 +1518,17 @@ class Parser:
         if bare_star and len(kwonlyargs) == 0:
             raise self.error("named arguments must follow bare *")
 
+        vararg_v: JsonValue = _wrap_node(vararg) if vararg is not None else JNull()
+        kwarg_v: JsonValue = _wrap_node(kwarg) if kwarg is not None else JNull()
         return {
-            "_type": "arguments",
-            "posonlyargs": posonlyargs,
-            "args": args,
-            "vararg": vararg,
-            "kwonlyargs": kwonlyargs,
-            "kw_defaults": kw_defaults,
-            "kwarg": kwarg,
-            "defaults": defaults,
+            "_type": JStr("arguments"),
+            "posonlyargs": _wrap_nodes(posonlyargs),
+            "args": _wrap_nodes(args),
+            "vararg": vararg_v,
+            "kwonlyargs": _wrap_nodes(kwonlyargs),
+            "kw_defaults": _wrap_opt_nodes(kw_defaults),
+            "kwarg": kwarg_v,
+            "defaults": _wrap_nodes(defaults),
         }
 
     def parse_arg(self) -> ASTNode:
@@ -1489,14 +1539,15 @@ class Parser:
         if self.match_op(":"):
             self.advance()
             annotation = self.parse_test()
+        ann_v: JsonValue = _wrap_node(annotation) if annotation is not None else JNull()
         return {
-            "_type": "arg",
-            "arg": name,
-            "annotation": annotation,
-            "lineno": tok.lineno,
-            "col_offset": tok.col,
-            "end_lineno": tok.lineno,
-            "end_col_offset": tok.col + len(name),
+            "_type": JStr("arg"),
+            "arg": JStr(name),
+            "annotation": ann_v,
+            "lineno": JInt(tok.lineno),
+            "col_offset": JInt(tok.col),
+            "end_lineno": JInt(tok.lineno),
+            "end_col_offset": JInt(tok.col + len(name)),
         }
 
     def parse_classdef(self) -> ASTNode:
@@ -1514,7 +1565,7 @@ class Parser:
             i = 0
             while i < len(bases):
                 b = bases[i]
-                if isinstance(b, dict) and b.get("_type") == "GeneratorExp":
+                if isinstance(b, dict) and get_str(b, "_type") == "GeneratorExp":
                     raise self.error("cannot use generator expression in class bases")
                 i += 1
         self.expect_op(":")
@@ -1526,12 +1577,12 @@ class Parser:
             tok.lineno,
             tok.col,
             {
-                "name": name,
-                "bases": bases,
-                "keywords": keywords,
-                "body": body,
-                "decorator_list": [],
-                "type_params": type_params,
+                "name": JStr(name),
+                "bases": _wrap_nodes(bases),
+                "keywords": _wrap_nodes(keywords),
+                "body": _wrap_nodes(body),
+                "decorator_list": JList([]),
+                "type_params": _wrap_nodes(type_params),
             },
         )
         if len(body) > 0:
@@ -1549,30 +1600,36 @@ class Parser:
 
         if self.match("def"):
             func = self.parse_funcdef()
-            func["decorator_list"] = decorators
-            if decorators:
-                func["lineno"] = decorators[0].get("lineno", func.get("lineno"))
-                func["col_offset"] = decorators[0].get(
-                    "col_offset", func.get("col_offset")
-                )
+            func["decorator_list"] = _wrap_nodes(decorators)
+            if len(decorators) > 0:
+                d0_lineno = decorators[0].get("lineno")
+                if d0_lineno is not None:
+                    func["lineno"] = d0_lineno
+                d0_col = decorators[0].get("col_offset")
+                if d0_col is not None:
+                    func["col_offset"] = d0_col
             return func
         if self.match("async"):
             func = self.parse_async_stmt()
-            func["decorator_list"] = decorators
-            if decorators:
-                func["lineno"] = decorators[0].get("lineno", func.get("lineno"))
-                func["col_offset"] = decorators[0].get(
-                    "col_offset", func.get("col_offset")
-                )
+            func["decorator_list"] = _wrap_nodes(decorators)
+            if len(decorators) > 0:
+                d0_lineno = decorators[0].get("lineno")
+                if d0_lineno is not None:
+                    func["lineno"] = d0_lineno
+                d0_col = decorators[0].get("col_offset")
+                if d0_col is not None:
+                    func["col_offset"] = d0_col
             return func
         if self.match("class"):
             cls = self.parse_classdef()
-            cls["decorator_list"] = decorators
-            if decorators:
-                cls["lineno"] = decorators[0].get("lineno", cls.get("lineno"))
-                cls["col_offset"] = decorators[0].get(
-                    "col_offset", cls.get("col_offset")
-                )
+            cls["decorator_list"] = _wrap_nodes(decorators)
+            if len(decorators) > 0:
+                d0_lineno = decorators[0].get("lineno")
+                if d0_lineno is not None:
+                    cls["lineno"] = d0_lineno
+                d0_col = decorators[0].get("col_offset")
+                if d0_col is not None:
+                    cls["col_offset"] = d0_col
             return cls
         raise self.error("expected 'def', 'async', or 'class' after decorator")
 
@@ -1595,7 +1652,7 @@ class Parser:
             orelse = self.parse_suite()
 
         node = make_node(
-            "If", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
+            "If", tok.lineno, tok.col, {"test": _wrap_node(test), "body": _wrap_nodes(body), "orelse": _wrap_nodes(orelse)}
         )
         last = orelse if len(orelse) > 0 else body
         if len(last) > 0:
@@ -1620,7 +1677,7 @@ class Parser:
             orelse = self.parse_suite()
 
         node = make_node(
-            "If", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
+            "If", tok.lineno, tok.col, {"test": _wrap_node(test), "body": _wrap_nodes(body), "orelse": _wrap_nodes(orelse)}
         )
         last = orelse if len(orelse) > 0 else body
         if len(last) > 0:
@@ -1644,7 +1701,7 @@ class Parser:
             orelse = self.parse_suite()
 
         node = make_node(
-            "While", tok.lineno, tok.col, {"test": test, "body": body, "orelse": orelse}
+            "While", tok.lineno, tok.col, {"test": _wrap_node(test), "body": _wrap_nodes(body), "orelse": _wrap_nodes(orelse)}
         )
         last = orelse if len(orelse) > 0 else body
         if len(last) > 0:
@@ -1655,7 +1712,7 @@ class Parser:
         """Parse for statement."""
         tok = self.expect("for")
         target = self.parse_target_list()
-        if isinstance(target, dict) and target.get("_type") == "Starred":
+        if isinstance(target, dict) and get_str(target, "_type") == "Starred":
             raise self.error("starred assignment target must be in a list or tuple")
         set_context(target, "Store")
         self.expect("in")
@@ -1676,7 +1733,7 @@ class Parser:
             "For",
             tok.lineno,
             tok.col,
-            {"target": target, "iter": iter_expr, "body": body, "orelse": orelse},
+            {"target": _wrap_node(target), "iter": _wrap_node(iter_expr), "body": _wrap_nodes(body), "orelse": _wrap_nodes(orelse)},
         )
         last = orelse if len(orelse) > 0 else body
         if len(last) > 0:
@@ -1715,11 +1772,13 @@ class Parser:
 
             self.expect_op(":")
             handler_body = self.parse_suite()
+            exc_type_v: JsonValue = _wrap_node(exc_type) if exc_type is not None else JNull()
+            exc_name_v: JsonValue = JStr(exc_name) if exc_name is not None else JNull()
             handler_node = make_node(
                 "ExceptHandler",
                 handler_tok.lineno,
                 handler_tok.col,
-                {"type": exc_type, "name": exc_name, "body": handler_body},
+                {"type": exc_type_v, "name": exc_name_v, "body": _wrap_nodes(handler_body)},
             )
             if len(handler_body) > 0:
                 end_from_node(handler_node, handler_body[len(handler_body) - 1])
@@ -1745,10 +1804,10 @@ class Parser:
             tok.lineno,
             tok.col,
             {
-                "body": body,
-                "handlers": handlers,
-                "orelse": orelse,
-                "finalbody": finalbody,
+                "body": _wrap_nodes(body),
+                "handlers": _wrap_nodes(handlers),
+                "orelse": _wrap_nodes(orelse),
+                "finalbody": _wrap_nodes(finalbody),
             },
         )
         if len(finalbody) > 0:
@@ -1774,7 +1833,7 @@ class Parser:
 
         self.expect_op(":")
         body = self.parse_suite()
-        node = make_node("With", tok.lineno, tok.col, {"items": items, "body": body})
+        node = make_node("With", tok.lineno, tok.col, {"items": _wrap_nodes(items), "body": _wrap_nodes(body)})
         if len(body) > 0:
             end_from_node(node, body[len(body) - 1])
         return node
@@ -1787,10 +1846,11 @@ class Parser:
             self.advance()
             optional_vars = self.parse_exprlist_single()
             set_context(optional_vars, "Store")
+        ov_v: JsonValue = _wrap_node(optional_vars) if optional_vars is not None else JNull()
         return {
-            "_type": "withitem",
-            "context_expr": context_expr,
-            "optional_vars": optional_vars,
+            "_type": JStr("withitem"),
+            "context_expr": _wrap_node(context_expr),
+            "optional_vars": ov_v,
         }
 
     def parse_match_stmt(self) -> ASTNode:
@@ -1808,12 +1868,12 @@ class Parser:
 
         self.expect(TK_DEDENT)
         node = make_node(
-            "Match", tok.lineno, tok.col, {"subject": subject, "cases": cases}
+            "Match", tok.lineno, tok.col, {"subject": _wrap_node(subject), "cases": _wrap_nodes(cases)}
         )
         if len(cases) > 0:
             last_case = cases[len(cases) - 1]
-            case_body = last_case.get("body")
-            if isinstance(case_body, list) and len(case_body) > 0:
+            case_body = get_nodes(last_case, "body")
+            if len(case_body) > 0:
                 end_from_node(node, case_body[len(case_body) - 1])
         return node
 
@@ -1827,7 +1887,8 @@ class Parser:
             guard = self.parse_test()
         self.expect_op(":")
         body = self.parse_suite()
-        return {"_type": "match_case", "pattern": pattern, "guard": guard, "body": body}
+        guard_v: JsonValue = _wrap_node(guard) if guard is not None else JNull()
+        return {"_type": JStr("match_case"), "pattern": _wrap_node(pattern), "guard": guard_v, "body": _wrap_nodes(body)}
 
     def parse_pattern(self) -> ASTNode:
         """Parse a match pattern."""
@@ -1842,7 +1903,7 @@ class Parser:
             patterns.append(self.parse_as_pattern())
         if len(patterns) == 1:
             return patterns[0]
-        return {"_type": "MatchOr", "patterns": patterns}
+        return {"_type": JStr("MatchOr"), "patterns": _wrap_nodes(patterns)}
 
     def parse_as_pattern(self) -> ASTNode:
         """Parse as pattern: pattern as name."""
@@ -1850,7 +1911,7 @@ class Parser:
         if self.match("as"):
             self.advance()
             name_tok = self.expect(TK_NAME)
-            return {"_type": "MatchAs", "pattern": pattern, "name": name_tok.value}
+            return {"_type": JStr("MatchAs"), "pattern": _wrap_node(pattern), "name": JStr(name_tok.value)}
         return pattern
 
     def parse_closed_pattern(self) -> ASTNode:
@@ -1860,19 +1921,19 @@ class Parser:
         # Literal patterns
         if tok.type == TK_NUMBER:
             self.advance()
-            return {"_type": "MatchValue", "value": make_constant_from_token(tok)}
+            return {"_type": JStr("MatchValue"), "value": _wrap_node(make_constant_from_token(tok))}
         if tok.type == TK_STRING:
             self.advance()
-            return {"_type": "MatchValue", "value": make_constant_from_token(tok)}
+            return {"_type": JStr("MatchValue"), "value": _wrap_node(make_constant_from_token(tok))}
         if tok.value == "None":
             self.advance()
-            return {"_type": "MatchSingleton", "value": None}
+            return {"_type": JStr("MatchSingleton"), "value": JNull()}
         if tok.value == "True":
             self.advance()
-            return {"_type": "MatchSingleton", "value": True}
+            return {"_type": JStr("MatchSingleton"), "value": JBool(True)}
         if tok.value == "False":
             self.advance()
-            return {"_type": "MatchSingleton", "value": False}
+            return {"_type": JStr("MatchSingleton"), "value": JBool(False)}
 
         # Negative numbers
         if self.match_op("-"):
@@ -1884,16 +1945,16 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": {"_type": "USub"}, "operand": const},
+                    {"op": JDict({"_type": JStr("USub")}), "operand": _wrap_node(const)},
                 ),
                 const,
             )
-            return {"_type": "MatchValue", "value": neg}
+            return {"_type": JStr("MatchValue"), "value": _wrap_node(neg)}
 
         # Wildcard
         if tok.type == TK_NAME and tok.value == "_":
             self.advance()
-            return {"_type": "MatchAs", "pattern": None, "name": None}
+            return {"_type": JStr("MatchAs"), "pattern": JNull(), "name": JNull()}
 
         # Capture pattern or class pattern
         if tok.type == TK_NAME:
@@ -1909,7 +1970,7 @@ class Parser:
                         "Name",
                         tok.lineno,
                         tok.col,
-                        {"id": parts[0], "ctx": {"_type": "Load"}},
+                        {"id": JStr(parts[0]), "ctx": JDict({"_type": JStr("Load")})},
                     ),
                     self.prev_token(),
                 )
@@ -1921,17 +1982,17 @@ class Parser:
                             tok.lineno,
                             tok.col,
                             {
-                                "value": result,
-                                "attr": parts[i],
-                                "ctx": {"_type": "Load"},
+                                "value": _wrap_node(result),
+                                "attr": JStr(parts[i]),
+                                "ctx": JDict({"_type": JStr("Load")}),
                             },
                         ),
                         self.prev_token(),
                     )
                     i += 1
-                return {"_type": "MatchValue", "value": result}
+                return {"_type": JStr("MatchValue"), "value": _wrap_node(result)}
             # Capture pattern
-            return {"_type": "MatchAs", "pattern": None, "name": name}
+            return {"_type": JStr("MatchAs"), "pattern": JNull(), "name": JStr(name)}
 
         # Sequence pattern
         if self.match_op("["):
@@ -1982,7 +2043,7 @@ class Parser:
         parts = name.split(".")
         cls: ASTNode = end_from_token(
             make_node(
-                "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+                "Name", tok.lineno, tok.col, {"id": JStr(parts[0]), "ctx": JDict({"_type": JStr("Load")})}
             ),
             tok,
         )
@@ -1993,18 +2054,18 @@ class Parser:
                     "Attribute",
                     tok.lineno,
                     tok.col,
-                    {"value": cls, "attr": parts[i], "ctx": {"_type": "Load"}},
+                    {"value": _wrap_node(cls), "attr": JStr(parts[i]), "ctx": JDict({"_type": JStr("Load")})},
                 ),
                 tok,
             )
             i += 1
 
         return {
-            "_type": "MatchClass",
-            "cls": cls,
-            "patterns": patterns,
-            "kwd_attrs": kwd_attrs,
-            "kwd_patterns": kwd_patterns,
+            "_type": JStr("MatchClass"),
+            "cls": _wrap_node(cls),
+            "patterns": _wrap_nodes(patterns),
+            "kwd_attrs": _wrap_strs(kwd_attrs),
+            "kwd_patterns": _wrap_nodes(kwd_patterns),
         }
 
     def parse_sequence_pattern(self) -> ASTNode:
@@ -2020,18 +2081,19 @@ class Parser:
                 name: str | None = None
                 if self.match(TK_NAME):
                     name = self.expect(TK_NAME).value
-                patterns.append({"_type": "MatchStar", "name": name})
+                star_name_v: JsonValue = JStr(name) if name is not None else JNull()
+                patterns.append({"_type": JStr("MatchStar"), "name": star_name_v})
             else:
                 patterns.append(self.parse_pattern())
         self.expect_op("]")
-        return {"_type": "MatchSequence", "patterns": patterns}
+        return {"_type": JStr("MatchSequence"), "patterns": _wrap_nodes(patterns)}
 
     def parse_group_or_sequence_pattern(self) -> ASTNode:
         """Parse grouped or tuple pattern: (p) or (p1, p2, ...)."""
         self.expect_op("(")
         if self.match_op(")"):
             self.advance()
-            return {"_type": "MatchSequence", "patterns": []}
+            return {"_type": JStr("MatchSequence"), "patterns": JList([])}
 
         first = self.parse_pattern()
         if self.match_op(")"):
@@ -2046,7 +2108,7 @@ class Parser:
                 break
             patterns.append(self.parse_pattern())
         self.expect_op(")")
-        return {"_type": "MatchSequence", "patterns": patterns}
+        return {"_type": JStr("MatchSequence"), "patterns": _wrap_nodes(patterns)}
 
     def parse_mapping_pattern(self) -> ASTNode:
         """Parse mapping pattern: {k: v, ...}."""
@@ -2070,11 +2132,12 @@ class Parser:
                 patterns.append(self.parse_pattern())
 
         self.expect_op("}")
+        rest_v: JsonValue = JStr(rest) if rest is not None else JNull()
         return {
-            "_type": "MatchMapping",
-            "keys": keys,
-            "patterns": patterns,
-            "rest": rest,
+            "_type": JStr("MatchMapping"),
+            "keys": _wrap_nodes(keys),
+            "patterns": _wrap_nodes(patterns),
+            "rest": rest_v,
         }
 
     def parse_pattern_key(self) -> ASTNode:
@@ -2090,14 +2153,14 @@ class Parser:
             self.advance()
             if tok.value == "None":
                 return end_from_token(
-                    make_node("Constant", tok.lineno, tok.col, {"value": None}), tok
+                    make_node("Constant", tok.lineno, tok.col, {"value": JNull()}), tok
                 )
             if tok.value == "True":
                 return end_from_token(
-                    make_node("Constant", tok.lineno, tok.col, {"value": True}), tok
+                    make_node("Constant", tok.lineno, tok.col, {"value": JBool(True)}), tok
                 )
             return end_from_token(
-                make_node("Constant", tok.lineno, tok.col, {"value": False}), tok
+                make_node("Constant", tok.lineno, tok.col, {"value": JBool(False)}), tok
             )
         if self.match_op("-"):
             self.advance()
@@ -2108,7 +2171,7 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": {"_type": "USub"}, "operand": const},
+                    {"op": JDict({"_type": JStr("USub")}), "operand": _wrap_node(const)},
                 ),
                 const,
             )
@@ -2117,7 +2180,7 @@ class Parser:
         parts = name.split(".")
         result: ASTNode = end_from_token(
             make_node(
-                "Name", tok.lineno, tok.col, {"id": parts[0], "ctx": {"_type": "Load"}}
+                "Name", tok.lineno, tok.col, {"id": JStr(parts[0]), "ctx": JDict({"_type": JStr("Load")})}
             ),
             self.prev_token(),
         )
@@ -2128,7 +2191,7 @@ class Parser:
                     "Attribute",
                     tok.lineno,
                     tok.col,
-                    {"value": result, "attr": parts[i], "ctx": {"_type": "Load"}},
+                    {"value": _wrap_node(result), "attr": JStr(parts[i]), "ctx": JDict({"_type": JStr("Load")})},
                 ),
                 self.prev_token(),
             )
@@ -2179,13 +2242,13 @@ class Parser:
             validate_target(expr, "Store", False, True, False)
             self.check_walrus_scope(expr)
             if "ctx" in expr:
-                expr["ctx"] = {"_type": "Store"}
+                expr["ctx"] = JDict({"_type": JStr("Store")})
             return end_from_node(
                 make_node(
                     "NamedExpr",
                     tok.lineno,
                     tok.col,
-                    {"target": expr, "value": value},
+                    {"target": _wrap_node(expr), "value": _wrap_node(value)},
                 ),
                 value,
             )
@@ -2213,7 +2276,7 @@ class Parser:
                     "IfExp",
                     tok.lineno,
                     tok.col,
-                    {"test": condition, "body": expr, "orelse": orelse},
+                    {"test": _wrap_node(condition), "body": _wrap_node(expr), "orelse": _wrap_node(orelse)},
                 ),
                 orelse,
             )
@@ -2229,7 +2292,7 @@ class Parser:
         self.expect_op(":")
         body = self.parse_test()
         return end_from_node(
-            make_node("Lambda", tok.lineno, tok.col, {"args": params, "body": body}),
+            make_node("Lambda", tok.lineno, tok.col, {"args": _wrap_node(params), "body": _wrap_node(body)}),
             body,
         )
 
@@ -2263,13 +2326,13 @@ class Parser:
                 if self.match(TK_NAME):
                     tok = self.expect(TK_NAME)
                     vararg = {
-                        "_type": "arg",
-                        "arg": tok.value,
-                        "annotation": None,
-                        "lineno": tok.lineno,
-                        "col_offset": tok.col,
-                        "end_lineno": tok.lineno,
-                        "end_col_offset": tok.col + len(tok.value),
+                        "_type": JStr("arg"),
+                        "arg": JStr(tok.value),
+                        "annotation": JNull(),
+                        "lineno": JInt(tok.lineno),
+                        "col_offset": JInt(tok.col),
+                        "end_lineno": JInt(tok.lineno),
+                        "end_col_offset": JInt(tok.col + len(tok.value)),
                     }
                 continue
 
@@ -2277,25 +2340,25 @@ class Parser:
                 self.advance()
                 tok = self.expect(TK_NAME)
                 kwarg = {
-                    "_type": "arg",
-                    "arg": tok.value,
-                    "annotation": None,
-                    "lineno": tok.lineno,
-                    "col_offset": tok.col,
-                    "end_lineno": tok.lineno,
-                    "end_col_offset": tok.col + len(tok.value),
+                    "_type": JStr("arg"),
+                    "arg": JStr(tok.value),
+                    "annotation": JNull(),
+                    "lineno": JInt(tok.lineno),
+                    "col_offset": JInt(tok.col),
+                    "end_lineno": JInt(tok.lineno),
+                    "end_col_offset": JInt(tok.col + len(tok.value)),
                 }
                 continue
 
             tok = self.expect(TK_NAME)
             arg: ASTNode = {
-                "_type": "arg",
-                "arg": tok.value,
-                "annotation": None,
-                "lineno": tok.lineno,
-                "col_offset": tok.col,
-                "end_lineno": tok.lineno,
-                "end_col_offset": tok.col + len(tok.value),
+                "_type": JStr("arg"),
+                "arg": JStr(tok.value),
+                "annotation": JNull(),
+                "lineno": JInt(tok.lineno),
+                "col_offset": JInt(tok.col),
+                "end_lineno": JInt(tok.lineno),
+                "end_col_offset": JInt(tok.col + len(tok.value)),
             }
             default: ASTNode | None = None
             if self.match_op("="):
@@ -2314,15 +2377,17 @@ class Parser:
                 if default is not None:
                     defaults.append(default)
 
+        vararg_v: JsonValue = _wrap_node(vararg) if vararg is not None else JNull()
+        kwarg_v: JsonValue = _wrap_node(kwarg) if kwarg is not None else JNull()
         return {
-            "_type": "arguments",
-            "posonlyargs": posonlyargs,
-            "args": args,
-            "vararg": vararg,
-            "kwonlyargs": kwonlyargs,
-            "kw_defaults": kw_defaults,
-            "kwarg": kwarg,
-            "defaults": defaults,
+            "_type": JStr("arguments"),
+            "posonlyargs": _wrap_nodes(posonlyargs),
+            "args": _wrap_nodes(args),
+            "vararg": vararg_v,
+            "kwonlyargs": _wrap_nodes(kwonlyargs),
+            "kw_defaults": _wrap_opt_nodes(kw_defaults),
+            "kwarg": kwarg_v,
+            "defaults": _wrap_nodes(defaults),
         }
 
     def parse_or_test(self) -> ASTNode:
@@ -2337,7 +2402,7 @@ class Parser:
             return values[0]
         return end_from_node(
             make_node(
-                "BoolOp", tok.lineno, tok.col, {"op": {"_type": "Or"}, "values": values}
+                "BoolOp", tok.lineno, tok.col, {"op": JDict({"_type": JStr("Or")}), "values": _wrap_nodes(values)}
             ),
             values[len(values) - 1],
         )
@@ -2357,7 +2422,7 @@ class Parser:
                 "BoolOp",
                 tok.lineno,
                 tok.col,
-                {"op": {"_type": "And"}, "values": values},
+                {"op": JDict({"_type": JStr("And")}), "values": _wrap_nodes(values)},
             ),
             values[len(values) - 1],
         )
@@ -2373,7 +2438,7 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": {"_type": "Not"}, "operand": operand},
+                    {"op": JDict({"_type": JStr("Not")}), "operand": _wrap_node(operand)},
                 ),
                 operand,
             )
@@ -2400,7 +2465,7 @@ class Parser:
                 "Compare",
                 tok.lineno,
                 tok.col,
-                {"left": left, "ops": ops, "comparators": comparators},
+                {"left": _wrap_node(left), "ops": _wrap_nodes(ops), "comparators": _wrap_nodes(comparators)},
             ),
             comparators[len(comparators) - 1],
         )
@@ -2410,35 +2475,35 @@ class Parser:
         tok = self.current()
         if self.match_op("<"):
             self.advance()
-            return {"_type": "Lt"}
+            return {"_type": JStr("Lt")}
         if self.match_op(">"):
             self.advance()
-            return {"_type": "Gt"}
+            return {"_type": JStr("Gt")}
         if self.match_op("=="):
             self.advance()
-            return {"_type": "Eq"}
+            return {"_type": JStr("Eq")}
         if self.match_op(">="):
             self.advance()
-            return {"_type": "GtE"}
+            return {"_type": JStr("GtE")}
         if self.match_op("<="):
             self.advance()
-            return {"_type": "LtE"}
+            return {"_type": JStr("LtE")}
         if self.match_op("!="):
             self.advance()
-            return {"_type": "NotEq"}
+            return {"_type": JStr("NotEq")}
         if self.match("in"):
             self.advance()
-            return {"_type": "In"}
+            return {"_type": JStr("In")}
         if self.match("not"):
             self.advance()
             self.expect("in")
-            return {"_type": "NotIn"}
+            return {"_type": JStr("NotIn")}
         if self.match("is"):
             self.advance()
             if self.match("not"):
                 self.advance()
-                return {"_type": "IsNot"}
-            return {"_type": "Is"}
+                return {"_type": JStr("IsNot")}
+            return {"_type": JStr("Is")}
         return None
 
     def parse_expr(self) -> ASTNode:
@@ -2453,7 +2518,7 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": left, "op": {"_type": "BitOr"}, "right": right},
+                    {"left": _wrap_node(left), "op": JDict({"_type": JStr("BitOr")}), "right": _wrap_node(right)},
                 ),
                 right,
             )
@@ -2471,7 +2536,7 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": left, "op": {"_type": "BitXor"}, "right": right},
+                    {"left": _wrap_node(left), "op": JDict({"_type": JStr("BitXor")}), "right": _wrap_node(right)},
                 ),
                 right,
             )
@@ -2489,7 +2554,7 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": left, "op": {"_type": "BitAnd"}, "right": right},
+                    {"left": _wrap_node(left), "op": JDict({"_type": JStr("BitAnd")}), "right": _wrap_node(right)},
                 ),
                 right,
             )
@@ -2508,7 +2573,7 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": left, "op": {"_type": op_type}, "right": right},
+                    {"left": _wrap_node(left), "op": JDict({"_type": JStr(op_type)}), "right": _wrap_node(right)},
                 ),
                 right,
             )
@@ -2527,7 +2592,7 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": left, "op": {"_type": op_type}, "right": right},
+                    {"left": _wrap_node(left), "op": JDict({"_type": JStr(op_type)}), "right": _wrap_node(right)},
                 ),
                 right,
             )
@@ -2558,7 +2623,7 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": left, "op": {"_type": op_type}, "right": right},
+                    {"left": _wrap_node(left), "op": JDict({"_type": JStr(op_type)}), "right": _wrap_node(right)},
                 ),
                 right,
             )
@@ -2575,7 +2640,7 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": {"_type": "UAdd"}, "operand": operand},
+                    {"op": JDict({"_type": JStr("UAdd")}), "operand": _wrap_node(operand)},
                 ),
                 operand,
             )
@@ -2587,7 +2652,7 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": {"_type": "USub"}, "operand": operand},
+                    {"op": JDict({"_type": JStr("USub")}), "operand": _wrap_node(operand)},
                 ),
                 operand,
             )
@@ -2599,7 +2664,7 @@ class Parser:
                     "UnaryOp",
                     tok.lineno,
                     tok.col,
-                    {"op": {"_type": "Invert"}, "operand": operand},
+                    {"op": JDict({"_type": JStr("Invert")}), "operand": _wrap_node(operand)},
                 ),
                 operand,
             )
@@ -2617,7 +2682,7 @@ class Parser:
                     "BinOp",
                     tok.lineno,
                     tok.col,
-                    {"left": base, "op": {"_type": "Pow"}, "right": exp},
+                    {"left": _wrap_node(base), "op": JDict({"_type": JStr("Pow")}), "right": _wrap_node(exp)},
                 ),
                 exp,
             )
@@ -2632,7 +2697,7 @@ class Parser:
             self.advance()
             value = self.parse_atom_expr()
             return end_from_node(
-                make_node("Await", tok.lineno, tok.col, {"value": value}), value
+                make_node("Await", tok.lineno, tok.col, {"value": _wrap_node(value)}), value
             )
         return self.parse_atom_expr()
 
@@ -2665,7 +2730,7 @@ class Parser:
                 "Call",
                 tok.lineno,
                 tok.col,
-                {"func": func, "args": args, "keywords": keywords},
+                {"func": _wrap_node(func), "args": _wrap_nodes(args), "keywords": _wrap_nodes(keywords)},
             ),
             close,
         )
@@ -2687,7 +2752,7 @@ class Parser:
             if self.match_op("**"):
                 self.advance()
                 value = self.parse_test()
-                keywords.append({"_type": "keyword", "arg": None, "value": value})
+                keywords.append({"_type": JStr("keyword"), "arg": JNull(), "value": _wrap_node(value)})
                 has_kwargs = True
                 continue
 
@@ -2705,7 +2770,7 @@ class Parser:
                             "Starred",
                             star_tok.lineno,
                             star_tok.col,
-                            {"value": value, "ctx": {"_type": "Load"}},
+                            {"value": _wrap_node(value), "ctx": JDict({"_type": JStr("Load")})},
                         ),
                         value,
                     )
@@ -2720,7 +2785,7 @@ class Parser:
                 if name in seen_keywords:
                     raise self.error("keyword argument repeated: " + name)
                 seen_keywords.add(name)
-                keywords.append({"_type": "keyword", "arg": name, "value": value})
+                keywords.append({"_type": JStr("keyword"), "arg": JStr(name), "value": _wrap_node(value)})
                 has_keyword = True
                 continue
 
@@ -2742,9 +2807,9 @@ class Parser:
                 arg = end_from_token(
                     make_node(
                         "GeneratorExp",
-                        arg.get("lineno", 1),
-                        arg.get("col_offset", 0),
-                        {"elt": arg, "generators": generators},
+                        get_int(arg, "lineno"),
+                        get_int(arg, "col_offset"),
+                        {"elt": _wrap_node(arg), "generators": _wrap_nodes(generators)},
                     ),
                     self.prev_token(),
                 )
@@ -2772,7 +2837,7 @@ class Parser:
                 is_async = 1
             self.expect("for")
             target = self.parse_target_list()
-            if isinstance(target, dict) and target.get("_type") == "Starred":
+            if isinstance(target, dict) and get_str(target, "_type") == "Starred":
                 raise self.error("starred assignment target must be in a list or tuple")
             set_context(target, "Store")
             _collect_names(target, target_names)
@@ -2786,11 +2851,11 @@ class Parser:
                 ifs.append(self.parse_or_test())
             generators.append(
                 {
-                    "_type": "comprehension",
-                    "target": target,
-                    "iter": iter_expr,
-                    "ifs": ifs,
-                    "is_async": is_async,
+                    "_type": JStr("comprehension"),
+                    "target": _wrap_node(target),
+                    "iter": _wrap_node(iter_expr),
+                    "ifs": _wrap_nodes(ifs),
+                    "is_async": JInt(is_async),
                 }
             )
         self.comp_target_names.pop()
@@ -2812,7 +2877,7 @@ class Parser:
             return items[0]
         return end_from_node(
             make_node(
-                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+                "Tuple", tok.lineno, tok.col, {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})}
             ),
             items[len(items) - 1],
         )
@@ -2829,7 +2894,7 @@ class Parser:
                         "Tuple",
                         tok.lineno,
                         tok.col,
-                        {"elts": [], "ctx": {"_type": "Load"}},
+                        {"elts": JList([]), "ctx": JDict({"_type": JStr("Load")})},
                     ),
                     close,
                 )
@@ -2845,7 +2910,7 @@ class Parser:
                         "List",
                         tok.lineno,
                         tok.col,
-                        {"elts": [], "ctx": {"_type": "Load"}},
+                        {"elts": JList([]), "ctx": JDict({"_type": JStr("Load")})},
                     ),
                     close,
                 )
@@ -2862,7 +2927,7 @@ class Parser:
                     "List",
                     tok.lineno,
                     tok.col,
-                    {"elts": items, "ctx": {"_type": "Load"}},
+                    {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})},
                 ),
                 close,
             )
@@ -2874,7 +2939,7 @@ class Parser:
                     "Starred",
                     star_tok.lineno,
                     star_tok.col,
-                    {"value": value, "ctx": {"_type": "Load"}},
+                    {"value": _wrap_node(value), "ctx": JDict({"_type": JStr("Load")})},
                 ),
                 value,
             )
@@ -2899,7 +2964,7 @@ class Parser:
                 "Subscript",
                 tok.lineno,
                 tok.col,
-                {"value": value, "slice": slice_node, "ctx": {"_type": "Load"}},
+                {"value": _wrap_node(value), "slice": _wrap_node(slice_node), "ctx": JDict({"_type": JStr("Load")})},
             ),
             close,
         )
@@ -2920,7 +2985,7 @@ class Parser:
                 "Tuple",
                 self.current().lineno,
                 self.current().col,
-                {"elts": items, "ctx": {"_type": "Load"}},
+                {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})},
             ),
             items[len(items) - 1],
         )
@@ -2951,8 +3016,11 @@ class Parser:
             if not self.match_op(",") and not self.match_op("]"):
                 step = self.parse_test()
 
+        lower_v: JsonValue = _wrap_node(lower) if lower is not None else JNull()
+        upper_v: JsonValue = _wrap_node(upper) if upper is not None else JNull()
+        step_v: JsonValue = _wrap_node(step) if step is not None else JNull()
         node = make_node(
-            "Slice", tok.lineno, tok.col, {"lower": lower, "upper": upper, "step": step}
+            "Slice", tok.lineno, tok.col, {"lower": lower_v, "upper": upper_v, "step": step_v}
         )
         if step is not None:
             end_from_node(node, step)
@@ -2973,7 +3041,7 @@ class Parser:
                 "Attribute",
                 tok.lineno,
                 tok.col,
-                {"value": value, "attr": name_tok.value, "ctx": {"_type": "Load"}},
+                {"value": _wrap_node(value), "attr": JStr(name_tok.value), "ctx": JDict({"_type": JStr("Load")})},
             ),
             name_tok,
         )
@@ -2992,7 +3060,7 @@ class Parser:
                         "Tuple",
                         tok.lineno,
                         tok.col,
-                        {"elts": [], "ctx": {"_type": "Load"}},
+                        {"elts": JList([]), "ctx": JDict({"_type": JStr("Load")})},
                     ),
                     close,
                 )
@@ -3012,13 +3080,13 @@ class Parser:
                 validate_target(first, "Store", False, True, False)
                 self.check_walrus_scope(first)
                 if "ctx" in first:
-                    first["ctx"] = {"_type": "Store"}
+                    first["ctx"] = JDict({"_type": JStr("Store")})
                 first = end_from_node(
                     make_node(
                         "NamedExpr",
                         tok.lineno,
                         tok.col,
-                        {"target": first, "value": value},
+                        {"target": _wrap_node(first), "value": _wrap_node(value)},
                     ),
                     value,
                 )
@@ -3036,7 +3104,7 @@ class Parser:
                         "GeneratorExp",
                         tok.lineno,
                         tok.col,
-                        {"elt": first, "generators": generators},
+                        {"elt": _wrap_node(first), "generators": _wrap_nodes(generators)},
                     ),
                     close,
                 )
@@ -3055,12 +3123,12 @@ class Parser:
                         "Tuple",
                         tok.lineno,
                         tok.col,
-                        {"elts": elts, "ctx": {"_type": "Load"}},
+                        {"elts": _wrap_nodes(elts), "ctx": JDict({"_type": JStr("Load")})},
                     ),
                     close,
                 )
 
-            if isinstance(first, dict) and first.get("_type") == "Starred":
+            if isinstance(first, dict) and get_str(first, "_type") == "Starred":
                 raise self.error("starred expression is not allowed here")
             self.expect_op(")")
             return first
@@ -3075,7 +3143,7 @@ class Parser:
                         "List",
                         tok.lineno,
                         tok.col,
-                        {"elts": [], "ctx": {"_type": "Load"}},
+                        {"elts": JList([]), "ctx": JDict({"_type": JStr("Load")})},
                     ),
                     close,
                 )
@@ -3084,7 +3152,7 @@ class Parser:
 
             # List comprehension
             if self.match("for"):
-                if isinstance(first, dict) and first.get("_type") == "Starred":
+                if isinstance(first, dict) and get_str(first, "_type") == "Starred":
                     raise self.error(
                         "iterable unpacking cannot be used in comprehension"
                     )
@@ -3096,7 +3164,7 @@ class Parser:
                         "ListComp",
                         tok.lineno,
                         tok.col,
-                        {"elt": first, "generators": generators},
+                        {"elt": _wrap_node(first), "generators": _wrap_nodes(generators)},
                     ),
                     close,
                 )
@@ -3114,7 +3182,7 @@ class Parser:
                     "List",
                     tok.lineno,
                     tok.col,
-                    {"elts": elts, "ctx": {"_type": "Load"}},
+                    {"elts": _wrap_nodes(elts), "ctx": JDict({"_type": JStr("Load")})},
                 ),
                 close,
             )
@@ -3131,7 +3199,7 @@ class Parser:
                     "Name",
                     name_tok.lineno,
                     name_tok.col,
-                    {"id": name_tok.value, "ctx": {"_type": "Load"}},
+                    {"id": JStr(name_tok.value), "ctx": JDict({"_type": JStr("Load")})},
                 ),
                 name_tok,
             )
@@ -3149,24 +3217,24 @@ class Parser:
         if self.match("None"):
             self.advance()
             return end_from_token(
-                make_node("Constant", tok.lineno, tok.col, {"value": None}), tok
+                make_node("Constant", tok.lineno, tok.col, {"value": JNull()}), tok
             )
         if self.match("True"):
             self.advance()
             return end_from_token(
-                make_node("Constant", tok.lineno, tok.col, {"value": True}), tok
+                make_node("Constant", tok.lineno, tok.col, {"value": JBool(True)}), tok
             )
         if self.match("False"):
             self.advance()
             return end_from_token(
-                make_node("Constant", tok.lineno, tok.col, {"value": False}), tok
+                make_node("Constant", tok.lineno, tok.col, {"value": JBool(False)}), tok
             )
 
         # Ellipsis
         if self.match_op("..."):
             self.advance()
             return end_from_token(
-                make_node("Constant", tok.lineno, tok.col, {"value": ...}), tok
+                make_node("Constant", tok.lineno, tok.col, {"value": JStr("Ellipsis")}), tok
             )
 
         raise self.error(
@@ -3180,7 +3248,7 @@ class Parser:
         if self.match_op("}"):
             close = self.advance()
             return end_from_token(
-                make_node("Dict", tok.lineno, tok.col, {"keys": [], "values": []}),
+                make_node("Dict", tok.lineno, tok.col, {"keys": JList([]), "values": JList([])}),
                 close,
             )
 
@@ -3208,9 +3276,9 @@ class Parser:
                         tok.lineno,
                         tok.col,
                         {
-                            "key": first[0],
-                            "value": first[1],
-                            "generators": generators,
+                            "key": _wrap_node(first[0]),
+                            "value": _wrap_node(first[1]),
+                            "generators": _wrap_nodes(generators),
                         },
                     ),
                     close,
@@ -3231,7 +3299,7 @@ class Parser:
             close = self.expect_op("}")
             return end_from_token(
                 make_node(
-                    "Dict", tok.lineno, tok.col, {"keys": keys, "values": values}
+                    "Dict", tok.lineno, tok.col, {"keys": _wrap_opt_nodes(keys), "values": _wrap_nodes(values)}
                 ),
                 close,
             )
@@ -3249,7 +3317,7 @@ class Parser:
                     "SetComp",
                     tok.lineno,
                     tok.col,
-                    {"elt": first, "generators": generators},
+                    {"elt": _wrap_node(first), "generators": _wrap_nodes(generators)},
                 ),
                 close,
             )
@@ -3264,7 +3332,7 @@ class Parser:
             elts.append(item)
         close = self.expect_op("}")
         return end_from_token(
-            make_node("Set", tok.lineno, tok.col, {"elts": elts}), close
+            make_node("Set", tok.lineno, tok.col, {"elts": _wrap_nodes(elts)}), close
         )
 
     def parse_dict_or_set_item(self) -> ASTNode | tuple[ASTNode | None, ASTNode]:
@@ -3329,7 +3397,7 @@ class Parser:
                 j += 1
             last_str = strings[len(strings) - 1]
             return end_from_token(
-                make_node("JoinedStr", tok.lineno, tok.col, {"values": values}),
+                make_node("JoinedStr", tok.lineno, tok.col, {"values": _wrap_nodes(values)}),
                 last_str,
             )
 
@@ -3349,8 +3417,18 @@ class Parser:
             k += 1
 
         last_str = strings[len(strings) - 1]
+        combined_v: JsonValue
+        is_bytes = False
+        if isinstance(combined, str):
+            combined_v = JStr(combined)
+        else:
+            combined_v = JStr(combined.decode("latin-1"))
+            is_bytes = True
+        fields: dict[str, JsonValue] = {"value": combined_v}
+        if is_bytes:
+            fields["_is_bytes"] = JBool(True)
         return end_from_token(
-            make_node("Constant", tok.lineno, tok.col, {"value": combined}), last_str
+            make_node("Constant", tok.lineno, tok.col, fields), last_str
         )
 
     def parse_testlist_star_expr(self) -> ASTNode:
@@ -3371,7 +3449,7 @@ class Parser:
             return items[0]
         return end_from_node(
             make_node(
-                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+                "Tuple", tok.lineno, tok.col, {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})}
             ),
             items[len(items) - 1],
         )
@@ -3386,7 +3464,7 @@ class Parser:
                     "Starred",
                     tok.lineno,
                     tok.col,
-                    {"value": value, "ctx": {"_type": "Load"}},
+                    {"value": _wrap_node(value), "ctx": JDict({"_type": JStr("Load")})},
                 ),
                 value,
             )
@@ -3411,7 +3489,7 @@ class Parser:
             return items[0]
         return end_from_node(
             make_node(
-                "Tuple", tok.lineno, tok.col, {"elts": items, "ctx": {"_type": "Load"}}
+                "Tuple", tok.lineno, tok.col, {"elts": _wrap_nodes(items), "ctx": JDict({"_type": JStr("Load")})}
             ),
             items[len(items) - 1],
         )
@@ -3434,14 +3512,14 @@ class Parser:
 
 
 def make_node(
-    type_name: str, lineno: int, col: int, fields: dict[str, object] | None = None
+    type_name: str, lineno: int, col: int, fields: ASTNode | None = None
 ) -> ASTNode:
     """Create an AST dict node with position info."""
-    result: ASTNode = {"_type": type_name}
-    result["lineno"] = lineno
-    result["col_offset"] = col
-    result["end_lineno"] = lineno
-    result["end_col_offset"] = col
+    result: ASTNode = {"_type": JStr(type_name)}
+    result["lineno"] = JInt(lineno)
+    result["col_offset"] = JInt(col)
+    result["end_lineno"] = JInt(lineno)
+    result["end_col_offset"] = JInt(col)
     if fields is not None:
         keys = list(fields.keys())
         i = 0
@@ -3454,40 +3532,63 @@ def make_node(
 
 def end_from_token(node: ASTNode, tok: Token) -> ASTNode:
     """Set end position from a token."""
-    node["end_lineno"] = tok.lineno
-    node["end_col_offset"] = tok.col + len(tok.value)
+    node["end_lineno"] = JInt(tok.lineno)
+    node["end_col_offset"] = JInt(tok.col + len(tok.value))
     return node
 
 
 def end_from_node(node: ASTNode, child: ASTNode) -> ASTNode:
     """Set end position from a child node."""
-    node["end_lineno"] = child.get("end_lineno", node.get("lineno", 1))
-    node["end_col_offset"] = child.get("end_col_offset", node.get("col_offset", 0))
+    el = child.get("end_lineno")
+    if el is None:
+        el = node.get("lineno")
+    if el is None:
+        el = JInt(1)
+    node["end_lineno"] = el
+    ec = child.get("end_col_offset")
+    if ec is None:
+        ec = node.get("col_offset")
+    if ec is None:
+        ec = JInt(0)
+    node["end_col_offset"] = ec
     return node
 
 
 def make_arguments() -> ASTNode:
     """Create empty arguments node."""
     return {
-        "_type": "arguments",
-        "posonlyargs": [],
-        "args": [],
-        "vararg": None,
-        "kwonlyargs": [],
-        "kw_defaults": [],
-        "kwarg": None,
-        "defaults": [],
+        "_type": JStr("arguments"),
+        "posonlyargs": JList([]),
+        "args": JList([]),
+        "vararg": JNull(),
+        "kwonlyargs": JList([]),
+        "kw_defaults": JList([]),
+        "kwarg": JNull(),
+        "defaults": JList([]),
     }
 
 
 def make_constant_from_token(tok: Token) -> ASTNode:
     """Create Constant node from number or string token with proper end position."""
+    jval: JsonValue
     if tok.type == TK_NUMBER:
         value = parse_number_value(tok.value)
+        if isinstance(value, bool):
+            jval = JBool(value)
+        elif isinstance(value, int):
+            jval = JInt(value)
+        elif isinstance(value, float):
+            jval = JFloat(value)
+        else:
+            jval = JStr(str(value))
     else:
-        value = parse_string_value(tok.value, tok.lineno, tok.col)
-    node = make_node("Constant", tok.lineno, tok.col, {"value": value})
-    node["end_col_offset"] = tok.col + len(tok.value)
+        svalue = parse_string_value(tok.value, tok.lineno, tok.col)
+        if isinstance(svalue, str):
+            jval = JStr(svalue)
+        else:
+            jval = JStr(repr(svalue))
+    node = make_node("Constant", tok.lineno, tok.col, {"value": jval})
+    node["end_col_offset"] = JInt(tok.col + len(tok.value))
     return node
 
 
@@ -3859,12 +3960,17 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
             if len(current_str) > 0:
                 if is_raw:
                     values.append(
-                        make_node("Constant", lineno, col, {"value": current_str})
+                        make_node("Constant", lineno, col, {"value": JStr(current_str)})
                     )
                 else:
                     processed = process_escapes(current_str, False, lineno, col)
+                    fstr_v: JsonValue
+                    if isinstance(processed, str):
+                        fstr_v = JStr(processed)
+                    else:
+                        fstr_v = JStr(repr(processed))
                     values.append(
-                        make_node("Constant", lineno, col, {"value": processed})
+                        make_node("Constant", lineno, col, {"value": fstr_v})
                     )
                 current_str = ""
             expr_str, conversion, format_spec_str, new_i = _fstring_find_expr_end(
@@ -3892,13 +3998,14 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
                 fmt_values = parse_fstring("f'" + format_spec_str + "'", lineno, col)
                 if len(fmt_values) > 0:
                     fmt_spec = make_node(
-                        "JoinedStr", lineno, col, {"values": fmt_values}
+                        "JoinedStr", lineno, col, {"values": _wrap_nodes(fmt_values)}
                     )
+            fmt_spec_v: JsonValue = _wrap_node(fmt_spec) if fmt_spec is not None else JNull()
             fmt_value = make_node(
                 "FormattedValue",
                 lineno,
                 col,
-                {"value": expr_node, "conversion": conv_int, "format_spec": fmt_spec},
+                {"value": _wrap_node(expr_node), "conversion": JInt(conv_int), "format_spec": fmt_spec_v},
             )
             values.append(fmt_value)
             i = new_i
@@ -3907,10 +4014,15 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
         i += 1
     if len(current_str) > 0:
         if is_raw:
-            values.append(make_node("Constant", lineno, col, {"value": current_str}))
+            values.append(make_node("Constant", lineno, col, {"value": JStr(current_str)}))
         else:
             processed = process_escapes(current_str, False, lineno, col)
-            values.append(make_node("Constant", lineno, col, {"value": processed}))
+            tail_v: JsonValue
+            if isinstance(processed, str):
+                tail_v = JStr(processed)
+            else:
+                tail_v = JStr(repr(processed))
+            values.append(make_node("Constant", lineno, col, {"value": tail_v}))
     return values
 
 
@@ -3919,7 +4031,7 @@ def parse_fstring_expr(expr_str: str, lineno: int, col: int) -> ASTNode:
     tokens = tokenize(expr_str)
     parser = Parser(tokens)
     result = parser.parse_testlist_star_expr()
-    if isinstance(result, dict) and result.get("_type") == "Starred":
+    if isinstance(result, dict) and get_str(result, "_type") == "Starred":
         raise ParseError(
             "f-string: starred expression is not allowed here", lineno, col
         )
@@ -3946,28 +4058,27 @@ def augassign_op(op_str: str) -> ASTNode:
     type_name = ops.get(op_str)
     if type_name is None:
         type_name = "Add"
-    return {"_type": type_name}
+    return {"_type": JStr(type_name)}
 
 
 def _collect_names(node: ASTNode, names: set[str]) -> None:
     """Collect Name.id values from an assignment target."""
     if not isinstance(node, dict):
         return
-    ntype = node.get("_type")
+    ntype = get_str(node, "_type")
     if ntype == "Name":
-        nid = node.get("id")
-        if isinstance(nid, str):
+        nid = get_str(node, "id")
+        if len(nid) > 0:
             names.add(nid)
     elif ntype in ("Tuple", "List"):
-        elts = node.get("elts")
-        if isinstance(elts, list):
-            i = 0
-            while i < len(elts):
-                _collect_names(elts[i], names)
-                i += 1
+        elts = get_nodes(node, "elts")
+        i = 0
+        while i < len(elts):
+            _collect_names(elts[i], names)
+            i += 1
     elif ntype == "Starred":
-        value = node.get("value")
-        if isinstance(value, dict):
+        value = get_node(node, "value")
+        if len(value) > 0:
             _collect_names(value, names)
 
 
@@ -3975,18 +4086,22 @@ def _find_named_exprs(node: ASTNode, results: list[ASTNode]) -> None:
     """Walk AST node to find all NamedExpr nodes."""
     if not isinstance(node, dict):
         return
-    if node.get("_type") == "NamedExpr":
+    if get_str(node, "_type") == "NamedExpr":
         results.append(node)
-    for v in node.values():
-        if isinstance(v, dict):
-            _find_named_exprs(v, results)
-        elif isinstance(v, list):
+    keys = list(node.keys())
+    ki = 0
+    while ki < len(keys):
+        v = node[keys[ki]]
+        if isinstance(v, JDict):
+            _find_named_exprs(v.entries, results)
+        elif isinstance(v, JList):
             i = 0
-            while i < len(v):
-                item = v[i]
-                if isinstance(item, dict):
-                    _find_named_exprs(item, results)
+            while i < len(v.items):
+                item = v.items[i]
+                if isinstance(item, JDict):
+                    _find_named_exprs(item.entries, results)
                 i += 1
+        ki += 1
 
 
 def _check_comp_walrus(
@@ -4000,8 +4115,8 @@ def _check_comp_walrus(
     while i < len(generators):
         gen = generators[i]
         if isinstance(gen, dict):
-            target = gen.get("target")
-            if isinstance(target, dict):
+            target = get_node(gen, "target")
+            if len(target) > 0:
                 _collect_names(target, target_names)
         i += 1
     named_exprs: list[ASTNode] = []
@@ -4013,30 +4128,29 @@ def _check_comp_walrus(
     while i < len(generators):
         gen = generators[i]
         if isinstance(gen, dict):
-            ifs = gen.get("ifs")
-            if isinstance(ifs, list):
-                j = 0
-                while j < len(ifs):
-                    _find_named_exprs(ifs[j], named_exprs)
-                    j += 1
+            gen_ifs = get_nodes(gen, "ifs")
+            j = 0
+            while j < len(gen_ifs):
+                _find_named_exprs(gen_ifs[j], named_exprs)
+                j += 1
         i += 1
     i = 0
     while i < len(named_exprs):
         ne = named_exprs[i]
         if in_class_comp:
-            lineno = ne.get("lineno", 1)
-            col = ne.get("col_offset", 0)
+            lineno = get_int(ne, "lineno")
+            col = get_int(ne, "col_offset")
             raise ParseError(
                 "assignment expression within a comprehension cannot be used in a class body",
                 lineno,
                 col,
             )
-        target = ne.get("target")
-        if isinstance(target, dict) and target.get("_type") == "Name":
-            name = target.get("id")
-            if isinstance(name, str) and name in target_names:
-                lineno = ne.get("lineno", 1)
-                col = ne.get("col_offset", 0)
+        target = get_node(ne, "target")
+        if len(target) > 0 and get_str(target, "_type") == "Name":
+            name = get_str(target, "id")
+            if len(name) > 0 and name in target_names:
+                lineno = get_int(ne, "lineno")
+                col = get_int(ne, "col_offset")
                 raise ParseError(
                     "assignment expression cannot rebind comprehension iteration variable '"
                     + name
@@ -4053,41 +4167,38 @@ def _check_async_generator_return(body: list[ASTNode], func_tok: Token) -> None:
     while i < len(body):
         stmt = body[i]
         if isinstance(stmt, dict):
-            stype = stmt.get("_type")
-            if stype == "Return" and stmt.get("value") is not None:
-                lineno = stmt.get("lineno", func_tok.lineno)
-                col = stmt.get("col_offset", func_tok.col)
-                if not isinstance(lineno, int):
-                    lineno = func_tok.lineno
-                if not isinstance(col, int):
-                    col = func_tok.col
-                raise ParseError("'return' with value in async generator", lineno, col)
+            stype = get_str(stmt, "_type")
+            if stype == "Return":
+                ret_val = stmt.get("value")
+                has_value = ret_val is not None and not isinstance(ret_val, JNull)
+                if has_value:
+                    lineno = get_int(stmt, "lineno")
+                    col = get_int(stmt, "col_offset")
+                    if lineno == 0:
+                        lineno = func_tok.lineno
+                    if col == 0:
+                        col = func_tok.col
+                    raise ParseError("'return' with value in async generator", lineno, col)
             if stype in ("If", "While"):
-                _check_async_generator_return_list(stmt.get("body"), func_tok)
-                _check_async_generator_return_list(stmt.get("orelse"), func_tok)
+                _check_async_generator_return(get_nodes(stmt, "body"), func_tok)
+                _check_async_generator_return(get_nodes(stmt, "orelse"), func_tok)
             elif stype in ("For", "AsyncFor"):
-                _check_async_generator_return_list(stmt.get("body"), func_tok)
-                _check_async_generator_return_list(stmt.get("orelse"), func_tok)
+                _check_async_generator_return(get_nodes(stmt, "body"), func_tok)
+                _check_async_generator_return(get_nodes(stmt, "orelse"), func_tok)
             elif stype in ("Try", "TryStar"):
-                _check_async_generator_return_list(stmt.get("body"), func_tok)
-                _check_async_generator_return_list(stmt.get("orelse"), func_tok)
-                _check_async_generator_return_list(stmt.get("finalbody"), func_tok)
-                handlers = stmt.get("handlers")
-                if isinstance(handlers, list):
-                    j = 0
-                    while j < len(handlers):
-                        h = handlers[j]
-                        if isinstance(h, dict):
-                            _check_async_generator_return_list(h.get("body"), func_tok)
-                        j += 1
+                _check_async_generator_return(get_nodes(stmt, "body"), func_tok)
+                _check_async_generator_return(get_nodes(stmt, "orelse"), func_tok)
+                _check_async_generator_return(get_nodes(stmt, "finalbody"), func_tok)
+                handlers = get_nodes(stmt, "handlers")
+                j = 0
+                while j < len(handlers):
+                    h = handlers[j]
+                    if isinstance(h, dict):
+                        _check_async_generator_return(get_nodes(h, "body"), func_tok)
+                    j += 1
             elif stype in ("With", "AsyncWith"):
-                _check_async_generator_return_list(stmt.get("body"), func_tok)
+                _check_async_generator_return(get_nodes(stmt, "body"), func_tok)
         i += 1
-
-
-def _check_async_generator_return_list(body: object, func_tok: Token) -> None:
-    if isinstance(body, list):
-        _check_async_generator_return(body, func_tok)
 
 
 INVALID_TARGET_TYPES: set[str] = {
@@ -4115,17 +4226,15 @@ INVALID_TARGET_TYPES: set[str] = {
 
 def _node_error(node: ASTNode, msg: str) -> ParseError:
     """Create ParseError from an AST node's position."""
-    lineno = node.get("lineno", 1)
-    col = node.get("col_offset", 0)
-    if not isinstance(lineno, int):
+    lineno = get_int(node, "lineno")
+    col = get_int(node, "col_offset")
+    if lineno == 0:
         lineno = 1
-    if not isinstance(col, int):
-        col = 0
     return ParseError(msg, lineno, col)
 
 
 def _is_debug_name(node: ASTNode) -> bool:
-    return node.get("_type") == "Name" and node.get("id") == "__debug__"
+    return get_str(node, "_type") == "Name" and get_str(node, "id") == "__debug__"
 
 
 def validate_target(
@@ -4138,8 +4247,8 @@ def validate_target(
     """Validate that node is a legal assignment/del target."""
     if not isinstance(node, dict):
         return
-    node_type = node.get("_type")
-    if node_type is None:
+    node_type = get_str(node, "_type")
+    if len(node_type) == 0:
         return
     if _is_debug_name(node):
         raise _node_error(node, "cannot assign to __debug__")
@@ -4173,15 +4282,14 @@ def validate_target(
         if node_type == "Starred":
             raise _node_error(node, "cannot use starred expression in del")
     if node_type in ("Tuple", "List"):
-        elts = node.get("elts")
-        if elts is not None and isinstance(elts, list):
-            i = 0
-            while i < len(elts):
-                validate_target(elts[i], ctx, False, False, False)
-                i += 1
+        elts = get_nodes(node, "elts")
+        i = 0
+        while i < len(elts):
+            validate_target(elts[i], ctx, False, False, False)
+            i += 1
     elif node_type == "Starred":
-        value = node.get("value")
-        if value is not None and isinstance(value, dict):
+        value = get_node(node, "value")
+        if len(value) > 0:
             validate_target(value, ctx, False, False, False)
 
 
@@ -4191,25 +4299,23 @@ def set_context(node: ASTNode, ctx_name: str) -> None:
         return
     validate_target(node, ctx_name, False, False, False)
     if "ctx" in node:
-        node["ctx"] = {"_type": ctx_name}
-    node_type = node.get("_type")
+        node["ctx"] = JDict({"_type": JStr(ctx_name)})
+    node_type = get_str(node, "_type")
     if node_type == "Tuple":
-        elts = node.get("elts")
-        if elts is not None and isinstance(elts, list):
-            i = 0
-            while i < len(elts):
-                set_context(elts[i], ctx_name)
-                i += 1
+        elts = get_nodes(node, "elts")
+        i = 0
+        while i < len(elts):
+            set_context(elts[i], ctx_name)
+            i += 1
     elif node_type == "List":
-        elts = node.get("elts")
-        if elts is not None and isinstance(elts, list):
-            i = 0
-            while i < len(elts):
-                set_context(elts[i], ctx_name)
-                i += 1
+        elts = get_nodes(node, "elts")
+        i = 0
+        while i < len(elts):
+            set_context(elts[i], ctx_name)
+            i += 1
     elif node_type == "Starred":
-        value = node.get("value")
-        if value is not None and isinstance(value, dict):
+        value = get_node(node, "value")
+        if len(value) > 0:
             set_context(value, ctx_name)
 
 
