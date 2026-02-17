@@ -223,3 +223,18 @@ def f() -> Parser:
 ---
 ok
 ---
+
+=== subclass assignable to base without pointer
+from dataclasses import dataclass
+class Node:
+    pass
+class Child(Node):
+    pass
+@dataclass
+class Container:
+    item: Child
+def f(c: Container) -> Node:
+    return c.item
+---
+ok
+---

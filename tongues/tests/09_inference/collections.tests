@@ -289,3 +289,14 @@ def f(xs: list[int]) -> list[int]:
 ---
 ok
 ---
+
+=== bytes field matches bytes parameter
+from dataclasses import dataclass
+@dataclass
+class Packet:
+    data: bytes
+def f(p: Packet) -> bytes:
+    return p.data
+---
+ok
+---

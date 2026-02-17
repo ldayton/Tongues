@@ -234,3 +234,27 @@ def f(xs: list[int]) -> tuple[int, ...]:
 ---
 ok
 ---
+
+=== fixed tuple assignable to variadic
+def f() -> tuple[str, ...]:
+    x: tuple[str, str] = ("a", "b")
+    return x
+---
+ok
+---
+
+=== fixed tuple to variadic with any
+def f() -> tuple[object, ...]:
+    x: tuple[int, str] = (1, "a")
+    return x
+---
+ok
+---
+
+=== fixed tuple not assignable to wrong variadic
+def f() -> tuple[int, ...]:
+    x: tuple[int, str] = (1, "a")
+    return x
+---
+error: type
+---
