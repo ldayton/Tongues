@@ -2201,7 +2201,7 @@ class _PerlEmitter:
             if p.startswith("$"):
                 if buf:
                     result.append("".join(buf))
-                    buf = []
+                    buf: list[str] = []
                 result.append(p)
             else:
                 buf.append(p)

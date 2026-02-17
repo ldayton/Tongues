@@ -1412,7 +1412,7 @@ class Parser:
             if self.match_op("/"):
                 self.advance()
                 posonlyargs = args[:]
-                args = []
+                args: list[ASTNode] = []
                 has_default = False
                 continue
 
@@ -2253,7 +2253,7 @@ class Parser:
             if self.match_op("/"):
                 self.advance()
                 posonlyargs = args[:]
-                args = []
+                args: list[ASTNode] = []
                 has_default = False
                 continue
 

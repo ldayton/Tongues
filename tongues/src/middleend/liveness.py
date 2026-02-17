@@ -216,7 +216,7 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
         try_result = _first_access_in_stmts(name, stmt.body)
         if try_result == "read":
             return "read"
-        catch_results = []
+        catch_results: list[str | None] = []
         for catch in stmt.catches:
             catch_result = _first_access_in_stmts(name, catch.body)
             if catch_result == "read":
@@ -234,7 +234,7 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
     if isinstance(stmt, TMatchStmt):
         if _expr_reads(name, stmt.expr):
             return "read"
-        results = []
+        results: list[str | None] = []
         for case in stmt.cases:
             case_result = _first_access_in_stmts(name, case.body)
             if case_result == "read":

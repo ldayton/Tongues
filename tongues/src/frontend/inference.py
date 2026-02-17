@@ -74,9 +74,7 @@ _BYTES_TYPE: dict[str, object] = {"_type": "Slice", "element": {"kind": "byte"}}
 _VOID_TYPE: dict[str, object] = {"kind": "void"}
 
 
-def _make_func_type(
-    params: list[object], ret: object
-) -> dict[str, object]:
+def _make_func_type(params: list[object], ret: object) -> dict[str, object]:
     """Build a FuncType dict without triggering mixed-value-type checks."""
     result: dict[str, object] = {}
     result["_type"] = "FuncType"
@@ -354,6 +352,12 @@ def _is_assignable(
         if isinstance(target, dict) and target.get("_type") != "StructRef":
             if _is_assignable(actual, target, hier):
                 return True
+    # Pointer(collection) assignable to plain collection (forwarding mutated param)
+    if actual.get("_type") == "Pointer":
+        target = actual.get("target")
+        if isinstance(target, dict) and target.get("_type") != "StructRef":
+            if _is_assignable(target, expected, hier):
+                return True
     # Struct hierarchy: subclass assignable to base / interface
     if _is_struct_pointer(actual):
         a_name = _struct_name(actual)
@@ -511,7 +515,7 @@ def _split_union_parts(py_type: str) -> list[str]:
             and py_type[i + 2] == " "
         ):
             parts.append("".join(current).strip())
-            current = []
+            current: list[str] = []
             i += 3
             continue
         else:
@@ -913,7 +917,7 @@ def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object
         return _ANY_TYPE
     args = node.get("args", [])
     if not isinstance(args, list):
-        args = []
+        args: list[ASTNode] = []
     # Direct name call
     if _is_type(func, ["Name"]):
         fname = func.get("id")
@@ -2301,9 +2305,9 @@ def _validate_if(
     body = stmt.get("body", [])
     orelse = stmt.get("orelse", [])
     if not isinstance(body, list):
-        body = []
+        body: list[ASTNode] = []
     if not isinstance(orelse, list):
-        orelse = []
+        orelse: list[ASTNode] = []
     lineno = stmt.get("lineno", 0)
     if not isinstance(lineno, int):
         lineno = 0
@@ -2362,7 +2366,7 @@ def _validate_while(
     test = stmt.get("test")
     body = stmt.get("body", [])
     if not isinstance(body, list):
-        body = []
+        body: list[ASTNode] = []
     lineno = stmt.get("lineno", 0)
     if not isinstance(lineno, int):
         lineno = 0
@@ -2379,7 +2383,7 @@ def _validate_for(
     iter_node = stmt.get("iter")
     body = stmt.get("body", [])
     if not isinstance(body, list):
-        body = []
+        body: list[ASTNode] = []
     if isinstance(iter_node, dict):
         iter_type = _synth_expr(iter_node, env, ctx)
         elem = _iteration_element(iter_type)
@@ -3065,14 +3069,23 @@ def _validate_list_literal(
 
 
 def _validate_dict_literal(
-    node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int,
+    node: ASTNode,
+    env: TypeEnv,
+    ctx: _InferCtx,
+    lineno: int,
     expected: dict[str, object] | None,
 ) -> None:
     """Check dict literal for mixed key/value types."""
-    if expected is not None and expected.get("_type") == "Map":
-        exp_val = expected.get("value")
-        if isinstance(exp_val, dict) and _is_any(exp_val):
-            return
+    if expected is not None:
+        check_exp = expected
+        if check_exp.get("_type") == "Optional":
+            inner = check_exp.get("inner")
+            if isinstance(inner, dict):
+                check_exp = inner
+        if check_exp.get("_type") == "Map":
+            exp_val = check_exp.get("value")
+            if isinstance(exp_val, dict) and _is_any(exp_val):
+                return
     keys = node.get("keys", [])
     values = node.get("values", [])
     if not isinstance(keys, list) or not isinstance(values, list) or len(keys) < 2:

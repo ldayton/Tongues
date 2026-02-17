@@ -105,6 +105,7 @@ def _detect_cycles(
         visited: set[str] = set()
         current: str | None = name
         while current is not None:
+            assert current is not None
             if current in visited:
                 errors.append(HierarchyError(0, 0, "cycle in inheritance: " + name))
                 return True

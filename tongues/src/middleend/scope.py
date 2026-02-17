@@ -744,7 +744,7 @@ def _detect_case_interface(binding_name: str, body: list[TStmt], ctx: _ScopeCtx)
     """
     for stmt in body:
         result = _scan_stmt_for_interface_use(binding_name, stmt, ctx)
-        if result:
+        if result is not None:
             return result
     return ""
 
@@ -760,57 +760,57 @@ def _scan_stmt_for_interface_use(name: str, stmt: TStmt, ctx: _ScopeCtx) -> str 
         return _scan_expr_for_interface_use(name, stmt.value, ctx)
     if isinstance(stmt, TAssignStmt):
         r = _scan_expr_for_interface_use(name, stmt.value, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, stmt.target, ctx)
     if isinstance(stmt, TOpAssignStmt):
         r = _scan_expr_for_interface_use(name, stmt.value, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, stmt.target, ctx)
     if isinstance(stmt, TTupleAssignStmt):
         r = _scan_expr_for_interface_use(name, stmt.value, ctx)
-        if r:
+        if r is not None:
             return r
         for t in stmt.targets:
             r = _scan_expr_for_interface_use(name, t, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(stmt, TIfStmt):
         r = _scan_expr_for_interface_use(name, stmt.cond, ctx)
-        if r:
+        if r is not None:
             return r
         for s in stmt.then_body:
             r = _scan_stmt_for_interface_use(name, s, ctx)
-            if r:
+            if r is not None:
                 return r
         if stmt.else_body is not None:
             for s in stmt.else_body:
                 r = _scan_stmt_for_interface_use(name, s, ctx)
-                if r:
+                if r is not None:
                     return r
     if isinstance(stmt, TWhileStmt):
         r = _scan_expr_for_interface_use(name, stmt.cond, ctx)
-        if r:
+        if r is not None:
             return r
         for s in stmt.body:
             r = _scan_stmt_for_interface_use(name, s, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(stmt, TForStmt):
         for s in stmt.body:
             r = _scan_stmt_for_interface_use(name, s, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(stmt, TTryStmt):
         for s in stmt.body:
             r = _scan_stmt_for_interface_use(name, s, ctx)
-            if r:
+            if r is not None:
                 return r
         for catch in stmt.catches:
             for s in catch.body:
                 r = _scan_stmt_for_interface_use(name, s, ctx)
-                if r:
+                if r is not None:
                     return r
     return None
 
@@ -820,69 +820,69 @@ def _scan_expr_for_interface_use(name: str, expr: TExpr, ctx: _ScopeCtx) -> str 
     if isinstance(expr, TCall):
         # Check each argument: is it `name` passed to an interface-typed param?
         result = _check_call_interface_arg(name, expr, ctx)
-        if result:
+        if result is not None:
             return result
         # Recurse into sub-expressions
         r = _scan_expr_for_interface_use(name, expr.func, ctx)
-        if r:
+        if r is not None:
             return r
         for a in expr.args:
             r = _scan_expr_for_interface_use(name, a.value, ctx)
-            if r:
+            if r is not None:
                 return r
         return None
     if isinstance(expr, TBinaryOp):
         r = _scan_expr_for_interface_use(name, expr.left, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, expr.right, ctx)
     if isinstance(expr, TUnaryOp):
         return _scan_expr_for_interface_use(name, expr.operand, ctx)
     if isinstance(expr, TTernary):
         r = _scan_expr_for_interface_use(name, expr.cond, ctx)
-        if r:
+        if r is not None:
             return r
         r = _scan_expr_for_interface_use(name, expr.then_expr, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, expr.else_expr, ctx)
     if isinstance(expr, TFieldAccess):
         return _scan_expr_for_interface_use(name, expr.obj, ctx)
     if isinstance(expr, TIndex):
         r = _scan_expr_for_interface_use(name, expr.obj, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, expr.index, ctx)
     if isinstance(expr, TSlice):
         r = _scan_expr_for_interface_use(name, expr.obj, ctx)
-        if r:
+        if r is not None:
             return r
         r = _scan_expr_for_interface_use(name, expr.low, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, expr.high, ctx)
     if isinstance(expr, TListLit):
         for e in expr.elements:
             r = _scan_expr_for_interface_use(name, e, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(expr, TTupleLit):
         for e in expr.elements:
             r = _scan_expr_for_interface_use(name, e, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(expr, TMapLit):
         for k, v in expr.entries:
             r = _scan_expr_for_interface_use(name, k, ctx)
-            if r:
+            if r is not None:
                 return r
             r = _scan_expr_for_interface_use(name, v, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(expr, TSetLit):
         for e in expr.elements:
             r = _scan_expr_for_interface_use(name, e, ctx)
-            if r:
+            if r is not None:
                 return r
     return None
 

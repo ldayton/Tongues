@@ -234,7 +234,7 @@ def annotation_to_str(node: object) -> str:
             elts = slc.get("elts", [])
             if not isinstance(elts, list):
                 return base + "[]"
-            parts = []
+            parts: list[str] = []
             i = 0
             while i < len(elts):
                 parts.append(annotation_to_str(elts[i]))
@@ -291,7 +291,7 @@ def _split_type_args(s: str) -> list[str]:
             current.append(c)
         elif c == "," and depth == 0:
             result.append("".join(current).strip())
-            current = []
+            current: list[str] = []
         else:
             current.append(c)
         i += 1
@@ -323,7 +323,7 @@ def _split_union_members(s: str) -> list[str]:
             and s[i + 2] == " "
         ):
             result.append("".join(current).strip())
-            current = []
+            current: list[str] = []
             i += 3
             continue
         else:
@@ -816,23 +816,23 @@ def extract_func_info(
     # Positional-only params (before /)
     posonlyargs = args.get("posonlyargs", [])
     if not isinstance(posonlyargs, list):
-        posonlyargs = []
+        posonlyargs: list[ASTNode] = []
     # Regular params (between / and *)
     regular_args = args.get("args", [])
     if not isinstance(regular_args, list):
-        regular_args = []
+        regular_args: list[ASTNode] = []
     # Keyword-only params (after *)
     kwonlyargs = args.get("kwonlyargs", [])
     if not isinstance(kwonlyargs, list):
-        kwonlyargs = []
+        kwonlyargs: list[ASTNode] = []
     # Defaults apply to the tail of posonlyargs + regular_args
     defaults = args.get("defaults", [])
     if not isinstance(defaults, list):
-        defaults = []
+        defaults: list[ASTNode] = []
     # kw_defaults is parallel to kwonlyargs (None entries for no default)
     kw_defaults = args.get("kw_defaults", [])
     if not isinstance(kw_defaults, list):
-        kw_defaults = []
+        kw_defaults: list[ASTNode] = []
     # Filter self from params
     non_self_posonly: list[ASTNode] = []
     i = 0
@@ -1006,7 +1006,7 @@ def collect_signatures(
                 class_name = ""
             class_body = node.get("body", [])
             if not isinstance(class_body, list):
-                class_body = []
+                class_body: list[ASTNode] = []
             class_methods: dict[str, FuncInfo] = {}
             j = 0
             while j < len(class_body):

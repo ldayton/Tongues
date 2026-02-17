@@ -1120,7 +1120,7 @@ def merge_project(
                         level = 0
                     names_list = stmt.get("names", [])
                     if not isinstance(names_list, list):
-                        names_list = []
+                        names_list: list[dict[str, object]] = []
                     resolved = _resolve_project_import(
                         path, module, level, names_list, universe
                     )
@@ -1214,7 +1214,7 @@ def merge_project(
             stmt, module, resolved = import_entries[ei]
             names_list = stmt.get("names", [])
             if not isinstance(names_list, list):
-                names_list = []
+                names_list: list[dict[str, object]] = []
             level = stmt.get("level", 0)
             if not isinstance(level, int):
                 level = 0

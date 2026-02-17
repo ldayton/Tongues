@@ -468,7 +468,7 @@ def _infer_type_from_value(
                     py_ret = func_return_types[func_name]
                     from .signatures import SignatureError
 
-                    sig_errors = []
+                    sig_errors: list[SignatureError] = []
                     typ = py_type_to_type_dict(
                         py_ret, known_classes, sig_errors, lineno, 0
                     )
@@ -529,7 +529,7 @@ def _collect_init_fields(
     param_types: dict[str, str] = {}
     args_list = args.get("args", [])
     if not isinstance(args_list, list):
-        args_list = []
+        args_list: list[ASTNode] = []
     i = 0
     while i < len(args_list):
         arg = args_list[i]
@@ -571,7 +571,7 @@ def _collect_init_fields(
     has_computed_init = False
     body = init.get("body", [])
     if not isinstance(body, list):
-        body = []
+        body: list[ASTNode] = []
     lineno_val = init.get("lineno", 0)
     lineno = lineno_val if isinstance(lineno_val, int) else 0
     i = 0
@@ -587,9 +587,9 @@ def _collect_init_fields(
             body_stmts = stmt.get("body", [])
             orelse_stmts = stmt.get("orelse", [])
             if not isinstance(body_stmts, list):
-                body_stmts = []
+                body_stmts: list[ASTNode] = []
             if not isinstance(orelse_stmts, list):
-                orelse_stmts = []
+                orelse_stmts: list[ASTNode] = []
             bad = _check_no_field_assign_in_block(body_stmts)
             if bad is None:
                 bad = _check_no_field_assign_in_block(orelse_stmts)
@@ -664,7 +664,7 @@ def _collect_init_fields(
         if _is_type(stmt, ["Assign"]):
             targets = stmt.get("targets", [])
             if not isinstance(targets, list):
-                targets = []
+                targets: list[ASTNode] = []
             j = 0
             while j < len(targets):
                 target = targets[j]
@@ -709,11 +709,11 @@ def _collect_init_fields(
                                         py_type = param_types[param_name]
                                         from .signatures import SignatureError
 
-                                        sig_errors = []
+                                        sig_errors2: list[SignatureError] = []
                                         typ = py_type_to_type_dict(
                                             py_type,
                                             known_classes,
-                                            sig_errors,
+                                            sig_errors2,
                                             stmt_lineno,
                                             0,
                                         )
@@ -815,7 +815,7 @@ def _collect_class_fields(
     seen_fields: set[str] = set()
     body = node.get("body", [])
     if not isinstance(body, list):
-        body = []
+        body: list[ASTNode] = []
     # Collect class-level annotations
     i = 0
     while i < len(body):

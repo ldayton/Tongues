@@ -324,14 +324,18 @@ def is_obvious_literal(node: ASTNode) -> bool:
 def get_name_id(node: ASTNode) -> str | None:
     """Get id from Name node."""
     if node.get("_type") == "Name":
-        return node.get("id")
+        val = node.get("id")
+        if isinstance(val, str):
+            return val
     return None
 
 
 def get_attr_name(node: ASTNode) -> str | None:
     """Get attr from Attribute node."""
     if node.get("_type") == "Attribute":
-        return node.get("attr")
+        val = node.get("attr")
+        if isinstance(val, str):
+            return val
     return None
 
 

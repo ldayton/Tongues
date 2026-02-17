@@ -279,7 +279,9 @@ class _Emitter:
         while current is not None:
             branches.append((current.cond, current.then_body))
             else_body = current.else_body
-            candidate = else_body[0] if else_body is not None and len(else_body) == 1 else None
+            candidate = (
+                else_body[0] if else_body is not None and len(else_body) == 1 else None
+            )
             if isinstance(candidate, TIfStmt):
                 current = candidate
                 continue
@@ -638,7 +640,11 @@ class _Emitter:
             while current is not None:
                 branches.append((current.cond, current.then_body))
                 else_body = current.else_body
-                candidate = else_body[0] if else_body is not None and len(else_body) == 1 else None
+                candidate = (
+                    else_body[0]
+                    if else_body is not None and len(else_body) == 1
+                    else None
+                )
                 if isinstance(candidate, TIfStmt):
                     current = candidate
                     continue

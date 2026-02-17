@@ -253,7 +253,9 @@ def walk(node: ASTNode, visitor: Callable[[ASTNode], None]) -> None:
 def get_name_id(node: ASTNode) -> str | None:
     """Get id from Name node."""
     if node.get("_type") == "Name":
-        return node.get("id")
+        val = node.get("id")
+        if isinstance(val, str):
+            return val
     return None
 
 

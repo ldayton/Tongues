@@ -300,3 +300,99 @@ def f(p: Packet) -> bytes:
 ---
 ok
 ---
+
+=== list with base annotation accepts mixed subclass elements
+class Stmt:
+    pass
+class Assign(Stmt):
+    pass
+class Return(Stmt):
+    pass
+def f() -> list[Stmt]:
+    xs: list[Stmt] = [Assign()]
+    xs.append(Return())
+    return xs
+---
+ok
+---
+
+=== list with base annotation extend with base type
+class Stmt:
+    pass
+class Assign(Stmt):
+    pass
+def get_stmts() -> list[Stmt]:
+    return []
+def f() -> list[Stmt]:
+    xs: list[Stmt] = [Assign()]
+    xs.extend(get_stmts())
+    return xs
+---
+ok
+---
+
+=== unannotated list literal extend with sibling subclass fails
+class Stmt:
+    pass
+class Assign(Stmt):
+    pass
+def get_stmts() -> list[Stmt]:
+    return []
+def f() -> list[Stmt]:
+    xs = [Assign()]
+    xs.extend(get_stmts())
+    return xs
+---
+error: assign
+---
+
+=== list of union type accepts elements from both branches
+class Decl:
+    pass
+class Stmt:
+    pass
+class FnDecl(Decl):
+    pass
+class LetStmt(Stmt):
+    pass
+def f() -> list[Decl | Stmt]:
+    xs: list[Decl | Stmt] = []
+    xs.append(FnDecl())
+    xs.append(LetStmt())
+    return xs
+---
+ok
+---
+
+=== subclass list assignable to union list
+class Decl:
+    pass
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    pass
+def make() -> list[LetStmt]:
+    return [LetStmt()]
+def f() -> list[Decl | Stmt]:
+    result: list[Decl | Stmt] = []
+    items: list[LetStmt] = make()
+    i: int = 0
+    while i < len(items):
+        result.append(items[i])
+        i += 1
+    return result
+---
+ok
+---
+
+=== mutated list param passable to non-mutating function
+class Item:
+    pass
+def consume(xs: list[Item]) -> int:
+    return len(xs)
+def produce(xs: list[Item]) -> None:
+    xs.append(Item())
+    consume(xs)
+---
+ok
+---

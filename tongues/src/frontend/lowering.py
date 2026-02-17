@@ -3215,7 +3215,7 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             return stmts
         # Re-assignment
         target = TVar(_P0, safe, ann)
-        stmts = [TAssignStmt(_P0, target, value, _EMPTY_ANN)]
+        stmts: list[TStmt] = [TAssignStmt(_P0, target, value, _EMPTY_ANN)]
         stmts.extend(_method_side_effects(value_node, env, ctx))
         return stmts
     # Attribute assignment: obj.field = expr
@@ -4122,9 +4122,9 @@ def _build_struct(
     return TStructDecl(_P0, name, parent, fields, methods, _EMPTY_ANN)
 
 
-def _build_constants(body: list[object], ctx: _LowerCtx) -> list[TDecl]:
+def _build_constants(body: list[object], ctx: _LowerCtx) -> list[TDecl | TStmt]:
     """Extract module-level and class-level constants."""
-    result: list[TDecl] = []
+    result: list[TDecl | TStmt] = []
     i = 0
     while i < len(body):
         node = body[i]
@@ -4219,7 +4219,7 @@ def _is_name_main_check(node: ASTNode) -> bool:
 def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
     """Build a TModule from the top-level AST."""
     body = _get_list(tree, "body")
-    decls: list[TDecl] = []
+    decls: list[TDecl | TStmt] = []
     entry_point_func = _detect_entry_point(body)
     # Build constants first
     constants = _build_constants(body, ctx)
