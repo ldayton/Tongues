@@ -357,9 +357,17 @@ def _is_assignable(
             if hier.is_node(a_name):
                 return True
         if expected.get("_type") == "StructRef":
-            return _struct_name(actual) == _struct_name(expected)
+            e_name = _struct_name(expected)
+            if a_name == e_name:
+                return True
+            if _is_ancestor(a_name, e_name, hier):
+                return True
         if _is_struct_pointer(expected):
-            return _struct_name(actual) == _struct_name(expected)
+            e_name = _struct_name(expected)
+            if a_name == e_name:
+                return True
+            if _is_ancestor(a_name, e_name, hier):
+                return True
     # Collection element assignability (invariant but check same direction)
     if actual.get("_type") == "Slice" and expected.get("_type") == "Slice":
         ae = actual.get("element")
