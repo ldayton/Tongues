@@ -31,6 +31,7 @@ from .types import (
     StructRef,
     InterfaceRef,
     FuncType,
+    IteratorType,
     ANY_TYPE,
     INT_TYPE,
     FLOAT_TYPE,
@@ -798,16 +799,8 @@ def _synth_name_call(
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
                 elem = _element_type(ft)
-                return {
-                    "_type": "_Iterator",
-                    "element": TupleType([INT_TYPE, elem], False),
-                    "source": "enumerate",
-                }
-        return {
-            "_type": "_Iterator",
-            "element": TupleType([INT_TYPE, ANY_TYPE], False),
-            "source": "enumerate",
-        }
+                return IteratorType(TupleType([INT_TYPE, elem], False))
+        return IteratorType(TupleType([INT_TYPE, ANY_TYPE], False))
     if fname == "zip":
         elems: list[TypeNode] = []
         j = 0
@@ -817,28 +810,22 @@ def _synth_name_call(
                 ft = _synth_expr(a, env, ctx)
                 elems.append(_element_type(ft))
             j += 1
-        return {
-            "_type": "_Iterator",
-            "element": TupleType(elems, False),
-            "source": "zip",
-        }
+        return IteratorType(TupleType(elems, False))
     if fname == "reversed":
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
                 elem = _element_type(ft)
-                return {"_type": "_Iterator", "element": elem, "source": "reversed"}
-        return {"_type": "_Iterator", "element": ANY_TYPE, "source": "reversed"}
+                return IteratorType(elem)
+        return IteratorType(ANY_TYPE)
     if fname == "sorted":
         if len(args) > 0:
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, dict) and ft.get("_type") == "_Iterator":
-                    elem = ft.get("element")
-                    if isinstance(elem, TypeNode):
-                        return SliceType(elem)
+                if isinstance(ft, IteratorType):
+                    return SliceType(ft.element)
                 elem = _element_type(ft)
                 return SliceType(elem)
         return SliceType(ANY_TYPE)
@@ -847,10 +834,8 @@ def _synth_name_call(
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, dict) and ft.get("_type") == "_Iterator":
-                    elem = ft.get("element")
-                    if isinstance(elem, TypeNode):
-                        return SliceType(elem)
+                if isinstance(ft, IteratorType):
+                    return SliceType(ft.element)
                 elem = _element_type(ft)
                 return SliceType(elem)
         return SliceType(ANY_TYPE)
@@ -859,10 +844,8 @@ def _synth_name_call(
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, dict) and ft.get("_type") == "_Iterator":
-                    elem = ft.get("element")
-                    if isinstance(elem, TypeNode):
-                        return TupleType([elem], True)
+                if isinstance(ft, IteratorType):
+                    return TupleType([ft.element], True)
                 elem = _element_type(ft)
                 return TupleType([elem], True)
         return TupleType([], False)
@@ -879,8 +862,8 @@ def _synth_name_call(
             first = args[0]
             if isinstance(first, dict):
                 ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, dict) and ft.get("_type") == "_Iterator":
-                    elem = ft.get("element")
+                if isinstance(ft, IteratorType):
+                    elem = ft.element
                     if isinstance(elem, TupleType):
                         if len(elem.elements) >= 2:
                             return MapType(elem.elements[0], elem.elements[1])
@@ -1252,12 +1235,8 @@ def _synth_namedexpr(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
 
 def _iteration_element(t: TypeNode) -> TypeNode:
     """Get the element type when iterating over a type."""
-    # Handle _Iterator dicts (these are still dicts, not TypeNode)
-    if isinstance(t, dict) and t.get("_type") == "_Iterator":
-        elem = t.get("element")
-        if isinstance(elem, TypeNode):
-            return elem
-        return ANY_TYPE
+    if isinstance(t, IteratorType):
+        return t.element
     if isinstance(t, SliceType):
         return t.element
     if isinstance(t, SetType):

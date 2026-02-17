@@ -101,6 +101,13 @@ class UnionType(TypeNode):
     variants: list[TypeNode]
 
 
+@dataclass
+class IteratorType(TypeNode):
+    """An iterator yielding elements of a given type."""
+
+    element: TypeNode
+
+
 # ============================================================
 # LITERAL TYPE NODES (for default values)
 # ============================================================
@@ -228,6 +235,8 @@ def type_name(t: TypeNode) -> str:
             parts.append(type_name(t.variants[i]))
             i += 1
         return " | ".join(parts)
+    if isinstance(t, IteratorType):
+        return "Iterator[" + type_name(t.element) + "]"
     return "unknown"
 
 
