@@ -1750,17 +1750,7 @@ def _validate_assign(
                 if isinstance(name, str):
                     existing = env.get_type(name)
                     if existing is not None:
-                        # Re-assignment: check assignability
-                        if not _is_assignable(val_type, existing, ctx.hier_result):
-                            ctx.result.add_error(
-                                lineno,
-                                0,
-                                "cannot assign "
-                                + _type_name(val_type)
-                                + " to "
-                                + _type_name(existing),
-                            )
-                            return
+                        # Re-assignment: update type
                         if not _type_eq(val_type, existing):
                             source = _infer_source(value, env, ctx)
                             env.set(name, val_type, source)
