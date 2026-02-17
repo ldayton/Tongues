@@ -74,6 +74,17 @@ _BYTES_TYPE: dict[str, object] = {"_type": "Slice", "element": {"kind": "byte"}}
 _VOID_TYPE: dict[str, object] = {"kind": "void"}
 
 
+def _make_func_type(
+    params: list[object], ret: object
+) -> dict[str, object]:
+    """Build a FuncType dict without triggering mixed-value-type checks."""
+    result: dict[str, object] = {}
+    result["_type"] = "FuncType"
+    result["params"] = params
+    result["ret"] = ret
+    return result
+
+
 def _is_type(node: object, type_names: list[str]) -> bool:
     if not isinstance(node, dict):
         return False
@@ -337,6 +348,12 @@ def _is_assignable(
         inner = _unwrap_optional(expected)
         if _is_assignable(actual, inner, hier):
             return True
+    # Collection assignable to Pointer(collection) (mutated param)
+    if expected.get("_type") == "Pointer":
+        target = expected.get("target")
+        if isinstance(target, dict) and target.get("_type") != "StructRef":
+            if _is_assignable(actual, target, hier):
+                return True
     # Struct hierarchy: subclass assignable to base / interface
     if _is_struct_pointer(actual):
         a_name = _struct_name(actual)
@@ -700,16 +717,16 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> dict[str, object
         while j < len(func_info.params):
             params.append(func_info.params[j].typ)
             j += 1
-        return {"_type": "FuncType", "params": params, "ret": func_info.return_type}
+        return _make_func_type(params, func_info.return_type)
     # Builtin function references
     if name == "len":
-        return {"_type": "FuncType", "params": [_ANY_TYPE], "ret": _INT_TYPE}
+        return _make_func_type([_ANY_TYPE], _INT_TYPE)
     if name == "str":
-        return {"_type": "FuncType", "params": [_ANY_TYPE], "ret": _STR_TYPE}
+        return _make_func_type([_ANY_TYPE], _STR_TYPE)
     if name == "int":
-        return {"_type": "FuncType", "params": [_ANY_TYPE], "ret": _INT_TYPE}
+        return _make_func_type([_ANY_TYPE], _INT_TYPE)
     if name == "bool":
-        return {"_type": "FuncType", "params": [_ANY_TYPE], "ret": _BOOL_TYPE}
+        return _make_func_type([_ANY_TYPE], _BOOL_TYPE)
     # Module-level variable
     mod_var = ctx.module_vars.get(name)
     if mod_var is not None:
@@ -757,25 +774,19 @@ def _resolve_attr(
             or attr == "lstrip"
             or attr == "rstrip"
         ):
-            return {"_type": "FuncType", "params": [], "ret": _STR_TYPE}
+            return _make_func_type([], _STR_TYPE)
         if attr == "split":
-            return {
-                "_type": "FuncType",
-                "params": [],
-                "ret": {"_type": "Slice", "element": _STR_TYPE},
-            }
+            split_ret: dict[str, object] = {"_type": "Slice", "element": _STR_TYPE}
+            return _make_func_type([], split_ret)
         if attr == "join":
-            return {
-                "_type": "FuncType",
-                "params": [{"_type": "Slice", "element": _STR_TYPE}],
-                "ret": _STR_TYPE,
-            }
+            join_param: dict[str, object] = {"_type": "Slice", "element": _STR_TYPE}
+            return _make_func_type([join_param], _STR_TYPE)
         if attr == "replace" or attr == "format":
-            return {"_type": "FuncType", "params": [_STR_TYPE], "ret": _STR_TYPE}
+            return _make_func_type([_STR_TYPE], _STR_TYPE)
         if attr == "startswith" or attr == "endswith":
-            return {"_type": "FuncType", "params": [_STR_TYPE], "ret": _BOOL_TYPE}
+            return _make_func_type([_STR_TYPE], _BOOL_TYPE)
         if attr == "find" or attr == "index" or attr == "count":
-            return {"_type": "FuncType", "params": [_STR_TYPE], "ret": _INT_TYPE}
+            return _make_func_type([_STR_TYPE], _INT_TYPE)
         return _ANY_TYPE
     # List methods
     if obj_type.get("_type") == "Slice":
@@ -783,31 +794,28 @@ def _resolve_attr(
         if not isinstance(elem, dict):
             elem = _ANY_TYPE
         if attr == "append":
-            return {"_type": "FuncType", "params": [elem], "ret": _VOID_TYPE}
+            return _make_func_type([elem], _VOID_TYPE)
         if attr == "extend":
-            return {
-                "_type": "FuncType",
-                "params": [{"_type": "Slice", "element": elem}],
-                "ret": _VOID_TYPE,
-            }
+            ext_param: dict[str, object] = {"_type": "Slice", "element": elem}
+            return _make_func_type([ext_param], _VOID_TYPE)
         if attr == "insert":
-            return {"_type": "FuncType", "params": [_INT_TYPE, elem], "ret": _VOID_TYPE}
+            return _make_func_type([_INT_TYPE, elem], _VOID_TYPE)
         if attr == "pop":
-            return {"_type": "FuncType", "params": [], "ret": elem}
+            return _make_func_type([], elem)
         if attr == "copy":
-            return {"_type": "FuncType", "params": [], "ret": obj_type}
+            return _make_func_type([], obj_type)
         if attr == "sort":
-            return {"_type": "FuncType", "params": [], "ret": _VOID_TYPE}
+            return _make_func_type([], _VOID_TYPE)
         if attr == "reverse":
-            return {"_type": "FuncType", "params": [], "ret": _VOID_TYPE}
+            return _make_func_type([], _VOID_TYPE)
         if attr == "clear":
-            return {"_type": "FuncType", "params": [], "ret": _VOID_TYPE}
+            return _make_func_type([], _VOID_TYPE)
         if attr == "count":
-            return {"_type": "FuncType", "params": [elem], "ret": _INT_TYPE}
+            return _make_func_type([elem], _INT_TYPE)
         if attr == "index":
-            return {"_type": "FuncType", "params": [elem], "ret": _INT_TYPE}
+            return _make_func_type([elem], _INT_TYPE)
         if attr == "remove":
-            return {"_type": "FuncType", "params": [elem], "ret": _VOID_TYPE}
+            return _make_func_type([elem], _VOID_TYPE)
         return _ANY_TYPE
     # Dict methods
     if obj_type.get("_type") == "Map":
@@ -818,46 +826,32 @@ def _resolve_attr(
         if not isinstance(val_t, dict):
             val_t = _ANY_TYPE
         if attr == "get":
-            return {
-                "_type": "FuncType",
-                "params": [key_t],
-                "ret": {"_type": "Optional", "inner": val_t},
-            }
+            get_ret: dict[str, object] = {"_type": "Optional", "inner": val_t}
+            return _make_func_type([key_t], get_ret)
         if attr == "keys":
-            return {
-                "_type": "FuncType",
-                "params": [],
-                "ret": {"_type": "Slice", "element": key_t},
-            }
+            keys_ret: dict[str, object] = {"_type": "Slice", "element": key_t}
+            return _make_func_type([], keys_ret)
         if attr == "values":
-            return {
-                "_type": "FuncType",
-                "params": [],
-                "ret": {"_type": "Slice", "element": val_t},
-            }
+            vals_ret: dict[str, object] = {"_type": "Slice", "element": val_t}
+            return _make_func_type([], vals_ret)
         if attr == "items":
-            return {
-                "_type": "FuncType",
-                "params": [],
-                "ret": {
-                    "_type": "Slice",
-                    "element": {
-                        "_type": "Tuple",
-                        "elements": [key_t, val_t],
-                        "variadic": False,
-                    },
-                },
+            items_elem: dict[str, object] = {
+                "_type": "Tuple",
+                "elements": [key_t, val_t],
+                "variadic": False,
             }
+            items_ret: dict[str, object] = {"_type": "Slice", "element": items_elem}
+            return _make_func_type([], items_ret)
         if attr == "pop":
-            return {"_type": "FuncType", "params": [key_t], "ret": val_t}
+            return _make_func_type([key_t], val_t)
         if attr == "update":
-            return {"_type": "FuncType", "params": [obj_type], "ret": _VOID_TYPE}
+            return _make_func_type([obj_type], _VOID_TYPE)
         if attr == "copy":
-            return {"_type": "FuncType", "params": [], "ret": obj_type}
+            return _make_func_type([], obj_type)
         if attr == "clear":
-            return {"_type": "FuncType", "params": [], "ret": _VOID_TYPE}
+            return _make_func_type([], _VOID_TYPE)
         if attr == "setdefault":
-            return {"_type": "FuncType", "params": [key_t, val_t], "ret": val_t}
+            return _make_func_type([key_t, val_t], val_t)
         return _ANY_TYPE
     # Set methods
     if obj_type.get("_type") == "Set":
@@ -865,15 +859,15 @@ def _resolve_attr(
         if not isinstance(elem, dict):
             elem = _ANY_TYPE
         if attr == "add":
-            return {"_type": "FuncType", "params": [elem], "ret": _VOID_TYPE}
+            return _make_func_type([elem], _VOID_TYPE)
         if attr == "remove" or attr == "discard":
-            return {"_type": "FuncType", "params": [elem], "ret": _VOID_TYPE}
+            return _make_func_type([elem], _VOID_TYPE)
         if attr == "union" or attr == "intersection" or attr == "difference":
-            return {"_type": "FuncType", "params": [obj_type], "ret": obj_type}
+            return _make_func_type([obj_type], obj_type)
         if attr == "copy":
-            return {"_type": "FuncType", "params": [], "ret": obj_type}
+            return _make_func_type([], obj_type)
         if attr == "clear":
-            return {"_type": "FuncType", "params": [], "ret": _VOID_TYPE}
+            return _make_func_type([], _VOID_TYPE)
         return _ANY_TYPE
     # Struct field access
     sname = _struct_name(obj_type)
@@ -908,7 +902,7 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> dict[str, obj
                 if method.params[j].name != "self":
                     params.append(method.params[j].typ)
                 j += 1
-            return {"_type": "FuncType", "params": params, "ret": method.return_type}
+            return _make_func_type(params, method.return_type)
     return _ANY_TYPE
 
 
@@ -2751,7 +2745,7 @@ def _narrow_isinstance(
             else_env.narrow(name, rem_type, remaining[0])
         elif len(remaining) > 1:
             new_source = " | ".join(remaining)
-            sig_errors2 = []
+            sig_errors2: list[SignatureError] = []
             rem_type = py_type_to_type_dict(
                 new_source, ctx.known_classes, sig_errors2, 0, 0
             )
@@ -2873,9 +2867,9 @@ def _narrow_to_non_none(name: str, env: TypeEnv, ctx: _InferCtx) -> None:
             env.narrow(name, narrowed, non_none[0])
         elif len(non_none) > 1:
             new_source = " | ".join(non_none)
-            sig_errors = []
+            sig_errors3: list[SignatureError] = []
             narrowed = py_type_to_type_dict(
-                new_source, ctx.known_classes, sig_errors, 0, 0
+                new_source, ctx.known_classes, sig_errors3, 0, 0
             )
             env.narrow(name, narrowed, new_source)
 
@@ -3026,6 +3020,12 @@ def _validate_list_literal(
         elem_t = expected.get("element")
         if isinstance(elem_t, dict) and _is_any(elem_t):
             return
+    # When expected element type is available, check against it
+    exp_elem: dict[str, object] | None = None
+    if expected is not None and expected.get("_type") == "Slice":
+        ee = expected.get("element")
+        if isinstance(ee, dict):
+            exp_elem = ee
     elts = node.get("elts", [])
     if not isinstance(elts, list) or len(elts) < 2:
         return
@@ -3038,7 +3038,18 @@ def _validate_list_literal(
         e = elts[j]
         if isinstance(e, dict):
             et = _synth_expr(e, env, ctx)
-            if not _is_assignable(
+            if exp_elem is not None:
+                if not _is_assignable(et, exp_elem, ctx.hier_result):
+                    ctx.result.add_error(
+                        lineno,
+                        0,
+                        "mixed types in list literal: "
+                        + _type_name(et)
+                        + " not assignable to "
+                        + _type_name(exp_elem),
+                    )
+                    return
+            elif not _is_assignable(
                 et, first_type, ctx.hier_result
             ) and not _is_assignable(first_type, et, ctx.hier_result):
                 ctx.result.add_error(
@@ -3054,9 +3065,14 @@ def _validate_list_literal(
 
 
 def _validate_dict_literal(
-    node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int,
+    expected: dict[str, object] | None,
 ) -> None:
     """Check dict literal for mixed key/value types."""
+    if expected is not None and expected.get("_type") == "Map":
+        exp_val = expected.get("value")
+        if isinstance(exp_val, dict) and _is_any(exp_val):
+            return
     keys = node.get("keys", [])
     values = node.get("values", [])
     if not isinstance(keys, list) or not isinstance(values, list) or len(keys) < 2:
@@ -3100,7 +3116,7 @@ def _validate_return_value(
     if _is_type(value, ["List"]):
         _validate_list_literal(value, env, ctx, lineno, expected)
     if _is_type(value, ["Dict"]):
-        _validate_dict_literal(value, env, ctx, lineno)
+        _validate_dict_literal(value, env, ctx, lineno, expected)
 
 
 # ---------------------------------------------------------------------------
