@@ -2799,6 +2799,10 @@ def _narrow_compare(
                 # then: x is None (unchanged)
                 # else: x is not None (narrow to non-None)
                 _narrow_to_non_none(name, else_env, ctx)
+        if _is_type(left, ["Attribute"]):
+            path = _attr_path(left)
+            if path != "":
+                else_env.guard_attr(path)
         return
     # x is not None
     if (
