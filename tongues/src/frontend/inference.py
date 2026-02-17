@@ -1663,7 +1663,7 @@ def _validate_stmt(
     if t == "Pass":
         return False
     if t == "Break" or t == "Continue":
-        return False
+        return True
     if t == "Raise":
         return True
     if t == "Try":
