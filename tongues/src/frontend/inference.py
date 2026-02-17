@@ -2638,6 +2638,12 @@ def _extract_narrowing(
                 values = test.get("values", [])
                 if isinstance(values, list):
                     _narrow_or_isinstance(values, then_env, ctx)
+                    j = 0
+                    while j < len(values):
+                        v = values[j]
+                        if isinstance(v, dict):
+                            _extract_narrowing(v, then_env, else_env, ctx)
+                        j += 1
                 return
     # NamedExpr (walrus): if (val := func()): narrows val
     if t == "NamedExpr":
