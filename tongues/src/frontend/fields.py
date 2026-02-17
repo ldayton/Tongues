@@ -110,14 +110,21 @@ class ClassInfo:
 class FieldError:
     """An error found during field collection."""
 
-    def __init__(self, lineno: int, col: int, message: str) -> None:
+    def __init__(
+        self, lineno: int, col: int, message: str, source_file: str = ""
+    ) -> None:
         self.lineno: int = lineno
         self.col: int = col
         self.message: str = message
+        self.source_file: str = source_file
 
     def __repr__(self) -> str:
+        file_prefix = ""
+        if self.source_file != "":
+            file_prefix = self.source_file + ":"
         return (
-            "error:"
+            file_prefix
+            + "error:"
             + str(self.lineno)
             + ":"
             + str(self.col)
@@ -134,8 +141,10 @@ class FieldResult:
         self.field_to_structs: dict[str, list[str]] = {}
         self._errors: list[FieldError] = []
 
-    def add_error(self, lineno: int, col: int, message: str) -> None:
-        self._errors.append(FieldError(lineno, col, message))
+    def add_error(
+        self, lineno: int, col: int, message: str, source_file: str = ""
+    ) -> None:
+        self._errors.append(FieldError(lineno, col, message, source_file))
 
     def errors(self) -> list[FieldError]:
         return self._errors
@@ -982,6 +991,10 @@ def collect_fields(
     while i < len(body):
         node = body[i]
         if isinstance(node, dict) and _is_type(node, ["ClassDef"]):
+            sf = node.get("_source_file", "")
+            if not isinstance(sf, str):
+                sf = ""
+            err_before = len(result._errors)
             _collect_class_fields(
                 node,
                 known_classes,
@@ -990,6 +1003,10 @@ def collect_fields(
                 func_return_types,
                 result,
             )
+            ei = err_before
+            while ei < len(result._errors):
+                result._errors[ei].source_file = sf
+                ei += 1
             if len(result._errors) > 0:
                 return result
         i += 1

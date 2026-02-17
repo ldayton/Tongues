@@ -54,14 +54,21 @@ ASTNode = dict[str, object]
 class InferenceError:
     """An error found during inference."""
 
-    def __init__(self, lineno: int, col: int, message: str) -> None:
+    def __init__(
+        self, lineno: int, col: int, message: str, source_file: str = ""
+    ) -> None:
         self.lineno: int = lineno
         self.col: int = col
         self.message: str = message
+        self.source_file: str = source_file
 
     def __repr__(self) -> str:
+        file_prefix = ""
+        if self.source_file != "":
+            file_prefix = self.source_file + ":"
         return (
-            "error:"
+            file_prefix
+            + "error:"
             + str(self.lineno)
             + ":"
             + str(self.col)
@@ -76,8 +83,10 @@ class InferenceResult:
     def __init__(self) -> None:
         self._errors: list[InferenceError] = []
 
-    def add_error(self, lineno: int, col: int, message: str) -> None:
-        self._errors.append(InferenceError(lineno, col, message))
+    def add_error(
+        self, lineno: int, col: int, message: str, source_file: str = ""
+    ) -> None:
+        self._errors.append(InferenceError(lineno, col, message, source_file))
 
     def errors(self) -> list[InferenceError]:
         return self._errors
@@ -3004,8 +3013,16 @@ def run_inference(
             i += 1
             continue
         t = node.get("_type")
+        sf = node.get("_source_file", "")
+        if not isinstance(sf, str):
+            sf = ""
         if t == "FunctionDef":
+            err_before = len(result._errors)
             _validate_func(node, ctx, "")
+            ei = err_before
+            while ei < len(result._errors):
+                result._errors[ei].source_file = sf
+                ei += 1
             if len(result._errors) > 0:
                 return result
         elif t == "ClassDef":
@@ -3018,7 +3035,17 @@ def run_inference(
                 while j < len(class_body):
                     stmt = class_body[j]
                     if isinstance(stmt, dict) and _is_type(stmt, ["FunctionDef"]):
+                        stmt_sf = stmt.get("_source_file", "")
+                        if not isinstance(stmt_sf, str):
+                            stmt_sf = ""
+                        if stmt_sf == "":
+                            stmt_sf = sf
+                        err_before = len(result._errors)
                         _validate_func(stmt, ctx, class_name)
+                        ei = err_before
+                        while ei < len(result._errors):
+                            result._errors[ei].source_file = stmt_sf
+                            ei += 1
                         if len(result._errors) > 0:
                             return result
                     j += 1

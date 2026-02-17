@@ -21,14 +21,21 @@ ASTNode = dict[str, object]
 class HierarchyError:
     """An error found during hierarchy analysis."""
 
-    def __init__(self, lineno: int, col: int, message: str) -> None:
+    def __init__(
+        self, lineno: int, col: int, message: str, source_file: str = ""
+    ) -> None:
         self.lineno: int = lineno
         self.col: int = col
         self.message: str = message
+        self.source_file: str = source_file
 
     def __repr__(self) -> str:
+        file_prefix = ""
+        if self.source_file != "":
+            file_prefix = self.source_file + ":"
         return (
-            "error:"
+            file_prefix
+            + "error:"
             + str(self.lineno)
             + ":"
             + str(self.col)
@@ -47,8 +54,10 @@ class HierarchyResult:
         self.ancestors: dict[str, list[str]] = {}
         self._errors: list[HierarchyError] = []
 
-    def add_error(self, lineno: int, col: int, message: str) -> None:
-        self._errors.append(HierarchyError(lineno, col, message))
+    def add_error(
+        self, lineno: int, col: int, message: str, source_file: str = ""
+    ) -> None:
+        self._errors.append(HierarchyError(lineno, col, message, source_file))
 
     def errors(self) -> list[HierarchyError]:
         return self._errors
@@ -96,6 +105,7 @@ class HierarchyResult:
 def _detect_cycles(
     class_bases: dict[str, list[str]],
     errors: list[HierarchyError],
+    class_source_files: dict[str, str],
 ) -> bool:
     """Check for cycles in the inheritance graph. Returns True if cycle found."""
     ckeys = list(class_bases.keys())
@@ -107,7 +117,8 @@ def _detect_cycles(
         while current is not None:
             assert current is not None
             if current in visited:
-                errors.append(HierarchyError(0, 0, "cycle in inheritance: " + name))
+                sf = class_source_files.get(name, "")
+                errors.append(HierarchyError(0, 0, "cycle in inheritance: " + name, sf))
                 return True
             visited.add(current)
             bases = class_bases.get(current)
@@ -234,13 +245,17 @@ def _is_node_subclass(
 def build_hierarchy(
     known_classes: set[str],
     class_bases: dict[str, list[str]],
+    class_source_files: dict[str, str] | None = None,
 ) -> HierarchyResult:
     """Build the class hierarchy and classify structs.
 
     Args:
         known_classes: Set of known class names.
         class_bases: Dict mapping class name to list of base class names.
+        class_source_files: Optional mapping of class names to source file paths.
     """
+    if class_source_files is None:
+        class_source_files = {}
     result = HierarchyResult()
     # Validate base classes exist
     ckeys = list(class_bases.keys())
@@ -248,16 +263,17 @@ def build_hierarchy(
     while i < len(ckeys):
         name = ckeys[i]
         bases = class_bases[name]
+        sf = class_source_files.get(name, "")
         j = 0
         while j < len(bases):
             base = bases[j]
             if base != "Exception" and base not in known_classes:
-                result.add_error(0, 0, "'" + base + "' is not defined")
+                result.add_error(0, 0, "'" + base + "' is not defined", sf)
                 return result
             j += 1
         i += 1
     # Detect cycles
-    if _detect_cycles(class_bases, result._errors):
+    if _detect_cycles(class_bases, result._errors, class_source_files):
         return result
     # Build ancestor lists (direct bases only)
     i = 0

@@ -117,14 +117,21 @@ class FuncInfo:
 class SignatureError:
     """An error found during signature collection."""
 
-    def __init__(self, lineno: int, col: int, message: str) -> None:
+    def __init__(
+        self, lineno: int, col: int, message: str, source_file: str = ""
+    ) -> None:
         self.lineno: int = lineno
         self.col: int = col
         self.message: str = message
+        self.source_file: str = source_file
 
     def __repr__(self) -> str:
+        file_prefix = ""
+        if self.source_file != "":
+            file_prefix = self.source_file + ":"
         return (
-            "error:"
+            file_prefix
+            + "error:"
             + str(self.lineno)
             + ":"
             + str(self.col)
@@ -1012,8 +1019,16 @@ def collect_signatures(
             i += 1
             continue
         t = node.get("_type")
+        sf = node.get("_source_file", "")
+        if not isinstance(sf, str):
+            sf = ""
         if t == "FunctionDef":
+            err_before = len(result._errors)
             info = extract_func_info(node, known_classes, result._errors, False, "")
+            ei = err_before
+            while ei < len(result._errors):
+                result._errors[ei].source_file = sf
+                ei += 1
             if info is not None:
                 result.functions[info.name] = info
         elif t == "ClassDef":
@@ -1028,9 +1043,19 @@ def collect_signatures(
             while j < len(class_body):
                 stmt = class_body[j]
                 if isinstance(stmt, dict) and stmt.get("_type") == "FunctionDef":
+                    stmt_sf = stmt.get("_source_file", "")
+                    if not isinstance(stmt_sf, str):
+                        stmt_sf = ""
+                    if stmt_sf == "":
+                        stmt_sf = sf
+                    err_before = len(result._errors)
                     method_info = extract_func_info(
                         stmt, known_classes, result._errors, True, class_name
                     )
+                    ei = err_before
+                    while ei < len(result._errors):
+                        result._errors[ei].source_file = stmt_sf
+                        ei += 1
                     if method_info is not None:
                         class_methods[method_info.name] = method_info
                 j += 1

@@ -1484,7 +1484,23 @@ def _pipeline_post_parse(
         if info.kind == "class":
             class_bases[mname] = list(info.bases)
         ki += 1
-    hier_result = build_hierarchy(known_classes, class_bases)
+    class_source_files: dict[str, str] = {}
+    csf_body = ast_dict.get("body", [])
+    if isinstance(csf_body, list):
+        csf_i = 0
+        while csf_i < len(csf_body):
+            csf_node = csf_body[csf_i]
+            if isinstance(csf_node, dict) and csf_node.get("_type") == "ClassDef":
+                csf_name = csf_node.get("name", "")
+                csf_sf = csf_node.get("_source_file", "")
+                if (
+                    isinstance(csf_name, str)
+                    and isinstance(csf_sf, str)
+                    and csf_sf != ""
+                ):
+                    class_source_files[csf_name] = csf_sf
+            csf_i += 1
+    hier_result = build_hierarchy(known_classes, class_bases, class_source_files)
     errors = hier_result.errors()
     if len(errors) > 0:
         _print_errors(errors)

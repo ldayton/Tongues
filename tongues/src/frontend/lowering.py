@@ -463,14 +463,21 @@ def _is_interface_type(td: TypeNode) -> bool:
 class LoweringError:
     """An error found during lowering."""
 
-    def __init__(self, lineno: int, col: int, message: str) -> None:
+    def __init__(
+        self, lineno: int, col: int, message: str, source_file: str = ""
+    ) -> None:
         self.lineno: int = lineno
         self.col: int = col
         self.message: str = message
+        self.source_file: str = source_file
 
     def __repr__(self) -> str:
+        file_prefix = ""
+        if self.source_file != "":
+            file_prefix = self.source_file + ":"
         return (
-            "error:"
+            file_prefix
+            + "error:"
             + str(self.lineno)
             + ":"
             + str(self.col)
@@ -1011,8 +1018,11 @@ def _lower_expr(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return _make_call("Set", [])
     if t == "DictComp":
         return _make_call("Map", [])
+    low_sf = node.get("_source_file", "")
+    if not isinstance(low_sf, str):
+        low_sf = ""
     ctx.errors.append(
-        LoweringError(0, 0, "unsupported expression type '" + str(t) + "'")
+        LoweringError(0, 0, "unsupported expression type '" + str(t) + "'", low_sf)
     )
     return TVar(_P0, "__error__", _EMPTY_ANN)
 
