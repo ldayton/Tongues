@@ -212,6 +212,10 @@ def _typenode_to_ttype(t: TypeNode) -> TType:
             return TIdentType(_P0, t.target.name)
         return _typenode_to_ttype(t.target)
     if isinstance(t, StructRef):
+        if t.name == "dict":
+            return TMapType(_P0, TPrimitive(_P0, "string"), TPrimitive(_P0, "error"))
+        if t.name == "list":
+            return TListType(_P0, TPrimitive(_P0, "error"))
         return TIdentType(_P0, t.name)
     if isinstance(t, InterfaceRef):
         if t.name == "any":
@@ -257,6 +261,33 @@ def _unwrap_pointer(td: TypeNode) -> TypeNode:
     if isinstance(td, PointerType):
         return td.target
     return td
+
+
+def _lookup_method_params(
+    obj_type: TypeNode, method_name: str, ctx: _LowerCtx
+) -> list[ParamInfo] | None:
+    """Look up method parameter info from signatures, skipping 'self'."""
+    class_name = ""
+    if isinstance(obj_type, StructRef):
+        class_name = obj_type.name
+    elif isinstance(obj_type, InterfaceRef):
+        class_name = obj_type.name
+    if class_name == "":
+        return None
+    class_methods = ctx.sig_result.methods.get(class_name)
+    if class_methods is None:
+        return None
+    func_info = class_methods.get(method_name)
+    if func_info is None:
+        return None
+    # Skip 'self' parameter
+    result: list[ParamInfo] = []
+    i = 0
+    while i < len(func_info.params):
+        if func_info.params[i].name != "self":
+            result.append(func_info.params[i])
+        i += 1
+    return result
 
 
 def _type_dict_kind(td: TypeNode) -> str:
@@ -2101,12 +2132,35 @@ def _lower_name_call(
         return _lower_struct_constructor(fname, args, keywords, env, ctx)
     # Regular function call
     lowered_args: list[TArg] = []
-    i = 0
-    while i < len(args):
-        a = args[i]
-        if isinstance(a, dict):
-            lowered_args.append(TArg(_P0, None, _lower_expr(a, env, ctx)))
-        i += 1
+    if len(keywords) > 0:
+        # Convert all args to named when keywords are present
+        func_info = ctx.sig_result.functions.get(fname)
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if isinstance(a, dict):
+                pname: str | None = None
+                if func_info is not None and i < len(func_info.params):
+                    pname = _safe_name(func_info.params[i].name)
+                lowered_args.append(TArg(_P0, pname, _lower_expr(a, env, ctx)))
+            i += 1
+        i = 0
+        while i < len(keywords):
+            kw = keywords[i]
+            kw_name = get_str(kw, "arg")
+            kw_val = get_node(kw, "value")
+            if kw_name != "" and len(kw_val) > 0:
+                lowered_args.append(
+                    TArg(_P0, _safe_name(kw_name), _lower_expr(kw_val, env, ctx))
+                )
+            i += 1
+    else:
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if isinstance(a, dict):
+                lowered_args.append(TArg(_P0, None, _lower_expr(a, env, ctx)))
+            i += 1
     safe = _safe_name(fname)
     return TCall(_P0, TVar(_P0, safe, _name_ann(safe, fname)), lowered_args, _EMPTY_ANN)
 
@@ -2316,12 +2370,35 @@ def _lower_method_call(
         return _lower_set_method(obj, method_name, args, env, ctx)
     # Struct method call
     lowered_args: list[TArg] = []
-    i = 0
-    while i < len(args):
-        a = args[i]
-        if isinstance(a, dict):
-            lowered_args.append(TArg(_P0, None, _lower_expr(a, env, ctx)))
-        i += 1
+    if len(keywords) > 0:
+        # Convert all args to named when keywords are present
+        method_params = _lookup_method_params(actual_type, method_name, ctx)
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if isinstance(a, dict):
+                pname: str | None = None
+                if method_params is not None and i < len(method_params):
+                    pname = _safe_name(method_params[i].name)
+                lowered_args.append(TArg(_P0, pname, _lower_expr(a, env, ctx)))
+            i += 1
+        i = 0
+        while i < len(keywords):
+            kw = keywords[i]
+            kw_name = get_str(kw, "arg")
+            kw_val = get_node(kw, "value")
+            if kw_name != "" and len(kw_val) > 0:
+                lowered_args.append(
+                    TArg(_P0, _safe_name(kw_name), _lower_expr(kw_val, env, ctx))
+                )
+            i += 1
+    else:
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if isinstance(a, dict):
+                lowered_args.append(TArg(_P0, None, _lower_expr(a, env, ctx)))
+            i += 1
     return TCall(
         _P0, TFieldAccess(_P0, obj, method_name, _EMPTY_ANN), lowered_args, _EMPTY_ANN
     )

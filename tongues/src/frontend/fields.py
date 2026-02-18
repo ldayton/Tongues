@@ -244,6 +244,23 @@ def _dict_walk(node: ASTNode) -> list[ASTNode]:
 # ---------------------------------------------------------------------------
 
 
+def _value_refs_defaulted_param(
+    node: ASTNode, param_has_default: dict[str, bool]
+) -> bool:
+    """Check if an expression tree references a parameter with a default."""
+    if _is_type(node, ["Name"]):
+        pname = get_str(node, "id")
+        return param_has_default.get(pname, False)
+    if _is_type(node, ["IfExp"]):
+        body = get_node(node, "body")
+        orelse = get_node(node, "orelse")
+        if _value_refs_defaulted_param(body, param_has_default):
+            return True
+        if _value_refs_defaulted_param(orelse, param_has_default):
+            return True
+    return False
+
+
 def _unwrap_field_type(typ: TypeNode) -> TypeNode:
     """Unwrap Pointer(StructRef(X)) -> StructRef(X) and Slice(byte) -> bytes."""
     if isinstance(typ, PointerType):
@@ -692,11 +709,30 @@ def _collect_init_fields(
                                 )
                                 return
                         else:
+                            ann_has_default = False
+                            value = stmt.get("value")
+                            if value is not None and not isinstance(value, JNull):
+                                if isinstance(value, JDict):
+                                    value_node = value.entries
+                                else:
+                                    value_node: ASTNode = {}
+                                if (
+                                    _is_type(value_node, ["Name"])
+                                    and get_str(value_node, "id") in param_types
+                                ):
+                                    param_name = get_str(value_node, "id")
+                                    ann_has_default = param_has_default.get(
+                                        param_name, False
+                                    )
+                                else:
+                                    ann_has_default = _value_refs_defaulted_param(
+                                        value_node, param_has_default
+                                    )
                             info.fields[field_name] = FieldInfo(
                                 name=field_name,
                                 typ=typ,
                                 py_name=field_name,
-                                has_default=False,
+                                has_default=ann_has_default,
                                 default=None,
                             )
                         value = stmt.get("value")

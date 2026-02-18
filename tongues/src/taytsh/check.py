@@ -837,7 +837,6 @@ class Checker:
         if isinstance(t, TIdentType):
             if t.name in self.types:
                 return self.types[t.name]
-            self.error("unknown type '" + t.name + "'", t.pos)
             return ERROR_T
         if isinstance(t, TUnionType):
             members: list[Type] = []
@@ -1109,6 +1108,7 @@ class Checker:
         declared_type = self.resolve_type(stmt.typ)
         if declared_type.kind == TY_VOID:
             self.error("void is not a value type", stmt.pos)
+            self.declare(stmt.name, ERROR_T, stmt.pos)
             return
         if stmt.value is not None:
             val_type = self.check_expr(stmt.value, declared_type)
@@ -1299,7 +1299,11 @@ class Checker:
         else:
             iter_type = self.check_expr(stmt.iterable, None)
             if iter_type is not None:
-                self.bind_for_vars(stmt.binding, iter_type, stmt.pos)
+                if iter_type.kind == TY_ERROR:
+                    for b in stmt.binding:
+                        self.declare(b, ERROR_T, stmt.pos)
+                else:
+                    self.bind_for_vars(stmt.binding, iter_type, stmt.pos)
         self.check_stmts(stmt.body)
         self.exit_scope()
         self.in_loop = old_in_loop
@@ -1849,6 +1853,18 @@ class Checker:
                 return else_type
             if is_assignable(else_type, then_type):
                 return then_type
+            # Try widening to common interface
+            widened = self._widen_to_common_interface(then_type, else_type)
+            if widened is not None:
+                return widened
+            # T vs nil → optional
+            if then_type.kind == TY_NIL:
+                return UnionT(kind="union", members=[else_type, NIL_T])
+            if else_type.kind == TY_NIL:
+                return UnionT(kind="union", members=[then_type, NIL_T])
+            # Suppress when either side is error
+            if then_type.kind == TY_ERROR or else_type.kind == TY_ERROR:
+                return ERROR_T
             self.error(
                 "ternary branches must have same type, got "
                 + type_name(then_type)
@@ -1889,6 +1905,10 @@ class Checker:
             field_type = self._union_field_type(obj_type, expr.field)
             if field_type is not None:
                 return field_type
+        if isinstance(obj_type, InterfaceT):
+            field_type = self._interface_field_type(obj_type, expr.field)
+            if field_type is not None:
+                return field_type
         if obj_type.kind == TY_ERROR:
             return ERROR_T
         self.error(
@@ -1919,6 +1939,27 @@ class Checker:
                 return None
         return result
 
+    def _interface_field_type(self, iface: InterfaceT, field: str) -> Type | None:
+        """Find field type on interface. Returns type if any variant has it."""
+        result: Type | None = None
+        found = False
+        for vname in iface.variants:
+            vtype = self.types.get(vname)
+            if (
+                vtype is not None
+                and isinstance(vtype, StructT)
+                and field in vtype.fields
+            ):
+                ft = vtype.fields[field]
+                if not found:
+                    result = ft
+                    found = True
+                elif result is not None and not type_eq(result, ft):
+                    result = ERROR_T
+        if found:
+            return result if result is not None else ERROR_T
+        return None
+
     def check_tuple_access(self, expr: TTupleAccess) -> Type | None:
         obj_type = self.check_expr(expr.obj, None)
         if obj_type is None:
@@ -1943,6 +1984,8 @@ class Checker:
         obj_type = self.check_expr(expr.obj, None)
         if obj_type is None:
             return None
+        if obj_type.kind == TY_ERROR:
+            return ERROR_T
         idx_type = self.check_expr(expr.index, None)
         if isinstance(obj_type, ListT):
             if idx_type is not None and not type_eq(idx_type, INT_T):
@@ -1987,6 +2030,8 @@ class Checker:
         obj_type = self.check_expr(expr.obj, None)
         if obj_type is None:
             return None
+        if obj_type.kind == TY_ERROR:
+            return ERROR_T
         low_type = self.check_expr(expr.low, INT_T)
         high_type = self.check_expr(expr.high, INT_T)
         if low_type is not None and not type_eq(low_type, INT_T):
@@ -2088,17 +2133,20 @@ class Checker:
             # Just check types positionally
             i = 0
             while i < len(args):
-                arg_type = self.check_expr(args[i].value, fn.params[i])
-                if arg_type is not None and not is_assignable(arg_type, fn.params[i]):
-                    self.error(
-                        "argument "
-                        + str(i + 1)
-                        + ": cannot pass "
-                        + type_name(arg_type)
-                        + " as "
-                        + type_name(fn.params[i]),
-                        args[i].pos,
-                    )
+                if i < len(fn.params):
+                    arg_type = self.check_expr(args[i].value, fn.params[i])
+                    if arg_type is not None and not is_assignable(
+                        arg_type, fn.params[i]
+                    ):
+                        self.error(
+                            "argument "
+                            + str(i + 1)
+                            + ": cannot pass "
+                            + type_name(arg_type)
+                            + " as "
+                            + type_name(fn.params[i]),
+                            args[i].pos,
+                        )
                 i += 1
         else:
             # Check for positional args mixed with named
@@ -2107,17 +2155,20 @@ class Checker:
                 if args[i].name is not None:
                     self.error("cannot mix positional and named arguments", args[i].pos)
                     return fn.ret
-                arg_type = self.check_expr(args[i].value, fn.params[i])
-                if arg_type is not None and not is_assignable(arg_type, fn.params[i]):
-                    self.error(
-                        "argument "
-                        + str(i + 1)
-                        + ": cannot pass "
-                        + type_name(arg_type)
-                        + " as "
-                        + type_name(fn.params[i]),
-                        args[i].pos,
-                    )
+                if i < len(fn.params):
+                    arg_type = self.check_expr(args[i].value, fn.params[i])
+                    if arg_type is not None and not is_assignable(
+                        arg_type, fn.params[i]
+                    ):
+                        self.error(
+                            "argument "
+                            + str(i + 1)
+                            + ": cannot pass "
+                            + type_name(arg_type)
+                            + " as "
+                            + type_name(fn.params[i]),
+                            args[i].pos,
+                        )
                 i += 1
         return fn.ret
 
@@ -2222,6 +2273,8 @@ class Checker:
                 "'" + obj_type.name + "' has no method '" + access.field + "'", pos
             )
             return None
+        if isinstance(obj_type, InterfaceT):
+            return ERROR_T
         if isinstance(obj_type, (MapT, ListT, SetT)):
             return self._check_collection_method(obj_type, access.field, args, pos)
         if obj_type.kind in (TY_STRING, TY_BYTES, TY_ERROR):
@@ -2686,7 +2739,7 @@ class Checker:
             if not require(1):
                 return None
             t = arg(0)
-            if t is not None:
+            if t is not None and t.kind != TY_ERROR:
                 if not (
                     isinstance(t, (ListT, MapT, SetT))
                     or t.kind in (TY_STRING, TY_BYTES)
@@ -2701,16 +2754,14 @@ class Checker:
             t1 = arg(0)
             t2 = arg(1)
             if t1 is not None and t2 is not None:
+                if t1.kind == TY_ERROR or t2.kind == TY_ERROR:
+                    return ERROR_T
                 if type_eq(t1, STRING_T) and type_eq(t2, STRING_T):
                     return STRING_T
                 if type_eq(t1, BYTES_T) and type_eq(t2, BYTES_T):
                     return BYTES_T
                 if isinstance(t1, ListT) and isinstance(t2, ListT):
                     return t1
-                if isinstance(t1, ListT) and t2.kind == TY_ERROR:
-                    return t1
-                if t1.kind == TY_ERROR and isinstance(t2, ListT):
-                    return t2
                 if isinstance(t1, (ListT, TupleT)) and isinstance(t2, (ListT, TupleT)):
                     if isinstance(t1, ListT):
                         return t1
@@ -2807,7 +2858,7 @@ class Checker:
                 return None
             t1 = arg(0)
             t2 = arg(1)
-            if t1 is not None:
+            if t1 is not None and t1.kind != TY_ERROR:
                 if isinstance(t1, ListT):
                     if t2 is not None and not is_assignable(t2, t1.element):
                         self.error(
@@ -3337,13 +3388,13 @@ class Checker:
                 self.error("Format requires at least 1 argument", pos)
                 return None
             t = arg(0)
-            if t is not None and not type_eq(t, STRING_T):
+            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
                 self.error("Format template must be string", pos)
             # Check remaining args are all string
             i = 1
             while i < n:
                 at = arg(i)
-                if at is not None and not type_eq(at, STRING_T):
+                if at is not None and at.kind != TY_ERROR and not type_eq(at, STRING_T):
                     self.error("Format arguments must be string", args[i].pos)
                 i += 1
             # Check placeholder count matches arg count

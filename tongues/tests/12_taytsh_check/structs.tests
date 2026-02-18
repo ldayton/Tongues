@@ -318,7 +318,7 @@ fn Main() -> void {}
 error: interface body must be empty
 ---
 
-=== error: field access on interface
+=== ok: field access on interface variant
 interface Node {}
 struct Lit : Node {
     value: int
@@ -328,7 +328,7 @@ fn Main() -> void {
     let v: int = n.value
 }
 ---
-error: has no field or method 'value'
+ok
 ---
 
 === error: assign to self in method
