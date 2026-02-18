@@ -582,3 +582,79 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== match map type with default
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    match m {
+        default {
+        }
+    }
+}
+---
+ok
+---
+
+=== cannot match on float
+fn Main() -> void {
+    let f: float = 3.14
+    match f {
+        default {
+        }
+    }
+}
+---
+error: cannot match on float
+---
+
+=== cannot match on byte
+fn Main() -> void {
+    let b: byte = 0x01
+    match b {
+        default {
+        }
+    }
+}
+---
+error: cannot match on byte
+---
+
+=== cannot match on tuple
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    match t {
+        default {
+        }
+    }
+}
+---
+error: cannot match on
+---
+
+=== match enum all variants plus default
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Foo(c: Color) -> string {
+    match c {
+        case Color.Red {
+            return "red"
+        }
+        case Color.Green {
+            return "green"
+        }
+        case Color.Blue {
+            return "blue"
+        }
+        default {
+            return "unknown"
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---

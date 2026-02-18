@@ -179,3 +179,66 @@ fn Main() -> void {
 ---
 error: duplicate variant
 ---
+
+=== struct with no fields
+struct Empty {
+}
+fn Main() -> void {
+    let e: Empty = Empty()
+}
+---
+ok
+---
+
+=== struct field type must exist
+struct Foo {
+    x: Unknown
+}
+fn Main() -> void {
+}
+---
+error:
+---
+
+=== enum with single variant
+enum Single {
+    Only
+}
+fn Main() -> void {
+    let s: Single = Single.Only
+}
+---
+ok
+---
+
+=== interface with method on struct
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+    fn Area(self) -> float {
+        return self.radius * self.radius
+    }
+}
+fn Main() -> void {
+    let c: Circle = Circle(IntToFloat(5))
+    let a: float = c.Area()
+}
+---
+ok
+---
+
+=== multiple structs implement same interface
+interface Animal {}
+struct Dog : Animal {
+    name: string
+}
+struct Cat : Animal {
+    name: string
+}
+fn Main() -> void {
+    let a: Animal = Dog("Rex")
+    a = Cat("Whiskers")
+}
+---
+ok
+---

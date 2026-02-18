@@ -241,3 +241,72 @@ fn Main() -> void {
 ---
 error: reserved name
 ---
+
+=== parameter accessible in body
+fn Foo(x: int) -> int {
+    return x + 1
+}
+fn Main() -> void {
+    let y: int = Foo(41)
+}
+---
+ok
+---
+
+=== for index variable not accessible after loop
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for i, x in xs {
+    }
+    let z: int = i
+}
+---
+error: undefined name
+---
+
+=== match default binding scoped to default block
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Literal(42)
+    match n {
+        case lit: Literal {
+        }
+        default o {
+        }
+    }
+    let x: Node = o
+}
+---
+error: undefined name
+---
+
+=== finally body has own scope
+fn Main() -> void {
+    try {
+        let x: int = 42
+    } catch e: ValueError {
+    } finally {
+        let y: int = x
+    }
+}
+---
+error: undefined name
+---
+
+=== same variable name in separate catch blocks
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+    } catch e: RuntimeError {
+    }
+}
+---
+error: unreachable catch
+---

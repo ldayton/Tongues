@@ -483,6 +483,95 @@ fn Main() -> void {
 ok
 ---
 
+=== throw int rejected
+fn Main() -> void {
+    throw 42
+}
+---
+error: cannot throw
+---
+
+=== throw string rejected
+fn Main() -> void {
+    throw "oops"
+}
+---
+error: cannot throw
+---
+
+=== throw nil rejected
+fn Main() -> void {
+    throw nil
+}
+---
+error: cannot throw
+---
+
+=== throw enum rejected
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    throw Color.Red
+}
+---
+error: cannot throw
+---
+
+=== throw interface value
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+fn Foo(n: Node) -> void {
+    throw n
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== try with only finally
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("42", 10)
+    } finally {
+        WritelnOut("done")
+    }
+}
+---
+ok
+---
+
+=== catch specific then catch-all
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    } catch e {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== re-throw in catch
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+        throw e
+    }
+}
+---
+ok
+---
+
 === self outside method
 fn Foo(self) -> void {
 }
@@ -552,4 +641,166 @@ fn Main() -> void {
 }
 ---
 error: cannot iterate
+---
+
+=== assign wrong type to struct field
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, 2)
+    p.x = "hello"
+}
+---
+error: cannot assign
+---
+
+=== assign wrong type to list index
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] = "hello"
+}
+---
+error: cannot assign
+---
+
+=== assign wrong type to map key
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    m["b"] = "hello"
+}
+---
+error: cannot assign
+---
+
+=== compound assignment to struct field
+struct Counter {
+    value: int
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.value += 1
+}
+---
+ok
+---
+
+=== compound assignment type mismatch on field
+struct Counter {
+    value: int
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.value += "hello"
+}
+---
+error:
+---
+
+=== tuple assignment with discard
+fn Pair() -> (int, int) {
+    return (1, 2)
+}
+fn Main() -> void {
+    let a: int
+    a, _ = Pair()
+}
+---
+ok
+---
+
+=== while with map as truthy condition
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    while m {
+    }
+}
+---
+ok
+---
+
+=== while with set as truthy condition
+fn Main() -> void {
+    let s: set[int] = {1, 2}
+    while s {
+    }
+}
+---
+ok
+---
+
+=== if with map as truthy condition
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    if m {
+    }
+}
+---
+ok
+---
+
+=== for over list with index and value types correct
+fn Main() -> void {
+    let xs: list[string] = ["a", "b"]
+    for i, s in xs {
+        let idx: int = i
+        let val: string = s
+    }
+}
+---
+ok
+---
+
+=== break in nested if inside loop
+fn Main() -> void {
+    while true {
+        if true {
+            break
+        }
+    }
+}
+---
+ok
+---
+
+=== continue in nested if inside loop
+fn Main() -> void {
+    while true {
+        if true {
+            continue
+        }
+    }
+}
+---
+ok
+---
+
+=== assign to list index with wrong index type
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs["0"] = 42
+}
+---
+error:
+---
+
+=== compound assignment list index
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0] += 10
+}
+---
+ok
+---
+
+=== for over map single var yields key type
+fn Main() -> void {
+    let m: map[int, string] = Map()
+    for k in m {
+        let n: int = k
+    }
+}
+---
+ok
 ---

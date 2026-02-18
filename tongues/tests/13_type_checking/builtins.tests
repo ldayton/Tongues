@@ -993,3 +993,210 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== Len wrong arity
+fn Main() -> void {
+    let n: int = Len([1], [2])
+}
+---
+error:
+---
+
+=== Append wrong arity
+fn Main() -> void {
+    let xs: list[int]
+    Append(xs)
+}
+---
+error:
+---
+
+=== Contains wrong type on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let b: bool = Contains(xs, "hello")
+}
+---
+error:
+---
+
+=== Delete wrong key type
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    Delete(m, 42)
+}
+---
+error:
+---
+
+=== IndexOf wrong type
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let i: int = IndexOf(xs, "hello")
+}
+---
+error:
+---
+
+=== Insert wrong index type
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    Insert(xs, "0", 42)
+}
+---
+error:
+---
+
+=== Abs wrong type
+fn Main() -> void {
+    let x: int = Abs("hello")
+}
+---
+error:
+---
+
+=== Pow type mismatch
+fn Main() -> void {
+    let x: int = Pow(2, 3.0)
+}
+---
+error:
+---
+
+=== Sum wrong element type
+fn Main() -> void {
+    let xs: list[string] = ["a", "b"]
+    let total: string = Sum(xs)
+}
+---
+error:
+---
+
+=== Min type mismatch
+fn Main() -> void {
+    let x: int = Min(1, 2.0)
+}
+---
+error:
+---
+
+=== Merge different map types
+fn Main() -> void {
+    let a: map[string, int] = {"a": 1}
+    let b: map[string, string] = {"b": "hello"}
+    let c: map[string, int] = Merge(a, b)
+}
+---
+error:
+---
+
+=== Sorted on list of strings
+fn Main() -> void {
+    let xs: list[string] = ["c", "a", "b"]
+    let ys: list[string] = Sorted(xs)
+}
+---
+ok
+---
+
+=== Unwrap on union with nil
+fn Main() -> void {
+    let x: int | string | nil = 42
+    let y: int | string = Unwrap(x)
+}
+---
+ok
+---
+
+=== Exit wrong type
+fn Main() -> void {
+    Exit("0")
+}
+---
+error:
+---
+
+=== NotImplementedError construction
+fn Main() -> void {
+    let e: NotImplementedError = NotImplementedError("todo")
+    WritelnErr(e.message)
+}
+---
+ok
+---
+
+=== Exception construction
+fn Main() -> void {
+    let e: Exception = Exception("bad")
+    WritelnErr(e.message)
+}
+---
+ok
+---
+
+=== BaseException construction
+fn Main() -> void {
+    let e: BaseException = BaseException("bad")
+    WritelnErr(e.message)
+}
+---
+ok
+---
+
+=== Get returns optional without default
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int? = Get(m, "a")
+    let w: int = Get(m, "a")
+}
+---
+error: cannot assign
+---
+
+=== Sqrt wrong type
+fn Main() -> void {
+    let x: float = Sqrt(4)
+}
+---
+error:
+---
+
+=== Encode wrong type
+fn Main() -> void {
+    let b: bytes = Encode(42)
+}
+---
+error:
+---
+
+=== Decode wrong type
+fn Main() -> void {
+    let s: string = Decode("hello")
+}
+---
+error:
+---
+
+=== ParseInt wrong type
+fn Main() -> void {
+    let n: int = ParseInt(42, 10)
+}
+---
+error:
+---
+
+=== ByteToInt wrong type
+fn Main() -> void {
+    let n: int = ByteToInt(42)
+}
+---
+error:
+---
+
+=== IntToByte wrong type
+fn Main() -> void {
+    let b: byte = IntToByte("42")
+}
+---
+error:
+---

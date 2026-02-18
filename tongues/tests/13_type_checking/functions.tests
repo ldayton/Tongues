@@ -355,3 +355,162 @@ fn Main() -> void {
 ---
 error: cannot capture
 ---
+
+=== method call wrong argument type
+struct Adder {
+    base: int
+    fn Add(self, n: int) -> int {
+        return self.base + n
+    }
+}
+fn Main() -> void {
+    let a: Adder = Adder(10)
+    a.Add("five")
+}
+---
+error: cannot pass
+---
+
+=== fn literal return type mismatch
+fn Main() -> void {
+    let g: fn[int, int] = (x: int) -> int {
+        return "hello"
+    }
+}
+---
+error: cannot return
+---
+
+=== void return used as value
+fn Foo() -> void {
+}
+fn Main() -> void {
+    let x: int = Foo()
+}
+---
+error:
+---
+
+=== fn literal void return
+fn Main() -> void {
+    let f: fn[int, void] = (x: int) -> void {
+        WritelnOut(ToString(x))
+    }
+}
+---
+ok
+---
+
+=== struct constructor mixed args rejected
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, y: 2)
+}
+---
+error: cannot mix positional and named
+---
+
+=== method call arity mismatch
+struct Counter {
+    value: int
+    fn Add(self, n: int) -> int {
+        return self.value + n
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.Add(1, 2)
+}
+---
+error: expected
+---
+
+=== self access non-existent field
+struct Pt {
+    x: int
+    y: int
+    fn Foo(self) -> int {
+        return self.z
+    }
+}
+fn Main() -> void {
+}
+---
+error: has no field
+---
+
+=== self assign wrong type to field
+struct Counter {
+    value: int
+    fn Reset(self) -> void {
+        self.value = "zero"
+    }
+}
+fn Main() -> void {
+}
+---
+error: cannot assign
+---
+
+=== method calls another method on self
+struct Calc {
+    value: int
+    fn Double(self) -> int {
+        return self.value * 2
+    }
+    fn DoublePlus(self, n: int) -> int {
+        return self.Double() + n
+    }
+}
+fn Main() -> void {
+    let c: Calc = Calc(5)
+    let r: int = c.DoublePlus(3)
+}
+---
+ok
+---
+
+=== passing optional where non-optional expected
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Foo(x: int?) -> void {
+    Add(x, 1)
+}
+fn Main() -> void {
+}
+---
+error: cannot pass
+---
+
+=== struct constructor field type mismatch with interface
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct Other {
+    value: int
+}
+struct Wrapper {
+    child: Node
+}
+fn Main() -> void {
+    let w: Wrapper = Wrapper(Other(42))
+}
+---
+error: cannot assign
+---
+
+=== function as value type mismatch
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[string, string] = Double
+}
+---
+error: cannot assign
+---

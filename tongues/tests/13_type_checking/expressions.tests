@@ -783,3 +783,230 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== list literal heterogeneous rejected
+fn Main() -> void {
+    let xs: list[int] = [1, "hello"]
+}
+---
+error: list elements must have same type
+---
+
+=== map literal heterogeneous values rejected
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": "hello"}
+}
+---
+error: map values must have same type
+---
+
+=== set literal heterogeneous rejected
+fn Main() -> void {
+    let s: set[int] = {1, "hello"}
+}
+---
+error:
+---
+
+=== negation not defined for bool
+fn Main() -> void {
+    let x: bool = -true
+}
+---
+error: negation not defined for
+---
+
+=== bitwise complement not defined for string
+fn Main() -> void {
+    let x: string = ~"hello"
+}
+---
+error: bitwise complement not defined for
+---
+
+=== logical not with truthy list succeeds
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    let b: bool = !xs
+}
+---
+ok
+---
+
+=== tuple access on non-tuple
+fn Main() -> void {
+    let x: int = 42
+    let y: int = x.0
+}
+---
+error: tuple access on non-tuple
+---
+
+=== ternary with truthy list condition
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    let y: int = xs ? 1 : 0
+}
+---
+ok
+---
+
+=== map indexing wrong key type
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int = m[42]
+}
+---
+error:
+---
+
+=== string index must be int
+fn Main() -> void {
+    let s: string = "hello"
+    let c: rune = s["0"]
+}
+---
+error: string index must be int
+---
+
+=== bytes index must be int
+fn Main() -> void {
+    let b: bytes = b"\x01\x02"
+    let x: byte = b["0"]
+}
+---
+error: bytes index must be int
+---
+
+=== cannot index bool
+fn Main() -> void {
+    let x: int = 42
+    let y: int = x[0]
+}
+---
+error: cannot index
+---
+
+=== list slicing open start
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let ys: list[int] = xs[0:2]
+}
+---
+ok
+---
+
+=== ordering comparison type mismatch
+fn Main() -> void {
+    let b: bool = 1 < "hello"
+}
+---
+error: cannot compare
+---
+
+=== shift left operand must be int or byte
+fn Main() -> void {
+    let x: float = 1.0 << 2
+}
+---
+error: left operand
+---
+
+=== cannot slice map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let n: map[string, int] = m[0:1]
+}
+---
+error: cannot slice
+---
+
+=== modulo on float
+fn Main() -> void {
+    let x: float = 3.14 % 1.0
+}
+---
+ok
+---
+
+=== arithmetic on optional without narrowing
+fn Foo(x: int?) -> int {
+    return x + 1
+}
+fn Main() -> void {
+}
+---
+error: must be same type
+---
+
+=== method call on optional without narrowing
+struct Counter {
+    value: int
+    fn Get(self) -> int {
+        return self.value
+    }
+}
+fn Foo(c: Counter?) -> int {
+    return c.Get()
+}
+fn Main() -> void {
+}
+---
+error: cannot call method
+---
+
+=== indexing on optional without narrowing
+fn Foo(xs: list[int]?) -> int {
+    return xs[0]
+}
+fn Main() -> void {
+}
+---
+error: cannot index
+---
+
+=== arithmetic on narrowed optional in ternary
+fn Foo(x: int?) -> int {
+    return x != nil ? x + 1 : 0
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== field access on optional without narrowing
+struct Pt {
+    x: int
+    y: int
+}
+fn Foo(p: Pt?) -> int {
+    return p.x
+}
+fn Main() -> void {
+}
+---
+error: cannot access field
+---
+
+=== equality non-optional with nil
+fn Main() -> void {
+    let x: int = 42
+    let b: bool = x == nil
+}
+---
+error:
+---
+
+=== enum variant not callable
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    Color.Red()
+}
+---
+error: enum variant is not callable
+---
