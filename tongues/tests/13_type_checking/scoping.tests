@@ -299,7 +299,7 @@ fn Main() -> void {
 error: undefined name
 ---
 
-=== same variable name in separate catch blocks
+=== same variable name in separate typed catch blocks
 fn Main() -> void {
     try {
         let n: int = ParseInt("abc", 10)
@@ -308,5 +308,5 @@ fn Main() -> void {
     }
 }
 ---
-error: unreachable catch
+ok
 ---

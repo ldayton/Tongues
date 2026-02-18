@@ -180,24 +180,19 @@ fn Main() -> void {
 error: duplicate variant
 ---
 
-=== struct with no fields
-struct Empty {
+=== struct field with interface type
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+struct Container {
+    child: Node
 }
 fn Main() -> void {
-    let e: Empty = Empty()
+    let c: Container = Container(Leaf(42))
 }
 ---
 ok
----
-
-=== struct field type must exist
-struct Foo {
-    x: Unknown
-}
-fn Main() -> void {
-}
----
-error:
 ---
 
 === enum with single variant

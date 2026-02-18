@@ -1270,7 +1270,25 @@ class Checker:
             if not self.in_loop:
                 self.error("continue outside of loop", stmt.pos)
         elif isinstance(stmt, TThrowStmt):
-            self.check_expr(stmt.expr, None)
+            throw_type = self.check_expr(stmt.expr, None)
+            if throw_type is not None and throw_type.kind != TY_ERROR:
+                if not isinstance(throw_type, (StructT, InterfaceT)):
+                    if isinstance(throw_type, UnionT):
+                        all_throwable = True
+                        for m in throw_type.members:
+                            if not isinstance(m, (StructT, InterfaceT)):
+                                all_throwable = False
+                                break
+                        if not all_throwable:
+                            self.error(
+                                "cannot throw " + type_name(throw_type),
+                                stmt.pos,
+                            )
+                    else:
+                        self.error(
+                            "cannot throw " + type_name(throw_type),
+                            stmt.pos,
+                        )
         elif isinstance(stmt, TExprStmt):
             self.check_expr(stmt.expr, None)
         elif isinstance(stmt, TIfStmt):
@@ -1957,8 +1975,10 @@ class Checker:
                     left.kind == TY_INT and right.kind == TY_BYTE
                 ):
                     return BOOL_T
-                # Allow comparing any type with nil
-                if left.kind == TY_NIL or right.kind == TY_NIL:
+                # Allow comparing optional/union-containing-nil with nil
+                if left.kind == TY_NIL and contains_nil(right):
+                    return BOOL_T
+                if right.kind == TY_NIL and contains_nil(left):
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
