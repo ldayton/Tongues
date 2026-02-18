@@ -23,6 +23,7 @@ from ..taytsh.ast import (
     TCatch,
     TContinueStmt,
     TDecl,
+    TDefault,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -3293,6 +3294,7 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if not _is_ast(target_node, "Name"):
         return []
     name = get_str(target_node, "id")
+    already_declared = name in env.declared
     # Get type from annotation
     ann_str = ""
     if isinstance(ann_jv, JDict):
@@ -3326,7 +3328,13 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         elif _is_set_of_genexpr(value_node):
             # set(genexpr) → expand inline
             genexpr = get_nodes(value_node, "args")[0]
-            stmts.append(TLetStmt(_P0, safe, ttype, _make_call("Set", []), ann))
+            if already_declared:
+                target = TVar(_P0, safe, ann)
+                stmts.append(
+                    TAssignStmt(_P0, target, _make_call("Set", []), _EMPTY_ANN)
+                )
+            else:
+                stmts.append(TLetStmt(_P0, safe, ttype, _make_call("Set", []), ann))
             stmts.extend(_expand_genexpr_to_set_add(safe, genexpr, env, ctx))
             return stmts
         elif _is_map_type(type_dict) and _is_ast(value_node, "Dict"):
@@ -3334,10 +3342,15 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             val = _lower_dict_literal_typed(value_node, type_dict, env, ctx)
         else:
             val = _lower_expr(value_node, env, ctx)
-        stmts.append(TLetStmt(_P0, safe, ttype, val, ann))
+        if already_declared:
+            target = TVar(_P0, safe, ann)
+            stmts.append(TAssignStmt(_P0, target, val, _EMPTY_ANN))
+        else:
+            stmts.append(TLetStmt(_P0, safe, ttype, val, ann))
         stmts.extend(_method_side_effects(value_node, env, ctx))
         return stmts
-    stmts.append(TLetStmt(_P0, safe, ttype, val, ann))
+    if not already_declared:
+        stmts.append(TLetStmt(_P0, safe, ttype, val, ann))
     return stmts
 
 
@@ -3451,31 +3464,157 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     return [TOpAssignStmt(_P0, target, op_str, value, _EMPTY_ANN)]
 
 
+def _scan_assign_targets(
+    nodes: list[ASTNode], env: _Env, ctx: _LowerCtx
+) -> list[tuple[str, TypeNode]]:
+    """Scan AST nodes for first-assigned names not yet in env.declared."""
+    result: list[tuple[str, TypeNode]] = []
+    seen: set[str] = set()
+    stack: list[ASTNode] = []
+    i = len(nodes) - 1
+    while i >= 0:
+        stack.append(nodes[i])
+        i -= 1
+    while len(stack) > 0:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        t = get_str(node, "_type")
+        if t == "Assign":
+            targets = get_nodes(node, "targets")
+            if len(targets) > 0:
+                tgt = targets[0]
+                if isinstance(tgt, dict) and _is_ast(tgt, "Name"):
+                    name = get_str(tgt, "id")
+                    if name not in env.declared and name not in seen and name != "_":
+                        value_node = get_node(node, "value")
+                        val_type = _infer_expr_type(value_node, env, ctx)
+                        if _is_type_dict(val_type, ["void"]):
+                            val_type = PrimitiveType("error")
+                        result.append((name, val_type))
+                        seen.add(name)
+        elif t == "AnnAssign":
+            tgt = get_node(node, "target")
+            if isinstance(tgt, dict) and _is_ast(tgt, "Name"):
+                name = get_str(tgt, "id")
+                if name not in env.declared and name not in seen and name != "_":
+                    ann_jv = node.get("annotation")
+                    ann_str = ""
+                    if isinstance(ann_jv, JDict):
+                        ann_str = annotation_to_str(ann_jv.entries)
+                    td: TypeNode = VOID_TYPE
+                    if ann_str != "":
+                        td = py_type_to_type_dict(ann_str, ctx.known_classes, [], 0, 0)
+                    if _is_type_dict(td, ["void"]):
+                        value_node = get_node(node, "value")
+                        td = _infer_expr_type(value_node, env, ctx)
+                    if _is_type_dict(td, ["void"]):
+                        td = PrimitiveType("error")
+                    result.append((name, td))
+                    seen.add(name)
+        elif t == "If":
+            body = get_nodes(node, "body")
+            orelse = get_nodes(node, "orelse")
+            j = len(orelse) - 1
+            while j >= 0:
+                stack.append(orelse[j])
+                j -= 1
+            j = len(body) - 1
+            while j >= 0:
+                stack.append(body[j])
+                j -= 1
+        elif t == "While":
+            body = get_nodes(node, "body")
+            j = len(body) - 1
+            while j >= 0:
+                stack.append(body[j])
+                j -= 1
+        elif t == "For":
+            body = get_nodes(node, "body")
+            j = len(body) - 1
+            while j >= 0:
+                stack.append(body[j])
+                j -= 1
+        elif t == "Try":
+            body = get_nodes(node, "body")
+            handlers = get_nodes(node, "handlers")
+            orelse = get_nodes(node, "orelse")
+            finalbody = get_nodes(node, "finalbody")
+            j = len(finalbody) - 1
+            while j >= 0:
+                stack.append(finalbody[j])
+                j -= 1
+            j = len(orelse) - 1
+            while j >= 0:
+                stack.append(orelse[j])
+                j -= 1
+            j = len(handlers) - 1
+            while j >= 0:
+                h = handlers[j]
+                if isinstance(h, dict):
+                    hbody = get_nodes(h, "body")
+                    k = len(hbody) - 1
+                    while k >= 0:
+                        stack.append(hbody[k])
+                        k -= 1
+                j -= 1
+            j = len(body) - 1
+            while j >= 0:
+                stack.append(body[j])
+                j -= 1
+    return result
+
+
 def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     """Lower an if statement, detecting isinstance chains for match."""
     test = get_node(node, "test")
     body = get_nodes(node, "body")
     orelse = get_nodes(node, "orelse")
     # Check for isinstance chain → match statement
-    isinstance_chain = _extract_isinstance_chain(node)
-    if isinstance_chain is not None:
-        return _lower_isinstance_chain(isinstance_chain, env, ctx)
+    isinstance_result = _extract_isinstance_chain(node)
+    if isinstance_result is not None:
+        chain, else_body_nodes = isinstance_result
+        return _lower_isinstance_chain(chain, else_body_nodes, env, ctx)
+    # Hoist variables first-assigned inside branches
+    all_branch_nodes: list[ASTNode] = []
+    bi = 0
+    while bi < len(body):
+        all_branch_nodes.append(body[bi])
+        bi += 1
+    bi = 0
+    while bi < len(orelse):
+        all_branch_nodes.append(orelse[bi])
+        bi += 1
+    hoisted = _scan_assign_targets(all_branch_nodes, env, ctx)
+    pre_stmts: list[TStmt] = []
+    hi = 0
+    while hi < len(hoisted):
+        hname, htype = hoisted[hi]
+        env.declared.add(hname)
+        env.var_types[hname] = htype
+        safe = _safe_name(hname)
+        ttype = _typenode_to_ttype(htype)
+        pre_stmts.append(TLetStmt(_P0, safe, ttype, None, _name_ann(safe, hname)))
+        hi += 1
     cond = _lower_as_bool(test, env, ctx)
     then_body = _lower_stmts(body, env, ctx)
     else_body: list[TStmt] | None = None
     if len(orelse) > 0:
         else_body = _lower_stmts(orelse, env, ctx)
-    return [TIfStmt(_P0, cond, then_body, else_body, _EMPTY_ANN)]
+    pre_stmts.append(TIfStmt(_P0, cond, then_body, else_body, _EMPTY_ANN))
+    return pre_stmts
 
 
 def _extract_isinstance_chain(
     node: ASTNode,
-) -> list[tuple[str, str, list[ASTNode]]] | None:
-    """Extract isinstance chain from if/elif. Returns list of (var_name, type_name, body) or None."""
+) -> tuple[list[tuple[str, str, list[ASTNode]]], list[ASTNode] | None] | None:
+    """Extract isinstance chain from if/elif. Returns (cases, else_body) or None."""
     test = get_node(node, "test")
     if not _is_isinstance_call(test):
         return None
     var_name = _isinstance_var(test)
+    if var_name == "":
+        return None
     type_name = _isinstance_type(test)
     body = get_nodes(node, "body")
     result: list[tuple[str, str, list[ASTNode]]] = [(var_name, type_name, body)]
@@ -3487,12 +3626,17 @@ def _extract_isinstance_chain(
         if _is_isinstance_call(next_test) and _isinstance_var(next_test) == var_name:
             rest = _extract_isinstance_chain(next_node)
             if rest is not None:
+                rest_cases, rest_else = rest
                 i = 0
-                while i < len(rest):
-                    result.append(rest[i])
+                while i < len(rest_cases):
+                    result.append(rest_cases[i])
                     i += 1
-                return result
-    return result
+                return (result, rest_else)
+    # Trailing else (non-isinstance orelse)
+    else_body: list[ASTNode] | None = None
+    if len(orelse) > 0:
+        else_body = orelse
+    return (result, else_body)
 
 
 def _is_isinstance_call(node: ASTNode) -> bool:
@@ -3523,12 +3667,39 @@ def _isinstance_type(node: ASTNode) -> str:
 
 def _lower_isinstance_chain(
     chain: list[tuple[str, str, list[ASTNode]]],
+    else_body_nodes: list[ASTNode] | None,
     env: _Env,
     ctx: _LowerCtx,
 ) -> list[TStmt]:
     """Lower isinstance chain to a match statement."""
     if len(chain) == 0:
         return []
+    # Hoist variables first-assigned inside branches
+    all_body_nodes: list[ASTNode] = []
+    i = 0
+    while i < len(chain):
+        _, _, body_stmts = chain[i]
+        j = 0
+        while j < len(body_stmts):
+            all_body_nodes.append(body_stmts[j])
+            j += 1
+        i += 1
+    if else_body_nodes is not None:
+        j = 0
+        while j < len(else_body_nodes):
+            all_body_nodes.append(else_body_nodes[j])
+            j += 1
+    hoisted = _scan_assign_targets(all_body_nodes, env, ctx)
+    pre_stmts: list[TStmt] = []
+    h = 0
+    while h < len(hoisted):
+        hname, htype = hoisted[h]
+        env.declared.add(hname)
+        env.var_types[hname] = htype
+        safe = _safe_name(hname)
+        ttype = _typenode_to_ttype(htype)
+        pre_stmts.append(TLetStmt(_P0, safe, ttype, None, _name_ann(safe, hname)))
+        h += 1
     var_name = chain[0][0]
     sv = _safe_name(var_name)
     expr = TVar(_P0, sv, _name_ann(sv, var_name))
@@ -3546,7 +3717,14 @@ def _lower_isinstance_chain(
         )
         cases.append(TMatchCase(_P0, pattern, case_body, _EMPTY_ANN))
         i += 1
-    return [TMatchStmt(_P0, expr, cases, None, _EMPTY_ANN)]
+    default: TDefault | None = None
+    if else_body_nodes is not None and len(else_body_nodes) > 0:
+        else_stmts = _lower_stmts(else_body_nodes, env, ctx)
+        default = TDefault(_P0, None, else_stmts, _EMPTY_ANN)
+    else:
+        default = TDefault(_P0, None, [], _EMPTY_ANN)
+    pre_stmts.append(TMatchStmt(_P0, expr, cases, default, _EMPTY_ANN))
+    return pre_stmts
 
 
 def _lower_while(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -4025,6 +4203,48 @@ def _build_method(
     return TFnDecl(_P0, name, params, ret_type, body, _EMPTY_ANN)
 
 
+def _collect_ancestor_fields(name: str, ctx: _LowerCtx) -> list[tuple[str, TType]]:
+    """Walk ancestors root-to-child, collecting fields from non-root ancestors."""
+    chain: list[str] = []
+    cur = name
+    while True:
+        ancs = ctx.hier_result.ancestors.get(cur)
+        if ancs is None or len(ancs) == 0:
+            break
+        chain.append(ancs[0])
+        cur = ancs[0]
+    # Reverse so we go root→child
+    chain.reverse()
+    result: list[tuple[str, TType]] = []
+    seen: set[str] = set()
+    i = 0
+    while i < len(chain):
+        anc = chain[i]
+        anc_info = ctx.field_result.classes.get(anc)
+        if anc_info is not None:
+            akeys: list[str] = []
+            if anc_info.init_params:
+                j = 0
+                while j < len(anc_info.init_params):
+                    p = anc_info.init_params[j]
+                    if p not in seen:
+                        akeys.append(p)
+                    j += 1
+            for k in anc_info.fields:
+                if k not in seen and k not in akeys:
+                    akeys.append(k)
+            j = 0
+            while j < len(akeys):
+                fname = akeys[j]
+                finfo = anc_info.fields.get(fname)
+                if finfo is not None:
+                    result.append((fname, _typenode_to_ttype(finfo.typ)))
+                    seen.add(fname)
+                j += 1
+        i += 1
+    return result
+
+
 def _build_struct(
     node: ASTNode,
     ctx: _LowerCtx,
@@ -4033,7 +4253,13 @@ def _build_struct(
     name = get_str(node, "name")
     # Check if this is a hierarchy root → interface
     if ctx.hier_result.is_hierarchy_root(name):
-        return TInterfaceDecl(_P0, name, _EMPTY_ANN)
+        ann: Ann = {}
+        bases_list = ctx.hier_result.ancestors.get(name)
+        if bases_list is not None and len(bases_list) > 0:
+            parent_root = ctx.hier_result.root_of(bases_list[0])
+            if parent_root is not None:
+                ann = {"_parent_interface": parent_root}
+        return TInterfaceDecl(_P0, name, ann)
     # Get bases
     bases = get_nodes(node, "bases")
     parent: str | None = None
@@ -4052,8 +4278,7 @@ def _build_struct(
     if ctx.hier_result.is_exception(name):
         is_exception = True
     if ctx.hier_result.is_node(name):
-        if parent is None:
-            parent = ctx.hier_result.root_of(name)
+        parent = ctx.hier_result.root_of(name)
     # Build fields
     fields: list[TFieldDecl] = []
     cls_info = ctx.field_result.classes.get(name)
@@ -4062,12 +4287,30 @@ def _build_struct(
             # Exception structs get a 'message' field
             fields.append(TFieldDecl(_P0, "message", TPrimitive(_P0, "string")))
         else:
-            # Use init_params order
-            fkeys = (
-                list(cls_info.init_params)
-                if cls_info.init_params
-                else list(cls_info.fields.keys())
-            )
+            # Collect inherited fields from ancestors
+            ancestor_fields = _collect_ancestor_fields(name, ctx)
+            inherited_field_names: set[str] = set()
+            af_i = 0
+            while af_i < len(ancestor_fields):
+                af_name, af_type = ancestor_fields[af_i]
+                fields.append(TFieldDecl(_P0, af_name, af_type))
+                inherited_field_names.add(af_name)
+                af_i += 1
+            # Build own field keys: init_params first, then remaining fields
+            seen: set[str] = set(inherited_field_names)
+            fkeys: list[str] = []
+            if cls_info.init_params:
+                j = 0
+                while j < len(cls_info.init_params):
+                    p = cls_info.init_params[j]
+                    if p not in seen:
+                        fkeys.append(p)
+                        seen.add(p)
+                    j += 1
+            for k in cls_info.fields:
+                if k not in seen:
+                    fkeys.append(k)
+                    seen.add(k)
             j = 0
             while j < len(fkeys):
                 fname = fkeys[j]
@@ -4123,6 +4366,28 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                         ttype = _typenode_to_ttype(val_type)
                         value = _lower_expr(value_node, _Env(), ctx)
                         result.append(TLetStmt(_P0, name, ttype, value, _EMPTY_ANN))
+        # Module-level ALL_CAPS annotated assignments
+        if _is_ast(node, "AnnAssign"):
+            target = get_node(node, "target")
+            if isinstance(target, dict) and _is_ast(target, "Name"):
+                name = get_str(target, "id")
+                if name == name.upper() and name != "_" and len(name) > 1:
+                    ann_jv = node.get("annotation")
+                    ann_str = ""
+                    if isinstance(ann_jv, JDict):
+                        ann_str = annotation_to_str(ann_jv.entries)
+                    type_dict: TypeNode = VOID_TYPE
+                    if ann_str != "":
+                        type_dict = py_type_to_type_dict(
+                            ann_str, ctx.known_classes, [], 0, 0
+                        )
+                    if _is_type_dict(type_dict, ["void"]):
+                        value_node = get_node(node, "value")
+                        type_dict = _infer_expr_type(value_node, _Env(), ctx)
+                    ttype = _typenode_to_ttype(type_dict)
+                    value_node = get_node(node, "value")
+                    value = _lower_expr(value_node, _Env(), ctx)
+                    result.append(TLetStmt(_P0, name, ttype, value, _EMPTY_ANN))
         # Class-level constants
         if _is_ast(node, "ClassDef"):
             class_name = get_str(node, "name")
@@ -4145,6 +4410,30 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                                 result.append(
                                     TLetStmt(_P0, const_name, ttype, value, _EMPTY_ANN)
                                 )
+                if isinstance(item, dict) and _is_ast(item, "AnnAssign"):
+                    target = get_node(item, "target")
+                    if isinstance(target, dict) and _is_ast(target, "Name"):
+                        fname = get_str(target, "id")
+                        if fname == fname.upper() and len(fname) > 1:
+                            ann_jv = item.get("annotation")
+                            ann_str = ""
+                            if isinstance(ann_jv, JDict):
+                                ann_str = annotation_to_str(ann_jv.entries)
+                            c_type_dict: TypeNode = VOID_TYPE
+                            if ann_str != "":
+                                c_type_dict = py_type_to_type_dict(
+                                    ann_str, ctx.known_classes, [], 0, 0
+                                )
+                            if _is_type_dict(c_type_dict, ["void"]):
+                                value_node = get_node(item, "value")
+                                c_type_dict = _infer_expr_type(value_node, _Env(), ctx)
+                            ttype = _typenode_to_ttype(c_type_dict)
+                            value_node = get_node(item, "value")
+                            value = _lower_expr(value_node, _Env(), ctx)
+                            const_name = class_name + "_" + fname
+                            result.append(
+                                TLetStmt(_P0, const_name, ttype, value, _EMPTY_ANN)
+                            )
                 j += 1
         i += 1
     return result

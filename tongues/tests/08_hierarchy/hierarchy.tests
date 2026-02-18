@@ -25,7 +25,7 @@ class BinOp(Expr):
     def __init__(self) -> None:
         pass
 ---
-root = Node
+root = null
 ancestors.Node.length = 0
 ancestors.Expr.0 = Node
 ancestors.BinOp.0 = Expr
@@ -134,7 +134,7 @@ class BinOp(Expr):
     def __init__(self) -> None:
         pass
 ---
-root = Node
+root = null
 node_types.length = 3
 ancestors.BinOp.0 = Expr
 ---
@@ -319,7 +319,7 @@ class Add(BinOp):
     def __init__(self) -> None:
         pass
 ---
-root = Node
+root = null
 node_types.length = 4
 ancestors.Add.0 = BinOp
 ancestors.BinOp.0 = Expr

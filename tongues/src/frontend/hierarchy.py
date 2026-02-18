@@ -71,23 +71,18 @@ class HierarchyResult:
         return False
 
     def root_of(self, name: str) -> str | None:
-        """Find the hierarchy root for a node type (transitive)."""
-        i = 0
-        while i < len(self.hierarchy_roots):
-            root = self.hierarchy_roots[i]
-            if name == root:
-                return root
-            cur = name
-            while True:
-                ancestors = self.ancestors.get(cur)
-                if ancestors is None or len(ancestors) == 0:
-                    break
-                parent = ancestors[0]
-                if parent == root:
-                    return root
-                cur = parent
-            i += 1
-        return None
+        """Find the nearest hierarchy root ancestor (or self if root)."""
+        if self.is_hierarchy_root(name):
+            return name
+        cur = name
+        while True:
+            ancestors = self.ancestors.get(cur)
+            if ancestors is None or len(ancestors) == 0:
+                return None
+            parent = ancestors[0]
+            if self.is_hierarchy_root(parent):
+                return parent
+            cur = parent
 
     def is_node(self, name: str) -> bool:
         """Check if name is a node type."""
@@ -237,16 +232,14 @@ def _find_hierarchy_roots(
                 used_as_base.add(base)
             j += 1
         i += 1
-    # Find roots: used as base, no base themselves, in known_classes
+    # Find roots: used as base and in known_classes
     roots: list[str] = []
     ukeys = list(used_as_base)
     i = 0
     while i < len(ukeys):
         name = ukeys[i]
         if name in known_classes:
-            bases = class_bases.get(name)
-            if bases is None or len(bases) == 0:
-                roots.append(name)
+            roots.append(name)
         i += 1
     return roots
 

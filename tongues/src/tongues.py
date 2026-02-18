@@ -33,7 +33,7 @@ from .frontend.types import (
     get_nodes,
     has_key,
 )
-from .taytsh.ast import to_dict as module_to_dict
+from .taytsh.ast import TLetStmt, to_dict as module_to_dict
 from .taytsh.check import Checker
 from .middleend.returns import analyze_returns
 from .middleend.scope import analyze_scope
@@ -1580,6 +1580,10 @@ def _pipeline_post_parse(
             cei += 1
         _print_errors(err_strs)
         return (1, "")
+    checker.enter_scope()
+    for cdecl in module.decls:
+        if isinstance(cdecl, TLetStmt):
+            checker.check_let_stmt(cdecl)
     checker.check_bodies(module)
     if len(checker.errors) > 0:
         err_strs: list[str] = []

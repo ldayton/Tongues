@@ -163,6 +163,7 @@ _PRIMITIVE_MAP: dict[str, Type] = {
     "rune": RUNE_T,
     "nil": NIL_T,
     "void": VOID_T,
+    "error": ERROR_T,
 }
 
 
@@ -382,9 +383,10 @@ def is_assignable(source: Type, target: Type) -> bool:
     """Can a value of type `source` be assigned to a slot of type `target`?"""
     if type_eq(source, target):
         return True
-    # Source is struct, target is its interface
-    if isinstance(source, StructT) and isinstance(target, InterfaceT):
-        return source.parent == target.name
+    # Source is struct or interface, target is interface containing it
+    if isinstance(target, InterfaceT):
+        if isinstance(source, (StructT, InterfaceT)) and source.name in target.variants:
+            return True
     # Error type: assignable to/from anything (prevents cascading)
     if source.kind == TY_ERROR or target.kind == TY_ERROR:
         return True
@@ -406,25 +408,21 @@ def is_assignable(source: Type, target: Type) -> bool:
         if all_ok:
             return True
     # Source with error element → assignable to same container (empty literal)
-    if (
-        isinstance(source, ListT)
-        and isinstance(target, ListT)
-        and source.element.kind == TY_ERROR
-    ):
-        return True
+    if isinstance(source, ListT) and isinstance(target, ListT):
+        if source.element.kind == TY_ERROR or source.element.kind == TY_VOID:
+            return True
     if isinstance(source, MapT) and isinstance(target, MapT):
         if source.key.kind == TY_ERROR and source.value.kind == TY_ERROR:
+            return True
+        if source.key.kind == TY_VOID:
             return True
         if is_assignable(source.key, target.key) and is_assignable(
             source.value, target.value
         ):
             return True
-    if (
-        isinstance(source, SetT)
-        and isinstance(target, SetT)
-        and source.element.kind == TY_ERROR
-    ):
-        return True
+    if isinstance(source, SetT) and isinstance(target, SetT):
+        if source.element.kind == TY_ERROR or source.element.kind == TY_VOID:
+            return True
     # Tuple element-by-element assignability
     if isinstance(source, TupleT) and isinstance(target, TupleT):
         if len(source.elements) == len(target.elements):
@@ -783,6 +781,11 @@ class Checker:
         if len(self.scopes) > 0:
             self.scopes[-1][name] = typ
 
+    def narrow(self, name: str, typ: Type) -> None:
+        """Shadow an outer binding with a narrowed type in the current scope."""
+        if len(self.scopes) > 0:
+            self.scopes[-1][name] = typ
+
     def lookup(self, name: str, pos: Pos) -> Type | None:
         # Search scopes innermost-out
         i = len(self.scopes) - 1
@@ -951,6 +954,21 @@ class Checker:
                             )
                         else:
                             parent_type.variants.append(decl.name)
+
+        # Variant propagation: child interfaces register with parent interfaces
+        for decl in module.decls:
+            if isinstance(decl, TInterfaceDecl):
+                parent_name = decl.annotations.get("_parent_interface", "")
+                if parent_name != "":
+                    parent_type = self.types.get(parent_name)
+                    if parent_type is not None and isinstance(parent_type, InterfaceT):
+                        parent_type.variants.append(decl.name)
+                        child_type = self.types.get(decl.name)
+                        if child_type is not None and isinstance(
+                            child_type, InterfaceT
+                        ):
+                            for v in child_type.variants:
+                                parent_type.variants.append(v)
 
         # Third pass: register top-level functions
         for decl in module.decls:
@@ -1350,7 +1368,7 @@ class Checker:
             return
         covered: list[str] = []
         for case in stmt.cases:
-            self.check_match_case(case, scrutinee_type, covered)
+            self.check_match_case(case, scrutinee_type, covered, stmt.expr)
         has_default = stmt.default is not None
         if has_default:
             dflt = stmt.default
@@ -1377,8 +1395,8 @@ class Checker:
     def _allowed_in_match(self, case_type: Type, scrutinee: Type) -> bool:
         """Check if case_type is a valid case for the given scrutinee."""
         if isinstance(scrutinee, InterfaceT):
-            if isinstance(case_type, StructT) and case_type.parent == scrutinee.name:
-                return True
+            if isinstance(case_type, (StructT, InterfaceT)):
+                return case_type.name in scrutinee.variants
             return False
         if isinstance(scrutinee, EnumT):
             return False  # enums use TPatternEnum, not TPatternType
@@ -1386,11 +1404,10 @@ class Checker:
             for m in scrutinee.members:
                 if type_eq(case_type, m):
                     return True
-                if isinstance(m, InterfaceT) and isinstance(case_type, StructT):
-                    if case_type.parent == m.name:
-                        return True
-                if isinstance(m, InterfaceT) and isinstance(case_type, InterfaceT):
-                    if type_eq(case_type, m):
+                if isinstance(m, InterfaceT) and isinstance(
+                    case_type, (StructT, InterfaceT)
+                ):
+                    if case_type.name in m.variants:
                         return True
             return False
         if scrutinee.kind == TY_ERROR:
@@ -1398,7 +1415,11 @@ class Checker:
         return False
 
     def check_match_case(
-        self, case: TMatchCase, scrutinee: Type, covered: list[str]
+        self,
+        case: TMatchCase,
+        scrutinee: Type,
+        covered: list[str],
+        scrutinee_expr: TExpr | None = None,
     ) -> None:
         pat = case.pattern
         if isinstance(pat, TPatternNil):
@@ -1469,6 +1490,9 @@ class Checker:
                         covered.append(vkey)
             self.enter_scope()
             self.declare(pat.name, case_type, pat.pos)
+            if scrutinee_expr is not None and isinstance(scrutinee_expr, TVar):
+                if scrutinee_expr.name != pat.name:
+                    self.narrow(scrutinee_expr.name, case_type)
             self.check_stmts(case.body)
             self.exit_scope()
 
@@ -1487,8 +1511,11 @@ class Checker:
         if isinstance(scrutinee, InterfaceT):
             remaining: list[Type] = []
             for v in scrutinee.variants:
-                if _type_key(self.types[v]) not in covered:
-                    remaining.append(self.types[v])
+                vt = self.types[v]
+                if isinstance(vt, InterfaceT):
+                    continue
+                if _type_key(vt) not in covered:
+                    remaining.append(vt)
             if len(remaining) == 0:
                 return scrutinee
             if len(remaining) == 1:
@@ -1502,8 +1529,11 @@ class Checker:
                         remaining2.append(m)
                 elif isinstance(m, InterfaceT):
                     for v in m.variants:
-                        if _type_key(self.types[v]) not in covered:
-                            remaining2.append(self.types[v])
+                        vt2 = self.types[v]
+                        if isinstance(vt2, InterfaceT):
+                            continue
+                        if _type_key(vt2) not in covered:
+                            remaining2.append(vt2)
                 else:
                     if _type_key(m) not in covered:
                         remaining2.append(m)
@@ -1522,7 +1552,10 @@ class Checker:
         required: list[str] = []
         if isinstance(scrutinee, InterfaceT):
             for v in scrutinee.variants:
-                required.append(_type_key(self.types[v]))
+                vt = self.types[v]
+                if isinstance(vt, InterfaceT):
+                    continue
+                required.append(_type_key(vt))
         elif isinstance(scrutinee, EnumT):
             for v in scrutinee.variants:
                 required.append(scrutinee.name + "." + v)
@@ -1532,7 +1565,10 @@ class Checker:
                     required.append("nil")
                 elif isinstance(m, InterfaceT):
                     for v in m.variants:
-                        required.append(_type_key(self.types[v]))
+                        vt = self.types[v]
+                        if isinstance(vt, InterfaceT):
+                            continue
+                        required.append(_type_key(vt))
                 elif isinstance(m, EnumT):
                     for v in m.variants:
                         required.append(m.name + "." + v)
@@ -3402,6 +3438,10 @@ def check(module: TModule) -> list[CheckError]:
     checker.collect_declarations(module)
     if len(checker.errors) > 0:
         return checker.errors
+    checker.enter_scope()
+    for decl in module.decls:
+        if isinstance(decl, TLetStmt):
+            checker.check_let_stmt(decl)
     checker.check_bodies(module)
     _check_main(checker)
     return checker.errors
@@ -3414,6 +3454,10 @@ def check_with_info(module: TModule) -> tuple[list[CheckError], Checker]:
     checker.collect_declarations(module)
     if len(checker.errors) > 0:
         return (checker.errors, checker)
+    checker.enter_scope()
+    for decl in module.decls:
+        if isinstance(decl, TLetStmt):
+            checker.check_let_stmt(decl)
     checker.check_bodies(module)
     _check_main(checker)
     return (checker.errors, checker)
