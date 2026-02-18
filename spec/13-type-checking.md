@@ -68,7 +68,7 @@ Parse-time type AST nodes are resolved to checked types during declaration colle
 
 ### Double Optional
 
-`T??` is rejected — optionals do not nest.
+`T??` is rejected in source-level type annotations — optionals do not nest. Computed types (e.g. `Get` on `map[K, V?]` returning `V?`) normalize via union flattening and deduplication, which collapses the redundant `nil` without error.
 
 ### Tuple Arity
 
@@ -94,7 +94,7 @@ Three sequential loops register all declarations before checking bodies:
 **Loop 1 — Register names**: every struct, interface, and enum name is registered as a placeholder in the type namespace. Duplicate names are errors.
 
 **Loop 2 — Resolve structure**: for each declaration:
-- **Structs**: resolve field types and method signatures; register with parent interface if `: InterfaceName` is present
+- **Structs**: resolve field types and method signatures; if `: Name` is present, validate that `Name` refers to an interface (not a struct, enum, or undefined name — error: `parent is not an interface`) and register as a variant of that interface
 - **Interfaces**: validate the body is empty; record as sealed interface
 - **Enums**: record variant names; duplicate variants are errors
 
@@ -102,7 +102,7 @@ Three sequential loops register all declarations before checking bodies:
 
 ### Pass 2: Body Checking
 
-For each function declaration, a new scope is entered, parameters are declared, and the body is checked statement by statement. For each struct, methods are checked with `self` bound to the enclosing struct type.
+For each function declaration, a new scope is entered, parameters are declared, and the body is checked statement by statement. For each struct, methods are checked with `this` bound to the enclosing struct type.
 
 ## Scoping
 
@@ -146,11 +146,11 @@ Loop variables, match bindings, and catch bindings are scoped to their block —
 
 Built-in function names are reserved and cannot be used for any binding — local variables, parameters, loop variables, match bindings, catch bindings, struct names, enum names, interface names, or function names.
 
-Reserved names include: `Abs`, `Min`, `Max`, `Sum`, `Pow`, `Round`, `Floor`, `Ceil`, `DivMod`, `Len`, `Concat`, `Append`, `Insert`, `Pop`, `RemoveAt`, `IndexOf`, `Contains`, `Reversed`, `Sorted`, `Map`, `Get`, `Delete`, `Keys`, `Values`, `Items`, `Merge`, `Set`, `Remove`, `ToString`, `Format`, `Encode`, `Decode`, `Split`, `SplitN`, `SplitWhitespace`, `Join`, `Find`, `RFind`, `Count`, `Replace`, `Repeat`, `Reverse`, `StartsWith`, `EndsWith`, `Upper`, `Lower`, `Trim`, `TrimStart`, `TrimEnd`, `RuneFromInt`, `RuneToInt`, `ParseInt`, `ParseFloat`, `FormatInt`, `IntToFloat`, `FloatToInt`, `ByteToInt`, `IntToByte`, `IsDigit`, `IsAlpha`, `IsAlnum`, `IsSpace`, `IsUpper`, `IsLower`, `WriteOut`, `WriteErr`, `WritelnOut`, `WritelnErr`, `ReadLine`, `ReadAll`, `ReadBytes`, `ReadBytesN`, `ReadFile`, `WriteFile`, `Args`, `GetEnv`, `Exit`, `Assert`, `Unwrap`, `IsNaN`, `IsInf`.
+Reserved names include: `Abs`, `Min`, `Max`, `Sum`, `Pow`, `Round`, `Floor`, `Ceil`, `Sqrt`, `DivMod`, `Len`, `Concat`, `Append`, `Insert`, `Pop`, `RemoveAt`, `IndexOf`, `Contains`, `Reversed`, `Sorted`, `RangeList`, `Map`, `Get`, `Delete`, `Keys`, `Values`, `Items`, `Merge`, `Set`, `Remove`, `Union`, `Intersection`, `Difference`, `ToString`, `Format`, `Encode`, `Decode`, `Bytes`, `BytesFrom`, `Split`, `SplitN`, `SplitWhitespace`, `Join`, `Find`, `RFind`, `Count`, `Replace`, `Repeat`, `Reverse`, `StartsWith`, `EndsWith`, `Upper`, `Lower`, `Trim`, `TrimStart`, `TrimEnd`, `RuneFromInt`, `RuneToInt`, `ParseInt`, `ParseFloat`, `FormatInt`, `IntToFloat`, `FloatToInt`, `ByteToInt`, `IntToByte`, `IsDigit`, `IsAlpha`, `IsAlnum`, `IsSpace`, `IsUpper`, `IsLower`, `WriteOut`, `WriteErr`, `WritelnOut`, `WritelnErr`, `ReadLine`, `ReadAll`, `ReadBytes`, `ReadBytesN`, `ReadFile`, `WriteFile`, `Args`, `GetEnv`, `Exit`, `Assert`, `Unwrap`, `IsNaN`, `IsInf`, `WrappingAdd`, `WrappingSub`, `WrappingMul`.
 
 Exception: `Add` is a built-in but not reserved — it can be used as a binding name.
 
-Exception: `ToString` is reserved for bindings, but structs may declare a `fn ToString(self) -> string` method to override the default representation.
+Exception: `ToString` is reserved for bindings, but structs may declare a `fn ToString(this) -> string` method to override the default representation.
 
 ### Top-Level vs Local
 
@@ -215,22 +215,31 @@ Validates the target is a valid lvalue (variable, field access, or index express
 | Literal        | `invalid assignment target`      |
 | Binary expr    | `invalid assignment target`      |
 | Call result    | `invalid assignment target`      |
-| `self`         | `cannot assign to self`          |
+| `this`         | `cannot assign to this`          |
 | Tuple element  | `cannot assign to tuple element` |
 | String index   | `cannot assign to string index`  |
 | Bytes index    | `cannot assign to bytes index`   |
+| Slice expr     | `cannot assign to slice`         |
 
 ### Compound Assignment
 
-Validates the operator is valid for the target type and the result is assignable back.
+Compound `X=` is valid iff the binary operator `X` accepts the target's type per the binary operator table and the result is assignable back to the target.
 
 ### Tuple Assignment
 
 Validates the right-hand side is a tuple type, the arity matches the number of targets, and each element is assignable to the corresponding target.
 
+### Expression Statements
+
+Bare expression statements (without assignment) must be function calls or method calls. Non-call expressions as statements are rejected: `expression has no effect`.
+
 ### Return
 
 In a non-void function, validates the return expression's type is assignable to the function's declared return type. In a void function, rejects return with a value. Bare `return` in a non-void function is `missing return value`.
+
+### Return-Path Completeness
+
+Every non-void function must return or throw on all control-flow paths. A block is *complete* if it ends with a `return`, `throw`, or a construct whose branches are all complete (e.g. an `if`/`else` where both branches are complete, a `match` that is exhaustive and every case is complete, or a `try`/`catch` where the try body and all catch bodies are complete). A `while` with a literal `true` condition and no reachable `break` is complete — control never exits normally. A non-void function whose body is not complete produces: `not all paths return`.
 
 ### If
 
@@ -254,6 +263,14 @@ Validates the condition is `bool`. Checks body in loop context (enabling `break`
 | `map[K, V]` | `k: K`       | `k: K, v: V`       |
 | `set[T]`    | `v: T`       | error: not allowed |
 
+Union and optional types are not iterable — the iterable expression must be a concrete collection type. `cannot iterate union`.
+
+Loop variables are read-only — assigning to a loop variable is rejected: `cannot assign to loop variable`.
+
+### Unreachable Code
+
+Statements after `return`, `throw`, `break`, or `continue` within the same block are rejected: `unreachable code`.
+
 ### Break / Continue
 
 Valid only inside a loop. Outside a loop: `break outside of loop` / `continue outside of loop`.
@@ -265,8 +282,10 @@ Type-checks the expression. Any struct type is throwable.
 ### Try / Catch
 
 Checks the try body. For each catch clause:
-- If typed, validates the type is a struct (error types are structs)
-- An untyped catch is a catch-all; subsequent catches are unreachable
+- If typed, validates that every type is a struct — for union catches (`catch e: A | B`), each member must be a struct
+- A typed catch naming a type already covered by a preceding catch is rejected: `duplicate catch`
+- An untyped catch is a catch-all; subsequent catches are rejected: `unreachable catch`
+- A catch-all binding's type is the residual: the union of all struct types in the program not covered by preceding typed catches
 - Catch bindings are scoped to the catch block
 
 Checks the finally body if present.
@@ -286,22 +305,37 @@ Checks the finally body if present.
 | `0xff`    | `byte`   | if expected type is `int`, produces `int` instead |
 | `nil`     | `nil`    |                                                   |
 
+**Integer range**: integer literals outside the range [-2^63, 2^63) are rejected: `integer literal too large`.
+
+**Byte literal context**: a `0x` hex literal produces `byte` by default. It produces `int` instead only when the expected type is `int` — i.e. when it appears as the initializer of a `let` with declared type `int`, as an argument to a parameter typed `int`, the right-hand side of an assignment to a target typed `int`, or a return expression in a function returning `int`. In all other contexts (bare expressions, operator operands), the type is `byte`.
+
 ### Variables
 
 Lookup through scopes (innermost-out), then functions, then types. Undefined name: `undefined name 'x'`.
+
+### `this`
+
+`this` is valid only inside a method body. Using `this` outside a method is rejected: `this outside method`.
 
 ### Binary Operators
 
 | Category   | Operators               | Operand Types                                       | Result    |
 | ---------- | ----------------------- | --------------------------------------------------- | --------- |
 | Logical    | `&&`, `\|\|`            | `bool`, `bool`                                      | `bool`    |
-| Equality   | `==`, `!=`              | assignable types                                    | `bool`    |
+| Equality   | `==`, `!=`              | identical types; rejected if type transitively contains fn | `bool`    |
 | Ordering   | `<`, `<=`, `>`, `>=`    | same type: `int`, `float`, `byte`, `rune`, `string` | `bool`    |
 | Arithmetic | `+`, `-`, `*`, `/`, `%` | same type: `int`, `float`, `byte`                   | same type |
 | Bitwise    | `&`, `\|`, `^`          | same type: `int`, `byte`                            | same type |
 | Shift      | `<<`, `>>`              | left: `int`/`byte`, right: `int`                    | left type |
+| Shift      | `>>>`                   | left: `int`/`byte`, right: `int`; strict math only  | left type |
+
+For `==` and `!=`, `nil` widens to the other operand's type. `x == nil` is valid when `x` is `T?` or a union containing `nil`.
+
+Equality on function types is rejected: `equality not defined for fn`.
 
 Unions and optionals are rejected for ordering, arithmetic, bitwise, and shift operations: `not defined for union`.
+
+`>>>` (logical right shift) is available only when the module has the `strict_math` annotation. Using `>>>` without strict math is rejected: `strict math only`.
 
 ### Unary Operators
 
@@ -313,7 +347,7 @@ Unions and optionals are rejected for ordering, arithmetic, bitwise, and shift o
 
 ### Ternary
 
-Condition must be `bool`. Then-branch and else-branch types must be the same or mutually assignable.
+Condition must be `bool`. If both branches have the same type, the result is that type. Otherwise, the result is the normalized union of both branch types (e.g., branches of `int` and `nil` produce `int?`).
 
 ### Field Access
 
@@ -321,6 +355,7 @@ Condition must be `bool`. Then-branch and else-branch types must be the same or 
 - **Struct field**: `expr.field` — validated against the struct's field map
 - **Struct method**: `expr.method` — validated against the struct's method map (used in call context)
 - **Tuple access**: `expr.N` — bounds-checked against tuple length
+- **Interface field access**: rejected — interfaces have no fields or methods; use `match` to narrow to a concrete struct first: `cannot access field on interface`
 - **Union field access**: requires all union members to have the field with the same type; `nil` members block field access
 
 ### Indexing
@@ -342,11 +377,11 @@ Both bounds must be `int`. Slicing preserves the collection type: `list[T][a:b]`
 
 **User functions**: argument count checked against parameter count; each argument type checked for assignability to the corresponding parameter type.
 
-**Named arguments**: all arguments must be named or all positional — mixing is rejected (`cannot mix positional and named`). Named arguments are resolved by name and may appear in any order. Unknown parameter names are rejected (`no parameter 'c'`).
+**Named arguments**: all arguments must be named or all positional — mixing is rejected (`cannot mix positional and named`). Named arguments are resolved by name and may appear in any order. Unknown parameter names are rejected (`no parameter 'c'`). Named arguments are valid only for user-defined functions and struct constructors. Built-in functions and function-value calls do not support named arguments.
 
 **Struct constructors**: positional or named field arguments. Positional arguments follow field declaration order. Named arguments use `field: value` syntax. All fields must be provided.
 
-**Method calls**: validated on the receiver struct. `self` is implicitly bound.
+**Method calls**: validated on the receiver struct. `this` is implicitly bound.
 
 **Function value calls**: variables typed as `fn[A, R]` are callable; argument count and types are checked.
 
@@ -354,11 +389,13 @@ Both bounds must be `int`. Slicing preserves the collection type: `list[T][a:b]`
 
 ### Collection Literals
 
-**List literals**: all elements must have the same type. Empty lists require a context type to infer the element type.
+**List literals**: all elements must have exactly the same type (strict equality, not assignability). Empty lists require a context type to infer the element type.
 
 **Map literals**: all keys must match, all values must match. Empty maps require context type.
 
 **Set literals**: all elements must have exactly the same type (strict equality, not assignability). Empty sets require context type.
+
+**Context type inference**: a context type is available when the empty collection appears as: the initializer of a `let` with a declared type, an argument to a parameter with a known type, the right-hand side of an assignment to a typed target, or a return expression in a function with a declared return type. Empty collections without a context type are rejected: `cannot infer type`.
 
 **Tuple literals**: each element is independently typed. Context types (from `let` declarations or parameters) propagate to elements.
 
@@ -370,7 +407,9 @@ Function literals use arrow syntax with explicit parameter types and return type
 
 The closure check scans the literal body for variable references, tracking which names are locally bound (parameters, let bindings, for loop variables, match/catch bindings). Any reference not resolvable to a local binding, top-level declaration, or built-in is a capture error.
 
-**Bound methods**: `instance.Method` used as a value is rejected because binding `self` is implicitly capturing state: `cannot capture 'self'`.
+**Bound methods**: `instance.Method` used as a value is rejected because binding `this` is implicitly capturing state: `cannot capture 'this'`.
+
+**Return-path completeness**: non-void function literals with block bodies are subject to the same return-path rule as named functions — all control-flow paths must return or throw.
 
 ## Nil Narrowing
 
@@ -454,14 +493,21 @@ The checker validates every built-in function call for argument count, argument 
 | `Floor(x)`     | `float -> int`                             |
 | `Ceil(x)`      | `float -> int`                             |
 | `DivMod(a, b)` | `int, int -> (int, int)`                   |
-| `Sqrt(x)`      | `float -> float`                           |
+| `Sqrt(x)`           | `float -> float`                           |
+| `WrappingAdd(a, b)` | `int, int -> int`; strict math only        |
+| `WrappingSub(a, b)` | `int, int -> int`; strict math only        |
+| `WrappingMul(a, b)` | `int, int -> int`; strict math only        |
+
+`WrappingAdd`, `WrappingSub`, and `WrappingMul` are available only when the module has the `strict_math` annotation. Using them without strict math is rejected: `strict math only`.
 
 ### Bytes
 
-| Function    | Signature         |
-| ----------- | ----------------- |
-| `Encode(s)` | `string -> bytes` |
-| `Decode(b)` | `bytes -> string` |
+| Function       | Signature               |
+| -------------- | ----------------------- |
+| `Bytes(n)`     | `int -> bytes`          |
+| `BytesFrom(xs)` | `list[byte] -> bytes`  |
+| `Encode(s)`    | `string -> bytes`       |
+| `Decode(b)`    | `bytes -> string`       |
 
 ### Strings
 
@@ -511,8 +557,13 @@ The checker validates every built-in function call for argument count, argument 
 | `Values(m)`                  | `map[K,V] -> list[V]`                                                                            |
 | `Items(m)`                   | `map[K,V] -> list[(K,V)]`                                                                        |
 | `Merge(m1, m2)`              | `map[K,V], map[K,V] -> map[K,V]`                                                                 |
+| `Concat(a, b)`               | `list[T], list[T] -> list[T]`                                                                    |
+| `RangeList(start, end, step)` | `int, int, int -> list[int]`                                                                    |
 | `Add(s, v)`                  | `set[T], T -> void`                                                                              |
 | `Remove(s, v)`               | `set[T], T -> void`                                                                              |
+| `Union(a, b)`                | `set[T], set[T] -> set[T]`                                                                       |
+| `Intersection(a, b)`         | `set[T], set[T] -> set[T]`                                                                       |
+| `Difference(a, b)`           | `set[T], set[T] -> set[T]`                                                                       |
 
 ### Conversions
 
@@ -596,7 +647,7 @@ All errors carry a line and column position from the AST node that caused the er
 | Duplicate type name         | `duplicate type name`                  |
 | Duplicate function name     | `duplicate function name`              |
 | Invalid assignment target   | `invalid assignment target`            |
-| Assign to self              | `cannot assign to self`                |
+| Assign to this              | `cannot assign to this`                |
 | Assign to tuple element     | `cannot assign to tuple element`       |
 | Initializer required        | `initializer required`                 |
 | `void` as value type        | `void is not a value type`             |
@@ -609,7 +660,7 @@ All errors carry a line and column position from the AST node that caused the er
 | Non-matchable scrutinee     | `cannot match on int`                  |
 | Default not last            | `default must be last`                 |
 | Closure capture             | `cannot capture 'name'`                |
-| Bound method as value       | `cannot capture 'self'`                |
+| Bound method as value       | `cannot capture 'this'`                |
 | Call non-function           | `cannot call int`                      |
 | Mixed positional/named args | `cannot mix positional and named`      |
 | Unknown parameter name      | `no parameter 'c'`                     |
@@ -621,6 +672,24 @@ All errors carry a line and column position from the AST node that caused the er
 | Ordering on union           | `not defined for union`                |
 | Arithmetic on union         | `not defined for union`                |
 | Index on union              | `cannot index union`                   |
+| Iterate union/optional      | `cannot iterate union`                 |
+| Field access on interface   | `cannot access field on interface`     |
+| Equality on fn type         | `equality not defined for fn`          |
+| Not all paths return        | `not all paths return`                 |
+| Unreachable code            | `unreachable code`                     |
+| Duplicate typed catch       | `duplicate catch`                      |
+| Catch after catch-all       | `unreachable catch`                    |
+| Parent not an interface     | `parent is not an interface`           |
+| Integer literal overflow    | `integer literal too large`            |
+| Strict-math-only feature    | `strict math only`                     |
+| Bare non-call expression    | `expression has no effect`             |
+| Assign to loop variable     | `cannot assign to loop variable`       |
+| Assign to slice             | `cannot assign to slice`               |
+| `this` outside method       | `this outside method`                  |
+| Non-hashable map key/set el | `not hashable`                         |
+| `Sorted` non-ordered type   | `not ordered`                          |
+| Unknown semantic annotation | `unknown annotation`                   |
+| Empty collection no context | `cannot infer type`                    |
 
 ## Public API
 
@@ -636,6 +705,8 @@ All errors carry a line and column position from the AST node that caused the er
 - All declarations registered with resolved types
 - All function and method bodies type-checked
 - All expressions have valid types
+- Every non-void function returns or throws on all control-flow paths
+- No unreachable code after `return`, `throw`, `break`, or `continue`
 - Scoping enforced — no shadowing, no access after scope exit
 - Reserved names protected
 - Match exhaustiveness verified
@@ -644,3 +715,10 @@ All errors carry a line and column position from the AST node that caused the er
 - `void` restricted to return-type position
 - Union types normalized (flattened, deduplicated)
 - All built-in function calls validated for arity and argument types
+- Strict-math-only features (`>>>`, `WrappingAdd`, `WrappingSub`, `WrappingMul`) rejected without `strict_math` annotation
+- Integer literals within [-2^63, 2^63)
+- Struct parents validated as interfaces
+- Expression statements are function or method calls only
+- Loop variables are read-only
+- Non-void function literals return or throw on all paths
+- Catch-all residual computed from all struct types in the program
