@@ -134,6 +134,7 @@ class TParam:
     name: str
     typ: TType | None
     annotations: Ann
+    has_default: bool = False
 
 
 @dataclass
@@ -154,6 +155,7 @@ class TFieldDecl:
     pos: Pos
     name: str
     typ: TType
+    has_default: bool = False
 
 
 @dataclass

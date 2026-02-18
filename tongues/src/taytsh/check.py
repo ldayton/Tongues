@@ -114,6 +114,7 @@ class TupleT(Type):
 class FnT(Type):
     params: list[Type]
     ret: Type
+    min_params: int = -1
 
 
 @dataclass
@@ -122,6 +123,7 @@ class StructT(Type):
     fields: dict[str, Type]
     methods: dict[str, FnT]
     parent: str | None
+    min_fields: int = -1
 
 
 @dataclass
@@ -931,17 +933,26 @@ class Checker:
                 if not isinstance(st2, StructT):
                     continue
                 # Resolve fields
+                min_f = 0
                 for f in decl.fields:
                     ft = self.resolve_type(f.typ)
                     st2.fields[f.name] = ft
+                    if not f.has_default:
+                        min_f += 1
+                st2.min_fields = min_f
                 # Resolve methods
                 for m in decl.methods:
                     mparams: list[Type] = []
+                    min_mp = 0
                     for p in m.params:
                         if p.typ is not None:
                             mparams.append(self.resolve_type(p.typ))
+                            if not p.has_default:
+                                min_mp += 1
                     mret = self.resolve_type(m.ret)
-                    st2.methods[m.name] = FnT(kind="fn", params=mparams, ret=mret)
+                    st2.methods[m.name] = FnT(
+                        kind="fn", params=mparams, ret=mret, min_params=min_mp
+                    )
                 # Register with parent interface
                 if decl.parent is not None:
                     if decl.parent not in self.types:
@@ -986,12 +997,17 @@ class Checker:
                     continue
                 params2: list[Type] = []
                 pnames: list[str] = []
+                min_p = 0
                 for p in decl.params:
                     pnames.append(p.name)
                     if p.typ is not None:
                         params2.append(self.resolve_type(p.typ))
+                        if not p.has_default:
+                            min_p += 1
                 ret2 = self.resolve_type(decl.ret)
-                self.functions[decl.name] = FnT(kind="fn", params=params2, ret=ret2)
+                self.functions[decl.name] = FnT(
+                    kind="fn", params=params2, ret=ret2, min_params=min_p
+                )
                 self.fn_param_names[decl.name] = pnames
 
     # ── Pass 2: Check bodies ──────────────────────────────────
@@ -2057,7 +2073,8 @@ class Checker:
         pos: Pos,
         param_names: list[str] | None = None,
     ) -> Type | None:
-        if len(args) != len(fn.params):
+        min_p = fn.min_params if fn.min_params >= 0 else len(fn.params)
+        if len(args) < min_p or len(args) > len(fn.params):
             self.error(
                 "expected " + str(len(fn.params)) + " arguments, got " + str(len(args)),
                 pos,
@@ -2137,7 +2154,8 @@ class Checker:
         field_names = list(st.fields.keys())
         if len(args) == 0 and len(field_names) == 0:
             return st
-        if len(args) != len(field_names):
+        min_f = st.min_fields if st.min_fields >= 0 else len(field_names)
+        if len(args) < min_f or len(args) > len(field_names):
             self.error(
                 st.name
                 + " has "
@@ -2147,6 +2165,8 @@ class Checker:
                 + " arguments",
                 pos,
             )
+            return st
+        if len(args) == 0:
             return st
         # Check if named or positional
         if args[0].name is not None:

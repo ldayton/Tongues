@@ -61,7 +61,7 @@ def f() -> None:
     raise MyError("fail")
 ---
 struct MyError {
-    message: string
+    msg: string
 }
 ---
 
