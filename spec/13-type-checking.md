@@ -239,7 +239,7 @@ In a non-void function, validates the return expression's type is assignable to 
 
 ### Return-Path Completeness
 
-Every non-void function must return or throw on all control-flow paths. A block is *complete* if it ends with a `return`, `throw`, or a construct whose branches are all complete (e.g. an `if`/`else` where both branches are complete, a `match` that is exhaustive and every case is complete, or a `try`/`catch` where the try body and all catch bodies are complete). A `while` with a literal `true` condition and no reachable `break` is complete — control never exits normally. A non-void function whose body is not complete produces: `not all paths return`.
+Every non-void function must return or throw on all control-flow paths. A block is *complete* if it ends with a `return`, `throw`, or a construct whose branches are all complete (e.g. an `if`/`else` where both branches are complete, a `match` that is exhaustive and every case is complete, or a `try`/`catch` where the try body and all catch bodies are complete). A `while` with a literal `true` condition and no reachable `break` is complete — control never exits normally. "Literal `true`" means the token `true`, not a constant expression that evaluates to true. "Reachable `break`" means syntactically reachable — a `break` inside `if false { break }` is still reachable because the checker does not evaluate conditions. The checker performs no constant folding or constant propagation. A non-void function whose body is not complete produces: `not all paths return`.
 
 ### If
 
@@ -277,7 +277,7 @@ Valid only inside a loop. Outside a loop: `break outside of loop` / `continue ou
 
 ### Throw
 
-Type-checks the expression. Any struct type is throwable.
+Type-checks the expression. A type is throwable if it is a struct type, an interface type, or a union whose members are all throwable. Primitives, collections, `nil`, and function types are not throwable: `cannot throw T`.
 
 ### Try / Catch
 
@@ -287,6 +287,8 @@ Checks the try body. For each catch clause:
 - An untyped catch is a catch-all; subsequent catches are rejected: `unreachable catch`
 - A catch-all binding's type is the residual: the union of all struct types in the program not covered by preceding typed catches
 - Catch bindings are scoped to the catch block
+
+A `finally` block must not contain `return`, `throw`, `break`, or `continue`. These are rejected: `control flow in finally`.
 
 Checks the finally body if present.
 
@@ -319,15 +321,15 @@ Lookup through scopes (innermost-out), then functions, then types. Undefined nam
 
 ### Binary Operators
 
-| Category   | Operators               | Operand Types                                       | Result    |
-| ---------- | ----------------------- | --------------------------------------------------- | --------- |
-| Logical    | `&&`, `\|\|`            | `bool`, `bool`                                      | `bool`    |
+| Category   | Operators               | Operand Types                                              | Result    |
+| ---------- | ----------------------- | ---------------------------------------------------------- | --------- |
+| Logical    | `&&`, `\|\|`            | `bool`, `bool`                                             | `bool`    |
 | Equality   | `==`, `!=`              | identical types; rejected if type transitively contains fn | `bool`    |
-| Ordering   | `<`, `<=`, `>`, `>=`    | same type: `int`, `float`, `byte`, `rune`, `string` | `bool`    |
-| Arithmetic | `+`, `-`, `*`, `/`, `%` | same type: `int`, `float`, `byte`                   | same type |
-| Bitwise    | `&`, `\|`, `^`          | same type: `int`, `byte`                            | same type |
-| Shift      | `<<`, `>>`              | left: `int`/`byte`, right: `int`                    | left type |
-| Shift      | `>>>`                   | left: `int`/`byte`, right: `int`; strict math only  | left type |
+| Ordering   | `<`, `<=`, `>`, `>=`    | same type: `int`, `float`, `byte`, `rune`, `string`        | `bool`    |
+| Arithmetic | `+`, `-`, `*`, `/`, `%` | same type: `int`, `float`, `byte`                          | same type |
+| Bitwise    | `&`, `\|`, `^`          | same type: `int`, `byte`                                   | same type |
+| Shift      | `<<`, `>>`              | left: `int`/`byte`, right: `int`                           | left type |
+| Shift      | `>>>`                   | left: `int`/`byte`, right: `int`; strict math only         | left type |
 
 For `==` and `!=`, `nil` widens to the other operand's type. `x == nil` is valid when `x` is `T?` or a union containing `nil`.
 
@@ -389,15 +391,15 @@ Both bounds must be `int`. Slicing preserves the collection type: `list[T][a:b]`
 
 ### Collection Literals
 
-**List literals**: all elements must have exactly the same type (strict equality, not assignability). Empty lists require a context type to infer the element type.
+**Context type**: a context type is available when a collection literal appears as: the initializer of a `let` with a declared type, an argument to a parameter with a known type, the right-hand side of an assignment to a typed target, or a return expression in a function with a declared return type.
 
-**Map literals**: all keys must match, all values must match. Empty maps require context type.
+**List literals**: with a context type `list[T]`, each element is checked for assignability to `T`. Without a context type, all elements must have exactly the same type (strict equality, not assignability) and that type becomes the element type. Empty lists require a context type; empty lists without one are rejected: `cannot infer type`.
 
-**Set literals**: all elements must have exactly the same type (strict equality, not assignability). Empty sets require context type.
+**Map literals**: with a context type `map[K, V]`, each key is checked for assignability to `K` and each value to `V`. Without a context type, all keys must have the same type and all values must have the same type (strict equality). Empty maps require a context type. Duplicate keys are rejected: `duplicate key`.
 
-**Context type inference**: a context type is available when the empty collection appears as: the initializer of a `let` with a declared type, an argument to a parameter with a known type, the right-hand side of an assignment to a typed target, or a return expression in a function with a declared return type. Empty collections without a context type are rejected: `cannot infer type`.
+**Set literals**: with a context type `set[T]`, each element is checked for assignability to `T`. Without a context type, all elements must have exactly the same type (strict equality, not assignability). Empty sets require a context type.
 
-**Tuple literals**: each element is independently typed. Context types (from `let` declarations or parameters) propagate to elements.
+**Tuple literals**: each element is independently typed. Context types (from `let` declarations or parameters) propagate to elements — each element is checked for assignability to the corresponding context element type.
 
 ### Function Literals
 
@@ -482,17 +484,17 @@ The checker validates every built-in function call for argument count, argument 
 
 ### Numeric
 
-| Function       | Signature                                  |
-| -------------- | ------------------------------------------ |
-| `Abs(x)`       | `int \| float -> same`                     |
-| `Min(a, b)`    | `int \| float \| byte, same -> same`       |
-| `Max(a, b)`    | `int \| float \| byte, same -> same`       |
-| `Sum(xs)`      | `list[int] -> int`, `list[float] -> float` |
-| `Pow(a, b)`    | `int, int -> int`, `float, float -> float` |
-| `Round(x)`     | `float -> int`                             |
-| `Floor(x)`     | `float -> int`                             |
-| `Ceil(x)`      | `float -> int`                             |
-| `DivMod(a, b)` | `int, int -> (int, int)`                   |
+| Function            | Signature                                  |
+| ------------------- | ------------------------------------------ |
+| `Abs(x)`            | `int \| float -> same`                     |
+| `Min(a, b)`         | `int \| float \| byte, same -> same`       |
+| `Max(a, b)`         | `int \| float \| byte, same -> same`       |
+| `Sum(xs)`           | `list[int] -> int`, `list[float] -> float` |
+| `Pow(a, b)`         | `int, int -> int`, `float, float -> float` |
+| `Round(x)`          | `float -> int`                             |
+| `Floor(x)`          | `float -> int`                             |
+| `Ceil(x)`           | `float -> int`                             |
+| `DivMod(a, b)`      | `int, int -> (int, int)`                   |
 | `Sqrt(x)`           | `float -> float`                           |
 | `WrappingAdd(a, b)` | `int, int -> int`; strict math only        |
 | `WrappingSub(a, b)` | `int, int -> int`; strict math only        |
@@ -502,12 +504,12 @@ The checker validates every built-in function call for argument count, argument 
 
 ### Bytes
 
-| Function       | Signature               |
-| -------------- | ----------------------- |
-| `Bytes(n)`     | `int -> bytes`          |
-| `BytesFrom(xs)` | `list[byte] -> bytes`  |
-| `Encode(s)`    | `string -> bytes`       |
-| `Decode(b)`    | `bytes -> string`       |
+| Function        | Signature             |
+| --------------- | --------------------- |
+| `Bytes(n)`      | `int -> bytes`        |
+| `BytesFrom(xs)` | `list[byte] -> bytes` |
+| `Encode(s)`     | `string -> bytes`     |
+| `Decode(b)`     | `bytes -> string`     |
 
 ### Strings
 
@@ -538,32 +540,32 @@ The checker validates every built-in function call for argument count, argument 
 
 ### Collections
 
-| Function                     | Signature                                                                                        |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Len(x)`                     | `string \| bytes \| list \| map \| set -> int`                                                   |
-| `Append(xs, v)`              | `list[T], T -> void`                                                                             |
-| `Insert(xs, i, v)`           | `list[T], int, T -> void`                                                                        |
-| `Pop(xs)`                    | `list[T] -> T`                                                                                   |
-| `RemoveAt(xs, i)`            | `list[T], int -> void`                                                                           |
-| `IndexOf(xs, v)`             | `list[T], T -> int`                                                                              |
-| `Contains(c, v)`             | `list[T], T -> bool` or `set[T], T -> bool` or `map[K,V], K -> bool` or `string, string -> bool` |
-| `Reversed(xs)`               | `list[T] -> list[T]`                                                                             |
-| `Sorted(xs)`                 | `list[T] -> list[T]` (T must be ordered)                                                         |
-| `Map()`                      | `-> map[K,V]` (requires context type)                                                            |
-| `Set()`                      | `-> set[T]` (requires context type)                                                              |
-| `Get(m, k)` / `Get(m, k, d)` | `map[K,V], K -> V?` or `map[K,V], K, V -> V`                                                     |
-| `Delete(m, k)`               | `map[K,V], K -> void`                                                                            |
-| `Keys(m)`                    | `map[K,V] -> list[K]`                                                                            |
-| `Values(m)`                  | `map[K,V] -> list[V]`                                                                            |
-| `Items(m)`                   | `map[K,V] -> list[(K,V)]`                                                                        |
-| `Merge(m1, m2)`              | `map[K,V], map[K,V] -> map[K,V]`                                                                 |
-| `Concat(a, b)`               | `list[T], list[T] -> list[T]`                                                                    |
-| `RangeList(start, end, step)` | `int, int, int -> list[int]`                                                                    |
-| `Add(s, v)`                  | `set[T], T -> void`                                                                              |
-| `Remove(s, v)`               | `set[T], T -> void`                                                                              |
-| `Union(a, b)`                | `set[T], set[T] -> set[T]`                                                                       |
-| `Intersection(a, b)`         | `set[T], set[T] -> set[T]`                                                                       |
-| `Difference(a, b)`           | `set[T], set[T] -> set[T]`                                                                       |
+| Function                      | Signature                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| `Len(x)`                      | `string \| bytes \| list \| map \| set -> int`                                                   |
+| `Append(xs, v)`               | `list[T], T -> void`                                                                             |
+| `Insert(xs, i, v)`            | `list[T], int, T -> void`                                                                        |
+| `Pop(xs)`                     | `list[T] -> T`                                                                                   |
+| `RemoveAt(xs, i)`             | `list[T], int -> void`                                                                           |
+| `IndexOf(xs, v)`              | `list[T], T -> int`                                                                              |
+| `Contains(c, v)`              | `list[T], T -> bool` or `set[T], T -> bool` or `map[K,V], K -> bool` or `string, string -> bool` |
+| `Reversed(xs)`                | `list[T] -> list[T]`                                                                             |
+| `Sorted(xs)`                  | `list[T] -> list[T]` (T must be ordered)                                                         |
+| `Map()`                       | `-> map[K,V]` (requires context type)                                                            |
+| `Set()`                       | `-> set[T]` (requires context type)                                                              |
+| `Get(m, k)` / `Get(m, k, d)`  | `map[K,V], K -> V?` or `map[K,V], K, V -> V`                                                     |
+| `Delete(m, k)`                | `map[K,V], K -> void`                                                                            |
+| `Keys(m)`                     | `map[K,V] -> list[K]`                                                                            |
+| `Values(m)`                   | `map[K,V] -> list[V]`                                                                            |
+| `Items(m)`                    | `map[K,V] -> list[(K,V)]`                                                                        |
+| `Merge(m1, m2)`               | `map[K,V], map[K,V] -> map[K,V]`                                                                 |
+| `Concat(a, b)`                | `list[T], list[T] -> list[T]`                                                                    |
+| `RangeList(start, end, step)` | `int, int, int -> list[int]`                                                                     |
+| `Add(s, v)`                   | `set[T], T -> void`                                                                              |
+| `Remove(s, v)`                | `set[T], T -> void`                                                                              |
+| `Union(a, b)`                 | `set[T], set[T] -> set[T]`                                                                       |
+| `Intersection(a, b)`          | `set[T], set[T] -> set[T]`                                                                       |
+| `Difference(a, b)`            | `set[T], set[T] -> set[T]`                                                                       |
 
 ### Conversions
 
@@ -690,6 +692,9 @@ All errors carry a line and column position from the AST node that caused the er
 | `Sorted` non-ordered type   | `not ordered`                          |
 | Unknown semantic annotation | `unknown annotation`                   |
 | Empty collection no context | `cannot infer type`                    |
+| Map literal duplicate key   | `duplicate key`                        |
+| Throw non-throwable type    | `cannot throw T`                       |
+| Control flow in finally     | `control flow in finally`              |
 
 ## Public API
 
@@ -722,3 +727,4 @@ All errors carry a line and column position from the AST node that caused the er
 - Loop variables are read-only
 - Non-void function literals return or throw on all paths
 - Catch-all residual computed from all struct types in the program
+- `finally` blocks contain no `return`, `throw`, `break`, or `continue`
