@@ -402,6 +402,16 @@ def _nil_check_var(cond: TExpr) -> tuple[str, str] | None:
                 return (cond.left.name, "is_nil")
             if cond.op == "!=":
                 return (cond.left.name, "is_not_nil")
+        if (
+            isinstance(cond.right, TNilLit)
+            and isinstance(cond.left, TFieldAccess)
+            and isinstance(cond.left.obj, TVar)
+        ):
+            path = cond.left.obj.name + "." + cond.left.field
+            if cond.op == "==":
+                return (path, "is_nil")
+            if cond.op == "!=":
+                return (path, "is_not_nil")
     # IsNil(x)
     if (
         isinstance(cond, TCall)
@@ -410,6 +420,13 @@ def _nil_check_var(cond: TExpr) -> tuple[str, str] | None:
     ):
         if len(cond.args) >= 1 and isinstance(cond.args[0].value, TVar):
             return (cond.args[0].value.name, "is_nil")
+        if (
+            len(cond.args) >= 1
+            and isinstance(cond.args[0].value, TFieldAccess)
+            and isinstance(cond.args[0].value.obj, TVar)
+        ):
+            a = cond.args[0].value
+            return (a.obj.name + "." + a.field, "is_nil")
     # !IsNil(x)
     if isinstance(cond, TUnaryOp) and cond.op == "!":
         inner = cond.operand
@@ -420,7 +437,47 @@ def _nil_check_var(cond: TExpr) -> tuple[str, str] | None:
         ):
             if len(inner.args) >= 1 and isinstance(inner.args[0].value, TVar):
                 return (inner.args[0].value.name, "is_not_nil")
+            if (
+                len(inner.args) >= 1
+                and isinstance(inner.args[0].value, TFieldAccess)
+                and isinstance(inner.args[0].value.obj, TVar)
+            ):
+                a = inner.args[0].value
+                return (a.obj.name + "." + a.field, "is_not_nil")
     return None
+
+
+def _collect_nil_checks(
+    cond: TExpr, binary_only: bool = False, chain_op: str = "&&"
+) -> list[tuple[str, str]]:
+    """Extract nil-check variables from a condition, walking into chains."""
+    result: list[tuple[str, str]] = []
+    if isinstance(cond, TBinaryOp) and cond.op == chain_op:
+        result.extend(_collect_nil_checks(cond.left, binary_only, chain_op))
+        result.extend(_collect_nil_checks(cond.right, binary_only, chain_op))
+        return result
+    if binary_only:
+        if isinstance(cond, TBinaryOp):
+            if isinstance(cond.right, TNilLit) and isinstance(cond.left, TVar):
+                if cond.op == "==":
+                    result.append((cond.left.name, "is_nil"))
+                elif cond.op == "!=":
+                    result.append((cond.left.name, "is_not_nil"))
+            if (
+                isinstance(cond.right, TNilLit)
+                and isinstance(cond.left, TFieldAccess)
+                and isinstance(cond.left.obj, TVar)
+            ):
+                path = cond.left.obj.name + "." + cond.left.field
+                if cond.op == "==":
+                    result.append((path, "is_nil"))
+                elif cond.op == "!=":
+                    result.append((path, "is_not_nil"))
+    else:
+        info = _nil_check_var(cond)
+        if info is not None:
+            result.append(info)
+    return result
 
 
 def _is_truthy_type(t: Type) -> bool:
@@ -843,6 +900,27 @@ class Checker:
         self.error("undefined name '" + name + "'", pos)
         return None
 
+    def _lookup_field_type(self, path: str, pos: Pos) -> Type | None:
+        """Look up the type of a dotted field path like 'stmt.default'."""
+        parts = path.split(".")
+        if len(parts) != 2:
+            return None
+        obj_type = self.lookup(parts[0], pos)
+        if obj_type is None:
+            return None
+        if isinstance(obj_type, StructT) and parts[1] in obj_type.fields:
+            return obj_type.fields[parts[1]]
+        return None
+
+    def _lookup_narrowed_path(self, path: str) -> Type | None:
+        """Look up a narrowed dotted path in scopes."""
+        i = len(self.scopes) - 1
+        while i >= 0:
+            if path in self.scopes[i]:
+                return self.scopes[i][path]
+            i -= 1
+        return None
+
     # ── Type resolution ───────────────────────────────────────
 
     def resolve_type(self, t: TType) -> Type:
@@ -1142,10 +1220,16 @@ class Checker:
             # After if-stmt with early exit, narrow nil-checked vars
             if isinstance(s, TIfStmt) and s.else_body is None:
                 if _body_always_exits(s.then_body):
-                    info = _nil_check_var(s.cond)
-                    if info is not None:
-                        var_name, check_kind = info
-                        var_type = self.lookup(var_name, s.pos)
+                    checks = _collect_nil_checks(s.cond)
+                    or_checks = _collect_nil_checks(s.cond, chain_op="||")
+                    for item in or_checks:
+                        if item not in checks:
+                            checks.append(item)
+                    for var_name, check_kind in checks:
+                        if "." in var_name:
+                            var_type = self._lookup_field_type(var_name, s.pos)
+                        else:
+                            var_type = self.lookup(var_name, s.pos)
                         if var_type is not None and contains_nil(var_type):
                             if check_kind == "is_nil":
                                 self.narrow(var_name, remove_nil(var_type))
@@ -1313,35 +1397,36 @@ class Checker:
             self.error(
                 "if condition must be bool, got " + type_name(cond_type), stmt.pos
             )
-        # Nil narrowing in then-body (only for x == nil / x != nil binary ops;
-        # IsNil(x) deliberately does NOT narrow in then-body)
-        narrowed_name: str | None = None
-        narrowed_type: Type | None = None
-        narrowed_else_type: Type | None = None
-        if isinstance(stmt.cond, TBinaryOp):
-            if isinstance(stmt.cond.right, TNilLit) and isinstance(
-                stmt.cond.left, TVar
-            ):
-                var_type = self.lookup(stmt.cond.left.name, stmt.cond.left.pos)
-                if var_type is not None and contains_nil(var_type):
-                    narrowed_name = stmt.cond.left.name
-                    if stmt.cond.op == "!=":
-                        narrowed_type = remove_nil(var_type)
-                        narrowed_else_type = NIL_T
-                    elif stmt.cond.op == "==":
-                        narrowed_type = NIL_T
-                        narrowed_else_type = remove_nil(var_type)
+        # Nil narrowing in then/else bodies via == nil / != nil checks
+        # (IsNil deliberately excluded — it doesn't narrow in then-body)
+        narrowings: list[tuple[str, Type, Type]] = []
+        var_checks = _collect_nil_checks(stmt.cond, binary_only=True)
+        all_checks = _collect_nil_checks(stmt.cond)
+        field_checks = [(n, k) for n, k in all_checks if "." in n]
+        checks = var_checks + [
+            (n, k) for n, k in field_checks if (n, k) not in var_checks
+        ]
+        for var_name, check_kind in checks:
+            if "." in var_name:
+                var_type = self._lookup_field_type(var_name, stmt.pos)
+            else:
+                var_type = self.lookup(var_name, stmt.pos)
+            if var_type is not None and contains_nil(var_type):
+                if check_kind == "is_not_nil":
+                    narrowings.append((var_name, remove_nil(var_type), NIL_T))
+                elif check_kind == "is_nil":
+                    narrowings.append((var_name, NIL_T, remove_nil(var_type)))
         # Check then-body with narrowing
         self.enter_scope()
-        if narrowed_name is not None and narrowed_type is not None:
-            self.scopes[-1][narrowed_name] = narrowed_type
+        for name, then_type, _else_type in narrowings:
+            self.scopes[-1][name] = then_type
         self.check_stmts(stmt.then_body)
         self.exit_scope()
         # Check else-body with reverse narrowing
         if stmt.else_body is not None:
             self.enter_scope()
-            if narrowed_name is not None and narrowed_else_type is not None:
-                self.scopes[-1][narrowed_name] = narrowed_else_type
+            for name, _then_type, else_type in narrowings:
+                self.scopes[-1][name] = else_type
             self.check_stmts(stmt.else_body)
             self.exit_scope()
 
@@ -1759,9 +1844,45 @@ class Checker:
 
     def check_binary_op(self, expr: TBinaryOp) -> Type | None:
         left = self.check_expr(expr.left, None)
-        # For ==, pass left type as expected for right to help literal inference
-        right_expected = left if expr.op in ("==", "!=") else None
-        right = self.check_expr(expr.right, right_expected)
+        if expr.op == "&&":
+            checks = _collect_nil_checks(expr.left)
+            if len(checks) > 0:
+                self.enter_scope()
+                for var_name, check_kind in checks:
+                    if "." in var_name:
+                        var_type = self._lookup_field_type(var_name, expr.pos)
+                    else:
+                        var_type = self.lookup(var_name, expr.pos)
+                    if var_type is not None and contains_nil(var_type):
+                        if check_kind == "is_not_nil":
+                            self.scopes[-1][var_name] = remove_nil(var_type)
+                        elif check_kind == "is_nil":
+                            self.scopes[-1][var_name] = NIL_T
+                right = self.check_expr(expr.right, None)
+                self.exit_scope()
+            else:
+                right = self.check_expr(expr.right, None)
+        elif expr.op == "||":
+            checks = _collect_nil_checks(expr.left, chain_op="||")
+            if len(checks) > 0:
+                self.enter_scope()
+                for var_name, check_kind in checks:
+                    if "." in var_name:
+                        var_type = self._lookup_field_type(var_name, expr.pos)
+                    else:
+                        var_type = self.lookup(var_name, expr.pos)
+                    if var_type is not None and contains_nil(var_type):
+                        if check_kind == "is_nil":
+                            self.scopes[-1][var_name] = remove_nil(var_type)
+                        elif check_kind == "is_not_nil":
+                            self.scopes[-1][var_name] = NIL_T
+                right = self.check_expr(expr.right, None)
+                self.exit_scope()
+            else:
+                right = self.check_expr(expr.right, None)
+        else:
+            right_expected = left if expr.op in ("==", "!=") else None
+            right = self.check_expr(expr.right, right_expected)
         if left is None or right is None:
             return None
         return self.check_binary_op_types(expr.op, left, right, expr.pos)
@@ -2006,6 +2127,11 @@ class Checker:
         obj_type = self.check_expr(expr.obj, None)
         if obj_type is None:
             return None
+        if isinstance(expr.obj, TVar):
+            path = expr.obj.name + "." + expr.field
+            narrowed = self._lookup_narrowed_path(path)
+            if narrowed is not None:
+                return narrowed
         if isinstance(obj_type, StructT):
             if expr.field in obj_type.fields:
                 return obj_type.fields[expr.field]
@@ -2104,19 +2230,31 @@ class Checker:
             return ERROR_T
         idx_type = self.check_expr(expr.index, None)
         if isinstance(obj_type, ListT):
-            if idx_type is not None and not type_eq(idx_type, INT_T):
+            if (
+                idx_type is not None
+                and idx_type.kind != TY_ERROR
+                and not type_eq(idx_type, INT_T)
+            ):
                 self.error(
                     "list index must be int, got " + type_name(idx_type), expr.pos
                 )
             return obj_type.element
         if type_eq(obj_type, STRING_T):
-            if idx_type is not None and not type_eq(idx_type, INT_T):
+            if (
+                idx_type is not None
+                and idx_type.kind != TY_ERROR
+                and not type_eq(idx_type, INT_T)
+            ):
                 self.error(
                     "string index must be int, got " + type_name(idx_type), expr.pos
                 )
             return RUNE_T
         if type_eq(obj_type, BYTES_T):
-            if idx_type is not None and not type_eq(idx_type, INT_T):
+            if (
+                idx_type is not None
+                and idx_type.kind != TY_ERROR
+                and not type_eq(idx_type, INT_T)
+            ):
                 self.error(
                     "bytes index must be int, got " + type_name(idx_type), expr.pos
                 )
@@ -2805,7 +2943,13 @@ class Checker:
                 return None
             t1 = arg(0)
             t2 = arg(1)
-            if t1 is not None and t1.kind not in (TY_INT, TY_FLOAT):
+            if t1 is not None:
+                t1 = _unwrap_nil_union(t1)
+            if (
+                t1 is not None
+                and t1.kind != TY_ERROR
+                and t1.kind not in (TY_INT, TY_FLOAT)
+            ):
                 self.error(name + " requires int or float", pos)
             return t1
         if name == "ReplaceSlice":
@@ -3312,11 +3456,13 @@ class Checker:
                 return None
             t = arg(0)
             if t is not None:
-                if isinstance(t, ListT):
-                    return SetT(kind="set", element=t.element)
-                if isinstance(t, SetT):
-                    return t
-                self.error("SetFromList requires list argument", pos)
+                tu = _unwrap_nil_union(t)
+                if isinstance(tu, ListT):
+                    return SetT(kind="set", element=tu.element)
+                if isinstance(tu, SetT):
+                    return tu
+                if tu.kind != TY_ERROR:
+                    self.error("SetFromList requires list argument", pos)
             return None
 
         if name == "Chars":
@@ -3446,7 +3592,9 @@ class Checker:
             if not require(1):
                 return None
             t = arg(0)
-            if t is not None and not type_eq(t, INT_T):
+            if t is not None:
+                t = _unwrap_nil_union(t)
+            if t is not None and t.kind != TY_ERROR and not type_eq(t, INT_T):
                 self.error("RuneFromInt requires int", pos)
             return RUNE_T
         if name == "RuneToInt":
@@ -3463,9 +3611,13 @@ class Checker:
                 return None
             t1 = arg(0)
             t2 = arg(1)
-            if t1 is not None and not type_eq(t1, STRING_T):
+            if t1 is not None:
+                t1 = _unwrap_nil_union(t1)
+            if t1 is not None and t1.kind != TY_ERROR and not type_eq(t1, STRING_T):
                 self.error("ParseInt requires string as first argument", pos)
-            if t2 is not None and not type_eq(t2, INT_T):
+            if t2 is not None:
+                t2 = _unwrap_nil_union(t2)
+            if t2 is not None and t2.kind != TY_ERROR and not type_eq(t2, INT_T):
                 self.error(
                     "cannot pass " + type_name(t2) + " as int",
                     pos,
@@ -3480,9 +3632,13 @@ class Checker:
                 return None
             t1 = arg(0)
             t2 = arg(1)
-            if t1 is not None and not type_eq(t1, INT_T):
+            if t1 is not None:
+                t1 = _unwrap_nil_union(t1)
+            if t1 is not None and t1.kind != TY_ERROR and not type_eq(t1, INT_T):
                 self.error("FormatInt requires int as first argument", pos)
-            if t2 is not None and not type_eq(t2, INT_T):
+            if t2 is not None:
+                t2 = _unwrap_nil_union(t2)
+            if t2 is not None and t2.kind != TY_ERROR and not type_eq(t2, INT_T):
                 self.error("FormatInt requires int as second argument", pos)
             return STRING_T
 
@@ -3532,6 +3688,8 @@ class Checker:
             i = 1
             while i < n:
                 at = arg(i)
+                if at is not None:
+                    at = _unwrap_nil_union(at)
                 if at is not None and at.kind != TY_ERROR and not type_eq(at, STRING_T):
                     self.error("Format arguments must be string", args[i].pos)
                 i += 1
