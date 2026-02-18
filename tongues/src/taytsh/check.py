@@ -497,7 +497,7 @@ def _collect_nil_checks(
 
 def _is_truthy_type(t: Type) -> bool:
     """Return True if a type supports truthiness (can be used as a bool condition)."""
-    return isinstance(t, (ListT, MapT, SetT))
+    return False
 
 
 # ============================================================
@@ -597,11 +597,6 @@ def is_hashable(t: Type) -> bool:
     if isinstance(t, TupleT):
         for e in t.elements:
             if not is_hashable(e):
-                return False
-        return True
-    if isinstance(t, UnionT):
-        for m in t.members:
-            if not is_hashable(m):
                 return False
         return True
     return False
@@ -1009,6 +1004,9 @@ class Checker:
             return normalize_union(members)
         if isinstance(t, TOptionalType):
             inner = self.resolve_type(t.inner)
+            if type_eq(inner, VOID_T):
+                self.error("void cannot be used as optional base type", t.pos)
+                return ERROR_T
             return make_optional(inner)
         self.error("unhandled type node", t.pos)
         return ERROR_T
@@ -1590,8 +1588,6 @@ class Checker:
             return True
         if isinstance(t, UnionT):
             return True
-        if isinstance(t, MapT):
-            return True
         if t.kind == TY_ERROR:
             return True
         return False
@@ -1629,6 +1625,11 @@ class Checker:
     ) -> None:
         pat = case.pattern
         if isinstance(pat, TPatternNil):
+            if not contains_nil(scrutinee):
+                self.error(
+                    "nil is not a variant of " + type_name(scrutinee),
+                    pat.pos,
+                )
             key = "nil"
             if key in covered:
                 self.error("duplicate case: nil", pat.pos)
@@ -2011,7 +2012,6 @@ class Checker:
                 TY_INT,
                 TY_FLOAT,
                 TY_BYTE,
-                TY_BYTES,
                 TY_RUNE,
                 TY_STRING,
             ):
@@ -2168,14 +2168,8 @@ class Checker:
             # Suppress when either side is error
             if then_type.kind == TY_ERROR or else_type.kind == TY_ERROR:
                 return ERROR_T
-            self.error(
-                "ternary branches must have same type, got "
-                + type_name(then_type)
-                + " and "
-                + type_name(else_type),
-                expr.pos,
-            )
-            return None
+            # Different types → union
+            return normalize_union([then_type, else_type])
         return then_type
 
     def check_field_access(self, expr: TFieldAccess) -> Type | None:
@@ -2214,9 +2208,13 @@ class Checker:
             if field_type is not None:
                 return field_type
         if isinstance(obj_type, InterfaceT):
-            field_type = self._interface_field_type(obj_type, expr.field)
-            if field_type is not None:
-                return field_type
+            self.error(
+                "cannot access field on interface '"
+                + obj_type.name
+                + "'; use match to narrow",
+                expr.pos,
+            )
+            return None
         if obj_type.kind == TY_ERROR:
             return ERROR_T
         self.error(
