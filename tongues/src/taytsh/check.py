@@ -389,6 +389,8 @@ def is_assignable(source: Type, target: Type) -> bool:
     if isinstance(target, InterfaceT):
         if isinstance(source, (StructT, InterfaceT)) and source.name in target.variants:
             return True
+        if isinstance(source, MapT) and is_assignable(source.value, target):
+            return True
     # Error type: assignable to/from anything (prevents cascading)
     if source.kind == TY_ERROR or target.kind == TY_ERROR:
         return True
@@ -424,6 +426,8 @@ def is_assignable(source: Type, target: Type) -> bool:
             return True
     if isinstance(source, SetT) and isinstance(target, SetT):
         if source.element.kind == TY_ERROR or source.element.kind == TY_VOID:
+            return True
+        if is_assignable(source.element, target.element):
             return True
     # Tuple element-by-element assignability
     if isinstance(source, TupleT) and isinstance(target, TupleT):
@@ -619,6 +623,9 @@ BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
     "AssertError": {"message": STRING_T},
     "NilError": {"message": STRING_T},
     "ValueError": {"message": STRING_T},
+    "TypeError": {"message": STRING_T},
+    "NotImplementedError": {"message": STRING_T},
+    "RuntimeError": {"message": STRING_T},
     "IOError": {"message": STRING_T},
     "Exception": {"message": STRING_T},
     "BaseException": {"message": STRING_T},
@@ -1221,7 +1228,11 @@ class Checker:
 
     def check_if_stmt(self, stmt: TIfStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)
-        if cond_type is not None and not type_eq(cond_type, BOOL_T):
+        if (
+            cond_type is not None
+            and cond_type.kind != TY_ERROR
+            and not type_eq(cond_type, BOOL_T)
+        ):
             self.error(
                 "if condition must be bool, got " + type_name(cond_type), stmt.pos
             )
@@ -1266,7 +1277,11 @@ class Checker:
 
     def check_while_stmt(self, stmt: TWhileStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)
-        if cond_type is not None and not type_eq(cond_type, BOOL_T):
+        if (
+            cond_type is not None
+            and cond_type.kind != TY_ERROR
+            and not type_eq(cond_type, BOOL_T)
+        ):
             self.error(
                 "while condition must be bool, got " + type_name(cond_type), stmt.pos
             )
@@ -1381,6 +1396,8 @@ class Checker:
             return True
         if isinstance(t, UnionT):
             return True
+        if isinstance(t, MapT):
+            return True
         if t.kind == TY_ERROR:
             return True
         return False
@@ -1403,6 +1420,8 @@ class Checker:
                     if case_type.name in m.variants:
                         return True
             return False
+        if isinstance(scrutinee, MapT):
+            return True
         if scrutinee.kind == TY_ERROR:
             return True
         return False
@@ -1464,7 +1483,11 @@ class Checker:
             self.exit_scope()
         elif isinstance(pat, TPatternType):
             case_type = self.resolve_type(pat.type_name)
-            if not self._allowed_in_match(case_type, scrutinee):
+            if (
+                case_type.kind != TY_ERROR
+                and scrutinee.kind != TY_ERROR
+                and not self._allowed_in_match(case_type, scrutinee)
+            ):
                 self.error(
                     type_name(case_type)
                     + " is not a variant of "
@@ -1675,6 +1698,8 @@ class Checker:
     def check_binary_op_types(
         self, op: str, left: Type, right: Type, pos: Pos
     ) -> Type | None:
+        if left.kind == TY_ERROR or right.kind == TY_ERROR:
+            return ERROR_T
         # Logical: both bool
         if op in ("&&", "||"):
             if not type_eq(left, BOOL_T):
@@ -1715,6 +1740,11 @@ class Checker:
                 # Allow comparing with error type
                 if left.kind == TY_ERROR or right.kind == TY_ERROR:
                     return BOOL_T
+                # Allow byte/int interchangeability
+                if (left.kind == TY_BYTE and right.kind == TY_INT) or (
+                    left.kind == TY_INT and right.kind == TY_BYTE
+                ):
+                    return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
                     pos,
@@ -1731,6 +1761,11 @@ class Checker:
                     return BOOL_T
                 # Allow comparing with error type
                 if left.kind == TY_ERROR or right.kind == TY_ERROR:
+                    return BOOL_T
+                # Allow byte/int interchangeability
+                if (left.kind == TY_BYTE and right.kind == TY_INT) or (
+                    left.kind == TY_INT and right.kind == TY_BYTE
+                ):
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
@@ -1815,6 +1850,8 @@ class Checker:
         operand = self.check_expr(expr.operand, None)
         if operand is None:
             return None
+        if operand.kind == TY_ERROR:
+            return ERROR_T
         if expr.op == "-":
             if operand.kind not in (TY_INT, TY_FLOAT, TY_BYTE):
                 self.error("negation not defined for " + type_name(operand), expr.pos)
@@ -1839,7 +1876,7 @@ class Checker:
 
     def check_ternary(self, expr: TTernary, expected: Type | None) -> Type | None:
         cond = self.check_expr(expr.cond, BOOL_T)
-        if cond is not None and not type_eq(cond, BOOL_T):
+        if cond is not None and cond.kind != TY_ERROR and not type_eq(cond, BOOL_T):
             self.error(
                 "ternary condition must be bool, got " + type_name(cond), expr.pos
             )
@@ -2034,9 +2071,17 @@ class Checker:
             return ERROR_T
         low_type = self.check_expr(expr.low, INT_T)
         high_type = self.check_expr(expr.high, INT_T)
-        if low_type is not None and not type_eq(low_type, INT_T):
+        if (
+            low_type is not None
+            and low_type.kind != TY_ERROR
+            and not type_eq(low_type, INT_T)
+        ):
             self.error("slice bound must be int, got " + type_name(low_type), expr.pos)
-        if high_type is not None and not type_eq(high_type, INT_T):
+        if (
+            high_type is not None
+            and high_type.kind != TY_ERROR
+            and not type_eq(high_type, INT_T)
+        ):
             self.error("slice bound must be int, got " + type_name(high_type), expr.pos)
         if isinstance(obj_type, ListT):
             return obj_type
@@ -2069,6 +2114,8 @@ class Checker:
                 pnames = self.fn_param_names.get(expr.func.name)
                 return self.check_fn_call(resolved, expr.args, expr.pos, pnames)
             if resolved is not None:
+                if resolved.kind == TY_ERROR:
+                    return ERROR_T
                 self.error("cannot call " + type_name(resolved), expr.pos)
                 return None
             return None
@@ -2081,6 +2128,8 @@ class Checker:
             return None
         if isinstance(func_type, FnT):
             return self.check_fn_call(func_type, expr.args, expr.pos)
+        if func_type.kind == TY_ERROR:
+            return ERROR_T
         self.error("cannot call " + type_name(func_type), expr.pos)
         return None
 
@@ -3514,7 +3563,7 @@ class Checker:
 
         # ── IsNil ──
         if name == "IsNil":
-            if not require(1):
+            if not require_range(1, 2):
                 return None
             return BOOL_T
 

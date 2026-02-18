@@ -1106,6 +1106,8 @@ def _lower_attribute(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         # sys.argv → Args()
         if obj_name == "sys" and attr == "argv":
             return _make_call("Args", [])
+        if obj_name == "sys" and attr == "maxsize":
+            return TIntLit(_P0, 9223372036854775807, "9223372036854775807", _EMPTY_ANN)
         # sys.stdin.readline() etc are handled in _lower_call
     # sys.stdin / sys.stdout / sys.stderr attribute chains
     if _is_ast(obj_node, "Attribute"):
@@ -2116,6 +2118,12 @@ def _lower_name_call(
             return _make_call("Map", [])
         if len(args) == 1 and isinstance(args[0], dict):
             return _make_call("MapFromPairs", [_lower_expr(args[0], env, ctx)])
+    if fname == "hex":
+        if len(args) > 0 and isinstance(args[0], dict):
+            return _make_call(
+                "FormatInt",
+                [_lower_expr(args[0], env, ctx), TIntLit(_P0, 16, "16", _EMPTY_ANN)],
+            )
     if fname == "divmod":
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
             a = _lower_expr(args[0], env, ctx)
@@ -2127,6 +2135,20 @@ def _lower_name_call(
             )
     if fname == "print":
         return _lower_print_call(args, keywords, env, ctx)
+    # Python builtin exceptions → struct constructors with message field
+    if fname in (
+        "TypeError",
+        "NotImplementedError",
+        "RuntimeError",
+        "KeyError",
+        "IndexError",
+    ):
+        exc_args: list[TArg] = []
+        if len(args) > 0 and isinstance(args[0], dict):
+            exc_args.append(TArg(_P0, None, _lower_expr(args[0], env, ctx)))
+        else:
+            exc_args.append(TArg(_P0, None, TStringLit(_P0, "", _EMPTY_ANN)))
+        return TCall(_P0, TVar(_P0, fname, _EMPTY_ANN), exc_args, _EMPTY_ANN)
     # Struct constructor
     if fname in ctx.known_classes:
         return _lower_struct_constructor(fname, args, keywords, env, ctx)
@@ -2289,6 +2311,15 @@ def _lower_method_call(
     method_name = get_str(func_node, "attr")
     obj_node = get_node(func_node, "value")
     obj_type = _infer_expr_type(obj_node, env, ctx)
+    # sys.exit(n) → Exit(n)
+    if _is_ast(obj_node, "Name") and get_str(obj_node, "id") == "sys":
+        if method_name == "exit":
+            exit_args: list[TExpr] = []
+            if len(args) > 0 and isinstance(args[0], dict):
+                exit_args.append(_lower_expr(args[0], env, ctx))
+            else:
+                exit_args.append(TIntLit(_P0, 0, "0", _EMPTY_ANN))
+            return _make_call("Exit", exit_args)
     # sys.stdin methods
     if _is_ast(obj_node, "Attribute"):
         inner_obj = get_node(obj_node, "value")
