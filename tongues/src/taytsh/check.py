@@ -2401,11 +2401,7 @@ class Checker:
                                 )
                         elif a.name is not None:
                             self.error(
-                                "'"
-                                + resolved.name
-                                + "' has no field '"
-                                + a.name
-                                + "'",
+                                "'" + resolved.name + "' has no field '" + a.name + "'",
                                 a.pos,
                             )
                         else:

@@ -2927,13 +2927,17 @@ def _lower_ternary_cond(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             op_type = get_str(ops[0], "_type")
             comp = comps[0]
             left_node = get_node(node, "left")
-            if op_type == "Is" and _is_ast(comp, "Constant") and isinstance(
-                comp.get("value"), JNull
+            if (
+                op_type == "Is"
+                and _is_ast(comp, "Constant")
+                and isinstance(comp.get("value"), JNull)
             ):
                 left = _lower_expr(left_node, env, ctx)
                 return TBinaryOp(_P0, "==", left, TNilLit(_P0, _EMPTY_ANN), _EMPTY_ANN)
-            if op_type == "IsNot" and _is_ast(comp, "Constant") and isinstance(
-                comp.get("value"), JNull
+            if (
+                op_type == "IsNot"
+                and _is_ast(comp, "Constant")
+                and isinstance(comp.get("value"), JNull)
             ):
                 left = _lower_expr(left_node, env, ctx)
                 return TBinaryOp(_P0, "!=", left, TNilLit(_P0, _EMPTY_ANN), _EMPTY_ANN)
