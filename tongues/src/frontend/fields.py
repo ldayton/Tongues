@@ -725,9 +725,7 @@ def _collect_init_fields(
                                         param_name, False
                                     )
                                 else:
-                                    ann_has_default = _value_refs_defaulted_param(
-                                        value_node, param_has_default
-                                    )
+                                    ann_has_default = True
                             info.fields[field_name] = FieldInfo(
                                 name=field_name,
                                 typ=typ,
@@ -809,7 +807,7 @@ def _collect_init_fields(
                                         name=field_name,
                                         typ=PrimitiveType("string"),
                                         py_name=field_name,
-                                        has_default=False,
+                                        has_default=True,
                                         default=None,
                                     )
                                 else:
@@ -827,7 +825,7 @@ def _collect_init_fields(
                                             name=field_name,
                                             typ=typ,
                                             py_name=field_name,
-                                            has_default=False,
+                                            has_default=True,
                                             default=None,
                                         )
                             elif not is_simple_param:

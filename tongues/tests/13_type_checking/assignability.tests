@@ -38,7 +38,7 @@ fn Main() -> void {
 error: cannot assign
 ---
 
-=== list not covariant
+=== list covariant
 interface Animal {}
 struct Dog : Animal {
     name: string
@@ -51,7 +51,7 @@ fn Main() -> void {
     Foo(dogs)
 }
 ---
-error: cannot pass
+ok
 ---
 
 === nil narrowing in if

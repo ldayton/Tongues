@@ -469,6 +469,14 @@ def _default_value_for_type(td: TypeNode) -> TExpr:
             parts.append(_default_value_for_type(td.elements[i]))
             i += 1
         return TTupleLit(_P0, parts, _EMPTY_ANN)
+    if kind == "Slice":
+        return TListLit(_P0, [], _EMPTY_ANN)
+    if kind == "Map":
+        return _make_call("Map", [])
+    if kind == "Set":
+        return _make_call("Set", [])
+    if kind == "Optional" or kind == "InterfaceRef" or kind == "StructRef":
+        return TNilLit(_P0, _EMPTY_ANN)
     return TIntLit(_P0, 0, "0", _EMPTY_ANN)
 
 
@@ -752,7 +760,20 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
                 return SliceType(INT_TYPE)
             if fname == "divmod":
                 return TupleType([INT_TYPE, INT_TYPE], False)
-            if fname == "set":
+            if fname == "set" or fname == "frozenset":
+                args = get_nodes(node, "args")
+                if len(args) > 0 and isinstance(args[0], dict):
+                    at = _infer_expr_type(args[0], env, ctx)
+                    if isinstance(at, SliceType):
+                        return SetType(at.element)
+                    if isinstance(at, SetType):
+                        return at
+                    if isinstance(at, TupleType) and at.variadic:
+                        return SetType(
+                            at.elements[0] if len(at.elements) > 0 else INT_TYPE
+                        )
+                    if _is_type_dict(at, ["string"]):
+                        return SetType(PrimitiveType("string"))
                 return SetType(INT_TYPE)
             if fname in ctx.known_classes:
                 return PointerType(StructRef(fname))
@@ -882,6 +903,12 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
                     all_bools = False
         if all_bools:
             return BOOL_TYPE
+        op = get_node(node, "op")
+        op_type = get_str(op, "_type")
+        if op_type == "Or":
+            last = vals[len(vals) - 1]
+            if isinstance(last, dict):
+                return _infer_expr_type(last, env, ctx)
         if len(vals) > 0 and isinstance(vals[0], dict):
             return _infer_expr_type(vals[0], env, ctx)
         return BOOL_TYPE
@@ -1089,6 +1116,8 @@ def _lower_name(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if name == "False":
         return TBoolLit(_P0, False, _EMPTY_ANN)
     if name == "None":
+        return TNilLit(_P0, _EMPTY_ANN)
+    if name == "_":
         return TNilLit(_P0, _EMPTY_ANN)
     safe = _safe_name(name)
     return TVar(_P0, safe, _name_ann(safe, name))
@@ -1568,14 +1597,17 @@ def _lower_single_compare(
 ) -> TExpr:
     """Lower a single comparison operation."""
     op_type = get_str(op_node, "_type")
-    # is None / is not None → IsNil()
+    # is None → IsNil(x) (keep IsNil to avoid checker narrowing to nil in then-body)
     if op_type == "Is":
         if _is_ast(comp_node, "Constant") and isinstance(comp_node.get("value"), JNull):
             left = _lower_expr(left_node, env, ctx)
             return _make_call("IsNil", [left])
+    # is not None → x != nil (TVar) or !IsNil(expr)
     if op_type == "IsNot":
         if _is_ast(comp_node, "Constant") and isinstance(comp_node.get("value"), JNull):
             left = _lower_expr(left_node, env, ctx)
+            if isinstance(left, TVar):
+                return TBinaryOp(_P0, "!=", left, TNilLit(_P0, _EMPTY_ANN), _EMPTY_ANN)
             return TUnaryOp(_P0, "!", _make_call("IsNil", [left]), _EMPTY_ANN)
     # isinstance check in compare context
     # in operator
@@ -1971,6 +2003,8 @@ def _lower_name_call(
     if fname == "isinstance":
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
             return TBoolLit(_P0, True, _EMPTY_ANN)
+    if fname == "any" or fname == "all":
+        return TBoolLit(_P0, True, _EMPTY_ANN)
     if fname == "repr":
         if len(args) > 0 and isinstance(args[0], dict):
             return _make_call("ToString", [_lower_expr(args[0], env, ctx)])
@@ -2055,7 +2089,7 @@ def _lower_name_call(
                 return _make_call("Bytes", [_lower_expr(args[0], env, ctx)])
             if _is_type_dict(arg_type, ["Slice"]):
                 return _make_call("BytesFrom", [_lower_expr(args[0], env, ctx)])
-    if fname == "set":
+    if fname == "set" or fname == "frozenset":
         if len(args) == 0:
             return _make_call("Set", [])
         if len(args) == 1 and isinstance(args[0], dict):
@@ -3127,11 +3161,15 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return _lower_expr(node, env, ctx)
     if _is_optional_type(expr_type):
         expr = _lower_expr(node, env, ctx)
+        if isinstance(expr, TVar):
+            return TBinaryOp(_P0, "!=", expr, TNilLit(_P0, _EMPTY_ANN), _EMPTY_ANN)
         return _make_named_call(
             "IsNil", [expr], [("negated", TBoolLit(_P0, True, _EMPTY_ANN))]
         )
     if _is_interface_type(expr_type):
         expr = _lower_expr(node, env, ctx)
+        if isinstance(expr, TVar):
+            return TBinaryOp(_P0, "!=", expr, TNilLit(_P0, _EMPTY_ANN), _EMPTY_ANN)
         return _make_named_call(
             "IsNil", [expr], [("negated", TBoolLit(_P0, True, _EMPTY_ANN))]
         )
@@ -3266,6 +3304,8 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             return [TExprStmt(_P0, expr, _EMPTY_ANN)]
         value = _lower_expr(value_node, env, ctx)
         val_type = _infer_expr_type(value_node, env, ctx)
+        if _is_type_dict(val_type, ["void"]):
+            val_type = PrimitiveType("error")
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
         if name not in env.declared:
@@ -3487,9 +3527,17 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     op_node = get_node(node, "op")
     value_node = get_node(node, "value")
     op_type = get_str(op_node, "_type")
-    # list += other → list = Concat(list, other)
+    # list/string/bytes += other → target = Concat(target, other)
     if op_type == "Add":
         target_type = _infer_expr_type(target_node, env, ctx)
+        if target_type is not None and _is_type_dict(target_type, ["string", "bytes"]):
+            target = _lower_expr(target_node, env, ctx)
+            value = _lower_expr(value_node, env, ctx)
+            return [
+                TAssignStmt(
+                    _P0, target, _make_call("Concat", [target, value]), _EMPTY_ANN
+                )
+            ]
         if target_type is not None and _is_type_dict(target_type, ["Slice"]):
             target = _lower_expr(target_node, env, ctx)
             other = _lower_extend_arg(value_node, env, ctx)
@@ -4377,8 +4425,9 @@ def _collect_ancestor_fields(
                 j = 0
                 while j < len(anc_info.init_params):
                     p = anc_info.init_params[j]
-                    if p not in seen:
-                        akeys.append(p)
+                    field_name = anc_info.param_to_field.get(p, p)
+                    if field_name not in seen:
+                        akeys.append(field_name)
                     j += 1
             for k in anc_info.fields:
                 if k not in seen and k not in akeys:
@@ -4454,9 +4503,10 @@ def _build_struct(
                 j = 0
                 while j < len(cls_info.init_params):
                     p = cls_info.init_params[j]
-                    if p not in seen:
-                        fkeys.append(p)
-                        seen.add(p)
+                    field_name = cls_info.param_to_field.get(p, p)
+                    if field_name not in seen:
+                        fkeys.append(field_name)
+                        seen.add(field_name)
                     j += 1
             for k in cls_info.fields:
                 if k not in seen:
@@ -4514,6 +4564,8 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                     if name == name.upper() and name != "_" and len(name) > 1:
                         value_node = get_node(node, "value")
                         val_type = _infer_expr_type(value_node, _Env(), ctx)
+                        if _is_type_dict(val_type, ["void"]):
+                            val_type = PrimitiveType("error")
                         ttype = _typenode_to_ttype(val_type)
                         value = _lower_expr(value_node, _Env(), ctx)
                         result.append(TLetStmt(_P0, name, ttype, value, _EMPTY_ANN))
@@ -4535,6 +4587,8 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                     if _is_type_dict(type_dict, ["void"]):
                         value_node = get_node(node, "value")
                         type_dict = _infer_expr_type(value_node, _Env(), ctx)
+                    if _is_type_dict(type_dict, ["void"]):
+                        type_dict = PrimitiveType("error")
                     ttype = _typenode_to_ttype(type_dict)
                     value_node = get_node(node, "value")
                     value = _lower_expr(value_node, _Env(), ctx)
@@ -4555,6 +4609,8 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                             if fname == fname.upper() and len(fname) > 1:
                                 value_node = get_node(item, "value")
                                 val_type = _infer_expr_type(value_node, _Env(), ctx)
+                                if _is_type_dict(val_type, ["void"]):
+                                    val_type = PrimitiveType("error")
                                 ttype = _typenode_to_ttype(val_type)
                                 value = _lower_expr(value_node, _Env(), ctx)
                                 const_name = class_name + "_" + fname
@@ -4578,6 +4634,8 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                             if _is_type_dict(c_type_dict, ["void"]):
                                 value_node = get_node(item, "value")
                                 c_type_dict = _infer_expr_type(value_node, _Env(), ctx)
+                            if _is_type_dict(c_type_dict, ["void"]):
+                                c_type_dict = PrimitiveType("error")
                             ttype = _typenode_to_ttype(c_type_dict)
                             value_node = get_node(item, "value")
                             value = _lower_expr(value_node, _Env(), ctx)

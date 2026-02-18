@@ -376,6 +376,58 @@ def remove_nil(t: Type) -> Type:
     return t
 
 
+def _unwrap_nil_union(t: Type) -> Type:
+    """If t is a union containing nil, return t with nil removed. Otherwise return t."""
+    if isinstance(t, UnionT):
+        non_nil = remove_nil(t)
+        if not type_eq(non_nil, t):
+            return non_nil
+    return t
+
+
+def _body_always_exits(stmts: list[TStmt]) -> bool:
+    """Return True if the last statement unconditionally exits the block."""
+    if len(stmts) == 0:
+        return False
+    last = stmts[len(stmts) - 1]
+    return isinstance(last, (TReturnStmt, TBreakStmt, TContinueStmt, TThrowStmt))
+
+
+def _nil_check_var(cond: TExpr) -> tuple[str, str] | None:
+    """Extract (var_name, "is_nil"|"is_not_nil") from a nil-check condition."""
+    # x == nil / x != nil
+    if isinstance(cond, TBinaryOp):
+        if isinstance(cond.right, TNilLit) and isinstance(cond.left, TVar):
+            if cond.op == "==":
+                return (cond.left.name, "is_nil")
+            if cond.op == "!=":
+                return (cond.left.name, "is_not_nil")
+    # IsNil(x)
+    if (
+        isinstance(cond, TCall)
+        and isinstance(cond.func, TVar)
+        and cond.func.name == "IsNil"
+    ):
+        if len(cond.args) >= 1 and isinstance(cond.args[0].value, TVar):
+            return (cond.args[0].value.name, "is_nil")
+    # !IsNil(x)
+    if isinstance(cond, TUnaryOp) and cond.op == "!":
+        inner = cond.operand
+        if (
+            isinstance(inner, TCall)
+            and isinstance(inner.func, TVar)
+            and inner.func.name == "IsNil"
+        ):
+            if len(inner.args) >= 1 and isinstance(inner.args[0].value, TVar):
+                return (inner.args[0].value.name, "is_not_nil")
+    return None
+
+
+def _is_truthy_type(t: Type) -> bool:
+    """Return True if a type supports truthiness (can be used as a bool condition)."""
+    return isinstance(t, (ListT, MapT, SetT))
+
+
 # ============================================================
 # ASSIGNABILITY
 # ============================================================
@@ -414,6 +466,8 @@ def is_assignable(source: Type, target: Type) -> bool:
     # Source with error element → assignable to same container (empty literal)
     if isinstance(source, ListT) and isinstance(target, ListT):
         if source.element.kind == TY_ERROR or source.element.kind == TY_VOID:
+            return True
+        if is_assignable(source.element, target.element):
             return True
     if isinstance(source, MapT) and isinstance(target, MapT):
         if source.key.kind == TY_ERROR and source.value.kind == TY_ERROR:
@@ -803,12 +857,18 @@ class Checker:
             elem = self.resolve_type(t.element)
             if type_eq(elem, VOID_T):
                 self.error("void is not a value type", t.pos)
+                return ListT(kind="list", element=ERROR_T)
             return ListT(kind="list", element=elem)
         if isinstance(t, TMapType):
             key = self.resolve_type(t.key)
             value = self.resolve_type(t.value)
             if type_eq(key, VOID_T) or type_eq(value, VOID_T):
                 self.error("void is not a value type", t.pos)
+                return MapT(
+                    kind="map",
+                    key=ERROR_T if type_eq(key, VOID_T) else key,
+                    value=ERROR_T if type_eq(value, VOID_T) else value,
+                )
             if not type_eq(key, VOID_T) and not is_hashable(key):
                 self.error(type_name(key) + " is not hashable", t.pos)
             return MapT(kind="map", key=key, value=value)
@@ -816,6 +876,7 @@ class Checker:
             elem = self.resolve_type(t.element)
             if type_eq(elem, VOID_T):
                 self.error("void is not a value type", t.pos)
+                return SetT(kind="set", element=ERROR_T)
             elif not is_hashable(elem):
                 self.error(type_name(elem) + " is not hashable", t.pos)
             return SetT(kind="set", element=elem)
@@ -1074,8 +1135,23 @@ class Checker:
     # ── Statement checking ────────────────────────────────────
 
     def check_stmts(self, stmts: list[TStmt]) -> None:
-        for s in stmts:
+        i = 0
+        while i < len(stmts):
+            s = stmts[i]
             self.check_stmt(s)
+            # After if-stmt with early exit, narrow nil-checked vars
+            if isinstance(s, TIfStmt) and s.else_body is None:
+                if _body_always_exits(s.then_body):
+                    info = _nil_check_var(s.cond)
+                    if info is not None:
+                        var_name, check_kind = info
+                        var_type = self.lookup(var_name, s.pos)
+                        if var_type is not None and contains_nil(var_type):
+                            if check_kind == "is_nil":
+                                self.narrow(var_name, remove_nil(var_type))
+                            elif check_kind == "is_not_nil":
+                                self.narrow(var_name, NIL_T)
+            i += 1
 
     def check_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
@@ -1232,35 +1308,29 @@ class Checker:
             cond_type is not None
             and cond_type.kind != TY_ERROR
             and not type_eq(cond_type, BOOL_T)
+            and not _is_truthy_type(cond_type)
         ):
             self.error(
                 "if condition must be bool, got " + type_name(cond_type), stmt.pos
             )
-        # Nil narrowing in then-body
+        # Nil narrowing in then-body (only for x == nil / x != nil binary ops;
+        # IsNil(x) deliberately does NOT narrow in then-body)
         narrowed_name: str | None = None
         narrowed_type: Type | None = None
         narrowed_else_type: Type | None = None
         if isinstance(stmt.cond, TBinaryOp):
-            if (
-                stmt.cond.op == "!="
-                and isinstance(stmt.cond.right, TNilLit)
-                and isinstance(stmt.cond.left, TVar)
+            if isinstance(stmt.cond.right, TNilLit) and isinstance(
+                stmt.cond.left, TVar
             ):
                 var_type = self.lookup(stmt.cond.left.name, stmt.cond.left.pos)
                 if var_type is not None and contains_nil(var_type):
                     narrowed_name = stmt.cond.left.name
-                    narrowed_type = remove_nil(var_type)
-                    narrowed_else_type = NIL_T
-            elif (
-                stmt.cond.op == "=="
-                and isinstance(stmt.cond.right, TNilLit)
-                and isinstance(stmt.cond.left, TVar)
-            ):
-                var_type2 = self.lookup(stmt.cond.left.name, stmt.cond.left.pos)
-                if var_type2 is not None and contains_nil(var_type2):
-                    narrowed_name = stmt.cond.left.name
-                    narrowed_type = NIL_T
-                    narrowed_else_type = remove_nil(var_type2)
+                    if stmt.cond.op == "!=":
+                        narrowed_type = remove_nil(var_type)
+                        narrowed_else_type = NIL_T
+                    elif stmt.cond.op == "==":
+                        narrowed_type = NIL_T
+                        narrowed_else_type = remove_nil(var_type)
         # Check then-body with narrowing
         self.enter_scope()
         if narrowed_name is not None and narrowed_type is not None:
@@ -1281,6 +1351,7 @@ class Checker:
             cond_type is not None
             and cond_type.kind != TY_ERROR
             and not type_eq(cond_type, BOOL_T)
+            and not _is_truthy_type(cond_type)
         ):
             self.error(
                 "while condition must be bool, got " + type_name(cond_type), stmt.pos
@@ -1745,6 +1816,9 @@ class Checker:
                     left.kind == TY_INT and right.kind == TY_BYTE
                 ):
                     return BOOL_T
+                # Allow comparing any type with nil
+                if left.kind == TY_NIL or right.kind == TY_NIL:
+                    return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
                     pos,
@@ -1858,7 +1932,7 @@ class Checker:
                 return None
             return operand
         if expr.op == "!":
-            if not type_eq(operand, BOOL_T):
+            if not type_eq(operand, BOOL_T) and not _is_truthy_type(operand):
                 self.error(
                     "logical not requires bool, got " + type_name(operand), expr.pos
                 )
@@ -1876,7 +1950,12 @@ class Checker:
 
     def check_ternary(self, expr: TTernary, expected: Type | None) -> Type | None:
         cond = self.check_expr(expr.cond, BOOL_T)
-        if cond is not None and cond.kind != TY_ERROR and not type_eq(cond, BOOL_T):
+        if (
+            cond is not None
+            and cond.kind != TY_ERROR
+            and not type_eq(cond, BOOL_T)
+            and not _is_truthy_type(cond)
+        ):
             self.error(
                 "ternary condition must be bool, got " + type_name(cond), expr.pos
             )
@@ -2789,9 +2868,10 @@ class Checker:
                 return None
             t = arg(0)
             if t is not None and t.kind != TY_ERROR:
+                t_inner = _unwrap_nil_union(t)
                 if not (
-                    isinstance(t, (ListT, MapT, SetT))
-                    or t.kind in (TY_STRING, TY_BYTES)
+                    isinstance(t_inner, (ListT, MapT, SetT))
+                    or t_inner.kind in (TY_STRING, TY_BYTES)
                 ):
                     self.error("Len requires string, bytes, list, map, or set", pos)
             return INT_T
@@ -2805,19 +2885,24 @@ class Checker:
             if t1 is not None and t2 is not None:
                 if t1.kind == TY_ERROR or t2.kind == TY_ERROR:
                     return ERROR_T
-                if type_eq(t1, STRING_T) and type_eq(t2, STRING_T):
+                t1u = _unwrap_nil_union(t1)
+                t2u = _unwrap_nil_union(t2)
+                if type_eq(t1u, STRING_T) and type_eq(t2u, STRING_T):
                     return STRING_T
-                if type_eq(t1, BYTES_T) and type_eq(t2, BYTES_T):
+                if type_eq(t1u, BYTES_T) and type_eq(t2u, BYTES_T):
                     return BYTES_T
-                if isinstance(t1, ListT) and isinstance(t2, ListT):
-                    return t1
-                if isinstance(t1, (ListT, TupleT)) and isinstance(t2, (ListT, TupleT)):
-                    if isinstance(t1, ListT):
-                        return t1
-                    if isinstance(t2, ListT):
-                        return t2
+                if isinstance(t1u, ListT) and isinstance(t2u, ListT):
+                    return t1u
+                if isinstance(t1u, (ListT, TupleT)) and isinstance(
+                    t2u, (ListT, TupleT)
+                ):
+                    if isinstance(t1u, ListT):
+                        return t1u
+                    if isinstance(t2u, ListT):
+                        return t2u
                     return ListT(
-                        kind="list", element=t1.elements[0] if t1.elements else ERROR_T
+                        kind="list",
+                        element=t1u.elements[0] if t1u.elements else ERROR_T,
                     )
                 self.error("Concat requires two strings, two bytes, or two lists", pos)
             return STRING_T
@@ -2908,35 +2993,39 @@ class Checker:
             t1 = arg(0)
             t2 = arg(1)
             if t1 is not None and t1.kind != TY_ERROR:
-                if isinstance(t1, ListT):
-                    if t2 is not None and not is_assignable(t2, t1.element):
+                t1u = _unwrap_nil_union(t1)
+                if isinstance(t1u, ListT):
+                    if t2 is not None and not is_assignable(t2, t1u.element):
                         self.error(
                             "cannot pass "
                             + type_name(t2)
                             + " as "
-                            + type_name(t1.element),
+                            + type_name(t1u.element),
                             pos,
                         )
-                elif isinstance(t1, SetT):
-                    if t2 is not None and not is_assignable(t2, t1.element):
+                elif isinstance(t1u, SetT):
+                    if t2 is not None and not is_assignable(t2, t1u.element):
                         self.error(
                             "cannot pass "
                             + type_name(t2)
                             + " as "
-                            + type_name(t1.element),
+                            + type_name(t1u.element),
                             pos,
                         )
-                elif isinstance(t1, MapT):
-                    if t2 is not None and not is_assignable(t2, t1.key):
+                elif isinstance(t1u, MapT):
+                    if t2 is not None and not is_assignable(t2, t1u.key):
                         self.error(
-                            "cannot pass " + type_name(t2) + " as " + type_name(t1.key),
+                            "cannot pass "
+                            + type_name(t2)
+                            + " as "
+                            + type_name(t1u.key),
                             pos,
                         )
-                elif type_eq(t1, STRING_T):
+                elif type_eq(t1u, STRING_T):
                     pass
-                elif type_eq(t1, BYTES_T):
+                elif type_eq(t1u, BYTES_T):
                     pass
-                elif isinstance(t1, TupleT):
+                elif isinstance(t1u, TupleT):
                     pass
                 else:
                     self.error(
