@@ -98,6 +98,7 @@ from .types import (
     BOOL_TYPE,
     STR_TYPE,
     VOID_TYPE,
+    contains_any,
     JsonValue,
     JStr,
     JInt,
@@ -212,6 +213,8 @@ def _typenode_to_ttype(t: TypeNode) -> TType:
     if isinstance(t, StructRef):
         return TIdentType(_P0, t.name)
     if isinstance(t, InterfaceRef):
+        if t.name == "any":
+            return TPrimitive(_P0, "void")
         return TIdentType(_P0, t.name)
     if isinstance(t, FuncType):
         fn_parts: list[TType] = []
@@ -3920,6 +3923,16 @@ def _build_function(
         i = 0
         while i < len(func_info.params):
             p = func_info.params[i]
+            if contains_any(p.typ):
+                sf = get_str(node, "_source_file")
+                ctx.errors.append(
+                    LoweringError(
+                        get_int(node, "lineno"),
+                        get_int(node, "col_offset"),
+                        name + "() param '" + p.name + "' has unresolved 'any' type",
+                        sf,
+                    )
+                )
             ttype = _typenode_to_ttype(p.typ)
             sp = _safe_name(p.name)
             params.append(TParam(_P0, sp, ttype, _name_ann(sp, p.name)))
@@ -3933,6 +3946,16 @@ def _build_function(
     if is_entry_point:
         pass
     elif func_info is not None:
+        if contains_any(func_info.return_type):
+            sf = get_str(node, "_source_file")
+            ctx.errors.append(
+                LoweringError(
+                    get_int(node, "lineno"),
+                    get_int(node, "col_offset"),
+                    name + "() return has unresolved 'any' type",
+                    sf,
+                )
+            )
         ret_type = _typenode_to_ttype(func_info.return_type)
     body_nodes = get_nodes(node, "body")
     body = _lower_stmts(body_nodes, func_env, ctx)
@@ -3962,6 +3985,21 @@ def _build_method(
         while i < len(func_info.params):
             p = func_info.params[i]
             if p.name != "self":
+                if contains_any(p.typ):
+                    sf = get_str(node, "_source_file")
+                    ctx.errors.append(
+                        LoweringError(
+                            get_int(node, "lineno"),
+                            get_int(node, "col_offset"),
+                            class_name
+                            + "."
+                            + name
+                            + "() param '"
+                            + p.name
+                            + "' has unresolved 'any' type",
+                            sf,
+                        )
+                    )
                 ttype = _typenode_to_ttype(p.typ)
                 sp = _safe_name(p.name)
                 params.append(TParam(_P0, sp, ttype, _name_ann(sp, p.name)))
@@ -3971,6 +4009,16 @@ def _build_method(
         func_env.return_type = func_info.return_type
     ret_type: TType = TPrimitive(_P0, "void")
     if func_info is not None:
+        if contains_any(func_info.return_type):
+            sf = get_str(node, "_source_file")
+            ctx.errors.append(
+                LoweringError(
+                    get_int(node, "lineno"),
+                    get_int(node, "col_offset"),
+                    class_name + "." + name + "() return has unresolved 'any' type",
+                    sf,
+                )
+            )
         ret_type = _typenode_to_ttype(func_info.return_type)
     body_nodes = get_nodes(node, "body")
     body = _lower_stmts(body_nodes, func_env, ctx)
@@ -4025,6 +4073,16 @@ def _build_struct(
                 fname = fkeys[j]
                 finfo = cls_info.fields.get(fname)
                 if finfo is not None:
+                    if contains_any(finfo.typ):
+                        sf = get_str(node, "_source_file")
+                        ctx.errors.append(
+                            LoweringError(
+                                get_int(node, "lineno"),
+                                get_int(node, "col_offset"),
+                                name + "." + fname + " has unresolved 'any' type",
+                                sf,
+                            )
+                        )
                     ftype = _typenode_to_ttype(finfo.typ)
                     fields.append(TFieldDecl(_P0, fname, ftype))
                 j += 1

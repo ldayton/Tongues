@@ -305,6 +305,44 @@ def is_any(t: TypeNode) -> bool:
     return False
 
 
+def contains_any(t: TypeNode) -> bool:
+    """Check if a type contains 'any' anywhere in its structure."""
+    if is_any(t):
+        return True
+    if isinstance(t, SliceType):
+        return contains_any(t.element)
+    if isinstance(t, MapType):
+        return contains_any(t.key) or contains_any(t.value)
+    if isinstance(t, SetType):
+        return contains_any(t.element)
+    if isinstance(t, TupleType):
+        i = 0
+        while i < len(t.elements):
+            if contains_any(t.elements[i]):
+                return True
+            i += 1
+        return False
+    if isinstance(t, OptionalType):
+        return contains_any(t.inner)
+    if isinstance(t, PointerType):
+        return contains_any(t.target)
+    if isinstance(t, FuncType):
+        i = 0
+        while i < len(t.params):
+            if contains_any(t.params[i]):
+                return True
+            i += 1
+        return contains_any(t.ret)
+    if isinstance(t, UnionType):
+        i = 0
+        while i < len(t.variants):
+            if contains_any(t.variants[i]):
+                return True
+            i += 1
+        return False
+    return False
+
+
 def is_void(t: TypeNode) -> bool:
     """Check if a type is void."""
     return isinstance(t, PrimitiveType) and t.kind == "void"
