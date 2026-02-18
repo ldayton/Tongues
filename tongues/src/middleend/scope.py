@@ -10,14 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
+    Ann,
     TAssignStmt,
     TBinaryOp,
     TBoolLit,
     TByteLit,
     TBytesLit,
     TCall,
-    TCatch,
-    TDefault,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -35,7 +34,6 @@ from ..taytsh.ast import (
     TModule,
     TNilLit,
     TOpAssignStmt,
-    TParam,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -107,7 +105,7 @@ _MUTATING_BUILTINS: set[str] = {
 class _BindingInfo:
     """One binding tracked during the walk."""
 
-    node: TParam | TLetStmt | TForStmt | TPatternType | TDefault | TCatch
+    annotations: Ann
     declared_type: Type
     is_param: bool
     binder_name: str | None = None
@@ -503,7 +501,9 @@ def _analyze_fn_lit(expr: TFnLit, parent_ctx: _ScopeCtx) -> None:
     for p in expr.params:
         if p.typ is not None:
             pt = parent_ctx.checker.resolve_type(p.typ)
-            ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
+            ctx.bindings[p.name] = _BindingInfo(
+                annotations=p.annotations, declared_type=pt, is_param=True
+            )
     _walk_stmts(expr.body, ctx)
     _stamp_bindings(ctx)
 
@@ -524,7 +524,7 @@ def _walk_stmt(stmt: TStmt, ctx: _ScopeCtx) -> None:
             _walk_expr(stmt.value, ctx)
         declared_type = ctx.checker.resolve_type(stmt.typ)
         ctx.bindings[stmt.name] = _BindingInfo(
-            node=stmt, declared_type=declared_type, is_param=False
+            annotations=stmt.annotations, declared_type=declared_type, is_param=False
         )
 
     elif isinstance(stmt, TAssignStmt):
@@ -676,7 +676,7 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _ScopeCtx) -> None:
         if btype is None:
             btype = ERROR_T
         ctx.bindings[bname] = _BindingInfo(
-            node=stmt,
+            annotations=stmt.annotations,
             declared_type=btype,
             is_param=False,
             binder_name=bname,
@@ -705,7 +705,7 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
             case_type = ctx.checker.resolve_type(pat.type_name)
             covered_types.append(case_type)
             case_ctx.bindings[pat.name] = _BindingInfo(
-                node=pat, declared_type=case_type, is_param=False
+                annotations=pat.annotations, declared_type=case_type, is_param=False
             )
         elif isinstance(pat, TPatternEnum):
             enum_type = ctx.checker.types.get(pat.enum_name)
@@ -726,7 +726,7 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
         if dflt.name is not None:
             residual = _compute_residual_type(scrutinee_type, covered_types, ctx)
             dflt_ctx.bindings[dflt.name] = _BindingInfo(
-                node=dflt, declared_type=residual, is_param=False
+                annotations=dflt.annotations, declared_type=residual, is_param=False
             )
         _walk_stmts(dflt.body, dflt_ctx)
         if dflt.name is not None:
@@ -974,7 +974,7 @@ def _walk_try_stmt(stmt: TTryStmt, ctx: _ScopeCtx) -> None:
                 members.append(ctx.checker.resolve_type(ct))
             catch_type = normalize_union(members)
         catch_ctx.bindings[catch.name] = _BindingInfo(
-            node=catch, declared_type=catch_type, is_param=False
+            annotations=catch.annotations, declared_type=catch_type, is_param=False
         )
         _walk_stmts(catch.body, catch_ctx)
     if stmt.finally_body is not None:
@@ -989,24 +989,21 @@ def _walk_try_stmt(stmt: TTryStmt, ctx: _ScopeCtx) -> None:
 def _stamp_bindings(ctx: _ScopeCtx) -> None:
     """Write final annotations onto binding declaration nodes."""
     for name, info in ctx.bindings.items():
-        node = info.node
+        ann = info.annotations
         if info.binder_name is not None:
-            # For-binder: composite keys on the TForStmt node
             bname = info.binder_name
-            node.annotations[f"scope.binder.{bname}.is_reassigned"] = (
+            ann[f"scope.binder.{bname}.is_reassigned"] = (
                 "true" if info.reassigned else "false"
             )
-            node.annotations[f"scope.binder.{bname}.is_const"] = (
+            ann[f"scope.binder.{bname}.is_const"] = (
                 "false" if info.reassigned else "true"
             )
         else:
-            node.annotations["scope.is_reassigned"] = (
-                "true" if info.reassigned else "false"
-            )
-            node.annotations["scope.is_const"] = "false" if info.reassigned else "true"
+            ann["scope.is_reassigned"] = "true" if info.reassigned else "false"
+            ann["scope.is_const"] = "false" if info.reassigned else "true"
         if info.is_param:
-            node.annotations["scope.is_modified"] = "true" if info.modified else "false"
-            node.annotations["scope.is_unused"] = "false" if info.used else "true"
+            ann["scope.is_modified"] = "true" if info.modified else "false"
+            ann["scope.is_unused"] = "false" if info.used else "true"
 
 
 # ============================================================
@@ -1029,7 +1026,9 @@ def _analyze_fn(decl: TFnDecl, ctx: _ScopeCtx, self_type: Type | None = None) ->
             pt = self_type
         else:
             continue
-        fn_ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
+        fn_ctx.bindings[p.name] = _BindingInfo(
+            annotations=p.annotations, declared_type=pt, is_param=True
+        )
     _walk_stmts(decl.body, fn_ctx)
     _stamp_bindings(fn_ctx)
 

@@ -195,12 +195,8 @@ class FieldResult:
 # ---------------------------------------------------------------------------
 
 
-def _is_type(node: JsonValue | ASTNode, type_names: list[str]) -> bool:
+def _is_type(node: ASTNode, type_names: list[str]) -> bool:
     """Check if node is one of the given AST types."""
-    if isinstance(node, JDict):
-        node = node.entries
-    if not isinstance(node, dict):
-        return False
     t = get_str(node, "_type")
     i = 0
     while i < len(type_names):
@@ -569,8 +565,8 @@ def _collect_init_fields(
         arg_name = get_str(arg, "arg")
         if arg_name != "" and arg_name != "self":
             info.init_params.append(arg_name)
-            annotation = arg.get("annotation")
-            if annotation is not None and not isinstance(annotation, JNull):
+            annotation = get_node(arg, "annotation")
+            if len(annotation) > 0:
                 param_types[arg_name] = annotation_to_str(annotation)
         i += 1
     posonlyargs = get_nodes(args, "posonlyargs")
@@ -580,8 +576,8 @@ def _collect_init_fields(
         arg_name = get_str(arg, "arg")
         if arg_name != "" and arg_name != "self":
             info.init_params.append(arg_name)
-            annotation = arg.get("annotation")
-            if annotation is not None and not isinstance(annotation, JNull):
+            annotation = get_node(arg, "annotation")
+            if len(annotation) > 0:
                 param_types[arg_name] = annotation_to_str(annotation)
         i += 1
     kwonlyargs = get_nodes(args, "kwonlyargs")
@@ -591,8 +587,8 @@ def _collect_init_fields(
         arg_name = get_str(arg, "arg")
         if arg_name != "" and arg_name != "self":
             info.init_params.append(arg_name)
-            annotation = arg.get("annotation")
-            if annotation is not None and not isinstance(annotation, JNull):
+            annotation = get_node(arg, "annotation")
+            if len(annotation) > 0:
                 param_types[arg_name] = annotation_to_str(annotation)
         i += 1
     has_computed_init = False
@@ -628,7 +624,7 @@ def _collect_init_fields(
                 if _is_type(val_node, ["Name"]) and get_str(val_node, "id") == "self":
                     field_name = get_str(target, "attr")
                     if field_name != "":
-                        ann = stmt.get("annotation")
+                        ann = get_node(stmt, "annotation")
                         py_type = annotation_to_str(ann)
                         from .signatures import SignatureError
 
@@ -828,7 +824,7 @@ def _collect_class_fields(
                         )
                         return
                     seen_fields.add(field_name)
-                    ann = stmt.get("annotation")
+                    ann = get_node(stmt, "annotation")
                     py_type = annotation_to_str(ann)
                     from .signatures import SignatureError
 

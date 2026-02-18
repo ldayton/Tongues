@@ -1441,7 +1441,7 @@ def _pipeline_post_parse(
                         ta_info = name_result.table.module_names.get(ta_name)
                         if ta_info is not None and ta_info.kind == "type_alias":
                             ta_value_v = ta_stmt.get("value")
-                            ta_value: JsonValue | ASTNode | None = ta_value_v
+                            ta_value: ASTNode | None = None
                             if isinstance(ta_value_v, JDict):
                                 ta_value = ta_value_v.entries
                             ta_str = annotation_to_str(ta_value)

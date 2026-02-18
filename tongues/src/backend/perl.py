@@ -1477,9 +1477,7 @@ class _PerlEmitter:
         arg_strs = ", ".join(self._expr(a.value) for a in args)
         return obj + "->" + method + "(" + arg_strs + ")"
 
-    def _builtin_call(
-        self, name: str, args: list[TArg], ann: dict | None = None
-    ) -> str:
+    def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:
         if name == "FloorDiv":
             return "POSIX::floor(" + self._a(args, 0) + " / " + self._a(args, 1) + ")"
         if name == "PythonMod":

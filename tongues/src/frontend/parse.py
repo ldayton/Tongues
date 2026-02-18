@@ -15,6 +15,7 @@ from .types import (
     ASTNode,
     get_str,
     get_int,
+    get_bool,
     get_node,
     get_nodes,
 )
@@ -784,15 +785,11 @@ class Parser:
         body: list[ASTNode] = []
         self.skip_newlines()
         while not self.match(TK_ENDMARKER):
-            stmt = self.parse_stmt()
-            if stmt is not None:
-                if isinstance(stmt, list):
-                    i = 0
-                    while i < len(stmt):
-                        body.append(stmt[i])
-                        i += 1
-                else:
-                    body.append(stmt)
+            stmts = self.parse_stmt()
+            i = 0
+            while i < len(stmts):
+                body.append(stmts[i])
+                i += 1
             self.skip_newlines()
         node = make_node(
             "Module",
@@ -806,43 +803,43 @@ class Parser:
 
     # --- Statement parsing ---
 
-    def parse_stmt(self) -> ASTNode | list[ASTNode] | None:
-        """Parse a statement."""
+    def parse_stmt(self) -> list[ASTNode]:
+        """Parse a statement. Returns list of AST nodes."""
         self.skip_newlines()
         tok = self.current()
 
         # Compound statements
         if tok.value == "def":
-            return self.parse_funcdef()
+            return [self.parse_funcdef()]
         if tok.value == "async":
-            return self.parse_async_stmt()
+            return [self.parse_async_stmt()]
         if tok.value == "class":
-            return self.parse_classdef()
+            return [self.parse_classdef()]
         if tok.value == "if":
-            return self.parse_if_stmt()
+            return [self.parse_if_stmt()]
         if tok.value == "while":
-            return self.parse_while_stmt()
+            return [self.parse_while_stmt()]
         if tok.value == "for":
-            return self.parse_for_stmt()
+            return [self.parse_for_stmt()]
         if tok.value == "try":
-            return self.parse_try_stmt()
+            return [self.parse_try_stmt()]
         if tok.value == "with":
-            return self.parse_with_stmt()
+            return [self.parse_with_stmt()]
         # 'match' is a soft keyword - only a match statement if followed by expr and ':'
         if tok.type == TK_NAME and tok.value == "match":
             if self.is_match_statement():
-                return self.parse_match_stmt()
+                return [self.parse_match_stmt()]
         # 'type' is a soft keyword - only a type alias if followed by NAME then '=' or '['
         if tok.type == TK_NAME and tok.value == "type":
             if self.is_type_statement():
-                return self.parse_type_alias_stmt()
+                return [self.parse_type_alias_stmt()]
         if tok.type == TK_OP and tok.value == "@":
-            return self.parse_decorated()
+            return [self.parse_decorated()]
 
         # Simple statements
         return self.parse_simple_stmt()
 
-    def parse_simple_stmt(self) -> ASTNode | list[ASTNode] | None:
+    def parse_simple_stmt(self) -> list[ASTNode]:
         """Parse simple statement(s) on one line."""
         stmts: list[ASTNode] = []
         while True:
@@ -857,8 +854,6 @@ class Parser:
                 break
         if self.match(TK_NEWLINE):
             self.advance()
-        if len(stmts) == 1:
-            return stmts[0]
         return stmts
 
     def parse_small_stmt(self) -> ASTNode | None:
@@ -2334,12 +2329,7 @@ class Parser:
         """Parse a suite (block of statements)."""
         # Simple suite on same line
         if not self.match(TK_NEWLINE):
-            stmt = self.parse_simple_stmt()
-            if stmt is None:
-                return []
-            if isinstance(stmt, list):
-                return stmt
-            return [stmt]
+            return self.parse_simple_stmt()
 
         # Indented block
         self.expect(TK_NEWLINE)
@@ -2349,15 +2339,11 @@ class Parser:
             self.skip_newlines()
             if self.match(TK_DEDENT) or self.match(TK_ENDMARKER):
                 break
-            stmt = self.parse_stmt()
-            if stmt is not None:
-                if isinstance(stmt, list):
-                    i = 0
-                    while i < len(stmt):
-                        stmts.append(stmt[i])
-                        i += 1
-                else:
-                    stmts.append(stmt)
+            parsed = self.parse_stmt()
+            i = 0
+            while i < len(parsed):
+                stmts.append(parsed[i])
+                i += 1
         if self.match(TK_DEDENT):
             self.advance()
         return stmts
@@ -3493,18 +3479,22 @@ class Parser:
         first = self.parse_dict_or_set_item()
 
         # Dict unpacking or dict
-        if isinstance(first, tuple):
+        if get_str(first, "_type") == "_DictEntry":
             # It's a dict
             keys: list[ASTNode | None] = []
             values: list[ASTNode] = []
-            keys.append(first[0])
-            values.append(first[1])
+            first_key: ASTNode | None = None
+            if get_bool(first, "_has_key"):
+                first_key = get_node(first, "_dict_key")
+            first_value = get_node(first, "_dict_value")
+            keys.append(first_key)
+            values.append(first_value)
 
             # Check for dict comprehension
-            if first[0] is not None and self.match("for"):
+            if first_key is not None and self.match("for"):
                 generators = self.parse_comp_for()
                 _check_comp_walrus(
-                    [first[0], first[1]], generators, self.class_depth > 0
+                    [first_key, first_value], generators, self.class_depth > 0
                 )
                 close = self.expect_op("}")
                 return end_from_token(
@@ -3513,8 +3503,8 @@ class Parser:
                         tok.lineno,
                         tok.col,
                         {
-                            "key": _wrap_node(first[0]),
-                            "value": _wrap_node(first[1]),
+                            "key": _wrap_node(first_key),
+                            "value": _wrap_node(first_value),
                             "generators": _wrap_nodes(generators),
                         },
                     ),
@@ -3526,9 +3516,12 @@ class Parser:
                 if self.match_op("}"):
                     break
                 item = self.parse_dict_or_set_item()
-                if isinstance(item, tuple):
-                    keys.append(item[0])
-                    values.append(item[1])
+                if get_str(item, "_type") == "_DictEntry":
+                    if get_bool(item, "_has_key"):
+                        keys.append(get_node(item, "_dict_key"))
+                    else:
+                        keys.append(None)
+                    values.append(get_node(item, "_dict_value"))
                 else:
                     # Mixing dict unpacking
                     keys.append(None)
@@ -3567,7 +3560,7 @@ class Parser:
             if self.match_op("}"):
                 break
             item = self.parse_dict_or_set_item()
-            if isinstance(item, tuple):
+            if get_str(item, "_type") == "_DictEntry":
                 raise self.error("cannot mix dict and set syntax")
             elts.append(item)
         close = self.expect_op("}")
@@ -3575,13 +3568,18 @@ class Parser:
             make_node("Set", tok.lineno, tok.col, {"elts": _wrap_nodes(elts)}), close
         )
 
-    def parse_dict_or_set_item(self) -> ASTNode | tuple[ASTNode | None, ASTNode]:
-        """Parse a dict or set item. Returns tuple for dict, ASTNode for set."""
+    def parse_dict_or_set_item(self) -> ASTNode:
+        """Parse a dict or set item. Returns _DictEntry for dict, plain node for set."""
         # Dict unpacking
         if self.match_op("**"):
-            self.advance()
+            star_tok = self.advance()
             value = self.parse_test()
-            return (None, value)
+            return make_node(
+                "_DictEntry",
+                star_tok.lineno,
+                star_tok.col,
+                {"_has_key": JBool(False), "_dict_value": _wrap_node(value)},
+            )
 
         first = self.parse_test()
 
@@ -3589,7 +3587,16 @@ class Parser:
         if self.match_op(":"):
             self.advance()
             value = self.parse_test()
-            return (first, value)
+            return make_node(
+                "_DictEntry",
+                get_int(first, "lineno"),
+                get_int(first, "col_offset"),
+                {
+                    "_has_key": JBool(True),
+                    "_dict_key": _wrap_node(first),
+                    "_dict_value": _wrap_node(value),
+                },
+            )
 
         # Set element
         return first
@@ -3652,22 +3659,13 @@ class Parser:
             next_val = parse_string_value(
                 strings[k].value, strings[k].lineno, strings[k].col
             )
-            if isinstance(combined, str) and isinstance(next_val, str):
-                combined = combined + next_val
-            elif isinstance(combined, bytes) and isinstance(next_val, bytes):
-                combined = combined + next_val
+            combined = combined + next_val
             k += 1
 
         last_str = strings[len(strings) - 1]
-        combined_v: JsonValue
-        is_bytes = False
-        if isinstance(combined, str):
-            combined_v = JStr(combined)
-        else:
-            combined_v = JStr(combined.decode("latin-1"))
-            is_bytes = True
+        combined_v: JsonValue = JStr(combined)
         fields: dict[str, JsonValue] = {"value": combined_v}
-        if is_bytes:
+        if has_bytes:
             fields["_is_bytes"] = JBool(True)
         return end_from_token(
             make_node("Constant", tok.lineno, tok.col, fields), last_str
@@ -3820,39 +3818,29 @@ def make_constant_from_token(tok: Token) -> ASTNode:
     """Create Constant node from number or string token with proper end position."""
     jval: JsonValue
     if tok.type == TK_NUMBER:
-        value = parse_number_value(tok.value)
-        if isinstance(value, bool):
-            jval = JBool(value)
-        elif isinstance(value, int):
-            jval = JInt(value)
-        elif isinstance(value, float):
-            jval = JFloat(value)
-        else:
-            jval = JStr(str(value))
+        jval = parse_number_value(tok.value)
     else:
         svalue = parse_string_value(tok.value, tok.lineno, tok.col)
-        if isinstance(svalue, str):
-            jval = JStr(svalue)
-        else:
-            jval = JStr(repr(svalue))
+        jval = JStr(svalue)
     node = make_node("Constant", tok.lineno, tok.col, {"value": jval})
     node["end_col_offset"] = JInt(tok.col + len(tok.value))
     return node
 
 
-def parse_number_value(s: str) -> int | float | complex:
-    """Parse a number literal string to value."""
+def parse_number_value(s: str) -> JsonValue:
+    """Parse a number literal string to a JsonValue (JInt, JFloat, or JStr)."""
     s = s.replace("_", "")
     if s.endswith(("j", "J")):
-        return float(s[:-1]) * 1j
+        v = float(s[:-1]) * 1j
+        return JStr(str(v))
     if "." in s or (
         "e" in s.lower() and not s.startswith(("0x", "0X", "0b", "0B", "0o", "0O"))
     ):
-        return float(s)
-    return int(s, 0)
+        return JFloat(float(s))
+    return JInt(int(s, 0))
 
 
-def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str | bytes:
+def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str:
     """Parse a string literal to its value."""
     # Handle prefixes
     prefix = ""
@@ -3886,8 +3874,6 @@ def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str | bytes:
 
     # Handle raw strings
     if "r" in prefix:
-        if is_bytes:
-            return content.encode("latin-1")
         return content
 
     # Process escape sequences
@@ -3895,9 +3881,7 @@ def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str | bytes:
     return result
 
 
-def process_escapes(
-    s: str, is_bytes: bool, lineno: int = 1, col: int = 0
-) -> str | bytes:
+def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> str:
     """Process escape sequences in string."""
     result: list[str] = []
     i = 0
@@ -3984,10 +3968,7 @@ def process_escapes(
             result.append(c)
             i += 1
 
-    combined = "".join(result)
-    if is_bytes:
-        return combined.encode("latin-1")
-    return combined
+    return "".join(result)
 
 
 def _fstring_find_expr_end(

@@ -10,13 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
+    Ann,
     TAssignStmt,
     TBinaryOp,
     TBoolLit,
     TByteLit,
     TBytesLit,
     TCall,
-    TDefault,
     TEnumDecl,
     TExpr,
     TExprStmt,
@@ -38,7 +38,6 @@ from ..taytsh.ast import (
     TPatternEnum,
     TPatternNil,
     TPatternType,
-    TParam,
     TRange,
     TReturnStmt,
     TRuneLit,
@@ -88,7 +87,7 @@ _CONTENT_ORDER: dict[str, int] = {_C_ASCII: 0, _C_BMP: 1, _C_UNKNOWN: 2}
 
 @dataclass
 class _BindingInfo:
-    node: TLetStmt | TForStmt | TPatternType | TDefault | TParam
+    annotations: Ann
     name: str
     declared_type: Type
     order: int
@@ -152,7 +151,7 @@ def _literal_content(value: str) -> str:
 def _register_string_binding(
     ctx: _StringsCtx,
     name: str,
-    node: TLetStmt | TForStmt | TPatternType | TDefault | TParam,
+    annotations: Ann,
     declared_type: Type,
     *,
     binder_name: str | None = None,
@@ -163,7 +162,7 @@ def _register_string_binding(
         info.base_unknown = info.base_unknown or base_unknown
         return
     info = _BindingInfo(
-        node=node,
+        annotations=annotations,
         name=name,
         declared_type=declared_type,
         order=len(ctx.decl_order),
@@ -804,7 +803,7 @@ def _walk_expr_usage(expr: TExpr, ctx: _StringsCtx) -> None:
 
 
 def _compute_builder(
-    loop: TForStmt | TWhileStmt, ctx: _StringsCtx, declared_before: set[str]
+    body: list[TStmt], ctx: _StringsCtx, declared_before: set[str]
 ) -> str:
     candidates: list[str] = []
     for name in ctx.decl_order:
@@ -812,7 +811,7 @@ def _compute_builder(
             candidates.append(name)
     builders: list[str] = []
     for name in candidates:
-        if _candidate_builder_in_stmts(name, loop.body):
+        if _candidate_builder_in_stmts(name, body):
             builders.append(name)
     return ",".join(builders)
 
@@ -830,7 +829,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         ctx.var_types[stmt.name] = declared_t
         if _contains_string_type(declared_t):
             _register_string_binding(
-                ctx, stmt.name, stmt, declared_t, base_unknown=False
+                ctx, stmt.name, stmt.annotations, declared_t, base_unknown=False
             )
             dead = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if not dead:
@@ -900,7 +899,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
 
     if isinstance(stmt, TWhileStmt):
         _walk_expr_usage(stmt.cond, ctx)
-        stmt.annotations["strings.builder"] = _compute_builder(stmt, ctx, declared)
+        stmt.annotations["strings.builder"] = _compute_builder(stmt.body, ctx, declared)
         ctx.loop_nodes.append(stmt)
         _walk_stmts(stmt.body, ctx, set(declared))
         return
@@ -915,7 +914,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
             if iter_base is not None and iter_base in ctx.string_bindings:
                 ctx.string_bindings[iter_base].iterated = True
 
-        stmt.annotations["strings.builder"] = _compute_builder(stmt, ctx, declared)
+        stmt.annotations["strings.builder"] = _compute_builder(stmt.body, ctx, declared)
         ctx.loop_nodes.append(stmt)
 
         binder_types = _resolve_for_binder_types(stmt, ctx)
@@ -929,7 +928,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 _register_string_binding(
                     ctx,
                     bname,
-                    stmt,
+                    stmt.annotations,
                     btype,
                     binder_name=bname,
                     base_unknown=True,
@@ -962,7 +961,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                     _register_string_binding(
                         ctx,
                         pat.name,
-                        pat,
+                        pat.annotations,
                         case_t,
                         base_unknown=True,
                     )
@@ -985,7 +984,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                     _register_string_binding(
                         ctx,
                         stmt.default.name,
-                        stmt.default,
+                        stmt.default.annotations,
                         residual,
                         base_unknown=True,
                     )
@@ -1068,25 +1067,20 @@ def _compute_contents(ctx: _StringsCtx) -> None:
 def _stamp_bindings(ctx: _StringsCtx) -> None:
     for name in ctx.decl_order:
         info = ctx.string_bindings[name]
+        ann = info.annotations
         if info.binder_name is not None:
             b = info.binder_name
-            info.node.annotations[f"strings.binder.{b}.content"] = info.content
-            info.node.annotations[f"strings.binder.{b}.indexed"] = (
-                "true" if info.indexed else "false"
-            )
-            info.node.annotations[f"strings.binder.{b}.iterated"] = (
-                "true" if info.iterated else "false"
-            )
-            info.node.annotations[f"strings.binder.{b}.len_called"] = (
+            ann[f"strings.binder.{b}.content"] = info.content
+            ann[f"strings.binder.{b}.indexed"] = "true" if info.indexed else "false"
+            ann[f"strings.binder.{b}.iterated"] = "true" if info.iterated else "false"
+            ann[f"strings.binder.{b}.len_called"] = (
                 "true" if info.len_called else "false"
             )
             continue
-        info.node.annotations["strings.content"] = info.content
-        info.node.annotations["strings.indexed"] = "true" if info.indexed else "false"
-        info.node.annotations["strings.iterated"] = "true" if info.iterated else "false"
-        info.node.annotations["strings.len_called"] = (
-            "true" if info.len_called else "false"
-        )
+        ann["strings.content"] = info.content
+        ann["strings.indexed"] = "true" if info.indexed else "false"
+        ann["strings.iterated"] = "true" if info.iterated else "false"
+        ann["strings.len_called"] = "true" if info.len_called else "false"
 
 
 def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) -> None:
@@ -1112,7 +1106,7 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
         ctx.var_types[p.name] = pt
         declared.add(p.name)
         if _contains_string_type(pt):
-            _register_string_binding(ctx, p.name, p, pt, base_unknown=True)
+            _register_string_binding(ctx, p.name, p.annotations, pt, base_unknown=True)
         if _is_list_of_string_type(pt):
             ctx.list_string_types[p.name] = pt
             ctx.list_string_sources[p.name] = []

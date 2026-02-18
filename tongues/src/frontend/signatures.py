@@ -204,12 +204,8 @@ class SignatureResult:
 # ---------------------------------------------------------------------------
 
 
-def _is_type(node: JsonValue | ASTNode, type_names: list[str]) -> bool:
+def _is_type(node: ASTNode, type_names: list[str]) -> bool:
     """Check if node is one of the given AST types."""
-    if isinstance(node, JDict):
-        node = node.entries
-    if not isinstance(node, dict):
-        return False
     t = get_str(node, "_type")
     i = 0
     while i < len(type_names):
@@ -246,15 +242,9 @@ def _dict_walk(node: ASTNode) -> list[ASTNode]:
 # ---------------------------------------------------------------------------
 
 
-def annotation_to_str(node: JsonValue | ASTNode | None) -> str:
+def annotation_to_str(node: ASTNode | None) -> str:
     """Convert a type annotation AST node to its string representation."""
     if node is None:
-        return ""
-    if isinstance(node, JDict):
-        node = node.entries
-    if isinstance(node, JNull):
-        return ""
-    if not isinstance(node, dict):
         return ""
     node_t = get_str(node, "_type")
     if node_t == "Name":
@@ -792,9 +782,9 @@ def _make_param(
     param_name = get_str(arg, "arg")
     if param_name == "":
         return None
-    annotation = arg.get("annotation")
+    annotation = get_node(arg, "annotation")
     lineno = get_int(arg, "lineno")
-    if annotation is None or isinstance(annotation, JNull):
+    if len(annotation) == 0:
         errors.append(
             SignatureError(
                 lineno,
@@ -932,8 +922,8 @@ def extract_func_info(
         else:
             had_error = True
         i += 1
-    returns = node.get("returns")
-    if returns is None or isinstance(returns, JNull):
+    returns = get_node(node, "returns")
+    if len(returns) == 0:
         if func_name == "__init__":
             returns_node: ASTNode = {
                 "_type": JStr("Constant"),
