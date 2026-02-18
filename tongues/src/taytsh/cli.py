@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         module = parse(source)
     except Exception as e:
-        print("taytsh: parse error: " + str(e), file=sys.stderr)
+        print(str(e), file=sys.stderr)
         return 1
 
     if strict or strict_math:

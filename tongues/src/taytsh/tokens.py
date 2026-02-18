@@ -123,7 +123,7 @@ class TokenizeError(Exception):
         self.msg: str = msg
         self.line: int = line
         self.col: int = col
-        super().__init__(msg + " at line " + str(line) + " col " + str(col))
+        super().__init__("error:" + str(line) + ":" + str(col) + ": [tokenize] " + msg)
 
 
 class Token:

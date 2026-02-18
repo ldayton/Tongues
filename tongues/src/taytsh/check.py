@@ -653,12 +653,28 @@ BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
 # ============================================================
 
 
-class CheckError(Exception):
-    def __init__(self, msg: str, line: int, col: int):
+class CheckError:
+    """An error found during type checking."""
+
+    def __init__(self, msg: str, line: int, col: int, source_file: str = "") -> None:
         self.msg: str = msg
         self.line: int = line
         self.col: int = col
-        super().__init__(msg + " at line " + str(line) + " col " + str(col))
+        self.source_file: str = source_file
+
+    def __repr__(self) -> str:
+        file_prefix = ""
+        if self.source_file != "":
+            file_prefix = self.source_file + ":"
+        return (
+            file_prefix
+            + "error:"
+            + str(self.line)
+            + ":"
+            + str(self.col)
+            + ": [check] "
+            + self.msg
+        )
 
 
 class _BuiltinCtx:
@@ -737,7 +753,7 @@ class Checker:
             self.types[name] = st
 
     def error(self, msg: str, pos: Pos) -> None:
-        self.errors.append(CheckError(msg, pos.line, pos.col))
+        self.errors.append(CheckError(msg, pos.line, pos.col, pos.source_file))
 
     # ── Scope management ──────────────────────────────────────
 

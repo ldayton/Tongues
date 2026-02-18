@@ -1623,7 +1623,8 @@ def run_pipeline(
         ast_dict = parse(source)
     except ParseError as e:
         print(
-            "error:" + str(e.lineno) + ":" + str(e.col) + ": " + e.msg, file=sys.stderr
+            "error:" + str(e.lineno) + ":" + str(e.col) + ": [parse] " + e.msg,
+            file=sys.stderr,
         )
         return (1, "")
     if stop_at == "parse":
@@ -1786,7 +1787,13 @@ def main_project(
             ast_dict = parse(source)
         except ParseError as e:
             print(
-                path + ":" + str(e.lineno) + ":" + str(e.col) + ": " + e.msg,
+                path
+                + ":error:"
+                + str(e.lineno)
+                + ":"
+                + str(e.col)
+                + ": [parse] "
+                + e.msg,
                 file=sys.stderr,
             )
             return 1

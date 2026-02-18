@@ -550,7 +550,11 @@ class _Env:
 
 def _node_pos(node: ASTNode) -> Pos:
     """Extract position from dict-AST node."""
-    return Pos(get_int(node, "lineno"), get_int(node, "col_offset"))
+    return Pos(
+        get_int(node, "lineno"),
+        get_int(node, "col_offset"),
+        get_str(node, "_source_file"),
+    )
 
 
 def _is_ast(node: JsonValue, type_name: str) -> bool:
