@@ -724,6 +724,7 @@ def _collect_init_fields(
                                     ann_has_default = param_has_default.get(
                                         param_name, False
                                     )
+                                    info.param_to_field[param_name] = field_name
                                 else:
                                     ann_has_default = True
                             info.fields[field_name] = FieldInfo(

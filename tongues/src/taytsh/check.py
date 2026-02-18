@@ -212,6 +212,21 @@ def type_eq(a: Type, b: Type) -> bool:
     return a.kind == b.kind
 
 
+def _container_eq(a: Type, b: Type) -> bool:
+    """type_eq but error/void (empty literals) match anything recursively."""
+    if a.kind == TY_ERROR or a.kind == TY_VOID:
+        return True
+    if b.kind == TY_ERROR or b.kind == TY_VOID:
+        return True
+    if isinstance(a, ListT) and isinstance(b, ListT):
+        return _container_eq(a.element, b.element)
+    if isinstance(a, MapT) and isinstance(b, MapT):
+        return _container_eq(a.key, b.key) and _container_eq(a.value, b.value)
+    if isinstance(a, SetT) and isinstance(b, SetT):
+        return _container_eq(a.element, b.element)
+    return type_eq(a, b)
+
+
 def _union_members_eq(a: list[Type], b: list[Type]) -> bool:
     if len(a) != len(b):
         return False
@@ -520,25 +535,25 @@ def is_assignable(source: Type, target: Type) -> bool:
                 break
         if all_ok:
             return True
-    # Source with error element → assignable to same container (empty literal)
+    # Containers are invariant, but error/void elements (empty literals) match anything
     if isinstance(source, ListT) and isinstance(target, ListT):
         if source.element.kind == TY_ERROR or source.element.kind == TY_VOID:
             return True
-        if is_assignable(source.element, target.element):
+        if _container_eq(source.element, target.element):
             return True
     if isinstance(source, MapT) and isinstance(target, MapT):
         if source.key.kind == TY_ERROR and source.value.kind == TY_ERROR:
             return True
         if source.key.kind == TY_VOID:
             return True
-        if is_assignable(source.key, target.key) and is_assignable(
+        if _container_eq(source.key, target.key) and _container_eq(
             source.value, target.value
         ):
             return True
     if isinstance(source, SetT) and isinstance(target, SetT):
         if source.element.kind == TY_ERROR or source.element.kind == TY_VOID:
             return True
-        if is_assignable(source.element, target.element):
+        if _container_eq(source.element, target.element):
             return True
     # Tuple element-by-element assignability
     if isinstance(source, TupleT) and isinstance(target, TupleT):
@@ -1331,6 +1346,8 @@ class Checker:
         rhs_type = self.check_expr(stmt.value, None)
         if rhs_type is None:
             return
+        if rhs_type.kind == TY_ERROR:
+            return
         if not isinstance(rhs_type, TupleT):
             self.error(
                 "right side of tuple assignment must be a tuple, got "
@@ -1350,6 +1367,9 @@ class Checker:
             return
         i = 0
         while i < len(stmt.targets):
+            if isinstance(stmt.targets[i], TVar) and stmt.targets[i].name == "_":
+                i += 1
+                continue
             target_type = self.check_expr(stmt.targets[i], None)
             if target_type is not None and not is_assignable(
                 rhs_type.elements[i], target_type
@@ -2080,8 +2100,34 @@ class Checker:
             self.error(
                 "ternary condition must be bool, got " + type_name(cond), expr.pos
             )
+        # Nil narrowing (same pattern as check_if_stmt)
+        narrowings: list[tuple[str, Type, Type]] = []
+        var_checks = _collect_nil_checks(expr.cond, binary_only=True)
+        all_checks = _collect_nil_checks(expr.cond)
+        field_checks = [(n, k) for n, k in all_checks if "." in n]
+        checks = var_checks + [
+            (n, k) for n, k in field_checks if (n, k) not in var_checks
+        ]
+        for var_name, check_kind in checks:
+            if "." in var_name:
+                var_type = self._lookup_field_type(var_name, expr.pos)
+            else:
+                var_type = self.lookup(var_name, expr.pos)
+            if var_type is not None and contains_nil(var_type):
+                if check_kind == "is_not_nil":
+                    narrowings.append((var_name, remove_nil(var_type), NIL_T))
+                elif check_kind == "is_nil":
+                    narrowings.append((var_name, NIL_T, remove_nil(var_type)))
+        self.enter_scope()
+        for name, then_t, _else_t in narrowings:
+            self.scopes[-1][name] = then_t
         then_type = self.check_expr(expr.then_expr, expected)
+        self.exit_scope()
+        self.enter_scope()
+        for name, _then_t, else_t in narrowings:
+            self.scopes[-1][name] = else_t
         else_type = self.check_expr(expr.else_expr, expected)
+        self.exit_scope()
         if then_type is None or else_type is None:
             return then_type if then_type is not None else else_type
         if not type_eq(then_type, else_type):
@@ -2272,12 +2318,10 @@ class Checker:
                         expr.pos,
                     )
             return obj_type.value
-        msg = (
-            "cannot index union"
-            if isinstance(obj_type, UnionT)
-            else "cannot index " + type_name(obj_type)
-        )
-        self.error(msg, expr.pos)
+        if isinstance(obj_type, UnionT):
+            self.error("cannot index union", expr.pos)
+            return ERROR_T
+        self.error("cannot index " + type_name(obj_type), expr.pos)
         return None
 
     def check_slice(self, expr: TSlice) -> Type | None:
@@ -2327,6 +2371,48 @@ class Checker:
             resolved = self.lookup(expr.func.name, expr.func.pos)
             if resolved is not None and isinstance(resolved, StructT):
                 return self.check_struct_constructor(resolved, expr.args, expr.pos)
+            if resolved is not None and isinstance(resolved, InterfaceT):
+                # Find common fields across all variants (base class fields)
+                common: dict[str, Type] | None = None
+                for vname in resolved.variants:
+                    vtype = self.types.get(vname)
+                    if vtype is not None and isinstance(vtype, StructT):
+                        if common is None:
+                            common = dict(vtype.fields)
+                        else:
+                            keep: dict[str, Type] = {}
+                            for k in common:
+                                if k in vtype.fields:
+                                    keep[k] = common[k]
+                            common = keep
+                if common is not None and len(expr.args) <= len(common):
+                    for a in expr.args:
+                        if a.name is not None and a.name in common:
+                            at = self.check_expr(a.value, common[a.name])
+                            if at is not None and not is_assignable(at, common[a.name]):
+                                self.error(
+                                    "field '"
+                                    + a.name
+                                    + "': cannot assign "
+                                    + type_name(at)
+                                    + " to "
+                                    + type_name(common[a.name]),
+                                    a.pos,
+                                )
+                        elif a.name is not None:
+                            self.error(
+                                "'"
+                                + resolved.name
+                                + "' has no field '"
+                                + a.name
+                                + "'",
+                                a.pos,
+                            )
+                        else:
+                            self.check_expr(a.value, None)
+                    return resolved
+                self.error("cannot call " + type_name(resolved), expr.pos)
+                return None
             if resolved is not None and isinstance(resolved, FnT):
                 pnames = self.fn_param_names.get(expr.func.name)
                 return self.check_fn_call(resolved, expr.args, expr.pos, pnames)
@@ -3407,6 +3493,7 @@ class Checker:
                 return None
             t = arg(0)
             if t is not None:
+                t = _unwrap_nil_union(t)
                 if isinstance(t, ListT) and isinstance(t.element, TupleT):
                     elems = t.element.elements
                     if len(elems) == 2:
@@ -3479,9 +3566,12 @@ class Checker:
                 return None
             t1 = arg(0)
             t2 = arg(1)
+            if t2 is not None:
+                t2 = _unwrap_nil_union(t2)
             if t2 is not None and not type_eq(t2, INT_T):
                 self.error("Repeat count must be int", pos)
             if t1 is not None:
+                t1 = _unwrap_nil_union(t1)
                 if type_eq(t1, STRING_T):
                     return STRING_T
                 if type_eq(t1, BYTES_T):
@@ -3515,6 +3605,8 @@ class Checker:
             if not require(1):
                 return None
             t = arg(0)
+            if t is not None:
+                t = _unwrap_nil_union(t)
             if t is not None and isinstance(t, ListT):
                 if t.element.kind not in (
                     TY_INT,

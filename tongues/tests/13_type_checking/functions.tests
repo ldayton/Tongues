@@ -97,7 +97,31 @@ fn Main() -> void {
 ok
 ---
 
-=== method call
+=== struct constructor wrong arity
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1)
+}
+---
+error:
+---
+
+=== struct constructor type mismatch
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt("hello", 2)
+}
+---
+error:
+---
+
+=== method call with self
 struct Counter {
     value: int
     fn Get(self) -> int {
@@ -112,6 +136,21 @@ fn Main() -> void {
 ok
 ---
 
+=== method with extra parameters
+struct Counter {
+    value: int
+    fn Add(self, n: int) -> int {
+        return self.value + n
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(10)
+    let v: int = c.Add(5)
+}
+---
+ok
+---
+
 === call non-function
 fn Main() -> void {
     let x: int = 42
@@ -121,7 +160,7 @@ fn Main() -> void {
 error: cannot call
 ---
 
-=== function literal no capture
+=== function literal expression body
 fn Apply(xs: list[int], f: fn[int, int]) -> list[int] {
     let result: list[int]
     for x in xs {
@@ -132,6 +171,17 @@ fn Apply(xs: list[int], f: fn[int, int]) -> list[int] {
 fn Main() -> void {
     let xs: list[int] = [1, 2, 3]
     let doubled: list[int] = Apply(xs, (x: int) -> int => x * 2)
+}
+---
+ok
+---
+
+=== function literal block body
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int {
+        return x * 2
+    }
+    let y: int = f(21)
 }
 ---
 ok
@@ -158,13 +208,150 @@ fn Main() -> void {
 ok
 ---
 
-=== function literal block body
-fn Main() -> void {
-    let f: fn[int, int] = (x: int) -> int {
-        return x * 2
+=== recursive function
+fn Fib(n: int) -> int {
+    if n < 2 {
+        return n
     }
-    let y: int = f(21)
+    return Fib(n - 1) + Fib(n - 2)
+}
+fn Main() -> void {
+    let x: int = Fib(10)
 }
 ---
 ok
+---
+
+=== mutually recursive functions
+fn IsEven(n: int) -> bool {
+    if n == 0 {
+        return true
+    }
+    return IsOdd(n - 1)
+}
+fn IsOdd(n: int) -> bool {
+    if n == 0 {
+        return false
+    }
+    return IsEven(n - 1)
+}
+fn Main() -> void {
+    let b: bool = IsEven(4)
+}
+---
+ok
+---
+
+=== higher order function
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let result: int = Apply(Double, 21)
+}
+---
+ok
+---
+
+=== duplicate parameter name
+fn Foo(x: int, x: int) -> void {
+}
+fn Main() -> void {
+}
+---
+error: shadows
+---
+
+=== struct constructor duplicate named field
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(x: 1, x: 2)
+}
+---
+error: duplicate field
+---
+
+=== struct constructor unknown field name
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(x: 1, z: 2)
+}
+---
+error: has no field
+---
+
+=== method call unknown method
+struct Counter {
+    value: int
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.Reset()
+}
+---
+error: has no method
+---
+
+=== return optional from non-optional function
+fn Foo() -> int {
+    let x: int? = 42
+    return x
+}
+fn Main() -> void {
+}
+---
+error: cannot return
+---
+
+=== function type parameter mismatch
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Negate(s: string) -> string {
+    return s
+}
+fn Main() -> void {
+    let y: int = Apply(Negate, 42)
+}
+---
+error: cannot pass
+---
+
+=== method return type used correctly
+struct Counter {
+    value: int
+    fn Get(self) -> int {
+        return self.value
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(10)
+    let v: string = c.Get()
+}
+---
+error: cannot assign
+---
+
+=== bound method as value rejected
+struct Counter {
+    value: int
+    fn Get(self) -> int {
+        return self.value
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    let f: fn[int] = c.Get
+}
+---
+error: cannot capture
 ---

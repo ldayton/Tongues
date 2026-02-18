@@ -756,6 +756,8 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
                 args = get_nodes(node, "args")
                 if len(args) > 0 and isinstance(args[0], dict):
                     at = _infer_expr_type(args[0], env, ctx)
+                    if isinstance(at, SetType):
+                        return SliceType(at.element)
                     return at
                 return SliceType(INT_TYPE)
             if fname == "divmod":
@@ -768,7 +770,7 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
                         return SetType(at.element)
                     if isinstance(at, SetType):
                         return at
-                    if isinstance(at, TupleType) and at.variadic:
+                    if isinstance(at, TupleType):
                         return SetType(
                             at.elements[0] if len(at.elements) > 0 else INT_TYPE
                         )
@@ -1342,8 +1344,17 @@ def _lower_boolop_chain(
         return TBoolLit(_P0, True, _EMPTY_ANN)
     if idx == len(values) - 1:
         return _lower_expr(v, env, ctx)
-    cond = _lower_as_bool(v, env, ctx)
     left = _lower_expr(v, env, ctx)
+    if isinstance(left, TBoolLit):
+        if op_type == "And":
+            if left.value:
+                return _lower_boolop_chain(values, op_type, idx + 1, env, ctx)
+            return left
+        else:
+            if left.value:
+                return left
+            return _lower_boolop_chain(values, op_type, idx + 1, env, ctx)
+    cond = _lower_as_bool(v, env, ctx)
     rest = _lower_boolop_chain(values, op_type, idx + 1, env, ctx)
     if op_type == "And":
         return TTernary(_P0, cond, rest, left, _EMPTY_ANN)
@@ -2071,6 +2082,9 @@ def _lower_name_call(
                 rfunc = get_node(args[0], "func")
                 if _is_ast(rfunc, "Name") and get_str(rfunc, "id") == "zip":
                     return _lower_expr(args[0], env, ctx)
+            # list(set) → Sorted(set)
+            if isinstance(arg_type, SetType):
+                return _make_call("Sorted", [_lower_expr(args[0], env, ctx)])
             arg = _lower_expr(args[0], env, ctx)
             # list(xs) → xs[0:Len(xs)]
             return TSlice(
@@ -2903,37 +2917,37 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     return result
 
 
+def _lower_ternary_cond(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
+    """Lower a ternary condition, using == nil / != nil for nil checks so the
+    type checker can narrow optional variables in then/else branches."""
+    if _is_ast(node, "Compare"):
+        ops = get_nodes(node, "ops")
+        comps = get_nodes(node, "comparators")
+        if len(ops) == 1 and len(comps) == 1 and isinstance(ops[0], dict):
+            op_type = get_str(ops[0], "_type")
+            comp = comps[0]
+            left_node = get_node(node, "left")
+            if op_type == "Is" and _is_ast(comp, "Constant") and isinstance(
+                comp.get("value"), JNull
+            ):
+                left = _lower_expr(left_node, env, ctx)
+                return TBinaryOp(_P0, "==", left, TNilLit(_P0, _EMPTY_ANN), _EMPTY_ANN)
+            if op_type == "IsNot" and _is_ast(comp, "Constant") and isinstance(
+                comp.get("value"), JNull
+            ):
+                left = _lower_expr(left_node, env, ctx)
+                return TBinaryOp(_P0, "!=", left, TNilLit(_P0, _EMPTY_ANN), _EMPTY_ANN)
+    return _lower_as_bool(node, env, ctx)
+
+
 def _lower_ifexp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     """Lower an IfExp (ternary) node."""
     test = get_node(node, "test")
     body = get_node(node, "body")
     orelse = get_node(node, "orelse")
-    cond = _lower_as_bool(test, env, ctx)
+    cond = _lower_ternary_cond(test, env, ctx)
     then_expr = _lower_expr(body, env, ctx)
     else_expr = _lower_expr(orelse, env, ctx)
-    # Narrow optional in ternary: `a if x is None else x` → Unwrap(x) in else
-    if _is_ast(test, "Compare"):
-        ops = get_nodes(test, "ops")
-        if len(ops) == 1 and isinstance(ops[0], dict):
-            op_type = get_str(ops[0], "_type")
-            if op_type == "Is":
-                comps = get_nodes(test, "comparators")
-                if len(comps) == 1 and isinstance(comps[0], dict):
-                    if _is_ast(comps[0], "Constant") and isinstance(
-                        comps[0].get("value"), JNull
-                    ):
-                        orelse_type = _infer_expr_type(orelse, env, ctx)
-                        if _is_optional_type(orelse_type):
-                            else_expr = _make_call("Unwrap", [else_expr])
-            if op_type == "IsNot":
-                comps = get_nodes(test, "comparators")
-                if len(comps) == 1 and isinstance(comps[0], dict):
-                    if _is_ast(comps[0], "Constant") and isinstance(
-                        comps[0].get("value"), JNull
-                    ):
-                        body_type = _infer_expr_type(body, env, ctx)
-                        if _is_optional_type(body_type):
-                            then_expr = _make_call("Unwrap", [then_expr])
     return TTernary(_P0, cond, then_expr, else_expr, _EMPTY_ANN)
 
 
@@ -3882,6 +3896,12 @@ def _lower_isinstance_chain(
     while i < len(chain):
         _, type_name, body_stmts = chain[i]
         binding_name = type_name[0].lower() + type_name[1:] if type_name else type_name
+        if binding_name in env.declared:
+            suffix = 2
+            while binding_name + str(suffix) in env.declared:
+                suffix += 1
+            binding_name = binding_name + str(suffix)
+        env.declared.add(binding_name)
         # Create narrowed env for the case body
         case_env = env.copy()
         case_env.var_types[var_name] = PointerType(StructRef(type_name))

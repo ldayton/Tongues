@@ -75,7 +75,7 @@ fn Main() -> void {
 ok
 ---
 
-=== match non-exhaustive
+=== match non-exhaustive interface
 interface Node {}
 struct Literal : Node {
     value: int
@@ -98,7 +98,27 @@ fn Main() -> void {
 error: non-exhaustive match
 ---
 
-=== match optional
+=== match non-exhaustive enum
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Foo(c: Color) -> void {
+    match c {
+        case Color.Red {
+        }
+        case Color.Green {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: non-exhaustive match
+---
+
+=== match optional exhaustive
 fn Show(x: int?) -> string {
     match x {
         case v: int {
@@ -117,7 +137,56 @@ fn Main() -> void {
 ok
 ---
 
-=== match duplicate case
+=== match optional non-exhaustive missing nil
+fn Show(x: int?) -> string {
+    match x {
+        case v: int {
+            return ToString(v)
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: non-exhaustive match
+---
+
+=== match union exhaustive
+fn Describe(v: int | string) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: string {
+            return s
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(42))
+}
+---
+ok
+---
+
+=== match union non-exhaustive
+fn Describe(v: int | string | bool) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: string {
+            return s
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: non-exhaustive match
+---
+
+=== match duplicate enum case
 enum Color {
     Red
     Green
@@ -139,7 +208,41 @@ fn Main() -> void {
 error: duplicate case
 ---
 
-=== cannot match on primitive
+=== match duplicate nil case
+fn Foo(x: int?) -> void {
+    match x {
+        case nil {
+        }
+        case nil {
+        }
+        default {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: duplicate case
+---
+
+=== match duplicate type case
+fn Foo(v: int | string) -> void {
+    match v {
+        case n: int {
+        }
+        case n2: int {
+        }
+        default {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: duplicate case
+---
+
+=== cannot match on int
 fn Main() -> void {
     let x: int = 42
     match x {
@@ -151,22 +254,56 @@ fn Main() -> void {
 error: cannot match on int
 ---
 
-=== match union
-fn Describe(v: int | string) -> string {
-    match v {
-        case n: int {
-            return ToString(n)
-        }
-        case s: string {
-            return s
+=== cannot match on string
+fn Main() -> void {
+    let s: string = "hello"
+    match s {
+        default {
         }
     }
 }
+---
+error: cannot match on string
+---
+
+=== cannot match on bool
 fn Main() -> void {
-    WritelnOut(Describe(42))
+    let b: bool = true
+    match b {
+        default {
+        }
+    }
 }
 ---
-ok
+error: cannot match on bool
+---
+
+=== cannot match on list
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    match xs {
+        default {
+        }
+    }
+}
+---
+error: cannot match on list
+---
+
+=== cannot match on struct
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, 2)
+    match p {
+        default {
+        }
+    }
+}
+---
+error: cannot match
 ---
 
 === default must be last
@@ -219,30 +356,229 @@ fn Main() -> void {
 ok
 ---
 
-=== cannot match on list
-fn Main() -> void {
-    let xs: list[int] = [1, 2]
-    match xs {
-        default {
+=== wrong variant for interface
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct Other {
+    value: int
+}
+fn Foo(n: Node) -> void {
+    match n {
+        case lit: Literal {
+        }
+        case o: Other {
         }
     }
 }
+fn Main() -> void {
+}
 ---
-error: cannot match on list
+error: not a variant
 ---
 
-=== cannot match on struct
-struct Pt {
-    x: int
-    y: int
+=== wrong enum variant name
+enum Color {
+    Red
+    Green
+    Blue
 }
-fn Main() -> void {
-    let p: Pt = Pt(1, 2)
-    match p {
+fn Foo(c: Color) -> void {
+    match c {
+        case Color.Red {
+        }
+        case Color.Yellow {
+        }
         default {
         }
     }
 }
+fn Main() -> void {
+}
 ---
-error: cannot match
+error: not a variant
+---
+
+=== match optional non-exhaustive missing value
+fn Show(x: int?) -> string {
+    match x {
+        case nil {
+            return "nil"
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: non-exhaustive match
+---
+
+=== match single variant interface
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+fn Eval(n: Node) -> int {
+    match n {
+        case lit: Literal {
+            return lit.value
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== match binding type in case body
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    left: Node
+    right: Node
+}
+fn Foo(n: Node) -> void {
+    match n {
+        case lit: Literal {
+            let v: int = lit.value
+        }
+        case bin: BinOp {
+            let l: Node = bin.left
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== match binding wrong type in case body
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    left: Node
+}
+fn Foo(n: Node) -> void {
+    match n {
+        case lit: Literal {
+            let v: string = lit.value
+        }
+        case bin: BinOp {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: cannot assign
+---
+
+=== match union with nil exhaustive
+fn Foo(v: int | string | nil) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: string {
+            return s
+        }
+        case nil {
+            return "nil"
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== match union with nil non-exhaustive
+fn Foo(v: int | string | nil) -> string {
+    match v {
+        case n: int {
+            return ToString(n)
+        }
+        case s: string {
+            return s
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: non-exhaustive match
+---
+
+=== match case not member of union
+fn Foo(v: int | string) -> void {
+    match v {
+        case b: bool {
+        }
+        default {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: not a variant
+---
+
+=== match enum variant from wrong enum
+enum Color {
+    Red
+    Green
+    Blue
+}
+enum Shape {
+    Circle
+    Square
+}
+fn Foo(c: Color) -> void {
+    match c {
+        case Shape.Circle {
+        }
+        default {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error: not a variant of Color
+---
+
+=== match default covers remaining
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+struct UnaryOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> string {
+    match n {
+        case lit: Literal {
+            return "lit"
+        }
+        default {
+            return "other"
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
 ---

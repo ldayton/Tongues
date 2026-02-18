@@ -64,3 +64,118 @@ fn Main() -> void {
 ---
 error: duplicate
 ---
+
+=== duplicate interface name
+interface Node {}
+interface Node {}
+fn Main() -> void {
+}
+---
+error: duplicate
+---
+
+=== function name conflicts with type
+struct Foo {
+    x: int
+}
+fn Foo() -> void {
+}
+fn Main() -> void {
+}
+---
+error: already declared
+---
+
+=== parent must be interface
+struct Base {
+    x: int
+}
+struct Child : Base {
+    y: int
+}
+fn Main() -> void {
+}
+---
+error: not an interface
+---
+
+=== parent must exist
+struct Child : Unknown {
+    x: int
+}
+fn Main() -> void {
+}
+---
+error: unknown interface
+---
+
+=== forward reference between functions
+fn Foo() -> int {
+    return Bar()
+}
+fn Bar() -> int {
+    return 42
+}
+fn Main() -> void {
+    let x: int = Foo()
+}
+---
+ok
+---
+
+=== forward reference between types
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+struct Branch : Node {
+    left: Node
+    right: Node
+}
+fn Main() -> void {
+    let n: Node = Branch(Leaf(1), Leaf(2))
+}
+---
+ok
+---
+
+=== multiple functions
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Mul(a: int, b: int) -> int {
+    return a * b
+}
+fn Main() -> void {
+    let x: int = Add(Mul(2, 3), 4)
+}
+---
+ok
+---
+
+=== struct with interface
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+struct Rect : Shape {
+    width: float
+    height: float
+}
+fn Main() -> void {
+    let s: Shape = Circle(IntToFloat(5))
+}
+---
+ok
+---
+
+=== enum duplicate variant
+enum Color {
+    Red
+    Red
+}
+fn Main() -> void {
+}
+---
+error: duplicate variant
+---

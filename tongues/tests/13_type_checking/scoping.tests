@@ -26,6 +26,17 @@ fn Main() -> void {
 error: undefined name
 ---
 
+=== variable not accessible after while scope
+fn Main() -> void {
+    while false {
+        let x: int = 42
+    }
+    let y: int = x
+}
+---
+error: undefined name
+---
+
 === shadowing parameter rejected
 fn Foo(x: int) -> void {
     let x: int = 10
@@ -47,6 +58,19 @@ fn Main() -> void {
 error: shadows
 ---
 
+=== nested shadowing rejected
+fn Main() -> void {
+    let x: int = 1
+    if true {
+        if true {
+            let x: int = 3
+        }
+    }
+}
+---
+error: shadows
+---
+
 === reserved name as variable rejected
 fn Main() -> void {
     let Len: int = 42
@@ -57,6 +81,35 @@ error: reserved name
 
 === reserved name as parameter rejected
 fn Foo(Append: int) -> void {
+}
+fn Main() -> void {
+}
+---
+error: reserved name
+---
+
+=== reserved name as function rejected
+fn ToString() -> void {
+}
+fn Main() -> void {
+}
+---
+error: reserved name
+---
+
+=== reserved name as struct rejected
+struct Map {
+    value: int
+}
+fn Main() -> void {
+}
+---
+error: reserved name
+---
+
+=== reserved name as enum rejected
+enum Set {
+    A
 }
 fn Main() -> void {
 }
@@ -95,4 +148,96 @@ fn Main() -> void {
 }
 ---
 error: undefined name
+---
+
+=== match binding scoped to case
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Literal(42)
+    match n {
+        case lit: Literal {
+        }
+        case bin: BinOp {
+        }
+    }
+    let v: int = lit.value
+}
+---
+error: undefined name
+---
+
+=== separate scopes do not conflict
+fn Main() -> void {
+    if true {
+        let x: int = 1
+    }
+    if true {
+        let x: int = 2
+    }
+}
+---
+ok
+---
+
+=== for range variable scoped
+fn Main() -> void {
+    for i in range(10) {
+    }
+    let x: int = i
+}
+---
+error: undefined name
+---
+
+=== Add is not reserved
+fn Main() -> void {
+    let Add: int = 42
+}
+---
+ok
+---
+
+=== local variable can shadow top-level function
+fn Helper() -> void {
+}
+fn Main() -> void {
+    let Helper: int = 42
+}
+---
+ok
+---
+
+=== reserved name as loop variable rejected
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for Len in xs {
+    }
+}
+---
+error: reserved name
+---
+
+=== reserved name as interface rejected
+interface Len {}
+fn Main() -> void {
+}
+---
+error: reserved name
+---
+
+=== reserved name as catch binding rejected
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch Len: ValueError {
+    }
+}
+---
+error: reserved name
 ---

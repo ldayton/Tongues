@@ -20,37 +20,181 @@ fn Main() -> void {
 ok
 ---
 
-=== arithmetic type mismatch int and float
+=== arithmetic byte
 fn Main() -> void {
-    let x: int = 1 + 1.0
-}
----
-error:
----
-
-=== string plus rejected
-fn Main() -> void {
-    let s: string = "a" + "b"
-}
----
-error:
----
-
-=== comparison operators
-fn Main() -> void {
-    let a: bool = 1 < 2
-    let b: bool = 3 >= 2
-    let c: bool = 1 == 1
-    let d: bool = 1 != 2
+    let a: byte = 0x01
+    let b: byte = a + a
 }
 ---
 ok
 ---
 
-=== string comparison
+=== arithmetic type mismatch int and float
+fn Main() -> void {
+    let x: int = 1 + 1.0
+}
+---
+error: must be same type
+---
+
+=== arithmetic not defined for string
+fn Main() -> void {
+    let s: string = "a" + "b"
+}
+---
+error: not defined for
+---
+
+=== arithmetic not defined for bool
+fn Main() -> void {
+    let x: bool = true + false
+}
+---
+error:
+---
+
+=== comparison int
+fn Main() -> void {
+    let a: bool = 1 < 2
+    let b: bool = 3 >= 2
+    let c: bool = 1 <= 1
+    let d: bool = 2 > 1
+}
+---
+ok
+---
+
+=== comparison float
+fn Main() -> void {
+    let a: bool = 1.0 < 2.0
+    let b: bool = 3.0 >= 2.0
+}
+---
+ok
+---
+
+=== comparison string
 fn Main() -> void {
     let a: bool = "abc" < "def"
-    let b: bool = "abc" == "abc"
+    let b: bool = "abc" >= "abc"
+}
+---
+ok
+---
+
+=== comparison rune
+fn Main() -> void {
+    let a: bool = 'a' < 'z'
+}
+---
+ok
+---
+
+=== comparison byte
+fn Main() -> void {
+    let a: byte = 0x01
+    let b: byte = 0x02
+    let c: bool = a < b
+}
+---
+ok
+---
+
+=== comparison bytes
+fn Main() -> void {
+    let a: bytes = b"\x01"
+    let b: bytes = b"\x02"
+    let c: bool = a < b
+}
+---
+ok
+---
+
+=== ordering not defined for bool
+fn Main() -> void {
+    let a: bool = true < false
+}
+---
+error: ordering not defined for
+---
+
+=== ordering not defined for union
+fn Foo(v: int | string) -> bool {
+    return v < v
+}
+fn Main() -> void {
+}
+---
+error: not defined for union
+---
+
+=== equality int
+fn Main() -> void {
+    let a: bool = 1 == 1
+    let b: bool = 1 != 2
+}
+---
+ok
+---
+
+=== equality string
+fn Main() -> void {
+    let a: bool = "abc" == "abc"
+}
+---
+ok
+---
+
+=== equality bool
+fn Main() -> void {
+    let a: bool = true == false
+}
+---
+ok
+---
+
+=== equality enum
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color = Color.Red
+    let eq: bool = c == Color.Green
+}
+---
+ok
+---
+
+=== equality struct
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let a: Pt = Pt(1, 2)
+    let b: Pt = Pt(1, 2)
+    let eq: bool = a == b
+}
+---
+ok
+---
+
+=== equality list
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    let b: list[int] = [1, 2]
+    let eq: bool = a == b
+}
+---
+ok
+---
+
+=== equality with nil
+fn Main() -> void {
+    let x: int? = 42
+    let b: bool = x == nil
 }
 ---
 ok
@@ -60,20 +204,96 @@ ok
 fn Main() -> void {
     let a: bool = true && false
     let b: bool = true || false
-    let c: bool = !true
 }
 ---
 ok
 ---
 
-=== bitwise operators
+=== logical and requires bool
+fn Main() -> void {
+    let x: bool = 42 && true
+}
+---
+error: must be bool
+---
+
+=== logical or requires bool
+fn Main() -> void {
+    let x: bool = true || 42
+}
+---
+error: must be bool
+---
+
+=== bitwise operators int
 fn Main() -> void {
     let a: int = 1 & 2
     let b: int = 1 | 2
     let c: int = 1 ^ 2
-    let d: int = ~1
-    let e: int = 1 << 2
-    let f: int = 8 >> 1
+}
+---
+ok
+---
+
+=== bitwise operators byte
+fn Main() -> void {
+    let a: byte = 0x0f
+    let b: byte = a & a
+    let c: byte = a | a
+    let d: byte = a ^ a
+}
+---
+ok
+---
+
+=== bitwise not defined for float
+fn Main() -> void {
+    let x: float = 1.0 & 2.0
+}
+---
+error: not defined for
+---
+
+=== shift operators int
+fn Main() -> void {
+    let a: int = 1 << 2
+    let b: int = 8 >> 1
+}
+---
+ok
+---
+
+=== shift operators byte left operand
+fn Main() -> void {
+    let b: byte = 0x01
+    let c: byte = b << 2
+    let d: byte = b >> 1
+}
+---
+ok
+---
+
+=== shift right operand must be int
+fn Main() -> void {
+    let b: byte = 0x01
+    let c: byte = b << b
+}
+---
+error: right operand
+---
+
+=== unsigned right shift requires strict_math
+fn Main() -> void {
+    let x: int = 8 >>> 1
+}
+---
+error: strict_math
+---
+
+=== unsigned right shift with strict_math
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 8 >>> 1
 }
 ---
 ok
@@ -92,7 +312,97 @@ fn Main() -> void {
     let x: int = 42 ? 1 : 2
 }
 ---
-error:
+error: ternary condition must be bool
+---
+
+=== ternary branch type mismatch
+fn Main() -> void {
+    let x: int = true ? 1 : "hello"
+}
+---
+error: ternary branches must have same type
+---
+
+=== ternary with nil widens to optional
+fn Main() -> void {
+    let x: int? = true ? 42 : nil
+}
+---
+ok
+---
+
+=== negation int
+fn Main() -> void {
+    let x: int = -42
+}
+---
+ok
+---
+
+=== negation float
+fn Main() -> void {
+    let x: float = -3.14
+}
+---
+ok
+---
+
+=== negation byte
+fn Main() -> void {
+    let b: byte = 0x05
+    let c: byte = -b
+}
+---
+ok
+---
+
+=== negation not defined for string
+fn Main() -> void {
+    let x: string = -"hello"
+}
+---
+error: negation not defined for
+---
+
+=== logical not
+fn Main() -> void {
+    let x: bool = !true
+}
+---
+ok
+---
+
+=== logical not requires bool
+fn Main() -> void {
+    let x: bool = !42
+}
+---
+error: logical not requires bool
+---
+
+=== bitwise complement int
+fn Main() -> void {
+    let x: int = ~0
+}
+---
+ok
+---
+
+=== bitwise complement byte
+fn Main() -> void {
+    let b: byte = 0x00
+    let c: byte = ~b
+}
+---
+ok
+---
+
+=== bitwise complement not defined for float
+fn Main() -> void {
+    let x: float = ~1.0
+}
+---
+error: bitwise complement not defined for
 ---
 
 === field access on struct
@@ -106,6 +416,65 @@ fn Main() -> void {
 }
 ---
 ok
+---
+
+=== field access unknown field
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, 2)
+    let z: int = p.z
+}
+---
+error:
+---
+
+=== tuple field access
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    let x: int = t.0
+    let s: string = t.1
+}
+---
+ok
+---
+
+=== tuple access out of bounds
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    let x: int = t.5
+}
+---
+error:
+---
+
+=== enum variant access
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color = Color.Red
+    let eq: bool = c == Color.Green
+}
+---
+ok
+---
+
+=== enum unknown variant
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color = Color.Yellow
+}
+---
+error:
 ---
 
 === list indexing
@@ -144,6 +513,24 @@ fn Main() -> void {
 ok
 ---
 
+=== index must be int for list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let x: int = xs["0"]
+}
+---
+error:
+---
+
+=== index must be correct type for map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int = m[42]
+}
+---
+error:
+---
+
 === list slicing preserves type
 fn Main() -> void {
     let xs: list[int] = [1, 2, 3]
@@ -162,6 +549,15 @@ fn Main() -> void {
 ok
 ---
 
+=== bytes slicing yields bytes
+fn Main() -> void {
+    let b: bytes = b"\x01\x02\x03"
+    let sub: bytes = b[0:2]
+}
+---
+ok
+---
+
 === cannot index union type
 fn Foo(v: list[int] | string) -> void {
     let x: int = v[0]
@@ -172,60 +568,217 @@ fn Main() -> void {
 error: cannot index union
 ---
 
-=== ordering not defined for union
-fn Foo(v: int | string) -> bool {
-    return v < v
-}
+=== cannot index non-indexable
 fn Main() -> void {
+    let x: bool = true
+    let y: bool = x[0]
 }
 ---
-error: not defined for union
+error: cannot index
 ---
 
-=== negation
+=== collection literal empty list
 fn Main() -> void {
-    let x: int = -42
-    let y: float = -3.14
+    let xs: list[int] = []
 }
 ---
 ok
 ---
 
-=== unary not requires bool
+=== collection literal empty map
 fn Main() -> void {
-    let x: bool = !42
+    let m: map[string, int] = Map()
+}
+---
+ok
+---
+
+=== arithmetic not defined for union
+fn Foo(v: int | float) -> void {
+    let x: int | float = v + v
+}
+fn Main() -> void {
+}
+---
+error: not defined for
+---
+
+=== bitwise not defined for union
+fn Foo(v: int | string) -> void {
+    let x: int | string = v & v
+}
+fn Main() -> void {
+}
+---
+error: not defined for
+---
+
+=== cannot slice non-sliceable type
+fn Main() -> void {
+    let x: int = 42
+    let y: int = x[0:1]
+}
+---
+error: cannot slice
+---
+
+=== field access on interface shared field
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    value: int
+}
+fn GetVal(n: Node) -> int {
+    return n.value
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== field access on interface no such field
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Literal(42)
+    let x: int = n.missing
+}
+---
+error: cannot access field
+---
+
+=== union field access valid
+struct A {
+    name: string
+}
+struct B {
+    name: string
+}
+fn Foo(v: A | B) -> string {
+    return v.name
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== union field access blocked by nil
+struct A {
+    name: string
+}
+fn Foo(v: A?) -> string {
+    return v.name
+}
+fn Main() -> void {
+}
+---
+error: cannot access field
+---
+
+=== slice bound must be int
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let ys: list[int] = xs["0":2]
+}
+---
+error: slice bound must be int
+---
+
+=== empty map without context rejected
+fn Main() -> void {
+    let m: map[string, int]
+    m = Map()
+}
+---
+ok
+---
+
+=== empty set without context rejected
+fn Foo() -> set[int] {
+    return Set()
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== Format placeholder count mismatch
+fn Main() -> void {
+    let s: string = Format("{} {}", "one")
+}
+---
+error: placeholder count mismatch
+---
+
+=== Sorted on non-ordered type rejected
+fn Main() -> void {
+    let xs: list[list[int]] = [[1], [2]]
+    let ys: list[list[int]] = Sorted(xs)
+}
+---
+error: ordered
+---
+
+=== union field access non-common field
+struct A {
+    name: string
+}
+struct B {
+    value: int
+}
+fn Foo(v: A | B) -> string {
+    return v.name
+}
+fn Main() -> void {
+}
+---
+error: cannot access field
+---
+
+=== union field access common field different types
+struct A {
+    value: int
+}
+struct B {
+    value: string
+}
+fn Foo(v: A | B) -> int {
+    return v.value
+}
+fn Main() -> void {
 }
 ---
 error:
 ---
 
-=== bitwise not on int
+=== equality between different types
 fn Main() -> void {
-    let x: int = ~0
+    let x: int = 42
+    let y: string = "hello"
+    let eq: bool = x == y
 }
 ---
-ok
+error:
 ---
 
-=== tuple field access
-fn Main() -> void {
-    let t: (int, string) = (1, "hello")
-    let x: int = t.0
-    let s: string = t.1
+=== ternary with struct and interface widens
+interface Shape {}
+struct Circle : Shape {
+    radius: float
 }
----
-ok
----
-
-=== enum variant access
-enum Color {
-    Red
-    Green
-    Blue
+struct Rect : Shape {
+    width: float
+    height: float
 }
 fn Main() -> void {
-    let c: Color = Color.Red
-    let eq: bool = c == Color.Green
+    let s: Shape = true ? Circle(IntToFloat(1)) : Rect(IntToFloat(2), IntToFloat(3))
 }
 ---
 ok

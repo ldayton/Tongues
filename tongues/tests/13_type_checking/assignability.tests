@@ -38,49 +38,16 @@ fn Main() -> void {
 error: cannot assign
 ---
 
-=== list covariant
-interface Animal {}
-struct Dog : Animal {
-    name: string
+=== wrong struct not assignable to interface
+interface Node {}
+struct Literal : Node {
+    value: int
 }
-fn Foo(xs: list[Animal]) -> void {
+struct Other {
+    value: int
 }
 fn Main() -> void {
-    let dogs: list[Dog]
-    Append(dogs, Dog("Rex"))
-    Foo(dogs)
-}
----
-ok
----
-
-=== nil narrowing in if
-fn Main() -> void {
-    let x: int? = 42
-    if x != nil {
-        let y: int = x
-    }
-}
----
-ok
----
-
-=== nil narrowing in else
-fn Main() -> void {
-    let x: int? = 42
-    if x == nil {
-    } else {
-        let y: int = x
-    }
-}
----
-ok
----
-
-=== without narrowing optional not assignable to non-optional
-fn Main() -> void {
-    let x: int? = 42
-    let y: int = x
+    let n: Node = Other(42)
 }
 ---
 error: cannot assign
@@ -98,16 +65,66 @@ fn Main() -> void {
 ok
 ---
 
-=== wrong struct not assignable to interface
-interface Node {}
-struct Literal : Node {
-    value: int
+=== multiple structs implement interface
+interface Shape {}
+struct Circle : Shape {
+    radius: float
 }
-struct Other {
-    value: int
+struct Rect : Shape {
+    width: float
+    height: float
+}
+fn Area(s: Shape) -> void {
 }
 fn Main() -> void {
-    let n: Node = Other(42)
+    Area(Circle(IntToFloat(5)))
+    Area(Rect(IntToFloat(3), IntToFloat(4)))
+}
+---
+ok
+---
+
+=== nil narrowing in if then
+fn Main() -> void {
+    let x: int? = 42
+    if x != nil {
+        let y: int = x
+    }
+}
+---
+ok
+---
+
+=== nil narrowing in if else
+fn Main() -> void {
+    let x: int? = 42
+    if x == nil {
+    } else {
+        let y: int = x
+    }
+}
+---
+ok
+---
+
+=== nil narrowing early exit
+fn Foo(x: int?) -> int {
+    if x == nil {
+        return 0
+    }
+    let y: int = x
+    return y
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== without narrowing optional not assignable to non-optional
+fn Main() -> void {
+    let x: int? = 42
+    let y: int = x
 }
 ---
 error: cannot assign
@@ -124,6 +141,229 @@ fn Main() -> void {
             let y: string = s
         }
     }
+}
+---
+ok
+---
+
+=== identity assignment
+fn Main() -> void {
+    let x: int = 42
+    let y: int = x
+}
+---
+ok
+---
+
+=== nil narrowing early exit with return
+fn Process(x: string?) -> string {
+    if x == nil {
+        return "default"
+    }
+    return x
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== union to wider union assignable
+fn Main() -> void {
+    let narrow: int | string = 42
+    let wide: int | string | bool = narrow
+}
+---
+ok
+---
+
+=== nil narrowing multi-member union
+fn Foo(v: int | string | nil) -> void {
+    if v != nil {
+        let x: int | string = v
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== list not covariant
+interface Animal {}
+struct Dog : Animal {
+    name: string
+}
+fn Foo(xs: list[Animal]) -> void {
+}
+fn Main() -> void {
+    let dogs: list[Dog]
+    Append(dogs, Dog("Rex"))
+    Foo(dogs)
+}
+---
+error: cannot pass
+---
+
+=== map not covariant in value
+interface Animal {}
+struct Dog : Animal {
+    name: string
+}
+fn Foo(m: map[string, Animal]) -> void {
+}
+fn Main() -> void {
+    let m: map[string, Dog]
+    Foo(m)
+}
+---
+error: cannot pass
+---
+
+=== list of optional not assignable to list of non-optional
+fn Foo(xs: list[int]) -> void {
+}
+fn Main() -> void {
+    let xs: list[int?]
+    Foo(xs)
+}
+---
+error: cannot pass
+---
+
+=== list of non-optional not assignable to list of optional
+fn Foo(xs: list[int?]) -> void {
+}
+fn Main() -> void {
+    let xs: list[int]
+    Foo(xs)
+}
+---
+error: cannot pass
+---
+
+=== list of int not assignable to list of union
+fn Main() -> void {
+    let xs: list[int]
+    let ys: list[int | string] = xs
+}
+---
+error: cannot assign
+---
+
+=== wider union not assignable to narrower union
+fn Main() -> void {
+    let wide: int | string | bool = 42
+    let narrow: int | string = wide
+}
+---
+error: cannot assign
+---
+
+=== interface not assignable to struct
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+fn Main() -> void {
+    let s: Shape = Circle(IntToFloat(1))
+    let c: Circle = s
+}
+---
+error: cannot assign
+---
+
+=== nil narrowing does not persist after if block
+fn Main() -> void {
+    let x: int? = 42
+    if x != nil {
+        let y: int = x
+    }
+    let z: int = x
+}
+---
+error: cannot assign
+---
+
+=== nil narrowing ternary true branch
+fn Foo(x: int?) -> int {
+    return x != nil ? x : 0
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== nil narrowing ternary false branch
+fn Foo(x: int?) -> int {
+    return x == nil ? 0 : x
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== all union members assignable to interface
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+struct Rect : Shape {
+    width: float
+    height: float
+}
+fn Draw(s: Shape) -> void {
+}
+fn Main() -> void {
+    let v: Circle | Rect = Circle(IntToFloat(1))
+    Draw(v)
+}
+---
+ok
+---
+
+=== union member not all assignable to interface
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+struct Other {
+    value: int
+}
+fn Draw(s: Shape) -> void {
+}
+fn Main() -> void {
+    let v: Circle | Other = Other(1)
+    Draw(v)
+}
+---
+error: cannot pass
+---
+
+=== interface used in recursive struct
+interface Expr {}
+struct Lit : Expr {
+    value: int
+}
+struct BinOp : Expr {
+    left: Expr
+    right: Expr
+}
+fn Eval(e: Expr) -> int {
+    match e {
+        case lit: Lit {
+            return lit.value
+        }
+        case bin: BinOp {
+            return Eval(bin.left) + Eval(bin.right)
+        }
+    }
+}
+fn Main() -> void {
+    let e: Expr = BinOp(Lit(1), Lit(2))
+    WritelnOut(ToString(Eval(e)))
 }
 ---
 ok
