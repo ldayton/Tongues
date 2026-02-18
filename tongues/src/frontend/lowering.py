@@ -204,7 +204,7 @@ def _typenode_to_ttype(t: TypeNode) -> TType:
             return TTupleType(_P0, parts)
         if len(parts) == 1:
             return TListType(_P0, parts[0])
-        return TPrimitive(_P0, "void")
+        return TPrimitive(_P0, "error")
     if isinstance(t, OptionalType):
         return TOptionalType(_P0, _typenode_to_ttype(t.inner))
     if isinstance(t, PointerType):
@@ -233,8 +233,8 @@ def _typenode_to_ttype(t: TypeNode) -> TType:
             i += 1
         if len(parts2) >= 2:
             return TUnionType(_P0, parts2)
-        return TPrimitive(_P0, "void")
-    return TPrimitive(_P0, "void")
+        return TPrimitive(_P0, "error")
+    return TPrimitive(_P0, "error")
 
 
 def _emit_hoisted_lets(
@@ -809,7 +809,7 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         lt = _infer_expr_type(left, env, ctx)
         rt = _infer_expr_type(right_node, env, ctx)
         if op_type == "Add":
-            if _is_type_dict(lt, ["string"]):
+            if _is_type_dict(lt, ["string"]) or _is_type_dict(rt, ["string"]):
                 return STR_TYPE
             if _is_type_dict(lt, ["float"]):
                 return FLOAT_TYPE
@@ -1138,11 +1138,13 @@ def _lower_binop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     left_type = _infer_expr_type(left_node, env, ctx)
     right_type = _infer_expr_type(right_node, env, ctx)
     if op_type == "Add":
-        if _is_type_dict(left_type, ["string"]):
+        if _is_type_dict(left_type, ["string"]) or _is_type_dict(
+            right_type, ["string"]
+        ):
             return _make_call("Concat", [left, right])
-        if _is_type_dict(left_type, ["bytes"]):
+        if _is_type_dict(left_type, ["bytes"]) or _is_type_dict(right_type, ["bytes"]):
             return _make_call("Concat", [left, right])
-        if _is_type_dict(left_type, ["Slice"]):
+        if _is_type_dict(left_type, ["Slice"]) or _is_type_dict(right_type, ["Slice"]):
             return _make_call("Concat", [left, right])
         if _is_type_dict(left_type, ["Tuple"]) or _is_type_dict(right_type, ["Tuple"]):
             return _lower_tuple_concat(left_node, right_node, env, ctx)
@@ -4241,7 +4243,9 @@ def _build_method(
     return TFnDecl(_P0, name, params, ret_type, body, _EMPTY_ANN)
 
 
-def _collect_ancestor_fields(name: str, ctx: _LowerCtx) -> list[tuple[str, TType]]:
+def _collect_ancestor_fields(
+    name: str, ctx: _LowerCtx
+) -> list[tuple[str, TType, bool]]:
     """Walk ancestors root-to-child, collecting fields from non-root ancestors."""
     chain: list[str] = []
     cur = name
@@ -4253,7 +4257,7 @@ def _collect_ancestor_fields(name: str, ctx: _LowerCtx) -> list[tuple[str, TType
         cur = ancs[0]
     # Reverse so we go root→child
     chain.reverse()
-    result: list[tuple[str, TType]] = []
+    result: list[tuple[str, TType, bool]] = []
     seen: set[str] = set()
     i = 0
     while i < len(chain):
@@ -4276,7 +4280,9 @@ def _collect_ancestor_fields(name: str, ctx: _LowerCtx) -> list[tuple[str, TType
                 fname = akeys[j]
                 finfo = anc_info.fields.get(fname)
                 if finfo is not None:
-                    result.append((fname, _typenode_to_ttype(finfo.typ)))
+                    result.append(
+                        (fname, _typenode_to_ttype(finfo.typ), finfo.has_default)
+                    )
                     seen.add(fname)
                 j += 1
         i += 1
@@ -4329,8 +4335,8 @@ def _build_struct(
             inherited_field_names: set[str] = set()
             af_i = 0
             while af_i < len(ancestor_fields):
-                af_name, af_type = ancestor_fields[af_i]
-                fields.append(TFieldDecl(_P0, af_name, af_type))
+                af_name, af_type, af_has_default = ancestor_fields[af_i]
+                fields.append(TFieldDecl(_P0, af_name, af_type, af_has_default))
                 inherited_field_names.add(af_name)
                 af_i += 1
             # Build own field keys: init_params first, then remaining fields

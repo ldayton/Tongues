@@ -118,7 +118,7 @@ fn Main() -> void {
 error: void
 ---
 
-=== let without init requires zero value for struct
+=== let without init allowed for struct
 struct Pt {
     x: int
     y: int
@@ -127,7 +127,7 @@ fn Main() -> void {
     let p: Pt
 }
 ---
-error: initializer required
+ok
 ---
 
 === let without init allowed for int

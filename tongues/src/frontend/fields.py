@@ -40,6 +40,7 @@ from .types import (
     get_int,
     get_node,
     get_nodes,
+    get_jlist,
     has_key,
 )
 from .signatures import (
@@ -591,6 +592,46 @@ def _collect_init_fields(
             if len(annotation) > 0:
                 param_types[arg_name] = annotation_to_str(annotation)
         i += 1
+    # Build param_has_default map from defaults/kw_defaults
+    param_has_default: dict[str, bool] = {}
+    defaults = get_nodes(args, "defaults")
+    kw_defaults = get_jlist(args, "kw_defaults")
+    non_self_posonly: list[ASTNode] = []
+    i = 0
+    while i < len(posonlyargs):
+        a = posonlyargs[i]
+        if get_str(a, "arg") != "self":
+            non_self_posonly.append(a)
+        i += 1
+    non_self_regular: list[ASTNode] = []
+    i = 0
+    while i < len(args_list):
+        a = args_list[i]
+        if get_str(a, "arg") != "self":
+            non_self_regular.append(a)
+        i += 1
+    n_positional = len(non_self_posonly) + len(non_self_regular)
+    n_defaults = len(defaults)
+    i = 0
+    while i < len(non_self_posonly):
+        pname = get_str(non_self_posonly[i], "arg")
+        if pname != "":
+            param_has_default[pname] = i >= n_positional - n_defaults
+        i += 1
+    i = 0
+    while i < len(non_self_regular):
+        pname = get_str(non_self_regular[i], "arg")
+        if pname != "":
+            idx = len(non_self_posonly) + i
+            param_has_default[pname] = idx >= n_positional - n_defaults
+        i += 1
+    i = 0
+    while i < len(kwonlyargs):
+        pname = get_str(kwonlyargs[i], "arg")
+        if pname != "" and pname != "self":
+            has_kw_def = i < len(kw_defaults) and not isinstance(kw_defaults[i], JNull)
+            param_has_default[pname] = has_kw_def
+        i += 1
     has_computed_init = False
     body = get_nodes(init, "body")
     lineno = get_int(init, "lineno")
@@ -722,7 +763,9 @@ def _collect_init_fields(
                                             name=field_name,
                                             typ=typ,
                                             py_name=field_name,
-                                            has_default=False,
+                                            has_default=param_has_default.get(
+                                                param_name, False
+                                            ),
                                             default=None,
                                         )
                                 elif is_const_str:
@@ -782,6 +825,9 @@ def _collect_init_fields(
                                         return
                 j += 1
         i += 1
+    if len(info.init_params) == 0:
+        for fk in info.fields:
+            info.fields[fk].has_default = True
     if len(info.init_params) > 0:
         info.needs_constructor = True
     elif has_computed_init:

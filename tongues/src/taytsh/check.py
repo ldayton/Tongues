@@ -477,29 +477,6 @@ def is_hashable(t: Type) -> bool:
     return False
 
 
-def has_zero_value(t: Type) -> bool:
-    if t.kind in (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_BYTES, TY_STRING, TY_RUNE):
-        return True
-    if t.kind == TY_ERROR:
-        return True
-    if isinstance(t, ListT):
-        return True
-    if isinstance(t, MapT):
-        return True
-    if isinstance(t, SetT):
-        return True
-    if isinstance(t, TupleT):
-        for e in t.elements:
-            if not has_zero_value(e):
-                return False
-        return True
-    if isinstance(t, UnionT):
-        return contains_nil(t)
-    if t.kind == TY_NIL:
-        return True
-    return False
-
-
 # ============================================================
 # BUILT-IN NAMES (reserved)
 # ============================================================
@@ -1130,6 +1107,9 @@ class Checker:
 
     def check_let_stmt(self, stmt: TLetStmt) -> None:
         declared_type = self.resolve_type(stmt.typ)
+        if declared_type.kind == TY_VOID:
+            self.error("void is not a value type", stmt.pos)
+            return
         if stmt.value is not None:
             val_type = self.check_expr(stmt.value, declared_type)
             if val_type is not None and not is_assignable(val_type, declared_type):
@@ -1138,13 +1118,6 @@ class Checker:
                     + type_name(val_type)
                     + " to "
                     + type_name(declared_type),
-                    stmt.pos,
-                )
-        else:
-            if not has_zero_value(declared_type):
-                self.error(
-                    type_name(declared_type)
-                    + " has no zero value; initializer required",
                     stmt.pos,
                 )
         self.declare(stmt.name, declared_type, stmt.pos)
@@ -2249,8 +2222,43 @@ class Checker:
                 "'" + obj_type.name + "' has no method '" + access.field + "'", pos
             )
             return None
+        if isinstance(obj_type, (MapT, ListT, SetT)):
+            return self._check_collection_method(obj_type, access.field, args, pos)
+        if obj_type.kind in (TY_STRING, TY_BYTES, TY_ERROR):
+            return ERROR_T
         self.error("cannot call method on " + type_name(obj_type), pos)
         return None
+
+    def _check_collection_method(
+        self, obj_type: Type, method: str, args: list[TArg], pos: Pos
+    ) -> Type | None:
+        if isinstance(obj_type, MapT):
+            if method == "get":
+                return obj_type.value
+            if method == "keys":
+                return ListT(kind="list", element=obj_type.key)
+            if method == "values":
+                return ListT(kind="list", element=obj_type.value)
+            if method == "items":
+                return ListT(
+                    kind="list",
+                    element=TupleT(
+                        kind="tuple", elements=[obj_type.key, obj_type.value]
+                    ),
+                )
+            if method in ("pop", "setdefault"):
+                return obj_type.value
+        if isinstance(obj_type, ListT):
+            if method == "append":
+                return VOID_T
+            if method == "pop":
+                return obj_type.element
+            if method in ("extend", "insert", "remove", "clear", "reverse", "sort"):
+                return VOID_T
+        if isinstance(obj_type, SetT):
+            if method in ("add", "remove", "discard", "clear"):
+                return VOID_T
+        return ERROR_T
 
     def check_list_lit(self, expr: TListLit, expected: Type | None) -> Type | None:
         if len(expr.elements) == 0:
@@ -2316,9 +2324,24 @@ class Checker:
                 if not (kt.kind in _map_compat and check_key.kind in _map_compat):
                     self.error("map keys must have same type", ki.pos)
             if vt is not None and not is_assignable(vt, check_val):
-                self.error("map values must have same type", vi.pos)
+                widened = self._widen_to_common_interface(check_val, vt)
+                if widened is not None:
+                    check_val = widened
+                else:
+                    self.error("map values must have same type", vi.pos)
             i += 1
         return MapT(kind="map", key=check_key, value=check_val)
+
+    def _widen_to_common_interface(self, a: Type, b: Type) -> Type | None:
+        if is_assignable(a, b):
+            return b
+        if is_assignable(b, a):
+            return a
+        for t in self.types.values():
+            if isinstance(t, InterfaceT):
+                if is_assignable(a, t) and is_assignable(b, t):
+                    return t
+        return None
 
     def check_set_lit(self, expr: TSetLit, expected: Type | None) -> Type | None:
         if len(expr.elements) == 0:
@@ -3102,6 +3125,8 @@ class Checker:
             if t is not None:
                 if isinstance(t, ListT):
                     return SetT(kind="set", element=t.element)
+                if isinstance(t, SetT):
+                    return t
                 self.error("SetFromList requires list argument", pos)
             return None
 
