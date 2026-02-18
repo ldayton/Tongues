@@ -56,14 +56,14 @@ fn Main() -> void {
 error: while condition must be bool
 ---
 
-=== list as if condition is truthy
+=== list as if condition rejected
 fn Main() -> void {
     let xs: list[int] = [1]
     if xs {
     }
 }
 ---
-ok
+error: if condition must be bool
 ---
 
 === break outside loop
@@ -125,12 +125,12 @@ fn Main() -> void {
 ok
 ---
 
-=== for over list of tuples destructures
+=== for over list of tuples two vars gives index and value
 fn Main() -> void {
     let pairs: list[(string, int)] = [("a", 1), ("b", 2)]
-    for s, n in pairs {
-        let name: string = s
-        let num: int = n
+    for i, pair in pairs {
+        let idx: int = i
+        let val: (string, int) = pair
     }
 }
 ---
@@ -313,18 +313,18 @@ fn Main() -> void {
 error: invalid assignment target
 ---
 
-=== cannot assign to self
+=== cannot assign to this
 struct Pt {
     x: int
     y: int
-    fn Reset(self) -> void {
-        self = Pt(0, 0)
+    fn Reset(this) -> void {
+        this = Pt(0, 0)
     }
 }
 fn Main() -> void {
 }
 ---
-error: cannot assign to self
+error: cannot assign to this
 ---
 
 === cannot assign to tuple element
@@ -572,13 +572,13 @@ fn Main() -> void {
 ok
 ---
 
-=== self outside method
-fn Foo(self) -> void {
+=== this outside method
+fn Foo(this) -> void {
 }
 fn Main() -> void {
 }
 ---
-error: self outside method
+error: this outside method
 ---
 
 === unreachable catch after catch-all
@@ -710,34 +710,34 @@ fn Main() -> void {
 ok
 ---
 
-=== while with map as truthy condition
+=== while with map as condition rejected
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
     while m {
     }
 }
 ---
-ok
+error: while condition must be bool
 ---
 
-=== while with set as truthy condition
+=== while with set as condition rejected
 fn Main() -> void {
     let s: set[int] = {1, 2}
     while s {
     }
 }
 ---
-ok
+error: while condition must be bool
 ---
 
-=== if with map as truthy condition
+=== if with map as condition rejected
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
     if m {
     }
 }
 ---
-ok
+error: if condition must be bool
 ---
 
 === for over list with index and value types correct
@@ -803,4 +803,263 @@ fn Main() -> void {
 }
 ---
 ok
+---
+
+=== assign to loop variable rejected
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in xs {
+        x = 10
+    }
+}
+---
+error: cannot assign to loop variable
+---
+
+=== assign to slice rejected
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    xs[0:2] = [4, 5]
+}
+---
+error: cannot assign to slice
+---
+
+=== expression statement non-call rejected
+fn Main() -> void {
+    1 + 2
+}
+---
+error: expression has no effect
+---
+
+=== expression statement method call ok
+struct Counter {
+    value: int
+    fn Inc(this) -> void {
+        this.value = this.value + 1
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.Inc()
+}
+---
+ok
+---
+
+=== unreachable code after return
+fn Foo() -> int {
+    return 42
+    let x: int = 1
+}
+fn Main() -> void {
+}
+---
+error: unreachable code
+---
+
+=== unreachable code after throw
+fn Foo() -> void {
+    throw ValueError("bad")
+    let x: int = 1
+}
+fn Main() -> void {
+}
+---
+error: unreachable code
+---
+
+=== unreachable code after break
+fn Main() -> void {
+    while true {
+        break
+        let x: int = 1
+    }
+}
+---
+error: unreachable code
+---
+
+=== unreachable code after continue
+fn Main() -> void {
+    while true {
+        continue
+        let x: int = 1
+    }
+}
+---
+error: unreachable code
+---
+
+=== control flow in finally return rejected
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("42", 10)
+    } finally {
+        return
+    }
+}
+---
+error: control flow in finally
+---
+
+=== control flow in finally throw rejected
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("42", 10)
+    } finally {
+        throw ValueError("bad")
+    }
+}
+---
+error: control flow in finally
+---
+
+=== control flow in finally break rejected
+fn Main() -> void {
+    while true {
+        try {
+            let n: int = ParseInt("42", 10)
+        } finally {
+            break
+        }
+    }
+}
+---
+error: control flow in finally
+---
+
+=== control flow in finally continue rejected
+fn Main() -> void {
+    while true {
+        try {
+            let n: int = ParseInt("42", 10)
+        } finally {
+            continue
+        }
+    }
+}
+---
+error: control flow in finally
+---
+
+=== duplicate typed catch
+fn Main() -> void {
+    try {
+        throw ValueError("bad")
+    } catch e: ValueError {
+    } catch e2: ValueError {
+    }
+}
+---
+error: duplicate catch
+---
+
+=== catch type must be struct not primitive
+fn Main() -> void {
+    try {
+        throw ValueError("bad")
+    } catch e: int {
+    }
+}
+---
+error:
+---
+
+=== catch type must be struct not collection
+fn Main() -> void {
+    try {
+        throw ValueError("bad")
+    } catch e: list[int] {
+    }
+}
+---
+error:
+---
+
+=== for over tuple rejected
+fn Main() -> void {
+    let t: (int, string) = (1, "hello")
+    for v in t {
+    }
+}
+---
+error: cannot iterate
+---
+
+=== for over optional rejected
+fn Main() -> void {
+    let x: int? = 42
+    for v in x {
+    }
+}
+---
+error: cannot iterate
+---
+
+=== throw union of all throwable types
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+fn Foo(e: ValueError | KeyError) -> void {
+    throw e
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== throw union containing non-throwable rejected
+fn Foo(v: ValueError | int) -> void {
+    throw v
+}
+fn Main() -> void {
+}
+---
+error: cannot throw
+---
+
+=== tuple assignment type mismatch
+fn Pair() -> (int, string) {
+    return (1, "hello")
+}
+fn Main() -> void {
+    let a: int
+    let b: int
+    a, b = Pair()
+}
+---
+error:
+---
+
+=== if with string as truthy condition rejected
+fn Main() -> void {
+    let s: string = "hello"
+    if s {
+    }
+}
+---
+error: if condition must be bool
+---
+
+=== while with int as truthy condition rejected
+fn Main() -> void {
+    while 1 {
+    }
+}
+---
+error: while condition must be bool
+---
+
+=== if with optional not truthy
+fn Main() -> void {
+    let x: int? = 42
+    if x {
+    }
+}
+---
+error: if condition must be bool
 ---

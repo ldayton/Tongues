@@ -757,24 +757,6 @@ fn Main() -> void {
 ok
 ---
 
-=== RuntimeError construction
-fn Main() -> void {
-    let e: RuntimeError = RuntimeError("bad")
-    WritelnErr(e.message)
-}
----
-ok
----
-
-=== TypeError construction
-fn Main() -> void {
-    let e: TypeError = TypeError("bad")
-    WritelnErr(e.message)
-}
----
-ok
----
-
 === IndexError construction
 fn Main() -> void {
     let e: IndexError = IndexError("bad")
@@ -862,12 +844,20 @@ fn Main() -> void {
 ok
 ---
 
-=== ReadFile returns bytes
+=== ReadFile returns string or bytes
+fn Main() -> void {
+    let b: string | bytes = ReadFile("test.txt")
+}
+---
+ok
+---
+
+=== ReadFile to bytes rejected
 fn Main() -> void {
     let b: bytes = ReadFile("test.txt")
 }
 ---
-ok
+error: cannot assign
 ---
 
 === WriteFile with string
@@ -1116,32 +1106,6 @@ fn Main() -> void {
 error:
 ---
 
-=== NotImplementedError construction
-fn Main() -> void {
-    let e: NotImplementedError = NotImplementedError("todo")
-    WritelnErr(e.message)
-}
----
-ok
----
-
-=== Exception construction
-fn Main() -> void {
-    let e: Exception = Exception("bad")
-    WritelnErr(e.message)
-}
----
-ok
----
-
-=== BaseException construction
-fn Main() -> void {
-    let e: BaseException = BaseException("bad")
-    WritelnErr(e.message)
-}
----
-ok
----
 
 === Get returns optional without default
 fn Main() -> void {
@@ -1196,6 +1160,335 @@ error:
 === IntToByte wrong type
 fn Main() -> void {
     let b: byte = IntToByte("42")
+}
+---
+error:
+---
+
+=== DivMod wrong type
+fn Main() -> void {
+    let result: (int, int) = DivMod(17, "5")
+}
+---
+error:
+---
+
+=== Round wrong type
+fn Main() -> void {
+    let x: int = Round(42)
+}
+---
+error:
+---
+
+=== Floor wrong type
+fn Main() -> void {
+    let x: int = Floor(42)
+}
+---
+error:
+---
+
+=== Ceil wrong type
+fn Main() -> void {
+    let x: int = Ceil(42)
+}
+---
+error:
+---
+
+=== IsNaN wrong type
+fn Main() -> void {
+    let b: bool = IsNaN(42)
+}
+---
+error:
+---
+
+=== IsInf wrong type
+fn Main() -> void {
+    let b: bool = IsInf(42)
+}
+---
+error:
+---
+
+=== RuneFromInt wrong type
+fn Main() -> void {
+    let c: rune = RuneFromInt("65")
+}
+---
+error:
+---
+
+=== RuneToInt wrong type
+fn Main() -> void {
+    let n: int = RuneToInt(42)
+}
+---
+error:
+---
+
+=== ParseFloat wrong type
+fn Main() -> void {
+    let f: float = ParseFloat(42)
+}
+---
+error:
+---
+
+=== FormatInt wrong type
+fn Main() -> void {
+    let s: string = FormatInt("255", 16)
+}
+---
+error:
+---
+
+=== Split wrong type
+fn Main() -> void {
+    let parts: list[string] = Split(42, ",")
+}
+---
+error:
+---
+
+=== Join wrong type
+fn Main() -> void {
+    let s: string = Join(",", "abc")
+}
+---
+error:
+---
+
+=== Find wrong type
+fn Main() -> void {
+    let i: int = Find(42, "hello")
+}
+---
+error:
+---
+
+=== Replace wrong type
+fn Main() -> void {
+    let s: string = Replace(42, "a", "b")
+}
+---
+error:
+---
+
+=== StartsWith wrong type
+fn Main() -> void {
+    let b: bool = StartsWith(42, "he")
+}
+---
+error:
+---
+
+=== Repeat wrong count type
+fn Main() -> void {
+    let s: string = Repeat("ab", "3")
+}
+---
+error:
+---
+
+=== Reversed wrong type
+fn Main() -> void {
+    let xs: string = Reversed("hello")
+}
+---
+error:
+---
+
+=== Pop from empty type rejected
+fn Main() -> void {
+    let x: int = Pop("hello")
+}
+---
+error:
+---
+
+=== RemoveAt wrong args
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    RemoveAt(xs, "0")
+}
+---
+error:
+---
+
+=== Keys on non-map rejected
+fn Main() -> void {
+    let ks: list[int] = Keys([1, 2, 3])
+}
+---
+error:
+---
+
+=== Values on non-map rejected
+fn Main() -> void {
+    let vs: list[int] = Values([1, 2, 3])
+}
+---
+error:
+---
+
+=== Items on non-map rejected
+fn Main() -> void {
+    let is: list[(int, int)] = Items([1, 2, 3])
+}
+---
+error:
+---
+
+=== Add to non-set rejected
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    Add(xs, 3)
+}
+---
+error:
+---
+
+=== Remove from non-set rejected
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    Remove(xs, 1)
+}
+---
+error:
+---
+
+=== Union non-set rejected
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    let ys: list[int] = Union(xs, xs)
+}
+---
+error:
+---
+
+=== Intersection non-set rejected
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    let ys: list[int] = Intersection(xs, xs)
+}
+---
+error:
+---
+
+=== Difference non-set rejected
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    let ys: list[int] = Difference(xs, xs)
+}
+---
+error:
+---
+
+=== Sorted on list of byte
+fn Main() -> void {
+    let bs: list[byte] = [0x03, 0x01, 0x02]
+    let sorted: list[byte] = Sorted(bs)
+}
+---
+ok
+---
+
+=== Sorted on list of rune
+fn Main() -> void {
+    let cs: list[rune] = ['c', 'a', 'b']
+    let sorted: list[rune] = Sorted(cs)
+}
+---
+ok
+---
+
+=== Sorted on list of float
+fn Main() -> void {
+    let fs: list[float] = [3.0, 1.0, 2.0]
+    let sorted: list[float] = Sorted(fs)
+}
+---
+ok
+---
+
+=== Sorted on list of bool rejected
+fn Main() -> void {
+    let bs: list[bool] = [true, false]
+    let sorted: list[bool] = Sorted(bs)
+}
+---
+error: ordered
+---
+
+=== Sorted on list of struct rejected
+struct Pt {
+    x: int
+}
+fn Main() -> void {
+    let ps: list[Pt]
+    let sorted: list[Pt] = Sorted(ps)
+}
+---
+error: ordered
+---
+
+=== Get default type mismatch
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let v: int = Get(m, "a", "default")
+}
+---
+error:
+---
+
+=== Bytes wrong type
+fn Main() -> void {
+    let b: bytes = Bytes("10")
+}
+---
+error:
+---
+
+=== BytesFrom wrong type
+fn Main() -> void {
+    let b: bytes = BytesFrom("hello")
+}
+---
+error:
+---
+
+=== RangeList wrong types
+fn Main() -> void {
+    let xs: list[int] = RangeList("0", 10, 1)
+}
+---
+error:
+---
+
+=== Concat type mismatch
+fn Main() -> void {
+    let s: string = Concat("hello", 42)
+}
+---
+error:
+---
+
+=== Contains wrong type on set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    let b: bool = Contains(s, "hello")
+}
+---
+error:
+---
+
+=== Contains wrong type on map
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1}
+    let b: bool = Contains(m, 42)
 }
 ---
 error:

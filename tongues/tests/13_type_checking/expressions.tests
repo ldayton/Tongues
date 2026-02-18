@@ -100,14 +100,14 @@ fn Main() -> void {
 ok
 ---
 
-=== comparison bytes
+=== ordering not defined for bytes
 fn Main() -> void {
     let a: bytes = b"\x01"
     let b: bytes = b"\x02"
     let c: bool = a < b
 }
 ---
-ok
+error: ordering not defined for
 ---
 
 === ordering not defined for bool
@@ -315,12 +315,12 @@ fn Main() -> void {
 error: ternary condition must be bool
 ---
 
-=== ternary branch type mismatch
+=== ternary different branches produces union
 fn Main() -> void {
     let x: int = true ? 1 : "hello"
 }
 ---
-error: ternary branches must have same type
+error: cannot assign
 ---
 
 === ternary with nil widens to optional
@@ -622,7 +622,7 @@ fn Main() -> void {
 error: cannot slice
 ---
 
-=== field access on interface shared field
+=== field access on interface rejected
 interface Node {}
 struct Literal : Node {
     value: int
@@ -636,7 +636,7 @@ fn GetVal(n: Node) -> int {
 fn Main() -> void {
 }
 ---
-ok
+error: cannot access field on interface
 ---
 
 === field access on interface no such field
@@ -824,13 +824,13 @@ fn Main() -> void {
 error: bitwise complement not defined for
 ---
 
-=== logical not with truthy list succeeds
+=== logical not with list rejected
 fn Main() -> void {
     let xs: list[int] = [1, 2]
     let b: bool = !xs
 }
 ---
-ok
+error: logical not requires bool
 ---
 
 === tuple access on non-tuple
@@ -842,13 +842,13 @@ fn Main() -> void {
 error: tuple access on non-tuple
 ---
 
-=== ternary with truthy list condition
+=== ternary with list condition rejected
 fn Main() -> void {
     let xs: list[int] = [1, 2]
     let y: int = xs ? 1 : 0
 }
 ---
-ok
+error: ternary condition must be bool
 ---
 
 === map indexing wrong key type
@@ -942,8 +942,8 @@ error: must be same type
 === method call on optional without narrowing
 struct Counter {
     value: int
-    fn Get(self) -> int {
-        return self.value
+    fn Get(this) -> int {
+        return this.value
     }
 }
 fn Foo(c: Counter?) -> int {
@@ -1009,4 +1009,136 @@ fn Main() -> void {
 }
 ---
 error: enum variant is not callable
+---
+
+=== equality not defined for fn
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    let g: fn[int, int] = Double
+    let eq: bool = f == g
+}
+---
+error: equality not defined for fn
+---
+
+=== equality rejected for type containing fn
+fn Main() -> void {
+    let a: (int, fn[int, int])
+    let b: (int, fn[int, int])
+    let eq: bool = a == b
+}
+---
+error: equality not defined for fn
+---
+
+=== equality rejected for list of fn
+fn Main() -> void {
+    let a: list[fn[int, int]]
+    let b: list[fn[int, int]]
+    let eq: bool = a == b
+}
+---
+error: equality not defined for fn
+---
+
+=== integer literal too large
+fn Main() -> void {
+    let x: int = 99999999999999999999
+}
+---
+error: integer literal too large
+---
+
+=== map literal duplicate key
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2, "a": 3}
+}
+---
+error: duplicate key
+---
+
+=== empty list without context type rejected
+fn Main() -> void {
+    let xs: list[int]
+    let ys: list[int] = Concat(xs, [])
+}
+---
+ok
+---
+
+=== list literal inferred type without context
+fn Main() -> void {
+    let xs: list[int] = Concat([1, 2], [3, 4])
+}
+---
+ok
+---
+
+=== cannot index set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    let x: int = s[0]
+}
+---
+error: cannot index
+---
+
+=== cannot slice set
+fn Main() -> void {
+    let s: set[int] = {1, 2, 3}
+    let t: set[int] = s[0:2]
+}
+---
+error: cannot slice
+---
+
+=== cannot index enum
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color = Color.Red
+    let x: int = c[0]
+}
+---
+error: cannot index
+---
+
+=== shift not defined for union
+fn Foo(v: int | byte) -> void {
+    let x: int | byte = v << 1
+}
+fn Main() -> void {
+}
+---
+error: must be int or byte
+---
+
+=== arithmetic on string concatenation not allowed
+fn Main() -> void {
+    let s: string = "hello" - "he"
+}
+---
+error: not defined for
+---
+
+=== comparison between different types
+fn Main() -> void {
+    let b: bool = 42 < "hello"
+}
+---
+error: cannot compare
+---
+
+=== ternary produces union of different types
+fn Main() -> void {
+    let v: int | string = true ? 42 : "hello"
+}
+---
+ok
 ---

@@ -583,7 +583,7 @@ fn Main() -> void {
 ok
 ---
 
-=== match map type with default
+=== cannot match on map
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
     match m {
@@ -592,7 +592,7 @@ fn Main() -> void {
     }
 }
 ---
-ok
+error: cannot match on map
 ---
 
 === cannot match on float
@@ -650,6 +650,151 @@ fn Foo(c: Color) -> string {
         }
         default {
             return "unknown"
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== match union with interface member
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+struct Rect : Shape {
+    width: float
+}
+fn Foo(v: Shape | int) -> string {
+    match v {
+        case c: Circle {
+            return "circle"
+        }
+        case r: Rect {
+            return "rect"
+        }
+        case n: int {
+            return "int"
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== match default binding residual type
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    left: Node
+    right: Node
+}
+struct UnaryOp : Node {
+    operand: Node
+}
+fn Foo(n: Node) -> int {
+    match n {
+        case lit: Literal {
+            return lit.value
+        }
+        default other {
+            return 0
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== match on rune rejected
+fn Main() -> void {
+    let c: rune = 'a'
+    match c {
+        default {
+        }
+    }
+}
+---
+error: cannot match on rune
+---
+
+=== match on bytes rejected
+fn Main() -> void {
+    let b: bytes = b"\x01"
+    match b {
+        default {
+        }
+    }
+}
+---
+error: cannot match on bytes
+---
+
+=== match on fn type rejected
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    match f {
+        default {
+        }
+    }
+}
+---
+error: cannot match on fn
+---
+
+=== match on set rejected
+fn Main() -> void {
+    let s: set[int] = {1, 2}
+    match s {
+        default {
+        }
+    }
+}
+---
+error: cannot match on set
+---
+
+=== match nil case where scrutinee has no nil
+fn Foo(v: int | string) -> void {
+    match v {
+        case nil {
+        }
+        default {
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+error:
+---
+
+=== match interface with default all paths return
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    left: Node
+}
+fn Eval(n: Node) -> int {
+    match n {
+        case lit: Literal {
+            return lit.value
+        }
+        default {
+            return 0
         }
     }
 }

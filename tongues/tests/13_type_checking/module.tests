@@ -237,3 +237,42 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== unknown annotation rejected
+@@["unknown_feature"]
+fn Main() -> void {
+}
+---
+error: unknown annotation
+---
+
+=== strict_math annotation valid
+@@["strict_math"]
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== parent enum rejected
+enum Color {
+    Red
+}
+struct Variant : Color {
+    x: int
+}
+fn Main() -> void {
+}
+---
+error: not an interface
+---
+
+=== struct parent is undefined type
+struct Child : Nonexistent {
+    x: int
+}
+fn Main() -> void {
+}
+---
+error:
+---

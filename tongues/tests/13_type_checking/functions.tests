@@ -121,11 +121,11 @@ fn Main() -> void {
 error:
 ---
 
-=== method call with self
+=== method call with this
 struct Counter {
     value: int
-    fn Get(self) -> int {
-        return self.value
+    fn Get(this) -> int {
+        return this.value
     }
 }
 fn Main() -> void {
@@ -139,8 +139,8 @@ ok
 === method with extra parameters
 struct Counter {
     value: int
-    fn Add(self, n: int) -> int {
-        return self.value + n
+    fn Add(this, n: int) -> int {
+        return this.value + n
     }
 }
 fn Main() -> void {
@@ -329,8 +329,8 @@ error: cannot pass
 === method return type used correctly
 struct Counter {
     value: int
-    fn Get(self) -> int {
-        return self.value
+    fn Get(this) -> int {
+        return this.value
     }
 }
 fn Main() -> void {
@@ -344,8 +344,8 @@ error: cannot assign
 === bound method as value rejected
 struct Counter {
     value: int
-    fn Get(self) -> int {
-        return self.value
+    fn Get(this) -> int {
+        return this.value
     }
 }
 fn Main() -> void {
@@ -359,8 +359,8 @@ error: cannot capture
 === method call wrong argument type
 struct Adder {
     base: int
-    fn Add(self, n: int) -> int {
-        return self.base + n
+    fn Add(this, n: int) -> int {
+        return this.base + n
     }
 }
 fn Main() -> void {
@@ -416,8 +416,8 @@ error: cannot mix positional and named
 === method call arity mismatch
 struct Counter {
     value: int
-    fn Add(self, n: int) -> int {
-        return self.value + n
+    fn Add(this, n: int) -> int {
+        return this.value + n
     }
 }
 fn Main() -> void {
@@ -428,12 +428,12 @@ fn Main() -> void {
 error: expected
 ---
 
-=== self access non-existent field
+=== this access non-existent field
 struct Pt {
     x: int
     y: int
-    fn Foo(self) -> int {
-        return self.z
+    fn Foo(this) -> int {
+        return this.z
     }
 }
 fn Main() -> void {
@@ -442,11 +442,11 @@ fn Main() -> void {
 error: has no field
 ---
 
-=== self assign wrong type to field
+=== this assign wrong type to field
 struct Counter {
     value: int
-    fn Reset(self) -> void {
-        self.value = "zero"
+    fn Reset(this) -> void {
+        this.value = "zero"
     }
 }
 fn Main() -> void {
@@ -455,14 +455,14 @@ fn Main() -> void {
 error: cannot assign
 ---
 
-=== method calls another method on self
+=== method calls another method on this
 struct Calc {
     value: int
-    fn Double(self) -> int {
-        return self.value * 2
+    fn Double(this) -> int {
+        return this.value * 2
     }
-    fn DoublePlus(self, n: int) -> int {
-        return self.Double() + n
+    fn DoublePlus(this, n: int) -> int {
+        return this.Double() + n
     }
 }
 fn Main() -> void {
@@ -513,4 +513,186 @@ fn Main() -> void {
 }
 ---
 error: cannot assign
+---
+
+=== not all paths return simple
+fn Foo(x: int) -> int {
+    if x > 0 {
+        return x
+    }
+}
+fn Main() -> void {
+}
+---
+error: not all paths return
+---
+
+=== all paths return with if else
+fn Foo(x: int) -> int {
+    if x > 0 {
+        return x
+    } else {
+        return 0
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== while true is complete
+fn Foo() -> int {
+    while true {
+        return 42
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== while true with break is not complete
+fn Foo(x: int) -> int {
+    while true {
+        if x > 0 {
+            break
+        }
+        return 42
+    }
+}
+fn Main() -> void {
+}
+---
+error: not all paths return
+---
+
+=== match exhaustive all paths return
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    left: Node
+    right: Node
+}
+fn Eval(n: Node) -> int {
+    match n {
+        case l: Lit {
+            return l.value
+        }
+        case b: BinOp {
+            return Eval(b.left) + Eval(b.right)
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== throw satisfies return path
+fn Foo(x: int) -> int {
+    if x > 0 {
+        return x
+    } else {
+        throw ValueError("negative")
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== fn literal not all paths return
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int {
+        if x > 0 {
+            return x
+        }
+    }
+}
+---
+error: not all paths return
+---
+
+=== named args on builtin rejected
+fn Main() -> void {
+    let n: int = Len(x: "hello")
+}
+---
+error:
+---
+
+=== named args on fn value rejected
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    let y: int = f(x: 21)
+}
+---
+error:
+---
+
+=== closure can reference top-level function
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int => Double(x)
+}
+---
+ok
+---
+
+=== closure can reference top-level type
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let f: fn[int, Pt] = (n: int) -> Pt => Pt(n, n)
+}
+---
+ok
+---
+
+=== closure can reference builtins
+fn Main() -> void {
+    let f: fn[int, string] = (x: int) -> string => ToString(x)
+}
+---
+ok
+---
+
+=== struct ToString method override valid
+struct Pt {
+    x: int
+    y: int
+    fn ToString(this) -> string {
+        return Concat(ToString(this.x), Concat(",", ToString(this.y)))
+    }
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, 2)
+    let s: string = p.ToString()
+}
+---
+ok
+---
+
+=== duplicate function name
+fn Foo() -> void {
+}
+fn Foo() -> void {
+}
+fn Main() -> void {
+}
+---
+error: duplicate
 ---

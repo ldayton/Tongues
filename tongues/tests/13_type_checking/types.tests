@@ -589,3 +589,144 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== let without init struct requires initializer
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt
+}
+---
+error: initializer required
+---
+
+=== let without init interface requires initializer
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node
+}
+---
+error: initializer required
+---
+
+=== let without init enum requires initializer
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color
+}
+---
+error: initializer required
+---
+
+=== let without init fn requires initializer
+fn Main() -> void {
+    let f: fn[int, int]
+}
+---
+error: initializer required
+---
+
+=== let without init union without nil requires initializer
+fn Main() -> void {
+    let v: int | string
+}
+---
+error: initializer required
+---
+
+=== let without init union with nil allowed
+fn Main() -> void {
+    let v: int | nil
+}
+---
+ok
+---
+
+=== double optional rejected
+fn Main() -> void {
+    let x: int??
+}
+---
+error: double optional
+---
+
+=== single element tuple rejected
+fn Main() -> void {
+    let t: (int)
+}
+---
+error: tuple requires at least two elements
+---
+
+=== union with hashable members not hashable as map key
+fn Main() -> void {
+    let m: map[int | string, bool]
+}
+---
+error: not hashable
+---
+
+=== void not allowed as optional base
+fn Main() -> void {
+    let x: void?
+}
+---
+error: void
+---
+
+=== void not allowed in fn type return used as value
+fn Main() -> void {
+    let f: fn[void]
+}
+---
+ok
+---
+
+=== let without init tuple of zero-valued types allowed
+fn Main() -> void {
+    let t: (int, string)
+}
+---
+ok
+---
+
+=== let without init tuple with non-zero element requires initializer
+fn Main() -> void {
+    let t: (int, fn[int, int])
+}
+---
+error: initializer required
+---
+
+=== bytes not hashable as map key
+fn Main() -> void {
+    let m: map[bytes, int]
+}
+---
+ok
+---
+
+=== rune hashable as map key
+fn Main() -> void {
+    let m: map[rune, string]
+}
+---
+ok
+---
+
+=== optional not hashable as map key
+fn Main() -> void {
+    let m: map[int?, string]
+}
+---
+error: not hashable
+---

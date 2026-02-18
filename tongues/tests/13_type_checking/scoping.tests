@@ -304,8 +304,81 @@ fn Main() -> void {
     try {
         let n: int = ParseInt("abc", 10)
     } catch e: ValueError {
-    } catch e: RuntimeError {
+    } catch e: KeyError {
     }
+}
+---
+ok
+---
+
+=== reserved name as match binding rejected
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Literal(42)
+    match n {
+        case Len: Literal {
+        }
+        case b: BinOp {
+        }
+    }
+}
+---
+error: reserved name
+---
+
+=== reserved name as default binding rejected
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Literal(42)
+    match n {
+        default Len {
+        }
+    }
+}
+---
+error: reserved name
+---
+
+=== discard in loop variable not registered
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for _ in xs {
+    }
+    for _ in xs {
+    }
+}
+---
+ok
+---
+
+=== let in try scoped to try block
+fn Main() -> void {
+    try {
+        let x: int = 42
+    } catch e: ValueError {
+        let y: int = x
+    }
+}
+---
+error: undefined name
+---
+
+=== local variable shadows top-level type
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let Foo: int = 42
+    let y: int = Foo
 }
 ---
 ok
