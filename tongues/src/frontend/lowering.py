@@ -3583,6 +3583,7 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     env.var_types[name] = type_dict
     if name in env.hoisted_stmts:
         _backpatch_hoisted(name, type_dict, env)
+        env.hoisted_stmts.pop(name)
     safe = _safe_name(name)
     ann = _name_ann(safe, name)
     val: TExpr | None = None
