@@ -242,19 +242,36 @@ def _typenode_to_ttype(t: TypeNode) -> TType:
     return TPrimitive(_P0, "error")
 
 
-def _emit_hoisted_lets(
-    hoisted: list[tuple[str, TypeNode]], env: _Env, pre_stmts: list[TStmt]
+def _emit_hoisted_placeholders(
+    names: list[str], env: _Env, pre_stmts: list[TStmt]
 ) -> None:
-    """Emit TLetStmt declarations for hoisted variables."""
+    """Emit placeholder TLetStmt for hoisted variables, to be back-patched later."""
     h = 0
-    while h < len(hoisted):
-        hname, htype = hoisted[h]
+    while h < len(names):
+        hname = names[h]
         env.declared.add(hname)
-        env.var_types[hname] = htype
         safe = _safe_name(hname)
-        ttype = _typenode_to_ttype(htype)
-        pre_stmts.append(TLetStmt(_P0, safe, ttype, None, _name_ann(safe, hname)))
+        placeholder = TLetStmt(
+            _P0,
+            safe,
+            TPrimitive(_P0, "int"),
+            TIntLit(_P0, 0, "0", _EMPTY_ANN),
+            _name_ann(safe, hname),
+        )
+        env.hoisted_stmts[hname] = placeholder
+        pre_stmts.append(placeholder)
         h += 1
+
+
+def _backpatch_hoisted(name: str, typ: TypeNode, env: _Env) -> None:
+    """Back-patch a hoisted placeholder TLetStmt with the real type."""
+    placeholder = env.hoisted_stmts.get(name)
+    if placeholder is None:
+        return
+    ttype = _typenode_to_ttype(typ)
+    placeholder.typ = ttype
+    placeholder.value = _default_value_for_type(typ)
+    env.var_types[name] = typ
 
 
 def _unwrap_pointer(td: TypeNode) -> TypeNode:
@@ -591,6 +608,7 @@ class _Env:
         self.var_types: dict[str, TypeNode] = {}
         self.declared: set[str] = set()
         self.return_type: TypeNode = VOID_TYPE
+        self.hoisted_stmts: dict[str, TLetStmt] = {}
 
     def copy(self) -> _Env:
         env = _Env()
@@ -605,6 +623,7 @@ class _Env:
             env.declared.add(dkeys[i])
             i += 1
         env.return_type = self.return_type
+        env.hoisted_stmts = self.hoisted_stmts
         return env
 
 
@@ -3356,6 +3375,8 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             stmts.extend(_method_side_effects(value_node, env, ctx))
             return stmts
         # Re-assignment
+        if name in env.hoisted_stmts:
+            _backpatch_hoisted(name, val_type, env)
         target = TVar(_P0, safe, ann)
         stmts: list[TStmt] = [TAssignStmt(_P0, target, value, _EMPTY_ANN)]
         stmts.extend(_method_side_effects(value_node, env, ctx))
@@ -3459,6 +3480,8 @@ def _lower_tuple_assign(
                         if use_float:
                             init = TFloatLit(_P0, 0.0, "0.0", _EMPTY_ANN)
                         stmts.append(TLetStmt(_P0, safe, prim, init, ann))
+                    elif name in env.hoisted_stmts:
+                        _backpatch_hoisted(name, PrimitiveType(result_kind), env)
                     targets.append(TVar(_P0, safe, ann))
                 i += 1
             stmts.append(TTupleAssignStmt(_P0, targets, value, _EMPTY_ANN))
@@ -3487,6 +3510,9 @@ def _lower_tuple_assign(
                 ttype = _typenode_to_ttype(et)
                 init = _default_value_for_type(et)
                 stmts.append(TLetStmt(_P0, safe, ttype, init, ann))
+            elif name in env.hoisted_stmts:
+                et = elem_types[i] if i < len(elem_types) else INT_TYPE
+                _backpatch_hoisted(name, et, env)
             targets.append(TVar(_P0, safe, ann))
         i += 1
     stmts.append(TTupleAssignStmt(_P0, targets, value, _EMPTY_ANN))
@@ -3515,6 +3541,8 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         ttype = TPrimitive(_P0, "nil")
     env.declared.add(name)
     env.var_types[name] = type_dict
+    if name in env.hoisted_stmts:
+        _backpatch_hoisted(name, type_dict, env)
     safe = _safe_name(name)
     ann = _name_ann(safe, name)
     val: TExpr | None = None
@@ -3679,11 +3707,9 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     return [TOpAssignStmt(_P0, target, op_str, value, _EMPTY_ANN)]
 
 
-def _scan_assign_targets(
-    nodes: list[ASTNode], env: _Env, ctx: _LowerCtx
-) -> list[tuple[str, TypeNode]]:
-    """Scan AST nodes for first-assigned names not yet in env.declared."""
-    result: list[tuple[str, TypeNode]] = []
+def _scan_hoist_names(nodes: list[ASTNode], env: _Env) -> list[str]:
+    """Scan for variable names first-assigned inside branch bodies."""
+    result: list[str] = []
     seen: set[str] = set()
     stack: list[ASTNode] = []
     i = len(nodes) - 1
@@ -3702,22 +3728,10 @@ def _scan_assign_targets(
                 if isinstance(tgt, dict) and _is_ast(tgt, "Name"):
                     name = get_str(tgt, "id")
                     if name not in env.declared and name not in seen and name != "_":
-                        value_node = get_node(node, "value")
-                        val_type = _infer_expr_type(value_node, env, ctx)
-                        if _is_type_dict(val_type, ["void"]):
-                            val_type = PrimitiveType("error")
-                        result.append((name, val_type))
+                        result.append(name)
                         seen.add(name)
                 elif isinstance(tgt, dict) and _is_ast(tgt, "Tuple"):
                     elts = get_nodes(tgt, "elts")
-                    value_node = get_node(node, "value")
-                    val_type = _infer_expr_type(value_node, env, ctx)
-                    elem_types: list[TypeNode] = []
-                    if isinstance(val_type, TupleType):
-                        ei2 = 0
-                        while ei2 < len(val_type.elements):
-                            elem_types.append(val_type.elements[ei2])
-                            ei2 += 1
                     ei = 0
                     while ei < len(elts):
                         e = elts[ei]
@@ -3728,12 +3742,7 @@ def _scan_assign_targets(
                                 and ename not in seen
                                 and ename != "_"
                             ):
-                                et = (
-                                    elem_types[ei]
-                                    if ei < len(elem_types)
-                                    else PrimitiveType("error")
-                                )
-                                result.append((ename, et))
+                                result.append(ename)
                                 seen.add(ename)
                         ei += 1
         elif t == "AnnAssign":
@@ -3741,71 +3750,15 @@ def _scan_assign_targets(
             if isinstance(tgt, dict) and _is_ast(tgt, "Name"):
                 name = get_str(tgt, "id")
                 if name not in env.declared and name not in seen and name != "_":
-                    ann_jv = node.get("annotation")
-                    ann_str = ""
-                    if isinstance(ann_jv, JDict):
-                        ann_str = annotation_to_str(ann_jv.entries)
-                    td: TypeNode = VOID_TYPE
-                    if ann_str != "":
-                        td = py_type_to_type_dict(ann_str, ctx.known_classes, [], 0, 0)
-                    if _is_type_dict(td, ["void"]):
-                        value_node = get_node(node, "value")
-                        td = _infer_expr_type(value_node, env, ctx)
-                    if _is_type_dict(td, ["void"]):
-                        td = PrimitiveType("error")
-                    result.append((name, td))
+                    result.append(name)
                     seen.add(name)
-        elif t == "If":
+        elif t in ("If", "While", "For"):
             body = get_nodes(node, "body")
             orelse = get_nodes(node, "orelse")
-            test = get_node(node, "test")
-            narrowed = False
-            isinstance_node: ASTNode | None = None
-            if isinstance(test, dict) and _is_isinstance_call(test):
-                isinstance_node = test
-            elif isinstance(test, dict):
-                unwrapped = _unwrap_isinstance_and(test)
-                if unwrapped is not None:
-                    isinstance_node = unwrapped[0]
-            if isinstance_node is not None:
-                ivar = _isinstance_var(isinstance_node)
-                itype = _isinstance_type(isinstance_node)
-                if ivar != "" and itype != "":
-                    old_vt = env.var_types.get(ivar)
-                    if itype in ctx.known_classes:
-                        env.var_types[ivar] = PointerType(StructRef(itype))
-                    else:
-                        env.var_types[ivar] = StructRef(itype)
-                    sub = _scan_assign_targets(body, env, ctx)
-                    si = 0
-                    while si < len(sub):
-                        sname, stype = sub[si]
-                        if sname not in seen:
-                            result.append((sname, stype))
-                            seen.add(sname)
-                        si += 1
-                    if old_vt is not None:
-                        env.var_types[ivar] = old_vt
-                    else:
-                        env.var_types.pop(ivar)
-                    narrowed = True
-            if not narrowed:
-                j = len(body) - 1
-                while j >= 0:
-                    stack.append(body[j])
-                    j -= 1
             j = len(orelse) - 1
             while j >= 0:
                 stack.append(orelse[j])
                 j -= 1
-        elif t == "While":
-            body = get_nodes(node, "body")
-            j = len(body) - 1
-            while j >= 0:
-                stack.append(body[j])
-                j -= 1
-        elif t == "For":
-            body = get_nodes(node, "body")
             j = len(body) - 1
             while j >= 0:
                 stack.append(body[j])
@@ -3860,9 +3813,9 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     while bi < len(orelse):
         all_branch_nodes.append(orelse[bi])
         bi += 1
-    hoisted = _scan_assign_targets(all_branch_nodes, env, ctx)
+    hoist_names = _scan_hoist_names(all_branch_nodes, env)
     pre_stmts: list[TStmt] = []
-    _emit_hoisted_lets(hoisted, env, pre_stmts)
+    _emit_hoisted_placeholders(hoist_names, env, pre_stmts)
     cond = _lower_as_bool(test, env, ctx)
     then_body = _lower_stmts(body, env, ctx)
     else_body: list[TStmt] | None = None
@@ -4024,9 +3977,9 @@ def _lower_isinstance_chain(
         while j < len(else_body_nodes):
             all_body_nodes.append(else_body_nodes[j])
             j += 1
-    hoisted = _scan_assign_targets(all_body_nodes, env, ctx)
+    hoist_names = _scan_hoist_names(all_body_nodes, env)
     pre_stmts: list[TStmt] = []
-    _emit_hoisted_lets(hoisted, env, pre_stmts)
+    _emit_hoisted_placeholders(hoist_names, env, pre_stmts)
     var_name = chain[0][0]
     sv = _safe_name(var_name)
     expr = TVar(_P0, sv, _name_ann(sv, var_name))
@@ -4079,9 +4032,9 @@ def _lower_isinstance_chain(
 def _lower_while(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     test = get_node(node, "test")
     body = get_nodes(node, "body")
-    hoisted = _scan_assign_targets(body, env, ctx)
+    hoist_names = _scan_hoist_names(body, env)
     pre_stmts: list[TStmt] = []
-    _emit_hoisted_lets(hoisted, env, pre_stmts)
+    _emit_hoisted_placeholders(hoist_names, env, pre_stmts)
     cond = _lower_as_bool(test, env, ctx)
     stmts = _lower_stmts(body, env, ctx)
     pre_stmts.append(TWhileStmt(_P0, cond, stmts, _EMPTY_ANN))
@@ -4093,9 +4046,9 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     target_node = get_node(node, "target")
     iter_node = get_node(node, "iter")
     body = get_nodes(node, "body")
-    hoisted = _scan_assign_targets(body, env, ctx)
+    hoist_names = _scan_hoist_names(body, env)
     pre_stmts: list[TStmt] = []
-    _emit_hoisted_lets(hoisted, env, pre_stmts)
+    _emit_hoisted_placeholders(hoist_names, env, pre_stmts)
     # range() → TRange
     if _is_ast(iter_node, "Call"):
         func = get_node(iter_node, "func")
