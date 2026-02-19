@@ -622,13 +622,30 @@ fn Main() -> void {
 error: cannot slice
 ---
 
-=== field access on interface rejected
+=== field access on interface common field
 interface Node {}
 struct Literal : Node {
     value: int
 }
 struct BinOp : Node {
     value: int
+}
+fn GetVal(n: Node) -> int {
+    return n.value
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== field access on interface rejected
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    name: string
 }
 fn GetVal(n: Node) -> int {
     return n.value

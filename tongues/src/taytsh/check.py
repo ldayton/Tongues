@@ -2379,8 +2379,11 @@ class Checker:
                     return BOOL_T
                 if right.kind == TY_NIL and contains_nil(left):
                     return BOOL_T
-                # Allow nil comparison on any type (lowerer may omit optionality)
-                if left.kind == TY_NIL or right.kind == TY_NIL:
+                # Allow nil comparison on reference/container types
+                _PRIMITIVE_KINDS = (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_RUNE)
+                if left.kind == TY_NIL and right.kind not in _PRIMITIVE_KINDS:
+                    return BOOL_T
+                if right.kind == TY_NIL and left.kind not in _PRIMITIVE_KINDS:
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),

@@ -318,10 +318,26 @@ fn Main() -> void {}
 error: interface body must be empty
 ---
 
+=== valid: field access on interface common field
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Lit(42)
+    let v: int = n.value
+}
+---
+ok
+---
+
 === error: field access on interface rejected
 interface Node {}
 struct Lit : Node {
     value: int
+}
+struct Ref : Node {
+    name: string
 }
 fn Main() -> void {
     let n: Node = Lit(42)

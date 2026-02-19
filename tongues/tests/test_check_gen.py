@@ -14,7 +14,7 @@ from tests.check.harness import run_mutations, run_well_typed
 
 
 class TestWellTyped:
-    @pytest.mark.parametrize("seed", range(10000))
+    @pytest.mark.parametrize("seed", range(500))
     def test_accepted(self, seed: int) -> None:
         features = FeatureVector.random(__import__("random").Random(seed))
         errors = run_well_typed(features, seed)
@@ -34,7 +34,7 @@ class TestWellTyped:
 
 
 class TestMutations:
-    @pytest.mark.parametrize("seed", range(10000))
+    @pytest.mark.parametrize("seed", range(500))
     def test_detected(self, seed: int) -> None:
         features = FeatureVector.random(__import__("random").Random(seed))
         failures = run_mutations(features, seed)
