@@ -105,10 +105,12 @@ class TypePool:
         for _ in range(n_enums):
             self._make_enum()
 
-        # 5. 1-3 collection types
+        # 5. 1-3 collection types (+ optional nested collections)
         n_collections = self.rng.randint(1, 3)
         for _ in range(n_collections):
             self._make_collection()
+        if self.features.nested_collection and self.rng.random() < 0.6:
+            self._make_nested_collection()
 
         # 6. 0-2 tuples
         n_tuples = self.rng.randint(0, 2)
@@ -128,13 +130,20 @@ class TypePool:
 
         # 9. Union type if feature enabled
         if self.features.union_type:
-            a = self._random_value_type()
-            b = self._random_value_type()
-            while type_eq(a, b):
-                b = self._random_value_type()
-            union = normalize_union([a, b])
+            n_members = 3 if self.rng.random() < 0.3 else 2
+            members: list[Type] = []
+            for _ in range(n_members):
+                t = self._random_value_type()
+                while any(type_eq(t, m) for m in members):
+                    t = self._random_value_type()
+                members.append(t)
+            union = normalize_union(members)
             if isinstance(union, UnionT) and not self._pool_contains(union):
                 self.pool.append(union)
+
+        # 10. Extra struct with rich field types (interfaces, collections, etc.)
+        if self.interfaces and self.rng.random() < 0.4:
+            self._make_struct(parent=None)
 
     def _make_struct(self, parent: str | None) -> StructT:
         name = self.names.struct_name()
@@ -186,6 +195,19 @@ class TypePool:
         else:
             elem = self._random_hashable_type()
             self.pool.append(SetT(kind="set", element=elem))
+
+    def _make_nested_collection(self) -> None:
+        """Wrap an existing collection in another collection."""
+        inner_colls = [t for t in self.pool if isinstance(t, (ListT, MapT, SetT))]
+        if not inner_colls:
+            return
+        inner = self.rng.choice(inner_colls)
+        kind = self.rng.choice(["list", "map"])
+        if kind == "list":
+            self.pool.append(ListT(kind="list", element=inner))
+        else:
+            key = self._random_hashable_type()
+            self.pool.append(MapT(kind="map", key=key, value=inner))
 
     def _make_tuple(self) -> None:
         arity = self.rng.randint(2, 3)

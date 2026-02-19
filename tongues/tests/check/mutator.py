@@ -20,6 +20,7 @@ from src.taytsh.ast import (
     TFieldAccess,
     TFnDecl,
     TFnLit,
+    TForStmt,
     TIndex,
     TIntLit,
     TLetStmt,
@@ -31,10 +32,14 @@ from src.taytsh.ast import (
     TOptionalType,
     TPrimitive,
     TReturnStmt,
+    TSlice,
     TStmt,
     TStringLit,
     TStructDecl,
+    TThrowStmt,
+    TTryStmt,
     TVar,
+    TWhileStmt,
 )
 from src.taytsh.check import (
     BOOL_T,
@@ -541,6 +546,126 @@ def wrong_named_arg(module: TModule, rng: Random) -> MutationResult | None:
     return _try_mutate(module, "wrong_named_arg", "nonexistent_param", apply)
 
 
+def assign_loop_var(module: TModule, rng: Random) -> MutationResult | None:
+    def apply(m: TModule) -> bool:
+        for fn in _find_fn_decls(m):
+            for s in _walk_stmts(fn.body):
+                if isinstance(s, TForStmt) and s.binding and s.body:
+                    var_name = s.binding[0]
+                    assign = TAssignStmt(
+                        pos=P,
+                        target=TVar(pos=P, name=var_name, annotations=A),
+                        value=TIntLit(pos=P, value=0, raw="0", annotations=A),
+                        annotations=A,
+                    )
+                    s.body.insert(0, assign)
+                    return True
+        return False
+
+    return _try_mutate(
+        module, "assign_loop_var", "cannot assign to loop variable", apply
+    )
+
+
+def throw_non_struct(module: TModule, rng: Random) -> MutationResult | None:
+    def apply(m: TModule) -> bool:
+        fns = _find_fn_decls(m)
+        if not fns:
+            return False
+        fn = fns[-1]
+        fn.body.insert(
+            0,
+            TThrowStmt(
+                pos=P,
+                expr=TIntLit(pos=P, value=42, raw="42", annotations=A),
+                annotations=A,
+            ),
+        )
+        return True
+
+    return _try_mutate(module, "throw_non_struct", "cannot throw", apply)
+
+
+def expr_no_effect(module: TModule, rng: Random) -> MutationResult | None:
+    def apply(m: TModule) -> bool:
+        fns = _find_fn_decls(m)
+        if not fns:
+            return False
+        fn = fns[-1]
+        stmt = TExprStmt(
+            pos=P,
+            expr=TIntLit(pos=P, value=42, raw="42", annotations=A),
+            annotations=A,
+        )
+        fn.body.insert(0, stmt)
+        return True
+
+    return _try_mutate(module, "expr_no_effect", "expression has no effect", apply)
+
+
+def control_flow_in_finally(module: TModule, rng: Random) -> MutationResult | None:
+    def apply(m: TModule) -> bool:
+        for fn in _find_fn_decls(m):
+            for s in _walk_stmts(fn.body):
+                if isinstance(s, TTryStmt) and s.finally_body is not None:
+                    s.finally_body.insert(
+                        0, TReturnStmt(pos=P, value=None, annotations=A)
+                    )
+                    return True
+        return False
+
+    return _try_mutate(
+        module, "control_flow_in_finally", "control flow in finally", apply
+    )
+
+
+def unreachable_code(module: TModule, rng: Random) -> MutationResult | None:
+    def apply(m: TModule) -> bool:
+        for fn in _find_fn_decls(m):
+            for s in _walk_stmts(fn.body):
+                if isinstance(s, (TWhileStmt, TForStmt)) and len(s.body) >= 1:
+                    for i, stmt in enumerate(s.body):
+                        if isinstance(stmt, (TReturnStmt, TBreakStmt)):
+                            dead = TLetStmt(
+                                pos=P,
+                                name="dead_code",
+                                typ=TPrimitive(pos=P, kind="int"),
+                                value=TIntLit(pos=P, value=0, raw="0", annotations=A),
+                                annotations=A,
+                            )
+                            s.body.insert(i + 1, dead)
+                            return True
+        return False
+
+    return _try_mutate(module, "unreachable_code", "unreachable code", apply)
+
+
+def assign_to_slice(module: TModule, rng: Random) -> MutationResult | None:
+    def apply(m: TModule) -> bool:
+        for fn in _find_fn_decls(m):
+            lets = [s for s in fn.body if isinstance(s, TLetStmt)]
+            for let in lets:
+                if isinstance(let.typ, TPrimitive) and let.typ.kind == "string":
+                    idx = fn.body.index(let)
+                    assign = TAssignStmt(
+                        pos=P,
+                        target=TSlice(
+                            pos=P,
+                            obj=TVar(pos=P, name=let.name, annotations=A),
+                            low=TIntLit(pos=P, value=0, raw="0", annotations=A),
+                            high=TIntLit(pos=P, value=1, raw="1", annotations=A),
+                            annotations=A,
+                        ),
+                        value=TStringLit(pos=P, value="x", annotations=A),
+                        annotations=A,
+                    )
+                    fn.body.insert(idx + 1, assign)
+                    return True
+        return False
+
+    return _try_mutate(module, "assign_to_slice", "cannot assign to slice", apply)
+
+
 # ── All mutation operators ──
 
 
@@ -561,4 +686,10 @@ ALL_MUTATIONS = [
     call_non_function,
     mixed_args,
     wrong_named_arg,
+    assign_loop_var,
+    throw_non_struct,
+    expr_no_effect,
+    control_flow_in_finally,
+    unreachable_code,
+    assign_to_slice,
 ]

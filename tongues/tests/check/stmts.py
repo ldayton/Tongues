@@ -18,6 +18,7 @@ from src.taytsh.ast import (
     TExpr,
     TExprStmt,
     TFieldAccess,
+    TIdentType,
     TForStmt,
     TIfStmt,
     TIndex,
@@ -26,6 +27,8 @@ from src.taytsh.ast import (
     TMatchCase,
     TMatchStmt,
     TOpAssignStmt,
+    TPrimitive,
+    TTupleAssignStmt,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -43,6 +46,7 @@ from src.taytsh.ast import (
 from src.taytsh.check import (
     BOOL_T,
     BYTE_T,
+    FLOAT_T,
     INT_T,
     NIL_T,
     RUNE_T,
@@ -60,6 +64,7 @@ from src.taytsh.check import (
     Type,
     UnionT,
     contains_nil,
+    normalize_union,
     remove_nil,
     type_eq,
 )
@@ -79,6 +84,7 @@ class StmtGen:
     def __init__(self, gen: Generator) -> None:
         self.gen = gen
         self.rng = gen.rng
+        self._pending_stmts: list[TStmt] = []
 
     def gen_block(
         self, count: int, must_return: Type | None, *, depth: int = 0
@@ -94,6 +100,9 @@ class StmtGen:
                 break
             stmt = self._pick_stmt(depth)
             if stmt is not None:
+                if self._pending_stmts:
+                    stmts.extend(self._pending_stmts)
+                    self._pending_stmts = []
                 stmts.append(stmt)
                 if isinstance(
                     stmt, (TReturnStmt, TBreakStmt, TContinueStmt, TThrowStmt)
@@ -106,6 +115,10 @@ class StmtGen:
         candidates.append((30, "let"))
         if self.gen.scope.mutable_bindings():
             candidates.append((20, "assign"))
+        if self.gen.features.compound_assign and self._find_numeric_binding():
+            candidates.append((8, "op_assign"))
+        if self.gen.features.tuple_destructure and self._find_tuple_binding():
+            candidates.append((5, "tuple_assign"))
         if depth < MAX_STMT_DEPTH:
             candidates.append((15, "if"))
             candidates.append((8, "while"))
@@ -140,6 +153,10 @@ class StmtGen:
             return self._gen_let(depth)
         if kind == "assign":
             return self._gen_assign()
+        if kind == "op_assign":
+            return self._gen_op_assign()
+        if kind == "tuple_assign":
+            return self._gen_tuple_assign()
         if kind == "if":
             return self._gen_if(depth)
         if kind == "while":
@@ -239,6 +256,64 @@ class StmtGen:
             pos=P,
             target=TVar(pos=P, name=b.name, annotations=A),
             value=value,
+            annotations=A,
+        )
+
+    def _find_numeric_binding(self) -> tuple[str, Type] | None:
+        for b in self.gen.scope.mutable_bindings():
+            if (
+                type_eq(b.typ, INT_T)
+                or type_eq(b.typ, FLOAT_T)
+                or type_eq(b.typ, BYTE_T)
+            ):
+                return (b.name, b.typ)
+        return None
+
+    def _gen_op_assign(self) -> TStmt:
+        result = self._find_numeric_binding()
+        if result is None:
+            return self._gen_let()
+        var_name, typ = result
+        op = self.rng.choice(["+=", "-=", "*="])
+        value = self.gen.expr_gen.gen_expr(typ)
+        return TOpAssignStmt(
+            pos=P,
+            target=TVar(pos=P, name=var_name, annotations=A),
+            op=op,
+            value=value,
+            annotations=A,
+        )
+
+    def _find_tuple_binding(self) -> tuple[str, TupleT] | None:
+        for b in self.gen.scope.all_bindings():
+            if isinstance(b.typ, TupleT) and len(b.typ.elements) >= 2:
+                return (b.name, b.typ)
+        return None
+
+    def _gen_tuple_assign(self) -> TStmt:
+        """Generate let declarations + tuple destructuring assignment."""
+        result = self._find_tuple_binding()
+        if result is None:
+            return self._gen_let()
+        var_name, tup_type = result
+        all_names = {b.name for b in self.gen.scope.all_bindings()}
+        targets: list[TExpr] = []
+        preamble: list[TStmt] = []
+        for elem_t in tup_type.elements:
+            tgt_name = self.gen.names.var_name(all_names)
+            all_names.add(tgt_name)
+            ttype = make_ttype(elem_t)
+            init = self.gen.expr_gen.gen_expr(elem_t)
+            self.gen.scope.declare(tgt_name, elem_t)
+            preamble.append(
+                TLetStmt(pos=P, name=tgt_name, typ=ttype, value=init, annotations=A)
+            )
+            targets.append(TVar(pos=P, name=tgt_name, annotations=A))
+        self._pending_stmts = preamble
+        return TTupleAssignStmt(
+            pos=P,
+            targets=targets,
+            value=TVar(pos=P, name=var_name, annotations=A),
             annotations=A,
         )
 
@@ -618,7 +693,90 @@ class StmtGen:
                     )
 
         expr = TVar(pos=P, name=var_name, annotations=A)
-        return TMatchStmt(pos=P, expr=expr, cases=cases, default=None, annotations=A)
+        default = None
+        if (
+            self.gen.features.match_default
+            and len(cases) >= 2
+            and self.rng.random() < 0.3
+        ):
+            n_drop = self.rng.randint(1, min(2, len(cases) - 1))
+            cases = cases[:-n_drop]
+            bind_name: str | None = None
+            if self.gen.features.match_default_bind and self.rng.random() < 0.5:
+                bind_name = self._fresh_case_bind_name(var_name)
+            self.gen.scope.enter_scope()
+            if bind_name is not None:
+                residual = self._compute_residual(scrutinee, cases)
+                self.gen.scope.declare(bind_name, residual)
+            body = self.gen_block(
+                self.rng.randint(1, 2), must_return=None, depth=depth + 1
+            )
+            self.gen.scope.exit_scope()
+            default = TDefault(pos=P, name=bind_name, body=body, annotations=A)
+        return TMatchStmt(pos=P, expr=expr, cases=cases, default=default, annotations=A)
+
+    def _compute_residual(self, scrutinee: Type, cases: list[TMatchCase]) -> Type:
+        """Mirror checker's _compute_default_type: scrutinee minus covered cases.
+
+        We collect covered type names matching the checker's _type_key format,
+        then subtract from the scrutinee's variants/members.
+        """
+        covered: set[str] = set()
+        for c in cases:
+            pat = c.pattern
+            if isinstance(pat, TPatternType):
+                if isinstance(pat.type_name, TIdentType):
+                    covered.add(pat.type_name.name)
+                elif isinstance(pat.type_name, TPrimitive):
+                    covered.add(pat.type_name.kind)
+            elif isinstance(pat, TPatternEnum):
+                covered.add(pat.enum_name + "." + pat.variant)
+            elif isinstance(pat, TPatternNil):
+                covered.add("nil")
+        if isinstance(scrutinee, InterfaceT):
+            remaining: list[Type] = []
+            for vname in scrutinee.variants:
+                st = self.gen.pool.struct_for_name(vname)
+                if st is None:
+                    continue
+                if st.name not in covered:
+                    remaining.append(st)
+            if not remaining:
+                return scrutinee
+            if len(remaining) == 1:
+                return remaining[0]
+            return normalize_union(remaining)
+        if isinstance(scrutinee, UnionT):
+            remaining_u: list[Type] = []
+            for m in scrutinee.members:
+                if type_eq(m, NIL_T):
+                    if "nil" not in covered:
+                        remaining_u.append(m)
+                elif isinstance(m, InterfaceT):
+                    for vname in m.variants:
+                        st = self.gen.pool.struct_for_name(vname)
+                        if st is None:
+                            continue
+                        if st.name not in covered:
+                            remaining_u.append(st)
+                elif isinstance(m, EnumT):
+                    has_uncovered = any(
+                        m.name + "." + v not in covered for v in m.variants
+                    )
+                    if has_uncovered:
+                        remaining_u.append(m)
+                elif isinstance(m, StructT):
+                    if m.name not in covered:
+                        remaining_u.append(m)
+                else:
+                    if m.kind not in covered:
+                        remaining_u.append(m)
+            if len(remaining_u) == 1:
+                return remaining_u[0]
+            if len(remaining_u) > 1:
+                return normalize_union(remaining_u)
+            return scrutinee
+        return scrutinee
 
     def _fresh_case_bind_name(self, base: str) -> str:
         all_names = set()
