@@ -188,6 +188,11 @@ class StmtGen:
                 isinstance(m, FnT) for m in typ.members
             ):
                 typ = INT_T
+        # Avoid unions where all members have collection invariance issues
+        if isinstance(typ, UnionT) and all(
+            self.gen.expr_gen._has_invariance_issue(m) for m in typ.members
+        ):
+            typ = INT_T
         all_names = set()
         for b in self.gen.scope.all_bindings():
             all_names.add(b.name)

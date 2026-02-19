@@ -505,7 +505,7 @@ class ExprGen:
             if self.gen.in_finally:
                 safe = [m for m in safe if not isinstance(m, FnT)]
             if not safe:
-                safe = list(target.members)
+                return self.gen_expr(target, depth + 1)
             gen_target = self.rng.choice(safe)
             if type_eq(gen_target, NIL_T):
                 gen_target = target
