@@ -524,6 +524,12 @@ def _is_interface_type(td: TypeNode) -> bool:
     return isinstance(td, InterfaceRef)
 
 
+def _interface_name(td: TypeNode) -> str:
+    if isinstance(td, InterfaceRef):
+        return td.name
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Lowering context
 # ---------------------------------------------------------------------------
@@ -693,6 +699,8 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         return VOID_TYPE
     if t == "Name":
         name = get_str(node, "id")
+        if name == "self":
+            name = "this"
         vt = env.var_types.get(name)
         if vt is not None:
             return vt
@@ -712,6 +720,13 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         if _is_struct_type(obj_type):
             sname = _struct_name(obj_type)
             cls_info = ctx.field_result.classes.get(sname)
+            if cls_info is not None:
+                field_info = cls_info.fields.get(attr)
+                if field_info is not None:
+                    return field_info.typ
+        if _is_interface_type(obj_type):
+            iname = _interface_name(obj_type)
+            cls_info = ctx.field_result.classes.get(iname)
             if cls_info is not None:
                 field_info = cls_info.fields.get(attr)
                 if field_info is not None:
@@ -789,6 +804,10 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             if _is_struct_type(obj_t):
                 sname = _struct_name(obj_t)
                 return _method_return_type(ctx, sname, method_name)
+            if _is_interface_type(obj_t):
+                iname = _interface_name(obj_t)
+                if iname != "":
+                    return _method_return_type(ctx, iname, method_name)
             if _is_type_dict(obj_t, ["string"]):
                 if (
                     method_name == "find"
@@ -3691,6 +3710,14 @@ def _scan_assign_targets(
                         seen.add(name)
                 elif isinstance(tgt, dict) and _is_ast(tgt, "Tuple"):
                     elts = get_nodes(tgt, "elts")
+                    value_node = get_node(node, "value")
+                    val_type = _infer_expr_type(value_node, env, ctx)
+                    elem_types: list[TypeNode] = []
+                    if isinstance(val_type, TupleType):
+                        ei2 = 0
+                        while ei2 < len(val_type.elements):
+                            elem_types.append(val_type.elements[ei2])
+                            ei2 += 1
                     ei = 0
                     while ei < len(elts):
                         e = elts[ei]
@@ -3701,7 +3728,12 @@ def _scan_assign_targets(
                                 and ename not in seen
                                 and ename != "_"
                             ):
-                                result.append((ename, PrimitiveType("error")))
+                                et = (
+                                    elem_types[ei]
+                                    if ei < len(elem_types)
+                                    else PrimitiveType("error")
+                                )
+                                result.append((ename, et))
                                 seen.add(ename)
                         ei += 1
         elif t == "AnnAssign":
@@ -3726,13 +3758,45 @@ def _scan_assign_targets(
         elif t == "If":
             body = get_nodes(node, "body")
             orelse = get_nodes(node, "orelse")
+            test = get_node(node, "test")
+            narrowed = False
+            isinstance_node: ASTNode | None = None
+            if isinstance(test, dict) and _is_isinstance_call(test):
+                isinstance_node = test
+            elif isinstance(test, dict):
+                unwrapped = _unwrap_isinstance_and(test)
+                if unwrapped is not None:
+                    isinstance_node = unwrapped[0]
+            if isinstance_node is not None:
+                ivar = _isinstance_var(isinstance_node)
+                itype = _isinstance_type(isinstance_node)
+                if ivar != "" and itype != "":
+                    old_vt = env.var_types.get(ivar)
+                    if itype in ctx.known_classes:
+                        env.var_types[ivar] = PointerType(StructRef(itype))
+                    else:
+                        env.var_types[ivar] = StructRef(itype)
+                    sub = _scan_assign_targets(body, env, ctx)
+                    si = 0
+                    while si < len(sub):
+                        sname, stype = sub[si]
+                        if sname not in seen:
+                            result.append((sname, stype))
+                            seen.add(sname)
+                        si += 1
+                    if old_vt is not None:
+                        env.var_types[ivar] = old_vt
+                    else:
+                        env.var_types.pop(ivar)
+                    narrowed = True
+            if not narrowed:
+                j = len(body) - 1
+                while j >= 0:
+                    stack.append(body[j])
+                    j -= 1
             j = len(orelse) - 1
             while j >= 0:
                 stack.append(orelse[j])
-                j -= 1
-            j = len(body) - 1
-            while j >= 0:
-                stack.append(body[j])
                 j -= 1
         elif t == "While":
             body = get_nodes(node, "body")
