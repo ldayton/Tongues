@@ -624,7 +624,7 @@ def _classify_list_source(
         return _C_UNKNOWN
     expr = source.expr
     if isinstance(expr, TListLit):
-        level: str | None = _C_ASCII
+        level = _C_ASCII
         for e in expr.elements:
             c = _classify_string_expr(e, string_content, list_content, ctx)
             level = _join_content(level, c)
@@ -686,11 +686,11 @@ def _classify_string_expr(
                 if len(expr.args) == 0:
                     return _C_UNKNOWN
                 level: str | None = None
-                for a in expr.args:
+                for fa in expr.args:
                     level = _join_content(
                         level,
                         _classify_string_expr(
-                            a.value, string_content, list_content, ctx
+                            fa.value, string_content, list_content, ctx
                         ),
                     )
                 return level if level is not None else _C_UNKNOWN
@@ -729,7 +729,7 @@ def _classify_string_expr(
                 parts_expr = expr.args[1].value
                 parts_c = _C_UNKNOWN
                 if isinstance(parts_expr, TListLit):
-                    level: str | None = _C_ASCII
+                    level = _C_ASCII
                     for e in parts_expr.elements:
                         level = _join_content(
                             level,
@@ -1040,7 +1040,7 @@ def _compute_contents(ctx: _StringsCtx) -> None:
                 changed = True
 
         for name, info in ctx.string_bindings.items():
-            level: str | None = _C_UNKNOWN if info.base_unknown else None
+            level = _C_UNKNOWN if info.base_unknown else None
             for src in ctx.string_sources.get(name, []):
                 if src.kind == "zero":
                     level = _join_content(level, _C_ASCII)

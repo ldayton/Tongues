@@ -65,7 +65,7 @@ test-taytsh-local:
 
 # Run all tests locally in a single pytest invocation
 test-all-local:
-    uv run --directory tongues pytest tests/test_runner.py -v
+    uv run --directory tongues pytest tests/ -v
 
 # Lint (--fix to apply changes)
 lint *ARGS:

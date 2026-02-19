@@ -146,7 +146,7 @@ Loop variables, match bindings, and catch bindings are scoped to their block —
 
 Built-in function names are reserved and cannot be used for any binding — local variables, parameters, loop variables, match bindings, catch bindings, struct names, enum names, interface names, or function names.
 
-Reserved names include: `Abs`, `Min`, `Max`, `Sum`, `Pow`, `Round`, `Floor`, `Ceil`, `Sqrt`, `DivMod`, `Len`, `Concat`, `Append`, `Insert`, `Pop`, `RemoveAt`, `IndexOf`, `Contains`, `Reversed`, `Sorted`, `RangeList`, `Map`, `Get`, `Delete`, `Keys`, `Values`, `Items`, `Merge`, `Set`, `Remove`, `Union`, `Intersection`, `Difference`, `ToString`, `Format`, `Encode`, `Decode`, `Bytes`, `BytesFrom`, `Split`, `SplitN`, `SplitWhitespace`, `Join`, `Find`, `RFind`, `Count`, `Replace`, `Repeat`, `Reverse`, `StartsWith`, `EndsWith`, `Upper`, `Lower`, `Trim`, `TrimStart`, `TrimEnd`, `RuneFromInt`, `RuneToInt`, `ParseInt`, `ParseFloat`, `FormatInt`, `IntToFloat`, `FloatToInt`, `ByteToInt`, `IntToByte`, `IsDigit`, `IsAlpha`, `IsAlnum`, `IsSpace`, `IsUpper`, `IsLower`, `WriteOut`, `WriteErr`, `WritelnOut`, `WritelnErr`, `ReadLine`, `ReadAll`, `ReadBytes`, `ReadBytesN`, `ReadFile`, `WriteFile`, `Args`, `GetEnv`, `Exit`, `Assert`, `Unwrap`, `IsNaN`, `IsInf`, `WrappingAdd`, `WrappingSub`, `WrappingMul`.
+Reserved names include: `Abs`, `Min`, `Max`, `Sum`, `Pow`, `Round`, `Floor`, `Ceil`, `Sqrt`, `DivMod`, `Len`, `Concat`, `Append`, `Insert`, `Pop`, `RemoveAt`, `IndexOf`, `Contains`, `Reversed`, `Sorted`, `RangeList`, `Map`, `Get`, `Delete`, `Keys`, `Values`, `Items`, `Merge`, `Set`, `Remove`, `Union`, `Intersection`, `Difference`, `ToString`, `Format`, `Encode`, `Decode`, `Bytes`, `BytesFrom`, `Split`, `SplitN`, `SplitWhitespace`, `Join`, `Find`, `RFind`, `Count`, `Replace`, `Repeat`, `Reverse`, `StartsWith`, `EndsWith`, `Upper`, `Lower`, `Trim`, `TrimStart`, `TrimEnd`, `RuneFromInt`, `RuneToInt`, `ParseInt`, `ParseFloat`, `FormatInt`, `IntToFloat`, `FloatToInt`, `ByteToInt`, `IntToByte`, `IsDigit`, `IsAlpha`, `IsAlnum`, `IsSpace`, `IsUpper`, `IsLower`, `IsType`, `WriteOut`, `WriteErr`, `WritelnOut`, `WritelnErr`, `ReadLine`, `ReadAll`, `ReadBytes`, `ReadBytesN`, `ReadFile`, `WriteFile`, `Args`, `GetEnv`, `Exit`, `Assert`, `Unwrap`, `IsNaN`, `IsInf`, `WrappingAdd`, `WrappingSub`, `WrappingMul`.
 
 Exception: `Add` is a built-in but not reserved — it can be used as a binding name.
 
@@ -198,13 +198,23 @@ Types with zero values can omit the initializer in `let` declarations:
 | `fn[...]`       | —           | no                                    |
 | `A \| B`        | —           | no (without nil)                      |
 
-Declaring a variable of a type without a zero value and without an initializer is an error: `initializer required`.
+For types without a zero value, omitting the initializer is permitted but the variable is **uninitialized** until assigned. Reading an uninitialized variable is a compile error: `variable used before assignment`.
+
+### Definite Assignment
+
+Variables declared without an initializer for types without zero values are **uninitialized** at their declaration point. The checker tracks uninitialized variables and enforces:
+
+1. **Read check**: Reading an uninitialized variable is an error: `variable used before assignment`.
+2. **Assignment**: Assigning to an uninitialized variable marks it as initialized.
+3. **Branching**: After `if`/`else`, a variable is initialized only if it was initialized in **all** branches. After `if` without `else`, the variable remains uninitialized unless the then-body always exits.
+4. **Loops**: Variables initialized only inside a loop body are still considered uninitialized after the loop (the body might not execute).
+5. **Match**: Like if/else — initialized only if initialized in all cases (when exhaustive).
 
 ## Statement Checking
 
 ### `let`
 
-Validates the initializer (if present) is assignable to the declared type. If no initializer, requires the type to have a zero value.
+Validates the initializer (if present) is assignable to the declared type. If no initializer is provided, the variable is recorded as **uninitialized** for types without zero values. For types with zero values, the checker implicitly initializes to the zero value. For types without zero values, the variable remains uninitialized — any read before assignment is an error.
 
 ### Assignment
 
@@ -243,7 +253,7 @@ Every non-void function must return or throw on all control-flow paths. A block 
 
 ### If
 
-Validates the condition is `bool`. Performs nil narrowing: if the condition is `x != nil` or `x == nil`, the then-branch and else-branch get narrowed types. Narrowing creates a new scope with the variable rebound to the narrowed type.
+Validates the condition is `bool`. Performs nil narrowing and IsType narrowing (see Nil Narrowing and IsType Narrowing). Narrowing creates a new scope with the variable rebound to the narrowed type.
 
 ### While
 
@@ -429,6 +439,48 @@ The checker performs nil narrowing in `if` statements. When the condition is `x 
 
 Narrowing creates a new scope in the appropriate branch with the variable rebound to the narrowed type.
 
+## IsType Narrowing
+
+`IsType(expr, "TypeName")` is an expression-level type test that returns `bool`. When it appears in a condition, the checker narrows the tested variable to the named struct type in scopes where the check is known to hold. This complements `match` — it handles contexts where a statement-level pattern match cannot apply.
+
+### Narrowable Types
+
+`IsType` narrows when the tested expression's current type is:
+- An **interface** whose variants include the named type
+- A **union** containing an interface whose variants include the named type (e.g. `Node?` where `Node` has variant `Lit`)
+
+If the type name does not resolve to a known variant, no narrowing occurs.
+
+### Narrowing Contexts
+
+| Context | Example | Narrowed Scope |
+| --- | --- | --- |
+| `if` then-branch | `if IsType(n, "Lit") { n.value }` | then-block |
+| `if` else-branch (negated) | `if !IsType(n, "Lit") { } else { n.value }` | else-block |
+| Guard pattern | `if !IsType(n, "Lit") { return }` then `n.value` | statements after the `if` |
+| `&&` right operand | `IsType(n, "Lit") && n.value > 0` | right side of `&&` |
+| Ternary then-branch | `IsType(n, "Lit") ? n.value : 0` | then-expression |
+
+Guard narrowing applies when the `if` body always exits (via `return` or `throw`) and the condition is a negated `IsType`. After the `if`, the variable is narrowed to the tested type.
+
+### Field Access Paths
+
+`IsType` supports dotted paths as well as simple variables:
+
+```
+if IsType(c.func, "Var") {
+    return c.func.name
+}
+```
+
+The narrowed path `c.func` is tracked and subsequent field accesses through it resolve against the narrowed type.
+
+### Relationship to match
+
+`match` and `IsType` are complementary:
+- `match` is a statement that exhaustively dispatches on all variants — use it for full type dispatch
+- `IsType` is an expression that tests a single variant — use it in boolean combinations, ternary expressions, guard patterns, and field-access subjects where `match` cannot apply
+
 ## Match Checking
 
 `match` dispatches on the runtime type of a value. The checker validates exhaustiveness, case validity, and binding types.
@@ -604,6 +656,7 @@ The checker validates every built-in function call for argument count, argument 
 | `Unwrap(x)`         | `T? -> T`              |
 | `IsNaN(x)`          | `float -> bool`        |
 | `IsInf(x)`          | `float -> bool`        |
+| `IsType(x, name)`   | `T, string -> bool`   |
 
 ## Built-in Structs
 

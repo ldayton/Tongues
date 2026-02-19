@@ -662,8 +662,8 @@ def _sa_collect_vars_expr(
         _sa_collect_vars_expr(expr.operand, result, pfx, plen)
     elif isinstance(expr, TCall):
         _sa_collect_vars_expr(expr.func, result, pfx, plen)
-        for a in expr.args:
-            _sa_collect_vars_expr(a.value, result, pfx, plen)
+        for arg in expr.args:
+            _sa_collect_vars_expr(arg.value, result, pfx, plen)
     elif isinstance(expr, TFieldAccess):
         _sa_collect_vars_expr(expr.obj, result, pfx, plen)
     elif isinstance(expr, TTupleAccess):

@@ -1715,8 +1715,8 @@ class _PythonEmitter:
         # Escape remaining literal braces
         result = result.replace("{", "{{").replace("}", "}}")
         # Restore placeholders as f-string interpolations
-        for marker, i in markers.items():
-            result = result.replace(marker, "{" + self._expr(fmt_args[i].value) + "}")
+        for mk, idx in markers.items():
+            result = result.replace(mk, "{" + self._expr(fmt_args[idx].value) + "}")
         result = result.replace('"', '\\"')
         return 'f"' + result + '"'
 

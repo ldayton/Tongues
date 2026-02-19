@@ -400,14 +400,14 @@ def _unwrap_nil_union(t: Type) -> Type:
     return t
 
 
-def _literal_key_value(expr: TExpr) -> object | None:
+def _literal_key_value(expr: TExpr) -> tuple[str, str] | None:
     """Extract a comparable value from a literal key expression."""
     if isinstance(expr, TIntLit):
-        return ("int", expr.value)
+        return ("int", str(expr.value))
     if isinstance(expr, TStringLit):
         return ("string", expr.value)
     if isinstance(expr, TBoolLit):
-        return ("bool", expr.value)
+        return ("bool", str(expr.value))
     if isinstance(expr, TFloatLit):
         return ("float", expr.raw)
     return None
@@ -614,6 +614,58 @@ def _collect_nil_checks(
         info = _nil_check_var(cond)
         if info is not None:
             result.append(info)
+    return result
+
+
+def _istype_var_from_call(call: TCall) -> tuple[str, str] | None:
+    """Extract (var_path, type_name) from IsType(x, "T")."""
+    if not (isinstance(call.func, TVar) and call.func.name == "IsType"):
+        return None
+    if len(call.args) < 2:
+        return None
+    first = call.args[0].value
+    second = call.args[1].value
+    if not isinstance(second, TStringLit):
+        return None
+    type_name = second.value
+    if isinstance(first, TVar):
+        return (first.name, type_name)
+    if isinstance(first, TFieldAccess) and isinstance(first.obj, TVar):
+        return (first.obj.name + "." + first.field, type_name)
+    return None
+
+
+def _type_check_var(cond: TExpr) -> tuple[str, str, bool] | None:
+    """Extract (var_path, type_name, is_positive) from a type-check condition."""
+    # IsType(x, "T")
+    if isinstance(cond, TCall):
+        info = _istype_var_from_call(cond)
+        if info is not None:
+            return (info[0], info[1], True)
+    # !IsType(x, "T")
+    if isinstance(cond, TUnaryOp) and cond.op == "!":
+        inner = cond.operand
+        if isinstance(inner, TCall):
+            info = _istype_var_from_call(inner)
+            if info is not None:
+                return (info[0], info[1], False)
+    return None
+
+
+def _collect_type_checks(cond: TExpr) -> list[tuple[str, str, bool]]:
+    """Extract type checks from a condition, walking && and || chains."""
+    result: list[tuple[str, str, bool]] = []
+    # && chains: each arm narrows independently
+    if isinstance(cond, TBinaryOp) and cond.op == "&&":
+        result.extend(_collect_type_checks(cond.left))
+        result.extend(_collect_type_checks(cond.right))
+        return result
+    # || chains: can't narrow to a single type, skip
+    if isinstance(cond, TBinaryOp) and cond.op == "||":
+        return []
+    single = _type_check_var(cond)
+    if single is not None:
+        result.append(single)
     return result
 
 
@@ -852,6 +904,8 @@ BUILTIN_NAMES: set[str] = {
     "ReplaceSlice",
     # Nil check
     "IsNil",
+    # Type check
+    "IsType",
 }
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
@@ -974,6 +1028,7 @@ class Checker:
         self.strict_math: bool = False
         self.loop_vars: set[str] = set()
         self.in_finally: bool = False
+        self.uninitialized: set[str] = set()
         # Register built-in error structs
         for name, fields in BUILTIN_STRUCTS.items():
             st = StructT(
@@ -1053,6 +1108,19 @@ class Checker:
             if path in self.scopes[i]:
                 return self.scopes[i][path]
             i -= 1
+        return None
+
+    def _narrow_to_type(self, current_type: Type, type_name: str) -> Type | None:
+        """Resolve an IsType check against current type, returning the narrowed type."""
+        if isinstance(current_type, InterfaceT):
+            if type_name in current_type.variants:
+                return self.types.get(type_name)
+        if isinstance(current_type, UnionT):
+            for m in current_type.members:
+                if isinstance(m, (StructT, InterfaceT)) and m.name == type_name:
+                    return m
+                if isinstance(m, InterfaceT) and type_name in m.variants:
+                    return self.types.get(type_name)
         return None
 
     # ── Type resolution ───────────────────────────────────────
@@ -1281,6 +1349,8 @@ class Checker:
     def check_fn_decl(self, decl: TFnDecl) -> None:
         ret = self.resolve_type(decl.ret)
         self.current_fn_ret = ret
+        saved_uninit = set(self.uninitialized)
+        self.uninitialized = set()
         self.enter_scope()
         for p in decl.params:
             if p.name == "this" and self.current_struct is None:
@@ -1296,6 +1366,7 @@ class Checker:
         if not type_eq(ret, VOID_T) and not _block_is_complete(decl.body):
             self.error("not all paths return a value", decl.pos)
         self.current_fn_ret = None
+        self.uninitialized = saved_uninit
 
     def check_struct_methods(self, decl: TStructDecl) -> None:
         if decl.name not in self.types:
@@ -1308,6 +1379,8 @@ class Checker:
         for method in decl.methods:
             ret = self.resolve_type(method.ret)
             self.current_fn_ret = ret
+            saved_uninit = set(self.uninitialized)
+            self.uninitialized = set()
             self.enter_scope()
             # Bind self
             for p in method.params:
@@ -1320,6 +1393,7 @@ class Checker:
             self.exit_scope()
             if not type_eq(ret, VOID_T) and not _block_is_complete(method.body):
                 self.error("not all paths return a value", method.pos)
+            self.uninitialized = saved_uninit
             self.current_fn_ret = None
         self.current_struct = old_struct
 
@@ -1383,6 +1457,49 @@ class Checker:
                                 self.narrow(var_name, remove_nil(var_type))
                             elif check_kind == "is_not_nil":
                                 self.narrow(var_name, NIL_T)
+                    # Guard narrowing for IsType: if !IsType(x, T): return → narrow x to T
+                    type_checks = _collect_type_checks(s.cond)
+                    for tc_var, tc_type_name, tc_positive in type_checks:
+                        if tc_positive:
+                            continue
+                        if "." in tc_var:
+                            current = self._lookup_field_type(tc_var, s.pos)
+                        else:
+                            current = self.lookup(tc_var, s.pos)
+                        if current is None:
+                            continue
+                        resolved = self._narrow_to_type(current, tc_type_name)
+                        if resolved is not None:
+                            self.narrow(tc_var, resolved)
+            # After Assert(cond), narrow nil-checked and type-checked vars
+            if isinstance(s, TExprStmt) and isinstance(s.expr, TCall):
+                if isinstance(s.expr.func, TVar) and s.expr.func.name == "Assert":
+                    if len(s.expr.args) > 0:
+                        assert_cond = s.expr.args[0].value
+                        checks = _collect_nil_checks(assert_cond)
+                        for var_name, check_kind in checks:
+                            if "." in var_name:
+                                var_type = self._lookup_field_type(var_name, s.pos)
+                            else:
+                                var_type = self.lookup(var_name, s.pos)
+                            if var_type is not None and contains_nil(var_type):
+                                if check_kind == "is_not_nil":
+                                    self.narrow(var_name, remove_nil(var_type))
+                                elif check_kind == "is_nil":
+                                    self.narrow(var_name, NIL_T)
+                        type_checks = _collect_type_checks(assert_cond)
+                        for tc_var, tc_type_name, tc_positive in type_checks:
+                            if not tc_positive:
+                                continue
+                            if "." in tc_var:
+                                current = self._lookup_field_type(tc_var, s.pos)
+                            else:
+                                current = self.lookup(tc_var, s.pos)
+                            if current is None:
+                                continue
+                            resolved = self._narrow_to_type(current, tc_type_name)
+                            if resolved is not None:
+                                self.narrow(tc_var, resolved)
             i += 1
 
     def check_stmt(self, stmt: TStmt) -> None:
@@ -1457,10 +1574,6 @@ class Checker:
             self.error("void is not a value type", stmt.pos)
             self.declare(stmt.name, ERROR_T, stmt.pos)
             return
-        if stmt.value is None and not _has_zero_value(declared_type):
-            self.error("initializer required for " + type_name(declared_type), stmt.pos)
-            self.declare(stmt.name, declared_type, stmt.pos)
-            return
         if stmt.value is not None:
             val_type = self.check_expr(stmt.value, declared_type)
             if val_type is not None and not is_assignable(val_type, declared_type):
@@ -1471,6 +1584,8 @@ class Checker:
                     + type_name(declared_type),
                     stmt.pos,
                 )
+        elif not _has_zero_value(declared_type):
+            self.uninitialized.add(stmt.name)
         self.declare(stmt.name, declared_type, stmt.pos)
 
     def check_assign_stmt(self, stmt: TAssignStmt) -> None:
@@ -1484,6 +1599,9 @@ class Checker:
         if immut_err is not None:
             self.error(immut_err, stmt.pos)
             return
+        # Direct variable assignment initializes the variable (not a read)
+        if isinstance(stmt.target, TVar):
+            self.uninitialized.discard(stmt.target.name)
         target_type = self.check_expr(stmt.target, None)
         if target_type is not None:
             val_type = self.check_expr(stmt.value, target_type)
@@ -1608,19 +1726,50 @@ class Checker:
                     narrowings.append((var_name, remove_nil(var_type), NIL_T))
                 elif check_kind == "is_nil":
                     narrowings.append((var_name, NIL_T, remove_nil(var_type)))
+        # IsType narrowing: isinstance(x, T) → narrow x to T in then, keep original in else
+        type_checks = _collect_type_checks(stmt.cond)
+        for tc_var, tc_type_name, tc_positive in type_checks:
+            if "." in tc_var:
+                current = self._lookup_field_type(tc_var, stmt.pos)
+            else:
+                current = self.lookup(tc_var, stmt.pos)
+            if current is None:
+                continue
+            resolved = self._narrow_to_type(current, tc_type_name)
+            if resolved is None:
+                continue
+            if tc_positive:
+                narrowings.append((tc_var, resolved, current))
+            else:
+                narrowings.append((tc_var, current, resolved))
         # Check then-body with narrowing
+        saved_uninit = set(self.uninitialized)
         self.enter_scope()
         for name, then_type, _else_type in narrowings:
             self.scopes[-1][name] = then_type
         self.check_stmts(stmt.then_body)
         self.exit_scope()
+        then_uninit = set(self.uninitialized)
         # Check else-body with reverse narrowing
+        self.uninitialized = set(saved_uninit)
         if stmt.else_body is not None:
             self.enter_scope()
             for name, _then_type, else_type in narrowings:
                 self.scopes[-1][name] = else_type
             self.check_stmts(stmt.else_body)
             self.exit_scope()
+        else_uninit = set(self.uninitialized)
+        # Merge: initialized only if initialized in BOTH branches
+        then_exits = _block_is_complete(stmt.then_body)
+        else_exits = stmt.else_body is not None and _block_is_complete(stmt.else_body)
+        if then_exits and else_exits:
+            self.uninitialized = saved_uninit
+        elif then_exits:
+            self.uninitialized = else_uninit
+        elif else_exits:
+            self.uninitialized = then_uninit
+        else:
+            self.uninitialized = then_uninit | else_uninit
 
     def check_while_stmt(self, stmt: TWhileStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)
@@ -1635,9 +1784,22 @@ class Checker:
             )
         old_in_loop = self.in_loop
         self.in_loop = True
+        saved_uninit = set(self.uninitialized)
         self.enter_scope()
+        nil_checks = _collect_nil_checks(stmt.cond)
+        for var_name, check_kind in nil_checks:
+            if "." in var_name:
+                var_type = self._lookup_field_type(var_name, stmt.pos)
+            else:
+                var_type = self.lookup(var_name, stmt.pos)
+            if var_type is not None and contains_nil(var_type):
+                if check_kind == "is_not_nil":
+                    self.narrow(var_name, remove_nil(var_type))
+                elif check_kind == "is_nil":
+                    self.narrow(var_name, NIL_T)
         self.check_stmts(stmt.body)
         self.exit_scope()
+        self.uninitialized = saved_uninit
         self.in_loop = old_in_loop
 
     def check_for_stmt(self, stmt: TForStmt) -> None:
@@ -1645,6 +1807,7 @@ class Checker:
         self.in_loop = True
         old_loop_vars = self.loop_vars
         self.loop_vars = set(b for b in stmt.binding if b != "_")
+        saved_uninit = set(self.uninitialized)
         self.enter_scope()
         if isinstance(stmt.iterable, TRange):
             # range — all args must be int, loop var is int
@@ -1671,6 +1834,7 @@ class Checker:
                     self.bind_for_vars(stmt.binding, iter_type, stmt.pos)
         self.check_stmts(stmt.body)
         self.exit_scope()
+        self.uninitialized = saved_uninit
         self.in_loop = old_in_loop
         self.loop_vars = old_loop_vars
 
@@ -1732,21 +1896,38 @@ class Checker:
         if not self._is_matchable(scrutinee_type):
             self.error("cannot match on " + type_name(scrutinee_type), stmt.pos)
             return
+        saved_uninit = set(self.uninitialized)
         covered: list[str] = []
+        case_uninits: list[set[str]] = []
         for case in stmt.cases:
+            self.uninitialized = set(saved_uninit)
             self.check_match_case(case, scrutinee_type, covered, stmt.expr)
+            case_uninits.append(set(self.uninitialized))
         has_default = stmt.default is not None
         if has_default:
             dflt = stmt.default
             assert dflt is not None
+            self.uninitialized = set(saved_uninit)
             self.enter_scope()
             if dflt.name is not None:
                 residual = self._compute_default_type(scrutinee_type, covered)
                 self.declare(dflt.name, residual, dflt.pos)
             self.check_stmts(dflt.body)
             self.exit_scope()
+            case_uninits.append(set(self.uninitialized))
+        exhaustive = has_default
         if not has_default:
+            err_count = len(self.errors)
             self.check_exhaustiveness(scrutinee_type, covered, stmt.pos)
+            exhaustive = len(self.errors) == err_count
+        # Merge: if exhaustive, var is initialized only if ALL branches initialized it
+        if exhaustive and len(case_uninits) > 0:
+            merged = case_uninits[0]
+            for cu in case_uninits[1:]:
+                merged = merged | cu
+            self.uninitialized = merged & saved_uninit
+        else:
+            self.uninitialized = saved_uninit
 
     def _is_matchable(self, t: Type) -> bool:
         """Check if a type is valid as a match scrutinee."""
@@ -1964,6 +2145,7 @@ class Checker:
             self.error("non-exhaustive match: missing cases", pos)
 
     def check_try_stmt(self, stmt: TTryStmt) -> None:
+        saved_uninit = set(self.uninitialized)
         self.enter_scope()
         self.check_stmts(stmt.body)
         self.exit_scope()
@@ -2007,6 +2189,7 @@ class Checker:
             self.check_stmts(stmt.finally_body)
             self.exit_scope()
             self.in_finally = old_in_finally
+        self.uninitialized = saved_uninit
 
     # ── Expression checking ───────────────────────────────────
 
@@ -2064,13 +2247,16 @@ class Checker:
         return None
 
     def check_var(self, expr: TVar) -> Type | None:
+        if expr.name in self.uninitialized:
+            self.error("variable used before assignment", expr.pos)
         return self.lookup(expr.name, expr.pos)
 
     def check_binary_op(self, expr: TBinaryOp) -> Type | None:
         left = self.check_expr(expr.left, None)
         if expr.op == "&&":
             checks = _collect_nil_checks(expr.left)
-            if len(checks) > 0:
+            tc = _collect_type_checks(expr.left)
+            if len(checks) > 0 or len(tc) > 0:
                 self.enter_scope()
                 for var_name, check_kind in checks:
                     if "." in var_name:
@@ -2082,13 +2268,25 @@ class Checker:
                             self.scopes[-1][var_name] = remove_nil(var_type)
                         elif check_kind == "is_nil":
                             self.scopes[-1][var_name] = NIL_T
+                for tc_var, tc_type_name, tc_positive in tc:
+                    if not tc_positive:
+                        continue
+                    if "." in tc_var:
+                        current = self._lookup_field_type(tc_var, expr.pos)
+                    else:
+                        current = self.lookup(tc_var, expr.pos)
+                    if current is not None:
+                        resolved = self._narrow_to_type(current, tc_type_name)
+                        if resolved is not None:
+                            self.scopes[-1][tc_var] = resolved
                 right = self.check_expr(expr.right, None)
                 self.exit_scope()
             else:
                 right = self.check_expr(expr.right, None)
         elif expr.op == "||":
             checks = _collect_nil_checks(expr.left, chain_op="||")
-            if len(checks) > 0:
+            tc = _collect_type_checks(expr.left)
+            if len(checks) > 0 or len(tc) > 0:
                 self.enter_scope()
                 for var_name, check_kind in checks:
                     if "." in var_name:
@@ -2100,6 +2298,18 @@ class Checker:
                             self.scopes[-1][var_name] = remove_nil(var_type)
                         elif check_kind == "is_not_nil":
                             self.scopes[-1][var_name] = NIL_T
+                # ||: if left is !IsType(x,T) (negative), right sees x narrowed to T
+                for tc_var, tc_type_name, tc_positive in tc:
+                    if tc_positive:
+                        continue
+                    if "." in tc_var:
+                        current = self._lookup_field_type(tc_var, expr.pos)
+                    else:
+                        current = self.lookup(tc_var, expr.pos)
+                    if current is not None:
+                        resolved = self._narrow_to_type(current, tc_type_name)
+                        if resolved is not None:
+                            self.scopes[-1][tc_var] = resolved
                 right = self.check_expr(expr.right, None)
                 self.exit_scope()
             else:
@@ -2168,6 +2378,12 @@ class Checker:
                 if left.kind == TY_NIL and contains_nil(right):
                     return BOOL_T
                 if right.kind == TY_NIL and contains_nil(left):
+                    return BOOL_T
+                # Allow nil comparison on reference/container types
+                _PRIMITIVE_KINDS = (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_RUNE)
+                if left.kind == TY_NIL and right.kind not in _PRIMITIVE_KINDS:
+                    return BOOL_T
+                if right.kind == TY_NIL and left.kind not in _PRIMITIVE_KINDS:
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
@@ -2326,6 +2542,22 @@ class Checker:
                     narrowings.append((var_name, remove_nil(var_type), NIL_T))
                 elif check_kind == "is_nil":
                     narrowings.append((var_name, NIL_T, remove_nil(var_type)))
+        # IsType narrowing
+        type_checks = _collect_type_checks(expr.cond)
+        for tc_var, tc_type_name, tc_positive in type_checks:
+            if "." in tc_var:
+                current = self._lookup_field_type(tc_var, expr.pos)
+            else:
+                current = self.lookup(tc_var, expr.pos)
+            if current is None:
+                continue
+            resolved = self._narrow_to_type(current, tc_type_name)
+            if resolved is None:
+                continue
+            if tc_positive:
+                narrowings.append((tc_var, resolved, current))
+            else:
+                narrowings.append((tc_var, current, resolved))
         self.enter_scope()
         for name, then_t, _else_t in narrowings:
             self.scopes[-1][name] = then_t
@@ -2396,6 +2628,9 @@ class Checker:
             if field_type is not None:
                 return field_type
         if isinstance(obj_type, InterfaceT):
+            iface_ft = self._interface_field_type(obj_type, expr.field)
+            if iface_ft is not None:
+                return iface_ft
             self.error(
                 "cannot access field on interface '"
                 + obj_type.name
@@ -2434,25 +2669,20 @@ class Checker:
         return result
 
     def _interface_field_type(self, iface: InterfaceT, field: str) -> Type | None:
-        """Find field type on interface. Returns type if any variant has it."""
+        """Return field type if ALL struct variants share it with compatible types."""
         result: Type | None = None
-        found = False
         for vname in iface.variants:
             vtype = self.types.get(vname)
-            if (
-                vtype is not None
-                and isinstance(vtype, StructT)
-                and field in vtype.fields
-            ):
-                ft = vtype.fields[field]
-                if not found:
-                    result = ft
-                    found = True
-                elif result is not None and not type_eq(result, ft):
-                    result = ERROR_T
-        if found:
-            return result if result is not None else ERROR_T
-        return None
+            if vtype is None or not isinstance(vtype, StructT):
+                return None
+            if field not in vtype.fields:
+                return None
+            ft = vtype.fields[field]
+            if result is None:
+                result = ft
+            elif not type_eq(result, ft):
+                return None
+        return result
 
     def check_tuple_access(self, expr: TTupleAccess) -> Type | None:
         obj_type = self.check_expr(expr.obj, None)
@@ -2921,7 +3151,7 @@ class Checker:
         check_key = key_expected if key_expected is not None else key_type
         check_val = val_expected if val_expected is not None else val_type
         # Track literal keys for duplicate detection
-        seen_keys: list[object] = []
+        seen_keys: list[tuple[str, str]] = []
         k0_val = _literal_key_value(k0)
         if k0_val is not None:
             seen_keys.append(k0_val)
@@ -3011,6 +3241,8 @@ class Checker:
         # Check body
         old_ret = self.current_fn_ret
         self.current_fn_ret = ret
+        saved_uninit = set(self.uninitialized)
+        self.uninitialized = set()
         self.enter_scope()
         for p in expr.params:
             if p.typ is not None:
@@ -3035,6 +3267,7 @@ class Checker:
                 self.error("not all paths return a value", expr.pos)
         self.exit_scope()
         self.current_fn_ret = old_ret
+        self.uninitialized = saved_uninit
         return FnT(kind="fn", params=params, ret=ret)
 
     def check_closure_captures(
@@ -4171,6 +4404,13 @@ class Checker:
         if name == "IsNil":
             if not require_range(1, 2):
                 return None
+            return BOOL_T
+
+        # ── IsType ──
+        if name == "IsType":
+            if not require(2):
+                return None
+            arg(0)
             return BOOL_T
 
         self.error("unknown built-in function: " + name, pos)
