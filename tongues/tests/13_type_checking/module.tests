@@ -210,8 +210,8 @@ ok
 interface Shape {}
 struct Circle : Shape {
     radius: float
-    fn Area(self) -> float {
-        return self.radius * self.radius
+    fn Area(this) -> float {
+        return this.radius * this.radius
     }
 }
 fn Main() -> void {

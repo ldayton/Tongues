@@ -400,6 +400,125 @@ def _unwrap_nil_union(t: Type) -> Type:
     return t
 
 
+def _literal_key_value(expr: TExpr) -> object | None:
+    """Extract a comparable value from a literal key expression."""
+    if isinstance(expr, TIntLit):
+        return ("int", expr.value)
+    if isinstance(expr, TStringLit):
+        return ("string", expr.value)
+    if isinstance(expr, TBoolLit):
+        return ("bool", expr.value)
+    if isinstance(expr, TFloatLit):
+        return ("float", expr.raw)
+    return None
+
+
+def _contains_fn_type(t: Type) -> bool:
+    """Return True if the type is or contains a fn type."""
+    if isinstance(t, FnT):
+        return True
+    if isinstance(t, ListT):
+        return _contains_fn_type(t.element)
+    if isinstance(t, MapT):
+        return _contains_fn_type(t.key) or _contains_fn_type(t.value)
+    if isinstance(t, SetT):
+        return _contains_fn_type(t.element)
+    if isinstance(t, TupleT):
+        for elem in t.elements:
+            if _contains_fn_type(elem):
+                return True
+    if isinstance(t, UnionT):
+        for m in t.members:
+            if _contains_fn_type(m):
+                return True
+    return False
+
+
+def _has_zero_value(t: Type) -> bool:
+    """Return True if the type has a zero/default value (no initializer needed)."""
+    if t.kind in (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_BYTES, TY_STRING, TY_RUNE):
+        return True
+    if t.kind == TY_NIL:
+        return True
+    if isinstance(t, ListT):
+        return True
+    if isinstance(t, MapT):
+        return True
+    if isinstance(t, SetT):
+        return True
+    if isinstance(t, TupleT):
+        for elem in t.elements:
+            if not _has_zero_value(elem):
+                return False
+        return True
+    if isinstance(t, UnionT):
+        return contains_nil(t)
+    if isinstance(t, FnT):
+        return type_eq(t.ret, VOID_T) and len(t.params) == 0
+    return False
+
+
+def _block_is_complete(stmts: list[TStmt]) -> bool:
+    """Return True if all paths through this block return or throw."""
+    if len(stmts) == 0:
+        return False
+    last = stmts[len(stmts) - 1]
+    if isinstance(last, (TReturnStmt, TThrowStmt)):
+        return True
+    if isinstance(last, TIfStmt):
+        if last.else_body is None:
+            return False
+        return _block_is_complete(last.then_body) and _block_is_complete(last.else_body)
+    if isinstance(last, TWhileStmt):
+        if isinstance(last.cond, TBoolLit) and last.cond.value is True:
+            return not _stmts_contain_break(last.body)
+        return False
+    if isinstance(last, TMatchStmt):
+        if last.default is not None:
+            for case in last.cases:
+                if not _block_is_complete(case.body):
+                    return False
+            return _block_is_complete(last.default.body)
+        if len(last.cases) > 0:
+            for case in last.cases:
+                if not _block_is_complete(case.body):
+                    return False
+            return True
+        return False
+    if isinstance(last, TTryStmt):
+        if len(last.catches) == 0:
+            return _block_is_complete(last.body)
+        return _block_is_complete(last.body) or all(
+            _block_is_complete(c.body) for c in last.catches
+        )
+    return False
+
+
+def _stmts_contain_break(stmts: list[TStmt]) -> bool:
+    """Return True if any statement in the list is or contains a break."""
+    for s in stmts:
+        if isinstance(s, TBreakStmt):
+            return True
+        if isinstance(s, TIfStmt):
+            if _stmts_contain_break(s.then_body):
+                return True
+            if s.else_body is not None and _stmts_contain_break(s.else_body):
+                return True
+        if isinstance(s, TTryStmt):
+            if _stmts_contain_break(s.body):
+                return True
+            for c in s.catches:
+                if _stmts_contain_break(c.body):
+                    return True
+        if isinstance(s, TMatchStmt):
+            for c in s.cases:
+                if _stmts_contain_break(c.body):
+                    return True
+            if s.default is not None and _stmts_contain_break(s.default.body):
+                return True
+    return False
+
+
 def _body_always_exits(stmts: list[TStmt]) -> bool:
     """Return True if the last statement unconditionally exits the block."""
     if len(stmts) == 0:
@@ -850,6 +969,8 @@ class Checker:
         self.in_loop: bool = False
         self.current_struct: StructT | None = None
         self.strict_math: bool = False
+        self.loop_vars: set[str] = set()
+        self.in_finally: bool = False
         # Register built-in error structs
         for name, fields in BUILTIN_STRUCTS.items():
             st = StructT(
@@ -1159,8 +1280,8 @@ class Checker:
         self.current_fn_ret = ret
         self.enter_scope()
         for p in decl.params:
-            if p.name == "self" and self.current_struct is None:
-                self.error("self outside method", p.pos)
+            if p.name == "this" and self.current_struct is None:
+                self.error("this outside method", p.pos)
                 continue
             if p.typ is not None:
                 pt = self.resolve_type(p.typ)
@@ -1169,6 +1290,8 @@ class Checker:
                 self.declare(p.name, pt, p.pos)
         self.check_stmts(decl.body)
         self.exit_scope()
+        if not type_eq(ret, VOID_T) and not _block_is_complete(decl.body):
+            self.error("not all paths return a value", decl.pos)
         self.current_fn_ret = None
 
     def check_struct_methods(self, decl: TStructDecl) -> None:
@@ -1192,6 +1315,8 @@ class Checker:
                     self.declare(p.name, pt, p.pos)
             self.check_stmts(method.body)
             self.exit_scope()
+            if not type_eq(ret, VOID_T) and not _block_is_complete(method.body):
+                self.error("not all paths return a value", method.pos)
             self.current_fn_ret = None
         self.current_struct = old_struct
 
@@ -1211,8 +1336,10 @@ class Checker:
 
     def _check_assign_target(self, target: TExpr, pos: Pos) -> str | None:
         """Check assignment target for immutability. Returns error msg or None."""
-        if isinstance(target, TVar) and target.name == "self":
-            return "cannot assign to self"
+        if isinstance(target, TVar) and target.name == "this":
+            return "cannot assign to this"
+        if isinstance(target, TVar) and target.name in self.loop_vars:
+            return "cannot assign to loop variable"
         if isinstance(target, TTupleAccess):
             return "cannot assign to tuple element"
         if isinstance(target, TIndex):
@@ -1229,6 +1356,11 @@ class Checker:
         i = 0
         while i < len(stmts):
             s = stmts[i]
+            if i > 0 and isinstance(
+                stmts[i - 1], (TReturnStmt, TThrowStmt, TBreakStmt, TContinueStmt)
+            ):
+                self.error("unreachable code", s.pos)
+                return
             self.check_stmt(s)
             # After if-stmt with early exit, narrow nil-checked vars
             if isinstance(s, TIfStmt) and s.else_body is None:
@@ -1260,14 +1392,24 @@ class Checker:
         elif isinstance(stmt, TTupleAssignStmt):
             self.check_tuple_assign_stmt(stmt)
         elif isinstance(stmt, TReturnStmt):
-            self.check_return_stmt(stmt)
+            if self.in_finally:
+                self.error("control flow in finally", stmt.pos)
+            else:
+                self.check_return_stmt(stmt)
         elif isinstance(stmt, TBreakStmt):
-            if not self.in_loop:
+            if self.in_finally:
+                self.error("control flow in finally", stmt.pos)
+            elif not self.in_loop:
                 self.error("break outside of loop", stmt.pos)
         elif isinstance(stmt, TContinueStmt):
-            if not self.in_loop:
+            if self.in_finally:
+                self.error("control flow in finally", stmt.pos)
+            elif not self.in_loop:
                 self.error("continue outside of loop", stmt.pos)
         elif isinstance(stmt, TThrowStmt):
+            if self.in_finally:
+                self.error("control flow in finally", stmt.pos)
+                return
             throw_type = self.check_expr(stmt.expr, None)
             if throw_type is not None and throw_type.kind != TY_ERROR:
                 if not isinstance(throw_type, (StructT, InterfaceT)):
@@ -1288,7 +1430,10 @@ class Checker:
                             stmt.pos,
                         )
         elif isinstance(stmt, TExprStmt):
-            self.check_expr(stmt.expr, None)
+            if not isinstance(stmt.expr, TCall):
+                self.error("expression has no effect", stmt.pos)
+            else:
+                self.check_expr(stmt.expr, None)
         elif isinstance(stmt, TIfStmt):
             self.check_if_stmt(stmt)
         elif isinstance(stmt, TWhileStmt):
@@ -1308,6 +1453,10 @@ class Checker:
             self.error("void is not a value type", stmt.pos)
             self.declare(stmt.name, ERROR_T, stmt.pos)
             return
+        if stmt.value is None and not _has_zero_value(declared_type):
+            self.error("initializer required for " + type_name(declared_type), stmt.pos)
+            self.declare(stmt.name, declared_type, stmt.pos)
+            return
         if stmt.value is not None:
             val_type = self.check_expr(stmt.value, declared_type)
             if val_type is not None and not is_assignable(val_type, declared_type):
@@ -1321,6 +1470,9 @@ class Checker:
         self.declare(stmt.name, declared_type, stmt.pos)
 
     def check_assign_stmt(self, stmt: TAssignStmt) -> None:
+        if isinstance(stmt.target, TSlice):
+            self.error("cannot assign to slice", stmt.pos)
+            return
         if not self._is_valid_lvalue(stmt.target):
             self.error("invalid assignment target", stmt.pos)
             return
@@ -1487,6 +1639,8 @@ class Checker:
     def check_for_stmt(self, stmt: TForStmt) -> None:
         old_in_loop = self.in_loop
         self.in_loop = True
+        old_loop_vars = self.loop_vars
+        self.loop_vars = set(b for b in stmt.binding if b != "_")
         self.enter_scope()
         if isinstance(stmt.iterable, TRange):
             # range — all args must be int, loop var is int
@@ -1514,11 +1668,15 @@ class Checker:
         self.check_stmts(stmt.body)
         self.exit_scope()
         self.in_loop = old_in_loop
+        self.loop_vars = old_loop_vars
 
     def bind_for_vars(self, binding: list[str], iter_type: Type, pos: Pos) -> None:
         if isinstance(iter_type, ListT):
             if len(binding) == 1:
                 self.declare(binding[0], iter_type.element, pos)
+            elif len(binding) == 2:
+                self.declare(binding[0], INT_T, pos)
+                self.declare(binding[1], iter_type.element, pos)
             elif isinstance(iter_type.element, TupleT) and len(
                 iter_type.element.elements
             ) == len(binding):
@@ -1526,9 +1684,6 @@ class Checker:
                 while i < len(binding):
                     self.declare(binding[i], iter_type.element.elements[i], pos)
                     i += 1
-            elif len(binding) == 2:
-                self.declare(binding[0], INT_T, pos)
-                self.declare(binding[1], iter_type.element, pos)
         elif type_eq(iter_type, STRING_T):
             if len(binding) == 1:
                 self.declare(binding[0], RUNE_T, pos)
@@ -1802,6 +1957,7 @@ class Checker:
         self.check_stmts(stmt.body)
         self.exit_scope()
         seen_catch_all = False
+        seen_catch_types: list[Type] = []
         for catch in stmt.catches:
             self.enter_scope()
             if len(catch.types) == 0:
@@ -1817,19 +1973,37 @@ class Checker:
                 self.error("unreachable catch after catch-all", catch.pos)
             if type_eq(catch_type, ERROR_T):
                 seen_catch_all = True
+            elif not isinstance(catch_type, (StructT, InterfaceT, UnionT)):
+                self.error(
+                    "catch type must be a struct, got " + type_name(catch_type),
+                    catch.pos,
+                )
+            else:
+                for prev in seen_catch_types:
+                    if type_eq(catch_type, prev):
+                        self.error(
+                            "duplicate catch for " + type_name(catch_type), catch.pos
+                        )
+                        break
+                seen_catch_types.append(catch_type)
             self.declare(catch.name, catch_type, catch.pos)
             self.check_stmts(catch.body)
             self.exit_scope()
         if stmt.finally_body is not None:
+            old_in_finally = self.in_finally
+            self.in_finally = True
             self.enter_scope()
             self.check_stmts(stmt.finally_body)
             self.exit_scope()
+            self.in_finally = old_in_finally
 
     # ── Expression checking ───────────────────────────────────
 
     def check_expr(self, expr: TExpr, expected: Type | None) -> Type | None:
         """Type-check an expression and return its type. Returns None on error."""
         if isinstance(expr, TIntLit):
+            if expr.value < -(2**63) or expr.value >= 2**63:
+                self.error("integer literal too large", expr.pos)
             return INT_T
         if isinstance(expr, TFloatLit):
             return FLOAT_T
@@ -1948,6 +2122,9 @@ class Checker:
             return BOOL_T
         # Equality: same type (or compatible — tuples, lists, error)
         if op in ("==", "!="):
+            if _contains_fn_type(left) or _contains_fn_type(right):
+                self.error("equality not defined for fn", pos)
+                return None
             if not type_eq(left, right) and not (
                 is_assignable(left, right) or is_assignable(right, left)
             ):
@@ -2196,7 +2373,7 @@ class Checker:
             if expr.field in obj_type.fields:
                 return obj_type.fields[expr.field]
             if expr.field in obj_type.methods:
-                self.error("cannot capture 'self'", expr.pos)
+                self.error("cannot capture 'this'", expr.pos)
                 return obj_type.methods[expr.field]
             self.error(
                 "'" + obj_type.name + "' has no field or method '" + expr.field + "'",
@@ -2491,11 +2668,8 @@ class Checker:
                         a.pos,
                     )
         elif has_named:
-            # Named args but no param names available — check for mixing
-            for a in args:
-                if a.name is None:
-                    self.error("cannot mix positional and named arguments", a.pos)
-                    return fn.ret
+            # Named args but no param names available — reject
+            self.error("named arguments not supported for fn values", pos)
             # Just check types positionally
             i = 0
             while i < len(args):
@@ -2623,6 +2797,9 @@ class Checker:
         obj_type = self.check_expr(access.obj, None)
         if obj_type is None:
             return None
+        if contains_nil(obj_type) and not isinstance(obj_type, StructT):
+            self.error("cannot call method on optional; narrow first", pos)
+            return None
         if isinstance(obj_type, StructT):
             if access.field in obj_type.methods:
                 method = obj_type.methods[access.field]
@@ -2732,11 +2909,21 @@ class Checker:
             return None
         check_key = key_expected if key_expected is not None else key_type
         check_val = val_expected if val_expected is not None else val_type
+        # Track literal keys for duplicate detection
+        seen_keys: list[object] = []
+        k0_val = _literal_key_value(k0)
+        if k0_val is not None:
+            seen_keys.append(k0_val)
         # For map literal keys, allow bool↔int (Python: True==1, False==0)
         _map_compat = {TY_BOOL, TY_INT}
         i = 1
         while i < len(expr.entries):
             ki, vi = expr.entries[i]
+            ki_val = _literal_key_value(ki)
+            if ki_val is not None and ki_val in seen_keys:
+                self.error("duplicate key in map literal", ki.pos)
+            elif ki_val is not None:
+                seen_keys.append(ki_val)
             kt = self.check_expr(ki, check_key)
             vt = self.check_expr(vi, check_val)
             if kt is not None and not is_assignable(kt, check_key):
@@ -2819,7 +3006,22 @@ class Checker:
                 pt = self.resolve_type(p.typ)
                 self.declare(p.name, pt, p.pos)
         self.check_closure_captures(expr.body, param_names, expr.pos)
-        self.check_stmts(expr.body)
+        is_arrow = expr.annotations.get("fn_lit.arrow") == "true"
+        if is_arrow and len(expr.body) == 1 and isinstance(expr.body[0], TExprStmt):
+            arrow_type = self.check_expr(expr.body[0].expr, ret)
+            if arrow_type is not None and not type_eq(ret, VOID_T):
+                if not is_assignable(arrow_type, ret):
+                    self.error(
+                        "cannot assign "
+                        + type_name(arrow_type)
+                        + " to "
+                        + type_name(ret),
+                        expr.body[0].pos,
+                    )
+        else:
+            self.check_stmts(expr.body)
+            if not type_eq(ret, VOID_T) and not _block_is_complete(expr.body):
+                self.error("not all paths return a value", expr.pos)
         self.exit_scope()
         self.current_fn_ret = old_ret
         return FnT(kind="fn", params=params, ret=ret)
@@ -2976,6 +3178,10 @@ class Checker:
     def check_builtin_call(
         self, name: str, args: list[TArg], pos: Pos, expected: Type | None
     ) -> Type | None:
+        for a in args:
+            if a.name is not None:
+                self.error("named arguments not supported for built-in " + name, pos)
+                break
         arg_types: list[Type | None] = []
         for a in args:
             arg_types.append(self.check_expr(a.value, None))
@@ -3286,9 +3492,18 @@ class Checker:
                 self.error("Get requires map as first argument", pos)
                 return None
             if t1 is not None and isinstance(t1, MapT):
-                if n == 2:
-                    return make_optional(t1.value)
-                return t1.value
+                if n == 3:
+                    t3 = arg(2)
+                    if t3 is not None and not is_assignable(t3, t1.value):
+                        self.error(
+                            "default value: cannot assign "
+                            + type_name(t3)
+                            + " to "
+                            + type_name(t1.value),
+                            pos,
+                        )
+                    return t1.value
+                return make_optional(t1.value)
             return None
 
         # ── Delete ──
@@ -3661,6 +3876,9 @@ class Checker:
             if name == "Split":
                 if not require(2):
                     return None
+                t = arg(0)
+                if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
+                    self.error("Split requires string as first argument", pos)
             else:
                 if not require(1):
                     return None
@@ -3672,18 +3890,34 @@ class Checker:
         if name == "Join":
             if not require(2):
                 return None
+            t1 = arg(0)
+            if t1 is not None and t1.kind != TY_ERROR and not type_eq(t1, STRING_T):
+                self.error("Join requires string as first argument", pos)
+            t2 = arg(1)
+            if t2 is not None and t2.kind != TY_ERROR:
+                if not isinstance(t2, ListT):
+                    self.error("Join requires list as second argument", pos)
             return STRING_T
         if name in ("Find", "RFind", "Count"):
             if not require(2):
                 return None
+            t = arg(0)
+            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
+                self.error(name + " requires string as first argument", pos)
             return INT_T
         if name == "Replace":
             if not require(3):
                 return None
+            t = arg(0)
+            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
+                self.error("Replace requires string as first argument", pos)
             return STRING_T
         if name in ("StartsWith", "EndsWith"):
             if not require(2):
                 return None
+            t = arg(0)
+            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
+                self.error(name + " requires string as first argument", pos)
             return BOOL_T
         if name in ("IsDigit", "IsAlpha", "IsAlnum", "IsSpace", "IsUpper", "IsLower"):
             if not require(1):
@@ -3732,6 +3966,9 @@ class Checker:
         if name == "ParseFloat":
             if not require(1):
                 return None
+            t = arg(0)
+            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
+                self.error("ParseFloat requires string", pos)
             return FLOAT_T
         if name == "FormatInt":
             if not require(2):
@@ -3849,7 +4086,7 @@ class Checker:
             t = arg(0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("ReadFile requires string path", pos)
-            return BYTES_T
+            return normalize_union([STRING_T, BYTES_T])
         if name == "WriteFile":
             if not require(2):
                 return None

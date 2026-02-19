@@ -266,6 +266,10 @@ class Parser:
                     strict_math = True
                 if semantic.get("strict_tostring") == "true":
                     strict_tostring = True
+                _valid_semantic = {"strict_math", "strict_tostring"}
+                for key in semantic:
+                    if key not in _valid_semantic:
+                        raise self.error("unknown annotation '" + key + "'")
                 semantic = {}
                 seen_decl = True
             decl.annotations.update(advisory)
@@ -303,10 +307,10 @@ class Parser:
         params: list[TParam] = []
         if self.at(")"):
             return params
-        if self.at("self"):
+        if self.at("this"):
             pos = self._pos()
             self.advance()
-            params.append(TParam(pos, "self", None, {}))
+            params.append(TParam(pos, "this", None, {}))
             while self.at(","):
                 self.advance()
                 params.append(self.parse_param())
@@ -395,6 +399,8 @@ class Parser:
         typ = self.parse_union_type()
         if self.at("?"):
             self.advance()
+            if self.at("?"):
+                raise self.error("double optional is not allowed")
             return TOptionalType(typ.pos, typ)
         return typ
 
@@ -448,6 +454,8 @@ class Parser:
         if tok.value == "(":
             self.advance()
             first = self.parse_type()
+            if self.at(")"):
+                raise self.error("tuple requires at least two elements")
             self.expect(",")
             elements: list[TType] = [first, self.parse_type()]
             while self.at(","):
