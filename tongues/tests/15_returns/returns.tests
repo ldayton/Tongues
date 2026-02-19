@@ -338,8 +338,8 @@ Foo.body.0.body_has_return = true
 === method annotations
 struct Calc {
     value: int
-    fn Get(self) -> int {
-        return self.value
+    fn Get(this) -> int {
+        return this.value
     }
 }
 fn Main() -> void {
@@ -438,7 +438,7 @@ fn Early(x: int) -> int {
 }
 fn Main() -> void { WritelnOut(ToString(Early(1))) }
 ---
-Early.always_returns = true
+error: unreachable code
 ---
 
 === optional match all return
@@ -775,15 +775,15 @@ fn Foo() -> int {
 }
 fn Main() -> void { WritelnOut(ToString(Foo())) }
 ---
-Foo.needs_named_returns = false
+error: control flow in finally
 ---
 
 === method needs named returns
 struct Parser {
     input: string
-    fn Parse(self) -> int {
+    fn Parse(this) -> int {
         try {
-            return ParseInt(self.input, 10)
+            return ParseInt(this.input, 10)
         } catch e: ValueError {
             return 0
         }

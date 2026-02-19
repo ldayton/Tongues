@@ -465,6 +465,9 @@ def _block_is_complete(stmts: list[TStmt]) -> bool:
     last = stmts[len(stmts) - 1]
     if isinstance(last, (TReturnStmt, TThrowStmt)):
         return True
+    if isinstance(last, TExprStmt) and isinstance(last.expr, TCall):
+        if isinstance(last.expr.func, TVar) and last.expr.func.name == "Exit":
+            return True
     if isinstance(last, TIfStmt):
         if last.else_body is None:
             return False
@@ -1430,7 +1433,8 @@ class Checker:
                             stmt.pos,
                         )
         elif isinstance(stmt, TExprStmt):
-            if not isinstance(stmt.expr, TCall):
+            # TODO: TStringLit/TNilLit exemption is too broad — should only allow docstrings/noop
+            if not isinstance(stmt.expr, (TCall, TStringLit, TNilLit)):
                 self.error("expression has no effect", stmt.pos)
             else:
                 self.check_expr(stmt.expr, None)
@@ -1674,6 +1678,13 @@ class Checker:
         if isinstance(iter_type, ListT):
             if len(binding) == 1:
                 self.declare(binding[0], iter_type.element, pos)
+            elif (
+                len(binding) == 2
+                and isinstance(iter_type.element, TupleT)
+                and len(iter_type.element.elements) == 2
+            ):
+                self.declare(binding[0], iter_type.element.elements[0], pos)
+                self.declare(binding[1], iter_type.element.elements[1], pos)
             elif len(binding) == 2:
                 self.declare(binding[0], INT_T, pos)
                 self.declare(binding[1], iter_type.element, pos)
@@ -3916,8 +3927,13 @@ class Checker:
             if not require(2):
                 return None
             t = arg(0)
-            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
-                self.error(name + " requires string as first argument", pos)
+            if (
+                t is not None
+                and t.kind != TY_ERROR
+                and not type_eq(t, STRING_T)
+                and not type_eq(t, BYTES_T)
+            ):
+                self.error(name + " requires string or bytes as first argument", pos)
             return BOOL_T
         if name in ("IsDigit", "IsAlpha", "IsAlnum", "IsSpace", "IsUpper", "IsLower"):
             if not require(1):

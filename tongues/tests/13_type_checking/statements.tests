@@ -125,12 +125,12 @@ fn Main() -> void {
 ok
 ---
 
-=== for over list of tuples two vars gives index and value
+=== for over list of tuples two vars destructures
 fn Main() -> void {
     let pairs: list[(string, int)] = [("a", 1), ("b", 2)]
-    for i, pair in pairs {
-        let idx: int = i
-        let val: (string, int) = pair
+    for s, n in pairs {
+        let name: string = s
+        let val: int = n
     }
 }
 ---

@@ -263,8 +263,8 @@ error: cannot access field on optional
 struct Foo {
     x: int
 
-    fn GetX(self) -> int {
-        return self.x
+    fn GetX(this) -> int {
+        return this.x
     }
 }
 fn Main() -> void {

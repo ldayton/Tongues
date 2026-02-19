@@ -705,7 +705,7 @@ class Parser:
             TK_IDENT,
         ):
             return True
-        if tok.value in ("true", "false", "nil", "self"):
+        if tok.value in ("true", "false", "nil", "this"):
             return True
         if tok.value in ("(", "[", "{"):
             return True
@@ -923,8 +923,8 @@ class Parser:
             self.advance()
             return TNilLit(pos, {})
 
-        # Identifier (self is a keyword but valid in expression position)
-        if tok.type == TK_IDENT or tok.value == "self":
+        # Identifier (this is a keyword but valid in expression position)
+        if tok.type == TK_IDENT or tok.value == "this":
             self.advance()
             return TVar(pos, tok.value, {})
 

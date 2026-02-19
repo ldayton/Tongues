@@ -114,7 +114,7 @@ class _TypeResolver:
         for p in fn.params:
             if p.typ is not None:
                 self.locals[p.name] = checker.resolve_type(p.typ)
-            elif p.name == "self" and struct_type is not None:
+            elif p.name == "this" and struct_type is not None:
                 self.locals[p.name] = struct_type
 
     def resolve(self, expr: TExpr) -> Type | None:

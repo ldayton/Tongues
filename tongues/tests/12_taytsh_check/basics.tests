@@ -27,7 +27,7 @@ fn Main() -> void {
 ok
 ---
 
-=== valid: struct without initializer
+=== error: struct without initializer
 struct Foo {
     x: int
 }
@@ -35,16 +35,16 @@ fn Main() -> void {
     let f: Foo
 }
 ---
-ok
+error: initializer required
 ---
 
-=== valid: enum without initializer
+=== error: enum without initializer
 enum Color { Red Green Blue }
 fn Main() -> void {
     let c: Color
 }
 ---
-ok
+error: initializer required
 ---
 
 === valid: assignment
@@ -149,7 +149,7 @@ fn Main() -> void {
 error: void is not a value type
 ---
 
-=== valid: fn type without initializer
+=== error: fn type without initializer
 fn Foo(x: int) -> int {
     return x
 }
@@ -157,15 +157,15 @@ fn Main() -> void {
     let f: fn[int, int]
 }
 ---
-ok
+error: initializer required
 ---
 
-=== valid: union without nil no initializer
+=== error: union without nil no initializer
 fn Main() -> void {
     let x: int | string
 }
 ---
-ok
+error: initializer required
 ---
 
 === valid: map zero value
@@ -215,7 +215,7 @@ fn Main() -> void {}
 error: duplicate function name
 ---
 
-=== valid: tuple with struct element no initializer
+=== error: tuple with struct element no initializer
 struct Foo {
     x: int
 }
@@ -223,7 +223,7 @@ fn Main() -> void {
     let t: (int, Foo)
 }
 ---
-ok
+error: initializer required
 ---
 
 === error: void as list element type

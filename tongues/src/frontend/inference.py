@@ -1310,7 +1310,7 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
         i += 1
     if receiver != "":
         self_type = PointerType(StructRef(receiver))
-        env.set("self", self_type, receiver)
+        env.set("this", self_type, receiver)
     body = get_nodes(func_node, "body")
     if len(body) == 0:
         return

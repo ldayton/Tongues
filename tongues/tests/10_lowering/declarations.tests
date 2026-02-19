@@ -48,8 +48,8 @@ def f() -> None:
     c = Counter(0)
     _ = c.get()
 ---
-fn get(self) -> int {
-    return self.val
+fn get(this) -> int {
+    return this.val
 }
 ---
 

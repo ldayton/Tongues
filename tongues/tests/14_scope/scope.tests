@@ -182,9 +182,7 @@ fn Main() -> void {
     }
 }
 ---
-Main.body.1.type = TForStmt
-Main.body.1.binder.x.is_reassigned = true
-Main.body.1.binder.x.is_const = false
+error: cannot assign to loop variable
 ---
 
 === for two binders
@@ -259,8 +257,8 @@ Main.body.0.catches.0.is_const = true
 === void method mutation
 struct Counter {
     n: int
-    fn Inc(self) -> void {
-        self.n = self.n + 1
+    fn Inc(this) -> void {
+        this.n = this.n + 1
     }
 }
 fn Bump(c: Counter) -> void {
@@ -565,11 +563,11 @@ Foo.params.c.is_unused = true
 Foo.params.c.is_modified = false
 ---
 
-=== self modified
+=== this modified
 struct Counter {
     n: int
-    fn Inc(self) -> void {
-        self.n = self.n + 1
+    fn Inc(this) -> void {
+        this.n = this.n + 1
     }
 }
 fn Main() -> void {
@@ -577,14 +575,14 @@ fn Main() -> void {
     c.Inc()
 }
 ---
-Counter.Inc.params.self.is_modified = true
-Counter.Inc.params.self.is_reassigned = false
+Counter.Inc.params.this.is_modified = true
+Counter.Inc.params.this.is_reassigned = false
 ---
 
-=== self unused
+=== this unused
 struct Dummy {
     x: int
-    fn Constant(self) -> int {
+    fn Constant(this) -> int {
         return 42
     }
 }
@@ -593,8 +591,8 @@ fn Main() -> void {
     WritelnOut(ToString(d.Constant()))
 }
 ---
-Dummy.Constant.params.self.is_unused = true
-Dummy.Constant.params.self.is_modified = false
+Dummy.Constant.params.this.is_unused = true
+Dummy.Constant.params.this.is_modified = false
 ---
 
 === index assign not reassign

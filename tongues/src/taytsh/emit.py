@@ -449,7 +449,7 @@ class _Emitter:
         parts: list[str] = []
         for p in params:
             if p.typ is None:
-                parts.append("self")
+                parts.append("this")
             else:
                 parts.append(f"{p.name}: {self._render_type(p.typ)}")
         return ", ".join(parts)

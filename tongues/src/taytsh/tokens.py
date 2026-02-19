@@ -42,7 +42,7 @@ KEYWORDS: set[str] = {
     "range",
     "return",
     "rune",
-    "self",
+    "this",
     "set",
     "string",
     "struct",

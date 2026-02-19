@@ -152,6 +152,7 @@ TAYTSH_KEYWORDS: set[str] = {
     "struct",
     "throw",
     "true",
+    "this",
     "try",
     "void",
     "while",
@@ -1121,6 +1122,8 @@ def _lower_name(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return TNilLit(_P0, _EMPTY_ANN)
     if name == "_":
         return TNilLit(_P0, _EMPTY_ANN)
+    if name == "self":
+        return TVar(_P0, "this", _EMPTY_ANN)
     safe = _safe_name(name)
     return TVar(_P0, safe, _name_ann(safe, name))
 
@@ -4371,11 +4374,11 @@ def _build_method(
     func_info = class_methods.get(name)
     params: list[TParam] = []
     func_env = env.copy()
-    # Add self param
+    # Add this param
     self_type: TypeNode = PointerType(StructRef(class_name))
-    func_env.var_types["self"] = self_type
-    func_env.declared.add("self")
-    params.append(TParam(_P0, "self", None, _EMPTY_ANN))
+    func_env.var_types["this"] = self_type
+    func_env.declared.add("this")
+    params.append(TParam(_P0, "this", None, _EMPTY_ANN))
     if func_info is not None:
         i = 0
         while i < len(func_info.params):

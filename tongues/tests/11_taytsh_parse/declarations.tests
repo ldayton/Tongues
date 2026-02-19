@@ -44,8 +44,8 @@ struct Span {
     start: int
     end: int
 
-    fn Len(self) -> int {
-        return self.end - self.start
+    fn Len(this) -> int {
+        return this.end - this.start
     }
 }
 ---
@@ -54,7 +54,7 @@ ok
 
 === struct with leading method
 struct Foo {
-    fn Bar(self) -> void {}
+    fn Bar(this) -> void {}
 
     x: int
 }
@@ -98,13 +98,13 @@ fn Eval(node: Node) -> int {
 ok
 ---
 
-=== method with self and params
+=== method with this and params
 struct Span {
     start: int
     end: int
 
-    fn Contains(self, pos: int) -> bool {
-        return pos >= self.start && pos < self.end
+    fn Contains(this, pos: int) -> bool {
+        return pos >= this.start && pos < this.end
     }
 }
 ---
@@ -137,7 +137,7 @@ error:
 
 === struct with only methods
 struct NoFields {
-    fn DoStuff(self) -> void {}
+    fn DoStuff(this) -> void {}
 }
 ---
 error:

@@ -730,8 +730,8 @@ Main.lets.s.content = ascii
 === method string param
 struct Greeter {
     prefix: string
-    fn Greet(self, name: string) -> string {
-        return Concat(self.prefix, name)
+    fn Greet(this, name: string) -> string {
+        return Concat(this.prefix, name)
     }
 }
 fn Main() -> void {

@@ -525,7 +525,7 @@ fn Main() -> void {
 Foo.throws = ValueError
 ---
 
-=== direct self recursion
+=== direct this recursion
 fn Factorial(n: int) -> int {
     if n <= 1 {
         return 1
@@ -725,7 +725,7 @@ fn Main() -> void { Foo() }
 Foo.calls.Helper.is_tail_call = false
 ---
 
-=== self recursive tail call
+=== this recursive tail call
 fn Last(xs: list[int]) -> int {
     if Len(xs) == 1 {
         return xs[0]
@@ -738,7 +738,7 @@ Last.is_recursive = true
 Last.calls.Last.is_tail_call = true
 ---
 
-=== self recursive not tail call
+=== this recursive not tail call
 fn Total(xs: list[int]) -> int {
     if Len(xs) == 0 { return 0 }
     return xs[0] + Total(xs[1:Len(xs)])
@@ -767,8 +767,8 @@ IsOdd.calls.IsEven.is_tail_call = true
 === method tail call
 struct Calc {
     value: int
-    fn Double(self) -> int {
-        return self.value * 2
+    fn Double(this) -> int {
+        return this.value * 2
     }
 }
 fn Helper(c: Calc) -> int {
@@ -815,8 +815,8 @@ Foo.is_recursive = false
 === throws from method call
 struct Parser {
     input: string
-    fn Parse(self) -> int {
-        return ParseInt(self.input, 10)
+    fn Parse(this) -> int {
+        return ParseInt(this.input, 10)
     }
 }
 fn Foo(p: Parser) -> int {
@@ -839,13 +839,13 @@ Foo.throws = ValueError
 interface Validator {}
 struct IntValidator : Validator {
     label: string
-    fn Validate(self, s: string) -> int {
+    fn Validate(this, s: string) -> int {
         return ParseInt(s, 10)
     }
 }
 struct FloatValidator : Validator {
     label: string
-    fn Validate(self, s: string) -> float {
+    fn Validate(this, s: string) -> float {
         return ParseFloat(s)
     }
 }
@@ -1037,15 +1037,15 @@ fn Foo(s: string) -> int {
 }
 fn Main() -> void { WritelnOut(ToString(Foo("42"))) }
 ---
-Foo.calls.Cleanup.is_tail_call = true
+error: control flow in finally
 ---
 
 === enum match method annotations
 struct Calc {
     value: int
-    fn Compute(self) -> int {
-        if self.value <= 1 { return 1 }
-        return self.value * Calc(value: self.value - 1).Compute()
+    fn Compute(this) -> int {
+        if this.value <= 1 { return 1 }
+        return this.value * Calc(value: this.value - 1).Compute()
     }
 }
 fn Main() -> void {
@@ -1284,13 +1284,13 @@ Pong.throws = KeyError;ValueError
 interface Parser {}
 struct IntParser : Parser {
     label: string
-    fn Parse(self, s: string) -> int {
+    fn Parse(this, s: string) -> int {
         return ParseInt(s, 10)
     }
 }
 struct MapParser : Parser {
     label: string
-    fn Parse(self, s: string) -> int {
+    fn Parse(this, s: string) -> int {
         let m: map[string, int] = {"a": 1}
         return m[s]
     }
@@ -1340,13 +1340,13 @@ fn Main() -> void {
 Foo.throws = IndexError
 ---
 
-=== method self recursion via self
+=== method this recursion via this
 struct Counter {
     n: int
-    fn CountDown(self) -> int {
-        if self.n <= 0 { return 0 }
-        self.n = self.n - 1
-        return self.CountDown()
+    fn CountDown(this) -> int {
+        if this.n <= 0 { return 0 }
+        this.n = this.n - 1
+        return this.CountDown()
     }
 }
 fn Main() -> void {

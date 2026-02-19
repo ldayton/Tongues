@@ -1150,11 +1150,11 @@ class TypeChecker:
         seen = set()
         if method_self is not None:
             if not decl.params:
-                raise TaytshTypeError("method must take self parameter", decl.pos)
+                raise TaytshTypeError("method must take this parameter", decl.pos)
             first = decl.params[0]
-            if first.typ is not None or first.name != "self":
+            if first.typ is not None or first.name != "this":
                 raise TaytshTypeError(
-                    "method must take self as first parameter", first.pos
+                    "method must take this as first parameter", first.pos
                 )
         for i, p in enumerate(decl.params):
             if p.name in seen and p.name != "_":
@@ -1162,13 +1162,13 @@ class TypeChecker:
             seen.add(p.name)
             if p.typ is None:
                 if method_self is None:
-                    raise TaytshTypeError("'self' only allowed in methods", p.pos)
-                if i != 0 or p.name != "self":
-                    raise TaytshTypeError("self must be the first parameter", p.pos)
+                    raise TaytshTypeError("'this' only allowed in methods", p.pos)
+                if i != 0 or p.name != "this":
+                    raise TaytshTypeError("this must be the first parameter", p.pos)
                 params.append(method_self)
             else:
-                if p.name == "self":
-                    raise TaytshTypeError("'self' parameter must omit type", p.pos)
+                if p.name == "this":
+                    raise TaytshTypeError("'this' parameter must omit type", p.pos)
                 t = self.resolve_type(p.typ, pos=p.pos)
                 if ty_eq(t, TY_VOID):
                     raise TaytshTypeError("void cannot be a parameter type", p.pos)
@@ -1216,10 +1216,10 @@ class TypeChecker:
         for i, p in enumerate(decl.params):
             if p.typ is None:
                 if method_self is None:
-                    raise TaytshTypeError("'self' only allowed in methods", p.pos)
+                    raise TaytshTypeError("'this' only allowed in methods", p.pos)
                 if i != 0:
-                    raise TaytshTypeError("self must be first parameter", p.pos)
-                env.bind("self", method_self, pos=p.pos)
+                    raise TaytshTypeError("this must be first parameter", p.pos)
+                env.bind("this", method_self, pos=p.pos)
             else:
                 env.bind(p.name, sig.params[i], pos=p.pos)
 
@@ -3991,7 +3991,7 @@ class Runtime:
         # Bind params
         for i, p in enumerate(decl.params):
             if p.typ is None:
-                env.bind("self", sig.params[i], args[i])
+                env.bind("this", sig.params[i], args[i])
             else:
                 env.bind(p.name, sig.params[i], args[i])
 

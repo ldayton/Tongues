@@ -1,4 +1,4 @@
-from .a import foo
+from .a import foo  # noqa: F401
 
 
 def helper(x: int) -> int:

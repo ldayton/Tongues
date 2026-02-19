@@ -54,8 +54,8 @@ def _check_self_field_rune(
     fa: TFieldAccess, bindings: dict[str, Type], out: set[str]
 ) -> None:
     """If fa is self.field and the field is string-typed, add field name to rune vars."""
-    if isinstance(fa.obj, TVar) and fa.obj.name == "self":
-        self_t = bindings.get("self")
+    if isinstance(fa.obj, TVar) and fa.obj.name == "this":
+        self_t = bindings.get("this")
         if self_t is not None and isinstance(self_t, StructT):
             field_t = self_t.fields.get(fa.field)
             if field_t is not None and type_eq(field_t, STRING_T):
@@ -537,7 +537,7 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
     for p in decl.params:
         if p.typ is not None:
             bindings[p.name] = checker.resolve_type(p.typ)
-        elif p.name == "self" and self_type is not None:
+        elif p.name == "this" and self_type is not None:
             bindings[p.name] = self_type
     _collect_fn_let_bindings(decl.body, bindings, checker)
 

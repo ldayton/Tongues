@@ -390,7 +390,7 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
     for p in decl.params:
         if p.typ is not None:
             locals_[p.name] = checker.resolve_type(p.typ)
-        elif p.name == "self" and self_type is not None:
+        elif p.name == "this" and self_type is not None:
             locals_[p.name] = self_type
     ctx = _ReturnsCtx(
         checker=checker,

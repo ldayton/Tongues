@@ -12,12 +12,12 @@ fn Main() -> void {
 struct Counter {
     n: int
 
-    fn Inc(self) -> void {
-        self.n += 1
+    fn Inc(this) -> void {
+        this.n += 1
     }
 
-    fn Value(self) -> int {
-        return self.n
+    fn Value(this) -> int {
+        return this.n
     }
 }
 fn Main() -> void {

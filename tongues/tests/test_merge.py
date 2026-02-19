@@ -4,18 +4,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 from src.frontend.parse import parse
 from src.frontend.types import (
-    JBool,
     JDict,
     JInt,
     JList,
     JNull,
     JStr,
     get_str,
-    get_int,
     get_node,
     get_nodes,
 )

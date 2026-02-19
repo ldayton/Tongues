@@ -1,2 +1,2 @@
 # tongues: skip
-import requests
+import requests  # noqa: F401

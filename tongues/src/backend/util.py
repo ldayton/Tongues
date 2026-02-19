@@ -59,7 +59,7 @@ def go_to_pascal(name: str) -> str:
 
 def go_to_camel(name: str) -> str:
     """Convert snake_case to camelCase for Go."""
-    if name == "self":
+    if name == "this":
         return name
     if name.startswith("_"):
         name = name[1:]
