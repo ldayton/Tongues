@@ -20,6 +20,7 @@ from src.taytsh.ast import (
     TFieldAccess,
     TForStmt,
     TIfStmt,
+    TIndex,
     TIntLit,
     TLetStmt,
     TMatchCase,
@@ -190,6 +191,45 @@ class StmtGen:
         bindings = self.gen.scope.mutable_bindings()
         if not bindings:
             return self._gen_let()
+        options: list[tuple[str, object]] = [("var", None)]
+        for b in bindings:
+            if isinstance(b.typ, StructT):
+                for fname, ftype in b.typ.fields.items():
+                    options.append(("field", (b.name, fname, ftype)))
+            if isinstance(b.typ, ListT):
+                options.append(("index", (b.name, b.typ.element, INT_T)))
+            elif isinstance(b.typ, MapT):
+                options.append(("index", (b.name, b.typ.value, b.typ.key)))
+        kind, info = self.rng.choice(options)
+        if kind == "field":
+            var_name, fname, ftype = info
+            value = self.gen.expr_gen.gen_expr(ftype)
+            return TAssignStmt(
+                pos=P,
+                target=TFieldAccess(
+                    pos=P,
+                    obj=TVar(pos=P, name=var_name, annotations=A),
+                    field=fname,
+                    annotations=A,
+                ),
+                value=value,
+                annotations=A,
+            )
+        if kind == "index":
+            var_name, elem_type, key_type = info
+            key_expr = self.gen.expr_gen.gen_expr(key_type)
+            value = self.gen.expr_gen.gen_expr(elem_type)
+            return TAssignStmt(
+                pos=P,
+                target=TIndex(
+                    pos=P,
+                    obj=TVar(pos=P, name=var_name, annotations=A),
+                    index=key_expr,
+                    annotations=A,
+                ),
+                value=value,
+                annotations=A,
+            )
         b = self.rng.choice(bindings)
         value = self.gen.expr_gen.gen_expr(b.typ)
         return TAssignStmt(
@@ -509,13 +549,78 @@ class StmtGen:
         return TReturnStmt(pos=P, value=value, annotations=A)
 
     def _gen_expr_stmt(self) -> TStmt:
-        # Only calls, string literals, or nil are valid as expr-statements
-        # Generate a call to a known function or struct constructor
+        options: list[tuple[str, object]] = []
         struct_types = self.gen.pool.struct_types()
         if struct_types:
+            options.append(("struct", None))
+        if not self.gen.in_fn_lit:
+            for fn_name, fn_type in self.gen.functions.items():
+                if type_eq(fn_type.ret, VOID_T):
+                    if all(self.gen.expr_gen._can_gen_type(pt) for pt in fn_type.params):
+                        options.append(("fn_call", (fn_name, fn_type)))
+            for b in self.gen.scope.all_bindings():
+                if isinstance(b.typ, StructT):
+                    for mname, mtype in b.typ.methods.items():
+                        if type_eq(mtype.ret, VOID_T):
+                            if all(
+                                self.gen.expr_gen._can_gen_type(pt)
+                                for pt in mtype.params[1:]
+                            ):
+                                options.append(("method", (b.name, mname, mtype)))
+        if not options:
+            return TExprStmt(
+                pos=P,
+                expr=TStringLit(pos=P, value="noop", annotations=A),
+                annotations=A,
+            )
+        kind, info = self.rng.choice(options)
+        if kind == "struct":
             st = self.rng.choice(struct_types)
             expr = self.gen.expr_gen._gen_struct_constructor(st, 0)
             return TExprStmt(pos=P, expr=expr, annotations=A)
+        if kind == "fn_call":
+            fn_name, fn_type = info
+            args: list[TArg] = []
+            for pt in fn_type.params:
+                args.append(
+                    TArg(
+                        pos=P,
+                        name=None,
+                        value=self.gen.expr_gen.gen_expr(pt),
+                    )
+                )
+            expr = TCall(
+                pos=P,
+                func=TVar(pos=P, name=fn_name, annotations=A),
+                args=args,
+                annotations=A,
+            )
+            return TExprStmt(pos=P, expr=expr, annotations=A)
+        if kind == "method":
+            var_name, mname, mtype = info
+            args = []
+            for pt in mtype.params[1:]:
+                args.append(
+                    TArg(
+                        pos=P,
+                        name=None,
+                        value=self.gen.expr_gen.gen_expr(pt),
+                    )
+                )
+            expr = TCall(
+                pos=P,
+                func=TFieldAccess(
+                    pos=P,
+                    obj=TVar(pos=P, name=var_name, annotations=A),
+                    field=mname,
+                    annotations=A,
+                ),
+                args=args,
+                annotations=A,
+            )
+            return TExprStmt(pos=P, expr=expr, annotations=A)
         return TExprStmt(
-            pos=P, expr=TStringLit(pos=P, value="noop", annotations=A), annotations=A
+            pos=P,
+            expr=TStringLit(pos=P, value="noop", annotations=A),
+            annotations=A,
         )
