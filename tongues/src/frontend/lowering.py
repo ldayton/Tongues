@@ -2054,7 +2054,22 @@ def _lower_name_call(
             return _make_call("Zip", [a, b])
     if fname == "isinstance":
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
-            return TBoolLit(_P0, True, _EMPTY_ANN)
+            tnames = _isinstance_types_from_args(args)
+            if len(tnames) == 0:
+                return TBoolLit(_P0, True, _EMPTY_ANN)
+            lowered_arg = _lower_expr(args[0], env, ctx)
+            result_expr: TExpr = _make_call(
+                "IsType", [lowered_arg, TStringLit(_P0, tnames[0], _EMPTY_ANN)]
+            )
+            ti = 1
+            while ti < len(tnames):
+                right: TExpr = _make_call(
+                    "IsType",
+                    [lowered_arg, TStringLit(_P0, tnames[ti], _EMPTY_ANN)],
+                )
+                result_expr = TBinaryOp(_P0, "||", result_expr, right, _EMPTY_ANN)
+                ti += 1
+            return result_expr
     if fname == "any" or fname == "all":
         return TBoolLit(_P0, True, _EMPTY_ANN)
     if fname == "repr":
@@ -3924,6 +3939,29 @@ def _isinstance_type(node: ASTNode) -> str:
     if len(args) >= 2 and isinstance(args[1], dict):
         return get_str(args[1], "id")
     return ""
+
+
+def _isinstance_types_from_args(args: list[ASTNode]) -> list[str]:
+    """Get type name(s) from isinstance's second arg (raw args list)."""
+    if len(args) < 2 or not isinstance(args[1], dict):
+        return []
+    second = args[1]
+    if _is_ast(second, "Tuple"):
+        elts = get_nodes(second, "elts")
+        result: list[str] = []
+        i = 0
+        while i < len(elts):
+            e = elts[i]
+            if isinstance(e, dict):
+                name = get_str(e, "id")
+                if name != "":
+                    result.append(name)
+            i += 1
+        return result
+    name = get_str(second, "id")
+    if name != "":
+        return [name]
+    return []
 
 
 def _isinstance_types(node: ASTNode) -> list[str]:

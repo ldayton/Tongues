@@ -1016,6 +1016,27 @@ Every interface is automatically sealed — the compiler sees all implementation
 
 Interface bodies are empty. They define no fields or methods; they exist solely as the root of a closed type hierarchy. Common operations are free functions that match internally.
 
+### IsType
+
+`IsType(expr, "TypeName")` tests whether an interface value is an instance of the named variant struct at runtime. Returns `bool`.
+
+```
+fn Eval(n: Node) -> int {
+    if IsType(n, "Literal") {
+        return n.value
+    }
+    return 0
+}
+```
+
+`IsType` is an expression-level type test for contexts where `match` cannot apply — boolean combinations (`&&`, `||`), ternary expressions, guard patterns (`if !IsType(n, "T") { return }`), and field-access subjects (`IsType(c.func, "Var")`). For exhaustive type dispatch, use `match`.
+
+The type checker narrows the tested variable to the named struct type within the scope where the check is known to be true — the then-branch of an `if`, the right side of `&&`, the then-branch of a ternary, or after a guard where the negated check exits early.
+
+| Function              | Signature            | Description                                        |
+| --------------------- | -------------------- | -------------------------------------------------- |
+| `IsType(expr, name)`  | `T, string -> bool`  | true if runtime type matches the named struct type |
+
 ## Enums
 
 ```

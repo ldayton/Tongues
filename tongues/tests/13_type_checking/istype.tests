@@ -1,0 +1,272 @@
+=== IsType returns bool
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    let b: bool = IsType(n, "Lit")
+}
+---
+ok
+---
+
+=== IsType requires two arguments
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    let b: bool = IsType(n)
+}
+---
+error: requires 2 argument
+---
+
+=== IsType narrows interface in then branch
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> int {
+    if IsType(n, "Lit") {
+        return n.value
+    }
+    return 0
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== IsType no narrowing without check
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> int {
+    return n.value
+}
+fn Main() -> void {
+}
+---
+error: cannot access field on interface
+---
+
+=== IsType else branch keeps original type
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> void {
+    if IsType(n, "Lit") {
+        let v: int = n.value
+    } else {
+        let v: int = n.value
+    }
+}
+fn Main() -> void {
+}
+---
+error: cannot access field on interface
+---
+
+=== IsType negative guard narrows after early return
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> int {
+    if !IsType(n, "Lit") {
+        return 0
+    }
+    return n.value
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== IsType negative guard narrows after throw
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> int {
+    if !IsType(n, "Lit") {
+        throw ValueError("not a Lit")
+    }
+    return n.value
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== IsType negative guard no narrowing without exit
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> int {
+    if !IsType(n, "Lit") {
+        WritelnOut("not a lit")
+    }
+    return n.value
+}
+fn Main() -> void {
+}
+---
+error: cannot access field on interface
+---
+
+=== IsType narrows field access path
+interface Expr {}
+struct Var : Expr {
+    name: string
+}
+struct Call : Expr {
+    func: Expr
+}
+fn Foo(c: Call) -> string {
+    if IsType(c.func, "Var") {
+        return c.func.name
+    }
+    return ""
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== IsType field access no narrowing without check
+interface Expr {}
+struct Var : Expr {
+    name: string
+}
+struct Call : Expr {
+    func: Expr
+}
+fn Foo(c: Call) -> string {
+    return c.func.name
+}
+fn Main() -> void {
+}
+---
+error: cannot access field on interface
+---
+
+=== IsType in && chain narrows for right side
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> bool {
+    return IsType(n, "Lit") && n.value > 0
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== IsType in ternary narrows then branch
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> int {
+    return IsType(n, "Lit") ? n.value : 0
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== IsType wrong type name does not narrow
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> int {
+    if IsType(n, "Nonexistent") {
+        return n.value
+    }
+    return 0
+}
+fn Main() -> void {
+}
+---
+error: cannot access field on interface
+---
+
+=== IsType negative in else branch narrows
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Foo(n: Node) -> string {
+    if !IsType(n, "BinOp") {
+    } else {
+        return n.op
+    }
+    return ""
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== IsType combined with nil check
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+fn Foo(n: Node?, v: int?) -> int {
+    if n != nil && v != nil && IsType(n, "Lit") {
+        return n.value + v
+    }
+    return 0
+}
+fn Main() -> void {
+}
+---
+ok
+---

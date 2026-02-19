@@ -617,6 +617,58 @@ def _collect_nil_checks(
     return result
 
 
+def _istype_var_from_call(call: TCall) -> tuple[str, str] | None:
+    """Extract (var_path, type_name) from IsType(x, "T")."""
+    if not (isinstance(call.func, TVar) and call.func.name == "IsType"):
+        return None
+    if len(call.args) < 2:
+        return None
+    first = call.args[0].value
+    second = call.args[1].value
+    if not isinstance(second, TStringLit):
+        return None
+    type_name = second.value
+    if isinstance(first, TVar):
+        return (first.name, type_name)
+    if isinstance(first, TFieldAccess) and isinstance(first.obj, TVar):
+        return (first.obj.name + "." + first.field, type_name)
+    return None
+
+
+def _type_check_var(cond: TExpr) -> tuple[str, str, bool] | None:
+    """Extract (var_path, type_name, is_positive) from a type-check condition."""
+    # IsType(x, "T")
+    if isinstance(cond, TCall):
+        info = _istype_var_from_call(cond)
+        if info is not None:
+            return (info[0], info[1], True)
+    # !IsType(x, "T")
+    if isinstance(cond, TUnaryOp) and cond.op == "!":
+        inner = cond.operand
+        if isinstance(inner, TCall):
+            info = _istype_var_from_call(inner)
+            if info is not None:
+                return (info[0], info[1], False)
+    return None
+
+
+def _collect_type_checks(cond: TExpr) -> list[tuple[str, str, bool]]:
+    """Extract type checks from a condition, walking && and || chains."""
+    result: list[tuple[str, str, bool]] = []
+    # && chains: each arm narrows independently
+    if isinstance(cond, TBinaryOp) and cond.op == "&&":
+        result.extend(_collect_type_checks(cond.left))
+        result.extend(_collect_type_checks(cond.right))
+        return result
+    # || chains: can't narrow to a single type, skip
+    if isinstance(cond, TBinaryOp) and cond.op == "||":
+        return []
+    single = _type_check_var(cond)
+    if single is not None:
+        result.append(single)
+    return result
+
+
 def _is_truthy_type(t: Type) -> bool:
     """Return True if a type supports truthiness (can be used as a bool condition)."""
     return False
@@ -852,6 +904,8 @@ BUILTIN_NAMES: set[str] = {
     "ReplaceSlice",
     # Nil check
     "IsNil",
+    # Type check
+    "IsType",
 }
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
@@ -1053,6 +1107,19 @@ class Checker:
             if path in self.scopes[i]:
                 return self.scopes[i][path]
             i -= 1
+        return None
+
+    def _narrow_to_type(self, current_type: Type, type_name: str) -> Type | None:
+        """Resolve an IsType check against current type, returning the narrowed type."""
+        if isinstance(current_type, InterfaceT):
+            if type_name in current_type.variants:
+                return self.types.get(type_name)
+        if isinstance(current_type, UnionT):
+            for m in current_type.members:
+                if isinstance(m, (StructT, InterfaceT)) and m.name == type_name:
+                    return m
+                if isinstance(m, InterfaceT) and type_name in m.variants:
+                    return self.types.get(type_name)
         return None
 
     # ── Type resolution ───────────────────────────────────────
@@ -1383,6 +1450,20 @@ class Checker:
                                 self.narrow(var_name, remove_nil(var_type))
                             elif check_kind == "is_not_nil":
                                 self.narrow(var_name, NIL_T)
+                    # Guard narrowing for IsType: if !IsType(x, T): return → narrow x to T
+                    type_checks = _collect_type_checks(s.cond)
+                    for tc_var, tc_type_name, tc_positive in type_checks:
+                        if tc_positive:
+                            continue
+                        if "." in tc_var:
+                            current = self._lookup_field_type(tc_var, s.pos)
+                        else:
+                            current = self.lookup(tc_var, s.pos)
+                        if current is None:
+                            continue
+                        resolved = self._narrow_to_type(current, tc_type_name)
+                        if resolved is not None:
+                            self.narrow(tc_var, resolved)
             i += 1
 
     def check_stmt(self, stmt: TStmt) -> None:
@@ -1608,6 +1689,22 @@ class Checker:
                     narrowings.append((var_name, remove_nil(var_type), NIL_T))
                 elif check_kind == "is_nil":
                     narrowings.append((var_name, NIL_T, remove_nil(var_type)))
+        # IsType narrowing: isinstance(x, T) → narrow x to T in then, keep original in else
+        type_checks = _collect_type_checks(stmt.cond)
+        for tc_var, tc_type_name, tc_positive in type_checks:
+            if "." in tc_var:
+                current = self._lookup_field_type(tc_var, stmt.pos)
+            else:
+                current = self.lookup(tc_var, stmt.pos)
+            if current is None:
+                continue
+            resolved = self._narrow_to_type(current, tc_type_name)
+            if resolved is None:
+                continue
+            if tc_positive:
+                narrowings.append((tc_var, resolved, current))
+            else:
+                narrowings.append((tc_var, current, resolved))
         # Check then-body with narrowing
         self.enter_scope()
         for name, then_type, _else_type in narrowings:
@@ -2070,7 +2167,8 @@ class Checker:
         left = self.check_expr(expr.left, None)
         if expr.op == "&&":
             checks = _collect_nil_checks(expr.left)
-            if len(checks) > 0:
+            tc = _collect_type_checks(expr.left)
+            if len(checks) > 0 or len(tc) > 0:
                 self.enter_scope()
                 for var_name, check_kind in checks:
                     if "." in var_name:
@@ -2082,13 +2180,25 @@ class Checker:
                             self.scopes[-1][var_name] = remove_nil(var_type)
                         elif check_kind == "is_nil":
                             self.scopes[-1][var_name] = NIL_T
+                for tc_var, tc_type_name, tc_positive in tc:
+                    if not tc_positive:
+                        continue
+                    if "." in tc_var:
+                        current = self._lookup_field_type(tc_var, expr.pos)
+                    else:
+                        current = self.lookup(tc_var, expr.pos)
+                    if current is not None:
+                        resolved = self._narrow_to_type(current, tc_type_name)
+                        if resolved is not None:
+                            self.scopes[-1][tc_var] = resolved
                 right = self.check_expr(expr.right, None)
                 self.exit_scope()
             else:
                 right = self.check_expr(expr.right, None)
         elif expr.op == "||":
             checks = _collect_nil_checks(expr.left, chain_op="||")
-            if len(checks) > 0:
+            tc = _collect_type_checks(expr.left)
+            if len(checks) > 0 or len(tc) > 0:
                 self.enter_scope()
                 for var_name, check_kind in checks:
                     if "." in var_name:
@@ -2100,6 +2210,18 @@ class Checker:
                             self.scopes[-1][var_name] = remove_nil(var_type)
                         elif check_kind == "is_not_nil":
                             self.scopes[-1][var_name] = NIL_T
+                # ||: if left is !IsType(x,T) (negative), right sees x narrowed to T
+                for tc_var, tc_type_name, tc_positive in tc:
+                    if tc_positive:
+                        continue
+                    if "." in tc_var:
+                        current = self._lookup_field_type(tc_var, expr.pos)
+                    else:
+                        current = self.lookup(tc_var, expr.pos)
+                    if current is not None:
+                        resolved = self._narrow_to_type(current, tc_type_name)
+                        if resolved is not None:
+                            self.scopes[-1][tc_var] = resolved
                 right = self.check_expr(expr.right, None)
                 self.exit_scope()
             else:
@@ -2326,6 +2448,22 @@ class Checker:
                     narrowings.append((var_name, remove_nil(var_type), NIL_T))
                 elif check_kind == "is_nil":
                     narrowings.append((var_name, NIL_T, remove_nil(var_type)))
+        # IsType narrowing
+        type_checks = _collect_type_checks(expr.cond)
+        for tc_var, tc_type_name, tc_positive in type_checks:
+            if "." in tc_var:
+                current = self._lookup_field_type(tc_var, expr.pos)
+            else:
+                current = self.lookup(tc_var, expr.pos)
+            if current is None:
+                continue
+            resolved = self._narrow_to_type(current, tc_type_name)
+            if resolved is None:
+                continue
+            if tc_positive:
+                narrowings.append((tc_var, resolved, current))
+            else:
+                narrowings.append((tc_var, current, resolved))
         self.enter_scope()
         for name, then_t, _else_t in narrowings:
             self.scopes[-1][name] = then_t
@@ -4171,6 +4309,13 @@ class Checker:
         if name == "IsNil":
             if not require_range(1, 2):
                 return None
+            return BOOL_T
+
+        # ── IsType ──
+        if name == "IsType":
+            if not require(2):
+                return None
+            arg(0)
             return BOOL_T
 
         self.error("unknown built-in function: " + name, pos)
