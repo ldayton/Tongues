@@ -7,6 +7,7 @@ from random import Random
 from src.taytsh.ast import TModule
 from src.taytsh.check import FnT, Type
 
+from .builtins import BuiltinGen
 from .decls import DeclGen
 from .exprs import ExprGen
 from .features import FeatureVector
@@ -26,6 +27,7 @@ class Generator:
         self.scope = ScopeTracker()
         self.expr_gen = ExprGen(self)
         self.stmt_gen = StmtGen(self)
+        self.builtin_gen = BuiltinGen(self)
         self.decl_gen = DeclGen(self)
         self.functions: dict[str, FnT] = {}
         self.fn_param_names: dict[str, list[str]] = {}

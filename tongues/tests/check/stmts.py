@@ -189,17 +189,19 @@ class StmtGen:
         return TLetStmt(pos=P, name=name, typ=ttype, value=value, annotations=A)
 
     def _gen_assign(self) -> TStmt:
-        bindings = self.gen.scope.mutable_bindings()
+        can_gen = self.gen.expr_gen._can_gen_type
+        bindings = [b for b in self.gen.scope.mutable_bindings() if can_gen(b.typ)]
         if not bindings:
             return self._gen_let()
         options: list[tuple[str, object]] = [("var", None)]
         for b in bindings:
             if isinstance(b.typ, StructT):
                 for fname, ftype in b.typ.fields.items():
-                    options.append(("field", (b.name, fname, ftype)))
-            if isinstance(b.typ, ListT):
+                    if can_gen(ftype):
+                        options.append(("field", (b.name, fname, ftype)))
+            if isinstance(b.typ, ListT) and can_gen(b.typ.element):
                 options.append(("index", (b.name, b.typ.element, INT_T)))
-            elif isinstance(b.typ, MapT):
+            elif isinstance(b.typ, MapT) and can_gen(b.typ.value):
                 options.append(("index", (b.name, b.typ.value, b.typ.key)))
         kind, info = self.rng.choice(options)
         if kind == "field":
@@ -275,7 +277,9 @@ class StmtGen:
         for b in self.gen.scope.all_bindings():
             if isinstance(b.typ, UnionT) and contains_nil(b.typ):
                 inner = remove_nil(b.typ)
-                if not type_eq(inner, NIL_T) and not self.gen.expr_gen._contains_fn(b.typ):
+                if not type_eq(inner, NIL_T) and not self.gen.expr_gen._contains_fn(
+                    b.typ
+                ):
                     return (b.name, b.typ)
         return None
 
@@ -347,7 +351,11 @@ class StmtGen:
             func=TVar(pos=P, name="IsType", annotations=A),
             args=[
                 TArg(pos=P, name=None, value=TVar(pos=P, name=var_name, annotations=A)),
-                TArg(pos=P, name=None, value=TStringLit(pos=P, value=vname, annotations=A)),
+                TArg(
+                    pos=P,
+                    name=None,
+                    value=TStringLit(pos=P, value=vname, annotations=A),
+                ),
             ],
             annotations=A,
         )
@@ -361,7 +369,9 @@ class StmtGen:
             self.gen.scope.enter_scope()
             ret = self.gen.current_fn_ret
             if type_eq(ret, VOID_T):
-                guard_body: list[TStmt] = [TReturnStmt(pos=P, value=None, annotations=A)]
+                guard_body: list[TStmt] = [
+                    TReturnStmt(pos=P, value=None, annotations=A)
+                ]
             else:
                 guard_body = [
                     TReturnStmt(
@@ -697,7 +707,9 @@ class StmtGen:
         if not self.gen.in_fn_lit:
             for fn_name, fn_type in self.gen.functions.items():
                 if type_eq(fn_type.ret, VOID_T):
-                    if all(self.gen.expr_gen._can_gen_type(pt) for pt in fn_type.params):
+                    if all(
+                        self.gen.expr_gen._can_gen_type(pt) for pt in fn_type.params
+                    ):
                         options.append(("fn_call", (fn_name, fn_type)))
             for b in self.gen.scope.all_bindings():
                 if isinstance(b.typ, StructT):
@@ -708,13 +720,28 @@ class StmtGen:
                                 for pt in mtype.params[1:]
                             ):
                                 options.append(("method", (b.name, mname, mtype)))
+        # Void builtins
+        options.append(("builtin", None))
+        kind, info = self.rng.choice(options)
+        if kind == "builtin":
+            expr = self.gen.builtin_gen.gen_void_builtin(0)
+            if expr is not None:
+                return TExprStmt(pos=P, expr=expr, annotations=A)
+            # Fall through to struct constructor
+            if struct_types:
+                kind, info = "struct", None
+            else:
+                return TExprStmt(
+                    pos=P,
+                    expr=TStringLit(pos=P, value="noop", annotations=A),
+                    annotations=A,
+                )
         if not options:
             return TExprStmt(
                 pos=P,
                 expr=TStringLit(pos=P, value="noop", annotations=A),
                 annotations=A,
             )
-        kind, info = self.rng.choice(options)
         if kind == "struct":
             st = self.rng.choice(struct_types)
             expr = self.gen.expr_gen._gen_struct_constructor(st, 0)

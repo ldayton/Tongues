@@ -112,20 +112,14 @@ class ExprGen:
                 productions.append((5, lambda: self._gen_arith_op(target, depth)))
                 productions.append((2, lambda: self._gen_bitwise_op(target, depth)))
                 productions.append((2, lambda: self._gen_shift_op(target, depth)))
-                productions.append(
-                    (3, lambda: self._gen_unary_op("-", target, depth))
-                )
-                productions.append(
-                    (2, lambda: self._gen_unary_op("~", target, depth))
-                )
+                productions.append((3, lambda: self._gen_unary_op("-", target, depth)))
+                productions.append((2, lambda: self._gen_unary_op("~", target, depth)))
         elif type_eq(target, FLOAT_T):
             v = round(self.rng.uniform(-100.0, 100.0), 2)
             productions.append((10, TFloatLit(pos=P, value=v, raw="", annotations=A)))
             if depth < MAX_DEPTH - 1:
                 productions.append((5, lambda: self._gen_arith_op(target, depth)))
-                productions.append(
-                    (3, lambda: self._gen_unary_op("-", target, depth))
-                )
+                productions.append((3, lambda: self._gen_unary_op("-", target, depth)))
         elif type_eq(target, BOOL_T):
             productions.append(
                 (
@@ -163,12 +157,8 @@ class ExprGen:
                 productions.append((5, lambda: self._gen_arith_op(target, depth)))
                 productions.append((2, lambda: self._gen_bitwise_op(target, depth)))
                 productions.append((2, lambda: self._gen_shift_op(target, depth)))
-                productions.append(
-                    (3, lambda: self._gen_unary_op("-", target, depth))
-                )
-                productions.append(
-                    (2, lambda: self._gen_unary_op("~", target, depth))
-                )
+                productions.append((3, lambda: self._gen_unary_op("-", target, depth)))
+                productions.append((2, lambda: self._gen_unary_op("~", target, depth)))
         elif type_eq(target, BYTES_T):
             productions.append((10, TBytesLit(pos=P, value=b"hello", annotations=A)))
         elif type_eq(target, STRING_T):
@@ -250,11 +240,17 @@ class ExprGen:
                 productions.append(
                     (3, lambda c=sl, d=depth: self._gen_slice_from(c, d))
                 )
+            # Builtin function calls
+            productions.append(
+                (5, lambda: self.gen.builtin_gen.gen_builtin(target, depth))
+            )
             # Ternary
-            if not type_eq(target, NIL_T) and not type_eq(target, VOID_T):
-                productions.append(
-                    (3, lambda: self._gen_ternary(target, depth))
-                )
+            if (
+                not type_eq(target, NIL_T)
+                and not type_eq(target, VOID_T)
+                and self._can_gen_type(target)
+            ):
+                productions.append((3, lambda: self._gen_ternary(target, depth)))
             # Function/method/fn-value calls
             if not self.gen.in_fn_lit:
                 fc = self._callable_fn_candidates(target)
@@ -297,7 +293,10 @@ class ExprGen:
                         return TVar(pos=P, name=b.name, annotations=A)
                     return self._fallback(target)
                 if callable(item):
-                    return item()
+                    result = item()
+                    if result is not None:
+                        return result
+                    return self._fallback(target)
                 # Fix up raw for int/float/byte literals
                 if isinstance(item, TIntLit):
                     item.raw = str(item.value)
@@ -473,9 +472,7 @@ class ExprGen:
             annotations=A,
         )
 
-    def _gen_index_from(
-        self, candidates: list[tuple[str, Type]], depth: int
-    ) -> TExpr:
+    def _gen_index_from(self, candidates: list[tuple[str, Type]], depth: int) -> TExpr:
         var_name, key_type = self.rng.choice(candidates)
         key_expr = self.gen_expr(key_type, depth + 1)
         return TIndex(
@@ -531,9 +528,7 @@ class ExprGen:
                     result.append((fn_name, fn_type))
         return result
 
-    def _method_call_candidates(
-        self, target: Type
-    ) -> list[tuple[str, str, FnT]]:
+    def _method_call_candidates(self, target: Type) -> list[tuple[str, str, FnT]]:
         result: list[tuple[str, str, FnT]] = []
         for b in self._accessible_bindings():
             if isinstance(b.typ, StructT):
@@ -551,15 +546,11 @@ class ExprGen:
                     result.append((b.name, b.typ))
         return result
 
-    def _gen_fn_call(
-        self, candidates: list[tuple[str, FnT]], depth: int
-    ) -> TExpr:
+    def _gen_fn_call(self, candidates: list[tuple[str, FnT]], depth: int) -> TExpr:
         fn_name, fn_type = self.rng.choice(candidates)
         args: list[TArg] = []
         for pt in fn_type.params:
-            args.append(
-                TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1))
-            )
+            args.append(TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1)))
         return TCall(
             pos=P,
             func=TVar(pos=P, name=fn_name, annotations=A),
@@ -574,9 +565,7 @@ class ExprGen:
         args: list[TArg] = []
         # Skip first param (this)
         for pt in method_type.params[1:]:
-            args.append(
-                TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1))
-            )
+            args.append(TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1)))
         return TCall(
             pos=P,
             func=TFieldAccess(
@@ -595,9 +584,7 @@ class ExprGen:
         var_name, fn_type = self.rng.choice(candidates)
         args: list[TArg] = []
         for pt in fn_type.params:
-            args.append(
-                TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1))
-            )
+            args.append(TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1)))
         return TCall(
             pos=P,
             func=TVar(pos=P, name=var_name, annotations=A),
@@ -608,15 +595,22 @@ class ExprGen:
     # ── Existing helpers ──
 
     def _has_invariance_issue(self, t: Type) -> bool:
-        """Check if a type contains a collection whose element is interface/struct."""
+        """Check if a type contains a collection whose element is interface-typed."""
         if isinstance(t, ListT):
-            return isinstance(t.element, (InterfaceT, StructT))
+            return isinstance(t.element, InterfaceT) or self._has_invariance_issue(
+                t.element
+            )
         if isinstance(t, MapT):
-            return isinstance(t.value, (InterfaceT, StructT)) or isinstance(
-                t.key, (InterfaceT, StructT)
+            return (
+                isinstance(t.value, InterfaceT)
+                or isinstance(t.key, InterfaceT)
+                or self._has_invariance_issue(t.value)
+                or self._has_invariance_issue(t.key)
             )
         if isinstance(t, SetT):
-            return isinstance(t.element, (InterfaceT, StructT))
+            return isinstance(t.element, InterfaceT) or self._has_invariance_issue(
+                t.element
+            )
         if isinstance(t, TupleT):
             return any(self._has_invariance_issue(e) for e in t.elements)
         if isinstance(t, UnionT):
@@ -674,14 +668,23 @@ class ExprGen:
             )
         if isinstance(target, UnionT):
             for m in target.members:
+                if not type_eq(m, NIL_T) and not self._has_invariance_issue(m):
+                    return self._fallback(m)
+            # All non-nil members have invariance issues; prefer nil if available
+            if contains_nil(target):
+                return TNilLit(pos=P, annotations=A)
+            for m in target.members:
                 if not type_eq(m, NIL_T):
                     return self._fallback(m)
             return TNilLit(pos=P, annotations=A)
         if isinstance(target, FnT):
             if not self.gen.in_finally or type_eq(target.ret, VOID_T):
                 return self._gen_fn_lit(target, MAX_DEPTH)
-            # Can't generate non-void fn lit in finally (return would be flagged)
-            return TIntLit(pos=P, value=0, raw="0", annotations=A)
+            # Can't generate non-void fn lit in finally — try a variable
+            for b in self._accessible_bindings():
+                if type_eq(b.typ, target):
+                    return TVar(pos=P, name=b.name, annotations=A)
+            return self._gen_fn_lit(target, MAX_DEPTH)
         return TIntLit(pos=P, value=0, raw="0", annotations=A)
 
     def _gen_list_lit(self, target: ListT, depth: int) -> TExpr:

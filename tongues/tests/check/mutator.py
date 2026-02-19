@@ -38,6 +38,7 @@ from src.taytsh.ast import (
 )
 from src.taytsh.check import (
     BOOL_T,
+    BUILTIN_NAMES,
     BYTE_T,
     BYTES_T,
     FLOAT_T,
@@ -224,7 +225,11 @@ def swap_type(module: TModule, rng: Random) -> MutationResult | None:
 
 def wrong_arg_type(module: TModule, rng: Random) -> MutationResult | None:
     def apply(m: TModule) -> bool:
-        calls = _find_calls(m)
+        calls = [
+            c
+            for c in _find_calls(m)
+            if not (isinstance(c.func, TVar) and c.func.name in BUILTIN_NAMES)
+        ]
         targets = [c for c in calls if len(c.args) > 0]
         if not targets:
             return False
@@ -241,7 +246,11 @@ def wrong_arg_type(module: TModule, rng: Random) -> MutationResult | None:
 
 def wrong_arg_count(module: TModule, rng: Random) -> MutationResult | None:
     def apply(m: TModule) -> bool:
-        calls = _find_calls(m)
+        calls = [
+            c
+            for c in _find_calls(m)
+            if not (isinstance(c.func, TVar) and c.func.name in BUILTIN_NAMES)
+        ]
         if not calls:
             return False
         call = rng.choice(calls)
@@ -443,9 +452,7 @@ def use_before_assign(module: TModule, rng: Random) -> MutationResult | None:
                     return True
         return False
 
-    return _try_mutate(
-        module, "use_before_assign", "variable used before assignment", apply
-    )
+    return _try_mutate(module, "use_before_assign", "used before assignment", apply)
 
 
 def double_optional(module: TModule, rng: Random) -> MutationResult | None:
