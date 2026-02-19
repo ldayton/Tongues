@@ -187,9 +187,9 @@ def _build_call_graph(
                 fn_structs[key] = st if isinstance(st, StructT) else None
                 edges[key] = set()
 
-    for key, decl in fn_decls.items():
-        resolver = _TypeResolver(checker, decl, fn_structs[key])
-        _collect_edges(decl.body, key, edges, fn_decls, checker, resolver)
+    for fn_key, decl in fn_decls.items():
+        resolver = _TypeResolver(checker, decl, fn_structs[fn_key])
+        _collect_edges(decl.body, fn_key, edges, fn_decls, checker, resolver)
 
     return fn_decls, edges, fn_structs
 
@@ -446,8 +446,8 @@ def _detect_recursion(
         else:
             group_id = ""
 
-        for key in scc:
-            decl = fn_decls[key]
+        for scc_key in scc:
+            decl = fn_decls[scc_key]
             decl.annotations["callgraph.is_recursive"] = (
                 "true" if is_recursive else "false"
             )

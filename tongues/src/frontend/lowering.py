@@ -3553,8 +3553,8 @@ def _lower_tuple_assign(
                     arg_types.append(at)
                 ai += 1
             use_float = False
-            for at in arg_types:
-                if _is_type_dict(at, ["float"]):
+            for at2 in arg_types:
+                if _is_type_dict(at2, ["float"]):
                     use_float = True
             if use_float:
                 fa: list[TExpr] = []
@@ -4471,6 +4471,31 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                             _EMPTY_ANN,
                         )
                     ]
+            # dict.pop(k) / dict.pop(k, default) → Delete(d, k)
+            if _is_type_dict(obj_type, ["Map"]) and method == "pop":
+                vargs = get_nodes(value, "args")
+                if len(vargs) > 0 and isinstance(vargs[0], dict):
+                    obj = _lower_expr(obj_node, env, ctx)
+                    key = _lower_expr(vargs[0], env, ctx)
+                    return [
+                        TExprStmt(
+                            pos, _make_call(pos, "Delete", [obj, key]), _EMPTY_ANN
+                        )
+                    ]
+            # list.pop() → Pop(xs); list.pop(i) → RemoveAt(xs, i)
+            if _is_type_dict(obj_type, ["Slice"]) and method == "pop":
+                vargs = get_nodes(value, "args")
+                obj = _lower_expr(obj_node, env, ctx)
+                if len(vargs) > 0 and isinstance(vargs[0], dict):
+                    idx = _lower_expr(vargs[0], env, ctx)
+                    return [
+                        TExprStmt(
+                            pos,
+                            _make_call(pos, "RemoveAt", [obj, idx]),
+                            _EMPTY_ANN,
+                        )
+                    ]
+                return [TExprStmt(pos, _make_call(pos, "Pop", [obj]), _EMPTY_ANN)]
             # dict.clear() → d = Map()
             if _is_type_dict(obj_type, ["Map"]) and method == "clear":
                 obj = _lower_expr(obj_node, env, ctx)

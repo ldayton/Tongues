@@ -366,9 +366,7 @@ def tokenize(source: str) -> list[Token]:
                 )
             pos += 1  # skip closing "
             col += 1
-            value = ""
-            for ch in chars:
-                value += ch
+            value = "".join(chars)
             tokens.append(Token(TK_STRING, value, start_line, start_col))
             continue
 
