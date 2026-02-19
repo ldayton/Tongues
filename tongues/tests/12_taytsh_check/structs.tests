@@ -41,8 +41,8 @@ struct Span {
     start: int
     end: int
 
-    fn Len(self) -> int {
-        return self.end - self.start
+    fn Len(this) -> int {
+        return this.end - this.start
     }
 }
 fn Main() -> void {
@@ -131,9 +131,9 @@ error: cannot assign string to int
 struct Counter {
     value: int
 
-    fn Inc(self) -> int {
-        self.value += 1
-        return self.value
+    fn Inc(this) -> int {
+        this.value += 1
+        return this.value
     }
 }
 fn Main() -> void {
@@ -149,8 +149,8 @@ struct Span {
     start: int
     end: int
 
-    fn Len(self) -> int {
-        return self.end - self.start
+    fn Len(this) -> int {
+        return this.end - this.start
     }
 }
 fn Main() -> void {
@@ -181,8 +181,8 @@ struct Rect {
     width: int
     height: int
 
-    fn Scale(self, factor: int) -> Rect {
-        return Rect(self.width * factor, self.height * factor)
+    fn Scale(this, factor: int) -> Rect {
+        return Rect(this.width * factor, this.height * factor)
     }
 }
 fn Main() -> void {
@@ -215,11 +215,11 @@ fn Main() -> void {}
 error: undefined
 ---
 
-=== error: self in free function
-fn Bad(self) -> void {}
+=== error: this in free function
+fn Bad(this) -> void {}
 fn Main() -> void {}
 ---
-error: self outside method
+error: this outside method
 ---
 
 === error: missing named field in construction
@@ -311,14 +311,14 @@ error: multiple interfaces
 
 === error: interface with body
 interface Node {
-    fn Eval(self) -> int
+    fn Eval(this) -> int
 }
 fn Main() -> void {}
 ---
 error: interface body must be empty
 ---
 
-=== error: field access on interface
+=== error: field access on interface rejected
 interface Node {}
 struct Lit : Node {
     value: int
@@ -328,26 +328,26 @@ fn Main() -> void {
     let v: int = n.value
 }
 ---
-error: has no field or method 'value'
+error: cannot access field on interface
 ---
 
-=== error: assign to self in method
+=== error: assign to this in method
 struct Foo {
     x: int
 
-    fn Bad(self) -> void {
-        self = Foo(10)
+    fn Bad(this) -> void {
+        this = Foo(10)
     }
 }
 fn Main() -> void {}
 ---
-error: cannot assign to self
+error: cannot assign to this
 ---
 
 === valid: methods before fields
 struct Foo {
-    fn GetX(self) -> int {
-        return self.x
+    fn GetX(this) -> int {
+        return this.x
     }
 
     x: int

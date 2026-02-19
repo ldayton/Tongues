@@ -147,7 +147,7 @@ fn MustGet(x: int?) -> int {
     if x == nil {
         return 0
     }
-    return Unwrap(x) * 2
+    return x * 2
 }
 fn Main() -> void {
     WritelnOut(ToString(MustGet(nil)))

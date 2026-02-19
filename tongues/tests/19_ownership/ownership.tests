@@ -533,11 +533,11 @@ Foo.body.0.type = TTryStmt
 Foo.body.0.catches.0.kind = borrowed
 ---
 
-=== method self borrowed
+=== method this borrowed
 struct Counter {
     n: int
-    fn Get(self) -> int {
-        return self.n
+    fn Get(this) -> int {
+        return this.n
     }
 }
 fn Main() -> void {
@@ -545,15 +545,15 @@ fn Main() -> void {
     WritelnOut(ToString(c.Get()))
 }
 ---
-Counter.Get.params.self.kind = borrowed
+Counter.Get.params.this.kind = borrowed
 ---
 
 === method constructs and returns owned
 struct Pt {
     x: int
     y: int
-    fn Offset(self, dx: int, dy: int) -> Pt {
-        return Pt(x: self.x + dx, y: self.y + dy)
+    fn Offset(this, dx: int, dy: int) -> Pt {
+        return Pt(x: this.x + dx, y: this.y + dy)
     }
 }
 fn Main() -> void {

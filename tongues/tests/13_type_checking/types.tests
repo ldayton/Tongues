@@ -110,7 +110,32 @@ fn Main() -> void {
 ok
 ---
 
-=== void not a value type
+=== fn type variable
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    let y: int = f(21)
+}
+---
+ok
+---
+
+=== enum variable
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color = Color.Red
+}
+---
+ok
+---
+
+=== void not allowed as variable type
 fn Main() -> void {
     let x: void
 }
@@ -118,16 +143,69 @@ fn Main() -> void {
 error: void
 ---
 
-=== let without init requires zero value for struct
-struct Pt {
-    x: int
-    y: int
+=== void not allowed as parameter type
+fn Foo(x: void) -> void {
 }
 fn Main() -> void {
-    let p: Pt
 }
 ---
-error: initializer required
+error: void
+---
+
+=== void not allowed in list
+fn Main() -> void {
+    let xs: list[void]
+}
+---
+error: void
+---
+
+=== void not allowed in map key
+fn Main() -> void {
+    let m: map[void, int]
+}
+---
+error: void
+---
+
+=== void not allowed in map value
+fn Main() -> void {
+    let m: map[string, void]
+}
+---
+error: void
+---
+
+=== void not allowed in set
+fn Main() -> void {
+    let s: set[void]
+}
+---
+error: void
+---
+
+=== void not allowed in tuple
+fn Main() -> void {
+    let t: (int, void)
+}
+---
+error: void
+---
+
+=== void not allowed in union
+fn Main() -> void {
+    let v: int | void
+}
+---
+error: void
+---
+
+=== void not allowed in fn type parameter
+fn Main() -> void {
+    let f: fn[void, int]
+}
+---
+error: void
 ---
 
 === let without init allowed for int
@@ -138,9 +216,49 @@ fn Main() -> void {
 ok
 ---
 
+=== let without init allowed for float
+fn Main() -> void {
+    let f: float
+}
+---
+ok
+---
+
+=== let without init allowed for bool
+fn Main() -> void {
+    let b: bool
+}
+---
+ok
+---
+
 === let without init allowed for string
 fn Main() -> void {
     let s: string
+}
+---
+ok
+---
+
+=== let without init allowed for byte
+fn Main() -> void {
+    let b: byte
+}
+---
+ok
+---
+
+=== let without init allowed for rune
+fn Main() -> void {
+    let r: rune
+}
+---
+ok
+---
+
+=== let without init allowed for bytes
+fn Main() -> void {
+    let b: bytes
 }
 ---
 ok
@@ -202,27 +320,413 @@ fn Main() -> void {
 error: cannot assign
 ---
 
-=== fn type variable
-fn Double(x: int) -> int {
-    return x * 2
-}
+=== no implicit float to int
 fn Main() -> void {
-    let f: fn[int, int] = Double
-    let y: int = f(21)
+    let x: int = 3.14
+}
+---
+error: cannot assign
+---
+
+=== no implicit int to string
+fn Main() -> void {
+    let x: string = 42
+}
+---
+error: cannot assign
+---
+
+=== no implicit string to int
+fn Main() -> void {
+    let x: int = "42"
+}
+---
+error: cannot assign
+---
+
+=== no implicit int to bool
+fn Main() -> void {
+    let x: bool = 0
+}
+---
+error: cannot assign
+---
+
+=== no implicit string to bool
+fn Main() -> void {
+    let x: bool = "true"
+}
+---
+error: cannot assign
+---
+
+=== no implicit byte to int
+fn Main() -> void {
+    let b: byte = 0xff
+    let x: int = b
+}
+---
+error: cannot assign
+---
+
+=== no implicit int to byte
+fn Main() -> void {
+    let x: int = 42
+    let b: byte = x
+}
+---
+error: cannot assign
+---
+
+=== no implicit rune to int
+fn Main() -> void {
+    let c: rune = 'a'
+    let x: int = c
+}
+---
+error: cannot assign
+---
+
+=== no implicit rune to string
+fn Main() -> void {
+    let c: rune = 'a'
+    let s: string = c
+}
+---
+error: cannot assign
+---
+
+=== unhashable type as map key
+fn Main() -> void {
+    let m: map[list[int], string]
+}
+---
+error: not hashable
+---
+
+=== unhashable type as set element
+fn Main() -> void {
+    let s: set[list[int]]
+}
+---
+error: not hashable
+---
+
+=== map with map key rejected
+fn Main() -> void {
+    let m: map[map[int, int], string]
+}
+---
+error: not hashable
+---
+
+=== set with set element rejected
+fn Main() -> void {
+    let s: set[set[int]]
+}
+---
+error: not hashable
+---
+
+=== hashable tuple as map key
+fn Main() -> void {
+    let m: map[(int, string), bool]
 }
 ---
 ok
 ---
 
-=== enum variable
+=== unhashable tuple as map key
+fn Main() -> void {
+    let m: map[(int, list[string]), bool]
+}
+---
+error: not hashable
+---
+
+=== enum as map key
 enum Color {
     Red
     Green
     Blue
 }
 fn Main() -> void {
-    let c: Color = Color.Red
+    let m: map[Color, string]
 }
 ---
 ok
+---
+
+=== nested list type
+fn Main() -> void {
+    let xs: list[list[int]] = [[1, 2], [3, 4]]
+}
+---
+ok
+---
+
+=== nested map type
+fn Main() -> void {
+    let m: map[string, list[int]] = {"a": [1, 2]}
+}
+---
+ok
+---
+
+=== optional of collection
+fn Main() -> void {
+    let xs: list[int]? = nil
+}
+---
+ok
+---
+
+=== union of three types
+fn Main() -> void {
+    let v: int | string | bool = true
+}
+---
+ok
+---
+
+=== tuple with many elements
+fn Main() -> void {
+    let t: (int, string, bool, float) = (1, "hi", true, 3.14)
+}
+---
+ok
+---
+
+=== hex literal in int context
+fn Main() -> void {
+    let x: int = 0xff
+}
+---
+ok
+---
+
+=== struct as map key rejected
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let m: map[Pt, string]
+}
+---
+error: not hashable
+---
+
+=== interface as set element rejected
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+fn Main() -> void {
+    let s: set[Node]
+}
+---
+error: not hashable
+---
+
+=== fn type as map key rejected
+fn Main() -> void {
+    let m: map[fn[int, int], string]
+}
+---
+error: not hashable
+---
+
+=== tuple with optional element
+fn Main() -> void {
+    let t: (int, string?) = (1, nil)
+    let s: string? = t.1
+}
+---
+ok
+---
+
+=== tuple element type mismatch
+fn Main() -> void {
+    let t: (int, string) = (1, 2)
+}
+---
+error: cannot assign
+---
+
+=== tuple length mismatch short
+fn Main() -> void {
+    let t: (int, string) = (1,)
+}
+---
+error:
+---
+
+=== tuple length mismatch long
+fn Main() -> void {
+    let t: (int, string) = (1, "hello", true)
+}
+---
+error:
+---
+
+=== list of structs
+interface Shape {}
+struct Circle : Shape {
+    radius: float
+}
+fn Main() -> void {
+    let shapes: list[Shape] = [Circle(IntToFloat(1))]
+}
+---
+ok
+---
+
+=== optional as map value
+fn Main() -> void {
+    let m: map[string, int?] = {"a": 1, "b": nil}
+}
+---
+ok
+---
+
+=== let without init struct requires initializer
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt
+}
+---
+error: initializer required
+---
+
+=== let without init interface requires initializer
+interface Node {}
+struct Leaf : Node {
+    value: int
+}
+fn Main() -> void {
+    let n: Node
+}
+---
+error: initializer required
+---
+
+=== let without init enum requires initializer
+enum Color {
+    Red
+    Green
+    Blue
+}
+fn Main() -> void {
+    let c: Color
+}
+---
+error: initializer required
+---
+
+=== let without init fn requires initializer
+fn Main() -> void {
+    let f: fn[int, int]
+}
+---
+error: initializer required
+---
+
+=== let without init union without nil requires initializer
+fn Main() -> void {
+    let v: int | string
+}
+---
+error: initializer required
+---
+
+=== let without init union with nil allowed
+fn Main() -> void {
+    let v: int | nil
+}
+---
+ok
+---
+
+=== double optional rejected
+fn Main() -> void {
+    let x: int??
+}
+---
+error: double optional
+---
+
+=== single element tuple rejected
+fn Main() -> void {
+    let t: (int)
+}
+---
+error: tuple requires at least two elements
+---
+
+=== union with hashable members not hashable as map key
+fn Main() -> void {
+    let m: map[int | string, bool]
+}
+---
+error: not hashable
+---
+
+=== void not allowed as optional base
+fn Main() -> void {
+    let x: void?
+}
+---
+error: void
+---
+
+=== void not allowed in fn type return used as value
+fn Main() -> void {
+    let f: fn[void]
+}
+---
+ok
+---
+
+=== let without init tuple of zero-valued types allowed
+fn Main() -> void {
+    let t: (int, string)
+}
+---
+ok
+---
+
+=== let without init tuple with non-zero element requires initializer
+fn Main() -> void {
+    let t: (int, fn[int, int])
+}
+---
+error: initializer required
+---
+
+=== bytes not hashable as map key
+fn Main() -> void {
+    let m: map[bytes, int]
+}
+---
+ok
+---
+
+=== rune hashable as map key
+fn Main() -> void {
+    let m: map[rune, string]
+}
+---
+ok
+---
+
+=== optional not hashable as map key
+fn Main() -> void {
+    let m: map[int?, string]
+}
+---
+error: not hashable
 ---

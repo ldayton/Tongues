@@ -6,3 +6,4 @@ __pycache__/
 .envrc
 .direnv/
 editors/vscode/*.vsix
+*.egg-info

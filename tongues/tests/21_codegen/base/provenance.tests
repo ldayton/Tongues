@@ -139,7 +139,7 @@ fn Main() -> void {
 
 === nil coalesce (raised)
 fn Safe(x: int?) -> int {
-    return @["provenance" = "none_coalesce"] (x != nil ? Unwrap(x) : 0)
+    return @["provenance" = "none_coalesce"] (x != nil ? x : 0)
 }
 fn Main() -> void {
     WritelnOut(ToString(Safe(nil)))

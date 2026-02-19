@@ -15,8 +15,8 @@ struct Named {
     label: string
     value: int
 
-    fn ToString(self) -> string {
-        return Concat(self.label, Concat("=", ToString(self.value)))
+    fn ToString(this) -> string {
+        return Concat(this.label, Concat("=", ToString(this.value)))
     }
 }
 

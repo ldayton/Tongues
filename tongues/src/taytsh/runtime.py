@@ -2,7 +2,7 @@
 
 This is a spec-faithful (as practical) interpreter for the Taytsh textual IR
 defined in spec/taytsh.md.
-"""
+"""  # tongues: skip
 
 from __future__ import annotations
 
@@ -1150,11 +1150,11 @@ class TypeChecker:
         seen = set()
         if method_self is not None:
             if not decl.params:
-                raise TaytshTypeError("method must take self parameter", decl.pos)
+                raise TaytshTypeError("method must take this parameter", decl.pos)
             first = decl.params[0]
-            if first.typ is not None or first.name != "self":
+            if first.typ is not None or first.name != "this":
                 raise TaytshTypeError(
-                    "method must take self as first parameter", first.pos
+                    "method must take this as first parameter", first.pos
                 )
         for i, p in enumerate(decl.params):
             if p.name in seen and p.name != "_":
@@ -1162,13 +1162,13 @@ class TypeChecker:
             seen.add(p.name)
             if p.typ is None:
                 if method_self is None:
-                    raise TaytshTypeError("'self' only allowed in methods", p.pos)
-                if i != 0 or p.name != "self":
-                    raise TaytshTypeError("self must be the first parameter", p.pos)
+                    raise TaytshTypeError("'this' only allowed in methods", p.pos)
+                if i != 0 or p.name != "this":
+                    raise TaytshTypeError("this must be the first parameter", p.pos)
                 params.append(method_self)
             else:
-                if p.name == "self":
-                    raise TaytshTypeError("'self' parameter must omit type", p.pos)
+                if p.name == "this":
+                    raise TaytshTypeError("'this' parameter must omit type", p.pos)
                 t = self.resolve_type(p.typ, pos=p.pos)
                 if ty_eq(t, TY_VOID):
                     raise TaytshTypeError("void cannot be a parameter type", p.pos)
@@ -1216,10 +1216,10 @@ class TypeChecker:
         for i, p in enumerate(decl.params):
             if p.typ is None:
                 if method_self is None:
-                    raise TaytshTypeError("'self' only allowed in methods", p.pos)
+                    raise TaytshTypeError("'this' only allowed in methods", p.pos)
                 if i != 0:
-                    raise TaytshTypeError("self must be first parameter", p.pos)
-                env.bind("self", method_self, pos=p.pos)
+                    raise TaytshTypeError("this must be first parameter", p.pos)
+                env.bind("this", method_self, pos=p.pos)
             else:
                 env.bind(p.name, sig.params[i], pos=p.pos)
 
@@ -2147,24 +2147,18 @@ class TypeChecker:
         env.push_scope()
         for i, p in enumerate(lit.params):
             env.bind(p.name, sig.params[i], pos=p.pos)
+        is_arrow = lit.annotations.get("fn_lit.arrow") == "true"
+        if is_arrow and isinstance(lit.body[0], TExprStmt):
+            self._type_expr(
+                lit.body[0].expr, env, expected=sig.ret, allow_capture=False
+            )
+            return
         # allow_capture=False because we only bound params; outer locals are not present.
-        if isinstance(lit.body, list):
-            self._check_block(
-                lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False
+        self._check_block(lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False)
+        if not ty_eq(sig.ret, TY_VOID) and not self._block_always_returns(lit.body):
+            raise TaytshTypeError(
+                "function literal may fall off without returning", lit.pos
             )
-            if not ty_eq(sig.ret, TY_VOID) and not self._block_always_returns(lit.body):
-                raise TaytshTypeError(
-                    "function literal may fall off without returning", lit.pos
-                )
-        else:
-            body_ty = self._type_expr(
-                lit.body, env, expected=sig.ret, allow_capture=False
-            )
-            if not self._assignable(body_ty, sig.ret):
-                raise TaytshTypeError(
-                    f"cannot return '{body_ty.display()}' from function literal returning '{sig.ret.display()}'",
-                    lit.pos,
-                )
 
     def _type_call(
         self,
@@ -3997,7 +3991,7 @@ class Runtime:
         # Bind params
         for i, p in enumerate(decl.params):
             if p.typ is None:
-                env.bind("self", sig.params[i], args[i])
+                env.bind("this", sig.params[i], args[i])
             else:
                 env.bind(p.name, sig.params[i], args[i])
 
@@ -4205,7 +4199,7 @@ class Runtime:
     def _eval_for(self, st: TForStmt, env: _RuntimeEnv, *, fn_ret: Ty) -> None:
         if isinstance(st.iterable, TRange):
             ints = [self._eval_expr(a, env) for a in st.iterable.args]
-            vals = []
+            vals: list[int] = []
             for iv in ints:
                 if not isinstance(iv, VInt):
                     raise TaytshRuntimeFault(
@@ -4576,19 +4570,20 @@ class Runtime:
         env.push_scope()
         for i, p in enumerate(lit.params):
             env.bind(p.name, sig.params[i], args[i])
-        if isinstance(lit.body, list):
-            try:
-                self._eval_block(lit.body, env, fn_ret=sig.ret)
-            except _Return as r:
-                if ty_eq(sig.ret, TY_VOID):
-                    return VNil()
-                if r.value is None:
-                    raise TaytshRuntimeFault("missing return value", lit.pos)
-                return r.value
+        is_arrow = lit.annotations.get("fn_lit.arrow") == "true"
+        if is_arrow and isinstance(lit.body[0], TExprStmt):
+            return self._eval_expr(lit.body[0].expr, env, expected=sig.ret)
+        try:
+            self._eval_block(lit.body, env, fn_ret=sig.ret)
+        except _Return as r:
             if ty_eq(sig.ret, TY_VOID):
                 return VNil()
-            raise TaytshRuntimeFault("function literal fell off", lit.pos)
-        return self._eval_expr(lit.body, env, expected=sig.ret)
+            if r.value is None:
+                raise TaytshRuntimeFault("missing return value", lit.pos)
+            return r.value
+        if ty_eq(sig.ret, TY_VOID):
+            return VNil()
+        raise TaytshRuntimeFault("function literal fell off", lit.pos)
 
     def _eval_call(
         self, call: TCall, env: _RuntimeEnv, *, expected: Ty | None

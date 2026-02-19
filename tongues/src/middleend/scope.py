@@ -10,14 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
+    Ann,
     TAssignStmt,
     TBinaryOp,
     TBoolLit,
     TByteLit,
     TBytesLit,
     TCall,
-    TCatch,
-    TDefault,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -35,7 +34,6 @@ from ..taytsh.ast import (
     TModule,
     TNilLit,
     TOpAssignStmt,
-    TParam,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -107,7 +105,7 @@ _MUTATING_BUILTINS: set[str] = {
 class _BindingInfo:
     """One binding tracked during the walk."""
 
-    node: TParam | TLetStmt | TForStmt | TPatternType | TDefault | TCatch
+    annotations: Ann
     declared_type: Type
     is_param: bool
     binder_name: str | None = None
@@ -444,11 +442,11 @@ def _walk_expr(expr: TExpr, ctx: _ScopeCtx) -> None:
             # Determine effective type at this use site
             effective_type = ctx.narrowings.get(name, info.declared_type)
             if isinstance(effective_type, InterfaceT):
-                expr.annotations["scope.is_interface"] = True
+                expr.annotations["scope.is_interface"] = "true"
             if not type_eq(effective_type, info.declared_type):
                 expr.annotations["scope.narrowed_type"] = type_name(effective_type)
         elif name in ctx.top_level_fns and name not in BUILTIN_NAMES:
-            expr.annotations["scope.is_function_ref"] = True
+            expr.annotations["scope.is_function_ref"] = "true"
         return
     if isinstance(expr, TBinaryOp):
         _walk_expr(expr.left, ctx)
@@ -503,11 +501,10 @@ def _analyze_fn_lit(expr: TFnLit, parent_ctx: _ScopeCtx) -> None:
     for p in expr.params:
         if p.typ is not None:
             pt = parent_ctx.checker.resolve_type(p.typ)
-            ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
-    if isinstance(expr.body, list):
-        _walk_stmts(expr.body, ctx)
-    else:
-        _walk_expr(expr.body, ctx)
+            ctx.bindings[p.name] = _BindingInfo(
+                annotations=p.annotations, declared_type=pt, is_param=True
+            )
+    _walk_stmts(expr.body, ctx)
     _stamp_bindings(ctx)
 
 
@@ -527,7 +524,7 @@ def _walk_stmt(stmt: TStmt, ctx: _ScopeCtx) -> None:
             _walk_expr(stmt.value, ctx)
         declared_type = ctx.checker.resolve_type(stmt.typ)
         ctx.bindings[stmt.name] = _BindingInfo(
-            node=stmt, declared_type=declared_type, is_param=False
+            annotations=stmt.annotations, declared_type=declared_type, is_param=False
         )
 
     elif isinstance(stmt, TAssignStmt):
@@ -679,7 +676,7 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _ScopeCtx) -> None:
         if btype is None:
             btype = ERROR_T
         ctx.bindings[bname] = _BindingInfo(
-            node=stmt,
+            annotations=stmt.annotations,
             declared_type=btype,
             is_param=False,
             binder_name=bname,
@@ -708,7 +705,7 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
             case_type = ctx.checker.resolve_type(pat.type_name)
             covered_types.append(case_type)
             case_ctx.bindings[pat.name] = _BindingInfo(
-                node=pat, declared_type=case_type, is_param=False
+                annotations=pat.annotations, declared_type=case_type, is_param=False
             )
         elif isinstance(pat, TPatternEnum):
             enum_type = ctx.checker.types.get(pat.enum_name)
@@ -729,7 +726,7 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
         if dflt.name is not None:
             residual = _compute_residual_type(scrutinee_type, covered_types, ctx)
             dflt_ctx.bindings[dflt.name] = _BindingInfo(
-                node=dflt, declared_type=residual, is_param=False
+                annotations=dflt.annotations, declared_type=residual, is_param=False
             )
         _walk_stmts(dflt.body, dflt_ctx)
         if dflt.name is not None:
@@ -744,7 +741,7 @@ def _detect_case_interface(binding_name: str, body: list[TStmt], ctx: _ScopeCtx)
     """
     for stmt in body:
         result = _scan_stmt_for_interface_use(binding_name, stmt, ctx)
-        if result:
+        if result is not None:
             return result
     return ""
 
@@ -760,57 +757,57 @@ def _scan_stmt_for_interface_use(name: str, stmt: TStmt, ctx: _ScopeCtx) -> str 
         return _scan_expr_for_interface_use(name, stmt.value, ctx)
     if isinstance(stmt, TAssignStmt):
         r = _scan_expr_for_interface_use(name, stmt.value, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, stmt.target, ctx)
     if isinstance(stmt, TOpAssignStmt):
         r = _scan_expr_for_interface_use(name, stmt.value, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, stmt.target, ctx)
     if isinstance(stmt, TTupleAssignStmt):
         r = _scan_expr_for_interface_use(name, stmt.value, ctx)
-        if r:
+        if r is not None:
             return r
         for t in stmt.targets:
             r = _scan_expr_for_interface_use(name, t, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(stmt, TIfStmt):
         r = _scan_expr_for_interface_use(name, stmt.cond, ctx)
-        if r:
+        if r is not None:
             return r
         for s in stmt.then_body:
             r = _scan_stmt_for_interface_use(name, s, ctx)
-            if r:
+            if r is not None:
                 return r
         if stmt.else_body is not None:
             for s in stmt.else_body:
                 r = _scan_stmt_for_interface_use(name, s, ctx)
-                if r:
+                if r is not None:
                     return r
     if isinstance(stmt, TWhileStmt):
         r = _scan_expr_for_interface_use(name, stmt.cond, ctx)
-        if r:
+        if r is not None:
             return r
         for s in stmt.body:
             r = _scan_stmt_for_interface_use(name, s, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(stmt, TForStmt):
         for s in stmt.body:
             r = _scan_stmt_for_interface_use(name, s, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(stmt, TTryStmt):
         for s in stmt.body:
             r = _scan_stmt_for_interface_use(name, s, ctx)
-            if r:
+            if r is not None:
                 return r
         for catch in stmt.catches:
             for s in catch.body:
                 r = _scan_stmt_for_interface_use(name, s, ctx)
-                if r:
+                if r is not None:
                     return r
     return None
 
@@ -820,69 +817,69 @@ def _scan_expr_for_interface_use(name: str, expr: TExpr, ctx: _ScopeCtx) -> str 
     if isinstance(expr, TCall):
         # Check each argument: is it `name` passed to an interface-typed param?
         result = _check_call_interface_arg(name, expr, ctx)
-        if result:
+        if result is not None:
             return result
         # Recurse into sub-expressions
         r = _scan_expr_for_interface_use(name, expr.func, ctx)
-        if r:
+        if r is not None:
             return r
         for a in expr.args:
             r = _scan_expr_for_interface_use(name, a.value, ctx)
-            if r:
+            if r is not None:
                 return r
         return None
     if isinstance(expr, TBinaryOp):
         r = _scan_expr_for_interface_use(name, expr.left, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, expr.right, ctx)
     if isinstance(expr, TUnaryOp):
         return _scan_expr_for_interface_use(name, expr.operand, ctx)
     if isinstance(expr, TTernary):
         r = _scan_expr_for_interface_use(name, expr.cond, ctx)
-        if r:
+        if r is not None:
             return r
         r = _scan_expr_for_interface_use(name, expr.then_expr, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, expr.else_expr, ctx)
     if isinstance(expr, TFieldAccess):
         return _scan_expr_for_interface_use(name, expr.obj, ctx)
     if isinstance(expr, TIndex):
         r = _scan_expr_for_interface_use(name, expr.obj, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, expr.index, ctx)
     if isinstance(expr, TSlice):
         r = _scan_expr_for_interface_use(name, expr.obj, ctx)
-        if r:
+        if r is not None:
             return r
         r = _scan_expr_for_interface_use(name, expr.low, ctx)
-        if r:
+        if r is not None:
             return r
         return _scan_expr_for_interface_use(name, expr.high, ctx)
     if isinstance(expr, TListLit):
         for e in expr.elements:
             r = _scan_expr_for_interface_use(name, e, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(expr, TTupleLit):
         for e in expr.elements:
             r = _scan_expr_for_interface_use(name, e, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(expr, TMapLit):
         for k, v in expr.entries:
             r = _scan_expr_for_interface_use(name, k, ctx)
-            if r:
+            if r is not None:
                 return r
             r = _scan_expr_for_interface_use(name, v, ctx)
-            if r:
+            if r is not None:
                 return r
     if isinstance(expr, TSetLit):
         for e in expr.elements:
             r = _scan_expr_for_interface_use(name, e, ctx)
-            if r:
+            if r is not None:
                 return r
     return None
 
@@ -977,7 +974,7 @@ def _walk_try_stmt(stmt: TTryStmt, ctx: _ScopeCtx) -> None:
                 members.append(ctx.checker.resolve_type(ct))
             catch_type = normalize_union(members)
         catch_ctx.bindings[catch.name] = _BindingInfo(
-            node=catch, declared_type=catch_type, is_param=False
+            annotations=catch.annotations, declared_type=catch_type, is_param=False
         )
         _walk_stmts(catch.body, catch_ctx)
     if stmt.finally_body is not None:
@@ -992,18 +989,21 @@ def _walk_try_stmt(stmt: TTryStmt, ctx: _ScopeCtx) -> None:
 def _stamp_bindings(ctx: _ScopeCtx) -> None:
     """Write final annotations onto binding declaration nodes."""
     for name, info in ctx.bindings.items():
-        node = info.node
+        ann = info.annotations
         if info.binder_name is not None:
-            # For-binder: composite keys on the TForStmt node
             bname = info.binder_name
-            node.annotations[f"scope.binder.{bname}.is_reassigned"] = info.reassigned
-            node.annotations[f"scope.binder.{bname}.is_const"] = not info.reassigned
+            ann[f"scope.binder.{bname}.is_reassigned"] = (
+                "true" if info.reassigned else "false"
+            )
+            ann[f"scope.binder.{bname}.is_const"] = (
+                "false" if info.reassigned else "true"
+            )
         else:
-            node.annotations["scope.is_reassigned"] = info.reassigned
-            node.annotations["scope.is_const"] = not info.reassigned
+            ann["scope.is_reassigned"] = "true" if info.reassigned else "false"
+            ann["scope.is_const"] = "false" if info.reassigned else "true"
         if info.is_param:
-            node.annotations["scope.is_modified"] = info.modified
-            node.annotations["scope.is_unused"] = not info.used
+            ann["scope.is_modified"] = "true" if info.modified else "false"
+            ann["scope.is_unused"] = "false" if info.used else "true"
 
 
 # ============================================================
@@ -1022,11 +1022,13 @@ def _analyze_fn(decl: TFnDecl, ctx: _ScopeCtx, self_type: Type | None = None) ->
     for p in decl.params:
         if p.typ is not None:
             pt = ctx.checker.resolve_type(p.typ)
-        elif p.name == "self" and self_type is not None:
+        elif p.name == "this" and self_type is not None:
             pt = self_type
         else:
             continue
-        fn_ctx.bindings[p.name] = _BindingInfo(node=p, declared_type=pt, is_param=True)
+        fn_ctx.bindings[p.name] = _BindingInfo(
+            annotations=p.annotations, declared_type=pt, is_param=True
+        )
     _walk_stmts(decl.body, fn_ctx)
     _stamp_bindings(fn_ctx)
 

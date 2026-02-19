@@ -246,7 +246,7 @@ Enforcement requires type information; verified during type inference (phase 8).
 
 ## Imports
 
-Every module in the program's import graph must be subset-compliant.
+All source files must be subset-compliant. In project mode, subset validation runs on the merged AST after phase 3a has resolved and stripped project imports.
 
 ### Syntactic Rules
 
@@ -262,15 +262,16 @@ Bare `import` is restricted to `sys` and `os`.
 
 ### Semantic Rules
 
-Every import must resolve to one of:
+The subset phase validates imports against the allowed stdlib set:
 
 | Source                | Examples                                                                                                                               |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Project file          | `from .module import X`, `from mypackage import Y`                                                                                     |
 | Allowed stdlib module | `from typing import ...`, `from dataclasses import dataclass`, `from collections.abc import ...`, `from __future__ import annotations` |
 | Allowed bare import   | `import sys`, `import os`                                                                                                              |
 
-Unresolvable imports — other stdlib modules, external packages — are errors.
+In single-file mode, any import not matching the above is an error.
+
+In project mode (directory input), project imports (`from .module import X`, `from pkg.sub import Y`, `from . import module`) are resolved and stripped by phase 3a before the subset phase runs. The subset phase only sees stdlib imports. See `04a-project-and-imports.md` for project import resolution, collision detection, and AST merging.
 
 ## Errors
 

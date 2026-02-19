@@ -97,16 +97,55 @@ fn Main() -> void {
 ok
 ---
 
-=== method call
+=== struct constructor wrong arity
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1)
+}
+---
+error:
+---
+
+=== struct constructor type mismatch
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt("hello", 2)
+}
+---
+error:
+---
+
+=== method call with this
 struct Counter {
     value: int
-    fn Get(self) -> int {
-        return self.value
+    fn Get(this) -> int {
+        return this.value
     }
 }
 fn Main() -> void {
     let c: Counter = Counter(0)
     let v: int = c.Get()
+}
+---
+ok
+---
+
+=== method with extra parameters
+struct Counter {
+    value: int
+    fn Add(this, n: int) -> int {
+        return this.value + n
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(10)
+    let v: int = c.Add(5)
 }
 ---
 ok
@@ -121,7 +160,7 @@ fn Main() -> void {
 error: cannot call
 ---
 
-=== function literal no capture
+=== function literal expression body
 fn Apply(xs: list[int], f: fn[int, int]) -> list[int] {
     let result: list[int]
     for x in xs {
@@ -132,6 +171,17 @@ fn Apply(xs: list[int], f: fn[int, int]) -> list[int] {
 fn Main() -> void {
     let xs: list[int] = [1, 2, 3]
     let doubled: list[int] = Apply(xs, (x: int) -> int => x * 2)
+}
+---
+ok
+---
+
+=== function literal block body
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int {
+        return x * 2
+    }
+    let y: int = f(21)
 }
 ---
 ok
@@ -158,13 +208,491 @@ fn Main() -> void {
 ok
 ---
 
-=== function literal block body
-fn Main() -> void {
-    let f: fn[int, int] = (x: int) -> int {
-        return x * 2
+=== recursive function
+fn Fib(n: int) -> int {
+    if n < 2 {
+        return n
     }
-    let y: int = f(21)
+    return Fib(n - 1) + Fib(n - 2)
+}
+fn Main() -> void {
+    let x: int = Fib(10)
 }
 ---
 ok
+---
+
+=== mutually recursive functions
+fn IsEven(n: int) -> bool {
+    if n == 0 {
+        return true
+    }
+    return IsOdd(n - 1)
+}
+fn IsOdd(n: int) -> bool {
+    if n == 0 {
+        return false
+    }
+    return IsEven(n - 1)
+}
+fn Main() -> void {
+    let b: bool = IsEven(4)
+}
+---
+ok
+---
+
+=== higher order function
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let result: int = Apply(Double, 21)
+}
+---
+ok
+---
+
+=== duplicate parameter name
+fn Foo(x: int, x: int) -> void {
+}
+fn Main() -> void {
+}
+---
+error: shadows
+---
+
+=== struct constructor duplicate named field
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(x: 1, x: 2)
+}
+---
+error: duplicate field
+---
+
+=== struct constructor unknown field name
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(x: 1, z: 2)
+}
+---
+error: has no field
+---
+
+=== method call unknown method
+struct Counter {
+    value: int
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.Reset()
+}
+---
+error: has no method
+---
+
+=== return optional from non-optional function
+fn Foo() -> int {
+    let x: int? = 42
+    return x
+}
+fn Main() -> void {
+}
+---
+error: cannot return
+---
+
+=== function type parameter mismatch
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Negate(s: string) -> string {
+    return s
+}
+fn Main() -> void {
+    let y: int = Apply(Negate, 42)
+}
+---
+error: cannot pass
+---
+
+=== method return type used correctly
+struct Counter {
+    value: int
+    fn Get(this) -> int {
+        return this.value
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(10)
+    let v: string = c.Get()
+}
+---
+error: cannot assign
+---
+
+=== bound method as value rejected
+struct Counter {
+    value: int
+    fn Get(this) -> int {
+        return this.value
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    let f: fn[int] = c.Get
+}
+---
+error: cannot capture
+---
+
+=== method call wrong argument type
+struct Adder {
+    base: int
+    fn Add(this, n: int) -> int {
+        return this.base + n
+    }
+}
+fn Main() -> void {
+    let a: Adder = Adder(10)
+    a.Add("five")
+}
+---
+error: cannot pass
+---
+
+=== fn literal return type mismatch
+fn Main() -> void {
+    let g: fn[int, int] = (x: int) -> int {
+        return "hello"
+    }
+}
+---
+error: cannot return
+---
+
+=== void return used as value
+fn Foo() -> void {
+}
+fn Main() -> void {
+    let x: int = Foo()
+}
+---
+error:
+---
+
+=== fn literal void return
+fn Main() -> void {
+    let f: fn[int, void] = (x: int) -> void {
+        WritelnOut(ToString(x))
+    }
+}
+---
+ok
+---
+
+=== struct constructor mixed args rejected
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, y: 2)
+}
+---
+error: cannot mix positional and named
+---
+
+=== method call arity mismatch
+struct Counter {
+    value: int
+    fn Add(this, n: int) -> int {
+        return this.value + n
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(0)
+    c.Add(1, 2)
+}
+---
+error: expected
+---
+
+=== this access non-existent field
+struct Pt {
+    x: int
+    y: int
+    fn Foo(this) -> int {
+        return this.z
+    }
+}
+fn Main() -> void {
+}
+---
+error: has no field
+---
+
+=== this assign wrong type to field
+struct Counter {
+    value: int
+    fn Reset(this) -> void {
+        this.value = "zero"
+    }
+}
+fn Main() -> void {
+}
+---
+error: cannot assign
+---
+
+=== method calls another method on this
+struct Calc {
+    value: int
+    fn Double(this) -> int {
+        return this.value * 2
+    }
+    fn DoublePlus(this, n: int) -> int {
+        return this.Double() + n
+    }
+}
+fn Main() -> void {
+    let c: Calc = Calc(5)
+    let r: int = c.DoublePlus(3)
+}
+---
+ok
+---
+
+=== passing optional where non-optional expected
+fn Add(a: int, b: int) -> int {
+    return a + b
+}
+fn Foo(x: int?) -> void {
+    Add(x, 1)
+}
+fn Main() -> void {
+}
+---
+error: cannot pass
+---
+
+=== struct constructor field type mismatch with interface
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct Other {
+    value: int
+}
+struct Wrapper {
+    child: Node
+}
+fn Main() -> void {
+    let w: Wrapper = Wrapper(Other(42))
+}
+---
+error: cannot assign
+---
+
+=== function as value type mismatch
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[string, string] = Double
+}
+---
+error: cannot assign
+---
+
+=== not all paths return simple
+fn Foo(x: int) -> int {
+    if x > 0 {
+        return x
+    }
+}
+fn Main() -> void {
+}
+---
+error: not all paths return
+---
+
+=== all paths return with if else
+fn Foo(x: int) -> int {
+    if x > 0 {
+        return x
+    } else {
+        return 0
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== while true is complete
+fn Foo() -> int {
+    while true {
+        return 42
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== while true with break is not complete
+fn Foo(x: int) -> int {
+    while true {
+        if x > 0 {
+            break
+        }
+        return 42
+    }
+}
+fn Main() -> void {
+}
+---
+error: not all paths return
+---
+
+=== match exhaustive all paths return
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct BinOp : Node {
+    left: Node
+    right: Node
+}
+fn Eval(n: Node) -> int {
+    match n {
+        case l: Lit {
+            return l.value
+        }
+        case b: BinOp {
+            return Eval(b.left) + Eval(b.right)
+        }
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== throw satisfies return path
+fn Foo(x: int) -> int {
+    if x > 0 {
+        return x
+    } else {
+        throw ValueError("negative")
+    }
+}
+fn Main() -> void {
+}
+---
+ok
+---
+
+=== fn literal not all paths return
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int {
+        if x > 0 {
+            return x
+        }
+    }
+}
+---
+error: not all paths return
+---
+
+=== named args on builtin rejected
+fn Main() -> void {
+    let n: int = Len(x: "hello")
+}
+---
+error:
+---
+
+=== named args on fn value rejected
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = Double
+    let y: int = f(x: 21)
+}
+---
+error:
+---
+
+=== closure can reference top-level function
+fn Double(x: int) -> int {
+    return x * 2
+}
+fn Main() -> void {
+    let f: fn[int, int] = (x: int) -> int => Double(x)
+}
+---
+ok
+---
+
+=== closure can reference top-level type
+struct Pt {
+    x: int
+    y: int
+}
+fn Main() -> void {
+    let f: fn[int, Pt] = (n: int) -> Pt => Pt(n, n)
+}
+---
+ok
+---
+
+=== closure can reference builtins
+fn Main() -> void {
+    let f: fn[int, string] = (x: int) -> string => ToString(x)
+}
+---
+ok
+---
+
+=== struct ToString method override valid
+struct Pt {
+    x: int
+    y: int
+    fn ToString(this) -> string {
+        return Concat(ToString(this.x), Concat(",", ToString(this.y)))
+    }
+}
+fn Main() -> void {
+    let p: Pt = Pt(1, 2)
+    let s: string = p.ToString()
+}
+---
+ok
+---
+
+=== duplicate function name
+fn Foo() -> void {
+}
+fn Foo() -> void {
+}
+fn Main() -> void {
+}
+---
+error: duplicate
 ---

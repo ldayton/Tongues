@@ -300,13 +300,13 @@ fn Main() -> void {
 ok
 ---
 
-=== self in expression
+=== this in expression
 struct Span {
     start: int
     end: int
 
-    fn Len(self) -> int {
-        return self.end - self.start
+    fn Len(this) -> int {
+        return this.end - this.start
     }
 }
 ---

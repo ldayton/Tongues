@@ -1,12 +1,14 @@
 # Tongues Frontend
 
-The frontend accepts Python source and produces a Taytsh Module. It operates in nine sequential phases: accept input via the CLI, parse the source into a dict-based AST, enforce subset restrictions, resolve names, collect signatures, infer field types, build the class hierarchy, run bidirectional type inference, and lower the typed AST to Taytsh IR. Each phase completes before the next starts. Phase outputs accumulate — later phases read the outputs of all prior phases.
+The frontend accepts Python source and produces a Taytsh Module. It operates in ten sequential phases: accept input via the CLI, parse the source into a dict-based AST, merge multi-file projects (directory input only), enforce subset restrictions, resolve names, collect signatures, infer field types, build the class hierarchy, run bidirectional type inference, and lower the typed AST to Taytsh IR. Each phase completes before the next starts. Phase outputs accumulate — later phases read the outputs of all prior phases.
 
 ## Pipeline
 
 ```
-source.py → parse → subset → names → signatures → fields → hierarchy → inference → lowering → Taytsh Module
+source → parse → [merge] → subset → names → signatures → fields → hierarchy → inference → lowering → Taytsh Module
 ```
+
+The merge phase runs only when the input is a directory (project mode). In single-file mode it is skipped.
 
 All phases are pure functions of their inputs. No phase modifies a prior phase's output. The pipeline is deterministic — same input produces same output.
 
@@ -14,11 +16,15 @@ All phases are pure functions of their inputs. No phase modifies a prior phase's
 
 ### 1. CLI (`tongues.py`)
 
-Program entry point. Parses command-line arguments, reads source from stdin, selects the target language, invokes the pipeline, writes output to stdout. Written in the Tongues subset.
+Program entry point. Parses command-line arguments, reads source input (file, directory, or stdin), selects the target language, invokes the pipeline, writes output. Written in the Tongues subset.
 
 ### 2. Parse (`frontend/parse.py`)
 
 Hand-written recursive descent parser. Tokenizes Python source and produces a dict-based AST following the structure of Python's `ast` module. Parses the full Python grammar — subset restrictions are enforced in phase 3.
+
+### 3a. Project Merge (`tongues.py`, directory input only)
+
+Gathers all `.py` files from the input directory, resolves cross-file imports, detects name collisions, and merges into a single AST. Skipped in single-file mode. See `04a-project-and-imports.md`.
 
 ### 3. Subset (`frontend/subset.py`)
 
@@ -54,7 +60,8 @@ Each phase produces an artifact consumed by subsequent phases. No phase modifies
 
 | Phase      | Produces       | Consumed by                                                       |
 | ---------- | -------------- | ----------------------------------------------------------------- |
-| parse      | dict-based AST | subset, names, signatures, fields, hierarchy, inference, lowering |
+| parse      | dict-based AST | merge, subset, names, signatures, fields, hierarchy, inference, lowering |
+| merge      | merged AST     | subset onward (project mode only)                                 |
 | subset     | (validation)   | —                                                                 |
 | names      | NameTable      | signatures, fields, inference                                     |
 | signatures | SigTable       | fields, inference, lowering                                       |
@@ -118,6 +125,6 @@ Every frontend error includes:
 | line    | 1-indexed source line number     |
 | column  | 0-indexed column within the line |
 
-Errors are written to stderr in the format `error: {message} at line {line}`. The pipeline halts at the first error — no attempt to recover or report multiple errors.
+Errors are written to stderr. In project mode, errors from phases 3+ prepend the source file path when the AST node carries `_source_file` (e.g. `src/parse.py:15:8: error: ...`). Some phases (e.g. phase 3a collision detection) report all errors before halting; most phases halt at the first error.
 
-Exit code 1 for compilation errors (parse, subset, type, lowering). Exit code 2 for usage errors (unknown flag, unknown target).
+Exit code 1 for compilation errors (parse, subset, type, lowering, unresolved import, name collision). Exit code 2 for usage errors (unknown flag, unknown target).

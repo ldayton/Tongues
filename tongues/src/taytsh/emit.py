@@ -15,9 +15,9 @@ from .ast import (
     TBytesLit,
     TCall,
     TContinueStmt,
-    TDecl,
     TDefault,
     TEnumDecl,
+    TModuleItem,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -43,6 +43,7 @@ from .ast import (
     TOpAssignStmt,
     TOptionalType,
     TParam,
+    TPattern,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -151,7 +152,7 @@ class _Emitter:
 
     # ── Decls ───────────────────────────────────────────────
 
-    def _emit_decl(self, decl: TDecl) -> None:
+    def _emit_decl(self, decl: TModuleItem) -> None:
         if isinstance(decl, TFnDecl):
             self._emit_fn_decl(decl)
             return
@@ -279,12 +280,11 @@ class _Emitter:
         while current is not None:
             branches.append((current.cond, current.then_body))
             else_body = current.else_body
-            if (
-                else_body is not None
-                and len(else_body) == 1
-                and isinstance(else_body[0], TIfStmt)
-            ):
-                current = else_body[0]
+            candidate = (
+                else_body[0] if else_body is not None and len(else_body) == 1 else None
+            )
+            if isinstance(candidate, TIfStmt):
+                current = candidate
                 continue
             final_else = else_body
             current = None
@@ -386,7 +386,7 @@ class _Emitter:
 
     # ── Patterns / TypeNames ────────────────────────────────
 
-    def _render_pattern(self, pat: TPatternType | TPatternEnum | TPatternNil) -> str:
+    def _render_pattern(self, pat: TPattern) -> str:
         if isinstance(pat, TPatternNil):
             return "nil"
         if isinstance(pat, TPatternEnum):
@@ -449,7 +449,7 @@ class _Emitter:
         parts: list[str] = []
         for p in params:
             if p.typ is None:
-                parts.append("self")
+                parts.append("this")
             else:
                 parts.append(f"{p.name}: {self._render_type(p.typ)}")
         return ", ".join(parts)
@@ -591,10 +591,12 @@ class _Emitter:
         if isinstance(expr, TFnLit):
             params = self._render_param_list(expr.params)
             ret = self._render_type(expr.ret)
-            if isinstance(expr.body, list):
-                body = self._render_inline_block(expr.body)
-                return f"({params}) -> {ret} {body}"
-            return f"({params}) -> {ret} => {self._render_expr(expr.body, self._PREC_TERNARY)}"
+            if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
+                expr.body[0], TExprStmt
+            ):
+                return f"({params}) -> {ret} => {self._render_expr(expr.body[0].expr, self._PREC_TERNARY)}"
+            body = self._render_inline_block(expr.body)
+            return f"({params}) -> {ret} {body}"
 
         raise TypeError("unhandled expr type")
 
@@ -641,12 +643,13 @@ class _Emitter:
             while current is not None:
                 branches.append((current.cond, current.then_body))
                 else_body = current.else_body
-                if (
-                    else_body is not None
-                    and len(else_body) == 1
-                    and isinstance(else_body[0], TIfStmt)
-                ):
-                    current = else_body[0]
+                candidate = (
+                    else_body[0]
+                    if else_body is not None and len(else_body) == 1
+                    else None
+                )
+                if isinstance(candidate, TIfStmt):
+                    current = candidate
                     continue
                 final_else = else_body
                 current = None

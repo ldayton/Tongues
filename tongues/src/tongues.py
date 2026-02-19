@@ -5,14 +5,35 @@ from __future__ import annotations
 import sys
 
 from .frontend.parse import parse, ParseError
-from .frontend.subset import verify as verify_subset
+from .frontend.subset import (
+    verify as verify_subset,
+    IMPORT_ONLY_MODULES,
+    ALLOWED_FROM_MODULES,
+)
 from .frontend.names import NameInfo, NameTable, resolve_names
-from .frontend.signatures import collect_signatures
+from .frontend.signatures import annotation_to_str, collect_signatures
 from .frontend.fields import collect_fields
 from .frontend.hierarchy import build_hierarchy
 from .frontend.inference import run_inference
 from .frontend.lowering import lower
-from .taytsh.ast import to_dict as module_to_dict
+from .frontend.types import (
+    JsonValue,
+    JStr,
+    JInt,
+    JFloat,
+    JBool,
+    JNull,
+    JList,
+    JDict,
+    ASTNode,
+    get_str,
+    get_int,
+    get_bool,
+    get_node,
+    get_nodes,
+    has_key,
+)
+from .taytsh.ast import TLetStmt, to_dict as module_to_dict
 from .taytsh.check import Checker
 from .middleend.returns import analyze_returns
 from .middleend.scope import analyze_scope
@@ -59,6 +80,7 @@ Options:
                       lua, perl, php, python, ruby, rust, swift, typescript, zig
   --stop-at PHASE     Stop after phase: parse, subset, names, signatures,
                       fields, hierarchy, inference, lowering, analyze
+  --project           Read NUL-delimited multi-file input (path\\0source\\0...)
   --strict            Enable strict math and strict tostring
   --strict-math       Enable strict math mode
   --strict-tostring   Enable strict tostring mode
@@ -138,42 +160,42 @@ def _json_escape(s: str) -> str:
     return "".join(result)
 
 
-def _to_json(obj: object, indent: int, level: int) -> str:
-    """Recursively serialize an object to JSON string."""
-    if obj is None:
+def _to_json(obj: JsonValue, indent: int, level: int) -> str:
+    """Recursively serialize a JsonValue to JSON string."""
+    if isinstance(obj, JNull):
         return "null"
-    if isinstance(obj, bool):
-        if obj:
+    if isinstance(obj, JBool):
+        if obj.value:
             return "true"
         return "false"
-    if isinstance(obj, int):
-        return str(obj)
-    if isinstance(obj, float):
-        return str(obj)
-    if isinstance(obj, str):
-        return '"' + _json_escape(obj) + '"'
-    if isinstance(obj, list):
-        if len(obj) == 0:
+    if isinstance(obj, JInt):
+        return str(obj.value)
+    if isinstance(obj, JFloat):
+        return str(obj.value)
+    if isinstance(obj, JStr):
+        return '"' + _json_escape(obj.value) + '"'
+    if isinstance(obj, JList):
+        if len(obj.items) == 0:
             return "[]"
         parts: list[str] = []
         pad = " " * (indent * (level + 1))
         pad_close = " " * (indent * level)
         i = 0
-        while i < len(obj):
-            parts.append(pad + _to_json(obj[i], indent, level + 1))
+        while i < len(obj.items):
+            parts.append(pad + _to_json(obj.items[i], indent, level + 1))
             i += 1
         return "[\n" + ",\n".join(parts) + "\n" + pad_close + "]"
-    if isinstance(obj, dict):
-        if len(obj) == 0:
+    if isinstance(obj, JDict):
+        if len(obj.entries) == 0:
             return "{}"
-        parts = []
+        parts: list[str] = []
         pad = " " * (indent * (level + 1))
         pad_close = " " * (indent * level)
-        keys = list(obj.keys())
+        keys = list(obj.entries.keys())
         i = 0
         while i < len(keys):
             k = keys[i]
-            v = obj[k]
+            v = obj.entries[k]
             key_str = '"' + _json_escape(str(k)) + '"'
             val_str = _to_json(v, indent, level + 1)
             parts.append(pad + key_str + ": " + val_str)
@@ -182,53 +204,58 @@ def _to_json(obj: object, indent: int, level: int) -> str:
     return '"<unserializable>"'
 
 
-def to_json(obj: object) -> str:
-    """Serialize object to pretty-printed JSON."""
+def to_json(obj: JsonValue) -> str:
+    """Serialize JsonValue to pretty-printed JSON."""
     return _to_json(obj, 2, 0)
 
 
 # --- Name table serialization ---
 
 
-def _name_info_to_dict(info: NameInfo) -> dict[str, object]:
-    """Convert a NameInfo to a serializable dict."""
-    d: dict[str, object] = {
-        "kind": info.kind,
-        "scope": info.scope,
-        "lineno": info.lineno,
-        "col": info.col,
+def _name_info_to_dict(info: NameInfo) -> JsonValue:
+    """Convert a NameInfo to a JsonValue dict."""
+    d: dict[str, JsonValue] = {
+        "kind": JStr(info.kind),
+        "scope": JStr(info.scope),
+        "lineno": JInt(info.lineno),
+        "col": JInt(info.col),
     }
     if info.decl_class != "":
-        d["decl_class"] = info.decl_class
+        d["decl_class"] = JStr(info.decl_class)
     if info.decl_func != "":
-        d["decl_func"] = info.decl_func
+        d["decl_func"] = JStr(info.decl_func)
     if len(info.bases) > 0:
-        d["bases"] = info.bases
-    return d
+        bases_jv: list[JsonValue] = []
+        bi = 0
+        while bi < len(info.bases):
+            bases_jv.append(JStr(info.bases[bi]))
+            bi += 1
+        d["bases"] = JList(bases_jv)
+    return JDict(d)
 
 
-def _name_table_to_dict(table: NameTable) -> dict[str, object]:
+def _name_table_to_dict(table: NameTable) -> JsonValue:
     """Convert a NameTable to spec-compliant format: {"names": {...}, "scopes": [...]}."""
-    names: dict[str, object] = {}
+    names: dict[str, JsonValue] = {}
     keys = list(table.module_names.keys())
     i = 0
     while i < len(keys):
         name = keys[i]
         names[name] = _name_info_to_dict(table.module_names[name])
         i += 1
-    scopes: list[object] = []
+    scopes: list[JsonValue] = []
     ckeys = list(table.class_names.keys())
     i = 0
     while i < len(ckeys):
         cname = ckeys[i]
-        scope_names: dict[str, object] = {}
+        scope_names: dict[str, JsonValue] = {}
         mkeys = list(table.class_names[cname].keys())
         j = 0
         while j < len(mkeys):
             mname = mkeys[j]
             scope_names[mname] = _name_info_to_dict(table.class_names[cname][mname])
             j += 1
-        scopes.append({"scope": cname, "names": scope_names})
+        scopes.append(JDict({"scope": JStr(cname), "names": JDict(scope_names)}))
         i += 1
     lkeys = list(table.local_names.keys())
     i = 0
@@ -238,19 +265,19 @@ def _name_table_to_dict(table: NameTable) -> dict[str, object]:
             scope_key = str(lkey[0]) + ":" + str(lkey[1])
         else:
             scope_key = str(lkey[1])
-        scope_names = {}
+        scope_names: dict[str, JsonValue] = {}
         skeys = list(table.local_names[lkey].keys())
         j = 0
         while j < len(skeys):
             sname = skeys[j]
             scope_names[sname] = _name_info_to_dict(table.local_names[lkey][sname])
             j += 1
-        scopes.append({"scope": scope_key, "names": scope_names})
+        scopes.append(JDict({"scope": JStr(scope_key), "names": JDict(scope_names)}))
         i += 1
-    result: dict[str, object] = {"names": names}
+    result: dict[str, JsonValue] = {"names": JDict(names)}
     if len(scopes) > 0:
-        result["scopes"] = scopes
-    return result
+        result["scopes"] = JList(scopes)
+    return JDict(result)
 
 
 # --- Pragma extraction ---
@@ -295,59 +322,1094 @@ def _extract_pragmas(
 # --- Error reporting ---
 
 
-def _print_errors(errors: list[object]) -> None:
-    """Print a list of error objects to stderr."""
+def _print_errors(errors: list[str]) -> None:
+    """Print error strings to stderr."""
     i = 0
     while i < len(errors):
-        print(str(errors[i]), file=sys.stderr)
+        print(errors[i], file=sys.stderr)
         i += 1
 
 
 # --- Pipeline ---
 
 
-def run_pipeline(
+# --- Project merge (Phase 3a) ---
+
+
+def _classify_import(node: ASTNode) -> str:
+    """Classify an ImportFrom node as 'stdlib' or 'project'."""
+    level = get_int(node, "level")
+    if level > 0:
+        return "project"
+    module = get_str(node, "module")
+    if module in ALLOWED_FROM_MODULES:
+        return "stdlib"
+    if module in IMPORT_ONLY_MODULES:
+        return "stdlib"
+    parts = module.split(".")
+    if len(parts) > 0 and parts[0] in ALLOWED_FROM_MODULES:
+        return "stdlib"
+    if len(parts) > 0 and parts[0] in IMPORT_ONLY_MODULES:
+        return "stdlib"
+    return "project"
+
+
+def _resolve_project_import(
+    importing_file: str,
+    module: str,
+    level: int,
+    names: list[ASTNode],
+    universe: set[str],
+) -> list[tuple[str, str]]:
+    """Resolve project import to paths in universe. Returns [(path, "")] or [("", error_msg)]."""
+    if level > 0:
+        slash_idx = importing_file.rfind("/")
+        if slash_idx >= 0:
+            dir_path = importing_file[:slash_idx]
+        else:
+            dir_path = ""
+        up = level - 1
+        while up > 0:
+            slash_idx = dir_path.rfind("/")
+            if slash_idx >= 0:
+                dir_path = dir_path[:slash_idx]
+            else:
+                dir_path = ""
+            up -= 1
+        if module != "":
+            module_path = module.replace(".", "/")
+            if dir_path != "":
+                candidate = dir_path + "/" + module_path
+            else:
+                candidate = module_path
+            py_path = candidate + ".py"
+            init_path = candidate + "/__init__.py"
+            if py_path in universe:
+                return [(py_path, "")]
+            if init_path in universe:
+                return [(init_path, "")]
+            return [("", importing_file + ": unresolved import: " + module)]
+        else:
+            results: list[tuple[str, str]] = []
+            i = 0
+            while i < len(names):
+                name_node = names[i]
+                name = get_str(name_node, "name")
+                if name != "" and name != "*":
+                    if dir_path != "":
+                        candidate = dir_path + "/" + name
+                    else:
+                        candidate = name
+                    py_path = candidate + ".py"
+                    init_path = candidate + "/__init__.py"
+                    if py_path in universe:
+                        results.append((py_path, ""))
+                    elif init_path in universe:
+                        results.append((init_path, ""))
+                    else:
+                        results.append(
+                            ("", importing_file + ": unresolved import: " + name)
+                        )
+                i += 1
+            return results
+    else:
+        module_path = module.replace(".", "/")
+        py_path = module_path + ".py"
+        init_path = module_path + "/__init__.py"
+        if py_path in universe:
+            return [(py_path, "")]
+        if init_path in universe:
+            return [(init_path, "")]
+        return [("", importing_file + ": unresolved import: " + module)]
+
+
+def _dependency_order(files: list[str], deps: dict[str, list[str]]) -> list[str]:
+    """Topological sort with lexicographic tiebreaker, cycle-tolerant."""
+    in_degree: dict[str, int] = {}
+    i = 0
+    while i < len(files):
+        in_degree[files[i]] = 0
+        i += 1
+    i = 0
+    while i < len(files):
+        f = files[i]
+        dep_list = deps.get(f)
+        if dep_list is not None:
+            j = 0
+            while j < len(dep_list):
+                d = dep_list[j]
+                if d in in_degree:
+                    in_degree[d] = in_degree[d] + 1
+                j += 1
+        i += 1
+    ready: list[str] = []
+    i = 0
+    while i < len(files):
+        if in_degree[files[i]] == 0:
+            ready.append(files[i])
+        i += 1
+    ready.sort()
+    result: list[str] = []
+    while len(ready) > 0:
+        node = ready[0]
+        ready = ready[1:]
+        result.append(node)
+        dep_list = deps.get(node)
+        if dep_list is not None:
+            j = 0
+            while j < len(dep_list):
+                d = dep_list[j]
+                if d in in_degree:
+                    in_degree[d] = in_degree[d] - 1
+                    if in_degree[d] == 0:
+                        k = 0
+                        inserted = False
+                        while k < len(ready):
+                            if d < ready[k]:
+                                ready.insert(k, d)
+                                inserted = True
+                                break
+                            k += 1
+                        if not inserted:
+                            ready.append(d)
+                j += 1
+    if len(result) < len(files):
+        remaining: list[str] = []
+        i = 0
+        while i < len(files):
+            found = False
+            j = 0
+            while j < len(result):
+                if files[i] == result[j]:
+                    found = True
+                    break
+                j += 1
+            if not found:
+                remaining.append(files[i])
+            i += 1
+        remaining.sort()
+        i = 0
+        while i < len(remaining):
+            result.append(remaining[i])
+            i += 1
+    return result
+
+
+def _collect_module_names(
+    ast_dict: ASTNode,
+) -> list[tuple[str, int, int, ASTNode]]:
+    """Collect (name, lineno, col, stmt) for module-level definitions."""
+    result: list[tuple[str, int, int, ASTNode]] = []
+    body = get_nodes(ast_dict, "body")
+    i = 0
+    while i < len(body):
+        stmt = body[i]
+        node_type = get_str(stmt, "_type")
+        lineno = get_int(stmt, "lineno")
+        col = get_int(stmt, "col_offset")
+        if node_type == "ClassDef":
+            name = get_str(stmt, "name")
+            if name != "":
+                result.append((name, lineno, col, stmt))
+        elif node_type == "FunctionDef":
+            name = get_str(stmt, "name")
+            if name != "":
+                result.append((name, lineno, col, stmt))
+        elif node_type == "Assign":
+            targets = get_nodes(stmt, "targets")
+            j = 0
+            while j < len(targets):
+                target = targets[j]
+                if get_str(target, "_type") == "Name":
+                    tid = get_str(target, "id")
+                    if tid != "":
+                        result.append((tid, lineno, col, stmt))
+                j += 1
+        elif node_type == "AnnAssign":
+            target = get_node(stmt, "target")
+            if get_str(target, "_type") == "Name":
+                tid = get_str(target, "id")
+                if tid != "":
+                    result.append((tid, lineno, col, stmt))
+        i += 1
+    return result
+
+
+def _detect_collisions(
+    file_names: dict[str, list[tuple[str, int, int]]],
+) -> list[str]:
+    """Return error messages for cross-file name collisions."""
+    name_to_locs: dict[str, list[tuple[str, int]]] = {}
+    fkeys = list(file_names.keys())
+    i = 0
+    while i < len(fkeys):
+        f = fkeys[i]
+        names = file_names[f]
+        j = 0
+        while j < len(names):
+            name, lineno, col = names[j]
+            if name not in name_to_locs:
+                name_to_locs[name] = []
+            name_to_locs[name].append((f, lineno))
+            j += 1
+        i += 1
+    errors: list[str] = []
+    nkeys = list(name_to_locs.keys())
+    nkeys.sort()
+    i = 0
+    while i < len(nkeys):
+        name = nkeys[i]
+        locs = name_to_locs[name]
+        if len(locs) > 1:
+            locs.sort()
+            msg = "error: duplicate name '" + name + "' defined in "
+            j = 0
+            while j < len(locs):
+                if j > 0:
+                    msg = msg + " and "
+                msg = msg + locs[j][0] + ":" + str(locs[j][1])
+                j += 1
+            errors.append(msg)
+        i += 1
+    return errors
+
+
+def _ast_equal(a: ASTNode, b: ASTNode) -> bool:
+    """Deep structural comparison of AST nodes, ignoring position metadata."""
+    ignore: set[str] = {
+        "lineno",
+        "col_offset",
+        "end_lineno",
+        "end_col_offset",
+        "_source_file",
+        "_remove",
+    }
+    work_a: list[JsonValue] = [JDict(a)]
+    work_b: list[JsonValue] = [JDict(b)]
+    wi = 0
+    while wi < len(work_a):
+        x = work_a[wi]
+        y = work_b[wi]
+        if isinstance(x, JDict):
+            x = x.entries
+        if isinstance(y, JDict):
+            y = y.entries
+        if isinstance(x, JList):
+            x = x.items
+        if isinstance(y, JList):
+            y = y.items
+        if isinstance(x, JStr):
+            x = x.value
+        if isinstance(y, JStr):
+            y = y.value
+        if isinstance(x, JInt):
+            x = x.value
+        if isinstance(y, JInt):
+            y = y.value
+        if isinstance(x, JBool):
+            x = x.value
+        if isinstance(y, JBool):
+            y = y.value
+        if isinstance(x, JFloat):
+            x = x.value
+        if isinstance(y, JFloat):
+            y = y.value
+        if isinstance(x, JNull):
+            x = None
+        if isinstance(y, JNull):
+            y = None
+        if isinstance(x, dict) and isinstance(y, dict):
+            x_keys: list[str] = []
+            xk = list(x.keys())
+            ki = 0
+            while ki < len(xk):
+                if xk[ki] not in ignore:
+                    x_keys.append(xk[ki])
+                ki += 1
+            y_keys: list[str] = []
+            yk = list(y.keys())
+            ki = 0
+            while ki < len(yk):
+                if yk[ki] not in ignore:
+                    y_keys.append(yk[ki])
+                ki += 1
+            if len(x_keys) != len(y_keys):
+                return False
+            x_keys.sort()
+            y_keys.sort()
+            ki = 0
+            while ki < len(x_keys):
+                if x_keys[ki] != y_keys[ki]:
+                    return False
+                ki += 1
+            ki = 0
+            while ki < len(x_keys):
+                work_a.append(x[x_keys[ki]])
+                work_b.append(y[y_keys[ki]])
+                ki += 1
+        elif isinstance(x, list) and isinstance(y, list):
+            if len(x) != len(y):
+                return False
+            li = 0
+            while li < len(x):
+                work_a.append(x[li])
+                work_b.append(y[li])
+                li += 1
+        else:
+            if x != y:
+                return False
+        wi += 1
+    return True
+
+
+def _collect_definition_refs(node: ASTNode) -> set[str]:
+    """Collect all Name.id values referenced in a definition's body."""
+    refs: set[str] = set()
+    node_type = get_str(node, "_type")
+    seeds: list[JsonValue] = []
+    if node_type == "FunctionDef":
+        body_val = node.get("body")
+        if isinstance(body_val, JList):
+            seeds.append(body_val)
+        args_val = node.get("args")
+        if isinstance(args_val, JDict):
+            seeds.append(args_val)
+        returns_val = node.get("returns")
+        if returns_val is not None and not isinstance(returns_val, JNull):
+            seeds.append(returns_val)
+        deco_val = node.get("decorator_list")
+        if isinstance(deco_val, JList):
+            seeds.append(deco_val)
+    elif node_type == "ClassDef":
+        body_val = node.get("body")
+        if isinstance(body_val, JList):
+            seeds.append(body_val)
+        bases_val = node.get("bases")
+        if isinstance(bases_val, JList):
+            seeds.append(bases_val)
+        deco_val = node.get("decorator_list")
+        if isinstance(deco_val, JList):
+            seeds.append(deco_val)
+    elif node_type == "Assign":
+        value_val = node.get("value")
+        if value_val is not None and not isinstance(value_val, JNull):
+            seeds.append(value_val)
+    elif node_type == "AnnAssign":
+        value_val = node.get("value")
+        if value_val is not None and not isinstance(value_val, JNull):
+            seeds.append(value_val)
+        ann_val = node.get("annotation")
+        if ann_val is not None and not isinstance(ann_val, JNull):
+            seeds.append(ann_val)
+    work: list[JsonValue] = list(seeds)
+    wi = 0
+    while wi < len(work):
+        item = work[wi]
+        if isinstance(item, JDict):
+            entries = item.entries
+            if get_str(entries, "_type") == "Name":
+                nid = get_str(entries, "id")
+                if nid != "":
+                    refs.add(nid)
+            keys = list(entries.keys())
+            ki = 0
+            while ki < len(keys):
+                val = entries[keys[ki]]
+                if isinstance(val, JDict) or isinstance(val, JList):
+                    work.append(val)
+                ki += 1
+        elif isinstance(item, JList):
+            li = 0
+            while li < len(item.items):
+                child = item.items[li]
+                if isinstance(child, JDict) or isinstance(child, JList):
+                    work.append(child)
+                li += 1
+        wi += 1
+    return refs
+
+
+def _compute_module_stems(paths: list[str]) -> dict[str, str]:
+    """Compute unique module stems for each file path."""
+    raw_stems: dict[str, str] = {}
+    i = 0
+    while i < len(paths):
+        path = paths[i]
+        slash_idx = path.rfind("/")
+        if slash_idx >= 0:
+            filename = path[slash_idx + 1 :]
+            parent = path[:slash_idx]
+        else:
+            filename = path
+            parent = ""
+        if filename == "__init__.py":
+            parent_slash = parent.rfind("/")
+            if parent_slash >= 0:
+                stem = parent[parent_slash + 1 :]
+            else:
+                stem = parent
+            if stem == "":
+                stem = "__init__"
+        else:
+            if filename.endswith(".py"):
+                stem = filename[:-3]
+            else:
+                stem = filename
+        raw_stems[path] = stem
+        i += 1
+    stem_to_paths: dict[str, list[str]] = {}
+    i = 0
+    while i < len(paths):
+        path = paths[i]
+        stem = raw_stems[path]
+        if stem not in stem_to_paths:
+            stem_to_paths[stem] = []
+        stem_to_paths[stem].append(path)
+        i += 1
+    result: dict[str, str] = {}
+    skeys = list(stem_to_paths.keys())
+    si = 0
+    while si < len(skeys):
+        stem = skeys[si]
+        colliding = stem_to_paths[stem]
+        if len(colliding) == 1:
+            result[colliding[0]] = stem
+        else:
+            ci = 0
+            while ci < len(colliding):
+                path = colliding[ci]
+                slash_idx = path.rfind("/")
+                if slash_idx >= 0:
+                    parent = path[:slash_idx]
+                    parent_slash = parent.rfind("/")
+                    if parent_slash >= 0:
+                        parent_name = parent[parent_slash + 1 :]
+                    else:
+                        parent_name = parent
+                    result[path] = parent_name + "_" + stem
+                else:
+                    result[path] = stem
+                ci += 1
+        si += 1
+    return result
+
+
+def _is_all_caps(name: str) -> bool:
+    """Check if name follows ALL_CAPS convention."""
+    if len(name) == 0:
+        return False
+    has_letter = False
+    i = 0
+    while i < len(name):
+        c = name[i]
+        if c != "_" and not c.isupper() and not c.isdigit():
+            return False
+        if c.isupper():
+            has_letter = True
+        i += 1
+    return has_letter
+
+
+def _prefix_name(name: str, stem: str) -> str:
+    """Compute prefixed name for collision resolution."""
+    if len(name) > 0 and name[0] == "_":
+        if _is_all_caps(name[1:]):
+            return "_" + stem.upper() + "_" + name[1:]
+        return "_" + stem + "_" + name[1:]
+    if _is_all_caps(name):
+        return stem.upper() + "_" + name
+    return stem + "_" + name
+
+
+def _plan_collision_resolution(
+    file_names: dict[str, list[tuple[str, int, int, ASTNode]]],
+    stems: dict[str, str],
+) -> tuple[set[str], dict[str, dict[str, str]]]:
+    """Plan collision resolution. Returns (dedup_names, file_renames)."""
+    name_to_defs: dict[str, list[tuple[str, ASTNode]]] = {}
+    fkeys = list(file_names.keys())
+    fi = 0
+    while fi < len(fkeys):
+        f = fkeys[fi]
+        names = file_names[f]
+        ni = 0
+        while ni < len(names):
+            name = names[ni][0]
+            ast_node = names[ni][3]
+            if name not in name_to_defs:
+                name_to_defs[name] = []
+            name_to_defs[name].append((f, ast_node))
+            ni += 1
+        fi += 1
+    dedup_candidates: set[str] = set()
+    file_renames: dict[str, dict[str, str]] = {}
+    nkeys = list(name_to_defs.keys())
+    ni = 0
+    while ni < len(nkeys):
+        name = nkeys[ni]
+        defs = name_to_defs[name]
+        if len(defs) > 1:
+            all_equal = True
+            di = 1
+            while di < len(defs):
+                if not _ast_equal(defs[0][1], defs[di][1]):
+                    all_equal = False
+                    break
+                di += 1
+            if all_equal:
+                dedup_candidates.add(name)
+            else:
+                di = 0
+                while di < len(defs):
+                    f = defs[di][0]
+                    stem = stems[f]
+                    prefixed = _prefix_name(name, stem)
+                    if f not in file_renames:
+                        file_renames[f] = {}
+                    file_renames[f][name] = prefixed
+                    di += 1
+        ni += 1
+    changed = True
+    while changed:
+        changed = False
+        all_prefixed: set[str] = set()
+        rkeys = list(file_renames.keys())
+        ri = 0
+        while ri < len(rkeys):
+            rmap = file_renames[rkeys[ri]]
+            mk = list(rmap.keys())
+            mi = 0
+            while mi < len(mk):
+                all_prefixed.add(mk[mi])
+                mi += 1
+            ri += 1
+        to_demote: list[str] = []
+        dedup_list = list(dedup_candidates)
+        di = 0
+        while di < len(dedup_list):
+            name = dedup_list[di]
+            defs = name_to_defs[name]
+            refs = _collect_definition_refs(defs[0][1])
+            ref_list = list(refs)
+            ri = 0
+            unsafe = False
+            while ri < len(ref_list):
+                if ref_list[ri] in all_prefixed:
+                    unsafe = True
+                    break
+                ri += 1
+            if unsafe:
+                to_demote.append(name)
+            di += 1
+        dmi = 0
+        while dmi < len(to_demote):
+            name = to_demote[dmi]
+            dedup_candidates.discard(name)
+            defs = name_to_defs[name]
+            di = 0
+            while di < len(defs):
+                f = defs[di][0]
+                stem = stems[f]
+                prefixed = _prefix_name(name, stem)
+                if f not in file_renames:
+                    file_renames[f] = {}
+                file_renames[f][name] = prefixed
+                di += 1
+            changed = True
+            dmi += 1
+    return (dedup_candidates, file_renames)
+
+
+def _rewrite_names(node: ASTNode, rename_map: dict[str, str]) -> None:
+    """Recursively rename Name nodes and definition names per rename_map. In-place."""
+    work: list[JsonValue] = [JDict(node)]
+    wi = 0
+    while wi < len(work):
+        item = work[wi]
+        if isinstance(item, JDict):
+            entries = item.entries
+            ntype = get_str(entries, "_type")
+            if ntype == "Name":
+                nid = get_str(entries, "id")
+                if nid != "" and nid in rename_map:
+                    entries["id"] = JStr(rename_map[nid])
+            elif ntype == "FunctionDef" or ntype == "ClassDef":
+                def_name = get_str(entries, "name")
+                if def_name != "" and def_name in rename_map:
+                    entries["name"] = JStr(rename_map[def_name])
+            keys = list(entries.keys())
+            ki = 0
+            while ki < len(keys):
+                val = entries[keys[ki]]
+                if isinstance(val, JDict) or isinstance(val, JList):
+                    work.append(val)
+                ki += 1
+        elif isinstance(item, JList):
+            li = 0
+            while li < len(item.items):
+                child = item.items[li]
+                if isinstance(child, JDict) or isinstance(child, JList):
+                    work.append(child)
+                li += 1
+        wi += 1
+
+
+def _rewrite_module_attrs(
+    node: ASTNode,
+    module_bindings: dict[str, str],
+    file_name_map: dict[str, dict[str, str]],
+) -> list[str]:
+    """Rewrite module.attr Attribute nodes to plain Name nodes. Returns errors."""
+    errors: list[str] = []
+    work: list[JsonValue] = [JDict(node)]
+    wi = 0
+    while wi < len(work):
+        item = work[wi]
+        if isinstance(item, JDict):
+            entries = item.entries
+            keys = list(entries.keys())
+            ki = 0
+            while ki < len(keys):
+                val = entries[keys[ki]]
+                if isinstance(val, JDict):
+                    val_entries = val.entries
+                    if get_str(val_entries, "_type") == "Attribute":
+                        value_node_v = val_entries.get("value")
+                        value_node: ASTNode | None = None
+                        if isinstance(value_node_v, JDict):
+                            value_node = value_node_v.entries
+                        if (
+                            value_node is not None
+                            and get_str(value_node, "_type") == "Name"
+                        ):
+                            mod_name = get_str(value_node, "id")
+                            if mod_name != "" and mod_name in module_bindings:
+                                target_file = module_bindings[mod_name]
+                                attr = get_str(val_entries, "attr")
+                                target_name_map = file_name_map.get(target_file)
+                                if (
+                                    target_name_map is not None
+                                    and attr in target_name_map
+                                ):
+                                    final_name = target_name_map[attr]
+                                    lineno = val_entries.get("lineno")
+                                    col = val_entries.get("col_offset")
+                                    end_lineno = val_entries.get("end_lineno")
+                                    end_col = val_entries.get("end_col_offset")
+                                    source_file = val_entries.get("_source_file")
+                                    val_entries.clear()
+                                    val_entries["_type"] = JStr("Name")
+                                    val_entries["id"] = JStr(final_name)
+                                    val_entries["ctx"] = JDict({"_type": JStr("Load")})
+                                    if lineno is not None:
+                                        val_entries["lineno"] = lineno
+                                    if col is not None:
+                                        val_entries["col_offset"] = col
+                                    if end_lineno is not None:
+                                        val_entries["end_lineno"] = end_lineno
+                                    if end_col is not None:
+                                        val_entries["end_col_offset"] = end_col
+                                    if source_file is not None and not isinstance(
+                                        source_file, JNull
+                                    ):
+                                        val_entries["_source_file"] = source_file
+                                elif target_name_map is not None:
+                                    lineno_i = get_int(val_entries, "lineno")
+                                    col_i = get_int(val_entries, "col_offset")
+                                    errors.append(
+                                        str(lineno_i)
+                                        + ":"
+                                        + str(col_i)
+                                        + ": '"
+                                        + mod_name
+                                        + "."
+                                        + attr
+                                        + "' does not exist in "
+                                        + target_file
+                                    )
+                                else:
+                                    work.append(val)
+                            else:
+                                work.append(val)
+                        else:
+                            work.append(val)
+                    else:
+                        work.append(val)
+                elif isinstance(val, JList):
+                    work.append(val)
+                ki += 1
+        elif isinstance(item, JList):
+            li = 0
+            while li < len(item.items):
+                child = item.items[li]
+                if isinstance(child, JDict) or isinstance(child, JList):
+                    work.append(child)
+                li += 1
+        wi += 1
+    return errors
+
+
+def _tag_source_file(node: ASTNode, source_file: str) -> None:
+    """Tag all dict nodes in the subtree with _source_file."""
+    work: list[JsonValue] = [JDict(node)]
+    wi = 0
+    while wi < len(work):
+        item = work[wi]
+        if isinstance(item, JDict):
+            entries = item.entries
+            if has_key(entries, "_type"):
+                entries["_source_file"] = JStr(source_file)
+            keys = list(entries.keys())
+            ki = 0
+            while ki < len(keys):
+                val = entries[keys[ki]]
+                if isinstance(val, JDict) or isinstance(val, JList):
+                    work.append(val)
+                ki += 1
+        elif isinstance(item, JList):
+            li = 0
+            while li < len(item.items):
+                child = item.items[li]
+                if isinstance(child, JDict) or isinstance(child, JList):
+                    work.append(child)
+                li += 1
+        wi += 1
+
+
+def _stdlib_import_seen(
+    names_list: list[JsonValue],
+    stdlib_seen: set[str],
+) -> bool:
+    """Check if all bound names in an import are already seen. Adds unseen to set.
+
+    Returns True if every name was already in stdlib_seen (skip the import).
+    When only some names are new, removes already-seen aliases from the list.
+    """
+    if not isinstance(names_list, list):
+        return False
+    new_indices: list[int] = []
+    ni = 0
+    while ni < len(names_list):
+        alias_raw = names_list[ni]
+        alias: ASTNode = {}
+        if isinstance(alias_raw, JDict):
+            alias = alias_raw.entries
+        elif isinstance(alias_raw, dict):
+            alias = alias_raw
+        name = get_str(alias, "name")
+        v = alias.get("asname")
+        asname = ""
+        if isinstance(v, JStr):
+            asname = v.value
+        bound = asname if asname != "" else name
+        if bound != "":
+            if bound not in stdlib_seen:
+                new_indices.append(ni)
+                stdlib_seen.add(bound)
+        ni += 1
+    if len(new_indices) == 0:
+        return True
+    if len(new_indices) < len(names_list):
+        kept: list[JsonValue] = []
+        ki = 0
+        while ki < len(new_indices):
+            kept.append(names_list[new_indices[ki]])
+            ki += 1
+        names_list.clear()
+        ki = 0
+        while ki < len(kept):
+            names_list.append(kept[ki])
+            ki += 1
+    return False
+
+
+def merge_project(
+    file_asts: list[tuple[str, ASTNode]],
+) -> tuple[ASTNode | None, list[str]]:
+    """Full project merge. Returns (merged_ast, errors)."""
+    errors: list[str] = []
+    universe: set[str] = set()
+    i = 0
+    while i < len(file_asts):
+        universe.add(file_asts[i][0])
+        i += 1
+    deps: dict[str, list[str]] = {}
+    file_import_info: dict[str, list[tuple[ASTNode, str, list[tuple[str, str]]]]] = {}
+    i = 0
+    while i < len(file_asts):
+        path = file_asts[i][0]
+        ast_dict = file_asts[i][1]
+        body = get_nodes(ast_dict, "body")
+        file_deps: list[str] = []
+        import_entries: list[tuple[ASTNode, str, list[tuple[str, str]]]] = []
+        j = 0
+        while j < len(body):
+            stmt = body[j]
+            if get_str(stmt, "_type") == "ImportFrom":
+                classification = _classify_import(stmt)
+                if classification == "project":
+                    module = get_str(stmt, "module")
+                    level = get_int(stmt, "level")
+                    names_list = get_nodes(stmt, "names")
+                    resolved = _resolve_project_import(
+                        path, module, level, names_list, universe
+                    )
+                    import_entries.append((stmt, module, resolved))
+                    k = 0
+                    while k < len(resolved):
+                        rpath, rerr = resolved[k]
+                        if rpath != "":
+                            found = False
+                            m = 0
+                            while m < len(file_deps):
+                                if file_deps[m] == rpath:
+                                    found = True
+                                    break
+                                m += 1
+                            if not found:
+                                file_deps.append(rpath)
+                        elif rerr != "":
+                            errors.append(rerr)
+                        k += 1
+            j += 1
+        deps[path] = file_deps
+        file_import_info[path] = import_entries
+        i += 1
+    if len(errors) > 0:
+        return (None, errors)
+    all_file_names: dict[str, list[tuple[str, int, int, ASTNode]]] = {}
+    i = 0
+    while i < len(file_asts):
+        path = file_asts[i][0]
+        ast_dict = file_asts[i][1]
+        all_file_names[path] = _collect_module_names(ast_dict)
+        i += 1
+    file_list: list[str] = []
+    i = 0
+    while i < len(file_asts):
+        file_list.append(file_asts[i][0])
+        i += 1
+    stems = _compute_module_stems(file_list)
+    dedup_names, file_renames = _plan_collision_resolution(all_file_names, stems)
+    file_name_map: dict[str, dict[str, str]] = {}
+    fkeys = list(all_file_names.keys())
+    i = 0
+    while i < len(fkeys):
+        f = fkeys[i]
+        names = all_file_names[f]
+        name_map: dict[str, str] = {}
+        j = 0
+        while j < len(names):
+            original = names[j][0]
+            f_renames = file_renames.get(f, {})
+            if original in f_renames:
+                name_map[original] = f_renames[original]
+            else:
+                name_map[original] = original
+            j += 1
+        file_name_map[f] = name_map
+        i += 1
+    ordered = _dependency_order(file_list, deps)
+    merged_body: list[ASTNode] = []
+    dedup_seen: set[str] = set()
+    stdlib_seen: set[str] = set()
+    oi = 0
+    while oi < len(ordered):
+        path = ordered[oi]
+        ast_dict: ASTNode | None = None
+        ai = 0
+        while ai < len(file_asts):
+            if file_asts[ai][0] == path:
+                ast_dict = file_asts[ai][1]
+                break
+            ai += 1
+        if ast_dict is None:
+            oi += 1
+            continue
+        body = get_nodes(ast_dict, "body")
+        if len(body) == 0:
+            oi += 1
+            continue
+        rename_map: dict[str, str] = {}
+        module_bindings: dict[str, str] = {}
+        import_entries = file_import_info.get(path, [])
+        ei = 0
+        while ei < len(import_entries):
+            stmt, module, resolved = import_entries[ei]
+            names_list = get_nodes(stmt, "names")
+            level = get_int(stmt, "level")
+            if module == "" and level > 0:
+                ni = 0
+                while ni < len(names_list):
+                    alias = names_list[ni]
+                    name = get_str(alias, "name")
+                    v = alias.get("asname")
+                    asname = ""
+                    if isinstance(v, JStr):
+                        asname = v.value
+                    if name != "" and name != "*":
+                        bound = asname if asname != "" else name
+                        if ni < len(resolved):
+                            rpath = resolved[ni][0]
+                            if rpath != "":
+                                module_bindings[bound] = rpath
+                    ni += 1
+            else:
+                source_file = ""
+                if len(resolved) > 0:
+                    source_file = resolved[0][0]
+                source_renames = file_renames.get(source_file, {})
+                ni = 0
+                while ni < len(names_list):
+                    alias = names_list[ni]
+                    name = get_str(alias, "name")
+                    v = alias.get("asname")
+                    asname = ""
+                    if isinstance(v, JStr):
+                        asname = v.value
+                    if name != "" and name != "*":
+                        bound = asname if asname != "" else name
+                        if name in source_renames:
+                            rename_map[bound] = source_renames[name]
+                        elif bound != name:
+                            rename_map[bound] = name
+                    ni += 1
+            ei += 1
+        if len(module_bindings) > 0:
+            slash_idx = path.rfind("/")
+            if slash_idx >= 0:
+                init_path = path[:slash_idx] + "/__init__.py"
+                init_names = file_name_map.get(init_path)
+                if init_names is not None:
+                    new_mb: dict[str, str] = {}
+                    mb_keys = list(module_bindings.keys())
+                    mbi = 0
+                    while mbi < len(mb_keys):
+                        bound = mb_keys[mbi]
+                        if bound in init_names:
+                            rename_map[bound] = init_names[bound]
+                        else:
+                            new_mb[bound] = module_bindings[bound]
+                        mbi += 1
+                    module_bindings = new_mb
+        own_renames = file_renames.get(path, {})
+        okeys = list(own_renames.keys())
+        oki = 0
+        while oki < len(okeys):
+            rename_map[okeys[oki]] = own_renames[okeys[oki]]
+            oki += 1
+        if len(rename_map) > 0:
+            _rewrite_names(ast_dict, rename_map)
+        if len(module_bindings) > 0:
+            rewrite_errors = _rewrite_module_attrs(
+                ast_dict, module_bindings, file_name_map
+            )
+            ri = 0
+            while ri < len(rewrite_errors):
+                errors.append(path + ":" + rewrite_errors[ri])
+                ri += 1
+        ei = 0
+        while ei < len(import_entries):
+            import_entries[ei][0]["_remove"] = JBool(True)
+            ei += 1
+        bi = 0
+        while bi < len(body):
+            bstmt = body[bi]
+            stype = get_str(bstmt, "_type")
+            def_name = ""
+            if stype == "ClassDef" or stype == "FunctionDef":
+                def_name = get_str(bstmt, "name")
+            elif stype == "Assign":
+                targets = get_nodes(bstmt, "targets")
+                if len(targets) > 0:
+                    t = targets[0]
+                    if get_str(t, "_type") == "Name":
+                        def_name = get_str(t, "id")
+            elif stype == "AnnAssign":
+                target = get_node(bstmt, "target")
+                if get_str(target, "_type") == "Name":
+                    def_name = get_str(target, "id")
+            if def_name != "" and def_name in dedup_names:
+                if def_name in dedup_seen:
+                    bstmt["_remove"] = JBool(True)
+                else:
+                    dedup_seen.add(def_name)
+            bi += 1
+        new_body: list[ASTNode] = []
+        bi = 0
+        while bi < len(body):
+            bstmt = body[bi]
+            if get_bool(bstmt, "_remove"):
+                bi += 1
+                continue
+            skip_stdlib = False
+            btype = get_str(bstmt, "_type")
+            if btype == "ImportFrom" and _classify_import(bstmt) == "stdlib":
+                names_val = bstmt.get("names")
+                if isinstance(names_val, JList):
+                    skip_stdlib = _stdlib_import_seen(names_val.items, stdlib_seen)
+                elif isinstance(names_val, list):
+                    skip_stdlib = _stdlib_import_seen(names_val, stdlib_seen)
+            elif btype == "Import":
+                names_val = bstmt.get("names")
+                if isinstance(names_val, JList):
+                    skip_stdlib = _stdlib_import_seen(names_val.items, stdlib_seen)
+                elif isinstance(names_val, list):
+                    skip_stdlib = _stdlib_import_seen(names_val, stdlib_seen)
+            if skip_stdlib:
+                bi += 1
+                continue
+            _tag_source_file(bstmt, path)
+            new_body.append(bstmt)
+            bi += 1
+        mi = 0
+        while mi < len(new_body):
+            merged_body.append(new_body[mi])
+            mi += 1
+        oi += 1
+    if len(errors) > 0:
+        return (None, errors)
+    wrapped_body = JList([])
+    wbi = 0
+    while wbi < len(merged_body):
+        wrapped_body.items.append(JDict(merged_body[wbi]))
+        wbi += 1
+    return ({"_type": JStr("Module"), "body": wrapped_body}, [])
+
+
+def _pipeline_post_parse(
+    ast_dict: ASTNode,
     source: str,
     target: str,
     stop_at: str | None,
     strict_math: bool,
     strict_tostring: bool,
 ) -> tuple[int, str]:
-    """Run the transpilation pipeline. Returns (exit_code, output)."""
-    source, pragma_math, pragma_tostring = _extract_pragmas(source)
-    if pragma_math:
-        strict_math = True
-    if pragma_tostring:
-        strict_tostring = True
-    if stop_at == "subset" and should_skip_file(source):
-        return (0, "")
-    # Phase 2: Parse
-    try:
-        ast_dict = parse(source)
-    except ParseError as e:
-        print(
-            "error:" + str(e.lineno) + ":" + str(e.col) + ": " + e.msg, file=sys.stderr
-        )
-        return (1, "")
-    if stop_at == "parse":
-        return (0, to_json(ast_dict))
-    # Phase 3: Subset
+    """Run pipeline phases after parsing. Returns (exit_code, output)."""
     result = verify_subset(ast_dict)
-    errors = result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    subset_errors = result.errors()
+    if len(subset_errors) > 0:
+        err_strs: list[str] = []
+        sei = 0
+        while sei < len(subset_errors):
+            err_strs.append(str(subset_errors[sei]))
+            sei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "subset":
         return (0, "")
-    # Phase 4: Names
     name_result = resolve_names(ast_dict)
-    errors = name_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    name_errors = name_result.errors()
+    if len(name_errors) > 0:
+        err_strs: list[str] = []
+        nei = 0
+        while nei < len(name_errors):
+            err_strs.append(str(name_errors[nei]))
+            nei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "names":
         return (0, to_json(_name_table_to_dict(name_result.table)))
-    # Phase 5: Signatures
     known_classes: set[str] = set()
     node_classes: set[str] = set()
     mkeys = list(name_result.table.module_names.keys())
@@ -364,15 +1426,40 @@ def run_pipeline(
                     node_classes.add(mname)
                 bi += 1
         ki += 1
-    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
-    errors = sig_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    type_aliases: dict[str, str] = {}
+    ta_body = get_nodes(ast_dict, "body")
+    tai = 0
+    while tai < len(ta_body):
+        ta_stmt = ta_body[tai]
+        if get_str(ta_stmt, "_type") == "Assign":
+            ta_targets = get_nodes(ta_stmt, "targets")
+            if len(ta_targets) == 1:
+                ta_target = ta_targets[0]
+                if get_str(ta_target, "_type") == "Name":
+                    ta_name = get_str(ta_target, "id")
+                    if ta_name != "":
+                        ta_info = name_result.table.module_names.get(ta_name)
+                        if ta_info is not None and ta_info.kind == "type_alias":
+                            ta_value_v = ta_stmt.get("value")
+                            ta_value: ASTNode | None = None
+                            if isinstance(ta_value_v, JDict):
+                                ta_value = ta_value_v.entries
+                            ta_str = annotation_to_str(ta_value)
+                            if ta_str != "":
+                                type_aliases[ta_name] = ta_str
+        tai += 1
+    sig_result = collect_signatures(ast_dict, known_classes, node_classes, type_aliases)
+    sig_errors = sig_result.errors()
+    if len(sig_errors) > 0:
+        err_strs: list[str] = []
+        sei = 0
+        while sei < len(sig_errors):
+            err_strs.append(str(sig_errors[sei]))
+            sei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "signatures":
         return (0, to_json(sig_result.to_dict()))
-    # Phase 6: Fields
-    # Determine hierarchy roots
     hierarchy_roots: set[str] = set()
     base_counts: dict[str, int] = {}
     parent_of: dict[str, str] = {}
@@ -401,13 +1488,17 @@ def run_pipeline(
     field_result = collect_fields(
         ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
     )
-    errors = field_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    field_errors = field_result.errors()
+    if len(field_errors) > 0:
+        err_strs: list[str] = []
+        fei = 0
+        while fei < len(field_errors):
+            err_strs.append(str(field_errors[fei]))
+            fei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "fields":
         return (0, to_json(field_result.to_dict()))
-    # Phase 7: Hierarchy
     class_bases: dict[str, list[str]] = {}
     ki = 0
     while ki < len(mkeys2):
@@ -416,24 +1507,43 @@ def run_pipeline(
         if info.kind == "class":
             class_bases[mname] = list(info.bases)
         ki += 1
-    hier_result = build_hierarchy(known_classes, class_bases)
-    errors = hier_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    class_source_files: dict[str, str] = {}
+    csf_body = get_nodes(ast_dict, "body")
+    csf_i = 0
+    while csf_i < len(csf_body):
+        csf_node = csf_body[csf_i]
+        if get_str(csf_node, "_type") == "ClassDef":
+            csf_name = get_str(csf_node, "name")
+            csf_sf = get_str(csf_node, "_source_file")
+            if csf_name != "" and csf_sf != "":
+                class_source_files[csf_name] = csf_sf
+        csf_i += 1
+    hier_result = build_hierarchy(known_classes, class_bases, class_source_files)
+    hier_errors = hier_result.errors()
+    if len(hier_errors) > 0:
+        err_strs: list[str] = []
+        hei = 0
+        while hei < len(hier_errors):
+            err_strs.append(str(hier_errors[hei]))
+            hei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "hierarchy":
         return (0, to_json(hier_result.to_dict()))
-    # Phase 8: Inference
     inf_result = run_inference(
         ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
     )
-    errors = inf_result.errors()
-    if len(errors) > 0:
-        _print_errors(errors)
+    inf_errors = inf_result.errors()
+    if len(inf_errors) > 0:
+        err_strs: list[str] = []
+        iei = 0
+        while iei < len(inf_errors):
+            err_strs.append(str(inf_errors[iei]))
+            iei += 1
+        _print_errors(err_strs)
         return (1, "")
     if stop_at == "inference":
-        return (0, to_json(ast_dict))
-    # Phase 9: Lowering
+        return (0, to_json(JDict(ast_dict)))
     module, lower_errors = lower(
         ast_dict,
         sig_result,
@@ -444,7 +1554,12 @@ def run_pipeline(
         source,
     )
     if len(lower_errors) > 0:
-        _print_errors(lower_errors)
+        err_strs: list[str] = []
+        lei = 0
+        while lei < len(lower_errors):
+            err_strs.append(str(lower_errors[lei]))
+            lei += 1
+        _print_errors(err_strs)
         return (1, "")
     if module is None:
         print("error: lowering produced no module", file=sys.stderr)
@@ -455,44 +1570,82 @@ def run_pipeline(
         module.strict_tostring = True
     if stop_at == "lowering":
         return (0, to_json(module_to_dict(module)))
-    # Phase 10: Type check
     checker = Checker()
     checker.collect_declarations(module)
     if len(checker.errors) > 0:
-        _print_errors(checker.errors)
+        err_strs: list[str] = []
+        cei = 0
+        while cei < len(checker.errors):
+            err_strs.append(str(checker.errors[cei]))
+            cei += 1
+        _print_errors(err_strs)
         return (1, "")
+    checker.enter_scope()
+    for cdecl in module.decls:
+        if isinstance(cdecl, TLetStmt):
+            checker.check_let_stmt(cdecl)
     checker.check_bodies(module)
     if len(checker.errors) > 0:
-        _print_errors(checker.errors)
+        err_strs: list[str] = []
+        cei = 0
+        while cei < len(checker.errors):
+            err_strs.append(str(checker.errors[cei]))
+            cei += 1
+        _print_errors(err_strs)
         return (1, "")
-    # Phases 11-16: Middleend
     analyze_returns(module, checker)
     analyze_scope(module, checker)
     analyze_liveness(module, checker)
     if stop_at == "analyze":
         return (0, to_json(module_to_dict(module)))
-    # Phase 17: Backend
-    emitters: dict[str, object] = {
-        "python": emit_python,
-        "perl": emit_perl,
-        "ruby": emit_ruby,
-    }
-    if target not in emitters:
+    if target == "python":
+        return (0, emit_python(module))
+    if target == "perl":
+        return (0, emit_perl(module))
+    if target == "ruby":
+        return (0, emit_ruby(module))
+    print("error: backend not yet implemented for '" + target + "'", file=sys.stderr)
+    return (1, "")
+
+
+def run_pipeline(
+    source: str,
+    target: str,
+    stop_at: str | None,
+    strict_math: bool,
+    strict_tostring: bool,
+) -> tuple[int, str]:
+    """Run the transpilation pipeline. Returns (exit_code, output)."""
+    source, pragma_math, pragma_tostring = _extract_pragmas(source)
+    if pragma_math:
+        strict_math = True
+    if pragma_tostring:
+        strict_tostring = True
+    if stop_at == "subset" and should_skip_file(source):
+        return (0, "")
+    try:
+        ast_dict = parse(source)
+    except ParseError as e:
         print(
-            "error: backend not yet implemented for '" + target + "'", file=sys.stderr
+            "error:" + str(e.lineno) + ":" + str(e.col) + ": [parse] " + e.msg,
+            file=sys.stderr,
         )
         return (1, "")
-    emitter = emitters[target]
-    return (0, emitter(module))
+    if stop_at == "parse":
+        return (0, to_json(JDict(ast_dict)))
+    return _pipeline_post_parse(
+        ast_dict, source, target, stop_at, strict_math, strict_tostring
+    )
 
 
-def parse_args() -> tuple[str, str | None, bool, bool, str | None, str | None]:
-    """Parse command-line arguments. Returns (target, stop_at, strict_math, strict_tostring, input_file, output_file)."""
+def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | None]:
+    """Parse command-line arguments. Returns (target, stop_at, strict_math, strict_tostring, project, input_file, output_file)."""
     args = sys.argv[1:]
     target: str | None = None
     stop_at: str | None = None
     strict_math = False
     strict_tostring = False
+    project = False
     input_file: str | None = None
     output_file: str | None = None
     i = 0
@@ -529,6 +1682,9 @@ def parse_args() -> tuple[str, str | None, bool, bool, str | None, str | None]:
         elif arg == "--strict-tostring":
             strict_tostring = True
             i += 1
+        elif arg == "--project":
+            project = True
+            i += 1
         elif arg.startswith("-"):
             print("error: unknown flag '" + arg + "'", file=sys.stderr)
             sys.exit(2)
@@ -547,10 +1703,30 @@ def parse_args() -> tuple[str, str | None, bool, bool, str | None, str | None]:
         else:
             print("error: --target is required", file=sys.stderr)
             sys.exit(2)
-    if target not in TARGETS:
-        print("error: unknown target '" + target + "'", file=sys.stderr)
+    target_str: str = target if target is not None else ""
+    if target_str not in TARGETS:
+        print("error: unknown target '" + target_str + "'", file=sys.stderr)
         sys.exit(2)
-    return (target, stop_at, strict_math, strict_tostring, input_file, output_file)
+    return (
+        target_str,
+        stop_at,
+        strict_math,
+        strict_tostring,
+        project,
+        input_file,
+        output_file,
+    )
+
+
+def _parse_project_input(data: str) -> list[tuple[str, str]]:
+    """Parse NUL-delimited path\\0source\\0 pairs."""
+    parts = data.split("\0")
+    result: list[tuple[str, str]] = []
+    i = 0
+    while i + 1 < len(parts):
+        result.append((parts[i], parts[i + 1]))
+        i += 2
+    return result
 
 
 def main() -> int:
@@ -559,9 +1735,23 @@ def main() -> int:
         from .taytsh.cli import main as taytsh_main
 
         return taytsh_main(sys.argv[2:])
-    target, stop_at, strict_math, strict_tostring, input_file, output_file = (
+    target, stop_at, strict_math, strict_tostring, project, input_file, output_file = (
         parse_args()
     )
+    if project:
+        source, err = read_source(input_file)
+        if err != 0:
+            return err
+        if len(source) == 0:
+            print("error: no input provided", file=sys.stderr)
+            return 2
+        files = _parse_project_input(source)
+        if len(files) == 0:
+            print("error: no .py files found in directory", file=sys.stderr)
+            return 1
+        return main_project(
+            files, target, stop_at, strict_math, strict_tostring, output_file
+        )
     source, err = read_source(input_file)
     if err != 0:
         return err
@@ -570,6 +1760,74 @@ def main() -> int:
         return 2
     exit_code, output = run_pipeline(
         source, target, stop_at, strict_math, strict_tostring
+    )
+    if exit_code != 0:
+        return exit_code
+    if len(output) > 0:
+        return write_output(output, output_file)
+    return 0
+
+
+def main_project(
+    files: list[tuple[str, str]],
+    target: str,
+    stop_at: str | None,
+    strict_math: bool,
+    strict_tostring: bool,
+    output_file: str | None,
+) -> int:
+    """Project-mode entry point. files is [(relpath, source)]."""
+    file_asts: list[tuple[str, ASTNode]] = []
+    i = 0
+    while i < len(files):
+        path = files[i][0]
+        source = files[i][1]
+        source, pragma_math, pragma_tostring = _extract_pragmas(source)
+        if pragma_math:
+            strict_math = True
+        if pragma_tostring:
+            strict_tostring = True
+        try:
+            ast_dict = parse(source)
+        except ParseError as e:
+            print(
+                path
+                + ":error:"
+                + str(e.lineno)
+                + ":"
+                + str(e.col)
+                + ": [parse] "
+                + e.msg,
+                file=sys.stderr,
+            )
+            return 1
+        file_asts.append((path, ast_dict))
+        i += 1
+    if stop_at == "parse":
+        items: list[JsonValue] = []
+        j = 0
+        while j < len(file_asts):
+            items.append(
+                JDict({"path": JStr(file_asts[j][0]), "ast": JDict(file_asts[j][1])})
+            )
+            j += 1
+        output = to_json(JList(items))
+        return write_output(output, output_file)
+    merged_ast, merge_errors = merge_project(file_asts)
+    if len(merge_errors) > 0:
+        _print_errors(merge_errors)
+        return 1
+    if merged_ast is None:
+        print("error: merge produced no AST", file=sys.stderr)
+        return 1
+    all_source_parts: list[str] = []
+    k = 0
+    while k < len(files):
+        all_source_parts.append(files[k][1])
+        k += 1
+    combined_source = "\n".join(all_source_parts)
+    exit_code, output = _pipeline_post_parse(
+        merged_ast, combined_source, target, stop_at, strict_math, strict_tostring
     )
     if exit_code != 0:
         return exit_code

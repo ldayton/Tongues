@@ -27,7 +27,7 @@ fn Main() -> void {
 
 `Main` is the program entrypoint. It takes no parameters and returns `void`. Command-line arguments and environment variables are accessed via `Args()` and `GetEnv()`.
 
-A valid program must contain exactly one `Main` function. Normal return from `Main` implies exit code 0.
+An executable program must contain exactly one `Main` function. A module without `Main` is valid for library compilation but cannot run standalone. Normal return from `Main` implies exit code 0.
 
 ## Type System
 
@@ -71,7 +71,7 @@ Generic type parameters are built-in only (`list[T]`, `map[K, V]`, `set[T]`, `fn
 
 ### Throw and Catch
 
-Any struct can be thrown. A typed `catch` names a type and binds the exception as that type — the same type-matching semantics as `match` cases. A `catch` without a type annotation is a catch-all: the binding's type is the residual — the union of struct types not covered by preceding catches. Unlike `match`, `catch` does not require exhaustiveness; unmatched exceptions propagate to the caller.
+Any struct can be thrown. A typed `catch` names a struct type and binds the exception as that type. A `catch` without a type annotation is a catch-all: the binding's type is the residual — the union of struct types not covered by preceding catches. Unlike `match`, `catch` does not require exhaustiveness; unmatched exceptions propagate to the caller.
 
 ```
 throw ValueError("unexpected token")
@@ -185,18 +185,18 @@ let rest: bytes = buf[1:10]
 
 `bytes` is an ordered sequence of `byte` values. Indexing (`buf[i]`) yields a `byte`; throws `IndexError` if out of bounds. Slicing (`buf[a:b]`) yields a `bytes`; throws `IndexError` if either bound is out of range.
 
-`byte` is a numeric type. Integer literals in the range 0–255 are accepted where a `byte` is expected. `0xff`-style hex literals always produce `byte` — for a hex int value, use `ByteToInt(0xff)`. Arithmetic and bitwise operators work on `byte` pairs (see Operators). For byte↔int conversion, see Conversions.
+`byte` is a numeric type. `0xff`-style hex literals always produce `byte` — for a hex int value, use `ByteToInt(0xff)`. Arithmetic and bitwise operators work on `byte` pairs (see Operators). For byte↔int conversion, see Conversions.
 
 ### Functions
 
-| Function       | Signature               | Description   |
-| -------------- | ----------------------- | ------------- |
-| `Len(b)`        | `bytes -> int`          | byte count             |
-| `Concat(a, b)`  | `bytes, bytes -> bytes` | concatenation          |
-| `Bytes(n)`      | `int -> bytes`          | n zero bytes           |
-| `BytesFrom(xs)` | `list[byte] -> bytes`   | bytes from byte list   |
-| `Encode(s)`     | `string -> bytes`       | UTF-8 encode           |
-| `Decode(b)`     | `bytes -> string`       | UTF-8 decode           |
+| Function        | Signature               | Description          |
+| --------------- | ----------------------- | -------------------- |
+| `Len(b)`        | `bytes -> int`          | byte count           |
+| `Concat(a, b)`  | `bytes, bytes -> bytes` | concatenation        |
+| `Bytes(n)`      | `int -> bytes`          | n zero bytes         |
+| `BytesFrom(xs)` | `list[byte] -> bytes`   | bytes from byte list |
+| `Encode(s)`     | `string -> bytes`       | UTF-8 encode         |
+| `Decode(b)`     | `bytes -> string`       | UTF-8 decode         |
 
 ## Operators
 
@@ -214,33 +214,35 @@ let shifted: int = flags << 2
 let abs: int = x > 0 ? x : -x
 ```
 
-| Operator | Operands     | Result | Prec | Assoc | Description                                                                        |
-| -------- | ------------ | ------ | ---- | ----- | ---------------------------------------------------------------------------------- |
-| `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                                                |
-| `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                                          |
-| `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                                         |
-| `==`     | `T, T`       | `bool` | 4    | none  | equality; deep structural for structs/collections, IEEE 754 for float (NaN != NaN) |
-| `!=`     | `T, T`       | `bool` | 4    | none  | inequality                                                                         |
-| `<`      | `T, T`       | `bool` | 4    | none  | less than (int, float, byte, rune, string)                                         |
-| `<=`     | `T, T`       | `bool` | 4    | none  | less or equal (int, float, byte, rune, string)                                     |
-| `>`      | `T, T`       | `bool` | 4    | none  | greater than (int, float, byte, rune, string)                                      |
-| `>=`     | `T, T`       | `bool` | 4    | none  | greater or equal (int, float, byte, rune, string)                                  |
-| `\|`     | `T, T`       | `T`    | 5    | left  | bitwise or (int, byte)                                                             |
-| `^`      | `T, T`       | `T`    | 6    | left  | bitwise xor (int, byte)                                                            |
-| `&`      | `T, T`       | `T`    | 7    | left  | bitwise and (int, byte)                                                            |
-| `<<`     | `T, int`     | `T`    | 8    | left  | left shift (int, byte); right operand must be non-negative                         |
-| `>>`     | `T, int`     | `T`    | 8    | left  | arithmetic right shift (int, byte); right operand non-negative                     |
-| `>>>`    | `T, int`     | `T`    | 8    | left  | logical right shift (int, byte); right operand non-negative; strict math only      |
-| `+`      | `T, T`       | `T`    | 9    | left  | addition (int, float, byte)                                                        |
-| `-`      | `T, T`       | `T`    | 9    | left  | subtraction (int, float, byte)                                                     |
-| `*`      | `T, T`       | `T`    | 10   | left  | multiplication (int, float, byte)                                                  |
-| `/`      | `T, T`       | `T`    | 10   | left  | division (int, float, byte); int truncates toward zero                             |
-| `%`      | `T, T`       | `T`    | 10   | left  | remainder (int, float, byte); int sign follows dividend                            |
-| `-`      | `T`          | `T`    | 11   | right | negation (int, float, byte)                                                        |
-| `!`      | `bool`       | `bool` | 11   | right | logical not                                                                        |
-| `~`      | `T`          | `T`    | 11   | right | bitwise complement (int, byte)                                                     |
+| Operator | Operands     | Result | Prec | Assoc | Description                                                                                                                       |
+| -------- | ------------ | ------ | ---- | ----- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                                                                                               |
+| `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                                                                                         |
+| `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                                                                                        |
+| `==`     | `T, T`       | `bool` | 4    | none  | equality; T must not transitively contain fn; deep structural for structs/collections/interfaces, IEEE 754 for float (NaN != NaN) |
+| `!=`     | `T, T`       | `bool` | 4    | none  | inequality                                                                                                                        |
+| `<`      | `T, T`       | `bool` | 4    | none  | less than (int, float, byte, rune, string)                                                                                        |
+| `<=`     | `T, T`       | `bool` | 4    | none  | less or equal (int, float, byte, rune, string)                                                                                    |
+| `>`      | `T, T`       | `bool` | 4    | none  | greater than (int, float, byte, rune, string)                                                                                     |
+| `>=`     | `T, T`       | `bool` | 4    | none  | greater or equal (int, float, byte, rune, string)                                                                                 |
+| `\|`     | `T, T`       | `T`    | 5    | left  | bitwise or (int, byte)                                                                                                            |
+| `^`      | `T, T`       | `T`    | 6    | left  | bitwise xor (int, byte)                                                                                                           |
+| `&`      | `T, T`       | `T`    | 7    | left  | bitwise and (int, byte)                                                                                                           |
+| `<<`     | `T, int`     | `T`    | 8    | left  | left shift (int, byte); right operand must be non-negative                                                                        |
+| `>>`     | `T, int`     | `T`    | 8    | left  | arithmetic right shift (int, byte); right operand non-negative                                                                    |
+| `>>>`    | `T, int`     | `T`    | 8    | left  | logical right shift (int, byte); right operand non-negative; strict math only                                                     |
+| `+`      | `T, T`       | `T`    | 9    | left  | addition (int, float, byte)                                                                                                       |
+| `-`      | `T, T`       | `T`    | 9    | left  | subtraction (int, float, byte)                                                                                                    |
+| `*`      | `T, T`       | `T`    | 10   | left  | multiplication (int, float, byte)                                                                                                 |
+| `/`      | `T, T`       | `T`    | 10   | left  | division (int, float, byte); int truncates toward zero                                                                            |
+| `%`      | `T, T`       | `T`    | 10   | left  | remainder (int, float, byte); int sign follows dividend                                                                           |
+| `-`      | `T`          | `T`    | 11   | right | negation (int, float, byte)                                                                                                       |
+| `!`      | `bool`       | `bool` | 11   | right | logical not                                                                                                                       |
+| `~`      | `T`          | `T`    | 11   | right | bitwise complement (int, byte)                                                                                                    |
 
-All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. For float `%`, result is IEEE 754 remainder (`fmod`); sign follows dividend; behavior with zero divisor is unspecified. Byte arithmetic wraps mod 256. String comparisons are lexicographic. `>>>` (logical right shift) zero-fills from the left, unlike `>>` which sign-extends. `>>>` is available only in strict math mode — see Strict Math.
+All operators require operands to be the same type — no implicit coercion. `int + float` is a type error; lowering must insert explicit casts. For `==` and `!=`, `nil` widens to the other operand's type, so `x == nil` is valid when `x` is `T?` or a union containing `nil`. For int `/`, result truncates toward zero (`-7 / 2 == -3`); for int `%`, sign follows dividend (`-7 % 2 == -1`). For float `/`, result is IEEE 754 division. For float `%`, result is IEEE 754 remainder (`fmod`); sign follows dividend; behavior with zero divisor is unspecified. Byte arithmetic wraps mod 256. String comparisons are lexicographic. `>>>` (logical right shift) zero-fills from the left, unlike `>>` which sign-extends. `>>>` is available only in strict math mode — see Strict Math.
+
+The ternary `?:` is the exception: if both branches have the same type, the result is that type; otherwise, the result is the normalized union of both branch types.
 
 Comparisons are binary — `a < b < c` is not valid. Python's chained comparisons are desugared by the lowerer into `&&`-connected binary comparisons. A middleend raising pass can reconstruct chains for targets that support them (Python).
 
@@ -306,7 +308,7 @@ let msg: string = Format("hello, {}", name)
 let line: string = Format("{}: {}", ToString(lineno), text)
 ```
 
-`Format(template, args...)` interpolates arguments into a template string. `{}` placeholders are filled left to right. All arguments must be `string` — callers insert explicit conversions (`ToString`, etc.) before passing. The number of `{}` must match the number of arguments. `Format` is a built-in variadic function — user-defined functions cannot declare variadic parameters.
+`Format(template, args...)` interpolates arguments into a template string. `{}` placeholders are filled left to right. `{{` and `}}` produce literal `{` and `}` and are not counted as placeholders. All arguments must be `string` — callers insert explicit conversions (`ToString`, etc.) before passing. The number of `{}` must match the number of arguments. `Format` is a built-in variadic function — user-defined functions cannot declare variadic parameters.
 
 | Function                    | Signature                     | Description                     |
 | --------------------------- | ----------------------------- | ------------------------------- |
@@ -383,11 +385,11 @@ let offset: int = 10
 let shift: fn[int, int] = (x: int) -> int => x + offset  -- error: cannot capture 'offset'
 ```
 
-Bound methods are not values for the same reason — binding `self` is capturing state.
+Bound methods are not values for the same reason — binding `this` is capturing state.
 
 ```
 let s: Span = Span(0, 10)
-let f: fn[int] = s.Len  -- error: cannot capture 'self'
+let f: fn[int] = s.Len  -- error: cannot capture 'this'
 ```
 
 ### Higher-Order Functions
@@ -487,7 +489,7 @@ Every name in a function body resolves to exactly one binding. Backends never ne
 
 ### Reserved names
 
-Built-in function names (`Len`, `Append`, `ToString`, `WriteOut`, `WritelnErr`, etc.) are reserved. No binding — top-level declaration, local variable, parameter, or loop variable — may use a reserved name. The one exception is `ToString`: structs may declare a `fn ToString(self) -> string` method to override the default string representation (see Strict ToString). This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
+Built-in function names (`Len`, `Append`, `ToString`, `WriteOut`, `WritelnErr`, etc.) are reserved. No binding — top-level declaration, local variable, parameter, or loop variable — may use a reserved name. The one exception is `ToString`: structs may declare a `fn ToString(this) -> string` method to override the default string representation (see Strict ToString). This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
 
 ### Top-level declarations
 
@@ -605,6 +607,8 @@ Iterates over a collection. The loop variable(s) before `in` bind the index and/
 
 Map and set iteration order is unspecified. Sets do not support the two-variable form. Mutating a collection while iterating it is undefined behavior.
 
+Loop variables are read-only — assigning to a loop variable is a compile error.
+
 ### Range
 
 `range` is loop syntax, not a function — it can only appear as the target of a `for` loop.
@@ -644,7 +648,7 @@ while true {
 
 ## Try / Catch / Throw
 
-Any struct can be thrown — see the Type System section for details. A typed `catch` names a type and binds the exception as that type, using the same type-matching semantics as `match` cases. Unlike `match`, `catch` does not require exhaustiveness; unmatched exceptions propagate to the caller.
+Any struct can be thrown — see the Type System section for details. A typed `catch` names a struct type and binds the exception as that type. Unlike `match`, `catch` does not require exhaustiveness; unmatched exceptions propagate to the caller.
 
 ```
 try {
@@ -669,19 +673,17 @@ try {
 }
 ```
 
-`finally` is optional and executes unconditionally — on normal exit, after a catch, or on return from within the try body.
+`finally` is optional and executes unconditionally — on normal exit, after a catch, or on return from within the try body. A `finally` block must not contain `return`, `throw`, `break`, or `continue` — these are compile errors. This avoids ambiguous interactions between finally's unconditional execution and the control flow that triggered it.
 
 ```
 throw ValueError("unexpected token")
 ```
 
-`throw` accepts any struct expression. `throw` with an existing variable re-throws it.
+`throw` accepts any expression whose type is throwable. A type is throwable if it is a struct type, an interface type, or a union whose members are all throwable. At runtime the thrown value is always a struct, but the static type may be an interface or union — enabling re-throw from typed catches that bind a union or interface. Primitives, collections, `nil`, and function types are not throwable.
 
-Only struct types can be thrown. Primitives, collections, and `nil` are not throwable. This keeps the throwable universe small and statically known — the compiler can determine every type that might appear in a `catch` by scanning `throw` expressions.
+A `catch` without a type annotation is a catch-all — it matches any thrown value. The binding's type is the residual: the union of all struct types declared in the program not covered by preceding typed catches. Subsequent `catch` clauses after a catch-all are unreachable.
 
-A `catch` without a type annotation is a catch-all — it matches any thrown value. The binding's type is the residual: the union of struct types not covered by preceding typed catches. Subsequent `catch` clauses after a catch-all are unreachable.
-
-`catch` can name a union of types to handle multiple exception types in one clause. The binding's type is the union — access to shared fields like `.message` requires all member types to have that field with the same type.
+`catch` can name a union of struct types to handle multiple exception types in one clause. Every type in the union must be a struct. The binding's type is the union — access to shared fields like `.message` requires all member types to have that field with the same type.
 
 ```
 try {
@@ -730,20 +732,20 @@ let n: int = Len(xs)
 
 ### Functions
 
-| Function           | Signature                 | Description                                        |
-| ------------------ | ------------------------- | -------------------------------------------------- |
-| `Len(xs)`          | `list[T] -> int`          | element count                                      |
-| `Append(xs, v)`    | `list[T], T -> void`      | append element to end                              |
-| `Insert(xs, i, v)` | `list[T], int, T -> void` | insert element at index                            |
-| `Pop(xs)`          | `list[T] -> T`            | remove and return last; throws IndexError if empty |
-| `RemoveAt(xs, i)`  | `list[T], int -> void`    | remove element at index                            |
-| `IndexOf(xs, v)`   | `list[T], T -> int`       | index of first occurrence, -1 if missing           |
-| `Contains(xs, v)`  | `list[T], T -> bool`      | membership test                                    |
-| `Repeat(xs, n)`    | `list[T], int -> list[T]` | repeat list n times; n ≤ 0 yields empty list       |
-| `Reversed(xs)`     | `list[T] -> list[T]`      | new list in reverse order                          |
-| `Sorted(xs)`              | `list[T] -> list[T]`      | new list in ascending order                        |
-| `Concat(a, b)`            | `list[T], list[T] -> list[T]` | concatenation                                  |
-| `RangeList(start, end, step)` | `int, int, int -> list[int]` | list from range                              |
+| Function                      | Signature                     | Description                                        |
+| ----------------------------- | ----------------------------- | -------------------------------------------------- |
+| `Len(xs)`                     | `list[T] -> int`              | element count                                      |
+| `Append(xs, v)`               | `list[T], T -> void`          | append element to end                              |
+| `Insert(xs, i, v)`            | `list[T], int, T -> void`     | insert element at index                            |
+| `Pop(xs)`                     | `list[T] -> T`                | remove and return last; throws IndexError if empty |
+| `RemoveAt(xs, i)`             | `list[T], int -> void`        | remove element at index                            |
+| `IndexOf(xs, v)`              | `list[T], T -> int`           | index of first occurrence, -1 if missing           |
+| `Contains(xs, v)`             | `list[T], T -> bool`          | membership test                                    |
+| `Repeat(xs, n)`               | `list[T], int -> list[T]`     | repeat list n times; n ≤ 0 yields empty list       |
+| `Reversed(xs)`                | `list[T] -> list[T]`          | new list in reverse order                          |
+| `Sorted(xs)`                  | `list[T] -> list[T]`          | new list in ascending order                        |
+| `Concat(a, b)`                | `list[T], list[T] -> list[T]` | concatenation                                      |
+| `RangeList(start, end, step)` | `int, int, int -> list[int]`  | list from range                                    |
 
 `Sorted` requires `T` to be an ordered type (`int`, `float`, `byte`, `rune`, `string`).
 
@@ -756,7 +758,7 @@ let age: int = ages["alice"]
 ages["charlie"] = 35
 ```
 
-`map[K, V]` is an unordered mutable mapping from keys of type `K` to values of type `V`. `K` must be a hashable type (primitives, strings, runes, enums, tuples of hashable types).
+`map[K, V]` is an unordered mutable mapping from keys of type `K` to values of type `V`. `K` must be a hashable type (primitives, strings, runes, enums, tuples of hashable types). Map literals must not contain duplicate keys — duplicate keys are a compile error.
 
 Indexing (`m[k]`) yields a `V`; throws `KeyError` if `k` is not present. Assigning to an index (`m[k] = v`) inserts or updates.
 
@@ -790,20 +792,20 @@ let empty: set[string] = Set()
 
 ### Functions
 
-| Function         | Signature           | Description                   |
-| ---------------- | ------------------- | ----------------------------- |
-| `Len(s)`         | `set[T] -> int`     | number of elements            |
-| `Set()`          | `-> set[T]`         | empty set (type from context) |
-| `Add(s, v)`      | `set[T], T -> void` | add element                   |
-| `Remove(s, v)`   | `set[T], T -> void` | remove element                |
-| `Contains(s, v)`      | `set[T], T -> bool`         | membership test               |
-| `Union(a, b)`         | `set[T], set[T] -> set[T]`  | elements in either            |
-| `Intersection(a, b)`  | `set[T], set[T] -> set[T]`  | elements in both              |
-| `Difference(a, b)`    | `set[T], set[T] -> set[T]`  | elements in a not b           |
+| Function             | Signature                  | Description                   |
+| -------------------- | -------------------------- | ----------------------------- |
+| `Len(s)`             | `set[T] -> int`            | number of elements            |
+| `Set()`              | `-> set[T]`                | empty set (type from context) |
+| `Add(s, v)`          | `set[T], T -> void`        | add element                   |
+| `Remove(s, v)`       | `set[T], T -> void`        | remove element                |
+| `Contains(s, v)`     | `set[T], T -> bool`        | membership test               |
+| `Union(a, b)`        | `set[T], set[T] -> set[T]` | elements in either            |
+| `Intersection(a, b)` | `set[T], set[T] -> set[T]` | elements in both              |
+| `Difference(a, b)`   | `set[T], set[T] -> set[T]` | elements in a not b           |
 
 ## Collection Equality
 
-`==` and `!=` work on lists, maps, and sets with deep structural comparison. Lists compare element-wise in order. Maps compare by key-value pairs regardless of insertion order. Sets compare by membership.
+`==` and `!=` work on lists, maps, and sets with deep structural comparison, provided the element/key/value types do not transitively contain fn. Lists compare element-wise in order. Maps compare by key-value pairs regardless of insertion order. Sets compare by membership. Interface values are equal iff they hold the same variant type and the underlying structs are structurally equal. Union values are equal iff they hold the same member type and the underlying values are equal.
 
 
 
@@ -931,7 +933,7 @@ Union types containing `nil` have zero value `nil`. Others have no zero value an
 
 ### Equality and operators
 
-- `==` / `!=`: defined on unions. Equal iff same variant type and equal values.
+- `==` / `!=`: defined on unions, provided no member transitively contains fn. Equal iff same variant type and equal values.
 - Ordering (`<`, `<=`, etc.): not defined on unions. Narrow first.
 - Arithmetic: not defined on unions. Narrow first.
 - `ToString`: works (dispatches to held type).
@@ -981,8 +983,8 @@ struct Span {
     start: int
     end: int
 
-    fn Len(self) -> int {
-        return self.end - self.start
+    fn Len(this) -> int {
+        return this.end - this.start
     }
 }
 
@@ -990,7 +992,7 @@ let s: Span = Span(0, 10)
 let n: int = s.Len()
 ```
 
-Methods are functions declared inside a struct with `self` as the first parameter. `self` is the receiver instance; its type is the enclosing struct. Methods are called with `.` syntax.
+Methods are functions declared inside a struct with `this` as the first parameter. `this` is the receiver instance; its type is the enclosing struct. Methods are called with `.` syntax.
 
 ## Interfaces
 
@@ -1311,7 +1313,7 @@ The `--strict-tostring` flag specifies a canonical `ToString` format for every t
 | `struct`                   | target-native | `Token{kind: TokenKind.Ident, value: "foo", offset: 0}` |
 | `enum`                     | target-native | `TokenKind.Ident`                                       |
 | `fn[...]`                  | target-native | `fn[int, int]`                                          |
-| struct `ToString` override | n/a           | `ToString(self)` method                                 |
+| struct `ToString` override | n/a           | `ToString(this)` method                                 |
 | Available targets          | all 15        | all 15                                                  |
 
 "17-digit round-trip" means always printing exactly 17 significant decimal digits — enough to guarantee that parsing the string back produces the exact same float64 bit pattern. This avoids the complexity of shortest-representation algorithms (Ryū, Grisu3) while remaining deterministic across all targets using only integer arithmetic on the float's bit pattern.
@@ -1320,7 +1322,7 @@ In composite contexts (collections, tuples, struct fields), `string` values are 
 
 Map and set `ToString` output sorts elements for deterministic output regardless of runtime iteration order.
 
-Structs may declare a `fn ToString(self) -> string` method to override the default format. `ToString` is normally a reserved name; this is the one permitted exception. The override applies in both default and strict modes. Enums always use the `EnumName.Variant` format.
+Structs may declare a `fn ToString(this) -> string` method to override the default format. `ToString` is normally a reserved name; this is the one permitted exception. The override applies in both default and strict modes. Enums always use the `EnumName.Variant` format.
 
 The strict tostring flag is stored on the Module node (see Source Metadata).
 
@@ -1368,7 +1370,7 @@ f(@["some_key"] x, y)
 
 ### Semantic Annotations
 
-`@@[...]` marks annotations that affect compilation — currently `"strict_math"` and `"strict_tostring"` (see Pragmas under Math Semantics). Module-level `@@[...]` before any declaration attaches to the Module node.
+`@@[...]` marks annotations that affect compilation — currently `"strict_math"` and `"strict_tostring"` (see Pragmas under Math Semantics). Unknown semantic annotation keys are rejected. Module-level `@@[...]` before any declaration attaches to the Module node.
 
 ### Lowerer Annotations
 
@@ -1456,8 +1458,8 @@ bool      break     byte      bytes     case      catch
 continue  default   else      enum      false     finally
 float     fn        for       if        in        int
 interface let       list      map       match     nil
-range     return    rune      self      set
-string    struct    throw     true      try       void
+range     return    rune      set       string
+struct    this      throw     true      try       void
 while
 ```
 
@@ -1472,7 +1474,7 @@ Program       = ( Annotation* Decl )*
 Decl          = FnDecl | StructDecl | InterfaceDecl | EnumDecl
 
 FnDecl        = 'fn' IDENT '(' ParamList ')' '->' Type Block
-ParamList     = ( 'self' ( ',' Param )* | Param ( ',' Param )* )?
+ParamList     = ( 'this' ( ',' Param )* | Param ( ',' Param )* )?
 Param         = IDENT ':' Type
 Block         = '{' Stmt* '}'
 
@@ -1540,7 +1542,7 @@ AssignOp   = '=' | '+=' | '-=' | '*=' | '/=' | '%='
            | '&=' | '|=' | '^=' | '<<=' | '>>='
 ```
 
-The left-hand `Expr` in an assignment must be a valid target (identifier, field access, or index expression). This is a semantic check, not a grammatical one. The `( ',' Expr )+` form handles tuple assignment.
+The left-hand `Expr` in an assignment must be a valid target (identifier, field access, or index expression). This is a semantic check, not a grammatical one. A bare expression statement (without `AssignTail`) must be a function call — likewise a semantic check. The `( ',' Expr )+` form handles tuple assignment.
 
 ### Expressions
 
@@ -1569,7 +1571,7 @@ ArgList    = ( Arg ( ',' Arg )* )?
 Arg        = IDENT ':' Expr
            | Expr
 Primary    = INT | FLOAT | BYTE | STRING | RUNE | BYTES
-           | 'true' | 'false' | 'nil'
+           | 'true' | 'false' | 'nil' | 'this'
            | IDENT
            | '(' Expr ( ',' Expr )+ ')'
            | '(' Expr ')'

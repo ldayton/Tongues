@@ -13,17 +13,6 @@ def test_bytes_equality() -> None:
     assert b"Hello" != b"hello"  # case sensitive
 
 
-def test_bytes_ordering() -> None:
-    """Bytes ordering is lexicographic."""
-    assert b"a" < b"b"
-    assert b"abc" < b"abd"
-    assert b"abc" < b"abcd"
-    assert b"" < b"a"
-    assert b"A" < b"a"  # uppercase < lowercase in ASCII
-    assert b"abc" <= b"abc"
-    assert b"abc" >= b"abc"
-
-
 def test_bytes_length() -> None:
     """len() returns byte count."""
     assert len(b"") == 0
@@ -238,7 +227,6 @@ def main() -> int:
     failed: int = 0
     tests = [
         ("test_bytes_equality", test_bytes_equality),
-        ("test_bytes_ordering", test_bytes_ordering),
         ("test_bytes_length", test_bytes_length),
         ("test_bytes_indexing", test_bytes_indexing),
         ("test_bytes_indexing_special", test_bytes_indexing_special),

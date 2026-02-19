@@ -108,6 +108,25 @@ check:
     echo "══════════════════════════════════════"
     exit $failed
 
+# Self-transpile: feed all source files through --stop-at analyze
+self-transpile:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tongues
+    uv run python -c "
+    import sys, os
+    b = sys.stdout.buffer
+    for dp, _, fns in sorted(os.walk('src')):
+        for fn in sorted(fns):
+            if not fn.endswith('.py'):
+                continue
+            p = os.path.join(dp, fn)
+            s = open(p).read()
+            if 'tongues: skip' in '\n'.join(s.split('\n', 5)[:5]):
+                continue
+            b.write(p.encode() + b'\x00' + s.encode() + b'\x00')
+    " | uv run python -m src.tongues --project --stop-at analyze >/dev/null
+
 # Build Docker image for a language
 docker-build lang:
     docker build -t tongues-{{lang}} docker/{{lang}}

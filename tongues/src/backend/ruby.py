@@ -210,7 +210,7 @@ def _restore_name(name: str, annotations: Ann) -> str:
     """Restore original Python name from annotation, then apply target safety."""
     key = "name.original." + name
     if key in annotations:
-        return _safe_name(str(annotations[key]))
+        return _safe_name(annotations[key])
     return _safe_name(name)
 
 
@@ -340,7 +340,7 @@ def _scan_stmt_for_needs(stmt: TStmt, flags: list[bool]) -> None:
             _scan_expr_for_needs(stmt.value, flags)
     elif isinstance(stmt, TIfStmt):
         _scan_stmts_for_needs(stmt.then_body, flags)
-        if stmt.else_body:
+        if stmt.else_body is not None and len(stmt.else_body) > 0:
             _scan_stmts_for_needs(stmt.else_body, flags)
     elif isinstance(stmt, TWhileStmt):
         _scan_stmts_for_needs(stmt.body, flags)
@@ -489,11 +489,8 @@ def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
             _collect_builtin_calls_expr(k, out)
             _collect_builtin_calls_expr(v, out)
     elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            for s in expr.body:
-                _collect_builtin_calls_stmt(s, out)
-        else:
-            _collect_builtin_calls_expr(expr.body, out)
+        for s in expr.body:
+            _collect_builtin_calls_stmt(s, out)
 
 
 # ============================================================
@@ -617,7 +614,7 @@ class _RubyEmitter:
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, is_error=True)
+            self._emit_initialize(decl.fields, True)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -642,7 +639,7 @@ class _RubyEmitter:
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, is_error=False)
+            self._emit_initialize(decl.fields, False)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -933,14 +930,14 @@ class _RubyEmitter:
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
-        unused = stmt.annotations.get("liveness.initial_value_unused", False)
+        unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         if stmt.value is not None and not unused:
             self._line(safe + " = " + self._expr(stmt.value))
         else:
             self._line(safe + " = nil")
 
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
-        unused_str = str(stmt.annotations.get("liveness.tuple_unused_indices", ""))
+        unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
         if unused_str:
             for s in unused_str.split(","):
@@ -1051,7 +1048,7 @@ class _RubyEmitter:
         return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
-        if else_body is None or not else_body:
+        if else_body is None or len(else_body) == 0:
             return
         if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
             elif_stmt = else_body[0]
@@ -1230,7 +1227,7 @@ class _RubyEmitter:
             else:
                 types.append("StandardError")
         type_str = ", ".join(types)
-        unused = catch.annotations.get("liveness.catch_var_unused", False)
+        unused = catch.annotations.get("liveness.catch_var_unused") == "true"
         if unused:
             if type_str:
                 self._line("rescue " + type_str)
@@ -1267,7 +1264,7 @@ class _RubyEmitter:
             type_name = self._type_name_for_check(pat.type_name)
             self._line(keyword + " " + expr_str + ".is_a?(" + type_name + ")")
             self.indent += 1
-            unused = pat.annotations.get("liveness.match_var_unused", False)
+            unused = pat.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
                 self._line(_safe_name(pat.name) + " = " + expr_str)
             if not case.body and unused:
@@ -1300,7 +1297,7 @@ class _RubyEmitter:
             self._line("else")
         self.indent += 1
         if default.name is not None:
-            unused = default.annotations.get("liveness.match_var_unused", False)
+            unused = default.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
                 self._line(_safe_name(default.name) + " = " + expr_str)
         if not default.body:
@@ -1602,20 +1599,22 @@ class _RubyEmitter:
             for p in expr.params
             if p.typ is not None
         )
-        if isinstance(expr.body, list):
-            old_lines = self.lines
-            self.lines = []
-            self.indent += 1
-            for s in expr.body:
-                self._emit_stmt(s)
-            self.indent -= 1
-            body_lines = self.lines
-            self.lines = old_lines
-            result = "lambda { |" + params + "|\n"
-            result += "\n".join(body_lines) + "\n"
-            result += "  " * self.indent + "}"
-            return result
-        return "lambda { |" + params + "| " + self._expr(expr.body) + " }"
+        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
+            expr.body[0], TExprStmt
+        ):
+            return "lambda { |" + params + "| " + self._expr(expr.body[0].expr) + " }"
+        old_lines = self.lines
+        self.lines = []
+        self.indent += 1
+        for s in expr.body:
+            self._emit_stmt(s)
+        self.indent -= 1
+        body_lines = self.lines
+        self.lines = old_lines
+        result = "lambda { |" + params + "|\n"
+        result += "\n".join(body_lines) + "\n"
+        result += "  " * self.indent + "}"
+        return result
 
     # ── Calls ─────────────────────────────────────────────────
 

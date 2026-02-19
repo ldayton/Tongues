@@ -163,7 +163,7 @@ def _restore_name(name: str, annotations: Ann) -> str:
     """Restore original Python name from annotation, then apply target safety."""
     key = "name.original." + name
     if key in annotations:
-        return _safe_name(str(annotations[key]))
+        return _safe_name(annotations[key])
     return _safe_name(name)
 
 
@@ -392,11 +392,8 @@ def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
             _collect_builtin_calls_expr(k, out)
             _collect_builtin_calls_expr(v, out)
     elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            for s in expr.body:
-                _collect_builtin_calls_stmt(s, out)
-        else:
-            _collect_builtin_calls_expr(expr.body, out)
+        for s in expr.body:
+            _collect_builtin_calls_stmt(s, out)
 
 
 # ============================================================
@@ -815,14 +812,14 @@ class _PythonEmitter:
         safe = _restore_name(stmt.name, stmt.annotations)
         typ_str = self._type(stmt.typ)
         self.var_types[stmt.name] = stmt.typ
-        unused = stmt.annotations.get("liveness.initial_value_unused", False)
+        unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         if stmt.value is not None and not unused:
             self._line(safe + ": " + typ_str + " = " + self._expr(stmt.value))
         else:
             self._line(safe + ": " + typ_str)
 
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
-        unused_str = str(stmt.annotations.get("liveness.tuple_unused_indices", ""))
+        unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
         if unused_str:
             for s in unused_str.split(","):
@@ -897,7 +894,7 @@ class _PythonEmitter:
         return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
-        if else_body is None or not else_body:
+        if else_body is None or len(else_body) == 0:
             return
         if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
             elif_stmt = else_body[0]
@@ -1033,7 +1030,7 @@ class _PythonEmitter:
             type_str = types[0]
         else:
             type_str = "(" + ", ".join(types) + ")"
-        unused = catch.annotations.get("liveness.catch_var_unused", False)
+        unused = catch.annotations.get("liveness.catch_var_unused") == "true"
         if unused:
             self._line("except " + type_str + ":")
         else:
@@ -1066,7 +1063,7 @@ class _PythonEmitter:
             type_name = self._pattern_type_name(pat.type_name)
             self._line(keyword + " isinstance(" + expr_str + ", " + type_name + "):")
             self.indent += 1
-            unused = pat.annotations.get("liveness.match_var_unused", False)
+            unused = pat.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
                 self._line(_safe_name(pat.name) + " = " + expr_str)
             if not case.body:
@@ -1107,7 +1104,7 @@ class _PythonEmitter:
             self._line("else:")
         self.indent += 1
         if default.name is not None:
-            unused = default.annotations.get("liveness.match_var_unused", False)
+            unused = default.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
                 self._line(_safe_name(default.name) + " = " + expr_str)
         if not default.body:
@@ -1370,19 +1367,19 @@ class _PythonEmitter:
             for p in expr.params
             if p.typ is not None
         )
-        if isinstance(expr.body, list):
-            # Block body — emit as nested def
-            # This is rare, but handle it
-            name = "_fn"
-            self._line("def " + name + "(" + params + "):")
-            self.indent += 1
-            if not expr.body:
-                self._line("pass")
-            for s in expr.body:
-                self._emit_stmt(s)
-            self.indent -= 1
-            return name
-        return "lambda " + params + ": " + self._expr(expr.body)
+        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
+            expr.body[0], TExprStmt
+        ):
+            return "lambda " + params + ": " + self._expr(expr.body[0].expr)
+        name = "_fn"
+        self._line("def " + name + "(" + params + "):")
+        self.indent += 1
+        if not expr.body:
+            self._line("pass")
+        for s in expr.body:
+            self._emit_stmt(s)
+        self.indent -= 1
+        return name
 
     # ── Calls ─────────────────────────────────────────────────
 

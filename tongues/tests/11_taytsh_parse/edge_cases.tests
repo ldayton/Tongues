@@ -333,12 +333,12 @@ struct Vec2 {
     x: float
     y: float
 
-    fn Add(self, other: Vec2) -> Vec2 {
-        return Vec2(self.x + other.x, self.y + other.y)
+    fn Add(this, other: Vec2) -> Vec2 {
+        return Vec2(this.x + other.x, this.y + other.y)
     }
 
-    fn Len(self) -> float {
-        return self.x * self.x + self.y * self.y
+    fn Len(this) -> float {
+        return this.x * this.x + this.y * this.y
     }
 }
 ---

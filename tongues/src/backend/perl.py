@@ -120,7 +120,7 @@ def _restore_name(name: str, annotations: Ann) -> str:
     """Restore original Python name from annotation, then apply target safety."""
     key = "name.original." + name
     if key in annotations:
-        return _safe_name(str(annotations[key]))
+        return _safe_name(annotations[key])
     return _safe_name(name)
 
 
@@ -578,7 +578,7 @@ class _PerlEmitter:
         if isinstance(stmt, TLetStmt):
             self.var_types[stmt.name] = stmt.typ
             safe = "$" + _restore_name(stmt.name, stmt.annotations)
-            unused = stmt.annotations.get("liveness.initial_value_unused", False)
+            unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if stmt.value is not None and not unused:
                 self._line("my " + safe + " = " + self._expr(stmt.value) + ";")
             else:
@@ -684,7 +684,7 @@ class _PerlEmitter:
         self._line(self._expr(expr) + ";")
 
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
-        unused_str = str(stmt.annotations.get("liveness.tuple_unused_indices", ""))
+        unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
         if unused_str:
             for s in unused_str.split(","):
@@ -761,7 +761,7 @@ class _PerlEmitter:
         return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
-        if else_body is None or not else_body:
+        if else_body is None or len(else_body) == 0:
             return
         if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
             elif_stmt = else_body[0]
@@ -945,7 +945,9 @@ class _PerlEmitter:
             cond = self._catch_condition(catch, err)
             if cond is None:
                 if not has_chain:
-                    unused = catch.annotations.get("liveness.catch_var_unused", False)
+                    unused = (
+                        catch.annotations.get("liveness.catch_var_unused") == "true"
+                    )
                     if not unused:
                         self._line(
                             "my $"
@@ -958,7 +960,7 @@ class _PerlEmitter:
                     return
                 self._line("} else {")
                 self.indent += 1
-                unused = catch.annotations.get("liveness.catch_var_unused", False)
+                unused = catch.annotations.get("liveness.catch_var_unused") == "true"
                 if not unused:
                     self._line(
                         "my $"
@@ -977,7 +979,7 @@ class _PerlEmitter:
             else:
                 self._line("} elsif (" + cond + ") {")
             self.indent += 1
-            unused = catch.annotations.get("liveness.catch_var_unused", False)
+            unused = catch.annotations.get("liveness.catch_var_unused") == "true"
             if not unused:
                 self._line(
                     "my $"
@@ -1012,8 +1014,9 @@ class _PerlEmitter:
             is_last = idx == num_cases - 1 and not has_default
             self._emit_match_case(case, expr, first, is_last, has_nil_case)
             first = False
-        if has_default:
-            self._emit_match_default(stmt.default, expr, first)
+        default = stmt.default
+        if default is not None:
+            self._emit_match_default(default, expr, first)
         elif not first:
             self._line("}")
 
@@ -1030,7 +1033,7 @@ class _PerlEmitter:
             self._line("} else {")
             self.indent += 1
             if isinstance(pat, TPatternType):
-                unused = pat.annotations.get("liveness.match_var_unused", False)
+                unused = pat.annotations.get("liveness.match_var_unused") == "true"
                 if not unused:
                     self._line("my $" + _safe_name(pat.name) + " = " + expr + ";")
             self._emit_stmts(case.body)
@@ -1041,7 +1044,7 @@ class _PerlEmitter:
             cond = self._type_match_cond(pat.type_name, expr, has_nil_case)
             self._line(keyword + " (" + cond + ") {")
             self.indent += 1
-            unused = pat.annotations.get("liveness.match_var_unused", False)
+            unused = pat.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
                 self._line("my $" + _safe_name(pat.name) + " = " + expr + ";")
             self._emit_stmts(case.body)
@@ -1099,7 +1102,7 @@ class _PerlEmitter:
             self._line("} else {")
         self.indent += 1
         if default.name is not None:
-            unused = default.annotations.get("liveness.match_var_unused", False)
+            unused = default.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
                 self._line("my $" + _safe_name(default.name) + " = " + expr + ";")
         self._emit_stmts(default.body)
@@ -1223,7 +1226,7 @@ class _PerlEmitter:
 
     def _slice(self, expr: TSlice) -> str:
         obj = self._expr(expr.obj)
-        prov = str(expr.annotations.get("provenance", ""))
+        prov = expr.annotations.get("provenance", "")
         low = self._expr(expr.low)
         high = self._expr(expr.high)
         if prov == "open_start" and self._is_zero(expr.low):
@@ -1372,17 +1375,19 @@ class _PerlEmitter:
             for p in expr.params
             if p.typ is not None
         )
-        if isinstance(expr.body, list):
-            return self._fn_lit_block(expr.body, params)
-        if params:
-            return (
-                "sub { my ("
-                + params
-                + ") = @_; return "
-                + self._expr(expr.body)
-                + "; }"
-            )
-        return "sub { return " + self._expr(expr.body) + "; }"
+        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
+            expr.body[0], TExprStmt
+        ):
+            if params:
+                return (
+                    "sub { my ("
+                    + params
+                    + ") = @_; return "
+                    + self._expr(expr.body[0].expr)
+                    + "; }"
+                )
+            return "sub { return " + self._expr(expr.body[0].expr) + "; }"
+        return self._fn_lit_block(expr.body, params)
 
     def _fn_lit_block(self, stmts: list[TStmt], params: str) -> str:
         pad = "    " * (self.indent + 1)
@@ -1472,9 +1477,7 @@ class _PerlEmitter:
         arg_strs = ", ".join(self._expr(a.value) for a in args)
         return obj + "->" + method + "(" + arg_strs + ")"
 
-    def _builtin_call(
-        self, name: str, args: list[TArg], ann: dict | None = None
-    ) -> str:
+    def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:
         if name == "FloorDiv":
             return "POSIX::floor(" + self._a(args, 0) + " / " + self._a(args, 1) + ")"
         if name == "PythonMod":
@@ -1694,7 +1697,7 @@ class _PerlEmitter:
             return "delete " + self._a(args, 0) + "->{" + self._a(args, 1) + "}"
         if name == "Get":
             if len(args) == 3:
-                if ann and ann.get("provenance") == "dict_get_default":
+                if ann is not None and ann.get("provenance") == "dict_get_default":
                     return (
                         "("
                         + self._a(args, 0)
@@ -1921,7 +1924,7 @@ class _PerlEmitter:
                 return "[(" + inner + ") x " + self._a(args, 1) + "]"
             return "(" + self._a(args, 0) + " x " + self._a(args, 1) + ")"
         if name == "Format":
-            if ann and ann.get("provenance") == "f_string":
+            if ann is not None and ann.get("provenance") == "f_string":
                 return self._format_interpolated(args)
             return self._format_call(args)
         if name == "Assert":
@@ -2200,7 +2203,7 @@ class _PerlEmitter:
             if p.startswith("$"):
                 if buf:
                     result.append("".join(buf))
-                    buf = []
+                    buf: list[str] = []
                 result.append(p)
             else:
                 buf.append(p)

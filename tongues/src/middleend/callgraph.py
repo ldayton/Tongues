@@ -114,7 +114,7 @@ class _TypeResolver:
         for p in fn.params:
             if p.typ is not None:
                 self.locals[p.name] = checker.resolve_type(p.typ)
-            elif p.name == "self" and struct_type is not None:
+            elif p.name == "this" and struct_type is not None:
                 self.locals[p.name] = struct_type
 
     def resolve(self, expr: TExpr) -> Type | None:
@@ -316,10 +316,7 @@ def _collect_edges_expr(
         for e in expr.elements:
             _collect_edges_expr(e, caller, edges, fn_decls, checker, resolver)
     elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            _collect_edges(expr.body, caller, edges, fn_decls, checker, resolver)
-        else:
-            _collect_edges_expr(expr.body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges(expr.body, caller, edges, fn_decls, checker, resolver)
 
 
 def _resolve_all_call_targets(
@@ -349,7 +346,7 @@ def _resolve_all_call_targets(
             if obj_t.parent is not None:
                 iface = checker.types.get(obj_t.parent)
                 if iface is not None and isinstance(iface, InterfaceT):
-                    targets = []
+                    targets: list[str] = []
                     for variant_name in iface.variants:
                         vkey = f"{variant_name}.{func.field}"
                         if vkey in fn_decls:
@@ -357,7 +354,7 @@ def _resolve_all_call_targets(
                     if targets:
                         return targets
         if obj_t is not None and isinstance(obj_t, InterfaceT):
-            targets = []
+            targets: list[str] = []
             for variant_name in obj_t.variants:
                 vkey = f"{variant_name}.{func.field}"
                 if vkey in fn_decls:
@@ -451,7 +448,9 @@ def _detect_recursion(
 
         for key in scc:
             decl = fn_decls[key]
-            decl.annotations["callgraph.is_recursive"] = is_recursive
+            decl.annotations["callgraph.is_recursive"] = (
+                "true" if is_recursive else "false"
+            )
             decl.annotations["callgraph.recursive_group"] = group_id
 
     return sccs, key_to_scc
@@ -1174,28 +1173,16 @@ def _collect_fn_throws_expr(
                 caught_filter,
             )
     elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            _collect_fn_throws(
-                expr.body,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
-        else:
-            _collect_fn_throws_expr(
-                expr.body,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+        _collect_fn_throws(
+            expr.body,
+            throws,
+            checker,
+            resolver,
+            fn_decls,
+            strict_math,
+            callee_throws,
+            caught_filter,
+        )
 
 
 # ============================================================
@@ -1277,7 +1264,7 @@ def _walk_tail_stmt(stmt: TStmt, *, tail: bool) -> None:
 def _walk_tail_expr(expr: TExpr, *, tail: bool) -> None:
     if isinstance(expr, TCall):
         if tail:
-            expr.annotations["callgraph.is_tail_call"] = True
+            expr.annotations["callgraph.is_tail_call"] = "true"
         # Walk subexpressions — never in tail position
         if isinstance(expr.func, TFieldAccess):
             _walk_tail_expr(expr.func.obj, tail=False)
@@ -1317,10 +1304,7 @@ def _walk_tail_expr(expr: TExpr, *, tail: bool) -> None:
         for e in expr.elements:
             _walk_tail_expr(e, tail=False)
     elif isinstance(expr, TFnLit):
-        if isinstance(expr.body, list):
-            _walk_tail_stmts(expr.body, tail=False)
-        else:
-            _walk_tail_expr(expr.body, tail=False)
+        _walk_tail_stmts(expr.body, tail=False)
 
 
 # ============================================================

@@ -247,3 +247,91 @@ def f(x: int | None) -> int:
 ---
 ok
 ---
+
+=== or condition narrows else branch
+def f(x: int | None, y: str | None) -> int:
+    if x is None or y is None:
+        return 0
+    return x + len(y)
+---
+ok
+---
+
+=== break exits scope for narrowing
+def f(xs: list[int | None]) -> int:
+    result: int = 0
+    for x in xs:
+        if x is None:
+            break
+        result = x
+    return result
+---
+ok
+---
+
+=== continue exits scope for narrowing
+def f(xs: list[int | None]) -> int:
+    result: int = 0
+    for x in xs:
+        if x is None:
+            continue
+        result = x
+    return result
+---
+ok
+---
+
+=== attribute is None narrows for else
+from dataclasses import dataclass
+@dataclass
+class Node:
+    child: "Node | None"
+def f(n: Node) -> Node:
+    if n.child is None:
+        return n
+    return n.child
+---
+ok
+---
+
+=== attribute is not None narrows then
+from dataclasses import dataclass
+@dataclass
+class Node:
+    child: "Node | None"
+def f(n: Node) -> Node:
+    if n.child is not None:
+        return n.child
+    return n
+---
+ok
+---
+
+=== variable reassignment to wider type
+class Node:
+    pass
+class Expr(Node):
+    pass
+class Stmt(Node):
+    pass
+def f() -> None:
+    x: Expr = Expr()
+    x = Stmt()
+---
+ok
+---
+
+=== reveal_type basic
+def f(x: int) -> None:
+    reveal_type(x)
+---
+reveal:2 = int
+---
+
+=== reveal_type after isinstance narrowing
+def f(x: int | str) -> None:
+    if isinstance(x, int):
+        reveal_type(x)
+---
+reveal:3 = int
+---

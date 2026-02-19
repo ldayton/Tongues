@@ -6,8 +6,31 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from typing import Callable
 
-# Type alias for AST dict nodes (avoids bare dict violations)
-ASTNode = dict[str, object]
+from .types import (
+    JStr,
+    JInt,
+    JBool,
+    JFloat,
+    JDict,
+    JList,
+    JNull,
+    ASTNode,
+    get_str,
+    get_int,
+    get_bool,
+    get_node,
+    get_nodes,
+    get_jlist,
+    has_key,
+)
+
+
+def _has_present(node: ASTNode, key: str) -> bool:
+    """Check if key exists and is not JNull (for optional AST fields)."""
+    v = node.get(key)
+    if v is None:
+        return False
+    return not isinstance(v, JNull)
 
 
 class Violation:
@@ -20,17 +43,23 @@ class Violation:
         category: str,
         message: str,
         is_warning: bool,
+        source_file: str = "",
     ):
         self.lineno: int = lineno
         self.col: int = col
         self.category: str = category
         self.message: str = message
         self.is_warning: bool = is_warning
+        self.source_file: str = source_file
 
     def __repr__(self) -> str:
         prefix = "warning" if self.is_warning else "error"
+        file_prefix = ""
+        if self.source_file != "":
+            file_prefix = self.source_file + ":"
         return (
-            prefix
+            file_prefix
+            + prefix
             + ":"
             + str(self.lineno)
             + ":"
@@ -49,11 +78,19 @@ class VerifyResult:
         self.violations: list[Violation] = []
         self.node_count: int = 0
 
-    def add_error(self, lineno: int, col: int, category: str, message: str) -> None:
-        self.violations.append(Violation(lineno, col, category, message, False))
+    def add_error(
+        self, lineno: int, col: int, category: str, message: str, source_file: str = ""
+    ) -> None:
+        self.violations.append(
+            Violation(lineno, col, category, message, False, source_file)
+        )
 
-    def add_warning(self, lineno: int, col: int, category: str, message: str) -> None:
-        self.violations.append(Violation(lineno, col, category, message, True))
+    def add_warning(
+        self, lineno: int, col: int, category: str, message: str, source_file: str = ""
+    ) -> None:
+        self.violations.append(
+            Violation(lineno, col, category, message, True, source_file)
+        )
 
     def errors(self) -> list[Violation]:
         result: list[Violation] = []
@@ -242,14 +279,14 @@ def get_children(node: ASTNode) -> list[ASTNode]:
             i += 1
             continue
         val = node[key]
-        if isinstance(val, dict) and "_type" in val:
-            children.append(val)
-        elif isinstance(val, list):
+        if isinstance(val, JDict) and has_key(val.entries, "_type"):
+            children.append(val.entries)
+        elif isinstance(val, JList):
             j = 0
-            while j < len(val):
-                item = val[j]
-                if isinstance(item, dict) and "_type" in item:
-                    children.append(item)
+            while j < len(val.items):
+                item = val.items[j]
+                if isinstance(item, JDict) and has_key(item.entries, "_type"):
+                    children.append(item.entries)
                 j += 1
         i += 1
     return children
@@ -269,55 +306,60 @@ def is_bare_collection(annotation: ASTNode | None) -> bool:
     """Check if annotation is a bare collection type without parameters."""
     if annotation is None:
         return False
-    if annotation.get("_type") != "Name":
+    if get_str(annotation, "_type") != "Name":
         return False
-    name_id = annotation.get("id")
-    if name_id is None:
+    name_id = get_str(annotation, "id")
+    if name_id == "":
         return False
     return name_id in BARE_COLLECTION_TYPES
 
 
 def is_none_constant(node: ASTNode) -> bool:
     """Check if node is None constant."""
-    if node.get("_type") != "Constant":
+    if get_str(node, "_type") != "Constant":
         return False
-    return node.get("value") is None
+    val = node.get("value")
+    return isinstance(val, JNull)
 
 
 def is_singleton_constant(node: ASTNode) -> bool:
     """Check if node is a None/True/False singleton constant."""
-    if node.get("_type") != "Constant":
+    if get_str(node, "_type") != "Constant":
         return False
     val = node.get("value")
-    return val is None or val is True or val is False
+    return isinstance(val, JNull) or isinstance(val, JBool)
 
 
 def is_constant(node: ASTNode) -> bool:
     """Check if node is a constant literal."""
-    return node.get("_type") == "Constant"
+    return get_str(node, "_type") == "Constant"
 
 
 def is_obvious_literal(node: ASTNode) -> bool:
     """Check if node is a literal with obvious type."""
-    if node.get("_type") != "Constant":
+    if get_str(node, "_type") != "Constant":
         return False
     val = node.get("value")
-    if val is None:
+    if val is None or isinstance(val, JNull):
         return False
-    return isinstance(val, (str, int, bool, float))
+    return isinstance(val, (JStr, JInt, JBool, JFloat))
 
 
 def get_name_id(node: ASTNode) -> str | None:
     """Get id from Name node."""
-    if node.get("_type") == "Name":
-        return node.get("id")
+    if get_str(node, "_type") == "Name":
+        val = get_str(node, "id")
+        if val != "":
+            return val
     return None
 
 
 def get_attr_name(node: ASTNode) -> str | None:
     """Get attr from Attribute node."""
-    if node.get("_type") == "Attribute":
-        return node.get("attr")
+    if get_str(node, "_type") == "Attribute":
+        val = get_str(node, "attr")
+        if val != "":
+            return val
     return None
 
 
@@ -327,13 +369,11 @@ def is_allowed_dataclass_args(keywords: list[ASTNode]) -> bool:
     i = 0
     while i < len(keywords):
         kw = keywords[i]
-        if not isinstance(kw, dict):
-            return False
-        arg = kw.get("arg")
+        arg = get_str(kw, "arg")
         if arg not in allowed:
             return False
-        value = kw.get("value", {})
-        if value.get("_type") != "Constant" or value.get("value") != True:  # noqa: E712
+        value = get_node(kw, "value")
+        if get_str(value, "_type") != "Constant" or get_bool(value, "value") != True:  # noqa: E712
             return False
         i += 1
     return True
@@ -346,21 +386,21 @@ def collect_annotated_fields(class_node: ASTNode) -> set[str]:
     i = 0
     while i < len(nodes_to_visit):
         node = nodes_to_visit[i]
-        node_type = node.get("_type", "")
+        node_type = get_str(node, "_type")
         if node_type == "AnnAssign":
-            target = node.get("target", {})
-            target_type = target.get("_type", "")
+            target = get_node(node, "target")
+            target_type = get_str(target, "_type")
             # Class-level: x: int = 0
             if target_type == "Name":
-                target_id = target.get("id")
-                if target_id is not None:
+                target_id = get_str(target, "id")
+                if target_id != "":
                     fields.add(target_id)
             # Method-level: self.x: int = 0
             if target_type == "Attribute":
-                target_value = target.get("value", {})
+                target_value = get_node(target, "value")
                 if get_name_id(target_value) == "self":
-                    attr = target.get("attr")
-                    if attr is not None:
+                    attr = get_str(target, "attr")
+                    if attr != "":
                         fields.add(attr)
         # Add children to visit
         children = get_children(node)
@@ -393,19 +433,21 @@ class Verifier:
         self.guarded_vars: set[str] = set()
 
     def error(self, node: ASTNode, category: str, message: str) -> None:
-        lineno = node.get("lineno", 0)
-        col = node.get("col_offset", 0)
-        self.result.add_error(lineno, col, category, message)
+        lineno = get_int(node, "lineno")
+        col = get_int(node, "col_offset")
+        source_file = get_str(node, "_source_file")
+        self.result.add_error(lineno, col, category, message, source_file)
 
     def warning(self, node: ASTNode, category: str, message: str) -> None:
-        lineno = node.get("lineno", 0)
-        col = node.get("col_offset", 0)
-        self.result.add_warning(lineno, col, category, message)
+        lineno = get_int(node, "lineno")
+        col = get_int(node, "col_offset")
+        source_file = get_str(node, "_source_file")
+        self.result.add_warning(lineno, col, category, message, source_file)
 
     def visit(self, node: ASTNode) -> None:
         """Dispatch to appropriate visit method."""
         self.result.node_count += 1
-        node_type = node.get("_type", "")
+        node_type = get_str(node, "_type")
         # Check banned nodes first
         if node_type in BANNED_NODES:
             self.visit_banned_node(node, node_type)
@@ -597,7 +639,7 @@ class Verifier:
 
     def visit_Module(self, node: ASTNode) -> None:
         """Visit module - just traverse body."""
-        body = node.get("body", [])
+        body = get_nodes(node, "body")
         i = 0
         while i < len(body):
             self.visit(body[i])
@@ -605,9 +647,9 @@ class Verifier:
 
     def visit_FunctionDef(self, node: ASTNode) -> None:
         """Check function definition constraints."""
-        name = node.get("name", "")
+        name = get_str(node, "name")
         # Check decorators
-        decorators = node.get("decorator_list", [])
+        decorators = get_nodes(node, "decorator_list")
         i = 0
         while i < len(decorators):
             dec = decorators[i]
@@ -641,35 +683,35 @@ class Verifier:
                     + ": only __init__/__new__/__repr__ allowed",
                 )
         # Check *args and **kwargs
-        args_node = node.get("args", {})
-        if args_node.get("vararg") is not None:
+        args_node = get_node(node, "args")
+        if _has_present(args_node, "vararg"):
             self.error(node, "function", "*args: use explicit parameters")
-        if args_node.get("kwarg") is not None:
+        if _has_present(args_node, "kwarg"):
             self.error(node, "function", "**kwargs: use explicit parameters")
         # Check return type (except __init__, __new__)
         if name not in ("__init__", "__new__"):
-            if node.get("returns") is None:
+            if not _has_present(node, "returns"):
                 self.error(node, "types", "missing type annotation for '" + name + "'")
         # Check return type bare collection and visit return annotation
-        returns = node.get("returns")
-        if returns is not None:
+        if _has_present(node, "returns"):
+            returns = get_node(node, "returns")
             if is_bare_collection(returns):
                 self.error(
                     node,
                     "types",
                     "bare "
-                    + returns.get("id", "")
+                    + get_str(returns, "id")
                     + ": "
                     + name
                     + "() return needs type parameter",
                 )
             self.visit(returns)
         # Check parameter types
-        args_list = args_node.get("args", [])
+        args_list = get_nodes(args_node, "args")
         # Also check keyword-only args
-        kwonlyargs = args_node.get("kwonlyargs", [])
+        kwonlyargs = get_nodes(args_node, "kwonlyargs")
         # Also check positional-only args
-        posonlyargs = args_node.get("posonlyargs", [])
+        posonlyargs = get_nodes(args_node, "posonlyargs")
         all_args: list[ASTNode] = []
         ai = 0
         while ai < len(posonlyargs):
@@ -688,19 +730,20 @@ class Verifier:
         j = 0
         while j < len(all_args):
             arg = all_args[j]
-            arg_name = arg.get("arg", "")
-            annotation = arg.get("annotation")
+            arg_name = get_str(arg, "arg")
+            has_annotation = _has_present(arg, "annotation")
             # Skip self/cls first param
             if j == 0 and arg_name in ("self", "cls"):
                 j += 1
                 continue
-            if annotation is None:
+            if not has_annotation:
                 self.error(
                     node,
                     "types",
                     "missing type annotation for '" + arg_name + "'",
                 )
             else:
+                annotation = get_node(arg, "annotation")
                 self.annotated_params.add(arg_name)
                 self.visit(annotation)
                 if is_bare_collection(annotation):
@@ -708,15 +751,15 @@ class Verifier:
                         node,
                         "types",
                         "bare "
-                        + annotation.get("id", "")
+                        + get_str(annotation, "id")
                         + ": "
                         + arg_name
                         + " needs type parameter",
                     )
             j += 1
         # Check mutable defaults
-        defaults = args_node.get("defaults", [])
-        kw_defaults = args_node.get("kw_defaults", [])
+        defaults = get_nodes(args_node, "defaults")
+        kw_defaults = get_jlist(args_node, "kw_defaults")
         all_defaults: list[ASTNode] = []
         k = 0
         while k < len(defaults):
@@ -725,13 +768,13 @@ class Verifier:
         k = 0
         while k < len(kw_defaults):
             d = kw_defaults[k]
-            if d is not None:
-                all_defaults.append(d)
+            if isinstance(d, JDict):
+                all_defaults.append(d.entries)
             k += 1
         k = 0
         while k < len(all_defaults):
             d = all_defaults[k]
-            d_type = d.get("_type", "")
+            d_type = get_str(d, "_type")
             if d_type in ("List", "Dict", "Set"):
                 self.error(
                     node,
@@ -748,7 +791,7 @@ class Verifier:
         self.in_function = True
         self.function_name = name
         self.annotated_locals = set()
-        body = node.get("body", [])
+        body = get_nodes(node, "body")
         m = 0
         while m < len(body):
             self.visit(body[m])
@@ -760,37 +803,35 @@ class Verifier:
 
     def visit_ClassDef(self, node: ASTNode) -> None:
         """Check class definition constraints."""
-        name = node.get("name", "")
+        name = get_str(node, "name")
         # Check decorators - only @dataclass (no arguments) is allowed
-        decorators = node.get("decorator_list", [])
-        if isinstance(decorators, list):
-            i = 0
-            while i < len(decorators):
-                dec = decorators[i]
-                if isinstance(dec, dict):
-                    dec_type = dec.get("_type", "")
-                    if dec_type == "Name" and dec.get("id") == "dataclass":
-                        pass  # @dataclass with no arguments is allowed
-                    elif dec_type == "Call":
-                        func = dec.get("func")
-                        if isinstance(func, dict) and func.get("id") == "dataclass":
-                            keywords = dec.get("keywords", [])
-                            if not is_allowed_dataclass_args(keywords):
-                                self.error(
-                                    node,
-                                    "class",
-                                    "@dataclass: only eq=True and unsafe_hash=True allowed",
-                                )
-                        else:
-                            self.error(node, "class", "class decorator not allowed")
-                    else:
-                        self.error(node, "class", "class decorator not allowed")
-                i += 1
+        decorators = get_nodes(node, "decorator_list")
+        i = 0
+        while i < len(decorators):
+            dec = decorators[i]
+            dec_type = get_str(dec, "_type")
+            if dec_type == "Name" and get_str(dec, "id") == "dataclass":
+                pass  # @dataclass with no arguments is allowed
+            elif dec_type == "Call":
+                func = get_node(dec, "func")
+                if len(func) > 0 and get_str(func, "id") == "dataclass":
+                    keywords = get_nodes(dec, "keywords")
+                    if not is_allowed_dataclass_args(keywords):
+                        self.error(
+                            node,
+                            "class",
+                            "@dataclass: only eq=True and unsafe_hash=True allowed",
+                        )
+                else:
+                    self.error(node, "class", "class decorator not allowed")
+            else:
+                self.error(node, "class", "class decorator not allowed")
+            i += 1
         # Check nested class
         if self.in_class:
             self.error(node, "class", "nested class: define at module level")
         # Check multiple inheritance (Exception doesn't count)
-        bases = node.get("bases", [])
+        bases = get_nodes(node, "bases")
         real_bases: list[ASTNode] = []
         j = 0
         while j < len(bases):
@@ -804,7 +845,7 @@ class Verifier:
         # Collect annotated fields (walk entire class including method bodies)
         old_fields = self.annotated_fields
         self.annotated_fields = collect_annotated_fields(node)
-        body = node.get("body", [])
+        body = get_nodes(node, "body")
         # Visit body
         old_in_class = self.in_class
         old_class_name = self.class_name
@@ -814,7 +855,7 @@ class Verifier:
         while m < len(body):
             child = body[m]
             # Check nested class
-            if child.get("_type") == "ClassDef":
+            if get_str(child, "_type") == "ClassDef":
                 self.error(child, "class", "nested class: define at module level")
             self.visit(child)
             m += 1
@@ -824,7 +865,7 @@ class Verifier:
 
     def visit_Call(self, node: ASTNode) -> None:
         """Check function call constraints."""
-        func = node.get("func", {})
+        func = get_node(node, "func")
         func_name = get_name_id(func)
         # Check banned builtins
         if func_name is not None and func_name in BANNED_BUILTINS:
@@ -846,18 +887,18 @@ class Verifier:
         # Check if this is an eager consumer (for generator expressions)
         is_eager = func_name is not None and func_name in EAGER_CONSUMERS
         # Also check for str.join method call
-        if not is_eager and isinstance(func, dict) and func.get("_type") == "Attribute":
-            if func.get("attr") == "join":
+        if not is_eager and len(func) > 0 and get_str(func, "_type") == "Attribute":
+            if get_str(func, "attr") == "join":
                 is_eager = True
         # Check restricted keyword arguments (min/max key/default, sorted key, print sep)
-        keywords = node.get("keywords", [])
+        keywords = get_nodes(node, "keywords")
         if func_name is not None and func_name in RESTRICTED_KWARGS:
             banned_kwargs = RESTRICTED_KWARGS[func_name]
             j = 0
             while j < len(keywords):
                 kw = keywords[j]
-                kw_arg = kw.get("arg")
-                if kw_arg is not None and kw_arg in banned_kwargs:
+                kw_arg = get_str(kw, "arg")
+                if kw_arg != "" and kw_arg in banned_kwargs:
                     self.error(
                         node,
                         "builtin",
@@ -865,7 +906,7 @@ class Verifier:
                     )
                 j += 1
         # Check print: only one positional argument
-        args = node.get("args", [])
+        args = get_nodes(node, "args")
         if func_name == "print" and len(args) > 1:
             self.error(
                 node,
@@ -877,7 +918,7 @@ class Verifier:
             j = 0
             while j < len(keywords):
                 kw = keywords[j]
-                if kw.get("arg") == "default_factory":
+                if get_str(kw, "arg") == "default_factory":
                     self.error(
                         node,
                         "class",
@@ -888,7 +929,7 @@ class Verifier:
         i = 0
         while i < len(args):
             arg = args[i]
-            if arg.get("_type") == "Starred":
+            if get_str(arg, "_type") == "Starred":
                 self.error(
                     node, "expression", "*args in call: unpack arguments explicitly"
                 )
@@ -898,7 +939,7 @@ class Verifier:
         j = 0
         while j < len(keywords):
             kw = keywords[j]
-            if kw.get("arg") is None:
+            if not _has_present(kw, "arg"):
                 self.error(
                     node, "expression", "**kwargs in call: pass arguments explicitly"
                 )
@@ -918,22 +959,21 @@ class Verifier:
         m = 0
         while m < len(keywords):
             kw = keywords[m]
-            val = kw.get("value")
-            if val is not None:
-                self.visit(val)
+            if _has_present(kw, "value"):
+                self.visit(get_node(kw, "value"))
             m += 1
 
     def visit_Compare(self, node: ASTNode) -> None:
         """Check comparison constraints."""
-        ops = node.get("ops", [])
-        comparators = node.get("comparators", [])
+        ops = get_nodes(node, "ops")
+        comparators = get_nodes(node, "comparators")
         # Check is/is not — only allowed with None/True/False singletons
-        left = node.get("left", {})
+        left = get_node(node, "left")
         i = 0
         while i < len(ops):
             op = ops[i]
             comparator = comparators[i]
-            op_type = op.get("_type", "")
+            op_type = get_str(op, "_type")
             if op_type in ("Is", "IsNot"):
                 if not is_singleton_constant(left) and not is_singleton_constant(
                     comparator
@@ -946,7 +986,7 @@ class Verifier:
             left = comparator
             i += 1
         # Visit children
-        self.visit(node.get("left", {}))
+        self.visit(get_node(node, "left"))
         j = 0
         while j < len(comparators):
             self.visit(comparators[j])
@@ -954,7 +994,7 @@ class Verifier:
 
     def visit_BoolOp(self, node: ASTNode) -> None:
         """Check boolean operation constraints."""
-        values = node.get("values", [])
+        values = get_nodes(node, "values")
         j = 0
         while j < len(values):
             self.visit(values[j])
@@ -962,13 +1002,16 @@ class Verifier:
 
     def visit_Assign(self, node: ASTNode) -> None:
         """Check assignment constraints."""
-        targets = node.get("targets", [])
-        value = node.get("value", {})
+        targets = get_nodes(node, "targets")
+        value = get_node(node, "value")
         # Check tuple unpack from variable (allowed if guarded by `if var:`)
         if len(targets) == 1:
             target = targets[0]
-            if target.get("_type") == "Tuple" and value.get("_type") == "Name":
-                var_name = value.get("id", "")
+            if (
+                get_str(target, "_type") == "Tuple"
+                and get_str(value, "_type") == "Name"
+            ):
+                var_name = get_str(value, "id")
                 if var_name not in self.guarded_vars:
                     self.error(
                         node,
@@ -984,84 +1027,92 @@ class Verifier:
 
     def visit_AnnAssign(self, node: ASTNode) -> None:
         """Check annotated assignment constraints."""
-        annotation = node.get("annotation")
-        target = node.get("target", {})
+        target = get_node(node, "target")
         # Track annotated local variables
-        if self.in_function and target.get("_type") == "Name":
-            target_name = target.get("id")
-            if target_name is not None:
+        if self.in_function and get_str(target, "_type") == "Name":
+            target_name = get_str(target, "id")
+            if target_name != "":
                 self.annotated_locals.add(target_name)
         # Check bare collection
-        if is_bare_collection(annotation):
-            target_name = target.get("id", "?")
-            self.error(
-                node,
-                "types",
-                "bare "
-                + annotation.get("id", "")
-                + ": "
-                + target_name
-                + " needs type parameter",
-            )
-        # Visit children
-        self.visit(target)
-        if annotation is not None:
+        if _has_present(node, "annotation"):
+            annotation = get_node(node, "annotation")
+            if is_bare_collection(annotation):
+                t_name = get_str(target, "id")
+                if t_name == "":
+                    t_name = "?"
+                self.error(
+                    node,
+                    "types",
+                    "bare "
+                    + get_str(annotation, "id")
+                    + ": "
+                    + t_name
+                    + " needs type parameter",
+                )
+            # Visit children
+            self.visit(target)
             self.visit(annotation)
-        value = node.get("value")
-        if value is not None:
-            self.visit(value)
+        else:
+            self.visit(target)
+        if _has_present(node, "value"):
+            self.visit(get_node(node, "value"))
 
     def _is_valid_file_open(self, node: ASTNode) -> bool:
         """Check if a With node is the allowed with-open file I/O idiom."""
-        items = node.get("items", [])
+        items = get_nodes(node, "items")
         if len(items) != 1:
             return False
         item = items[0]
-        ctx_expr = item.get("context_expr", {})
-        opt_vars = item.get("optional_vars")
-        if get_name_id(ctx_expr.get("func", {})) != "open":
+        ctx_expr = get_node(item, "context_expr")
+        if not _has_present(item, "optional_vars"):
             return False
-        if opt_vars is None or get_name_id(opt_vars) is None:
+        opt_vars = get_node(item, "optional_vars")
+        if get_name_id(get_node(ctx_expr, "func")) != "open":
+            return False
+        if get_name_id(opt_vars) is None:
             return False
         handle = get_name_id(opt_vars)
-        args = ctx_expr.get("args", [])
+        args = get_nodes(ctx_expr, "args")
         if len(args) != 2:
             return False
         mode_node = args[1]
-        if mode_node.get("_type") != "Constant":
+        if get_str(mode_node, "_type") != "Constant":
             return False
-        mode = mode_node.get("value")
+        mode = get_str(mode_node, "value")
         if mode not in ("rb", "w", "wb"):
             return False
-        body = node.get("body", [])
+        body = get_nodes(node, "body")
         if len(body) != 1:
             return False
         stmt = body[0]
         if mode == "rb":
-            if stmt.get("_type") != "Assign":
+            if get_str(stmt, "_type") != "Assign":
                 return False
-            val = stmt.get("value", {})
-            if val.get("_type") != "Call":
+            val = get_node(stmt, "value")
+            if get_str(val, "_type") != "Call":
                 return False
-            func = val.get("func", {})
-            if func.get("_type") != "Attribute" or func.get("attr") != "read":
+            func = get_node(val, "func")
+            if get_str(func, "_type") != "Attribute" or get_str(func, "attr") != "read":
                 return False
-            if get_name_id(func.get("value", {})) != handle:
+            if get_name_id(get_node(func, "value")) != handle:
                 return False
-            if len(val.get("args", [])) != 0:
+            if len(get_nodes(val, "args")) != 0:
                 return False
         else:
-            if stmt.get("_type") != "Expr":
+            if get_str(stmt, "_type") != "Expr":
                 return False
-            call = stmt.get("value", {})
-            if call.get("_type") != "Call":
+            call = get_node(stmt, "value")
+            if get_str(call, "_type") != "Call":
                 return False
-            func = call.get("func", {})
-            if func.get("_type") != "Attribute" or func.get("attr") != "write":
+            func = get_node(call, "func")
+            if (
+                get_str(func, "_type") != "Attribute"
+                or get_str(func, "attr") != "write"
+            ):
                 return False
-            if get_name_id(func.get("value", {})) != handle:
+            if get_name_id(get_node(func, "value")) != handle:
                 return False
-            if len(call.get("args", [])) != 1:
+            if len(get_nodes(call, "args")) != 1:
                 return False
         return True
 
@@ -1074,10 +1125,10 @@ class Verifier:
             return
         old = self.in_file_open
         self.in_file_open = True
-        items = node.get("items", [])
-        ctx_expr = items[0].get("context_expr", {})
+        items = get_nodes(node, "items")
+        ctx_expr = get_node(items[0], "context_expr")
         self.visit(ctx_expr)
-        body = node.get("body", [])
+        body = get_nodes(node, "body")
         i = 0
         while i < len(body):
             self.visit(body[i])
@@ -1087,21 +1138,19 @@ class Verifier:
     def visit_For(self, node: ASTNode) -> None:
         """Check for loop constraints."""
         # Check loop else
-        orelse = node.get("orelse", [])
+        orelse = get_nodes(node, "orelse")
         if len(orelse) > 0:
             self.error(node, "control", "loop else: use flag variable instead")
         # Visit children
-        target = node.get("target")
-        if target is not None:
-            self.visit(target)
-        iter_node = node.get("iter")
-        if iter_node is not None:
+        if _has_present(node, "target"):
+            self.visit(get_node(node, "target"))
+        if _has_present(node, "iter"):
             # Set context flag for enumerate/zip in for-loop iter
             old_in_for_iter = self.in_for_iter
             self.in_for_iter = True
-            self.visit(iter_node)
+            self.visit(get_node(node, "iter"))
             self.in_for_iter = old_in_for_iter
-        body = node.get("body", [])
+        body = get_nodes(node, "body")
         old_in_for_body = self.in_for_body
         self.in_for_body = True
         i = 0
@@ -1117,14 +1166,13 @@ class Verifier:
     def visit_While(self, node: ASTNode) -> None:
         """Check while loop constraints."""
         # Check loop else
-        orelse = node.get("orelse", [])
+        orelse = get_nodes(node, "orelse")
         if len(orelse) > 0:
             self.error(node, "control", "loop else: use flag variable instead")
         # Visit children
-        test = node.get("test")
-        if test is not None:
-            self.visit(test)
-        body = node.get("body", [])
+        if _has_present(node, "test"):
+            self.visit(get_node(node, "test"))
+        body = get_nodes(node, "body")
         i = 0
         while i < len(body):
             self.visit(body[i])
@@ -1136,7 +1184,7 @@ class Verifier:
 
     def visit_Name(self, node: ASTNode) -> None:
         """Check for banned type names like Any."""
-        name_id = node.get("id", "")
+        name_id = get_str(node, "id")
         if name_id in BANNED_TYPE_NAMES:
             self.error(
                 node,
@@ -1153,9 +1201,8 @@ class Verifier:
                 "yield only allowed in for-loop body (structural recursion)",
             )
         # Visit the yielded value
-        value = node.get("value")
-        if value is not None:
-            self.visit(value)
+        if _has_present(node, "value"):
+            self.visit(get_node(node, "value"))
 
     def visit_YieldFrom(self, node: ASTNode) -> None:
         """Check yield from - allowed only in for-loop body (structural recursion)."""
@@ -1166,57 +1213,57 @@ class Verifier:
                 "yield from only allowed in for-loop body (structural recursion)",
             )
         # Visit the yielded value
-        value = node.get("value")
-        if value is not None:
-            self.visit(value)
+        if _has_present(node, "value"):
+            self.visit(get_node(node, "value"))
 
     def visit_If(self, node: ASTNode) -> None:
         """Check if statement and track guarded variables for tuple unpacking."""
-        test = node.get("test")
-        body = node.get("body", [])
-        orelse = node.get("orelse", [])
+        has_test = _has_present(node, "test")
+        body = get_nodes(node, "body")
+        orelse = get_nodes(node, "orelse")
         # Check if condition guards a variable for tuple unpacking
         # Patterns: `if var:`, `if var is not None:`, `if (var := call()) is not None:`
         guarded_var: str | None = None
-        if test is not None:
-            test_type = test.get("_type", "")
+        if has_test:
+            test = get_node(node, "test")
+            test_type = get_str(test, "_type")
             if test_type == "Name":
                 # Simple: `if var:`
-                guarded_var = test.get("id")
+                guarded_var = get_str(test, "id")
             elif test_type == "NamedExpr":
                 # Walrus: `if (var := call()):`
-                target = test.get("target", {})
-                if target.get("_type") == "Name":
-                    guarded_var = target.get("id")
+                target = get_node(test, "target")
+                if get_str(target, "_type") == "Name":
+                    guarded_var = get_str(target, "id")
             elif test_type == "Compare":
                 # Check for `var is not None` or `(var := ...) is not None`
-                left = test.get("left", {})
-                ops = test.get("ops", [])
-                comparators = test.get("comparators", [])
+                left = get_node(test, "left")
+                ops = get_nodes(test, "ops")
+                comparators = get_nodes(test, "comparators")
                 if len(ops) == 1 and len(comparators) == 1:
                     op = ops[0]
                     comp = comparators[0]
-                    if op.get("_type") == "IsNot" and is_none_constant(comp):
+                    if get_str(op, "_type") == "IsNot" and is_none_constant(comp):
                         # Left side is the guarded expression
-                        left_type = left.get("_type", "")
+                        left_type = get_str(left, "_type")
                         if left_type == "Name":
-                            guarded_var = left.get("id")
+                            guarded_var = get_str(left, "id")
                         elif left_type == "NamedExpr":
                             # Walrus operator: (var := call()) is not None
-                            target = left.get("target", {})
-                            if target.get("_type") == "Name":
-                                guarded_var = target.get("id")
+                            target = get_node(left, "target")
+                            if get_str(target, "_type") == "Name":
+                                guarded_var = get_str(target, "id")
         # Visit condition
-        if test is not None:
-            self.visit(test)
+        if has_test:
+            self.visit(get_node(node, "test"))
         # Visit then-branch with guarded variable in scope
-        if guarded_var is not None:
+        if guarded_var is not None and guarded_var != "":
             self.guarded_vars.add(guarded_var)
         i = 0
         while i < len(body):
             self.visit(body[i])
             i += 1
-        if guarded_var is not None:
+        if guarded_var is not None and guarded_var != "":
             self.guarded_vars.discard(guarded_var)
         # Visit else-branch (no guarding)
         j = 0
@@ -1227,16 +1274,16 @@ class Verifier:
     def visit_Try(self, node: ASTNode) -> None:
         """Check try statement constraints."""
         # Check try else
-        orelse = node.get("orelse", [])
+        orelse = get_nodes(node, "orelse")
         if len(orelse) > 0:
             self.error(node, "control", "try else: move else code after try block")
         # Visit children
-        body = node.get("body", [])
+        body = get_nodes(node, "body")
         i = 0
         while i < len(body):
             self.visit(body[i])
             i += 1
-        handlers = node.get("handlers", [])
+        handlers = get_nodes(node, "handlers")
         j = 0
         while j < len(handlers):
             self.visit(handlers[j])
@@ -1245,7 +1292,7 @@ class Verifier:
         while k < len(orelse):
             self.visit(orelse[k])
             k += 1
-        finalbody = node.get("finalbody", [])
+        finalbody = get_nodes(node, "finalbody")
         m = 0
         while m < len(finalbody):
             self.visit(finalbody[m])
@@ -1254,13 +1301,11 @@ class Verifier:
     def visit_ExceptHandler(self, node: ASTNode) -> None:
         """Check except handler constraints."""
         # Check bare except
-        exc_type = node.get("type")
-        if exc_type is None:
+        if not _has_present(node, "type"):
             self.error(node, "control", "bare except: specify exception type")
-        # Visit children
-        if exc_type is not None:
-            self.visit(exc_type)
-        body = node.get("body", [])
+        else:
+            self.visit(get_node(node, "type"))
+        body = get_nodes(node, "body")
         i = 0
         while i < len(body):
             self.visit(body[i])
@@ -1268,47 +1313,42 @@ class Verifier:
 
     def visit_Import(self, node: ASTNode) -> None:
         """Check import constraints. Only 'import sys/os' allowed."""
-        names = node.get("names", [])
+        names = get_nodes(node, "names")
         i = 0
         while i < len(names):
             alias = names[i]
-            if isinstance(alias, dict):
-                name = alias.get("name", "")
-                asname = alias.get("asname")
-                if asname is not None:
-                    self.error(
-                        node,
-                        "import",
-                        "import "
-                        + name
-                        + " as "
-                        + str(asname)
-                        + ": module aliases not allowed",
-                    )
-                elif name not in IMPORT_ONLY_MODULES:
-                    self.error(
-                        node,
-                        "import",
-                        "import " + name + ": not allowed, code must be self-contained",
-                    )
+            name = get_str(alias, "name")
+            asname = get_str(alias, "asname")
+            if asname != "":
+                self.error(
+                    node,
+                    "import",
+                    "import " + name + " as " + asname + ": module aliases not allowed",
+                )
+            elif name not in IMPORT_ONLY_MODULES:
+                self.error(
+                    node,
+                    "import",
+                    "import " + name + ": not allowed, code must be self-contained",
+                )
             i += 1
 
     def visit_ImportFrom(self, node: ASTNode) -> None:
         """Check from-import syntax: no stars, no from sys/os, no banned modules."""
         # Check for star imports
-        import_names = node.get("names", [])
+        import_names = get_nodes(node, "names")
         i = 0
         while i < len(import_names):
             alias = import_names[i]
-            if isinstance(alias, dict) and alias.get("name") == "*":
+            if get_str(alias, "name") == "*":
                 self.error(node, "import", "star import: import names explicitly")
                 return
             i += 1
-        level = node.get("level", 0)
+        level = get_int(node, "level")
         if level > 0:
             return
-        module = node.get("module")
-        if module is None:
+        module = get_str(node, "module")
+        if module == "":
             return
         top_module = module.split(".")[0]
         # sys/os can only be used with `import X`, not `from X import ...`
@@ -1332,7 +1372,7 @@ class Verifier:
 
     def visit_Attribute(self, node: ASTNode) -> None:
         """Check attribute access constraints."""
-        attr = node.get("attr", "")
+        attr = get_str(node, "attr")
         # Check __class__
         if attr == "__class__":
             self.error(node, "reflection", "__class__: use isinstance() instead")
@@ -1340,19 +1380,16 @@ class Verifier:
         if attr == "__dict__":
             self.error(node, "reflection", "__dict__: direct attribute access only")
         # Visit value
-        value = node.get("value")
-        if value is not None:
-            self.visit(value)
+        if _has_present(node, "value"):
+            self.visit(get_node(node, "value"))
 
     def visit_BinOp(self, node: ASTNode) -> None:
         """Visit binary operation children."""
         # Visit children
-        left = node.get("left")
-        right = node.get("right")
-        if left is not None:
-            self.visit(left)
-        if right is not None:
-            self.visit(right)
+        if _has_present(node, "left"):
+            self.visit(get_node(node, "left"))
+        if _has_present(node, "right"):
+            self.visit(get_node(node, "right"))
 
     def visit_Delete(self, node: ASTNode) -> None:
         """Check delete statement - banned."""
@@ -1360,7 +1397,7 @@ class Verifier:
 
     def visit_JoinedStr(self, node: ASTNode) -> None:
         """Visit f-string, check children."""
-        values = node.get("values", [])
+        values = get_nodes(node, "values")
         i = 0
         while i < len(values):
             self.visit(values[i])
@@ -1368,8 +1405,9 @@ class Verifier:
 
     def visit_Constant(self, node: ASTNode) -> None:
         """Check constant values - reject invalid Unicode in strings."""
-        value = node.get("value")
-        if isinstance(value, str):
+        raw = node.get("value")
+        if isinstance(raw, JStr):
+            value = raw.value
             i = 0
             while i < len(value):
                 code = ord(value[i])
@@ -1387,15 +1425,13 @@ class Verifier:
 
     def visit_FormattedValue(self, node: ASTNode) -> None:
         """Check f-string replacement field: {expr} only, no !conv or :spec."""
-        conversion = node.get("conversion", -1)
+        conversion = get_int(node, "conversion")
         if conversion != -1:
             self.error(node, "syntax", "f-string !conversion not supported")
-        format_spec = node.get("format_spec")
-        if format_spec is not None:
+        if _has_present(node, "format_spec"):
             self.error(node, "syntax", "f-string :format_spec not supported")
-        value = node.get("value")
-        if value is not None:
-            self.visit(value)
+        if _has_present(node, "value"):
+            self.visit(get_node(node, "value"))
 
     def visit_GeneratorExp(self, node: ASTNode) -> None:
         """Check generator expression - only allowed in eager consumer context."""
@@ -1406,50 +1442,42 @@ class Verifier:
                 "generator expression only allowed in eager consumer (tuple, list, any, all, etc.)",
             )
         # Visit children (elt, generators)
-        elt = node.get("elt")
-        if elt is not None:
-            self.visit(elt)
-        generators = node.get("generators", [])
+        if _has_present(node, "elt"):
+            self.visit(get_node(node, "elt"))
+        generators = get_nodes(node, "generators")
         i = 0
         while i < len(generators):
             gen = generators[i]
-            if isinstance(gen, dict):
-                target = gen.get("target")
-                if target is not None:
-                    self.visit(target)
-                iter_node = gen.get("iter")
-                if iter_node is not None:
-                    self.visit(iter_node)
-                ifs = gen.get("ifs", [])
-                j = 0
-                while j < len(ifs):
-                    self.visit(ifs[j])
-                    j += 1
+            if _has_present(gen, "target"):
+                self.visit(get_node(gen, "target"))
+            if _has_present(gen, "iter"):
+                self.visit(get_node(gen, "iter"))
+            ifs = get_nodes(gen, "ifs")
+            j = 0
+            while j < len(ifs):
+                self.visit(ifs[j])
+                j += 1
             i += 1
 
     def visit_ListComp(self, node: ASTNode) -> None:
         """List comprehensions are eager - set context for enumerate/zip in generators."""
         old_in_eager = self.in_eager_consumer
         self.in_eager_consumer = True
-        elt = node.get("elt")
-        if elt is not None:
-            self.visit(elt)
-        generators = node.get("generators", [])
+        if _has_present(node, "elt"):
+            self.visit(get_node(node, "elt"))
+        generators = get_nodes(node, "generators")
         i = 0
         while i < len(generators):
             gen = generators[i]
-            if isinstance(gen, dict):
-                target = gen.get("target")
-                if target is not None:
-                    self.visit(target)
-                iter_node = gen.get("iter")
-                if iter_node is not None:
-                    self.visit(iter_node)
-                ifs = gen.get("ifs", [])
-                j = 0
-                while j < len(ifs):
-                    self.visit(ifs[j])
-                    j += 1
+            if _has_present(gen, "target"):
+                self.visit(get_node(gen, "target"))
+            if _has_present(gen, "iter"):
+                self.visit(get_node(gen, "iter"))
+            ifs = get_nodes(gen, "ifs")
+            j = 0
+            while j < len(ifs):
+                self.visit(ifs[j])
+                j += 1
             i += 1
         self.in_eager_consumer = old_in_eager
 
@@ -1457,25 +1485,21 @@ class Verifier:
         """Set comprehensions are eager - set context for enumerate/zip in generators."""
         old_in_eager = self.in_eager_consumer
         self.in_eager_consumer = True
-        elt = node.get("elt")
-        if elt is not None:
-            self.visit(elt)
-        generators = node.get("generators", [])
+        if _has_present(node, "elt"):
+            self.visit(get_node(node, "elt"))
+        generators = get_nodes(node, "generators")
         i = 0
         while i < len(generators):
             gen = generators[i]
-            if isinstance(gen, dict):
-                target = gen.get("target")
-                if target is not None:
-                    self.visit(target)
-                iter_node = gen.get("iter")
-                if iter_node is not None:
-                    self.visit(iter_node)
-                ifs = gen.get("ifs", [])
-                j = 0
-                while j < len(ifs):
-                    self.visit(ifs[j])
-                    j += 1
+            if _has_present(gen, "target"):
+                self.visit(get_node(gen, "target"))
+            if _has_present(gen, "iter"):
+                self.visit(get_node(gen, "iter"))
+            ifs = get_nodes(gen, "ifs")
+            j = 0
+            while j < len(ifs):
+                self.visit(ifs[j])
+                j += 1
             i += 1
         self.in_eager_consumer = old_in_eager
 
@@ -1483,28 +1507,23 @@ class Verifier:
         """Dict comprehensions are eager - set context for enumerate/zip in generators."""
         old_in_eager = self.in_eager_consumer
         self.in_eager_consumer = True
-        key = node.get("key")
-        if key is not None:
-            self.visit(key)
-        value = node.get("value")
-        if value is not None:
-            self.visit(value)
-        generators = node.get("generators", [])
+        if _has_present(node, "key"):
+            self.visit(get_node(node, "key"))
+        if _has_present(node, "value"):
+            self.visit(get_node(node, "value"))
+        generators = get_nodes(node, "generators")
         i = 0
         while i < len(generators):
             gen = generators[i]
-            if isinstance(gen, dict):
-                target = gen.get("target")
-                if target is not None:
-                    self.visit(target)
-                iter_node = gen.get("iter")
-                if iter_node is not None:
-                    self.visit(iter_node)
-                ifs = gen.get("ifs", [])
-                j = 0
-                while j < len(ifs):
-                    self.visit(ifs[j])
-                    j += 1
+            if _has_present(gen, "target"):
+                self.visit(get_node(gen, "target"))
+            if _has_present(gen, "iter"):
+                self.visit(get_node(gen, "iter"))
+            ifs = get_nodes(gen, "ifs")
+            j = 0
+            while j < len(ifs):
+                self.visit(ifs[j])
+                j += 1
             i += 1
         self.in_eager_consumer = old_in_eager
 
@@ -1536,35 +1555,26 @@ class ImportInfo:
 def extract_imports(ast_dict: ASTNode) -> list[ImportInfo]:
     """Extract all from-imports from an AST."""
     result: list[ImportInfo] = []
-    body = ast_dict.get("body", [])
-    if not isinstance(body, list):
-        return result
+    body = get_nodes(ast_dict, "body")
     i = 0
     while i < len(body):
         node = body[i]
-        if isinstance(node, dict) and node.get("_type") == "ImportFrom":
-            module = node.get("module")
-            if module is None:
-                module = ""
-            level = node.get("level", 0)
-            if not isinstance(level, int):
-                level = 0
-            lineno = node.get("lineno", 1)
-            if not isinstance(lineno, int):
+        if get_str(node, "_type") == "ImportFrom":
+            module = get_str(node, "module")
+            level = get_int(node, "level")
+            lineno = get_int(node, "lineno")
+            if lineno == 0:
                 lineno = 1
-            col = node.get("col_offset", 0)
-            if not isinstance(col, int):
-                col = 0
+            col = get_int(node, "col_offset")
             if module == "" and level > 0:
                 # from . import X, Y - each name is a module
-                names = node.get("names", [])
+                names = get_nodes(node, "names")
                 j = 0
                 while j < len(names):
                     name_node = names[j]
-                    if isinstance(name_node, dict):
-                        name = name_node.get("name", "")
-                        if name != "" and name != "*":
-                            result.append(ImportInfo(name, level, lineno, col))
+                    name = get_str(name_node, "name")
+                    if name != "" and name != "*":
+                        result.append(ImportInfo(name, level, lineno, col))
                     j += 1
             else:
                 result.append(ImportInfo(module, level, lineno, col))

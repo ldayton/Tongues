@@ -95,8 +95,8 @@ struct Span {
     start: int
     end: int
 
-    fn Len(self) -> int {
-        return self.end - self.start
+    fn Len(this) -> int {
+        return this.end - this.start
     }
 }
 fn Main() -> void {
@@ -104,7 +104,7 @@ fn Main() -> void {
     let f: fn[int] = s.Len
 }
 ---
-error: cannot capture 'self'
+error: cannot capture 'this'
 ---
 
 === error: fn type mismatch

@@ -12,7 +12,7 @@ from pathlib import Path
 # Add project root to path (resolve symlinks for Homebrew compatibility)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.tongues import main
+from src.tongues import main, main_project, parse_args
 from src.frontend.parse import parse
 from src.frontend.subset import (
     verify as verify_subset,
@@ -94,6 +94,46 @@ def verify_project(path: str) -> ProjectVerifyResult:
     return result
 
 
+def gather_project_files(project_root: str) -> list[tuple[str, str]]:
+    """Recursively collect .py files as (relpath, source) pairs, sorted."""
+    results: list[tuple[str, str]] = []
+    for dirpath, dirnames, filenames in os.walk(project_root):
+        # Filter out hidden dirs and __pycache__
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if not d.startswith(".") and d != "__pycache__"
+        )
+        for fname in sorted(filenames):
+            if not fname.endswith(".py"):
+                continue
+            if fname.startswith("."):
+                continue
+            full_path = os.path.join(dirpath, fname)
+            relpath = os.path.relpath(full_path, project_root)
+            with open(full_path) as f:
+                source = f.read()
+            if should_skip_file(source):
+                continue
+            results.append((relpath, source))
+    results.sort(key=lambda x: x[0])
+    return results
+
+
+def _find_input_arg(args: list[str]) -> str | None:
+    """Find positional input argument, skipping flags and their values."""
+    flags_with_value = {"--target", "--stop-at", "-o", "--output"}
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in flags_with_value:
+            i += 2
+        elif arg.startswith("-"):
+            i += 1
+        else:
+            return arg
+    return None
+
+
 if __name__ == "__main__":
     # Dispatch taytsh subcommand
     if len(sys.argv) > 1 and sys.argv[1] == "taytsh":
@@ -114,5 +154,15 @@ if __name__ == "__main__":
                 print(e, file=sys.stderr)
             sys.exit(1)
         sys.exit(0)
+
+    # Check if positional arg is a directory (project mode)
+    input_arg = _find_input_arg(sys.argv[1:])
+    if input_arg is not None and os.path.isdir(input_arg):
+        target, stop_at, strict_math, strict_tostring, _, _, output_file = parse_args()
+        files = gather_project_files(input_arg)
+        if not files:
+            print("error: no .py files found in directory", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(main_project(files, target, stop_at, strict_math, strict_tostring, output_file))
 
     sys.exit(main())

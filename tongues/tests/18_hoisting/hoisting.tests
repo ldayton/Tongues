@@ -369,8 +369,8 @@ Main.body.1.has_continue = true
 === method rune vars
 struct Finder {
     text: string
-    fn CharAt(self, i: int) -> rune {
-        return self.text[i]
+    fn CharAt(this, i: int) -> rune {
+        return this.text[i]
     }
 }
 fn Main() -> void {
@@ -384,9 +384,9 @@ Finder.CharAt.rune_vars = text
 === method has continue
 struct Processor {
     items: list[int]
-    fn Run(self) -> int {
+    fn Run(this) -> int {
         let total: int = 0
-        for x in self.items {
+        for x in this.items {
             if x < 0 {
                 continue
             }

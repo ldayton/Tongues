@@ -21,11 +21,12 @@ Options:
 
 ## Input / Output
 
-| Source        | Syntax              | Behavior                          |
-| ------------- | ------------------- | --------------------------------- |
-| Positional    | `tongues foo.py`    | Read from `foo.py`                |
-| Stdin         | `tongues < foo.py`  | Read from stdin (no file argument)|
-| Both omitted  | `tongues`           | Read from stdin                   |
+| Source        | Syntax              | Behavior                                                     |
+| ------------- | ------------------- | ------------------------------------------------------------ |
+| File          | `tongues foo.py`    | Read from `foo.py`                                           |
+| Directory     | `tongues ./src`     | Gather .py files, compile as project (see `04a-project-and-imports.md`) |
+| Stdin         | `tongues < foo.py`  | Read from stdin (no file argument)                           |
+| Both omitted  | `tongues`           | Read from stdin                                              |
 
 | Destination   | Syntax              | Behavior                          |
 | ------------- | ------------------- | --------------------------------- |
@@ -64,7 +65,7 @@ The `--stop-at` flag halts the pipeline after the named phase and outputs the in
 
 | Phase        | Output Format             |
 | ------------ | ------------------------- |
-| `parse`      | JSON: dict-based AST      |
+| `parse`      | JSON: dict-based AST (project mode: JSON array of `{path, ast}` objects) |
 | `subset`     | Nothing (validation only) |
 | `names`      | JSON: name table          |
 | `signatures` | JSON: signature table     |
@@ -104,7 +105,7 @@ Files containing `tongues: skip` in the first 5 lines are skipped during `--stop
 | Code | Meaning                                                               |
 | ---- | --------------------------------------------------------------------- |
 | 0    | Success                                                               |
-| 1    | Compilation error (parse failure, subset violation, type error, etc.) |
+| 1    | Compilation error (parse failure, subset violation, type error, unresolved import, name collision, etc.) |
 | 2    | Usage error (unknown flag, unknown target, unknown phase)             |
 
 ## Input Handling
@@ -116,6 +117,7 @@ Files containing `tongues: skip` in the first 5 lines are skipped during `--stop
 | Invalid UTF-8       | error: `invalid utf-8 in input`, exit 1 |
 | No trailing newline | Accepted                                |
 | File not found      | error: `cannot open 'foo.py'`, exit 1   |
+| Empty directory     | error: `no .py files found in directory`, exit 1 |
 
 When both a positional file argument and stdin data are available, the file argument takes precedence and stdin is ignored.
 
@@ -130,3 +132,4 @@ When both a positional file argument and stdin data are available, the file argu
 | Invalid UTF-8   | error: `invalid utf-8 in input`  | 1    |
 | File not found  | error: `cannot open 'foo.py'`    | 1    |
 | Output failure  | error: `cannot write 'out.go'`   | 1    |
+| Empty directory | error: `no .py files found in directory` | 1 |

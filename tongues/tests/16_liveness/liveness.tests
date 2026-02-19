@@ -487,9 +487,9 @@ Main.body.2.tuple_unused_indices = 0,1
 === let in method
 struct Calc {
     value: int
-    fn Compute(self) -> int {
+    fn Compute(this) -> int {
         let temp: int = 0
-        temp = self.value * 2
+        temp = this.value * 2
         return temp
     }
 }
@@ -504,8 +504,8 @@ Calc.Compute.lets.temp.initial_value_unused = true
 === let in method init used
 struct Calc {
     value: int
-    fn Compute(self) -> int {
-        let temp: int = self.value
+    fn Compute(this) -> int {
+        let temp: int = this.value
         return temp * 2
     }
 }
@@ -520,9 +520,9 @@ Calc.Compute.lets.temp.initial_value_unused = false
 === catch in method
 struct Parser {
     input: string
-    fn TryParse(self) -> int {
+    fn TryParse(this) -> int {
         try {
-            return ParseInt(self.input, 10)
+            return ParseInt(this.input, 10)
         } catch e: ValueError {
             return -1
         }

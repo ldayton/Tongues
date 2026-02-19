@@ -70,7 +70,7 @@ IsNil(x)
 def f(x: int | None) -> bool:
     return x is not None
 ---
-!IsNil(x)
+x != nil
 ---
 
 === isinstance check

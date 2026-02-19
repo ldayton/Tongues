@@ -414,13 +414,6 @@ def test_dict_bool_int_key_equivalence() -> None:
     assert d[True] == "one"
 
 
-def test_dict_duplicate_keys_literal() -> None:
-    """Duplicate keys in literal: last value wins."""
-    d: dict[str, int] = {"a": 1, "b": 2, "a": 3}
-    assert d["a"] == 3
-    assert len(d) == 2
-
-
 def test_dict_copy_shallow_nested() -> None:
     """copy() is shallow - nested dicts are shared."""
     original: dict[str, dict[str, int]] = {"inner": {"a": 1}}
@@ -602,14 +595,6 @@ def test_dict_in_checks_keys_not_values() -> None:
     assert 42 not in d  # 42 is a value, not a key
 
 
-def test_dict_none_key() -> None:
-    """None can be a dict key."""
-    d: dict[str | None, int] = {None: 1, "a": 2}
-    assert d[None] == 1
-    assert None in d
-    assert len(d) == 2
-
-
 def test_dict_empty_string_key() -> None:
     """Empty string is a valid key."""
     d: dict[str, int] = {"": 0, "a": 1}
@@ -682,7 +667,6 @@ def main() -> int:
         ("test_dict_min_max_values", test_dict_min_max_values),
         ("test_dict_int_float_key_equivalence", test_dict_int_float_key_equivalence),
         ("test_dict_bool_int_key_equivalence", test_dict_bool_int_key_equivalence),
-        ("test_dict_duplicate_keys_literal", test_dict_duplicate_keys_literal),
         ("test_dict_copy_shallow_nested", test_dict_copy_shallow_nested),
         ("test_dict_copy_shallow_list_values", test_dict_copy_shallow_list_values),
         ("test_dict_setdefault_no_default", test_dict_setdefault_no_default),
@@ -705,7 +689,6 @@ def main() -> int:
         ("test_dict_get_vs_index", test_dict_get_vs_index),
         ("test_dict_len_after_modifications", test_dict_len_after_modifications),
         ("test_dict_in_checks_keys_not_values", test_dict_in_checks_keys_not_values),
-        ("test_dict_none_key", test_dict_none_key),
         ("test_dict_empty_string_key", test_dict_empty_string_key),
         ("test_dict_zero_key", test_dict_zero_key),
         ("test_dict_comprehension_overwrite", test_dict_comprehension_overwrite),

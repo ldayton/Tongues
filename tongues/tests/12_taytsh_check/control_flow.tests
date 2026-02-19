@@ -142,7 +142,7 @@ ok
 
 === valid: throw
 fn Main() -> void {
-    throw "error"
+    throw ValueError("error")
 }
 ---
 ok
@@ -328,7 +328,7 @@ fn Main() -> void {
 ok
 ---
 
-=== valid: catch nil
+=== error: throw nil
 fn Main() -> void {
     try {
         throw nil
@@ -337,7 +337,7 @@ fn Main() -> void {
     }
 }
 ---
-ok
+error: cannot throw
 ---
 
 === error: for over bool
@@ -474,7 +474,7 @@ fn Main() -> void {
 ok
 ---
 
-=== valid: throw int
+=== error: throw int
 fn Main() -> void {
     try {
         throw 42
@@ -483,10 +483,10 @@ fn Main() -> void {
     }
 }
 ---
-ok
+error: cannot throw
 ---
 
-=== valid: throw nil
+=== error: throw nil
 fn Main() -> void {
     try {
         throw nil
@@ -495,16 +495,16 @@ fn Main() -> void {
     }
 }
 ---
-ok
+error: cannot throw
 ---
 
 === error: multiple catch overlapping catch-all then specific
 fn Main() -> void {
     try {
-        throw 42
+        throw ValueError("bad")
     } catch e {
         WritelnOut("caught")
-    } catch e: int {
+    } catch e: ValueError {
         WritelnOut("unreachable")
     }
 }
