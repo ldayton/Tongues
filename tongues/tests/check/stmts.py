@@ -35,6 +35,7 @@ from src.taytsh.ast import (
     TStringLit,
     TThrowStmt,
     TTryStmt,
+    TUnaryOp,
     TVar,
     TWhileStmt,
     TNilLit,
@@ -240,6 +241,17 @@ class StmtGen:
         )
 
     def _gen_if(self, depth: int) -> TStmt:
+        # Try nil narrowing
+        if self.gen.features.nil_narrowing and self.rng.random() < 0.3:
+            result = self._gen_if_nil_narrow(depth)
+            if result is not None:
+                return result
+        # Try IsType narrowing
+        if self.gen.features.nil_narrowing and self.rng.random() < 0.3:
+            result = self._gen_if_istype(depth)
+            if result is not None:
+                return result
+        # Plain if
         cond = self.gen.expr_gen.gen_expr(BOOL_T)
         self.gen.scope.enter_scope()
         then_body = self.gen_block(
@@ -247,6 +259,135 @@ class StmtGen:
         )
         self.gen.scope.exit_scope()
         if self.rng.random() < 0.5:
+            self.gen.scope.enter_scope()
+            else_body = self.gen_block(
+                self.rng.randint(1, 2), must_return=None, depth=depth + 1
+            )
+            self.gen.scope.exit_scope()
+        else:
+            else_body = None
+        return TIfStmt(
+            pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A
+        )
+
+    def _find_optional_binding(self) -> tuple[str, Type] | None:
+        """Find a binding with optional type T? in scope (no fn types)."""
+        for b in self.gen.scope.all_bindings():
+            if isinstance(b.typ, UnionT) and contains_nil(b.typ):
+                inner = remove_nil(b.typ)
+                if not type_eq(inner, NIL_T) and not self.gen.expr_gen._contains_fn(b.typ):
+                    return (b.name, b.typ)
+        return None
+
+    def _find_interface_binding(self) -> tuple[str, InterfaceT] | None:
+        """Find a binding with interface type in scope."""
+        for b in self.gen.scope.all_bindings():
+            if isinstance(b.typ, InterfaceT):
+                info = self.gen.pool.interface_info_for(b.typ)
+                if info is not None and info.variant_names:
+                    return (b.name, b.typ)
+        return None
+
+    def _gen_if_nil_narrow(self, depth: int) -> TStmt | None:
+        """Generate `if x != nil { ... use narrowed x ... }`."""
+        found = self._find_optional_binding()
+        if found is None:
+            return None
+        var_name, opt_type = found
+        inner = remove_nil(opt_type)
+        cond = TBinaryOp(
+            pos=P,
+            op="!=",
+            left=TVar(pos=P, name=var_name, annotations=A),
+            right=TNilLit(pos=P, annotations=A),
+            annotations=A,
+        )
+        self.gen.scope.enter_scope()
+        self.gen.scope.narrow(var_name, inner)
+        then_body = self.gen_block(
+            self.rng.randint(1, 2), must_return=None, depth=depth + 1
+        )
+        self.gen.scope.exit_scope()
+        if self.rng.random() < 0.4:
+            self.gen.scope.enter_scope()
+            self.gen.scope.narrow(var_name, NIL_T)
+            else_body = self.gen_block(
+                self.rng.randint(1, 2), must_return=None, depth=depth + 1
+            )
+            self.gen.scope.exit_scope()
+        else:
+            else_body = None
+        # Mirror checker's guard narrowing: if then exits early, narrow to nil
+        if else_body is None and self._block_always_exits(then_body):
+            self.gen.scope.narrow(var_name, NIL_T)
+        return TIfStmt(
+            pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A
+        )
+
+    @staticmethod
+    def _block_always_exits(body: list[TStmt]) -> bool:
+        if not body:
+            return False
+        last = body[-1]
+        return isinstance(last, (TReturnStmt, TBreakStmt, TContinueStmt, TThrowStmt))
+
+    def _gen_if_istype(self, depth: int) -> TStmt | None:
+        """Generate `if IsType(x, "V") { ... use x as V ... }`."""
+        found = self._find_interface_binding()
+        if found is None:
+            return None
+        var_name, iface = found
+        info = self.gen.pool.interface_info_for(iface)
+        vname = self.rng.choice(info.variant_names)
+        st = self.gen.pool.struct_for_name(vname)
+        if st is None:
+            return None
+        cond: TExpr = TCall(
+            pos=P,
+            func=TVar(pos=P, name="IsType", annotations=A),
+            args=[
+                TArg(pos=P, name=None, value=TVar(pos=P, name=var_name, annotations=A)),
+                TArg(pos=P, name=None, value=TStringLit(pos=P, value=vname, annotations=A)),
+            ],
+            annotations=A,
+        )
+        # Optionally negate for guard narrowing: if !IsType(x, "V") { return }
+        if (
+            self.gen.current_fn_ret is not None
+            and not self.gen.in_finally
+            and self.rng.random() < 0.3
+        ):
+            neg_cond = TUnaryOp(pos=P, op="!", operand=cond, annotations=A)
+            self.gen.scope.enter_scope()
+            ret = self.gen.current_fn_ret
+            if type_eq(ret, VOID_T):
+                guard_body: list[TStmt] = [TReturnStmt(pos=P, value=None, annotations=A)]
+            else:
+                guard_body = [
+                    TReturnStmt(
+                        pos=P,
+                        value=self.gen.expr_gen.gen_expr(ret),
+                        annotations=A,
+                    )
+                ]
+            self.gen.scope.exit_scope()
+            # After the guard, x is narrowed in the remaining scope
+            self.gen.scope.narrow(var_name, st)
+            return TIfStmt(
+                pos=P,
+                cond=neg_cond,
+                then_body=guard_body,
+                else_body=None,
+                annotations=A,
+            )
+        # Normal IsType: narrow in then-scope
+        self.gen.scope.enter_scope()
+        self.gen.scope.narrow(var_name, st)
+        then_body = self.gen_block(
+            self.rng.randint(1, 2), must_return=None, depth=depth + 1
+        )
+        self.gen.scope.exit_scope()
+        if self.rng.random() < 0.4:
             self.gen.scope.enter_scope()
             else_body = self.gen_block(
                 self.rng.randint(1, 2), must_return=None, depth=depth + 1
