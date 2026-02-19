@@ -332,6 +332,73 @@ def _lookup_method_params(
     return result
 
 
+def _resolve_kwargs_to_positional(
+    pos: Pos,
+    args: list[ASTNode],
+    keywords: list[ASTNode],
+    params: list[ParamInfo] | None,
+    env: "_Env",
+    ctx: "_LowerCtx",
+) -> list[TArg]:
+    """Merge positional args and keyword args into positional TArg list.
+
+    Uses the parameter list to place keyword args in the correct position.
+    Falls back to appending kwargs after positional args if no param info.
+    """
+    if params is not None:
+        # Build slots indexed by param position
+        n = len(params)
+        slots: list[TExpr | None] = [None] * n
+        # Place positional args
+        idx = 0
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if isinstance(a, dict) and idx < n:
+                slots[idx] = _lower_expr(a, env, ctx)
+                idx += 1
+            i += 1
+        # Place keyword args by name lookup
+        i = 0
+        while i < len(keywords):
+            kw = keywords[i]
+            kw_name = get_str(kw, "arg")
+            kw_val = get_node(kw, "value")
+            if kw_name != "" and len(kw_val) > 0:
+                j = 0
+                while j < n:
+                    if params[j].name == kw_name:
+                        slots[j] = _lower_expr(kw_val, env, ctx)
+                        break
+                    j += 1
+            i += 1
+        # Emit non-None slots as positional args
+        result: list[TArg] = []
+        i = 0
+        while i < n:
+            if slots[i] is not None:
+                result.append(TArg(pos, None, slots[i]))
+            i += 1
+        return result
+    # No param info — positional args then kwargs in order (best effort)
+    result: list[TArg] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if isinstance(a, dict):
+            result.append(TArg(pos, None, _lower_expr(a, env, ctx)))
+        i += 1
+    i = 0
+    while i < len(keywords):
+        kw = keywords[i]
+        kw_name = get_str(kw, "arg")
+        kw_val = get_node(kw, "value")
+        if kw_name != "" and len(kw_val) > 0:
+            result.append(TArg(pos, None, _lower_expr(kw_val, env, ctx)))
+        i += 1
+    return result
+
+
 def _type_dict_kind(td: TypeNode) -> str:
     """Get the kind string from a TypeNode for dispatch."""
     if isinstance(td, PrimitiveType):
@@ -2327,27 +2394,11 @@ def _lower_name_call(
     # Regular function call
     lowered_args: list[TArg] = []
     if len(keywords) > 0:
-        # Convert all args to named when keywords are present
         func_info = ctx.sig_result.functions.get(fname)
-        i = 0
-        while i < len(args):
-            a = args[i]
-            if isinstance(a, dict):
-                pname: str | None = None
-                if func_info is not None and i < len(func_info.params):
-                    pname = _safe_name(func_info.params[i].name)
-                lowered_args.append(TArg(pos, pname, _lower_expr(a, env, ctx)))
-            i += 1
-        i = 0
-        while i < len(keywords):
-            kw = keywords[i]
-            kw_name = get_str(kw, "arg")
-            kw_val = get_node(kw, "value")
-            if kw_name != "" and len(kw_val) > 0:
-                lowered_args.append(
-                    TArg(pos, _safe_name(kw_name), _lower_expr(kw_val, env, ctx))
-                )
-            i += 1
+        params = func_info.params if func_info is not None else None
+        lowered_args = _resolve_kwargs_to_positional(
+            pos, args, keywords, params, env, ctx
+        )
     else:
         i = 0
         while i < len(args):
@@ -2576,27 +2627,10 @@ def _lower_method_call(
     # Struct method call
     lowered_args: list[TArg] = []
     if len(keywords) > 0:
-        # Convert all args to named when keywords are present
         method_params = _lookup_method_params(actual_type, method_name, ctx)
-        i = 0
-        while i < len(args):
-            a = args[i]
-            if isinstance(a, dict):
-                pname: str | None = None
-                if method_params is not None and i < len(method_params):
-                    pname = _safe_name(method_params[i].name)
-                lowered_args.append(TArg(pos, pname, _lower_expr(a, env, ctx)))
-            i += 1
-        i = 0
-        while i < len(keywords):
-            kw = keywords[i]
-            kw_name = get_str(kw, "arg")
-            kw_val = get_node(kw, "value")
-            if kw_name != "" and len(kw_val) > 0:
-                lowered_args.append(
-                    TArg(pos, _safe_name(kw_name), _lower_expr(kw_val, env, ctx))
-                )
-            i += 1
+        lowered_args = _resolve_kwargs_to_positional(
+            pos, args, keywords, method_params, env, ctx
+        )
     else:
         i = 0
         while i < len(args):
@@ -3328,16 +3362,12 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         expr = _lower_expr(node, env, ctx)
         if isinstance(expr, TVar):
             return TBinaryOp(pos, "!=", expr, TNilLit(pos, _EMPTY_ANN), _EMPTY_ANN)
-        return _make_named_call(
-            pos, "IsNil", [expr], [("negated", TBoolLit(pos, True, _EMPTY_ANN))]
-        )
+        return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [expr]), _EMPTY_ANN)
     if _is_interface_type(expr_type):
         expr = _lower_expr(node, env, ctx)
         if isinstance(expr, TVar):
             return TBinaryOp(pos, "!=", expr, TNilLit(pos, _EMPTY_ANN), _EMPTY_ANN)
-        return _make_named_call(
-            pos, "IsNil", [expr], [("negated", TBoolLit(pos, True, _EMPTY_ANN))]
-        )
+        return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [expr]), _EMPTY_ANN)
     # Inline truthiness for known types
     if _is_type_dict(expr_type, ["string"]):
         expr = _lower_expr(node, env, ctx)

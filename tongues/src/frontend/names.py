@@ -395,7 +395,9 @@ class NameResolver:
                     if base_name != "":
                         bases.append(base_name)
                     bi += 1
-                info = NameInfo(name, "class", "module", lineno, col, "", "", bases)
+                info = NameInfo(
+                    name, "class", "module", lineno, col, "", "", bases=bases
+                )
                 self._register_module_name(stmt, info)
             elif node_type == "FunctionDef":
                 name = get_str(stmt, "name")
