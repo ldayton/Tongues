@@ -162,8 +162,13 @@ class StmtGen:
 
     def _gen_let(self, depth: int = 0) -> TStmt:
         typ = self.gen.pool.random_value_type()
-        if self.gen.in_finally and isinstance(typ, FnT):
-            typ = INT_T
+        if self.gen.in_finally:
+            if isinstance(typ, FnT):
+                typ = INT_T
+            elif isinstance(typ, UnionT) and any(
+                isinstance(m, FnT) for m in typ.members
+            ):
+                typ = INT_T
         all_names = set()
         for b in self.gen.scope.all_bindings():
             all_names.add(b.name)

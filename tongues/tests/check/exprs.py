@@ -177,6 +177,8 @@ class ExprGen:
             safe_members = [
                 m for m in target.members if not self._has_invariance_issue(m)
             ]
+            if self.gen.in_finally:
+                safe_members = [m for m in safe_members if not isinstance(m, FnT)]
             if not safe_members:
                 safe_members = list(target.members)
             member = self.rng.choice(safe_members)
@@ -185,12 +187,12 @@ class ExprGen:
             else:
                 productions.append((10, self.gen_expr(member, depth + 1)))
 
-        # Optional: nil or inner
+        # Optional: nil or inner (skip shortcut if inner has invariance issue)
         if isinstance(target, UnionT) and contains_nil(target):
             if self.rng.random() < 0.3:
                 return TNilLit(pos=P, annotations=A)
             inner = remove_nil(target)
-            if not type_eq(inner, NIL_T):
+            if not type_eq(inner, NIL_T) and not self._has_invariance_issue(inner):
                 return self.gen_expr(inner, depth + 1)
 
         if not productions:
