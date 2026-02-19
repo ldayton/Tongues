@@ -3808,25 +3808,66 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     return pre_stmts
 
 
+def _unwrap_isinstance_and(
+    test: ASTNode,
+) -> tuple[ASTNode, list[ASTNode]] | None:
+    """If test is isinstance(x,T) AND ..., return (isinstance_node, rest). Else None."""
+    if not _is_ast(test, "BoolOp"):
+        return None
+    op = get_node(test, "op")
+    if get_str(op, "_type") != "And":
+        return None
+    values = get_nodes(test, "values")
+    if len(values) < 2:
+        return None
+    if not _is_isinstance_call(values[0]):
+        return None
+    return (values[0], values[1:])
+
+
 def _extract_isinstance_chain(
     node: ASTNode,
-) -> tuple[list[tuple[str, str, list[ASTNode]]], list[ASTNode] | None] | None:
+) -> (
+    tuple[
+        list[tuple[str, str, list[ASTNode], list[ASTNode] | None]], list[ASTNode] | None
+    ]
+    | None
+):
     """Extract isinstance chain from if/elif. Returns (cases, else_body) or None."""
     test = get_node(node, "test")
-    if not _is_isinstance_call(test):
-        return None
-    var_name = _isinstance_var(test)
+    extra_conds: list[ASTNode] | None = None
+    if _is_isinstance_call(test):
+        isinstance_node = test
+    else:
+        unwrapped = _unwrap_isinstance_and(test)
+        if unwrapped is None:
+            return None
+        isinstance_node, extra_conds = unwrapped[0], unwrapped[1]
+    var_name = _isinstance_var(isinstance_node)
     if var_name == "":
         return None
-    type_name = _isinstance_type(test)
+    type_names = _isinstance_types(isinstance_node)
+    if len(type_names) == 0:
+        return None
     body = get_nodes(node, "body")
-    result: list[tuple[str, str, list[ASTNode]]] = [(var_name, type_name, body)]
+    result: list[tuple[str, str, list[ASTNode], list[ASTNode] | None]] = []
+    i = 0
+    while i < len(type_names):
+        result.append((var_name, type_names[i], body, extra_conds))
+        i += 1
     orelse = get_nodes(node, "orelse")
     # Check if elif is also isinstance on same var
     if len(orelse) == 1 and isinstance(orelse[0], dict) and _is_ast(orelse[0], "If"):
         next_node = orelse[0]
         next_test = get_node(next_node, "test")
-        if _is_isinstance_call(next_test) and _isinstance_var(next_test) == var_name:
+        next_isinstance = None
+        if _is_isinstance_call(next_test):
+            next_isinstance = next_test
+        else:
+            unwrapped = _unwrap_isinstance_and(next_test)
+            if unwrapped is not None:
+                next_isinstance = unwrapped[0]
+        if next_isinstance is not None and _isinstance_var(next_isinstance) == var_name:
             rest = _extract_isinstance_chain(next_node)
             if rest is not None:
                 rest_cases, rest_else = rest
@@ -3868,8 +3909,32 @@ def _isinstance_type(node: ASTNode) -> str:
     return ""
 
 
+def _isinstance_types(node: ASTNode) -> list[str]:
+    """Get type name(s) from isinstance(x, T) or isinstance(x, (T1, T2))."""
+    args = get_nodes(node, "args")
+    if len(args) < 2 or not isinstance(args[1], dict):
+        return []
+    second = args[1]
+    if _is_ast(second, "Tuple"):
+        elts = get_nodes(second, "elts")
+        result: list[str] = []
+        i = 0
+        while i < len(elts):
+            e = elts[i]
+            if isinstance(e, dict):
+                name = get_str(e, "id")
+                if name != "":
+                    result.append(name)
+            i += 1
+        return result
+    name = get_str(second, "id")
+    if name != "":
+        return [name]
+    return []
+
+
 def _lower_isinstance_chain(
-    chain: list[tuple[str, str, list[ASTNode]]],
+    chain: list[tuple[str, str, list[ASTNode], list[ASTNode] | None]],
     else_body_nodes: list[ASTNode] | None,
     env: _Env,
     ctx: _LowerCtx,
@@ -3877,11 +3942,14 @@ def _lower_isinstance_chain(
     """Lower isinstance chain to a match statement."""
     if len(chain) == 0:
         return []
+    has_extra = False
     # Hoist variables first-assigned inside branches
     all_body_nodes: list[ASTNode] = []
     i = 0
     while i < len(chain):
-        _, _, body_stmts = chain[i]
+        _, _, body_stmts, extra_conds = chain[i]
+        if extra_conds is not None:
+            has_extra = True
         j = 0
         while j < len(body_stmts):
             all_body_nodes.append(body_stmts[j])
@@ -3901,7 +3969,7 @@ def _lower_isinstance_chain(
     cases: list[TMatchCase] = []
     i = 0
     while i < len(chain):
-        _, type_name, body_stmts = chain[i]
+        _, type_name, body_stmts, extra_conds = chain[i]
         binding_name = type_name[0].lower() + type_name[1:] if type_name else type_name
         if binding_name in env.declared:
             suffix = 2
@@ -3912,7 +3980,21 @@ def _lower_isinstance_chain(
         # Create narrowed env for the case body
         case_env = env.copy()
         case_env.var_types[var_name] = PointerType(StructRef(type_name))
-        case_body = _lower_stmts(body_stmts, case_env, ctx)
+        if extra_conds is not None:
+            # Lower extra conditions as && chain in narrowed env
+            cond = _lower_as_bool(extra_conds[0], case_env, ctx)
+            ci = 1
+            while ci < len(extra_conds):
+                right = _lower_as_bool(extra_conds[ci], case_env, ctx)
+                cond = TBinaryOp(_P0, "&&", cond, right, _EMPTY_ANN)
+                ci += 1
+            then_body = _lower_stmts(body_stmts, case_env, ctx)
+            nested_else: list[TStmt] | None = None
+            if else_body_nodes is not None and len(else_body_nodes) > 0:
+                nested_else = _lower_stmts(else_body_nodes, case_env, ctx)
+            case_body = [TIfStmt(_P0, cond, then_body, nested_else, _EMPTY_ANN)]
+        else:
+            case_body = _lower_stmts(body_stmts, case_env, ctx)
         pattern = TPatternType(
             _P0, binding_name, TIdentType(_P0, type_name), _EMPTY_ANN
         )
@@ -3922,6 +4004,8 @@ def _lower_isinstance_chain(
     if else_body_nodes is not None and len(else_body_nodes) > 0:
         else_stmts = _lower_stmts(else_body_nodes, env, ctx)
         default = TDefault(_P0, None, else_stmts, _EMPTY_ANN)
+    elif has_extra:
+        default = TDefault(_P0, None, [], _EMPTY_ANN)
     else:
         default = TDefault(_P0, None, [], _EMPTY_ANN)
     pre_stmts.append(TMatchStmt(_P0, expr, cases, default, _EMPTY_ANN))
