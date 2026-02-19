@@ -198,13 +198,23 @@ Types with zero values can omit the initializer in `let` declarations:
 | `fn[...]`       | —           | no                                    |
 | `A \| B`        | —           | no (without nil)                      |
 
-Declaring a variable of a type without a zero value and without an initializer is an error: `initializer required`.
+For types without a zero value, omitting the initializer is permitted but the variable is **uninitialized** until assigned. Reading an uninitialized variable is a compile error: `variable used before assignment`.
+
+### Definite Assignment
+
+Variables declared without an initializer for types without zero values are **uninitialized** at their declaration point. The checker tracks uninitialized variables and enforces:
+
+1. **Read check**: Reading an uninitialized variable is an error: `variable used before assignment`.
+2. **Assignment**: Assigning to an uninitialized variable marks it as initialized.
+3. **Branching**: After `if`/`else`, a variable is initialized only if it was initialized in **all** branches. After `if` without `else`, the variable remains uninitialized unless the then-body always exits.
+4. **Loops**: Variables initialized only inside a loop body are still considered uninitialized after the loop (the body might not execute).
+5. **Match**: Like if/else — initialized only if initialized in all cases (when exhaustive).
 
 ## Statement Checking
 
 ### `let`
 
-Validates the initializer (if present) is assignable to the declared type. If no initializer, requires the type to have a zero value.
+Validates the initializer (if present) is assignable to the declared type. If no initializer is provided, the variable is recorded as **uninitialized** for types without zero values. For types with zero values, the checker implicitly initializes to the zero value. For types without zero values, the variable remains uninitialized — any read before assignment is an error.
 
 ### Assignment
 

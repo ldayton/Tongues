@@ -414,13 +414,10 @@ def break_outside_loop(module: TModule, rng: Random) -> MutationResult | None:
     return _try_mutate(module, "break_outside_loop", "break outside of loop", apply)
 
 
-def missing_initializer(module: TModule, rng: Random) -> MutationResult | None:
+def use_before_assign(module: TModule, rng: Random) -> MutationResult | None:
     def apply(m: TModule) -> bool:
-        lets = _find_lets(m)
-        # Find a let with a struct or fn type (no zero value)
         for d in m.decls:
             if isinstance(d, TStructDecl):
-                # Create a let with this struct type but no init
                 fns = [dd for dd in m.decls if isinstance(dd, TFnDecl)]
                 if fns:
                     fn = fns[-1]
@@ -428,16 +425,27 @@ def missing_initializer(module: TModule, rng: Random) -> MutationResult | None:
 
                     new_let = TLetStmt(
                         pos=P,
-                        name="missing_init_var",
+                        name="uninit_var",
                         typ=TIdentType(pos=P, name=d.name),
                         value=None,
                         annotations=A,
                     )
+                    # Assign the uninitialized variable to another variable to trigger read
+                    read_let = TLetStmt(
+                        pos=P,
+                        name="uninit_read",
+                        typ=TIdentType(pos=P, name=d.name),
+                        value=TVar(pos=P, name="uninit_var", annotations=A),
+                        annotations=A,
+                    )
                     fn.body.insert(0, new_let)
+                    fn.body.insert(1, read_let)
                     return True
         return False
 
-    return _try_mutate(module, "missing_initializer", "initializer required", apply)
+    return _try_mutate(
+        module, "use_before_assign", "variable used before assignment", apply
+    )
 
 
 def double_optional(module: TModule, rng: Random) -> MutationResult | None:
@@ -542,7 +550,7 @@ ALL_MUTATIONS = [
     assign_to_this,
     void_as_value,
     break_outside_loop,
-    missing_initializer,
+    use_before_assign,
     call_non_function,
     mixed_args,
     wrong_named_arg,

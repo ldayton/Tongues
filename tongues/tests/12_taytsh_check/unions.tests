@@ -92,12 +92,12 @@ fn Main() -> void {
 ok
 ---
 
-=== error: union without nil no initializer
+=== valid: union without nil no initializer (uninitialized, never read)
 fn Main() -> void {
     let v: int | string
 }
 ---
-error: initializer required
+ok
 ---
 
 === valid: nil narrowing on union

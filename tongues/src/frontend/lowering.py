@@ -263,6 +263,28 @@ def _emit_hoisted_placeholders(
         h += 1
 
 
+def _type_has_zero_value(td: TypeNode) -> bool:
+    """Return True if the type has a zero/default value."""
+    kind = _type_dict_kind(td)
+    if kind in (
+        "int",
+        "float",
+        "string",
+        "bool",
+        "byte",
+        "bytes",
+        "rune",
+        "Slice",
+        "Map",
+        "Set",
+        "Optional",
+    ):
+        return True
+    if isinstance(td, TupleType) and not td.variadic:
+        return all(_type_has_zero_value(e) for e in td.elements)
+    return False
+
+
 def _backpatch_hoisted(name: str, typ: TypeNode, env: _Env) -> None:
     """Back-patch a hoisted placeholder TLetStmt with the real type."""
     placeholder = env.hoisted_stmts.get(name)
@@ -270,7 +292,10 @@ def _backpatch_hoisted(name: str, typ: TypeNode, env: _Env) -> None:
         return
     ttype = _typenode_to_ttype(typ)
     placeholder.typ = ttype
-    placeholder.value = _default_value_for_type(typ)
+    if _type_has_zero_value(typ):
+        placeholder.value = _default_value_for_type(typ)
+    else:
+        placeholder.value = None
     env.var_types[name] = typ
 
 

@@ -1,0 +1,167 @@
+=== valid: bare let + immediate assignment + read
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    f = Foo(1)
+    let y: int = f.x
+}
+---
+ok
+---
+
+=== error: bare let + read without assignment
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    let y: int = f.x
+}
+---
+error: variable used before assignment
+---
+
+=== valid: bare let + assigned in both if/else branches
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    let cond: bool = true
+    if cond {
+        f = Foo(1)
+    } else {
+        f = Foo(2)
+    }
+    let y: int = f.x
+}
+---
+ok
+---
+
+=== error: bare let + assigned in only then branch
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    let cond: bool = true
+    if cond {
+        f = Foo(1)
+    }
+    let y: int = f.x
+}
+---
+error: variable used before assignment
+---
+
+=== valid: bare let + guard pattern (then exits, assign after)
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    let cond: bool = true
+    if cond {
+        return
+    }
+    f = Foo(1)
+    let y: int = f.x
+}
+---
+ok
+---
+
+=== error: bare let + assigned only in loop
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    let i: int = 0
+    while i < 10 {
+        f = Foo(i)
+        i = i + 1
+    }
+    let y: int = f.x
+}
+---
+error: variable used before assignment
+---
+
+=== valid: bare let + never read is ok
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color
+}
+---
+ok
+---
+
+=== valid: bare let + assigned then read
+enum Color { Red Green Blue }
+fn Main() -> void {
+    let c: Color
+    c = Color.Red
+    let s: string = ToString(c)
+}
+---
+ok
+---
+
+=== valid: bare let + exhaustive match assigns
+struct Wrapper {
+    v: int
+}
+interface Shape {}
+struct Circle : Shape {
+    r: int
+}
+struct Square : Shape {
+    s: int
+}
+fn Main() -> void {
+    let result: Wrapper
+    let sh: Shape = Circle(1)
+    match sh {
+        case c: Circle {
+            result = Wrapper(c.r)
+        }
+        case s: Square {
+            result = Wrapper(s.s)
+        }
+    }
+    let y: int = result.v
+}
+---
+ok
+---
+
+=== error: bare let + match with default not assigning in all branches
+struct Wrapper {
+    v: int
+}
+interface Shape {}
+struct Circle : Shape {
+    r: int
+}
+struct Square : Shape {
+    s: int
+}
+fn Main() -> void {
+    let result: Wrapper
+    let sh: Shape = Circle(1)
+    match sh {
+        case c: Circle {
+            result = Wrapper(c.r)
+        }
+        default d {
+        }
+    }
+    let y: int = result.v
+}
+---
+error: variable used before assignment
+---

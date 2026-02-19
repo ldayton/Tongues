@@ -590,7 +590,7 @@ fn Main() -> void {
 ok
 ---
 
-=== let without init struct requires initializer
+=== let without init struct allowed (uninitialized)
 struct Pt {
     x: int
     y: int
@@ -599,10 +599,10 @@ fn Main() -> void {
     let p: Pt
 }
 ---
-error: initializer required
+ok
 ---
 
-=== let without init interface requires initializer
+=== let without init interface allowed (uninitialized)
 interface Node {}
 struct Leaf : Node {
     value: int
@@ -611,10 +611,10 @@ fn Main() -> void {
     let n: Node
 }
 ---
-error: initializer required
+ok
 ---
 
-=== let without init enum requires initializer
+=== let without init enum allowed (uninitialized)
 enum Color {
     Red
     Green
@@ -624,23 +624,23 @@ fn Main() -> void {
     let c: Color
 }
 ---
-error: initializer required
+ok
 ---
 
-=== let without init fn requires initializer
+=== let without init fn allowed (uninitialized)
 fn Main() -> void {
     let f: fn[int, int]
 }
 ---
-error: initializer required
+ok
 ---
 
-=== let without init union without nil requires initializer
+=== let without init union without nil allowed (uninitialized)
 fn Main() -> void {
     let v: int | string
 }
 ---
-error: initializer required
+ok
 ---
 
 === let without init union with nil allowed
@@ -699,12 +699,12 @@ fn Main() -> void {
 ok
 ---
 
-=== let without init tuple with non-zero element requires initializer
+=== let without init tuple with non-zero element allowed (uninitialized)
 fn Main() -> void {
     let t: (int, fn[int, int])
 }
 ---
-error: initializer required
+ok
 ---
 
 === bytes not hashable as map key

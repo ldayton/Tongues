@@ -1028,6 +1028,7 @@ class Checker:
         self.strict_math: bool = False
         self.loop_vars: set[str] = set()
         self.in_finally: bool = False
+        self.uninitialized: set[str] = set()
         # Register built-in error structs
         for name, fields in BUILTIN_STRUCTS.items():
             st = StructT(
@@ -1348,6 +1349,8 @@ class Checker:
     def check_fn_decl(self, decl: TFnDecl) -> None:
         ret = self.resolve_type(decl.ret)
         self.current_fn_ret = ret
+        saved_uninit = set(self.uninitialized)
+        self.uninitialized = set()
         self.enter_scope()
         for p in decl.params:
             if p.name == "this" and self.current_struct is None:
@@ -1363,6 +1366,7 @@ class Checker:
         if not type_eq(ret, VOID_T) and not _block_is_complete(decl.body):
             self.error("not all paths return a value", decl.pos)
         self.current_fn_ret = None
+        self.uninitialized = saved_uninit
 
     def check_struct_methods(self, decl: TStructDecl) -> None:
         if decl.name not in self.types:
@@ -1375,6 +1379,8 @@ class Checker:
         for method in decl.methods:
             ret = self.resolve_type(method.ret)
             self.current_fn_ret = ret
+            saved_uninit = set(self.uninitialized)
+            self.uninitialized = set()
             self.enter_scope()
             # Bind self
             for p in method.params:
@@ -1387,6 +1393,7 @@ class Checker:
             self.exit_scope()
             if not type_eq(ret, VOID_T) and not _block_is_complete(method.body):
                 self.error("not all paths return a value", method.pos)
+            self.uninitialized = saved_uninit
             self.current_fn_ret = None
         self.current_struct = old_struct
 
@@ -1538,10 +1545,6 @@ class Checker:
             self.error("void is not a value type", stmt.pos)
             self.declare(stmt.name, ERROR_T, stmt.pos)
             return
-        if stmt.value is None and not _has_zero_value(declared_type):
-            self.error("initializer required for " + type_name(declared_type), stmt.pos)
-            self.declare(stmt.name, declared_type, stmt.pos)
-            return
         if stmt.value is not None:
             val_type = self.check_expr(stmt.value, declared_type)
             if val_type is not None and not is_assignable(val_type, declared_type):
@@ -1552,6 +1555,8 @@ class Checker:
                     + type_name(declared_type),
                     stmt.pos,
                 )
+        elif not _has_zero_value(declared_type):
+            self.uninitialized.add(stmt.name)
         self.declare(stmt.name, declared_type, stmt.pos)
 
     def check_assign_stmt(self, stmt: TAssignStmt) -> None:
@@ -1565,6 +1570,9 @@ class Checker:
         if immut_err is not None:
             self.error(immut_err, stmt.pos)
             return
+        # Direct variable assignment initializes the variable (not a read)
+        if isinstance(stmt.target, TVar):
+            self.uninitialized.discard(stmt.target.name)
         target_type = self.check_expr(stmt.target, None)
         if target_type is not None:
             val_type = self.check_expr(stmt.value, target_type)
@@ -1706,18 +1714,33 @@ class Checker:
             else:
                 narrowings.append((tc_var, current, resolved))
         # Check then-body with narrowing
+        saved_uninit = set(self.uninitialized)
         self.enter_scope()
         for name, then_type, _else_type in narrowings:
             self.scopes[-1][name] = then_type
         self.check_stmts(stmt.then_body)
         self.exit_scope()
+        then_uninit = set(self.uninitialized)
         # Check else-body with reverse narrowing
+        self.uninitialized = set(saved_uninit)
         if stmt.else_body is not None:
             self.enter_scope()
             for name, _then_type, else_type in narrowings:
                 self.scopes[-1][name] = else_type
             self.check_stmts(stmt.else_body)
             self.exit_scope()
+        else_uninit = set(self.uninitialized)
+        # Merge: initialized only if initialized in BOTH branches
+        then_exits = _block_is_complete(stmt.then_body)
+        else_exits = stmt.else_body is not None and _block_is_complete(stmt.else_body)
+        if then_exits and else_exits:
+            self.uninitialized = saved_uninit
+        elif then_exits:
+            self.uninitialized = else_uninit
+        elif else_exits:
+            self.uninitialized = then_uninit
+        else:
+            self.uninitialized = then_uninit | else_uninit
 
     def check_while_stmt(self, stmt: TWhileStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)
@@ -1732,9 +1755,11 @@ class Checker:
             )
         old_in_loop = self.in_loop
         self.in_loop = True
+        saved_uninit = set(self.uninitialized)
         self.enter_scope()
         self.check_stmts(stmt.body)
         self.exit_scope()
+        self.uninitialized = saved_uninit
         self.in_loop = old_in_loop
 
     def check_for_stmt(self, stmt: TForStmt) -> None:
@@ -1742,6 +1767,7 @@ class Checker:
         self.in_loop = True
         old_loop_vars = self.loop_vars
         self.loop_vars = set(b for b in stmt.binding if b != "_")
+        saved_uninit = set(self.uninitialized)
         self.enter_scope()
         if isinstance(stmt.iterable, TRange):
             # range — all args must be int, loop var is int
@@ -1768,6 +1794,7 @@ class Checker:
                     self.bind_for_vars(stmt.binding, iter_type, stmt.pos)
         self.check_stmts(stmt.body)
         self.exit_scope()
+        self.uninitialized = saved_uninit
         self.in_loop = old_in_loop
         self.loop_vars = old_loop_vars
 
@@ -1829,21 +1856,38 @@ class Checker:
         if not self._is_matchable(scrutinee_type):
             self.error("cannot match on " + type_name(scrutinee_type), stmt.pos)
             return
+        saved_uninit = set(self.uninitialized)
         covered: list[str] = []
+        case_uninits: list[set[str]] = []
         for case in stmt.cases:
+            self.uninitialized = set(saved_uninit)
             self.check_match_case(case, scrutinee_type, covered, stmt.expr)
+            case_uninits.append(set(self.uninitialized))
         has_default = stmt.default is not None
         if has_default:
             dflt = stmt.default
             assert dflt is not None
+            self.uninitialized = set(saved_uninit)
             self.enter_scope()
             if dflt.name is not None:
                 residual = self._compute_default_type(scrutinee_type, covered)
                 self.declare(dflt.name, residual, dflt.pos)
             self.check_stmts(dflt.body)
             self.exit_scope()
+            case_uninits.append(set(self.uninitialized))
+        exhaustive = has_default
         if not has_default:
+            err_count = len(self.errors)
             self.check_exhaustiveness(scrutinee_type, covered, stmt.pos)
+            exhaustive = len(self.errors) == err_count
+        # Merge: if exhaustive, var is initialized only if ALL branches initialized it
+        if exhaustive and len(case_uninits) > 0:
+            merged = case_uninits[0]
+            for cu in case_uninits[1:]:
+                merged = merged | cu
+            self.uninitialized = merged & saved_uninit
+        else:
+            self.uninitialized = saved_uninit
 
     def _is_matchable(self, t: Type) -> bool:
         """Check if a type is valid as a match scrutinee."""
@@ -2061,6 +2105,7 @@ class Checker:
             self.error("non-exhaustive match: missing cases", pos)
 
     def check_try_stmt(self, stmt: TTryStmt) -> None:
+        saved_uninit = set(self.uninitialized)
         self.enter_scope()
         self.check_stmts(stmt.body)
         self.exit_scope()
@@ -2104,6 +2149,7 @@ class Checker:
             self.check_stmts(stmt.finally_body)
             self.exit_scope()
             self.in_finally = old_in_finally
+        self.uninitialized = saved_uninit
 
     # ── Expression checking ───────────────────────────────────
 
@@ -2161,6 +2207,8 @@ class Checker:
         return None
 
     def check_var(self, expr: TVar) -> Type | None:
+        if expr.name in self.uninitialized:
+            self.error("variable used before assignment", expr.pos)
         return self.lookup(expr.name, expr.pos)
 
     def check_binary_op(self, expr: TBinaryOp) -> Type | None:
@@ -3149,6 +3197,8 @@ class Checker:
         # Check body
         old_ret = self.current_fn_ret
         self.current_fn_ret = ret
+        saved_uninit = set(self.uninitialized)
+        self.uninitialized = set()
         self.enter_scope()
         for p in expr.params:
             if p.typ is not None:
@@ -3173,6 +3223,7 @@ class Checker:
                 self.error("not all paths return a value", expr.pos)
         self.exit_scope()
         self.current_fn_ret = old_ret
+        self.uninitialized = saved_uninit
         return FnT(kind="fn", params=params, ret=ret)
 
     def check_closure_captures(

@@ -475,7 +475,7 @@ def run_exhaustiveness(config: TypeConfig) -> list[ExhaustivenessFailure]:
             for m in error_msgs
             if "non-exhaustive" not in m
             and "missing Main" not in m
-            and "initializer required" not in m
+            and "variable used before assignment" not in m
         ]
 
         if expected_exhaust and has_exhaust_error:

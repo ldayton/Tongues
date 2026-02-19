@@ -418,7 +418,7 @@ let done: bool = false
 let items: list[int]
 ```
 
-`let` declares a variable with an explicit type. The initializer is optional for types with zero values — omitting it gives the zero value. Structs, interfaces, enums, function types, and union types not containing `nil` have no zero value and require an explicit initializer.
+`let` declares a variable with an explicit type. The initializer is optional. For types with zero values, omitting the initializer gives the zero value. For types without zero values (structs, interfaces, enums, function types, non-nil unions), omitting the initializer leaves the variable uninitialized — the checker enforces that all paths assign before any read.
 
 ### Zero values
 

@@ -305,8 +305,12 @@ class StmtGen:
 
     def _find_matchable_binding(self) -> tuple[str, Type] | None:
         for b in self.gen.scope.all_bindings():
-            if isinstance(b.typ, (InterfaceT, EnumT, UnionT)):
+            if isinstance(b.typ, (InterfaceT, EnumT)):
                 return (b.name, b.typ)
+            if isinstance(b.typ, UnionT):
+                enum_count = sum(1 for m in b.typ.members if isinstance(m, EnumT))
+                if enum_count <= 1:
+                    return (b.name, b.typ)
         return None
 
     def _gen_match(self, depth: int) -> TStmt:
@@ -349,6 +353,12 @@ class StmtGen:
                 cases.append(TMatchCase(pos=P, pattern=pat, body=body, annotations=A))
 
         elif isinstance(scrutinee, UnionT):
+            # Collect direct struct member names to avoid duplicates when
+            # expanding interface variants
+            direct_struct_names: set[str] = set()
+            for member in scrutinee.members:
+                if isinstance(member, StructT):
+                    direct_struct_names.add(member.name)
             for member in scrutinee.members:
                 if type_eq(member, NIL_T):
                     pat = TPatternNil(pos=P)
@@ -362,6 +372,8 @@ class StmtGen:
                     )
                 elif isinstance(member, InterfaceT):
                     for vname in member.variants:
+                        if vname in direct_struct_names:
+                            continue
                         st = self.gen.pool.struct_for_name(vname)
                         if st is None:
                             continue
@@ -388,7 +400,6 @@ class StmtGen:
                             pos=P, enum_name=member.name, variant=variant
                         )
                         self.gen.scope.enter_scope()
-                        # No narrowing for enum patterns — checker doesn't narrow scrutinee
                         body = self.gen_block(
                             self.rng.randint(1, 2), must_return=None, depth=depth + 1
                         )
