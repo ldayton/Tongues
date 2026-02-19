@@ -400,14 +400,14 @@ def _unwrap_nil_union(t: Type) -> Type:
     return t
 
 
-def _literal_key_value(expr: TExpr) -> object | None:
+def _literal_key_value(expr: TExpr) -> tuple[str, str] | None:
     """Extract a comparable value from a literal key expression."""
     if isinstance(expr, TIntLit):
-        return ("int", expr.value)
+        return ("int", str(expr.value))
     if isinstance(expr, TStringLit):
         return ("string", expr.value)
     if isinstance(expr, TBoolLit):
-        return ("bool", expr.value)
+        return ("bool", str(expr.value))
     if isinstance(expr, TFloatLit):
         return ("float", expr.raw)
     return None
@@ -2921,7 +2921,7 @@ class Checker:
         check_key = key_expected if key_expected is not None else key_type
         check_val = val_expected if val_expected is not None else val_type
         # Track literal keys for duplicate detection
-        seen_keys: list[object] = []
+        seen_keys: list[tuple[str, str]] = []
         k0_val = _literal_key_value(k0)
         if k0_val is not None:
             seen_keys.append(k0_val)
