@@ -1456,7 +1456,7 @@ class Parser:
         """Parse async statement (async def, async for, async with)."""
         tok = self.expect("async")
         if self.match("def"):
-            func = self.parse_funcdef(is_async=True)
+            func = self.parse_funcdef(True)
             func["_type"] = JStr("AsyncFunctionDef")
             func["lineno"] = JInt(tok.lineno)
             func["col_offset"] = JInt(tok.col)

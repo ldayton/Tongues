@@ -592,7 +592,7 @@ class _PythonEmitter:
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
-        params = self._params(decl.params, with_self=False)
+        params = self._params(decl.params, False)
         ret = self._type(decl.ret)
         self._line("def " + decl.name + "(" + params + ") -> " + ret + ":")
         self.indent += 1
@@ -607,7 +607,7 @@ class _PythonEmitter:
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
-        params = self._params(decl.params, with_self=True)
+        params = self._params(decl.params, True)
         ret = self._type(decl.ret)
         self._line("def " + decl.name + "(" + params + ") -> " + ret + ":")
         self.indent += 1
@@ -1281,20 +1281,20 @@ class _PythonEmitter:
                 return chained
         # nil comparisons → is / is not
         if op == "==" and isinstance(expr.right, TNilLit):
-            return self._maybe_paren(expr.left, op, is_left=True) + " is None"
+            return self._maybe_paren(expr.left, op, True) + " is None"
         if op == "!=" and isinstance(expr.right, TNilLit):
-            return self._maybe_paren(expr.left, op, is_left=True) + " is not None"
+            return self._maybe_paren(expr.left, op, True) + " is not None"
         if op == "==" and isinstance(expr.left, TNilLit):
-            return self._maybe_paren(expr.right, op, is_left=False) + " is None"
+            return self._maybe_paren(expr.right, op, False) + " is None"
         if op == "!=" and isinstance(expr.left, TNilLit):
-            return self._maybe_paren(expr.right, op, is_left=False) + " is not None"
+            return self._maybe_paren(expr.right, op, False) + " is not None"
         py_op = op
         if op == "&&":
             py_op = "and"
         elif op == "||":
             py_op = "or"
-        left_str = self._maybe_paren(expr.left, op, is_left=True)
-        right_str = self._maybe_paren(expr.right, op, is_left=False)
+        left_str = self._maybe_paren(expr.left, op, True)
+        right_str = self._maybe_paren(expr.right, op, False)
         return left_str + " " + py_op + " " + right_str
 
     def _unary(self, expr: TUnaryOp) -> str:
@@ -1778,8 +1778,6 @@ def emit_python(module: TModule) -> str:
         if isinstance(decl, TStructDecl):
             struct_names.add(decl.name)
             struct_fields[decl.name] = [f.name for f in decl.fields]
-    emitter = _PythonEmitter(
-        struct_names, struct_fields, strict_math=module.strict_math
-    )
+    emitter = _PythonEmitter(struct_names, struct_fields, module.strict_math)
     emitter.emit_module(module)
     return emitter.output()

@@ -719,12 +719,12 @@ class _Emitter:
     # ── Literals / Escapes ──────────────────────────────────
 
     def _quote_string(self, s: str) -> str:
-        return '"' + self._escape_text(s, quote='"') + '"'
+        return '"' + self._escape_text(s, '"') + '"'
 
     def _quote_rune(self, s: str) -> str:
         if len(s) != 1:
             raise ValueError("rune literal must be exactly one character")
-        return "'" + self._escape_text(s, quote="'") + "'"
+        return "'" + self._escape_text(s, "'") + "'"
 
     def _quote_bytes(self, b: bytes) -> str:
         out = 'b"'

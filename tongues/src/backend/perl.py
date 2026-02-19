@@ -2237,7 +2237,7 @@ def emit_perl(module: TModule) -> str:
         enum_names,
         function_names,
         struct_fields,
-        strict_math=module.strict_math,
+        module.strict_math,
     )
     emitter.emit_module(module)
     return emitter.output()

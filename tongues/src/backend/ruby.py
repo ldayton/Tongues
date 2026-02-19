@@ -699,7 +699,7 @@ class _RubyEmitter:
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
-        params = self._params(decl.params, with_self=False)
+        params = self._params(decl.params, False)
         self._line("def " + _safe_name(decl.name) + "(" + params + ")")
         self.indent += 1
         if not decl.body:
@@ -714,7 +714,7 @@ class _RubyEmitter:
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
-        params = self._params(decl.params, with_self=True)
+        params = self._params(decl.params, True)
         self._line("def " + _safe_name(decl.name) + "(" + params + ")")
         self.indent += 1
         old_self = self.self_name
@@ -1492,17 +1492,17 @@ class _RubyEmitter:
                 return chained
         # nil comparisons
         if op == "==" and isinstance(expr.right, TNilLit):
-            return self._maybe_paren(expr.left, op, is_left=True) + ".nil?"
+            return self._maybe_paren(expr.left, op, True) + ".nil?"
         if op == "!=" and isinstance(expr.right, TNilLit):
-            return "!" + self._maybe_paren(expr.left, op, is_left=True) + ".nil?"
+            return "!" + self._maybe_paren(expr.left, op, True) + ".nil?"
         if op == "==" and isinstance(expr.left, TNilLit):
-            return self._maybe_paren(expr.right, op, is_left=False) + ".nil?"
+            return self._maybe_paren(expr.right, op, False) + ".nil?"
         if op == "!=" and isinstance(expr.left, TNilLit):
-            return "!" + self._maybe_paren(expr.right, op, is_left=False) + ".nil?"
+            return "!" + self._maybe_paren(expr.right, op, False) + ".nil?"
         # Floor division
         if op == "//":
-            left_str = self._maybe_paren(expr.left, "/", is_left=True)
-            right_str = self._maybe_paren(expr.right, "/", is_left=False)
+            left_str = self._maybe_paren(expr.left, "/", True)
+            right_str = self._maybe_paren(expr.right, "/", False)
             return "(" + left_str + " / " + right_str + ")"
         # in / not in
         if op == "in":
@@ -1518,16 +1518,16 @@ class _RubyEmitter:
         # String / list multiplication provenance
         prov = expr.annotations.get("provenance", "")
         if prov == "string_multiply" or prov == "list_multiply":
-            left_str = self._maybe_paren(expr.left, op, is_left=True)
-            right_str = self._maybe_paren(expr.right, op, is_left=False)
+            left_str = self._maybe_paren(expr.left, op, True)
+            right_str = self._maybe_paren(expr.right, op, False)
             return left_str + " * [" + right_str + ", 0].max"
         rb_op = op
         if op == "&&":
             rb_op = "&&"
         elif op == "||":
             rb_op = "||"
-        left_str = self._maybe_paren(expr.left, op, is_left=True)
-        right_str = self._maybe_paren(expr.right, op, is_left=False)
+        left_str = self._maybe_paren(expr.left, op, True)
+        right_str = self._maybe_paren(expr.right, op, False)
         return left_str + " " + rb_op + " " + right_str
 
     def _chain_comparison(self, expr: TBinaryOp) -> str | None:
@@ -2022,7 +2022,7 @@ def emit_ruby(module: TModule) -> str:
         fn_names,
         struct_fields,
         enum_names,
-        strict_math=module.strict_math,
+        module.strict_math,
     )
     emitter.emit_module(module)
     return emitter.output()

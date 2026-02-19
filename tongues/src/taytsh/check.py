@@ -1471,6 +1471,35 @@ class Checker:
                         resolved = self._narrow_to_type(current, tc_type_name)
                         if resolved is not None:
                             self.narrow(tc_var, resolved)
+            # After Assert(cond), narrow nil-checked and type-checked vars
+            if isinstance(s, TExprStmt) and isinstance(s.expr, TCall):
+                if isinstance(s.expr.func, TVar) and s.expr.func.name == "Assert":
+                    if len(s.expr.args) > 0:
+                        assert_cond = s.expr.args[0].value
+                        checks = _collect_nil_checks(assert_cond)
+                        for var_name, check_kind in checks:
+                            if "." in var_name:
+                                var_type = self._lookup_field_type(var_name, s.pos)
+                            else:
+                                var_type = self.lookup(var_name, s.pos)
+                            if var_type is not None and contains_nil(var_type):
+                                if check_kind == "is_not_nil":
+                                    self.narrow(var_name, remove_nil(var_type))
+                                elif check_kind == "is_nil":
+                                    self.narrow(var_name, NIL_T)
+                        type_checks = _collect_type_checks(assert_cond)
+                        for tc_var, tc_type_name, tc_positive in type_checks:
+                            if not tc_positive:
+                                continue
+                            if "." in tc_var:
+                                current = self._lookup_field_type(tc_var, s.pos)
+                            else:
+                                current = self.lookup(tc_var, s.pos)
+                            if current is None:
+                                continue
+                            resolved = self._narrow_to_type(current, tc_type_name)
+                            if resolved is not None:
+                                self.narrow(tc_var, resolved)
             i += 1
 
     def check_stmt(self, stmt: TStmt) -> None:
@@ -1757,6 +1786,17 @@ class Checker:
         self.in_loop = True
         saved_uninit = set(self.uninitialized)
         self.enter_scope()
+        nil_checks = _collect_nil_checks(stmt.cond)
+        for var_name, check_kind in nil_checks:
+            if "." in var_name:
+                var_type = self._lookup_field_type(var_name, stmt.pos)
+            else:
+                var_type = self.lookup(var_name, stmt.pos)
+            if var_type is not None and contains_nil(var_type):
+                if check_kind == "is_not_nil":
+                    self.narrow(var_name, remove_nil(var_type))
+                elif check_kind == "is_nil":
+                    self.narrow(var_name, NIL_T)
         self.check_stmts(stmt.body)
         self.exit_scope()
         self.uninitialized = saved_uninit
@@ -2339,6 +2379,9 @@ class Checker:
                     return BOOL_T
                 if right.kind == TY_NIL and contains_nil(left):
                     return BOOL_T
+                # Allow nil comparison on any type (lowerer may omit optionality)
+                if left.kind == TY_NIL or right.kind == TY_NIL:
+                    return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
                     pos,
@@ -2582,6 +2625,9 @@ class Checker:
             if field_type is not None:
                 return field_type
         if isinstance(obj_type, InterfaceT):
+            iface_ft = self._interface_field_type(obj_type, expr.field)
+            if iface_ft is not None:
+                return iface_ft
             self.error(
                 "cannot access field on interface '"
                 + obj_type.name
@@ -2620,25 +2666,20 @@ class Checker:
         return result
 
     def _interface_field_type(self, iface: InterfaceT, field: str) -> Type | None:
-        """Find field type on interface. Returns type if any variant has it."""
+        """Return field type if ALL struct variants share it with compatible types."""
         result: Type | None = None
-        found = False
         for vname in iface.variants:
             vtype = self.types.get(vname)
-            if (
-                vtype is not None
-                and isinstance(vtype, StructT)
-                and field in vtype.fields
-            ):
-                ft = vtype.fields[field]
-                if not found:
-                    result = ft
-                    found = True
-                elif result is not None and not type_eq(result, ft):
-                    result = ERROR_T
-        if found:
-            return result if result is not None else ERROR_T
-        return None
+            if vtype is None or not isinstance(vtype, StructT):
+                return None
+            if field not in vtype.fields:
+                return None
+            ft = vtype.fields[field]
+            if result is None:
+                result = ft
+            elif not type_eq(result, ft):
+                return None
+        return result
 
     def check_tuple_access(self, expr: TTupleAccess) -> Type | None:
         obj_type = self.check_expr(expr.obj, None)
