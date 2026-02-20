@@ -308,7 +308,16 @@ def type_name(t: Type) -> str:
         keyed: list[tuple[str, Type]] = []
         for m in t.members:
             keyed.append((_type_key(m), m))
-        keyed.sort()
+        # Insertion sort by string key (tuples not sortable in Taytsh)
+        si = 1
+        while si < len(keyed):
+            skey = keyed[si]
+            sj = si - 1
+            while sj >= 0 and keyed[sj][0] > skey[0]:
+                keyed[sj + 1] = keyed[sj]
+                sj -= 1
+            keyed[sj + 1] = skey
+            si += 1
         parts3: list[str] = []
         for _k, m in keyed:
             parts3.append(type_name(m))
@@ -664,14 +673,16 @@ def _type_check_var(cond: TExpr) -> tuple[str, str, bool] | None:
     if isinstance(cond, TCall):
         info = _istype_var_from_call(cond)
         if info is not None:
-            return (info[0], info[1], True)
+            info_path, info_tname = info
+            return (info_path, info_tname, True)
     # !IsType(x, "T")
     if isinstance(cond, TUnaryOp) and cond.op == "!":
         inner = cond.operand
         if isinstance(inner, TCall):
             info = _istype_var_from_call(inner)
             if info is not None:
-                return (info[0], info[1], False)
+                info_path, info_tname = info
+                return (info_path, info_tname, False)
     return None
 
 
@@ -764,10 +775,16 @@ def is_assignable(source: Type, target: Type) -> bool:
                 return True
     # list[T] assignable to tuple of T elements (tuple augmented assignment)
     if isinstance(source, ListT) and isinstance(target, TupleT):
-        if target.elements and all(
-            is_assignable(source.element, e) for e in target.elements
-        ):
-            return True
+        if len(target.elements) > 0:
+            all_ok = True
+            ei = 0
+            while ei < len(target.elements):
+                if not is_assignable(source.element, target.elements[ei]):
+                    all_ok = False
+                    break
+                ei += 1
+            if all_ok:
+                return True
     return False
 
 
@@ -933,7 +950,8 @@ BUILTIN_NAMES: set[str] = {
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
 # Most builtins are reserved; set-specific operations like Add can be shadowed.
-RESERVED_NAMES: set[str] = BUILTIN_NAMES - {"Add"}
+RESERVED_NAMES: set[str] = set(BUILTIN_NAMES)
+RESERVED_NAMES.discard("Add")
 
 # Built-in error struct names
 BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
@@ -991,12 +1009,12 @@ class _BuiltinCtx:
     pos: Pos
 
     def __init__(
-        self, checker: Checker, name: str, arg_types: list[Type | None], pos: Pos
+        self, checker: Checker, name: str, arg_types: list[Type | None], n: int, pos: Pos
     ) -> None:
         self.checker = checker
         self.name = name
         self.arg_types = arg_types
-        self.n = len(arg_types)
+        self.n = n
         self.pos = pos
 
     def require(self, count: int) -> bool:
@@ -1154,17 +1172,17 @@ class Checker:
             i -= 1
         return None
 
-    def _narrow_to_type(self, current_type: Type, type_name: str) -> Type | None:
+    def _narrow_to_type(self, current_type: Type, target_name: str) -> Type | None:
         """Resolve an IsType check against current type, returning the narrowed type."""
         if isinstance(current_type, InterfaceT):
-            if type_name in current_type.variants:
-                return self.types.get(type_name)
+            if target_name in current_type.variants:
+                return self.types.get(target_name)
         if isinstance(current_type, UnionT):
             for m in current_type.members:
-                if isinstance(m, (StructT, InterfaceT)) and m.name == type_name:
+                if isinstance(m, (StructT, InterfaceT)) and m.name == target_name:
                     return m
-                if isinstance(m, InterfaceT) and type_name in m.variants:
-                    return self.types.get(type_name)
+                if isinstance(m, InterfaceT) and target_name in m.variants:
+                    return self.types.get(target_name)
         return None
 
     # ── Type resolution ───────────────────────────────────────
@@ -1493,7 +1511,7 @@ class Checker:
             if isinstance(s, TIfStmt) and s.else_body is None:
                 if _body_always_exits(s.then_body):
                     checks = _collect_nil_checks(s.cond)
-                    or_checks = _collect_nil_checks(s.cond, chain_op="||")
+                    or_checks = _collect_nil_checks(s.cond, False, "||")
                     for item in or_checks:
                         if item not in checks:
                             checks.append(item)
@@ -1766,12 +1784,19 @@ class Checker:
         # Nil narrowing in then/else bodies via == nil / != nil checks
         # (IsNil deliberately excluded — it doesn't narrow in then-body)
         narrowings: list[tuple[str, Type, Type]] = []
-        var_checks = _collect_nil_checks(stmt.cond, binary_only=True)
+        var_checks = _collect_nil_checks(stmt.cond, True)
         all_checks = _collect_nil_checks(stmt.cond)
-        field_checks = [(n, k) for n, k in all_checks if "." in n]
-        checks = var_checks + [
-            (n, k) for n, k in field_checks if (n, k) not in var_checks
-        ]
+        checks: list[tuple[str, str]] = []
+        fc_i = 0
+        while fc_i < len(var_checks):
+            checks.append(var_checks[fc_i])
+            fc_i += 1
+        fc_i = 0
+        while fc_i < len(all_checks):
+            n, k = all_checks[fc_i]
+            if "." in n and (n, k) not in var_checks:
+                checks.append((n, k))
+            fc_i += 1
         for var_name, check_kind in checks:
             if "." in var_name:
                 var_type = self._lookup_field_type(var_name, stmt.pos)
@@ -1978,10 +2003,19 @@ class Checker:
             exhaustive = len(self.errors) == err_count
         # Merge: if exhaustive, var is initialized only if ALL branches initialized it
         if exhaustive and len(case_uninits) > 0:
-            merged = case_uninits[0]
-            for cu in case_uninits[1:]:
-                merged = merged | cu
-            self.uninitialized = merged & saved_uninit
+            merged: set[str] = set()
+            for v in case_uninits[0]:
+                merged.add(v)
+            cui = 1
+            while cui < len(case_uninits):
+                for v in case_uninits[cui]:
+                    merged.add(v)
+                cui += 1
+            result_uninit: set[str] = set()
+            for v in merged:
+                if v in saved_uninit:
+                    result_uninit.add(v)
+            self.uninitialized = result_uninit
         else:
             self.uninitialized = saved_uninit
 
@@ -2340,7 +2374,7 @@ class Checker:
             else:
                 right = self.check_expr(expr.right, None)
         elif expr.op == "||":
-            checks = _collect_nil_checks(expr.left, chain_op="||")
+            checks = _collect_nil_checks(expr.left, False, "||")
             tc = _collect_type_checks(expr.left)
             if len(checks) > 0 or len(tc) > 0:
                 self.enter_scope()
@@ -2436,10 +2470,9 @@ class Checker:
                 if right.kind == TY_NIL and contains_nil(left):
                     return BOOL_T
                 # Allow nil comparison on reference/container types
-                _PRIMITIVE_KINDS = (TY_INT, TY_FLOAT, TY_BOOL, TY_BYTE, TY_RUNE)
-                if left.kind == TY_NIL and right.kind not in _PRIMITIVE_KINDS:
+                if left.kind == TY_NIL and right.kind != TY_INT and right.kind != TY_FLOAT and right.kind != TY_BOOL and right.kind != TY_BYTE and right.kind != TY_RUNE:
                     return BOOL_T
-                if right.kind == TY_NIL and left.kind not in _PRIMITIVE_KINDS:
+                if right.kind == TY_NIL and left.kind != TY_INT and left.kind != TY_FLOAT and left.kind != TY_BOOL and left.kind != TY_BYTE and left.kind != TY_RUNE:
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
@@ -2582,12 +2615,19 @@ class Checker:
             )
         # Nil narrowing (same pattern as check_if_stmt)
         narrowings: list[tuple[str, Type, Type]] = []
-        var_checks = _collect_nil_checks(expr.cond, binary_only=True)
+        var_checks = _collect_nil_checks(expr.cond, True)
         all_checks = _collect_nil_checks(expr.cond)
-        field_checks = [(n, k) for n, k in all_checks if "." in n]
-        checks = var_checks + [
-            (n, k) for n, k in field_checks if (n, k) not in var_checks
-        ]
+        checks: list[tuple[str, str]] = []
+        fc_i = 0
+        while fc_i < len(var_checks):
+            checks.append(var_checks[fc_i])
+            fc_i += 1
+        fc_i = 0
+        while fc_i < len(all_checks):
+            n, k = all_checks[fc_i]
+            if "." in n and (n, k) not in var_checks:
+                checks.append((n, k))
+            fc_i += 1
         for var_name, check_kind in checks:
             if "." in var_name:
                 var_type = self._lookup_field_type(var_name, expr.pos)
@@ -2720,8 +2760,9 @@ class Checker:
             ft = m.fields[field]
             if result is None:
                 result = ft
-            elif not type_eq(result, ft):
-                return None
+            else:
+                if not type_eq(result, ft):
+                    return None
         return result
 
     def _interface_field_type(self, iface: InterfaceT, field: str) -> Type | None:
@@ -2736,8 +2777,9 @@ class Checker:
             ft = vtype.fields[field]
             if result is None:
                 result = ft
-            elif not type_eq(result, ft):
-                return None
+            else:
+                if not type_eq(result, ft):
+                    return None
         return result
 
     def check_tuple_access(self, expr: TTupleAccess) -> Type | None:
@@ -2800,8 +2842,9 @@ class Checker:
         if isinstance(obj_type, MapT):
             if idx_type is not None and not is_assignable(idx_type, obj_type.key):
                 # Allow numeric interchangeability for map keys
-                numeric = (TY_INT, TY_FLOAT, TY_BOOL)
-                if not (idx_type.kind in numeric and obj_type.key.kind in numeric):
+                idx_numeric = idx_type.kind == TY_INT or idx_type.kind == TY_FLOAT or idx_type.kind == TY_BOOL
+                key_numeric = obj_type.key.kind == TY_INT or obj_type.key.kind == TY_FLOAT or obj_type.key.kind == TY_BOOL
+                if not (idx_numeric and key_numeric):
                     self.error(
                         "map key must be "
                         + type_name(obj_type.key)
@@ -3211,20 +3254,21 @@ class Checker:
         k0_val = _literal_key_value(k0)
         if k0_val is not None:
             seen_keys.append(k0_val)
-        # For map literal keys, allow bool↔int (Python: True==1, False==0)
-        _map_compat = {TY_BOOL, TY_INT}
         i = 1
         while i < len(expr.entries):
             ki, vi = expr.entries[i]
             ki_val = _literal_key_value(ki)
-            if ki_val is not None and ki_val in seen_keys:
-                self.error("duplicate key in map literal", ki.pos)
-            elif ki_val is not None:
-                seen_keys.append(ki_val)
+            if ki_val is not None:
+                if ki_val in seen_keys:
+                    self.error("duplicate key in map literal", ki.pos)
+                else:
+                    seen_keys.append(ki_val)
             kt = self.check_expr(ki, check_key)
             vt = self.check_expr(vi, check_val)
             if kt is not None and not is_assignable(kt, check_key):
-                if not (kt.kind in _map_compat and check_key.kind in _map_compat):
+                kt_compat = kt.kind == TY_BOOL or kt.kind == TY_INT
+                ck_compat = check_key.kind == TY_BOOL or check_key.kind == TY_INT
+                if not (kt_compat and ck_compat):
                     self.error("map keys must have same type", ki.pos)
             if vt is not None and not is_assignable(vt, check_val):
                 widened = self._widen_to_common_interface(check_val, vt)
@@ -3486,7 +3530,7 @@ class Checker:
         for a in args:
             arg_types.append(self.check_expr(a.value, None))
         n = len(args)
-        ctx = _BuiltinCtx(self, name, arg_types, pos)
+        ctx = _BuiltinCtx(self, name, arg_types, len(arg_types), pos)
         require = ctx.require
         require_range = ctx.require_range
         arg = ctx.arg
