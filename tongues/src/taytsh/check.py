@@ -1045,7 +1045,7 @@ class CheckError:
 
 
 class _BuiltinCtx:
-    """Helper for check_builtin_call — avoids nested function closures."""
+    """Helper for check_builtin_call — holds call context."""
 
     checker: Checker
     name: str
@@ -1067,38 +1067,37 @@ class _BuiltinCtx:
         self.n = n
         self.pos = pos
 
-    def require(self, count: int) -> bool:
-        if self.n != count:
-            self.checker.error(
-                self.name
-                + " requires "
-                + str(count)
-                + " argument(s), got "
-                + str(self.n),
-                self.pos,
-            )
-            return False
-        return True
 
-    def require_range(self, lo: int, hi: int) -> bool:
-        if self.n < lo or self.n > hi:
-            self.checker.error(
-                self.name
-                + " requires "
-                + str(lo)
-                + "-"
-                + str(hi)
-                + " argument(s), got "
-                + str(self.n),
-                self.pos,
-            )
-            return False
-        return True
+def _bctx_require(ctx: _BuiltinCtx, count: int) -> bool:
+    if ctx.n != count:
+        ctx.checker.error(
+            ctx.name + " requires " + str(count) + " argument(s), got " + str(ctx.n),
+            ctx.pos,
+        )
+        return False
+    return True
 
-    def arg(self, i: int) -> Type | None:
-        if i < len(self.arg_types):
-            return self.arg_types[i]
-        return None
+
+def _bctx_require_range(ctx: _BuiltinCtx, lo: int, hi: int) -> bool:
+    if ctx.n < lo or ctx.n > hi:
+        ctx.checker.error(
+            ctx.name
+            + " requires "
+            + str(lo)
+            + "-"
+            + str(hi)
+            + " argument(s), got "
+            + str(ctx.n),
+            ctx.pos,
+        )
+        return False
+    return True
+
+
+def _bctx_arg(ctx: _BuiltinCtx, i: int) -> Type | None:
+    if i < len(ctx.arg_types):
+        return ctx.arg_types[i]
+    return None
 
 
 # ============================================================
@@ -3611,30 +3610,27 @@ class Checker:
             arg_types.append(self.check_expr(a.value, None))
         n = len(args)
         ctx = _BuiltinCtx(self, name, arg_types, len(arg_types), pos)
-        require = ctx.require
-        require_range = ctx.require_range
-        arg = ctx.arg
 
         # ── Numeric ──
         if name == "Abs":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and t.kind not in (TY_INT, TY_FLOAT):
                 self.error("Abs requires int or float", pos)
             return t
         if name == "Min" or name == "Max":
             if n == 1:
-                t = arg(0)
+                t = _bctx_arg(ctx, 0)
                 if t is not None and isinstance(t, ListT):
                     return t.element
                 if t is not None:
                     self.error(name + " with 1 argument requires list", pos)
                 return None
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and t2 is not None:
                 if not type_eq(t1, t2):
                     self.error(
@@ -3649,19 +3645,19 @@ class Checker:
                     self.error(name + " requires int, float, or byte", pos)
             return t1
         if name == "Sum":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None:
                 if isinstance(t, ListT) and t.element.kind in (TY_INT, TY_FLOAT):
                     return t.element
                 self.error("Sum requires list[int] or list[float]", pos)
             return None
         if name == "Pow":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and t2 is not None:
                 if not type_eq(t1, t2):
                     self.error("Pow requires same type", pos)
@@ -3669,38 +3665,40 @@ class Checker:
                     self.error("Pow requires int or float", pos)
             return t1
         if name == "FloorDiv" or name == "PythonMod":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None:
-                t1 = _unwrap_nil_union(t1)
+                t1_fd = _unwrap_nil_union(t1)
+            else:
+                t1_fd = None
             if (
-                t1 is not None
-                and t1.kind != TY_ERROR
-                and t1.kind not in (TY_INT, TY_FLOAT)
+                t1_fd is not None
+                and t1_fd.kind != TY_ERROR
+                and t1_fd.kind not in (TY_INT, TY_FLOAT)
             ):
                 self.error(name + " requires int or float", pos)
-            return t1
+            return t1_fd
         if name == "ReplaceSlice":
-            if not require(4):
+            if not _bctx_require(ctx, 4):
                 return None
-            t1 = arg(0)
+            t1 = _bctx_arg(ctx, 0)
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("ReplaceSlice requires list as first argument", pos)
             return VOID_T
         if name in ("Round", "Floor", "Ceil"):
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, FLOAT_T):
                 self.error(name + " requires float", pos)
             return INT_T
         if name == "DivMod":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not type_eq(t1, INT_T):
                 self.error("DivMod requires int", pos)
             if t2 is not None and not type_eq(t2, INT_T):
@@ -3710,10 +3708,10 @@ class Checker:
             if not self.strict_math:
                 self.error(name + " requires strict_math mode", pos)
                 return None
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not type_eq(t1, INT_T):
                 self.error(name + " requires int", pos)
             if t2 is not None and not type_eq(t2, INT_T):
@@ -3722,25 +3720,25 @@ class Checker:
 
         # ── Bytes ──
         if name == "Encode":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("Encode requires string", pos)
             return BYTES_T
         if name == "Decode":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, BYTES_T):
                 self.error("Decode requires bytes", pos)
             return STRING_T
 
         # ── Len ──
         if name == "Len":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and t.kind != TY_ERROR:
                 t_inner = _unwrap_nil_union(t)
                 if not (
@@ -3752,10 +3750,10 @@ class Checker:
 
         # ── Concat ──
         if name == "Concat":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and t2 is not None:
                 if t1.kind == TY_ERROR or t2.kind == TY_ERROR:
                     return ERROR_T
@@ -3784,10 +3782,10 @@ class Checker:
 
         # ── Append ──
         if name == "Append":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None:
                 if not isinstance(t1, ListT):
                     self.error("Append requires list as first argument", pos)
@@ -3804,15 +3802,15 @@ class Checker:
 
         # ── Insert ──
         if name == "Insert":
-            if not require(3):
+            if not _bctx_require(ctx, 3):
                 return None
-            t1 = arg(0)
+            t1 = _bctx_arg(ctx, 0)
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("Insert requires list as first argument", pos)
-            t2 = arg(1)
+            t2 = _bctx_arg(ctx, 1)
             if t2 is not None and not type_eq(t2, INT_T):
                 self.error("Insert index must be int", pos)
-            t3 = arg(2)
+            t3 = _bctx_arg(ctx, 2)
             if t1 is not None and isinstance(t1, ListT) and t3 is not None:
                 if not is_assignable(t3, t1.element):
                     self.error(
@@ -3823,9 +3821,9 @@ class Checker:
 
         # ── Pop ──
         if name == "Pop":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and isinstance(t, ListT):
                 return t.element
             if t is not None and isinstance(t, SetT):
@@ -3836,22 +3834,22 @@ class Checker:
 
         # ── RemoveAt ──
         if name == "RemoveAt":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
+            t1 = _bctx_arg(ctx, 0)
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("RemoveAt requires list", pos)
-            t2 = arg(1)
+            t2 = _bctx_arg(ctx, 1)
             if t2 is not None and not type_eq(t2, INT_T):
                 self.error("RemoveAt index must be int", pos)
             return VOID_T
 
         # ── IndexOf ──
         if name == "IndexOf":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("IndexOf requires list", pos)
             elif t1 is not None and isinstance(t1, ListT) and t2 is not None:
@@ -3864,10 +3862,10 @@ class Checker:
 
         # ── Contains ──
         if name == "Contains":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and t1.kind != TY_ERROR:
                 t1u = _unwrap_nil_union(t1)
                 if isinstance(t1u, ListT):
@@ -3911,15 +3909,15 @@ class Checker:
 
         # ── Get ──
         if name == "Get":
-            if not require_range(2, 3):
+            if not _bctx_require_range(ctx, 2, 3):
                 return None
-            t1 = arg(0)
+            t1 = _bctx_arg(ctx, 0)
             if t1 is not None and not isinstance(t1, MapT):
                 self.error("Get requires map as first argument", pos)
                 return None
             if t1 is not None and isinstance(t1, MapT):
                 if n == 3:
-                    t3 = arg(2)
+                    t3 = _bctx_arg(ctx, 2)
                     if t3 is not None and not is_assignable(t3, t1.value):
                         self.error(
                             "default value: cannot assign "
@@ -3934,10 +3932,10 @@ class Checker:
 
         # ── Delete ──
         if name == "Delete":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, MapT):
                 self.error("Delete requires map", pos)
             elif t1 is not None and isinstance(t1, MapT) and t2 is not None:
@@ -3950,27 +3948,27 @@ class Checker:
 
         # ── Keys / Values / Items ──
         if name == "Keys":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and isinstance(t, MapT):
                 return ListT(kind="list", element=t.key)
             if t is not None:
                 self.error("Keys requires map", pos)
             return None
         if name == "Values":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and isinstance(t, MapT):
                 return ListT(kind="list", element=t.value)
             if t is not None:
                 self.error("Values requires map", pos)
             return None
         if name == "Items":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and isinstance(t, MapT):
                 return ListT(
                     kind="list", element=TupleT(kind="tuple", elements=[t.key, t.value])
@@ -3981,10 +3979,10 @@ class Checker:
 
         # ── Merge ──
         if name == "Merge":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, MapT):
                 self.error("Merge requires map", pos)
                 return None
@@ -4014,9 +4012,9 @@ class Checker:
 
         # ── PopItem ──
         if name == "PopItem":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and isinstance(t, MapT):
                 return TupleT(kind="tuple", elements=[t.key, t.value])
             if t is not None:
@@ -4025,10 +4023,10 @@ class Checker:
 
         # ── MapFromKeys ──
         if name == "MapFromKeys":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and isinstance(t1, ListT):
                 val_ty = t2 if t2 is not None else ERROR_T
                 return MapT(kind="map", key=t1.element, value=val_ty)
@@ -4038,13 +4036,13 @@ class Checker:
 
         # ── Map() / Set() ──
         if name == "Map":
-            if not require(0):
+            if not _bctx_require(ctx, 0):
                 return None
             if expected is not None and isinstance(expected, MapT):
                 return expected
             return MapT(kind="map", key=ERROR_T, value=ERROR_T)
         if name == "Set":
-            if not require(0):
+            if not _bctx_require(ctx, 0):
                 return None
             if expected is not None and isinstance(expected, SetT):
                 return expected
@@ -4052,10 +4050,10 @@ class Checker:
 
         # ── Add / Remove (set) ──
         if name == "Add":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, SetT):
                 self.error("Add requires set as first argument", pos)
             elif t1 is not None and isinstance(t1, SetT) and t2 is not None:
@@ -4066,10 +4064,10 @@ class Checker:
                     )
             return VOID_T
         if name == "Remove":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, SetT):
                 self.error("Remove requires set as first argument", pos)
             elif t1 is not None and isinstance(t1, SetT) and t2 is not None:
@@ -4082,10 +4080,10 @@ class Checker:
 
         # ── Union / Intersection / Difference ──
         if name in ("Union", "Intersection", "Difference"):
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, SetT):
                 self.error(name + " requires set as first argument", pos)
                 return None
@@ -4115,16 +4113,16 @@ class Checker:
 
         # ── Bytes / BytesFrom ──
         if name == "Bytes":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, INT_T):
                 self.error("Bytes requires int", pos)
             return BYTES_T
         if name == "BytesFrom":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None:
                 if not isinstance(t, ListT):
                     self.error("BytesFrom requires list", pos)
@@ -4132,11 +4130,11 @@ class Checker:
 
         # ── RangeList ──
         if name == "RangeList":
-            if not require(3):
+            if not _bctx_require(ctx, 3):
                 return None
             i = 0
             while i < 3:
-                t = arg(i)
+                t = _bctx_arg(ctx, i)
                 if t is not None and not type_eq(t, INT_T):
                     self.error("RangeList requires int arguments", pos)
                 i += 1
@@ -4144,13 +4142,13 @@ class Checker:
 
         # ── MapFromPairs ──
         if name == "MapFromPairs":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None:
-                t = _unwrap_nil_union(t)
-                if isinstance(t, ListT) and isinstance(t.element, TupleT):
-                    elems = t.element.elements
+                t_mfp = _unwrap_nil_union(t)
+                if isinstance(t_mfp, ListT) and isinstance(t_mfp.element, TupleT):
+                    elems = t_mfp.element.elements
                     if len(elems) == 2:
                         return MapT(kind="map", key=elems[0], value=elems[1])
                 self.error("MapFromPairs requires list of 2-tuples", pos)
@@ -4158,10 +4156,10 @@ class Checker:
 
         # ── ListCompare ──
         if name == "ListCompare":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("ListCompare requires list as first argument", pos)
             if t2 is not None and not isinstance(t2, ListT):
@@ -4170,10 +4168,10 @@ class Checker:
 
         # ── Zip ──
         if name == "Zip":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("Zip requires list as first argument", pos)
                 return None
@@ -4194,9 +4192,9 @@ class Checker:
 
         # ── SetFromList ──
         if name == "SetFromList":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None:
                 tu = _unwrap_nil_union(t)
                 if isinstance(tu, ListT):
@@ -4208,62 +4206,66 @@ class Checker:
             return None
 
         if name == "Chars":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("Chars requires string argument", pos)
             return ListT(kind="list", element=STRING_T)
 
         # ── Repeat ──
         if name == "Repeat":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t2 is not None:
-                t2 = _unwrap_nil_union(t2)
-            if t2 is not None and not type_eq(t2, INT_T):
+                t2_rp = _unwrap_nil_union(t2)
+            else:
+                t2_rp = None
+            if t2_rp is not None and not type_eq(t2_rp, INT_T):
                 self.error("Repeat count must be int", pos)
             if t1 is not None:
-                t1 = _unwrap_nil_union(t1)
-                if type_eq(t1, STRING_T):
+                t1_rp = _unwrap_nil_union(t1)
+                if type_eq(t1_rp, STRING_T):
                     return STRING_T
-                if type_eq(t1, BYTES_T):
+                if type_eq(t1_rp, BYTES_T):
                     return BYTES_T
-                if isinstance(t1, ListT):
-                    return t1
-                if isinstance(t1, TupleT) and t1.elements:
-                    return ListT(kind="list", element=t1.elements[0])
+                if isinstance(t1_rp, ListT):
+                    return t1_rp
+                if isinstance(t1_rp, TupleT) and t1_rp.elements:
+                    return ListT(kind="list", element=t1_rp.elements[0])
                 self.error("Repeat requires string, bytes, or list", pos)
             return None
 
         if name == "Reverse":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("Reverse requires string", pos)
             return STRING_T
 
         # ── Reversed / Sorted ──
         if name == "Reversed":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and isinstance(t, ListT):
                 return t
             if t is not None:
                 self.error("Reversed requires list", pos)
             return None
         if name == "Sorted":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None:
-                t = _unwrap_nil_union(t)
-            if t is not None and isinstance(t, ListT):
-                if t.element.kind not in (
+                t_so = _unwrap_nil_union(t)
+            else:
+                t_so = None
+            if t_so is not None and isinstance(t_so, ListT):
+                if t_so.element.kind not in (
                     TY_INT,
                     TY_FLOAT,
                     TY_BYTE,
@@ -4271,9 +4273,9 @@ class Checker:
                     TY_STRING,
                 ):
                     self.error("Sorted requires ordered type", pos)
-                return t
-            if t is not None and isinstance(t, SetT):
-                if t.element.kind not in (
+                return t_so
+            if t_so is not None and isinstance(t_so, SetT):
+                if t_so.element.kind not in (
                     TY_INT,
                     TY_FLOAT,
                     TY_BYTE,
@@ -4281,67 +4283,67 @@ class Checker:
                     TY_STRING,
                 ):
                     self.error("Sorted requires ordered type", pos)
-                return ListT(kind="list", element=t.element)
-            if t is not None:
+                return ListT(kind="list", element=t_so.element)
+            if t_so is not None:
                 self.error("Sorted requires list or set", pos)
             return None
 
         # ── String functions ──
         if name in ("Upper", "Lower"):
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error(name + " requires string", pos)
             return STRING_T
         if name in ("Trim", "TrimStart", "TrimEnd"):
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
             return STRING_T
         if name in ("Split", "SplitWhitespace"):
             if name == "Split":
-                if not require(2):
+                if not _bctx_require(ctx, 2):
                     return None
-                t = arg(0)
+                t = _bctx_arg(ctx, 0)
                 if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
                     self.error("Split requires string as first argument", pos)
             else:
-                if not require(1):
+                if not _bctx_require(ctx, 1):
                     return None
             return ListT(kind="list", element=STRING_T)
         if name == "SplitN":
-            if not require(3):
+            if not _bctx_require(ctx, 3):
                 return None
             return ListT(kind="list", element=STRING_T)
         if name == "Join":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
+            t1 = _bctx_arg(ctx, 0)
             if t1 is not None and t1.kind != TY_ERROR and not type_eq(t1, STRING_T):
                 self.error("Join requires string as first argument", pos)
-            t2 = arg(1)
+            t2 = _bctx_arg(ctx, 1)
             if t2 is not None and t2.kind != TY_ERROR:
                 if not isinstance(t2, ListT):
                     self.error("Join requires list as second argument", pos)
             return STRING_T
         if name in ("Find", "RFind", "Count"):
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
                 self.error(name + " requires string as first argument", pos)
             return INT_T
         if name == "Replace":
-            if not require(3):
+            if not _bctx_require(ctx, 3):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
                 self.error("Replace requires string as first argument", pos)
             return STRING_T
         if name in ("StartsWith", "EndsWith"):
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if (
                 t is not None
                 and t.kind != TY_ERROR
@@ -4351,102 +4353,132 @@ class Checker:
                 self.error(name + " requires string or bytes as first argument", pos)
             return BOOL_T
         if name in ("IsDigit", "IsAlpha", "IsAlnum", "IsSpace", "IsUpper", "IsLower"):
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not (type_eq(t, STRING_T) or type_eq(t, RUNE_T)):
                 self.error(name + " requires string or rune", pos)
             return BOOL_T
 
         # ── RuneFromInt / RuneToInt ──
         if name == "RuneFromInt":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None:
-                t = _unwrap_nil_union(t)
-            if t is not None and t.kind != TY_ERROR and not type_eq(t, INT_T):
+                t_rfi = _unwrap_nil_union(t)
+            else:
+                t_rfi = None
+            if (
+                t_rfi is not None
+                and t_rfi.kind != TY_ERROR
+                and not type_eq(t_rfi, INT_T)
+            ):
                 self.error("RuneFromInt requires int", pos)
             return RUNE_T
         if name == "RuneToInt":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, RUNE_T):
                 self.error("RuneToInt requires rune", pos)
             return INT_T
 
         # ── ParseInt / ParseFloat ──
         if name == "ParseInt":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None:
-                t1 = _unwrap_nil_union(t1)
-            if t1 is not None and t1.kind != TY_ERROR and not type_eq(t1, STRING_T):
+                t1_pi = _unwrap_nil_union(t1)
+            else:
+                t1_pi = None
+            if (
+                t1_pi is not None
+                and t1_pi.kind != TY_ERROR
+                and not type_eq(t1_pi, STRING_T)
+            ):
                 self.error("ParseInt requires string as first argument", pos)
             if t2 is not None:
-                t2 = _unwrap_nil_union(t2)
-            if t2 is not None and t2.kind != TY_ERROR and not type_eq(t2, INT_T):
+                t2_pi = _unwrap_nil_union(t2)
+            else:
+                t2_pi = None
+            if (
+                t2_pi is not None
+                and t2_pi.kind != TY_ERROR
+                and not type_eq(t2_pi, INT_T)
+            ):
                 self.error(
-                    "cannot pass " + type_name(t2) + " as int",
+                    "cannot pass " + type_name(t2_pi) + " as int",
                     pos,
                 )
             return INT_T
         if name == "ParseFloat":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
                 self.error("ParseFloat requires string", pos)
             return FLOAT_T
         if name == "FormatInt":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t1 = arg(0)
-            t2 = arg(1)
+            t1 = _bctx_arg(ctx, 0)
+            t2 = _bctx_arg(ctx, 1)
             if t1 is not None:
-                t1 = _unwrap_nil_union(t1)
-            if t1 is not None and t1.kind != TY_ERROR and not type_eq(t1, INT_T):
+                t1_fi = _unwrap_nil_union(t1)
+            else:
+                t1_fi = None
+            if (
+                t1_fi is not None
+                and t1_fi.kind != TY_ERROR
+                and not type_eq(t1_fi, INT_T)
+            ):
                 self.error("FormatInt requires int as first argument", pos)
             if t2 is not None:
-                t2 = _unwrap_nil_union(t2)
-            if t2 is not None and t2.kind != TY_ERROR and not type_eq(t2, INT_T):
+                t2_fi = _unwrap_nil_union(t2)
+            else:
+                t2_fi = None
+            if (
+                t2_fi is not None
+                and t2_fi.kind != TY_ERROR
+                and not type_eq(t2_fi, INT_T)
+            ):
                 self.error("FormatInt requires int as second argument", pos)
             return STRING_T
 
         # ── Conversions ──
         if name == "IntToFloat":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, INT_T):
                 self.error("IntToFloat requires int", pos)
             return FLOAT_T
         if name == "FloatToInt":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, FLOAT_T):
                 self.error("FloatToInt requires float", pos)
             return INT_T
         if name == "ByteToInt":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, BYTE_T):
                 self.error("ByteToInt requires byte", pos)
             return INT_T
         if name == "IntToByte":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, INT_T):
                 self.error("IntToByte requires int", pos)
             return BYTE_T
         if name == "ToString":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
             return STRING_T
 
@@ -4455,16 +4487,22 @@ class Checker:
             if n < 1:
                 self.error("Format requires at least 1 argument", pos)
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
                 self.error("Format template must be string", pos)
             # Check remaining args are all string
             i = 1
             while i < n:
-                at = arg(i)
+                at = _bctx_arg(ctx, i)
                 if at is not None:
-                    at = _unwrap_nil_union(at)
-                if at is not None and at.kind != TY_ERROR and not type_eq(at, STRING_T):
+                    at_uw = _unwrap_nil_union(at)
+                else:
+                    at_uw = None
+                if (
+                    at_uw is not None
+                    and at_uw.kind != TY_ERROR
+                    and not type_eq(at_uw, STRING_T)
+                ):
                     self.error("Format arguments must be string", args[i].pos)
                 i += 1
             # Check placeholder count matches arg count
@@ -4484,81 +4522,81 @@ class Checker:
 
         # ── I/O ──
         if name in ("WriteOut", "WriteErr", "WritelnOut", "WritelnErr"):
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not (
                 type_eq(t, STRING_T) or type_eq(t, BYTES_T) or type_eq(t, ERROR_T)
             ):
                 self.error(name + " requires string or bytes", pos)
             return VOID_T
         if name == "ReadLine":
-            if not require(0):
+            if not _bctx_require(ctx, 0):
                 return None
             return make_optional(STRING_T)
         if name == "ReadAll":
-            if not require(0):
+            if not _bctx_require(ctx, 0):
                 return None
             return STRING_T
         if name == "ReadBytes":
-            if not require(0):
+            if not _bctx_require(ctx, 0):
                 return None
             return BYTES_T
         if name == "ReadBytesN":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, INT_T):
                 self.error("ReadBytesN requires int", pos)
             return BYTES_T
         if name == "ReadFile":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("ReadFile requires string path", pos)
             return normalize_union([STRING_T, BYTES_T])
         if name == "WriteFile":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("WriteFile requires string path", pos)
             return VOID_T
         if name == "Args":
-            if not require(0):
+            if not _bctx_require(ctx, 0):
                 return None
             return ListT(kind="list", element=STRING_T)
         if name == "GetEnv":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
             return make_optional(STRING_T)
         if name == "Exit":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, INT_T):
                 self.error("Exit requires int", pos)
             return VOID_T
 
         # ── Assert ──
         if name == "Assert":
-            if not require_range(1, 2):
+            if not _bctx_require_range(ctx, 1, 2):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, BOOL_T):
                 self.error("Assert condition must be bool", pos)
             if n == 2:
-                t2 = arg(1)
+                t2 = _bctx_arg(ctx, 1)
                 if t2 is not None and not type_eq(t2, STRING_T):
                     self.error("Assert message must be string", pos)
             return VOID_T
 
         # ── Unwrap ──
         if name == "Unwrap":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None:
                 if contains_nil(t):
                     return remove_nil(t)
@@ -4568,31 +4606,31 @@ class Checker:
 
         # ── Math extras ──
         if name == "IsNaN" or name == "IsInf":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, FLOAT_T):
                 self.error(name + " requires float", pos)
             return BOOL_T
         if name == "Sqrt":
-            if not require(1):
+            if not _bctx_require(ctx, 1):
                 return None
-            t = arg(0)
+            t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, FLOAT_T):
                 self.error("Sqrt requires float", pos)
             return FLOAT_T
 
         # ── IsNil ──
         if name == "IsNil":
-            if not require_range(1, 2):
+            if not _bctx_require_range(ctx, 1, 2):
                 return None
             return BOOL_T
 
         # ── IsType ──
         if name == "IsType":
-            if not require(2):
+            if not _bctx_require(ctx, 2):
                 return None
-            arg(0)
+            _bctx_arg(ctx, 0)
             return BOOL_T
 
         self.error("unknown built-in function: " + name, pos)
