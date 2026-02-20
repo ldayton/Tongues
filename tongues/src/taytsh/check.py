@@ -701,6 +701,38 @@ def _collect_type_checks(cond: TExpr) -> list[tuple[str, str, bool]]:
     return result
 
 
+def _collect_type_checks_guard(cond: TExpr) -> list[tuple[str, str, bool]]:
+    """Extract type checks for guard narrowing (after early exit).
+    Only walks || chains (sound under negation). Does NOT recurse into &&."""
+    result: list[tuple[str, str, bool]] = []
+    if isinstance(cond, TBinaryOp) and cond.op == "||":
+        result.extend(_collect_type_checks_guard(cond.left))
+        result.extend(_collect_type_checks_guard(cond.right))
+        return result
+    if isinstance(cond, TBinaryOp) and cond.op == "&&":
+        return []
+    single = _type_check_var(cond)
+    if single is not None:
+        result.append(single)
+    return result
+
+
+def _collect_nil_checks_guard(cond: TExpr) -> list[tuple[str, str]]:
+    """Extract nil checks for guard narrowing (after early exit).
+    Only walks || chains (sound under negation). Does NOT recurse into &&."""
+    result: list[tuple[str, str]] = []
+    if isinstance(cond, TBinaryOp) and cond.op == "||":
+        result.extend(_collect_nil_checks_guard(cond.left))
+        result.extend(_collect_nil_checks_guard(cond.right))
+        return result
+    if isinstance(cond, TBinaryOp) and cond.op == "&&":
+        return []
+    info = _nil_check_var(cond)
+    if info is not None:
+        result.append(info)
+    return result
+
+
 def _is_truthy_type(t: Type) -> bool:
     """Return True if a type supports truthiness (can be used as a bool condition)."""
     return False
@@ -1513,11 +1545,7 @@ class Checker:
             # After if-stmt with early exit, narrow nil-checked vars
             if isinstance(s, TIfStmt) and s.else_body is None:
                 if _body_always_exits(s.then_body):
-                    checks = _collect_nil_checks(s.cond)
-                    or_checks = _collect_nil_checks(s.cond, False, "||")
-                    for item in or_checks:
-                        if item not in checks:
-                            checks.append(item)
+                    checks = _collect_nil_checks_guard(s.cond)
                     for var_name, check_kind in checks:
                         if "." in var_name:
                             var_type = self._lookup_field_type(var_name, s.pos)
@@ -1529,7 +1557,7 @@ class Checker:
                             elif check_kind == "is_not_nil":
                                 self.narrow(var_name, NIL_T)
                     # Guard narrowing for IsType: if !IsType(x, T): return → narrow x to T
-                    type_checks = _collect_type_checks(s.cond)
+                    type_checks = _collect_type_checks_guard(s.cond)
                     for tc_var, tc_type_name, tc_positive in type_checks:
                         if tc_positive:
                             continue
