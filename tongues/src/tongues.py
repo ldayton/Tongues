@@ -683,8 +683,9 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
         if isinstance(args_val, JDict):
             seeds.append(args_val)
         returns_val = node.get("returns")
-        if returns_val is not None and not isinstance(returns_val, JNull):
-            seeds.append(returns_val)
+        if returns_val is not None:
+            if not isinstance(returns_val, JNull):
+                seeds.append(returns_val)
         deco_val = node.get("decorator_list")
         if isinstance(deco_val, JList):
             seeds.append(deco_val)
@@ -700,15 +701,18 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
             seeds.append(deco_val)
     elif node_type == "Assign":
         value_val = node.get("value")
-        if value_val is not None and not isinstance(value_val, JNull):
-            seeds.append(value_val)
+        if value_val is not None:
+            if not isinstance(value_val, JNull):
+                seeds.append(value_val)
     elif node_type == "AnnAssign":
         value_val = node.get("value")
-        if value_val is not None and not isinstance(value_val, JNull):
-            seeds.append(value_val)
+        if value_val is not None:
+            if not isinstance(value_val, JNull):
+                seeds.append(value_val)
         ann_val = node.get("annotation")
-        if ann_val is not None and not isinstance(ann_val, JNull):
-            seeds.append(ann_val)
+        if ann_val is not None:
+            if not isinstance(ann_val, JNull):
+                seeds.append(ann_val)
     work: list[JsonValue] = list(seeds)
     wi = 0
     while wi < len(work):
@@ -1017,10 +1021,9 @@ def _rewrite_module_attrs(
                                         val_entries["end_lineno"] = end_lineno
                                     if end_col is not None:
                                         val_entries["end_col_offset"] = end_col
-                                    if source_file is not None and not isinstance(
-                                        source_file, JNull
-                                    ):
-                                        val_entries["_source_file"] = source_file
+                                    if source_file is not None:
+                                        if not isinstance(source_file, JNull):
+                                            val_entries["_source_file"] = source_file
                                 elif target_name_map is not None:
                                     lineno_i = get_int(val_entries, "lineno")
                                     col_i = get_int(val_entries, "col_offset")

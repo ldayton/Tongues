@@ -4929,6 +4929,7 @@ def _build_function(
     func_info = ctx.sig_result.functions.get(get_str(node, "name"))
     params: list[TParam] = []
     func_env = env.copy()
+    func_env.hoisted_stmts = {}
     if func_info is not None:
         i = 0
         while i < len(func_info.params):
@@ -4986,6 +4987,7 @@ def _build_method(
     func_info = class_methods.get(name)
     params: list[TParam] = []
     func_env = env.copy()
+    func_env.hoisted_stmts = {}
     # Add this param
     self_type: TypeNode = PointerType(StructRef(class_name))
     func_env.var_types["this"] = self_type

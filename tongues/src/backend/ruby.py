@@ -290,10 +290,10 @@ def _scan_needs(module: TModule) -> tuple[bool, bool]:
     needs_range = False
     for decl in module.decls:
         if isinstance(decl, (TFnDecl, TStructDecl)):
-            s, r = _scan_decl_needs(decl)
-            if s:
+            has_set, has_range = _scan_decl_needs(decl)
+            if has_set:
                 needs_set = True
-            if r:
+            if has_range:
                 needs_range = True
     return needs_set, needs_range
 
@@ -306,10 +306,10 @@ def _scan_decl_needs(decl: TDecl) -> tuple[bool, bool]:
         stmts = decl.body
     elif isinstance(decl, TStructDecl):
         for m in decl.methods:
-            s, r = _scan_decl_needs(m)
-            if s:
+            has_set, has_range = _scan_decl_needs(m)
+            if has_set:
                 needs_set = True
-            if r:
+            if has_range:
                 needs_range = True
         for fld in decl.fields:
             if isinstance(fld.typ, TSetType):
@@ -526,7 +526,6 @@ class _RubyEmitter:
         fn_names: set[str],
         struct_fields: dict[str, list[str]],
         enum_names: set[str],
-        *,
         strict_math: bool = False,
     ) -> None:
         self.struct_names = struct_names
@@ -939,9 +938,9 @@ class _RubyEmitter:
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
         unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
-        if unused_str:
+        if unused_str != "":
             for s in unused_str.split(","):
-                if s:
+                if s != "":
                     unused_indices.add(int(s))
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
@@ -2022,7 +2021,7 @@ def emit_ruby(module: TModule) -> str:
         fn_names,
         struct_fields,
         enum_names,
-        strict_math=module.strict_math,
+        module.strict_math,
     )
     emitter.emit_module(module)
     return emitter.output()
