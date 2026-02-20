@@ -923,8 +923,8 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
             vd[vk] = _wrap_ann(vv)
         d["vars"] = JDict(vd)
         escapes: dict[str, JsonValue] = {}
-        for n, a in vars_dict.items():
-            if a.get("escapes") is not None:
+        for n, va in vars_dict.items():
+            if va.get("escapes") is not None:
                 escapes[n] = JBool(True)
         if escapes:
             d["escapes"] = JDict(escapes)
