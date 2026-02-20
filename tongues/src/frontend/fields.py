@@ -710,10 +710,10 @@ def _collect_init_fields(
                                 return
                         else:
                             ann_has_default = False
-                            value = stmt.get("value")
-                            if value is not None and not isinstance(value, JNull):
-                                if isinstance(value, JDict):
-                                    value_node = value.entries
+                            ann_val = stmt.get("value")
+                            if ann_val is not None and not isinstance(ann_val, JNull):
+                                if isinstance(ann_val, JDict):
+                                    value_node = ann_val.entries
                                 else:
                                     value_node: ASTNode = {}
                                 if (
@@ -734,10 +734,10 @@ def _collect_init_fields(
                                 has_default=ann_has_default,
                                 default=None,
                             )
-                        value = stmt.get("value")
-                        if value is not None and not isinstance(value, JNull):
-                            if isinstance(value, JDict):
-                                value_node = value.entries
+                        ann_val2 = stmt.get("value")
+                        if ann_val2 is not None and not isinstance(ann_val2, JNull):
+                            if isinstance(ann_val2, JDict):
+                                value_node = ann_val2.entries
                             else:
                                 value_node: ASTNode = {}
                             if not (

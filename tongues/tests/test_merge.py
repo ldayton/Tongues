@@ -7,6 +7,7 @@ from pathlib import Path
 
 from src.frontend.parse import parse
 from src.frontend.types import (
+    JBool,
     JDict,
     JInt,
     JList,
@@ -744,48 +745,89 @@ class TestProjectPragmas:
 
 class TestAstEqual:
     def test_identical_dicts(self):
-        a = {"_type": "Name", "id": "foo", "lineno": 1}
-        b = {"_type": "Name", "id": "foo", "lineno": 5}
+        a = {"_type": JStr("Name"), "id": JStr("foo"), "lineno": JInt(1)}
+        b = {"_type": JStr("Name"), "id": JStr("foo"), "lineno": JInt(5)}
         assert _ast_equal(a, b)
 
     def test_differ_in_value(self):
-        a = {"_type": "Name", "id": "foo"}
-        b = {"_type": "Name", "id": "bar"}
+        a = {"_type": JStr("Name"), "id": JStr("foo")}
+        b = {"_type": JStr("Name"), "id": JStr("bar")}
         assert not _ast_equal(a, b)
 
     def test_differ_in_position_still_equal(self):
-        a = {"_type": "Constant", "value": 1, "lineno": 1, "col_offset": 0}
-        b = {"_type": "Constant", "value": 1, "lineno": 99, "col_offset": 42}
+        a = {
+            "_type": JStr("Constant"),
+            "value": JInt(1),
+            "lineno": JInt(1),
+            "col_offset": JInt(0),
+        }
+        b = {
+            "_type": JStr("Constant"),
+            "value": JInt(1),
+            "lineno": JInt(99),
+            "col_offset": JInt(42),
+        }
         assert _ast_equal(a, b)
 
     def test_nested_dicts(self):
-        a = {"_type": "Assign", "value": {"_type": "Constant", "value": 1, "lineno": 1}}
-        b = {"_type": "Assign", "value": {"_type": "Constant", "value": 1, "lineno": 9}}
+        a = {
+            "_type": JStr("Assign"),
+            "value": JDict(
+                {"_type": JStr("Constant"), "value": JInt(1), "lineno": JInt(1)}
+            ),
+        }
+        b = {
+            "_type": JStr("Assign"),
+            "value": JDict(
+                {"_type": JStr("Constant"), "value": JInt(1), "lineno": JInt(9)}
+            ),
+        }
         assert _ast_equal(a, b)
 
     def test_nested_differ(self):
-        a = {"_type": "Assign", "value": {"_type": "Constant", "value": 1}}
-        b = {"_type": "Assign", "value": {"_type": "Constant", "value": 2}}
+        a = {
+            "_type": JStr("Assign"),
+            "value": JDict({"_type": JStr("Constant"), "value": JInt(1)}),
+        }
+        b = {
+            "_type": JStr("Assign"),
+            "value": JDict({"_type": JStr("Constant"), "value": JInt(2)}),
+        }
         assert not _ast_equal(a, b)
 
     def test_lists_equal(self):
-        a = {"_type": "Module", "body": [{"_type": "Pass"}, {"_type": "Pass"}]}
-        b = {"_type": "Module", "body": [{"_type": "Pass"}, {"_type": "Pass"}]}
+        a = {
+            "_type": JStr("Module"),
+            "body": JList(
+                [JDict({"_type": JStr("Pass")}), JDict({"_type": JStr("Pass")})]
+            ),
+        }
+        b = {
+            "_type": JStr("Module"),
+            "body": JList(
+                [JDict({"_type": JStr("Pass")}), JDict({"_type": JStr("Pass")})]
+            ),
+        }
         assert _ast_equal(a, b)
 
     def test_lists_differ_length(self):
-        a = {"_type": "Module", "body": [{"_type": "Pass"}]}
-        b = {"_type": "Module", "body": [{"_type": "Pass"}, {"_type": "Pass"}]}
+        a = {"_type": JStr("Module"), "body": JList([JDict({"_type": JStr("Pass")})])}
+        b = {
+            "_type": JStr("Module"),
+            "body": JList(
+                [JDict({"_type": JStr("Pass")}), JDict({"_type": JStr("Pass")})]
+            ),
+        }
         assert not _ast_equal(a, b)
 
     def test_source_file_ignored(self):
-        a = {"_type": "Name", "id": "x", "_source_file": "a.py"}
-        b = {"_type": "Name", "id": "x", "_source_file": "b.py"}
+        a = {"_type": JStr("Name"), "id": JStr("x"), "_source_file": JStr("a.py")}
+        b = {"_type": JStr("Name"), "id": JStr("x"), "_source_file": JStr("b.py")}
         assert _ast_equal(a, b)
 
     def test_different_keys(self):
-        a = {"_type": "Name", "id": "x"}
-        b = {"_type": "Name", "id": "x", "extra": True}
+        a = {"_type": JStr("Name"), "id": JStr("x")}
+        b = {"_type": JStr("Name"), "id": JStr("x"), "extra": JBool(True)}
         assert not _ast_equal(a, b)
 
 

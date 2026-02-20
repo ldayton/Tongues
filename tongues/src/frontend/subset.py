@@ -767,9 +767,9 @@ class Verifier:
             k += 1
         k = 0
         while k < len(kw_defaults):
-            d = kw_defaults[k]
-            if isinstance(d, JDict):
-                all_defaults.append(d.entries)
+            kw_d = kw_defaults[k]
+            if isinstance(kw_d, JDict):
+                all_defaults.append(kw_d.entries)
             k += 1
         k = 0
         while k < len(all_defaults):
