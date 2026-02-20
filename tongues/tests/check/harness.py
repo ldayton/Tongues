@@ -5,13 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from random import Random
 
-from src.taytsh.ast import TModule
 from src.taytsh.check import check
 from src.taytsh.emit import to_source
 
 from . import Generator
 from .features import FeatureVector
-from .mutator import ALL_MUTATIONS, MutationResult
+from .mutator import ALL_MUTATIONS
 
 
 @dataclass

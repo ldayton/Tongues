@@ -9,7 +9,6 @@ from src.taytsh.ast import (
     TArg,
     TAssignStmt,
     TBinaryOp,
-    TBoolLit,
     TBreakStmt,
     TCall,
     TCatch,
@@ -314,7 +313,7 @@ class StmtGen:
                 TLetStmt(pos=P, name=tgt_name, typ=ttype, value=init, annotations=A)
             )
             targets.append(TVar(pos=P, name=tgt_name, annotations=A))
-        self._pending_stmts = preamble
+        self._pending_stmts = self._pending_stmts + preamble
         return TTupleAssignStmt(
             pos=P,
             targets=targets,

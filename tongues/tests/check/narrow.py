@@ -54,7 +54,6 @@ from src.taytsh.ast import (
     TBinaryOp,
     TBoolLit,
     TCall,
-    TDefault,
     TExprStmt,
     TFieldAccess,
     TFieldDecl,
@@ -68,7 +67,6 @@ from src.taytsh.ast import (
     TModule,
     TModuleItem,
     TNilLit,
-    TParam,
     TPatternNil,
     TPatternType,
     TPrimitive,
@@ -85,8 +83,6 @@ from src.taytsh.check import (
     INT_T,
     NIL_T,
     STRING_T,
-    VOID_T,
-    EnumT,
     InterfaceT,
     StructT,
     Type,
@@ -97,7 +93,6 @@ from src.taytsh.check import (
     type_eq,
 )
 
-from src.taytsh.ast import TAssignStmt
 
 from tests.check.types import make_ttype
 

@@ -13,7 +13,6 @@ from src.taytsh.ast import (
     TBytesLit,
     TCall,
     TExpr,
-    TExprStmt,
     TFieldAccess,
     TFloatLit,
     TFnLit,
