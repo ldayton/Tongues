@@ -3013,8 +3013,10 @@ class Checker:
                                     a.pos,
                                 )
                         elif a.name is not None:
+                            rname = resolved.name
+                            aname = a.name
                             self.error(
-                                "'" + resolved.name + "' has no field '" + a.name + "'",
+                                "'" + rname + "' has no field '" + aname + "'",
                                 a.pos,
                             )
                         else:
@@ -3320,16 +3322,15 @@ class Checker:
         if expected is not None and isinstance(expected, MapT):
             key_expected = expected.key
             val_expected = expected.value
-        k0, v0 = expr.entries[0]
-        key_type = self.check_expr(k0, key_expected)
-        val_type = self.check_expr(v0, val_expected)
+        key_type = self.check_expr(expr.entries[0][0], key_expected)
+        val_type = self.check_expr(expr.entries[0][1], val_expected)
         if key_type is None or val_type is None:
             return None
         check_key = key_expected if key_expected is not None else key_type
         check_val = val_expected if val_expected is not None else val_type
         # Track literal keys for duplicate detection
         seen_keys: list[tuple[str, str]] = []
-        k0_val = _literal_key_value(k0)
+        k0_val = _literal_key_value(expr.entries[0][0])
         if k0_val is not None:
             seen_keys.append(k0_val)
         i = 1

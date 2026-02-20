@@ -290,11 +290,10 @@ class _Emitter:
             current = None
 
         # Emit first branch
-        first_cond, first_body = branches[0]
         self._emit_line(
-            "if " + self._render_expr(first_cond, self._PREC_TERNARY) + " {"
+            "if " + self._render_expr(branches[0][0], self._PREC_TERNARY) + " {"
         )
-        self._emit_stmt_block(first_body)
+        self._emit_stmt_block(branches[0][1])
 
         # else-if branches
         i = 1

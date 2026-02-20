@@ -849,6 +849,11 @@ def _wrap_raw(obj: JsonValue) -> JsonValue:
     return JNull()
 
 
+def to_dict(module: TModule) -> JsonValue:
+    """Serialize a TModule to a JsonValue tree via dataclasses.asdict."""
+    return _wrap_raw(asdict(module))
+
+
 def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, JsonValue]:
     d: dict[str, JsonValue] = {"type": JStr(_sa_stmt_type_name(stmt))}
     ann = _sa_strip(stmt.annotations, pfx, plen)
@@ -929,11 +934,6 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
         if escapes:
             d["escapes"] = JDict(escapes)
     return d
-
-
-def to_dict(module: TModule) -> JsonValue:
-    """Serialize a TModule to a JsonValue tree via dataclasses.asdict."""
-    return _wrap_raw(asdict(module))
 
 
 def serialize_annotations(module: TModule, prefix: str) -> dict[str, JsonValue]:
