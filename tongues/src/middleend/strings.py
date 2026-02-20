@@ -153,7 +153,6 @@ def _register_string_binding(
     name: str,
     annotations: Ann,
     declared_type: Type,
-    *,
     binder_name: str | None = None,
     base_unknown: bool = False,
 ) -> None:
@@ -829,7 +828,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         ctx.var_types[stmt.name] = declared_t
         if _contains_string_type(declared_t):
             _register_string_binding(
-                ctx, stmt.name, stmt.annotations, declared_t, base_unknown=False
+                ctx, stmt.name, stmt.annotations, declared_t, None, False
             )
             dead = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if not dead:
@@ -926,12 +925,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
             ctx.var_types[bname] = btype
             if _contains_string_type(btype):
                 _register_string_binding(
-                    ctx,
-                    bname,
-                    stmt.annotations,
-                    btype,
-                    binder_name=bname,
-                    base_unknown=True,
+                    ctx, bname, stmt.annotations, btype, bname, True
                 )
             child_declared.add(bname)
 
@@ -959,11 +953,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 ctx.var_types[pat.name] = case_t
                 if _contains_string_type(case_t):
                     _register_string_binding(
-                        ctx,
-                        pat.name,
-                        pat.annotations,
-                        case_t,
-                        base_unknown=True,
+                        ctx, pat.name, pat.annotations, case_t, None, True
                     )
                 case_declared.add(pat.name)
             elif isinstance(pat, TPatternEnum):
@@ -982,11 +972,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 ctx.var_types[stmt.default.name] = residual
                 if _contains_string_type(residual):
                     _register_string_binding(
-                        ctx,
-                        stmt.default.name,
-                        stmt.default.annotations,
-                        residual,
-                        base_unknown=True,
+                        ctx, stmt.default.name, stmt.default.annotations, residual, None, True
                     )
                 dflt_declared.add(stmt.default.name)
             _walk_stmts(stmt.default.body, ctx, dflt_declared)
@@ -1106,7 +1092,7 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
         ctx.var_types[p.name] = pt
         declared.add(p.name)
         if _contains_string_type(pt):
-            _register_string_binding(ctx, p.name, p.annotations, pt, base_unknown=True)
+            _register_string_binding(ctx, p.name, p.annotations, pt, None, True)
         if _is_list_of_string_type(pt):
             ctx.list_string_types[p.name] = pt
             ctx.list_string_sources[p.name] = []
