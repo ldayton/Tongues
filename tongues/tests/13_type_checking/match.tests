@@ -242,7 +242,7 @@ fn Main() -> void {
 error: duplicate case
 ---
 
-=== cannot match on int
+=== match on int (degenerate)
 fn Main() -> void {
     let x: int = 42
     match x {
@@ -251,10 +251,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on int
+ok
 ---
 
-=== cannot match on string
+=== match on string (degenerate)
 fn Main() -> void {
     let s: string = "hello"
     match s {
@@ -263,10 +263,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on string
+ok
 ---
 
-=== cannot match on bool
+=== match on bool (degenerate)
 fn Main() -> void {
     let b: bool = true
     match b {
@@ -275,10 +275,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on bool
+ok
 ---
 
-=== cannot match on list
+=== match on list (degenerate)
 fn Main() -> void {
     let xs: list[int] = [1, 2]
     match xs {
@@ -287,10 +287,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on list
+ok
 ---
 
-=== cannot match on struct
+=== match on struct (degenerate)
 struct Pt {
     x: int
     y: int
@@ -303,7 +303,7 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match
+ok
 ---
 
 === default must be last
@@ -583,7 +583,7 @@ fn Main() -> void {
 ok
 ---
 
-=== cannot match on map
+=== match on map (degenerate)
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
     match m {
@@ -592,10 +592,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on map
+ok
 ---
 
-=== cannot match on float
+=== match on float (degenerate)
 fn Main() -> void {
     let f: float = 3.14
     match f {
@@ -604,10 +604,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on float
+ok
 ---
 
-=== cannot match on byte
+=== match on byte (degenerate)
 fn Main() -> void {
     let b: byte = 0x01
     match b {
@@ -616,10 +616,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on byte
+ok
 ---
 
-=== cannot match on tuple
+=== match on tuple (degenerate)
 fn Main() -> void {
     let t: (int, string) = (1, "hello")
     match t {
@@ -628,7 +628,7 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on
+ok
 ---
 
 === match enum all variants plus default
@@ -714,7 +714,7 @@ fn Main() -> void {
 ok
 ---
 
-=== match on rune rejected
+=== match on rune (degenerate)
 fn Main() -> void {
     let c: rune = 'a'
     match c {
@@ -723,10 +723,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on rune
+ok
 ---
 
-=== match on bytes rejected
+=== match on bytes (degenerate)
 fn Main() -> void {
     let b: bytes = b"\x01"
     match b {
@@ -735,10 +735,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on bytes
+ok
 ---
 
-=== match on fn type rejected
+=== match on fn type (degenerate)
 fn Double(x: int) -> int {
     return x * 2
 }
@@ -750,10 +750,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on fn
+ok
 ---
 
-=== match on set rejected
+=== match on set (degenerate)
 fn Main() -> void {
     let s: set[int] = {1, 2}
     match s {
@@ -762,7 +762,7 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on set
+ok
 ---
 
 === match nil case where scrutinee has no nil

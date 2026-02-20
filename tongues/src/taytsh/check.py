@@ -2056,9 +2056,12 @@ class Checker:
             return True
         if isinstance(t, UnionT):
             return True
+        if isinstance(t, StructT):
+            return True
         if t.kind == TY_ERROR:
             return True
-        return False
+        # Primitive types and collection types — degenerate but valid
+        return True
 
     def _allowed_in_match(self, case_type: Type, scrutinee: Type) -> bool:
         """Check if case_type is a valid case for the given scrutinee."""
@@ -2082,7 +2085,8 @@ class Checker:
             return True
         if scrutinee.kind == TY_ERROR:
             return True
-        return False
+        # Struct/primitive/collection scrutinee: case must match the type
+        return type_eq(case_type, scrutinee)
 
     def check_match_case(
         self,
