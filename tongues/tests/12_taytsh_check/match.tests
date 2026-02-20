@@ -440,7 +440,7 @@ fn Main() -> void {
 error: non-exhaustive match
 ---
 
-=== error: match on non-matchable type int
+=== match on int (degenerate)
 fn Main() -> void {
     let x: int = 42
     match x {
@@ -450,10 +450,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on int
+ok
 ---
 
-=== error: match on non-matchable type string
+=== match on string (degenerate)
 fn Main() -> void {
     let s: string = "hello"
     match s {
@@ -463,10 +463,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on string
+ok
 ---
 
-=== error: match on non-matchable type list
+=== match on list (degenerate)
 fn Main() -> void {
     let xs: list[int] = [1, 2, 3]
     match xs {
@@ -476,10 +476,10 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on list
+ok
 ---
 
-=== error: match on non-matchable type bool
+=== match on bool (degenerate)
 fn Main() -> void {
     let b: bool = true
     match b {
@@ -489,7 +489,7 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot match on bool
+ok
 ---
 
 === valid: default with binding in union match
