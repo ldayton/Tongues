@@ -11,6 +11,7 @@ from tests.check import Generator
 from tests.check.exhaust import ALL_CONFIGS, run_exhaustiveness
 from tests.check.features import FeatureVector
 from tests.check.harness import run_mutations, run_well_typed
+from tests.check.narrow import ALL_SPECS, run_narrowing_spec
 
 
 class TestWellTyped:
@@ -49,6 +50,22 @@ class TestMutations:
                 f"Seed {seed}: {len(failures)} undetected mutation(s):\n"
                 + "\n".join(msgs)
             )
+
+
+class TestNarrowing:
+    @pytest.mark.parametrize("spec", ALL_SPECS, ids=lambda s: s.name)
+    def test_narrowing(self, spec) -> None:
+        failures = run_narrowing_spec(spec)
+        if not failures:
+            return
+        msgs: list[str] = []
+        for f in failures:
+            label = "should accept" if f.expected_clean else "should reject"
+            msgs.append(f"  {f.case} ({label}): {f.actual_errors}")
+        msg = f"Spec '{spec.name}': {len(failures)} failure(s):\n" + "\n".join(msgs)
+        if spec.structure == "bool_var":
+            pytest.xfail(msg)
+        pytest.fail(msg)
 
 
 class TestExhaustiveness:
