@@ -4276,7 +4276,8 @@ def _extract_isinstance_chain(
         unwrapped_pair = _unwrap_isinstance_and(test)
         if unwrapped_pair is None:
             return None
-        isinstance_node, extra_conds = unwrapped_pair
+        isinstance_node = unwrapped_pair[0]
+        extra_conds = unwrapped_pair[1]
     var_name = _isinstance_var(isinstance_node)
     if var_name == "":
         return None
@@ -5263,7 +5264,9 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                             if fname == fname.upper() and len(fname) > 1:
                                 pos = _node_pos(item)
                                 value_node = get_node(item, "value")
-                                val_type: TypeNode = _infer_expr_type(value_node, _Env(), ctx)
+                                val_type: TypeNode = _infer_expr_type(
+                                    value_node, _Env(), ctx
+                                )
                                 if _is_type_dict(val_type, ["void"]):
                                     val_type = PrimitiveType("error")
                                 ttype = _typenode_to_ttype(pos, val_type)

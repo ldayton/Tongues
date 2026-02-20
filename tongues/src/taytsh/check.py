@@ -1009,7 +1009,12 @@ class _BuiltinCtx:
     pos: Pos
 
     def __init__(
-        self, checker: Checker, name: str, arg_types: list[Type | None], n: int, pos: Pos
+        self,
+        checker: Checker,
+        name: str,
+        arg_types: list[Type | None],
+        n: int,
+        pos: Pos,
     ) -> None:
         self.checker = checker
         self.name = name
@@ -2470,9 +2475,23 @@ class Checker:
                 if right.kind == TY_NIL and contains_nil(left):
                     return BOOL_T
                 # Allow nil comparison on reference/container types
-                if left.kind == TY_NIL and right.kind != TY_INT and right.kind != TY_FLOAT and right.kind != TY_BOOL and right.kind != TY_BYTE and right.kind != TY_RUNE:
+                if (
+                    left.kind == TY_NIL
+                    and right.kind != TY_INT
+                    and right.kind != TY_FLOAT
+                    and right.kind != TY_BOOL
+                    and right.kind != TY_BYTE
+                    and right.kind != TY_RUNE
+                ):
                     return BOOL_T
-                if right.kind == TY_NIL and left.kind != TY_INT and left.kind != TY_FLOAT and left.kind != TY_BOOL and left.kind != TY_BYTE and left.kind != TY_RUNE:
+                if (
+                    right.kind == TY_NIL
+                    and left.kind != TY_INT
+                    and left.kind != TY_FLOAT
+                    and left.kind != TY_BOOL
+                    and left.kind != TY_BYTE
+                    and left.kind != TY_RUNE
+                ):
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
@@ -2842,8 +2861,16 @@ class Checker:
         if isinstance(obj_type, MapT):
             if idx_type is not None and not is_assignable(idx_type, obj_type.key):
                 # Allow numeric interchangeability for map keys
-                idx_numeric = idx_type.kind == TY_INT or idx_type.kind == TY_FLOAT or idx_type.kind == TY_BOOL
-                key_numeric = obj_type.key.kind == TY_INT or obj_type.key.kind == TY_FLOAT or obj_type.key.kind == TY_BOOL
+                idx_numeric = (
+                    idx_type.kind == TY_INT
+                    or idx_type.kind == TY_FLOAT
+                    or idx_type.kind == TY_BOOL
+                )
+                key_numeric = (
+                    obj_type.key.kind == TY_INT
+                    or obj_type.key.kind == TY_FLOAT
+                    or obj_type.key.kind == TY_BOOL
+                )
                 if not (idx_numeric and key_numeric):
                     self.error(
                         "map key must be "

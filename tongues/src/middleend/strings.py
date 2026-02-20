@@ -972,7 +972,12 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 ctx.var_types[stmt.default.name] = residual
                 if _contains_string_type(residual):
                     _register_string_binding(
-                        ctx, stmt.default.name, stmt.default.annotations, residual, None, True
+                        ctx,
+                        stmt.default.name,
+                        stmt.default.annotations,
+                        residual,
+                        None,
+                        True,
                     )
                 dflt_declared.add(stmt.default.name)
             _walk_stmts(stmt.default.body, ctx, dflt_declared)
