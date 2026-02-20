@@ -497,6 +497,47 @@ def _block_is_complete(stmts: list[TStmt]) -> bool:
     return False
 
 
+def _block_always_exits(stmts: list[TStmt]) -> bool:
+    """Return True if all paths exit via return, throw, break, or continue."""
+    if len(stmts) == 0:
+        return False
+    last = stmts[len(stmts) - 1]
+    if isinstance(last, (TReturnStmt, TThrowStmt, TBreakStmt, TContinueStmt)):
+        return True
+    if isinstance(last, TExprStmt) and isinstance(last.expr, TCall):
+        if isinstance(last.expr.func, TVar) and last.expr.func.name == "Exit":
+            return True
+    if isinstance(last, TIfStmt):
+        if last.else_body is None:
+            return False
+        return _block_always_exits(last.then_body) and _block_always_exits(
+            last.else_body
+        )
+    if isinstance(last, TWhileStmt):
+        if isinstance(last.cond, TBoolLit) and last.cond.value is True:
+            return not _stmts_contain_break(last.body)
+        return False
+    if isinstance(last, TMatchStmt):
+        if last.default is not None:
+            for case in last.cases:
+                if not _block_always_exits(case.body):
+                    return False
+            return _block_always_exits(last.default.body)
+        if len(last.cases) > 0:
+            for case in last.cases:
+                if not _block_always_exits(case.body):
+                    return False
+            return True
+        return False
+    if isinstance(last, TTryStmt):
+        if len(last.catches) == 0:
+            return _block_always_exits(last.body)
+        return _block_always_exits(last.body) or all(
+            _block_always_exits(c.body) for c in last.catches
+        )
+    return False
+
+
 def _stmts_contain_break(stmts: list[TStmt]) -> bool:
     """Return True if any statement in the list is or contains a break."""
     for s in stmts:
@@ -530,57 +571,49 @@ def _body_always_exits(stmts: list[TStmt]) -> bool:
     return isinstance(last, (TReturnStmt, TBreakStmt, TContinueStmt, TThrowStmt))
 
 
+def _field_access_path(expr: TExpr) -> str | None:
+    """Build a dotted path from nested TFieldAccess, e.g. 'a.b.c'."""
+    if isinstance(expr, TVar):
+        return expr.name
+    if isinstance(expr, TFieldAccess):
+        base = _field_access_path(expr.obj)
+        if base is not None:
+            return base + "." + expr.field
+    return None
+
+
 def _nil_check_var(cond: TExpr) -> tuple[str, str] | None:
     """Extract (var_name, "is_nil"|"is_not_nil") from a nil-check condition."""
-    # x == nil / x != nil
-    if isinstance(cond, TBinaryOp):
-        if isinstance(cond.right, TNilLit) and isinstance(cond.left, TVar):
-            if cond.op == "==":
-                return (cond.left.name, "is_nil")
-            if cond.op == "!=":
-                return (cond.left.name, "is_not_nil")
-        if (
-            isinstance(cond.right, TNilLit)
-            and isinstance(cond.left, TFieldAccess)
-            and isinstance(cond.left.obj, TVar)
-        ):
-            path = cond.left.obj.name + "." + cond.left.field
+    # x == nil / x != nil / a.b.c == nil / a.b.c != nil
+    if isinstance(cond, TBinaryOp) and isinstance(cond.right, TNilLit):
+        path = _field_access_path(cond.left)
+        if path is not None:
             if cond.op == "==":
                 return (path, "is_nil")
             if cond.op == "!=":
                 return (path, "is_not_nil")
-    # IsNil(x)
+    # IsNil(x) / IsNil(a.b.c)
     if (
         isinstance(cond, TCall)
         and isinstance(cond.func, TVar)
         and cond.func.name == "IsNil"
+        and len(cond.args) >= 1
     ):
-        if len(cond.args) >= 1 and isinstance(cond.args[0].value, TVar):
-            return (cond.args[0].value.name, "is_nil")
-        if (
-            len(cond.args) >= 1
-            and isinstance(cond.args[0].value, TFieldAccess)
-            and isinstance(cond.args[0].value.obj, TVar)
-        ):
-            a = cond.args[0].value
-            return (a.obj.name + "." + a.field, "is_nil")
-    # !IsNil(x)
+        path = _field_access_path(cond.args[0].value)
+        if path is not None:
+            return (path, "is_nil")
+    # !IsNil(x) / !IsNil(a.b.c)
     if isinstance(cond, TUnaryOp) and cond.op == "!":
         inner = cond.operand
         if (
             isinstance(inner, TCall)
             and isinstance(inner.func, TVar)
             and inner.func.name == "IsNil"
+            and len(inner.args) >= 1
         ):
-            if len(inner.args) >= 1 and isinstance(inner.args[0].value, TVar):
-                return (inner.args[0].value.name, "is_not_nil")
-            if (
-                len(inner.args) >= 1
-                and isinstance(inner.args[0].value, TFieldAccess)
-                and isinstance(inner.args[0].value.obj, TVar)
-            ):
-                a = inner.args[0].value
-                return (a.obj.name + "." + a.field, "is_not_nil")
+            path = _field_access_path(inner.args[0].value)
+            if path is not None:
+                return (path, "is_not_nil")
     return None
 
 
@@ -594,18 +627,9 @@ def _collect_nil_checks(
         result.extend(_collect_nil_checks(cond.right, binary_only, chain_op))
         return result
     if binary_only:
-        if isinstance(cond, TBinaryOp):
-            if isinstance(cond.right, TNilLit) and isinstance(cond.left, TVar):
-                if cond.op == "==":
-                    result.append((cond.left.name, "is_nil"))
-                elif cond.op == "!=":
-                    result.append((cond.left.name, "is_not_nil"))
-            if (
-                isinstance(cond.right, TNilLit)
-                and isinstance(cond.left, TFieldAccess)
-                and isinstance(cond.left.obj, TVar)
-            ):
-                path = cond.left.obj.name + "." + cond.left.field
+        if isinstance(cond, TBinaryOp) and isinstance(cond.right, TNilLit):
+            path = _field_access_path(cond.left)
+            if path is not None:
                 if cond.op == "==":
                     result.append((path, "is_nil"))
                 elif cond.op == "!=":
@@ -628,10 +652,9 @@ def _istype_var_from_call(call: TCall) -> tuple[str, str] | None:
     if not isinstance(second, TStringLit):
         return None
     type_name = second.value
-    if isinstance(first, TVar):
-        return (first.name, type_name)
-    if isinstance(first, TFieldAccess) and isinstance(first.obj, TVar):
-        return (first.obj.name + "." + first.field, type_name)
+    path = _field_access_path(first)
+    if path is not None:
+        return (path, type_name)
     return None
 
 
@@ -1029,6 +1052,7 @@ class Checker:
         self.loop_vars: set[str] = set()
         self.in_finally: bool = False
         self.uninitialized: set[str] = set()
+        self._declared: dict[str, Type] = {}
         # Register built-in error structs
         for name, fields in BUILTIN_STRUCTS.items():
             st = StructT(
@@ -1066,6 +1090,7 @@ class Checker:
             i -= 1
         if len(self.scopes) > 0:
             self.scopes[-1][name] = typ
+            self._declared[name] = typ
 
     def narrow(self, name: str, typ: Type) -> None:
         """Shadow an outer binding with a narrowed type in the current scope."""
@@ -1089,17 +1114,36 @@ class Checker:
         self.error("undefined name '" + name + "'", pos)
         return None
 
+    def lookup_declared(self, name: str, pos: Pos) -> Type | None:
+        """Look up the declared (not narrowed) type of a variable."""
+        if name in self._declared:
+            return self._declared[name]
+        return self.lookup(name, pos)
+
     def _lookup_field_type(self, path: str, pos: Pos) -> Type | None:
-        """Look up the type of a dotted field path like 'stmt.default'."""
+        """Look up the type of a dotted field path like 'a.b' or 'a.b.c'."""
         parts = path.split(".")
-        if len(parts) != 2:
+        if len(parts) < 2:
             return None
-        obj_type = self.lookup(parts[0], pos)
-        if obj_type is None:
+        # Check if a prefix is narrowed
+        current = self.lookup(parts[0], pos)
+        if current is None:
             return None
-        if isinstance(obj_type, StructT) and parts[1] in obj_type.fields:
-            return obj_type.fields[parts[1]]
-        return None
+        pi = 1
+        while pi < len(parts):
+            # Check if current prefix path is narrowed
+            prefix = ".".join(parts[: pi + 1])
+            narrowed = self._lookup_narrowed_path(prefix)
+            if narrowed is not None:
+                current = narrowed
+                pi += 1
+                continue
+            if isinstance(current, StructT) and parts[pi] in current.fields:
+                current = current.fields[parts[pi]]
+            else:
+                return None
+            pi += 1
+        return current
 
     def _lookup_narrowed_path(self, path: str) -> Type | None:
         """Look up a narrowed dotted path in scopes."""
@@ -1351,6 +1395,8 @@ class Checker:
         self.current_fn_ret = ret
         saved_uninit = set(self.uninitialized)
         self.uninitialized = set()
+        saved_declared = dict(self._declared)
+        self._declared = {}
         self.enter_scope()
         for p in decl.params:
             if p.name == "this" and self.current_struct is None:
@@ -1367,6 +1413,7 @@ class Checker:
             self.error("not all paths return a value", decl.pos)
         self.current_fn_ret = None
         self.uninitialized = saved_uninit
+        self._declared = saved_declared
 
     def check_struct_methods(self, decl: TStructDecl) -> None:
         if decl.name not in self.types:
@@ -1381,6 +1428,8 @@ class Checker:
             self.current_fn_ret = ret
             saved_uninit = set(self.uninitialized)
             self.uninitialized = set()
+            saved_declared = dict(self._declared)
+            self._declared = {}
             self.enter_scope()
             # Bind self
             for p in method.params:
@@ -1394,6 +1443,7 @@ class Checker:
             if not type_eq(ret, VOID_T) and not _block_is_complete(method.body):
                 self.error("not all paths return a value", method.pos)
             self.uninitialized = saved_uninit
+            self._declared = saved_declared
             self.current_fn_ret = None
         self.current_struct = old_struct
 
@@ -1602,7 +1652,9 @@ class Checker:
         # Direct variable assignment initializes the variable (not a read)
         if isinstance(stmt.target, TVar):
             self.uninitialized.discard(stmt.target.name)
-        target_type = self.check_expr(stmt.target, None)
+            target_type = self.lookup_declared(stmt.target.name, stmt.pos)
+        else:
+            target_type = self.check_expr(stmt.target, None)
         if target_type is not None:
             val_type = self.check_expr(stmt.value, target_type)
             if val_type is not None and not is_assignable(val_type, target_type):
@@ -1760,8 +1812,8 @@ class Checker:
             self.exit_scope()
         else_uninit = set(self.uninitialized)
         # Merge: initialized only if initialized in BOTH branches
-        then_exits = _block_is_complete(stmt.then_body)
-        else_exits = stmt.else_body is not None and _block_is_complete(stmt.else_body)
+        then_exits = _block_always_exits(stmt.then_body)
+        else_exits = stmt.else_body is not None and _block_always_exits(stmt.else_body)
         if then_exits and else_exits:
             self.uninitialized = saved_uninit
         elif then_exits:
@@ -2607,8 +2659,8 @@ class Checker:
         obj_type = self.check_expr(expr.obj, None)
         if obj_type is None:
             return None
-        if isinstance(expr.obj, TVar):
-            path = expr.obj.name + "." + expr.field
+        path = _field_access_path(expr)
+        if path is not None:
             narrowed = self._lookup_narrowed_path(path)
             if narrowed is not None:
                 return narrowed
