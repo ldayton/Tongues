@@ -8,6 +8,7 @@ Uses weighted random generation to hit boundary cases with higher probability:
 500,000 rounds per operation by default.
 """
 
+from contextlib import contextmanager
 import math
 import random
 import struct
@@ -38,6 +39,8 @@ from src.backend.softfloat import (
     is_nan_f64,
     str_to_f64,
 )
+
+import src.backend.softfloat as _sf
 
 ROUNDS = 500_000
 SEED = 0xF64
@@ -445,3 +448,304 @@ def test_round_trip():
             if fails == 1:
                 first_failure = f"round-trip {a_bits:#018x} -> {s!r} -> {back:#018x}"
     assert fails == 0, f"{fails}/{ROUNDS} failures. First: {first_failure}"
+
+
+# ---------------------------------------------------------------------------
+# Mutation testing — verify the harness catches known bugs
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _patched(attr, replacement):
+    """Temporarily replace a softfloat function for mutation testing."""
+    original = getattr(_sf, attr)
+    setattr(_sf, attr, replacement)
+    try:
+        yield
+    finally:
+        setattr(_sf, attr, original)
+
+
+def _run_binary_against_ref(fn, op_name, rounds=ROUNDS, seed=SEED):
+    """Run a binary op against Python reference, return failure count."""
+    rng = random.Random(seed)
+    fails = 0
+    for _ in range(rounds):
+        a = weighted_f64(rng)
+        b = weighted_f64(rng)
+        ref = ref_binary(op_name, i2f(a), i2f(b))
+        if ref is None:
+            continue
+        if not check_bits(fn(a, b), f2i(ref)):
+            fails += 1
+    return fails
+
+
+def _run_sqrt_against_ref(fn, rounds=ROUNDS, seed=SEED):
+    """Run sqrt against Python math.sqrt, return failure count."""
+    rng = random.Random(seed)
+    fails = 0
+    for _ in range(rounds):
+        a = weighted_f64(rng)
+        a_f = i2f(a)
+        if a_f < 0 or math.isnan(a_f):
+            continue
+        if not check_bits(fn(a), f2i(math.sqrt(a_f))):
+            fails += 1
+    return fails
+
+
+def _run_comparison_against_ref(fn, py_fn, rounds=ROUNDS, seed=SEED):
+    """Run comparison against Python reference, return failure count."""
+    rng = random.Random(seed)
+    fails = 0
+    for _ in range(rounds):
+        a = weighted_f64(rng)
+        b = weighted_f64(rng)
+        if fn(a, b) != py_fn(i2f(a), i2f(b)):
+            fails += 1
+    return fails
+
+
+# --- Mutated variants (each embeds a single known bug) ---
+
+
+def _f64_add_sign_flip(a, b):
+    """f64_add with result sign flipped for same-sign addition."""
+    sign_a = _sf.sign_f64(a)
+    sign_b = _sf.sign_f64(b)
+    if sign_a == sign_b:
+        return _sf.add_mags_f64(a, b, sign_a) ^ F64_SIGN
+    return _sf.sub_mags_f64(a, b, sign_a)
+
+
+def _f64_mul_exp_bias(a, b):
+    """f64_mul with exponent bias 0x400 instead of 0x3FF."""
+    sign_a = _sf.sign_f64(a)
+    exp_a = _sf.exp_f64(a)
+    sig_a = _sf.frac_f64(a)
+    sign_b = _sf.sign_f64(b)
+    exp_b = _sf.exp_f64(b)
+    sig_b = _sf.frac_f64(b)
+    sign_z = sign_a ^ sign_b
+    if exp_a == 0x7FF:
+        if sig_a != 0 or (exp_b == 0x7FF and sig_b != 0):
+            return _sf.propagate_nan_f64(a, b)
+        if (exp_b | sig_b) == 0:
+            return _sf.DEFAULT_NAN
+        return _sf.pack_f64(sign_z, 0x7FF, 0)
+    if exp_b == 0x7FF:
+        if sig_b != 0:
+            return _sf.propagate_nan_f64(a, b)
+        if (exp_a | sig_a) == 0:
+            return _sf.DEFAULT_NAN
+        return _sf.pack_f64(sign_z, 0x7FF, 0)
+    if exp_a == 0:
+        if sig_a == 0:
+            return _sf.pack_f64(sign_z, 0, 0)
+        norm = _sf.norm_subnormal_f64_sig(sig_a)
+        exp_a = norm[0]
+        sig_a = norm[1]
+    if exp_b == 0:
+        if sig_b == 0:
+            return _sf.pack_f64(sign_z, 0, 0)
+        norm = _sf.norm_subnormal_f64_sig(sig_b)
+        exp_b = norm[0]
+        sig_b = norm[1]
+    exp_z = exp_a + exp_b - 0x400  # BUG: 0x400 instead of 0x3FF
+    sig_a = (sig_a | 0x0010000000000000) << 10
+    sig_b = (sig_b | 0x0010000000000000) << 11
+    prod = _sf.mul64_to_128(sig_a, sig_b)
+    sig_z = prod[0] | (1 if prod[1] != 0 else 0)
+    if sig_z < 0x4000000000000000:
+        exp_z = exp_z - 1
+        sig_z = sig_z << 1
+    return _sf.round_pack_to_f64(sign_z, exp_z, sig_z)
+
+
+def _f64_div_no_remainder_sticky(a, b):
+    """f64_div with remainder sticky bit dropped."""
+    sign_a = _sf.sign_f64(a)
+    exp_a = _sf.exp_f64(a)
+    sig_a = _sf.frac_f64(a)
+    sign_b = _sf.sign_f64(b)
+    exp_b = _sf.exp_f64(b)
+    sig_b = _sf.frac_f64(b)
+    sign_z = sign_a ^ sign_b
+    if exp_a == 0x7FF:
+        if sig_a != 0:
+            return _sf.propagate_nan_f64(a, b)
+        if exp_b == 0x7FF:
+            if sig_b != 0:
+                return _sf.propagate_nan_f64(a, b)
+            return _sf.DEFAULT_NAN
+        return _sf.pack_f64(sign_z, 0x7FF, 0)
+    if exp_b == 0x7FF:
+        if sig_b != 0:
+            return _sf.propagate_nan_f64(a, b)
+        return _sf.pack_f64(sign_z, 0, 0)
+    if exp_b == 0:
+        if sig_b == 0:
+            if (exp_a | sig_a) == 0:
+                return _sf.DEFAULT_NAN
+            return _sf.pack_f64(sign_z, 0x7FF, 0)
+        norm = _sf.norm_subnormal_f64_sig(sig_b)
+        exp_b = norm[0]
+        sig_b = norm[1]
+    if exp_a == 0:
+        if sig_a == 0:
+            return _sf.pack_f64(sign_z, 0, 0)
+        norm = _sf.norm_subnormal_f64_sig(sig_a)
+        exp_a = norm[0]
+        sig_a = norm[1]
+    exp_z = exp_a - exp_b + 0x3FE
+    sig_a = sig_a | 0x0010000000000000
+    sig_b = sig_b | 0x0010000000000000
+    if sig_a < sig_b:
+        exp_z = exp_z - 1
+        dividend = sig_a << 63
+    else:
+        dividend = sig_a << 62
+    q = dividend // sig_b
+    sig_z = q  # BUG: dropped remainder sticky
+    if sig_z < 0x4000000000000000:
+        exp_z = exp_z - 1
+        sig_z = sig_z << 1
+    return _sf.round_pack_to_f64(sign_z, exp_z, sig_z)
+
+
+def _f64_sqrt_no_remainder_sticky(a):
+    """f64_sqrt with remainder sticky bit dropped."""
+    sign_a = _sf.sign_f64(a)
+    exp_a = _sf.exp_f64(a)
+    sig_a = _sf.frac_f64(a)
+    if exp_a == 0x7FF:
+        if sig_a != 0:
+            return a | 0x0008000000000000
+        if sign_a == 0:
+            return a
+        return _sf.DEFAULT_NAN
+    if sign_a != 0:
+        if (exp_a | sig_a) == 0:
+            return a
+        return _sf.DEFAULT_NAN
+    if exp_a == 0:
+        if sig_a == 0:
+            return a
+        norm = _sf.norm_subnormal_f64_sig(sig_a)
+        exp_a = norm[0]
+        sig_a = norm[1]
+    exp_z = ((exp_a - 0x3FF) >> 1) + 0x3FE
+    sig_a = sig_a | 0x0010000000000000
+    if (exp_a & 1) == 0:
+        sig_a = sig_a << 1
+    n = sig_a << 72
+    q = _sf._isqrt_125(n)
+    rem = n - q * q
+    if rem < 0:
+        q = q - 1
+        rem = n - q * q
+    sig_z = q  # BUG: dropped remainder sticky
+    if sig_z < 0x4000000000000000:
+        exp_z = exp_z - 1
+        sig_z = sig_z << 1
+    return _sf.round_pack_to_f64(0, exp_z, sig_z)
+
+
+def _f64_lt_sign_ignore(a, b):
+    """f64_lt that ignores signs, comparing magnitudes only."""
+    if is_nan_f64(a) or is_nan_f64(b):
+        return False
+    ua = a & 0x7FFFFFFFFFFFFFFF
+    ub = b & 0x7FFFFFFFFFFFFFFF
+    if ua == 0 and ub == 0:
+        return False
+    return ua < ub  # BUG: ignores signs
+
+
+class TestMutations:
+    """Verify the test harness catches known bugs within ROUNDS iterations."""
+
+    def test_no_sticky_bit(self):
+        """shift_right_jam64 without sticky bit must be caught."""
+
+        def broken(a, dist):
+            if dist < 64:
+                return a >> dist
+            return 0
+
+        with _patched("shift_right_jam64", broken):
+            fails = _run_binary_against_ref(f64_add, "add")
+        assert fails > 0, "Mutation 'no_sticky_bit' was not detected"
+
+    def test_no_tie_to_even(self):
+        """round_pack_to_f64 without tie-to-even must be caught."""
+
+        def broken(sign, exp, sig):
+            round_increment = 0x200
+            round_bits = sig & 0x3FF
+            if exp < 0 or exp >= 0x7FD:
+                if exp < 0:
+                    sig = _sf.shift_right_jam64(sig, 0 - exp)
+                    exp = 0
+                    round_bits = sig & 0x3FF
+                elif exp > 0x7FD or (sig + round_increment) >= 0x8000000000000000:
+                    return _sf.pack_f64(sign, 0x7FF, 0)
+            sig = (sig + round_increment) >> 10
+            # BUG: removed tie-to-even
+            if sig == 0:
+                exp = 0
+            return _sf.pack_f64(sign, exp, sig)
+
+        with _patched("round_pack_to_f64", broken):
+            fails = _run_binary_against_ref(f64_add, "add")
+        assert fails > 0, "Mutation 'no_tie_to_even' was not detected"
+
+    def test_wrong_round_increment(self):
+        """round_pack_to_f64 with wrong round increment must be caught."""
+
+        def broken(sign, exp, sig):
+            round_increment = 0x100  # BUG: 0x100 instead of 0x200
+            round_bits = sig & 0x3FF
+            if exp < 0 or exp >= 0x7FD:
+                if exp < 0:
+                    sig = _sf.shift_right_jam64(sig, 0 - exp)
+                    exp = 0
+                    round_bits = sig & 0x3FF
+                elif exp > 0x7FD or (sig + round_increment) >= 0x8000000000000000:
+                    return _sf.pack_f64(sign, 0x7FF, 0)
+            sig = (sig + round_increment) >> 10
+            if round_bits == 0x200:
+                sig = sig - (sig & 1)
+            if sig == 0:
+                exp = 0
+            return _sf.pack_f64(sign, exp, sig)
+
+        with _patched("round_pack_to_f64", broken):
+            fails = _run_binary_against_ref(f64_add, "add")
+        assert fails > 0, "Mutation 'wrong_round_increment' was not detected"
+
+    def test_sign_flip_add(self):
+        """Flipped result sign for same-sign addition must be caught."""
+        fails = _run_binary_against_ref(_f64_add_sign_flip, "add")
+        assert fails > 0, "Mutation 'sign_flip_add' was not detected"
+
+    def test_exp_bias_mul(self):
+        """Off-by-one exponent bias in mul must be caught."""
+        fails = _run_binary_against_ref(_f64_mul_exp_bias, "mul")
+        assert fails > 0, "Mutation 'exp_bias_mul' was not detected"
+
+    def test_div_no_remainder_sticky(self):
+        """Dropped remainder sticky in div must be caught."""
+        fails = _run_binary_against_ref(_f64_div_no_remainder_sticky, "div")
+        assert fails > 0, "Mutation 'div_no_remainder_sticky' was not detected"
+
+    def test_sqrt_no_remainder_sticky(self):
+        """Dropped remainder sticky in sqrt must be caught."""
+        fails = _run_sqrt_against_ref(_f64_sqrt_no_remainder_sticky)
+        assert fails > 0, "Mutation 'sqrt_no_remainder_sticky' was not detected"
+
+    def test_comparison_sign_ignore(self):
+        """Sign-ignoring f64_lt must be caught."""
+        fails = _run_comparison_against_ref(_f64_lt_sign_ignore, lambda a, b: a < b)
+        assert fails > 0, "Mutation 'comparison_sign_ignore' was not detected"
