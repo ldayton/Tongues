@@ -55,7 +55,11 @@ from ..taytsh.check import (
 _EXTRA_BUILTINS = {"Floor", "Ceil", "ReadFile", "WriteFile", "Sorted", "Reverse"}
 
 # Combined set for call target resolution
-_ALL_BUILTINS = BUILTIN_NAMES | _EXTRA_BUILTINS
+_ALL_BUILTINS: set[str] = set()
+for _bn in BUILTIN_NAMES:
+    _ALL_BUILTINS.add(_bn)
+for _bn in _EXTRA_BUILTINS:
+    _ALL_BUILTINS.add(_bn)
 
 
 # ============================================================
@@ -845,7 +849,7 @@ def _collect_fn_throws_try(
     has_catch_all = False
     caught_types: set[str] = set()
     for catch in stmt.catches:
-        if not catch.types:
+        if len(catch.types) == 0:
             has_catch_all = True
         else:
             for ct in catch.types:
@@ -867,25 +871,34 @@ def _collect_fn_throws_try(
     )
 
     if has_catch_all:
-        residual = set[str]()
+        residual: set[str] = set()
     else:
-        residual = try_throws - caught_types
+        residual = set()
+        for _tt in try_throws:
+            if _tt not in caught_types:
+                residual.add(_tt)
 
     if outer_filter is not None:
-        throws.update(residual - outer_filter)
+        for _tt in residual:
+            if _tt not in outer_filter:
+                throws.add(_tt)
     else:
-        throws.update(residual)
+        for _tt in residual:
+            throws.add(_tt)
 
     # Process catch bodies
     for i, catch in enumerate(stmt.catches):
-        if not catch.types:
+        if len(catch.types) == 0:
             preceding_caught: set[str] = set()
             for j in range(i):
                 for ct in stmt.catches[j].types:
                     resolved = checker.resolve_type(ct)
                     if isinstance(resolved, StructT):
                         preceding_caught.add(resolved.name)
-            catch_handles = try_throws - preceding_caught
+            catch_handles: set[str] = set()
+            for _tt in try_throws:
+                if _tt not in preceding_caught:
+                    catch_handles.add(_tt)
         else:
             catch_handles = set()
             for ct in catch.types:

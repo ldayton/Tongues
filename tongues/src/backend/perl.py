@@ -388,7 +388,9 @@ class _PerlEmitter:
     def _emit_constructor(self, decl: TStructDecl) -> None:
         self._line("sub new {")
         self.indent += 1
-        args = ["$class"] + ["$" + _safe_name(f.name) for f in decl.fields]
+        args: list[str] = ["$class"]
+        for f in decl.fields:
+            args.append("$" + _safe_name(f.name))
         self._line("my (" + ", ".join(args) + ") = @_;")
         self._line("my $self = bless {}, $class;")
         for fld in decl.fields:
@@ -419,9 +421,9 @@ class _PerlEmitter:
                 args.append("$" + _restore_name(p.name, p.annotations))
         self._line("sub " + _safe_name(decl.name) + " {")
         self.indent += 1
-        if args:
+        if len(args) > 0:
             self._line("my (" + ", ".join(args) + ") = @_;")
-        if not decl.body:
+        if len(decl.body) == 0:
             self._line("return;")
         self._emit_stmts(decl.body)
         self.indent -= 1
@@ -431,7 +433,7 @@ class _PerlEmitter:
     def _emit_method(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
         self.var_types = {}
-        args = ["$self"]
+        args: list[str] = ["$self"]
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
@@ -440,9 +442,9 @@ class _PerlEmitter:
         self.indent += 1
         self._line("my (" + ", ".join(args) + ") = @_;")
         old_self = self.self_name
-        if decl.params and decl.params[0].typ is None:
+        if len(decl.params) > 0 and decl.params[0].typ is None:
             self.self_name = decl.params[0].name
-        if not decl.body:
+        if len(decl.body) == 0:
             self._line("return;")
         self._emit_stmts(decl.body)
         self.self_name = old_self
@@ -1848,9 +1850,9 @@ class _PerlEmitter:
         if name == "RuneToInt":
             return "ord(" + self._a(args, 0) + ")"
         if name == "IntToFloat":
-            v = args[0].value
-            if isinstance(v, TIntLit):
-                return str(v.value) + ".0"
+            itf_v: TExpr = args[0].value
+            if isinstance(itf_v, TIntLit):
+                return str(itf_v.value) + ".0"
             return "(" + self._a(args, 0) + " + 0.0)"
         if name == "FloatToInt":
             return "int(" + self._a(args, 0) + ")"
@@ -2227,17 +2229,26 @@ class _PerlEmitter:
 
 
 def emit_perl(module: TModule) -> str:
-    struct_names = {
-        decl.name for decl in module.decls if isinstance(decl, TStructDecl)
-    } | set(BUILTIN_STRUCTS.keys())
-    enum_names = {decl.name for decl in module.decls if isinstance(decl, TEnumDecl)}
+    struct_names: set[str] = set()
+    for decl in module.decls:
+        if isinstance(decl, TStructDecl):
+            struct_names.add(decl.name)
+    for _bk in BUILTIN_STRUCTS:
+        struct_names.add(_bk)
+    enum_names: set[str] = set()
+    for decl in module.decls:
+        if isinstance(decl, TEnumDecl):
+            enum_names.add(decl.name)
     function_names: set[str] = set()
     struct_fields: dict[str, list[str]] = {}
     for decl in module.decls:
         if isinstance(decl, TFnDecl):
             function_names.add(decl.name)
         elif isinstance(decl, TStructDecl):
-            struct_fields[decl.name] = [f.name for f in decl.fields]
+            fnames: list[str] = []
+            for f in decl.fields:
+                fnames.append(f.name)
+            struct_fields[decl.name] = fnames
             for method in decl.methods:
                 function_names.add(method.name)
     emitter = _PerlEmitter(

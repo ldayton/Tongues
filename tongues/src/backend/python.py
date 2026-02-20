@@ -516,8 +516,8 @@ class _PythonEmitter:
             params.append(_safe_name(fld.name) + ": " + self._type(fld.typ))
         self._line("def __init__(" + ", ".join(params) + ") -> None:")
         self.indent += 1
-        if decl.fields:
-            msg_field = None
+        if len(decl.fields) > 0:
+            msg_field: TFieldDecl | None = None
             for fld in decl.fields:
                 if fld.name == "message":
                     msg_field = fld
@@ -547,12 +547,12 @@ class _PythonEmitter:
         else:
             self._line("class " + decl.name + ":")
         self.indent += 1
-        if not decl.fields and not decl.methods:
+        if len(decl.fields) == 0 and len(decl.methods) == 0:
             self._line("pass")
         for fld in decl.fields:
             self._emit_field(fld)
         for i, method in enumerate(decl.methods):
-            if i > 0 or decl.fields:
+            if i > 0 or len(decl.fields) > 0:
                 self._line()
             self._emit_method(method)
         self.indent -= 1
@@ -612,9 +612,9 @@ class _PythonEmitter:
         self._line("def " + decl.name + "(" + params + ") -> " + ret + ":")
         self.indent += 1
         old_self = self.self_name
-        if decl.params and decl.params[0].typ is None:
+        if len(decl.params) > 0 and decl.params[0].typ is None:
             self.self_name = decl.params[0].name
-        if not decl.body:
+        if len(decl.body) == 0:
             self._line("pass")
         self._emit_stmts(decl.body)
         self.self_name = old_self
@@ -900,7 +900,7 @@ class _PythonEmitter:
             elif_stmt = else_body[0]
             self._line("elif " + self._expr(elif_stmt.cond) + ":")
             self.indent += 1
-            if not elif_stmt.then_body:
+            if len(elif_stmt.then_body) == 0:
                 self._line("pass")
             self._emit_stmts(elif_stmt.then_body)
             self.indent -= 1

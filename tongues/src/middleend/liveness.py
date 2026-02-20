@@ -245,7 +245,12 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
             if dflt_result == "read":
                 return "read"
             results.append(dflt_result)
-        if results and all(r == "write" for r in results):
+        all_write = len(results) > 0
+        for r in results:
+            if r != "write":
+                all_write = False
+                break
+        if all_write:
             return "write"
         return None
     return None

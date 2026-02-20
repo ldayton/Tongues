@@ -112,6 +112,7 @@ def read_source(input_file: str | None) -> tuple[str, int]:
     else:
         raw = sys.stdin.buffer.read()
     if len(raw) > 0:
+        source = ""
         try:
             source = raw.decode("utf-8")
         except ValueError:
@@ -561,7 +562,15 @@ def _detect_collisions(
         name = nkeys[i]
         locs = name_to_locs[name]
         if len(locs) > 1:
-            locs.sort()
+            si = 1
+            while si < len(locs):
+                skey = locs[si]
+                sj = si - 1
+                while sj >= 0 and locs[sj][0] > skey[0]:
+                    locs[sj + 1] = locs[sj]
+                    sj -= 1
+                locs[sj + 1] = skey
+                si += 1
             msg = "error: duplicate name '" + name + "' defined in "
             j = 0
             while j < len(locs):

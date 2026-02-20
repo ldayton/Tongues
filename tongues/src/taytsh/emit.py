@@ -280,9 +280,9 @@ class _Emitter:
         while current is not None:
             branches.append((current.cond, current.then_body))
             else_body = current.else_body
-            candidate = (
-                else_body[0] if else_body is not None and len(else_body) == 1 else None
-            )
+            candidate: TStmt | None = None
+            if else_body is not None and len(else_body) == 1:
+                candidate = else_body[0]
             if isinstance(candidate, TIfStmt):
                 current = candidate
                 continue
@@ -643,11 +643,9 @@ class _Emitter:
             while current is not None:
                 branches.append((current.cond, current.then_body))
                 else_body = current.else_body
-                candidate = (
-                    else_body[0]
-                    if else_body is not None and len(else_body) == 1
-                    else None
-                )
+                candidate: TStmt | None = None
+                if else_body is not None and len(else_body) == 1:
+                    candidate = else_body[0]
                 if isinstance(candidate, TIfStmt):
                     current = candidate
                     continue
@@ -730,7 +728,7 @@ class _Emitter:
         out = 'b"'
         i = 0
         while i < len(b):
-            v = b[i]
+            v = int(b[i])
             if v == 10:
                 out += "\\n"
             elif v == 13:

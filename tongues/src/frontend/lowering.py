@@ -187,7 +187,7 @@ def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
             return TPrimitive(pos, "bytes")
         return TListType(pos, _typenode_to_ttype(pos, t.element))
     if isinstance(t, MapType):
-        val_ttype = _typenode_to_ttype(pos, t.value)
+        val_ttype: TType = _typenode_to_ttype(pos, t.value)
         if isinstance(val_ttype, TPrimitive) and val_ttype.kind == "void":
             val_ttype = TPrimitive(pos, "nil")
         return TMapType(pos, _typenode_to_ttype(pos, t.key), val_ttype)
@@ -349,7 +349,11 @@ def _resolve_kwargs_to_positional(
     if params is not None:
         # Build slots indexed by param position
         n = len(params)
-        slots: list[TExpr | None] = [None] * n
+        slots: list[TExpr | None] = []
+        _si = 0
+        while _si < n:
+            slots.append(None)
+            _si += 1
         # Place positional args
         idx = 0
         i = 0
@@ -541,10 +545,11 @@ def _lower_dict_literal_typed(
         if v is not None:
             if key_is_int and _is_ast(k, "Constant"):
                 kval = k.get("value")
-                if isinstance(kval, JBool) and kval.value is True:
-                    key_expr = TIntLit(pos, 1, "1", _EMPTY_ANN)
-                elif isinstance(kval, JBool) and kval.value is False:
-                    key_expr = TIntLit(pos, 0, "0", _EMPTY_ANN)
+                if isinstance(kval, JBool):
+                    if kval.value is True:
+                        key_expr = TIntLit(pos, 1, "1", _EMPTY_ANN)
+                    else:
+                        key_expr = TIntLit(pos, 0, "0", _EMPTY_ANN)
                 else:
                     key_expr = _lower_expr(k, env, ctx)
             else:
@@ -1539,9 +1544,13 @@ def _lower_tuple_concat(
         left = _lower_expr(left_node, env, ctx)
         right = _lower_expr(right_node, env, ctx)
         return _make_call(pos, "Concat", [left, right])
-    left_elts = [e for e in get_nodes(left_node, "elts") if isinstance(e, dict)]
-    right_elts = [e for e in get_nodes(right_node, "elts") if isinstance(e, dict)]
-    all_elts = left_elts + right_elts
+    left_elts = get_nodes(left_node, "elts")
+    right_elts = get_nodes(right_node, "elts")
+    all_elts: list[ASTNode] = []
+    for e in left_elts:
+        all_elts.append(e)
+    for e in right_elts:
+        all_elts.append(e)
     if len(all_elts) == 0:
         return TNilLit(pos, _EMPTY_ANN)
     elements: list[TExpr] = []
@@ -1599,7 +1608,7 @@ def _lower_boolop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         first = values[0]
         if not isinstance(first, dict):
             return TBoolLit(pos, True, _EMPTY_ANN)
-        result = _lower_as_bool(first, env, ctx)
+        result: TExpr = _lower_as_bool(first, env, ctx)
         i = 1
         while i < len(values):
             v = values[i]
@@ -1985,7 +1994,7 @@ def _lower_in_expr(
             right = _lower_expr(e, env, ctx)
             parts.append(TBinaryOp(pos, "==", left, right, _EMPTY_ANN))
             i += 1
-        result = parts[0]
+        result: TExpr = parts[0]
         i = 1
         while i < len(parts):
             result = TBinaryOp(pos, "||", result, parts[i], _EMPTY_ANN)
@@ -2488,7 +2497,9 @@ def _lower_name_call(
     lowered_args: list[TArg] = []
     if len(keywords) > 0:
         func_info = ctx.sig_result.functions.get(fname)
-        params = func_info.params if func_info is not None else None
+        params: list[ParamInfo] | None = None
+        if func_info is not None:
+            params = func_info.params
         lowered_args = _resolve_kwargs_to_positional(
             pos, args, keywords, params, env, ctx
         )
@@ -2817,7 +2828,7 @@ def _lower_startswith_endswith(
                 i += 1
             if len(parts) == 0:
                 return TBoolLit(pos, False, _EMPTY_ANN)
-            result = parts[0]
+            result: TExpr = parts[0]
             i = 1
             while i < len(parts):
                 result = TBinaryOp(pos, "||", result, parts[i], _EMPTY_ANN)
@@ -3007,7 +3018,7 @@ def _lower_set_method(
         return _make_call(pos, "Union", [obj, _make_call(pos, "Set", [])])
     if method == "union":
         if len(lowered) >= 1:
-            result = obj
+            result: TExpr = obj
             li = 0
             while li < len(lowered):
                 result = _make_call(pos, "Union", [result, lowered[li]])
@@ -3015,20 +3026,20 @@ def _lower_set_method(
             return result
     if method == "intersection":
         if len(lowered) >= 1:
-            result = obj
+            result_i: TExpr = obj
             li = 0
             while li < len(lowered):
-                result = _make_call(pos, "Intersection", [result, lowered[li]])
+                result_i = _make_call(pos, "Intersection", [result_i, lowered[li]])
                 li += 1
-            return result
+            return result_i
     if method == "difference":
         if len(lowered) >= 1:
-            result = obj
+            result_d: TExpr = obj
             li = 0
             while li < len(lowered):
-                result = _make_call(pos, "Difference", [result, lowered[li]])
+                result_d = _make_call(pos, "Difference", [result_d, lowered[li]])
                 li += 1
-            return result
+            return result_d
     if method == "symmetric_difference":
         if len(lowered) == 1:
             u = _make_call(pos, "Union", [obj, lowered[0]])
@@ -3309,7 +3320,9 @@ def _lower_fstring(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             fmt_args.append(_lower_expr(inner, env, ctx))
         i += 1
     template = "".join(template_parts)
-    all_args: list[TExpr] = [TStringLit(pos, template, _EMPTY_ANN)] + fmt_args
+    all_args: list[TExpr] = [TStringLit(pos, template, _EMPTY_ANN)]
+    for _fa in fmt_args:
+        all_args.append(_fa)
     return _make_call(pos, "Format", all_args)
 
 
@@ -3585,7 +3598,7 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             expr = _lower_expr(value_node, env, ctx)
             return [TExprStmt(pos, expr, _EMPTY_ANN)]
         value = _lower_expr(value_node, env, ctx)
-        val_type = _infer_expr_type(value_node, env, ctx)
+        val_type: TypeNode = _infer_expr_type(value_node, env, ctx)
         if _is_type_dict(val_type, ["void"]):
             val_type = PrimitiveType("error")
         safe = _safe_name(name)
@@ -3600,7 +3613,7 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         # Re-assignment
         if name in env.hoisted_stmts:
             _backpatch_hoisted(pos, name, val_type, env)
-        target = TVar(pos, safe, ann)
+        target: TExpr = TVar(pos, safe, ann)
         stmts: list[TStmt] = [TAssignStmt(pos, target, value, _EMPTY_ANN)]
         stmts.extend(_method_side_effects(value_node, env, ctx))
         return stmts
@@ -3609,9 +3622,9 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         attr = get_str(target_node, "attr")
         obj_node = get_node(target_node, "value")
         obj = _lower_expr(obj_node, env, ctx)
-        target = TFieldAccess(pos, obj, attr, _EMPTY_ANN)
+        target_fa: TExpr = TFieldAccess(pos, obj, attr, _EMPTY_ANN)
         value = _lower_expr(value_node, env, ctx)
-        return [TAssignStmt(pos, target, value, _EMPTY_ANN)]
+        return [TAssignStmt(pos, target_fa, value, _EMPTY_ANN)]
     # Subscript assignment: xs[i] = expr
     if _is_ast(target_node, "Subscript"):
         obj_node = get_node(target_node, "value")
@@ -4085,9 +4098,7 @@ def _find_isinstance_subscripts(
         values = get_nodes(test, "values")
         vi = 0
         while vi < len(values):
-            v = values[vi]
-            if isinstance(v, dict):
-                results.extend(_find_isinstance_subscripts(v))
+            results.extend(_find_isinstance_subscripts(values[vi]))
             vi += 1
     elif _is_ast(test, "UnaryOp"):
         operand = get_node(test, "operand")
@@ -4284,7 +4295,7 @@ def _extract_isinstance_chain(
     if len(orelse) == 1 and _is_ast(orelse[0], "If"):
         next_node = orelse[0]
         next_test = get_node(next_node, "test")
-        next_isinstance = None
+        next_isinstance: ASTNode | None = None
         if _is_isinstance_call(next_test):
             next_isinstance = next_test
         else:
@@ -4429,7 +4440,7 @@ def _lower_isinstance_chain(
         case_env.var_types[var_name] = PointerType(StructRef(type_name))
         if extra_conds is not None:
             # Lower extra conditions as && chain in narrowed env
-            cond = _lower_as_bool(extra_conds[0], case_env, ctx)
+            cond: TExpr = _lower_as_bool(extra_conds[0], case_env, ctx)
             ci = 1
             while ci < len(extra_conds):
                 right = _lower_as_bool(extra_conds[ci], case_env, ctx)
@@ -5062,7 +5073,7 @@ def _collect_ancestor_fields(
         anc_info = ctx.field_result.classes.get(anc)
         if anc_info is not None:
             akeys: list[str] = []
-            if anc_info.init_params:
+            if len(anc_info.init_params) > 0:
                 j = 0
                 while j < len(anc_info.init_params):
                     p = anc_info.init_params[j]
@@ -5141,7 +5152,7 @@ def _build_struct(
             # Build own field keys: init_params first, then remaining fields
             seen: set[str] = set(inherited_field_names)
             fkeys: list[str] = []
-            if cls_info.init_params:
+            if len(cls_info.init_params) > 0:
                 j = 0
                 while j < len(cls_info.init_params):
                     p = cls_info.init_params[j]
@@ -5206,7 +5217,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                     if name == name.upper() and name != "_" and len(name) > 1:
                         pos = _node_pos(node)
                         value_node = get_node(node, "value")
-                        val_type = _infer_expr_type(value_node, _Env(), ctx)
+                        val_type: TypeNode = _infer_expr_type(value_node, _Env(), ctx)
                         if _is_type_dict(val_type, ["void"]):
                             val_type = PrimitiveType("error")
                         ttype = _typenode_to_ttype(pos, val_type)
@@ -5253,7 +5264,9 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                             if fname == fname.upper() and len(fname) > 1:
                                 pos = _node_pos(item)
                                 value_node = get_node(item, "value")
-                                val_type = _infer_expr_type(value_node, _Env(), ctx)
+                                val_type: TypeNode = _infer_expr_type(
+                                    value_node, _Env(), ctx
+                                )
                                 if _is_type_dict(val_type, ["void"]):
                                     val_type = PrimitiveType("error")
                                 ttype = _typenode_to_ttype(pos, val_type)

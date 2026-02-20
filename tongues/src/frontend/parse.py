@@ -2719,6 +2719,8 @@ class Parser:
                 op_type = "MatMult"
             else:
                 break
+            if op_type is None:
+                break
             self.advance()
             right = self.parse_factor()
             fields: ASTNode = {
@@ -4202,9 +4204,10 @@ def augassign_op(op_str: str) -> ASTNode:
         ">>=": "RShift",
         "<<=": "LShift",
     }
-    type_name = ops.get(op_str)
-    if type_name is None:
-        type_name = "Add"
+    type_name: str = "Add"
+    op_val = ops.get(op_str)
+    if op_val is not None:
+        type_name = op_val
     return {"_type": JStr(type_name)}
 
 

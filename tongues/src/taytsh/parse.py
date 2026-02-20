@@ -270,7 +270,7 @@ class Parser:
                 for key in semantic:
                     if key not in _valid_semantic:
                         raise self.error("unknown annotation '" + key + "'")
-                semantic = {}
+                semantic: dict[str, str] = {}
                 seen_decl = True
             decl.annotations.update(advisory)
             decl.annotations.update(semantic)
@@ -529,7 +529,8 @@ class Parser:
         if self.at("else"):
             self.advance()
             if self.at("if"):
-                else_body = [self.parse_if_stmt()]
+                if_stmt: TStmt = self.parse_if_stmt()
+                else_body = [if_stmt]
             else:
                 else_body = self.parse_block()
         return TIfStmt(pos, cond, then_body, else_body, {})

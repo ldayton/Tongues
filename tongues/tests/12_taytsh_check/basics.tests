@@ -325,3 +325,20 @@ fn Main() -> void {
 ---
 error: invalid assignment target
 ---
+
+=== valid: unsigned 64-bit integer literal
+fn Main() -> void {
+    let mask: int = 18446744073709551615
+    let sign: int = 9223372036854775808
+}
+---
+ok
+---
+
+=== error: integer literal exceeds 64-bit unsigned range
+fn Main() -> void {
+    let x: int = 18446744073709551616
+}
+---
+error: integer literal too large
+---
