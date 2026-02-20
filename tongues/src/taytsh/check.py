@@ -1825,7 +1825,7 @@ class Checker:
         fc_i = 0
         while fc_i < len(all_checks):
             n, k = all_checks[fc_i]
-            if "." in n and (n, k) not in var_checks:
+            if (n, k) not in var_checks:
                 checks.append((n, k))
             fc_i += 1
         for var_name, check_kind in checks:
@@ -2674,7 +2674,7 @@ class Checker:
         fc_i = 0
         while fc_i < len(all_checks):
             n, k = all_checks[fc_i]
-            if "." in n and (n, k) not in var_checks:
+            if (n, k) not in var_checks:
                 checks.append((n, k))
             fc_i += 1
         for var_name, check_kind in checks:
