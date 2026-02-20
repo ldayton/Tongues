@@ -264,7 +264,7 @@ _PRECEDENCE: dict[str, int] = {
     "**": 12,
 }
 
-_CMP_OPS = frozenset(("==", "!=", "<", ">", "<=", ">="))
+_CMP_OPS = frozenset(["==", "!=", "<", ">", "<=", ">="])
 
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:

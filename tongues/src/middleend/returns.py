@@ -73,7 +73,7 @@ class _ReturnsCtx:
 def _fork_ctx(
     ctx: _ReturnsCtx, extra_narrowings: dict[str, Type] | None = None
 ) -> _ReturnsCtx:
-    new_narrowings = dict(ctx.narrowings)
+    new_narrowings = ctx.narrowings.copy()
     if extra_narrowings is not None:
         new_narrowings.update(extra_narrowings)
     return _ReturnsCtx(

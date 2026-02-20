@@ -131,7 +131,7 @@ def _fork_ctx(
     ctx: _ScopeCtx, extra_narrowings: dict[str, Type] | None = None
 ) -> _ScopeCtx:
     """Fork context with independent narrowings but shared bindings."""
-    new_narrowings = dict(ctx.narrowings)
+    new_narrowings = ctx.narrowings.copy()
     if extra_narrowings is not None:
         new_narrowings.update(extra_narrowings)
     return _ScopeCtx(

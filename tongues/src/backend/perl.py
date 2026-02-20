@@ -241,7 +241,7 @@ _PRECEDENCE: dict[str, int] = {
 }
 
 _CMP_OPS = frozenset(
-    ("==", "!=", "<", ">", "<=", ">=", "eq", "ne", "lt", "gt", "le", "ge")
+    ["==", "!=", "<", ">", "<=", ">=", "eq", "ne", "lt", "gt", "le", "ge"]
 )
 
 

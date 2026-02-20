@@ -1395,7 +1395,7 @@ class Checker:
         self.current_fn_ret = ret
         saved_uninit = set(self.uninitialized)
         self.uninitialized = set()
-        saved_declared = dict(self._declared)
+        saved_declared = self._declared.copy()
         self._declared = {}
         self.enter_scope()
         for p in decl.params:
@@ -1428,7 +1428,7 @@ class Checker:
             self.current_fn_ret = ret
             saved_uninit = set(self.uninitialized)
             self.uninitialized = set()
-            saved_declared = dict(self._declared)
+            saved_declared = self._declared.copy()
             self._declared = {}
             self.enter_scope()
             # Bind self
@@ -2866,7 +2866,7 @@ class Checker:
                     vtype = self.types.get(vname)
                     if vtype is not None and isinstance(vtype, StructT):
                         if common is None:
-                            common = dict(vtype.fields)
+                            common = vtype.fields.copy()
                         else:
                             keep: dict[str, Type] = {}
                             for k in common:

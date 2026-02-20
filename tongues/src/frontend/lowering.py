@@ -4172,7 +4172,7 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 vi = 0
                 while vi < len(guard_values):
                     gv = guard_values[vi]
-                    part_node: dict[str, JsonValue] = dict(node)
+                    part_node: dict[str, JsonValue] = node.copy()
                     part_node["test"] = JDict(gv)
                     part_node["orelse"] = JList([])
                     part_stmts = _lower_if(part_node, env, ctx)
