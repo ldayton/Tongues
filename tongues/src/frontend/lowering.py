@@ -106,6 +106,7 @@ from .types import (
     JBool,
     JFloat,
     JDict,
+    JList,
     JNull,
     ASTNode,
     get_str,
@@ -692,6 +693,7 @@ class _LowerCtx:
         self.source_lines: list[str] = source.split("\n")
         self.errors: list[LoweringError] = []
         self.current_class: str = ""
+        self.isinstance_temp_counter: int = 0
 
 
 class _Env:
@@ -702,6 +704,7 @@ class _Env:
         self.declared: set[str] = set()
         self.return_type: TypeNode = VOID_TYPE
         self.hoisted_stmts: dict[str, TLetStmt] = {}
+        self.isinstance_subs: dict[str, str] = {}
 
     def copy(self) -> _Env:
         env = _Env()
@@ -717,6 +720,11 @@ class _Env:
             i += 1
         env.return_type = self.return_type
         env.hoisted_stmts = self.hoisted_stmts
+        skeys = list(self.isinstance_subs.keys())
+        i = 0
+        while i < len(skeys):
+            env.isinstance_subs[skeys[i]] = self.isinstance_subs[skeys[i]]
+            i += 1
         return env
 
 
@@ -789,6 +797,29 @@ def _method_return_type(ctx: _LowerCtx, class_name: str, method_name: str) -> Ty
         if info is not None:
             return info.return_type
     return VOID_TYPE
+
+
+def _is_nil_guard_test(test: ASTNode, body: ASTNode) -> bool:
+    """Check if test is `x is not None` (or `x != None`) and body is `x`."""
+    if not _is_ast(test, "Compare"):
+        return False
+    ops = get_nodes(test, "ops")
+    comps = get_nodes(test, "comparators")
+    if len(ops) != 1 or len(comps) != 1:
+        return False
+    op = ops[0]
+    comp = comps[0]
+    if not isinstance(op, dict):
+        return False
+    op_type = get_str(op, "_type")
+    if op_type != "IsNot" and op_type != "NotEq":
+        return False
+    if not (_is_ast(comp, "Constant") and isinstance(comp.get("value"), JNull)):
+        return False
+    left = get_node(test, "left")
+    if not _is_ast(body, "Name") or not _is_ast(left, "Name"):
+        return False
+    return get_str(body, "id") == get_str(left, "id")
 
 
 def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
@@ -957,6 +988,9 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             if _is_type_dict(obj_t, ["Map"]):
                 if method_name == "get":
                     if isinstance(obj_t, MapType):
+                        args = get_nodes(node, "args")
+                        if len(args) >= 2:
+                            return obj_t.value
                         return OptionalType(obj_t.value)
                     return VOID_TYPE
                 if method_name == "keys":
@@ -1062,7 +1096,20 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         return result
     if t == "IfExp":
         body = get_node(node, "body")
-        return _infer_expr_type(body, env, ctx)
+        body_t = _infer_expr_type(body, env, ctx)
+        orelse = get_node(node, "orelse")
+        # x if x is not None else default → unwrap optional if condition is nil-guard
+        test = get_node(node, "test")
+        if isinstance(body_t, OptionalType) and _is_nil_guard_test(test, body):
+            return body_t.inner
+        orelse_t = _infer_expr_type(orelse, env, ctx)
+        if _is_ast(orelse, "Constant") and isinstance(orelse.get("value"), JNull):
+            if isinstance(body_t, OptionalType):
+                return body_t
+            return OptionalType(body_t)
+        if isinstance(body_t, OptionalType) and body_t.inner == orelse_t:
+            return orelse_t
+        return body_t
     if t == "Subscript":
         obj = get_node(node, "value")
         obj_t = _infer_expr_type(obj, env, ctx)
@@ -3944,6 +3991,120 @@ def _scan_hoist_names(nodes: list[ASTNode], env: _Env) -> list[str]:
     return result
 
 
+def _is_guard_body(body: list[ASTNode]) -> bool:
+    """Check if a body is a guard clause (single return/continue/break/raise)."""
+    if len(body) != 1:
+        return False
+    if not isinstance(body[0], dict):
+        return False
+    t = get_str(body[0], "_type")
+    return t in ("Return", "Continue", "Break", "Raise")
+
+
+def _is_negated_isinstance(node: ASTNode) -> bool:
+    """Check if node is 'not isinstance(x, T)'."""
+    if not _is_ast(node, "UnaryOp"):
+        return False
+    op = get_node(node, "op")
+    if get_str(op, "_type") != "Not":
+        return False
+    operand = get_node(node, "operand")
+    return _is_isinstance_call(operand)
+
+
+def _subscript_key(node: ASTNode) -> str | None:
+    """Build a substitution key for a Subscript node, e.g. 'body:0'."""
+    if not _is_ast(node, "Subscript"):
+        return None
+    val = get_node(node, "value")
+    slc = get_node(node, "slice")
+    if not _is_ast(val, "Name"):
+        return None
+    if not _is_ast(slc, "Constant"):
+        return None
+    idx_jv = slc.get("value")
+    if not isinstance(idx_jv, JInt):
+        return None
+    return get_str(val, "id") + ":" + str(idx_jv.value)
+
+
+def _find_isinstance_subscripts(
+    test: ASTNode,
+) -> list[ASTNode]:
+    """Find isinstance calls with Subscript first arguments in a condition."""
+    results: list[ASTNode] = []
+    if _is_isinstance_call(test):
+        args = get_nodes(test, "args")
+        if len(args) >= 1 and isinstance(args[0], dict):
+            if _is_ast(args[0], "Subscript"):
+                results.append(args[0])
+            elif _is_ast(args[0], "Attribute"):
+                inner = get_node(args[0], "value")
+                if _is_ast(inner, "Subscript"):
+                    results.append(inner)
+    elif _is_ast(test, "BoolOp"):
+        values = get_nodes(test, "values")
+        vi = 0
+        while vi < len(values):
+            v = values[vi]
+            if isinstance(v, dict):
+                results.extend(_find_isinstance_subscripts(v))
+            vi += 1
+    elif _is_ast(test, "UnaryOp"):
+        operand = get_node(test, "operand")
+        results.extend(_find_isinstance_subscripts(operand))
+    return results
+
+
+def _fresh_isinstance_temp(ctx: _LowerCtx) -> str:
+    ctx.isinstance_temp_counter += 1
+    return "_istype_tmp_" + str(ctx.isinstance_temp_counter)
+
+
+def _make_name_node(name: str, src_node: ASTNode) -> ASTNode:
+    """Create a Python AST Name node with JStr-wrapped values."""
+    return {
+        "_type": JStr("Name"),
+        "id": JStr(name),
+        "lineno": src_node.get("lineno", JInt(0)),
+        "col_offset": src_node.get("col_offset", JInt(0)),
+        "_source_file": src_node.get("_source_file", JStr("")),
+    }
+
+
+def _replace_subscript_in_ast(node: ASTNode, key: str, name: str) -> None:
+    """Replace Subscript nodes matching key with Name nodes in a Python AST tree."""
+    if not isinstance(node, dict):
+        return
+    keys = list(node.keys())
+    ki = 0
+    while ki < len(keys):
+        k = keys[ki]
+        v = node[k]
+        if isinstance(v, dict):
+            if _subscript_key(v) == key:
+                node[k] = _make_name_node(name, v)
+            else:
+                _replace_subscript_in_ast(v, key, name)
+        elif isinstance(v, JDict):
+            inner = v.entries
+            if _subscript_key(inner) == key:
+                node[k] = JDict(_make_name_node(name, inner))
+            else:
+                _replace_subscript_in_ast(inner, key, name)
+        elif isinstance(v, JList):
+            ji = 0
+            while ji < len(v.items):
+                item = v.items[ji]
+                if isinstance(item, JDict):
+                    if _subscript_key(item.entries) == key:
+                        v.items[ji] = JDict(_make_name_node(name, item.entries))
+                    else:
+                        _replace_subscript_in_ast(item.entries, key, name)
+                ji += 1
+        ki += 1
+
+
 def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     """Lower an if statement, detecting isinstance chains for match."""
     pos = _node_pos(node)
@@ -3955,6 +4116,63 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if isinstance_result is not None:
         chain, else_body_nodes = isinstance_result
         return _lower_isinstance_chain(pos, chain, else_body_nodes, env, ctx)
+    # Split compound "not isinstance(x, T) or ..." guard into sequential ifs
+    if _is_ast(test, "BoolOp") and len(orelse) == 0 and _is_guard_body(body):
+        op = get_node(test, "op")
+        if get_str(op, "_type") == "Or":
+            values = get_nodes(test, "values")
+            has_isinstance = False
+            vi = 0
+            while vi < len(values):
+                v = values[vi]
+                if isinstance(v, dict) and _is_negated_isinstance(v):
+                    has_isinstance = True
+                vi += 1
+            if has_isinstance and len(values) >= 2:
+                result_stmts: list[TStmt] = []
+                vi = 0
+                while vi < len(values):
+                    v = values[vi]
+                    if isinstance(v, dict):
+                        part_node: dict[str, JsonValue] = dict(node)
+                        part_node["test"] = JDict(v)
+                        part_node["orelse"] = JList([])
+                        part_stmts = _lower_if(part_node, env, ctx)
+                        ji = 0
+                        while ji < len(part_stmts):
+                            result_stmts.append(part_stmts[ji])
+                            ji += 1
+                    vi += 1
+                return result_stmts
+    # Extract indexed isinstance args into temp variables
+    indexed_subs = _find_isinstance_subscripts(test)
+    pre_temps: list[TStmt] = []
+    seen_keys: set[str] = set()
+    si = 0
+    while si < len(indexed_subs):
+        sub_node = indexed_subs[si]
+        key = _subscript_key(sub_node)
+        if key is not None and key not in seen_keys:
+            seen_keys.add(key)
+            temp_name = _fresh_isinstance_temp(ctx)
+            sub_type = _infer_expr_type(sub_node, env, ctx)
+            ttype = _typenode_to_ttype(pos, sub_type)
+            lowered_expr = _lower_expr(sub_node, env, ctx)
+            pre_temps.append(TLetStmt(pos, temp_name, ttype, lowered_expr, _EMPTY_ANN))
+            env.var_types[temp_name] = sub_type
+            env.declared.add(temp_name)
+            _replace_subscript_in_ast(test, key, temp_name)
+            bi2 = 0
+            while bi2 < len(body):
+                if isinstance(body[bi2], dict):
+                    _replace_subscript_in_ast(body[bi2], key, temp_name)
+                bi2 += 1
+            bi2 = 0
+            while bi2 < len(orelse):
+                if isinstance(orelse[bi2], dict):
+                    _replace_subscript_in_ast(orelse[bi2], key, temp_name)
+                bi2 += 1
+        si += 1
     # Hoist variables first-assigned inside branches
     all_branch_nodes: list[ASTNode] = []
     bi = 0
@@ -3974,7 +4192,7 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if len(orelse) > 0:
         else_body = _lower_stmts(orelse, env, ctx)
     pre_stmts.append(TIfStmt(pos, cond, then_body, else_body, _EMPTY_ANN))
-    return pre_stmts
+    return pre_temps + pre_stmts
 
 
 def _unwrap_isinstance_and(
