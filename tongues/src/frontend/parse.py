@@ -2719,6 +2719,8 @@ class Parser:
                 op_type = "MatMult"
             else:
                 break
+            if op_type is None:
+                break
             self.advance()
             right = self.parse_factor()
             fields: ASTNode = {

@@ -112,6 +112,7 @@ def read_source(input_file: str | None) -> tuple[str, int]:
     else:
         raw = sys.stdin.buffer.read()
     if len(raw) > 0:
+        source = ""
         try:
             source = raw.decode("utf-8")
         except ValueError:
@@ -1672,24 +1673,24 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
     while i < len(args):
         arg = args[i]
         if arg == "--help" or arg == "-h":
-            print(USAGE, end="")
-            raise SystemExit(0)
+            sys.stdout.write(USAGE)
+            sys.exit(0)
         elif arg == "--target":
             if i + 1 >= len(args):
                 print("error: --target requires an argument", file=sys.stderr)
-                raise SystemExit(2)
+                sys.exit(2)
             target = args[i + 1]
             i += 2
         elif arg == "--stop-at":
             if i + 1 >= len(args):
                 print("error: --stop-at requires an argument", file=sys.stderr)
-                raise SystemExit(2)
+                sys.exit(2)
             stop_at = args[i + 1]
             i += 2
         elif arg == "-o" or arg == "--output":
             if i + 1 >= len(args):
                 print("error: " + arg + " requires an argument", file=sys.stderr)
-                raise SystemExit(2)
+                sys.exit(2)
             output_file = args[i + 1]
             i += 2
         elif arg == "--strict":
@@ -1707,26 +1708,26 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
             i += 1
         elif arg.startswith("-"):
             print("error: unknown flag '" + arg + "'", file=sys.stderr)
-            raise SystemExit(2)
+            sys.exit(2)
         else:
             if input_file is not None:
                 print("error: unexpected argument '" + arg + "'", file=sys.stderr)
-                raise SystemExit(2)
+                sys.exit(2)
             input_file = arg
             i += 1
     if stop_at is not None and stop_at not in PHASES:
         print("error: unknown phase '" + stop_at + "'", file=sys.stderr)
-        raise SystemExit(2)
+        sys.exit(2)
     if target is None:
         if stop_at is not None:
             target = "python"
         else:
             print("error: --target is required", file=sys.stderr)
-            raise SystemExit(2)
+            sys.exit(2)
     target_str: str = target if target is not None else ""
     if target_str not in TARGETS:
         print("error: unknown target '" + target_str + "'", file=sys.stderr)
-        raise SystemExit(2)
+        sys.exit(2)
     return (
         target_str,
         stop_at,

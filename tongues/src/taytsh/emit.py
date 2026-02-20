@@ -728,7 +728,7 @@ class _Emitter:
         out = 'b"'
         i = 0
         while i < len(b):
-            v: int = b[i]
+            v = int(b[i])
             if v == 10:
                 out += "\\n"
             elif v == 13:

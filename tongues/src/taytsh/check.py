@@ -673,16 +673,14 @@ def _type_check_var(cond: TExpr) -> tuple[str, str, bool] | None:
     if isinstance(cond, TCall):
         info = _istype_var_from_call(cond)
         if info is not None:
-            info_path, info_tname = info
-            return (info_path, info_tname, True)
+            return (info[0], info[1], True)
     # !IsType(x, "T")
     if isinstance(cond, TUnaryOp) and cond.op == "!":
         inner = cond.operand
         if isinstance(inner, TCall):
             info = _istype_var_from_call(inner)
             if info is not None:
-                info_path, info_tname = info
-                return (info_path, info_tname, False)
+                return (info[0], info[1], False)
     return None
 
 
