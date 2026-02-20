@@ -1158,7 +1158,7 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             slc = get_node(node, "slice")
             if _is_ast(slc, "Slice"):
                 return PrimitiveType("bytes")
-            return INT_TYPE
+            return PrimitiveType("byte")
         return VOID_TYPE
     if t == "List":
         elts = get_nodes(node, "elts")
