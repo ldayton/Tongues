@@ -721,17 +721,20 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
             pat.annotations["scope.case_interface"] = iface
 
     if stmt.default is not None:
-        dflt = stmt.default
         dflt_ctx = _fork_ctx(ctx)
-        if dflt.name is not None:
+        if stmt.default.name is not None:
             residual = _compute_residual_type(scrutinee_type, covered_types, ctx)
-            dflt_ctx.bindings[dflt.name] = _BindingInfo(
-                annotations=dflt.annotations, declared_type=residual, is_param=False
+            dflt_ctx.bindings[stmt.default.name] = _BindingInfo(
+                annotations=stmt.default.annotations,
+                declared_type=residual,
+                is_param=False,
             )
-        _walk_stmts(dflt.body, dflt_ctx)
-        if dflt.name is not None:
-            iface = _detect_case_interface(dflt.name, dflt.body, dflt_ctx)
-            dflt.annotations["scope.case_interface"] = iface
+        _walk_stmts(stmt.default.body, dflt_ctx)
+        if stmt.default.name is not None:
+            iface = _detect_case_interface(
+                stmt.default.name, stmt.default.body, dflt_ctx
+            )
+            stmt.default.annotations["scope.case_interface"] = iface
 
 
 def _detect_case_interface(binding_name: str, body: list[TStmt], ctx: _ScopeCtx) -> str:
@@ -907,8 +910,10 @@ def _check_call_interface_arg(name: str, call: TCall, ctx: _ScopeCtx) -> str | N
         return None
     for i, arg in enumerate(call.args):
         if isinstance(arg.value, TVar) and arg.value.name == name:
-            if i < len(param_types) and isinstance(param_types[i], InterfaceT):
-                return param_types[i].name
+            if i < len(param_types):
+                pt = param_types[i]
+                if isinstance(pt, InterfaceT):
+                    return pt.name
     return None
 
 
@@ -1021,14 +1026,15 @@ def _analyze_fn(decl: TFnDecl, ctx: _ScopeCtx, self_type: Type | None = None) ->
     )
     for p in decl.params:
         if p.typ is not None:
-            pt = ctx.checker.resolve_type(p.typ)
+            fn_ctx.bindings[p.name] = _BindingInfo(
+                annotations=p.annotations,
+                declared_type=ctx.checker.resolve_type(p.typ),
+                is_param=True,
+            )
         elif p.name == "this" and self_type is not None:
-            pt = self_type
-        else:
-            continue
-        fn_ctx.bindings[p.name] = _BindingInfo(
-            annotations=p.annotations, declared_type=pt, is_param=True
-        )
+            fn_ctx.bindings[p.name] = _BindingInfo(
+                annotations=p.annotations, declared_type=self_type, is_param=True
+            )
     _walk_stmts(decl.body, fn_ctx)
     _stamp_bindings(fn_ctx)
 

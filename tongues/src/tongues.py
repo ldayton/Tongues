@@ -1673,7 +1673,7 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
     while i < len(args):
         arg = args[i]
         if arg == "--help" or arg == "-h":
-            sys.stdout.write(USAGE)
+            print(str(USAGE), end="")
             sys.exit(0)
         elif arg == "--target":
             if i + 1 >= len(args):

@@ -578,8 +578,10 @@ def _collect_fn_throws_stmt(
     caught_filter: set[str] | None,
 ) -> None:
     if isinstance(stmt, TThrowStmt):
-        if isinstance(stmt.expr, TCall) and isinstance(stmt.expr.func, TVar):
-            _add_throws({stmt.expr.func.name}, throws, caught_filter)
+        if isinstance(stmt.expr, TCall):
+            func = stmt.expr.func
+            if isinstance(func, TVar):
+                _add_throws({func.name}, throws, caught_filter)
         elif isinstance(stmt.expr, TVar):
             name = stmt.expr.name
             if name in resolver.catch_vars:

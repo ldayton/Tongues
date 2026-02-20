@@ -290,11 +290,10 @@ class _Emitter:
             current = None
 
         # Emit first branch
-        first_cond, first_body = branches[0]
         self._emit_line(
-            "if " + self._render_expr(first_cond, self._PREC_TERNARY) + " {"
+            "if " + self._render_expr(branches[0][0], self._PREC_TERNARY) + " {"
         )
-        self._emit_stmt_block(first_body)
+        self._emit_stmt_block(branches[0][1])
 
         # else-if branches
         i = 1
@@ -591,10 +590,11 @@ class _Emitter:
         if isinstance(expr, TFnLit):
             params = self._render_param_list(expr.params)
             ret = self._render_type(expr.ret)
+            first = expr.body[0] if expr.body else None
             if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
-                expr.body[0], TExprStmt
+                first, TExprStmt
             ):
-                return f"({params}) -> {ret} => {self._render_expr(expr.body[0].expr, self._PREC_TERNARY)}"
+                return f"({params}) -> {ret} => {self._render_expr(first.expr, self._PREC_TERNARY)}"
             body = self._render_inline_block(expr.body)
             return f"({params}) -> {ret} {body}"
 
