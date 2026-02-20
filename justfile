@@ -112,6 +112,7 @@ check:
 self-transpile:
     mkdir -p tongues/.out
     cd tongues && uv run bin/tongues --target python -o .out/tongues.py src
+    uv run python3 -c "import ast; ast.parse(open('tongues/.out/tongues.py').read())"
 
 # Build Docker image for a language
 docker-build lang:
