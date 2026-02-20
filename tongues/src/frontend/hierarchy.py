@@ -76,10 +76,10 @@ class HierarchyResult:
             return name
         cur = name
         while True:
-            ancestors = self.ancestors.get(cur)
-            if ancestors is None or len(ancestors) == 0:
+            cur_ancestors = self.ancestors.get(cur)
+            if cur_ancestors is None or len(cur_ancestors) == 0:
                 return None
-            parent = ancestors[0]
+            parent = cur_ancestors[0]
             if self.is_hierarchy_root(parent):
                 return parent
             cur = parent
@@ -291,8 +291,9 @@ def build_hierarchy(
         class_bases: Dict mapping class name to list of base class names.
         class_source_files: Optional mapping of class names to source file paths.
     """
-    if class_source_files is None:
-        class_source_files = {}
+    src_files: dict[str, str] = (
+        class_source_files if class_source_files is not None else {}
+    )
     result = HierarchyResult()
     # Validate base classes exist
     ckeys = list(class_bases.keys())
@@ -300,7 +301,7 @@ def build_hierarchy(
     while i < len(ckeys):
         name = ckeys[i]
         bases = class_bases[name]
-        sf = class_source_files.get(name, "")
+        sf = src_files.get(name, "")
         j = 0
         while j < len(bases):
             base = bases[j]
@@ -310,7 +311,7 @@ def build_hierarchy(
             j += 1
         i += 1
     # Detect cycles
-    if _detect_cycles(class_bases, result._errors, class_source_files):
+    if _detect_cycles(class_bases, result._errors, src_files):
         return result
     # Build ancestor lists (direct bases only)
     i = 0

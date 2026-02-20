@@ -301,14 +301,14 @@ def _extract_pragmas(
             continue
         if not stripped.startswith("@@["):
             break
-        body = stripped[3:]
-        if not body.endswith("]"):
+        pragma_body = stripped[3:]
+        if not pragma_body.endswith("]"):
             break
-        body = body[:-1]
-        entries = body.split(",")
+        pragma_body = pragma_body[:-1]
+        pragma_entries = pragma_body.split(",")
         j = 0
-        while j < len(entries):
-            entry = entries[j].strip().strip('"')
+        while j < len(pragma_entries):
+            entry = pragma_entries[j].strip().strip('"')
             if entry == "strict_math":
                 strict_math = True
             elif entry == "strict_tostring":
@@ -437,9 +437,9 @@ def _dependency_order(files: list[str], deps: dict[str, list[str]]) -> list[str]
         if dep_list is not None:
             j = 0
             while j < len(dep_list):
-                d = dep_list[j]
-                if d in in_degree:
-                    in_degree[d] = in_degree[d] + 1
+                dep = dep_list[j]
+                if dep in in_degree:
+                    in_degree[dep] = in_degree[dep] + 1
                 j += 1
         i += 1
     ready: list[str] = []
@@ -458,20 +458,20 @@ def _dependency_order(files: list[str], deps: dict[str, list[str]]) -> list[str]
         if dep_list is not None:
             j = 0
             while j < len(dep_list):
-                d = dep_list[j]
-                if d in in_degree:
-                    in_degree[d] = in_degree[d] - 1
-                    if in_degree[d] == 0:
+                dep = dep_list[j]
+                if dep in in_degree:
+                    in_degree[dep] = in_degree[dep] - 1
+                    if in_degree[dep] == 0:
                         k = 0
                         inserted = False
                         while k < len(ready):
-                            if d < ready[k]:
-                                ready.insert(k, d)
+                            if dep < ready[k]:
+                                ready.insert(k, dep)
                                 inserted = True
                                 break
                             k += 1
                         if not inserted:
-                            ready.append(d)
+                            ready.append(dep)
                 j += 1
     if len(result) < len(files):
         remaining: list[str] = []
@@ -519,16 +519,16 @@ def _collect_module_names(
             targets = get_nodes(stmt, "targets")
             j = 0
             while j < len(targets):
-                target = targets[j]
-                if get_str(target, "_type") == "Name":
-                    tid = get_str(target, "id")
+                tgt = targets[j]
+                if get_str(tgt, "_type") == "Name":
+                    tid = get_str(tgt, "id")
                     if tid != "":
                         result.append((tid, lineno, col, stmt))
                 j += 1
         elif node_type == "AnnAssign":
-            target = get_node(stmt, "target")
-            if get_str(target, "_type") == "Name":
-                tid = get_str(target, "id")
+            tgt = get_node(stmt, "target")
+            if get_str(tgt, "_type") == "Name":
+                tid = get_str(tgt, "id")
                 if tid != "":
                     result.append((tid, lineno, col, stmt))
         i += 1
@@ -588,77 +588,85 @@ def _ast_equal(a: ASTNode, b: ASTNode) -> bool:
     work_b: list[JsonValue] = [JDict(b)]
     wi = 0
     while wi < len(work_a):
-        x = work_a[wi]
-        y = work_b[wi]
-        if isinstance(x, JDict):
-            x = x.entries
-        if isinstance(y, JDict):
-            y = y.entries
-        if isinstance(x, JList):
-            x = x.items
-        if isinstance(y, JList):
-            y = y.items
-        if isinstance(x, JStr):
-            x = x.value
-        if isinstance(y, JStr):
-            y = y.value
-        if isinstance(x, JInt):
-            x = x.value
-        if isinstance(y, JInt):
-            y = y.value
-        if isinstance(x, JBool):
-            x = x.value
-        if isinstance(y, JBool):
-            y = y.value
-        if isinstance(x, JFloat):
-            x = x.value
-        if isinstance(y, JFloat):
-            y = y.value
-        if isinstance(x, JNull):
-            x = None
-        if isinstance(y, JNull):
-            y = None
-        if isinstance(x, dict) and isinstance(y, dict):
-            x_keys: list[str] = []
-            xk = list(x.keys())
-            ki = 0
-            while ki < len(xk):
-                if xk[ki] not in ignore:
-                    x_keys.append(xk[ki])
-                ki += 1
-            y_keys: list[str] = []
-            yk = list(y.keys())
-            ki = 0
-            while ki < len(yk):
-                if yk[ki] not in ignore:
-                    y_keys.append(yk[ki])
-                ki += 1
-            if len(x_keys) != len(y_keys):
-                return False
-            x_keys.sort()
-            y_keys.sort()
-            ki = 0
-            while ki < len(x_keys):
-                if x_keys[ki] != y_keys[ki]:
-                    return False
-                ki += 1
-            ki = 0
-            while ki < len(x_keys):
-                work_a.append(x[x_keys[ki]])
-                work_b.append(y[y_keys[ki]])
-                ki += 1
-        elif isinstance(x, list) and isinstance(y, list):
-            if len(x) != len(y):
-                return False
-            li = 0
-            while li < len(x):
-                work_a.append(x[li])
-                work_b.append(y[li])
-                li += 1
-        else:
-            if x != y:
-                return False
+        xa = work_a[wi]
+        ya = work_b[wi]
+        matched = _ast_equal_step(xa, ya, ignore, work_a, work_b)
+        if not matched:
+            return False
         wi += 1
+    return True
+
+
+def _ast_equal_step(
+    xa: JsonValue,
+    ya: JsonValue,
+    ignore: set[str],
+    work_a: list[JsonValue],
+    work_b: list[JsonValue],
+) -> bool:
+    """Compare one pair of values in _ast_equal. Returns False if mismatch."""
+    if isinstance(xa, JDict) and isinstance(ya, JDict):
+        return _ast_equal_dicts(xa.entries, ya.entries, ignore, work_a, work_b)
+    if isinstance(xa, JList) and isinstance(ya, JList):
+        xl = xa.items
+        yl = ya.items
+        if len(xl) != len(yl):
+            return False
+        li = 0
+        while li < len(xl):
+            work_a.append(xl[li])
+            work_b.append(yl[li])
+            li += 1
+        return True
+    if isinstance(xa, JStr) and isinstance(ya, JStr):
+        return xa.value == ya.value
+    if isinstance(xa, JInt) and isinstance(ya, JInt):
+        return xa.value == ya.value
+    if isinstance(xa, JBool) and isinstance(ya, JBool):
+        return xa.value == ya.value
+    if isinstance(xa, JFloat) and isinstance(ya, JFloat):
+        return xa.value == ya.value
+    if isinstance(xa, JNull) and isinstance(ya, JNull):
+        return True
+    return xa == ya
+
+
+def _ast_equal_dicts(
+    xd: dict[str, JsonValue],
+    yd: dict[str, JsonValue],
+    ignore: set[str],
+    work_a: list[JsonValue],
+    work_b: list[JsonValue],
+) -> bool:
+    """Compare two ASTNode dicts in _ast_equal. Returns False if mismatch."""
+    x_keys: list[str] = []
+    xk = list(xd.keys())
+    ki = 0
+    while ki < len(xk):
+        if xk[ki] not in ignore:
+            x_keys.append(xk[ki])
+        ki += 1
+    y_keys: list[str] = []
+    yk = list(yd.keys())
+    ki = 0
+    while ki < len(yk):
+        if yk[ki] not in ignore:
+            y_keys.append(yk[ki])
+        ki += 1
+    if len(x_keys) != len(y_keys):
+        return False
+    x_keys.sort()
+    y_keys.sort()
+    ki = 0
+    while ki < len(x_keys):
+        if x_keys[ki] != y_keys[ki]:
+            return False
+        ki += 1
+    ki = 0
+    while ki < len(x_keys):
+        work_a.append(xd[x_keys[ki]])
+        work_b.append(yd[y_keys[ki]])
+        ki += 1
     return True
 
 
@@ -706,15 +714,15 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
     while wi < len(work):
         item = work[wi]
         if isinstance(item, JDict):
-            entries = item.entries
-            if get_str(entries, "_type") == "Name":
-                nid = get_str(entries, "id")
+            node_entries = item.entries
+            if get_str(node_entries, "_type") == "Name":
+                nid = get_str(node_entries, "id")
                 if nid != "":
                     refs.add(nid)
-            keys = list(entries.keys())
+            keys = list(node_entries.keys())
             ki = 0
             while ki < len(keys):
-                val = entries[keys[ki]]
+                val = node_entries[keys[ki]]
                 if isinstance(val, JDict) or isinstance(val, JList):
                     work.append(val)
                 ki += 1
@@ -927,20 +935,20 @@ def _rewrite_names(node: ASTNode, rename_map: dict[str, str]) -> None:
     while wi < len(work):
         item = work[wi]
         if isinstance(item, JDict):
-            entries = item.entries
-            ntype = get_str(entries, "_type")
+            node_entries = item.entries
+            ntype = get_str(node_entries, "_type")
             if ntype == "Name":
-                nid = get_str(entries, "id")
+                nid = get_str(node_entries, "id")
                 if nid != "" and nid in rename_map:
-                    entries["id"] = JStr(rename_map[nid])
+                    node_entries["id"] = JStr(rename_map[nid])
             elif ntype == "FunctionDef" or ntype == "ClassDef":
-                def_name = get_str(entries, "name")
+                def_name = get_str(node_entries, "name")
                 if def_name != "" and def_name in rename_map:
-                    entries["name"] = JStr(rename_map[def_name])
-            keys = list(entries.keys())
+                    node_entries["name"] = JStr(rename_map[def_name])
+            keys = list(node_entries.keys())
             ki = 0
             while ki < len(keys):
-                val = entries[keys[ki]]
+                val = node_entries[keys[ki]]
                 if isinstance(val, JDict) or isinstance(val, JList):
                     work.append(val)
                 ki += 1
@@ -966,11 +974,11 @@ def _rewrite_module_attrs(
     while wi < len(work):
         item = work[wi]
         if isinstance(item, JDict):
-            entries = item.entries
-            keys = list(entries.keys())
+            node_entries = item.entries
+            keys = list(node_entries.keys())
             ki = 0
             while ki < len(keys):
-                val = entries[keys[ki]]
+                val = node_entries[keys[ki]]
                 if isinstance(val, JDict):
                     val_entries = val.entries
                     if get_str(val_entries, "_type") == "Attribute":
@@ -1056,13 +1064,13 @@ def _tag_source_file(node: ASTNode, source_file: str) -> None:
     while wi < len(work):
         item = work[wi]
         if isinstance(item, JDict):
-            entries = item.entries
-            if has_key(entries, "_type"):
-                entries["_source_file"] = JStr(source_file)
-            keys = list(entries.keys())
+            node_entries = item.entries
+            if has_key(node_entries, "_type"):
+                node_entries["_source_file"] = JStr(source_file)
+            keys = list(node_entries.keys())
             ki = 0
             while ki < len(keys):
-                val = entries[keys[ki]]
+                val = node_entries[keys[ki]]
                 if isinstance(val, JDict) or isinstance(val, JList):
                     work.append(val)
                 ki += 1
@@ -1139,12 +1147,12 @@ def merge_project(
     while i < len(file_asts):
         path = file_asts[i][0]
         ast_dict = file_asts[i][1]
-        body = get_nodes(ast_dict, "body")
+        ast_body = get_nodes(ast_dict, "body")
         file_deps: list[str] = []
         import_entries: list[tuple[ASTNode, str, list[tuple[str, str]]]] = []
         j = 0
-        while j < len(body):
-            stmt = body[j]
+        while j < len(ast_body):
+            stmt = ast_body[j]
             if get_str(stmt, "_type") == "ImportFrom":
                 classification = _classify_import(stmt)
                 if classification == "project":
@@ -1216,18 +1224,18 @@ def merge_project(
     oi = 0
     while oi < len(ordered):
         path = ordered[oi]
-        ast_dict: ASTNode | None = None
+        found_ast: ASTNode | None = None
         ai = 0
         while ai < len(file_asts):
             if file_asts[ai][0] == path:
-                ast_dict = file_asts[ai][1]
+                found_ast = file_asts[ai][1]
                 break
             ai += 1
-        if ast_dict is None:
+        if found_ast is None:
             oi += 1
             continue
-        body = get_nodes(ast_dict, "body")
-        if len(body) == 0:
+        ast_body = get_nodes(found_ast, "body")
+        if len(ast_body) == 0:
             oi += 1
             continue
         rename_map: dict[str, str] = {}
@@ -1299,10 +1307,10 @@ def merge_project(
             rename_map[okeys[oki]] = own_renames[okeys[oki]]
             oki += 1
         if len(rename_map) > 0:
-            _rewrite_names(ast_dict, rename_map)
+            _rewrite_names(found_ast, rename_map)
         if len(module_bindings) > 0:
             rewrite_errors = _rewrite_module_attrs(
-                ast_dict, module_bindings, file_name_map
+                found_ast, module_bindings, file_name_map
             )
             ri = 0
             while ri < len(rewrite_errors):
@@ -1313,8 +1321,8 @@ def merge_project(
             import_entries[ei][0]["_remove"] = JBool(True)
             ei += 1
         bi = 0
-        while bi < len(body):
-            bstmt = body[bi]
+        while bi < len(ast_body):
+            bstmt = ast_body[bi]
             stype = get_str(bstmt, "_type")
             def_name = ""
             if stype == "ClassDef" or stype == "FunctionDef":
@@ -1326,9 +1334,9 @@ def merge_project(
                     if get_str(t, "_type") == "Name":
                         def_name = get_str(t, "id")
             elif stype == "AnnAssign":
-                target = get_node(bstmt, "target")
-                if get_str(target, "_type") == "Name":
-                    def_name = get_str(target, "id")
+                ann_target = get_node(bstmt, "target")
+                if get_str(ann_target, "_type") == "Name":
+                    def_name = get_str(ann_target, "id")
             if def_name != "" and def_name in dedup_names:
                 if def_name in dedup_seen:
                     bstmt["_remove"] = JBool(True)
@@ -1337,8 +1345,8 @@ def merge_project(
             bi += 1
         new_body: list[ASTNode] = []
         bi = 0
-        while bi < len(body):
-            bstmt = body[bi]
+        while bi < len(ast_body):
+            bstmt = ast_body[bi]
             if get_bool(bstmt, "_remove"):
                 bi += 1
                 continue

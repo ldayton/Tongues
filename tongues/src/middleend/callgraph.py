@@ -107,13 +107,15 @@ class _TypeResolver:
     - Whether division operands are int/byte (ZeroDivisionError) vs float (no throw)
     """
 
-    def __init__(self, checker: Checker, fn: TFnDecl, struct_type: StructT | None):
+    def __init__(self, checker: Checker):
         self.checker = checker
         self.locals: dict[str, Type] = {}
         self.catch_vars: dict[str, set[str]] = {}
+
+    def init_from_fn(self, fn: TFnDecl, struct_type: StructT | None) -> None:
         for p in fn.params:
             if p.typ is not None:
-                self.locals[p.name] = checker.resolve_type(p.typ)
+                self.locals[p.name] = self.checker.resolve_type(p.typ)
             elif p.name == "this" and struct_type is not None:
                 self.locals[p.name] = struct_type
 
@@ -188,7 +190,8 @@ def _build_call_graph(
                 edges[key] = set()
 
     for fn_key, decl in fn_decls.items():
-        resolver = _TypeResolver(checker, decl, fn_structs[fn_key])
+        resolver = _TypeResolver(checker)
+        resolver.init_from_fn(decl, fn_structs[fn_key])
         _collect_edges(decl.body, fn_key, edges, fn_decls, checker, resolver)
 
     return fn_decls, edges, fn_structs
@@ -500,7 +503,8 @@ def _propagate_throws(
         scc_set = set(scc)
         for key in scc:
             decl = fn_decls[key]
-            resolver = _TypeResolver(checker, decl, fn_structs[key])
+            resolver = _TypeResolver(checker)
+            resolver.init_from_fn(decl, fn_structs[key])
             throws: set[str] = set()
             _collect_fn_throws(
                 decl.body,

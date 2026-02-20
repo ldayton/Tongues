@@ -785,26 +785,24 @@ def _synth_name_call(
     if fname == "min" or fname == "max":
         if len(args) > 0:
             first = args[0]
-            if isinstance(first, dict):
-                ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, SliceType):
-                    return ft.element
-                if len(args) >= 2:
-                    has_int = False
-                    has_bool = False
-                    j = 0
-                    while j < len(args):
-                        a = args[j]
-                        if isinstance(a, dict):
-                            at = _synth_expr(a, env, ctx)
-                            if isinstance(at, PrimitiveType) and at.kind == "int":
-                                has_int = True
-                            if isinstance(at, PrimitiveType) and at.kind == "bool":
-                                has_bool = True
-                        j += 1
-                    if has_int or has_bool:
-                        return INT_TYPE
-                return ft
+            ft = _synth_expr(first, env, ctx)
+            if isinstance(ft, SliceType):
+                return ft.element
+            if len(args) >= 2:
+                has_int = False
+                has_bool = False
+                j = 0
+                while j < len(args):
+                    a = args[j]
+                    at = _synth_expr(a, env, ctx)
+                    if isinstance(at, PrimitiveType) and at.kind == "int":
+                        has_int = True
+                    if isinstance(at, PrimitiveType) and at.kind == "bool":
+                        has_bool = True
+                    j += 1
+                if has_int or has_bool:
+                    return INT_TYPE
+            return ft
         return INT_TYPE
     if fname == "isinstance":
         return BOOL_TYPE
@@ -815,77 +813,69 @@ def _synth_name_call(
     if fname == "enumerate":
         if len(args) > 0:
             first = args[0]
-            if isinstance(first, dict):
-                ft = _synth_expr(first, env, ctx)
-                elem = _element_type(ft)
-                return IteratorType(TupleType([INT_TYPE, elem], False))
+            ft = _synth_expr(first, env, ctx)
+            elem = _element_type(ft)
+            return IteratorType(TupleType([INT_TYPE, elem], False))
         return IteratorType(TupleType([INT_TYPE, ANY_TYPE], False))
     if fname == "zip":
         elems: list[TypeNode] = []
         j = 0
         while j < len(args):
             a = args[j]
-            if isinstance(a, dict):
-                ft = _synth_expr(a, env, ctx)
-                elems.append(_element_type(ft))
+            ft = _synth_expr(a, env, ctx)
+            elems.append(_element_type(ft))
             j += 1
         return IteratorType(TupleType(elems, False))
     if fname == "reversed":
         if len(args) > 0:
             first = args[0]
-            if isinstance(first, dict):
-                ft = _synth_expr(first, env, ctx)
-                elem = _element_type(ft)
-                return IteratorType(elem)
+            ft = _synth_expr(first, env, ctx)
+            elem = _element_type(ft)
+            return IteratorType(elem)
         return IteratorType(ANY_TYPE)
     if fname == "sorted":
         if len(args) > 0:
             first = args[0]
-            if isinstance(first, dict):
-                ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, IteratorType):
-                    return SliceType(ft.element)
-                elem = _element_type(ft)
-                return SliceType(elem)
+            ft = _synth_expr(first, env, ctx)
+            if isinstance(ft, IteratorType):
+                return SliceType(ft.element)
+            elem = _element_type(ft)
+            return SliceType(elem)
         return SliceType(ANY_TYPE)
     if fname == "list":
         if len(args) > 0:
             first = args[0]
-            if isinstance(first, dict):
-                ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, IteratorType):
-                    return SliceType(ft.element)
-                elem = _element_type(ft)
-                return SliceType(elem)
+            ft = _synth_expr(first, env, ctx)
+            if isinstance(ft, IteratorType):
+                return SliceType(ft.element)
+            elem = _element_type(ft)
+            return SliceType(elem)
         return SliceType(ANY_TYPE)
     if fname == "tuple":
         if len(args) > 0:
             first = args[0]
-            if isinstance(first, dict):
-                ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, IteratorType):
-                    return TupleType([ft.element], True)
-                elem = _element_type(ft)
-                return TupleType([elem], True)
+            ft = _synth_expr(first, env, ctx)
+            if isinstance(ft, IteratorType):
+                return TupleType([ft.element], True)
+            elem = _element_type(ft)
+            return TupleType([elem], True)
         return TupleType([], False)
     if fname == "set":
         if len(args) > 0:
             first = args[0]
-            if isinstance(first, dict):
-                ft = _synth_expr(first, env, ctx)
-                elem = _element_type(ft)
-                return SetType(elem)
+            ft = _synth_expr(first, env, ctx)
+            elem = _element_type(ft)
+            return SetType(elem)
         return SetType(ANY_TYPE)
     if fname == "dict":
         if len(args) > 0:
             first = args[0]
-            if isinstance(first, dict):
-                ft = _synth_expr(first, env, ctx)
-                if isinstance(ft, IteratorType):
-                    elem = ft.element
-                    if isinstance(elem, TupleType):
-                        if len(elem.elements) >= 2:
-                            return MapType(elem.elements[0], elem.elements[1])
+            ft = _synth_expr(first, env, ctx)
+            if isinstance(ft, IteratorType):
+                elem = ft.element
+                if isinstance(elem, TupleType):
+                    if len(elem.elements) >= 2:
+                        return MapType(elem.elements[0], elem.elements[1])
         return MapType(ANY_TYPE, ANY_TYPE)
     if fname == "any" or fname == "all":
         return BOOL_TYPE
@@ -2464,8 +2454,8 @@ def _check_iterator_escape_return(
     if _is_type(value, ["Call"]):
         func = get_node(value, "func")
         if len(func) > 0 and _is_type(func, ["Name"]):
-            wrapper = get_str(func, "id")
-            if wrapper != "" and wrapper in _EAGER_CONSUMERS:
+            wrapper_name = get_str(func, "id")
+            if wrapper_name != "" and wrapper_name in _EAGER_CONSUMERS:
                 return False
     return False
 
@@ -2498,23 +2488,23 @@ def _check_generator_escape_return(
         ctx.result.add_error(lineno, 0, "cannot return generator expression")
         return True
     if _is_type(value, ["Call"]):
-        func = get_node(value, "func")
-        args = get_nodes(value, "args")
-        if len(func) > 0 and _is_type(func, ["Name"]):
-            wrapper = get_str(func, "id")
-            if wrapper != "" and wrapper in _EAGER_CONSUMERS:
+        call_func = get_node(value, "func")
+        call_args = get_nodes(value, "args")
+        if len(call_func) > 0 and _is_type(call_func, ["Name"]):
+            wrapper_name = get_str(call_func, "id")
+            if wrapper_name != "" and wrapper_name in _EAGER_CONSUMERS:
                 return False
-        if len(func) > 0 and _is_type(func, ["Attribute"]):
-            attr = get_str(func, "attr")
-            if attr == "join":
+        if len(call_func) > 0 and _is_type(call_func, ["Attribute"]):
+            attr_name = get_str(call_func, "attr")
+            if attr_name == "join":
                 return False
         j = 0
-        while j < len(args):
-            a = args[j]
-            if _is_generator_expr(a):
-                if len(func) > 0 and _is_type(func, ["Name"]):
-                    wrapper = get_str(func, "id")
-                    if wrapper != "" and wrapper in _EAGER_CONSUMERS:
+        while j < len(call_args):
+            call_arg = call_args[j]
+            if _is_generator_expr(call_arg):
+                if len(call_func) > 0 and _is_type(call_func, ["Name"]):
+                    wrapper_name = get_str(call_func, "id")
+                    if wrapper_name != "" and wrapper_name in _EAGER_CONSUMERS:
                         return False
                 ctx.result.add_error(lineno, 0, "cannot return generator expression")
                 return True
@@ -2748,26 +2738,24 @@ def _validate_expr_access(
     lineno: int,
 ) -> None:
     """Check for un-narrowed access on object/union/optional types in an expression."""
-    if not isinstance(node, dict):
-        return
     if len(ctx.result._errors) > 0:
         return
     t = get_str(node, "_type")
     if t == "BinOp":
-        left = get_node(node, "left")
-        right = get_node(node, "right")
-        if len(left) > 0:
-            _check_needs_narrowing(left, env, ctx, lineno, "arithmetic", "")
+        binop_left = get_node(node, "left")
+        binop_right = get_node(node, "right")
+        if len(binop_left) > 0:
+            _check_needs_narrowing(binop_left, env, ctx, lineno, "arithmetic", "")
         if len(ctx.result._errors) > 0:
             return
-        if len(right) > 0:
-            _check_needs_narrowing(right, env, ctx, lineno, "arithmetic", "")
+        if len(binop_right) > 0:
+            _check_needs_narrowing(binop_right, env, ctx, lineno, "arithmetic", "")
         if len(ctx.result._errors) > 0:
             return
-        if len(left) > 0:
-            _validate_expr_access(left, env, ctx, lineno)
-        if len(right) > 0:
-            _validate_expr_access(right, env, ctx, lineno)
+        if len(binop_left) > 0:
+            _validate_expr_access(binop_left, env, ctx, lineno)
+        if len(binop_right) > 0:
+            _validate_expr_access(binop_right, env, ctx, lineno)
         return
     if t == "Attribute":
         value = get_node(node, "value")
@@ -2784,15 +2772,15 @@ def _validate_expr_access(
             _validate_expr_access(value, env, ctx, lineno)
         return
     if t == "Call":
-        func = get_node(node, "func")
-        if len(func) > 0:
-            _validate_expr_access(func, env, ctx, lineno)
+        call_func = get_node(node, "func")
+        if len(call_func) > 0:
+            _validate_expr_access(call_func, env, ctx, lineno)
         if len(ctx.result._errors) > 0:
             return
-        args = get_nodes(node, "args")
+        call_args = get_nodes(node, "args")
         j = 0
-        while j < len(args):
-            _validate_expr_access(args[j], env, ctx, lineno)
+        while j < len(call_args):
+            _validate_expr_access(call_args[j], env, ctx, lineno)
             if len(ctx.result._errors) > 0:
                 return
             j += 1
@@ -2809,8 +2797,8 @@ def _subclass_has_method(base_name: str, method_name: str, ctx: _InferCtx) -> bo
         j = 0
         while j < len(bases):
             if bases[j] == base_name:
-                methods = ctx.sig_result.methods.get(cls)
-                if methods is not None and method_name in methods:
+                cls_methods = ctx.sig_result.methods.get(cls)
+                if cls_methods is not None and method_name in cls_methods:
                     return True
             j += 1
         i += 1
@@ -2832,8 +2820,8 @@ def _all_members_have_attr(source: str, attr_name: str, ctx: _InferCtx) -> bool:
             if attr_name in cls.fields or attr_name in cls.const_fields:
                 found = True
         if not found:
-            methods = ctx.sig_result.methods.get(p)
-            if methods is not None and attr_name in methods:
+            attr_methods = ctx.sig_result.methods.get(p)
+            if attr_methods is not None and attr_name in attr_methods:
                 found = True
         if not found:
             return False
