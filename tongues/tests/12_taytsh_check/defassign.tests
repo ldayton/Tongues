@@ -165,3 +165,36 @@ fn Main() -> void {
 ---
 error: variable used before assignment
 ---
+
+=== valid: tuple assign initializes variables
+struct Foo {
+    x: int
+}
+fn MakePair() -> (Foo, Foo) {
+    return (Foo(1), Foo(2))
+}
+fn Main() -> void {
+    let a: Foo
+    let b: Foo
+    a, b = MakePair()
+    let x: int = a.x
+    let y: int = b.x
+}
+---
+ok
+---
+
+=== error: tuple assign does not initialize on rhs type error
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    let g: Foo
+    let s: string = "hello"
+    f, g = s
+    let y: int = f.x
+}
+---
+error: variable used before assignment
+---

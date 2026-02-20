@@ -1712,7 +1712,11 @@ class Checker:
             if isinstance(stmt.targets[i], TVar) and stmt.targets[i].name == "_":
                 i += 1
                 continue
-            target_type = self.check_expr(stmt.targets[i], None)
+            if isinstance(stmt.targets[i], TVar):
+                self.uninitialized.discard(stmt.targets[i].name)
+                target_type = self.lookup_declared(stmt.targets[i].name, stmt.pos)
+            else:
+                target_type = self.check_expr(stmt.targets[i], None)
             if target_type is not None and not is_assignable(
                 rhs_type.elements[i], target_type
             ):
