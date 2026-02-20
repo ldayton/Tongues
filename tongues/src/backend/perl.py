@@ -241,7 +241,7 @@ _PRECEDENCE: dict[str, int] = {
 }
 
 _CMP_OPS = frozenset(
-    ("==", "!=", "<", ">", "<=", ">=", "eq", "ne", "lt", "gt", "le", "ge")
+    ["==", "!=", "<", ">", "<=", ">=", "eq", "ne", "lt", "gt", "le", "ge"]
 )
 
 
@@ -306,7 +306,6 @@ class _PerlEmitter:
         enum_names: set[str],
         function_names: set[str],
         struct_fields: dict[str, list[str]],
-        *,
         strict_math: bool = False,
     ) -> None:
         self.struct_names = struct_names
@@ -520,8 +519,8 @@ class _PerlEmitter:
             ):
                 target = body[0].target
                 if isinstance(target, TIndex):
-                    first = "$" + _safe_name(binding[0])
-                    second = "$" + _safe_name(binding[1])
+                    key_var = "$" + _safe_name(binding[0])
+                    val_var = "$" + _safe_name(binding[1])
                     key = self._expr(target.index)
                     val = self._expr(body[0].value)
                     pad = "    " * (self.indent + 1)
@@ -533,15 +532,15 @@ class _PerlEmitter:
                         + "my $__m = {};\n"
                         + pad
                         + "for my "
-                        + first
+                        + key_var
                         + " (0 .. $#{"
                         + iterable
                         + "}) { my "
-                        + second
+                        + val_var
                         + " = "
                         + iterable
                         + "->["
-                        + first
+                        + key_var
                         + "]; $__m->{"
                         + key
                         + "} = "
@@ -695,9 +694,9 @@ class _PerlEmitter:
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
         unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
-        if unused_str:
+        if unused_str != "":
             for s in unused_str.split(","):
-                if s:
+                if s != "":
                     unused_indices.add(int(s))
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
@@ -890,12 +889,12 @@ class _PerlEmitter:
             self._line("}")
             return
         if len(binding) == 2:
-            first = "$" + _restore_name(binding[0], ann)
-            second = "$" + _restore_name(binding[1], ann)
+            key_var = "$" + _restore_name(binding[0], ann)
+            val_var = "$" + _restore_name(binding[1], ann)
             if self._is_map_expr(iterable):
-                self._line("for my " + first + " (keys %{" + it + "}) {")
+                self._line("for my " + key_var + " (keys %{" + it + "}) {")
                 self.indent += 1
-                self._line("my " + second + " = " + it + "->{" + first + "};")
+                self._line("my " + val_var + " = " + it + "->{" + key_var + "};")
                 self._emit_stmts(body)
                 self.indent -= 1
                 self._line("}")
@@ -908,13 +907,13 @@ class _PerlEmitter:
             if self._is_string_expr(iterable):
                 chars = self._tmp("__chars")
                 self._line("my " + chars + " = [split(//, " + src + ")];")
-                self._line("for my " + first + " (0 .. $#{" + chars + "}) {")
+                self._line("for my " + key_var + " (0 .. $#{" + chars + "}) {")
                 self.indent += 1
-                self._line("my " + second + " = " + chars + "->[" + first + "];")
+                self._line("my " + val_var + " = " + chars + "->[" + key_var + "];")
             else:
-                self._line("for my " + first + " (0 .. $#{" + src + "}) {")
+                self._line("for my " + key_var + " (0 .. $#{" + src + "}) {")
                 self.indent += 1
-                self._line("my " + second + " = " + src + "->[" + first + "];")
+                self._line("my " + val_var + " = " + src + "->[" + key_var + "];")
             self._emit_stmts(body)
             self.indent -= 1
             self._line("}")
@@ -2246,7 +2245,7 @@ def emit_perl(module: TModule) -> str:
         enum_names,
         function_names,
         struct_fields,
-        strict_math=module.strict_math,
+        module.strict_math,
     )
     emitter.emit_module(module)
     return emitter.output()

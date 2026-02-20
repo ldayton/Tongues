@@ -3691,17 +3691,23 @@ def end_from_token(node: ASTNode, tok: Token) -> ASTNode:
 
 def end_from_node(node: ASTNode, child: ASTNode) -> ASTNode:
     """Set end position from a child node."""
-    el = child.get("end_lineno")
-    if el is None:
-        el = node.get("lineno")
-    if el is None:
-        el = JInt(1)
+    el: JsonValue = JInt(1)
+    el_raw = child.get("end_lineno")
+    if el_raw is not None:
+        el = el_raw
+    else:
+        el_fb = node.get("lineno")
+        if el_fb is not None:
+            el = el_fb
     node["end_lineno"] = el
-    ec = child.get("end_col_offset")
-    if ec is None:
-        ec = node.get("col_offset")
-    if ec is None:
-        ec = JInt(0)
+    ec: JsonValue = JInt(0)
+    ec_raw = child.get("end_col_offset")
+    if ec_raw is not None:
+        ec = ec_raw
+    else:
+        ec_fb = node.get("col_offset")
+        if ec_fb is not None:
+            ec = ec_fb
     node["end_col_offset"] = ec
     return node
 
@@ -3736,9 +3742,12 @@ def make_constant_from_token(tok: Token) -> ASTNode:
 def parse_number_value(s: str) -> JsonValue:
     """Parse a number literal string to a JsonValue (JInt, JFloat, or JStr)."""
     s = s.replace("_", "")
-    if s.endswith(("j", "J")):
-        v = float(s[:-1]) * 1j
-        return JStr(str(v))
+    if s.endswith("j") or s.endswith("J"):
+        f = float(s[:-1])
+        fi = int(f)
+        if f == fi and "." not in s[:-1] and "e" not in s[:-1].lower():
+            return JStr(str(fi) + "j")
+        return JStr(str(f) + "j")
     if "." in s or (
         "e" in s.lower() and not s.startswith(("0x", "0X", "0b", "0B", "0o", "0O"))
     ):
@@ -3855,11 +3864,10 @@ def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> st
             elif next_c == "N" and not is_bytes:
                 if i + 2 >= len(s) or s[i + 2] != "{":
                     raise ParseError("invalid \\N escape", lineno, col)
-                rest = s[i + 3 :]
-                cb = rest.find("}")
-                close_brace = cb + i + 3 if cb != -1 else -1
-                if close_brace == -1:
+                rel = s[i + 3 :].find("}")
+                if rel == -1:
                     raise ParseError("invalid \\N escape", lineno, col)
+                close_brace = rel + i + 3
                 name = s[i + 3 : close_brace]
                 if len(name) == 0:
                     raise ParseError("invalid \\N escape: empty name", lineno, col)
@@ -3909,13 +3917,12 @@ def _fstring_find_expr_end(
             if i + 2 < length and content[i + 1] == quote and content[i + 2] == quote:
                 triple = True
             if triple:
-                rest_q = content[i + 3 :]
-                eq = rest_q.find(quote + quote + quote)
-                end_q = eq + i + 3 if eq != -1 else -1
-                if end_q == -1:
+                rel_q = content[i + 3 :].find(quote + quote + quote)
+                if rel_q == -1:
                     raise ParseError(
                         "unterminated string in f-string expression", lineno, col
                     )
+                end_q = rel_q + i + 3
                 substr = content[i : end_q + 3]
                 if not in_format:
                     expr_parts.append(substr)

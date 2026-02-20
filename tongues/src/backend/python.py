@@ -198,7 +198,7 @@ _PRECEDENCE: dict[str, int] = {
     "**": 11,
 }
 
-_CMP_OPS = frozenset(("==", "!=", "<", ">", "<=", ">="))
+_CMP_OPS = frozenset(["==", "!=", "<", ">", "<=", ">="])
 
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
@@ -821,9 +821,9 @@ class _PythonEmitter:
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
         unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
-        if unused_str:
+        if unused_str != "":
             for s in unused_str.split(","):
-                if s:
+                if s != "":
                     unused_indices.add(int(s))
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
@@ -1778,8 +1778,6 @@ def emit_python(module: TModule) -> str:
         if isinstance(decl, TStructDecl):
             struct_names.add(decl.name)
             struct_fields[decl.name] = [f.name for f in decl.fields]
-    emitter = _PythonEmitter(
-        struct_names, struct_fields, strict_math=module.strict_math
-    )
+    emitter = _PythonEmitter(struct_names, struct_fields, module.strict_math)
     emitter.emit_module(module)
     return emitter.output()
