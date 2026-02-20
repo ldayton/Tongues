@@ -1,11 +1,58 @@
 """Nonlocal generation enhancements for the Taytsh type checker test generator.
 
-Implements three techniques from Frank, Quiring, Lampropoulos (POPL 2024):
-  A. Nonlocal fn-literal generation (GenParam⊲)
-  B. Nonlocal let-insertion (GenLet)
-  C. Need-driven match generation (GenMatch)
+The existing generator (ExprGen/StmtGen) uses a top-down type-directed approach
+where production rules pick types before generating sub-expressions. This is
+the "local" strategy from Palka et al. (2011): parameter types are chosen
+before function bodies, let-binding types before their uses, etc. The result
+is that ~78% of let bindings and ~96% of fn-lit params go unused, because
+there was no demand for their type when the body was generated.
 
-Plus a usage metric to measure effectiveness.
+This module adds three "nonlocal" rules that work backwards from demand:
+
+  A. GenParam⊲ (budget-based fn-lit params): instead of declaring all params
+     upfront, start with zero and claim matching slots from the fn_type's
+     param list on-demand during body generation. Every claimed param is
+     guaranteed to be used. Unclaimed slots are filled with unused params
+     after body generation to preserve the expected function type.
+
+  B. GenLet (retroactive let-insertion): when gen_expr needs a value of type T
+     and no binding of that type exists in scope, insert a let-binding into
+     _pending_stmts (which gen_block drains before the current statement).
+     Guarantees every inserted let-binding is used at least once.
+
+  C. GenMatch (need-driven match): when a value of type T is needed and an
+     interface-typed variable is in scope whose variant has a field of type T,
+     generate a match statement that extracts the field. Produces matches
+     where case-bound variables are actually used.
+
+The _pending_stmts mechanism requires careful save/restore at gen_block
+boundaries so that inner blocks (if-then bodies, loop bodies, etc.) don't
+steal pending stmts meant for the outer level. gen_fn_lit_nonlocal also
+saves/restores to avoid draining outer pending stmts into fn-lit bodies.
+
+Measured impact (500 seeds, 0 type errors introduced):
+  - Let binding usage: 22% -> 50%
+  - Overall variable usage: 34% -> 50%
+  - Fn-lit param usage unchanged (budget approach is conservative)
+
+References:
+  - Frank, Quiring, Lampropoulos. "Generating Well-Typed Terms That Are Not
+    'Useless'." POPL 2024. (nonlocal GenParam⊲, GenLet, GenMatch rules)
+  - Palka, Claessen, Russo, Hughes. "Testing an Optimising Compiler by
+    Generating Random Lambda Terms." AST 2011. (local type-directed generation)
+
+Future work:
+  - Higher-order propagation: when a fn-lit is passed as an argument to a
+    higher-order function, extending its params should also extend calls
+    through the higher-order path (the paper's ⊲α holes).
+  - Extensible fn types: allow fn-lit params to grow beyond the declared
+    fn_type by updating the type at all usage sites. This requires tracking
+    call sites (ExtensibleFnLit.call_sites) which is wired but unused.
+  - Argument-usage-aware weighting: measure per-seed usage rates and feed
+    back into weight tuning to target ~95% (matching real program usage).
+  - Apply to codegen/apptest: the real payoff of higher usage is exercising
+    register allocation, calling conventions, and optimization passes that
+    only trigger when arguments are live.
 """
 
 from __future__ import annotations
