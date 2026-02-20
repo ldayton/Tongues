@@ -1715,12 +1715,12 @@ class _PythonEmitter:
             marker = "\x00PH" + str(i) + "\x00"
             markers[marker] = i
             result = result.replace("{}", marker, 1)
-        # Escape remaining literal braces
+        # Escape remaining literal braces and quotes in the template
         result = result.replace("{", "{{").replace("}", "}}")
+        result = result.replace('"', '\\"')
         # Restore placeholders as f-string interpolations
         for mk, idx in markers.items():
             result = result.replace(mk, "{" + self._expr(fmt_args[idx].value) + "}")
-        result = result.replace('"', '\\"')
         return 'f"' + result + '"'
 
     # ── Types ─────────────────────────────────────────────────

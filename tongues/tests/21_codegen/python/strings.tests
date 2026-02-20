@@ -43,5 +43,8 @@ return f"hello, {name}"
 === Reverse on string
 "hello"[::-1]
 
+=== format string with quotes in expression
+return f"result: {", ".join(items)}"
+
 === string classification functions
 print(str("123".isdigit()))

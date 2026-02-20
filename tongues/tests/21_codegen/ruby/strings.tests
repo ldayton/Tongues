@@ -43,5 +43,8 @@ return "hello, %s" % name
 === Reverse on string
 s = "hello".reverse
 
+=== format string with quotes in expression
+return "result: %s" % items.join(", ")
+
 === string classification functions
 puts("123".match?(/^\d+$/).to_s)

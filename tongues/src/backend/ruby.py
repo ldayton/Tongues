@@ -1734,7 +1734,7 @@ class _RubyEmitter:
         if name == "SplitWhitespace":
             return self._a(args, 0) + ".split"
         if name == "Join":
-            return self._a(args, 0) + ".join(" + self._a(args, 1) + ")"
+            return self._a(args, 1) + ".join(" + self._a(args, 0) + ")"
         if name == "Find":
             return self._a(args, 0) + ".index(" + self._a(args, 1) + ") || -1"
         if name == "RFind":

@@ -100,6 +100,14 @@ fn Main() -> void {
     WritelnOut(s)
 }
 
+=== format string with quotes in expression
+fn Show(items: list[string]) -> string {
+    return Format("result: {}", Join(", ", items))
+}
+fn Main() -> void {
+    WritelnOut(Show(["a", "b"]))
+}
+
 === string classification functions
 fn Main() -> void {
     WritelnOut(ToString(IsDigit("123")))

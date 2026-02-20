@@ -52,6 +52,9 @@ return sprintf("hello, %s", $name);
 === Reverse on string
 my $s = scalar(reverse("hello"));
 
+=== format string with quotes in expression
+return sprintf("result: %s", join(", ", @{$items}));
+
 === string classification functions
 say(("" . ("123" =~ /^\d+$/ ? 1 : 0)));
 say(("" . ("abc" =~ /^[A-Za-z]+$/ ? 1 : 0)));
