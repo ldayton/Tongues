@@ -907,6 +907,10 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
                 fn_args = get_nodes(node, "args")
                 if len(fn_args) > 0:
                     at = _infer_expr_type(fn_args[0], env, ctx)
+                    if isinstance(at, MapType):
+                        return SliceType(at.key)
+                    if isinstance(at, SetType):
+                        return SliceType(at.element)
                     return at
                 return SliceType(INT_TYPE)
             if fname == "list":
@@ -938,6 +942,16 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
                 return PointerType(StructRef(fname))
             rt = _func_return_type(ctx, fname)
             return rt
+        if _is_ast(func, "Subscript"):
+            sub_value = get_node(func, "value")
+            if _is_ast(sub_value, "Name"):
+                sub_name = get_str(sub_value, "id")
+                if sub_name == "set" or sub_name == "frozenset":
+                    return SetType(STR_TYPE)
+                if sub_name == "dict":
+                    return MapType(STR_TYPE, VOID_TYPE)
+                if sub_name == "list":
+                    return SliceType(VOID_TYPE)
         if _is_ast(func, "Attribute"):
             method_name = get_str(func, "attr")
             obj_n = get_node(func, "value")
@@ -1391,6 +1405,10 @@ def _lower_binop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if _is_type_dict(left_type, ["string"]) or _is_type_dict(
             right_type, ["string"]
         ):
+            if _is_type_dict(left_type, ["rune"]):
+                left = _make_call(pos, "ToString", [left])
+            if _is_type_dict(right_type, ["rune"]):
+                right = _make_call(pos, "ToString", [right])
             return _make_call(pos, "Concat", [left, right])
         if _is_type_dict(left_type, ["bytes"]) or _is_type_dict(right_type, ["bytes"]):
             return _make_call(pos, "Concat", [left, right])
@@ -2037,6 +2055,13 @@ def _lower_call(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if _is_ast(func_node, "Name"):
         fname = get_str(func_node, "id")
         return _lower_name_call(fname, args, keywords, node, env, ctx)
+    # Parameterized constructor: set[T](), dict[K,V](), list[T](), frozenset[T]()
+    if _is_ast(func_node, "Subscript"):
+        sub_value = get_node(func_node, "value")
+        if _is_ast(sub_value, "Name"):
+            sub_name = get_str(sub_value, "id")
+            if sub_name in ("set", "dict", "list", "frozenset"):
+                return _lower_name_call(sub_name, args, keywords, node, env, ctx)
     # Method call
     if _is_ast(func_node, "Attribute"):
         return _lower_method_call(func_node, args, keywords, node, env, ctx)
@@ -2202,7 +2227,14 @@ def _lower_name_call(
             )
     if fname == "chr":
         if len(args) > 0 and isinstance(args[0], dict):
-            rune = _make_call(pos, "RuneFromInt", [_lower_expr(args[0], env, ctx)])
+            arg_type = _infer_expr_type(args[0], env, ctx)
+            arg = _lower_expr(args[0], env, ctx)
+            if _is_type_dict(arg_type, ["byte"]):
+                rune = _make_call(
+                    pos, "RuneFromInt", [_make_call(pos, "ByteToInt", [arg])]
+                )
+            else:
+                rune = _make_call(pos, "RuneFromInt", [arg])
             return _make_call(pos, "ToString", [rune])
     if fname == "ord":
         if len(args) > 0 and isinstance(args[0], dict):
@@ -2243,8 +2275,10 @@ def _lower_name_call(
             return _make_call(pos, "ToString", [_lower_expr(args[0], env, ctx)])
     if fname == "sorted":
         if len(args) > 0 and isinstance(args[0], dict):
+            arg_type = _infer_expr_type(args[0], env, ctx)
             arg = _lower_expr(args[0], env, ctx)
-            # Check for reverse=True
+            if isinstance(arg_type, MapType):
+                arg = _make_call(pos, "Keys", [arg])
             is_reversed = _has_keyword_true(keywords, "reverse")
             if is_reversed:
                 return _make_call(pos, "Reversed", [_make_call(pos, "Sorted", [arg])])
@@ -2354,6 +2388,16 @@ def _lower_name_call(
             # set(list_expr) → SetFromList(list_expr)
             if _is_type_dict(arg_type, ["Slice"]):
                 return _make_call(pos, "SetFromList", [_lower_expr(args[0], env, ctx)])
+            # set(tuple_literal) → SetFromList([...]) — wrap tuple as list
+            if _is_ast(args[0], "Tuple") or isinstance(arg_type, TupleType):
+                lowered_arg = _lower_expr(args[0], env, ctx)
+                if isinstance(lowered_arg, TTupleLit):
+                    return _make_call(
+                        pos,
+                        "SetFromList",
+                        [TListLit(pos, lowered_arg.elements, _EMPTY_ANN)],
+                    )
+                return _make_call(pos, "SetFromList", [lowered_arg])
             # set(any_iterable) → SetFromList(expr)
             return _make_call(pos, "SetFromList", [_lower_expr(args[0], env, ctx)])
     if fname == "tuple":
@@ -2391,13 +2435,23 @@ def _lower_name_call(
         if len(args) == 0:
             return _make_call(pos, "Map", [])
         if len(args) == 1 and isinstance(args[0], dict):
+            arg_type = _infer_expr_type(args[0], env, ctx)
+            if isinstance(arg_type, MapType):
+                items = _make_call(pos, "Items", [_lower_expr(args[0], env, ctx)])
+                return _make_call(pos, "MapFromPairs", [items])
             return _make_call(pos, "MapFromPairs", [_lower_expr(args[0], env, ctx)])
     if fname == "hex":
         if len(args) > 0 and isinstance(args[0], dict):
+            arg_type = _infer_expr_type(args[0], env, ctx)
+            arg = _lower_expr(args[0], env, ctx)
+            if _is_type_dict(arg_type, ["byte"]):
+                int_arg = _make_call(pos, "ByteToInt", [arg])
+            else:
+                int_arg = arg
             return _make_call(
                 pos,
                 "FormatInt",
-                [_lower_expr(args[0], env, ctx), TIntLit(pos, 16, "16", _EMPTY_ANN)],
+                [int_arg, TIntLit(pos, 16, "16", _EMPTY_ANN)],
             )
     if fname == "divmod":
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
@@ -2793,6 +2847,14 @@ def _lower_list_method(
         lowered.append(_lower_expr(a, env, ctx))
         i += 1
     if method == "append":
+        if len(lowered) > 0 and len(args) > 0:
+            obj_type = _infer_expr_type(obj_node, env, ctx)
+            if isinstance(obj_type, SliceType) and _is_type_dict(
+                obj_type.element, ["string"]
+            ):
+                arg_type = _infer_expr_type(args[0], env, ctx)
+                if _is_type_dict(arg_type, ["rune"]):
+                    lowered[0] = _make_call(pos, "ToString", [lowered[0]])
         return _make_call(pos, "Append", [obj] + lowered)
     if method == "insert":
         return _make_call(pos, "Insert", [obj] + lowered)
@@ -3767,6 +3829,10 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if target_type is not None and _is_type_dict(target_type, ["string", "bytes"]):
             target = _lower_expr(target_node, env, ctx)
             value = _lower_expr(value_node, env, ctx)
+            if _is_type_dict(target_type, ["string"]):
+                vtype = _infer_expr_type(value_node, env, ctx)
+                if _is_type_dict(vtype, ["rune"]):
+                    value = _make_call(pos, "ToString", [value])
             return [
                 TAssignStmt(
                     pos, target, _make_call(pos, "Concat", [target, value]), _EMPTY_ANN
@@ -4442,6 +4508,10 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             obj_node = get_node(func, "value")
             iter_expr = _lower_expr(obj_node, env, ctx)
             binding, b_ann = _extract_binding(target_node)
+            obj_type = _infer_expr_type(obj_node, env, ctx)
+            if isinstance(obj_type, MapType) and len(binding) >= 2:
+                env.var_types[binding[0]] = obj_type.key
+                env.var_types[binding[1]] = obj_type.value
             body_stmts = _lower_stmts(body, env, ctx)
             pre_stmts.append(TForStmt(pos, binding, iter_expr, body_stmts, b_ann))
             return pre_stmts
@@ -4464,6 +4534,20 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     # Regular iteration: for x in xs
     binding, b_ann = _extract_binding(target_node)
     iter_expr = _lower_expr(iter_node, env, ctx)
+    if len(binding) == 1:
+        elem_type: TypeNode = VOID_TYPE
+        if _is_type_dict(iter_type, ["string"]):
+            elem_type = PrimitiveType("rune")
+        elif _is_type_dict(iter_type, ["bytes"]):
+            elem_type = PrimitiveType("byte")
+        elif isinstance(iter_type, SliceType):
+            elem_type = iter_type.element
+        elif isinstance(iter_type, SetType):
+            elem_type = iter_type.element
+        elif isinstance(iter_type, MapType):
+            elem_type = iter_type.key
+        if elem_type != VOID_TYPE:
+            env.var_types[binding[0]] = elem_type
     body_stmts = _lower_stmts(body, env, ctx)
     pre_stmts.append(TForStmt(pos, binding, iter_expr, body_stmts, b_ann))
     return pre_stmts
@@ -4504,6 +4588,8 @@ def _lower_for_range(
     pos = _node_pos(target_node)
     args = get_nodes(iter_node, "args")
     binding, b_ann = _extract_binding(target_node)
+    if len(binding) == 1:
+        env.var_types[binding[0]] = INT_TYPE
     range_args: list[TExpr] = []
     i = 0
     while i < len(args):
@@ -4555,6 +4641,21 @@ def _lower_for_enumerate(
     # For enumerate over strings, change last binding to "ch"
     if _is_type_dict(inner_type, ["string"]) and len(binding) == 2:
         binding = [binding[0], "ch"]
+    # Register loop variable types
+    if len(binding) >= 1:
+        env.var_types[binding[0]] = INT_TYPE
+    if len(binding) >= 2:
+        elem_type: TypeNode = VOID_TYPE
+        if _is_type_dict(inner_type, ["string"]):
+            elem_type = PrimitiveType("rune")
+        elif _is_type_dict(inner_type, ["bytes"]):
+            elem_type = PrimitiveType("byte")
+        elif isinstance(inner_type, SliceType):
+            elem_type = inner_type.element
+        elif isinstance(inner_type, MapType):
+            elem_type = inner_type.key
+        if elem_type != VOID_TYPE:
+            env.var_types[binding[1]] = elem_type
     body_stmts = _lower_stmts(body, env, ctx)
     return [TForStmt(pos, binding, iter_expr, body_stmts, b_ann)]
 

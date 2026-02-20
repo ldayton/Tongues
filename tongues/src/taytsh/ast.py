@@ -616,7 +616,11 @@ class TFnLit(TExpr):
 
 
 def _sa_strip(ann: Ann, pfx: str, plen: int) -> Ann:
-    return {k[plen:]: v for k, v in ann.items() if k.startswith(pfx)}
+    result: Ann = {}
+    for k, v in ann.items():
+        if k.startswith(pfx):
+            result[k[plen:]] = v
+    return result
 
 
 def _sa_collect_lets(
@@ -918,9 +922,10 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
         for vk, vv in vars_dict.items():
             vd[vk] = _wrap_ann(vv)
         d["vars"] = JDict(vd)
-        escapes: dict[str, JsonValue] = {
-            n: JBool(True) for n, a in vars_dict.items() if a.get("escapes")
-        }
+        escapes: dict[str, JsonValue] = {}
+        for n, a in vars_dict.items():
+            if a.get("escapes") is not None:
+                escapes[n] = JBool(True)
         if escapes:
             d["escapes"] = JDict(escapes)
     return d

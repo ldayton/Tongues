@@ -96,25 +96,25 @@ class _Emitter:
     _PREC_PRIMARY: int = 13
 
     _BIN_PREC: dict[str, int] = {
-        "||": _PREC_OR,
-        "&&": _PREC_AND,
-        "==": _PREC_COMPARE,
-        "!=": _PREC_COMPARE,
-        "<": _PREC_COMPARE,
-        "<=": _PREC_COMPARE,
-        ">": _PREC_COMPARE,
-        ">=": _PREC_COMPARE,
-        "|": _PREC_BITOR,
-        "^": _PREC_BITXOR,
-        "&": _PREC_BITAND,
-        "<<": _PREC_SHIFT,
-        ">>": _PREC_SHIFT,
-        ">>>": _PREC_SHIFT,
-        "+": _PREC_SUM,
-        "-": _PREC_SUM,
-        "*": _PREC_PRODUCT,
-        "/": _PREC_PRODUCT,
-        "%": _PREC_PRODUCT,
+        "||": 2,
+        "&&": 3,
+        "==": 4,
+        "!=": 4,
+        "<": 4,
+        "<=": 4,
+        ">": 4,
+        ">=": 4,
+        "|": 5,
+        "^": 6,
+        "&": 7,
+        "<<": 8,
+        ">>": 8,
+        ">>>": 8,
+        "+": 9,
+        "-": 9,
+        "*": 10,
+        "/": 10,
+        "%": 10,
     }
 
     def __init__(self) -> None:
@@ -544,7 +544,7 @@ class _Emitter:
             return f"{obj}.{expr.field}"
         if isinstance(expr, TTupleAccess):
             obj2 = self._render_expr(expr.obj, self._PREC_POSTFIX, "left")
-            return f"{obj2}.{expr.index}"
+            return obj2 + "." + str(expr.index)
         if isinstance(expr, TIndex):
             obj3 = self._render_expr(expr.obj, self._PREC_POSTFIX, "left")
             idx = self._render_expr(expr.index, self._PREC_TERNARY)

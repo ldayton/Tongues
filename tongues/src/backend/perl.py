@@ -148,7 +148,10 @@ def _escape_perl_regex(s: str) -> str:
         elif ch == "\r":
             result.append("\\r")
         elif ord(ch) < 32 or ord(ch) > 126:
-            result.append("\\x{" + ("%02x" % ord(ch)) + "}")
+            h = hex(ord(ch))[2:]
+            if len(h) == 1:
+                h = "0" + h
+            result.append("\\x{" + h + "}")
         else:
             result.append(ch)
     return "".join(result)
@@ -170,7 +173,10 @@ def _escape_perl_replacement(s: str) -> str:
         elif ch == "\r":
             result.append("\\r")
         elif ord(ch) < 32 or ord(ch) > 126:
-            result.append("\\x{" + ("%02x" % ord(ch)) + "}")
+            h = hex(ord(ch))[2:]
+            if len(h) == 1:
+                h = "0" + h
+            result.append("\\x{" + h + "}")
         else:
             result.append(ch)
     return "".join(result)
@@ -188,7 +194,10 @@ def _escape_regex_charclass(s: str) -> str:
         elif ch == "\r":
             result.append("\\r")
         elif ord(ch) < 32 or ord(ch) > 126:
-            result.append("\\x{" + ("%02x" % ord(ch)) + "}")
+            h = hex(ord(ch))[2:]
+            if len(h) == 1:
+                h = "0" + h
+            result.append("\\x{" + h + "}")
         else:
             result.append(ch)
     return "".join(result)

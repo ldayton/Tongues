@@ -233,12 +233,12 @@ def _scan_imports(
                     if isinstance(fld.typ, (TListType, TMapType, TSetType)):
                         needs_field = True
         if isinstance(decl, (TFnDecl, TStructDecl)):
-            result = _scan_decl_builtins(decl)
-            if result[0]:
+            r_sys, r_math, r_os = _scan_decl_builtins(decl)
+            if r_sys:
                 needs_sys = True
-            if result[1]:
+            if r_math:
                 needs_math = True
-            if result[2]:
+            if r_os:
                 needs_os = True
     return needs_sys, needs_dataclass, needs_field, needs_math, needs_os
 

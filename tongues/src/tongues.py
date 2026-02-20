@@ -1631,6 +1631,7 @@ def run_pipeline(
         strict_tostring = True
     if stop_at == "subset" and should_skip_file(source):
         return (0, "")
+    ast_dict: dict[str, JsonValue] = {}
     try:
         ast_dict = parse(source)
     except ParseError as e:
@@ -1660,7 +1661,7 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
     while i < len(args):
         arg = args[i]
         if arg == "--help" or arg == "-h":
-            print(USAGE, end="")
+            sys.stdout.write(USAGE)
             sys.exit(0)
         elif arg == "--target":
             if i + 1 >= len(args):

@@ -444,7 +444,7 @@ def _detect_recursion(
                 is_recursive = True
 
         if is_recursive:
-            group_id = f"scc:{scc_counter}"
+            group_id = "scc:" + str(scc_counter)
             scc_counter += 1
         else:
             group_id = ""
