@@ -615,7 +615,7 @@ class _RubyEmitter:
             self._line()
             self._emit_initialize(decl.fields, True)
         for i, method in enumerate(decl.methods):
-            if i > 0 or decl.fields:
+            if i > 0 or len(decl.fields) > 0:
                 self._line()
             self._emit_method(method)
         self.indent -= 1
@@ -640,7 +640,7 @@ class _RubyEmitter:
             self._line()
             self._emit_initialize(decl.fields, False)
         for i, method in enumerate(decl.methods):
-            if i > 0 or decl.fields:
+            if i > 0 or len(decl.fields) > 0:
                 self._line()
             self._emit_method(method)
         self.indent -= 1
@@ -655,7 +655,7 @@ class _RubyEmitter:
         self._line("def initialize(" + ", ".join(params) + ")")
         self.indent += 1
         if is_error:
-            msg_field = None
+            msg_field: TFieldDecl | None = None
             for f in fields:
                 if f.name == "message":
                     msg_field = f
@@ -717,9 +717,9 @@ class _RubyEmitter:
         self._line("def " + _safe_name(decl.name) + "(" + params + ")")
         self.indent += 1
         old_self = self.self_name
-        if decl.params and decl.params[0].typ is None:
+        if len(decl.params) > 0 and decl.params[0].typ is None:
             self.self_name = decl.params[0].name
-        if not decl.body:
+        if len(decl.body) == 0:
             self._line("nil")
         self._emit_stmts(decl.body)
         self.self_name = old_self
@@ -1053,7 +1053,7 @@ class _RubyEmitter:
             elif_stmt = else_body[0]
             self._line("elsif " + self._expr(elif_stmt.cond))
             self.indent += 1
-            if not elif_stmt.then_body:
+            if len(elif_stmt.then_body) == 0:
                 self._line("nil")
             self._emit_stmts(elif_stmt.then_body)
             self.indent -= 1
@@ -1089,7 +1089,10 @@ class _RubyEmitter:
         binding = stmt.binding
         ann = stmt.annotations
         if isinstance(stmt.iterable, TRange):
-            binders = ", ".join(_restore_name(b, ann) for b in binding)
+            binder_parts: list[str] = []
+            for b in binding:
+                binder_parts.append(_restore_name(b, ann))
+            binders = ", ".join(binder_parts)
             r = stmt.iterable
             iterable = self._ruby_range(r)
             self._line(iterable + ".each do |" + binders + "|")
@@ -1125,10 +1128,13 @@ class _RubyEmitter:
                     + "|"
                 )
         else:
-            binders = ", ".join(_restore_name(b, ann) for b in binding)
+            binder_parts2: list[str] = []
+            for b in binding:
+                binder_parts2.append(_restore_name(b, ann))
+            binders = ", ".join(binder_parts2)
             self._line(self._expr(stmt.iterable) + ".each do |" + binders + "|")
         self.indent += 1
-        if not stmt.body:
+        if len(stmt.body) == 0:
             self._line("nil")
         self._emit_stmts(stmt.body)
         self.indent -= 1
@@ -1972,7 +1978,10 @@ class _RubyEmitter:
     def _format_call(self, args: list[TArg], call: TCall) -> str:
         template_expr = args[0].value
         if not isinstance(template_expr, TStringLit):
-            arg_strs = ", ".join(self._expr(a.value) for a in args)
+            _farg_parts: list[str] = []
+            for a in args:
+                _farg_parts.append(self._expr(a.value))
+            arg_strs = ", ".join(_farg_parts)
             return "format_(" + arg_strs + ")"
         template = template_expr.value
         fmt_args = args[1:]
@@ -1989,7 +1998,9 @@ class _RubyEmitter:
             parts.append(_escape_ruby_string(rest))
             return '"' + "".join(parts) + '"'
         escaped = _escape_ruby_string(template).replace("{}", "%s")
-        arg_strs = [self._expr(a.value) for a in fmt_args]
+        arg_strs: list[str] = []
+        for a in fmt_args:
+            arg_strs.append(self._expr(a.value))
         if len(arg_strs) == 1:
             return '"' + escaped + '" % ' + arg_strs[0]
         return '"' + escaped + '" % [' + ", ".join(arg_strs) + "]"
@@ -2001,9 +2012,12 @@ class _RubyEmitter:
 
 
 def emit_ruby(module: TModule) -> str:
-    struct_names = {
-        decl.name for decl in module.decls if isinstance(decl, TStructDecl)
-    } | set(BUILTIN_STRUCTS.keys())
+    struct_names: set[str] = set()
+    for decl in module.decls:
+        if isinstance(decl, TStructDecl):
+            struct_names.add(decl.name)
+    for _bk in BUILTIN_STRUCTS:
+        struct_names.add(_bk)
     struct_fields: dict[str, list[str]] = {}
     enum_names: set[str] = set()
     fn_names: set[str] = set()
@@ -2011,7 +2025,10 @@ def emit_ruby(module: TModule) -> str:
         if isinstance(decl, TFnDecl):
             fn_names.add(decl.name)
         elif isinstance(decl, TStructDecl):
-            struct_fields[decl.name] = [f.name for f in decl.fields]
+            fnames: list[str] = []
+            for f in decl.fields:
+                fnames.append(f.name)
+            struct_fields[decl.name] = fnames
             for m in decl.methods:
                 fn_names.add(m.name)
         elif isinstance(decl, TEnumDecl):
