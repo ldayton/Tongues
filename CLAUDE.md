@@ -13,15 +13,34 @@ JavaScript and TypeScript share most code in `jslike.py` and should be worked on
 ### Local (requires matching runtime versions)
 
 ```bash
-# Backend tests (codegen + apptests)
-just test-backend-local
+just test-backend-local            # codegen + apptests
+just test-local                    # all stages
 ```
 
 ### Docker
 
 ```bash
-just test-backend                  # backend tests
-just test                          # all languages
+just test-backend                  # codegen + apptests
+just test                          # backend + taytsh
+```
+
+### Individual test stages
+
+Each stage has `-local` and Docker variants:
+
+```bash
+just test-cli-local                # CLI argument handling
+just test-parse-local              # parser
+just test-subset-local             # subset compliance
+just test-names-local              # name resolution
+just test-signatures-local         # signature extraction
+just test-fields-local             # field analysis
+just test-hierarchy-local          # type hierarchy
+just test-inference-local          # type inference
+just test-lowering-local           # Python → Taytsh lowering
+just test-middleend-local          # type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph
+just test-backend-local            # codegen + apptests
+just test-taytsh-local             # Taytsh parser, checker, apptests
 ```
 
 ### Check local runtime versions
@@ -32,30 +51,14 @@ just versions
 
 ## Pytest Flags
 
-Run pytest directly for finer control:
-
 ```bash
-uv run --directory tongues pytest tests/test_15_app.py [OPTIONS]
+uv run --directory tongues pytest tests/test_runner.py [OPTIONS]
 ```
 
-| Flag               | Description                                            |
-| ------------------ | ------------------------------------------------------ |
-| `--target <lang>`  | Run only specified target(s), repeatable               |
-| `--ignore-version` | Skip version checks, use whatever runtime is available |
-| `--ignore-skips`   | Run tests in the known-failure skip list               |
-| `--summary`        | Print a summary table of apptest pass/fail counts      |
-
-### Language Test Summary
-
-To get a summary table of apptest status for specific languages:
-
-```bash
-uv run --directory tongues pytest tests/test_15_app.py --target javascript --target typescript --target ruby --ignore-skips --summary
-```
-
-## CI
-
-CI runs `just check` (fmt, lint, subset, then frontend/middleend/backend/taytsh tests).
+| Flag              | Description                              |
+| ----------------- | ---------------------------------------- |
+| `--target <lang>` | Run only specified target(s), repeatable |
+| `-k <pattern>`    | Filter tests by name pattern             |
 
 ## Other Commands
 
@@ -65,4 +68,6 @@ just lint --fix        # ruff check --fix
 just fmt               # ruff format --check
 just fmt --fix         # ruff format
 just subset            # verify transpiler source is subset-compliant
+just check-local       # full check locally (fmt, lint, subset, all tests)
+just self-transpile    # emit self-transpiled Python to .out/
 ```
