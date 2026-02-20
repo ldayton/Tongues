@@ -1619,7 +1619,7 @@ class ProjectVerifyResult:
         files = list(self.file_results.keys())
         i = 0
         while i < len(files):
-            if self.file_results[files[i]].has_errors():
+            if not self.file_results[files[i]].ok():
                 return True
             i += 1
         return False

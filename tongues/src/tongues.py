@@ -561,7 +561,15 @@ def _detect_collisions(
         name = nkeys[i]
         locs = name_to_locs[name]
         if len(locs) > 1:
-            locs.sort()
+            si = 1
+            while si < len(locs):
+                skey = locs[si]
+                sj = si - 1
+                while sj >= 0 and locs[sj][0] > skey[0]:
+                    locs[sj + 1] = locs[sj]
+                    sj -= 1
+                locs[sj + 1] = skey
+                si += 1
             msg = "error: duplicate name '" + name + "' defined in "
             j = 0
             while j < len(locs):
@@ -1664,24 +1672,24 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
     while i < len(args):
         arg = args[i]
         if arg == "--help" or arg == "-h":
-            sys.stdout.write(USAGE)
-            sys.exit(0)
+            print(USAGE, end="")
+            raise SystemExit(0)
         elif arg == "--target":
             if i + 1 >= len(args):
                 print("error: --target requires an argument", file=sys.stderr)
-                sys.exit(2)
+                raise SystemExit(2)
             target = args[i + 1]
             i += 2
         elif arg == "--stop-at":
             if i + 1 >= len(args):
                 print("error: --stop-at requires an argument", file=sys.stderr)
-                sys.exit(2)
+                raise SystemExit(2)
             stop_at = args[i + 1]
             i += 2
         elif arg == "-o" or arg == "--output":
             if i + 1 >= len(args):
                 print("error: " + arg + " requires an argument", file=sys.stderr)
-                sys.exit(2)
+                raise SystemExit(2)
             output_file = args[i + 1]
             i += 2
         elif arg == "--strict":
@@ -1699,26 +1707,26 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
             i += 1
         elif arg.startswith("-"):
             print("error: unknown flag '" + arg + "'", file=sys.stderr)
-            sys.exit(2)
+            raise SystemExit(2)
         else:
             if input_file is not None:
                 print("error: unexpected argument '" + arg + "'", file=sys.stderr)
-                sys.exit(2)
+                raise SystemExit(2)
             input_file = arg
             i += 1
     if stop_at is not None and stop_at not in PHASES:
         print("error: unknown phase '" + stop_at + "'", file=sys.stderr)
-        sys.exit(2)
+        raise SystemExit(2)
     if target is None:
         if stop_at is not None:
             target = "python"
         else:
             print("error: --target is required", file=sys.stderr)
-            sys.exit(2)
+            raise SystemExit(2)
     target_str: str = target if target is not None else ""
     if target_str not in TARGETS:
         print("error: unknown target '" + target_str + "'", file=sys.stderr)
-        sys.exit(2)
+        raise SystemExit(2)
     return (
         target_str,
         stop_at,
