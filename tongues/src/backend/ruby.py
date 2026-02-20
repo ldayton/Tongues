@@ -796,30 +796,30 @@ class _RubyEmitter:
                         + val
                         + " }"
                     )
-            if len(body) == 1 and isinstance(body[0], TIfStmt):
+            if len(body) == 1:
                 if_stmt = body[0]
-                if len(if_stmt.then_body) == 1 and isinstance(
-                    if_stmt.then_body[0], TExprStmt
-                ):
-                    call = if_stmt.then_body[0].expr
-                    if self._is_append_to(call, let_stmt.name):
-                        val = self._expr(call.args[1].value)
-                        guard = self._expr(if_stmt.cond)
-                        return (
-                            acc
-                            + " = "
-                            + iterable
-                            + ".select { |"
-                            + binders
-                            + "| "
-                            + guard
-                            + " }"
-                            + ".map { |"
-                            + binders
-                            + "| "
-                            + val
-                            + " }"
-                        )
+                if isinstance(if_stmt, TIfStmt) and len(if_stmt.then_body) == 1:
+                    then_first = if_stmt.then_body[0]
+                    if isinstance(then_first, TExprStmt):
+                        call = then_first.expr
+                        if self._is_append_to(call, let_stmt.name):
+                            val = self._expr(call.args[1].value)
+                            guard = self._expr(if_stmt.cond)
+                            return (
+                                acc
+                                + " = "
+                                + iterable
+                                + ".select { |"
+                                + binders
+                                + "| "
+                                + guard
+                                + " }"
+                                + ".map { |"
+                                + binders
+                                + "| "
+                                + val
+                                + " }"
+                            )
         elif prov == "dict_comprehension":
             if len(body) == 1 and isinstance(body[0], TAssignStmt):
                 target = body[0].target
@@ -1049,8 +1049,10 @@ class _RubyEmitter:
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
         if else_body is None or len(else_body) == 0:
             return
-        if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
+        elif_stmt: TStmt | None = None
+        if len(else_body) == 1:
             elif_stmt = else_body[0]
+        if isinstance(elif_stmt, TIfStmt):
             self._line("elsif " + self._expr(elif_stmt.cond))
             self.indent += 1
             if len(elif_stmt.then_body) == 0:
@@ -1603,10 +1605,11 @@ class _RubyEmitter:
             for p in expr.params
             if p.typ is not None
         )
+        first = expr.body[0] if expr.body else None
         if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
-            expr.body[0], TExprStmt
+            first, TExprStmt
         ):
-            return "lambda { |" + params + "| " + self._expr(expr.body[0].expr) + " }"
+            return "lambda { |" + params + "| " + self._expr(first.expr) + " }"
         old_lines = self.lines
         self.lines = []
         self.indent += 1

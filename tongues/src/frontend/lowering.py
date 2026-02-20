@@ -382,8 +382,9 @@ def _resolve_kwargs_to_positional(
         result: list[TArg] = []
         i = 0
         while i < n:
-            if slots[i] is not None:
-                result.append(TArg(pos, None, slots[i]))
+            slot = slots[i]
+            if slot is not None:
+                result.append(TArg(pos, None, slot))
             i += 1
         return result
     # No param info — positional args then kwargs in order (best effort)
@@ -1701,13 +1702,23 @@ def _lower_degenerate_tuple_compare(
         if op_type == "NotEq":
             return TBoolLit(pos, True, _EMPTY_ANN)
     # (x,) vs (y,) → compare x and y directly
-    if left_len == 1 and right_len == 1:
+    if (
+        left_elts is not None
+        and right_elts is not None
+        and left_len == 1
+        and right_len == 1
+    ):
         le = left_elts[0]
         re = right_elts[0]
         if isinstance(le, dict) and isinstance(re, dict):
             return _lower_single_compare(le, {"_type": JStr(op_type)}, re, env, ctx)
     # (x,) vs (a, b) or vice versa → compare first elements, then length
-    if left_len == 1 and right_len >= 2:
+    if (
+        left_elts is not None
+        and right_elts is not None
+        and left_len == 1
+        and right_len >= 2
+    ):
         le = left_elts[0]
         if isinstance(le, dict) and isinstance(right_elts[0], dict):
             first_cmp = _lower_single_compare(
@@ -3791,8 +3802,7 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         # void-returning function assigned to optional → call + nil
         val_type = _infer_expr_type(value_node, env, ctx)
         if _is_type_dict(val_type, ["void"]) and isinstance(type_dict, OptionalType):
-            val = _lower_expr(value_node, env, ctx)
-            stmts.append(TExprStmt(pos, val, _EMPTY_ANN))
+            stmts.append(TExprStmt(pos, _lower_expr(value_node, env, ctx), _EMPTY_ANN))
             val = TNilLit(pos, _EMPTY_ANN)
         elif _is_variadic_tuple(type_dict) and _is_ast(value_node, "Tuple"):
             val = _lower_list_from_tuple(value_node, env, ctx)
@@ -3818,14 +3828,15 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             val = _lower_dict_literal_typed(value_node, type_dict, env, ctx)
         else:
             val = _lower_expr(value_node, env, ctx)
-        if already_declared:
-            target = TVar(pos, safe, ann)
-            stmts.append(TAssignStmt(pos, target, val, _EMPTY_ANN))
-        else:
-            stmts.append(TLetStmt(pos, safe, ttype, val, ann))
+        if val is not None:
+            if already_declared:
+                target = TVar(pos, safe, ann)
+                stmts.append(TAssignStmt(pos, target, val, _EMPTY_ANN))
+            else:
+                stmts.append(TLetStmt(pos, safe, ttype, val, ann))
         stmts.extend(_method_side_effects(value_node, env, ctx))
         return stmts
-    if not already_declared:
+    if val is not None and not already_declared:
         stmts.append(TLetStmt(pos, safe, ttype, val, ann))
     return stmts
 

@@ -980,14 +980,13 @@ def collect_signatures(
     type_aliases: dict[str, str] | None = None,
 ) -> SignatureResult:
     """Collect function and method signatures from the module AST."""
-    if type_aliases is None:
-        type_aliases = {}
     _TYPE_ALIASES.clear()
-    ta_keys = list(type_aliases.keys())
-    tai = 0
-    while tai < len(ta_keys):
-        _TYPE_ALIASES[ta_keys[tai]] = type_aliases[ta_keys[tai]]
-        tai += 1
+    if type_aliases is not None:
+        ta_keys = list(type_aliases.keys())
+        tai = 0
+        while tai < len(ta_keys):
+            _TYPE_ALIASES[ta_keys[tai]] = type_aliases[ta_keys[tai]]
+            tai += 1
     result = SignatureResult()
     body = get_nodes(tree, "body")
     i = 0

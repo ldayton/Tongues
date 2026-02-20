@@ -667,20 +667,35 @@ def _istype_var_from_call(call: TCall) -> tuple[str, str] | None:
     return None
 
 
+def _istype_var_from_call_pos(
+    call: TCall, positive: bool
+) -> tuple[str, str, bool] | None:
+    """Extract (var_path, type_name, is_positive) from IsType(x, "T")."""
+    if not (isinstance(call.func, TVar) and call.func.name == "IsType"):
+        return None
+    if len(call.args) < 2:
+        return None
+    first = call.args[0].value
+    second = call.args[1].value
+    if not isinstance(second, TStringLit):
+        return None
+    type_name = second.value
+    path = _field_access_path(first)
+    if path is not None:
+        return (path, type_name, positive)
+    return None
+
+
 def _type_check_var(cond: TExpr) -> tuple[str, str, bool] | None:
     """Extract (var_path, type_name, is_positive) from a type-check condition."""
     # IsType(x, "T")
     if isinstance(cond, TCall):
-        info = _istype_var_from_call(cond)
-        if info is not None:
-            return (info[0], info[1], True)
+        return _istype_var_from_call_pos(cond, True)
     # !IsType(x, "T")
     if isinstance(cond, TUnaryOp) and cond.op == "!":
         inner = cond.operand
         if isinstance(inner, TCall):
-            info = _istype_var_from_call(inner)
-            if info is not None:
-                return (info[0], info[1], False)
+            return _istype_var_from_call_pos(inner, False)
     return None
 
 
@@ -1758,14 +1773,15 @@ class Checker:
             return
         i = 0
         while i < len(stmt.targets):
-            if isinstance(stmt.targets[i], TVar) and stmt.targets[i].name == "_":
+            tgt = stmt.targets[i]
+            if isinstance(tgt, TVar) and tgt.name == "_":
                 i += 1
                 continue
-            if isinstance(stmt.targets[i], TVar):
-                self.uninitialized.discard(stmt.targets[i].name)
-                target_type = self.lookup_declared(stmt.targets[i].name, stmt.pos)
+            if isinstance(tgt, TVar):
+                self.uninitialized.discard(tgt.name)
+                target_type = self.lookup_declared(tgt.name, stmt.pos)
             else:
-                target_type = self.check_expr(stmt.targets[i], None)
+                target_type = self.check_expr(tgt, None)
             if target_type is not None and not is_assignable(
                 rhs_type.elements[i], target_type
             ):
@@ -2075,10 +2091,13 @@ class Checker:
             for m in scrutinee.members:
                 if type_eq(case_type, m):
                     return True
-                if isinstance(m, InterfaceT) and isinstance(
-                    case_type, (StructT, InterfaceT)
-                ):
-                    if case_type.name in m.variants:
+                if isinstance(m, InterfaceT):
+                    if isinstance(case_type, StructT) and case_type.name in m.variants:
+                        return True
+                    if (
+                        isinstance(case_type, InterfaceT)
+                        and case_type.name in m.variants
+                    ):
                         return True
             return False
         if isinstance(scrutinee, MapT):
@@ -3409,8 +3428,9 @@ class Checker:
                 self.declare(p.name, pt, p.pos)
         self.check_closure_captures(expr.body, param_names, expr.pos)
         is_arrow = expr.annotations.get("fn_lit.arrow") == "true"
-        if is_arrow and len(expr.body) == 1 and isinstance(expr.body[0], TExprStmt):
-            arrow_type = self.check_expr(expr.body[0].expr, ret)
+        first = expr.body[0] if expr.body else None
+        if is_arrow and isinstance(first, TExprStmt):
+            arrow_type = self.check_expr(first.expr, ret)
             if arrow_type is not None and not type_eq(ret, VOID_T):
                 if not is_assignable(arrow_type, ret):
                     self.error(
@@ -3772,8 +3792,9 @@ class Checker:
                     self.error("Append requires list as first argument", pos)
                 elif t2 is not None and not is_assignable(t2, t1.element):
                     # Allow byte↔int for list operations (Python bytes iterate as int)
-                    byte_int = {TY_BYTE, TY_INT}
-                    if not (t2.kind in byte_int and t1.element.kind in byte_int):
+                    t2_ok = t2.kind == TY_BYTE or t2.kind == TY_INT
+                    e_ok = t1.element.kind == TY_BYTE or t1.element.kind == TY_INT
+                    if not (t2_ok and e_ok):
                         self.error(
                             "cannot append " + type_name(t2) + " to " + type_name(t1),
                             pos,

@@ -491,27 +491,27 @@ class _PerlEmitter:
                     if binding_name:
                         self.var_alias.pop(binding_name)
                     return "my " + acc + " = [map { " + val + " } @{" + iterable + "}];"
-            if len(body) == 1 and isinstance(body[0], TIfStmt):
+            if len(body) == 1:
                 if_stmt = body[0]
-                if len(if_stmt.then_body) == 1 and isinstance(
-                    if_stmt.then_body[0], TExprStmt
-                ):
-                    call = if_stmt.then_body[0].expr
-                    if self._is_append_to(call, let_stmt.name):
-                        if binding_name:
-                            self.var_alias[binding_name] = "$_"
-                        guard = self._expr(if_stmt.cond)
-                        if binding_name:
-                            self.var_alias.pop(binding_name)
-                        return (
-                            "my "
-                            + acc
-                            + " = [grep { "
-                            + guard
-                            + " } @{"
-                            + iterable
-                            + "}];"
-                        )
+                if isinstance(if_stmt, TIfStmt) and len(if_stmt.then_body) == 1:
+                    then_first = if_stmt.then_body[0]
+                    if isinstance(then_first, TExprStmt):
+                        call = then_first.expr
+                        if self._is_append_to(call, let_stmt.name):
+                            if binding_name:
+                                self.var_alias[binding_name] = "$_"
+                            guard = self._expr(if_stmt.cond)
+                            if binding_name:
+                                self.var_alias.pop(binding_name)
+                            return (
+                                "my "
+                                + acc
+                                + " = [grep { "
+                                + guard
+                                + " } @{"
+                                + iterable
+                                + "}];"
+                            )
         elif prov == "dict_comprehension":
             binding = for_stmt.binding
             if (
@@ -773,8 +773,10 @@ class _PerlEmitter:
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
         if else_body is None or len(else_body) == 0:
             return
-        if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
+        elif_stmt: TStmt | None = None
+        if len(else_body) == 1:
             elif_stmt = else_body[0]
+        if isinstance(elif_stmt, TIfStmt):
             self._line("} elsif (" + self._expr(elif_stmt.cond) + ") {")
             self.indent += 1
             self._emit_stmts(elif_stmt.then_body)
@@ -1385,18 +1387,19 @@ class _PerlEmitter:
             for p in expr.params
             if p.typ is not None
         )
+        first = expr.body[0] if expr.body else None
         if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
-            expr.body[0], TExprStmt
+            first, TExprStmt
         ):
             if params:
                 return (
                     "sub { my ("
                     + params
                     + ") = @_; return "
-                    + self._expr(expr.body[0].expr)
+                    + self._expr(first.expr)
                     + "; }"
                 )
-            return "sub { return " + self._expr(expr.body[0].expr) + "; }"
+            return "sub { return " + self._expr(first.expr) + "; }"
         return self._fn_lit_block(expr.body, params)
 
     def _fn_lit_block(self, stmts: list[TStmt], params: str) -> str:

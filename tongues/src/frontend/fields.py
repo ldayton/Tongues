@@ -812,7 +812,7 @@ def _collect_init_fields(
                                         default=None,
                                     )
                                 else:
-                                    typ = _infer_type_from_value(
+                                    inferred_typ = _infer_type_from_value(
                                         value,
                                         param_types,
                                         known_classes,
@@ -820,11 +820,10 @@ def _collect_init_fields(
                                         errors,
                                         stmt_lineno,
                                     )
-                                    if typ is not None:
-                                        typ = _unwrap_field_type(typ)
+                                    if inferred_typ is not None:
                                         info.fields[field_name] = FieldInfo(
                                             name=field_name,
-                                            typ=typ,
+                                            typ=_unwrap_field_type(inferred_typ),
                                             py_name=field_name,
                                             has_default=True,
                                             default=None,
@@ -839,11 +838,11 @@ def _collect_init_fields(
                                     stmt_lineno,
                                 )
                                 if inferred is not None:
-                                    inferred = _unwrap_field_type(inferred)
+                                    unwrapped = _unwrap_field_type(inferred)
                                     existing_kind = _type_kind_str(
                                         info.fields[field_name].typ
                                     )
-                                    new_kind = _type_kind_str(inferred)
+                                    new_kind = _type_kind_str(unwrapped)
                                     if existing_kind != new_kind:
                                         errors.append(
                                             FieldError(

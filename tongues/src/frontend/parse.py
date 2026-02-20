@@ -3730,9 +3730,8 @@ def make_arguments() -> ASTNode:
 
 def make_constant_from_token(tok: Token) -> ASTNode:
     """Create Constant node from number or string token with proper end position."""
-    jval: JsonValue
     if tok.type == TK_NUMBER:
-        jval = parse_number_value(tok.value)
+        jval: JsonValue = parse_number_value(tok.value)
     else:
         svalue = parse_string_value(tok.value, tok.lineno, tok.col)
         jval = JStr(svalue)

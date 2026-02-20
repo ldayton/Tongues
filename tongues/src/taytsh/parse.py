@@ -553,9 +553,8 @@ class Parser:
             second_name = self.expect_ident()
             binding.append(second_name.value)
         self.expect("in")
-        iterable: TExpr
         if self.at("range"):
-            iterable = self.parse_range()
+            iterable: TExpr = self.parse_range()
         else:
             iterable = self.parse_expr()
         body = self.parse_block()
