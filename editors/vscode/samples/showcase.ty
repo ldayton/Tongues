@@ -16,8 +16,8 @@ interface Value {}
 struct IntVal : Value {
     n: int
 
-    fn IsEven(self) -> bool {
-        return self.n % 2 == 0
+    fn IsEven(this) -> bool {
+        return this.n % 2 == 0
     }
 }
 
