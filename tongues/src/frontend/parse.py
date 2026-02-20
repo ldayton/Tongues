@@ -3855,7 +3855,9 @@ def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> st
             elif next_c == "N" and not is_bytes:
                 if i + 2 >= len(s) or s[i + 2] != "{":
                     raise ParseError("invalid \\N escape", lineno, col)
-                close_brace = s.find("}", i + 3)
+                rest = s[i + 3 :]
+                cb = rest.find("}")
+                close_brace = cb + i + 3 if cb != -1 else -1
                 if close_brace == -1:
                     raise ParseError("invalid \\N escape", lineno, col)
                 name = s[i + 3 : close_brace]
@@ -3907,7 +3909,9 @@ def _fstring_find_expr_end(
             if i + 2 < length and content[i + 1] == quote and content[i + 2] == quote:
                 triple = True
             if triple:
-                end_q = content.find(quote + quote + quote, i + 3)
+                rest_q = content[i + 3 :]
+                eq = rest_q.find(quote + quote + quote)
+                end_q = eq + i + 3 if eq != -1 else -1
                 if end_q == -1:
                     raise ParseError(
                         "unterminated string in f-string expression", lineno, col
