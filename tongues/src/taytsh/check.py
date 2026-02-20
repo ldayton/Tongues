@@ -2085,7 +2085,9 @@ class Checker:
             return True
         if scrutinee.kind == TY_ERROR:
             return True
-        # Struct/primitive/collection scrutinee: case must match the type
+        # Struct/primitive/collection scrutinee: allow any struct/type case
+        if isinstance(scrutinee, StructT):
+            return isinstance(case_type, StructT)
         return type_eq(case_type, scrutinee)
 
     def check_match_case(
