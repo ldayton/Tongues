@@ -1096,10 +1096,14 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         ifexp_orelse = get_node(node, "orelse")
         # x if x is not None else default → unwrap optional if condition is nil-guard
         ifexp_test = get_node(node, "test")
-        if isinstance(body_t, OptionalType) and _is_nil_guard_test(ifexp_test, ifexp_body):
+        if isinstance(body_t, OptionalType) and _is_nil_guard_test(
+            ifexp_test, ifexp_body
+        ):
             return body_t.inner
         orelse_t = _infer_expr_type(ifexp_orelse, env, ctx)
-        if _is_ast(ifexp_orelse, "Constant") and isinstance(ifexp_orelse.get("value"), JNull):
+        if _is_ast(ifexp_orelse, "Constant") and isinstance(
+            ifexp_orelse.get("value"), JNull
+        ):
             if isinstance(body_t, OptionalType):
                 return body_t
             return OptionalType(body_t)
