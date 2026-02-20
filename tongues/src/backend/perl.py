@@ -1802,10 +1802,10 @@ class _PerlEmitter:
                 + "]"
             )
         if name == "Sorted":
-            inner = args[0].value
-            if self.strict_math and self._is_float_list(inner):
+            sorted_arg = args[0].value
+            if self.strict_math and self._is_float_list(sorted_arg):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
-            typ = self._expr_type(inner)
+            typ = self._expr_type(sorted_arg)
             if isinstance(typ, TListType) and _is_string_type(typ.element):
                 return "[sort @{" + self._a(args, 0) + "}]"
             return "[sort { $a <=> $b } @{" + self._a(args, 0) + "}]"

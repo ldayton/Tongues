@@ -39,6 +39,7 @@ from .ast import (
     TMatchCase,
     TMatchStmt,
     TModule,
+    TModuleItem,
     TNilLit,
     TOpAssignStmt,
     TOptionalType,
@@ -254,7 +255,7 @@ class Parser:
     # ── Top Level ────────────────────────────────────────────
 
     def parse_program(self) -> TModule:
-        decls: list[TDecl] = []
+        decls: list[TModuleItem] = []
         strict_math = False
         strict_tostring = False
         seen_decl = False

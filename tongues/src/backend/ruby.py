@@ -1093,8 +1093,7 @@ class _RubyEmitter:
             for b in binding:
                 binder_parts.append(_restore_name(b, ann))
             binders = ", ".join(binder_parts)
-            r = stmt.iterable
-            iterable = self._ruby_range(r)
+            iterable = self._ruby_range(stmt.iterable)
             self._line(iterable + ".each do |" + binders + "|")
         elif len(binding) == 1:
             iter_str = self._expr(stmt.iterable)
@@ -1981,8 +1980,8 @@ class _RubyEmitter:
             _farg_parts: list[str] = []
             for a in args:
                 _farg_parts.append(self._expr(a.value))
-            arg_strs = ", ".join(_farg_parts)
-            return "format_(" + arg_strs + ")"
+            joined_args = ", ".join(_farg_parts)
+            return "format_(" + joined_args + ")"
         template = template_expr.value
         fmt_args = args[1:]
         prov = call.annotations.get("provenance", "")
@@ -1991,7 +1990,9 @@ class _RubyEmitter:
             rest = template
             idx = 0
             while "{}" in rest and idx < len(fmt_args):
-                before, rest = rest.split("{}", 1)
+                split_pos = rest.index("{}")
+                before = rest[:split_pos]
+                rest = rest[split_pos + 2 :]
                 parts.append(_escape_ruby_string(before))
                 parts.append("#{" + self._expr(fmt_args[idx].value) + "}")
                 idx += 1
