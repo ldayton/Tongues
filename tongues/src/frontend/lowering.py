@@ -705,6 +705,7 @@ class _LowerCtx:
         self.current_class: str = ""
         self.isinstance_temp_counter: int = 0
         self.constant_types: dict[str, TypeNode] = {}
+        self.comp_counter: int = 0
 
 
 class _Env:
@@ -716,6 +717,7 @@ class _Env:
         self.return_type: TypeNode = VOID_TYPE
         self.hoisted_stmts: dict[str, TLetStmt] = {}
         self.isinstance_subs: dict[str, str] = {}
+        self.pre_stmts: list[TStmt] = []
 
     def copy(self) -> _Env:
         env = _Env()
@@ -736,6 +738,7 @@ class _Env:
         while i < len(skeys):
             env.isinstance_subs[skeys[i]] = self.isinstance_subs[skeys[i]]
             i += 1
+        env.pre_stmts = self.pre_stmts
         return env
 
 
@@ -1307,9 +1310,9 @@ def _lower_expr(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if t == "ListComp" or t == "GeneratorExp":
         return _lower_listcomp(node, env, ctx)
     if t == "SetComp":
-        return _make_call(pos, "Set", [])
+        return _lower_setcomp(node, env, ctx)
     if t == "DictComp":
-        return _make_call(pos, "Map", [])
+        return _lower_dictcomp(node, env, ctx)
     low_sf = get_str(node, "_source_file")
     ctx.errors.append(
         LoweringError(0, 0, "unsupported expression type '" + str(t) + "'", low_sf)
@@ -2097,7 +2100,10 @@ def _lower_in_expr(
     right_type = _infer_expr_type(right_node, env, ctx)
     if _is_type_dict(right_type, ["Map"]):
         if isinstance(right_type, MapType):
-            lk = _type_dict_kind(left_type)
+            lt = left_type
+            if isinstance(lt, OptionalType):
+                lt = lt.inner
+            lk = _type_dict_kind(lt)
             rk = _type_dict_kind(right_type.key)
             if lk != "" and rk != "" and lk != rk:
                 return TBoolLit(pos, False, _EMPTY_ANN)
@@ -2386,6 +2392,10 @@ def _lower_name_call(
                 ti += 1
             return result_expr
     if fname == "any" or fname == "all":
+        if len(args) > 0 and isinstance(args[0], dict):
+            a0_type = get_str(args[0], "_type")
+            if a0_type == "GeneratorExp" or a0_type == "ListComp":
+                return _lower_any_all(fname, args[0], env, ctx)
         return TBoolLit(pos, True, _EMPTY_ANN)
     if fname == "repr":
         if len(args) > 0 and isinstance(args[0], dict):
@@ -3533,10 +3543,262 @@ def _lower_fstring(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     return _make_call(pos, "Format", all_args)
 
 
-def _lower_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
-    """Lower a ListComp — fallback for expression contexts. Returns empty list."""
+def _lower_any_all(
+    fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx
+) -> TExpr:
+    """Lower any(genexpr)/all(genexpr) via pre_stmts hoisting."""
     pos = _node_pos(node)
-    return TListLit(pos, [], _EMPTY_ANN)
+    elt = get_node(node, "elt")
+    generators = get_nodes(node, "generators")
+    is_any = fname == "any"
+    default_val = not is_any
+    if len(generators) == 0:
+        return TBoolLit(pos, default_val, _EMPTY_ANN)
+    gen = generators[0]
+    if not isinstance(gen, dict):
+        return TBoolLit(pos, default_val, _EMPTY_ANN)
+    target = get_node(gen, "target")
+    iter_node = get_node(gen, "iter")
+    binding, b_ann = _extract_binding(target)
+    iter_expr = _lower_extend_arg(iter_node, env, ctx)
+    comp_env = env.copy()
+    bi = 0
+    while bi < len(binding):
+        comp_env.declared.add(binding[bi])
+        bi += 1
+    elt_expr = _lower_expr(elt, comp_env, ctx)
+    cid = ctx.comp_counter
+    ctx.comp_counter = cid + 1
+    rname = "__comp_" + str(cid) + "__"
+    result_var = TVar(pos, rname, _EMPTY_ANN)
+    bool_type: TType = TPrimitive(pos, "bool")
+    let_stmt = TLetStmt(
+        pos, rname, bool_type, TBoolLit(pos, default_val, _EMPTY_ANN), _EMPTY_ANN
+    )
+    if is_any:
+        cond = elt_expr
+    else:
+        cond = TUnaryOp(pos, "!", elt_expr, _EMPTY_ANN)
+    set_val = TBoolLit(pos, is_any, _EMPTY_ANN)
+    inner_body: list[TStmt] = [
+        TAssignStmt(pos, result_var, set_val, _EMPTY_ANN),
+        TBreakStmt(pos, _EMPTY_ANN),
+    ]
+    gen_ifs = get_nodes(gen, "ifs")
+    if len(gen_ifs) > 0 and isinstance(gen_ifs[0], dict):
+        gen_cond = _lower_as_bool(gen_ifs[0], comp_env, ctx)
+        check_body: list[TStmt] = [TIfStmt(pos, cond, inner_body, None, _EMPTY_ANN)]
+        body: list[TStmt] = [TIfStmt(pos, gen_cond, check_body, None, _EMPTY_ANN)]
+    else:
+        body = [TIfStmt(pos, cond, inner_body, None, _EMPTY_ANN)]
+    for_ann: Ann = {}
+    for_ann.update(b_ann)
+    for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
+    env.pre_stmts.append(let_stmt)
+    env.pre_stmts.append(for_stmt)
+    return result_var
+
+
+def _set_comp_var_types(
+    binding: list[str],
+    iter_node: ASTNode,
+    comp_env: _Env,
+    env: _Env,
+    ctx: _LowerCtx,
+) -> None:
+    """Set loop variable types in comp_env from the iter expression type."""
+    iter_type = _infer_expr_type(iter_node, env, ctx)
+    elem_type: TypeNode = VOID_TYPE
+    if isinstance(iter_type, SliceType):
+        elem_type = iter_type.element
+    elif isinstance(iter_type, SetType):
+        elem_type = iter_type.element
+    if _is_type_dict(elem_type, ["void"]):
+        return
+    if len(binding) == 1:
+        comp_env.var_types[binding[0]] = elem_type
+    elif isinstance(elem_type, TupleType) and len(elem_type.elements) == len(binding):
+        bi = 0
+        while bi < len(binding):
+            comp_env.var_types[binding[bi]] = elem_type.elements[bi]
+            bi += 1
+
+
+def _lower_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
+    """Lower a ListComp/GeneratorExp in expression context via pre_stmts hoisting."""
+    pos = _node_pos(node)
+    elt = get_node(node, "elt")
+    generators = get_nodes(node, "generators")
+    if len(generators) == 0:
+        return TListLit(pos, [], _EMPTY_ANN)
+    gen = generators[0]
+    if not isinstance(gen, dict):
+        return TListLit(pos, [], _EMPTY_ANN)
+    # Build innermost env with all generator bindings and types
+    comp_env = env.copy()
+    gi = 0
+    while gi < len(generators):
+        g = generators[gi]
+        if isinstance(g, dict):
+            gt = get_node(g, "target")
+            g_iter = get_node(g, "iter")
+            gb, _ = _extract_binding(gt)
+            bj = 0
+            while bj < len(gb):
+                comp_env.declared.add(gb[bj])
+                bj += 1
+            _set_comp_var_types(gb, g_iter, comp_env, env, ctx)
+        gi += 1
+    elt_expr = _lower_expr(elt, comp_env, ctx)
+    # Infer element type for the result list
+    elt_type_node = _infer_expr_type(elt, comp_env, ctx)
+    elt_ttype = _typenode_to_ttype(pos, elt_type_node)
+    if isinstance(elt_ttype, TPrimitive) and elt_ttype.kind == "void":
+        elt_ttype = TPrimitive(pos, "int")
+    cid = ctx.comp_counter
+    ctx.comp_counter = cid + 1
+    rname = "__comp_" + str(cid) + "__"
+    result_var = TVar(pos, rname, _EMPTY_ANN)
+    list_type: TType = TListType(pos, elt_ttype)
+    let_stmt = TLetStmt(pos, rname, list_type, TListLit(pos, [], _EMPTY_ANN), _EMPTY_ANN)
+    append_call = _make_call(pos, "Append", [result_var, elt_expr])
+    body: list[TStmt] = [TExprStmt(pos, append_call, _EMPTY_ANN)]
+    # Build nested for loops from innermost to outermost
+    gi = len(generators) - 1
+    while gi >= 0:
+        g = generators[gi]
+        if isinstance(g, dict):
+            gt = get_node(g, "target")
+            g_iter = get_node(g, "iter")
+            gb, g_ann = _extract_binding(gt)
+            g_iter_expr = _lower_extend_arg(g_iter, comp_env, ctx)
+            g_ifs = get_nodes(g, "ifs")
+            if len(g_ifs) > 0 and isinstance(g_ifs[0], dict):
+                cond = _lower_as_bool(g_ifs[0], comp_env, ctx)
+                body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+            f_ann: Ann = {}
+            f_ann.update(g_ann)
+            body = [TForStmt(pos, gb, g_iter_expr, body, f_ann)]
+        gi -= 1
+    env.pre_stmts.append(let_stmt)
+    si = 0
+    while si < len(body):
+        env.pre_stmts.append(body[si])
+        si += 1
+    return result_var
+
+
+def _lower_setcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
+    """Lower a SetComp in expression context via pre_stmts hoisting."""
+    pos = _node_pos(node)
+    elt = get_node(node, "elt")
+    generators = get_nodes(node, "generators")
+    empty_set = _make_call(pos, "Set", [])
+    if len(generators) == 0:
+        return empty_set
+    gen = generators[0]
+    if not isinstance(gen, dict):
+        return empty_set
+    target = get_node(gen, "target")
+    iter_node = get_node(gen, "iter")
+    binding, b_ann = _extract_binding(target)
+    iter_expr = _lower_extend_arg(iter_node, env, ctx)
+    comp_env = env.copy()
+    bi = 0
+    while bi < len(binding):
+        comp_env.declared.add(binding[bi])
+        bi += 1
+    elt_expr = _lower_expr(elt, comp_env, ctx)
+    cid = ctx.comp_counter
+    ctx.comp_counter = cid + 1
+    rname = "__comp_" + str(cid) + "__"
+    result_var = TVar(pos, rname, _EMPTY_ANN)
+    set_type: TType = TSetType(pos, TPrimitive(pos, "int"))
+    let_stmt = TLetStmt(pos, rname, set_type, empty_set, _EMPTY_ANN)
+    add_call = _make_call(pos, "Add", [result_var, elt_expr])
+    body: list[TStmt] = [TExprStmt(pos, add_call, _EMPTY_ANN)]
+    ifs = get_nodes(gen, "ifs")
+    if len(ifs) > 0 and isinstance(ifs[0], dict):
+        cond = _lower_as_bool(ifs[0], comp_env, ctx)
+        body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+    for_ann: Ann = {}
+    for_ann.update(b_ann)
+    for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
+    env.pre_stmts.append(let_stmt)
+    env.pre_stmts.append(for_stmt)
+    return result_var
+
+
+def _lower_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
+    """Lower a DictComp in expression context via pre_stmts hoisting."""
+    pos = _node_pos(node)
+    key_node = get_node(node, "key")
+    value_node = get_node(node, "value")
+    generators = get_nodes(node, "generators")
+    if len(generators) == 0:
+        return _make_call(pos, "Map", [])
+    gen = generators[0]
+    if not isinstance(gen, dict):
+        return _make_call(pos, "Map", [])
+    target = get_node(gen, "target")
+    iter_node = get_node(gen, "iter")
+    binding, b_ann = _extract_binding(target)
+    # Detect .items() early for type inference
+    is_items = False
+    if _is_ast(iter_node, "Call"):
+        iter_func = get_node(iter_node, "func")
+        if _is_ast(iter_func, "Attribute") and get_str(iter_func, "attr") == "items":
+            is_items = True
+    # Set loop variable types in comp_env for type inference
+    comp_env = env.copy()
+    bi = 0
+    while bi < len(binding):
+        comp_env.declared.add(binding[bi])
+        bi += 1
+    if is_items:
+        dict_node = get_node(get_node(iter_node, "func"), "value")
+        dict_type = _infer_expr_type(dict_node, env, ctx)
+        if isinstance(dict_type, MapType) and len(binding) == 2:
+            comp_env.var_types[binding[0]] = dict_type.key
+            comp_env.var_types[binding[1]] = dict_type.value
+    else:
+        _set_comp_var_types(binding, iter_node, comp_env, env, ctx)
+    key_expr = _lower_expr(key_node, comp_env, ctx)
+    val_expr = _lower_expr(value_node, comp_env, ctx)
+    # Infer key/value types from comprehension expressions
+    key_type_node = _infer_expr_type(key_node, comp_env, ctx)
+    val_type_node = _infer_expr_type(value_node, comp_env, ctx)
+    key_ttype = _typenode_to_ttype(pos, key_type_node)
+    val_ttype = _typenode_to_ttype(pos, val_type_node)
+    if isinstance(key_ttype, TPrimitive) and key_ttype.kind == "void":
+        key_ttype = TPrimitive(pos, "string")
+    if isinstance(val_ttype, TPrimitive) and val_ttype.kind == "void":
+        val_ttype = TPrimitive(pos, "string")
+    cid = ctx.comp_counter
+    ctx.comp_counter = cid + 1
+    rname = "__comp_" + str(cid) + "__"
+    result_var = TVar(pos, rname, _EMPTY_ANN)
+    map_type: TType = TMapType(pos, key_ttype, val_ttype)
+    let_stmt = TLetStmt(
+        pos, rname, map_type, _make_call(pos, "Map", []), _EMPTY_ANN
+    )
+    idx_target = TIndex(pos, result_var, key_expr, _EMPTY_ANN)
+    body: list[TStmt] = [TAssignStmt(pos, idx_target, val_expr, _EMPTY_ANN)]
+    ifs = get_nodes(gen, "ifs")
+    if len(ifs) > 0 and isinstance(ifs[0], dict):
+        cond = _lower_as_bool(ifs[0], comp_env, ctx)
+        body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+    for_ann: Ann = {}
+    for_ann.update(b_ann)
+    if is_items:
+        for_ann["for.items"] = "true"
+        iter_expr = _lower_expr(get_node(get_node(iter_node, "func"), "value"), env, ctx)
+    else:
+        iter_expr = _lower_extend_arg(iter_node, env, ctx)
+    for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
+    env.pre_stmts.append(let_stmt)
+    env.pre_stmts.append(for_stmt)
+    return result_var
 
 
 def _expand_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -3755,6 +4017,13 @@ def _lower_stmts(stmts: list[ASTNode], env: _Env, ctx: _LowerCtx) -> list[TStmt]
     while i < len(stmts):
         stmt_node = stmts[i]
         lowered = _lower_stmt(stmt_node, env, ctx)
+        if len(env.pre_stmts) > 0:
+            pre = env.pre_stmts
+            env.pre_stmts = []
+            k = 0
+            while k < len(pre):
+                result.append(pre[k])
+                k += 1
         j = 0
         while j < len(lowered):
             result.append(lowered[j])
