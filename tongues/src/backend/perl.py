@@ -1491,7 +1491,7 @@ class _PerlEmitter:
         if not args:
             return name + "->new()"
         has_named = any(a.name is not None for a in args)
-        if not has_named:
+        if not has_named or not ordered:
             vals = ", ".join(self._expr(a.value) for a in args)
             return name + "->new(" + vals + ")"
         named: dict[str, str] = {}
@@ -2292,6 +2292,8 @@ def emit_perl(module: TModule) -> str:
     struct_names: set[str] = set()
     for decl in module.decls:
         if isinstance(decl, TStructDecl):
+            struct_names.add(decl.name)
+        elif isinstance(decl, TInterfaceDecl):
             struct_names.add(decl.name)
     for _bk in BUILTIN_STRUCTS:
         struct_names.add(_bk)

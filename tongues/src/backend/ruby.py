@@ -2051,6 +2051,8 @@ def emit_ruby(module: TModule) -> str:
     for decl in module.decls:
         if isinstance(decl, TStructDecl):
             struct_names.add(decl.name)
+        elif isinstance(decl, TInterfaceDecl):
+            struct_names.add(decl.name)
     for _bk in BUILTIN_STRUCTS:
         struct_names.add(_bk)
     struct_fields: dict[str, list[str]] = {}

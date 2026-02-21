@@ -1819,6 +1819,8 @@ def emit_python(module: TModule) -> str:
         if isinstance(decl, TStructDecl):
             struct_names.add(decl.name)
             struct_fields[decl.name] = [f.name for f in decl.fields]
+        elif isinstance(decl, TInterfaceDecl):
+            struct_names.add(decl.name)
     emitter = _PythonEmitter(struct_names, struct_fields, module.strict_math)
     emitter.emit_module(module)
     return emitter.output()
