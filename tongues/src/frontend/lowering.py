@@ -704,6 +704,7 @@ class _LowerCtx:
         self.errors: list[LoweringError] = []
         self.current_class: str = ""
         self.isinstance_temp_counter: int = 0
+        self.constant_types: dict[str, TypeNode] = {}
 
 
 class _Env:
@@ -881,6 +882,8 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             if narrowed is not None:
                 return narrowed
         obj_type = _infer_expr_type(obj_node, env, ctx)
+        if isinstance(obj_type, OptionalType):
+            obj_type = obj_type.inner
         if _is_struct_type(obj_type):
             sname = _struct_name(obj_type)
             cls_info = ctx.field_result.classes.get(sname)
@@ -1150,6 +1153,10 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     if t == "Subscript":
         obj = get_node(node, "value")
         obj_t = _infer_expr_type(obj, env, ctx)
+        if _is_type_dict(obj_t, ["void"]) and _is_ast(obj, "Name"):
+            ct = ctx.constant_types.get(get_str(obj, "id"))
+            if ct is not None:
+                obj_t = ct
         if isinstance(obj_t, OptionalType):
             obj_t = obj_t.inner
         if _is_type_dict(obj_t, ["Slice"]):
@@ -4326,6 +4333,15 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if len(orelse) > 0:
         else_body = _lower_stmts(orelse, env, ctx)
     pre_stmts.append(TIfStmt(pos, cond, then_body, else_body, _EMPTY_ANN))
+    # Negated isinstance guard: narrow env for subsequent code
+    if _is_negated_isinstance(test) and _is_guard_body(body) and len(orelse) == 0:
+        operand = get_node(test, "operand")
+        args = get_nodes(operand, "args")
+        if len(args) >= 2 and isinstance(args[0], dict) and _is_ast(args[0], "Name"):
+            var_name = get_str(args[0], "id")
+            type_name = _isinstance_type(operand)
+            if type_name != "":
+                env.var_types[var_name] = PointerType(StructRef(type_name))
     return pre_temps + pre_stmts
 
 
@@ -4467,22 +4483,54 @@ def _narrow_isinstance_attrs(conds: list[ASTNode], env: _Env) -> None:
         i += 1
 
 
+def _is_not_none_var(node: ASTNode) -> str:
+    """If node is 'x is not None' or 'x != None', return variable name, else ''."""
+    if not _is_ast(node, "Compare"):
+        return ""
+    ops = get_nodes(node, "ops")
+    comps = get_nodes(node, "comparators")
+    if len(ops) != 1 or len(comps) != 1:
+        return ""
+    op = ops[0]
+    comp = comps[0]
+    if not isinstance(op, dict):
+        return ""
+    op_type = get_str(op, "_type")
+    if op_type != "IsNot" and op_type != "NotEq":
+        return ""
+    if not (_is_ast(comp, "Constant") and isinstance(comp.get("value"), JNull)):
+        return ""
+    left = get_node(node, "left")
+    if not _is_ast(left, "Name"):
+        return ""
+    return get_str(left, "id")
+
+
 def _narrow_isinstance_from_test(test: ASTNode, env: _Env) -> _Env:
-    """Narrow attribute paths from isinstance calls in a test expression."""
+    """Narrow types from isinstance and is-not-None in a test expression."""
     isinstance_nodes: list[ASTNode] = []
+    not_none_vars: list[str] = []
     if _is_isinstance_call(test):
         isinstance_nodes.append(test)
-    elif _is_ast(test, "BoolOp"):
+    nn = _is_not_none_var(test)
+    if nn != "":
+        not_none_vars.append(nn)
+    if _is_ast(test, "BoolOp"):
         op = get_node(test, "op")
         if get_str(op, "_type") == "And":
             values = get_nodes(test, "values")
             vi = 0
             while vi < len(values):
                 v = values[vi]
-                if isinstance(v, dict) and _is_isinstance_call(v):
-                    isinstance_nodes.append(v)
+                if isinstance(v, dict):
+                    if _is_isinstance_call(v):
+                        isinstance_nodes.append(v)
+                    else:
+                        vnn = _is_not_none_var(v)
+                        if vnn != "":
+                            not_none_vars.append(vnn)
                 vi += 1
-    if len(isinstance_nodes) == 0:
+    if len(isinstance_nodes) == 0 and len(not_none_vars) == 0:
         return env
     narrowed_env = env.copy()
     changed = False
@@ -4498,6 +4546,14 @@ def _narrow_isinstance_from_test(test: ASTNode, env: _Env) -> _Env:
                     narrowed_env.var_types[path_key] = PointerType(StructRef(type_name))
                     changed = True
         ni += 1
+    nni = 0
+    while nni < len(not_none_vars):
+        var_name = not_none_vars[nni]
+        vt = narrowed_env.var_types.get(var_name)
+        if vt is not None and isinstance(vt, OptionalType):
+            narrowed_env.var_types[var_name] = vt.inner
+            changed = True
+        nni += 1
     if changed:
         return narrowed_env
     return env
@@ -5394,6 +5450,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                         ttype = _typenode_to_ttype(pos, val_type)
                         value = _lower_expr(value_node, _Env(), ctx)
                         result.append(TLetStmt(pos, name, ttype, value, _EMPTY_ANN))
+                        ctx.constant_types[name] = val_type
         # Module-level ALL_CAPS annotated assignments
         if _is_ast(node, "AnnAssign"):
             target = get_node(node, "target")
@@ -5419,6 +5476,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                     value_node = get_node(node, "value")
                     value = _lower_expr(value_node, _Env(), ctx)
                     result.append(TLetStmt(pos, name, ttype, value, _EMPTY_ANN))
+                    ctx.constant_types[name] = type_dict
         # Class-level constants
         if _is_ast(node, "ClassDef"):
             class_name = get_str(node, "name")
@@ -5446,6 +5504,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                                 result.append(
                                     TLetStmt(pos, const_name, ttype, value, _EMPTY_ANN)
                                 )
+                                ctx.constant_types[const_name] = val_type
                 if _is_ast(item, "AnnAssign"):
                     target = get_node(item, "target")
                     if _is_ast(target, "Name"):
@@ -5473,6 +5532,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                             result.append(
                                 TLetStmt(pos, const_name, ttype, value, _EMPTY_ANN)
                             )
+                            ctx.constant_types[const_name] = c_type_dict
                 j += 1
         i += 1
     return result

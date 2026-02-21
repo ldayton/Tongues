@@ -250,7 +250,7 @@ def f(expr: Expr) -> bool:
     ch = s[0]
     return ch == "x"
 ---
-== 'x'
+ch == "x"
 ---
 
 === module constant subscript preserves type
@@ -263,15 +263,15 @@ op == "add"
 ---
 
 === field from narrowed optional used in dict containment
-class Node:
+class Base:
     def __init__(self) -> None:
         pass
-class Name(Node):
+class NameNode(Base):
     def __init__(self, id: str) -> None:
         self.id = id
-def f(test: Node, d: dict[str, int], flag: bool) -> bool:
-    var_node: Name | None = None
-    if isinstance(test, Name):
+def f(test: Base, d: dict[str, int], flag: bool) -> bool:
+    var_node: NameNode | None = None
+    if isinstance(test, NameNode):
         var_node = test
     if flag and var_node is not None:
         name = var_node.id
