@@ -2206,6 +2206,12 @@ def _lower_name_call(
                     _EMPTY_ANN,
                 )
             return _make_call(pos, "Len", [_lower_expr(args[0], env, ctx)])
+    if fname == "sum":
+        if len(args) > 0 and isinstance(args[0], dict):
+            return _make_call(pos, "Sum", [_lower_expr(args[0], env, ctx)])
+    if fname == "round":
+        if len(args) > 0 and isinstance(args[0], dict):
+            return _make_call(pos, "Round", [_lower_expr(args[0], env, ctx)])
     if fname == "min" or fname == "max":
         builtin = "Min" if fname == "min" else "Max"
         lowered: list[TExpr] = []
@@ -2997,6 +3003,8 @@ def _lower_list_method(
             _make_call(pos, "Len", [obj]),
             _EMPTY_ANN,
         )
+    if method == "count":
+        return _make_call(pos, "Count", [obj] + lowered)
     if method == "clear":
         return TListLit(pos, [], _EMPTY_ANN)
     if method == "reverse":
@@ -3195,6 +3203,8 @@ def _lower_bytes_method(
         a = args[i]
         lowered.append(_lower_expr(a, env, ctx))
         i += 1
+    if method == "count":
+        return _make_call(pos, "Count", [obj] + lowered)
     return _make_method_call(pos, obj, method, lowered)
 
 
@@ -3286,7 +3296,19 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if _is_ast(slice_node, "Constant"):
             idx_jv = slice_node.get("value")
             if isinstance(idx_jv, JInt):
-                return TTupleAccess(pos, obj, idx_jv.value, _EMPTY_ANN)
+                idx_val = idx_jv.value
+                if idx_val < 0 and isinstance(obj_type, TupleType):
+                    idx_val = len(obj_type.elements) + idx_val
+                return TTupleAccess(pos, obj, idx_val, _EMPTY_ANN)
+        if _is_ast(slice_node, "UnaryOp"):
+            op_node = get_node(slice_node, "op")
+            if get_str(op_node, "_type") == "USub":
+                operand = get_node(slice_node, "operand")
+                if _is_ast(operand, "Constant"):
+                    op_val_jv = operand.get("value")
+                    if isinstance(op_val_jv, JInt) and isinstance(obj_type, TupleType):
+                        idx_val = len(obj_type.elements) - op_val_jv.value
+                        return TTupleAccess(pos, obj, idx_val, _EMPTY_ANN)
     # Negative index: xs[-1] → xs[Len(xs) - 1]
     is_string = _is_type_dict(obj_type, ["string"])
     if _is_ast(slice_node, "Constant"):
