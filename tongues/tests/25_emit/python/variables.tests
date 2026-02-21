@@ -3,3 +3,6 @@ GREETING: str = "hello"
 
 === module-level frozenset constant
 WORDS: set[str] = {"hello", "world"}
+
+=== module-level struct instance (hierarchy root)
+DEFAULT_KIND: Kind = Kind("base")

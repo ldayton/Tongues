@@ -13,3 +13,15 @@ def main() -> None:
     print(str(x))
 if __name__ == "__main__":
     main()
+
+=== module-level struct instance (hierarchy root)
+class Kind:
+    tag: str
+class SubKind(Kind):
+    value: int
+DEFAULT_KIND: Kind = Kind(tag="base")
+def main() -> None:
+    x: str = DEFAULT_KIND.tag
+    print(x)
+if __name__ == "__main__":
+    main()
