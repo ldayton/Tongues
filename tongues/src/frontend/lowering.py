@@ -864,6 +864,12 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     if t == "Attribute":
         attr = get_str(node, "attr")
         obj_node = get_node(node, "value")
+        if (
+            _is_ast(obj_node, "Name")
+            and get_str(obj_node, "id") == "sys"
+            and attr == "argv"
+        ):
+            return SliceType(STR_TYPE)
         obj_type = _infer_expr_type(obj_node, env, ctx)
         if _is_struct_type(obj_type):
             sname = _struct_name(obj_type)

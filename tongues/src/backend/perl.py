@@ -1871,6 +1871,8 @@ class _PerlEmitter:
             return "chr(" + self._a(args, 0) + ")"
         if name == "Unwrap":
             return self._a(args, 0)
+        if name == "IsNil":
+            return "!defined(" + self._a(args, 0) + ")"
         if name == "Sqrt":
             return "sqrt(" + self._a(args, 0) + ")"
         if name == "IsNaN":

@@ -33,3 +33,6 @@ math.floor(3.7)
 
 === Ceil function
 math.ceil(3.2)
+
+=== IsNil check
+x is None

@@ -1897,6 +1897,8 @@ class _RubyEmitter:
             return "[" + self._a(args, 0) + "].pack('U')"
         if name == "Unwrap":
             return self._a(args, 0)
+        if name == "IsNil":
+            return self._a(args, 0) + ".nil?"
         if name == "Sqrt":
             return "Math.sqrt(" + self._a(args, 0) + ")"
         if name == "Floor":

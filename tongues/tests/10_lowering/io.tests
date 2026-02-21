@@ -76,6 +76,15 @@ def f() -> list[str]:
 Args()
 ---
 
+=== argv element string comparison
+import sys
+def f() -> bool:
+    args = sys.argv[1:]
+    return args[0] == "--help"
+---
+== "--help"
+---
+
 === getenv no default
 import os
 def f(name: str) -> str | None:

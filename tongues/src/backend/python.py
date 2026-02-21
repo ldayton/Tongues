@@ -1629,6 +1629,8 @@ class _PythonEmitter:
             return self._a(args, 0)
         if name == "Unwrap":
             return self._a(args, 0)
+        if name == "IsNil":
+            return self._a(args, 0) + " is None"
         if name == "Sqrt":
             return "math.sqrt(" + self._a(args, 0) + ")"
         if name == "Floor":

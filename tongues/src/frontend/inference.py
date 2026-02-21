@@ -589,6 +589,8 @@ def _synth_attribute(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     attr = get_str(node, "attr")
     if len(value) == 0 or attr == "":
         return ANY_TYPE
+    if _is_type(value, ["Name"]) and get_str(value, "id") == "sys" and attr == "argv":
+        return SliceType(STR_TYPE)
     path = _attr_path(node)
     if path != "":
         narrowed = env.get_type(path)
