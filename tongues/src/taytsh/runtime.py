@@ -567,6 +567,7 @@ _RESERVED_BINDINGS: set[str] = {
     "Count",
     "Contains",
     "Replace",
+    "ReplaceCount",
     "Repeat",
     "StartsWith",
     "EndsWith",
@@ -2251,24 +2252,25 @@ class Runtime:
                 except ZeroDivisionError:
                     self._throw_err("ZeroDivisionError", "division by zero")
                 return VInt(r)
-            if isinstance(left, VFloat) and isinstance(right, VFloat):
-                if op == "+":
-                    return VFloat(left.value + right.value)
-                if op == "-":
-                    return VFloat(left.value - right.value)
-                if op == "*":
-                    return VFloat(left.value * right.value)
-                if op == "/":
+            if isinstance(left, VFloat):
+                if isinstance(right, VFloat):
+                    if op == "+":
+                        return VFloat(left.value + right.value)
+                    if op == "-":
+                        return VFloat(left.value - right.value)
+                    if op == "*":
+                        return VFloat(left.value * right.value)
+                    if op == "/":
+                        if right.value == 0.0:
+                            if left.value == 0.0:
+                                return VFloat(float("nan"))
+                            return VFloat(_copysign_inf(left.value))
+                        return VFloat(left.value / right.value)
                     if right.value == 0.0:
-                        if left.value == 0.0:
-                            return VFloat(float("nan"))
-                        return VFloat(_copysign_inf(left.value))
-                    return VFloat(left.value / right.value)
-                if right.value == 0.0:
-                    if self.module.strict_math:
-                        self._throw_err("ValueError", "float modulo by zero")
-                    return VFloat(float("nan"))
-                return VFloat(_fmod(left.value, right.value))
+                        if self.module.strict_math:
+                            self._throw_err("ValueError", "float modulo by zero")
+                        return VFloat(float("nan"))
+                    return VFloat(_fmod(left.value, right.value))
             if isinstance(left, VByte) and isinstance(right, VByte):
                 if op == "+":
                     return VByte((left.value + right.value) & 0xFF)
@@ -2749,7 +2751,7 @@ def _bi_format_int(rt: Runtime, args: list[Value]) -> Value:
     chars: list[str] = []
     while val > 0:
         chars.append(digits[val % b])
-        val //= b
+        val = val // b
     if neg:
         chars.append("-")
     chars.reverse()
@@ -2878,6 +2880,24 @@ def _bi_replace(rt: Runtime, args: list[Value]) -> Value:
     ):
         raise TaytshRuntimeFault("Replace expects string, string, string", None)
     return VString(s.value.replace(old.value, new.value))
+
+
+def _bi_replace_count(rt: Runtime, args: list[Value]) -> Value:
+    s: Value = args[0]
+    old: Value = args[1]
+    repl: Value = args[2]
+    count: Value = args[3]
+    if (
+        not isinstance(s, VString)
+        or not isinstance(old, VString)
+        or not isinstance(repl, VString)
+        or not isinstance(count, VInt)
+    ):
+        raise TaytshRuntimeFault(
+            "ReplaceCount expects string, string, string, int", None
+        )
+    return VString(s.value.replace(old.value, repl.value, count.value))
+
 
 
 def _bi_starts_with(rt: Runtime, args: list[Value]) -> Value:
@@ -3618,6 +3638,8 @@ def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
         return _bi_count(rt, args)
     if name == "Replace":
         return _bi_replace(rt, args)
+    if name == "ReplaceCount":
+        return _bi_replace_count(rt, args)
     if name == "StartsWith":
         return _bi_starts_with(rt, args)
     if name == "EndsWith":
