@@ -790,9 +790,7 @@ class _RubyEmitter:
             iterable = self._ruby_range(for_stmt.iterable)
         else:
             iterable = self._expr(for_stmt.iterable)
-        iter_is_map = not isinstance(for_stmt.iterable, TRange) and self._is_map_type(
-            for_stmt.iterable
-        )
+        iter_is_map = self._is_map_for(for_stmt)
         if iter_is_map and len(binding) == 2:
             pass  # Ruby hash.each gives |k, v|
         elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
@@ -1137,7 +1135,7 @@ class _RubyEmitter:
                 iter_str + method + " do |" + _restore_name(binding[0], ann) + "|"
             )
         elif len(binding) == 2:
-            iter_is_map = self._is_map_type(stmt.iterable)
+            iter_is_map = self._is_map_for(stmt)
             if iter_is_map:
                 self._line(
                     self._expr(stmt.iterable)
@@ -1190,6 +1188,11 @@ class _RubyEmitter:
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
         return False
+
+    def _is_map_for(self, stmt: TForStmt) -> bool:
+        if stmt.annotations.get("for.items") == "true":
+            return True
+        return not isinstance(stmt.iterable, TRange) and self._is_map_type(stmt.iterable)
 
     def _is_string_type(self, expr: TExpr) -> bool:
         if isinstance(expr, TStringLit):
