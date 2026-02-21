@@ -1907,7 +1907,7 @@ def taytsh_pipeline(argv: list[str]) -> int:
     return 2
 
 
-def main() -> int:
+def main() -> None:
     """Main entry point."""
     if len(sys.argv) > 1 and sys.argv[1] == "taytsh":
         taytsh_args = sys.argv[2:]
@@ -1919,41 +1919,42 @@ def main() -> int:
                 break
             ti += 1
         if has_pipeline_flag:
-            return taytsh_pipeline(taytsh_args)
+            sys.exit(taytsh_pipeline(taytsh_args))
         from .taytsh.cli import main as taytsh_main
 
-        return taytsh_main(taytsh_args)
+        return taytsh_main(taytsh_args)  # type: ignore[return-value]
     target, stop_at, strict_math, strict_tostring, project, input_file, output_file = (
         parse_args()
     )
     if project:
         source, err = read_source(input_file)
         if err != 0:
-            return err
+            sys.exit(err)
         if len(source) == 0:
             print("error: no input provided", file=sys.stderr)
-            return 2
+            sys.exit(2)
         files = _parse_project_input(source)
         if len(files) == 0:
             print("error: no .py files found in directory", file=sys.stderr)
-            return 1
-        return main_project(
-            files, target, stop_at, strict_math, strict_tostring, output_file
+            sys.exit(1)
+        sys.exit(
+            main_project(
+                files, target, stop_at, strict_math, strict_tostring, output_file
+            )
         )
     source, err = read_source(input_file)
     if err != 0:
-        return err
+        sys.exit(err)
     if len(source) == 0:
         print("error: no input provided", file=sys.stderr)
-        return 2
+        sys.exit(2)
     exit_code, output = run_pipeline(
         source, target, stop_at, strict_math, strict_tostring
     )
     if exit_code != 0:
-        return exit_code
+        sys.exit(exit_code)
     if len(output) > 0:
-        return write_output(output, output_file)
-    return 0
+        sys.exit(write_output(output, output_file))
 
 
 def main_project(
