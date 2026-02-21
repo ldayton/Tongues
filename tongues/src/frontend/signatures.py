@@ -381,6 +381,9 @@ def _split_union_members(s: str) -> list[str]:
 # Type alias expansions, populated by collect_signatures()
 _TYPE_ALIASES: dict[str, str] = {}
 
+# Class base mappings, populated by collect_signatures()
+_CLASS_BASES: dict[str, list[str]] = {}
+
 
 # Primitive type mapping: Python name -> kind string
 _PRIM_MAP: dict[str, str] = {
@@ -626,6 +629,20 @@ def _resolve_union(
     return _resolve_non_none_union(unique, known_classes, errors, lineno, col)
 
 
+def _find_class_root(name: str) -> str:
+    """Walk up _CLASS_BASES to find the topmost ancestor."""
+    cur = name
+    visited: set[str] = set()
+    while True:
+        if cur in visited:
+            return cur
+        visited.add(cur)
+        parents = _CLASS_BASES.get(cur)
+        if parents is None or len(parents) == 0:
+            return cur
+        cur = parents[0]
+
+
 def _resolve_non_none_union(
     members: list[str],
     known_classes: set[str],
@@ -634,7 +651,23 @@ def _resolve_non_none_union(
     col: int,
 ) -> TypeNode:
     """Resolve a union with no None members to an InterfaceRef."""
-    return InterfaceRef("any")
+    if len(_CLASS_BASES) == 0:
+        return InterfaceRef("any")
+    # Check if all members are known classes
+    i = 0
+    while i < len(members):
+        if members[i] not in known_classes:
+            return InterfaceRef("any")
+        i += 1
+    # Find root of each member; all must share the same root
+    root = _find_class_root(members[0])
+    i = 1
+    while i < len(members):
+        r = _find_class_root(members[i])
+        if r != root:
+            return InterfaceRef("any")
+        i += 1
+    return InterfaceRef(root)
 
 
 # ---------------------------------------------------------------------------
@@ -978,9 +1011,17 @@ def collect_signatures(
     known_classes: set[str],
     node_classes: set[str],
     type_aliases: dict[str, str] | None = None,
+    class_bases: dict[str, list[str]] | None = None,
 ) -> SignatureResult:
     """Collect function and method signatures from the module AST."""
     _TYPE_ALIASES.clear()
+    _CLASS_BASES.clear()
+    if class_bases is not None:
+        cb_keys = list(class_bases.keys())
+        cbi = 0
+        while cbi < len(cb_keys):
+            _CLASS_BASES[cb_keys[cbi]] = class_bases[cb_keys[cbi]]
+            cbi += 1
     if type_aliases is not None:
         ta_keys = list(type_aliases.keys())
         tai = 0

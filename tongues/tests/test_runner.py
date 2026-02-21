@@ -705,16 +705,20 @@ def run_sigs(source: str) -> PhaseResult:
     # Build known_classes and node_classes from name table
     known_classes: set[str] = set()
     node_classes: set[str] = set()
+    class_bases: dict[str, list[str]] = {}
     table = name_result.table
     for name, info in table.module_names.items():
         if info.kind == "class":
             known_classes.add(name)
+            class_bases[name] = list(info.bases)
             if len(info.bases) > 0:
                 # Check if any base is "Node" or ends with "Node"
                 for base in info.bases:
                     if base == "Node" or base.endswith("Node"):
                         node_classes.add(name)
-    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_result = collect_signatures(
+        ast_dict, known_classes, node_classes, None, class_bases
+    )
     sig_errors = sig_result.errors()
     if sig_errors:
         return PhaseResult(errors=[str(e) for e in sig_errors])
@@ -740,12 +744,14 @@ def run_fields(source: str) -> PhaseResult:
     # Build known_classes, node_classes, hierarchy_roots from name table
     known_classes: set[str] = set()
     node_classes: set[str] = set()
+    class_bases: dict[str, list[str]] = {}
     base_counts: dict[str, int] = {}
     parent_of: dict[str, str] = {}
     table = name_result.table
     for name, info in table.module_names.items():
         if info.kind == "class":
             known_classes.add(name)
+            class_bases[name] = list(info.bases)
             for base in info.bases:
                 if base == "Node" or base.endswith("Node"):
                     node_classes.add(name)
@@ -759,7 +765,9 @@ def run_fields(source: str) -> PhaseResult:
     for base_name in base_counts:
         if base_name not in parent_of:
             hierarchy_roots.add(base_name)
-    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_result = collect_signatures(
+        ast_dict, known_classes, node_classes, None, class_bases
+    )
     sig_errors = sig_result.errors()
     if sig_errors:
         return PhaseResult(errors=[str(e) for e in sig_errors])
@@ -841,7 +849,9 @@ def run_inference(source: str) -> PhaseResult:
     for base_name in base_counts:
         if base_name not in parent_of:
             hierarchy_roots.add(base_name)
-    sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+    sig_result = collect_signatures(
+        ast_dict, known_classes, node_classes, None, class_bases
+    )
     sig_errors = sig_result.errors()
     if sig_errors:
         return PhaseResult(errors=[str(e) for e in sig_errors])
@@ -932,7 +942,9 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         for base_name in base_counts:
             if base_name not in parent_of:
                 hierarchy_roots.add(base_name)
-        sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+        sig_result = collect_signatures(
+            ast_dict, known_classes, node_classes, None, class_bases
+        )
         sig_errors = sig_result.errors()
         if sig_errors:
             return (None, str(sig_errors[0]))
@@ -1192,7 +1204,9 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         for base_name in base_counts:
             if base_name not in parent_of:
                 hierarchy_roots.add(base_name)
-        sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+        sig_result = collect_signatures(
+            ast_dict, known_classes, node_classes, None, class_bases
+        )
         sig_errors = sig_result.errors()
         if sig_errors:
             return (None, str(sig_errors[0]))

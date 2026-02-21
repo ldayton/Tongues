@@ -1459,6 +1459,14 @@ def _pipeline_post_parse(
                     node_classes.add(mname)
                 bi += 1
         ki += 1
+    class_bases: dict[str, list[str]] = {}
+    ki = 0
+    while ki < len(mkeys):
+        mname = mkeys[ki]
+        info = name_result.table.module_names[mname]
+        if info.kind == "class":
+            class_bases[mname] = list(info.bases)
+        ki += 1
     type_aliases: dict[str, str] = {}
     ta_body = get_nodes(ast_dict, "body")
     tai = 0
@@ -1481,7 +1489,9 @@ def _pipeline_post_parse(
                             if ta_str != "":
                                 type_aliases[ta_name] = ta_str
         tai += 1
-    sig_result = collect_signatures(ast_dict, known_classes, node_classes, type_aliases)
+    sig_result = collect_signatures(
+        ast_dict, known_classes, node_classes, type_aliases, class_bases
+    )
     sig_errors = sig_result.errors()
     if len(sig_errors) > 0:
         err_strs: list[str] = []
@@ -1532,14 +1542,6 @@ def _pipeline_post_parse(
         return (1, "")
     if stop_at == "fields":
         return (0, to_json(field_result.to_dict()))
-    class_bases: dict[str, list[str]] = {}
-    ki = 0
-    while ki < len(mkeys2):
-        mname = mkeys2[ki]
-        info = name_result.table.module_names[mname]
-        if info.kind == "class":
-            class_bases[mname] = list(info.bases)
-        ki += 1
     class_source_files: dict[str, str] = {}
     csf_body = get_nodes(ast_dict, "body")
     csf_i = 0

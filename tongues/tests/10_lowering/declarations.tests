@@ -133,3 +133,20 @@ fn second() -> int {
     return 2
 }
 ---
+
+=== union of sibling classes resolves to hierarchy root
+from dataclasses import dataclass
+@dataclass
+class Base:
+    x: int
+@dataclass
+class A(Base):
+    y: int
+@dataclass
+class B(Base):
+    z: int
+def f(val: A | B) -> int:
+    return val.x
+---
+fn f(val: Base) -> int {
+---
