@@ -370,6 +370,13 @@ class _PerlEmitter:
                     self._line()
                 self._emit_enum(decl)
                 need_blank = True
+            elif isinstance(decl, TLetStmt):
+                if current_package != "main":
+                    self._line("package main;")
+                    self._line()
+                    current_package = "main"
+                self._emit_stmt(decl)
+                need_blank = True
             elif isinstance(decl, TFnDecl):
                 if current_package != "main":
                     self._line("package main;")

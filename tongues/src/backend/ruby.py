@@ -573,6 +573,9 @@ class _RubyEmitter:
             elif isinstance(decl, TStructDecl):
                 self._emit_struct(decl)
                 need_blank = True
+            elif isinstance(decl, TLetStmt):
+                self._emit_let(decl)
+                need_blank = True
             elif isinstance(decl, TFnDecl):
                 self._emit_fn(decl)
                 need_blank = True

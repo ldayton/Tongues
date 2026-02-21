@@ -494,6 +494,9 @@ class _PythonEmitter:
             elif isinstance(decl, TEnumDecl):
                 self._emit_enum(decl)
                 need_blank = True
+            elif isinstance(decl, TLetStmt):
+                self._emit_let(decl)
+                need_blank = True
             elif isinstance(decl, TFnDecl):
                 self._emit_fn(decl)
                 need_blank = True
