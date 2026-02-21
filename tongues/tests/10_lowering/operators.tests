@@ -166,6 +166,16 @@ def f(a: int, b: int) -> bool:
 a >= b
 ---
 
+=== rune compared to string variable
+def f(s: str, quote: str) -> bool:
+    for ch in s:
+        if ch == quote:
+            return True
+    return False
+---
+== quote
+---
+
 === char comparison in string iteration
 def f(s: str) -> bool:
     for ch in s:
@@ -187,6 +197,36 @@ def f(tok: Token) -> bool:
     return tok.kind == TK_OP
 ---
 tok.kind == TK_OP
+---
+
+=== field comparison after isinstance on attribute
+class Expr:
+    def __init__(self) -> None:
+        pass
+class Call(Expr):
+    def __init__(self, func: Expr) -> None:
+        self.func = func
+class Var(Expr):
+    def __init__(self, name: str) -> None:
+        self.name = name
+def f(expr: Call) -> bool:
+    if isinstance(expr.func, Var):
+        name = expr.func.name
+        return name == "hello"
+    return False
+---
+name == "hello"
+---
+
+=== dict get element comparison after none guard
+def f(d: dict[str, list[str]], key: str) -> bool:
+    items = d.get(key)
+    if items is not None:
+        item = items[0]
+        return item == "hello"
+    return False
+---
+== "hello"
 ---
 
 === divmod
