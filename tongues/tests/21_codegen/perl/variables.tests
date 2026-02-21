@@ -11,9 +11,6 @@ say(("" . $x));
 === initial value kept when read before overwrite
 my $x = 0;
 
-=== module-level constant
-my $GREETING = "hello";
-
 === Unwrap on optional
 my $v = $x;
 say(("" . $v));

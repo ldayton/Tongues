@@ -29,12 +29,6 @@ fn Main() -> void {
     WritelnOut(ToString(x))
 }
 
-=== module-level constant
-let GREETING: string = "hello"
-fn Main() -> void {
-    WritelnOut(GREETING)
-}
-
 === Unwrap on optional
 fn Main() -> void {
     let x: int? = 42

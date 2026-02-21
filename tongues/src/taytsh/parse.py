@@ -281,7 +281,7 @@ class Parser:
         module.strict_tostring = strict_tostring
         return module
 
-    def parse_decl(self) -> TModuleItem:
+    def parse_decl(self) -> TDecl:
         if self.at("fn"):
             return self.parse_fn_decl()
         if self.at("struct"):
@@ -290,9 +290,7 @@ class Parser:
             return self.parse_interface_decl()
         if self.at("enum"):
             return self.parse_enum_decl()
-        if self.at("let"):
-            return self.parse_let_stmt()
-        raise self.error("expected declaration (fn, struct, interface, enum, let)")
+        raise self.error("expected declaration (fn, struct, interface, enum)")
 
     def parse_fn_decl(self) -> TFnDecl:
         pos = self._pos()

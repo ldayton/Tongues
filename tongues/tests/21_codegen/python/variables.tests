@@ -10,8 +10,5 @@ x = int(sys.stdin.read(), 10)
 === initial value kept when read before overwrite
 x: int = 0
 
-=== module-level constant
-GREETING: str = "hello"
-
 === Unwrap on optional
 v: int = x

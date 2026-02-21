@@ -1,5 +1,5 @@
 === unexpected token at top level
-x = 42
+let x: int = 42
 ---
 error:
 ---
