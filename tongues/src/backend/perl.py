@@ -21,6 +21,7 @@ from ..taytsh.ast import (
     TExpr,
     TExprStmt,
     TFieldAccess,
+    TFieldDecl,
     TFnDecl,
     TFnLit,
     TFloatLit,
@@ -354,7 +355,7 @@ class _PerlEmitter:
                 current_package = decl.name
                 if decl.fields:
                     self._line()
-                    self._emit_constructor(decl)
+                    self._emit_interface_constructor(decl)
                 need_blank = True
                 continue
             if need_blank:
@@ -401,15 +402,21 @@ class _PerlEmitter:
             self._line()
             self._emit_method(method)
 
-    def _emit_constructor(self, decl: TStructDecl | TInterfaceDecl) -> None:
+    def _emit_constructor(self, decl: TStructDecl) -> None:
+        self._emit_constructor_fields(decl.fields)
+
+    def _emit_interface_constructor(self, decl: TInterfaceDecl) -> None:
+        self._emit_constructor_fields(decl.fields)
+
+    def _emit_constructor_fields(self, fields: list[TFieldDecl]) -> None:
         self._line("sub new {")
         self.indent += 1
         args: list[str] = ["$class"]
-        for f in decl.fields:
+        for f in fields:
             args.append("$" + _safe_name(f.name))
         self._line("my (" + ", ".join(args) + ") = @_;")
         self._line("my $self = bless {}, $class;")
-        for fld in decl.fields:
+        for fld in fields:
             safe = _safe_name(fld.name)
             default = self._zero_value(fld.typ)
             self._line(

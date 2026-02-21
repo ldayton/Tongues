@@ -2211,10 +2211,10 @@ def _lower_name_call(
             return _make_call(pos, "Sum", [_lower_expr(args[0], env, ctx)])
     if fname == "round":
         if len(args) > 0 and isinstance(args[0], dict):
-            lowered_args: list[TExpr] = [_lower_expr(args[0], env, ctx)]
+            round_args: list[TExpr] = [_lower_expr(args[0], env, ctx)]
             if len(args) > 1 and isinstance(args[1], dict):
-                lowered_args.append(_lower_expr(args[1], env, ctx))
-            return _make_call(pos, "Round", lowered_args)
+                round_args.append(_lower_expr(args[1], env, ctx))
+            return _make_call(pos, "Round", round_args)
     if fname == "min" or fname == "max":
         builtin = "Min" if fname == "min" else "Max"
         lowered: list[TExpr] = []
@@ -3293,9 +3293,9 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 high = _make_call(pos, "Len", [args_call])
                 return TSlice(pos, _make_call(pos, "Args", []), low, high, _EMPTY_ANN)
         else:
-            idx_val = _get_const_int(slice_node)
-            if idx_val is not None and idx_val >= 1:
-                idx = TIntLit(pos, idx_val - 1, str(idx_val - 1), _EMPTY_ANN)
+            argv_idx = _get_const_int(slice_node)
+            if argv_idx is not None and argv_idx >= 1:
+                idx = TIntLit(pos, argv_idx - 1, str(argv_idx - 1), _EMPTY_ANN)
                 return TIndex(pos, args_call, idx, _EMPTY_ANN)
     obj = _lower_expr(obj_node, env, ctx)
     obj_type = _infer_expr_type(obj_node, env, ctx)
