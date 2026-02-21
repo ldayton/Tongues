@@ -13,6 +13,7 @@ from .bytecode import (
     CodeObject,
     CompiledModule,
     InterfaceDef,
+    StructDef,
     OP_ADD_BYTE,
     OP_ADD_FLOAT,
     OP_ADD_INT,

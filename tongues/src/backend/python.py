@@ -599,7 +599,11 @@ class _PythonEmitter:
             return "field(default_factory=dict)"
         if isinstance(typ, TSetType):
             return "field(default_factory=set)"
-        if has_default and isinstance(typ, TIdentType) and typ.name in self.struct_names:
+        if (
+            has_default
+            and isinstance(typ, TIdentType)
+            and typ.name in self.struct_names
+        ):
             return "field(default_factory=" + typ.name + ")"
         return self._zero_value(typ)
 
@@ -1053,7 +1057,9 @@ class _PythonEmitter:
         """Check if a for-loop iterates over map items."""
         if stmt.annotations.get("for.items") == "true":
             return True
-        return not isinstance(stmt.iterable, TRange) and self._is_map_type(stmt.iterable)
+        return not isinstance(stmt.iterable, TRange) and self._is_map_type(
+            stmt.iterable
+        )
 
     def _emit_try(self, stmt: TTryStmt) -> None:
         self._line("try:")

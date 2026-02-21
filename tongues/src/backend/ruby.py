@@ -1192,7 +1192,9 @@ class _RubyEmitter:
     def _is_map_for(self, stmt: TForStmt) -> bool:
         if stmt.annotations.get("for.items") == "true":
             return True
-        return not isinstance(stmt.iterable, TRange) and self._is_map_type(stmt.iterable)
+        return not isinstance(stmt.iterable, TRange) and self._is_map_type(
+            stmt.iterable
+        )
 
     def _is_string_type(self, expr: TExpr) -> bool:
         if isinstance(expr, TStringLit):

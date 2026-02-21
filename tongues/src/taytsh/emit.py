@@ -116,7 +116,6 @@ _BIN_PREC: dict[str, int] = {
 
 
 class _Emitter:
-
     def __init__(self) -> None:
         self._lines: list[str] = []
         self._indent_level: int = 0
@@ -227,9 +226,7 @@ class _Emitter:
             for t in stmt.targets:
                 targets.append(self._render_expr(t, _PREC_TERNARY))
             left = ", ".join(targets)
-            self._emit_line(
-                f"{left} = {self._render_expr(stmt.value, _PREC_TERNARY)}"
-            )
+            self._emit_line(f"{left} = {self._render_expr(stmt.value, _PREC_TERNARY)}")
             return
         if isinstance(stmt, TReturnStmt):
             if stmt.value is None:
@@ -290,9 +287,7 @@ class _Emitter:
             current = None
 
         # Emit first branch
-        self._emit_line(
-            "if " + self._render_expr(branches[0][0], _PREC_TERNARY) + " {"
-        )
+        self._emit_line("if " + self._render_expr(branches[0][0], _PREC_TERNARY) + " {")
         self._emit_stmt_block(branches[0][1])
 
         # else-if branches
@@ -334,9 +329,7 @@ class _Emitter:
         self._emit_line("}")
 
     def _emit_match_stmt(self, stmt: TMatchStmt) -> None:
-        self._emit_line(
-            "match " + self._render_expr(stmt.expr, _PREC_TERNARY) + " {"
-        )
+        self._emit_line("match " + self._render_expr(stmt.expr, _PREC_TERNARY) + " {")
         self._indent_level += 1
 
         for case in stmt.cases:
@@ -622,7 +615,9 @@ class _Emitter:
             targets: list[str] = []
             for t in stmt.targets:
                 targets.append(self._render_expr(t, _PREC_TERNARY))
-            return f"{', '.join(targets)} = {self._render_expr(stmt.value, _PREC_TERNARY)}"
+            return (
+                f"{', '.join(targets)} = {self._render_expr(stmt.value, _PREC_TERNARY)}"
+            )
         if isinstance(stmt, TReturnStmt):
             if stmt.value is None:
                 return "return"

@@ -3542,9 +3542,7 @@ def _lower_fstring(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     return _make_call(pos, "Format", all_args)
 
 
-def _lower_any_all(
-    fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx
-) -> TExpr:
+def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     """Lower any(genexpr)/all(genexpr) via pre_stmts hoisting."""
     pos = _node_pos(node)
     elt = get_node(node, "elt")
@@ -3659,7 +3657,9 @@ def _lower_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     rname = "__comp_" + str(cid) + "__"
     result_var = TVar(pos, rname, _EMPTY_ANN)
     list_type: TType = TListType(pos, elt_ttype)
-    let_stmt = TLetStmt(pos, rname, list_type, TListLit(pos, [], _EMPTY_ANN), _EMPTY_ANN)
+    let_stmt = TLetStmt(
+        pos, rname, list_type, TListLit(pos, [], _EMPTY_ANN), _EMPTY_ANN
+    )
     append_call = _make_call(pos, "Append", [result_var, elt_expr])
     body: list[TStmt] = [TExprStmt(pos, append_call, _EMPTY_ANN)]
     # Build nested for loops from innermost to outermost
@@ -3778,9 +3778,7 @@ def _lower_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     rname = "__comp_" + str(cid) + "__"
     result_var = TVar(pos, rname, _EMPTY_ANN)
     map_type: TType = TMapType(pos, key_ttype, val_ttype)
-    let_stmt = TLetStmt(
-        pos, rname, map_type, _make_call(pos, "Map", []), _EMPTY_ANN
-    )
+    let_stmt = TLetStmt(pos, rname, map_type, _make_call(pos, "Map", []), _EMPTY_ANN)
     idx_target = TIndex(pos, result_var, key_expr, _EMPTY_ANN)
     body: list[TStmt] = [TAssignStmt(pos, idx_target, val_expr, _EMPTY_ANN)]
     ifs = get_nodes(gen, "ifs")
@@ -3791,7 +3789,9 @@ def _lower_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     for_ann.update(b_ann)
     if is_items:
         for_ann["for.items"] = "true"
-        iter_expr = _lower_expr(get_node(get_node(iter_node, "func"), "value"), env, ctx)
+        iter_expr = _lower_expr(
+            get_node(get_node(iter_node, "func"), "value"), env, ctx
+        )
     else:
         iter_expr = _lower_extend_arg(iter_node, env, ctx)
     for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)

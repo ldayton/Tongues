@@ -125,7 +125,6 @@ def _run_interp(module) -> int:  # type: ignore[no-untyped-def]
         print("taytsh: runtime error: " + str(e), file=sys.stderr)
         return 1
 
-
     sys.stdout.buffer.write(result.stdout)
     sys.stderr.buffer.write(result.stderr)
     return result.exit_code
