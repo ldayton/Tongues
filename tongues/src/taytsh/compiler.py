@@ -849,7 +849,25 @@ class Compiler:
         # FOR_ITER checks index < len(collection)
         exit_jump = fc.emit_jump(OP_FOR_ITER, stmt.pos.line)
         # After FOR_ITER pushes current element (and optionally index)
-        if len(stmt.binding) == 2:
+        if len(stmt.binding) >= 2 and stmt.annotations.get("iter_kind") == "tuple_unpack":
+            # for a, b in list_of_tuples — stack has: index_val, tuple_element
+            # Unpack tuple, then store each binding, then discard index
+            n = len(stmt.binding)
+            fc.emit(OP_UNPACK, n, stmt.pos.line)
+            # Stack now has: index_val, elem[0], elem[1], ... elem[n-1]
+            # Store in reverse order (top of stack = last element)
+            i = n - 1
+            while i >= 0:
+                b = stmt.binding[i]
+                local = fc.scope.lookup(b) if b != "_" else None
+                if local is not None:
+                    fc.emit(OP_STORE_LOCAL, local.slot, stmt.pos.line)
+                else:
+                    fc.emit(OP_POP, 0, stmt.pos.line)
+                i -= 1
+            # Discard the index pushed by FOR_ITER
+            fc.emit(OP_POP, 0, stmt.pos.line)
+        elif len(stmt.binding) == 2:
             # for i, v in collection — stack has: index_val, element
             idx_binding = stmt.binding[0]
             val_binding = stmt.binding[1]

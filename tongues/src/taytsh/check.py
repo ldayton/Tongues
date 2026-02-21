@@ -1965,6 +1965,13 @@ class Checker:
                     self.bind_for_vars(stmt.binding, iter_type, stmt.pos)
                     if isinstance(iter_type, MapT):
                         stmt.annotations["iter_kind"] = "map"
+                    elif (
+                        isinstance(iter_type, ListT)
+                        and len(stmt.binding) >= 2
+                        and isinstance(iter_type.element, TupleT)
+                        and len(iter_type.element.elements) == len(stmt.binding)
+                    ):
+                        stmt.annotations["iter_kind"] = "tuple_unpack"
         self.check_stmts(stmt.body)
         self.exit_scope()
         self.uninitialized = saved_uninit

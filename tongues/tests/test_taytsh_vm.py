@@ -310,6 +310,244 @@ fn Main() -> void {
         assert code == 0, err
 
 
+class TestMethodCalls:
+    def test_struct_method(self) -> None:
+        code, out, err = _run_ty("""
+struct Point {
+    x: int
+    y: int
+
+    fn Sum(this) -> int {
+        return this.x + this.y
+    }
+}
+fn Main() -> void {
+    let p: Point = Point(3, 4)
+    Assert(p.Sum() == 7)
+}
+""")
+        assert code == 0, err
+
+    def test_method_with_args(self) -> None:
+        code, out, err = _run_ty("""
+struct Counter {
+    value: int
+
+    fn Add(this, n: int) -> int {
+        return this.value + n
+    }
+}
+fn Main() -> void {
+    let c: Counter = Counter(10)
+    Assert(c.Add(5) == 15)
+}
+""")
+        assert code == 0, err
+
+    def test_tostring_override(self) -> None:
+        code, out, err = _run_ty("""
+struct Pair {
+    a: int
+    b: int
+
+    fn ToString(this) -> string {
+        return Concat(ToString(this.a), Concat(":", ToString(this.b)))
+    }
+}
+fn Main() -> void {
+    let p: Pair = Pair(1, 2)
+    Assert(ToString(p) == "1:2")
+}
+""")
+        assert code == 0, err
+
+
+class TestOverflow:
+    def test_int_overflow_add(self) -> None:
+        code, out, err = _run_ty("""
+@@["strict_math"]
+fn Main() -> void {
+    let caught: bool = false
+    try {
+        let big: int = 9223372036854775807
+        let x: int = big + 1
+    } catch e: OverflowError {
+        caught = true
+    }
+    Assert(caught)
+}
+""")
+        assert code == 0, err
+
+    def test_shift_overflow(self) -> None:
+        code, out, err = _run_ty("""
+@@["strict_math"]
+fn Main() -> void {
+    let caught: bool = false
+    try {
+        let x: int = 1 << 64
+    } catch e: OverflowError {
+        caught = true
+    }
+    Assert(caught)
+}
+""")
+        assert code == 0, err
+
+
+class TestCollections:
+    def test_map_iteration_keys(self) -> None:
+        code, out, err = _run_ty("""
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    let count: int = 0
+    for k in m {
+        Assert(Contains(m, k))
+        count += 1
+    }
+    Assert(count == 2)
+}
+""")
+        assert code == 0, err
+
+    def test_map_iteration_kv(self) -> None:
+        code, out, err = _run_ty("""
+fn Main() -> void {
+    let m: map[string, int] = {"x": 10, "y": 20}
+    let total: int = 0
+    for k, v in m {
+        total += v
+    }
+    Assert(total == 30)
+}
+""")
+        assert code == 0, err
+
+    def test_map_equality(self) -> None:
+        code, out, err = _run_ty("""
+fn Main() -> void {
+    let a: map[string, int] = {"a": 1, "b": 2}
+    let b: map[string, int] = {"b": 2, "a": 1}
+    Assert(a == b)
+}
+""")
+        assert code == 0, err
+
+    def test_set_dedup(self) -> None:
+        code, out, err = _run_ty("""
+fn Main() -> void {
+    let s: set[int] = {1, 1, 2, 2, 3}
+    Assert(Len(s) == 3)
+}
+""")
+        assert code == 0, err
+
+    def test_set_equality(self) -> None:
+        code, out, err = _run_ty("""
+fn Main() -> void {
+    let a: set[int] = {1, 2, 3}
+    let b: set[int] = {3, 2, 1}
+    Assert(a == b)
+}
+""")
+        assert code == 0, err
+
+    def test_list_repeat(self) -> None:
+        code, out, err = _run_ty("""
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    let ys: list[int] = Repeat(xs, 3)
+    Assert(Len(ys) == 6)
+}
+""")
+        assert code == 0, err
+
+    def test_map_merge(self) -> None:
+        code, out, err = _run_ty("""
+fn Main() -> void {
+    let m1: map[string, int] = {"a": 1, "b": 2}
+    let m2: map[string, int] = {"b": 20, "c": 30}
+    let merged: map[string, int] = Merge(m1, m2)
+    Assert(Len(merged) == 3)
+    Assert(merged["b"] == 20)
+    Assert(m1["b"] == 2)
+}
+""")
+        assert code == 0, err
+
+
+class TestMatch:
+    def test_match_in_loop(self) -> None:
+        code, out, err = _run_ty("""
+fn CountNils(xs: list[int?]) -> int {
+    let count: int = 0
+    for v in xs {
+        match v {
+            case n: int {}
+            case nil { count += 1 }
+        }
+    }
+    return count
+}
+fn Main() -> void {
+    Assert(CountNils([1, nil, 2, nil, nil]) == 3)
+}
+""")
+        assert code == 0, err
+
+    def test_interface_match(self) -> None:
+        code, out, err = _run_ty("""
+interface Shape {}
+struct Circle : Shape {
+    radius: int
+}
+struct Rect : Shape {
+    w: int
+    h: int
+}
+fn Describe(s: Shape) -> string {
+    match s {
+        case c: Circle { return "circle" }
+        case r: Rect { return "rect" }
+    }
+}
+fn Main() -> void {
+    Assert(Describe(Circle(5)) == "circle")
+    Assert(Describe(Rect(3, 4)) == "rect")
+}
+""")
+        assert code == 0, err
+
+
+class TestTupleDestructuring:
+    def test_for_tuple_unpack(self) -> None:
+        code, out, err = _run_ty("""
+fn Main() -> void {
+    let pairs: list[(string, int)] = [("a", 1), ("b", 2)]
+    let total: int = 0
+    for k, v in pairs {
+        total += v
+    }
+    Assert(total == 3)
+}
+""")
+        assert code == 0, err
+
+
+class TestArrowFn:
+    def test_arrow_fn_lit(self) -> None:
+        code, out, err = _run_ty("""
+fn Apply(f: fn[int, int], x: int) -> int {
+    return f(x)
+}
+fn Main() -> void {
+    let double: fn[int, int] = (x: int) -> int => x * 2
+    Assert(Apply(double, 5) == 10)
+}
+""")
+        assert code == 0, err
+
+
 # ============================================================
 # App test integration — run each .ty file through the VM
 # ============================================================
