@@ -132,3 +132,27 @@ def f(name: str) -> str:
 ---
 GetEnv(name, "fallback")
 ---
+
+=== with open read binary
+def f(path: str) -> bytes:
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        return b""
+    return raw
+---
+ReadFile(path)
+---
+
+=== with open write text
+def f(path: str, data: str) -> bool:
+    try:
+        with open(path, "w") as fh:
+            fh.write(data)
+    except OSError:
+        return False
+    return True
+---
+WriteFile(path, data)
+---

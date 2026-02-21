@@ -3711,6 +3711,43 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
 # ---------------------------------------------------------------------------
 
 
+def _lower_with_open(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
+    """Lower with-open file I/O: read → ReadFile, write → WriteFile."""
+    pos = _node_pos(node)
+    items = get_nodes(node, "items")
+    item = items[0]
+    ctx_expr = get_node(item, "context_expr")
+    args = get_nodes(ctx_expr, "args")
+    path_expr = _lower_expr(args[0], env, ctx)
+    mode = get_str(args[1], "value")
+    body = get_nodes(node, "body")
+    stmt = body[0]
+    if mode == "rb":
+        # with open(path, "rb") as f: raw = f.read() → raw = ReadFile(path)
+        targets = get_nodes(stmt, "targets")
+        target_node = targets[0]
+        name = get_str(target_node, "id")
+        safe = _safe_name(name)
+        ann = _name_ann(safe, name)
+        call = _make_call(pos, "ReadFile", [path_expr])
+        val_type = PrimitiveType("bytes")
+        if name not in env.declared:
+            env.declared.add(name)
+            env.var_types[name] = val_type
+            ttype = _typenode_to_ttype(pos, val_type)
+            return [TLetStmt(pos, safe, ttype, call, ann)]
+        if name in env.hoisted_stmts:
+            _backpatch_hoisted(pos, name, val_type, env)
+        target: TExpr = TVar(pos, safe, ann)
+        return [TAssignStmt(pos, target, call, _EMPTY_ANN)]
+    # mode "w" or "wb": with open(path, "w") as f: f.write(data) → WriteFile(path, data)
+    call_node = get_node(stmt, "value")
+    data_args = get_nodes(call_node, "args")
+    data_expr = _lower_expr(data_args[0], env, ctx)
+    call = _make_call(pos, "WriteFile", [path_expr, data_expr])
+    return [TExprStmt(pos, call, _EMPTY_ANN)]
+
+
 def _lower_stmts(stmts: list[ASTNode], env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     """Lower a list of statements."""
     result: list[TStmt] = []
@@ -3756,6 +3793,8 @@ def _lower_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         return [TBreakStmt(pos, _EMPTY_ANN)]
     if t == "Continue":
         return [TContinueStmt(pos, _EMPTY_ANN)]
+    if t == "With":
+        return _lower_with_open(node, env, ctx)
     if t == "Pass":
         return []
     if t == "Import" or t == "ImportFrom":
