@@ -1,2 +1,5 @@
 === module-level constant
 GREETING = "hello"
+
+=== module-level frozenset constant
+WORDS = Set["hello", "world"]

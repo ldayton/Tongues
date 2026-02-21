@@ -5,3 +5,11 @@ def main() -> None:
     print(x)
 if __name__ == "__main__":
     main()
+
+=== module-level frozenset constant
+WORDS: set[str] = frozenset({"hello", "world"})
+def main() -> None:
+    x: bool = "hello" in WORDS
+    print(str(x))
+if __name__ == "__main__":
+    main()

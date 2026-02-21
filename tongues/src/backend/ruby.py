@@ -1889,6 +1889,11 @@ class _RubyEmitter:
             if len(args) == 0:
                 return "Set.new"
             return "Set.new(" + self._a(args, 0) + ".to_a)"
+        if name == "SetFromList":
+            self._needs_set = True
+            if isinstance(args[0].value, TSetLit):
+                return self._a(args, 0)
+            return "Set.new(" + self._a(args, 0) + ".to_a)"
         if name == "ToString":
             a = self._a(args, 0)
             if isinstance(args[0].value, (TBinaryOp, TTernary)):

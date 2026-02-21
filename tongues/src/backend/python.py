@@ -1627,6 +1627,10 @@ class _PythonEmitter:
             if len(args) == 0:
                 return "set()"
             return "set(" + self._a(args, 0) + ")"
+        if name == "SetFromList":
+            if isinstance(args[0].value, TSetLit):
+                return self._a(args, 0)
+            return "set(" + self._a(args, 0) + ")"
         if name == "ToString":
             return "str(" + self._a(args, 0) + ")"
         if name == "ParseInt":

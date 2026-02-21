@@ -1875,6 +1875,14 @@ class _PerlEmitter:
                 + self._a(args, 0)
                 + "}; $__s }"
             )
+        if name == "SetFromList":
+            if isinstance(args[0].value, TSetLit):
+                return self._a(args, 0)
+            return (
+                "do { my $__s = {}; $__s->{$_} = 1 for @{"
+                + self._a(args, 0)
+                + "}; $__s }"
+            )
         if name == "ToString":
             inner_expr = args[0].value
             inner = self._expr(inner_expr)

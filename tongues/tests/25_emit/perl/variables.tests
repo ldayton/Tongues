@@ -1,2 +1,5 @@
 === module-level constant
 my $GREETING = "hello";
+
+=== module-level frozenset constant
+my $WORDS = do { my $__s = {}; $__s->{$_} = 1 for ("hello", "world"); $__s };
