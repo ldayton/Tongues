@@ -3662,7 +3662,9 @@ class Checker:
                         return elem
                 if isinstance(t, TupleT) and len(t.elements) == 0:
                     return INT_T
-                self.error("Sum requires list[int], list[float], set[int], or set[float]", pos)
+                self.error(
+                    "Sum requires list[int], list[float], set[int], or set[float]", pos
+                )
             return None
         if name == "Pow":
             if not _bctx_require(ctx, 2):
@@ -4426,7 +4428,9 @@ class Checker:
                 and not type_eq(t, STRING_T)
                 and not type_eq(t, BYTES_T)
             ):
-                self.error("ReplaceCount requires string or bytes as first argument", pos)
+                self.error(
+                    "ReplaceCount requires string or bytes as first argument", pos
+                )
             if t is not None and type_eq(t, BYTES_T):
                 return BYTES_T
             return STRING_T

@@ -1660,7 +1660,9 @@ class _PerlEmitter:
         if name == "RFind":
             return "rindex(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Count":
-            if self._is_string_expr(args[0].value) or self._is_bytes_expr(args[0].value):
+            if self._is_string_expr(args[0].value) or self._is_bytes_expr(
+                args[0].value
+            ):
                 if isinstance(args[1].value, TStringLit):
                     pat = _escape_perl_regex(args[1].value.value)
                     return "() = " + self._a(args, 0) + " =~ /" + pat + "/g"
