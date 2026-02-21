@@ -235,10 +235,14 @@ def _scan_imports(
                 for fld in decl.fields:
                     if isinstance(fld.typ, (TListType, TMapType, TSetType)):
                         needs_field = True
+                    if fld.has_default and isinstance(fld.typ, TIdentType):
+                        needs_field = True
         if isinstance(decl, TInterfaceDecl) and decl.fields:
             needs_dataclass = True
             for fld in decl.fields:
                 if isinstance(fld.typ, (TListType, TMapType, TSetType)):
+                    needs_field = True
+                if fld.has_default and isinstance(fld.typ, TIdentType):
                     needs_field = True
         if isinstance(decl, (TFnDecl, TStructDecl)):
             r_sys, r_math, r_os = _scan_decl_builtins(decl)
@@ -585,16 +589,18 @@ class _PythonEmitter:
 
     def _emit_field(self, fld: TFieldDecl) -> None:
         typ_str = self._type(fld.typ)
-        default = self._field_default(fld.typ)
+        default = self._field_default(fld.typ, fld.has_default)
         self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
 
-    def _field_default(self, typ: TType) -> str:
+    def _field_default(self, typ: TType, has_default: bool = False) -> str:
         if isinstance(typ, TListType):
             return "field(default_factory=list)"
         if isinstance(typ, TMapType):
             return "field(default_factory=dict)"
         if isinstance(typ, TSetType):
             return "field(default_factory=set)"
+        if has_default and isinstance(typ, TIdentType) and typ.name in self.struct_names:
+            return "field(default_factory=" + typ.name + ")"
         return self._zero_value(typ)
 
     def _zero_value(self, typ: TType) -> str:
@@ -655,9 +661,10 @@ class _PythonEmitter:
                 if with_self:
                     parts.append("self")
                 continue
-            parts.append(
-                _restore_name(p.name, p.annotations) + ": " + self._type(p.typ)
-            )
+            s = _restore_name(p.name, p.annotations) + ": " + self._type(p.typ)
+            if p.has_default:
+                s = s + " = " + self._zero_value(p.typ)
+            parts.append(s)
         return ", ".join(parts)
 
     # ── Statements ────────────────────────────────────────────
@@ -1733,6 +1740,13 @@ class _PythonEmitter:
             if len(args) > 1:
                 return "assert " + cond + ", " + self._a(args, 1)
             return "assert " + cond
+        if name == "IsType":
+            type_arg = args[1].value
+            if isinstance(type_arg, TStringLit):
+                type_name = type_arg.value
+            else:
+                type_name = self._expr(type_arg)
+            return "isinstance(" + self._a(args, 0) + ", " + type_name + ")"
         # Fallback
         arg_strs = ", ".join(self._expr(a.value) for a in args)
         return name + "(" + arg_strs + ")"

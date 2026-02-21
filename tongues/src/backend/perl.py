@@ -2030,6 +2030,13 @@ class _PerlEmitter:
             if ann is not None and ann.get("provenance") == "f_string":
                 return self._format_interpolated(args)
             return self._format_call(args)
+        if name == "IsType":
+            type_arg = args[1].value
+            if isinstance(type_arg, TStringLit):
+                type_name = type_arg.value
+            else:
+                type_name = self._expr(type_arg)
+            return "eval { " + self._a(args, 0) + "->isa('" + type_name + "') }"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:

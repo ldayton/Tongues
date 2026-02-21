@@ -1,0 +1,2 @@
+=== struct field with struct default
+attr_accessor :name, :inner

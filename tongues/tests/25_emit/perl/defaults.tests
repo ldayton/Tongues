@@ -1,0 +1,2 @@
+=== method with default bool param
+sub parse {

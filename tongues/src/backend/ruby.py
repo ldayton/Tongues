@@ -750,7 +750,11 @@ class _RubyEmitter:
         for p in params:
             if p.typ is None:
                 continue
-            parts.append(_restore_name(p.name, p.annotations))
+            name = _restore_name(p.name, p.annotations)
+            if p.has_default:
+                parts.append(name + ": " + self._zero_value(p.typ))
+            else:
+                parts.append(name)
         return ", ".join(parts)
 
     # ── Statements ────────────────────────────────────────────
@@ -1991,6 +1995,13 @@ class _RubyEmitter:
             return self._a(args, 0) + " + " + self._a(args, 1)
         if name == "Format":
             return self._format_call(args, call)
+        if name == "IsType":
+            type_arg = args[1].value
+            if isinstance(type_arg, TStringLit):
+                type_name = type_arg.value
+            else:
+                type_name = self._expr(type_arg)
+            return self._a(args, 0) + ".is_a?(" + _safe_type_name(type_name) + ")"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:

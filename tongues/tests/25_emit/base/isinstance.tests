@@ -1,0 +1,13 @@
+=== isinstance check
+import sys
+class Animal:
+    name: str
+class Dog(Animal):
+    breed: str
+def main() -> None:
+    d: Dog = Dog(name="Rex", breed="Lab")
+    a: Animal = d
+    if isinstance(a, Dog):
+        print("yes")
+if __name__ == "__main__":
+    main()
