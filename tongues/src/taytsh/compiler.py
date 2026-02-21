@@ -29,6 +29,7 @@ from .ast import (
     TMapLit,
     TMatchStmt,
     TModule,
+    TParam,
     TNilLit,
     TOpAssignStmt,
     TPatternEnum,
@@ -49,6 +50,7 @@ from .ast import (
     TTupleAssignStmt,
     TTupleLit,
     TTryStmt,
+    TType,
     TUnaryOp,
     TVar,
     TWhileStmt,
@@ -77,7 +79,6 @@ from .check import (
     StructT,
     TupleT,
     Type,
-    UnionT,
     check_with_info,
     type_eq,
 )
@@ -128,7 +129,6 @@ from .bytecode import (
     OP_JUMP_IF_FALSE,
     OP_JUMP_IF_TRUE,
     OP_LOAD_BUILTIN,
-    OP_LOAD_CAPTURE,
     OP_LOAD_ENUM,
     OP_LOAD_GLOBAL,
     OP_LOAD_LOCAL,
@@ -168,13 +168,11 @@ from .bytecode import (
     OP_INT_ONE,
     StructDef,
     Val,
-    VBool,
     VByte,
     VBytes,
     VFloat,
     VFunc,
     VInt,
-    VNil,
     VRune,
     VStr,
 )
@@ -520,13 +518,13 @@ class Compiler:
             return "fn" + self._format_fn_sig(t)
         return "any"
 
-    def _resolve_param_type(self, p) -> Type:
+    def _resolve_param_type(self, p: TParam) -> Type:
         """Resolve a TParam's type to a checker Type."""
         if p.typ is None:
             return VOID_T
         return self._resolve_ttype(p.typ)
 
-    def _resolve_ttype(self, tt) -> Type:
+    def _resolve_ttype(self, tt: TType) -> Type:
         """Resolve a parse-time TType to a checker Type."""
         if isinstance(tt, TPrimitive):
             if tt.kind == "int":
@@ -559,7 +557,11 @@ class Compiler:
         if isinstance(tt, TListType):
             return ListT(kind="list", element=self._resolve_ttype(tt.element))
         if isinstance(tt, TMapType):
-            return MapT(kind="map", key=self._resolve_ttype(tt.key), value=self._resolve_ttype(tt.value))
+            return MapT(
+                kind="map",
+                key=self._resolve_ttype(tt.key),
+                value=self._resolve_ttype(tt.value),
+            )
         if isinstance(tt, TSetType):
             return SetT(kind="set", element=self._resolve_ttype(tt.element))
         return VOID_T
@@ -807,9 +809,7 @@ class Compiler:
         else:
             self._compile_for_iter(stmt, fc)
 
-    def _compile_for_range(
-        self, stmt: TForStmt, rng: TRange, fc: _FnCompiler
-    ) -> None:
+    def _compile_for_range(self, stmt: TForStmt, rng: TRange, fc: _FnCompiler) -> None:
         # Compile range args and emit GET_ITER
         for a in rng.args:
             self._compile_expr(a, fc)
@@ -849,7 +849,10 @@ class Compiler:
         # FOR_ITER checks index < len(collection)
         exit_jump = fc.emit_jump(OP_FOR_ITER, stmt.pos.line)
         # After FOR_ITER pushes current element (and optionally index)
-        if len(stmt.binding) >= 2 and stmt.annotations.get("iter_kind") == "tuple_unpack":
+        if (
+            len(stmt.binding) >= 2
+            and stmt.annotations.get("iter_kind") == "tuple_unpack"
+        ):
             # for a, b in list_of_tuples — stack has: index_val, tuple_element
             # Unpack tuple, then store each binding, then discard index
             n = len(stmt.binding)
@@ -998,7 +1001,7 @@ class Compiler:
             fc.patch_jump(finally_done)
 
     def _emit_catch_type_check(
-        self, types: list, fc: _FnCompiler, line: int
+        self, types: list[TType], fc: _FnCompiler, line: int
     ) -> None:
         if len(types) == 0:
             fc.emit(OP_POP, 0, line)
@@ -1050,7 +1053,7 @@ class Compiler:
         fc.emit(OP_TRUE, 0, line)
         fc.patch_jump(skip_pop)
 
-    def _type_name_str(self, ttype) -> str:
+    def _type_name_str(self, ttype: TType) -> str:
         if isinstance(ttype, TIdentType):
             return ttype.name
         if isinstance(ttype, TPrimitive):
@@ -1080,7 +1083,9 @@ class Compiler:
                 fc.emit(OP_POP, 0, case.pos.line)  # pop dup on failure path
             elif isinstance(case.pattern, TPatternEnum):
                 idx = len(fc.constants)
-                fc.constants.append(VStr(case.pattern.enum_name + "." + case.pattern.variant))
+                fc.constants.append(
+                    VStr(case.pattern.enum_name + "." + case.pattern.variant)
+                )
                 fc.emit(OP_MATCH_TYPE, idx, case.pos.line)
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
                 self._compile_block(case.body, fc)
@@ -1332,9 +1337,7 @@ class Compiler:
         else:
             fc.emit(OP_MOD_INT, 0, line)
 
-    def _emit_cmp(
-        self, typ: Type, cmp_kind: int, fc: _FnCompiler, line: int
-    ) -> None:
+    def _emit_cmp(self, typ: Type, cmp_kind: int, fc: _FnCompiler, line: int) -> None:
         if type_eq(typ, INT_T):
             fc.emit(OP_CMP_INT, cmp_kind, line)
         elif type_eq(typ, FLOAT_T):
@@ -1398,9 +1401,7 @@ class Compiler:
             self._compile_expr(a.value, fc)
         fc.emit(OP_CALL, len(expr.args), expr.pos.line)
 
-    def _compile_builtin_call(
-        self, name: str, expr: TCall, fc: _FnCompiler
-    ) -> None:
+    def _compile_builtin_call(self, name: str, expr: TCall, fc: _FnCompiler) -> None:
         bidx = _BUILTIN_INDEX[name]
         for a in expr.args:
             self._compile_expr(a.value, fc)
@@ -1566,16 +1567,24 @@ class Compiler:
             return VOID_T
         if isinstance(expr, TListLit):
             if len(expr.elements) > 0:
-                return ListT(kind="list", element=self._resolve_expr_type(expr.elements[0], fc))
+                return ListT(
+                    kind="list", element=self._resolve_expr_type(expr.elements[0], fc)
+                )
             return ListT(kind="list", element=VOID_T)
         if isinstance(expr, TMapLit):
             if len(expr.entries) > 0:
                 k, v = expr.entries[0]
-                return MapT(kind="map", key=self._resolve_expr_type(k, fc), value=self._resolve_expr_type(v, fc))
+                return MapT(
+                    kind="map",
+                    key=self._resolve_expr_type(k, fc),
+                    value=self._resolve_expr_type(v, fc),
+                )
             return MapT(kind="map", key=VOID_T, value=VOID_T)
         if isinstance(expr, TSetLit):
             if len(expr.elements) > 0:
-                return SetT(kind="set", element=self._resolve_expr_type(expr.elements[0], fc))
+                return SetT(
+                    kind="set", element=self._resolve_expr_type(expr.elements[0], fc)
+                )
             return SetT(kind="set", element=VOID_T)
         if isinstance(expr, TTupleLit):
             elts: list[Type] = []
@@ -1604,7 +1613,15 @@ class Compiler:
                 return INT_T
             if name in ("IntToFloat", "Sqrt"):
                 return FLOAT_T
-            if name in ("FloatToInt", "Round", "Floor", "Ceil", "ByteToInt", "RuneToInt", "ParseInt"):
+            if name in (
+                "FloatToInt",
+                "Round",
+                "Floor",
+                "Ceil",
+                "ByteToInt",
+                "RuneToInt",
+                "ParseInt",
+            ):
                 return INT_T
             if name == "ParseFloat":
                 return FLOAT_T
@@ -1612,9 +1629,37 @@ class Compiler:
                 return BYTE_T
             if name == "RuneFromInt":
                 return RUNE_T
-            if name in ("IsNaN", "IsInf", "IsNil", "IsType", "Contains", "StartsWith", "EndsWith", "IsDigit", "IsAlpha", "IsAlnum", "IsSpace", "IsUpper", "IsLower"):
+            if name in (
+                "IsNaN",
+                "IsInf",
+                "IsNil",
+                "IsType",
+                "Contains",
+                "StartsWith",
+                "EndsWith",
+                "IsDigit",
+                "IsAlpha",
+                "IsAlnum",
+                "IsSpace",
+                "IsUpper",
+                "IsLower",
+            ):
                 return BOOL_T
-            if name in ("Upper", "Lower", "Trim", "TrimStart", "TrimEnd", "Join", "Replace", "ReplaceCount", "Repeat", "Reverse", "Concat", "Format", "FormatInt"):
+            if name in (
+                "Upper",
+                "Lower",
+                "Trim",
+                "TrimStart",
+                "TrimEnd",
+                "Join",
+                "Replace",
+                "ReplaceCount",
+                "Repeat",
+                "Reverse",
+                "Concat",
+                "Format",
+                "FormatInt",
+            ):
                 return STRING_T
             if name in ("Abs", "Min", "Max", "Sum", "Pow"):
                 # Return type matches first arg
@@ -1631,7 +1676,15 @@ class Compiler:
                 return VOID_T
             if name in ("WritelnOut", "WritelnErr", "WriteOut", "WriteErr"):
                 return VOID_T
-            if name in ("Append", "Insert", "Pop", "RemoveAt", "Delete", "Add", "Remove"):
+            if name in (
+                "Append",
+                "Insert",
+                "Pop",
+                "RemoveAt",
+                "Delete",
+                "Add",
+                "Remove",
+            ):
                 return VOID_T
             if name == "Get":
                 # Map.Get returns value type or nil

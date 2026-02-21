@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from src.taytsh.check import check
 from src.taytsh.emit import to_source
 
 from tests.check import Generator

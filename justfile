@@ -65,7 +65,7 @@ test-ordering-local:
 
 # Run taytsh tests locally
 test-taytsh-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" tests/test_taytsh_vm.py -v
 
 # Run all tests locally in a single pytest invocation
 test-all-local:
@@ -215,7 +215,7 @@ test-backend:
 test-taytsh:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" tests/test_taytsh_vm.py -v
 
 # Check if formatters are installed
 formatters:

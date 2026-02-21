@@ -9,7 +9,6 @@ from src.taytsh.ast import (
     TArg,
     TAssignStmt,
     TBinaryOp,
-    TBoolLit,
     TBreakStmt,
     TCall,
     TCatch,

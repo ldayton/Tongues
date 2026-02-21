@@ -3011,10 +3011,7 @@ class Checker:
                 pnames = self.fn_param_names.get(expr.func.name)
                 return self.check_fn_call(resolved, expr.args, expr.pos, pnames)
             # Builtin functions (after struct/interface/fn resolution)
-            if (
-                expr.func.name in BUILTIN_NAMES
-                and expr.func.name not in self.functions
-            ):
+            if expr.func.name in BUILTIN_NAMES and expr.func.name not in self.functions:
                 return self.check_builtin_call(
                     expr.func.name, expr.args, expr.pos, expected
                 )

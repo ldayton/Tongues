@@ -89,7 +89,6 @@ from .bytecode import (
     OP_UNPACK,
     OP_INT_ZERO,
     OP_INT_ONE,
-    StructDef,
     Val,
     VBool,
     VByte,
@@ -180,6 +179,15 @@ def _isinf(x: float) -> bool:
     return x == float("inf") or x == float("-inf")
 
 
+def _fmod(a: float, b: float) -> float:
+    """IEEE 754 remainder (truncation semantics, sign follows dividend)."""
+    result = a % b
+    # Python % uses floor division; correct sign to follow dividend
+    if result != 0.0 and (result < 0) != (a < 0):
+        result -= b
+    return result
+
+
 def _val_to_string(v: Val) -> str:
     if isinstance(v, VStr):
         return v.value
@@ -193,8 +201,7 @@ def _val_to_string(v: Val) -> str:
             return "Inf"
         if f == float("-inf"):
             return "-Inf"
-        import math
-        if f == 0.0 and math.copysign(1.0, f) < 0:
+        if f == 0.0 and str(f) == "-0.0":
             return "-0.0"
         if f == int(f) and not _isinf(f):
             return str(int(f)) + ".0"
@@ -208,7 +215,13 @@ def _val_to_string(v: Val) -> str:
     if isinstance(v, VRune):
         return v.value
     if isinstance(v, VBytes):
-        hex_chars = "".join(f"\\x{b:02x}" for b in v.value)
+        hex_parts: list[str] = []
+        for b in v.value:
+            h = hex(b)[2:]
+            if len(h) < 2:
+                h = "0" + h
+            hex_parts.append("\\x" + h)
+        hex_chars = "".join(hex_parts)
         return 'b"' + hex_chars + '"'
     if isinstance(v, VList):
         parts: list[str] = []
@@ -217,7 +230,7 @@ def _val_to_string(v: Val) -> str:
         return "[" + ", ".join(parts) + "]"
     if isinstance(v, VMap):
         pairs: list[tuple[Val, Val]] = list(zip(v.keys, v.values))
-        pairs.sort(key=lambda p: _sort_key(p[0]))
+        pairs.sort(key=_sort_key_pair)
         parts2: list[str] = []
         for k, val in pairs:
             ks = _val_to_string_quoted(k)
@@ -271,6 +284,29 @@ def _sort_key(v: Val) -> tuple[int, object]:
     if isinstance(v, VBool):
         return (4, v.value)
     return (9, 0)
+
+
+def _sort_key_pair(p: tuple[Val, Val]) -> tuple[int, object]:
+    return _sort_key(p[0])
+
+
+def _read_file_bytes(path: str) -> VBytes:
+    with open(path, "rb") as f:
+        data = f.read()
+    return VBytes(data)
+
+
+def _write_file_bytes(path: str, data: bytes) -> None:
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+def _extract_str_or_rune(v: Val) -> str | None:
+    if isinstance(v, VStr):
+        return v.value
+    if isinstance(v, VRune):
+        return v.value
+    return None
 
 
 def _val_eq(a: Val, b: Val) -> bool:
@@ -744,19 +780,25 @@ class _BuiltinDispatch:
 
     def _trim(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            chars = args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            chars = (
+                args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            )
             return VStr(args[0].value.strip(chars))
         return args[0]
 
     def _trim_start(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            chars = args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            chars = (
+                args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            )
             return VStr(args[0].value.lstrip(chars))
         return args[0]
 
     def _trim_end(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            chars = args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            chars = (
+                args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            )
             return VStr(args[0].value.rstrip(chars))
         return args[0]
 
@@ -769,10 +811,16 @@ class _BuiltinDispatch:
         return VList([])
 
     def _split_n(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VStr) and isinstance(args[1], VStr) and isinstance(args[2], VInt):
+        if (
+            isinstance(args[0], VStr)
+            and isinstance(args[1], VStr)
+            and isinstance(args[2], VInt)
+        ):
             n = args[2].value
             if n <= 0:
-                raise _VMThrow(_make_error_struct("ValueError", "SplitN max must be > 0"))
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "SplitN max must be > 0")
+                )
             parts = args[0].value.split(args[1].value, n - 1)
             return VList([VStr(p) for p in parts])
         return VList([])
@@ -827,13 +875,25 @@ class _BuiltinDispatch:
         return _FALSE_VAL
 
     def _replace(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VStr) and isinstance(args[1], VStr) and isinstance(args[2], VStr):
+        if (
+            isinstance(args[0], VStr)
+            and isinstance(args[1], VStr)
+            and isinstance(args[2], VStr)
+        ):
             return VStr(args[0].value.replace(args[1].value, args[2].value))
         return args[0]
 
     def _replace_count(self, args: list[Val]) -> Val:
-        if len(args) >= 4 and isinstance(args[0], VStr) and isinstance(args[1], VStr) and isinstance(args[2], VStr) and isinstance(args[3], VInt):
-            return VStr(args[0].value.replace(args[1].value, args[2].value, args[3].value))
+        if (
+            len(args) >= 4
+            and isinstance(args[0], VStr)
+            and isinstance(args[1], VStr)
+            and isinstance(args[2], VStr)
+            and isinstance(args[3], VInt)
+        ):
+            return VStr(
+                args[0].value.replace(args[1].value, args[2].value, args[3].value)
+            )
         return args[0]
 
     def _repeat(self, args: list[Val]) -> Val:
@@ -867,36 +927,28 @@ class _BuiltinDispatch:
         return _FALSE_VAL
 
     def _is_digit(self, args: list[Val]) -> Val:
-        s = self._extract_str_or_rune(args[0])
+        s = _extract_str_or_rune(args[0])
         return VBool(len(s) > 0 and s.isdigit()) if s is not None else _FALSE_VAL
 
     def _is_alpha(self, args: list[Val]) -> Val:
-        s = self._extract_str_or_rune(args[0])
+        s = _extract_str_or_rune(args[0])
         return VBool(len(s) > 0 and s.isalpha()) if s is not None else _FALSE_VAL
 
     def _is_alnum(self, args: list[Val]) -> Val:
-        s = self._extract_str_or_rune(args[0])
+        s = _extract_str_or_rune(args[0])
         return VBool(len(s) > 0 and s.isalnum()) if s is not None else _FALSE_VAL
 
     def _is_space(self, args: list[Val]) -> Val:
-        s = self._extract_str_or_rune(args[0])
+        s = _extract_str_or_rune(args[0])
         return VBool(len(s) > 0 and s.isspace()) if s is not None else _FALSE_VAL
 
     def _is_upper(self, args: list[Val]) -> Val:
-        s = self._extract_str_or_rune(args[0])
+        s = _extract_str_or_rune(args[0])
         return VBool(len(s) > 0 and s.isupper()) if s is not None else _FALSE_VAL
 
     def _is_lower(self, args: list[Val]) -> Val:
-        s = self._extract_str_or_rune(args[0])
+        s = _extract_str_or_rune(args[0])
         return VBool(len(s) > 0 and s.islower()) if s is not None else _FALSE_VAL
-
-    @staticmethod
-    def _extract_str_or_rune(v: Val) -> str | None:
-        if isinstance(v, VStr):
-            return v.value
-        if isinstance(v, VRune):
-            return v.value
-        return None
 
     def _format(self, args: list[Val]) -> Val:
         if len(args) < 1 or not isinstance(args[0], VStr):
@@ -969,13 +1021,15 @@ class _BuiltinDispatch:
         a, b = args[0], args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             if b.value < 0:
-                raise _VMThrow(_make_error_struct("ValueError", "negative exponent in integer Pow"))
-            r = a.value ** b.value
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "negative exponent in integer Pow")
+                )
+            r = a.value**b.value
             if r > _INT64_MAX or r < _INT64_MIN:
                 raise _VMThrow(_make_error_struct("OverflowError", "integer overflow"))
             return VInt(r)
         if isinstance(a, VFloat) and isinstance(b, VFloat):
-            return VFloat(a.value ** b.value)
+            return VFloat(a.value**b.value)
         return _ZERO_INT
 
     def _round(self, args: list[Val]) -> Val:
@@ -985,7 +1039,9 @@ class _BuiltinDispatch:
             if _isnan(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot round NaN"))
             if _isinf(f):
-                raise _VMThrow(_make_error_struct("ValueError", "cannot round Infinity"))
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "cannot round Infinity")
+                )
             # Round half away from zero
             if f >= 0:
                 return VInt(int(f + 0.5))
@@ -1000,7 +1056,9 @@ class _BuiltinDispatch:
             if _isnan(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot floor NaN"))
             if _isinf(f):
-                raise _VMThrow(_make_error_struct("ValueError", "cannot floor Infinity"))
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "cannot floor Infinity")
+                )
             return VInt(_floor(f))
         return _ZERO_INT
 
@@ -1019,11 +1077,17 @@ class _BuiltinDispatch:
         a, b = args[0], args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             if b.value == 0:
-                raise _VMThrow(_make_error_struct("ZeroDivisionError", "division by zero"))
+                raise _VMThrow(
+                    _make_error_struct("ZeroDivisionError", "division by zero")
+                )
             q = int(a.value / b.value)
             if (a.value < 0) != (b.value < 0) and a.value % b.value != 0:
                 q = q
-            q2 = a.value // b.value if (a.value >= 0 and b.value > 0) or (a.value <= 0 and b.value < 0) else -(abs(a.value) // abs(b.value))
+            q2 = (
+                a.value // b.value
+                if (a.value >= 0 and b.value > 0) or (a.value <= 0 and b.value < 0)
+                else -(abs(a.value) // abs(b.value))
+            )
             # Truncation toward zero
             if a.value >= 0:
                 q2 = a.value // b.value
@@ -1062,9 +1126,13 @@ class _BuiltinDispatch:
         if isinstance(args[0], VFloat):
             f = args[0].value
             if _isnan(f):
-                raise _VMThrow(_make_error_struct("ValueError", "cannot convert NaN to int"))
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "cannot convert NaN to int")
+                )
             if _isinf(f):
-                raise _VMThrow(_make_error_struct("ValueError", "cannot convert Infinity to int"))
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "cannot convert Infinity to int")
+                )
             return VInt(int(f))
         return _ZERO_INT
 
@@ -1097,7 +1165,9 @@ class _BuiltinDispatch:
             try:
                 return VInt(int(s, base))
             except (ValueError, OverflowError):
-                raise _VMThrow(_make_error_struct("ValueError", "invalid integer: " + s))
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "invalid integer: " + s)
+                )
         return _ZERO_INT
 
     def _parse_float(self, args: list[Val]) -> Val:
@@ -1174,7 +1244,11 @@ class _BuiltinDispatch:
             items = list(args[0].items)
             for item in items:
                 if isinstance(item, VFloat) and _isnan(item.value):
-                    raise _VMThrow(_make_error_struct("ValueError", "cannot sort list containing NaN"))
+                    raise _VMThrow(
+                        _make_error_struct(
+                            "ValueError", "cannot sort list containing NaN"
+                        )
+                    )
             _sort_vals(items)
             return VList(items)
         return VList([])
@@ -1395,14 +1469,18 @@ class _BuiltinDispatch:
     def _floor_div(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
             if args[1].value == 0:
-                raise _VMThrow(_make_error_struct("ZeroDivisionError", "division by zero"))
+                raise _VMThrow(
+                    _make_error_struct("ZeroDivisionError", "division by zero")
+                )
             return VInt(args[0].value // args[1].value)
         return _ZERO_INT
 
     def _python_mod(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
             if args[1].value == 0:
-                raise _VMThrow(_make_error_struct("ZeroDivisionError", "division by zero"))
+                raise _VMThrow(
+                    _make_error_struct("ZeroDivisionError", "division by zero")
+                )
             return VInt(args[0].value % args[1].value)
         return _ZERO_INT
 
@@ -1442,8 +1520,15 @@ class _BuiltinDispatch:
             return VList([VInt(i) for i in range(args[0].value)])
         if len(args) == 2 and isinstance(args[0], VInt) and isinstance(args[1], VInt):
             return VList([VInt(i) for i in range(args[0].value, args[1].value)])
-        if len(args) >= 3 and isinstance(args[0], VInt) and isinstance(args[1], VInt) and isinstance(args[2], VInt):
-            return VList([VInt(i) for i in range(args[0].value, args[1].value, args[2].value)])
+        if (
+            len(args) >= 3
+            and isinstance(args[0], VInt)
+            and isinstance(args[1], VInt)
+            and isinstance(args[2], VInt)
+        ):
+            return VList(
+                [VInt(i) for i in range(args[0].value, args[1].value, args[2].value)]
+            )
         return VList([])
 
     def _list_compare(self, args: list[Val]) -> Val:
@@ -1480,7 +1565,12 @@ class _BuiltinDispatch:
         return VList([])
 
     def _replace_slice(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VList) and isinstance(args[1], VInt) and isinstance(args[2], VInt) and isinstance(args[3], VList):
+        if (
+            isinstance(args[0], VList)
+            and isinstance(args[1], VInt)
+            and isinstance(args[2], VInt)
+            and isinstance(args[3], VList)
+        ):
             lst = args[0]
             lo = args[1].value
             hi = args[2].value
@@ -1536,7 +1626,7 @@ class _BuiltinDispatch:
             n = args[0].value
             data = self.vm.stdin_data
             pos = self.vm.stdin_pos
-            chunk = data[pos:pos + n]
+            chunk = data[pos : pos + n]
             self.vm.stdin_pos = pos + len(chunk)
             return VBytes(chunk)
         return VBytes(b"")
@@ -1544,8 +1634,7 @@ class _BuiltinDispatch:
     def _read_file(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
             try:
-                with open(args[0].value, "rb") as f:
-                    return VBytes(f.read())
+                return _read_file_bytes(args[0].value)
             except OSError as e:
                 raise _VMThrow(_make_error_struct("IOError", str(e)))
         return VBytes(b"")
@@ -1553,8 +1642,7 @@ class _BuiltinDispatch:
     def _write_file(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr) and isinstance(args[1], VBytes):
             try:
-                with open(args[0].value, "wb") as f:
-                    f.write(args[1].value)
+                _write_file_bytes(args[0].value, args[1].value)
             except OSError as e:
                 raise _VMThrow(_make_error_struct("IOError", str(e)))
         return _NONE_VAL
@@ -1570,7 +1658,9 @@ class _BuiltinDispatch:
         return _NONE_VAL
 
 
-def _val_is_type(v: Val, type_name: str, interface_defs: list[InterfaceDef] | None = None) -> bool:
+def _val_is_type(
+    v: Val, type_name: str, interface_defs: list[InterfaceDef] | None = None
+) -> bool:
     if isinstance(v, VStruct):
         if v.type_name == type_name:
             return True
@@ -1800,7 +1890,9 @@ class VM:
                 if isinstance(a, VInt) and isinstance(b, VInt):
                     r = a.value + b.value
                     if r > _INT64_MAX or r < _INT64_MIN:
-                        self._throw(_make_error_struct("OverflowError", "integer overflow"))
+                        self._throw(
+                            _make_error_struct("OverflowError", "integer overflow")
+                        )
                         continue
                     self.stack.append(VInt(r))
                 else:
@@ -1832,7 +1924,9 @@ class VM:
                 if isinstance(a, VInt) and isinstance(b, VInt):
                     r = a.value - b.value
                     if r > _INT64_MAX or r < _INT64_MIN:
-                        self._throw(_make_error_struct("OverflowError", "integer overflow"))
+                        self._throw(
+                            _make_error_struct("OverflowError", "integer overflow")
+                        )
                         continue
                     self.stack.append(VInt(r))
                 else:
@@ -1857,7 +1951,9 @@ class VM:
                 if isinstance(a, VInt) and isinstance(b, VInt):
                     r = a.value * b.value
                     if r > _INT64_MAX or r < _INT64_MIN:
-                        self._throw(_make_error_struct("OverflowError", "integer overflow"))
+                        self._throw(
+                            _make_error_struct("OverflowError", "integer overflow")
+                        )
                         continue
                     self.stack.append(VInt(r))
                 else:
@@ -1881,12 +1977,20 @@ class VM:
                 a = self.stack.pop()
                 if isinstance(a, VByte) and isinstance(b, VByte):
                     if b.value == 0:
-                        self._throw(_make_error_struct("ZeroDivisionError", "integer division by zero"))
+                        self._throw(
+                            _make_error_struct(
+                                "ZeroDivisionError", "integer division by zero"
+                            )
+                        )
                         continue
                     self.stack.append(VByte(a.value // b.value))
                 elif isinstance(a, VInt) and isinstance(b, VInt):
                     if b.value == 0:
-                        self._throw(_make_error_struct("ZeroDivisionError", "integer division by zero"))
+                        self._throw(
+                            _make_error_struct(
+                                "ZeroDivisionError", "integer division by zero"
+                            )
+                        )
                         continue
                     # Truncate toward zero
                     if (a.value < 0) != (b.value < 0) and a.value % b.value != 0:
@@ -1915,12 +2019,20 @@ class VM:
                 a = self.stack.pop()
                 if isinstance(a, VByte) and isinstance(b, VByte):
                     if b.value == 0:
-                        self._throw(_make_error_struct("ZeroDivisionError", "integer modulo by zero"))
+                        self._throw(
+                            _make_error_struct(
+                                "ZeroDivisionError", "integer modulo by zero"
+                            )
+                        )
                         continue
                     self.stack.append(VByte(a.value % b.value))
                 elif isinstance(a, VInt) and isinstance(b, VInt):
                     if b.value == 0:
-                        self._throw(_make_error_struct("ZeroDivisionError", "integer modulo by zero"))
+                        self._throw(
+                            _make_error_struct(
+                                "ZeroDivisionError", "integer modulo by zero"
+                            )
+                        )
                         continue
                     # Remainder follows dividend sign (truncation toward zero)
                     if a.value == 0:
@@ -1937,11 +2049,13 @@ class VM:
                 a = self.stack.pop()
                 if isinstance(a, VFloat) and isinstance(b, VFloat):
                     if b.value == 0.0:
-                        self._throw(_make_error_struct("ZeroDivisionError", "float modulo by zero"))
+                        self._throw(
+                            _make_error_struct(
+                                "ZeroDivisionError", "float modulo by zero"
+                            )
+                        )
                         continue
-                    # IEEE 754 remainder
-                    import math
-                    self.stack.append(VFloat(math.fmod(a.value, b.value)))
+                    self.stack.append(VFloat(_fmod(a.value, b.value)))
                 else:
                     self.stack.append(VFloat(0.0))
             elif op == OP_NEG_INT:
@@ -1951,7 +2065,9 @@ class VM:
                 elif isinstance(v, VInt):
                     r = -v.value
                     if r > _INT64_MAX:
-                        self._throw(_make_error_struct("OverflowError", "integer overflow"))
+                        self._throw(
+                            _make_error_struct("OverflowError", "integer overflow")
+                        )
                         continue
                     self.stack.append(VInt(r))
                 else:
@@ -2002,7 +2118,11 @@ class VM:
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
                     if b.value < 0 or b.value >= 64:
-                        self._throw(_make_error_struct("OverflowError", "shift amount out of range"))
+                        self._throw(
+                            _make_error_struct(
+                                "OverflowError", "shift amount out of range"
+                            )
+                        )
                         continue
                     r = a.value << b.value
                     r = ((r - _INT64_MIN) % (2**64)) + _INT64_MIN
@@ -2014,7 +2134,11 @@ class VM:
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
                     if b.value < 0 or b.value >= 64:
-                        self._throw(_make_error_struct("OverflowError", "shift amount out of range"))
+                        self._throw(
+                            _make_error_struct(
+                                "OverflowError", "shift amount out of range"
+                            )
+                        )
                         continue
                     self.stack.append(VInt(a.value >> b.value))
                 else:
@@ -2024,7 +2148,11 @@ class VM:
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
                     if b.value < 0 or b.value >= 64:
-                        self._throw(_make_error_struct("OverflowError", "shift amount out of range"))
+                        self._throw(
+                            _make_error_struct(
+                                "OverflowError", "shift amount out of range"
+                            )
+                        )
                         continue
                     mask = (1 << 64) - 1
                     ua = a.value & mask
@@ -2239,7 +2367,13 @@ class VM:
                 type_name_val = frame.code.constants[arg]
                 val = self.stack.pop()
                 if isinstance(type_name_val, VStr):
-                    self.stack.append(_TRUE_VAL if _val_is_type(val, type_name_val.value, self.module.interface_defs) else _FALSE_VAL)
+                    self.stack.append(
+                        _TRUE_VAL
+                        if _val_is_type(
+                            val, type_name_val.value, self.module.interface_defs
+                        )
+                        else _FALSE_VAL
+                    )
                 else:
                     self.stack.append(_FALSE_VAL)
             elif op == OP_MATCH_TYPE:
@@ -2250,13 +2384,23 @@ class VM:
                     if "." in tn:
                         # Enum variant match
                         if isinstance(val, VEnum):
-                            self.stack.append(_TRUE_VAL if (val.enum_name + "." + val.variant) == tn else _FALSE_VAL)
+                            self.stack.append(
+                                _TRUE_VAL
+                                if (val.enum_name + "." + val.variant) == tn
+                                else _FALSE_VAL
+                            )
                         else:
                             self.stack.append(_FALSE_VAL)
                     elif tn == "nil":
-                        self.stack.append(_TRUE_VAL if isinstance(val, VNil) else _FALSE_VAL)
+                        self.stack.append(
+                            _TRUE_VAL if isinstance(val, VNil) else _FALSE_VAL
+                        )
                     else:
-                        self.stack.append(_TRUE_VAL if _val_is_type(val, tn, self.module.interface_defs) else _FALSE_VAL)
+                        self.stack.append(
+                            _TRUE_VAL
+                            if _val_is_type(val, tn, self.module.interface_defs)
+                            else _FALSE_VAL
+                        )
                 else:
                     self.stack.append(_FALSE_VAL)
 
@@ -2374,12 +2518,16 @@ class VM:
                     # Check parent struct
                     parent = sd.parent
                     while parent is not None:
+                        found_parent = False
                         for psd in self.module.struct_defs:
                             if psd.name == parent:
+                                found_parent = True
                                 pi = 0
                                 while pi < len(psd.method_names):
                                     if psd.method_names[pi] == method_name:
-                                        code = self.module.code_objects[psd.method_indices[pi]]
+                                        code = self.module.code_objects[
+                                            psd.method_indices[pi]
+                                        ]
                                         bp = len(self.stack)
                                         self.stack.append(obj)
                                         for a in args:
@@ -2388,15 +2536,21 @@ class VM:
                                         while filled < code.local_count:
                                             self.stack.append(_NONE_VAL)
                                             filled += 1
-                                        self.frames.append(Frame(code=code, ip=0, bp=bp))
+                                        self.frames.append(
+                                            Frame(code=code, ip=0, bp=bp)
+                                        )
                                         return
                                     pi += 1
                                 parent = psd.parent
                                 break
-                        else:
+                        if not found_parent:
                             parent = None
                     break
-        self._throw(_make_error_struct("TypeError", "no method '" + method_name + "' on " + _val_to_string(obj)))
+        self._throw(
+            _make_error_struct(
+                "TypeError", "no method '" + method_name + "' on " + _val_to_string(obj)
+            )
+        )
 
     def _find_method(self, type_name: str, method_name: str) -> int | None:
         """Find a method index for a struct type. Returns code object index or None."""
@@ -2409,8 +2563,10 @@ class VM:
                     mi += 1
                 parent = sd.parent
                 while parent is not None:
+                    found_parent = False
                     for psd in self.module.struct_defs:
                         if psd.name == parent:
+                            found_parent = True
                             pi = 0
                             while pi < len(psd.method_names):
                                 if psd.method_names[pi] == method_name:
@@ -2418,7 +2574,7 @@ class VM:
                                 pi += 1
                             parent = psd.parent
                             break
-                    else:
+                    if not found_parent:
                         parent = None
                 break
         return None
@@ -2474,7 +2630,9 @@ class VM:
                 if i < 0:
                     i += len(obj.items)
                 if i < 0 or i >= len(obj.items):
-                    self._throw(_make_error_struct("IndexError", "list index out of range"))
+                    self._throw(
+                        _make_error_struct("IndexError", "list index out of range")
+                    )
                     return
                 self.stack.append(obj.items[i])
                 return
@@ -2485,7 +2643,9 @@ class VM:
                     self.stack.append(obj.values[i])
                     return
                 i += 1
-            self._throw(_make_error_struct("KeyError", "key not found: " + _val_to_string(idx)))
+            self._throw(
+                _make_error_struct("KeyError", "key not found: " + _val_to_string(idx))
+            )
             return
         if isinstance(obj, VStr):
             if isinstance(idx, VInt):
@@ -2493,7 +2653,9 @@ class VM:
                 if i < 0:
                     i += len(obj.value)
                 if i < 0 or i >= len(obj.value):
-                    self._throw(_make_error_struct("IndexError", "string index out of range"))
+                    self._throw(
+                        _make_error_struct("IndexError", "string index out of range")
+                    )
                     return
                 self.stack.append(VRune(obj.value[i]))
                 return
@@ -2503,7 +2665,9 @@ class VM:
                 if i < 0:
                     i += len(obj.value)
                 if i < 0 or i >= len(obj.value):
-                    self._throw(_make_error_struct("IndexError", "bytes index out of range"))
+                    self._throw(
+                        _make_error_struct("IndexError", "bytes index out of range")
+                    )
                     return
                 self.stack.append(VByte(obj.value[i]))
                 return
@@ -2511,7 +2675,9 @@ class VM:
             if isinstance(idx, VInt):
                 i = idx.value
                 if i < 0 or i >= len(obj.items):
-                    self._throw(_make_error_struct("IndexError", "tuple index out of range"))
+                    self._throw(
+                        _make_error_struct("IndexError", "tuple index out of range")
+                    )
                     return
                 self.stack.append(obj.items[i])
                 return
@@ -2585,11 +2751,13 @@ class VM:
             type_name_val = frame.code.constants[arg]
             if isinstance(type_name_val, VStr):
                 message = self.stack.pop()
-                self.stack.append(VStruct(
-                    type_name_val.value,
-                    ["message"],
-                    [message],
-                ))
+                self.stack.append(
+                    VStruct(
+                        type_name_val.value,
+                        ["message"],
+                        [message],
+                    )
+                )
             else:
                 self.stack.append(_NONE_VAL)
 
@@ -2647,7 +2815,11 @@ class VM:
             step = self.stack.pop()
             end = self.stack.pop()
             start = self.stack.pop()
-            if isinstance(start, VInt) and isinstance(end, VInt) and isinstance(step, VInt):
+            if (
+                isinstance(start, VInt)
+                and isinstance(end, VInt)
+                and isinstance(step, VInt)
+            ):
                 self.stack.append(start)
                 self.stack.append(end)
                 self.stack.append(step)
@@ -2666,7 +2838,11 @@ class VM:
         step = self.stack[sp - 1]
         end = self.stack[sp - 2]
         current = self.stack[sp - 3]
-        if isinstance(current, VInt) and isinstance(end, VInt) and isinstance(step, VInt):
+        if (
+            isinstance(current, VInt)
+            and isinstance(end, VInt)
+            and isinstance(step, VInt)
+        ):
             if step.value > 0:
                 if current.value >= end.value:
                     frame.ip += jump_offset
