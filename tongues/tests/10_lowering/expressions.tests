@@ -143,6 +143,13 @@ def f(t: tuple[int, str]) -> int:
 t.0
 ---
 
+=== tuple negative index becomes field access
+def f(t: tuple[int, int, int, int, int]) -> int:
+    return t[-1]
+---
+t.4
+---
+
 === list comprehension
 def f(xs: list[int]) -> list[int]:
     return [x * 2 for x in xs]

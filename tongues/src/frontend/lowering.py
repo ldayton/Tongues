@@ -3203,7 +3203,11 @@ def _is_sys_argv(node: ASTNode) -> bool:
     if not _is_ast(node, "Attribute"):
         return False
     obj = get_node(node, "value")
-    return _is_ast(obj, "Name") and get_str(obj, "id") == "sys" and get_str(node, "attr") == "argv"
+    return (
+        _is_ast(obj, "Name")
+        and get_str(obj, "id") == "sys"
+        and get_str(node, "attr") == "argv"
+    )
 
 
 def _get_const_int(node: ASTNode) -> int | None:
@@ -5423,7 +5427,9 @@ def _build_struct(
                             )
                         )
                     ftype = _typenode_to_ttype(pos, finfo.typ)
-                    iface_fields.append(TFieldDecl(pos, fname, ftype, finfo.has_default))
+                    iface_fields.append(
+                        TFieldDecl(pos, fname, ftype, finfo.has_default)
+                    )
                 j += 1
         return TInterfaceDecl(pos, name, ann, iface_fields)
     # Get bases

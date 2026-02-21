@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..frontend.types import JsonValue, JStr, JInt, JFloat, JBool, JNull, JList, JDict
 
@@ -175,7 +175,7 @@ class TInterfaceDecl(TDecl):
 
     name: str
     annotations: Ann
-    fields: list[TFieldDecl] = field(default_factory=list)
+    fields: list[TFieldDecl]
 
 
 @dataclass
@@ -1187,8 +1187,10 @@ def _decl_json(decl: TModuleItem) -> JsonValue:
         )
     if isinstance(decl, TInterfaceDecl):
         flist: list[JsonValue] = []
-        for f in decl.fields:
-            flist.append(_field_json(f))
+        fi = 0
+        while fi < len(decl.fields):
+            flist.append(_field_decl_json(decl.fields[fi]))
+            fi += 1
         return JDict(
             {
                 "pos": _pos_json(decl.pos),

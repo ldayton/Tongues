@@ -109,6 +109,20 @@ def f(n: Node) -> bool:
 Leaf
 ---
 
+=== sum of list
+def f(xs: list[int]) -> int:
+    return sum(xs)
+---
+Sum(xs)
+---
+
+=== round float
+def f(x: float) -> int:
+    return round(x)
+---
+Round(x)
+---
+
 === list copy
 def f(xs: list[int]) -> list[int]:
     return list(xs)
