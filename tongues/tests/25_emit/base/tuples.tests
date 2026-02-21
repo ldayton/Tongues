@@ -1,0 +1,24 @@
+=== tuple assign in if-body used after
+def get_pair() -> tuple[str, int]:
+    return ("hello", 0)
+def main() -> None:
+    a: str = ""
+    b: int = 0
+    if len("x") > 0:
+        a, b = get_pair()
+    print(a)
+    print(str(b))
+if __name__ == "__main__":
+    main()
+
+=== tuple assign in if-body one target used after
+def get_pair() -> tuple[str, int]:
+    return ("hello", 0)
+def main() -> None:
+    a: str = ""
+    b: int = 0
+    if len("x") > 0:
+        a, b = get_pair()
+    print(a)
+if __name__ == "__main__":
+    main()
