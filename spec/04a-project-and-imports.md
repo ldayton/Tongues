@@ -71,7 +71,7 @@ Resolution returns a path in the universe or failure. Failure is an unresolved i
 
 Build a directed graph: file A depends on file B if A has a project import that resolves to B. Compute a topological sort of this graph.
 
-Circular imports are allowed. When cycles exist, the topological sort breaks them arbitrarily (lexicographic order as tiebreaker). This is safe because the merge produces a single flat namespace where all names are visible regardless of declaration order — the same forward-reference semantics as Taytsh (see `12-taytsh-ir-spec.md`, Module Structure).
+Circular imports are allowed. When cycles exist, the topological sort breaks them arbitrarily (lexicographic order as tiebreaker). This is safe for the IR — the Taytsh type checker resolves all names regardless of position (see `12-taytsh-ir-spec.md`, Module Structure). However, the emitted target code may require declarations in dependency order. Backends handle this with a separate type-dependency sort (see `21-BACKEND-SPEC.md`, Declaration Ordering).
 
 ## Name Collection
 
