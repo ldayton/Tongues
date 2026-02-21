@@ -924,7 +924,7 @@ class _PerlEmitter:
         if len(binding) == 2:
             key_var = "$" + _restore_name(binding[0], ann)
             val_var = "$" + _restore_name(binding[1], ann)
-            if self._is_map_expr(iterable):
+            if self._is_map_expr(iterable) or ann.get("for.items") == "true":
                 self._line("for my " + key_var + " (keys %{" + it + "}) {")
                 self.indent += 1
                 self._line("my " + val_var + " = " + it + "->{" + key_var + "};")

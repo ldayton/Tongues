@@ -703,9 +703,7 @@ class _PythonEmitter:
         else:
             iterable = self._expr(for_stmt.iterable)
         binders = ", ".join(_restore_name(b, for_stmt.annotations) for b in binding)
-        iter_is_map = not isinstance(for_stmt.iterable, TRange) and self._is_map_type(
-            for_stmt.iterable
-        )
+        iter_is_map = self._is_map_for(for_stmt)
         if iter_is_map:
             iterable += ".items()"
         elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
@@ -977,7 +975,7 @@ class _PythonEmitter:
                 + ":"
             )
         elif len(binding) == 2:
-            iter_is_map = self._is_map_type(stmt.iterable)
+            iter_is_map = self._is_map_for(stmt)
             method = ".items()" if iter_is_map else ""
             wrapper = "" if iter_is_map else "enumerate("
             suffix = "" if iter_is_map else ")"
@@ -1041,6 +1039,12 @@ class _PythonEmitter:
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
         return False
+
+    def _is_map_for(self, stmt: TForStmt) -> bool:
+        """Check if a for-loop iterates over map items."""
+        if stmt.annotations.get("for.items") == "true":
+            return True
+        return not isinstance(stmt.iterable, TRange) and self._is_map_type(stmt.iterable)
 
     def _emit_try(self, stmt: TTryStmt) -> None:
         self._line("try:")

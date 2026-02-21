@@ -4906,7 +4906,10 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 env.var_types[binding[0]] = obj_type.key
                 env.var_types[binding[1]] = obj_type.value
             body_stmts = _lower_stmts(body, env, ctx)
-            pre_stmts.append(TForStmt(pos, binding, iter_expr, body_stmts, b_ann))
+            for_ann: Ann = {}
+            for_ann.update(b_ann)
+            for_ann["for.items"] = "true"
+            pre_stmts.append(TForStmt(pos, binding, iter_expr, body_stmts, for_ann))
             return pre_stmts
     # Tuple iteration: for x in t → for x in [t.0, t.1, ...]
     iter_type = _infer_expr_type(iter_node, env, ctx)
