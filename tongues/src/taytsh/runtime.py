@@ -2899,7 +2899,6 @@ def _bi_replace_count(rt: Runtime, args: list[Value]) -> Value:
     return VString(s.value.replace(old.value, repl.value, count.value))
 
 
-
 def _bi_starts_with(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     pre = args[1]
