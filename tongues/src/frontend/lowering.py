@@ -5342,7 +5342,43 @@ def _build_struct(
             parent_root = ctx.hier_result.root_of(bases_list[0])
             if parent_root is not None:
                 ann = {"_parent_interface": parent_root}
-        return TInterfaceDecl(pos, name, ann)
+        iface_fields: list[TFieldDecl] = []
+        cls_info = ctx.field_result.classes.get(name)
+        if cls_info is not None:
+            seen: set[str] = set()
+            fkeys: list[str] = []
+            if len(cls_info.init_params) > 0:
+                j = 0
+                while j < len(cls_info.init_params):
+                    p = cls_info.init_params[j]
+                    field_name = cls_info.param_to_field.get(p, p)
+                    if field_name not in seen:
+                        fkeys.append(field_name)
+                        seen.add(field_name)
+                    j += 1
+            for k in cls_info.fields:
+                if k not in seen:
+                    fkeys.append(k)
+                    seen.add(k)
+            j = 0
+            while j < len(fkeys):
+                fname = fkeys[j]
+                finfo = cls_info.fields.get(fname)
+                if finfo is not None:
+                    if contains_any(finfo.typ):
+                        sf = get_str(node, "_source_file")
+                        ctx.errors.append(
+                            LoweringError(
+                                get_int(node, "lineno"),
+                                get_int(node, "col_offset"),
+                                name + "." + fname + " has unresolved 'any' type",
+                                sf,
+                            )
+                        )
+                    ftype = _typenode_to_ttype(pos, finfo.typ)
+                    iface_fields.append(TFieldDecl(pos, fname, ftype, finfo.has_default))
+                j += 1
+        return TInterfaceDecl(pos, name, ann, iface_fields)
     # Get bases
     bases = get_nodes(node, "bases")
     parent: str | None = None

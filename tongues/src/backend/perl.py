@@ -352,6 +352,9 @@ class _PerlEmitter:
                     self._line()
                 self._line("package " + decl.name + ";")
                 current_package = decl.name
+                if decl.fields:
+                    self._line()
+                    self._emit_constructor(decl)
                 need_blank = True
                 continue
             if need_blank:
@@ -398,7 +401,7 @@ class _PerlEmitter:
             self._line()
             self._emit_method(method)
 
-    def _emit_constructor(self, decl: TStructDecl) -> None:
+    def _emit_constructor(self, decl: TStructDecl | TInterfaceDecl) -> None:
         self._line("sub new {")
         self.indent += 1
         args: list[str] = ["$class"]
@@ -2313,6 +2316,8 @@ def emit_perl(module: TModule) -> str:
             struct_fields[decl.name] = fnames
             for method in decl.methods:
                 function_names.add(method.name)
+        elif isinstance(decl, TInterfaceDecl) and decl.fields:
+            struct_fields[decl.name] = [f.name for f in decl.fields]
     emitter = _PerlEmitter(
         struct_names,
         enum_names,

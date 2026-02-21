@@ -562,6 +562,13 @@ class _RubyEmitter:
                 if need_blank:
                     self._line()
                 self._line("class " + _safe_type_name(decl.name))
+                if decl.fields:
+                    self.indent += 1
+                    attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
+                    self._line("attr_accessor " + attrs)
+                    self._line()
+                    self._emit_initialize(decl.fields, False)
+                    self.indent -= 1
                 self._line("end")
                 need_blank = True
                 continue
@@ -2068,6 +2075,8 @@ def emit_ruby(module: TModule) -> str:
             struct_fields[decl.name] = fnames
             for m in decl.methods:
                 fn_names.add(m.name)
+        elif isinstance(decl, TInterfaceDecl) and decl.fields:
+            struct_fields[decl.name] = [f.name for f in decl.fields]
         elif isinstance(decl, TEnumDecl):
             enum_names.add(decl.name)
     emitter = _RubyEmitter(

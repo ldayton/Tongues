@@ -235,6 +235,11 @@ def _scan_imports(
                 for fld in decl.fields:
                     if isinstance(fld.typ, (TListType, TMapType, TSetType)):
                         needs_field = True
+        if isinstance(decl, TInterfaceDecl) and decl.fields:
+            needs_dataclass = True
+            for fld in decl.fields:
+                if isinstance(fld.typ, (TListType, TMapType, TSetType)):
+                    needs_field = True
         if isinstance(decl, (TFnDecl, TStructDecl)):
             r_sys, r_math, r_os = _scan_decl_builtins(decl)
             if r_sys:
@@ -479,9 +484,14 @@ class _PythonEmitter:
                 if need_blank:
                     self._line()
                     self._line()
+                if decl.fields:
+                    self._line("@dataclass")
                 self._line("class " + decl.name + ":")
                 self.indent += 1
-                self._line("pass")
+                if not decl.fields:
+                    self._line("pass")
+                for fld in decl.fields:
+                    self._emit_field(fld)
                 self.indent -= 1
                 need_blank = True
                 continue
@@ -1821,6 +1831,8 @@ def emit_python(module: TModule) -> str:
             struct_fields[decl.name] = [f.name for f in decl.fields]
         elif isinstance(decl, TInterfaceDecl):
             struct_names.add(decl.name)
+            if decl.fields:
+                struct_fields[decl.name] = [f.name for f in decl.fields]
     emitter = _PythonEmitter(struct_names, struct_fields, module.strict_math)
     emitter.emit_module(module)
     return emitter.output()
