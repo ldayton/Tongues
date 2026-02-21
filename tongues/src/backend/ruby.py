@@ -1762,6 +1762,15 @@ class _RubyEmitter:
                 + self._a(args, 2)
                 + ")"
             )
+        if name == "ReplaceCount":
+            return (
+                self._a(args, 0)
+                + ".sub("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ")"
+            )
         if name == "StartsWith":
             return self._a(args, 0) + ".start_with?(" + self._a(args, 1) + ")"
         if name == "EndsWith":

@@ -901,6 +901,7 @@ BUILTIN_NAMES: set[str] = {
     "Count",
     "Contains",
     "Replace",
+    "ReplaceCount",
     "Repeat",
     "Reverse",
     "StartsWith",
@@ -4339,6 +4340,13 @@ class Checker:
             t = _bctx_arg(ctx, 0)
             if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
                 self.error("Replace requires string as first argument", pos)
+            return STRING_T
+        if name == "ReplaceCount":
+            if not _bctx_require(ctx, 4):
+                return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
+                self.error("ReplaceCount requires string as first argument", pos)
             return STRING_T
         if name in ("StartsWith", "EndsWith"):
             if not _bctx_require(ctx, 2):

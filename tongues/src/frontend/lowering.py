@@ -2857,6 +2857,8 @@ def _lower_string_method(
             return _make_call(pos, "SplitN", [obj, lowered[0], plus_one])
         return _make_call(pos, "Split", [obj] + lowered)
     if method == "replace":
+        if len(lowered) == 3:
+            return _make_call(pos, "ReplaceCount", [obj] + lowered)
         return _make_call(pos, "Replace", [obj] + lowered)
     if method == "count":
         return _make_call(pos, "Count", [obj] + lowered)
@@ -2897,7 +2899,7 @@ def _lower_string_method(
     if method == "encode":
         return _make_call(pos, "Encode", [obj])
     if method == "index":
-        return _make_call(pos, "IndexOf", [obj] + lowered)
+        return _make_call(pos, "Find", [obj] + lowered)
     return _make_method_call(pos, obj, method, lowered)
 
 

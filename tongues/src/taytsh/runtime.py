@@ -668,6 +668,7 @@ _RESERVED_BINDINGS: set[str] = {
     "Count",
     "Contains",
     "Replace",
+    "ReplaceCount",
     "Repeat",
     "StartsWith",
     "EndsWith",
@@ -3535,6 +3536,7 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "RFind": _builtin_simple("RFind", (TY_STRING, TY_STRING), TY_INT),
     "Count": _builtin_simple("Count", (TY_STRING, TY_STRING), TY_INT),
     "Replace": _builtin_simple("Replace", (TY_STRING, TY_STRING, TY_STRING), TY_STRING),
+    "ReplaceCount": _builtin_simple("ReplaceCount", (TY_STRING, TY_STRING, TY_STRING, TY_INT), TY_STRING),
     "StartsWith": _Builtin(
         FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with
     ),
@@ -5408,6 +5410,20 @@ def _bi_replace(rt: Runtime, args: list[Value]) -> Value:
     return VString(s.value.replace(old.value, new.value))
 
 
+def _bi_replace_count(rt: Runtime, args: list[Value]) -> Value:
+    s, old, new, count = args[0], args[1], args[2], args[3]
+    if (
+        not isinstance(s, VString)
+        or not isinstance(old, VString)
+        or not isinstance(new, VString)
+        or not isinstance(count, VInt)
+    ):
+        raise TaytshRuntimeFault(
+            "ReplaceCount expects string, string, string, int", None
+        )
+    return VString(s.value.replace(old.value, new.value, count.value))
+
+
 def _bi_starts_with(rt: Runtime, args: list[Value]) -> Value:
     s, pre = args[0], args[1]
     if isinstance(s, VBytes) and isinstance(pre, VBytes):
@@ -6066,6 +6082,7 @@ _BUILTIN_RUNTIME: dict[str, Callable[[Runtime, list[Value]], Value]] = {
     "RFind": _bi_rfind,
     "Count": _bi_count,
     "Replace": _bi_replace,
+    "ReplaceCount": _bi_replace_count,
     "StartsWith": _bi_starts_with,
     "EndsWith": _bi_ends_with,
     "Encode": _bi_encode,

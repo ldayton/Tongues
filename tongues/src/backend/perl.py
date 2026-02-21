@@ -1684,6 +1684,34 @@ class _PerlEmitter:
                 + self._a(args, 2)
                 + "; $__s =~ s/\\Q$__o\\E/$__n/g; $__s }"
             )
+        if name == "ReplaceCount":
+            if isinstance(args[1].value, TStringLit) and isinstance(
+                args[2].value, TStringLit
+            ):
+                old_lit = _escape_perl_regex(args[1].value.value)
+                new_lit = _escape_perl_replacement(args[2].value.value)
+                return (
+                    "do { my $__s = "
+                    + self._a(args, 0)
+                    + "; my $__c = "
+                    + self._a(args, 3)
+                    + "; while ($__c > 0 && $__s =~ s/"
+                    + old_lit
+                    + "/"
+                    + new_lit
+                    + "/) { $__c-- } $__s }"
+                )
+            return (
+                "do { my $__s = "
+                + self._a(args, 0)
+                + "; my $__o = "
+                + self._a(args, 1)
+                + "; my $__n = "
+                + self._a(args, 2)
+                + "; my $__c = "
+                + self._a(args, 3)
+                + "; while ($__c > 0 && $__s =~ s/\\Q$__o\\E/$__n/) { $__c-- } $__s }"
+            )
         if name == "Reverse":
             return "scalar(reverse(" + self._a(args, 0) + "))"
         if name == "StartsWith":
