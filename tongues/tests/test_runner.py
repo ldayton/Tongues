@@ -29,14 +29,12 @@ TRANSPILED_BINARY: str | None = os.environ.get("TONGUES_TRANSPILED_BINARY")
 
 _TRANSPILED_MODULE = None
 if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".py"):
-    try:
-        _spec = importlib.util.spec_from_file_location(
-            "tongues_transpiled", TRANSPILED_BINARY
-        )
-        _TRANSPILED_MODULE = importlib.util.module_from_spec(_spec)
-        _spec.loader.exec_module(_TRANSPILED_MODULE)
-    except Exception:
-        _TRANSPILED_MODULE = None
+    _spec = importlib.util.spec_from_file_location(
+        "tongues_transpiled", TRANSPILED_BINARY
+    )
+    _TRANSPILED_MODULE = importlib.util.module_from_spec(_spec)
+    sys.modules[_spec.name] = _TRANSPILED_MODULE
+    _spec.loader.exec_module(_TRANSPILED_MODULE)
 
 EXT_TO_LANG = {".py": "python", ".rb": "ruby", ".pl": "perl"}
 

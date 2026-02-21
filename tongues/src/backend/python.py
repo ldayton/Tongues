@@ -150,6 +150,8 @@ _PYTHON_BUILTINS = frozenset(
         "type",
         "vars",
         "zip",
+        "dataclass",
+        "field",
     }
 )
 
@@ -569,7 +571,7 @@ class _PythonEmitter:
     def _emit_field(self, fld: TFieldDecl) -> None:
         typ_str = self._type(fld.typ)
         default = self._field_default(fld.typ)
-        self._line(fld.name + ": " + typ_str + " = " + default)
+        self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
 
     def _field_default(self, typ: TType) -> str:
         if isinstance(typ, TListType):
@@ -1152,7 +1154,7 @@ class _PythonEmitter:
                 return "self"
             return _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
-            return self._expr(expr.obj) + "." + expr.field
+            return self._expr(expr.obj) + "." + _safe_name(expr.field)
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
         if isinstance(expr, TIndex):
