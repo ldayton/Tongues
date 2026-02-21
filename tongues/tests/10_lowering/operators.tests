@@ -166,6 +166,29 @@ def f(a: int, b: int) -> bool:
 a >= b
 ---
 
+=== char comparison in string iteration
+def f(s: str) -> bool:
+    for ch in s:
+        if ch == "\n":
+            return True
+    return False
+---
+== '\n'
+---
+
+=== struct field compared to module constant
+TK_OP: str = "OP"
+from dataclasses import dataclass
+@dataclass
+class Token:
+    kind: str
+    value: str
+def f(tok: Token) -> bool:
+    return tok.kind == TK_OP
+---
+tok.kind == TK_OP
+---
+
 === divmod
 def f(a: int, b: int) -> tuple[int, int]:
     return divmod(a, b)

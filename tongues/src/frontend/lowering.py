@@ -55,6 +55,7 @@ from ..taytsh.ast import (
     TPrimitive,
     TRange,
     TReturnStmt,
+    TRuneLit,
     TSetLit,
     TSetType,
     TSlice,
@@ -601,6 +602,8 @@ def _types_comparable(left: TypeNode, right: TypeNode) -> bool:
     """Check if two types can be compared for equality."""
     lk = _type_dict_kind(left)
     rk = _type_dict_kind(right)
+    if lk == "void" or rk == "void":
+        return True
     if lk == rk:
         return True
     numeric = {"bool", "int", "float", "byte"}
@@ -1907,6 +1910,13 @@ def _lower_single_compare(
                 return TBoolLit(pos, True, _EMPTY_ANN)
     left_type = _infer_expr_type(left_node, env, ctx)
     right_type = _infer_expr_type(comp_node, env, ctx)
+    # rune vs single-char string literal → promote string to rune
+    if op_type in ("Eq", "NotEq"):
+        promoted = _maybe_promote_rune_compare(
+            pos, left_node, comp_node, left_type, right_type, op_node, env, ctx
+        )
+        if promoted is not None:
+            return promoted
     # Cross-type equality for incompatible types → false/true
     if op_type in ("Eq", "NotEq") and not _types_comparable(left_type, right_type):
         return TBoolLit(pos, op_type == "NotEq", _EMPTY_ANN)
@@ -1934,6 +1944,44 @@ def _lower_single_compare(
     right = _lower_expr(comp_node, env, ctx)
     left, right = _coerce_compare(pos, left, right, left_type, right_type)
     return _make_compare_expr(pos, left, op_node, right)
+
+
+def _maybe_promote_rune_compare(
+    pos: Pos,
+    left_node: ASTNode,
+    right_node: ASTNode,
+    left_type: TypeNode | None,
+    right_type: TypeNode | None,
+    op_node: ASTNode,
+    env: _Env,
+    ctx: _LowerCtx,
+) -> TExpr | None:
+    """Promote single-char string literal to rune when compared with rune."""
+    lt_rune = _is_type_dict(left_type, ["rune"])
+    rt_rune = _is_type_dict(right_type, ["rune"])
+    if lt_rune:
+        rch = _single_char_str_value(right_node)
+        if rch is not None:
+            lhs = _lower_expr(left_node, env, ctx)
+            return _make_compare_expr(pos, lhs, op_node, TRuneLit(pos, rch, _EMPTY_ANN))
+    if rt_rune:
+        lch = _single_char_str_value(left_node)
+        if lch is not None:
+            rhs = _lower_expr(right_node, env, ctx)
+            return _make_compare_expr(pos, TRuneLit(pos, lch, _EMPTY_ANN), op_node, rhs)
+    return None
+
+
+def _single_char_str_value(node: ASTNode) -> str | None:
+    """Return the character if node is a single-char string constant, else None."""
+    if not _is_ast(node, "Constant"):
+        return None
+    val = node.get("value")
+    if not isinstance(val, JStr):
+        return None
+    if len(val.value) != 1:
+        return None
+    return val.value
 
 
 def _coerce_compare(

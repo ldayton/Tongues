@@ -865,22 +865,28 @@ class _RubyEmitter:
         return None
 
     def _is_append_to(self, expr: TExpr, name: str) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Append"
-            and isinstance(expr.args[0].value, TVar)
-            and expr.args[0].value.name == name
-        )
+        if not isinstance(expr, TCall):
+            return False
+        if not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Append":
+            return False
+        first = expr.args[0].value
+        if not isinstance(first, TVar):
+            return False
+        return first.name == name
 
     def _is_add_to(self, expr: TExpr, name: str) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Add"
-            and isinstance(expr.args[0].value, TVar)
-            and expr.args[0].value.name == name
-        )
+        if not isinstance(expr, TCall):
+            return False
+        if not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Add":
+            return False
+        first = expr.args[0].value
+        if not isinstance(first, TVar):
+            return False
+        return first.name == name
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
