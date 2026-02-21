@@ -2197,6 +2197,14 @@ def _lower_name_call(
                 elts = get_nodes(args[0], "elts")
                 n = len(elts)
                 return TIntLit(pos, n, str(n), _EMPTY_ANN)
+            if _is_sys_argv(args[0]):
+                return TBinaryOp(
+                    pos,
+                    "+",
+                    _make_call(pos, "Len", [_make_call(pos, "Args", [])]),
+                    TIntLit(pos, 1, "1", _EMPTY_ANN),
+                    _EMPTY_ANN,
+                )
             return _make_call(pos, "Len", [_lower_expr(args[0], env, ctx)])
     if fname == "min" or fname == "max":
         builtin = "Min" if fname == "min" else "Max"
@@ -3190,11 +3198,50 @@ def _lower_bytes_method(
     return _make_method_call(pos, obj, method, lowered)
 
 
+def _is_sys_argv(node: ASTNode) -> bool:
+    """Check if a node is sys.argv."""
+    if not _is_ast(node, "Attribute"):
+        return False
+    obj = get_node(node, "value")
+    return _is_ast(obj, "Name") and get_str(obj, "id") == "sys" and get_str(node, "attr") == "argv"
+
+
+def _get_const_int(node: ASTNode) -> int | None:
+    """Extract a constant integer value from a Constant node."""
+    if not _is_ast(node, "Constant"):
+        return None
+    val = node.get("value")
+    if isinstance(val, JInt):
+        return val.value
+    return None
+
+
 def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     """Lower a Subscript node."""
     pos = _node_pos(node)
     obj_node = get_node(node, "value")
     slice_node = get_node(node, "slice")
+    # sys.argv subscript/slice: offset indices by -1 since Args() excludes program name
+    if _is_sys_argv(obj_node):
+        args_call = _make_call(pos, "Args", [])
+        if _is_ast(slice_node, "Slice"):
+            lower_jv = slice_node.get("lower")
+            upper_jv = slice_node.get("upper")
+            has_upper = upper_jv is not None and not isinstance(upper_jv, JNull)
+            low_val: int | None = None
+            if isinstance(lower_jv, JDict):
+                low_val = _get_const_int(lower_jv.entries)
+            if low_val is not None and not has_upper:
+                if low_val <= 1:
+                    return args_call
+                low = TIntLit(pos, low_val - 1, str(low_val - 1), _EMPTY_ANN)
+                high = _make_call(pos, "Len", [args_call])
+                return TSlice(pos, _make_call(pos, "Args", []), low, high, _EMPTY_ANN)
+        else:
+            idx_val = _get_const_int(slice_node)
+            if idx_val is not None and idx_val >= 1:
+                idx = TIntLit(pos, idx_val - 1, str(idx_val - 1), _EMPTY_ANN)
+                return TIndex(pos, args_call, idx, _EMPTY_ANN)
     obj = _lower_expr(obj_node, env, ctx)
     obj_type = _infer_expr_type(obj_node, env, ctx)
     # Slice access: xs[a:b]
