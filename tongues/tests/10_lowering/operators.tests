@@ -235,3 +235,48 @@ def f(a: int, b: int) -> tuple[int, int]:
 ---
 (FloorDiv(a, b), PythonMod(a, b))
 ---
+
+=== negated isinstance guard narrows remainder
+class Expr:
+    def __init__(self) -> None:
+        pass
+class StringLit(Expr):
+    def __init__(self, value: str) -> None:
+        self.value = value
+def f(expr: Expr) -> bool:
+    if not isinstance(expr, StringLit):
+        return False
+    s = expr.value
+    ch = s[0]
+    return ch == "x"
+---
+== 'x'
+---
+
+=== module constant subscript preserves type
+OPS: list[str] = ["add", "sub"]
+def f(i: int) -> bool:
+    op = OPS[i]
+    return op == "add"
+---
+op == "add"
+---
+
+=== field from narrowed optional used in dict containment
+class Node:
+    def __init__(self) -> None:
+        pass
+class Name(Node):
+    def __init__(self, id: str) -> None:
+        self.id = id
+def f(test: Node, d: dict[str, int], flag: bool) -> bool:
+    var_node: Name | None = None
+    if isinstance(test, Name):
+        var_node = test
+    if flag and var_node is not None:
+        name = var_node.id
+        return name in d
+    return False
+---
+Contains(d, name)
+---
