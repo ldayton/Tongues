@@ -222,3 +222,16 @@ def f() -> None:
 ---
 let x: string? = nil
 ---
+
+=== variable inferred optional from function return
+def get_maybe(x: int) -> int | None:
+    if x > 0:
+        return x
+    return None
+def f() -> None:
+    val = get_maybe(5)
+    if val is not None:
+        y: int = val
+---
+let val: int? = get_maybe(5)
+---
