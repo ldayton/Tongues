@@ -1,6 +1,7 @@
 """Test runner for Tongues test phases."""
 
 import json
+import os
 import shutil
 import signal
 import subprocess
@@ -22,7 +23,7 @@ from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 
 TONGUES_DIR = Path(__file__).parent.parent
 
-TRANSPILED_BINARY: str | None = None
+TRANSPILED_BINARY: str | None = os.environ.get("TONGUES_TRANSPILED_BINARY")
 
 EXT_TO_LANG = {".py": "python", ".rb": "ruby", ".pl": "perl"}
 
