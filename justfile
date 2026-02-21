@@ -59,6 +59,10 @@ test-middleend-local:
 test-backend-local:
     uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
 
+# Run declaration ordering tests locally
+test-ordering-local:
+    uv run --directory tongues pytest tests/test_runner.py -k test_ordering -v
+
 # Run taytsh tests locally
 test-taytsh-local:
     uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" -v

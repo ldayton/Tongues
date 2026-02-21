@@ -197,6 +197,7 @@ TESTS = {
     "backend": {
         "codegen":        {"dir": "21_codegen", "run": "codegen"},
         "app":            {"dir": "22_app",     "run": "app"},
+        "ordering":       {"dir": "24_ordering", "run": "ordering"},
     },
     "taytsh": {
         "taytsh_parse": {"dir": "11_taytsh_parse", "run": "phase"},
@@ -1195,6 +1196,16 @@ def pytest_generate_tests(metafunc):
                     pytest.param(path, target, id=tid) for tid, path, target in tests
                 ]
                 metafunc.parametrize("app_source,app_target", params)
+            elif run == "ordering" and "ordering_source" in metafunc.fixturenames:
+                target_opt = metafunc.config.getoption("--target", default=None)
+                targets = target_opt if target_opt else _available_targets()
+                ty_files = sorted(test_dir.glob("*.ty"))
+                params = []
+                for ty in ty_files:
+                    for target in targets:
+                        tid = f"{ty.stem}[{target}]"
+                        params.append(pytest.param(ty, target, id=tid))
+                metafunc.parametrize("ordering_source,ordering_target", params)
 
 
 # ---------------------------------------------------------------------------
@@ -1379,5 +1390,26 @@ def test_app(app_source: Path, app_target: str) -> None:
         stdout = result.stdout.decode(errors="replace")
         pytest.fail(
             f"App test failed with exit {result.returncode}\n"
+            f"stdout:\n{stdout}\nstderr:\n{stderr}"
+        )
+
+
+def test_ordering(ordering_source: Path, ordering_target: str) -> None:
+    source = ordering_source.read_text()
+    output, err = transpile_code(source, ordering_target)
+    if err is not None:
+        pytest.fail(f"Transpile error ({ordering_target}): {err}")
+    runtime = RUNTIMES[ordering_target]
+    result = subprocess.run(
+        runtime,
+        input=output.encode(),
+        capture_output=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace")
+        stdout = result.stdout.decode(errors="replace")
+        pytest.fail(
+            f"Ordering test failed with exit {result.returncode}\n"
             f"stdout:\n{stdout}\nstderr:\n{stderr}"
         )

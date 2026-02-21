@@ -1,0 +1,16 @@
+-- Container references Item, but is declared first.
+-- Backends emitting in source order crash: Item isn't defined yet.
+
+struct Container {
+    item: Item
+}
+
+struct Item {
+    value: int
+}
+
+fn Main() -> void {
+    let i: Item = Item(42)
+    let c: Container = Container(i)
+    Assert(c.item.value == 42)
+}
