@@ -6,7 +6,7 @@ import os
 import sys
 
 from . import parse
-from .runtime import TaytshError, TaytshRuntimeFault, TaytshTypeError, run
+from .runtime import TaytshRuntimeFault, TaytshTypeError, run
 
 
 USAGE: str = """\
@@ -85,18 +85,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run(
             module,
-            stdin=sys.stdin.buffer.read() if not sys.stdin.isatty() else b"",
-            args=sys.argv[1:],
-            env=dict(os.environ),
+            sys.stdin.buffer.read() if not sys.stdin.isatty() else b"",
+            sys.argv[1:],
+            dict(os.environ),
         )
     except TaytshTypeError as e:
         print("taytsh: type error: " + str(e), file=sys.stderr)
         return 1
     except TaytshRuntimeFault as e:
         print("taytsh: runtime error: " + str(e), file=sys.stderr)
-        return 1
-    except TaytshError as e:
-        print("taytsh: error: " + str(e), file=sys.stderr)
         return 1
 
     sys.stdout.buffer.write(result.stdout)
