@@ -1120,6 +1120,7 @@ class Checker:
         self.in_finally: bool = False
         self.uninitialized: set[str] = set()
         self._declared: dict[str, Type] = {}
+        self.expr_types: dict[tuple[int, int], Type] = {}
         # Register built-in error structs
         for name, fields in BUILTIN_STRUCTS.items():
             st = StructT(
@@ -2377,17 +2378,35 @@ class Checker:
         if isinstance(expr, TSlice):
             return self.check_slice(expr)
         if isinstance(expr, TCall):
-            return self.check_call(expr, expected)
+            result = self.check_call(expr, expected)
+            if result is not None:
+                self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            return result
         if isinstance(expr, TListLit):
-            return self.check_list_lit(expr, expected)
+            result = self.check_list_lit(expr, expected)
+            if result is not None:
+                self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            return result
         if isinstance(expr, TMapLit):
-            return self.check_map_lit(expr, expected)
+            result = self.check_map_lit(expr, expected)
+            if result is not None:
+                self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            return result
         if isinstance(expr, TSetLit):
-            return self.check_set_lit(expr, expected)
+            result = self.check_set_lit(expr, expected)
+            if result is not None:
+                self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            return result
         if isinstance(expr, TTupleLit):
-            return self.check_tuple_lit(expr, expected)
+            result = self.check_tuple_lit(expr, expected)
+            if result is not None:
+                self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            return result
         if isinstance(expr, TFnLit):
-            return self.check_fn_lit(expr, expected)
+            result = self.check_fn_lit(expr, expected)
+            if result is not None:
+                self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            return result
         self.error("unhandled expression type", expr.pos)
         return None
 
