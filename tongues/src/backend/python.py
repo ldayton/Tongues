@@ -463,11 +463,11 @@ class _PythonEmitter:
         elif needs_dataclass:
             from_imports.append("from dataclasses import dataclass")
         if plain_imports or from_imports:
-            for line in plain_imports:
+            for line in from_imports:
                 self._line(line)
             if plain_imports and from_imports:
                 self._line()
-            for line in from_imports:
+            for line in plain_imports:
                 self._line(line)
             self._line()
         self._line()
