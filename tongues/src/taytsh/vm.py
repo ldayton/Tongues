@@ -272,21 +272,21 @@ def _val_to_string_quoted(v: Val) -> str:
     return _val_to_string(v)
 
 
-def _sort_key(v: Val) -> tuple[int, object]:
+def _sort_key(v: Val) -> tuple[int, float, str]:
     if isinstance(v, VInt):
-        return (0, v.value)
+        return (0, float(v.value), "")
     if isinstance(v, VFloat):
-        return (1, v.value)
+        return (1, v.value, "")
     if isinstance(v, VStr):
-        return (2, v.value)
+        return (2, 0.0, v.value)
     if isinstance(v, VByte):
-        return (3, v.value)
+        return (3, float(v.value), "")
     if isinstance(v, VBool):
-        return (4, v.value)
-    return (9, 0)
+        return (4, 1.0 if v.value else 0.0, "")
+    return (9, 0.0, "")
 
 
-def _sort_key_pair(p: tuple[Val, Val]) -> tuple[int, object]:
+def _sort_key_pair(p: tuple[Val, Val]) -> tuple[int, float, str]:
     return _sort_key(p[0])
 
 
@@ -2496,7 +2496,8 @@ class VM:
         obj = self.stack.pop()
         if isinstance(obj, VStruct):
             # Look up method in struct defs
-            for sd in self.module.struct_defs:
+            all_sdefs: list[StructDef] = self.module.struct_defs
+            for sd in all_sdefs:
                 if sd.name == obj.type_name:
                     mi = 0
                     while mi < len(sd.method_names):
@@ -2519,7 +2520,7 @@ class VM:
                     parent = sd.parent
                     while parent is not None:
                         found_parent = False
-                        for psd in self.module.struct_defs:
+                        for psd in all_sdefs:
                             if psd.name == parent:
                                 found_parent = True
                                 pi = 0
@@ -2554,7 +2555,8 @@ class VM:
 
     def _find_method(self, type_name: str, method_name: str) -> int | None:
         """Find a method index for a struct type. Returns code object index or None."""
-        for sd in self.module.struct_defs:
+        sdefs: list[StructDef] = self.module.struct_defs
+        for sd in sdefs:
             if sd.name == type_name:
                 mi = 0
                 while mi < len(sd.method_names):
@@ -2564,7 +2566,7 @@ class VM:
                 parent = sd.parent
                 while parent is not None:
                     found_parent = False
-                    for psd in self.module.struct_defs:
+                    for psd in sdefs:
                         if psd.name == parent:
                             found_parent = True
                             pi = 0

@@ -3637,6 +3637,8 @@ def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
         return _bi_count(rt, args)
     if name == "Replace":
         return _bi_replace(rt, args)
+    if name == "ReplaceCount":
+        return _bi_replace_count(rt, args)
     if name == "StartsWith":
         return _bi_starts_with(rt, args)
     if name == "EndsWith":

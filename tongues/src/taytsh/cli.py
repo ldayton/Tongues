@@ -7,7 +7,7 @@ import sys
 
 from . import parse
 from .compiler import CompileError
-from .runtime import TaytshError, TaytshRuntimeFault, TaytshTypeError, run
+from .treewalker import TaytshRuntimeFault, TaytshTypeError, run
 from .vm import vm_run
 
 
@@ -98,9 +98,9 @@ def _run_vm(module) -> int:  # type: ignore[no-untyped-def]
     try:
         result = vm_run(
             module,
-            stdin=sys.stdin.buffer.read() if not sys.stdin.isatty() else b"",
-            args=sys.argv[1:],
-            env=dict(os.environ),
+            sys.stdin.buffer.read() if not sys.stdin.isatty() else b"",
+            sys.argv[1:],
+            dict(os.environ),
         )
     except CompileError as e:
         print("taytsh: compile error: " + str(e), file=sys.stderr)
@@ -124,9 +124,8 @@ def _run_interp(module) -> int:  # type: ignore[no-untyped-def]
     except TaytshRuntimeFault as e:
         print("taytsh: runtime error: " + str(e), file=sys.stderr)
         return 1
-    except TaytshError as e:
-        print("taytsh: error: " + str(e), file=sys.stderr)
-        return 1
+
+
     sys.stdout.buffer.write(result.stdout)
     sys.stderr.buffer.write(result.stderr)
     return result.exit_code
