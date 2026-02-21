@@ -85,6 +85,38 @@ def f() -> bool:
 == "--help"
 ---
 
+=== argv slice-from-one is just Args
+import sys
+def f() -> int:
+    return len(sys.argv[1:])
+---
+return Len(Args())
+---
+
+=== argv slice-from-two offsets by one
+import sys
+def f() -> list[str]:
+    return sys.argv[2:]
+---
+Args()[1:
+---
+
+=== argv index offsets for program name
+import sys
+def f() -> str:
+    return sys.argv[1]
+---
+return Args()[0]
+---
+
+=== argv length includes program name
+import sys
+def f() -> bool:
+    return len(sys.argv) > 1
+---
+Len(Args()) + 1 > 1
+---
+
 === getenv no default
 import os
 def f(name: str) -> str | None:

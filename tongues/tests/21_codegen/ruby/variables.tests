@@ -10,5 +10,8 @@ x = $stdin.read.to_i(10)
 === initial value kept when read before overwrite
 x = 0
 
+=== module-level constant
+GREETING = "hello"
+
 === Unwrap on optional
 v = x
