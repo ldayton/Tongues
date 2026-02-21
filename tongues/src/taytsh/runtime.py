@@ -48,7 +48,6 @@ def _sqrt(x: float) -> float:
 
 from .ast import (
     Pos,
-    TArg,
     TAssignStmt,
     TBinaryOp,
     TBoolLit,
@@ -57,7 +56,6 @@ from .ast import (
     TBytesLit,
     TCall,
     TContinueStmt,
-    TDecl,
     TEnumDecl,
     TExpr,
     TExprStmt,
@@ -67,23 +65,18 @@ from .ast import (
     TFnLit,
     TFloatLit,
     TForStmt,
-    TFuncType,
-    TIdentType,
     TIfStmt,
     TIndex,
     TIntLit,
     TInterfaceDecl,
     TLetStmt,
     TListLit,
-    TListType,
     TMapLit,
-    TMapType,
     TMatchStmt,
     TModule,
     TModuleItem,
     TNilLit,
     TOpAssignStmt,
-    TOptionalType,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -92,7 +85,6 @@ from .ast import (
     TReturnStmt,
     TRuneLit,
     TSetLit,
-    TSetType,
     TSlice,
     TStmt,
     TStringLit,
@@ -102,11 +94,9 @@ from .ast import (
     TTupleAccess,
     TTupleAssignStmt,
     TTupleLit,
-    TTupleType,
     TTryStmt,
     TType,
     TUnaryOp,
-    TUnionType,
     TVar,
     TWhileStmt,
 )
@@ -159,10 +149,8 @@ class TaytshRuntimeFault(Exception):
 
 from .check import (
     BOOL_T,
-    BUILTIN_STRUCTS,
     BYTE_T,
     BYTES_T,
-    CheckError,
     Checker,
     ERROR_T,
     EnumT,
@@ -178,22 +166,16 @@ from .check import (
     SetT,
     StructT,
     TupleT,
-    TY_BOOL,
     TY_ERROR,
-    TY_FLOAT,
     TY_NIL,
-    TY_VOID,
     Type,
     UnionT,
     VOID_T,
     check_with_info,
-    contains_nil,
     normalize_union,
-    remove_nil,
     type_eq,
     type_name,
 )
-
 
 
 def _is_nil(t: Type) -> bool:
@@ -229,8 +211,6 @@ class Value:
 
     def to_string(self) -> str:
         raise NotImplementedError
-
-
 
 
 @dataclass(unsafe_hash=True)
@@ -357,7 +337,6 @@ class VEnum(Value):
         return self.enum_name + "." + self.variant
 
 
-
 @dataclass
 class VMap(Value):
     map_keys: list[Value]
@@ -371,7 +350,9 @@ class VMap(Value):
         parts: list[str] = []
         i = 0
         while i < len(self.map_keys):
-            parts.append(self.map_keys[i].to_string() + ": " + self.map_vals[i].to_string())
+            parts.append(
+                self.map_keys[i].to_string() + ": " + self.map_vals[i].to_string()
+            )
             i += 1
         return "{" + ", ".join(parts) + "}"
 
@@ -395,7 +376,9 @@ class VStruct(Value):
     fields: dict[str, Value]
 
     def ty(self) -> Type:
-        return StructT(kind="struct", name=self.struct_name, fields={}, methods={}, parent=None)
+        return StructT(
+            kind="struct", name=self.struct_name, fields={}, methods={}, parent=None
+        )
 
     def to_string(self) -> str:
         parts: list[str] = []
@@ -452,7 +435,6 @@ class _Exit(Exception):
     code: int
 
 
-
 # ============================================================
 # Runtime I/O
 # ============================================================
@@ -486,7 +468,7 @@ class _Input:
                 return self.data[start : i + 1]
             i += 1
         self.pos = len(self.data)
-        return self.data[start :]
+        return self.data[start:]
 
 
 @dataclass
@@ -516,12 +498,16 @@ def run(
     run_env: dict[str, str] = env if env is not None else {}
     fn_values: dict[str, VFunc] = {}
     for fn_name, fn_info in idx.funcs.items():
-        fn_values[fn_name] = VFunc(fn_info.sig.ty(), fn_name, "user", fn_name, None, fn_info.sig, fn_info.decl)
+        fn_values[fn_name] = VFunc(
+            fn_info.sig.ty(), fn_name, "user", fn_name, None, fn_info.sig, fn_info.decl
+        )
     builtin_values: dict[str, VFunc] = {}
     for bi_name in _BUILTIN_NAMES_RT:
         fn_type = checker.functions.get(bi_name)
         if fn_type is not None:
-            builtin_values[bi_name] = VFunc(fn_type, bi_name, "builtin", bi_name, None, None, None)
+            builtin_values[bi_name] = VFunc(
+                fn_type, bi_name, "builtin", bi_name, None, None, None
+            )
     rt = Runtime(
         module,
         idx,
@@ -844,9 +830,7 @@ def _build_index(module: TModule) -> ModuleIndex:
     # Functions (signatures resolved later).
     for fname, fd in seen_top.items():
         if isinstance(fd, TFnDecl):
-            funcs[fname] = FnInfo(
-                name=fname, sig=FnSig((), VOID_T), decl=fd
-            )
+            funcs[fname] = FnInfo(name=fname, sig=FnSig((), VOID_T), decl=fd)
 
     return ModuleIndex(funcs=funcs, structs=structs, interfaces=interfaces, enums=enums)
 
@@ -862,7 +846,15 @@ def _resolve_index(index: ModuleIndex, checker: Checker) -> None:
             params: list[Type] = []
             for p in mi.decl.params:
                 if p.typ is None:
-                    params.append(StructT(kind="struct", name=s.name, fields={}, methods={}, parent=None))
+                    params.append(
+                        StructT(
+                            kind="struct",
+                            name=s.name,
+                            fields={},
+                            methods={},
+                            parent=None,
+                        )
+                    )
                 else:
                     params.append(checker.resolve_type(p.typ))
             ret = checker.resolve_type(mi.decl.ret)
@@ -894,6 +886,7 @@ def _fn_lit_sig(lit: TFnLit, checker: Checker) -> FnSig:
         params.append(checker.resolve_type(p.typ))
     ret = checker.resolve_type(lit.ret)
     return FnSig(params, ret)
+
 
 # ============================================================
 # Evaluation
@@ -1408,7 +1401,9 @@ class Runtime:
 
     # ---- Statements --------------------------------------------------------
 
-    def _eval_block(self, stmts: list[TStmt], env: _RuntimeEnv, *, fn_ret: Type) -> None:
+    def _eval_block(
+        self, stmts: list[TStmt], env: _RuntimeEnv, *, fn_ret: Type
+    ) -> None:
         env.push_scope()
         try:
             for st in stmts:
@@ -1447,7 +1442,9 @@ class Runtime:
         if isinstance(st, TTupleAssignStmt):
             trefs = [self._eval_lvalue_ref(t, env) for t in st.targets]
             rhs = self._eval_expr(
-                st.value, env, expected=TupleT(kind="tuple", elements=list(r.typ for r in trefs))
+                st.value,
+                env,
+                expected=TupleT(kind="tuple", elements=list(r.typ for r in trefs)),
             )
             if not isinstance(rhs, VTuple):
                 raise TaytshRuntimeFault("tuple assignment rhs not a tuple", st.pos)
@@ -1534,10 +1531,7 @@ class Runtime:
                     try:
                         if c.types:
                             c_ty = normalize_union(
-                                [
-                                    _resolve_type(t, self.checker)
-                                    for t in c.types
-                                ]
+                                [_resolve_type(t, self.checker) for t in c.types]
                             )
                         else:
                             c_ty = ERROR_T
@@ -1895,7 +1889,9 @@ class Runtime:
             list_elems: list[Value] = []
             if isinstance(expected, ListT):
                 for e in expr.elements:
-                    list_elems.append(self._eval_expr(e, env, expected=expected.element))
+                    list_elems.append(
+                        self._eval_expr(e, env, expected=expected.element)
+                    )
                 list_typ: ListT = expected
             else:
                 for e in expr.elements:
@@ -1936,7 +1932,12 @@ class Runtime:
             if isinstance(expected, SetT):
                 set_elems: list[Value] = []
                 for e in expr.elements:
-                    _set_add(set_elems, _as_hashable(self._eval_expr(e, env, expected=expected.element)))
+                    _set_add(
+                        set_elems,
+                        _as_hashable(
+                            self._eval_expr(e, env, expected=expected.element)
+                        ),
+                    )
                 set_typ: SetT = expected
             else:
                 set_elems2: list[Value] = []
@@ -1955,7 +1956,11 @@ class Runtime:
             if isinstance(expected, TupleT):
                 ti = 0
                 while ti < len(expr.elements):
-                    tup_elems.append(self._eval_expr(expr.elements[ti], env, expected=expected.elements[ti]))
+                    tup_elems.append(
+                        self._eval_expr(
+                            expr.elements[ti], env, expected=expected.elements[ti]
+                        )
+                    )
                     ti += 1
                 tup_typ: TupleT = expected
             else:
@@ -2359,7 +2364,9 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
         )
         return f"({inner})"
     if isinstance(v, VMap):
-        decorated = [(_sort_key(v.map_keys[i]), i, v.map_keys[i]) for i in range(len(v.map_keys))]
+        decorated = [
+            (_sort_key(v.map_keys[i]), i, v.map_keys[i]) for i in range(len(v.map_keys))
+        ]
         decorated.sort()
         parts: list[str] = []
         for _, idx, k in decorated:
@@ -2943,7 +2950,9 @@ def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
         return VList(list(a.elements) * max(0, n.value), a.typ)
     if isinstance(a, VTuple):
         elem_ty = a.typ.elements[0] if a.typ.elements else ERROR_T
-        return VList(list(a.elements) * max(0, n.value), ListT(kind="list", element=elem_ty))
+        return VList(
+            list(a.elements) * max(0, n.value), ListT(kind="list", element=elem_ty)
+        )
     raise TaytshRuntimeFault("Repeat expects string or list", None)
 
 
@@ -2953,9 +2962,7 @@ def _bi_format(rt: Runtime, args: list[Value]) -> Value:
         raise TaytshRuntimeFault("Format expects string template", None)
     parts = template.value.split("{}")
     if len(parts) - 1 != len(args) - 1:
-        raise TaytshRuntimeFault(
-            "Format: placeholder count mismatch", None
-        )
+        raise TaytshRuntimeFault("Format: placeholder count mismatch", None)
     result: list[str] = [parts[0]]
     i = 1
     while i < len(args):
@@ -3116,7 +3123,9 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
         elems = list(xs.elements)
         decorated = [(_sort_key(e), i, e) for i, e in enumerate(elems)]
         decorated.sort()
-        return VList([e for _, _, e in decorated], ListT(kind="list", element=xs.typ.element))
+        return VList(
+            [e for _, _, e in decorated], ListT(kind="list", element=xs.typ.element)
+        )
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Sorted expects list or set", None)
     if rt.module.strict_math:
@@ -3181,9 +3190,7 @@ def _bi_map_from_keys(rt: Runtime, args: list[Value]) -> Value:
         mk.append(k)
         mv.append(default_val)
     key_ty = keys_val.typ.element if isinstance(keys_val.typ, ListT) else ERROR_T
-    val_ty = (
-        default_val.ty() if not isinstance(default_val, VNil) else ERROR_T
-    )
+    val_ty = default_val.ty() if not isinstance(default_val, VNil) else ERROR_T
     return VMap(mk, mv, MapT(kind="map", key=key_ty, value=val_ty))
 
 
@@ -3525,122 +3532,296 @@ def _bi_exit(rt: Runtime, args: list[Value]) -> Value:
 
 def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
     """Dispatch a builtin function call by name."""
-    if name == "ToString": return _bi_tostring(rt, args)
-    if name == "Len": return _bi_len(rt, args)
-    if name == "Get": return _bi_get(rt, args)
-    if name == "Contains": return _bi_contains(rt, args)
-    if name == "Unwrap": return _bi_unwrap(rt, args)
-    if name == "Assert": return _bi_assert(rt, args)
-    if name == "Round": return _bi_round(rt, args)
-    if name == "Floor": return _bi_floor(rt, args)
-    if name == "Ceil": return _bi_ceil(rt, args)
-    if name == "Sqrt": return _bi_sqrt(rt, args)
-    if name == "IsNaN": return _bi_isnan(rt, args)
-    if name == "IsInf": return _bi_isinf(rt, args)
-    if name == "DivMod": return _bi_divmod(rt, args)
-    if name == "WrappingAdd": return _bi_wrapping_add(rt, args)
-    if name == "WrappingSub": return _bi_wrapping_sub(rt, args)
-    if name == "WrappingMul": return _bi_wrapping_mul(rt, args)
-    if name == "Abs": return _bi_abs(rt, args)
-    if name == "Min": return _bi_min(rt, args)
-    if name == "Max": return _bi_max(rt, args)
-    if name == "Sum": return _bi_sum(rt, args)
-    if name == "Pow": return _bi_pow(rt, args)
-    if name == "IntToFloat": return _bi_int_to_float(rt, args)
-    if name == "FloatToInt": return _bi_float_to_int(rt, args)
-    if name == "ByteToInt": return _bi_byte_to_int(rt, args)
-    if name == "IntToByte": return _bi_int_to_byte(rt, args)
-    if name == "RuneFromInt": return _bi_rune_from_int(rt, args)
-    if name == "RuneToInt": return _bi_rune_to_int(rt, args)
-    if name == "ParseInt": return _bi_parse_int(rt, args)
-    if name == "ParseFloat": return _bi_parse_float(rt, args)
-    if name == "FormatInt": return _bi_format_int(rt, args)
-    if name == "Upper": return _bi_upper(rt, args)
-    if name == "Lower": return _bi_lower(rt, args)
-    if name == "Trim": return _bi_trim(rt, args)
-    if name == "TrimStart": return _bi_trim_start(rt, args)
-    if name == "TrimEnd": return _bi_trim_end(rt, args)
-    if name == "Split": return _bi_split(rt, args)
-    if name == "SplitN": return _bi_split_n(rt, args)
-    if name == "SplitWhitespace": return _bi_split_whitespace(rt, args)
-    if name == "Join": return _bi_join(rt, args)
-    if name == "Find": return _bi_find(rt, args)
-    if name == "RFind": return _bi_rfind(rt, args)
-    if name == "Count": return _bi_count(rt, args)
-    if name == "Replace": return _bi_replace(rt, args)
-    if name == "StartsWith": return _bi_starts_with(rt, args)
-    if name == "EndsWith": return _bi_ends_with(rt, args)
-    if name == "Encode": return _bi_encode(rt, args)
-    if name == "Decode": return _bi_decode(rt, args)
-    if name == "Concat": return _bi_concat(rt, args)
-    if name == "Repeat": return _bi_repeat(rt, args)
-    if name == "Format": return _bi_format(rt, args)
-    if name == "IsDigit": return _bi_is_digit(rt, args)
-    if name == "IsAlpha": return _bi_is_alpha(rt, args)
-    if name == "IsAlnum": return _bi_is_alnum(rt, args)
-    if name == "IsSpace": return _bi_is_space(rt, args)
-    if name == "IsUpper": return _bi_is_upper(rt, args)
-    if name == "IsLower": return _bi_is_lower(rt, args)
-    if name == "Append": return _bi_append(rt, args)
-    if name == "Insert": return _bi_insert(rt, args)
-    if name == "Pop": return _bi_pop(rt, args)
-    if name == "RemoveAt": return _bi_remove_at(rt, args)
-    if name == "IndexOf": return _bi_index_of(rt, args)
-    if name == "Reversed": return _bi_reversed(rt, args)
-    if name == "Sorted": return _bi_sorted(rt, args)
-    if name == "Delete": return _bi_delete(rt, args)
-    if name == "Keys": return _bi_keys(rt, args)
-    if name == "Values": return _bi_values(rt, args)
-    if name == "Items": return _bi_items(rt, args)
-    if name == "Merge": return _bi_merge(rt, args)
-    if name == "PopItem": return _bi_pop_item(rt, args)
-    if name == "MapFromKeys": return _bi_map_from_keys(rt, args)
-    if name == "Add": return _bi_add(rt, args)
-    if name == "Remove": return _bi_remove(rt, args)
-    if name == "Union": return _bi_union(rt, args)
-    if name == "Intersection": return _bi_intersection(rt, args)
-    if name == "Difference": return _bi_difference(rt, args)
-    if name == "Bytes": return _bi_bytes_ctor(rt, args)
-    if name == "BytesFrom": return _bi_bytes_from(rt, args)
-    if name == "RangeList": return _bi_range_list(rt, args)
-    if name == "MapFromPairs": return _bi_map_from_pairs(rt, args)
-    if name == "ListCompare": return _bi_list_compare(rt, args)
-    if name == "Zip": return _bi_zip(rt, args)
-    if name == "SetFromList": return _bi_set_from_list(rt, args)
-    if name == "Chars": return _bi_chars(rt, args)
-    if name == "WriteOut": return _bi_write_out(rt, args)
-    if name == "WriteErr": return _bi_write_err(rt, args)
-    if name == "WritelnOut": return _bi_writeln_out(rt, args)
-    if name == "WritelnErr": return _bi_writeln_err(rt, args)
-    if name == "ReadLine": return _bi_read_line(rt, args)
-    if name == "ReadAll": return _bi_read_all(rt, args)
-    if name == "ReadBytes": return _bi_read_bytes(rt, args)
-    if name == "ReadBytesN": return _bi_read_bytes_n(rt, args)
-    if name == "ReadFile": return _bi_read_file(rt, args)
-    if name == "WriteFile": return _bi_write_file(rt, args)
-    if name == "Args": return _bi_args(rt, args)
-    if name == "GetEnv": return _bi_get_env(rt, args)
-    if name == "Exit": return _bi_exit(rt, args)
+    if name == "ToString":
+        return _bi_tostring(rt, args)
+    if name == "Len":
+        return _bi_len(rt, args)
+    if name == "Get":
+        return _bi_get(rt, args)
+    if name == "Contains":
+        return _bi_contains(rt, args)
+    if name == "Unwrap":
+        return _bi_unwrap(rt, args)
+    if name == "Assert":
+        return _bi_assert(rt, args)
+    if name == "Round":
+        return _bi_round(rt, args)
+    if name == "Floor":
+        return _bi_floor(rt, args)
+    if name == "Ceil":
+        return _bi_ceil(rt, args)
+    if name == "Sqrt":
+        return _bi_sqrt(rt, args)
+    if name == "IsNaN":
+        return _bi_isnan(rt, args)
+    if name == "IsInf":
+        return _bi_isinf(rt, args)
+    if name == "DivMod":
+        return _bi_divmod(rt, args)
+    if name == "WrappingAdd":
+        return _bi_wrapping_add(rt, args)
+    if name == "WrappingSub":
+        return _bi_wrapping_sub(rt, args)
+    if name == "WrappingMul":
+        return _bi_wrapping_mul(rt, args)
+    if name == "Abs":
+        return _bi_abs(rt, args)
+    if name == "Min":
+        return _bi_min(rt, args)
+    if name == "Max":
+        return _bi_max(rt, args)
+    if name == "Sum":
+        return _bi_sum(rt, args)
+    if name == "Pow":
+        return _bi_pow(rt, args)
+    if name == "IntToFloat":
+        return _bi_int_to_float(rt, args)
+    if name == "FloatToInt":
+        return _bi_float_to_int(rt, args)
+    if name == "ByteToInt":
+        return _bi_byte_to_int(rt, args)
+    if name == "IntToByte":
+        return _bi_int_to_byte(rt, args)
+    if name == "RuneFromInt":
+        return _bi_rune_from_int(rt, args)
+    if name == "RuneToInt":
+        return _bi_rune_to_int(rt, args)
+    if name == "ParseInt":
+        return _bi_parse_int(rt, args)
+    if name == "ParseFloat":
+        return _bi_parse_float(rt, args)
+    if name == "FormatInt":
+        return _bi_format_int(rt, args)
+    if name == "Upper":
+        return _bi_upper(rt, args)
+    if name == "Lower":
+        return _bi_lower(rt, args)
+    if name == "Trim":
+        return _bi_trim(rt, args)
+    if name == "TrimStart":
+        return _bi_trim_start(rt, args)
+    if name == "TrimEnd":
+        return _bi_trim_end(rt, args)
+    if name == "Split":
+        return _bi_split(rt, args)
+    if name == "SplitN":
+        return _bi_split_n(rt, args)
+    if name == "SplitWhitespace":
+        return _bi_split_whitespace(rt, args)
+    if name == "Join":
+        return _bi_join(rt, args)
+    if name == "Find":
+        return _bi_find(rt, args)
+    if name == "RFind":
+        return _bi_rfind(rt, args)
+    if name == "Count":
+        return _bi_count(rt, args)
+    if name == "Replace":
+        return _bi_replace(rt, args)
+    if name == "StartsWith":
+        return _bi_starts_with(rt, args)
+    if name == "EndsWith":
+        return _bi_ends_with(rt, args)
+    if name == "Encode":
+        return _bi_encode(rt, args)
+    if name == "Decode":
+        return _bi_decode(rt, args)
+    if name == "Concat":
+        return _bi_concat(rt, args)
+    if name == "Repeat":
+        return _bi_repeat(rt, args)
+    if name == "Format":
+        return _bi_format(rt, args)
+    if name == "IsDigit":
+        return _bi_is_digit(rt, args)
+    if name == "IsAlpha":
+        return _bi_is_alpha(rt, args)
+    if name == "IsAlnum":
+        return _bi_is_alnum(rt, args)
+    if name == "IsSpace":
+        return _bi_is_space(rt, args)
+    if name == "IsUpper":
+        return _bi_is_upper(rt, args)
+    if name == "IsLower":
+        return _bi_is_lower(rt, args)
+    if name == "Append":
+        return _bi_append(rt, args)
+    if name == "Insert":
+        return _bi_insert(rt, args)
+    if name == "Pop":
+        return _bi_pop(rt, args)
+    if name == "RemoveAt":
+        return _bi_remove_at(rt, args)
+    if name == "IndexOf":
+        return _bi_index_of(rt, args)
+    if name == "Reversed":
+        return _bi_reversed(rt, args)
+    if name == "Sorted":
+        return _bi_sorted(rt, args)
+    if name == "Delete":
+        return _bi_delete(rt, args)
+    if name == "Keys":
+        return _bi_keys(rt, args)
+    if name == "Values":
+        return _bi_values(rt, args)
+    if name == "Items":
+        return _bi_items(rt, args)
+    if name == "Merge":
+        return _bi_merge(rt, args)
+    if name == "PopItem":
+        return _bi_pop_item(rt, args)
+    if name == "MapFromKeys":
+        return _bi_map_from_keys(rt, args)
+    if name == "Add":
+        return _bi_add(rt, args)
+    if name == "Remove":
+        return _bi_remove(rt, args)
+    if name == "Union":
+        return _bi_union(rt, args)
+    if name == "Intersection":
+        return _bi_intersection(rt, args)
+    if name == "Difference":
+        return _bi_difference(rt, args)
+    if name == "Bytes":
+        return _bi_bytes_ctor(rt, args)
+    if name == "BytesFrom":
+        return _bi_bytes_from(rt, args)
+    if name == "RangeList":
+        return _bi_range_list(rt, args)
+    if name == "MapFromPairs":
+        return _bi_map_from_pairs(rt, args)
+    if name == "ListCompare":
+        return _bi_list_compare(rt, args)
+    if name == "Zip":
+        return _bi_zip(rt, args)
+    if name == "SetFromList":
+        return _bi_set_from_list(rt, args)
+    if name == "Chars":
+        return _bi_chars(rt, args)
+    if name == "WriteOut":
+        return _bi_write_out(rt, args)
+    if name == "WriteErr":
+        return _bi_write_err(rt, args)
+    if name == "WritelnOut":
+        return _bi_writeln_out(rt, args)
+    if name == "WritelnErr":
+        return _bi_writeln_err(rt, args)
+    if name == "ReadLine":
+        return _bi_read_line(rt, args)
+    if name == "ReadAll":
+        return _bi_read_all(rt, args)
+    if name == "ReadBytes":
+        return _bi_read_bytes(rt, args)
+    if name == "ReadBytesN":
+        return _bi_read_bytes_n(rt, args)
+    if name == "ReadFile":
+        return _bi_read_file(rt, args)
+    if name == "WriteFile":
+        return _bi_write_file(rt, args)
+    if name == "Args":
+        return _bi_args(rt, args)
+    if name == "GetEnv":
+        return _bi_get_env(rt, args)
+    if name == "Exit":
+        return _bi_exit(rt, args)
     raise TaytshRuntimeFault("unknown builtin: " + name, None)
 
 
 _BUILTIN_NAMES_RT: set[str] = {
-    "ToString", "Len", "Get", "Contains", "Unwrap", "Assert",
-    "Round", "Floor", "Ceil", "Sqrt", "IsNaN", "IsInf", "DivMod",
-    "WrappingAdd", "WrappingSub", "WrappingMul", "Abs", "Min", "Max", "Sum", "Pow",
-    "IntToFloat", "FloatToInt", "ByteToInt", "IntToByte", "RuneFromInt", "RuneToInt",
-    "ParseInt", "ParseFloat", "FormatInt",
-    "Upper", "Lower", "Trim", "TrimStart", "TrimEnd",
-    "Split", "SplitN", "SplitWhitespace", "Join", "Find", "RFind",
-    "Count", "Replace", "StartsWith", "EndsWith", "Encode", "Decode",
-    "Concat", "Repeat", "Format",
-    "IsDigit", "IsAlpha", "IsAlnum", "IsSpace", "IsUpper", "IsLower",
-    "Append", "Insert", "Pop", "RemoveAt", "IndexOf", "Reversed", "Sorted",
-    "Delete", "Keys", "Values", "Items", "Merge", "PopItem", "MapFromKeys",
-    "Add", "Remove", "Union", "Intersection", "Difference",
-    "Bytes", "BytesFrom", "RangeList", "MapFromPairs", "ListCompare",
-    "Zip", "SetFromList", "Chars",
-    "WriteOut", "WriteErr", "WritelnOut", "WritelnErr",
-    "ReadLine", "ReadAll", "ReadBytes", "ReadBytesN",
-    "ReadFile", "WriteFile", "Args", "GetEnv", "Exit",
+    "ToString",
+    "Len",
+    "Get",
+    "Contains",
+    "Unwrap",
+    "Assert",
+    "Round",
+    "Floor",
+    "Ceil",
+    "Sqrt",
+    "IsNaN",
+    "IsInf",
+    "DivMod",
+    "WrappingAdd",
+    "WrappingSub",
+    "WrappingMul",
+    "Abs",
+    "Min",
+    "Max",
+    "Sum",
+    "Pow",
+    "IntToFloat",
+    "FloatToInt",
+    "ByteToInt",
+    "IntToByte",
+    "RuneFromInt",
+    "RuneToInt",
+    "ParseInt",
+    "ParseFloat",
+    "FormatInt",
+    "Upper",
+    "Lower",
+    "Trim",
+    "TrimStart",
+    "TrimEnd",
+    "Split",
+    "SplitN",
+    "SplitWhitespace",
+    "Join",
+    "Find",
+    "RFind",
+    "Count",
+    "Replace",
+    "StartsWith",
+    "EndsWith",
+    "Encode",
+    "Decode",
+    "Concat",
+    "Repeat",
+    "Format",
+    "IsDigit",
+    "IsAlpha",
+    "IsAlnum",
+    "IsSpace",
+    "IsUpper",
+    "IsLower",
+    "Append",
+    "Insert",
+    "Pop",
+    "RemoveAt",
+    "IndexOf",
+    "Reversed",
+    "Sorted",
+    "Delete",
+    "Keys",
+    "Values",
+    "Items",
+    "Merge",
+    "PopItem",
+    "MapFromKeys",
+    "Add",
+    "Remove",
+    "Union",
+    "Intersection",
+    "Difference",
+    "Bytes",
+    "BytesFrom",
+    "RangeList",
+    "MapFromPairs",
+    "ListCompare",
+    "Zip",
+    "SetFromList",
+    "Chars",
+    "WriteOut",
+    "WriteErr",
+    "WritelnOut",
+    "WritelnErr",
+    "ReadLine",
+    "ReadAll",
+    "ReadBytes",
+    "ReadBytesN",
+    "ReadFile",
+    "WriteFile",
+    "Args",
+    "GetEnv",
+    "Exit",
 }
