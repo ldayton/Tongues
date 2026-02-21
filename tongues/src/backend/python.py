@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .ordering import order_decls
 from .util import escape_string
 from ..taytsh.ast import (
     Ann,
@@ -450,7 +451,7 @@ class _PythonEmitter:
             module
         )
         plain_imports: list[str] = []
-        from_imports: list[str] = []
+        from_imports: list[str] = ["from __future__ import annotations"]
         if needs_sys:
             plain_imports.append("import sys")
         if needs_os:
@@ -471,8 +472,16 @@ class _PythonEmitter:
             self._line()
         self._line()
         need_blank = False
-        for decl in module.decls:
+        for decl in order_decls(module.decls):
             if isinstance(decl, TInterfaceDecl):
+                if need_blank:
+                    self._line()
+                    self._line()
+                self._line("class " + decl.name + ":")
+                self.indent += 1
+                self._line("pass")
+                self.indent -= 1
+                need_blank = True
                 continue
             if need_blank:
                 self._line()

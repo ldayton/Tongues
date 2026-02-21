@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .ordering import order_decls
 from .util import escape_string, to_snake
 from ..taytsh.ast import (
     Ann,
@@ -556,8 +557,13 @@ class _RubyEmitter:
         self._line()
         import_insert_pos = len(self.lines)
         need_blank = False
-        for decl in module.decls:
+        for decl in order_decls(module.decls):
             if isinstance(decl, TInterfaceDecl):
+                if need_blank:
+                    self._line()
+                self._line("class " + _safe_type_name(decl.name))
+                self._line("end")
+                need_blank = True
                 continue
             if need_blank:
                 self._line()

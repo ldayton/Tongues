@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .ordering import order_decls
 from .util import to_snake
 from ..taytsh.ast import (
     Ann,
@@ -345,8 +346,13 @@ class _PerlEmitter:
         self._line("package main;")
         need_blank = False
         current_package = "main"
-        for decl in module.decls:
+        for decl in order_decls(module.decls):
             if isinstance(decl, TInterfaceDecl):
+                if need_blank:
+                    self._line()
+                self._line("package " + decl.name + ";")
+                current_package = decl.name
+                need_blank = True
                 continue
             if need_blank:
                 self._line()
@@ -378,7 +384,7 @@ class _PerlEmitter:
 
     def _emit_struct(self, decl: TStructDecl) -> None:
         if decl.parent is not None:
-            self._line("use parent '" + decl.parent + "';")
+            self._line("use parent -norequire, '" + decl.parent + "';")
             self._line()
         self._emit_constructor(decl)
         for method in decl.methods:
