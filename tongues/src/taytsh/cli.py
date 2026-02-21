@@ -6,7 +6,7 @@ import os
 import sys
 
 from . import parse
-from .runtime import TaytshRuntimeFault, TaytshTypeError, run
+from .treewalker import TaytshRuntimeFault, TaytshTypeError, run
 
 
 USAGE: str = """\

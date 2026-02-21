@@ -152,7 +152,7 @@ from src.middleend.returns import analyze_returns
 from src.middleend.scope import analyze_scope
 from src.middleend.strings import analyze_strings
 from src.taytsh import check as taytsh_check_fn, parse as taytsh_parse
-from src.taytsh.runtime import run as taytsh_run
+from src.taytsh.treewalker import run as taytsh_run
 from src.taytsh.ast import (
     TCall,
     TFieldAccess,
