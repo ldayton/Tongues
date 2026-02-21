@@ -3536,7 +3536,9 @@ _BUILTIN_DISPATCH: dict[str, _Builtin] = {
     "RFind": _builtin_simple("RFind", (TY_STRING, TY_STRING), TY_INT),
     "Count": _builtin_simple("Count", (TY_STRING, TY_STRING), TY_INT),
     "Replace": _builtin_simple("Replace", (TY_STRING, TY_STRING, TY_STRING), TY_STRING),
-    "ReplaceCount": _builtin_simple("ReplaceCount", (TY_STRING, TY_STRING, TY_STRING, TY_INT), TY_STRING),
+    "ReplaceCount": _builtin_simple(
+        "ReplaceCount", (TY_STRING, TY_STRING, TY_STRING, TY_INT), TY_STRING
+    ),
     "StartsWith": _Builtin(
         FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with
     ),

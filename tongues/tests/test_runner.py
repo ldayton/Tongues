@@ -210,6 +210,7 @@ TESTS = {
     },
     "backend": {
         "codegen":        {"dir": "21_codegen", "run": "codegen"},
+        "emit":           {"dir": "25_emit",    "run": "emit"},
         "app":            {"dir": "22_app",     "run": "app"},
         "ordering":       {"dir": "24_ordering", "run": "ordering"},
     },
@@ -1135,6 +1136,103 @@ def transpile_code(source: str, lang: str) -> tuple[str | None, str | None]:
     return _transpile_with_emitter(source, emitter)
 
 
+def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
+    """Emit backend output from Python source, bypassing the Taytsh parser.
+
+    Pipeline: parse → subset → names → sigs → fields → hierarchy → lower()
+    → check_with_info() → middleend → emitter. Returns (output, error).
+    """
+    if TRANSPILED_BINARY is not None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+            tmp.write(source)
+            tmp.flush()
+            argv = [TRANSPILED_BINARY, "--target", lang, tmp.name]
+            if _TRANSPILED_MODULE is not None:
+                result = _run_inprocess(argv)
+            else:
+                cmd = [*_transpiled_runtime(), *argv]
+                result = subprocess.run(cmd, capture_output=True, timeout=30)
+            Path(tmp.name).unlink(missing_ok=True)
+        if result.returncode != 0:
+            stderr = result.stderr.decode(errors="replace").strip()
+            return (None, stderr.split("\n")[0] if stderr else "emit failed")
+        return (result.stdout.decode(errors="replace"), None)
+    emitter = EMITTERS.get(lang)
+    if emitter is None:
+        return (None, f"no emitter for '{lang}'")
+    try:
+        ast_dict = parse(source)
+        result = verify_subset(ast_dict)
+        sub_errors = result.errors()
+        if sub_errors:
+            return (None, sub_errors[0].message)
+        name_result = resolve_names(ast_dict)
+        name_errors = name_result.errors()
+        if name_errors:
+            return (None, name_errors[0].message)
+        known_classes: set[str] = set()
+        node_classes: set[str] = set()
+        class_bases: dict[str, list[str]] = {}
+        base_counts: dict[str, int] = {}
+        parent_of: dict[str, str] = {}
+        table = name_result.table
+        for name, info in table.module_names.items():
+            if info.kind == "class":
+                known_classes.add(name)
+                class_bases[name] = list(info.bases)
+                for base in info.bases:
+                    if base == "Node" or base.endswith("Node"):
+                        node_classes.add(name)
+                    if base in known_classes or base[0:1].isupper():
+                        if base not in base_counts:
+                            base_counts[base] = 0
+                        base_counts[base] += 1
+                        parent_of[name] = base
+        hierarchy_roots: set[str] = set()
+        for base_name in base_counts:
+            if base_name not in parent_of:
+                hierarchy_roots.add(base_name)
+        sig_result = collect_signatures(ast_dict, known_classes, node_classes)
+        sig_errors = sig_result.errors()
+        if sig_errors:
+            return (None, str(sig_errors[0]))
+        field_result = collect_fields(
+            ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+        )
+        field_errors = field_result.errors()
+        if field_errors:
+            return (None, str(field_errors[0]))
+        from src.frontend.hierarchy import build_hierarchy
+        from src.frontend.lowering import lower
+
+        hier_result = build_hierarchy(known_classes, class_bases)
+        hier_errors = hier_result.errors()
+        if hier_errors:
+            return (None, str(hier_errors[0]))
+        module, lower_errors = lower(
+            ast_dict,
+            sig_result,
+            field_result,
+            hier_result,
+            known_classes,
+            class_bases,
+            source,
+        )
+        if lower_errors:
+            return (None, str(lower_errors[0]))
+        if module is None:
+            return (None, "lowering produced no module")
+        errors, checker = check_with_info(module)
+        if errors:
+            return (None, str(errors[0]))
+        analyze_returns(module, checker)
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        return (emitter(module), None)
+    except Exception as e:
+        return (None, str(e))
+
+
 def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
     """Transpile Python apptest source to target language. Returns (output, error)."""
     if TRANSPILED_BINARY is not None:
@@ -1198,6 +1296,16 @@ def transpiled_output(codegen_input: str, codegen_lang: str) -> str:
     return output
 
 
+@pytest.fixture
+def emit_output(emit_input: str, emit_lang: str) -> str:
+    output, err = emit_from_python(emit_input, emit_lang)
+    if err is not None:
+        pytest.fail(f"Emit error: {err}")
+    if output is None:
+        pytest.fail("No output from emitter")
+    return output
+
+
 # ---------------------------------------------------------------------------
 # Parametrization
 # ---------------------------------------------------------------------------
@@ -1251,6 +1359,18 @@ def pytest_generate_tests(metafunc):
                 metafunc.parametrize(
                     "codegen_input,codegen_expected,codegen_lang", all_tests
                 )
+            elif run == "emit" and "emit_input" in metafunc.fixturenames:
+                dirs = {
+                    d.name
+                    for d in test_dir.iterdir()
+                    if d.is_dir() and d.name != "base"
+                }
+                langs = sorted(dirs & set(EMITTERS))
+                all_tests = []
+                for lang in langs:
+                    for tid, inp, exp in discover_codegen_tests(test_dir, lang):
+                        all_tests.append(pytest.param(inp, exp, lang, id=tid))
+                metafunc.parametrize("emit_input,emit_expected,emit_lang", all_tests)
             elif run == "taytsh_app" and "taytsh_app" in metafunc.fixturenames:
                 apps = discover_taytsh_apps(test_dir)
                 params = [pytest.param(p, id=p.stem) for p in apps]
@@ -1403,6 +1523,20 @@ def test_codegen(
             "Expected not found in output:\n"
             f"--- expected ---\n{codegen_expected}\n"
             f"--- got ---\n{transpiled_output}"
+        )
+
+
+def test_emit(
+    emit_input: str,
+    emit_expected: str,
+    emit_lang: str,
+    emit_output: str,
+):
+    if not contains_normalized(emit_output, emit_expected):
+        pytest.fail(
+            "Expected not found in output:\n"
+            f"--- expected ---\n{emit_expected}\n"
+            f"--- got ---\n{emit_output}"
         )
 
 

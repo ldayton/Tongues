@@ -1,0 +1,7 @@
+=== module-level constant
+GREETING: str = "hello"
+def main() -> None:
+    x: str = GREETING
+    print(x)
+if __name__ == "__main__":
+    main()
