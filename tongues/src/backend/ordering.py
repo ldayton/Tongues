@@ -37,12 +37,14 @@ def _collect_type_names(typ: TType) -> set[str]:
     if isinstance(typ, TFuncType):
         out = set()
         for p in typ.params:
-            out |= _collect_type_names(p)
+            for n in _collect_type_names(p):
+                out.add(n)
         return out
     if isinstance(typ, TUnionType):
         out = set()
         for m in typ.members:
-            out |= _collect_type_names(m)
+            for n in _collect_type_names(m):
+                out.add(n)
         return out
     return set()
 
@@ -75,7 +77,7 @@ def order_decls(decls: list[TModuleItem]) -> list[TModuleItem]:
     deps: dict[int, set[int]] = {idx: set() for idx, _ in type_decls}
     for idx, decl in type_decls:
         if isinstance(decl, TStructDecl):
-            if decl.parent and decl.parent in name_to_idx:
+            if decl.parent is not None and decl.parent in name_to_idx:
                 deps[idx].add(name_to_idx[decl.parent])
             for field in decl.fields:
                 for name in _collect_type_names(field.typ):
@@ -98,9 +100,13 @@ def order_decls(decls: list[TModuleItem]) -> list[TModuleItem]:
                 if in_degree[other_idx] == 0:
                     ready.append(other_idx)
     if len(result) < len(type_decls):
-        remaining = sorted([idx for idx, _ in type_decls if decls[idx] not in result])
-        for idx in remaining:
-            result.append(decls[idx])
+        remaining: list[int] = []
+        for orig_idx, _ in type_decls:
+            if decls[orig_idx] not in result:
+                remaining.append(orig_idx)
+        remaining.sort()
+        for orig_idx in remaining:
+            result.append(decls[orig_idx])
     for _, decl in other_decls:
         result.append(decl)
     return result
