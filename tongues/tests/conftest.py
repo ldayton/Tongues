@@ -14,3 +14,16 @@ def pytest_addoption(parser):
         default=None,
         help="Target language(s) for app tests (repeatable)",
     )
+    parser.addoption(
+        "--transpiled",
+        default=None,
+        help="Path to transpiled binary (e.g. .out/tongues.py)",
+    )
+
+
+def pytest_configure(config):
+    transpiled = config.getoption("--transpiled", default=None)
+    if transpiled is not None:
+        import tests.test_runner as runner
+
+        runner.TRANSPILED_BINARY = transpiled

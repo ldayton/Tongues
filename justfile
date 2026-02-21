@@ -108,11 +108,34 @@ check:
     echo "══════════════════════════════════════"
     exit $failed
 
-# Self-transpile: emit Python to .out/
-self-transpile:
+# Self-transpile: emit to .out/tongues.{ext}
+self-transpile target="python":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
     mkdir -p tongues/.out
-    cd tongues && uv run bin/tongues --target python -o .out/tongues.py src
-    uv run python3 -c "import ast; ast.parse(open('tongues/.out/tongues.py').read())"
+    cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
+    if [ "{{target}}" = "python" ]; then
+        uv run python3 -c "import ast; ast.parse(open('.out/tongues.py').read())"
+    fi
+
+# Run test suite against a transpiled binary locally
+test-transpiled-local target="python":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
+    uv run --directory tongues pytest tests/test_runner.py \
+        --transpiled ".out/tongues.${ext[{{target}}]}" -v
+
+# Run test suite against a transpiled binary in Docker
+test-transpiled target="python":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
+    docker build -t tongues-{{target}} docker/{{target}}
+    docker run --rm -v "$(pwd):/workspace" tongues-{{target}} \
+        uv run --directory tongues pytest tests/test_runner.py \
+        --transpiled ".out/tongues.${ext[{{target}}]}" -v
 
 # Build Docker image for a language
 docker-build lang:

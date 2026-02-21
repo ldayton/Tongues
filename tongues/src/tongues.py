@@ -33,11 +33,22 @@ from .frontend.types import (
     get_nodes,
     has_key,
 )
-from .taytsh.ast import TLetStmt, to_dict as module_to_dict
-from .taytsh.check import Checker
+from .taytsh.ast import (
+    TLetStmt,
+    serialize_annotations,
+    to_dict as module_to_dict,
+)
+from .taytsh.check import Checker, check_with_info
+from .taytsh.emit import to_source
+from .taytsh.parse import Parser as TaytshParser
+from .taytsh.tokens import tokenize as taytsh_tokenize
+from .middleend.callgraph import analyze_callgraph, serialize_callgraph
+from .middleend.hoisting import analyze_hoisting
+from .middleend.liveness import analyze_liveness
+from .middleend.ownership import analyze_ownership
 from .middleend.returns import analyze_returns
 from .middleend.scope import analyze_scope
-from .middleend.liveness import analyze_liveness
+from .middleend.strings import analyze_strings
 from .backend.python import emit_python
 from .backend.perl import emit_perl
 from .backend.ruby import emit_ruby
@@ -69,6 +80,7 @@ PHASES: list[str] = [
     "hierarchy",
     "inference",
     "lowering",
+    "lowering-text",
     "analyze",
 ]
 
@@ -79,7 +91,8 @@ Options:
   --target TARGET     Output language: c, csharp, dart, go, java, javascript,
                       lua, perl, php, python, ruby, rust, swift, typescript, zig
   --stop-at PHASE     Stop after phase: parse, subset, names, signatures,
-                      fields, hierarchy, inference, lowering, analyze
+                      fields, hierarchy, inference, lowering, lowering-text,
+                      analyze
   --project           Read NUL-delimited multi-file input (path\\0source\\0...)
   --strict            Enable strict math and strict tostring
   --strict-math       Enable strict math mode
@@ -1588,6 +1601,8 @@ def _pipeline_post_parse(
         module.strict_math = True
     if strict_tostring:
         module.strict_tostring = True
+    if stop_at == "lowering-text":
+        return (0, to_source(module))
     if stop_at == "lowering":
         return (0, to_json(module_to_dict(module)))
     checker = Checker()
@@ -1750,12 +1765,162 @@ def _parse_project_input(data: str) -> list[tuple[str, str]]:
     return result
 
 
+TAYTSH_PHASES: list[str] = [
+    "parse",
+    "check",
+    "returns",
+    "scope",
+    "liveness",
+    "strings",
+    "hoisting",
+    "ownership",
+    "callgraph",
+]
+
+TAYTSH_EMIT_TARGETS: list[str] = ["python", "perl", "ruby"]
+
+
+def taytsh_pipeline(argv: list[str]) -> int:
+    """Handle taytsh --stop-at/--emit subcommand."""
+    stop_at: str | None = None
+    emit_target: str | None = None
+    strict_math = False
+    strict_tostring = False
+    filepath: str | None = None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--stop-at":
+            if i + 1 >= len(argv):
+                print("error: --stop-at requires an argument", file=sys.stderr)
+                return 2
+            stop_at = argv[i + 1]
+            i += 2
+        elif arg == "--emit":
+            if i + 1 >= len(argv):
+                print("error: --emit requires an argument", file=sys.stderr)
+                return 2
+            emit_target = argv[i + 1]
+            i += 2
+        elif arg == "--strict":
+            strict_math = True
+            strict_tostring = True
+            i += 1
+        elif arg == "--strict-math":
+            strict_math = True
+            i += 1
+        elif arg == "--strict-tostring":
+            strict_tostring = True
+            i += 1
+        elif arg.startswith("-"):
+            print("error: unknown flag '" + arg + "'", file=sys.stderr)
+            return 2
+        else:
+            filepath = arg
+            i += 1
+    if stop_at is not None and stop_at not in TAYTSH_PHASES:
+        print("error: unknown taytsh phase '" + stop_at + "'", file=sys.stderr)
+        return 2
+    if emit_target is not None and emit_target not in TAYTSH_EMIT_TARGETS:
+        print("error: unknown emit target '" + emit_target + "'", file=sys.stderr)
+        return 2
+    source, err = read_source(filepath)
+    if err != 0:
+        return err
+    if len(source) == 0:
+        print("error: no input provided", file=sys.stderr)
+        return 2
+    tokens = taytsh_tokenize(source)
+    parser = TaytshParser(tokens)
+    module = parser.parse_program()
+    if strict_math:
+        module.strict_math = True
+    if strict_tostring:
+        module.strict_tostring = True
+    if stop_at == "parse":
+        d: dict[str, JsonValue] = {
+            "strict_math": JBool(module.strict_math),
+            "strict_tostring": JBool(module.strict_tostring),
+        }
+        print(to_json(JDict(d)))
+        return 0
+    check_result = check_with_info(module)
+    errors = check_result[0]
+    checker = check_result[1]
+    if len(errors) > 0:
+        ei = 0
+        while ei < len(errors):
+            print(str(errors[ei]), file=sys.stderr)
+            ei += 1
+        return 1
+    if stop_at == "check":
+        return 0
+    if stop_at == "returns":
+        analyze_returns(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "returns"))))
+        return 0
+    if stop_at == "scope":
+        analyze_scope(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "scope"))))
+        return 0
+    if stop_at == "liveness":
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "liveness"))))
+        return 0
+    if stop_at == "strings":
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        analyze_strings(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "strings"))))
+        return 0
+    if stop_at == "hoisting":
+        analyze_hoisting(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "hoisting"))))
+        return 0
+    if stop_at == "ownership":
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        analyze_ownership(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "ownership"))))
+        return 0
+    if stop_at == "callgraph":
+        analyze_callgraph(module, checker)
+        print(to_json(JDict(serialize_callgraph(module, checker))))
+        return 0
+    if emit_target is not None:
+        analyze_returns(module, checker)
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        result = ""
+        if emit_target == "python":
+            result = emit_python(module)
+        elif emit_target == "perl":
+            result = emit_perl(module)
+        elif emit_target == "ruby":
+            result = emit_ruby(module)
+        print(result)
+        return 0
+    print("error: --stop-at or --emit required", file=sys.stderr)
+    return 2
+
+
 def main() -> int:
     """Main entry point."""
     if len(sys.argv) > 1 and sys.argv[1] == "taytsh":
+        taytsh_args = sys.argv[2:]
+        has_pipeline_flag = False
+        ti = 0
+        while ti < len(taytsh_args):
+            if taytsh_args[ti] == "--stop-at" or taytsh_args[ti] == "--emit":
+                has_pipeline_flag = True
+                break
+            ti += 1
+        if has_pipeline_flag:
+            return taytsh_pipeline(taytsh_args)
         from .taytsh.cli import main as taytsh_main
 
-        return taytsh_main(sys.argv[2:])
+        return taytsh_main(taytsh_args)
     target, stop_at, strict_math, strict_tostring, project, input_file, output_file = (
         parse_args()
     )
