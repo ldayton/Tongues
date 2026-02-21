@@ -207,6 +207,7 @@ class VStruct(Val):
 class VFunc(Val):
     code_index: int
     captures: list[Val]
+    type_sig: str = ""
 
 
 # ============================================================
@@ -223,6 +224,7 @@ class CodeObject:
     constants: list[Val]
     lines: list[int]
     local_names: list[str]
+    type_sig: str = ""
 
 
 @dataclass

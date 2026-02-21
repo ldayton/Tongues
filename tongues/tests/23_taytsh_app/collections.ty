@@ -297,7 +297,7 @@ fn TestMapGet() -> void {
     let m: map[string, int] = {"a": 1}
     let v: int? = Get(m, "a")
     Assert(v != nil)
-    Assert(Unwrap(v) == 1)
+    Assert(v == 1)
     let missing: int? = Get(m, "z")
     Assert(missing == nil)
 }

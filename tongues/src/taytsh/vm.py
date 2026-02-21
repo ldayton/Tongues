@@ -12,6 +12,7 @@ from .bytecode import (
     CMP_LT,
     CodeObject,
     CompiledModule,
+    InterfaceDef,
     OP_ADD_BYTE,
     OP_ADD_FLOAT,
     OP_ADD_INT,
@@ -189,9 +190,12 @@ def _val_to_string(v: Val) -> str:
         if _isnan(f):
             return "NaN"
         if f == float("inf"):
-            return "Infinity"
+            return "Inf"
         if f == float("-inf"):
-            return "-Infinity"
+            return "-Inf"
+        import math
+        if f == 0.0 and math.copysign(1.0, f) < 0:
+            return "-0.0"
         if f == int(f) and not _isinf(f):
             return str(int(f)) + ".0"
         return str(f)
@@ -204,37 +208,33 @@ def _val_to_string(v: Val) -> str:
     if isinstance(v, VRune):
         return v.value
     if isinstance(v, VBytes):
-        return repr(v.value)
+        hex_chars = "".join(f"\\x{b:02x}" for b in v.value)
+        return 'b"' + hex_chars + '"'
     if isinstance(v, VList):
         parts: list[str] = []
         for item in v.items:
-            if isinstance(item, VStr):
-                parts.append('"' + item.value + '"')
-            elif isinstance(item, VRune):
-                parts.append("'" + item.value + "'")
-            else:
-                parts.append(_val_to_string(item))
+            parts.append(_val_to_string_quoted(item))
         return "[" + ", ".join(parts) + "]"
     if isinstance(v, VMap):
+        pairs: list[tuple[Val, Val]] = list(zip(v.keys, v.values))
+        pairs.sort(key=lambda p: _sort_key(p[0]))
         parts2: list[str] = []
-        i = 0
-        while i < len(v.keys):
-            ks = _val_to_string(v.keys[i])
-            vs = _val_to_string(v.values[i])
-            if isinstance(v.keys[i], VStr):
-                ks = '"' + v.keys[i].value + '"'
+        for k, val in pairs:
+            ks = _val_to_string_quoted(k)
+            vs = _val_to_string_quoted(val)
             parts2.append(ks + ": " + vs)
-            i += 1
         return "{" + ", ".join(parts2) + "}"
     if isinstance(v, VSet):
+        sorted_items = list(v.items)
+        _sort_vals(sorted_items)
         parts3: list[str] = []
-        for item in v.items:
-            parts3.append(_val_to_string(item))
+        for item in sorted_items:
+            parts3.append(_val_to_string_quoted(item))
         return "{" + ", ".join(parts3) + "}"
     if isinstance(v, VTuple):
         parts4: list[str] = []
         for item in v.items:
-            parts4.append(_val_to_string(item))
+            parts4.append(_val_to_string_quoted(item))
         return "(" + ", ".join(parts4) + ")"
     if isinstance(v, VEnum):
         return v.enum_name + "." + v.variant
@@ -244,10 +244,33 @@ def _val_to_string(v: Val) -> str:
         while i2 < len(v.field_names):
             parts5.append(v.field_names[i2] + ": " + _val_to_string(v.field_values[i2]))
             i2 += 1
-        return v.type_name + "(" + ", ".join(parts5) + ")"
+        return v.type_name + "{" + ", ".join(parts5) + "}"
     if isinstance(v, VFunc):
-        return "<fn>"
+        return "fn" + v.type_sig if v.type_sig else "<fn>"
     return "<unknown>"
+
+
+def _val_to_string_quoted(v: Val) -> str:
+    """Like _val_to_string but quotes strings and runes."""
+    if isinstance(v, VStr):
+        return '"' + v.value + '"'
+    if isinstance(v, VRune):
+        return "'" + v.value + "'"
+    return _val_to_string(v)
+
+
+def _sort_key(v: Val) -> tuple[int, object]:
+    if isinstance(v, VInt):
+        return (0, v.value)
+    if isinstance(v, VFloat):
+        return (1, v.value)
+    if isinstance(v, VStr):
+        return (2, v.value)
+    if isinstance(v, VByte):
+        return (3, v.value)
+    if isinstance(v, VBool):
+        return (4, v.value)
+    return (9, 0)
 
 
 def _val_eq(a: Val, b: Val) -> bool:
@@ -260,6 +283,10 @@ def _val_eq(a: Val, b: Val) -> bool:
     if isinstance(a, VFloat) and isinstance(b, VFloat):
         return a.value == b.value
     if isinstance(a, VByte) and isinstance(b, VByte):
+        return a.value == b.value
+    if isinstance(a, VByte) and isinstance(b, VInt):
+        return a.value == b.value
+    if isinstance(a, VInt) and isinstance(b, VByte):
         return a.value == b.value
     if isinstance(a, VStr) and isinstance(b, VStr):
         return a.value == b.value
@@ -284,6 +311,39 @@ def _val_eq(a: Val, b: Val) -> bool:
         i = 0
         while i < len(a.items):
             if not _val_eq(a.items[i], b.items[i]):
+                return False
+            i += 1
+        return True
+    if isinstance(a, VMap) and isinstance(b, VMap):
+        if len(a.keys) != len(b.keys):
+            return False
+        i = 0
+        while i < len(a.keys):
+            found = False
+            j = 0
+            while j < len(b.keys):
+                if _val_eq(a.keys[i], b.keys[j]):
+                    if _val_eq(a.values[i], b.values[j]):
+                        found = True
+                    break
+                j += 1
+            if not found:
+                return False
+            i += 1
+        return True
+    if isinstance(a, VSet) and isinstance(b, VSet):
+        if len(a.items) != len(b.items):
+            return False
+        i = 0
+        while i < len(a.items):
+            found = False
+            j = 0
+            while j < len(b.items):
+                if _val_eq(a.items[i], b.items[j]):
+                    found = True
+                    break
+                j += 1
+            if not found:
                 return False
             i += 1
         return True
@@ -631,7 +691,12 @@ class _BuiltinDispatch:
     def _to_string(self, args: list[Val]) -> Val:
         if len(args) == 0:
             return VStr("")
-        return VStr(_val_to_string(args[0]))
+        v = args[0]
+        if isinstance(v, VStruct):
+            method_idx = self.vm._find_method(v.type_name, "ToString")
+            if method_idx is not None:
+                return self.vm._call_method_sync(v, method_idx, [])
+        return VStr(_val_to_string(v))
 
     def _exit(self, args: list[Val]) -> Val:
         code = 0
@@ -679,28 +744,36 @@ class _BuiltinDispatch:
 
     def _trim(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            return VStr(args[0].value.strip())
+            chars = args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            return VStr(args[0].value.strip(chars))
         return args[0]
 
     def _trim_start(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            return VStr(args[0].value.lstrip())
+            chars = args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            return VStr(args[0].value.lstrip(chars))
         return args[0]
 
     def _trim_end(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            return VStr(args[0].value.rstrip())
+            chars = args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
+            return VStr(args[0].value.rstrip(chars))
         return args[0]
 
     def _split(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr) and isinstance(args[1], VStr):
+            if args[1].value == "":
+                raise _VMThrow(_make_error_struct("ValueError", "empty separator"))
             parts = args[0].value.split(args[1].value)
             return VList([VStr(p) for p in parts])
         return VList([])
 
     def _split_n(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr) and isinstance(args[1], VStr) and isinstance(args[2], VInt):
-            parts = args[0].value.split(args[1].value, args[2].value)
+            n = args[2].value
+            if n <= 0:
+                raise _VMThrow(_make_error_struct("ValueError", "SplitN max must be > 0"))
+            parts = args[0].value.split(args[1].value, n - 1)
             return VList([VStr(p) for p in parts])
         return VList([])
 
@@ -766,6 +839,16 @@ class _BuiltinDispatch:
     def _repeat(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr) and isinstance(args[1], VInt):
             return VStr(args[0].value * args[1].value)
+        if isinstance(args[0], VList) and isinstance(args[1], VInt):
+            n = args[1].value
+            if n <= 0:
+                return VList([])
+            result: list[Val] = []
+            i = 0
+            while i < n:
+                result.extend(args[0].items)
+                i += 1
+            return VList(result)
         return VStr("")
 
     def _reverse(self, args: list[Val]) -> Val:
@@ -784,40 +867,36 @@ class _BuiltinDispatch:
         return _FALSE_VAL
 
     def _is_digit(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VStr):
-            s = args[0].value
-            return VBool(len(s) > 0 and s.isdigit())
-        return _FALSE_VAL
+        s = self._extract_str_or_rune(args[0])
+        return VBool(len(s) > 0 and s.isdigit()) if s is not None else _FALSE_VAL
 
     def _is_alpha(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VStr):
-            s = args[0].value
-            return VBool(len(s) > 0 and s.isalpha())
-        return _FALSE_VAL
+        s = self._extract_str_or_rune(args[0])
+        return VBool(len(s) > 0 and s.isalpha()) if s is not None else _FALSE_VAL
 
     def _is_alnum(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VStr):
-            s = args[0].value
-            return VBool(len(s) > 0 and s.isalnum())
-        return _FALSE_VAL
+        s = self._extract_str_or_rune(args[0])
+        return VBool(len(s) > 0 and s.isalnum()) if s is not None else _FALSE_VAL
 
     def _is_space(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VStr):
-            s = args[0].value
-            return VBool(len(s) > 0 and s.isspace())
-        return _FALSE_VAL
+        s = self._extract_str_or_rune(args[0])
+        return VBool(len(s) > 0 and s.isspace()) if s is not None else _FALSE_VAL
 
     def _is_upper(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VStr):
-            s = args[0].value
-            return VBool(len(s) > 0 and s.isupper())
-        return _FALSE_VAL
+        s = self._extract_str_or_rune(args[0])
+        return VBool(len(s) > 0 and s.isupper()) if s is not None else _FALSE_VAL
 
     def _is_lower(self, args: list[Val]) -> Val:
-        if isinstance(args[0], VStr):
-            s = args[0].value
-            return VBool(len(s) > 0 and s.islower())
-        return _FALSE_VAL
+        s = self._extract_str_or_rune(args[0])
+        return VBool(len(s) > 0 and s.islower()) if s is not None else _FALSE_VAL
+
+    @staticmethod
+    def _extract_str_or_rune(v: Val) -> str | None:
+        if isinstance(v, VStr):
+            return v.value
+        if isinstance(v, VRune):
+            return v.value
+        return None
 
     def _format(self, args: list[Val]) -> Val:
         if len(args) < 1 or not isinstance(args[0], VStr):
@@ -852,6 +931,8 @@ class _BuiltinDispatch:
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value <= b.value else b
         if isinstance(a, VFloat) and isinstance(b, VFloat):
+            if _isnan(a.value) or _isnan(b.value):
+                return VFloat(float("nan"))
             return a if a.value <= b.value else b
         return a
 
@@ -860,6 +941,8 @@ class _BuiltinDispatch:
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value >= b.value else b
         if isinstance(a, VFloat) and isinstance(b, VFloat):
+            if _isnan(a.value) or _isnan(b.value):
+                return VFloat(float("nan"))
             return a if a.value >= b.value else b
         return a
 
@@ -885,7 +968,12 @@ class _BuiltinDispatch:
     def _pow(self, args: list[Val]) -> Val:
         a, b = args[0], args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
-            return VInt(a.value ** b.value)
+            if b.value < 0:
+                raise _VMThrow(_make_error_struct("ValueError", "negative exponent in integer Pow"))
+            r = a.value ** b.value
+            if r > _INT64_MAX or r < _INT64_MIN:
+                raise _VMThrow(_make_error_struct("OverflowError", "integer overflow"))
+            return VInt(r)
         if isinstance(a, VFloat) and isinstance(b, VFloat):
             return VFloat(a.value ** b.value)
         return _ZERO_INT
@@ -1084,6 +1172,9 @@ class _BuiltinDispatch:
     def _sorted(self, args: list[Val]) -> Val:
         if isinstance(args[0], VList):
             items = list(args[0].items)
+            for item in items:
+                if isinstance(item, VFloat) and _isnan(item.value):
+                    raise _VMThrow(_make_error_struct("ValueError", "cannot sort list containing NaN"))
             _sort_vals(items)
             return VList(items)
         return VList([])
@@ -1145,19 +1236,24 @@ class _BuiltinDispatch:
         if isinstance(args[0], VMap) and isinstance(args[1], VMap):
             m1 = args[0]
             m2 = args[1]
-            for k2 in m2.keys:
+            keys: list[Val] = list(m1.keys)
+            values: list[Val] = list(m1.values)
+            i = 0
+            while i < len(m2.keys):
+                k2 = m2.keys[i]
                 found = False
                 j = 0
-                while j < len(m1.keys):
-                    if _val_eq(m1.keys[j], k2):
-                        m1.values[j] = m2.values[m2.keys.index(k2)]
+                while j < len(keys):
+                    if _val_eq(keys[j], k2):
+                        values[j] = m2.values[i]
                         found = True
                         break
                     j += 1
                 if not found:
-                    idx = m2.keys.index(k2)
-                    m1.keys.append(k2)
-                    m1.values.append(m2.values[idx])
+                    keys.append(k2)
+                    values.append(m2.values[i])
+                i += 1
+            return VMap(keys, values)
         return _NONE_VAL
 
     def _map_pop_item(self, args: list[Val]) -> Val:
@@ -1294,7 +1390,7 @@ class _BuiltinDispatch:
         if not isinstance(args[1], VStr):
             return _FALSE_VAL
         type_name = args[1].value
-        return VBool(_val_is_type(v, type_name))
+        return VBool(_val_is_type(v, type_name, self.vm.module.interface_defs))
 
     def _floor_div(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
@@ -1474,9 +1570,15 @@ class _BuiltinDispatch:
         return _NONE_VAL
 
 
-def _val_is_type(v: Val, type_name: str) -> bool:
+def _val_is_type(v: Val, type_name: str, interface_defs: list[InterfaceDef] | None = None) -> bool:
     if isinstance(v, VStruct):
-        return v.type_name == type_name
+        if v.type_name == type_name:
+            return True
+        if interface_defs is not None:
+            for idef in interface_defs:
+                if idef.name == type_name and v.type_name in idef.variant_names:
+                    return True
+        return False
     if isinstance(v, VEnum):
         return v.enum_name == type_name
     if isinstance(v, VInt):
@@ -1573,6 +1675,7 @@ class VM:
         self.program_args: list[str] = args if args is not None else []
         self.env_vars: dict[str, str] = env if env is not None else {}
         self.builtins: _BuiltinDispatch = _BuiltinDispatch(self)
+        self.pending_exception: Val | None = None
         # Initialize globals — one slot per function
         self._init_globals()
 
@@ -1586,8 +1689,9 @@ class VM:
             found = False
             j = 0
             while j < len(self.module.code_objects):
-                if self.module.code_objects[j].name == name:
-                    self.globals.append(VFunc(j, []))
+                co = self.module.code_objects[j]
+                if co.name == name:
+                    self.globals.append(VFunc(j, [], co.type_sig))
                     found = True
                     break
                 j += 1
@@ -1619,10 +1723,19 @@ class VM:
 
     def _dispatch(self) -> None:
         while len(self.frames) > 0:
+            try:
+                self._dispatch_one()
+            except _VMThrow as t:
+                if len(self.handlers) > 0:
+                    self._throw(t.value)
+                else:
+                    raise
+
+    def _dispatch_one(self) -> None:
+        while len(self.frames) > 0:
             frame = self.frames[-1]
             code = frame.code.code
             if frame.ip >= len(code):
-                # End of function — implicit void return
                 self._do_return_void()
                 continue
             op = code[frame.ip]
@@ -1685,7 +1798,11 @@ class VM:
                 b = self.stack.pop()
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
-                    self.stack.append(VInt(a.value + b.value))
+                    r = a.value + b.value
+                    if r > _INT64_MAX or r < _INT64_MIN:
+                        self._throw(_make_error_struct("OverflowError", "integer overflow"))
+                        continue
+                    self.stack.append(VInt(r))
                 else:
                     self.stack.append(_ZERO_INT)
             elif op == OP_ADD_FLOAT:
@@ -1713,7 +1830,11 @@ class VM:
                 b = self.stack.pop()
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
-                    self.stack.append(VInt(a.value - b.value))
+                    r = a.value - b.value
+                    if r > _INT64_MAX or r < _INT64_MIN:
+                        self._throw(_make_error_struct("OverflowError", "integer overflow"))
+                        continue
+                    self.stack.append(VInt(r))
                 else:
                     self.stack.append(_ZERO_INT)
             elif op == OP_SUB_FLOAT:
@@ -1734,7 +1855,11 @@ class VM:
                 b = self.stack.pop()
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
-                    self.stack.append(VInt(a.value * b.value))
+                    r = a.value * b.value
+                    if r > _INT64_MAX or r < _INT64_MIN:
+                        self._throw(_make_error_struct("OverflowError", "integer overflow"))
+                        continue
+                    self.stack.append(VInt(r))
                 else:
                     self.stack.append(_ZERO_INT)
             elif op == OP_MUL_FLOAT:
@@ -1754,7 +1879,12 @@ class VM:
             elif op == OP_DIV_INT:
                 b = self.stack.pop()
                 a = self.stack.pop()
-                if isinstance(a, VInt) and isinstance(b, VInt):
+                if isinstance(a, VByte) and isinstance(b, VByte):
+                    if b.value == 0:
+                        self._throw(_make_error_struct("ZeroDivisionError", "integer division by zero"))
+                        continue
+                    self.stack.append(VByte(a.value // b.value))
+                elif isinstance(a, VInt) and isinstance(b, VInt):
                     if b.value == 0:
                         self._throw(_make_error_struct("ZeroDivisionError", "integer division by zero"))
                         continue
@@ -1783,7 +1913,12 @@ class VM:
             elif op == OP_MOD_INT:
                 b = self.stack.pop()
                 a = self.stack.pop()
-                if isinstance(a, VInt) and isinstance(b, VInt):
+                if isinstance(a, VByte) and isinstance(b, VByte):
+                    if b.value == 0:
+                        self._throw(_make_error_struct("ZeroDivisionError", "integer modulo by zero"))
+                        continue
+                    self.stack.append(VByte(a.value % b.value))
+                elif isinstance(a, VInt) and isinstance(b, VInt):
                     if b.value == 0:
                         self._throw(_make_error_struct("ZeroDivisionError", "integer modulo by zero"))
                         continue
@@ -1802,17 +1937,23 @@ class VM:
                 a = self.stack.pop()
                 if isinstance(a, VFloat) and isinstance(b, VFloat):
                     if b.value == 0.0:
-                        self.stack.append(VFloat(float("nan")))
-                    else:
-                        # IEEE 754 remainder
-                        import math
-                        self.stack.append(VFloat(math.fmod(a.value, b.value)))
+                        self._throw(_make_error_struct("ZeroDivisionError", "float modulo by zero"))
+                        continue
+                    # IEEE 754 remainder
+                    import math
+                    self.stack.append(VFloat(math.fmod(a.value, b.value)))
                 else:
                     self.stack.append(VFloat(0.0))
             elif op == OP_NEG_INT:
                 v = self.stack.pop()
-                if isinstance(v, VInt):
-                    self.stack.append(VInt(-v.value))
+                if isinstance(v, VByte):
+                    self.stack.append(VByte((-v.value) & 0xFF))
+                elif isinstance(v, VInt):
+                    r = -v.value
+                    if r > _INT64_MAX:
+                        self._throw(_make_error_struct("OverflowError", "integer overflow"))
+                        continue
+                    self.stack.append(VInt(r))
                 else:
                     self.stack.append(_ZERO_INT)
             elif op == OP_NEG_FLOAT:
@@ -1824,27 +1965,35 @@ class VM:
             elif op == OP_BIT_AND:
                 b = self.stack.pop()
                 a = self.stack.pop()
-                if isinstance(a, VInt) and isinstance(b, VInt):
+                if isinstance(a, VByte) and isinstance(b, VByte):
+                    self.stack.append(VByte(a.value & b.value))
+                elif isinstance(a, VInt) and isinstance(b, VInt):
                     self.stack.append(VInt(a.value & b.value))
                 else:
                     self.stack.append(_ZERO_INT)
             elif op == OP_BIT_OR:
                 b = self.stack.pop()
                 a = self.stack.pop()
-                if isinstance(a, VInt) and isinstance(b, VInt):
+                if isinstance(a, VByte) and isinstance(b, VByte):
+                    self.stack.append(VByte(a.value | b.value))
+                elif isinstance(a, VInt) and isinstance(b, VInt):
                     self.stack.append(VInt(a.value | b.value))
                 else:
                     self.stack.append(_ZERO_INT)
             elif op == OP_BIT_XOR:
                 b = self.stack.pop()
                 a = self.stack.pop()
-                if isinstance(a, VInt) and isinstance(b, VInt):
+                if isinstance(a, VByte) and isinstance(b, VByte):
+                    self.stack.append(VByte(a.value ^ b.value))
+                elif isinstance(a, VInt) and isinstance(b, VInt):
                     self.stack.append(VInt(a.value ^ b.value))
                 else:
                     self.stack.append(_ZERO_INT)
             elif op == OP_BIT_NOT:
                 v = self.stack.pop()
-                if isinstance(v, VInt):
+                if isinstance(v, VByte):
+                    self.stack.append(VByte((~v.value) & 0xFF))
+                elif isinstance(v, VInt):
                     self.stack.append(VInt(~v.value))
                 else:
                     self.stack.append(_ZERO_INT)
@@ -1852,13 +2001,21 @@ class VM:
                 b = self.stack.pop()
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
-                    self.stack.append(VInt(a.value << b.value))
+                    if b.value < 0 or b.value >= 64:
+                        self._throw(_make_error_struct("OverflowError", "shift amount out of range"))
+                        continue
+                    r = a.value << b.value
+                    r = ((r - _INT64_MIN) % (2**64)) + _INT64_MIN
+                    self.stack.append(VInt(r))
                 else:
                     self.stack.append(_ZERO_INT)
             elif op == OP_SHIFT_RIGHT:
                 b = self.stack.pop()
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
+                    if b.value < 0 or b.value >= 64:
+                        self._throw(_make_error_struct("OverflowError", "shift amount out of range"))
+                        continue
                     self.stack.append(VInt(a.value >> b.value))
                 else:
                     self.stack.append(_ZERO_INT)
@@ -1866,7 +2023,9 @@ class VM:
                 b = self.stack.pop()
                 a = self.stack.pop()
                 if isinstance(a, VInt) and isinstance(b, VInt):
-                    # Unsigned right shift for 64-bit
+                    if b.value < 0 or b.value >= 64:
+                        self._throw(_make_error_struct("OverflowError", "shift amount out of range"))
+                        continue
                     mask = (1 << 64) - 1
                     ua = a.value & mask
                     self.stack.append(VInt(ua >> b.value))
@@ -1975,15 +2134,24 @@ class VM:
                     vs.append(v)
                 self.stack.append(VMap(ks, vs))
             elif op == OP_BUILD_SET:
-                items2: list[Val] = []
+                raw: list[Val] = []
                 i = 0
                 while i < arg:
-                    items2.append(_NONE_VAL)
+                    raw.append(_NONE_VAL)
                     i += 1
                 i = arg - 1
                 while i >= 0:
-                    items2[i] = self.stack.pop()
+                    raw[i] = self.stack.pop()
                     i -= 1
+                items2: list[Val] = []
+                for item in raw:
+                    dup = False
+                    for existing in items2:
+                        if _val_eq(item, existing):
+                            dup = True
+                            break
+                    if not dup:
+                        items2.append(item)
                 self.stack.append(VSet(items2))
             elif op == OP_BUILD_TUPLE:
                 items3: list[Val] = []
@@ -2044,7 +2212,13 @@ class VM:
                     self.handlers.pop()
             elif op == OP_THROW:
                 val = self.stack.pop()
-                self._throw(val)
+                if isinstance(val, VNil) and self.pending_exception is not None:
+                    pend = self.pending_exception
+                    self.pending_exception = None
+                    self._throw(pend)
+                else:
+                    self.pending_exception = None
+                    self._throw(val)
             elif op == OP_PUSH_FINALLY:
                 handler = Handler(
                     frame_depth=len(self.frames) - 1,
@@ -2065,7 +2239,7 @@ class VM:
                 type_name_val = frame.code.constants[arg]
                 val = self.stack.pop()
                 if isinstance(type_name_val, VStr):
-                    self.stack.append(_TRUE_VAL if _val_is_type(val, type_name_val.value) else _FALSE_VAL)
+                    self.stack.append(_TRUE_VAL if _val_is_type(val, type_name_val.value, self.module.interface_defs) else _FALSE_VAL)
                 else:
                     self.stack.append(_FALSE_VAL)
             elif op == OP_MATCH_TYPE:
@@ -2082,7 +2256,7 @@ class VM:
                     elif tn == "nil":
                         self.stack.append(_TRUE_VAL if isinstance(val, VNil) else _FALSE_VAL)
                     else:
-                        self.stack.append(_TRUE_VAL if _val_is_type(val, tn) else _FALSE_VAL)
+                        self.stack.append(_TRUE_VAL if _val_is_type(val, tn, self.module.interface_defs) else _FALSE_VAL)
                 else:
                     self.stack.append(_FALSE_VAL)
 
@@ -2103,8 +2277,7 @@ class VM:
                 return
             elif handler.kind == HANDLER_FINALLY:
                 self.frames[-1].ip = handler.catch_ip
-                # After finally, rethrow
-                # Store pending exception for rethrow... simplified: just run finally
+                self.pending_exception = val
                 return
         # No handler found — propagate as Python exception
         raise _VMThrow(val)
@@ -2120,6 +2293,7 @@ class VM:
         frame = self.frames.pop()
         while len(self.stack) > frame.bp:
             self.stack.pop()
+        self.stack.append(_NONE_VAL)
 
     def _do_call(self, argc: int) -> None:
         # Stack: [func, arg0, arg1, ..., argN-1]
@@ -2154,109 +2328,125 @@ class VM:
             raise _VMThrow(_make_error_struct("TypeError", "not callable"))
 
     def _do_call_method(self, frame: Frame, const_idx: int) -> None:
-        """Call a method. Stack: [..., obj, arg0, ..., argN-1]. Method name is in constants."""
+        """Call a method. Stack: [..., obj, arg0, ..., argN-1]. Method name in constants.
+        Followed by trailing (0, argc) pair encoding the argument count."""
         method_name_val = frame.code.constants[const_idx]
         if not isinstance(method_name_val, VStr):
             return
         method_name = method_name_val.value
-        # Count args — we need to figure out argc from the next instruction
-        # Actually, CALL_METHOD arg is the constant index. We need argc too.
-        # Redesign: we'll use CALL_METHOD differently.
-        # For now, peek at the previous instruction to find the arg count... no.
-        # Let's look at the next byte pair — but that's the next instruction.
-        # Better approach: the compiler should emit argc in the instruction somehow.
-        # Quick fix: encode argc in the high bits of const_idx. But that's messy.
-        # Actually, let's just look at what's on the stack.
-        # The compiler should emit: obj, args..., CALL_METHOD <const_idx>
-        # But we don't know argc. We need it.
-        # TODO: Fix this properly. For now, scan for the method in struct defs.
-        # Actually, let's change approach: use OP_CALL instead for method calls.
-        # The compiler pushes obj, then args, then the method func val.
-        # For now, a simpler approach — not yet needed for Phase 1.
-        # Let's handle the most common case: 0-arg method calls
-        # Actually, we need to know argc. Let's peek at the stack to find the obj.
-        # The obj is under the args. We don't know how many args there are.
-        # This is a fundamental issue. Let's just not support method calls yet.
-        raise _VMThrow(_make_error_struct("RuntimeError", "method calls not yet supported in VM"))
+        # Read argc from trailing pair
+        frame.code.code[frame.ip]  # skip high byte (always 0)
+        argc = frame.code.code[frame.ip + 1]
+        frame.ip += 2
+        # Pop args
+        args: list[Val] = []
+        i = 0
+        while i < argc:
+            args.append(_NONE_VAL)
+            i += 1
+        i = argc - 1
+        while i >= 0:
+            args[i] = self.stack.pop()
+            i -= 1
+        # Pop receiver (self)
+        obj = self.stack.pop()
+        if isinstance(obj, VStruct):
+            # Look up method in struct defs
+            for sd in self.module.struct_defs:
+                if sd.name == obj.type_name:
+                    mi = 0
+                    while mi < len(sd.method_names):
+                        if sd.method_names[mi] == method_name:
+                            code = self.module.code_objects[sd.method_indices[mi]]
+                            bp = len(self.stack)
+                            # Push 'this' as local[0], then args
+                            self.stack.append(obj)
+                            for a in args:
+                                self.stack.append(a)
+                            # Pad remaining locals
+                            filled = 1 + argc
+                            while filled < code.local_count:
+                                self.stack.append(_NONE_VAL)
+                                filled += 1
+                            self.frames.append(Frame(code=code, ip=0, bp=bp))
+                            return
+                        mi += 1
+                    # Check parent struct
+                    parent = sd.parent
+                    while parent is not None:
+                        for psd in self.module.struct_defs:
+                            if psd.name == parent:
+                                pi = 0
+                                while pi < len(psd.method_names):
+                                    if psd.method_names[pi] == method_name:
+                                        code = self.module.code_objects[psd.method_indices[pi]]
+                                        bp = len(self.stack)
+                                        self.stack.append(obj)
+                                        for a in args:
+                                            self.stack.append(a)
+                                        filled = 1 + argc
+                                        while filled < code.local_count:
+                                            self.stack.append(_NONE_VAL)
+                                            filled += 1
+                                        self.frames.append(Frame(code=code, ip=0, bp=bp))
+                                        return
+                                    pi += 1
+                                parent = psd.parent
+                                break
+                        else:
+                            parent = None
+                    break
+        self._throw(_make_error_struct("TypeError", "no method '" + method_name + "' on " + _val_to_string(obj)))
+
+    def _find_method(self, type_name: str, method_name: str) -> int | None:
+        """Find a method index for a struct type. Returns code object index or None."""
+        for sd in self.module.struct_defs:
+            if sd.name == type_name:
+                mi = 0
+                while mi < len(sd.method_names):
+                    if sd.method_names[mi] == method_name:
+                        return sd.method_indices[mi]
+                    mi += 1
+                parent = sd.parent
+                while parent is not None:
+                    for psd in self.module.struct_defs:
+                        if psd.name == parent:
+                            pi = 0
+                            while pi < len(psd.method_names):
+                                if psd.method_names[pi] == method_name:
+                                    return psd.method_indices[pi]
+                                pi += 1
+                            parent = psd.parent
+                            break
+                    else:
+                        parent = None
+                break
+        return None
+
+    def _call_method_sync(self, obj: Val, code_idx: int, args: list[Val]) -> Val:
+        """Synchronously call a method and return its result."""
+        code = self.module.code_objects[code_idx]
+        bp = len(self.stack)
+        saved_frames = len(self.frames)
+        self.stack.append(obj)
+        for a in args:
+            self.stack.append(a)
+        filled = 1 + len(args)
+        while filled < code.local_count:
+            self.stack.append(_NONE_VAL)
+            filled += 1
+        self.frames.append(Frame(code=code, ip=0, bp=bp))
+        # Run until this frame returns
+        while len(self.frames) > saved_frames:
+            self._dispatch_one()
+        if len(self.stack) > bp:
+            return self.stack.pop()
+        return _NONE_VAL
 
     def _do_call_builtin(self, idx: int) -> None:
-        """Call a builtin. Stack has args from left to right, but we need to
-        figure out how many. Builtins have varying arg counts.
-        The compiler knows, but it doesn't encode argc. We need it.
-        Solution: encode the arg count alongside. For CALL_BUILTIN, the arg
-        IS the builtin index. We need a second byte for argc.
-        Quick fix: push arg count before args, then CALL_BUILTIN pops it.
-        Actually simpler: look at the builtin name and figure out the expected
-        arg count from context. But that's fragile.
-        Better: make CALL_BUILTIN take builtin_idx and use the stack to count.
-        The compiler pushes args, then the number of args isn't known here.
-
-        New approach: after the compiler pushes all args, it also pushes the
-        arg count as an int, then emits CALL_BUILTIN. The VM pops argc first."""
-        # Actually the compiler doesn't push argc. Let me look at what the compiler
-        # emits. It pushes args then emits OP_CALL_BUILTIN with builtin_idx.
-        # We need to know how many args to pop.
-        # The cleanest fix: the compiler should emit a 2-byte encoding:
-        # OP_CALL_BUILTIN, builtin_idx; followed by a second pair for argc.
-        # But that changes the instruction format.
-        # Simplest fix for now: we scan back for the args.
-        # Actually, we can look at the stack. The builtin args are at the top.
-        # We know the builtin name, we can check the Taytsh spec for arg count.
-        # This is getting complicated. Let's use a different approach:
-        # Make the compiler emit CONST(argc), then CALL_BUILTIN.
-        # Or: store argc in the instruction somehow.
-        # For now: encode argc in the instruction byte after builtin_idx.
-        # The instruction is: OP_CALL_BUILTIN, builtin_idx
-        # But we need: OP_CALL_BUILTIN, builtin_idx, (implicit argc from next pair)
-        #
-        # Simplest correct approach: The compiler wraps builtins as OP_CALL.
-        # It pushes builtin index as VInt, pushes args, then OP_CALL.
-        # The OP_CALL handler already handles VInt (builtin index).
-        # That's actually what we do! The compiler emits CALL_BUILTIN but let's
-        # just route it through the CALL path instead.
-        #
-        # Wait, looking at the compiler: _compile_builtin_call pushes args then
-        # emits OP_CALL_BUILTIN. We need argc.
-        #
-        # Pragmatic fix: look at the frame to find the previous instruction,
-        # which would tell us argc... but that's fragile.
-        #
-        # Let me just fix the compiler to use OP_CALL for builtins instead.
-        # The compiler already handles LOAD_BUILTIN which pushes VInt(bidx).
-        # So _compile_builtin_call should push args and emit OP_CALL.
-        #
-        # For now, I'll make the VM handle it by having the compiler pass argc
-        # through the constant pool. But that's also messy.
-        #
-        # OK, definitive fix: make the compiler emit:
-        #   push args
-        #   OP_CONST <VInt(argc)>
-        #   OP_CALL_BUILTIN <builtin_idx>
-        # And the VM pops argc first.
-        #
-        # Actually even simpler: just make OP_CALL_BUILTIN's arg be:
-        #   (builtin_idx << 4) | argc   -- if argc < 16
-        # But that limits argc. Not great.
-        #
-        # Final answer: I'll change the compiler to push the argc as a constant
-        # just before the builtin call, and the VM will pop it.
-
-        # Pop the arg count (pushed by compiler as the instruction arg)
-        # Actually wait — looking at the compiler again: it emits
-        # OP_CALL_BUILTIN with arg = bidx. I need to change strategy.
-        #
-        # NEW: Let's look at the frame for the NEXT instruction which should
-        # contain the argc. No, that changes the format.
-        #
-        # Let me just fix this: the compiler will push a VInt(argc) const
-        # before the args, and we pop it here.
-        # Actually no. Let me just make OP_CALL_BUILTIN a 4-byte instruction.
-        # The first pair is OP_CALL_BUILTIN, builtin_idx.
-        # The second pair is the argc (next 2 bytes in the code stream).
-
+        """Call a builtin. Followed by trailing (0, argc) pair encoding arg count."""
         frame = self.frames[-1]
-        # Read the next byte pair as argc
-        argc_byte = frame.code.code[frame.ip]
+        frame.code.code[frame.ip]  # skip high byte (always 0)
         argc = frame.code.code[frame.ip + 1]
         frame.ip += 2
         # Pop args
@@ -2349,28 +2539,28 @@ class VM:
         if isinstance(obj, VList) and isinstance(low, VInt) and isinstance(high, VInt):
             lo = low.value
             hi = high.value
-            if lo < 0:
-                lo = 0
-            if hi > len(obj.items):
-                hi = len(obj.items)
+            n = len(obj.items)
+            if lo < 0 or hi > n or lo > hi:
+                self._throw(_make_error_struct("IndexError", "slice out of range"))
+                return
             self.stack.append(VList(list(obj.items[lo:hi])))
             return
         if isinstance(obj, VStr) and isinstance(low, VInt) and isinstance(high, VInt):
             lo = low.value
             hi = high.value
-            if lo < 0:
-                lo = 0
-            if hi > len(obj.value):
-                hi = len(obj.value)
+            n = len(obj.value)
+            if lo < 0 or hi > n or lo > hi:
+                self._throw(_make_error_struct("IndexError", "slice out of range"))
+                return
             self.stack.append(VStr(obj.value[lo:hi]))
             return
         if isinstance(obj, VBytes) and isinstance(low, VInt) and isinstance(high, VInt):
             lo = low.value
             hi = high.value
-            if lo < 0:
-                lo = 0
-            if hi > len(obj.value):
-                hi = len(obj.value)
+            n = len(obj.value)
+            if lo < 0 or hi > n or lo > hi:
+                self._throw(_make_error_struct("IndexError", "slice out of range"))
+                return
             self.stack.append(VBytes(obj.value[lo:hi]))
             return
         self.stack.append(_NONE_VAL)

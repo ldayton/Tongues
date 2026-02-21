@@ -52,6 +52,10 @@ from .ast import (
     TUnaryOp,
     TVar,
     TWhileStmt,
+    TListType,
+    TMapType,
+    TSetType,
+    TTupleType,
 )
 from .check import (
     BOOL_T,
@@ -486,8 +490,35 @@ class Compiler:
         if type_eq(ret_type, VOID_T):
             fc.emit(OP_RETURN_VOID, 0, decl.pos.line)
         code_idx = len(self.code_objects)
-        self.code_objects.append(fc.to_code_object(len(decl.params)))
+        co = fc.to_code_object(len(decl.params))
+        if fn_type is not None:
+            co.type_sig = self._format_fn_sig(fn_type)
+        self.code_objects.append(co)
         return code_idx
+
+    def _format_fn_sig(self, fn_type: FnT) -> str:
+        parts = [self._format_type(p) for p in fn_type.params]
+        parts.append(self._format_type(fn_type.ret))
+        return "[" + ", ".join(parts) + "]"
+
+    def _format_type(self, t: Type) -> str:
+        if type_eq(t, INT_T):
+            return "int"
+        if type_eq(t, FLOAT_T):
+            return "float"
+        if type_eq(t, BOOL_T):
+            return "bool"
+        if type_eq(t, STRING_T):
+            return "string"
+        if type_eq(t, BYTE_T):
+            return "byte"
+        if type_eq(t, RUNE_T):
+            return "rune"
+        if type_eq(t, VOID_T):
+            return "void"
+        if isinstance(t, FnT):
+            return "fn" + self._format_fn_sig(t)
+        return "any"
 
     def _resolve_param_type(self, p) -> Type:
         """Resolve a TParam's type to a checker Type."""
@@ -520,6 +551,17 @@ class Compiler:
             t = self.checker_types.get(tt.name)
             if t is not None:
                 return t
+        if isinstance(tt, TTupleType):
+            elts: list[Type] = []
+            for e in tt.elements:
+                elts.append(self._resolve_ttype(e))
+            return TupleT(kind="tuple", elements=elts)
+        if isinstance(tt, TListType):
+            return ListT(kind="list", element=self._resolve_ttype(tt.element))
+        if isinstance(tt, TMapType):
+            return MapT(kind="map", key=self._resolve_ttype(tt.key), value=self._resolve_ttype(tt.value))
+        if isinstance(tt, TSetType):
+            return SetT(kind="set", element=self._resolve_ttype(tt.element))
         return VOID_T
 
     def _collect_locals(self, stmts: list[TStmt], fc: _FnCompiler) -> None:
@@ -632,6 +674,16 @@ class Compiler:
             fc.emit_const(VRune("\x00"), line)
         elif type_eq(typ, BYTES_T):
             fc.emit_const(VBytes(b""), line)
+        elif isinstance(typ, TupleT):
+            for et in typ.elements:
+                self._emit_zero_value(et, fc, line)
+            fc.emit(OP_BUILD_TUPLE, len(typ.elements), line)
+        elif isinstance(typ, ListT):
+            fc.emit(OP_BUILD_LIST, 0, line)
+        elif isinstance(typ, MapT):
+            fc.emit(OP_BUILD_MAP, 0, line)
+        elif isinstance(typ, SetT):
+            fc.emit(OP_BUILD_SET, 0, line)
         else:
             fc.emit(OP_NIL, 0, line)
 
@@ -703,9 +755,9 @@ class Compiler:
         self._compile_expr(stmt.value, fc)
         n = len(stmt.targets)
         fc.emit(OP_UNPACK, n, stmt.pos.line)
-        # After UNPACK, stack has n values, first on top
-        i = 0
-        while i < n:
+        # After UNPACK, stack has n values, last on top — store in reverse
+        i = n - 1
+        while i >= 0:
             target = stmt.targets[i]
             if isinstance(target, TVar):
                 if target.name == "_":
@@ -718,7 +770,7 @@ class Compiler:
                         fc.emit(OP_POP, 0, stmt.pos.line)
             else:
                 fc.emit(OP_POP, 0, stmt.pos.line)
-            i += 1
+            i -= 1
 
     def _compile_if(self, stmt: TIfStmt, fc: _FnCompiler) -> None:
         self._compile_expr(stmt.cond, fc)
@@ -778,12 +830,12 @@ class Compiler:
         back_dist = fc.current_offset() - loop_start + 2
         fc.emit(OP_JUMP_BACK, back_dist, stmt.pos.line)
         fc.patch_jump(exit_jump)
+        for bp in loop_ctx.break_patches:
+            fc.patch_jump(bp)
         # Pop iterator state (3 values: current, end, step)
         fc.emit(OP_POP, 0, stmt.pos.line)
         fc.emit(OP_POP, 0, stmt.pos.line)
         fc.emit(OP_POP, 0, stmt.pos.line)
-        for bp in loop_ctx.break_patches:
-            fc.patch_jump(bp)
         fc.loop_stack.pop()
 
     def _compile_for_iter(self, stmt: TForStmt, fc: _FnCompiler) -> None:
@@ -814,21 +866,29 @@ class Compiler:
         else:
             binding = stmt.binding[0] if len(stmt.binding) > 0 else "_"
             local = fc.scope.lookup(binding) if binding != "_" else None
-            if local is not None:
-                fc.emit(OP_STORE_LOCAL, local.slot, stmt.pos.line)
-            else:
+            if stmt.annotations.get("iter_kind") == "map":
+                # Map 1-var: stack has key, value (top). Discard value, keep key.
                 fc.emit(OP_POP, 0, stmt.pos.line)
-            # Discard the extra index/key pushed by FOR_ITER
-            fc.emit(OP_POP, 0, stmt.pos.line)
+                if local is not None:
+                    fc.emit(OP_STORE_LOCAL, local.slot, stmt.pos.line)
+                else:
+                    fc.emit(OP_POP, 0, stmt.pos.line)
+            else:
+                if local is not None:
+                    fc.emit(OP_STORE_LOCAL, local.slot, stmt.pos.line)
+                else:
+                    fc.emit(OP_POP, 0, stmt.pos.line)
+                # Discard the extra index/key pushed by FOR_ITER
+                fc.emit(OP_POP, 0, stmt.pos.line)
         self._compile_block(stmt.body, fc)
         back_dist = fc.current_offset() - loop_start + 2
         fc.emit(OP_JUMP_BACK, back_dist, stmt.pos.line)
         fc.patch_jump(exit_jump)
+        for bp in loop_ctx.break_patches:
+            fc.patch_jump(bp)
         # Pop collection and index
         fc.emit(OP_POP, 0, stmt.pos.line)
         fc.emit(OP_POP, 0, stmt.pos.line)
-        for bp in loop_ctx.break_patches:
-            fc.patch_jump(bp)
         fc.loop_stack.pop()
 
     def _compile_break(self, stmt: TBreakStmt, fc: _FnCompiler) -> None:
@@ -909,17 +969,20 @@ class Compiler:
         if has_finally:
             fc.emit(OP_POP_HANDLER, 0, stmt.pos.line)
             fc.handler_depth -= 1
-            finally_end = fc.emit_jump(OP_JUMP, stmt.pos.line)
+            # Normal path: run finally then continue
+            self._compile_block(stmt.finally_body, fc)
+            finally_done = fc.emit_jump(OP_JUMP, stmt.pos.line)
+            # Exception path: run finally then rethrow pending exception
             fc.patch_jump(finally_jump)
             self._compile_block(stmt.finally_body, fc)
-            fc.patch_jump(finally_end)
-            self._compile_block(stmt.finally_body, fc)
+            fc.emit(OP_NIL, 0, stmt.pos.line)
+            fc.emit(OP_THROW, 0, stmt.pos.line)
+            fc.patch_jump(finally_done)
 
     def _emit_catch_type_check(
         self, types: list, fc: _FnCompiler, line: int
     ) -> None:
         if len(types) == 0:
-            # Catch-all
             fc.emit(OP_POP, 0, line)
             fc.emit(OP_TRUE, 0, line)
             return
@@ -929,24 +992,45 @@ class Compiler:
             fc.constants.append(VStr(tname))
             fc.emit(OP_IS_TYPE, idx, line)
             return
-        # Union: match any
-        # Check each type, OR together
-        tname = self._type_name_str(types[0])
+        # Union: for each type except last, DUP + IS_TYPE + short-circuit on true.
+        # Last type: just IS_TYPE (consumes the value).
+        # Stack: [value]
+        # DUP → [value, copy]
+        # IS_TYPE → [value, bool]  (IS_TYPE popped copy, pushed bool)
+        # If true → pop value, push true, jump to end
+        # If false → pop false, try next type
+        end_patches: list[int] = []
+        ti = 0
+        while ti < len(types) - 1:
+            tname = self._type_name_str(types[ti])
+            idx = len(fc.constants)
+            fc.constants.append(VStr(tname))
+            fc.emit(OP_DUP, 0, line)
+            fc.emit(OP_IS_TYPE, idx, line)
+            match_jump = fc.emit_jump(OP_JUMP_IF_TRUE, line)
+            # Not matched — continue to next type (value still on stack)
+            no_match = fc.current_offset()
+            # Patch match_jump: on match, pop value and push true
+            match_target = fc.current_offset()
+            # Actually JUMP_IF_TRUE already popped the bool.
+            # On false path: stack is [value], continue.
+            # On true path: we jumped to match_target with stack [value].
+            # We need true on stack and value gone. So jump to success block.
+            # Let's defer: collect the match jumps, patch them all to one place.
+            end_patches.append(match_jump)
+            ti += 1
+        # Last type: IS_TYPE consumes the value
+        tname = self._type_name_str(types[ti])
         idx = len(fc.constants)
         fc.constants.append(VStr(tname))
         fc.emit(OP_IS_TYPE, idx, line)
-        ti = 1
-        while ti < len(types):
-            # DUP the original value from under our bool
-            # Actually we consumed the dup. Need to re-dup for each check.
-            # Simpler: just check the first one, if true short-circuit
-            short = fc.emit_jump(OP_JUMP_IF_TRUE, line)
-            # Need the value again for next check — but it was consumed by IS_TYPE
-            # This is tricky. Let's emit DUP before each IS_TYPE instead.
-            # Rewrite: this approach won't work cleanly. For now, encode all
-            # type names as a constant list and let IS_TYPE handle union.
-            fc.patch_jump(short)
-            ti += 1
+        skip_pop = fc.emit_jump(OP_JUMP, line)
+        # Patch all short-circuit jumps here: pop value, push true
+        for ep in end_patches:
+            fc.patch_jump(ep)
+        fc.emit(OP_POP, 0, line)  # pop original value
+        fc.emit(OP_TRUE, 0, line)
+        fc.patch_jump(skip_pop)
 
     def _type_name_str(self, ttype) -> str:
         if isinstance(ttype, TIdentType):
@@ -972,19 +1056,23 @@ class Compiler:
                     fc.emit(OP_DUP, 0, case.pos.line)
                     fc.emit(OP_STORE_LOCAL, local.slot, case.pos.line)
                 self._compile_block(case.body, fc)
+                fc.emit(OP_POP, 0, case.pos.line)  # pop the dup (MATCH_TYPE peeks)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
+                fc.emit(OP_POP, 0, case.pos.line)  # pop dup on failure path
             elif isinstance(case.pattern, TPatternEnum):
                 idx = len(fc.constants)
                 fc.constants.append(VStr(case.pattern.enum_name + "." + case.pattern.variant))
                 fc.emit(OP_MATCH_TYPE, idx, case.pos.line)
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
                 self._compile_block(case.body, fc)
+                fc.emit(OP_POP, 0, case.pos.line)  # pop the dup (MATCH_TYPE peeks)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
+                fc.emit(OP_POP, 0, case.pos.line)  # pop dup on failure path
             elif isinstance(case.pattern, TPatternNil):
                 fc.emit(OP_NIL, 0, case.pos.line)
-                fc.emit(OP_EQ, 0, case.pos.line)
+                fc.emit(OP_EQ, 0, case.pos.line)  # consumes dup
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
                 self._compile_block(case.body, fc)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
@@ -996,9 +1084,9 @@ class Compiler:
                     fc.emit(OP_DUP, 0, stmt.default.pos.line)
                     fc.emit(OP_STORE_LOCAL, local.slot, stmt.default.pos.line)
             self._compile_block(stmt.default.body, fc)
-        fc.emit(OP_POP, 0, stmt.pos.line)  # pop scrutinee
         for ep in end_patches:
             fc.patch_jump(ep)
+        fc.emit(OP_POP, 0, stmt.pos.line)  # pop scrutinee
 
     # ── Expression compilation ────────────────────────────────
 
@@ -1022,7 +1110,7 @@ class Compiler:
         elif isinstance(expr, TStringLit):
             fc.emit_const(VStr(expr.value), expr.pos.line)
         elif isinstance(expr, TByteLit):
-            fc.emit_const(VInt(expr.value), expr.pos.line)
+            fc.emit_const(VByte(expr.value), expr.pos.line)
         elif isinstance(expr, TRuneLit):
             fc.emit_const(VRune(expr.value), expr.pos.line)
         elif isinstance(expr, TBytesLit):
@@ -1354,6 +1442,7 @@ class Compiler:
             self._compile_expr(a.value, fc)
         fidx = self._field_const(fa.field, fc, expr.pos.line)
         fc.emit(OP_CALL_METHOD, fidx, expr.pos.line)
+        fc.emit(0, len(expr.args), expr.pos.line)
 
     def _compile_field_access(self, expr: TFieldAccess, fc: _FnCompiler) -> None:
         # Enum variant access: EnumName.Variant
@@ -1376,10 +1465,15 @@ class Compiler:
         for p in expr.params:
             pt = self._resolve_param_type(p)
             lit_fc.add_local(p.name, pt)
-        self._collect_locals(expr.body, lit_fc)
-        self._compile_block(expr.body, lit_fc)
-        # Implicit return void
-        lit_fc.emit(OP_RETURN_VOID, 0, expr.pos.line)
+        is_arrow = expr.annotations.get("fn_lit.arrow") == "true"
+        if is_arrow and len(expr.body) == 1 and isinstance(expr.body[0], TExprStmt):
+            # Arrow fn lit: body is a single expression, compile as return
+            self._compile_expr(expr.body[0].expr, lit_fc)
+            lit_fc.emit(OP_RETURN, 0, expr.pos.line)
+        else:
+            self._collect_locals(expr.body, lit_fc)
+            self._compile_block(expr.body, lit_fc)
+            lit_fc.emit(OP_RETURN_VOID, 0, expr.pos.line)
         code_idx = len(self.code_objects)
         self.code_objects.append(lit_fc.to_code_object(len(expr.params)))
         fc.emit_const(VFunc(code_idx, []), expr.pos.line)

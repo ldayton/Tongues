@@ -1165,20 +1165,23 @@ class Checker:
         if len(self.scopes) > 0:
             self.scopes[-1][name] = typ
 
-    def lookup(self, name: str, pos: Pos) -> Type | None:
-        # Search scopes innermost-out
+    def _try_lookup(self, name: str) -> Type | None:
+        """Look up a name without emitting errors."""
         i = len(self.scopes) - 1
         while i >= 0:
             if name in self.scopes[i]:
                 return self.scopes[i][name]
             i -= 1
-        # Check top-level functions
         if name in self.functions:
-            fn = self.functions[name]
-            return fn
-        # Check type names (struct constructors, enum access)
+            return self.functions[name]
         if name in self.types:
             return self.types[name]
+        return None
+
+    def lookup(self, name: str, pos: Pos) -> Type | None:
+        r = self._try_lookup(name)
+        if r is not None:
+            return r
         self.error("undefined name '" + name + "'", pos)
         return None
 
@@ -1960,6 +1963,8 @@ class Checker:
                         self.declare(b, ERROR_T, stmt.pos)
                 else:
                     self.bind_for_vars(stmt.binding, iter_type, stmt.pos)
+                    if isinstance(iter_type, MapT):
+                        stmt.annotations["iter_kind"] = "map"
         self.check_stmts(stmt.body)
         self.exit_scope()
         self.uninitialized = saved_uninit
@@ -2525,25 +2530,6 @@ class Checker:
                     return BOOL_T
                 if right.kind == TY_NIL and contains_nil(left):
                     return BOOL_T
-                # Allow nil comparison on reference/container types
-                if (
-                    left.kind == TY_NIL
-                    and right.kind != TY_INT
-                    and right.kind != TY_FLOAT
-                    and right.kind != TY_BOOL
-                    and right.kind != TY_BYTE
-                    and right.kind != TY_RUNE
-                ):
-                    return BOOL_T
-                if (
-                    right.kind == TY_NIL
-                    and left.kind != TY_INT
-                    and left.kind != TY_FLOAT
-                    and left.kind != TY_BOOL
-                    and left.kind != TY_BYTE
-                    and left.kind != TY_RUNE
-                ):
-                    return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
                     pos,
@@ -2969,19 +2955,9 @@ class Checker:
         return None
 
     def check_call(self, expr: TCall, expected: Type | None) -> Type | None:
-        # Built-in function call: TCall with TVar func
-        # User-defined functions shadow builtins
-        if (
-            isinstance(expr.func, TVar)
-            and expr.func.name in BUILTIN_NAMES
-            and expr.func.name not in self.functions
-        ):
-            return self.check_builtin_call(
-                expr.func.name, expr.args, expr.pos, expected
-            )
-        # Struct constructor: TCall with TVar func resolving to a struct type
+        # Struct/interface constructor and builtin dispatch
         if isinstance(expr.func, TVar):
-            resolved = self.lookup(expr.func.name, expr.func.pos)
+            resolved = self._try_lookup(expr.func.name)
             if resolved is not None and isinstance(resolved, StructT):
                 return self.check_struct_constructor(resolved, expr.args, expr.pos)
             if resolved is not None and isinstance(resolved, InterfaceT):
@@ -3027,6 +3003,14 @@ class Checker:
             if resolved is not None and isinstance(resolved, FnT):
                 pnames = self.fn_param_names.get(expr.func.name)
                 return self.check_fn_call(resolved, expr.args, expr.pos, pnames)
+            # Builtin functions (after struct/interface/fn resolution)
+            if (
+                expr.func.name in BUILTIN_NAMES
+                and expr.func.name not in self.functions
+            ):
+                return self.check_builtin_call(
+                    expr.func.name, expr.args, expr.pos, expected
+                )
             if resolved is not None:
                 if resolved.kind == TY_ERROR:
                     return ERROR_T
@@ -3454,8 +3438,9 @@ class Checker:
         self, stmts: list[TStmt], param_names: set[str], pos: Pos
     ) -> None:
         """Check that fn literal body doesn't capture variables from enclosing scope."""
+        local_names = set(param_names)
         for s in stmts:
-            self._scan_stmt_for_captures(s, param_names, pos)
+            self._scan_stmt_for_captures(s, local_names, pos)
 
     def check_closure_captures_expr(
         self, expr: TExpr, param_names: set[str], pos: Pos
@@ -3530,7 +3515,6 @@ class Checker:
             if stmt.value is not None:
                 self._scan_expr_for_captures(stmt.value, param_names, pos)
             # The declared name becomes a local, not a capture
-            param_names = set(param_names)
             param_names.add(stmt.name)
         elif isinstance(stmt, TAssignStmt):
             self._scan_expr_for_captures(stmt.target, param_names, pos)
@@ -4296,6 +4280,7 @@ class Checker:
                     TY_BYTE,
                     TY_RUNE,
                     TY_STRING,
+                    TY_ERROR,
                 ):
                     self.error("Sorted requires ordered type", pos)
                 return t_so
@@ -4306,6 +4291,7 @@ class Checker:
                     TY_BYTE,
                     TY_RUNE,
                     TY_STRING,
+                    TY_ERROR,
                 ):
                     self.error("Sorted requires ordered type", pos)
                 return ListT(kind="list", element=t_so.element)
