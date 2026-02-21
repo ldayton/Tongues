@@ -8,7 +8,7 @@ import sys
 if line is not None:
 
 === ReadFile emits open idiom
-open("input.txt")
+open("input.txt", "rb")
 
 === WriteFile emits open idiom
 open("output.txt", "w")

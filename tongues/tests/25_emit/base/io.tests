@@ -1,0 +1,11 @@
+=== read file binary mode
+import sys
+def read_data(path: str) -> bytes:
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    return raw
+def main() -> None:
+    data: bytes = read_data(sys.argv[1])
+    sys.stdout.buffer.write(data)
+if __name__ == "__main__":
+    main()
