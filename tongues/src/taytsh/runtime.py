@@ -2,12 +2,11 @@
 
 This is a spec-faithful (as practical) interpreter for the Taytsh textual IR
 defined in spec/taytsh.md.
-"""  # tongues: skip
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable, Iterable, Mapping, Sequence, cast
+from dataclasses import dataclass, field
 
 
 def _isnan(x: float) -> bool:
@@ -81,6 +80,7 @@ from .ast import (
     TMapType,
     TMatchStmt,
     TModule,
+    TModuleItem,
     TNilLit,
     TOpAssignStmt,
     TOptionalType,
@@ -129,194 +129,90 @@ class TaytshError(Exception):
         self.pos = pos
 
 
-class TaytshTypeError(TaytshError):
+class TaytshTypeError(Exception):
     """Static type error."""
 
+    def __init__(self, msg: str, pos: Pos | None = None):
+        if pos is None:
+            super().__init__(msg)
+        else:
+            super().__init__(f"{msg} at line {pos.line} col {pos.col}")
+        self.msg = msg
+        self.pos = pos
 
-class TaytshRuntimeFault(TaytshError):
+
+class TaytshRuntimeFault(Exception):
     """Runtime fault (uncaught throw, invalid operation, etc.)."""
 
-
-# ============================================================
-# Types
-# ============================================================
-
-
-class Ty:
-    """Base type for typechecker/runtime."""
-
-    def display(self) -> str:
-        raise NotImplementedError
-
-
-@dataclass(unsafe_hash=True)
-class TyPrim(Ty):
-    kind: str
-
-    def display(self) -> str:
-        return self.kind
-
-
-@dataclass(unsafe_hash=True)
-class TyList(Ty):
-    element: Ty
-
-    def display(self) -> str:
-        return f"list[{self.element.display()}]"
-
-
-@dataclass(unsafe_hash=True)
-class TyMap(Ty):
-    key: Ty
-    value: Ty
-
-    def display(self) -> str:
-        return f"map[{self.key.display()}, {self.value.display()}]"
-
-
-@dataclass(unsafe_hash=True)
-class TySet(Ty):
-    element: Ty
-
-    def display(self) -> str:
-        return f"set[{self.element.display()}]"
-
-
-@dataclass(unsafe_hash=True)
-class TyTuple(Ty):
-    elements: tuple[Ty, ...]
-
-    def display(self) -> str:
-        inner = ", ".join(t.display() for t in self.elements)
-        return f"({inner})"
-
-
-@dataclass(unsafe_hash=True)
-class TyFunc(Ty):
-    params: tuple[Ty, ...]
-    ret: Ty
-
-    def display(self) -> str:
-        inner = ", ".join(t.display() for t in (*self.params, self.ret))
-        return f"fn[{inner}]"
-
-
-@dataclass(unsafe_hash=True)
-class TyStruct(Ty):
-    name: str
-
-    def display(self) -> str:
-        return self.name
-
-
-@dataclass(unsafe_hash=True)
-class TyInterface(Ty):
-    name: str
-
-    def display(self) -> str:
-        return self.name
-
-
-@dataclass(unsafe_hash=True)
-class TyEnum(Ty):
-    name: str
-
-    def display(self) -> str:
-        return self.name
-
-
-@dataclass(unsafe_hash=True)
-class TyUnion(Ty):
-    members: tuple[Ty, ...]
-
-    def display(self) -> str:
-        return " | ".join(t.display() for t in self.members)
-
-
-TY_INT = TyPrim("int")
-TY_FLOAT = TyPrim("float")
-TY_BOOL = TyPrim("bool")
-TY_BYTE = TyPrim("byte")
-TY_BYTES = TyPrim("bytes")
-TY_STRING = TyPrim("string")
-TY_RUNE = TyPrim("rune")
-TY_VOID = TyPrim("void")  # return-only marker
-TY_ERROR = TyPrim("error")
-TY_POLY = TyPrim("poly")
-TY_NIL = TyPrim("nil")
-
-
-def _ty_key(t: Ty) -> tuple[object, ...]:
-    if isinstance(t, TyPrim):
-        return ("prim", t.kind)
-    if isinstance(t, TyStruct):
-        return ("struct", t.name)
-    if isinstance(t, TyInterface):
-        return ("iface", t.name)
-    if isinstance(t, TyEnum):
-        return ("enum", t.name)
-    if isinstance(t, TyList):
-        return ("list", _ty_key(t.element))
-    if isinstance(t, TyMap):
-        return ("map", _ty_key(t.key), _ty_key(t.value))
-    if isinstance(t, TySet):
-        return ("set", _ty_key(t.element))
-    if isinstance(t, TyTuple):
-        return ("tuple", tuple(_ty_key(e) for e in t.elements))
-    if isinstance(t, TyFunc):
-        return ("fn", tuple(_ty_key(p) for p in t.params), _ty_key(t.ret))
-    if isinstance(t, TyUnion):
-        return ("union", tuple(_ty_key(m) for m in t.members))
-    return ("unknown", repr(t))
-
-
-def ty_eq(a: Ty, b: Ty) -> bool:
-    return _ty_key(a) == _ty_key(b)
-
-
-def ty_is_nil(t: Ty) -> bool:
-    return isinstance(t, TyPrim) and t.kind == "nil"
-
-
-def ty_is_error(t: Ty) -> bool:
-    return isinstance(t, TyPrim) and t.kind == "error"
-
-
-def ty_union(members: Iterable[Ty]) -> Ty:
-    flat: list[Ty] = []
-    for m in members:
-        if isinstance(m, TyUnion):
-            flat.extend(m.members)
+    def __init__(self, msg: str, pos: Pos | None = None):
+        if pos is None:
+            super().__init__(msg)
         else:
-            flat.append(m)
-    # absorb error
-    if any(ty_is_error(m) for m in flat):
-        return TY_ERROR
-    # dedup
-    uniq: dict[tuple[object, ...], Ty] = {}
-    for m in flat:
-        uniq[_ty_key(m)] = m
-    keyed = [(_ty_key(v), v) for v in uniq.values()]
-    keyed.sort()
-    ordered = tuple(v for _, v in keyed)
-    if len(ordered) == 1:
-        return ordered[0]
-    return TyUnion(ordered)
+            super().__init__(f"{msg} at line {pos.line} col {pos.col}")
+        self.msg = msg
+        self.pos = pos
 
 
-def ty_without_nil(t: Ty) -> Ty:
-    if isinstance(t, TyUnion):
-        members = [m for m in t.members if not ty_is_nil(m)]
-        return ty_union(members)
-    return t
+# ============================================================
+# Checked types (imported from check.py)
+# ============================================================
+
+from .check import (
+    BOOL_T,
+    BUILTIN_STRUCTS,
+    BYTE_T,
+    BYTES_T,
+    CheckError,
+    Checker,
+    ERROR_T,
+    EnumT,
+    FLOAT_T,
+    FnT,
+    INT_T,
+    InterfaceT,
+    ListT,
+    MapT,
+    NIL_T,
+    RUNE_T,
+    STRING_T,
+    SetT,
+    StructT,
+    TupleT,
+    TY_BOOL,
+    TY_ERROR,
+    TY_FLOAT,
+    TY_NIL,
+    TY_VOID,
+    Type,
+    UnionT,
+    VOID_T,
+    check_with_info,
+    contains_nil,
+    normalize_union,
+    remove_nil,
+    type_eq,
+    type_name,
+)
 
 
-def ty_has_nil(t: Ty) -> bool:
-    if ty_is_nil(t) or ty_is_error(t):
-        return True
-    if isinstance(t, TyUnion):
-        return any(ty_has_nil(m) for m in t.members)
-    return False
+
+def _is_nil(t: Type) -> bool:
+    return t.kind == TY_NIL
+
+
+def _is_error(t: Type) -> bool:
+    return t.kind == TY_ERROR
+
+
+def _builtin_arg_expected(name: str, expected: Type | None) -> Type | None:
+    """Derive the expected arg type for a builtin from its expected return type."""
+    if expected is None:
+        return None
+    if name == "Sum" and (type_eq(expected, INT_T) or type_eq(expected, FLOAT_T)):
+        return ListT(kind="list", element=expected)
+    if name == "Sorted" and isinstance(expected, ListT):
+        return expected
+    return None
 
 
 # ============================================================
@@ -324,112 +220,111 @@ def ty_has_nil(t: Ty) -> bool:
 # ============================================================
 
 
+@dataclass(unsafe_hash=True)
 class Value:
     """A runtime value with a concrete (non-union) type tag."""
 
-    def ty(self) -> Ty:
+    def ty(self) -> Type:
         raise NotImplementedError
 
     def to_string(self) -> str:
         raise NotImplementedError
 
 
-class HashableValue(Value):
-    """A value that can be used as a map key / set element."""
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class VNil(Value):
-    def ty(self) -> Ty:
-        return TY_NIL
+    def ty(self) -> Type:
+        return NIL_T
 
     def to_string(self) -> str:
         return "nil"
 
 
 @dataclass(unsafe_hash=True)
-class VBool(HashableValue):
+class VBool(Value):
     value: bool
 
-    def ty(self) -> Ty:
-        return TY_BOOL
+    def ty(self) -> Type:
+        return BOOL_T
 
     def to_string(self) -> str:
         return "true" if self.value else "false"
 
 
 @dataclass(unsafe_hash=True)
-class VInt(HashableValue):
+class VInt(Value):
     value: int
 
-    def ty(self) -> Ty:
-        return TY_INT
+    def ty(self) -> Type:
+        return INT_T
 
     def to_string(self) -> str:
         return str(self.value)
 
 
 @dataclass(unsafe_hash=True)
-class VFloat(HashableValue):
+class VFloat(Value):
     value: float
 
-    def ty(self) -> Ty:
-        return TY_FLOAT
+    def ty(self) -> Type:
+        return FLOAT_T
 
     def to_string(self) -> str:
         return str(self.value)
 
 
 @dataclass(unsafe_hash=True)
-class VByte(HashableValue):
+class VByte(Value):
     value: int
 
-    def ty(self) -> Ty:
-        return TY_BYTE
+    def ty(self) -> Type:
+        return BYTE_T
 
     def to_string(self) -> str:
         return str(self.value)
 
 
 @dataclass(unsafe_hash=True)
-class VBytes(HashableValue):
+class VBytes(Value):
     value: bytes
 
-    def ty(self) -> Ty:
-        return TY_BYTES
+    def ty(self) -> Type:
+        return BYTES_T
 
     def to_string(self) -> str:
         return self.value.hex()
 
 
 @dataclass(unsafe_hash=True)
-class VString(HashableValue):
+class VString(Value):
     value: str
 
-    def ty(self) -> Ty:
-        return TY_STRING
+    def ty(self) -> Type:
+        return STRING_T
 
     def to_string(self) -> str:
         return self.value
 
 
 @dataclass(unsafe_hash=True)
-class VRune(HashableValue):
+class VRune(Value):
     value: str
 
-    def ty(self) -> Ty:
-        return TY_RUNE
+    def ty(self) -> Type:
+        return RUNE_T
 
     def to_string(self) -> str:
         return self.value
 
 
 @dataclass(unsafe_hash=True)
-class VTuple(HashableValue):
-    elements: tuple[Value, ...]
-    typ: TyTuple
+class VTuple(Value):
+    elements: list[Value]
+    typ: TupleT = field(hash=False)
 
-    def ty(self) -> Ty:
+    def ty(self) -> Type:
         return self.typ
 
     def to_string(self) -> str:
@@ -440,9 +335,9 @@ class VTuple(HashableValue):
 @dataclass
 class VList(Value):
     elements: list[Value]
-    typ: TyList
+    typ: ListT
 
-    def ty(self) -> Ty:
+    def ty(self) -> Type:
         return self.typ
 
     def to_string(self) -> str:
@@ -451,39 +346,42 @@ class VList(Value):
 
 
 @dataclass(unsafe_hash=True)
-class VEnum(HashableValue):
+class VEnum(Value):
     enum_name: str
     variant: str
 
-    def ty(self) -> Ty:
-        return TyEnum(self.enum_name)
+    def ty(self) -> Type:
+        return EnumT(kind="enum", name=self.enum_name, variants=[])
 
     def to_string(self) -> str:
-        return f"{self.enum_name}.{self.variant}"
+        return self.enum_name + "." + self.variant
+
 
 
 @dataclass
 class VMap(Value):
-    # Keys must be hashable Taytsh values.
-    entries: dict[HashableValue, Value]
-    typ: TyMap
+    map_keys: list[Value]
+    map_vals: list[Value]
+    typ: MapT
 
-    def ty(self) -> Ty:
+    def ty(self) -> Type:
         return self.typ
 
     def to_string(self) -> str:
         parts: list[str] = []
-        for k, v in self.entries.items():
-            parts.append(f"{k.to_string()}: {v.to_string()}")
+        i = 0
+        while i < len(self.map_keys):
+            parts.append(self.map_keys[i].to_string() + ": " + self.map_vals[i].to_string())
+            i += 1
         return "{" + ", ".join(parts) + "}"
 
 
 @dataclass
 class VSet(Value):
-    elements: set[HashableValue]
-    typ: TySet
+    elements: list[Value]
+    typ: SetT
 
-    def ty(self) -> Ty:
+    def ty(self) -> Type:
         return self.typ
 
     def to_string(self) -> str:
@@ -496,8 +394,8 @@ class VStruct(Value):
     struct_name: str
     fields: dict[str, Value]
 
-    def ty(self) -> Ty:
-        return TyStruct(self.struct_name)
+    def ty(self) -> Type:
+        return StructT(kind="struct", name=self.struct_name, fields={}, methods={}, parent=None)
 
     def to_string(self) -> str:
         parts: list[str] = []
@@ -509,11 +407,15 @@ class VStruct(Value):
 
 @dataclass
 class VFunc(Value):
-    typ: TyFunc
+    typ: FnT
     name: str | None
-    call: Callable[[list[Value]], Value]
+    kind: str  # "user" | "builtin" | "fnlit"
+    fn_key: str  # function/builtin name, or "" for fnlit
+    fn_lit: TFnLit | None  # set for fnlit
+    fn_sig: FnSig | None  # set for user and fnlit
+    fn_decl: TFnDecl | None  # set for user
 
-    def ty(self) -> Ty:
+    def ty(self) -> Type:
         return self.typ
 
     def to_string(self) -> str:
@@ -527,31 +429,28 @@ class VFunc(Value):
 # ============================================================
 
 
-class _Signal(Exception):
-    pass
-
-
 @dataclass
-class _Return(_Signal):
+class _Return(Exception):
     value: Value | None
 
 
-class _Break(_Signal):
+class _Break(Exception):
     pass
 
 
-class _Continue(_Signal):
+class _Continue(Exception):
     pass
 
 
 @dataclass
-class _Throw(_Signal):
+class _Throw(Exception):
     value: Value
 
 
 @dataclass
-class _Exit(_Signal):
+class _Exit(Exception):
     code: int
+
 
 
 # ============================================================
@@ -559,36 +458,35 @@ class _Exit(_Signal):
 # ============================================================
 
 
+@dataclass
 class _Input:
-    _pos: int
-
-    def __init__(self, data: bytes):
-        self._data = data
-        self._pos = 0
+    data: bytes
+    pos: int
 
     def read_all(self) -> bytes:
-        out = self._data[self._pos :]
-        self._pos = len(self._data)
+        out = self.data[self.pos :]
+        self.pos = len(self.data)
         return out
 
     def read_n(self, n: int) -> bytes:
         if n <= 0:
             return b""
-        out = self._data[self._pos : self._pos + n]
-        self._pos += len(out)
+        out = self.data[self.pos : self.pos + n]
+        self.pos += len(out)
         return out
 
     def read_line(self) -> bytes | None:
-        if self._pos >= len(self._data):
+        if self.pos >= len(self.data):
             return None
-        idx = self._data.find(b"\n", self._pos)
-        if idx == -1:
-            out = self._data[self._pos :]
-            self._pos = len(self._data)
-            return out
-        out = self._data[self._pos : idx + 1]
-        self._pos = idx + 1
-        return out
+        start: int = self.pos
+        i: int = start
+        while i < len(self.data):
+            if self.data[i : i + 1] == b"\n":
+                self.pos = i + 1
+                return self.data[start : i + 1]
+            i += 1
+        self.pos = len(self.data)
+        return self.data[start :]
 
 
 @dataclass
@@ -605,22 +503,37 @@ class RunResult:
 
 def run(
     module: TModule,
-    *,
     stdin: bytes = b"",
-    args: Sequence[str] | None = None,
-    env: Mapping[str, str] | None = None,
+    args: list[str] | None = None,
+    env: dict[str, str] | None = None,
 ) -> RunResult:
     """Typecheck and run a parsed Taytsh module."""
+    check_result = check_with_info(module)
+    checker: Checker = check_result[1]
     idx = _build_index(module)
-    tc = TypeChecker(idx)
-    checked = tc.check_module(module)
+    _resolve_index(idx, checker)
+    run_args: list[str] = list(args) if args is not None else []
+    run_env: dict[str, str] = env if env is not None else {}
+    fn_values: dict[str, VFunc] = {}
+    for fn_name, fn_info in idx.funcs.items():
+        fn_values[fn_name] = VFunc(fn_info.sig.ty(), fn_name, "user", fn_name, None, fn_info.sig, fn_info.decl)
+    builtin_values: dict[str, VFunc] = {}
+    for bi_name in _BUILTIN_NAMES_RT:
+        fn_type = checker.functions.get(bi_name)
+        if fn_type is not None:
+            builtin_values[bi_name] = VFunc(fn_type, bi_name, "builtin", bi_name, None, None, None)
     rt = Runtime(
         module,
-        checked,
-        tc,
-        stdin=stdin,
-        args=list(args) if args is not None else [],
-        env=dict(env) if env is not None else {},
+        idx,
+        checker,
+        checker.expr_types,
+        _Input(stdin, 0),
+        run_args,
+        run_env,
+        b"",
+        b"",
+        fn_values,
+        builtin_values,
     )
     return rt.run_main()
 
@@ -732,17 +645,17 @@ _RESERVED_BINDINGS: set[str] = {
 
 @dataclass
 class FnSig:
-    params: tuple[Ty, ...]
-    ret: Ty
+    params: tuple[Type, ...]
+    ret: Type
 
-    def ty(self) -> TyFunc:
-        return TyFunc(self.params, self.ret)
+    def ty(self) -> FnT:
+        return FnT(kind="fn", params=list(self.params), ret=self.ret)
 
 
 @dataclass
 class FieldInfo:
     name: str
-    ty: Ty
+    ty: Type
     decl: TFieldDecl
 
 
@@ -809,7 +722,7 @@ def _builtin_err(name: str) -> StructInfo:
         [],
         {},
     )
-    fi = FieldInfo("message", TY_STRING, decl.fields[0])
+    fi = FieldInfo("message", STRING_T, decl.fields[0])
     return StructInfo(
         name=name,
         implements=None,
@@ -838,38 +751,43 @@ def _build_index(module: TModule) -> ModuleIndex:
         structs[err] = _builtin_err(err)
 
     # First pass: collect decl kinds and detect duplicates across the flat namespace.
-    seen_top: dict[str, TDecl] = {}
+    seen_top: dict[str, TModuleItem] = {}
     for d in module.decls:
-        name: str
+        name: str = ""
+        d_pos: Pos = Pos(0, 0)
         if isinstance(d, TFnDecl):
             name = d.name
+            d_pos = d.pos
         elif isinstance(d, TStructDecl):
             name = d.name
+            d_pos = d.pos
         elif isinstance(d, TInterfaceDecl):
             name = d.name
+            d_pos = d.pos
         elif isinstance(d, TEnumDecl):
             name = d.name
+            d_pos = d.pos
         else:
             continue
-        _ensure_not_reserved(name, pos=d.pos)
+        _ensure_not_reserved(name, pos=d_pos)
         if name in seen_top or name in structs:
-            raise TaytshTypeError(f"duplicate top-level name '{name}'", d.pos)
+            raise TaytshTypeError("duplicate top-level name '" + name + "'", d_pos)
         seen_top[name] = d
 
     # Populate structs / interfaces / enums first so type resolution can refer to them.
-    for name, d in seen_top.items():
-        if isinstance(d, TInterfaceDecl):
-            interfaces[name] = InterfaceInfo(name=name, decl=d, implementors=set())
-        elif isinstance(d, TEnumDecl):
-            enums[name] = EnumInfo(name=name, variants=set(d.variants), decl=d)
-        elif isinstance(d, TStructDecl):
-            structs[name] = StructInfo(
-                name=name,
-                implements=d.parent,
+    for sname, sd in seen_top.items():
+        if isinstance(sd, TInterfaceDecl):
+            interfaces[sname] = InterfaceInfo(name=sname, decl=sd, implementors=set())
+        elif isinstance(sd, TEnumDecl):
+            enums[sname] = EnumInfo(name=sname, variants=set(sd.variants), decl=sd)
+        elif isinstance(sd, TStructDecl):
+            structs[sname] = StructInfo(
+                name=sname,
+                implements=sd.parent,
                 fields=[],
                 field_map={},
                 methods={},
-                decl=d,
+                decl=sd,
             )
 
     # Second pass: resolve struct implements + field/method names (types later).
@@ -902,7 +820,7 @@ def _build_index(module: TModule) -> ModuleIndex:
                 raise TaytshTypeError(
                     f"duplicate field '{f.name}' in struct '{s.name}'", f.pos
                 )
-            fi = FieldInfo(f.name, TY_ERROR, f)  # placeholder ty resolved later
+            fi = FieldInfo(f.name, ERROR_T, f)  # placeholder ty resolved later
             field_map[f.name] = fi
             fields.append(fi)
 
@@ -918,2697 +836,65 @@ def _build_index(module: TModule) -> ModuleIndex:
                     f"method '{m.name}' conflicts with field in struct '{s.name}'",
                     m.pos,
                 )
-            methods[m.name] = MethodInfo(m.name, FnSig((), TY_VOID), m)  # placeholder
+            methods[m.name] = MethodInfo(m.name, FnSig((), VOID_T), m)  # placeholder
 
         s.fields = fields
         s.field_map = field_map
         s.methods = methods
 
     # Functions (signatures resolved later).
-    for name, d in seen_top.items():
-        if isinstance(d, TFnDecl):
-            funcs[name] = FnInfo(
-                name=name, sig=FnSig((), TY_VOID), decl=d
-            )  # placeholder
+    for fname, fd in seen_top.items():
+        if isinstance(fd, TFnDecl):
+            funcs[fname] = FnInfo(
+                name=fname, sig=FnSig((), VOID_T), decl=fd
+            )
 
     return ModuleIndex(funcs=funcs, structs=structs, interfaces=interfaces, enums=enums)
 
 
-class _TypeEnv:
-    def __init__(self) -> None:
-        self._scopes: list[dict[str, Ty]] = []
-        self._overrides: list[dict[str, Ty]] = []
-
-    def push_scope(self) -> None:
-        self._scopes.append({})
-
-    def pop_scope(self) -> None:
-        self._scopes.pop()
-
-    def push_override(self, mapping: dict[str, Ty]) -> None:
-        self._overrides.append(mapping)
-
-    def pop_override(self) -> None:
-        self._overrides.pop()
-
-    def narrow(self, name: str, typ: Ty) -> None:
-        """Narrow a variable's type in the scope where it's bound."""
-        for scope in reversed(self._scopes):
-            if name in scope:
-                scope[name] = typ
-                return
-
-    def is_bound_anywhere(self, name: str) -> bool:
-        for scope in reversed(self._scopes):
-            if name in scope:
-                return True
-        return False
-
-    def bind(self, name: str, typ: Ty, *, pos: Pos) -> None:
-        if name == "_":
-            return
-        _ensure_not_reserved(name, pos=pos)
-        if not self._scopes:
-            raise RuntimeError("no scope to bind into")
-        if self.is_bound_anywhere(name):
-            raise TaytshTypeError(f"name '{name}' already bound", pos)
-        self._scopes[-1][name] = typ
-
-    def get(self, name: str, *, pos: Pos) -> Ty:
-        if name == "_":
-            raise TaytshTypeError("'_' is discard-only and cannot be referenced", pos)
-        for ovr in reversed(self._overrides):
-            if name in ovr:
-                return ovr[name]
-        for scope in reversed(self._scopes):
-            if name in scope:
-                return scope[name]
-        raise TaytshTypeError(f"unknown name '{name}'", pos)
-
-
-def _always_terminates(stmts: list[TStmt]) -> bool:
-    """Check if a statement block always terminates (return/throw)."""
-    if not stmts:
-        return False
-    last = stmts[-1]
-    if isinstance(last, (TReturnStmt, TThrowStmt)):
-        return True
-    if isinstance(last, TIfStmt) and last.else_body is not None:
-        return _always_terminates(last.then_body) and _always_terminates(
-            cast(list[TStmt], last.else_body)
-        )
-    return False
+def _resolve_index(index: ModuleIndex, checker: Checker) -> None:
+    """Resolve placeholder types in the ModuleIndex using the Checker."""
+    for s in index.structs.values():
+        if s.decl.pos.line == 0:
+            continue
+        for fi in s.fields:
+            fi.ty = checker.resolve_type(fi.decl.typ)
+        for mi in s.methods.values():
+            params: list[Type] = []
+            for p in mi.decl.params:
+                if p.typ is None:
+                    params.append(StructT(kind="struct", name=s.name, fields={}, methods={}, parent=None))
+                else:
+                    params.append(checker.resolve_type(p.typ))
+            ret = checker.resolve_type(mi.decl.ret)
+            mi.sig = FnSig(tuple(params), ret)
+    for fi in index.funcs.values():
+        params = []
+        for p in fi.decl.params:
+            if p.typ is not None:
+                params.append(checker.resolve_type(p.typ))
+        ret = checker.resolve_type(fi.decl.ret)
+        fi.sig = FnSig(tuple(params), ret)
 
 
 def _expr_key(expr: TExpr) -> tuple[int, int]:
     return (expr.pos.line, expr.pos.col)
 
 
-class TypeChecker:
-    def __init__(self, index: ModuleIndex):
-        self.index = index
-        self.expr_types: dict[tuple[int, int], Ty] = {}
-
-    def resolve_type(self, typ: TType, *, pos: Pos, allow_void: bool = False) -> Ty:
-        if isinstance(typ, TPrimitive):
-            if typ.kind == "int":
-                return TY_INT
-            if typ.kind == "float":
-                return TY_FLOAT
-            if typ.kind == "bool":
-                return TY_BOOL
-            if typ.kind == "byte":
-                return TY_BYTE
-            if typ.kind == "bytes":
-                return TY_BYTES
-            if typ.kind == "string":
-                return TY_STRING
-            if typ.kind == "rune":
-                return TY_RUNE
-            if typ.kind == "nil":
-                return TY_NIL
-            if typ.kind == "void":
-                if allow_void:
-                    return TY_VOID
-                raise TaytshTypeError("void is not a value type", pos)
-            raise TaytshTypeError(f"unknown primitive type '{typ.kind}'", pos)
-
-        if isinstance(typ, TListType):
-            elem = self.resolve_type(typ.element, pos=typ.pos)
-            return TyList(elem)
-        if isinstance(typ, TMapType):
-            key = self.resolve_type(typ.key, pos=typ.pos)
-            val = self.resolve_type(typ.value, pos=typ.pos)
-            if not self._is_hashable_type(key):
-                raise TaytshTypeError(
-                    f"map key type '{key.display()}' is not hashable", pos
-                )
-            return TyMap(key, val)
-        if isinstance(typ, TSetType):
-            elem = self.resolve_type(typ.element, pos=typ.pos)
-            if not self._is_hashable_type(elem):
-                raise TaytshTypeError(
-                    f"set element type '{elem.display()}' is not hashable", pos
-                )
-            return TySet(elem)
-        if isinstance(typ, TTupleType):
-            if len(typ.elements) < 2:
-                raise TaytshTypeError("tuple types require 2+ elements", pos)
-            elems = tuple(self.resolve_type(e, pos=e.pos) for e in typ.elements)
-            return TyTuple(elems)
-        if isinstance(typ, TFuncType):
-            if len(typ.params) < 1:
-                raise TaytshTypeError("fn[...] requires at least a return type", pos)
-            resolved = [
-                self.resolve_type(t, pos=t.pos, allow_void=True) for t in typ.params
-            ]
-            ret = resolved[-1]
-            params = tuple(resolved[:-1])
-            if any(ty_eq(p, TY_VOID) for p in params):
-                raise TaytshTypeError("void cannot be a parameter type", pos)
-            return TyFunc(params, ret)
-        if isinstance(typ, TIdentType):
-            name = typ.name
-            if name in self.index.structs:
-                return TyStruct(name)
-            if name in self.index.interfaces:
-                return TyInterface(name)
-            if name in self.index.enums:
-                return TyEnum(name)
-            raise TaytshTypeError(f"unknown type '{name}'", pos)
-        if isinstance(typ, TUnionType):
-            members = [self.resolve_type(m, pos=m.pos) for m in typ.members]
-            if any(ty_eq(m, TY_VOID) for m in members):
-                raise TaytshTypeError("void cannot appear in a union", pos)
-            return ty_union(members)
-        if isinstance(typ, TOptionalType):
-            inner = self.resolve_type(typ.inner, pos=typ.pos)
-            if ty_eq(inner, TY_VOID):
-                raise TaytshTypeError("void cannot be optional", pos)
-            return ty_union([inner, TY_NIL])
-
-        raise TaytshTypeError("unsupported type syntax", pos)
-
-    def _is_hashable_type(self, typ: Ty) -> bool:
-        if isinstance(typ, TyPrim):
-            return typ.kind in {
-                "int",
-                "float",
-                "bool",
-                "byte",
-                "bytes",
-                "string",
-                "rune",
-            }
-        if isinstance(typ, TyEnum):
-            return True
-        if isinstance(typ, TyTuple):
-            return all(self._is_hashable_type(t) for t in typ.elements)
-        return False
-
-    def _resolve_index_signatures(self) -> None:
-        # Struct field types
-        for s in self.index.structs.values():
-            # Built-in error structs already have resolved placeholder types.
-            if (
-                s.name
-                in {
-                    "KeyError",
-                    "IndexError",
-                    "ZeroDivisionError",
-                    "AssertError",
-                    "NilError",
-                    "ValueError",
-                }
-                and s.decl.pos.line == 0
-            ):
-                continue
-            fields: list[FieldInfo] = []
-            field_map: dict[str, FieldInfo] = {}
-            for f in s.decl.fields:
-                t = self.resolve_type(f.typ, pos=f.pos)
-                if ty_eq(t, TY_VOID):
-                    raise TaytshTypeError("void cannot be a field type", f.pos)
-                fi = FieldInfo(f.name, t, f)
-                fields.append(fi)
-                field_map[f.name] = fi
-            s.fields = fields
-            s.field_map = field_map
-
-            # Methods
-            methods: dict[str, MethodInfo] = {}
-            for m in s.decl.methods:
-                sig = self._fn_decl_sig(m, method_self=TyStruct(s.name))
-                methods[m.name] = MethodInfo(m.name, sig, m)
-            s.methods = methods
-
-        # Top-level function signatures
-        for f in self.index.funcs.values():
-            f.sig = self._fn_decl_sig(f.decl, method_self=None)
-
-    def _fn_decl_sig(self, decl: TFnDecl, *, method_self: TyStruct | None) -> FnSig:
-        params: list[Ty] = []
-        seen = set()
-        if method_self is not None:
-            if not decl.params:
-                raise TaytshTypeError("method must take this parameter", decl.pos)
-            first = decl.params[0]
-            if first.typ is not None or first.name != "this":
-                raise TaytshTypeError(
-                    "method must take this as first parameter", first.pos
-                )
-        for i, p in enumerate(decl.params):
-            if p.name in seen and p.name != "_":
-                raise TaytshTypeError(f"duplicate parameter '{p.name}'", p.pos)
-            seen.add(p.name)
-            if p.typ is None:
-                if method_self is None:
-                    raise TaytshTypeError("'this' only allowed in methods", p.pos)
-                if i != 0 or p.name != "this":
-                    raise TaytshTypeError("this must be the first parameter", p.pos)
-                params.append(method_self)
-            else:
-                if p.name == "this":
-                    raise TaytshTypeError("'this' parameter must omit type", p.pos)
-                t = self.resolve_type(p.typ, pos=p.pos)
-                if ty_eq(t, TY_VOID):
-                    raise TaytshTypeError("void cannot be a parameter type", p.pos)
-                params.append(t)
-        ret = self.resolve_type(decl.ret, pos=decl.pos, allow_void=True)
-        return FnSig(tuple(params), ret)
-
-    def check_module(self, module: TModule) -> ModuleIndex:
-        self._resolve_index_signatures()
-
-        # Validate Main.
-        if "Main" not in self.index.funcs:
-            raise TaytshTypeError("missing Main() entrypoint", Pos(1, 1))
-        main = self.index.funcs["Main"]
-        if len(main.sig.params) != 0 or not ty_eq(main.sig.ret, TY_VOID):
-            raise TaytshTypeError(
-                "Main must have signature fn Main() -> void", main.decl.pos
-            )
-
-        # Typecheck all top-level functions and methods.
-        for f in self.index.funcs.values():
-            self._check_fn_body(f.decl, f.sig, allow_capture=False, method_self=None)
-        for s in self.index.structs.values():
-            for m in s.methods.values():
-                self._check_fn_body(
-                    m.decl, m.sig, allow_capture=False, method_self=TyStruct(s.name)
-                )
-        return self.index
-
-    # ------------------------------------------------------------------
-    # Statements
-    # ------------------------------------------------------------------
-
-    def _check_fn_body(
-        self,
-        decl: TFnDecl,
-        sig: FnSig,
-        *,
-        allow_capture: bool,
-        method_self: TyStruct | None,
-    ) -> None:
-        env = _TypeEnv()
-        env.push_scope()
-        # Bind params
-        for i, p in enumerate(decl.params):
-            if p.typ is None:
-                if method_self is None:
-                    raise TaytshTypeError("'this' only allowed in methods", p.pos)
-                if i != 0:
-                    raise TaytshTypeError("this must be first parameter", p.pos)
-                env.bind("this", method_self, pos=p.pos)
-            else:
-                env.bind(p.name, sig.params[i], pos=p.pos)
-
-        self._check_block(
-            decl.body,
-            env,
-            fn_ret=sig.ret,
-            in_loop=0,
-            allow_capture=allow_capture,
-        )
-
-        # Non-void functions must return on all paths (best-effort).
-        if not ty_eq(sig.ret, TY_VOID) and not self._block_always_returns(decl.body):
-            raise TaytshTypeError(
-                f"function '{decl.name}' may fall off without returning",
-                decl.pos,
-            )
-
-    def _block_always_returns(self, stmts: list[TStmt]) -> bool:
-        if not stmts:
-            return False
-        last = stmts[-1]
-        if isinstance(last, (TReturnStmt, TThrowStmt)):
-            return True
-        if isinstance(last, TIfStmt):
-            if last.else_body is None:
-                return False
-            return self._block_always_returns(
-                last.then_body
-            ) and self._block_always_returns(cast(list[TStmt], last.else_body))
-        if isinstance(last, TMatchStmt):
-            # Exhaustive match with all cases returning counts as always-return.
-            for c in last.cases:
-                if not self._block_always_returns(c.body):
-                    return False
-            if last.default is not None and not self._block_always_returns(
-                last.default.body
-            ):
-                return False
-            # If default absent, the match must be exhaustive (checked elsewhere) to count.
-            return True
-        if isinstance(last, TTryStmt):
-            # Conservatively: try always returns only if finally doesn't exist and all bodies do.
-            # (Full "completion" analysis is out of scope for the typechecker.)
-            if last.finally_body is not None:
-                return False
-            if not self._block_always_returns(last.body):
-                return False
-            for c in last.catches:
-                if not self._block_always_returns(c.body):
-                    return False
-            return bool(last.catches)
-        return False
-
-    def _check_block(
-        self,
-        stmts: list[TStmt],
-        env: _TypeEnv,
-        *,
-        fn_ret: Ty,
-        in_loop: int,
-        allow_capture: bool,
-    ) -> None:
-        env.push_scope()
-        try:
-            for st in stmts:
-                self._check_stmt(
-                    st,
-                    env,
-                    fn_ret=fn_ret,
-                    in_loop=in_loop,
-                    allow_capture=allow_capture,
-                )
-        finally:
-            env.pop_scope()
-
-    def _check_stmt(
-        self,
-        st: TStmt,
-        env: _TypeEnv,
-        *,
-        fn_ret: Ty,
-        in_loop: int,
-        allow_capture: bool,
-    ) -> None:
-        if isinstance(st, TLetStmt):
-            t = self.resolve_type(st.typ, pos=st.pos)
-            if ty_eq(t, TY_VOID):
-                raise TaytshTypeError("void is not a valid variable type", st.pos)
-            if st.value is None:
-                if not self._has_zero_value(t):
-                    raise TaytshTypeError(
-                        f"type '{t.display()}' has no zero value; initializer required",
-                        st.pos,
-                    )
-                env.bind(st.name, t, pos=st.pos)
-                return
-            vty = self._type_expr(
-                st.value, env, expected=t, allow_capture=allow_capture
-            )
-            if not self._assignable(vty, t):
-                raise TaytshTypeError(
-                    f"cannot assign '{vty.display()}' to '{t.display()}'",
-                    st.pos,
-                )
-            env.bind(st.name, t, pos=st.pos)
-            return
-
-        if isinstance(st, TAssignStmt):
-            target_ty = self._type_lvalue(st.target, env, allow_capture=allow_capture)
-            value_ty = self._type_expr(
-                st.value, env, expected=target_ty, allow_capture=allow_capture
-            )
-            if not self._assignable(value_ty, target_ty):
-                raise TaytshTypeError(
-                    f"cannot assign '{value_ty.display()}' to '{target_ty.display()}'",
-                    st.pos,
-                )
-            return
-
-        if isinstance(st, TOpAssignStmt):
-            target_ty = self._type_lvalue(st.target, env, allow_capture=allow_capture)
-            value_ty = self._type_expr(
-                st.value, env, expected=target_ty, allow_capture=allow_capture
-            )
-            if not self._assignable(value_ty, target_ty):
-                raise TaytshTypeError(
-                    f"cannot assign '{value_ty.display()}' to '{target_ty.display()}'",
-                    st.pos,
-                )
-            base_op = st.op[:-1]
-            _ = self._type_binary(base_op, target_ty, value_ty, pos=st.pos)
-            return
-
-        if isinstance(st, TTupleAssignStmt):
-            if not isinstance(st.value, (TTupleLit, TCall)):
-                raise TaytshTypeError(
-                    "tuple assignment requires tuple literal or call expression", st.pos
-                )
-            rhs_ty = self._type_expr(st.value, env, allow_capture=allow_capture)
-            if not isinstance(rhs_ty, TyTuple):
-                raise TaytshTypeError("tuple assignment rhs must be a tuple", st.pos)
-            if len(rhs_ty.elements) != len(st.targets):
-                raise TaytshTypeError("tuple arity mismatch in assignment", st.pos)
-            for i, tgt in enumerate(st.targets):
-                t_ty = self._type_lvalue(tgt, env, allow_capture=allow_capture)
-                if not self._assignable(rhs_ty.elements[i], t_ty):
-                    raise TaytshTypeError(
-                        f"cannot assign '{rhs_ty.elements[i].display()}' to '{t_ty.display()}'",
-                        st.pos,
-                    )
-            return
-
-        if isinstance(st, TReturnStmt):
-            if ty_eq(fn_ret, TY_VOID):
-                if st.value is not None:
-                    raise TaytshTypeError("void function cannot return a value", st.pos)
-                return
-            if st.value is None:
-                raise TaytshTypeError("non-void function must return a value", st.pos)
-            vty = self._type_expr(
-                st.value, env, expected=fn_ret, allow_capture=allow_capture
-            )
-            if not self._assignable(vty, fn_ret):
-                raise TaytshTypeError(
-                    f"cannot return '{vty.display()}' from function returning '{fn_ret.display()}'",
-                    st.pos,
-                )
-            return
-
-        if isinstance(st, TIfStmt):
-            cty = self._type_expr(
-                st.cond, env, expected=TY_BOOL, allow_capture=allow_capture
-            )
-            if not ty_eq(cty, TY_BOOL):
-                raise TaytshTypeError("if condition must be bool", st.pos)
-            then_ovr, else_ovr = self._nil_refinements(st.cond, env)
-            if then_ovr:
-                env.push_override(then_ovr)
-            self._check_block(
-                st.then_body,
-                env,
-                fn_ret=fn_ret,
-                in_loop=in_loop,
-                allow_capture=allow_capture,
-            )
-            if then_ovr:
-                env.pop_override()
-            if st.else_body is not None:
-                if else_ovr:
-                    env.push_override(else_ovr)
-                self._check_block(
-                    cast(list[TStmt], st.else_body),
-                    env,
-                    fn_ret=fn_ret,
-                    in_loop=in_loop,
-                    allow_capture=allow_capture,
-                )
-                if else_ovr:
-                    env.pop_override()
-            elif else_ovr and _always_terminates(st.then_body):
-                for vname, vty in else_ovr.items():
-                    env.narrow(vname, vty)
-            return
-
-        if isinstance(st, TWhileStmt):
-            cty = self._type_expr(
-                st.cond, env, expected=TY_BOOL, allow_capture=allow_capture
-            )
-            if not ty_eq(cty, TY_BOOL):
-                raise TaytshTypeError("while condition must be bool", st.pos)
-            self._check_block(
-                st.body,
-                env,
-                fn_ret=fn_ret,
-                in_loop=in_loop + 1,
-                allow_capture=allow_capture,
-            )
-            return
-
-        if isinstance(st, TForStmt):
-            self._check_for(
-                st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
-            )
-            return
-
-        if isinstance(st, TBreakStmt):
-            if in_loop <= 0:
-                raise TaytshTypeError("break outside of loop", st.pos)
-            return
-
-        if isinstance(st, TContinueStmt):
-            if in_loop <= 0:
-                raise TaytshTypeError("continue outside of loop", st.pos)
-            return
-
-        if isinstance(st, TThrowStmt):
-            ety = self._type_expr(st.expr, env, allow_capture=allow_capture)
-            if ty_eq(ety, TY_VOID):
-                raise TaytshTypeError("cannot throw void", st.pos)
-            return
-
-        if isinstance(st, TExprStmt):
-            _ = self._type_expr(st.expr, env, allow_capture=allow_capture)
-            return
-
-        if isinstance(st, TMatchStmt):
-            self._check_match(
-                st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
-            )
-            return
-
-        if isinstance(st, TTryStmt):
-            self._check_try(
-                st, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
-            )
-            return
-
-        raise TaytshTypeError("unsupported statement", st.pos)
-
-    def _check_try(
-        self,
-        st: TTryStmt,
-        env: _TypeEnv,
-        *,
-        fn_ret: Ty,
-        in_loop: int,
-        allow_capture: bool,
-    ) -> None:
-        self._check_block(
-            st.body, env, fn_ret=fn_ret, in_loop=in_loop, allow_capture=allow_capture
-        )
-        for c in st.catches:
-            if c.types:
-                types = [self.resolve_type(t, pos=t.pos) for t in c.types]
-                if any(ty_eq(t, TY_VOID) for t in types):
-                    raise TaytshTypeError("void cannot be caught", c.pos)
-                c_ty = ty_union(types)
-            else:
-                c_ty = TY_ERROR
-            env.push_scope()
-            try:
-                env.bind(c.name, c_ty, pos=c.pos)
-                self._check_block(
-                    c.body,
-                    env,
-                    fn_ret=fn_ret,
-                    in_loop=in_loop,
-                    allow_capture=allow_capture,
-                )
-            finally:
-                env.pop_scope()
-        if st.finally_body is not None:
-            self._check_block(
-                st.finally_body,
-                env,
-                fn_ret=fn_ret,
-                in_loop=in_loop,
-                allow_capture=allow_capture,
-            )
-
-    def _check_for(
-        self,
-        st: TForStmt,
-        env: _TypeEnv,
-        *,
-        fn_ret: Ty,
-        in_loop: int,
-        allow_capture: bool,
-    ) -> None:
-        if len(st.binding) not in (1, 2):
-            raise TaytshTypeError("for must bind 1 or 2 variables", st.pos)
-
-        # Range loop
-        if isinstance(st.iterable, TRange):
-            if len(st.binding) != 1:
-                raise TaytshTypeError(
-                    "range loops do not support two-variable form", st.pos
-                )
-            if not (1 <= len(st.iterable.args) <= 3):
-                raise TaytshTypeError(
-                    "range() expects 1 to 3 arguments", st.iterable.pos
-                )
-            for a in st.iterable.args:
-                aty = self._type_expr(
-                    a, env, expected=TY_INT, allow_capture=allow_capture
-                )
-                if not ty_eq(aty, TY_INT):
-                    raise TaytshTypeError("range() arguments must be int", a.pos)
-            loop_bindings = [(st.binding[0], TY_INT)]
-            self._check_loop_body(
-                st.body,
-                env,
-                loop_bindings,
-                fn_ret=fn_ret,
-                in_loop=in_loop,
-                allow_capture=allow_capture,
-            )
-            return
-
-        it_ty = self._type_expr(st.iterable, env, allow_capture=allow_capture)
-        loop_bindings: list[tuple[str, Ty]] = []
-        if isinstance(it_ty, TyList):
-            if len(st.binding) == 1:
-                loop_bindings.append((st.binding[0], it_ty.element))
-            else:
-                loop_bindings.append((st.binding[0], TY_INT))
-                loop_bindings.append((st.binding[1], it_ty.element))
-        elif ty_eq(it_ty, TY_STRING):
-            if len(st.binding) == 1:
-                loop_bindings.append((st.binding[0], TY_RUNE))
-            else:
-                loop_bindings.append((st.binding[0], TY_INT))
-                loop_bindings.append((st.binding[1], TY_RUNE))
-        elif ty_eq(it_ty, TY_BYTES):
-            if len(st.binding) == 1:
-                loop_bindings.append((st.binding[0], TY_BYTE))
-            else:
-                loop_bindings.append((st.binding[0], TY_INT))
-                loop_bindings.append((st.binding[1], TY_BYTE))
-        elif isinstance(it_ty, TyMap):
-            if len(st.binding) == 1:
-                loop_bindings.append((st.binding[0], it_ty.key))
-            else:
-                loop_bindings.append((st.binding[0], it_ty.key))
-                loop_bindings.append((st.binding[1], it_ty.value))
-        elif isinstance(it_ty, TySet):
-            if len(st.binding) != 1:
-                raise TaytshTypeError(
-                    "set iteration does not support two-variable form", st.pos
-                )
-            loop_bindings.append((st.binding[0], it_ty.element))
-        else:
-            raise TaytshTypeError(f"type '{it_ty.display()}' is not iterable", st.pos)
-
-        self._check_loop_body(
-            st.body,
-            env,
-            loop_bindings,
-            fn_ret=fn_ret,
-            in_loop=in_loop,
-            allow_capture=allow_capture,
-        )
-
-    def _check_loop_body(
-        self,
-        body: list[TStmt],
-        env: _TypeEnv,
-        loop_bindings: list[tuple[str, Ty]],
-        *,
-        fn_ret: Ty,
-        in_loop: int,
-        allow_capture: bool,
-    ) -> None:
-        env.push_scope()
-        try:
-            for name, t in loop_bindings:
-                env.bind(name, t, pos=Pos(0, 0))
-            self._check_block(
-                body,
-                env,
-                fn_ret=fn_ret,
-                in_loop=in_loop + 1,
-                allow_capture=allow_capture,
-            )
-        finally:
-            env.pop_scope()
-
-    def _check_match(
-        self,
-        st: TMatchStmt,
-        env: _TypeEnv,
-        *,
-        fn_ret: Ty,
-        in_loop: int,
-        allow_capture: bool,
-    ) -> None:
-        scrut_ty = self._type_expr(st.expr, env, allow_capture=allow_capture)
-
-        # Typecheck cases and compute coverage.
-        covered_types: set[tuple[object, ...]] = set()
-        covered_enum: dict[str, set[str]] = {}
-        covered_nil = False
-        for c in st.cases:
-            pat = c.pattern
-            if isinstance(pat, TPatternNil):
-                if not ty_has_nil(scrut_ty):
-                    raise TaytshTypeError("case nil is unreachable", pat.pos)
-                covered_nil = True
-                self._check_block(
-                    c.body,
-                    env,
-                    fn_ret=fn_ret,
-                    in_loop=in_loop,
-                    allow_capture=allow_capture,
-                )
-                continue
-            if isinstance(pat, TPatternEnum):
-                enum_ty = TyEnum(pat.enum_name)
-                if not self._match_case_possible(scrut_ty, enum_ty):
-                    raise TaytshTypeError(
-                        "enum case does not match scrutinee type", pat.pos
-                    )
-                enum = self.index.enums.get(pat.enum_name)
-                if enum is None or pat.variant not in enum.variants:
-                    raise TaytshTypeError("unknown enum variant", pat.pos)
-                seen = covered_enum.setdefault(pat.enum_name, set())
-                if pat.variant in seen:
-                    raise TaytshTypeError("duplicate enum case", pat.pos)
-                seen.add(pat.variant)
-                self._check_block(
-                    c.body,
-                    env,
-                    fn_ret=fn_ret,
-                    in_loop=in_loop,
-                    allow_capture=allow_capture,
-                )
-                continue
-            if isinstance(pat, TPatternType):
-                case_ty = self.resolve_type(pat.type_name, pos=pat.pos)
-                if not self._match_case_possible(scrut_ty, case_ty):
-                    raise TaytshTypeError(
-                        f"case '{case_ty.display()}' cannot match '{scrut_ty.display()}'",
-                        pat.pos,
-                    )
-                key = _ty_key(case_ty)
-                if key in covered_types:
-                    raise TaytshTypeError("duplicate type case", pat.pos)
-                covered_types.add(key)
-                env.push_scope()
-                try:
-                    env.bind(pat.name, case_ty, pos=pat.pos)
-                    self._check_block(
-                        c.body,
-                        env,
-                        fn_ret=fn_ret,
-                        in_loop=in_loop,
-                        allow_capture=allow_capture,
-                    )
-                finally:
-                    env.pop_scope()
-                continue
-            raise TaytshTypeError("unsupported match pattern", c.pos)
-
-        # Default
-        if st.default is not None:
-            if st.default.name is None:
-                self._check_block(
-                    st.default.body,
-                    env,
-                    fn_ret=fn_ret,
-                    in_loop=in_loop,
-                    allow_capture=allow_capture,
-                )
-            else:
-                env.push_scope()
-                try:
-                    env.bind(st.default.name, TY_ERROR, pos=st.default.pos)
-                    self._check_block(
-                        st.default.body,
-                        env,
-                        fn_ret=fn_ret,
-                        in_loop=in_loop,
-                        allow_capture=allow_capture,
-                    )
-                finally:
-                    env.pop_scope()
-
-        # Exhaustiveness
-        if ty_is_error(scrut_ty):
-            if st.default is None:
-                raise TaytshTypeError("match requires default", st.pos)
-            return
-        if isinstance(scrut_ty, TyEnum):
-            enum = self.index.enums[scrut_ty.name]
-            if st.default is None and _ty_key(scrut_ty) not in covered_types:
-                seen = covered_enum.get(scrut_ty.name, set())
-                if seen != enum.variants:
-                    missing = sorted(enum.variants - seen)
-                    raise TaytshTypeError(
-                        f"non-exhaustive enum match (missing {missing})", st.pos
-                    )
-            return
-        if isinstance(scrut_ty, TyInterface):
-            impls = self.index.interfaces[scrut_ty.name].implementors
-            if st.default is not None:
-                return
-            # case naming the interface itself counts as exhaustive
-            if _ty_key(scrut_ty) in covered_types:
-                return
-            covered_structs = {k[1] for k in covered_types if k[0] == "struct"}
-            missing = impls - covered_structs
-            if missing:
-                raise TaytshTypeError(
-                    f"non-exhaustive interface match (missing {sorted(missing)})",
-                    st.pos,
-                )
-            return
-        if isinstance(scrut_ty, TyUnion):
-            if st.default is not None:
-                return
-            # Compute coverage per member.
-            for m in scrut_ty.members:
-                if ty_is_nil(m):
-                    if not covered_nil:
-                        raise TaytshTypeError(
-                            "non-exhaustive match (missing nil)", st.pos
-                        )
-                    continue
-                if isinstance(m, TyEnum):
-                    if _ty_key(m) in covered_types:
-                        continue
-                    enum = self.index.enums.get(m.name)
-                    if enum is None:
-                        raise TaytshTypeError("unknown enum type", st.pos)
-                    seen = covered_enum.get(m.name, set())
-                    if seen != enum.variants:
-                        raise TaytshTypeError(
-                            f"non-exhaustive match (missing {m.name} variants)",
-                            st.pos,
-                        )
-                    continue
-                if isinstance(m, TyInterface):
-                    if _ty_key(m) in covered_types:
-                        continue
-                    impls = self.index.interfaces[m.name].implementors
-                    covered_structs = {
-                        t[1]
-                        for t in covered_types
-                        if isinstance(t, tuple) and len(t) >= 2 and t[0] == "struct"
-                    }
-                    if not impls.issubset(covered_structs):
-                        raise TaytshTypeError(
-                            f"non-exhaustive match (missing {m.name} variants)",
-                            st.pos,
-                        )
-                    continue
-                if _ty_key(m) not in covered_types:
-                    raise TaytshTypeError(
-                        f"non-exhaustive match (missing {m.display()})", st.pos
-                    )
-            return
-        # Concrete type: must have a case or default.
-        if (
-            st.default is None
-            and _ty_key(scrut_ty) not in covered_types
-            and not (ty_is_nil(scrut_ty) and covered_nil)
-        ):
-            raise TaytshTypeError("non-exhaustive match", st.pos)
-
-    def _match_case_possible(self, scrutinee: Ty, case_ty: Ty) -> bool:
-        if ty_is_error(scrutinee):
-            return True
-        if ty_eq(scrutinee, case_ty):
-            return True
-        # Union scrutinee: any member compatible
-        if isinstance(scrutinee, TyUnion):
-            return any(self._match_case_possible(m, case_ty) for m in scrutinee.members)
-        # Optional/nil via union
-        if ty_is_nil(case_ty):
-            return ty_has_nil(scrutinee)
-        # Interface scrutinee: struct implementor can match
-        if isinstance(scrutinee, TyInterface) and isinstance(case_ty, TyStruct):
-            return case_ty.name in self.index.interfaces[scrutinee.name].implementors
-        # Union member interface + case names interface itself
-        if isinstance(scrutinee, TyInterface) and isinstance(case_ty, TyInterface):
-            return scrutinee.name == case_ty.name
-        return False
-
-    # ------------------------------------------------------------------
-    # Expressions
-    # ------------------------------------------------------------------
-
-    def _type_lvalue(self, expr: TExpr, env: _TypeEnv, *, allow_capture: bool) -> Ty:
-        if isinstance(expr, TVar):
-            return env.get(expr.name, pos=expr.pos)
-        if isinstance(expr, TFieldAccess):
-            obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
-            return self._field_type(obj_ty, expr.field, pos=expr.pos)
-        if isinstance(expr, TIndex):
-            obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
-            if isinstance(obj_ty, TyList):
-                idx_ty = self._type_expr(
-                    expr.index, env, expected=TY_INT, allow_capture=allow_capture
-                )
-                if not ty_eq(idx_ty, TY_INT):
-                    raise TaytshTypeError("list index must be int", expr.pos)
-                return obj_ty.element
-            if isinstance(obj_ty, TyMap):
-                key_ty = self._type_expr(
-                    expr.index, env, expected=obj_ty.key, allow_capture=allow_capture
-                )
-                if not self._assignable(key_ty, obj_ty.key):
-                    raise TaytshTypeError("map key type mismatch", expr.pos)
-                return obj_ty.value
-            raise TaytshTypeError(
-                "index assignment only allowed on list or map", expr.pos
-            )
-        raise TaytshTypeError("invalid assignment target", expr.pos)
-
-    def _type_expr(
-        self,
-        expr: TExpr,
-        env: _TypeEnv,
-        *,
-        expected: Ty | None = None,
-        allow_capture: bool,
-    ) -> Ty:
-        cached = self.expr_types.get(_expr_key(expr))
-        if cached is not None:
-            return cached
-        if isinstance(expr, TIntLit):
-            return TY_INT
-        if isinstance(expr, TFloatLit):
-            return TY_FLOAT
-        if isinstance(expr, TByteLit):
-            return TY_BYTE
-        if isinstance(expr, TStringLit):
-            return TY_STRING
-        if isinstance(expr, TRuneLit):
-            return TY_RUNE
-        if isinstance(expr, TBytesLit):
-            return TY_BYTES
-        if isinstance(expr, TBoolLit):
-            return TY_BOOL
-        if isinstance(expr, TNilLit):
-            return TY_NIL
-        if isinstance(expr, TVar):
-            name = expr.name
-            # Locals
-            if env.is_bound_anywhere(name):
-                return env.get(name, pos=expr.pos)
-            # Globals: functions and builtins only.
-            if name in self.index.funcs:
-                return self.index.funcs[name].sig.ty()
-            if name in _RESERVED_BINDINGS:
-                # A reserved name that is also a built-in function.
-                if name in _BUILTIN_DISPATCH:
-                    return _BUILTIN_DISPATCH[name].ty()
-            if self.index.has_type_name(name):
-                raise TaytshTypeError(f"'{name}' is a type name, not a value", expr.pos)
-            raise TaytshTypeError(f"unknown name '{name}'", expr.pos)
-
-        if isinstance(expr, TUnaryOp):
-            oty = self._type_expr(expr.operand, env, allow_capture=allow_capture)
-            return self._type_unary(expr.op, oty, pos=expr.pos)
-        if isinstance(expr, TBinaryOp):
-            if expr.op in ("==", "!="):
-                rty = self._type_expr(expr.right, env, allow_capture=allow_capture)
-                lty = self._type_expr(
-                    expr.left, env, expected=rty, allow_capture=allow_capture
-                )
-            else:
-                lty = self._type_expr(expr.left, env, allow_capture=allow_capture)
-                rty = self._type_expr(expr.right, env, allow_capture=allow_capture)
-            return self._type_binary(expr.op, lty, rty, pos=expr.pos)
-        if isinstance(expr, TTernary):
-            cty = self._type_expr(
-                expr.cond, env, expected=TY_BOOL, allow_capture=allow_capture
-            )
-            if not ty_eq(cty, TY_BOOL):
-                raise TaytshTypeError("ternary condition must be bool", expr.pos)
-            tty = self._type_expr(expr.then_expr, env, allow_capture=allow_capture)
-            ety = self._type_expr(expr.else_expr, env, allow_capture=allow_capture)
-            if not ty_eq(tty, ety):
-                raise TaytshTypeError("ternary branches must have same type", expr.pos)
-            return tty
-        if isinstance(expr, TTupleAccess):
-            obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
-            if not isinstance(obj_ty, TyTuple):
-                raise TaytshTypeError("tuple access requires a tuple", expr.pos)
-            if expr.index < 0 or expr.index >= len(obj_ty.elements):
-                raise TaytshTypeError("tuple index out of range", expr.pos)
-            return obj_ty.elements[expr.index]
-        if isinstance(expr, TFieldAccess):
-            # Enum value: EnumName.Variant
-            if isinstance(expr.obj, TVar) and expr.obj.name in self.index.enums:
-                enum = self.index.enums[expr.obj.name]
-                if expr.field not in enum.variants:
-                    raise TaytshTypeError("unknown enum variant", expr.pos)
-                return TyEnum(enum.name)
-            obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
-            return self._field_type(obj_ty, expr.field, pos=expr.pos)
-        if isinstance(expr, TIndex):
-            obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
-            if isinstance(obj_ty, TyList):
-                idx_ty = self._type_expr(
-                    expr.index, env, expected=TY_INT, allow_capture=allow_capture
-                )
-                if not ty_eq(idx_ty, TY_INT):
-                    raise TaytshTypeError("list index must be int", expr.pos)
-                return obj_ty.element
-            if ty_eq(obj_ty, TY_STRING):
-                idx_ty = self._type_expr(
-                    expr.index, env, expected=TY_INT, allow_capture=allow_capture
-                )
-                if not ty_eq(idx_ty, TY_INT):
-                    raise TaytshTypeError("string index must be int", expr.pos)
-                return TY_RUNE
-            if ty_eq(obj_ty, TY_BYTES):
-                idx_ty = self._type_expr(
-                    expr.index, env, expected=TY_INT, allow_capture=allow_capture
-                )
-                if not ty_eq(idx_ty, TY_INT):
-                    raise TaytshTypeError("bytes index must be int", expr.pos)
-                return TY_BYTE
-            if isinstance(obj_ty, TyMap):
-                kty = self._type_expr(
-                    expr.index, env, expected=obj_ty.key, allow_capture=allow_capture
-                )
-                if not self._assignable(kty, obj_ty.key):
-                    raise TaytshTypeError("map key type mismatch", expr.pos)
-                return obj_ty.value
-            raise TaytshTypeError("indexing not supported for this type", expr.pos)
-        if isinstance(expr, TSlice):
-            obj_ty = self._type_expr(expr.obj, env, allow_capture=allow_capture)
-            low_ty = self._type_expr(
-                expr.low, env, expected=TY_INT, allow_capture=allow_capture
-            )
-            high_ty = self._type_expr(
-                expr.high, env, expected=TY_INT, allow_capture=allow_capture
-            )
-            if not ty_eq(low_ty, TY_INT) or not ty_eq(high_ty, TY_INT):
-                raise TaytshTypeError("slice bounds must be int", expr.pos)
-            if isinstance(obj_ty, TyList):
-                return obj_ty
-            if ty_eq(obj_ty, TY_STRING):
-                return TY_STRING
-            if ty_eq(obj_ty, TY_BYTES):
-                return TY_BYTES
-            raise TaytshTypeError("slicing not supported for this type", expr.pos)
-        if isinstance(expr, TListLit):
-            if not expr.elements:
-                if isinstance(expected, TyList):
-                    self.expr_types[_expr_key(expr)] = expected
-                    return expected
-                fallback = TyList(TY_ERROR)
-                self.expr_types[_expr_key(expr)] = fallback
-                return fallback
-            if isinstance(expected, TyList):
-                for e in expr.elements:
-                    ety = self._type_expr(
-                        e, env, expected=expected.element, allow_capture=allow_capture
-                    )
-                    if not self._assignable(ety, expected.element):
-                        raise TaytshTypeError("list element type mismatch", e.pos)
-                self.expr_types[_expr_key(expr)] = expected
-                return expected
-            elem_ty = self._type_expr(
-                expr.elements[0], env, allow_capture=allow_capture
-            )
-            for e in expr.elements[1:]:
-                ety = self._type_expr(
-                    e, env, expected=elem_ty, allow_capture=allow_capture
-                )
-                if not ty_eq(ety, elem_ty):
-                    raise TaytshTypeError("list elements must have same type", e.pos)
-            ty = TyList(elem_ty)
-            self.expr_types[_expr_key(expr)] = ty
-            return ty
-        if isinstance(expr, TMapLit):
-            if isinstance(expected, TyMap):
-                if not self._is_hashable_type(expected.key):
-                    raise TaytshTypeError(
-                        f"map key type '{expected.key.display()}' is not hashable",
-                        expr.pos,
-                    )
-                for k, v in expr.entries:
-                    kt = self._type_expr(
-                        k, env, expected=expected.key, allow_capture=allow_capture
-                    )
-                    vt = self._type_expr(
-                        v, env, expected=expected.value, allow_capture=allow_capture
-                    )
-                    if not self._assignable(kt, expected.key) or not self._assignable(
-                        vt, expected.value
-                    ):
-                        raise TaytshTypeError(
-                            "map literal entry type mismatch", expr.pos
-                        )
-                self.expr_types[_expr_key(expr)] = expected
-                return expected
-            (k0, v0) = expr.entries[0]
-            kty = self._type_expr(k0, env, allow_capture=allow_capture)
-            vty = self._type_expr(v0, env, allow_capture=allow_capture)
-            if not self._is_hashable_type(kty):
-                raise TaytshTypeError(
-                    f"map key type '{kty.display()}' is not hashable", expr.pos
-                )
-            for k, v in expr.entries[1:]:
-                kt = self._type_expr(k, env, expected=kty, allow_capture=allow_capture)
-                vt = self._type_expr(v, env, expected=vty, allow_capture=allow_capture)
-                if not ty_eq(kt, kty) or not ty_eq(vt, vty):
-                    raise TaytshTypeError(
-                        "map literal entries must have uniform types", expr.pos
-                    )
-            ty = TyMap(kty, vty)
-            self.expr_types[_expr_key(expr)] = ty
-            return ty
-        if isinstance(expr, TSetLit):
-            if isinstance(expected, TySet):
-                if not self._is_hashable_type(expected.element):
-                    raise TaytshTypeError(
-                        f"set element type '{expected.element.display()}' is not hashable",
-                        expr.pos,
-                    )
-                for e in expr.elements:
-                    ety = self._type_expr(
-                        e, env, expected=expected.element, allow_capture=allow_capture
-                    )
-                    if not self._assignable(ety, expected.element):
-                        raise TaytshTypeError("set element type mismatch", e.pos)
-                self.expr_types[_expr_key(expr)] = expected
-                return expected
-            elem_ty = self._type_expr(
-                expr.elements[0], env, allow_capture=allow_capture
-            )
-            if not self._is_hashable_type(elem_ty):
-                raise TaytshTypeError(
-                    f"set element type '{elem_ty.display()}' is not hashable", expr.pos
-                )
-            for e in expr.elements[1:]:
-                ety = self._type_expr(
-                    e, env, expected=elem_ty, allow_capture=allow_capture
-                )
-                if not ty_eq(ety, elem_ty):
-                    raise TaytshTypeError("set elements must have same type", e.pos)
-            ty = TySet(elem_ty)
-            self.expr_types[_expr_key(expr)] = ty
-            return ty
-        if isinstance(expr, TTupleLit):
-            if len(expr.elements) < 2:
-                raise TaytshTypeError("tuple literals require 2+ elements", expr.pos)
-            if isinstance(expected, TyTuple):
-                if len(expected.elements) != len(expr.elements):
-                    raise TaytshTypeError("tuple arity mismatch", expr.pos)
-                for i, e in enumerate(expr.elements):
-                    ety = self._type_expr(
-                        e,
-                        env,
-                        expected=expected.elements[i],
-                        allow_capture=allow_capture,
-                    )
-                    if not self._assignable(ety, expected.elements[i]):
-                        raise TaytshTypeError("tuple element type mismatch", e.pos)
-                self.expr_types[_expr_key(expr)] = expected
-                return expected
-            elems = tuple(
-                self._type_expr(e, env, allow_capture=allow_capture)
-                for e in expr.elements
-            )
-            ty = TyTuple(elems)
-            self.expr_types[_expr_key(expr)] = ty
-            return ty
-        if isinstance(expr, TFnLit):
-            sig = self._fn_lit_sig(expr, method_self=None)
-            # No closures: function literal can reference only its own params + globals.
-            self._check_fn_lit_body(expr, sig)
-            ty = sig.ty()
-            self.expr_types[_expr_key(expr)] = ty
-            return ty
-        if isinstance(expr, TCall):
-            ty = self._type_call(
-                expr, env, expected=expected, allow_capture=allow_capture
-            )
-            self.expr_types[_expr_key(expr)] = ty
-            return ty
-
-        raise TaytshTypeError("unsupported expression", expr.pos)
-
-    def _fn_lit_sig(self, lit: TFnLit, *, method_self: TyStruct | None) -> FnSig:
-        params: list[Ty] = []
-        for p in lit.params:
-            if p.typ is None:
-                raise TaytshTypeError("'self' not allowed in function literals", p.pos)
-            t = self.resolve_type(p.typ, pos=p.pos)
-            if ty_eq(t, TY_VOID):
-                raise TaytshTypeError("void cannot be a parameter type", p.pos)
-            params.append(t)
-        ret = self.resolve_type(lit.ret, pos=lit.pos, allow_void=True)
-        return FnSig(tuple(params), ret)
-
-    def _check_fn_lit_body(self, lit: TFnLit, sig: FnSig) -> None:
-        env = _TypeEnv()
-        env.push_scope()
-        for i, p in enumerate(lit.params):
-            env.bind(p.name, sig.params[i], pos=p.pos)
-        is_arrow = lit.annotations.get("fn_lit.arrow") == "true"
-        if is_arrow and isinstance(lit.body[0], TExprStmt):
-            self._type_expr(
-                lit.body[0].expr, env, expected=sig.ret, allow_capture=False
-            )
-            return
-        # allow_capture=False because we only bound params; outer locals are not present.
-        self._check_block(lit.body, env, fn_ret=sig.ret, in_loop=0, allow_capture=False)
-        if not ty_eq(sig.ret, TY_VOID) and not self._block_always_returns(lit.body):
-            raise TaytshTypeError(
-                "function literal may fall off without returning", lit.pos
-            )
-
-    def _type_call(
-        self,
-        call: TCall,
-        env: _TypeEnv,
-        *,
-        expected: Ty | None,
-        allow_capture: bool,
-    ) -> Ty:
-        # Struct constructor: Name(...)
-        if isinstance(call.func, TVar) and call.func.name in self.index.structs:
-            return self._type_struct_ctor(call, env, allow_capture=allow_capture)
-
-        # Built-in call by name: Foo(...)
-        if isinstance(call.func, TVar) and call.func.name in _BUILTIN_DISPATCH:
-            return self._type_builtin_call(
-                call.func.name,
-                call.args,
-                env,
-                expected=expected,
-                allow_capture=allow_capture,
-                pos=call.pos,
-            )
-
-        # Method call: obj.Method(...)
-        if isinstance(call.func, TFieldAccess):
-            recv_ty = self._type_expr(call.func.obj, env, allow_capture=allow_capture)
-            if isinstance(recv_ty, TyStruct):
-                s = self.index.structs.get(recv_ty.name)
-                if s is not None and call.func.field in s.methods:
-                    mi = s.methods[call.func.field]
-                    return self._type_user_call(
-                        mi.sig,
-                        call.args,
-                        env,
-                        allow_capture=allow_capture,
-                        pos=call.pos,
-                        method_receiver=recv_ty,
-                    )
-            # Otherwise treat as field access yielding a function value.
-            fty = self._type_expr(call.func, env, allow_capture=allow_capture)
-            if isinstance(fty, TyFunc):
-                return self._type_user_call(
-                    FnSig(fty.params, fty.ret),
-                    call.args,
-                    env,
-                    allow_capture=allow_capture,
-                    pos=call.pos,
-                )
-            raise TaytshTypeError("call target is not a function", call.pos)
-
-        # Regular function value or named function.
-        fty = self._type_expr(call.func, env, allow_capture=allow_capture)
-        if isinstance(fty, TyFunc):
-            return self._type_user_call(
-                FnSig(fty.params, fty.ret),
-                call.args,
-                env,
-                allow_capture=allow_capture,
-                pos=call.pos,
-            )
-        raise TaytshTypeError("call target is not a function", call.pos)
-
-    def _type_struct_ctor(
-        self, call: TCall, env: _TypeEnv, *, allow_capture: bool
-    ) -> Ty:
-        assert isinstance(call.func, TVar)
-        s = self.index.structs[call.func.name]
-        field_order = [f.name for f in s.fields]
-        # Named vs positional args
-        has_named = any(a.name is not None for a in call.args)
-        has_pos = any(a.name is None for a in call.args)
-        if has_named and has_pos:
-            raise TaytshTypeError("cannot mix named and positional args", call.pos)
-        if not call.args:
-            raise TaytshTypeError("struct construction requires all fields", call.pos)
-        if has_pos:
-            if len(call.args) != len(field_order):
-                raise TaytshTypeError("wrong number of constructor args", call.pos)
-            for i, arg in enumerate(call.args):
-                f = s.field_map[field_order[i]]
-                aty = self._type_expr(
-                    arg.value, env, expected=f.ty, allow_capture=allow_capture
-                )
-                if not self._assignable(aty, f.ty):
-                    raise TaytshTypeError(
-                        f"cannot assign '{aty.display()}' to field '{f.name}: {f.ty.display()}'",
-                        arg.pos,
-                    )
-        else:
-            seen: set[str] = set()
-            for arg in call.args:
-                assert arg.name is not None
-                if arg.name not in s.field_map:
-                    raise TaytshTypeError(f"unknown field '{arg.name}'", arg.pos)
-                if arg.name in seen:
-                    raise TaytshTypeError(f"duplicate field '{arg.name}'", arg.pos)
-                seen.add(arg.name)
-                f = s.field_map[arg.name]
-                aty = self._type_expr(
-                    arg.value, env, expected=f.ty, allow_capture=allow_capture
-                )
-                if not self._assignable(aty, f.ty):
-                    raise TaytshTypeError(
-                        f"cannot assign '{aty.display()}' to field '{f.name}: {f.ty.display()}'",
-                        arg.pos,
-                    )
-            if seen != set(field_order):
-                missing = sorted(set(field_order) - seen)
-                raise TaytshTypeError(f"missing fields {missing}", call.pos)
-        return TyStruct(s.name)
-
-    def _type_user_call(
-        self,
-        sig: FnSig,
-        args: list[TArg],
-        env: _TypeEnv,
-        *,
-        allow_capture: bool,
-        pos: Pos,
-        method_receiver: Ty | None = None,
-    ) -> Ty:
-        has_named = any(a.name is not None for a in args)
-        if has_named:
-            raise TaytshTypeError(
-                "named args are only supported for struct construction", pos
-            )
-        params = list(sig.params)
-        if method_receiver is not None:
-            if not params:
-                raise TaytshTypeError("invalid method signature", pos)
-            # First param is self; receiver must be assignable.
-            if not self._assignable(method_receiver, params[0]):
-                raise TaytshTypeError("method receiver type mismatch", pos)
-            params = params[1:]
-        if len(args) != len(params):
-            raise TaytshTypeError("wrong number of arguments", pos)
-        for i, a in enumerate(args):
-            aty = self._type_expr(
-                a.value, env, expected=params[i], allow_capture=allow_capture
-            )
-            if not self._assignable(aty, params[i]):
-                raise TaytshTypeError(
-                    f"cannot pass '{aty.display()}' to param '{params[i].display()}'",
-                    a.pos,
-                )
-        return sig.ret
-
-    def _type_builtin_call(
-        self,
-        name: str,
-        args: list[TArg],
-        env: _TypeEnv,
-        *,
-        expected: Ty | None,
-        allow_capture: bool,
-        pos: Pos,
-    ) -> Ty:
-        fn = _BUILTIN_DISPATCH[name]
-        return fn.typecheck(
-            self, args, env, expected=expected, allow_capture=allow_capture, pos=pos
-        )
-
-    def _field_type(self, obj_ty: Ty, field: str, *, pos: Pos) -> Ty:
-        if isinstance(obj_ty, TyStruct):
-            s = self.index.structs.get(obj_ty.name)
-            if s is None:
-                raise TaytshTypeError(f"unknown struct type '{obj_ty.name}'", pos)
-            if field in s.methods:
-                raise TaytshTypeError("bound methods are not values", pos)
-            if field not in s.field_map:
-                raise TaytshTypeError(f"unknown field '{field}'", pos)
-            return s.field_map[field].ty
-        if isinstance(obj_ty, TyUnion):
-            member_tys: list[Ty] = []
-            for m in obj_ty.members:
-                if isinstance(m, TyStruct):
-                    s = self.index.structs.get(m.name)
-                    if s is None or field not in s.field_map:
-                        raise TaytshTypeError(
-                            f"field '{field}' not present on all union members", pos
-                        )
-                    member_tys.append(s.field_map[field].ty)
-                else:
-                    raise TaytshTypeError(
-                        f"field access not supported on '{m.display()}'", pos
-                    )
-            first = member_tys[0]
-            if any(not ty_eq(t, first) for t in member_tys[1:]):
-                raise TaytshTypeError(
-                    f"field '{field}' has inconsistent type across union", pos
-                )
-            return first
-        raise TaytshTypeError(
-            f"field access not supported on '{obj_ty.display()}'", pos
-        )
-
-    def _type_unary(self, op: str, operand: Ty, *, pos: Pos) -> Ty:
-        if op == "!":
-            if not ty_eq(operand, TY_BOOL):
-                raise TaytshTypeError("! requires bool", pos)
-            return TY_BOOL
-        if op == "-":
-            if (
-                ty_eq(operand, TY_INT)
-                or ty_eq(operand, TY_FLOAT)
-                or ty_eq(operand, TY_BYTE)
-            ):
-                return operand
-            raise TaytshTypeError("- requires int/float/byte", pos)
-        if op == "~":
-            if ty_eq(operand, TY_INT) or ty_eq(operand, TY_BYTE):
-                return operand
-            raise TaytshTypeError("~ requires int/byte", pos)
-        raise TaytshTypeError(f"unknown unary operator '{op}'", pos)
-
-    def _type_binary(self, op: str, left: Ty, right: Ty, *, pos: Pos) -> Ty:
-        if op in ("&&", "||"):
-            if not ty_eq(left, TY_BOOL) or not ty_eq(right, TY_BOOL):
-                raise TaytshTypeError(f"{op} requires bool operands", pos)
-            return TY_BOOL
-
-        if op in ("==", "!="):
-            if ty_eq(left, right):
-                return TY_BOOL
-            # Allow nil checks: (T|nil) == nil
-            if ty_is_nil(left) and ty_has_nil(right):
-                return TY_BOOL
-            if ty_is_nil(right) and ty_has_nil(left):
-                return TY_BOOL
-            # Allow error type comparisons
-            if ty_is_error(left) or ty_is_error(right):
-                return TY_BOOL
-            # Allow byte == int and int == byte
-            if (ty_eq(left, TY_BYTE) and ty_eq(right, TY_INT)) or (
-                ty_eq(left, TY_INT) and ty_eq(right, TY_BYTE)
-            ):
-                return TY_BOOL
-            # Allow union member comparison: (A|B) == A
-            if isinstance(left, TyUnion) and any(ty_eq(right, m) for m in left.members):
-                return TY_BOOL
-            if isinstance(right, TyUnion) and any(
-                ty_eq(left, m) for m in right.members
-            ):
-                return TY_BOOL
-            raise TaytshTypeError("==/!= requires same type (or nil check)", pos)
-
-        if op in ("<", "<=", ">", ">="):
-            # Unwrap optionals for comparison (nil case guarded at runtime)
-            cmp_left = ty_without_nil(left) if isinstance(left, TyUnion) else left
-            cmp_right = ty_without_nil(right) if isinstance(right, TyUnion) else right
-            if not ty_eq(cmp_left, cmp_right):
-                raise TaytshTypeError("comparison requires operands of same type", pos)
-            if not (
-                ty_eq(cmp_left, TY_INT)
-                or ty_eq(cmp_left, TY_FLOAT)
-                or ty_eq(cmp_left, TY_BYTE)
-                or ty_eq(cmp_left, TY_RUNE)
-                or ty_eq(cmp_left, TY_STRING)
-            ):
-                raise TaytshTypeError("type is not orderable", pos)
-            return TY_BOOL
-
-        if op in ("|", "^", "&"):
-            if ty_eq(left, right):
-                if not (ty_eq(left, TY_INT) or ty_eq(left, TY_BYTE)):
-                    raise TaytshTypeError("bitwise requires int/byte", pos)
-                return left
-            if {_ty_key(left), _ty_key(right)} == {_ty_key(TY_INT), _ty_key(TY_BYTE)}:
-                return TY_INT
-            raise TaytshTypeError("bitwise requires same operand types", pos)
-
-        if op in ("<<", ">>", ">>>"):
-            if not (ty_eq(left, TY_INT) or ty_eq(left, TY_BYTE)):
-                raise TaytshTypeError("shift requires int/byte on left", pos)
-            if not ty_eq(right, TY_INT):
-                raise TaytshTypeError("shift amount must be int", pos)
-            return left
-
-        if op in ("+", "-", "*", "/", "%"):
-            if not ty_eq(left, right):
-                raise TaytshTypeError("arithmetic requires operands of same type", pos)
-            if not (
-                ty_eq(left, TY_INT) or ty_eq(left, TY_FLOAT) or ty_eq(left, TY_BYTE)
-            ):
-                raise TaytshTypeError("arithmetic requires int/float/byte", pos)
-            return left
-
-        raise TaytshTypeError(f"unknown binary operator '{op}'", pos)
-
-    def _nil_refinements(
-        self, cond: TExpr, env: _TypeEnv
-    ) -> tuple[dict[str, Ty], dict[str, Ty]]:
-        if not isinstance(cond, TBinaryOp) or cond.op not in ("==", "!="):
-            return ({}, {})
-        left_var = cond.left.name if isinstance(cond.left, TVar) else None
-        right_var = cond.right.name if isinstance(cond.right, TVar) else None
-        if left_var is not None and isinstance(cond.right, TNilLit):
-            name = left_var
-        elif right_var is not None and isinstance(cond.left, TNilLit):
-            name = right_var
-        else:
-            return ({}, {})
-
-        try:
-            vty = env.get(name, pos=cond.pos)
-        except TaytshTypeError:
-            return ({}, {})
-
-        if not ty_has_nil(vty):
-            return ({}, {})
-
-        non_nil = ty_without_nil(vty)
-        if cond.op == "!=":
-            return ({name: non_nil}, {name: TY_NIL})
-        return ({name: TY_NIL}, {name: non_nil})
-
-    def _has_zero_value(self, typ: Ty) -> bool:
-        if ty_eq(typ, TY_INT):
-            return True
-        if ty_eq(typ, TY_FLOAT):
-            return True
-        if ty_eq(typ, TY_BOOL):
-            return True
-        if ty_eq(typ, TY_BYTE):
-            return True
-        if ty_eq(typ, TY_BYTES):
-            return True
-        if ty_eq(typ, TY_STRING):
-            return True
-        if ty_eq(typ, TY_RUNE):
-            return True
-        if isinstance(typ, TyList):
-            return True
-        if isinstance(typ, TyMap):
-            return True
-        if isinstance(typ, TySet):
-            return True
-        if isinstance(typ, TyTuple):
-            return all(self._has_zero_value(t) for t in typ.elements)
-        if isinstance(typ, TyUnion):
-            return any(ty_is_nil(m) for m in typ.members)
-        if ty_eq(typ, TY_ERROR):
-            return True
-        return False
-
-    def _assignable(self, src: Ty, dst: Ty) -> bool:
-        if ty_eq(src, dst):
-            return True
-        if ty_is_error(src) or ty_is_error(dst):
-            return True
-        if ty_is_nil(src):
-            return ty_has_nil(dst)
-        if ty_eq(src, TY_BYTE) and ty_eq(dst, TY_INT):
-            return True
-        # Union destination: any member works.
-        if isinstance(dst, TyUnion):
-            return any(self._assignable(src, m) for m in dst.members)
-        # Union source: all members must be assignable.
-        if isinstance(src, TyUnion):
-            return all(self._assignable(m, dst) for m in src.members)
-        # Struct -> interface if implements.
-        if isinstance(src, TyStruct) and isinstance(dst, TyInterface):
-            return src.name in self.index.interfaces[dst.name].implementors
-        return False
-
-
-# ============================================================
-# Built-in function dispatch (typechecking only for now)
-# ============================================================
-
-
-@dataclass
-class _Builtin:
-    sig: FnSig
-    typecheck: Callable[["TypeChecker", list[TArg], _TypeEnv, Ty | None, bool, Pos], Ty]
-
-    def ty(self) -> TyFunc:
-        return self.sig.ty()
-
-
-def _tc_len(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Len", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Len expects 1 argument", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if (
-        isinstance(aty, (TyList, TyMap, TySet))
-        or ty_eq(aty, TY_STRING)
-        or ty_eq(aty, TY_BYTES)
-    ):
-        return TY_INT
-    raise TaytshTypeError("Len not supported for this type", pos)
-
-
-def _tc_map_ctor(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if args:
-        raise TaytshTypeError("Map() takes no arguments", pos)
-    if isinstance(expected, TyMap):
-        return expected
-    raise TaytshTypeError("cannot infer type for Map()", pos)
-
-
-def _tc_set_ctor(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if args:
-        raise TaytshTypeError("Set() takes no arguments", pos)
-    if isinstance(expected, TySet):
-        return expected
-    raise TaytshTypeError("cannot infer type for Set()", pos)
-
-
-def _tc_get(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Get", pos)
-    if len(args) not in (2, 3):
-        raise TaytshTypeError("Get expects 2 or 3 arguments", pos)
-    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(mty, TyMap):
-        raise TaytshTypeError("Get expects a map", pos)
-    kty = tc._type_expr(
-        args[1].value, env, expected=mty.key, allow_capture=allow_capture
-    )
-    if not tc._assignable(kty, mty.key):
-        raise TaytshTypeError("Get key type mismatch", args[1].pos)
-    if len(args) == 2:
-        return ty_union([mty.value, TY_NIL])
-    dty = tc._type_expr(
-        args[2].value, env, expected=mty.value, allow_capture=allow_capture
-    )
-    if not tc._assignable(dty, mty.value):
-        raise TaytshTypeError("Get default type mismatch", args[2].pos)
-    return mty.value
-
-
-def _tc_contains(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Contains", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Contains expects 2 arguments", pos)
-    # Type element arg first so we can provide context for empty collection literals
-    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
-    expected_a: Ty | None = None
-    if isinstance(args[0].value, TListLit) and not args[0].value.elements:
-        expected_a = TyList(bty)
-    elif isinstance(args[0].value, TSetLit) and not args[0].value.elements:
-        expected_a = TySet(bty)
-    aty = tc._type_expr(
-        args[0].value, env, expected=expected_a, allow_capture=allow_capture
-    )
-    if isinstance(aty, TyList) and tc._assignable(bty, aty.element):
-        return TY_BOOL
-    if isinstance(aty, TyMap) and tc._assignable(bty, aty.key):
-        return TY_BOOL
-    if isinstance(aty, TySet) and tc._assignable(bty, aty.element):
-        return TY_BOOL
-    if ty_eq(aty, TY_STRING) and ty_eq(bty, TY_STRING):
-        return TY_BOOL
-    raise TaytshTypeError("Contains argument types invalid", pos)
-
-
-def _tc_tostring(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for ToString", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("ToString expects 1 argument", pos)
-    _ = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    return TY_STRING
-
-
-def _tc_unwrap(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Unwrap", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Unwrap expects 1 argument", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not ty_has_nil(aty):
-        return aty
-    return ty_without_nil(aty)
-
-
-def _tc_assert(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Assert", pos)
-    if len(args) not in (1, 2):
-        raise TaytshTypeError("Assert expects 1 or 2 arguments", pos)
-    cty = tc._type_expr(
-        args[0].value, env, expected=TY_BOOL, allow_capture=allow_capture
-    )
-    if not ty_eq(cty, TY_BOOL):
-        raise TaytshTypeError("Assert condition must be bool", args[0].pos)
-    if len(args) == 2:
-        mty = tc._type_expr(
-            args[1].value, env, expected=TY_STRING, allow_capture=allow_capture
-        )
-        if not ty_eq(mty, TY_STRING):
-            raise TaytshTypeError("Assert message must be string", args[1].pos)
-    return TY_VOID
-
-
-# ---- Simple builtin factory ------------------------------------------------
-
-
-_TY_STR_OR_BYTES = ty_union([TY_STRING, TY_BYTES])
-_TY_STR_OR_RUNE = ty_union([TY_STRING, TY_RUNE])
-_TY_OPT_STRING = ty_union([TY_STRING, TY_NIL])
-
-
-class _SimpleTC:
-    """Typecheck callable for fixed-signature builtins."""
-
-    def __init__(self, name: str, params: tuple[Ty, ...], ret: Ty) -> None:
-        self.name = name
-        self.params = params
-        self.ret = ret
-
-    def check(
-        self,
-        tc: TypeChecker,
-        args: list[TArg],
-        env: _TypeEnv,
-        expected: Ty | None,
-        allow_capture: bool,
-        pos: Pos,
-    ) -> Ty:
-        if any(a.name is not None for a in args):
-            raise TaytshTypeError(f"named args not supported for {self.name}", pos)
-        if len(args) != len(self.params):
-            raise TaytshTypeError(
-                f"{self.name} expects {len(self.params)} argument(s)", pos
-            )
-        for i, a in enumerate(args):
-            aty = tc._type_expr(
-                a.value, env, expected=self.params[i], allow_capture=allow_capture
-            )
-            if not tc._assignable(aty, self.params[i]):
-                raise TaytshTypeError(f"{self.name} argument type mismatch", a.pos)
-        return self.ret
-
-
-def _builtin_simple(name: str, params: tuple[Ty, ...], ret: Ty) -> _Builtin:
-    return _Builtin(FnSig(params, ret), _SimpleTC(name, params, ret).check)
-
-
-# ---- Polymorphic builtin typecheckers --------------------------------------
-
-
-def _tc_concat(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Concat", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Concat expects 2 arguments", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
-    if ty_eq(aty, TY_STRING) and ty_eq(bty, TY_STRING):
-        return TY_STRING
-    if ty_eq(aty, TY_BYTES) and ty_eq(bty, TY_BYTES):
-        return TY_BYTES
-    if isinstance(aty, TyList) and isinstance(bty, TyList):
-        return aty
-    raise TaytshTypeError(
-        "Concat requires (string, string), (bytes, bytes), or (list, list)", pos
-    )
-
-
-def _tc_starts_ends_with(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if len(args) != 2:
-        raise TaytshTypeError("StartsWith/EndsWith expects 2 arguments", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
-    if (ty_eq(aty, TY_STRING) and ty_eq(bty, TY_STRING)) or (
-        ty_eq(aty, TY_BYTES) and ty_eq(bty, TY_BYTES)
-    ):
-        return TY_BOOL
-    raise TaytshTypeError(
-        "StartsWith/EndsWith requires matching string or bytes args", pos
-    )
-
-
-def _tc_abs(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Abs", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Abs expects 1 argument", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if ty_eq(aty, TY_INT) or ty_eq(aty, TY_FLOAT):
-        return aty
-    raise TaytshTypeError("Abs requires int or float", pos)
-
-
-class _MinMaxTC:
-    """Typecheck callable for Min/Max builtins."""
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-    def check(
-        self,
-        tc: TypeChecker,
-        args: list[TArg],
-        env: _TypeEnv,
-        expected: Ty | None,
-        allow_capture: bool,
-        pos: Pos,
-    ) -> Ty:
-        if any(a.name is not None for a in args):
-            raise TaytshTypeError(f"named args not supported for {self.name}", pos)
-        if len(args) != 2:
-            raise TaytshTypeError(f"{self.name} expects 2 arguments", pos)
-        aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-        bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
-        if not ty_eq(aty, bty):
-            raise TaytshTypeError(f"{self.name} requires same type arguments", pos)
-        if ty_eq(aty, TY_INT) or ty_eq(aty, TY_FLOAT) or ty_eq(aty, TY_BYTE):
-            return aty
-        raise TaytshTypeError(f"{self.name} requires int, float, or byte", pos)
-
-
-_tc_min = _MinMaxTC("Min").check
-_tc_max = _MinMaxTC("Max").check
-
-
-def _tc_sum(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Sum", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Sum expects 1 argument", pos)
-    expected_arg: Ty | None = None
-    if expected is not None and (ty_eq(expected, TY_INT) or ty_eq(expected, TY_FLOAT)):
-        expected_arg = TyList(expected)
-    elif isinstance(args[0].value, TListLit) and not args[0].value.elements:
-        expected_arg = TyList(TY_INT)
-    aty = tc._type_expr(
-        args[0].value, env, expected=expected_arg, allow_capture=allow_capture
-    )
-    if isinstance(aty, TyList):
-        if ty_eq(aty.element, TY_INT) or ty_eq(aty.element, TY_FLOAT):
-            return aty.element
-    raise TaytshTypeError("Sum requires list[int] or list[float]", pos)
-
-
-def _tc_pow(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Pow", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Pow expects 2 arguments", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
-    if not ty_eq(aty, bty):
-        raise TaytshTypeError("Pow requires same type arguments", pos)
-    if ty_eq(aty, TY_INT) or ty_eq(aty, TY_FLOAT):
-        return aty
-    raise TaytshTypeError("Pow requires int or float", pos)
-
-
-def _tc_repeat(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Repeat", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Repeat expects 2 arguments", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    nty = tc._type_expr(
-        args[1].value, env, expected=TY_INT, allow_capture=allow_capture
-    )
-    if not ty_eq(nty, TY_INT):
-        raise TaytshTypeError("Repeat count must be int", args[1].pos)
-    if ty_eq(aty, TY_STRING):
-        return TY_STRING
-    if isinstance(aty, TyList):
-        return aty
-    raise TaytshTypeError("Repeat requires string or list", pos)
-
-
-def _tc_format(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Format", pos)
-    if len(args) < 1:
-        raise TaytshTypeError("Format expects at least 1 argument", pos)
-    for a in args:
-        aty = tc._type_expr(
-            a.value, env, expected=TY_STRING, allow_capture=allow_capture
-        )
-        if not ty_eq(aty, TY_STRING):
-            raise TaytshTypeError("Format arguments must be string", a.pos)
-    return TY_STRING
-
-
-def _tc_append(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Append", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Append expects 2 arguments", pos)
-    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(lty, TyList):
-        raise TaytshTypeError("Append first argument must be a list", pos)
-    vty = tc._type_expr(
-        args[1].value, env, expected=lty.element, allow_capture=allow_capture
-    )
-    if not tc._assignable(vty, lty.element):
-        raise TaytshTypeError("Append element type mismatch", args[1].pos)
-    return TY_VOID
-
-
-def _tc_insert(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Insert", pos)
-    if len(args) != 3:
-        raise TaytshTypeError("Insert expects 3 arguments", pos)
-    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(lty, TyList):
-        raise TaytshTypeError("Insert first argument must be a list", pos)
-    ity = tc._type_expr(
-        args[1].value, env, expected=TY_INT, allow_capture=allow_capture
-    )
-    if not ty_eq(ity, TY_INT):
-        raise TaytshTypeError("Insert index must be int", args[1].pos)
-    vty = tc._type_expr(
-        args[2].value, env, expected=lty.element, allow_capture=allow_capture
-    )
-    if not tc._assignable(vty, lty.element):
-        raise TaytshTypeError("Insert element type mismatch", args[2].pos)
-    return TY_VOID
-
-
-def _tc_pop(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Pop", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Pop expects 1 argument", pos)
-    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(lty, TyList):
-        raise TaytshTypeError("Pop requires a list", pos)
-    return lty.element
-
-
-def _tc_remove_at(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for RemoveAt", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("RemoveAt expects 2 arguments", pos)
-    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(lty, TyList):
-        raise TaytshTypeError("RemoveAt first argument must be a list", pos)
-    ity = tc._type_expr(
-        args[1].value, env, expected=TY_INT, allow_capture=allow_capture
-    )
-    if not ty_eq(ity, TY_INT):
-        raise TaytshTypeError("RemoveAt index must be int", args[1].pos)
-    return TY_VOID
-
-
-def _tc_index_of(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for IndexOf", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("IndexOf expects 2 arguments", pos)
-    lty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(lty, TyList):
-        raise TaytshTypeError("IndexOf first argument must be a list", pos)
-    vty = tc._type_expr(
-        args[1].value, env, expected=lty.element, allow_capture=allow_capture
-    )
-    if not tc._assignable(vty, lty.element):
-        raise TaytshTypeError("IndexOf element type mismatch", args[1].pos)
-    return TY_INT
-
-
-class _ListToListTC:
-    """Typecheck callable for Reversed/Sorted builtins."""
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-    def check(
-        self,
-        tc: TypeChecker,
-        args: list[TArg],
-        env: _TypeEnv,
-        expected: Ty | None,
-        allow_capture: bool,
-        pos: Pos,
-    ) -> Ty:
-        if any(a.name is not None for a in args):
-            raise TaytshTypeError(f"named args not supported for {self.name}", pos)
-        if len(args) != 1:
-            raise TaytshTypeError(f"{self.name} expects 1 argument", pos)
-        expected_arg: Ty | None = expected if isinstance(expected, TyList) else None
-        if (
-            expected_arg is None
-            and isinstance(args[0].value, TListLit)
-            and not args[0].value.elements
-        ):
-            expected_arg = TyList(TY_INT)
-        lty = tc._type_expr(
-            args[0].value, env, expected=expected_arg, allow_capture=allow_capture
-        )
-        if not isinstance(lty, TyList):
-            raise TaytshTypeError(f"{self.name} requires a list", pos)
-        return lty
-
-
-_tc_reversed = _ListToListTC("Reversed").check
-
-
-def _tc_sorted(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Sorted", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Sorted expects 1 argument", pos)
-    expected_arg: Ty | None = expected if isinstance(expected, TyList) else None
-    if (
-        expected_arg is None
-        and isinstance(args[0].value, TListLit)
-        and not args[0].value.elements
-    ):
-        expected_arg = TyList(TY_INT)
-    lty = tc._type_expr(
-        args[0].value, env, expected=expected_arg, allow_capture=allow_capture
-    )
-    if isinstance(lty, TyList):
-        return lty
-    if isinstance(lty, TySet):
-        return TyList(lty.element)
-    raise TaytshTypeError("Sorted requires list or set", pos)
-
-
-def _tc_delete(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Delete", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Delete expects 2 arguments", pos)
-    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(mty, TyMap):
-        raise TaytshTypeError("Delete first argument must be a map", pos)
-    kty = tc._type_expr(
-        args[1].value, env, expected=mty.key, allow_capture=allow_capture
-    )
-    if not tc._assignable(kty, mty.key):
-        raise TaytshTypeError("Delete key type mismatch", args[1].pos)
-    return TY_VOID
-
-
-def _tc_keys(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Keys", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Keys expects 1 argument", pos)
-    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(mty, TyMap):
-        raise TaytshTypeError("Keys requires a map", pos)
-    return TyList(mty.key)
-
-
-def _tc_values(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Values", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Values expects 1 argument", pos)
-    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(mty, TyMap):
-        raise TaytshTypeError("Values requires a map", pos)
-    return TyList(mty.value)
-
-
-def _tc_items(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Items", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Items expects 1 argument", pos)
-    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(mty, TyMap):
-        raise TaytshTypeError("Items requires a map", pos)
-    return TyList(TyTuple((mty.key, mty.value)))
-
-
-def _tc_pop_item(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if len(args) != 1:
-        raise TaytshTypeError("PopItem expects 1 argument", pos)
-    mty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(mty, TyMap):
-        raise TaytshTypeError("PopItem requires a map", pos)
-    return TyTuple((mty.key, mty.value))
-
-
-def _tc_merge(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Merge", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Merge expects 2 arguments", pos)
-    m1 = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    m2 = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
-    if not isinstance(m1, TyMap) or not isinstance(m2, TyMap):
-        raise TaytshTypeError("Merge requires two maps", pos)
-    if not ty_eq(m1, m2):
-        raise TaytshTypeError("Merge requires maps of same type", pos)
-    return m1
-
-
-def _tc_set_add(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Add", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Add expects 2 arguments", pos)
-    sty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(sty, TySet):
-        raise TaytshTypeError("Add first argument must be a set", pos)
-    vty = tc._type_expr(
-        args[1].value, env, expected=sty.element, allow_capture=allow_capture
-    )
-    if not tc._assignable(vty, sty.element):
-        raise TaytshTypeError("Add element type mismatch", args[1].pos)
-    return TY_VOID
-
-
-def _tc_set_remove(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Remove", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Remove expects 2 arguments", pos)
-    sty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(sty, TySet):
-        raise TaytshTypeError("Remove first argument must be a set", pos)
-    vty = tc._type_expr(
-        args[1].value, env, expected=sty.element, allow_capture=allow_capture
-    )
-    if not tc._assignable(vty, sty.element):
-        raise TaytshTypeError("Remove element type mismatch", args[1].pos)
-    return TY_VOID
-
-
-def _tc_set_binop(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-    name: str,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError(f"named args not supported for {name}", pos)
-    if len(args) != 2:
-        raise TaytshTypeError(f"{name} expects 2 arguments", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
-    if not isinstance(aty, TySet):
-        raise TaytshTypeError(f"{name} first argument must be a set", pos)
-    if not isinstance(bty, TySet):
-        raise TaytshTypeError(f"{name} second argument must be a set", pos)
-    return aty
-
-
-def _tc_union(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    return _tc_set_binop(tc, args, env, expected, allow_capture, pos, "Union")
-
-
-def _tc_intersection(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    return _tc_set_binop(tc, args, env, expected, allow_capture, pos, "Intersection")
-
-
-def _tc_difference(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    return _tc_set_binop(tc, args, env, expected, allow_capture, pos, "Difference")
-
-
-def _tc_bytes_ctor(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Bytes", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("Bytes expects 1 argument", pos)
-    aty = tc._type_expr(
-        args[0].value, env, expected=TY_INT, allow_capture=allow_capture
-    )
-    if not ty_eq(aty, TY_INT):
-        raise TaytshTypeError("Bytes requires int argument", pos)
-    return TY_BYTES
-
-
-def _tc_bytes_from(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for BytesFrom", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("BytesFrom expects 1 argument", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if not isinstance(aty, TyList):
-        raise TaytshTypeError("BytesFrom requires list", pos)
-    return TY_BYTES
-
-
-def _tc_range_list(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for RangeList", pos)
-    if len(args) != 3:
-        raise TaytshTypeError("RangeList expects 3 arguments", pos)
-    for a in args:
-        aty = tc._type_expr(a.value, env, expected=TY_INT, allow_capture=allow_capture)
-        if not ty_eq(aty, TY_INT):
-            raise TaytshTypeError("RangeList requires int arguments", a.pos)
-    return TyList(TY_INT)
-
-
-def _tc_map_from_pairs(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for MapFromPairs", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("MapFromPairs expects 1 argument", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if isinstance(aty, TyList) and isinstance(aty.element, TyTuple):
-        elems = aty.element.elements
-        if len(elems) == 2:
-            return TyMap(elems[0], elems[1])
-    raise TaytshTypeError("MapFromPairs requires list of 2-tuples", pos)
-
-
-def _tc_list_compare(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for ListCompare", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("ListCompare expects 2 arguments", pos)
-    for a in args:
-        aty = tc._type_expr(a.value, env, allow_capture=allow_capture)
-        if not isinstance(aty, TyList):
-            raise TaytshTypeError("ListCompare requires list arguments", a.pos)
-    return TY_INT
-
-
-def _tc_set_from_list(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for SetFromList", pos)
-    if len(args) != 1:
-        raise TaytshTypeError("SetFromList expects 1 argument", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    if isinstance(aty, TyList):
-        return TySet(aty.element)
-    raise TaytshTypeError("SetFromList requires list argument", pos)
-
-
-def _tc_zip(
-    tc: TypeChecker,
-    args: list[TArg],
-    env: _TypeEnv,
-    expected: Ty | None,
-    allow_capture: bool,
-    pos: Pos,
-) -> Ty:
-    if any(a.name is not None for a in args):
-        raise TaytshTypeError("named args not supported for Zip", pos)
-    if len(args) != 2:
-        raise TaytshTypeError("Zip expects 2 arguments", pos)
-    aty = tc._type_expr(args[0].value, env, allow_capture=allow_capture)
-    bty = tc._type_expr(args[1].value, env, allow_capture=allow_capture)
-    if not isinstance(aty, TyList):
-        raise TaytshTypeError("Zip requires list as first argument", pos)
-    if not isinstance(bty, TyList):
-        raise TaytshTypeError("Zip requires list as second argument", pos)
-    return TyList(TyTuple((aty.element, bty.element)))
-
-
-_BUILTIN_DISPATCH: dict[str, _Builtin] = {
-    "ToString": _Builtin(FnSig((TY_POLY,), TY_STRING), _tc_tostring),
-    "Len": _Builtin(FnSig((TY_POLY,), TY_INT), _tc_len),
-    "Map": _Builtin(FnSig((), TyMap(TY_POLY, TY_POLY)), _tc_map_ctor),
-    "Set": _Builtin(FnSig((), TySet(TY_POLY)), _tc_set_ctor),
-    "Get": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_get),
-    "Contains": _Builtin(FnSig((TY_POLY, TY_POLY), TY_BOOL), _tc_contains),
-    "Unwrap": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_unwrap),
-    "Assert": _Builtin(FnSig((TY_BOOL,), TY_VOID), _tc_assert),
-    # Numeric
-    "Round": _builtin_simple("Round", (TY_FLOAT,), TY_INT),
-    "Floor": _builtin_simple("Floor", (TY_FLOAT,), TY_INT),
-    "Ceil": _builtin_simple("Ceil", (TY_FLOAT,), TY_INT),
-    "Sqrt": _builtin_simple("Sqrt", (TY_FLOAT,), TY_FLOAT),
-    "IsNaN": _builtin_simple("IsNaN", (TY_FLOAT,), TY_BOOL),
-    "IsInf": _builtin_simple("IsInf", (TY_FLOAT,), TY_BOOL),
-    "DivMod": _builtin_simple("DivMod", (TY_INT, TY_INT), TyTuple((TY_INT, TY_INT))),
-    "WrappingAdd": _builtin_simple("WrappingAdd", (TY_INT, TY_INT), TY_INT),
-    "WrappingSub": _builtin_simple("WrappingSub", (TY_INT, TY_INT), TY_INT),
-    "WrappingMul": _builtin_simple("WrappingMul", (TY_INT, TY_INT), TY_INT),
-    "Abs": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_abs),
-    "Min": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_min),
-    "Max": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_max),
-    "Sum": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_sum),
-    "Pow": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_pow),
-    # Conversions
-    "IntToFloat": _builtin_simple("IntToFloat", (TY_INT,), TY_FLOAT),
-    "FloatToInt": _builtin_simple("FloatToInt", (TY_FLOAT,), TY_INT),
-    "ByteToInt": _builtin_simple("ByteToInt", (TY_BYTE,), TY_INT),
-    "IntToByte": _builtin_simple("IntToByte", (TY_INT,), TY_BYTE),
-    "RuneFromInt": _builtin_simple("RuneFromInt", (TY_INT,), TY_RUNE),
-    "RuneToInt": _builtin_simple("RuneToInt", (TY_RUNE,), TY_INT),
-    # String — simple
-    "ParseInt": _builtin_simple("ParseInt", (TY_STRING, TY_INT), TY_INT),
-    "ParseFloat": _builtin_simple("ParseFloat", (TY_STRING,), TY_FLOAT),
-    "FormatInt": _builtin_simple("FormatInt", (TY_INT, TY_INT), TY_STRING),
-    "Upper": _builtin_simple("Upper", (TY_STRING,), TY_STRING),
-    "Lower": _builtin_simple("Lower", (TY_STRING,), TY_STRING),
-    "Trim": _builtin_simple("Trim", (TY_STRING, TY_STRING), TY_STRING),
-    "TrimStart": _builtin_simple("TrimStart", (TY_STRING, TY_STRING), TY_STRING),
-    "TrimEnd": _builtin_simple("TrimEnd", (TY_STRING, TY_STRING), TY_STRING),
-    "Split": _builtin_simple("Split", (TY_STRING, TY_STRING), TyList(TY_STRING)),
-    "SplitN": _builtin_simple(
-        "SplitN", (TY_STRING, TY_STRING, TY_INT), TyList(TY_STRING)
-    ),
-    "SplitWhitespace": _builtin_simple(
-        "SplitWhitespace", (TY_STRING,), TyList(TY_STRING)
-    ),
-    "Join": _builtin_simple("Join", (TY_STRING, TyList(TY_STRING)), TY_STRING),
-    "Find": _builtin_simple("Find", (TY_STRING, TY_STRING), TY_INT),
-    "RFind": _builtin_simple("RFind", (TY_STRING, TY_STRING), TY_INT),
-    "Count": _builtin_simple("Count", (TY_STRING, TY_STRING), TY_INT),
-    "Replace": _builtin_simple("Replace", (TY_STRING, TY_STRING, TY_STRING), TY_STRING),
-    "ReplaceCount": _builtin_simple(
-        "ReplaceCount", (TY_STRING, TY_STRING, TY_STRING, TY_INT), TY_STRING
-    ),
-    "StartsWith": _Builtin(
-        FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with
-    ),
-    "EndsWith": _Builtin(FnSig((TY_STRING, TY_STRING), TY_BOOL), _tc_starts_ends_with),
-    "Encode": _builtin_simple("Encode", (TY_STRING,), TY_BYTES),
-    "Decode": _builtin_simple("Decode", (TY_BYTES,), TY_STRING),
-    # String — polymorphic
-    "Concat": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_concat),
-    "Repeat": _Builtin(FnSig((TY_POLY, TY_INT), TY_POLY), _tc_repeat),
-    "Format": _Builtin(FnSig((TY_STRING,), TY_STRING), _tc_format),
-    # Character tests
-    "IsDigit": _builtin_simple("IsDigit", (_TY_STR_OR_RUNE,), TY_BOOL),
-    "IsAlpha": _builtin_simple("IsAlpha", (_TY_STR_OR_RUNE,), TY_BOOL),
-    "IsAlnum": _builtin_simple("IsAlnum", (_TY_STR_OR_RUNE,), TY_BOOL),
-    "IsSpace": _builtin_simple("IsSpace", (_TY_STR_OR_RUNE,), TY_BOOL),
-    "IsUpper": _builtin_simple("IsUpper", (_TY_STR_OR_RUNE,), TY_BOOL),
-    "IsLower": _builtin_simple("IsLower", (_TY_STR_OR_RUNE,), TY_BOOL),
-    # List — polymorphic
-    "Append": _Builtin(FnSig((TY_POLY, TY_POLY), TY_VOID), _tc_append),
-    "Insert": _Builtin(FnSig((TY_POLY, TY_INT, TY_POLY), TY_VOID), _tc_insert),
-    "Pop": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_pop),
-    "RemoveAt": _Builtin(FnSig((TY_POLY, TY_INT), TY_VOID), _tc_remove_at),
-    "IndexOf": _Builtin(FnSig((TY_POLY, TY_POLY), TY_INT), _tc_index_of),
-    "Reversed": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_reversed),
-    "Sorted": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_sorted),
-    # Map — polymorphic
-    "Delete": _Builtin(FnSig((TY_POLY, TY_POLY), TY_VOID), _tc_delete),
-    "Keys": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_keys),
-    "Values": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_values),
-    "Items": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_items),
-    "Merge": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_merge),
-    "PopItem": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_pop_item),
-    "MapFromKeys": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _builtin_simple),
-    # Set — polymorphic
-    "Add": _Builtin(FnSig((TY_POLY, TY_POLY), TY_VOID), _tc_set_add),
-    "Remove": _Builtin(FnSig((TY_POLY, TY_POLY), TY_VOID), _tc_set_remove),
-    "Union": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_union),
-    "Intersection": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_intersection),
-    "Difference": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_difference),
-    # Bytes constructors
-    "Bytes": _Builtin(FnSig((TY_INT,), TY_BYTES), _tc_bytes_ctor),
-    "BytesFrom": _Builtin(FnSig((TY_POLY,), TY_BYTES), _tc_bytes_from),
-    # Range-to-list
-    "RangeList": _Builtin(FnSig((TY_INT, TY_INT, TY_INT), TY_POLY), _tc_range_list),
-    # Map constructor
-    "MapFromPairs": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_map_from_pairs),
-    # List comparison
-    "ListCompare": _Builtin(FnSig((TY_POLY, TY_POLY), TY_INT), _tc_list_compare),
-    # Zip
-    "Zip": _Builtin(FnSig((TY_POLY, TY_POLY), TY_POLY), _tc_zip),
-    # Set from iterable
-    "SetFromList": _Builtin(FnSig((TY_POLY,), TY_POLY), _tc_set_from_list),
-    # String to char list
-    "Chars": _builtin_simple("Chars", (TY_STRING,), TyList(TY_STRING)),
-    # I/O
-    "WriteOut": _builtin_simple("WriteOut", (_TY_STR_OR_BYTES,), TY_VOID),
-    "WriteErr": _builtin_simple("WriteErr", (_TY_STR_OR_BYTES,), TY_VOID),
-    "WritelnOut": _builtin_simple("WritelnOut", (_TY_STR_OR_BYTES,), TY_VOID),
-    "WritelnErr": _builtin_simple("WritelnErr", (_TY_STR_OR_BYTES,), TY_VOID),
-    "ReadLine": _builtin_simple("ReadLine", (), _TY_OPT_STRING),
-    "ReadAll": _builtin_simple("ReadAll", (), TY_STRING),
-    "ReadBytes": _builtin_simple("ReadBytes", (), TY_BYTES),
-    "ReadBytesN": _builtin_simple("ReadBytesN", (TY_INT,), TY_BYTES),
-    "ReadFile": _builtin_simple("ReadFile", (TY_STRING,), _TY_STR_OR_BYTES),
-    "WriteFile": _builtin_simple("WriteFile", (TY_STRING, _TY_STR_OR_BYTES), TY_VOID),
-    "Args": _builtin_simple("Args", (), TyList(TY_STRING)),
-    "GetEnv": _builtin_simple("GetEnv", (TY_STRING,), _TY_OPT_STRING),
-    "Exit": _builtin_simple("Exit", (TY_INT,), TY_VOID),
-}
-
+def _resolve_type(t: TType, checker: Checker) -> Type:
+    """Resolve a parse-time TType to a checked Type using the Checker."""
+    return checker.resolve_type(t)
+
+
+def _fn_lit_sig(lit: TFnLit, checker: Checker) -> FnSig:
+    """Resolve a function literal's signature."""
+    params: list[Type] = []
+    for p in lit.params:
+        if p.typ is None:
+            raise TaytshRuntimeFault("self not allowed in fn literals", p.pos)
+        params.append(checker.resolve_type(p.typ))
+    ret = checker.resolve_type(lit.ret)
+    return FnSig(params, ret)
 
 # ============================================================
 # Evaluation
@@ -3651,82 +937,218 @@ def _same_value_class(a: Value, b: Value) -> bool:
 
 def _value_eq(a: Value, b: Value) -> bool:
     if not _same_value_class(a, b):
-        if (isinstance(a, VByte) and isinstance(b, VInt)) or (
-            isinstance(a, VInt) and isinstance(b, VByte)
-        ):
+        if isinstance(a, VByte) and isinstance(b, VInt):
+            return a.value == b.value
+        if isinstance(a, VInt) and isinstance(b, VByte):
             return a.value == b.value
         return False
     if isinstance(a, VNil):
         return True
-    if isinstance(a, VBool):
-        return a.value == cast(VBool, b).value
-    if isinstance(a, VInt):
-        return a.value == cast(VInt, b).value
-    if isinstance(a, VFloat):
-        return a.value == cast(VFloat, b).value
-    if isinstance(a, VByte):
-        return a.value == cast(VByte, b).value
-    if isinstance(a, VBytes):
-        return a.value == cast(VBytes, b).value
-    if isinstance(a, VString):
-        return a.value == cast(VString, b).value
-    if isinstance(a, VRune):
-        return a.value == cast(VRune, b).value
-    if isinstance(a, VEnum):
+    if isinstance(a, VBool) and isinstance(b, VBool):
+        return a.value == b.value
+    if isinstance(a, VInt) and isinstance(b, VInt):
+        return a.value == b.value
+    if isinstance(a, VFloat) and isinstance(b, VFloat):
+        return a.value == b.value
+    if isinstance(a, VByte) and isinstance(b, VByte):
+        return a.value == b.value
+    if isinstance(a, VBytes) and isinstance(b, VBytes):
+        return a.value == b.value
+    if isinstance(a, VString) and isinstance(b, VString):
+        return a.value == b.value
+    if isinstance(a, VRune) and isinstance(b, VRune):
+        return a.value == b.value
+    if isinstance(a, VEnum) and isinstance(b, VEnum):
         return a == b
-    if isinstance(a, VTuple):
-        other = cast(VTuple, b)
-        if not ty_eq(a.typ, other.typ):
+    if isinstance(a, VTuple) and isinstance(b, VTuple):
+        if not type_eq(a.typ, b.typ):
             return False
-        if len(a.elements) != len(other.elements):
+        if len(a.elements) != len(b.elements):
             return False
-        return all(_value_eq(x, y) for x, y in zip(a.elements, other.elements))
-    if isinstance(a, VList):
-        other = cast(VList, b)
-        if not ty_eq(a.typ, other.typ):
+        i = 0
+        while i < len(a.elements):
+            if not _value_eq(a.elements[i], b.elements[i]):
+                return False
+            i += 1
+        return True
+    if isinstance(a, VList) and isinstance(b, VList):
+        if not type_eq(a.typ, b.typ):
             return False
-        if len(a.elements) != len(other.elements):
+        if len(a.elements) != len(b.elements):
             return False
-        return all(_value_eq(x, y) for x, y in zip(a.elements, other.elements))
+        i = 0
+        while i < len(a.elements):
+            if not _value_eq(a.elements[i], b.elements[i]):
+                return False
+            i += 1
+        return True
     if isinstance(a, VMap):
-        other = cast(VMap, b)
-        if not ty_eq(a.typ, other.typ):
+        if not isinstance(b, VMap):
             return False
-        if len(a.entries) != len(other.entries):
+        if not type_eq(a.typ, b.typ):
             return False
-        for k, v in a.entries.items():
-            if k not in other.entries:
+        if len(a.map_keys) != len(b.map_keys):
+            return False
+        i = 0
+        while i < len(a.map_keys):
+            if not _map_has(b, a.map_keys[i]):
                 return False
-            if not _value_eq(v, other.entries[k]):
+            if not _value_eq(a.map_vals[i], _map_get(b, a.map_keys[i])):
                 return False
+            i += 1
         return True
     if isinstance(a, VSet):
-        other = cast(VSet, b)
-        if not ty_eq(a.typ, other.typ):
+        if not isinstance(b, VSet):
             return False
-        if len(a.elements) != len(other.elements):
+        if not type_eq(a.typ, b.typ):
             return False
-        return a.elements == other.elements
+        if len(a.elements) != len(b.elements):
+            return False
+        for e in a.elements:
+            if not _set_has(b.elements, e):
+                return False
+        return True
     if isinstance(a, VStruct):
-        other = cast(VStruct, b)
-        if a.struct_name != other.struct_name:
+        if not isinstance(b, VStruct):
             return False
-        if a.fields.keys() != other.fields.keys():
+        if a.struct_name != b.struct_name:
+            return False
+        if a.fields.keys() != b.fields.keys():
             return False
         for k in a.fields.keys():
-            if not _value_eq(a.fields[k], other.fields[k]):
+            if not _value_eq(a.fields[k], b.fields[k]):
                 return False
         return True
     if isinstance(a, VFunc):
-        other = cast(VFunc, b)
-        return ty_eq(a.typ, other.typ) and a.name == other.name and a.call == other.call
+        if not isinstance(b, VFunc):
+            return False
+        return type_eq(a.typ, b.typ) and a.name == b.name and a.kind == b.kind
     raise TaytshRuntimeFault("unsupported equality", None)
 
 
-def _as_hashable(v: Value) -> HashableValue:
-    if isinstance(v, HashableValue):
+def _is_hashable_value(v: Value) -> bool:
+    if isinstance(v, VNil):
+        return True
+    if isinstance(v, VBool):
+        return True
+    if isinstance(v, VInt):
+        return True
+    if isinstance(v, VFloat):
+        return True
+    if isinstance(v, VByte):
+        return True
+    if isinstance(v, VBytes):
+        return True
+    if isinstance(v, VString):
+        return True
+    if isinstance(v, VRune):
+        return True
+    if isinstance(v, VTuple):
+        return True
+    if isinstance(v, VEnum):
+        return True
+    return False
+
+
+def _as_hashable(v: Value) -> Value:
+    if _is_hashable_value(v):
         return v
     raise TaytshRuntimeFault("value is not hashable", None)
+
+
+# ---- Map helpers (list-based map avoids dict[Value, Value]) ----
+
+
+def _map_find(keys: list[Value], key: Value) -> int:
+    i = 0
+    while i < len(keys):
+        if _value_eq(keys[i], key):
+            return i
+        i += 1
+    return -1
+
+
+def _map_get(m: VMap, key: Value) -> Value:
+    idx = _map_find(m.map_keys, key)
+    if idx < 0:
+        raise TaytshRuntimeFault("key not found", None)
+    return m.map_vals[idx]
+
+
+def _map_has(m: VMap, key: Value) -> bool:
+    return _map_find(m.map_keys, key) >= 0
+
+
+def _map_set(m: VMap, key: Value, value: Value) -> None:
+    idx = _map_find(m.map_keys, key)
+    if idx >= 0:
+        m.map_vals[idx] = value
+    else:
+        m.map_keys.append(key)
+        m.map_vals.append(value)
+
+
+def _map_del(m: VMap, key: Value) -> None:
+    idx = _map_find(m.map_keys, key)
+    if idx >= 0:
+        m.map_keys.pop(idx)
+        m.map_vals.pop(idx)
+
+
+def _map_pop(m: VMap, key: Value) -> Value | None:
+    idx = _map_find(m.map_keys, key)
+    if idx < 0:
+        return None
+    m.map_keys.pop(idx)
+    return m.map_vals.pop(idx)
+
+
+# ---- Set helpers (list-based set avoids set[Value]) ----
+
+
+def _set_has(elements: list[Value], val: Value) -> bool:
+    for e in elements:
+        if _value_eq(e, val):
+            return True
+    return False
+
+
+def _set_add(elements: list[Value], val: Value) -> None:
+    if not _set_has(elements, val):
+        elements.append(val)
+
+
+def _set_discard(elements: list[Value], val: Value) -> None:
+    i = 0
+    while i < len(elements):
+        if _value_eq(elements[i], val):
+            elements.pop(i)
+            return
+        i += 1
+
+
+def _set_union(a: list[Value], b: list[Value]) -> list[Value]:
+    result = list(a)
+    for e in b:
+        if not _set_has(result, e):
+            result.append(e)
+    return result
+
+
+def _set_intersection(a: list[Value], b: list[Value]) -> list[Value]:
+    result: list[Value] = []
+    for e in a:
+        if _set_has(b, e):
+            result.append(e)
+    return result
+
+
+def _set_difference(a: list[Value], b: list[Value]) -> list[Value]:
+    result: list[Value] = []
+    for e in a:
+        if not _set_has(b, e):
+            result.append(e)
+    return result
 
 
 def _int_divmod_trunc(a: int, b: int) -> tuple[int, int]:
@@ -3741,7 +1163,7 @@ def _int_divmod_trunc(a: int, b: int) -> tuple[int, int]:
 
 @dataclass
 class _Binding:
-    ty: Ty
+    ty: Type
     value: Value
 
 
@@ -3755,7 +1177,7 @@ class _RuntimeEnv:
     def pop_scope(self) -> None:
         self._scopes.pop()
 
-    def bind(self, name: str, typ: Ty, value: Value) -> None:
+    def bind(self, name: str, typ: Type, value: Value) -> None:
         if name == "_":
             return
         if not self._scopes:
@@ -3763,17 +1185,28 @@ class _RuntimeEnv:
         self._scopes[-1][name] = _Binding(typ, value)
 
     def lookup(self, name: str) -> _Binding:
-        for scope in reversed(self._scopes):
+        i = len(self._scopes) - 1
+        while i >= 0:
+            scope = self._scopes[i]
             if name in scope:
                 return scope[name]
+            i -= 1
         raise TaytshRuntimeFault(f"unknown name '{name}'", None)
+
+    def has(self, name: str) -> bool:
+        i = len(self._scopes) - 1
+        while i >= 0:
+            if name in self._scopes[i]:
+                return True
+            i -= 1
+        return False
 
     def get(self, name: str) -> Value:
         if name == "_":
             raise TaytshRuntimeFault("cannot read discard '_'", None)
         return self.lookup(name).value
 
-    def get_ty(self, name: str) -> Ty:
+    def get_ty(self, name: str) -> Type:
         if name == "_":
             raise TaytshRuntimeFault("cannot read discard '_'", None)
         return self.lookup(name).ty
@@ -3781,15 +1214,18 @@ class _RuntimeEnv:
     def set(self, name: str, value: Value) -> None:
         if name == "_":
             return
-        for scope in reversed(self._scopes):
+        i = len(self._scopes) - 1
+        while i >= 0:
+            scope = self._scopes[i]
             if name in scope:
                 scope[name] = _Binding(scope[name].ty, value)
                 return
+            i -= 1
         raise TaytshRuntimeFault(f"unknown name '{name}'", None)
 
 
 class _LValueRef:
-    def __init__(self, typ: Ty):
+    def __init__(self, typ: Type):
         self.typ = typ
 
     def get(self) -> Value:  # pragma: no cover
@@ -3800,7 +1236,7 @@ class _LValueRef:
 
 
 class _VarRef(_LValueRef):
-    def __init__(self, env: _RuntimeEnv, name: str, typ: Ty):
+    def __init__(self, typ: Type, env: _RuntimeEnv, name: str):
         super().__init__(typ)
         self._env = env
         self._name = name
@@ -3813,7 +1249,7 @@ class _VarRef(_LValueRef):
 
 
 class _FieldRef(_LValueRef):
-    def __init__(self, obj: VStruct, field: str, typ: Ty):
+    def __init__(self, typ: Type, obj: VStruct, field: str):
         super().__init__(typ)
         self._obj = obj
         self._field = field
@@ -3826,7 +1262,7 @@ class _FieldRef(_LValueRef):
 
 
 class _ListIndexRef(_LValueRef):
-    def __init__(self, obj: VList, index: int, typ: Ty):
+    def __init__(self, typ: Type, obj: VList, index: int):
         super().__init__(typ)
         self._obj = obj
         self._index = index
@@ -3839,18 +1275,18 @@ class _ListIndexRef(_LValueRef):
 
 
 class _MapIndexRef(_LValueRef):
-    def __init__(self, obj: VMap, key: HashableValue, typ: Ty):
+    def __init__(self, typ: Type, obj: VMap, key: Value):
         super().__init__(typ)
         self._obj = obj
         self._key = key
 
     def get(self) -> Value:
-        if self._key not in self._obj.entries:
+        if not _map_has(self._obj, self._key):
             raise KeyError
-        return self._obj.entries[self._key]
+        return _map_get(self._obj, self._key)
 
     def set(self, value: Value) -> None:
-        self._obj.entries[self._key] = value
+        _map_set(self._obj, self._key, value)
 
 
 def _fmod(x: float, y: float) -> float:
@@ -3861,71 +1297,32 @@ def _range_cond(x: int, end: int, step: int) -> bool:
     return x < end if step > 0 else x > end
 
 
-class _FnLitCaller:
-    def __init__(self, rt: Runtime, lit: TFnLit, sig: FnSig):
-        self._rt = rt
-        self._lit = lit
-        self._sig = sig
-
-    def invoke(self, args: list[Value]) -> Value:
-        return self._rt._call_fn_lit(self._lit, self._sig, args)
-
-
-class _UserFnCaller:
-    def __init__(self, rt: Runtime, decl: TFnDecl, sig: FnSig):
-        self._rt = rt
-        self._decl = decl
-        self._sig = sig
-
-    def invoke(self, args: list[Value]) -> Value:
-        return self._rt._call_fn(self._decl, self._sig, args)
-
-
-class _BuiltinCaller:
-    def __init__(self, rt: Runtime, name: str):
-        self._rt = rt
-        self._name = name
-
-    def invoke(self, args: list[Value]) -> Value:
-        return _BUILTIN_RUNTIME[self._name](self._rt, args)
-
-
 class Runtime:
-    stdin: _Input
-    args: list[str]
-    env: dict[str, str]
-    stdout: bytearray
-    stderr: bytearray
-
     def __init__(
         self,
         module: TModule,
         index: ModuleIndex,
-        tc: TypeChecker,
-        *,
-        stdin: bytes,
-        args: Sequence[str],
-        env: Mapping[str, str],
+        checker: Checker,
+        expr_types: dict[tuple[int, int], Type],
+        stdin: _Input,
+        args: list[str],
+        env: dict[str, str],
+        stdout: bytes,
+        stderr: bytes,
+        fn_values: dict[str, VFunc],
+        builtin_values: dict[str, VFunc],
     ):
         self.module = module
         self.index = index
-        self.tc = tc
-        self.stdin = _Input(stdin)
-        self.args = list(args)
-        self.env = dict(env)
-        self.stdout = bytearray()
-        self.stderr = bytearray()
-
-        self._fn_values: dict[str, VFunc] = {}
-        for name, info in self.index.funcs.items():
-            self._fn_values[name] = self._make_user_fn(name, info.decl, info.sig)
-
-        self._builtin_values: dict[str, VFunc] = {}
-        for name, b in _BUILTIN_DISPATCH.items():
-            if name in _BUILTIN_RUNTIME:
-                self._builtin_values[name] = VFunc(
-                    b.sig.ty(), name, _BuiltinCaller(self, name).invoke
-                )
+        self.checker = checker
+        self.expr_types = expr_types
+        self.stdin = stdin
+        self.args = args
+        self.env = env
+        self.stdout = stdout
+        self.stderr = stderr
+        self._fn_values = fn_values
+        self._builtin_values = builtin_values
 
     # ---- Errors / throwing -------------------------------------------------
 
@@ -3937,36 +1334,36 @@ class Runtime:
 
     # ---- Zero values -------------------------------------------------------
 
-    def zero_value(self, typ: Ty) -> Value:
-        if ty_eq(typ, TY_INT):
+    def zero_value(self, typ: Type) -> Value:
+        if type_eq(typ, INT_T):
             return VInt(0)
-        if ty_eq(typ, TY_FLOAT):
+        if type_eq(typ, FLOAT_T):
             return VFloat(0.0)
-        if ty_eq(typ, TY_BOOL):
+        if type_eq(typ, BOOL_T):
             return VBool(False)
-        if ty_eq(typ, TY_BYTE):
+        if type_eq(typ, BYTE_T):
             return VByte(0)
-        if ty_eq(typ, TY_BYTES):
+        if type_eq(typ, BYTES_T):
             return VBytes(b"")
-        if ty_eq(typ, TY_STRING):
+        if type_eq(typ, STRING_T):
             return VString("")
-        if ty_eq(typ, TY_RUNE):
+        if type_eq(typ, RUNE_T):
             return VRune("\0")
-        if ty_eq(typ, TY_ERROR) or ty_is_nil(typ):
+        if type_eq(typ, ERROR_T) or _is_nil(typ):
             return VNil()
-        if isinstance(typ, TyList):
+        if isinstance(typ, ListT):
             return VList([], typ)
-        if isinstance(typ, TyMap):
-            return VMap({}, typ)
-        if isinstance(typ, TySet):
-            return VSet(set(), typ)
-        if isinstance(typ, TyTuple):
-            elems = tuple(self.zero_value(t) for t in typ.elements)
+        if isinstance(typ, MapT):
+            return VMap([], [], typ)
+        if isinstance(typ, SetT):
+            return VSet([], typ)
+        if isinstance(typ, TupleT):
+            elems = [self.zero_value(t) for t in typ.elements]
             return VTuple(elems, typ)
-        if isinstance(typ, TyUnion):
-            if any(ty_is_nil(m) for m in typ.members):
+        if isinstance(typ, UnionT):
+            if any(_is_nil(m) for m in typ.members):
                 return VNil()
-        raise TaytshRuntimeFault(f"type '{typ.display()}' has no zero value", None)
+        raise TaytshRuntimeFault(f"type '{type_name(typ)}' has no zero value", None)
 
     # ---- Running -----------------------------------------------------------
 
@@ -3975,19 +1372,17 @@ class Runtime:
             self._call_fn(
                 self.index.funcs["Main"].decl, self.index.funcs["Main"].sig, []
             )
-            return RunResult(0, bytes(self.stdout), bytes(self.stderr))
+            return RunResult(0, self.stdout, self.stderr)
         except _Exit as e:
-            return RunResult(e.code, bytes(self.stdout), bytes(self.stderr))
+            return RunResult(e.code, self.stdout, self.stderr)
         except _Throw as t:
             # Uncaught exception: best-effort message to stderr.
-            msg = t.value.to_string()
-            self.stderr.extend((msg + "\n").encode("utf-8"))
-            return RunResult(1, bytes(self.stdout), bytes(self.stderr))
+            msg: str = t.value.to_string()
+            err_line: str = msg + "\n"
+            self.stderr = self.stderr + err_line.encode("utf-8")
+            return RunResult(1, self.stdout, self.stderr)
 
     # ---- Functions ---------------------------------------------------------
-
-    def _make_user_fn(self, name: str, decl: TFnDecl, sig: FnSig) -> VFunc:
-        return VFunc(sig.ty(), name, _UserFnCaller(self, decl, sig).invoke)
 
     def _call_fn(self, decl: TFnDecl, sig: FnSig, args: list[Value]) -> Value:
         env = _RuntimeEnv()
@@ -4002,19 +1397,19 @@ class Runtime:
         try:
             self._eval_block(decl.body, env, fn_ret=sig.ret)
         except _Return as r:
-            if ty_eq(sig.ret, TY_VOID):
+            if type_eq(sig.ret, VOID_T):
                 return VNil()
             if r.value is None:
                 raise TaytshRuntimeFault("missing return value", decl.pos)
             return r.value
 
-        if ty_eq(sig.ret, TY_VOID):
+        if type_eq(sig.ret, VOID_T):
             return VNil()
         raise TaytshRuntimeFault("function fell off without returning", decl.pos)
 
     # ---- Statements --------------------------------------------------------
 
-    def _eval_block(self, stmts: list[TStmt], env: _RuntimeEnv, *, fn_ret: Ty) -> None:
+    def _eval_block(self, stmts: list[TStmt], env: _RuntimeEnv, *, fn_ret: Type) -> None:
         env.push_scope()
         try:
             for st in stmts:
@@ -4022,9 +1417,9 @@ class Runtime:
         finally:
             env.pop_scope()
 
-    def _eval_stmt(self, st: TStmt, env: _RuntimeEnv, *, fn_ret: Ty) -> None:
+    def _eval_stmt(self, st: TStmt, env: _RuntimeEnv, *, fn_ret: Type) -> None:
         if isinstance(st, TLetStmt):
-            vty = self.tc.resolve_type(st.typ, pos=st.pos)
+            vty = _resolve_type(st.typ, self.checker)
             if st.value is None:
                 env.bind(st.name, vty, self.zero_value(vty))
                 return
@@ -4039,27 +1434,30 @@ class Runtime:
             return
 
         if isinstance(st, TOpAssignStmt):
-            ref = self._eval_lvalue_ref(st.target, env)
+            oref = self._eval_lvalue_ref(st.target, env)
+            cur: Value = VNil()
             try:
-                cur = ref.get()
+                cur = oref.get()
             except KeyError:
                 self._throw_err("KeyError", "missing key")
-            rhs = self._eval_expr(st.value, env, expected=ref.typ)
+            rhs = self._eval_expr(st.value, env, expected=oref.typ)
             res = self._eval_binary(st.op[:-1], cur, rhs, pos=st.pos)
-            ref.set(res)
+            oref.set(res)
             return
 
         if isinstance(st, TTupleAssignStmt):
-            refs = [self._eval_lvalue_ref(t, env) for t in st.targets]
+            trefs = [self._eval_lvalue_ref(t, env) for t in st.targets]
             rhs = self._eval_expr(
-                st.value, env, expected=TyTuple(tuple(r.typ for r in refs))
+                st.value, env, expected=TupleT(kind="tuple", elements=list(r.typ for r in trefs))
             )
             if not isinstance(rhs, VTuple):
                 raise TaytshRuntimeFault("tuple assignment rhs not a tuple", st.pos)
             if len(rhs.elements) != len(st.targets):
                 raise TaytshRuntimeFault("tuple arity mismatch", st.pos)
-            for i, ref in enumerate(refs):
-                ref.set(rhs.elements[i])
+            ti = 0
+            while ti < len(trefs):
+                trefs[ti].set(rhs.elements[ti])
+                ti += 1
             return
 
         if isinstance(st, TReturnStmt):
@@ -4068,9 +1466,9 @@ class Runtime:
             raise _Return(self._eval_expr(st.value, env, expected=fn_ret))
 
         if isinstance(st, TBreakStmt):
-            raise _Break()
+            raise _Break("")
         if isinstance(st, TContinueStmt):
-            raise _Continue()
+            raise _Continue("")
 
         if isinstance(st, TThrowStmt):
             raise _Throw(self._eval_expr(st.expr, env))
@@ -4086,7 +1484,7 @@ class Runtime:
             if cond.value:
                 self._eval_block(st.then_body, env, fn_ret=fn_ret)
             elif st.else_body is not None:
-                self._eval_block(cast(list[TStmt], st.else_body), env, fn_ret=fn_ret)
+                self._eval_block(st.else_body, env, fn_ret=fn_ret)
             return
 
         if isinstance(st, TWhileStmt):
@@ -4117,51 +1515,41 @@ class Runtime:
 
         raise TaytshRuntimeFault("unsupported statement", st.pos)
 
-    def _eval_try(self, st: TTryStmt, env: _RuntimeEnv, *, fn_ret: Ty) -> None:
-        pending: _Signal | None = None
+    def _eval_try(self, st: TTryStmt, env: _RuntimeEnv, *, fn_ret: Type) -> None:
         try:
-            self._eval_block(st.body, env, fn_ret=fn_ret)
-        except _Signal as s:
-            pending = s
-            if isinstance(s, _Throw):
-                handled = False
-                for c in st.catches:
-                    if not c.types or any(
-                        self._matches_type(s.value, self.tc.resolve_type(t, pos=t.pos))
-                        for t in c.types
-                    ):
-                        handled = True
-                        pending = None
-                        env.push_scope()
-                        try:
-                            if c.types:
-                                c_ty = ty_union(
-                                    [
-                                        self.tc.resolve_type(t, pos=t.pos)
-                                        for t in c.types
-                                    ]
-                                )
-                            else:
-                                c_ty = TY_ERROR
-                            env.bind(c.name, c_ty, s.value)
-                            self._eval_block(c.body, env, fn_ret=fn_ret)
-                        except _Signal as inner:
-                            pending = inner
-                        finally:
-                            env.pop_scope()
-                        break
-                if not handled:
-                    pending = s
+            self._eval_try_body(st, env, fn_ret=fn_ret)
         finally:
             if st.finally_body is not None:
-                try:
-                    self._eval_block(st.finally_body, env, fn_ret=fn_ret)
-                except _Signal as fin:
-                    pending = fin
-        if pending is not None:
-            raise pending
+                self._eval_block(st.finally_body, env, fn_ret=fn_ret)
 
-    def _eval_match(self, st: TMatchStmt, env: _RuntimeEnv, *, fn_ret: Ty) -> None:
+    def _eval_try_body(self, st: TTryStmt, env: _RuntimeEnv, *, fn_ret: Type) -> None:
+        try:
+            self._eval_block(st.body, env, fn_ret=fn_ret)
+        except _Throw as s:
+            for c in st.catches:
+                if not c.types or any(
+                    self._matches_type(s.value, _resolve_type(t, self.checker))
+                    for t in c.types
+                ):
+                    env.push_scope()
+                    try:
+                        if c.types:
+                            c_ty = normalize_union(
+                                [
+                                    _resolve_type(t, self.checker)
+                                    for t in c.types
+                                ]
+                            )
+                        else:
+                            c_ty = ERROR_T
+                        env.bind(c.name, c_ty, s.value)
+                        self._eval_block(c.body, env, fn_ret=fn_ret)
+                    finally:
+                        env.pop_scope()
+                    return
+            raise s
+
+    def _eval_match(self, st: TMatchStmt, env: _RuntimeEnv, *, fn_ret: Type) -> None:
         v = self._eval_expr(st.expr, env)
         for c in st.cases:
             pat = c.pattern
@@ -4178,7 +1566,7 @@ class Runtime:
                     self._eval_block(c.body, env, fn_ret=fn_ret)
                     return
             elif isinstance(pat, TPatternType):
-                case_ty = self.tc.resolve_type(pat.type_name, pos=pat.pos)
+                case_ty = _resolve_type(pat.type_name, self.checker)
                 if self._matches_type(v, case_ty):
                     env.push_scope()
                     try:
@@ -4193,14 +1581,14 @@ class Runtime:
                 return
             env.push_scope()
             try:
-                env.bind(st.default.name, TY_ERROR, v)
+                env.bind(st.default.name, ERROR_T, v)
                 self._eval_block(st.default.body, env, fn_ret=fn_ret)
             finally:
                 env.pop_scope()
             return
         raise TaytshRuntimeFault("non-exhaustive match at runtime", st.pos)
 
-    def _eval_for(self, st: TForStmt, env: _RuntimeEnv, *, fn_ret: Ty) -> None:
+    def _eval_for(self, st: TForStmt, env: _RuntimeEnv, *, fn_ret: Type) -> None:
         if isinstance(st.iterable, TRange):
             ints = [self._eval_expr(a, env) for a in st.iterable.args]
             vals: list[int] = []
@@ -4226,7 +1614,7 @@ class Runtime:
             while _range_cond(i, end, step):
                 env.push_scope()
                 try:
-                    env.bind(st.binding[0], TY_INT, VInt(i))
+                    env.bind(st.binding[0], INT_T, VInt(i))
                     self._eval_block(st.body, env, fn_ret=fn_ret)
                 except _Continue:
                     pass
@@ -4240,65 +1628,74 @@ class Runtime:
         it = self._eval_expr(st.iterable, env)
 
         if isinstance(it, VList):
-            snapshot = list(it.elements)
-            for idx, val in enumerate(snapshot):
+            list_snap: list[Value] = list(it.elements)
+            li = 0
+            while li < len(list_snap):
+                lval: Value = list_snap[li]
                 env.push_scope()
                 try:
                     if len(st.binding) == 1:
-                        env.bind(st.binding[0], it.typ.element, val)
+                        env.bind(st.binding[0], it.typ.element, lval)
                     else:
-                        env.bind(st.binding[0], TY_INT, VInt(idx))
-                        env.bind(st.binding[1], it.typ.element, val)
+                        env.bind(st.binding[0], INT_T, VInt(li))
+                        env.bind(st.binding[1], it.typ.element, lval)
                     self._eval_block(st.body, env, fn_ret=fn_ret)
                 except _Continue:
-                    continue
+                    pass
                 except _Break:
                     return
                 finally:
                     env.pop_scope()
+                li += 1
             return
 
         if isinstance(it, VString):
-            snapshot = list(it.value)
-            for idx, ch in enumerate(snapshot):
+            str_val: str = it.value
+            si = 0
+            while si < len(str_val):
+                ch: str = str_val[si]
                 env.push_scope()
                 try:
                     if len(st.binding) == 1:
-                        env.bind(st.binding[0], TY_RUNE, VRune(ch))
+                        env.bind(st.binding[0], RUNE_T, VRune(ch))
                     else:
-                        env.bind(st.binding[0], TY_INT, VInt(idx))
-                        env.bind(st.binding[1], TY_RUNE, VRune(ch))
+                        env.bind(st.binding[0], INT_T, VInt(si))
+                        env.bind(st.binding[1], RUNE_T, VRune(ch))
                     self._eval_block(st.body, env, fn_ret=fn_ret)
                 except _Continue:
-                    continue
+                    pass
                 except _Break:
                     return
                 finally:
                     env.pop_scope()
+                si += 1
             return
 
         if isinstance(it, VBytes):
-            snapshot = list(it.value)
-            for idx, b in enumerate(snapshot):
+            bi = 0
+            while bi < len(it.value):
+                bv = int(it.value[bi])
                 env.push_scope()
                 try:
                     if len(st.binding) == 1:
-                        env.bind(st.binding[0], TY_BYTE, VByte(b))
+                        env.bind(st.binding[0], BYTE_T, VByte(bv))
                     else:
-                        env.bind(st.binding[0], TY_INT, VInt(idx))
-                        env.bind(st.binding[1], TY_BYTE, VByte(b))
+                        env.bind(st.binding[0], INT_T, VInt(bi))
+                        env.bind(st.binding[1], BYTE_T, VByte(bv))
                     self._eval_block(st.body, env, fn_ret=fn_ret)
                 except _Continue:
-                    continue
+                    pass
                 except _Break:
                     return
                 finally:
                     env.pop_scope()
+                bi += 1
             return
 
         if isinstance(it, VMap):
-            snapshot = list(it.entries.items())
-            for k, v in snapshot:
+            snap_keys = list(it.map_keys)
+            snap_vals = list(it.map_vals)
+            for k, v in zip(snap_keys, snap_vals):
                 env.push_scope()
                 try:
                     if len(st.binding) == 1:
@@ -4340,7 +1737,7 @@ class Runtime:
 
     def _eval_lvalue_ref(self, expr: TExpr, env: _RuntimeEnv) -> _LValueRef:
         if isinstance(expr, TVar):
-            return _VarRef(env, expr.name, env.get_ty(expr.name))
+            return _VarRef(env.get_ty(expr.name), env, expr.name)
         if isinstance(expr, TFieldAccess):
             obj = self._eval_expr(expr.obj, env)
             if not isinstance(obj, VStruct):
@@ -4348,7 +1745,7 @@ class Runtime:
             sinfo = self.index.structs.get(obj.struct_name)
             if sinfo is None or expr.field not in sinfo.field_map:
                 raise TaytshRuntimeFault("unknown field", expr.pos)
-            return _FieldRef(obj, expr.field, sinfo.field_map[expr.field].ty)
+            return _FieldRef(sinfo.field_map[expr.field].ty, obj, expr.field)
         if isinstance(expr, TIndex):
             obj = self._eval_expr(expr.obj, env)
             idx = self._eval_expr(expr.index, env)
@@ -4357,22 +1754,22 @@ class Runtime:
                     raise TaytshRuntimeFault("list index not int", expr.pos)
                 if idx.value < 0 or idx.value >= len(obj.elements):
                     self._throw_err("IndexError", "index out of bounds")
-                return _ListIndexRef(obj, idx.value, obj.typ.element)
+                return _ListIndexRef(obj.typ.element, obj, idx.value)
             if isinstance(obj, VMap):
                 key = _as_hashable(idx)
-                return _MapIndexRef(obj, key, obj.typ.value)
+                return _MapIndexRef(obj.typ.value, obj, key)
             raise TaytshRuntimeFault("index assignment only for list/map", expr.pos)
         raise TaytshRuntimeFault("invalid assignment target", expr.pos)
 
     def _eval_expr(
-        self, expr: TExpr, env: _RuntimeEnv, *, expected: Ty | None = None
+        self, expr: TExpr, env: _RuntimeEnv, *, expected: Type | None = None
     ) -> Value:
         if isinstance(expr, TIntLit):
             return VInt(expr.value)
         if isinstance(expr, TFloatLit):
             return VFloat(expr.value)
         if isinstance(expr, TByteLit):
-            if isinstance(expected, TyPrim) and expected.kind == "int":
+            if expected is not None and expected.kind == "int":
                 return VInt(expr.value)
             return VByte(expr.value)
         if isinstance(expr, TStringLit):
@@ -4387,7 +1784,7 @@ class Runtime:
             return VNil()
 
         if isinstance(expr, TVar):
-            if env._scopes and any(expr.name in s for s in env._scopes):
+            if env.has(expr.name):
                 return env.get(expr.name)
             if expr.name in self._fn_values:
                 return self._fn_values[expr.name]
@@ -4443,8 +1840,12 @@ class Runtime:
                 if not isinstance(right, VBool):
                     raise TaytshRuntimeFault("|| right not bool", expr.pos)
                 return VBool(right.value)
-            left = self._eval_expr(expr.left, env)
-            right = self._eval_expr(expr.right, env)
+            if expr.op in ("==", "!="):
+                right = self._eval_expr(expr.right, env)
+                left = self._eval_expr(expr.left, env, expected=right.ty())
+            else:
+                left = self._eval_expr(expr.left, env)
+                right = self._eval_expr(expr.right, env)
             return self._eval_binary(expr.op, left, right, pos=expr.pos)
 
         if isinstance(expr, TTernary):
@@ -4489,80 +1890,84 @@ class Runtime:
 
         if isinstance(expr, TListLit):
             if expected is None:
-                inferred = self.tc.expr_types.get(_expr_key(expr))
-                if isinstance(inferred, TyList):
+                inferred = self.expr_types.get(_expr_key(expr))
+                if isinstance(inferred, ListT):
                     expected = inferred
-            if isinstance(expected, TyList):
-                elems = [
-                    self._eval_expr(e, env, expected=expected.element)
-                    for e in expr.elements
-                ]
-                typ = expected
+            list_elems: list[Value] = []
+            if isinstance(expected, ListT):
+                for e in expr.elements:
+                    list_elems.append(self._eval_expr(e, env, expected=expected.element))
+                list_typ: ListT = expected
             else:
-                elems = [self._eval_expr(e, env) for e in expr.elements]
-                if not elems:
+                for e in expr.elements:
+                    list_elems.append(self._eval_expr(e, env))
+                if len(list_elems) == 0:
                     raise TaytshRuntimeFault("cannot infer list type", expr.pos)
-                typ = TyList(elems[0].ty())
-            return VList(elems, typ)
+                list_typ = ListT(kind="list", element=list_elems[0].ty())
+            return VList(list_elems, list_typ)
 
         if isinstance(expr, TMapLit):
             if expected is None:
-                inferred = self.tc.expr_types.get(_expr_key(expr))
-                if isinstance(inferred, TyMap):
+                inferred = self.expr_types.get(_expr_key(expr))
+                if isinstance(inferred, MapT):
                     expected = inferred
-            entries: dict[HashableValue, Value] = {}
-            if isinstance(expected, TyMap):
+            mk: list[Value] = []
+            mv: list[Value] = []
+            if isinstance(expected, MapT):
                 for k, v in expr.entries:
                     kk = _as_hashable(self._eval_expr(k, env, expected=expected.key))
                     vv = self._eval_expr(v, env, expected=expected.value)
-                    entries[kk] = vv
-                typ = expected
+                    mk.append(kk)
+                    mv.append(vv)
+                map_typ: MapT = expected
             else:
                 for k, v in expr.entries:
                     kk = _as_hashable(self._eval_expr(k, env))
                     vv = self._eval_expr(v, env)
-                    entries[kk] = vv
-                first_k: HashableValue = list(entries.keys())[0]
-                first_v: Value = list(entries.values())[0]
-                typ = TyMap(first_k.ty(), first_v.ty())
-            return VMap(entries, typ)
+                    mk.append(kk)
+                    mv.append(vv)
+                map_typ = MapT(kind="map", key=mk[0].ty(), value=mv[0].ty())
+            return VMap(mk, mv, map_typ)
 
         if isinstance(expr, TSetLit):
             if expected is None:
-                inferred = self.tc.expr_types.get(_expr_key(expr))
-                if isinstance(inferred, TySet):
+                inferred = self.expr_types.get(_expr_key(expr))
+                if isinstance(inferred, SetT):
                     expected = inferred
-            if isinstance(expected, TySet):
-                elems = {
-                    _as_hashable(self._eval_expr(e, env, expected=expected.element))
-                    for e in expr.elements
-                }
-                typ = expected
+            if isinstance(expected, SetT):
+                set_elems: list[Value] = []
+                for e in expr.elements:
+                    _set_add(set_elems, _as_hashable(self._eval_expr(e, env, expected=expected.element)))
+                set_typ: SetT = expected
             else:
-                elems = {_as_hashable(self._eval_expr(e, env)) for e in expr.elements}
-                first = list(elems)[0]
-                typ = TySet(first.ty())
-            return VSet(elems, typ)
+                set_elems2: list[Value] = []
+                for e in expr.elements:
+                    _set_add(set_elems2, _as_hashable(self._eval_expr(e, env)))
+                set_typ = SetT(kind="set", element=set_elems2[0].ty())
+                set_elems = set_elems2
+            return VSet(set_elems, set_typ)
 
         if isinstance(expr, TTupleLit):
             if expected is None:
-                inferred = self.tc.expr_types.get(_expr_key(expr))
-                if isinstance(inferred, TyTuple):
+                inferred = self.expr_types.get(_expr_key(expr))
+                if isinstance(inferred, TupleT):
                     expected = inferred
-            if isinstance(expected, TyTuple):
-                elems = tuple(
-                    self._eval_expr(e, env, expected=expected.elements[i])
-                    for i, e in enumerate(expr.elements)
-                )
-                typ = expected
+            tup_elems: list[Value] = []
+            if isinstance(expected, TupleT):
+                ti = 0
+                while ti < len(expr.elements):
+                    tup_elems.append(self._eval_expr(expr.elements[ti], env, expected=expected.elements[ti]))
+                    ti += 1
+                tup_typ: TupleT = expected
             else:
-                elems = tuple(self._eval_expr(e, env) for e in expr.elements)
-                typ = TyTuple(tuple(e.ty() for e in elems))
-            return VTuple(elems, typ)
+                for e in expr.elements:
+                    tup_elems.append(self._eval_expr(e, env))
+                tup_typ = TupleT(kind="tuple", elements=[e.ty() for e in tup_elems])
+            return VTuple(tup_elems, tup_typ)
 
         if isinstance(expr, TFnLit):
-            sig = self.tc._fn_lit_sig(expr, method_self=None)
-            return VFunc(sig.ty(), None, _FnLitCaller(self, expr, sig).invoke)
+            sig = _fn_lit_sig(expr, self.checker)
+            return VFunc(sig.ty(), None, "fnlit", "", expr, sig, None)
 
         if isinstance(expr, TCall):
             return self._eval_call(expr, env, expected=expected)
@@ -4575,22 +1980,33 @@ class Runtime:
         for i, p in enumerate(lit.params):
             env.bind(p.name, sig.params[i], args[i])
         is_arrow = lit.annotations.get("fn_lit.arrow") == "true"
-        if is_arrow and isinstance(lit.body[0], TExprStmt):
-            return self._eval_expr(lit.body[0].expr, env, expected=sig.ret)
+        if is_arrow:
+            first_stmt = lit.body[0]
+            if isinstance(first_stmt, TExprStmt):
+                return self._eval_expr(first_stmt.expr, env, expected=sig.ret)
         try:
             self._eval_block(lit.body, env, fn_ret=sig.ret)
         except _Return as r:
-            if ty_eq(sig.ret, TY_VOID):
+            if type_eq(sig.ret, VOID_T):
                 return VNil()
             if r.value is None:
                 raise TaytshRuntimeFault("missing return value", lit.pos)
             return r.value
-        if ty_eq(sig.ret, TY_VOID):
+        if type_eq(sig.ret, VOID_T):
             return VNil()
         raise TaytshRuntimeFault("function literal fell off", lit.pos)
 
+    def _invoke_vfunc(self, fnv: VFunc, args: list[Value]) -> Value:
+        if fnv.kind == "user" and fnv.fn_decl is not None and fnv.fn_sig is not None:
+            return self._call_fn(fnv.fn_decl, fnv.fn_sig, args)
+        if fnv.kind == "builtin":
+            return _dispatch_builtin(self, fnv.fn_key, args)
+        if fnv.kind == "fnlit" and fnv.fn_lit is not None and fnv.fn_sig is not None:
+            return self._call_fn_lit(fnv.fn_lit, fnv.fn_sig, args)
+        raise TaytshRuntimeFault("unknown VFunc kind: " + fnv.kind, None)
+
     def _eval_call(
-        self, call: TCall, env: _RuntimeEnv, *, expected: Ty | None
+        self, call: TCall, env: _RuntimeEnv, *, expected: Type | None
     ) -> Value:
         # Struct constructor
         if isinstance(call.func, TVar) and call.func.name in self.index.structs:
@@ -4603,20 +2019,26 @@ class Runtime:
             and not call.args
         ):
             if expected is None:
-                inferred = self.tc.expr_types.get(_expr_key(call))
+                inferred = self.expr_types.get(_expr_key(call))
                 expected = inferred
             if call.func.name == "Map":
-                if not isinstance(expected, TyMap):
+                if not isinstance(expected, MapT):
                     raise TaytshRuntimeFault("cannot infer Map() type", call.pos)
-                return VMap({}, expected)
-            if not isinstance(expected, TySet):
+                return VMap([], [], expected)
+            if not isinstance(expected, SetT):
                 raise TaytshRuntimeFault("cannot infer Set() type", call.pos)
-            return VSet(set(), expected)
+            return VSet([], expected)
 
         # Built-in call by name
-        if isinstance(call.func, TVar) and call.func.name in _BUILTIN_RUNTIME:
-            args = [self._eval_expr(a.value, env) for a in call.args]
-            return _BUILTIN_RUNTIME[call.func.name](self, args)
+        if isinstance(call.func, TVar) and call.func.name in _BUILTIN_NAMES_RT:
+            bi_expected = _builtin_arg_expected(call.func.name, expected)
+            args: list[Value] = []
+            for a in call.args:
+                arg_expected: Type | None = self.expr_types.get(_expr_key(a.value))
+                if bi_expected is not None:
+                    arg_expected = bi_expected
+                args.append(self._eval_expr(a.value, env, expected=arg_expected))
+            return _dispatch_builtin(self, call.func.name, args)
 
         # Method call: obj.Method(...)
         if isinstance(call.func, TFieldAccess):
@@ -4625,20 +2047,23 @@ class Runtime:
                 s = self.index.structs.get(recv.struct_name)
                 if s is not None and call.func.field in s.methods:
                     mi = s.methods[call.func.field]
-                    args = [recv] + [self._eval_expr(a.value, env) for a in call.args]
+                    margs: list[Value] = [recv]
+                    for a in call.args:
+                        margs.append(self._eval_expr(a.value, env))
+                    args = margs
                     return self._call_fn(mi.decl, mi.sig, args)
             # Fall back: field value call
             fnv = self._eval_expr(call.func, env)
             if not isinstance(fnv, VFunc):
                 raise TaytshRuntimeFault("call target not a function", call.pos)
             args = [self._eval_expr(a.value, env) for a in call.args]
-            return fnv.call(args)
+            return self._invoke_vfunc(fnv, args)
 
         fnv = self._eval_expr(call.func, env)
         if not isinstance(fnv, VFunc):
             raise TaytshRuntimeFault("call target not a function", call.pos)
         args = [self._eval_expr(a.value, env) for a in call.args]
-        return fnv.call(args)
+        return self._invoke_vfunc(fnv, args)
 
     def _eval_struct_ctor(self, call: TCall, env: _RuntimeEnv) -> VStruct:
         assert isinstance(call.func, TVar)
@@ -4668,49 +2093,45 @@ class Runtime:
                     raise TaytshRuntimeFault("missing struct field", call.pos)
         return VStruct(s.name, fields)
 
-    def _matches_type(self, v: Value, typ: Ty) -> bool:
-        if ty_is_error(typ):
+    def _matches_type(self, v: Value, typ: Type) -> bool:
+        if _is_error(typ):
             return True
-        if ty_is_nil(typ):
+        if _is_nil(typ):
             return isinstance(v, VNil)
-        if isinstance(typ, TyPrim):
-            return ty_eq(v.ty(), typ)
-        if isinstance(typ, TyStruct):
+        if isinstance(typ, StructT):
             return isinstance(v, VStruct) and v.struct_name == typ.name
-        if isinstance(typ, TyInterface):
+        if isinstance(typ, InterfaceT):
             return (
                 isinstance(v, VStruct)
                 and v.struct_name in self.index.interfaces[typ.name].implementors
             )
-        if isinstance(typ, TyEnum):
+        if isinstance(typ, EnumT):
             return isinstance(v, VEnum) and v.enum_name == typ.name
-        if isinstance(typ, TyUnion):
+        if isinstance(typ, UnionT):
             return any(self._matches_type(v, m) for m in typ.members)
-        return ty_eq(v.ty(), typ)
+        return type_eq(v.ty(), typ)
 
     def _eval_index(self, obj: Value, idx: Value, *, pos: Pos) -> Value:
         if not isinstance(idx, VInt) and not isinstance(obj, VMap):
             raise TaytshRuntimeFault("index must be int", pos)
-        if isinstance(obj, VList):
-            i = cast(VInt, idx).value
-            if i < 0 or i >= len(obj.elements):
+        if isinstance(obj, VList) and isinstance(idx, VInt):
+            if idx.value < 0 or idx.value >= len(obj.elements):
                 self._throw_err("IndexError", "index out of bounds")
-            return obj.elements[i]
-        if isinstance(obj, VString):
-            i = cast(VInt, idx).value
-            if i < 0 or i >= len(obj.value):
+            return obj.elements[idx.value]
+        if isinstance(obj, VString) and isinstance(idx, VInt):
+            if idx.value < 0 or idx.value >= len(obj.value):
                 self._throw_err("IndexError", "index out of bounds")
-            return VRune(obj.value[i])
-        if isinstance(obj, VBytes):
-            i = cast(VInt, idx).value
-            if i < 0 or i >= len(obj.value):
+            return VRune(obj.value[idx.value])
+        if isinstance(obj, VBytes) and isinstance(idx, VInt):
+            if idx.value < 0 or idx.value >= len(obj.value):
                 self._throw_err("IndexError", "index out of bounds")
-            return VByte(obj.value[i])
+            bval = int(obj.value[idx.value])
+            return VByte(bval)
         if isinstance(obj, VMap):
             key = _as_hashable(idx)
-            if key not in obj.entries:
+            if not _map_has(obj, key):
                 self._throw_err("KeyError", "missing key")
-            return obj.entries[key]
+            return _map_get(obj, key)
         raise TaytshRuntimeFault("indexing not supported", pos)
 
     def _eval_slice(self, obj: Value, lo: int, hi: int, *, pos: Pos) -> Value:
@@ -4741,15 +2162,15 @@ class Runtime:
         # Numeric / ordered ops.
         if op in ("<", "<=", ">", ">="):
             if isinstance(left, VInt) and isinstance(right, VInt):
-                return VBool(_cmp(op, left.value, right.value))
+                return VBool(_cmp_int(op, left.value, right.value))
             if isinstance(left, VFloat) and isinstance(right, VFloat):
-                return VBool(_cmp(op, left.value, right.value))
+                return VBool(_cmp_float(op, left.value, right.value))
             if isinstance(left, VByte) and isinstance(right, VByte):
-                return VBool(_cmp(op, left.value, right.value))
+                return VBool(_cmp_int(op, left.value, right.value))
             if isinstance(left, VRune) and isinstance(right, VRune):
-                return VBool(_cmp(op, left.value, right.value))
+                return VBool(_cmp_str(op, left.value, right.value))
             if isinstance(left, VString) and isinstance(right, VString):
-                return VBool(_cmp(op, left.value, right.value))
+                return VBool(_cmp_str(op, left.value, right.value))
             raise TaytshRuntimeFault("invalid comparison operands", pos)
 
         if op in ("|", "^", "&"):
@@ -4867,16 +2288,34 @@ class Runtime:
         raise TaytshRuntimeFault(f"unknown operator '{op}'", pos)
 
 
-def _cmp(op: str, a: object, b: object) -> bool:
+def _cmp_int(op: str, a: int, b: int) -> bool:
     if op == "<":
         return a < b
     if op == "<=":
         return a <= b
     if op == ">":
         return a > b
-    if op == ">=":
-        return a >= b
-    raise AssertionError(op)
+    return a >= b
+
+
+def _cmp_float(op: str, a: float, b: float) -> bool:
+    if op == "<":
+        return a < b
+    if op == "<=":
+        return a <= b
+    if op == ">":
+        return a > b
+    return a >= b
+
+
+def _cmp_str(op: str, a: str, b: str) -> bool:
+    if op == "<":
+        return a < b
+    if op == "<=":
+        return a <= b
+    if op == ">":
+        return a > b
+    return a >= b
 
 
 # ---- Minimal builtin runtime (expanded in step 4) --------------------------
@@ -4921,15 +2360,14 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
         )
         return f"({inner})"
     if isinstance(v, VMap):
-        decorated = [(_sort_key(k), i, k) for i, k in enumerate(v.entries.keys())]
+        decorated = [(_sort_key(v.map_keys[i]), i, v.map_keys[i]) for i in range(len(v.map_keys))]
         decorated.sort()
         parts: list[str] = []
-        for _, _, k in decorated:
-            val = v.entries[k]
+        for _, idx, k in decorated:
             parts.append(
                 _strict_tostring(k, rt, in_composite=True)
                 + ": "
-                + _strict_tostring(val, rt, in_composite=True)
+                + _strict_tostring(v.map_vals[idx], rt, in_composite=True)
             )
         return "{" + ", ".join(parts) + "}"
     if isinstance(v, VSet):
@@ -4954,7 +2392,7 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
         ]
         return v.struct_name + "{" + ", ".join(parts) + "}"
     if isinstance(v, VFunc):
-        return v.typ.display()
+        return type_name(v.ty())
     return v.to_string()
 
 
@@ -4973,7 +2411,7 @@ def _bi_len(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(x, VList):
         return VInt(len(x.elements))
     if isinstance(x, VMap):
-        return VInt(len(x.entries))
+        return VInt(len(x.map_keys))
     if isinstance(x, VSet):
         return VInt(len(x.elements))
     raise TaytshRuntimeFault("Len unsupported", None)
@@ -4984,8 +2422,8 @@ def _bi_get(rt: Runtime, args: list[Value]) -> Value:
     if not isinstance(m, VMap):
         raise TaytshRuntimeFault("Get expects map", None)
     key = _as_hashable(args[1])
-    if key in m.entries:
-        return m.entries[key]
+    if _map_has(m, key):
+        return _map_get(m, key)
     if len(args) == 3:
         return args[2]
     return VNil()
@@ -4997,9 +2435,9 @@ def _bi_contains(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(a, VList):
         return VBool(any(_value_eq(x, b) for x in a.elements))
     if isinstance(a, VMap):
-        return VBool(_as_hashable(b) in a.entries)
+        return VBool(_map_has(a, _as_hashable(b)))
     if isinstance(a, VSet):
-        return VBool(_as_hashable(b) in a.elements)
+        return VBool(_set_has(a.elements, _as_hashable(b)))
     if isinstance(a, VString) and isinstance(b, VString):
         return VBool(b.value in a.value)
     raise TaytshRuntimeFault("Contains unsupported", None)
@@ -5038,7 +2476,7 @@ def _bi_round(rt: Runtime, args: list[Value]) -> Value:
     if _isnan(x.value) or _isinf(x.value):
         rt._throw_err("ValueError", "Round on non-finite float")
     # half-away-from-zero
-    if x.value >= 0:
+    if x.value >= 0.0:
         return VInt(_floor(x.value + 0.5))
     return VInt(_ceil(x.value - 0.5))
 
@@ -5088,14 +2526,14 @@ def _bi_isinf(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_divmod(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VInt) or not isinstance(b, VInt):
         raise TaytshRuntimeFault("DivMod expects int, int", None)
     if b.value == 0:
         rt._throw_err("ZeroDivisionError", "division by zero")
-    q = int(a.value / b.value)  # truncate toward zero
-    r = a.value - q * b.value
-    return VTuple((VInt(q), VInt(r)), TyTuple((TY_INT, TY_INT)))
+    q, r = _int_divmod_trunc(a.value, b.value)
+    return VTuple([VInt(q), VInt(r)], TupleT(kind="tuple", elements=[INT_T, INT_T]))
 
 
 def _wrap_i64(val: int) -> int:
@@ -5107,21 +2545,24 @@ def _wrap_i64(val: int) -> int:
 
 
 def _bi_wrapping_add(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VInt) or not isinstance(b, VInt):
         raise TaytshRuntimeFault("WrappingAdd expects int, int", None)
     return VInt(_wrap_i64(a.value + b.value))
 
 
 def _bi_wrapping_sub(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VInt) or not isinstance(b, VInt):
         raise TaytshRuntimeFault("WrappingSub expects int, int", None)
     return VInt(_wrap_i64(a.value - b.value))
 
 
 def _bi_wrapping_mul(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VInt) or not isinstance(b, VInt):
         raise TaytshRuntimeFault("WrappingMul expects int, int", None)
     return VInt(_wrap_i64(a.value * b.value))
@@ -5137,7 +2578,8 @@ def _bi_abs(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_min(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if isinstance(a, VInt) and isinstance(b, VInt):
         return VInt(min(a.value, b.value))
     if isinstance(a, VFloat) and isinstance(b, VFloat):
@@ -5150,7 +2592,8 @@ def _bi_min(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_max(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if isinstance(a, VInt) and isinstance(b, VInt):
         return VInt(max(a.value, b.value))
     if isinstance(a, VFloat) and isinstance(b, VFloat):
@@ -5166,26 +2609,28 @@ def _bi_sum(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Sum expects list", None)
-    if not xs.elements:
-        if isinstance(xs.typ.element, TyPrim) and xs.typ.element.kind == "float":
+    if len(xs.elements) == 0:
+        if type_eq(xs.typ.element, FLOAT_T):
             return VFloat(0.0)
         return VInt(0)
-    total: int | float = 0
-    is_float = isinstance(xs.elements[0], VFloat)
+    if isinstance(xs.elements[0], VFloat):
+        ftotal: float = 0.0
+        for e in xs.elements:
+            if not isinstance(e, VFloat):
+                raise TaytshRuntimeFault("Sum elements must be numeric", None)
+            ftotal += e.value
+        return VFloat(ftotal)
+    itotal: int = 0
     for e in xs.elements:
-        if isinstance(e, VInt):
-            total += e.value
-        elif isinstance(e, VFloat):
-            total += e.value
-        else:
+        if not isinstance(e, VInt):
             raise TaytshRuntimeFault("Sum elements must be numeric", None)
-    if is_float:
-        return VFloat(float(total))
-    return VInt(int(total))
+        itotal += e.value
+    return VInt(itotal)
 
 
 def _bi_pow(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if isinstance(a, VInt) and isinstance(b, VInt):
         if rt.module.strict_math:
             if b.value < 0:
@@ -5209,17 +2654,18 @@ def _bi_int_to_float(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if not isinstance(x, VInt):
         raise TaytshRuntimeFault("IntToFloat expects int", None)
-    return VFloat(float(x.value))
+    val: int = x.value
+    return VFloat(float(val))
 
 
 def _bi_float_to_int(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if not isinstance(x, VFloat):
         raise TaytshRuntimeFault("FloatToInt expects float", None)
-
     if _isnan(x.value) or _isinf(x.value):
         rt._throw_err("ValueError", "FloatToInt on non-finite float")
-    return VInt(int(x.value))
+    val: float = x.value
+    return VInt(int(val))
 
 
 def _bi_byte_to_int(rt: Runtime, args: list[Value]) -> Value:
@@ -5247,7 +2693,8 @@ def _bi_rune_to_int(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if not isinstance(x, VRune):
         raise TaytshRuntimeFault("RuneToInt expects rune", None)
-    return VInt(ord(x.value))
+    ch: str = x.value
+    return VInt(ord(ch))
 
 
 # ---------------------------------------------------------------------------
@@ -5256,7 +2703,8 @@ def _bi_rune_to_int(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_parse_int(rt: Runtime, args: list[Value]) -> Value:
-    s, base = args[0], args[1]
+    s = args[0]
+    base = args[1]
     if not isinstance(s, VString) or not isinstance(base, VInt):
         raise TaytshRuntimeFault("ParseInt expects string, int", None)
     try:
@@ -5278,7 +2726,8 @@ def _bi_parse_float(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_format_int(rt: Runtime, args: list[Value]) -> Value:
-    n, base = args[0], args[1]
+    n = args[0]
+    base = args[1]
     if not isinstance(n, VInt) or not isinstance(base, VInt):
         raise TaytshRuntimeFault("FormatInt expects int, int", None)
     b = base.value
@@ -5286,11 +2735,6 @@ def _bi_format_int(rt: Runtime, args: list[Value]) -> Value:
         return VString(str(n.value))
     if b == 16:
         return VString(hex(n.value)[2:])
-    if b == 8:
-        return VString(oct(n.value)[2:])
-    if b == 2:
-        return VString(bin(n.value)[2:])
-    # General base
     if n.value == 0:
         return VString("0")
     digits = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -5302,7 +2746,8 @@ def _bi_format_int(rt: Runtime, args: list[Value]) -> Value:
         val //= b
     if neg:
         chars.append("-")
-    return VString("".join(reversed(chars)))
+    chars.reverse()
+    return VString("".join(chars))
 
 
 def _bi_upper(rt: Runtime, args: list[Value]) -> Value:
@@ -5320,38 +2765,44 @@ def _bi_lower(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_trim(rt: Runtime, args: list[Value]) -> Value:
-    s, chars = args[0], args[1]
+    s = args[0]
+    chars = args[1]
     if not isinstance(s, VString) or not isinstance(chars, VString):
         raise TaytshRuntimeFault("Trim expects string, string", None)
     return VString(s.value.strip(chars.value))
 
 
 def _bi_trim_start(rt: Runtime, args: list[Value]) -> Value:
-    s, chars = args[0], args[1]
+    s = args[0]
+    chars = args[1]
     if not isinstance(s, VString) or not isinstance(chars, VString):
         raise TaytshRuntimeFault("TrimStart expects string, string", None)
     return VString(s.value.lstrip(chars.value))
 
 
 def _bi_trim_end(rt: Runtime, args: list[Value]) -> Value:
-    s, chars = args[0], args[1]
+    s = args[0]
+    chars = args[1]
     if not isinstance(s, VString) or not isinstance(chars, VString):
         raise TaytshRuntimeFault("TrimEnd expects string, string", None)
     return VString(s.value.rstrip(chars.value))
 
 
 def _bi_split(rt: Runtime, args: list[Value]) -> Value:
-    s, sep = args[0], args[1]
+    s = args[0]
+    sep = args[1]
     if not isinstance(s, VString) or not isinstance(sep, VString):
         raise TaytshRuntimeFault("Split expects string, string", None)
     if sep.value == "":
         rt._throw_err("ValueError", "Split separator must not be empty")
     parts = s.value.split(sep.value)
-    return VList([VString(p) for p in parts], TyList(TY_STRING))
+    return VList([VString(p) for p in parts], ListT(kind="list", element=STRING_T))
 
 
 def _bi_split_n(rt: Runtime, args: list[Value]) -> Value:
-    s, sep, n = args[0], args[1], args[2]
+    s = args[0]
+    sep = args[1]
+    n = args[2]
     if (
         not isinstance(s, VString)
         or not isinstance(sep, VString)
@@ -5361,7 +2812,7 @@ def _bi_split_n(rt: Runtime, args: list[Value]) -> Value:
     if n.value <= 0:
         rt._throw_err("ValueError", "SplitN max must be > 0")
     parts = s.value.split(sep.value, n.value - 1)
-    return VList([VString(p) for p in parts], TyList(TY_STRING))
+    return VList([VString(p) for p in parts], ListT(kind="list", element=STRING_T))
 
 
 def _bi_split_whitespace(rt: Runtime, args: list[Value]) -> Value:
@@ -5369,40 +2820,51 @@ def _bi_split_whitespace(rt: Runtime, args: list[Value]) -> Value:
     if not isinstance(s, VString):
         raise TaytshRuntimeFault("SplitWhitespace expects string", None)
     parts = s.value.split()
-    return VList([VString(p) for p in parts], TyList(TY_STRING))
+    return VList([VString(p) for p in parts], ListT(kind="list", element=STRING_T))
 
 
 def _bi_join(rt: Runtime, args: list[Value]) -> Value:
-    sep, parts = args[0], args[1]
+    sep = args[0]
+    parts = args[1]
     if not isinstance(sep, VString) or not isinstance(parts, VList):
         raise TaytshRuntimeFault("Join expects string, list[string]", None)
-    strs = [cast(VString, e).value for e in parts.elements]
+    strs: list[str] = []
+    for e in parts.elements:
+        if isinstance(e, VString):
+            strs.append(e.value)
+        else:
+            raise TaytshRuntimeFault("Join list element not string", None)
     return VString(sep.value.join(strs))
 
 
 def _bi_find(rt: Runtime, args: list[Value]) -> Value:
-    s, sub = args[0], args[1]
+    s = args[0]
+    sub = args[1]
     if not isinstance(s, VString) or not isinstance(sub, VString):
         raise TaytshRuntimeFault("Find expects string, string", None)
     return VInt(s.value.find(sub.value))
 
 
 def _bi_rfind(rt: Runtime, args: list[Value]) -> Value:
-    s, sub = args[0], args[1]
+    s = args[0]
+    sub = args[1]
     if not isinstance(s, VString) or not isinstance(sub, VString):
         raise TaytshRuntimeFault("RFind expects string, string", None)
     return VInt(s.value.rfind(sub.value))
 
 
 def _bi_count(rt: Runtime, args: list[Value]) -> Value:
-    s, sub = args[0], args[1]
+    s = args[0]
+    sub = args[1]
     if not isinstance(s, VString) or not isinstance(sub, VString):
         raise TaytshRuntimeFault("Count expects string, string", None)
     return VInt(s.value.count(sub.value))
 
 
 def _bi_replace(rt: Runtime, args: list[Value]) -> Value:
-    s, old, new = args[0], args[1], args[2]
+    s = args[0]
+    old = args[1]
+    new = args[2]
     if (
         not isinstance(s, VString)
         or not isinstance(old, VString)
@@ -5427,7 +2889,8 @@ def _bi_replace_count(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_starts_with(rt: Runtime, args: list[Value]) -> Value:
-    s, pre = args[0], args[1]
+    s = args[0]
+    pre = args[1]
     if isinstance(s, VBytes) and isinstance(pre, VBytes):
         return VBool(s.value.startswith(pre.value))
     if not isinstance(s, VString) or not isinstance(pre, VString):
@@ -5436,7 +2899,8 @@ def _bi_starts_with(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_ends_with(rt: Runtime, args: list[Value]) -> Value:
-    s, suf = args[0], args[1]
+    s = args[0]
+    suf = args[1]
     if isinstance(s, VBytes) and isinstance(suf, VBytes):
         return VBool(s.value.endswith(suf.value))
     if not isinstance(s, VString) or not isinstance(suf, VString):
@@ -5459,37 +2923,33 @@ def _bi_decode(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_concat(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if isinstance(a, VString) and isinstance(b, VString):
         return VString(a.value + b.value)
     if isinstance(a, VBytes) and isinstance(b, VBytes):
         return VBytes(a.value + b.value)
-    a_elems = (
-        a.elements
-        if isinstance(a, VList)
-        else list(a.elements)
-        if isinstance(a, VTuple)
-        else None
-    )
-    b_elems = (
-        b.elements
-        if isinstance(b, VList)
-        else list(b.elements)
-        if isinstance(b, VTuple)
-        else None
-    )
-    if a_elems is not None and b_elems is not None:
-        merged = list(a_elems) + list(b_elems)
-        if isinstance(a, VList):
-            return VList(merged, a.typ)
-        if isinstance(b, VList):
-            return VList(merged, b.typ)
-        return VList(merged, TyList(a.typ.elements[0] if a.typ.elements else TY_ERROR))
+    if isinstance(a, VList) and isinstance(b, VList):
+        merged: list[Value] = list(a.elements) + list(b.elements)
+        return VList(merged, a.typ)
+    if isinstance(a, VList) and isinstance(b, VTuple):
+        merged = list(a.elements) + list(b.elements)
+        return VList(merged, a.typ)
+    if isinstance(a, VTuple) and isinstance(b, VList):
+        merged = list(a.elements) + list(b.elements)
+        return VList(merged, b.typ)
+    if isinstance(a, VTuple) and isinstance(b, VTuple):
+        elem_ty: Type = ERROR_T
+        if len(a.typ.elements) > 0:
+            elem_ty = a.typ.elements[0]
+        merged = list(a.elements) + list(b.elements)
+        return VList(merged, ListT(kind="list", element=elem_ty))
     raise TaytshRuntimeFault("Concat expects matching string, bytes, or list", None)
 
 
 def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
-    a, n = args[0], args[1]
+    a = args[0]
+    n = args[1]
     if not isinstance(n, VInt):
         raise TaytshRuntimeFault("Repeat expects int count", None)
     if isinstance(a, VString):
@@ -5497,8 +2957,8 @@ def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(a, VList):
         return VList(list(a.elements) * max(0, n.value), a.typ)
     if isinstance(a, VTuple):
-        elem_ty = a.typ.elements[0] if a.typ.elements else TY_ERROR
-        return VList(list(a.elements) * max(0, n.value), TyList(elem_ty))
+        elem_ty = a.typ.elements[0] if a.typ.elements else ERROR_T
+        return VList(list(a.elements) * max(0, n.value), ListT(kind="list", element=elem_ty))
     raise TaytshRuntimeFault("Repeat expects string or list", None)
 
 
@@ -5509,14 +2969,17 @@ def _bi_format(rt: Runtime, args: list[Value]) -> Value:
     parts = template.value.split("{}")
     if len(parts) - 1 != len(args) - 1:
         raise TaytshRuntimeFault(
-            f"Format: {len(parts) - 1} placeholders but {len(args) - 1} arguments", None
+            "Format: placeholder count mismatch", None
         )
     result: list[str] = [parts[0]]
-    for i, arg in enumerate(args[1:]):
+    i = 1
+    while i < len(args):
+        arg = args[i]
         if not isinstance(arg, VString):
             raise TaytshRuntimeFault("Format arguments must be string", None)
         result.append(arg.value)
-        result.append(parts[i + 1])
+        result.append(parts[i])
+        i += 1
     return VString("".join(result))
 
 
@@ -5585,7 +3048,8 @@ def _bi_is_lower(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_append(rt: Runtime, args: list[Value]) -> Value:
-    xs, v = args[0], args[1]
+    xs = args[0]
+    v = args[1]
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Append expects list", None)
     xs.elements.append(v)
@@ -5593,7 +3057,9 @@ def _bi_append(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_insert(rt: Runtime, args: list[Value]) -> Value:
-    xs, i, v = args[0], args[1], args[2]
+    xs = args[0]
+    i = args[1]
+    v = args[2]
     if not isinstance(xs, VList) or not isinstance(i, VInt):
         raise TaytshRuntimeFault("Insert expects list, int, value", None)
     if i.value < 0 or i.value > len(xs.elements):
@@ -5606,13 +3072,14 @@ def _bi_pop(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Pop expects list", None)
-    if not xs.elements:
+    if len(xs.elements) == 0:
         rt._throw_err("IndexError", "Pop on empty list")
     return xs.elements.pop()
 
 
 def _bi_remove_at(rt: Runtime, args: list[Value]) -> Value:
-    xs, i = args[0], args[1]
+    xs = args[0]
+    i = args[1]
     if not isinstance(xs, VList) or not isinstance(i, VInt):
         raise TaytshRuntimeFault("RemoveAt expects list, int", None)
     if i.value < 0 or i.value >= len(xs.elements):
@@ -5622,7 +3089,8 @@ def _bi_remove_at(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_index_of(rt: Runtime, args: list[Value]) -> Value:
-    xs, v = args[0], args[1]
+    xs = args[0]
+    v = args[1]
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("IndexOf expects list", None)
     for i, e in enumerate(xs.elements):
@@ -5635,20 +3103,25 @@ def _bi_reversed(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Reversed expects list", None)
-    return VList(list(reversed(xs.elements)), xs.typ)
+    rev: list[Value] = []
+    i = len(xs.elements) - 1
+    while i >= 0:
+        rev.append(xs.elements[i])
+        i -= 1
+    return VList(rev, xs.typ)
 
 
-def _sort_key(v: Value) -> tuple[int, object]:
+def _sort_key(v: Value) -> tuple[int, float, str]:
     if isinstance(v, VInt):
-        return (0, v.value)
+        return (0, v.value + 0.0, "")
     if isinstance(v, VFloat):
-        return (1, v.value)
+        return (1, v.value, "")
     if isinstance(v, VByte):
-        return (2, v.value)
+        return (2, v.value + 0.0, "")
     if isinstance(v, VRune):
-        return (3, v.value)
+        return (3, 0.0, v.value)
     if isinstance(v, VString):
-        return (4, v.value)
+        return (4, 0.0, v.value)
     raise TaytshRuntimeFault("Sorted: unsupported element type", None)
 
 
@@ -5658,7 +3131,7 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
         elems = list(xs.elements)
         decorated = [(_sort_key(e), i, e) for i, e in enumerate(elems)]
         decorated.sort()
-        return VList([e for _, _, e in decorated], TyList(xs.typ.element))
+        return VList([e for _, _, e in decorated], ListT(kind="list", element=xs.typ.element))
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Sorted expects list or set", None)
     if rt.module.strict_math:
@@ -5676,11 +3149,12 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_delete(rt: Runtime, args: list[Value]) -> Value:
-    m, k = args[0], args[1]
+    m = args[0]
+    k = args[1]
     if not isinstance(m, VMap):
         raise TaytshRuntimeFault("Delete expects map", None)
     key = _as_hashable(k)
-    m.entries.pop(key, None)
+    _map_del(m, key)
     return VNil()
 
 
@@ -5688,58 +3162,71 @@ def _bi_keys(rt: Runtime, args: list[Value]) -> Value:
     m = args[0]
     if not isinstance(m, VMap):
         raise TaytshRuntimeFault("Keys expects map", None)
-    return VList(list(m.entries.keys()), TyList(m.typ.key))
+    return VList(list(m.map_keys), ListT(kind="list", element=m.typ.key))
 
 
 def _bi_values(rt: Runtime, args: list[Value]) -> Value:
     m = args[0]
     if not isinstance(m, VMap):
         raise TaytshRuntimeFault("Values expects map", None)
-    return VList(list(m.entries.values()), TyList(m.typ.value))
+    return VList(list(m.map_vals), ListT(kind="list", element=m.typ.value))
 
 
 def _bi_items(rt: Runtime, args: list[Value]) -> Value:
     m = args[0]
     if not isinstance(m, VMap):
         raise TaytshRuntimeFault("Items expects map", None)
-    pair_ty = TyTuple((m.typ.key, m.typ.value))
-    elems = [VTuple((k, v), pair_ty) for k, v in m.entries.items()]
-    return VList(elems, TyList(pair_ty))
+    pair_ty = TupleT(kind="tuple", elements=[m.typ.key, m.typ.value])
+    elems: list[Value] = []
+    i = 0
+    while i < len(m.map_keys):
+        elems.append(VTuple([m.map_keys[i], m.map_vals[i]], pair_ty))
+        i += 1
+    return VList(elems, ListT(kind="list", element=pair_ty))
 
 
 def _bi_map_from_keys(rt: Runtime, args: list[Value]) -> Value:
-    keys_val, default_val = args[0], args[1]
+    keys_val = args[0]
+    default_val = args[1]
     if not isinstance(keys_val, VList):
         raise TaytshRuntimeFault("MapFromKeys expects list", None)
-    entries: dict[Value, Value] = {}
+    mk: list[Value] = []
+    mv: list[Value] = []
     for k in keys_val.elements:
-        entries[k] = default_val
-    key_ty = keys_val.typ.element if isinstance(keys_val.typ, TyList) else TY_ERROR
+        mk.append(k)
+        mv.append(default_val)
+    key_ty = keys_val.typ.element if isinstance(keys_val.typ, ListT) else ERROR_T
     val_ty = (
-        default_val.runtime_type() if not isinstance(default_val, VNil) else TY_ERROR
+        default_val.ty() if not isinstance(default_val, VNil) else ERROR_T
     )
-    return VMap(entries, TyMap(key_ty, val_ty))
+    return VMap(mk, mv, MapT(kind="map", key=key_ty, value=val_ty))
 
 
 def _bi_pop_item(rt: Runtime, args: list[Value]) -> Value:
     m = args[0]
     if not isinstance(m, VMap):
         raise TaytshRuntimeFault("PopItem expects map", None)
-    if len(m.entries) == 0:
+    if len(m.map_keys) == 0:
         raise TaytshRuntimeFault("PopItem on empty map", None)
-    last_key = list(m.entries.keys())[-1]
-    last_val = m.entries.pop(last_key)
-    pair_ty = TyTuple((m.typ.key, m.typ.value))
-    return VTuple((last_key, last_val), pair_ty)
+    last_key = m.map_keys.pop()
+    last_val = m.map_vals.pop()
+    pair_ty = TupleT(kind="tuple", elements=[m.typ.key, m.typ.value])
+    return VTuple([last_key, last_val], pair_ty)
 
 
 def _bi_merge(rt: Runtime, args: list[Value]) -> Value:
-    m1, m2 = args[0], args[1]
+    m1 = args[0]
+    m2 = args[1]
     if not isinstance(m1, VMap) or not isinstance(m2, VMap):
         raise TaytshRuntimeFault("Merge expects map, map", None)
-    merged = dict(m1.entries)
-    merged.update(m2.entries)
-    return VMap(merged, m1.typ)
+    mk = list(m1.map_keys)
+    mv = list(m1.map_vals)
+    result = VMap(mk, mv, m1.typ)
+    i = 0
+    while i < len(m2.map_keys):
+        _map_set(result, m2.map_keys[i], m2.map_vals[i])
+        i += 1
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -5748,40 +3235,45 @@ def _bi_merge(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_add(rt: Runtime, args: list[Value]) -> Value:
-    s, v = args[0], args[1]
+    s = args[0]
+    v = args[1]
     if not isinstance(s, VSet):
         raise TaytshRuntimeFault("Add expects set", None)
-    s.elements.add(_as_hashable(v))
+    _set_add(s.elements, _as_hashable(v))
     return VNil()
 
 
 def _bi_remove(rt: Runtime, args: list[Value]) -> Value:
-    s, v = args[0], args[1]
+    s = args[0]
+    v = args[1]
     if not isinstance(s, VSet):
         raise TaytshRuntimeFault("Remove expects set", None)
-    s.elements.discard(_as_hashable(v))
+    _set_discard(s.elements, _as_hashable(v))
     return VNil()
 
 
 def _bi_union(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VSet) or not isinstance(b, VSet):
         raise TaytshRuntimeFault("Union expects two sets", None)
-    return VSet(a.elements | b.elements, a.typ)
+    return VSet(_set_union(a.elements, b.elements), a.typ)
 
 
 def _bi_intersection(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VSet) or not isinstance(b, VSet):
         raise TaytshRuntimeFault("Intersection expects two sets", None)
-    return VSet(a.elements & b.elements, a.typ)
+    return VSet(_set_intersection(a.elements, b.elements), a.typ)
 
 
 def _bi_difference(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VSet) or not isinstance(b, VSet):
         raise TaytshRuntimeFault("Difference expects two sets", None)
-    return VSet(a.elements - b.elements, a.typ)
+    return VSet(_set_difference(a.elements, b.elements), a.typ)
 
 
 def _bi_bytes_ctor(rt: Runtime, args: list[Value]) -> Value:
@@ -5807,7 +3299,9 @@ def _bi_bytes_from(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_range_list(rt: Runtime, args: list[Value]) -> Value:
-    start, end, step = args[0], args[1], args[2]
+    start = args[0]
+    end = args[1]
+    step = args[2]
     if (
         not isinstance(start, VInt)
         or not isinstance(end, VInt)
@@ -5815,31 +3309,35 @@ def _bi_range_list(rt: Runtime, args: list[Value]) -> Value:
     ):
         raise TaytshRuntimeFault("RangeList expects int, int, int", None)
     elements: list[Value] = [VInt(i) for i in range(start.value, end.value, step.value)]
-    return VList(elements, TyList(TY_INT))
+    return VList(elements, ListT(kind="list", element=INT_T))
 
 
 def _bi_map_from_pairs(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("MapFromPairs expects list", None)
-    entries: dict[object, Value] = {}
-    key_typ = TY_ERROR
-    val_typ = TY_ERROR
+    mk: list[Value] = []
+    mv: list[Value] = []
+    key_typ = ERROR_T
+    val_typ = ERROR_T
     for v in xs.elements:
         if not isinstance(v, VTuple) or len(v.elements) != 2:
             raise TaytshRuntimeFault("MapFromPairs elements must be 2-tuples", None)
-        k, val = v.elements
-        entries[_as_hashable(k)] = val
-    if isinstance(xs.typ, TyList) and isinstance(xs.typ.element, TyTuple):
+        k = v.elements[0]
+        val = v.elements[1]
+        mk.append(_as_hashable(k))
+        mv.append(val)
+    if isinstance(xs.typ, ListT) and isinstance(xs.typ.element, TupleT):
         elems = xs.typ.element.elements
         if len(elems) == 2:
             key_typ = elems[0]
             val_typ = elems[1]
-    return VMap(entries, TyMap(key_typ, val_typ))
+    return VMap(mk, mv, MapT(kind="map", key=key_typ, value=val_typ))
 
 
 def _bi_list_compare(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VList) or not isinstance(b, VList):
         raise TaytshRuntimeFault("ListCompare expects two lists", None)
     min_len = min(len(a.elements), len(b.elements))
@@ -5862,31 +3360,32 @@ def _bi_set_from_list(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("SetFromList expects list", None)
-    elements: set[object] = set()
+    elems: list[Value] = []
     for v in xs.elements:
-        elements.add(_as_hashable(v))
-    return VSet(elements, TySet(xs.typ.element))
+        _set_add(elems, _as_hashable(v))
+    return VSet(elems, SetT(kind="set", element=xs.typ.element))
 
 
 def _bi_chars(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     if not isinstance(s, VString):
         raise TaytshRuntimeFault("Chars expects string", None)
-    return VList([VString(c) for c in s.value], TyList(TY_STRING))
+    return VList([VString(c) for c in s.value], ListT(kind="list", element=STRING_T))
 
 
 def _bi_zip(rt: Runtime, args: list[Value]) -> Value:
-    a, b = args[0], args[1]
+    a = args[0]
+    b = args[1]
     if not isinstance(a, VList) or not isinstance(b, VList):
         raise TaytshRuntimeFault("Zip expects two lists", None)
     min_len = min(len(a.elements), len(b.elements))
-    elem_ty = TyTuple((a.typ.element, b.typ.element))
+    elem_ty = TupleT(kind="tuple", elements=[a.typ.element, b.typ.element])
     result: list[Value] = []
     i = 0
     while i < min_len:
         result.append(VTuple([a.elements[i], b.elements[i]], elem_ty))
         i += 1
-    return VList(result, TyList(elem_ty))
+    return VList(result, ListT(kind="list", element=elem_ty))
 
 
 def _compare_values(a: Value, b: Value) -> int:
@@ -5914,9 +3413,9 @@ def _compare_values(a: Value, b: Value) -> int:
 def _bi_write_out(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        rt.stdout.extend(x.value.encode("utf-8"))
+        rt.stdout = rt.stdout + x.value.encode("utf-8")
     elif isinstance(x, VBytes):
-        rt.stdout.extend(x.value)
+        rt.stdout = rt.stdout + x.value
     else:
         raise TaytshRuntimeFault("WriteOut expects string or bytes", None)
     return VNil()
@@ -5925,9 +3424,9 @@ def _bi_write_out(rt: Runtime, args: list[Value]) -> Value:
 def _bi_write_err(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        rt.stderr.extend(x.value.encode("utf-8"))
+        rt.stderr = rt.stderr + x.value.encode("utf-8")
     elif isinstance(x, VBytes):
-        rt.stderr.extend(x.value)
+        rt.stderr = rt.stderr + x.value
     else:
         raise TaytshRuntimeFault("WriteErr expects string or bytes", None)
     return VNil()
@@ -5936,9 +3435,9 @@ def _bi_write_err(rt: Runtime, args: list[Value]) -> Value:
 def _bi_writeln_out(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        rt.stdout.extend((x.value + "\n").encode("utf-8"))
+        rt.stdout = rt.stdout + (x.value + "\n").encode("utf-8")
     elif isinstance(x, VBytes):
-        rt.stdout.extend(x.value + b"\n")
+        rt.stdout = rt.stdout + x.value + b"\n"
     else:
         raise TaytshRuntimeFault("WritelnOut expects string or bytes", None)
     return VNil()
@@ -5947,9 +3446,9 @@ def _bi_writeln_out(rt: Runtime, args: list[Value]) -> Value:
 def _bi_writeln_err(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        rt.stderr.extend((x.value + "\n").encode("utf-8"))
+        rt.stderr = rt.stderr + (x.value + "\n").encode("utf-8")
     elif isinstance(x, VBytes):
-        rt.stderr.extend(x.value + b"\n")
+        rt.stderr = rt.stderr + x.value + b"\n"
     else:
         raise TaytshRuntimeFault("WritelnErr expects string or bytes", None)
     return VNil()
@@ -5986,6 +3485,7 @@ def _bi_read_file(rt: Runtime, args: list[Value]) -> Value:
     path = args[0]
     if not isinstance(path, VString):
         raise TaytshRuntimeFault("ReadFile expects string", None)
+    data: bytes = b""
     try:
         with open(path.value, "rb") as f:
             data = f.read()
@@ -5999,7 +3499,8 @@ def _bi_read_file(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_write_file(rt: Runtime, args: list[Value]) -> Value:
-    path, data = args[0], args[1]
+    path = args[0]
+    data = args[1]
     if not isinstance(path, VString):
         raise TaytshRuntimeFault("WriteFile expects string path", None)
     try:
@@ -6017,7 +3518,7 @@ def _bi_write_file(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_args(rt: Runtime, args: list[Value]) -> Value:
-    return VList([VString(a) for a in rt.args], TyList(TY_STRING))
+    return VList([VString(a) for a in rt.args], ListT(kind="list", element=STRING_T))
 
 
 def _bi_get_env(rt: Runtime, args: list[Value]) -> Value:
@@ -6037,116 +3538,124 @@ def _bi_exit(rt: Runtime, args: list[Value]) -> Value:
     raise _Exit(code.value)
 
 
-_BUILTIN_RUNTIME: dict[str, Callable[[Runtime, list[Value]], Value]] = {
-    "ToString": _bi_tostring,
-    "Len": _bi_len,
-    "Get": _bi_get,
-    "Contains": _bi_contains,
-    "Unwrap": _bi_unwrap,
-    "Assert": _bi_assert,
-    # Numeric
-    "Round": _bi_round,
-    "Floor": _bi_floor,
-    "Ceil": _bi_ceil,
-    "Sqrt": _bi_sqrt,
-    "IsNaN": _bi_isnan,
-    "IsInf": _bi_isinf,
-    "DivMod": _bi_divmod,
-    "WrappingAdd": _bi_wrapping_add,
-    "WrappingSub": _bi_wrapping_sub,
-    "WrappingMul": _bi_wrapping_mul,
-    "Abs": _bi_abs,
-    "Min": _bi_min,
-    "Max": _bi_max,
-    "Sum": _bi_sum,
-    "Pow": _bi_pow,
-    # Conversions
-    "IntToFloat": _bi_int_to_float,
-    "FloatToInt": _bi_float_to_int,
-    "ByteToInt": _bi_byte_to_int,
-    "IntToByte": _bi_int_to_byte,
-    "RuneFromInt": _bi_rune_from_int,
-    "RuneToInt": _bi_rune_to_int,
-    # String
-    "ParseInt": _bi_parse_int,
-    "ParseFloat": _bi_parse_float,
-    "FormatInt": _bi_format_int,
-    "Upper": _bi_upper,
-    "Lower": _bi_lower,
-    "Trim": _bi_trim,
-    "TrimStart": _bi_trim_start,
-    "TrimEnd": _bi_trim_end,
-    "Split": _bi_split,
-    "SplitN": _bi_split_n,
-    "SplitWhitespace": _bi_split_whitespace,
-    "Join": _bi_join,
-    "Find": _bi_find,
-    "RFind": _bi_rfind,
-    "Count": _bi_count,
-    "Replace": _bi_replace,
-    "ReplaceCount": _bi_replace_count,
-    "StartsWith": _bi_starts_with,
-    "EndsWith": _bi_ends_with,
-    "Encode": _bi_encode,
-    "Decode": _bi_decode,
-    "Concat": _bi_concat,
-    "Repeat": _bi_repeat,
-    "Format": _bi_format,
-    # Character classifiers
-    "IsDigit": _bi_is_digit,
-    "IsAlpha": _bi_is_alpha,
-    "IsAlnum": _bi_is_alnum,
-    "IsSpace": _bi_is_space,
-    "IsUpper": _bi_is_upper,
-    "IsLower": _bi_is_lower,
-    # List
-    "Append": _bi_append,
-    "Insert": _bi_insert,
-    "Pop": _bi_pop,
-    "RemoveAt": _bi_remove_at,
-    "IndexOf": _bi_index_of,
-    "Reversed": _bi_reversed,
-    "Sorted": _bi_sorted,
-    # Map
-    "Delete": _bi_delete,
-    "Keys": _bi_keys,
-    "Values": _bi_values,
-    "Items": _bi_items,
-    "Merge": _bi_merge,
-    "PopItem": _bi_pop_item,
-    "MapFromKeys": _bi_map_from_keys,
-    # Set
-    "Add": _bi_add,
-    "Remove": _bi_remove,
-    "Union": _bi_union,
-    "Intersection": _bi_intersection,
-    "Difference": _bi_difference,
-    # Bytes constructors
-    "Bytes": _bi_bytes_ctor,
-    "BytesFrom": _bi_bytes_from,
-    # Range-to-list
-    "RangeList": _bi_range_list,
-    # Map constructor
-    "MapFromPairs": _bi_map_from_pairs,
-    # List comparison
-    "ListCompare": _bi_list_compare,
-    # Zip
-    "Zip": _bi_zip,
-    # Set from iterable
-    "SetFromList": _bi_set_from_list,
-    "Chars": _bi_chars,
-    # I/O
-    "WriteOut": _bi_write_out,
-    "WriteErr": _bi_write_err,
-    "WritelnOut": _bi_writeln_out,
-    "WritelnErr": _bi_writeln_err,
-    "ReadLine": _bi_read_line,
-    "ReadAll": _bi_read_all,
-    "ReadBytes": _bi_read_bytes,
-    "ReadBytesN": _bi_read_bytes_n,
-    "ReadFile": _bi_read_file,
-    "WriteFile": _bi_write_file,
-    "Args": _bi_args,
-    "GetEnv": _bi_get_env,
-    "Exit": _bi_exit,
+def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
+    """Dispatch a builtin function call by name."""
+    if name == "ToString": return _bi_tostring(rt, args)
+    if name == "Len": return _bi_len(rt, args)
+    if name == "Get": return _bi_get(rt, args)
+    if name == "Contains": return _bi_contains(rt, args)
+    if name == "Unwrap": return _bi_unwrap(rt, args)
+    if name == "Assert": return _bi_assert(rt, args)
+    if name == "Round": return _bi_round(rt, args)
+    if name == "Floor": return _bi_floor(rt, args)
+    if name == "Ceil": return _bi_ceil(rt, args)
+    if name == "Sqrt": return _bi_sqrt(rt, args)
+    if name == "IsNaN": return _bi_isnan(rt, args)
+    if name == "IsInf": return _bi_isinf(rt, args)
+    if name == "DivMod": return _bi_divmod(rt, args)
+    if name == "WrappingAdd": return _bi_wrapping_add(rt, args)
+    if name == "WrappingSub": return _bi_wrapping_sub(rt, args)
+    if name == "WrappingMul": return _bi_wrapping_mul(rt, args)
+    if name == "Abs": return _bi_abs(rt, args)
+    if name == "Min": return _bi_min(rt, args)
+    if name == "Max": return _bi_max(rt, args)
+    if name == "Sum": return _bi_sum(rt, args)
+    if name == "Pow": return _bi_pow(rt, args)
+    if name == "IntToFloat": return _bi_int_to_float(rt, args)
+    if name == "FloatToInt": return _bi_float_to_int(rt, args)
+    if name == "ByteToInt": return _bi_byte_to_int(rt, args)
+    if name == "IntToByte": return _bi_int_to_byte(rt, args)
+    if name == "RuneFromInt": return _bi_rune_from_int(rt, args)
+    if name == "RuneToInt": return _bi_rune_to_int(rt, args)
+    if name == "ParseInt": return _bi_parse_int(rt, args)
+    if name == "ParseFloat": return _bi_parse_float(rt, args)
+    if name == "FormatInt": return _bi_format_int(rt, args)
+    if name == "Upper": return _bi_upper(rt, args)
+    if name == "Lower": return _bi_lower(rt, args)
+    if name == "Trim": return _bi_trim(rt, args)
+    if name == "TrimStart": return _bi_trim_start(rt, args)
+    if name == "TrimEnd": return _bi_trim_end(rt, args)
+    if name == "Split": return _bi_split(rt, args)
+    if name == "SplitN": return _bi_split_n(rt, args)
+    if name == "SplitWhitespace": return _bi_split_whitespace(rt, args)
+    if name == "Join": return _bi_join(rt, args)
+    if name == "Find": return _bi_find(rt, args)
+    if name == "RFind": return _bi_rfind(rt, args)
+    if name == "Count": return _bi_count(rt, args)
+    if name == "Replace": return _bi_replace(rt, args)
+    if name == "StartsWith": return _bi_starts_with(rt, args)
+    if name == "EndsWith": return _bi_ends_with(rt, args)
+    if name == "Encode": return _bi_encode(rt, args)
+    if name == "Decode": return _bi_decode(rt, args)
+    if name == "Concat": return _bi_concat(rt, args)
+    if name == "Repeat": return _bi_repeat(rt, args)
+    if name == "Format": return _bi_format(rt, args)
+    if name == "IsDigit": return _bi_is_digit(rt, args)
+    if name == "IsAlpha": return _bi_is_alpha(rt, args)
+    if name == "IsAlnum": return _bi_is_alnum(rt, args)
+    if name == "IsSpace": return _bi_is_space(rt, args)
+    if name == "IsUpper": return _bi_is_upper(rt, args)
+    if name == "IsLower": return _bi_is_lower(rt, args)
+    if name == "Append": return _bi_append(rt, args)
+    if name == "Insert": return _bi_insert(rt, args)
+    if name == "Pop": return _bi_pop(rt, args)
+    if name == "RemoveAt": return _bi_remove_at(rt, args)
+    if name == "IndexOf": return _bi_index_of(rt, args)
+    if name == "Reversed": return _bi_reversed(rt, args)
+    if name == "Sorted": return _bi_sorted(rt, args)
+    if name == "Delete": return _bi_delete(rt, args)
+    if name == "Keys": return _bi_keys(rt, args)
+    if name == "Values": return _bi_values(rt, args)
+    if name == "Items": return _bi_items(rt, args)
+    if name == "Merge": return _bi_merge(rt, args)
+    if name == "PopItem": return _bi_pop_item(rt, args)
+    if name == "MapFromKeys": return _bi_map_from_keys(rt, args)
+    if name == "Add": return _bi_add(rt, args)
+    if name == "Remove": return _bi_remove(rt, args)
+    if name == "Union": return _bi_union(rt, args)
+    if name == "Intersection": return _bi_intersection(rt, args)
+    if name == "Difference": return _bi_difference(rt, args)
+    if name == "Bytes": return _bi_bytes_ctor(rt, args)
+    if name == "BytesFrom": return _bi_bytes_from(rt, args)
+    if name == "RangeList": return _bi_range_list(rt, args)
+    if name == "MapFromPairs": return _bi_map_from_pairs(rt, args)
+    if name == "ListCompare": return _bi_list_compare(rt, args)
+    if name == "Zip": return _bi_zip(rt, args)
+    if name == "SetFromList": return _bi_set_from_list(rt, args)
+    if name == "Chars": return _bi_chars(rt, args)
+    if name == "WriteOut": return _bi_write_out(rt, args)
+    if name == "WriteErr": return _bi_write_err(rt, args)
+    if name == "WritelnOut": return _bi_writeln_out(rt, args)
+    if name == "WritelnErr": return _bi_writeln_err(rt, args)
+    if name == "ReadLine": return _bi_read_line(rt, args)
+    if name == "ReadAll": return _bi_read_all(rt, args)
+    if name == "ReadBytes": return _bi_read_bytes(rt, args)
+    if name == "ReadBytesN": return _bi_read_bytes_n(rt, args)
+    if name == "ReadFile": return _bi_read_file(rt, args)
+    if name == "WriteFile": return _bi_write_file(rt, args)
+    if name == "Args": return _bi_args(rt, args)
+    if name == "GetEnv": return _bi_get_env(rt, args)
+    if name == "Exit": return _bi_exit(rt, args)
+    raise TaytshRuntimeFault("unknown builtin: " + name, None)
+
+
+_BUILTIN_NAMES_RT: set[str] = {
+    "ToString", "Len", "Get", "Contains", "Unwrap", "Assert",
+    "Round", "Floor", "Ceil", "Sqrt", "IsNaN", "IsInf", "DivMod",
+    "WrappingAdd", "WrappingSub", "WrappingMul", "Abs", "Min", "Max", "Sum", "Pow",
+    "IntToFloat", "FloatToInt", "ByteToInt", "IntToByte", "RuneFromInt", "RuneToInt",
+    "ParseInt", "ParseFloat", "FormatInt",
+    "Upper", "Lower", "Trim", "TrimStart", "TrimEnd",
+    "Split", "SplitN", "SplitWhitespace", "Join", "Find", "RFind",
+    "Count", "Replace", "StartsWith", "EndsWith", "Encode", "Decode",
+    "Concat", "Repeat", "Format",
+    "IsDigit", "IsAlpha", "IsAlnum", "IsSpace", "IsUpper", "IsLower",
+    "Append", "Insert", "Pop", "RemoveAt", "IndexOf", "Reversed", "Sorted",
+    "Delete", "Keys", "Values", "Items", "Merge", "PopItem", "MapFromKeys",
+    "Add", "Remove", "Union", "Intersection", "Difference",
+    "Bytes", "BytesFrom", "RangeList", "MapFromPairs", "ListCompare",
+    "Zip", "SetFromList", "Chars",
+    "WriteOut", "WriteErr", "WritelnOut", "WritelnErr",
+    "ReadLine", "ReadAll", "ReadBytes", "ReadBytesN",
+    "ReadFile", "WriteFile", "Args", "GetEnv", "Exit",
 }
