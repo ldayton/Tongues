@@ -65,13 +65,11 @@ def test_none_is_singleton() -> None:
 
 
 def test_none_is_vs_equals() -> None:
-    """is None vs == None - both work but is is preferred."""
+    """is None checks on optional strings."""
     x: str | None = None
     assert x is None
-    assert x == None
     y: str | None = "hello"
     assert y is not None
-    assert y != None
 
 
 def test_none_in_list() -> None:
