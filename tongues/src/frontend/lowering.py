@@ -2211,7 +2211,10 @@ def _lower_name_call(
             return _make_call(pos, "Sum", [_lower_expr(args[0], env, ctx)])
     if fname == "round":
         if len(args) > 0 and isinstance(args[0], dict):
-            return _make_call(pos, "Round", [_lower_expr(args[0], env, ctx)])
+            lowered_args: list[TExpr] = [_lower_expr(args[0], env, ctx)]
+            if len(args) > 1 and isinstance(args[1], dict):
+                lowered_args.append(_lower_expr(args[1], env, ctx))
+            return _make_call(pos, "Round", lowered_args)
     if fname == "min" or fname == "max":
         builtin = "Min" if fname == "min" else "Max"
         lowered: list[TExpr] = []
@@ -2823,6 +2826,9 @@ def _lower_method_call(
     # List methods
     if _is_type_dict(actual_type, ["Slice"]):
         return _lower_list_method(pos, obj, obj_node, method_name, args, env, ctx)
+    # Tuple methods (count/index reuse list lowering)
+    if _is_type_dict(actual_type, ["Tuple"]):
+        return _lower_list_method(pos, obj, obj_node, method_name, args, env, ctx)
     # Dict methods
     if _is_type_dict(actual_type, ["Map"]):
         return _lower_dict_method(pos, obj, obj_node, method_name, args, env, ctx)
@@ -3193,6 +3199,10 @@ def _lower_bytes_method(
     """Lower bytes method calls."""
     if method == "decode":
         return _make_call(pos, "Decode", [obj])
+    if method == "upper":
+        return _make_call(pos, "Upper", [obj])
+    if method == "lower":
+        return _make_call(pos, "Lower", [obj])
     if method == "startswith":
         return _lower_startswith_endswith(pos, "StartsWith", obj, args, env, ctx)
     if method == "endswith":
@@ -3203,8 +3213,39 @@ def _lower_bytes_method(
         a = args[i]
         lowered.append(_lower_expr(a, env, ctx))
         i += 1
+    if method == "find":
+        return _make_call(pos, "Find", [obj] + lowered)
+    if method == "rfind":
+        return _make_call(pos, "RFind", [obj] + lowered)
     if method == "count":
         return _make_call(pos, "Count", [obj] + lowered)
+    if method == "strip":
+        if len(lowered) == 0:
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+        return _make_call(pos, "Trim", [obj] + lowered)
+    if method == "lstrip":
+        if len(lowered) == 0:
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+        return _make_call(pos, "TrimStart", [obj] + lowered)
+    if method == "rstrip":
+        if len(lowered) == 0:
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+        return _make_call(pos, "TrimEnd", [obj] + lowered)
+    if method == "split":
+        if len(lowered) == 0:
+            return _make_call(pos, "SplitWhitespace", [obj])
+        if len(lowered) == 2:
+            plus_one = TBinaryOp(
+                pos, "+", lowered[1], TIntLit(pos, 1, "1", _EMPTY_ANN), _EMPTY_ANN
+            )
+            return _make_call(pos, "SplitN", [obj, lowered[0], plus_one])
+        return _make_call(pos, "Split", [obj] + lowered)
+    if method == "join":
+        return _make_call(pos, "Join", [obj] + lowered)
+    if method == "replace":
+        if len(lowered) == 3:
+            return _make_call(pos, "ReplaceCount", [obj] + lowered)
+        return _make_call(pos, "Replace", [obj] + lowered)
     return _make_method_call(pos, obj, method, lowered)
 
 

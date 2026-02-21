@@ -577,7 +577,7 @@ class _PerlEmitter:
                         "my "
                         + acc
                         + " = do { my $__s = {}; $__s->{$_} = 1 for @{"
-                        + iterable
+                        + self._deref_safe(iterable)
                         + "}; $__s };"
                     )
         return None
@@ -1660,15 +1660,26 @@ class _PerlEmitter:
         if name == "RFind":
             return "rindex(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Count":
-            if isinstance(args[1].value, TStringLit):
-                pat = _escape_perl_regex(args[1].value.value)
-                return "() = " + self._a(args, 0) + " =~ /" + pat + "/g"
+            if self._is_string_expr(args[0].value) or self._is_bytes_expr(args[0].value):
+                if isinstance(args[1].value, TStringLit):
+                    pat = _escape_perl_regex(args[1].value.value)
+                    return "() = " + self._a(args, 0) + " =~ /" + pat + "/g"
+                return (
+                    "do { my $__s = "
+                    + self._a(args, 0)
+                    + "; my $__n = "
+                    + self._a(args, 1)
+                    + "; my $__c = () = $__s =~ /\\Q$__n\\E/g; $__c }"
+                )
+            cmp_op = "eq" if self._is_string_expr(args[1].value) else "=="
             return (
-                "do { my $__s = "
-                + self._a(args, 0)
-                + "; my $__n = "
+                "scalar(grep { $_ "
+                + cmp_op
+                + " "
                 + self._a(args, 1)
-                + "; my $__c = () = $__s =~ /\\Q$__n\\E/g; $__c }"
+                + " } @{"
+                + self._a(args, 0)
+                + "})"
             )
         if name == "Replace":
             if isinstance(args[1].value, TStringLit) and isinstance(
@@ -1829,8 +1840,18 @@ class _PerlEmitter:
                 return "max(@{" + self._a(args, 0) + "})"
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sum":
+            if self._is_set_expr(args[0].value):
+                return "(sum(keys %{" + self._deref_safe(self._a(args, 0)) + "}) // 0)"
             return "(sum(@{" + self._a(args, 0) + "}) // 0)"
         if name == "Round":
+            if len(args) == 2:
+                return (
+                    'sprintf("%." . '
+                    + self._a(args, 1)
+                    + ' . "f", '
+                    + self._a(args, 0)
+                    + ") + 0"
+                )
             return (
                 "int("
                 + self._a(args, 0)
@@ -1875,7 +1896,7 @@ class _PerlEmitter:
                 return "{}"
             return (
                 "do { my $__s = {}; $__s->{$_} = 1 for @{"
-                + self._a(args, 0)
+                + self._deref_safe(self._a(args, 0))
                 + "}; $__s }"
             )
         if name == "SetFromList":
@@ -1883,7 +1904,7 @@ class _PerlEmitter:
                 return self._a(args, 0)
             return (
                 "do { my $__s = {}; $__s->{$_} = 1 for @{"
-                + self._a(args, 0)
+                + self._deref_safe(self._a(args, 0))
                 + "}; $__s }"
             )
         if name == "ToString":

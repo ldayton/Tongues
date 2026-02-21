@@ -1762,7 +1762,9 @@ class _RubyEmitter:
         if name == "RFind":
             return self._a(args, 0) + ".rindex(" + self._a(args, 1) + ") || -1"
         if name == "Count":
-            return self._a(args, 0) + ".scan(" + self._a(args, 1) + ").length"
+            if self._is_string_type(args[0].value):
+                return self._a(args, 0) + ".scan(" + self._a(args, 1) + ").length"
+            return self._a(args, 0) + ".count(" + self._a(args, 1) + ")"
         if name == "Replace":
             return (
                 self._a(args, 0)
@@ -1878,6 +1880,8 @@ class _RubyEmitter:
         if name == "Sum":
             return self._a(args, 0) + ".sum"
         if name == "Round":
+            if len(args) == 2:
+                return self._a(args, 0) + ".round(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".round"
         if name == "DivMod":
             return self._a(args, 0) + ".divmod(" + self._a(args, 1) + ")"

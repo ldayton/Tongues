@@ -123,6 +123,13 @@ def f(x: float) -> int:
 Round(x)
 ---
 
+=== round with ndigits
+def f(x: float) -> float:
+    return round(x, 2)
+---
+Round(x, 2)
+---
+
 === list copy
 def f(xs: list[int]) -> list[int]:
     return list(xs)

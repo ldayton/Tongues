@@ -1618,6 +1618,8 @@ class _PythonEmitter:
         if name == "Sum":
             return "sum(" + self._a(args, 0) + ")"
         if name == "Round":
+            if len(args) == 2:
+                return "round(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return "round(" + self._a(args, 0) + ")"
         if name == "DivMod":
             return "divmod(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
