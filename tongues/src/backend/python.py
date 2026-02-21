@@ -605,7 +605,8 @@ class _PythonEmitter:
                 self.var_types[p.name] = p.typ
         params = self._params(decl.params, with_self=False)
         ret = self._type(decl.ret)
-        self._line("def " + decl.name + "(" + params + ") -> " + ret + ":")
+        fname = "main" if decl.name == "Main" else decl.name
+        self._line("def " + fname + "(" + params + ") -> " + ret + ":")
         self.indent += 1
         if not decl.body:
             self._line("pass")
