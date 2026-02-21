@@ -86,7 +86,7 @@ fn TestOptionalEquality() -> void {
 fn TestOptionalString() -> void {
     let s: string? = "hello"
     Assert(s != nil)
-    Assert(Unwrap(s) == "hello")
+    Assert(s == "hello")
     let n: string? = nil
     Assert(n == nil)
 }
@@ -106,9 +106,7 @@ fn TestMapGetOptional() -> void {
     let m: map[string, int] = {"a": 1, "b": 2}
     let v: int? = Get(m, "a")
     Assert(v != nil)
-    if v != nil {
-        Assert(v == 1)
-    }
+    Assert(v == 1)
     let missing: int? = Get(m, "z")
     Assert(missing == nil)
 }
@@ -215,7 +213,7 @@ fn MaybeDouble(v: int?) -> int? {
     if v == nil {
         return nil
     }
-    return Unwrap(v) * 2
+    return v * 2
 }
 
 fn TestOptionalChain() -> void {

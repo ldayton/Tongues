@@ -10,7 +10,6 @@ from src.taytsh.ast import (
     TCall,
     TExpr,
     TIntLit,
-    TStringLit,
     TVar,
 )
 from src.taytsh.check import (
@@ -21,7 +20,6 @@ from src.taytsh.check import (
     INT_T,
     RUNE_T,
     STRING_T,
-    VOID_T,
     ListT,
     MapT,
     SetT,

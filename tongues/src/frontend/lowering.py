@@ -738,7 +738,6 @@ class _Env:
         while i < len(skeys):
             env.isinstance_subs[skeys[i]] = self.isinstance_subs[skeys[i]]
             i += 1
-        env.pre_stmts = self.pre_stmts
         return env
 
 
@@ -4750,6 +4749,14 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     pre_stmts: list[TStmt] = []
     _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
     cond = _lower_as_bool(test, env, ctx)
+    # Drain pre_stmts from condition lowering (e.g. any/all expansions)
+    if len(env.pre_stmts) > 0:
+        cond_pre = env.pre_stmts
+        env.pre_stmts = []
+        k = 0
+        while k < len(cond_pre):
+            pre_stmts.append(cond_pre[k])
+            k += 1
     # Narrow attribute paths from isinstance in the then-branch
     body_env = _narrow_isinstance_from_test(test, env)
     then_body = _lower_stmts(body, body_env, ctx)
@@ -5097,11 +5104,20 @@ def _lower_isinstance_chain(
                 right = _lower_as_bool(extra_conds[ci], case_env, ctx)
                 cond = TBinaryOp(pos, "&&", cond, right, _EMPTY_ANN)
                 ci += 1
+            cond_pre: list[TStmt] = []
+            if len(case_env.pre_stmts) > 0:
+                cond_pre = case_env.pre_stmts
+                case_env.pre_stmts = []
             then_body = _lower_stmts(body_stmts, case_env, ctx)
             nested_else: list[TStmt] | None = None
             if else_body_nodes is not None and len(else_body_nodes) > 0:
                 nested_else = _lower_stmts(else_body_nodes, case_env, ctx)
-            case_body = [TIfStmt(pos, cond, then_body, nested_else, _EMPTY_ANN)]
+            case_body: list[TStmt] = []
+            k = 0
+            while k < len(cond_pre):
+                case_body.append(cond_pre[k])
+                k += 1
+            case_body.append(TIfStmt(pos, cond, then_body, nested_else, _EMPTY_ANN))
         else:
             case_body = _lower_stmts(body_stmts, case_env, ctx)
         pattern = TPatternType(
@@ -5129,6 +5145,13 @@ def _lower_while(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     pre_stmts: list[TStmt] = []
     _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
     cond = _lower_as_bool(test, env, ctx)
+    if len(env.pre_stmts) > 0:
+        cond_pre = env.pre_stmts
+        env.pre_stmts = []
+        k = 0
+        while k < len(cond_pre):
+            pre_stmts.append(cond_pre[k])
+            k += 1
     stmts = _lower_stmts(body, env, ctx)
     pre_stmts.append(TWhileStmt(pos, cond, stmts, _EMPTY_ANN))
     return pre_stmts
