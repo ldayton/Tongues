@@ -606,6 +606,8 @@ def _types_comparable(left: TypeNode, right: TypeNode) -> bool:
         return True
     if lk == rk:
         return True
+    if (lk == "rune" and rk == "string") or (lk == "string" and rk == "rune"):
+        return True
     numeric = {"bool", "int", "float", "byte"}
     if lk in numeric and rk in numeric:
         return True
@@ -873,6 +875,11 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             and attr == "argv"
         ):
             return SliceType(STR_TYPE)
+        path_key = _attribute_path_key(node)
+        if path_key != "":
+            narrowed = env.var_types.get(path_key)
+            if narrowed is not None:
+                return narrowed
         obj_type = _infer_expr_type(obj_node, env, ctx)
         if _is_struct_type(obj_type):
             sname = _struct_name(obj_type)
@@ -1143,6 +1150,8 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     if t == "Subscript":
         obj = get_node(node, "value")
         obj_t = _infer_expr_type(obj, env, ctx)
+        if isinstance(obj_t, OptionalType):
+            obj_t = obj_t.inner
         if _is_type_dict(obj_t, ["Slice"]):
             slc = get_node(node, "slice")
             if _is_ast(slc, "Slice"):
@@ -2024,6 +2033,15 @@ def _coerce_compare(
             left = _make_call(pos, "ByteToInt", [left])
         elif rt_byte and lt_int:
             right = _make_call(pos, "ByteToInt", [right])
+    # rune vs string → convert rune to string
+    lt_rune = _is_type_dict(left_type, ["rune"])
+    rt_rune = _is_type_dict(right_type, ["rune"])
+    lt_str = _is_type_dict(left_type, ["string"])
+    rt_str = _is_type_dict(right_type, ["string"])
+    if lt_rune and rt_str:
+        left = _make_call(pos, "ToString", [left])
+    elif rt_rune and lt_str:
+        right = _make_call(pos, "ToString", [right])
     return left, right
 
 
@@ -4301,7 +4319,9 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     pre_stmts: list[TStmt] = []
     _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
     cond = _lower_as_bool(test, env, ctx)
-    then_body = _lower_stmts(body, env, ctx)
+    # Narrow attribute paths from isinstance in the then-branch
+    body_env = _narrow_isinstance_from_test(test, env)
+    then_body = _lower_stmts(body, body_env, ctx)
     else_body: list[TStmt] | None = None
     if len(orelse) > 0:
         else_body = _lower_stmts(orelse, env, ctx)
@@ -4420,6 +4440,69 @@ def _isinstance_var(node: ASTNode) -> str:
     return ""
 
 
+def _attribute_path_key(node: ASTNode) -> str:
+    """Build a dotted path key for an Attribute node, e.g. 'expr.func'."""
+    if _is_ast(node, "Name"):
+        return get_str(node, "id")
+    if _is_ast(node, "Attribute"):
+        obj_key = _attribute_path_key(get_node(node, "value"))
+        if obj_key != "":
+            return obj_key + "." + get_str(node, "attr")
+    return ""
+
+
+def _narrow_isinstance_attrs(conds: list[ASTNode], env: _Env) -> None:
+    """Inject attribute-path narrowings from isinstance extra_conds into env."""
+    i = 0
+    while i < len(conds):
+        cond = conds[i]
+        if _is_isinstance_call(cond):
+            args = get_nodes(cond, "args")
+            if len(args) >= 2 and isinstance(args[0], dict):
+                path_key = _attribute_path_key(args[0])
+                if path_key != "" and "." in path_key:
+                    type_name = _isinstance_type(cond)
+                    if type_name != "":
+                        env.var_types[path_key] = PointerType(StructRef(type_name))
+        i += 1
+
+
+def _narrow_isinstance_from_test(test: ASTNode, env: _Env) -> _Env:
+    """Narrow attribute paths from isinstance calls in a test expression."""
+    isinstance_nodes: list[ASTNode] = []
+    if _is_isinstance_call(test):
+        isinstance_nodes.append(test)
+    elif _is_ast(test, "BoolOp"):
+        op = get_node(test, "op")
+        if get_str(op, "_type") == "And":
+            values = get_nodes(test, "values")
+            vi = 0
+            while vi < len(values):
+                v = values[vi]
+                if isinstance(v, dict) and _is_isinstance_call(v):
+                    isinstance_nodes.append(v)
+                vi += 1
+    if len(isinstance_nodes) == 0:
+        return env
+    narrowed_env = env.copy()
+    changed = False
+    ni = 0
+    while ni < len(isinstance_nodes):
+        node = isinstance_nodes[ni]
+        args = get_nodes(node, "args")
+        if len(args) >= 2 and isinstance(args[0], dict):
+            path_key = _attribute_path_key(args[0])
+            if path_key != "" and "." in path_key:
+                type_name = _isinstance_type(node)
+                if type_name != "":
+                    narrowed_env.var_types[path_key] = PointerType(StructRef(type_name))
+                    changed = True
+        ni += 1
+    if changed:
+        return narrowed_env
+    return env
+
+
 def _isinstance_type(node: ASTNode) -> str:
     """Get type name from isinstance(x, T)."""
     args = get_nodes(node, "args")
@@ -4525,6 +4608,8 @@ def _lower_isinstance_chain(
         case_env = env.copy()
         case_env.var_types[var_name] = PointerType(StructRef(type_name))
         if extra_conds is not None:
+            # Narrow attribute paths from isinstance extra_conds
+            _narrow_isinstance_attrs(extra_conds, case_env)
             # Lower extra conditions as && chain in narrowed env
             cond: TExpr = _lower_as_bool(extra_conds[0], case_env, ctx)
             ci = 1
