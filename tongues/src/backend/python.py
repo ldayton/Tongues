@@ -527,6 +527,8 @@ class _PythonEmitter:
         if not is_error and decl.parent is not None:
             if decl.parent in BUILTIN_STRUCTS:
                 is_error = True
+        if not is_error and decl.annotations.get("_is_exception") is not None:
+            is_error = True
         if is_error:
             self._emit_error_struct(decl)
         else:

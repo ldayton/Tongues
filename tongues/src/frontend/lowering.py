@@ -5615,7 +5615,10 @@ def _build_struct(
             if mname != "__init__":
                 methods.append(_build_method(item, name, env, ctx))
         j += 1
-    return TStructDecl(pos, name, parent, fields, methods, _EMPTY_ANN)
+    ann: Ann = {}
+    if is_exception:
+        ann["_is_exception"] = "true"
+    return TStructDecl(pos, name, parent, fields, methods, ann)
 
 
 def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:

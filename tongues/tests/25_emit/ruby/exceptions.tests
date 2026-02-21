@@ -1,0 +1,2 @@
+=== user-defined exception class
+class ParseError < StandardError
