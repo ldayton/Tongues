@@ -4000,7 +4000,7 @@ def _lower_with_open(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
         call = _make_call(pos, "ReadFile", [path_expr])
-        val_type = PrimitiveType("bytes")
+        val_type: TypeNode = UnionType([PrimitiveType("string"), PrimitiveType("bytes")])
         if name not in env.declared:
             env.declared.add(name)
             env.var_types[name] = val_type

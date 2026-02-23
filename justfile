@@ -286,7 +286,7 @@ versions:
     exit $failed
 
 # Run all tests in Docker
-test: test-backend test-taytsh
+test: test-backend test-taytsh self-transpile
 
 # Run all tests locally (requires matching runtime versions)
 test-local:
@@ -306,13 +306,14 @@ test-local:
     just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
+    just self-transpile && results[self-transpile]=✅ || { results[self-transpile]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "         TEST-LOCAL SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh; do
+    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh self-transpile; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

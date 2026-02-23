@@ -314,7 +314,11 @@ def _sort_key_pairs(keys: list[Val], vals: list[Val]) -> None:
 def _read_file_bytes(path: str) -> VBytes:
     with open(path, "rb") as f:
         data = f.read()
-    return VBytes(data)
+    if isinstance(data, bytes):
+        return VBytes(data)
+    if isinstance(data, str):
+        return VBytes(data.encode("utf-8"))
+    return VBytes(b"")
 
 
 def _write_file_bytes(path: str, data: bytes) -> None:

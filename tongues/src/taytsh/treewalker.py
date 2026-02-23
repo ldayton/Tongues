@@ -3592,17 +3592,20 @@ def _bi_read_file(rt: Runtime, args: list[Value]) -> Value:
     path = args[0]
     if not isinstance(path, VString):
         raise TaytshRuntimeFault("ReadFile expects string", None)
-    data: bytes = b""
     try:
         with open(path.value, "rb") as f:
             data = f.read()
+        if isinstance(data, str):
+            return VString(data)
+        if isinstance(data, bytes):
+            try:
+                return VString(data.decode("utf-8"))
+            except UnicodeDecodeError:
+                return VBytes(data)
+        return VNil()
     except OSError as e:
         rt._throw_err("IOError", str(e))
         return VNil()
-    try:
-        return VString(data.decode("utf-8"))
-    except UnicodeDecodeError:
-        return VBytes(data)
 
 
 def _bi_write_file(rt: Runtime, args: list[Value]) -> Value:

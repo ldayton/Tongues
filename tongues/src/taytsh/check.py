@@ -4659,7 +4659,7 @@ class Checker:
             t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("ReadFile requires string path", pos)
-            return BYTES_T
+            return UnionT(kind="union", members=[STRING_T, BYTES_T])
         if name == "WriteFile":
             if not _bctx_require(ctx, 2):
                 return None
