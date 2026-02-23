@@ -1676,6 +1676,8 @@ class _PythonEmitter:
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
             return "sorted(" + self._a(args, 0) + ")"
+        if name == "ListFrom":
+            return "list(" + self._a(args, 0) + ")"
         if name == "Reversed":
             return "list(reversed(" + self._a(args, 0) + "))"
         if name == "Reverse":

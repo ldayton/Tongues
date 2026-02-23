@@ -1892,6 +1892,8 @@ class _PerlEmitter:
             if isinstance(typ, TListType) and _is_string_type(typ.element):
                 return "[sort @{" + self._a(args, 0) + "}]"
             return "[sort { $a <=> $b } @{" + self._a(args, 0) + "}]"
+        if name == "ListFrom":
+            return "[@{" + self._deref_safe(self._a(args, 0)) + "}]"
         if name == "Reversed":
             return "[reverse @{" + self._a(args, 0) + "}]"
         if name == "Map":

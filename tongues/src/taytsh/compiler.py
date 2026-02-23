@@ -230,6 +230,7 @@ BUILTIN_TABLE: list[str] = [
     "Keys",
     "Len",
     "ListCompare",
+    "ListFrom",
     "Lower",
     "Map",
     "MapFromKeys",

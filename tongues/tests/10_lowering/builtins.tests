@@ -134,5 +134,5 @@ Round(x, 2)
 def f(xs: list[int]) -> list[int]:
     return list(xs)
 ---
-xs[0:Len(xs)]
+ListFrom(xs)
 ---

@@ -2472,15 +2472,7 @@ def _lower_name_call(
             # list(set) → Sorted(set)
             if isinstance(arg_type, SetType):
                 return _make_call(pos, "Sorted", [_lower_expr(args[0], env, ctx)])
-            arg = _lower_expr(args[0], env, ctx)
-            # list(xs) → xs[0:Len(xs)]
-            return TSlice(
-                pos,
-                arg,
-                TIntLit(pos, 0, "0", _EMPTY_ANN),
-                _make_call(pos, "Len", [arg]),
-                _EMPTY_ANN,
-            )
+            return _make_call(pos, "ListFrom", [_lower_expr(args[0], env, ctx)])
     if fname == "bytes":
         if len(args) == 0:
             return TBytesLit(pos, b"", _EMPTY_ANN)
