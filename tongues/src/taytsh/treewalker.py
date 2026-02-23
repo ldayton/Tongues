@@ -585,6 +585,7 @@ _RESERVED_BINDINGS: set[str] = {
     "IndexOf",
     "Reversed",
     "Sorted",
+    "ListFrom",
     "Map",
     "Get",
     "Delete",
@@ -3480,6 +3481,15 @@ def _bi_chars(rt: Runtime, args: list[Value]) -> Value:
     return VList(elems, ListT(kind="list", element=STRING_T))
 
 
+def _bi_list_from(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    if isinstance(xs, VList):
+        return VList(list(xs.elements), xs.typ)
+    if isinstance(xs, VSet):
+        return VList(list(xs.elements), ListT(kind="list", element=xs.typ.element))
+    raise TaytshRuntimeFault("ListFrom expects list or set", None)
+
+
 def _bi_zip(rt: Runtime, args: list[Value]) -> Value:
     a = args[0]
     b = args[1]
@@ -3821,6 +3831,8 @@ def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
         return _bi_set_from_list(rt, args)
     if name == "Chars":
         return _bi_chars(rt, args)
+    if name == "ListFrom":
+        return _bi_list_from(rt, args)
     if name == "WriteOut":
         return _bi_write_out(rt, args)
     if name == "WriteErr":
@@ -3934,6 +3946,7 @@ _BUILTIN_NAMES_RT: set[str] = {
     "Zip",
     "SetFromList",
     "Chars",
+    "ListFrom",
     "WriteOut",
     "WriteErr",
     "WritelnOut",

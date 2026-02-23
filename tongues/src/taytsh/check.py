@@ -986,6 +986,8 @@ BUILTIN_NAMES: set[str] = {
     "SetFromList",
     # String to char list
     "Chars",
+    # List from iterable
+    "ListFrom",
     # Mutation
     "ReplaceSlice",
     # Nil check
@@ -4245,6 +4247,20 @@ class Checker:
             if t is not None and not type_eq(t, STRING_T):
                 self.error("Chars requires string argument", pos)
             return ListT(kind="list", element=STRING_T)
+
+        if name == "ListFrom":
+            if not _bctx_require(ctx, 1):
+                return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None:
+                tu = _unwrap_nil_union(t)
+                if isinstance(tu, ListT):
+                    return tu
+                if isinstance(tu, SetT):
+                    return ListT(kind="list", element=tu.element)
+                if tu.kind != TY_ERROR:
+                    self.error("ListFrom requires list or set argument", pos)
+            return None
 
         # ── Repeat ──
         if name == "Repeat":

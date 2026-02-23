@@ -1900,6 +1900,8 @@ class _RubyEmitter:
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".sort"
+        if name == "ListFrom":
+            return self._a(args, 0) + ".dup"
         if name == "Reversed":
             return self._a(args, 0) + ".reverse"
         if name == "Map":

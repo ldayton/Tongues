@@ -566,6 +566,8 @@ class _BuiltinDispatch:
             return self._set_difference(args)
         if name == "SetFromList":
             return self._set_from_list(args)
+        if name == "ListFrom":
+            return self._list_from(args)
         if name == "Abs":
             return self._abs(args)
         if name == "Min":
@@ -1482,6 +1484,13 @@ class _BuiltinDispatch:
                     result.append(item)
             return VSet(result)
         return VSet([])
+
+    def _list_from(self, args: list[Val]) -> Val:
+        if isinstance(args[0], VList):
+            return VList(list(args[0].items))
+        if isinstance(args[0], VSet):
+            return VList(list(args[0].items))
+        return VList([])
 
     # ── Misc builtins ─────────────────────────────────────────
 
