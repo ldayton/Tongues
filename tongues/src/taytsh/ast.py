@@ -171,10 +171,11 @@ class TStructDecl(TDecl):
 
 @dataclass
 class TInterfaceDecl(TDecl):
-    """interface Name { }."""
+    """interface Name { fields }."""
 
     name: str
     annotations: Ann
+    fields: list[TFieldDecl]
 
 
 @dataclass
@@ -1185,10 +1186,16 @@ def _decl_json(decl: TModuleItem) -> JsonValue:
             }
         )
     if isinstance(decl, TInterfaceDecl):
+        flist: list[JsonValue] = []
+        fi = 0
+        while fi < len(decl.fields):
+            flist.append(_field_decl_json(decl.fields[fi]))
+            fi += 1
         return JDict(
             {
                 "pos": _pos_json(decl.pos),
                 "name": JStr(decl.name),
+                "fields": JList(flist),
                 "annotations": _ann_json(decl.annotations),
             }
         )
@@ -1288,9 +1295,7 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
         for lk, lv in lets.items():
             ld[lk] = _wrap_ann(lv)
         d["lets"] = JDict(ld)
-    body_items: list[JsonValue] = [
-        JDict(_sa_serialize_stmt(s, pfx, plen)) for s in fn.body
-    ]
+    body_items = [JDict(_sa_serialize_stmt(s, pfx, plen)) for s in fn.body]
     d["body"] = JList(body_items)
     vars_dict: dict[str, Ann] = {}
     _sa_collect_vars_stmts(fn.body, vars_dict, pfx, plen)

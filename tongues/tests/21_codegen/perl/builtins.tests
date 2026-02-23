@@ -37,3 +37,6 @@ my $n = floor(3.7);
 
 === Ceil function
 my $n = ceil(3.2);
+
+=== IsNil check
+!defined($x)

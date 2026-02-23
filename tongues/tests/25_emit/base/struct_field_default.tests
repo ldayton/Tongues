@@ -1,0 +1,14 @@
+=== struct field with struct default
+import sys
+class Inner:
+    value: str
+class Outer:
+    name: str
+    def __init__(self, name: str):
+        self.name: str = name
+        self.inner: Inner = Inner(value="ok")
+def main() -> None:
+    o: Outer = Outer(name="test")
+    print(o.inner.value)
+if __name__ == "__main__":
+    main()

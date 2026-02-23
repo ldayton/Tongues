@@ -187,6 +187,20 @@ def f(s: str) -> bool:
 EndsWith(s, "x") || EndsWith(s, "y")
 ---
 
+=== string index method uses find
+def f(s: str, sub: str) -> int:
+    return s.index(sub)
+---
+Find(s, sub)
+---
+
+=== string replace with count
+def f(s: str) -> str:
+    return s.replace("a", "b", 1)
+---
+ReplaceCount(s, "a", "b", 1)
+---
+
 === enumerate string
 def f(s: str) -> None:
     for i, c in enumerate(s):

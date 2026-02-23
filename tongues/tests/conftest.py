@@ -1,5 +1,6 @@
 """Pytest configuration for Tongues test suite."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -11,6 +12,18 @@ def pytest_addoption(parser):
     parser.addoption(
         "--target",
         action="append",
-        default=None,
         help="Target language(s) for app tests (repeatable)",
     )
+    parser.addoption(
+        "--transpiled",
+        help="Path to transpiled binary (e.g. .out/tongues.py)",
+    )
+
+
+def pytest_configure(config):
+    path = config.getoption("transpiled")
+    if path is not None:
+        resolved = str(Path(path).resolve())
+        if not Path(resolved).is_file():
+            raise FileNotFoundError("--transpiled binary not found: " + resolved)
+        os.environ["TONGUES_TRANSPILED_BINARY"] = resolved

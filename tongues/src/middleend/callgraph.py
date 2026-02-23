@@ -6,6 +6,7 @@ and tail call identification for every function and method in the module.
 
 from __future__ import annotations
 
+from ..frontend.types import JDict, JStr, JsonValue
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
@@ -1337,3 +1338,177 @@ def analyze_callgraph(module: TModule, checker: Checker) -> None:
     sccs, _ = _detect_recursion(fn_decls, edges)
     _propagate_throws(sccs, fn_decls, fn_structs, edges, checker, module.strict_math)
     _detect_tail_calls(fn_decls)
+
+
+# ============================================================
+# SERIALIZATION
+# ============================================================
+
+
+def _sc_collect_calls_stmts(
+    stmts: list[TStmt],
+    calls: dict[str, dict[str, JsonValue]],
+    checker: Checker,
+) -> None:
+    i = 0
+    while i < len(stmts):
+        _sc_collect_calls_stmt(stmts[i], calls, checker)
+        i += 1
+
+
+def _sc_collect_calls_stmt(
+    stmt: TStmt,
+    calls: dict[str, dict[str, JsonValue]],
+    checker: Checker,
+) -> None:
+    if isinstance(stmt, TExprStmt):
+        _sc_collect_calls_expr(stmt.expr, calls, checker)
+    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
+        _sc_collect_calls_expr(stmt.value, calls, checker)
+    elif isinstance(stmt, TThrowStmt):
+        _sc_collect_calls_expr(stmt.expr, calls, checker)
+    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
+        _sc_collect_calls_expr(stmt.value, calls, checker)
+    elif isinstance(stmt, TAssignStmt):
+        _sc_collect_calls_expr(stmt.target, calls, checker)
+        _sc_collect_calls_expr(stmt.value, calls, checker)
+    elif isinstance(stmt, TOpAssignStmt):
+        _sc_collect_calls_expr(stmt.target, calls, checker)
+        _sc_collect_calls_expr(stmt.value, calls, checker)
+    elif isinstance(stmt, TTupleAssignStmt):
+        for t in stmt.targets:
+            _sc_collect_calls_expr(t, calls, checker)
+        _sc_collect_calls_expr(stmt.value, calls, checker)
+    elif isinstance(stmt, TIfStmt):
+        _sc_collect_calls_expr(stmt.cond, calls, checker)
+        _sc_collect_calls_stmts(stmt.then_body, calls, checker)
+        if stmt.else_body is not None:
+            _sc_collect_calls_stmts(stmt.else_body, calls, checker)
+    elif isinstance(stmt, TWhileStmt):
+        _sc_collect_calls_expr(stmt.cond, calls, checker)
+        _sc_collect_calls_stmts(stmt.body, calls, checker)
+    elif isinstance(stmt, TForStmt):
+        if isinstance(stmt.iterable, TRange):
+            for a in stmt.iterable.args:
+                _sc_collect_calls_expr(a, calls, checker)
+        else:
+            _sc_collect_calls_expr(stmt.iterable, calls, checker)
+        _sc_collect_calls_stmts(stmt.body, calls, checker)
+    elif isinstance(stmt, TMatchStmt):
+        _sc_collect_calls_expr(stmt.expr, calls, checker)
+        for case in stmt.cases:
+            _sc_collect_calls_stmts(case.body, calls, checker)
+        if stmt.default is not None:
+            _sc_collect_calls_stmts(stmt.default.body, calls, checker)
+    elif isinstance(stmt, TTryStmt):
+        _sc_collect_calls_stmts(stmt.body, calls, checker)
+        for catch in stmt.catches:
+            _sc_collect_calls_stmts(catch.body, calls, checker)
+        if stmt.finally_body is not None:
+            _sc_collect_calls_stmts(stmt.finally_body, calls, checker)
+
+
+def _sc_collect_calls_expr(
+    expr: TExpr,
+    calls: dict[str, dict[str, JsonValue]],
+    checker: Checker,
+) -> None:
+    if isinstance(expr, TCall):
+        name: str | None = None
+        if isinstance(expr.func, TVar):
+            n = expr.func.name
+            t = checker.types.get(n)
+            if t is not None and isinstance(t, StructT):
+                name = None
+            elif n in checker.functions:
+                name = n
+            else:
+                name = None
+        elif isinstance(expr.func, TFieldAccess):
+            name = expr.func.field
+        if name is not None:
+            ann = expr.annotations.get("callgraph.is_tail_call")
+            if ann is not None:
+                is_tail = JStr(str(ann))
+            else:
+                is_tail = JStr("false")
+            if name not in calls:
+                calls[name] = {}
+            calls[name]["is_tail_call"] = is_tail
+        if isinstance(expr.func, TFieldAccess):
+            _sc_collect_calls_expr(expr.func.obj, calls, checker)
+        elif not isinstance(expr.func, TVar):
+            _sc_collect_calls_expr(expr.func, calls, checker)
+        for arg in expr.args:
+            _sc_collect_calls_expr(arg.value, calls, checker)
+    elif isinstance(expr, TBinaryOp):
+        _sc_collect_calls_expr(expr.left, calls, checker)
+        _sc_collect_calls_expr(expr.right, calls, checker)
+    elif isinstance(expr, TUnaryOp):
+        _sc_collect_calls_expr(expr.operand, calls, checker)
+    elif isinstance(expr, TTernary):
+        _sc_collect_calls_expr(expr.cond, calls, checker)
+        _sc_collect_calls_expr(expr.then_expr, calls, checker)
+        _sc_collect_calls_expr(expr.else_expr, calls, checker)
+    elif isinstance(expr, TFieldAccess):
+        _sc_collect_calls_expr(expr.obj, calls, checker)
+    elif isinstance(expr, TIndex):
+        _sc_collect_calls_expr(expr.obj, calls, checker)
+        _sc_collect_calls_expr(expr.index, calls, checker)
+    elif isinstance(expr, TSlice):
+        _sc_collect_calls_expr(expr.obj, calls, checker)
+        _sc_collect_calls_expr(expr.low, calls, checker)
+        _sc_collect_calls_expr(expr.high, calls, checker)
+    elif isinstance(expr, TListLit):
+        for e in expr.elements:
+            _sc_collect_calls_expr(e, calls, checker)
+    elif isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            _sc_collect_calls_expr(k, calls, checker)
+            _sc_collect_calls_expr(v, calls, checker)
+    elif isinstance(expr, TSetLit):
+        for e in expr.elements:
+            _sc_collect_calls_expr(e, calls, checker)
+    elif isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            _sc_collect_calls_expr(e, calls, checker)
+    elif isinstance(expr, TFnLit):
+        _sc_collect_calls_stmts(expr.body, calls, checker)
+
+
+def _sc_serialize_fn(decl: TFnDecl, checker: Checker) -> dict[str, JsonValue]:
+    """Serialize one function's callgraph data."""
+    d: dict[str, JsonValue] = {}
+    pfx = "callgraph."
+    plen = len(pfx)
+    keys = list(decl.annotations.keys())
+    i = 0
+    while i < len(keys):
+        k = keys[i]
+        if k.startswith(pfx):
+            d[k[plen:]] = JStr(str(decl.annotations[k]))
+        i += 1
+    calls: dict[str, dict[str, JsonValue]] = {}
+    _sc_collect_calls_stmts(decl.body, calls, checker)
+    if len(calls) > 0:
+        call_entries: dict[str, JsonValue] = {}
+        ckeys = list(calls.keys())
+        ci = 0
+        while ci < len(ckeys):
+            call_entries[ckeys[ci]] = JDict(calls[ckeys[ci]])
+            ci += 1
+        d["calls"] = JDict(call_entries)
+    return d
+
+
+def serialize_callgraph(module: TModule, checker: Checker) -> dict[str, JsonValue]:
+    """Serialize callgraph annotations and call info for all functions."""
+    result: dict[str, JsonValue] = {}
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            result[decl.name] = JDict(_sc_serialize_fn(decl, checker))
+        elif isinstance(decl, TStructDecl):
+            for method in decl.methods:
+                key = decl.name + "." + method.name
+                result[key] = JDict(_sc_serialize_fn(method, checker))
+    return result

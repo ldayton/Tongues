@@ -166,9 +166,117 @@ def f(a: int, b: int) -> bool:
 a >= b
 ---
 
+=== rune compared to string variable
+def f(s: str, quote: str) -> bool:
+    for ch in s:
+        if ch == quote:
+            return True
+    return False
+---
+ToString(ch) == quote
+---
+
+=== char comparison in string iteration
+def f(s: str) -> bool:
+    for ch in s:
+        if ch == "\n":
+            return True
+    return False
+---
+== '\n'
+---
+
+=== struct field compared to module constant
+TK_OP: str = "OP"
+from dataclasses import dataclass
+@dataclass
+class Token:
+    kind: str
+    value: str
+def f(tok: Token) -> bool:
+    return tok.kind == TK_OP
+---
+tok.kind == TK_OP
+---
+
+=== field comparison after isinstance on attribute
+class Expr:
+    def __init__(self) -> None:
+        pass
+class Call(Expr):
+    def __init__(self, func: Expr) -> None:
+        self.func = func
+class Var(Expr):
+    def __init__(self, name: str) -> None:
+        self.name = name
+def f(expr: Call) -> bool:
+    if isinstance(expr.func, Var):
+        name = expr.func.name
+        return name == "hello"
+    return False
+---
+name == "hello"
+---
+
+=== dict get element comparison after none guard
+def f(d: dict[str, list[str]], key: str) -> bool:
+    items = d.get(key)
+    if items is not None:
+        item = items[0]
+        return item == "hello"
+    return False
+---
+== "hello"
+---
+
 === divmod
 def f(a: int, b: int) -> tuple[int, int]:
     return divmod(a, b)
 ---
 (FloorDiv(a, b), PythonMod(a, b))
+---
+
+=== negated isinstance guard narrows remainder
+class Expr:
+    def __init__(self) -> None:
+        pass
+class StringLit(Expr):
+    def __init__(self, value: str) -> None:
+        self.value = value
+def f(expr: Expr) -> bool:
+    if not isinstance(expr, StringLit):
+        return False
+    s = expr.value
+    ch = s[0]
+    return ch == "x"
+---
+ch == "x"
+---
+
+=== module constant subscript preserves type
+OPS: list[str] = ["add", "sub"]
+def f(i: int) -> bool:
+    op = OPS[i]
+    return op == "add"
+---
+op == "add"
+---
+
+=== field from narrowed optional used in dict containment
+class Base:
+    def __init__(self) -> None:
+        pass
+class NameNode(Base):
+    def __init__(self, id: str) -> None:
+        self.id = id
+def f(test: Base, d: dict[str, int], flag: bool) -> bool:
+    var_node: NameNode | None = None
+    if isinstance(test, NameNode):
+        var_node = test
+    if flag and var_node is not None:
+        name = var_node.id
+        return name in d
+    return False
+---
+Contains(d, name)
 ---

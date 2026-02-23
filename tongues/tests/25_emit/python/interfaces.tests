@@ -1,0 +1,5 @@
+=== interface with fields
+@dataclass
+class Animal:
+    name: str = ""
+    legs: int = 0

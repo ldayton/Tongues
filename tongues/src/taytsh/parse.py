@@ -378,7 +378,7 @@ class Parser:
         name_tok = self.expect_ident()
         self.expect("{")
         self.expect("}")
-        return TInterfaceDecl(pos, name_tok.value, {})
+        return TInterfaceDecl(pos, name_tok.value, {}, [])
 
     def parse_enum_decl(self) -> TEnumDecl:
         pos = self._pos()

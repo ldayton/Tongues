@@ -381,6 +381,9 @@ def _split_union_members(s: str) -> list[str]:
 # Type alias expansions, populated by collect_signatures()
 _TYPE_ALIASES: dict[str, str] = {}
 
+# Class base mappings, populated by collect_signatures()
+_CLASS_BASES: dict[str, list[str]] = {}
+
 
 # Primitive type mapping: Python name -> kind string
 _PRIM_MAP: dict[str, str] = {
@@ -626,6 +629,25 @@ def _resolve_union(
     return _resolve_non_none_union(unique, known_classes, errors, lineno, col)
 
 
+def _ancestor_chain(name: str) -> list[str]:
+    """Get the ancestor chain from name up to topmost root, inclusive."""
+    chain: list[str] = [name]
+    visited: set[str] = set()
+    visited.add(name)
+    cur = name
+    while True:
+        parents = _CLASS_BASES.get(cur)
+        if parents is None or len(parents) == 0:
+            break
+        parent = parents[0]
+        if parent in visited:
+            break
+        chain.append(parent)
+        visited.add(parent)
+        cur = parent
+    return chain
+
+
 def _resolve_non_none_union(
     members: list[str],
     known_classes: set[str],
@@ -633,7 +655,33 @@ def _resolve_non_none_union(
     lineno: int,
     col: int,
 ) -> TypeNode:
-    """Resolve a union with no None members to an InterfaceRef."""
+    """Resolve a union with no None members to the nearest common ancestor."""
+    if len(_CLASS_BASES) == 0:
+        return InterfaceRef("any")
+    i = 0
+    while i < len(members):
+        if members[i] not in known_classes:
+            return InterfaceRef("any")
+        i += 1
+    chain0 = _ancestor_chain(members[0])
+    common: set[str] = set(chain0)
+    i = 1
+    while i < len(members):
+        chain_i = _ancestor_chain(members[i])
+        chain_set: set[str] = set(chain_i)
+        new_common: set[str] = set()
+        j = 0
+        while j < len(chain0):
+            if chain0[j] in chain_set and chain0[j] in common:
+                new_common.add(chain0[j])
+            j += 1
+        common = new_common
+        i += 1
+    j = 0
+    while j < len(chain0):
+        if chain0[j] in common:
+            return InterfaceRef(chain0[j])
+        j += 1
     return InterfaceRef("any")
 
 
@@ -978,9 +1026,17 @@ def collect_signatures(
     known_classes: set[str],
     node_classes: set[str],
     type_aliases: dict[str, str] | None = None,
+    class_bases: dict[str, list[str]] | None = None,
 ) -> SignatureResult:
     """Collect function and method signatures from the module AST."""
     _TYPE_ALIASES.clear()
+    _CLASS_BASES.clear()
+    if class_bases is not None:
+        cb_keys = list(class_bases.keys())
+        cbi = 0
+        while cbi < len(cb_keys):
+            _CLASS_BASES[cb_keys[cbi]] = class_bases[cb_keys[cbi]]
+            cbi += 1
     if type_aliases is not None:
         ta_keys = list(type_aliases.keys())
         tai = 0

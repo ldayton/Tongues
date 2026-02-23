@@ -82,3 +82,11 @@ fn Main() -> void {
     let n: int = Ceil(3.2)
     WritelnOut(ToString(n))
 }
+
+=== IsNil check
+fn Main() -> void {
+    let x: int? = nil
+    if IsNil(x) {
+        WritelnOut("nil")
+    }
+}

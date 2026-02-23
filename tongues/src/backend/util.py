@@ -80,6 +80,8 @@ def to_snake(name: str) -> str:
     """Convert camelCase/PascalCase to snake_case."""
     if name.startswith("_"):
         name = name[1:]
+    if name.isupper():
+        return name
     if "_" in name or name.islower():
         return name.lower()
     result: list[str] = []

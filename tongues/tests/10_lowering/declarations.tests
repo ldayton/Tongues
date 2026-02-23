@@ -133,3 +133,40 @@ fn second() -> int {
     return 2
 }
 ---
+
+=== union of sibling classes resolves to hierarchy root
+from dataclasses import dataclass
+@dataclass
+class Base:
+    x: int
+@dataclass
+class A(Base):
+    y: int
+@dataclass
+class B(Base):
+    z: int
+def f(val: A | B) -> int:
+    return val.x
+---
+fn f(val: Base) -> int {
+---
+
+=== union resolves to nearest common ancestor not topmost root
+from dataclasses import dataclass
+@dataclass
+class Root:
+    x: int
+@dataclass
+class Middle(Root):
+    y: int
+@dataclass
+class Left(Middle):
+    a: int
+@dataclass
+class Right(Middle):
+    b: int
+def f(val: Left | Right) -> int:
+    return val.y
+---
+fn f(val: Middle) -> int {
+---

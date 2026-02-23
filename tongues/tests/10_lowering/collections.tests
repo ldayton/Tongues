@@ -207,6 +207,20 @@ def f(d: dict[str, int]) -> None:
 for k, v in d {
 ---
 
+=== list count
+def f(xs: list[int], v: int) -> int:
+    return xs.count(v)
+---
+Count(xs, v)
+---
+
+=== bytes count
+def f(b: bytes, sub: bytes) -> int:
+    return b.count(sub)
+---
+Count(b, sub)
+---
+
 === enumerate lowers to indexed for
 def f(xs: list[str]) -> None:
     for i, x in enumerate(xs):

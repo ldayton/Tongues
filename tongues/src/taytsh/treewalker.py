@@ -1442,10 +1442,15 @@ class Runtime:
 
         if isinstance(st, TTupleAssignStmt):
             trefs = [self._eval_lvalue_ref(t, env) for t in st.targets]
+            tref_types: list[Type] = []
+            _tti = 0
+            while _tti < len(trefs):
+                tref_types.append(trefs[_tti].typ)
+                _tti += 1
             rhs = self._eval_expr(
                 st.value,
                 env,
-                expected=TupleT(kind="tuple", elements=list(r.typ for r in trefs)),
+                expected=TupleT(kind="tuple", elements=tref_types),
             )
             if not isinstance(rhs, VTuple):
                 raise TaytshRuntimeFault("tuple assignment rhs not a tuple", st.pos)
@@ -2351,10 +2356,14 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
         return f'"{v.value}"' if in_composite else v.value
     if isinstance(v, VBytes):
         hex_chars = "0123456789abcdef"
-        hex_parts = "".join(
-            "\\x" + hex_chars[b >> 4] + hex_chars[b & 0x0F] for b in v.value
-        )
-        return f'b"{hex_parts}"'
+        hex_list: list[str] = []
+        bi = 0
+        while bi < len(v.value):
+            bvi = int(v.value[bi])
+            hex_list.append("\\x" + hex_chars[bvi >> 4] + hex_chars[bvi & 0x0F])
+            bi += 1
+        hex_parts = "".join(hex_list)
+        return 'b"' + hex_parts + '"'
     if isinstance(v, VList):
         inner = ", ".join(
             _strict_tostring(e, rt, in_composite=True) for e in v.elements
@@ -2366,25 +2375,43 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
         )
         return f"({inner})"
     if isinstance(v, VMap):
-        decorated = [
-            (_sort_key(v.map_keys[i]), i, v.map_keys[i]) for i in range(len(v.map_keys))
-        ]
-        decorated.sort()
-        parts: list[str] = []
-        for _, idx, k in decorated:
-            parts.append(
-                _strict_tostring(k, rt, in_composite=True)
+        map_keys_sk: list[tuple[int, float, str]] = []
+        map_indices: list[int] = []
+        map_di = 0
+        while map_di < len(v.map_keys):
+            map_keys_sk.append(_sort_key(v.map_keys[map_di]))
+            map_indices.append(map_di)
+            map_di += 1
+        _sort_decorated(map_keys_sk, map_indices)
+        map_parts: list[str] = []
+        map_dj = 0
+        while map_dj < len(map_indices):
+            map_idx = map_indices[map_dj]
+            map_parts.append(
+                _strict_tostring(v.map_keys[map_idx], rt, in_composite=True)
                 + ": "
-                + _strict_tostring(v.map_vals[idx], rt, in_composite=True)
+                + _strict_tostring(v.map_vals[map_idx], rt, in_composite=True)
             )
-        return "{" + ", ".join(parts) + "}"
+            map_dj += 1
+        return "{" + ", ".join(map_parts) + "}"
     if isinstance(v, VSet):
-        decorated = [(_sort_key(e), i, e) for i, e in enumerate(v.elements)]
-        decorated.sort()
-        inner = ", ".join(
-            _strict_tostring(e, rt, in_composite=True) for _, _, e in decorated
-        )
-        return "{" + inner + "}"
+        set_keys_sk: list[tuple[int, float, str]] = []
+        set_indices: list[int] = []
+        set_di = 0
+        while set_di < len(v.elements):
+            set_keys_sk.append(_sort_key(v.elements[set_di]))
+            set_indices.append(set_di)
+            set_di += 1
+        _sort_decorated(set_keys_sk, set_indices)
+        set_parts: list[str] = []
+        set_dj = 0
+        while set_dj < len(set_indices):
+            set_parts.append(
+                _strict_tostring(v.elements[set_indices[set_dj]], rt, in_composite=True)
+            )
+            set_dj += 1
+        set_inner = ", ".join(set_parts)
+        return "{" + set_inner + "}"
     if isinstance(v, VEnum):
         return f"{v.enum_name}.{v.variant}"
     if isinstance(v, VStruct):
@@ -2394,11 +2421,12 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
             result = rt._call_fn(mi.decl, mi.sig, [v])
             if isinstance(result, VString):
                 return result.value
-        parts = [
-            f"{k}: {_strict_tostring(val, rt, in_composite=True)}"
-            for k, val in v.fields.items()
-        ]
-        return v.struct_name + "{" + ", ".join(parts) + "}"
+        struct_parts: list[str] = []
+        for fname in v.fields:
+            struct_parts.append(
+                fname + ": " + _strict_tostring(v.fields[fname], rt, in_composite=True)
+            )
+        return v.struct_name + "{" + ", ".join(struct_parts) + "}"
     if isinstance(v, VFunc):
         return type_name(v.ty())
     return v.to_string()
@@ -2804,7 +2832,10 @@ def _bi_split(rt: Runtime, args: list[Value]) -> Value:
     if sep.value == "":
         rt._throw_err("ValueError", "Split separator must not be empty")
     parts = s.value.split(sep.value)
-    return VList([VString(p) for p in parts], ListT(kind="list", element=STRING_T))
+    elems: list[Value] = []
+    for p in parts:
+        elems.append(VString(p))
+    return VList(elems, ListT(kind="list", element=STRING_T))
 
 
 def _bi_split_n(rt: Runtime, args: list[Value]) -> Value:
@@ -2820,7 +2851,10 @@ def _bi_split_n(rt: Runtime, args: list[Value]) -> Value:
     if n.value <= 0:
         rt._throw_err("ValueError", "SplitN max must be > 0")
     parts = s.value.split(sep.value, n.value - 1)
-    return VList([VString(p) for p in parts], ListT(kind="list", element=STRING_T))
+    elems: list[Value] = []
+    for p in parts:
+        elems.append(VString(p))
+    return VList(elems, ListT(kind="list", element=STRING_T))
 
 
 def _bi_split_whitespace(rt: Runtime, args: list[Value]) -> Value:
@@ -2828,7 +2862,10 @@ def _bi_split_whitespace(rt: Runtime, args: list[Value]) -> Value:
     if not isinstance(s, VString):
         raise TaytshRuntimeFault("SplitWhitespace expects string", None)
     parts = s.value.split()
-    return VList([VString(p) for p in parts], ListT(kind="list", element=STRING_T))
+    elems: list[Value] = []
+    for p in parts:
+        elems.append(VString(p))
+    return VList(elems, ListT(kind="list", element=STRING_T))
 
 
 def _bi_join(rt: Runtime, args: list[Value]) -> Value:
@@ -3002,54 +3039,54 @@ def _bi_format(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_digit(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(c.isdigit() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isdigit() for c in x.value))
     if isinstance(x, VRune):
-        return VBool(x.value.isdigit())
+        return VBool(str(x.value).isdigit())
     raise TaytshRuntimeFault("IsDigit expects string or rune", None)
 
 
 def _bi_is_alpha(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(c.isalpha() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isalpha() for c in x.value))
     if isinstance(x, VRune):
-        return VBool(x.value.isalpha())
+        return VBool(str(x.value).isalpha())
     raise TaytshRuntimeFault("IsAlpha expects string or rune", None)
 
 
 def _bi_is_alnum(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(c.isalnum() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isalnum() for c in x.value))
     if isinstance(x, VRune):
-        return VBool(x.value.isalnum())
+        return VBool(str(x.value).isalnum())
     raise TaytshRuntimeFault("IsAlnum expects string or rune", None)
 
 
 def _bi_is_space(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(c.isspace() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isspace() for c in x.value))
     if isinstance(x, VRune):
-        return VBool(x.value.isspace())
+        return VBool(str(x.value).isspace())
     raise TaytshRuntimeFault("IsSpace expects string or rune", None)
 
 
 def _bi_is_upper(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(c.isupper() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isupper() for c in x.value))
     if isinstance(x, VRune):
-        return VBool(x.value.isupper())
+        return VBool(str(x.value).isupper())
     raise TaytshRuntimeFault("IsUpper expects string or rune", None)
 
 
 def _bi_is_lower(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(c.islower() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).islower() for c in x.value))
     if isinstance(x, VRune):
-        return VBool(x.value.islower())
+        return VBool(str(x.value).islower())
     raise TaytshRuntimeFault("IsLower expects string or rune", None)
 
 
@@ -3136,24 +3173,76 @@ def _sort_key(v: Value) -> tuple[int, float, str]:
     raise TaytshRuntimeFault("Sorted: unsupported element type", None)
 
 
+def _cmp_sort_key(a: tuple[int, float, str], b: tuple[int, float, str]) -> int:
+    """Compare two sort keys. Returns -1, 0, or 1."""
+    if a[0] < b[0]:
+        return -1
+    if a[0] > b[0]:
+        return 1
+    if a[1] < b[1]:
+        return -1
+    if a[1] > b[1]:
+        return 1
+    if a[2] < b[2]:
+        return -1
+    if a[2] > b[2]:
+        return 1
+    return 0
+
+
+def _sort_decorated(keys: list[tuple[int, float, str]], indices: list[int]) -> None:
+    """Insertion sort on parallel key/index arrays."""
+    i = 1
+    while i < len(keys):
+        k = keys[i]
+        idx = indices[i]
+        j = i - 1
+        while j >= 0 and _cmp_sort_key(keys[j], k) > 0:
+            keys[j + 1] = keys[j]
+            indices[j + 1] = indices[j]
+            j -= 1
+        keys[j + 1] = k
+        indices[j + 1] = idx
+        i += 1
+
+
 def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if isinstance(xs, VSet):
-        elems = list(xs.elements)
-        decorated = [(_sort_key(e), i, e) for i, e in enumerate(elems)]
-        decorated.sort()
-        return VList(
-            [e for _, _, e in decorated], ListT(kind="list", element=xs.typ.element)
-        )
+        s_keys: list[tuple[int, float, str]] = []
+        s_idx: list[int] = []
+        sort_si = 0
+        while sort_si < len(xs.elements):
+            s_keys.append(_sort_key(xs.elements[sort_si]))
+            s_idx.append(sort_si)
+            sort_si += 1
+        _sort_decorated(s_keys, s_idx)
+        sresult: list[Value] = []
+        sort_sj = 0
+        while sort_sj < len(s_idx):
+            sresult.append(xs.elements[s_idx[sort_sj]])
+            sort_sj += 1
+        return VList(sresult, ListT(kind="list", element=xs.typ.element))
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Sorted expects list or set", None)
     if rt.module.strict_math:
         for e in xs.elements:
             if isinstance(e, VFloat) and _isnan(e.value):
                 rt._throw_err("ValueError", "Sorted: list contains NaN")
-    decorated = [(_sort_key(e), i, e) for i, e in enumerate(xs.elements)]
-    decorated.sort()
-    return VList([e for _, _, e in decorated], xs.typ)
+    l_keys: list[tuple[int, float, str]] = []
+    l_idx: list[int] = []
+    sort_li = 0
+    while sort_li < len(xs.elements):
+        l_keys.append(_sort_key(xs.elements[sort_li]))
+        l_idx.append(sort_li)
+        sort_li += 1
+    _sort_decorated(l_keys, l_idx)
+    lresult: list[Value] = []
+    sort_lj = 0
+    while sort_lj < len(l_idx):
+        lresult.append(xs.elements[l_idx[sort_lj]])
+        sort_lj += 1
+    return VList(lresult, xs.typ)
 
 
 # ---------------------------------------------------------------------------
@@ -3319,7 +3408,11 @@ def _bi_range_list(rt: Runtime, args: list[Value]) -> Value:
         or not isinstance(step, VInt)
     ):
         raise TaytshRuntimeFault("RangeList expects int, int, int", None)
-    elements: list[Value] = [VInt(i) for i in range(start.value, end.value, step.value)]
+    elements: list[Value] = []
+    ri = start.value
+    while (step.value > 0 and ri < end.value) or (step.value < 0 and ri > end.value):
+        elements.append(VInt(ri))
+        ri += step.value
     return VList(elements, ListT(kind="list", element=INT_T))
 
 
@@ -3381,7 +3474,10 @@ def _bi_chars(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     if not isinstance(s, VString):
         raise TaytshRuntimeFault("Chars expects string", None)
-    return VList([VString(c) for c in s.value], ListT(kind="list", element=STRING_T))
+    elems: list[Value] = []
+    for c in s.value:
+        elems.append(VString(str(c)))
+    return VList(elems, ListT(kind="list", element=STRING_T))
 
 
 def _bi_zip(rt: Runtime, args: list[Value]) -> Value:
@@ -3496,17 +3592,20 @@ def _bi_read_file(rt: Runtime, args: list[Value]) -> Value:
     path = args[0]
     if not isinstance(path, VString):
         raise TaytshRuntimeFault("ReadFile expects string", None)
-    data: bytes = b""
     try:
         with open(path.value, "rb") as f:
             data = f.read()
+        if isinstance(data, str):
+            return VString(data)
+        if isinstance(data, bytes):
+            try:
+                return VString(data.decode("utf-8"))
+            except UnicodeDecodeError:
+                return VBytes(data)
+        return VNil()
     except OSError as e:
         rt._throw_err("IOError", str(e))
         return VNil()
-    try:
-        return VString(data.decode("utf-8"))
-    except UnicodeDecodeError:
-        return VBytes(data)
 
 
 def _bi_write_file(rt: Runtime, args: list[Value]) -> Value:
@@ -3529,7 +3628,10 @@ def _bi_write_file(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_args(rt: Runtime, args: list[Value]) -> Value:
-    return VList([VString(a) for a in rt.args], ListT(kind="list", element=STRING_T))
+    elems: list[Value] = []
+    for a in rt.args:
+        elems.append(VString(a))
+    return VList(elems, ListT(kind="list", element=STRING_T))
 
 
 def _bi_get_env(rt: Runtime, args: list[Value]) -> Value:

@@ -1,0 +1,3 @@
+=== interface with fields
+class Animal
+  attr_accessor :name, :legs

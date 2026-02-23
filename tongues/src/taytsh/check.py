@@ -901,6 +901,7 @@ BUILTIN_NAMES: set[str] = {
     "Count",
     "Contains",
     "Replace",
+    "ReplaceCount",
     "Repeat",
     "Reverse",
     "StartsWith",
@@ -992,6 +993,7 @@ BUILTIN_NAMES: set[str] = {
     # Type check
     "IsType",
 }
+
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
 # Most builtins are reserved; set-specific operations like Add can be shadowed.
@@ -1165,20 +1167,23 @@ class Checker:
         if len(self.scopes) > 0:
             self.scopes[-1][name] = typ
 
-    def lookup(self, name: str, pos: Pos) -> Type | None:
-        # Search scopes innermost-out
+    def _try_lookup(self, name: str) -> Type | None:
+        """Look up a name without emitting errors."""
         i = len(self.scopes) - 1
         while i >= 0:
             if name in self.scopes[i]:
                 return self.scopes[i][name]
             i -= 1
-        # Check top-level functions
         if name in self.functions:
-            fn = self.functions[name]
-            return fn
-        # Check type names (struct constructors, enum access)
+            return self.functions[name]
         if name in self.types:
             return self.types[name]
+        return None
+
+    def lookup(self, name: str, pos: Pos) -> Type | None:
+        r = self._try_lookup(name)
+        if r is not None:
+            return r
         self.error("undefined name '" + name + "'", pos)
         return None
 
@@ -1960,6 +1965,15 @@ class Checker:
                         self.declare(b, ERROR_T, stmt.pos)
                 else:
                     self.bind_for_vars(stmt.binding, iter_type, stmt.pos)
+                    if isinstance(iter_type, MapT):
+                        stmt.annotations["iter_kind"] = "map"
+                    elif (
+                        isinstance(iter_type, ListT)
+                        and len(stmt.binding) >= 2
+                        and isinstance(iter_type.element, TupleT)
+                        and len(iter_type.element.elements) == len(stmt.binding)
+                    ):
+                        stmt.annotations["iter_kind"] = "tuple_unpack"
         self.check_stmts(stmt.body)
         self.exit_scope()
         self.uninitialized = saved_uninit
@@ -2543,25 +2557,6 @@ class Checker:
                     return BOOL_T
                 if right.kind == TY_NIL and contains_nil(left):
                     return BOOL_T
-                # Allow nil comparison on reference/container types
-                if (
-                    left.kind == TY_NIL
-                    and right.kind != TY_INT
-                    and right.kind != TY_FLOAT
-                    and right.kind != TY_BOOL
-                    and right.kind != TY_BYTE
-                    and right.kind != TY_RUNE
-                ):
-                    return BOOL_T
-                if (
-                    right.kind == TY_NIL
-                    and left.kind != TY_INT
-                    and left.kind != TY_FLOAT
-                    and left.kind != TY_BOOL
-                    and left.kind != TY_BYTE
-                    and left.kind != TY_RUNE
-                ):
-                    return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),
                     pos,
@@ -2987,19 +2982,9 @@ class Checker:
         return None
 
     def check_call(self, expr: TCall, expected: Type | None) -> Type | None:
-        # Built-in function call: TCall with TVar func
-        # User-defined functions shadow builtins
-        if (
-            isinstance(expr.func, TVar)
-            and expr.func.name in BUILTIN_NAMES
-            and expr.func.name not in self.functions
-        ):
-            return self.check_builtin_call(
-                expr.func.name, expr.args, expr.pos, expected
-            )
-        # Struct constructor: TCall with TVar func resolving to a struct type
+        # Struct/interface constructor and builtin dispatch
         if isinstance(expr.func, TVar):
-            resolved = self.lookup(expr.func.name, expr.func.pos)
+            resolved = self._try_lookup(expr.func.name)
             if resolved is not None and isinstance(resolved, StructT):
                 return self.check_struct_constructor(resolved, expr.args, expr.pos)
             if resolved is not None and isinstance(resolved, InterfaceT):
@@ -3045,6 +3030,11 @@ class Checker:
             if resolved is not None and isinstance(resolved, FnT):
                 pnames = self.fn_param_names.get(expr.func.name)
                 return self.check_fn_call(resolved, expr.args, expr.pos, pnames)
+            # Builtin functions (after struct/interface/fn resolution)
+            if expr.func.name in BUILTIN_NAMES and expr.func.name not in self.functions:
+                return self.check_builtin_call(
+                    expr.func.name, expr.args, expr.pos, expected
+                )
             if resolved is not None:
                 if resolved.kind == TY_ERROR:
                     return ERROR_T
@@ -3472,8 +3462,9 @@ class Checker:
         self, stmts: list[TStmt], param_names: set[str], pos: Pos
     ) -> None:
         """Check that fn literal body doesn't capture variables from enclosing scope."""
+        local_names = set(param_names)
         for s in stmts:
-            self._scan_stmt_for_captures(s, param_names, pos)
+            self._scan_stmt_for_captures(s, local_names, pos)
 
     def check_closure_captures_expr(
         self, expr: TExpr, param_names: set[str], pos: Pos
@@ -3548,7 +3539,6 @@ class Checker:
             if stmt.value is not None:
                 self._scan_expr_for_captures(stmt.value, param_names, pos)
             # The declared name becomes a local, not a capture
-            param_names = set(param_names)
             param_names.add(stmt.name)
         elif isinstance(stmt, TAssignStmt):
             self._scan_expr_for_captures(stmt.target, param_names, pos)
@@ -3670,7 +3660,19 @@ class Checker:
             if t is not None:
                 if isinstance(t, ListT) and t.element.kind in (TY_INT, TY_FLOAT):
                     return t.element
-                self.error("Sum requires list[int] or list[float]", pos)
+                if isinstance(t, ListT) and t.element.kind == TY_ERROR:
+                    return INT_T
+                if isinstance(t, SetT) and t.element.kind in (TY_INT, TY_FLOAT):
+                    return t.element
+                if isinstance(t, TupleT) and len(t.elements) > 0:
+                    elem = t.elements[0]
+                    if elem.kind in (TY_INT, TY_FLOAT):
+                        return elem
+                if isinstance(t, TupleT) and len(t.elements) == 0:
+                    return INT_T
+                self.error(
+                    "Sum requires list[int], list[float], set[int], or set[float]", pos
+                )
             return None
         if name == "Pow":
             if not _bctx_require(ctx, 2):
@@ -3706,12 +3708,24 @@ class Checker:
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("ReplaceSlice requires list as first argument", pos)
             return VOID_T
-        if name in ("Round", "Floor", "Ceil"):
+        if name in ("Floor", "Ceil"):
             if not _bctx_require(ctx, 1):
                 return None
             t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, FLOAT_T):
                 self.error(name + " requires float", pos)
+            return INT_T
+        if name == "Round":
+            if not _bctx_require_range(ctx, 1, 2):
+                return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None and not type_eq(t, FLOAT_T):
+                self.error("Round requires float", pos)
+            if ctx.n == 2:
+                t2 = _bctx_arg(ctx, 1)
+                if t2 is not None and not type_eq(t2, INT_T):
+                    self.error("Round ndigits must be int", pos)
+                return FLOAT_T
             return INT_T
         if name == "DivMod":
             if not _bctx_require(ctx, 2):
@@ -3871,7 +3885,7 @@ class Checker:
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("IndexOf requires list", pos)
-            elif t1 is not None and isinstance(t1, ListT) and t2 is not None:
+            elif isinstance(t1, ListT) and t2 is not None:
                 if not is_assignable(t2, t1.element):
                     self.error(
                         "cannot pass " + type_name(t2) + " as " + type_name(t1.element),
@@ -3957,7 +3971,7 @@ class Checker:
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, MapT):
                 self.error("Delete requires map", pos)
-            elif t1 is not None and isinstance(t1, MapT) and t2 is not None:
+            elif isinstance(t1, MapT) and t2 is not None:
                 if not is_assignable(t2, t1.key):
                     self.error(
                         "cannot pass " + type_name(t2) + " as " + type_name(t1.key),
@@ -4075,7 +4089,7 @@ class Checker:
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, SetT):
                 self.error("Add requires set as first argument", pos)
-            elif t1 is not None and isinstance(t1, SetT) and t2 is not None:
+            elif isinstance(t1, SetT) and t2 is not None:
                 if not is_assignable(t2, t1.element):
                     self.error(
                         "cannot pass " + type_name(t2) + " as " + type_name(t1.element),
@@ -4089,7 +4103,7 @@ class Checker:
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, SetT):
                 self.error("Remove requires set as first argument", pos)
-            elif t1 is not None and isinstance(t1, SetT) and t2 is not None:
+            elif isinstance(t1, SetT) and t2 is not None:
                 if not is_assignable(t2, t1.element):
                     self.error(
                         "cannot pass " + type_name(t2) + " as " + type_name(t1.element),
@@ -4290,6 +4304,7 @@ class Checker:
                     TY_BYTE,
                     TY_RUNE,
                     TY_STRING,
+                    TY_ERROR,
                 ):
                     self.error("Sorted requires ordered type", pos)
                 return t_so
@@ -4300,6 +4315,7 @@ class Checker:
                     TY_BYTE,
                     TY_RUNE,
                     TY_STRING,
+                    TY_ERROR,
                 ):
                     self.error("Sorted requires ordered type", pos)
                 return ListT(kind="list", element=t_so.element)
@@ -4312,52 +4328,121 @@ class Checker:
             if not _bctx_require(ctx, 1):
                 return None
             t = _bctx_arg(ctx, 0)
-            if t is not None and not type_eq(t, STRING_T):
-                self.error(name + " requires string", pos)
+            if t is not None:
+                if type_eq(t, BYTES_T):
+                    return BYTES_T
+                if not type_eq(t, STRING_T):
+                    self.error(name + " requires string or bytes", pos)
             return STRING_T
         if name in ("Trim", "TrimStart", "TrimEnd"):
             if not _bctx_require(ctx, 2):
                 return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None and type_eq(t, BYTES_T):
+                return BYTES_T
             return STRING_T
         if name in ("Split", "SplitWhitespace"):
             if name == "Split":
                 if not _bctx_require(ctx, 2):
                     return None
                 t = _bctx_arg(ctx, 0)
-                if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
-                    self.error("Split requires string as first argument", pos)
+                if (
+                    t is not None
+                    and t.kind != TY_ERROR
+                    and not type_eq(t, STRING_T)
+                    and not type_eq(t, BYTES_T)
+                ):
+                    self.error("Split requires string or bytes as first argument", pos)
+                if t is not None and type_eq(t, BYTES_T):
+                    return ListT(kind="list", element=BYTES_T)
             else:
                 if not _bctx_require(ctx, 1):
                     return None
+                t = _bctx_arg(ctx, 0)
+                if t is not None and type_eq(t, BYTES_T):
+                    return ListT(kind="list", element=BYTES_T)
             return ListT(kind="list", element=STRING_T)
         if name == "SplitN":
             if not _bctx_require(ctx, 3):
                 return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None and type_eq(t, BYTES_T):
+                return ListT(kind="list", element=BYTES_T)
             return ListT(kind="list", element=STRING_T)
         if name == "Join":
             if not _bctx_require(ctx, 2):
                 return None
             t1 = _bctx_arg(ctx, 0)
-            if t1 is not None and t1.kind != TY_ERROR and not type_eq(t1, STRING_T):
-                self.error("Join requires string as first argument", pos)
+            if (
+                t1 is not None
+                and t1.kind != TY_ERROR
+                and not type_eq(t1, STRING_T)
+                and not type_eq(t1, BYTES_T)
+            ):
+                self.error("Join requires string or bytes as first argument", pos)
             t2 = _bctx_arg(ctx, 1)
             if t2 is not None and t2.kind != TY_ERROR:
                 if not isinstance(t2, ListT):
                     self.error("Join requires list as second argument", pos)
+            if t1 is not None and type_eq(t1, BYTES_T):
+                return BYTES_T
             return STRING_T
-        if name in ("Find", "RFind", "Count"):
+        if name in ("Find", "RFind"):
             if not _bctx_require(ctx, 2):
                 return None
             t = _bctx_arg(ctx, 0)
-            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
-                self.error(name + " requires string as first argument", pos)
+            if (
+                t is not None
+                and t.kind != TY_ERROR
+                and not type_eq(t, STRING_T)
+                and not type_eq(t, BYTES_T)
+            ):
+                self.error(name + " requires string or bytes as first argument", pos)
+            return INT_T
+        if name == "Count":
+            if not _bctx_require(ctx, 2):
+                return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None and t.kind != TY_ERROR:
+                if (
+                    not type_eq(t, STRING_T)
+                    and not isinstance(t, ListT)
+                    and not type_eq(t, BYTES_T)
+                ):
+                    self.error(
+                        "Count requires string, list, or bytes as first argument",
+                        pos,
+                    )
             return INT_T
         if name == "Replace":
             if not _bctx_require(ctx, 3):
                 return None
             t = _bctx_arg(ctx, 0)
-            if t is not None and t.kind != TY_ERROR and not type_eq(t, STRING_T):
-                self.error("Replace requires string as first argument", pos)
+            if (
+                t is not None
+                and t.kind != TY_ERROR
+                and not type_eq(t, STRING_T)
+                and not type_eq(t, BYTES_T)
+            ):
+                self.error("Replace requires string or bytes as first argument", pos)
+            if t is not None and type_eq(t, BYTES_T):
+                return BYTES_T
+            return STRING_T
+        if name == "ReplaceCount":
+            if not _bctx_require(ctx, 4):
+                return None
+            t = _bctx_arg(ctx, 0)
+            if (
+                t is not None
+                and t.kind != TY_ERROR
+                and not type_eq(t, STRING_T)
+                and not type_eq(t, BYTES_T)
+            ):
+                self.error(
+                    "ReplaceCount requires string or bytes as first argument", pos
+                )
+            if t is not None and type_eq(t, BYTES_T):
+                return BYTES_T
             return STRING_T
         if name in ("StartsWith", "EndsWith"):
             if not _bctx_require(ctx, 2):
@@ -4574,7 +4659,7 @@ class Checker:
             t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("ReadFile requires string path", pos)
-            return normalize_union([STRING_T, BYTES_T])
+            return UnionT(kind="union", members=[STRING_T, BYTES_T])
         if name == "WriteFile":
             if not _bctx_require(ctx, 2):
                 return None

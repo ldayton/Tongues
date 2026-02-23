@@ -36,3 +36,6 @@ n = 3.7.floor
 
 === Ceil function
 n = 3.2.ceil
+
+=== IsNil check
+x.nil?

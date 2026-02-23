@@ -77,46 +77,45 @@ def to_source(module: TModule) -> str:
     return _Emitter().emit_module(module)
 
 
+# Expression precedence (higher binds tighter)
+_PREC_TERNARY: int = 1
+_PREC_OR: int = 2
+_PREC_AND: int = 3
+_PREC_COMPARE: int = 4
+_PREC_BITOR: int = 5
+_PREC_BITXOR: int = 6
+_PREC_BITAND: int = 7
+_PREC_SHIFT: int = 8
+_PREC_SUM: int = 9
+_PREC_PRODUCT: int = 10
+_PREC_UNARY: int = 11
+_PREC_POSTFIX: int = 12
+_PREC_PRIMARY: int = 13
+
+_BIN_PREC: dict[str, int] = {
+    "||": 2,
+    "&&": 3,
+    "==": 4,
+    "!=": 4,
+    "<": 4,
+    "<=": 4,
+    ">": 4,
+    ">=": 4,
+    "|": 5,
+    "^": 6,
+    "&": 7,
+    "<<": 8,
+    ">>": 8,
+    ">>>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+}
+
+
 class _Emitter:
-    _INDENT: str = "    "
-
-    # Expression precedence (higher binds tighter)
-    _PREC_TERNARY: int = 1
-    _PREC_OR: int = 2
-    _PREC_AND: int = 3
-    _PREC_COMPARE: int = 4
-    _PREC_BITOR: int = 5
-    _PREC_BITXOR: int = 6
-    _PREC_BITAND: int = 7
-    _PREC_SHIFT: int = 8
-    _PREC_SUM: int = 9
-    _PREC_PRODUCT: int = 10
-    _PREC_UNARY: int = 11
-    _PREC_POSTFIX: int = 12
-    _PREC_PRIMARY: int = 13
-
-    _BIN_PREC: dict[str, int] = {
-        "||": 2,
-        "&&": 3,
-        "==": 4,
-        "!=": 4,
-        "<": 4,
-        "<=": 4,
-        ">": 4,
-        ">=": 4,
-        "|": 5,
-        "^": 6,
-        "&": 7,
-        "<<": 8,
-        ">>": 8,
-        ">>>": 8,
-        "+": 9,
-        "-": 9,
-        "*": 10,
-        "/": 10,
-        "%": 10,
-    }
-
     def __init__(self) -> None:
         self._lines: list[str] = []
         self._indent_level: int = 0
@@ -142,7 +141,7 @@ class _Emitter:
     # ── Lines / Blocks ──────────────────────────────────────
 
     def _emit_line(self, line: str) -> None:
-        self._lines.append(self._INDENT * self._indent_level + line)
+        self._lines.append("    " * self._indent_level + line)
 
     def _emit_stmt_block(self, stmts: list[TStmt]) -> None:
         self._indent_level += 1
@@ -209,34 +208,32 @@ class _Emitter:
         if isinstance(stmt, TLetStmt):
             line = f"let {stmt.name}: {self._render_type(stmt.typ)}"
             if stmt.value is not None:
-                line += f" = {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+                line += f" = {self._render_expr(stmt.value, _PREC_TERNARY)}"
             self._emit_line(line)
             return
         if isinstance(stmt, TAssignStmt):
             self._emit_line(
-                f"{self._render_expr(stmt.target, self._PREC_TERNARY)} = {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+                f"{self._render_expr(stmt.target, _PREC_TERNARY)} = {self._render_expr(stmt.value, _PREC_TERNARY)}"
             )
             return
         if isinstance(stmt, TOpAssignStmt):
             self._emit_line(
-                f"{self._render_expr(stmt.target, self._PREC_TERNARY)} {stmt.op} {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+                f"{self._render_expr(stmt.target, _PREC_TERNARY)} {stmt.op} {self._render_expr(stmt.value, _PREC_TERNARY)}"
             )
             return
         if isinstance(stmt, TTupleAssignStmt):
             targets: list[str] = []
             for t in stmt.targets:
-                targets.append(self._render_expr(t, self._PREC_TERNARY))
+                targets.append(self._render_expr(t, _PREC_TERNARY))
             left = ", ".join(targets)
-            self._emit_line(
-                f"{left} = {self._render_expr(stmt.value, self._PREC_TERNARY)}"
-            )
+            self._emit_line(f"{left} = {self._render_expr(stmt.value, _PREC_TERNARY)}")
             return
         if isinstance(stmt, TReturnStmt):
             if stmt.value is None:
                 self._emit_line("return")
             else:
                 self._emit_line(
-                    f"return {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+                    f"return {self._render_expr(stmt.value, _PREC_TERNARY)}"
                 )
             return
         if isinstance(stmt, TBreakStmt):
@@ -246,17 +243,17 @@ class _Emitter:
             self._emit_line("continue")
             return
         if isinstance(stmt, TThrowStmt):
-            self._emit_line(f"throw {self._render_expr(stmt.expr, self._PREC_TERNARY)}")
+            self._emit_line(f"throw {self._render_expr(stmt.expr, _PREC_TERNARY)}")
             return
         if isinstance(stmt, TExprStmt):
-            self._emit_line(self._render_expr(stmt.expr, self._PREC_TERNARY))
+            self._emit_line(self._render_expr(stmt.expr, _PREC_TERNARY))
             return
         if isinstance(stmt, TIfStmt):
             self._emit_if_chain(stmt)
             return
         if isinstance(stmt, TWhileStmt):
             self._emit_line(
-                "while " + self._render_expr(stmt.cond, self._PREC_TERNARY) + " {"
+                "while " + self._render_expr(stmt.cond, _PREC_TERNARY) + " {"
             )
             self._emit_stmt_block(stmt.body)
             self._emit_line("}")
@@ -290,9 +287,7 @@ class _Emitter:
             current = None
 
         # Emit first branch
-        self._emit_line(
-            "if " + self._render_expr(branches[0][0], self._PREC_TERNARY) + " {"
-        )
+        self._emit_line("if " + self._render_expr(branches[0][0], _PREC_TERNARY) + " {")
         self._emit_stmt_block(branches[0][1])
 
         # else-if branches
@@ -300,7 +295,7 @@ class _Emitter:
         while i < len(branches):
             cond, body = branches[i]
             self._emit_line(
-                "} else if " + self._render_expr(cond, self._PREC_TERNARY) + " {"
+                "} else if " + self._render_expr(cond, _PREC_TERNARY) + " {"
             )
             self._emit_stmt_block(body)
             i += 1
@@ -324,19 +319,17 @@ class _Emitter:
         if isinstance(stmt.iterable, TRange):
             args: list[str] = []
             for a in stmt.iterable.args:
-                args.append(self._render_expr(a, self._PREC_TERNARY))
+                args.append(self._render_expr(a, _PREC_TERNARY))
             iterable = f"range({', '.join(args)})"
         else:
-            iterable = self._render_expr(stmt.iterable, self._PREC_TERNARY)
+            iterable = self._render_expr(stmt.iterable, _PREC_TERNARY)
 
         self._emit_line("for " + binding + " in " + iterable + " {")
         self._emit_stmt_block(stmt.body)
         self._emit_line("}")
 
     def _emit_match_stmt(self, stmt: TMatchStmt) -> None:
-        self._emit_line(
-            "match " + self._render_expr(stmt.expr, self._PREC_TERNARY) + " {"
-        )
+        self._emit_line("match " + self._render_expr(stmt.expr, _PREC_TERNARY) + " {")
         self._indent_level += 1
 
         for case in stmt.cases:
@@ -459,20 +452,20 @@ class _Emitter:
         """Render a named arg value — booleans are capitalized (True/False)."""
         if isinstance(expr, TBoolLit):
             return "True" if expr.value else "False"
-        return self._render_expr(expr, self._PREC_TERNARY)
+        return self._render_expr(expr, _PREC_TERNARY)
 
     def _expr_prec(self, expr: TExpr) -> int:
         if isinstance(expr, TTernary):
-            return self._PREC_TERNARY
+            return _PREC_TERNARY
         if isinstance(expr, TBinaryOp):
-            if expr.op not in self._BIN_PREC:
+            if expr.op not in _BIN_PREC:
                 raise ValueError(f"unknown binary operator: {expr.op}")
-            return self._BIN_PREC[expr.op]
+            return _BIN_PREC[expr.op]
         if isinstance(expr, TUnaryOp):
-            return self._PREC_UNARY
+            return _PREC_UNARY
         if isinstance(expr, (TFieldAccess, TTupleAccess, TIndex, TSlice, TCall)):
-            return self._PREC_POSTFIX
-        return self._PREC_PRIMARY
+            return _PREC_POSTFIX
+        return _PREC_PRIMARY
 
     def _render_expr(self, expr: TExpr, parent_prec: int, side: str = "") -> str:
         prec = self._expr_prec(expr)
@@ -486,18 +479,18 @@ class _Emitter:
             and side == "right"
             and prec
             in (
-                self._PREC_PRODUCT,
-                self._PREC_SUM,
-                self._PREC_SHIFT,
-                self._PREC_BITAND,
-                self._PREC_BITXOR,
-                self._PREC_BITOR,
-                self._PREC_AND,
-                self._PREC_OR,
+                _PREC_PRODUCT,
+                _PREC_SUM,
+                _PREC_SHIFT,
+                _PREC_BITAND,
+                _PREC_BITXOR,
+                _PREC_BITOR,
+                _PREC_AND,
+                _PREC_OR,
             )
         ):
             need_parens = True
-        elif prec == parent_prec and side != "" and prec == self._PREC_COMPARE:
+        elif prec == parent_prec and side != "" and prec == _PREC_COMPARE:
             need_parens = True
 
         if need_parens:
@@ -524,41 +517,41 @@ class _Emitter:
         if isinstance(expr, TVar):
             return expr.name
         if isinstance(expr, TTernary):
-            c = self._render_expr(expr.cond, self._PREC_TERNARY, "left")
-            t = self._render_expr(expr.then_expr, self._PREC_TERNARY, "right")
-            e = self._render_expr(expr.else_expr, self._PREC_TERNARY, "right")
+            c = self._render_expr(expr.cond, _PREC_TERNARY, "left")
+            t = self._render_expr(expr.then_expr, _PREC_TERNARY, "right")
+            e = self._render_expr(expr.else_expr, _PREC_TERNARY, "right")
             return f"{c} ? {t} : {e}"
         if isinstance(expr, TUnaryOp):
-            operand = self._render_expr(expr.operand, self._PREC_UNARY, "right")
+            operand = self._render_expr(expr.operand, _PREC_UNARY, "right")
             if expr.op == "-" and operand.startswith("-"):
                 return f"-({operand})"
             return f"{expr.op}{operand}"
         if isinstance(expr, TBinaryOp):
-            op_prec = self._BIN_PREC[expr.op]
+            op_prec = _BIN_PREC[expr.op]
             left = self._render_expr(expr.left, op_prec, "left")
             right = self._render_expr(expr.right, op_prec, "right")
             return f"{left} {expr.op} {right}"
         if isinstance(expr, TFieldAccess):
-            obj = self._render_expr(expr.obj, self._PREC_POSTFIX, "left")
+            obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
             return f"{obj}.{expr.field}"
         if isinstance(expr, TTupleAccess):
-            obj2 = self._render_expr(expr.obj, self._PREC_POSTFIX, "left")
+            obj2 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
             return obj2 + "." + str(expr.index)
         if isinstance(expr, TIndex):
-            obj3 = self._render_expr(expr.obj, self._PREC_POSTFIX, "left")
-            idx = self._render_expr(expr.index, self._PREC_TERNARY)
+            obj3 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
+            idx = self._render_expr(expr.index, _PREC_TERNARY)
             return f"{obj3}[{idx}]"
         if isinstance(expr, TSlice):
-            obj4 = self._render_expr(expr.obj, self._PREC_POSTFIX, "left")
-            low = self._render_expr(expr.low, self._PREC_TERNARY)
-            high = self._render_expr(expr.high, self._PREC_TERNARY)
+            obj4 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
+            low = self._render_expr(expr.low, _PREC_TERNARY)
+            high = self._render_expr(expr.high, _PREC_TERNARY)
             return f"{obj4}[{low}:{high}]"
         if isinstance(expr, TCall):
-            func = self._render_expr(expr.func, self._PREC_POSTFIX, "left")
+            func = self._render_expr(expr.func, _PREC_POSTFIX, "left")
             args: list[str] = []
             for a in expr.args:
                 if a.name is None:
-                    args.append(self._render_expr(a.value, self._PREC_TERNARY))
+                    args.append(self._render_expr(a.value, _PREC_TERNARY))
                 else:
                     val = self._render_named_arg_value(a.value)
                     args.append(f"{a.name}: {val}")
@@ -566,26 +559,26 @@ class _Emitter:
         if isinstance(expr, TListLit):
             parts3: list[str] = []
             for e2 in expr.elements:
-                parts3.append(self._render_expr(e2, self._PREC_TERNARY))
+                parts3.append(self._render_expr(e2, _PREC_TERNARY))
             return f"[{', '.join(parts3)}]"
         if isinstance(expr, TMapLit):
             entries: list[str] = []
             for k, v in expr.entries:
-                ks = self._render_expr(k, self._PREC_TERNARY)
-                vs = self._render_expr(v, self._PREC_TERNARY)
+                ks = self._render_expr(k, _PREC_TERNARY)
+                vs = self._render_expr(v, _PREC_TERNARY)
                 entries.append(f"{ks}: {vs}")
             return "{" + ", ".join(entries) + "}"
         if isinstance(expr, TSetLit):
             elems: list[str] = []
             for e3 in expr.elements:
-                elems.append(self._render_expr(e3, self._PREC_TERNARY))
+                elems.append(self._render_expr(e3, _PREC_TERNARY))
             return "{" + ", ".join(elems) + "}"
         if isinstance(expr, TTupleLit):
             if len(expr.elements) < 2:
                 raise ValueError("tuple literal must have 2+ elements")
             elems2: list[str] = []
             for e4 in expr.elements:
-                elems2.append(self._render_expr(e4, self._PREC_TERNARY))
+                elems2.append(self._render_expr(e4, _PREC_TERNARY))
             return "(" + ", ".join(elems2) + ")"
         if isinstance(expr, TFnLit):
             params = self._render_param_list(expr.params)
@@ -594,7 +587,7 @@ class _Emitter:
             if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
                 first, TExprStmt
             ):
-                return f"({params}) -> {ret} => {self._render_expr(first.expr, self._PREC_TERNARY)}"
+                return f"({params}) -> {ret} => {self._render_expr(first.expr, _PREC_TERNARY)}"
             body = self._render_inline_block(expr.body)
             return f"({params}) -> {ret} {body}"
 
@@ -612,29 +605,31 @@ class _Emitter:
         if isinstance(stmt, TLetStmt):
             line = f"let {stmt.name}: {self._render_type(stmt.typ)}"
             if stmt.value is not None:
-                line += f" = {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+                line += f" = {self._render_expr(stmt.value, _PREC_TERNARY)}"
             return line
         if isinstance(stmt, TAssignStmt):
-            return f"{self._render_expr(stmt.target, self._PREC_TERNARY)} = {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+            return f"{self._render_expr(stmt.target, _PREC_TERNARY)} = {self._render_expr(stmt.value, _PREC_TERNARY)}"
         if isinstance(stmt, TOpAssignStmt):
-            return f"{self._render_expr(stmt.target, self._PREC_TERNARY)} {stmt.op} {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+            return f"{self._render_expr(stmt.target, _PREC_TERNARY)} {stmt.op} {self._render_expr(stmt.value, _PREC_TERNARY)}"
         if isinstance(stmt, TTupleAssignStmt):
             targets: list[str] = []
             for t in stmt.targets:
-                targets.append(self._render_expr(t, self._PREC_TERNARY))
-            return f"{', '.join(targets)} = {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+                targets.append(self._render_expr(t, _PREC_TERNARY))
+            return (
+                f"{', '.join(targets)} = {self._render_expr(stmt.value, _PREC_TERNARY)}"
+            )
         if isinstance(stmt, TReturnStmt):
             if stmt.value is None:
                 return "return"
-            return f"return {self._render_expr(stmt.value, self._PREC_TERNARY)}"
+            return f"return {self._render_expr(stmt.value, _PREC_TERNARY)}"
         if isinstance(stmt, TBreakStmt):
             return "break"
         if isinstance(stmt, TContinueStmt):
             return "continue"
         if isinstance(stmt, TThrowStmt):
-            return f"throw {self._render_expr(stmt.expr, self._PREC_TERNARY)}"
+            return f"throw {self._render_expr(stmt.expr, _PREC_TERNARY)}"
         if isinstance(stmt, TExprStmt):
-            return self._render_expr(stmt.expr, self._PREC_TERNARY)
+            return self._render_expr(stmt.expr, _PREC_TERNARY)
         if isinstance(stmt, TIfStmt):
             branches: list[tuple[TExpr, list[TStmt]]] = []
             final_else: list[TStmt] | None = None
@@ -652,17 +647,17 @@ class _Emitter:
                 final_else = else_body
                 current = None
 
-            out = f"if {self._render_expr(branches[0][0], self._PREC_TERNARY)} {self._render_inline_block(branches[0][1])}"
+            out = f"if {self._render_expr(branches[0][0], _PREC_TERNARY)} {self._render_inline_block(branches[0][1])}"
             i = 1
             while i < len(branches):
                 cond, body = branches[i]
-                out += f" else if {self._render_expr(cond, self._PREC_TERNARY)} {self._render_inline_block(body)}"
+                out += f" else if {self._render_expr(cond, _PREC_TERNARY)} {self._render_inline_block(body)}"
                 i += 1
             if final_else is not None:
                 out += f" else {self._render_inline_block(final_else)}"
             return out
         if isinstance(stmt, TWhileStmt):
-            return f"while {self._render_expr(stmt.cond, self._PREC_TERNARY)} {self._render_inline_block(stmt.body)}"
+            return f"while {self._render_expr(stmt.cond, _PREC_TERNARY)} {self._render_inline_block(stmt.body)}"
         if isinstance(stmt, TForStmt):
             if len(stmt.binding) == 1:
                 binding = stmt.binding[0]
@@ -674,10 +669,10 @@ class _Emitter:
             if isinstance(stmt.iterable, TRange):
                 args: list[str] = []
                 for a in stmt.iterable.args:
-                    args.append(self._render_expr(a, self._PREC_TERNARY))
+                    args.append(self._render_expr(a, _PREC_TERNARY))
                 iterable = f"range({', '.join(args)})"
             else:
-                iterable = self._render_expr(stmt.iterable, self._PREC_TERNARY)
+                iterable = self._render_expr(stmt.iterable, _PREC_TERNARY)
             return f"for {binding} in {iterable} {self._render_inline_block(stmt.body)}"
         if isinstance(stmt, TMatchStmt):
             cases: list[str] = []
@@ -696,7 +691,7 @@ class _Emitter:
                     )
             return (
                 "match "
-                + self._render_expr(stmt.expr, self._PREC_TERNARY)
+                + self._render_expr(stmt.expr, _PREC_TERNARY)
                 + " { "
                 + " ".join(cases)
                 + " }"

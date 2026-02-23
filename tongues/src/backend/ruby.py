@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .ordering import order_decls
 from .util import escape_string, to_snake
 from ..taytsh.ast import (
     Ann,
@@ -556,8 +557,20 @@ class _RubyEmitter:
         self._line()
         import_insert_pos = len(self.lines)
         need_blank = False
-        for decl in module.decls:
+        for decl in order_decls(module.decls):
             if isinstance(decl, TInterfaceDecl):
+                if need_blank:
+                    self._line()
+                self._line("class " + _safe_type_name(decl.name))
+                if decl.fields:
+                    self.indent += 1
+                    attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
+                    self._line("attr_accessor " + attrs)
+                    self._line()
+                    self._emit_initialize(decl.fields, False)
+                    self.indent -= 1
+                self._line("end")
+                need_blank = True
                 continue
             if need_blank:
                 self._line()
@@ -566,6 +579,9 @@ class _RubyEmitter:
                 need_blank = True
             elif isinstance(decl, TStructDecl):
                 self._emit_struct(decl)
+                need_blank = True
+            elif isinstance(decl, TLetStmt):
+                self._emit_let(decl)
                 need_blank = True
             elif isinstance(decl, TFnDecl):
                 self._emit_fn(decl)
@@ -597,6 +613,8 @@ class _RubyEmitter:
         if not is_error and decl.parent is not None:
             if decl.parent in BUILTIN_STRUCTS:
                 is_error = True
+        if not is_error and decl.annotations.get("_is_exception") is not None:
+            is_error = True
         if is_error:
             self._emit_error_struct(decl)
         else:
@@ -732,7 +750,11 @@ class _RubyEmitter:
         for p in params:
             if p.typ is None:
                 continue
-            parts.append(_restore_name(p.name, p.annotations))
+            name = _restore_name(p.name, p.annotations)
+            if p.has_default:
+                parts.append(name + ": " + self._zero_value(p.typ))
+            else:
+                parts.append(name)
         return ", ".join(parts)
 
     # ── Statements ────────────────────────────────────────────
@@ -768,9 +790,7 @@ class _RubyEmitter:
             iterable = self._ruby_range(for_stmt.iterable)
         else:
             iterable = self._expr(for_stmt.iterable)
-        iter_is_map = not isinstance(for_stmt.iterable, TRange) and self._is_map_type(
-            for_stmt.iterable
-        )
+        iter_is_map = self._is_map_for(for_stmt)
         if iter_is_map and len(binding) == 2:
             pass  # Ruby hash.each gives |k, v|
         elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
@@ -859,22 +879,28 @@ class _RubyEmitter:
         return None
 
     def _is_append_to(self, expr: TExpr, name: str) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Append"
-            and isinstance(expr.args[0].value, TVar)
-            and expr.args[0].value.name == name
-        )
+        if not isinstance(expr, TCall):
+            return False
+        if not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Append":
+            return False
+        first = expr.args[0].value
+        if not isinstance(first, TVar):
+            return False
+        return first.name == name
 
     def _is_add_to(self, expr: TExpr, name: str) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Add"
-            and isinstance(expr.args[0].value, TVar)
-            and expr.args[0].value.name == name
-        )
+        if not isinstance(expr, TCall):
+            return False
+        if not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Add":
+            return False
+        first = expr.args[0].value
+        if not isinstance(first, TVar):
+            return False
+        return first.name == name
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
@@ -1109,7 +1135,7 @@ class _RubyEmitter:
                 iter_str + method + " do |" + _restore_name(binding[0], ann) + "|"
             )
         elif len(binding) == 2:
-            iter_is_map = self._is_map_type(stmt.iterable)
+            iter_is_map = self._is_map_for(stmt)
             if iter_is_map:
                 self._line(
                     self._expr(stmt.iterable)
@@ -1162,6 +1188,13 @@ class _RubyEmitter:
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
         return False
+
+    def _is_map_for(self, stmt: TForStmt) -> bool:
+        if stmt.annotations.get("for.items") == "true":
+            return True
+        return not isinstance(stmt.iterable, TRange) and self._is_map_type(
+            stmt.iterable
+        )
 
     def _is_string_type(self, expr: TExpr) -> bool:
         if isinstance(expr, TStringLit):
@@ -1740,11 +1773,22 @@ class _RubyEmitter:
         if name == "RFind":
             return self._a(args, 0) + ".rindex(" + self._a(args, 1) + ") || -1"
         if name == "Count":
-            return self._a(args, 0) + ".scan(" + self._a(args, 1) + ").length"
+            if self._is_string_type(args[0].value):
+                return self._a(args, 0) + ".scan(" + self._a(args, 1) + ").length"
+            return self._a(args, 0) + ".count(" + self._a(args, 1) + ")"
         if name == "Replace":
             return (
                 self._a(args, 0)
                 + ".gsub("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ")"
+            )
+        if name == "ReplaceCount":
+            return (
+                self._a(args, 0)
+                + ".sub("
                 + self._a(args, 1)
                 + ", "
                 + self._a(args, 2)
@@ -1847,6 +1891,8 @@ class _RubyEmitter:
         if name == "Sum":
             return self._a(args, 0) + ".sum"
         if name == "Round":
+            if len(args) == 2:
+                return self._a(args, 0) + ".round(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".round"
         if name == "DivMod":
             return self._a(args, 0) + ".divmod(" + self._a(args, 1) + ")"
@@ -1864,6 +1910,11 @@ class _RubyEmitter:
             self._needs_set = True
             if len(args) == 0:
                 return "Set.new"
+            return "Set.new(" + self._a(args, 0) + ".to_a)"
+        if name == "SetFromList":
+            self._needs_set = True
+            if isinstance(args[0].value, TSetLit):
+                return self._a(args, 0)
             return "Set.new(" + self._a(args, 0) + ".to_a)"
         if name == "ToString":
             a = self._a(args, 0)
@@ -1891,6 +1942,8 @@ class _RubyEmitter:
             return "[" + self._a(args, 0) + "].pack('U')"
         if name == "Unwrap":
             return self._a(args, 0)
+        if name == "IsNil":
+            return self._a(args, 0) + ".nil?"
         if name == "Sqrt":
             return "Math.sqrt(" + self._a(args, 0) + ")"
         if name == "Floor":
@@ -1947,13 +2000,20 @@ class _RubyEmitter:
             return self._a(args, 0) + " + " + self._a(args, 1)
         if name == "Format":
             return self._format_call(args, call)
+        if name == "IsType":
+            type_arg = args[1].value
+            if isinstance(type_arg, TStringLit):
+                type_name = type_arg.value
+            else:
+                type_name = self._expr(type_arg)
+            return self._a(args, 0) + ".is_a?(" + _safe_type_name(type_name) + ")"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
                 return "raise " + self._a(args, 1) + " unless " + cond
             return 'raise "assertion failed" unless ' + cond
         # Fallback
-        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        arg_strs = ", ".join(self._expr(ar.value) for ar in args)
         return _safe_name(name) + "(" + arg_strs + ")"
 
     def _a(self, args: list[TArg], i: int) -> str:
@@ -2020,6 +2080,8 @@ def emit_ruby(module: TModule) -> str:
     for decl in module.decls:
         if isinstance(decl, TStructDecl):
             struct_names.add(decl.name)
+        elif isinstance(decl, TInterfaceDecl):
+            struct_names.add(decl.name)
     for _bk in BUILTIN_STRUCTS:
         struct_names.add(_bk)
     struct_fields: dict[str, list[str]] = {}
@@ -2035,6 +2097,8 @@ def emit_ruby(module: TModule) -> str:
             struct_fields[decl.name] = fnames
             for m in decl.methods:
                 fn_names.add(m.name)
+        elif isinstance(decl, TInterfaceDecl) and decl.fields:
+            struct_fields[decl.name] = [f.name for f in decl.fields]
         elif isinstance(decl, TEnumDecl):
             enum_names.add(decl.name)
     emitter = _RubyEmitter(

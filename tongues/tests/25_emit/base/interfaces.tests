@@ -1,0 +1,12 @@
+=== interface with fields
+class Animal:
+    name: str
+    legs: int
+class Dog(Animal):
+    breed: str
+BUDDY: Animal = Animal(name="Buddy", legs=4)
+def main() -> None:
+    x: str = BUDDY.name
+    print(x)
+if __name__ == "__main__":
+    main()
