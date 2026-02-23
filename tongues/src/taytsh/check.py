@@ -994,6 +994,7 @@ BUILTIN_NAMES: set[str] = {
     "IsType",
 }
 
+
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
 # Most builtins are reserved; set-specific operations like Add can be shadowed.
 RESERVED_NAMES: set[str] = set(BUILTIN_NAMES)
@@ -3884,7 +3885,7 @@ class Checker:
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, ListT):
                 self.error("IndexOf requires list", pos)
-            elif t1 is not None and isinstance(t1, ListT) and t2 is not None:
+            elif isinstance(t1, ListT) and t2 is not None:
                 if not is_assignable(t2, t1.element):
                     self.error(
                         "cannot pass " + type_name(t2) + " as " + type_name(t1.element),
@@ -3970,7 +3971,7 @@ class Checker:
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, MapT):
                 self.error("Delete requires map", pos)
-            elif t1 is not None and isinstance(t1, MapT) and t2 is not None:
+            elif isinstance(t1, MapT) and t2 is not None:
                 if not is_assignable(t2, t1.key):
                     self.error(
                         "cannot pass " + type_name(t2) + " as " + type_name(t1.key),
@@ -4088,7 +4089,7 @@ class Checker:
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, SetT):
                 self.error("Add requires set as first argument", pos)
-            elif t1 is not None and isinstance(t1, SetT) and t2 is not None:
+            elif isinstance(t1, SetT) and t2 is not None:
                 if not is_assignable(t2, t1.element):
                     self.error(
                         "cannot pass " + type_name(t2) + " as " + type_name(t1.element),
@@ -4102,7 +4103,7 @@ class Checker:
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and not isinstance(t1, SetT):
                 self.error("Remove requires set as first argument", pos)
-            elif t1 is not None and isinstance(t1, SetT) and t2 is not None:
+            elif isinstance(t1, SetT) and t2 is not None:
                 if not is_assignable(t2, t1.element):
                     self.error(
                         "cannot pass " + type_name(t2) + " as " + type_name(t1.element),

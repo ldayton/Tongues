@@ -230,13 +230,16 @@ def _val_to_string(v: Val) -> str:
             parts.append(_val_to_string_quoted(item))
         return "[" + ", ".join(parts) + "]"
     if isinstance(v, VMap):
-        pairs: list[tuple[Val, Val]] = list(zip(v.keys, v.values))
-        pairs.sort(key=_sort_key_pair)
+        map_keys: list[Val] = list(v.keys)
+        map_vals: list[Val] = list(v.values)
+        _sort_key_pairs(map_keys, map_vals)
         parts2: list[str] = []
-        for k, val in pairs:
-            ks = _val_to_string_quoted(k)
-            vs = _val_to_string_quoted(val)
-            parts2.append(ks + ": " + vs)
+        mi = 0
+        while mi < len(map_keys):
+            ks = _val_to_string_quoted(map_keys[mi])
+            vs2 = _val_to_string_quoted(map_vals[mi])
+            parts2.append(ks + ": " + vs2)
+            mi += 1
         return "{" + ", ".join(parts2) + "}"
     if isinstance(v, VSet):
         sorted_items = list(v.items)
@@ -289,6 +292,23 @@ def _sort_key(v: Val) -> tuple[int, float, str]:
 
 def _sort_key_pair(p: tuple[Val, Val]) -> tuple[int, float, str]:
     return _sort_key(p[0])
+
+
+def _sort_key_pairs(keys: list[Val], vals: list[Val]) -> None:
+    """Insertion sort for parallel key/value lists by key sort order."""
+    i = 1
+    while i < len(keys):
+        kk = keys[i]
+        vv = vals[i]
+        sk = _sort_key(kk)
+        j = i - 1
+        while j >= 0 and _sort_key(keys[j]) > sk:
+            keys[j + 1] = keys[j]
+            vals[j + 1] = vals[j]
+            j -= 1
+        keys[j + 1] = kk
+        vals[j + 1] = vv
+        i += 1
 
 
 def _read_file_bytes(path: str) -> VBytes:
@@ -760,7 +780,8 @@ class _BuiltinDispatch:
     def _concat(self, args: list[Val]) -> Val:
         if len(args) < 2:
             return VStr("")
-        a, b = args[0], args[1]
+        a = args[0]
+        b = args[1]
         if isinstance(a, VStr) and isinstance(b, VStr):
             return VStr(a.value + b.value)
         if isinstance(a, VList) and isinstance(b, VList):
@@ -781,26 +802,23 @@ class _BuiltinDispatch:
 
     def _trim(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            chars = (
-                args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
-            )
-            return VStr(args[0].value.strip(chars))
+            if len(args) > 1 and isinstance(args[1], VStr):
+                return VStr(args[0].value.strip(args[1].value))
+            return VStr(args[0].value.strip())
         return args[0]
 
     def _trim_start(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            chars = (
-                args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
-            )
-            return VStr(args[0].value.lstrip(chars))
+            if len(args) > 1 and isinstance(args[1], VStr):
+                return VStr(args[0].value.lstrip(args[1].value))
+            return VStr(args[0].value.lstrip())
         return args[0]
 
     def _trim_end(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            chars = (
-                args[1].value if len(args) > 1 and isinstance(args[1], VStr) else None
-            )
-            return VStr(args[0].value.rstrip(chars))
+            if len(args) > 1 and isinstance(args[1], VStr):
+                return VStr(args[0].value.rstrip(args[1].value))
+            return VStr(args[0].value.rstrip())
         return args[0]
 
     def _split(self, args: list[Val]) -> Val:
@@ -808,7 +826,12 @@ class _BuiltinDispatch:
             if args[1].value == "":
                 raise _VMThrow(_make_error_struct("ValueError", "empty separator"))
             parts = args[0].value.split(args[1].value)
-            return VList([VStr(p) for p in parts])
+            items: list[Val] = []
+            pi = 0
+            while pi < len(parts):
+                items.append(VStr(parts[pi]))
+                pi += 1
+            return VList(items)
         return VList([])
 
     def _split_n(self, args: list[Val]) -> Val:
@@ -823,13 +846,23 @@ class _BuiltinDispatch:
                     _make_error_struct("ValueError", "SplitN max must be > 0")
                 )
             parts = args[0].value.split(args[1].value, n - 1)
-            return VList([VStr(p) for p in parts])
+            items2: list[Val] = []
+            pi2 = 0
+            while pi2 < len(parts):
+                items2.append(VStr(parts[pi2]))
+                pi2 += 1
+            return VList(items2)
         return VList([])
 
     def _split_whitespace(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
             parts = args[0].value.split()
-            return VList([VStr(p) for p in parts])
+            items3: list[Val] = []
+            pi3 = 0
+            while pi3 < len(parts):
+                items3.append(VStr(parts[pi3]))
+                pi3 += 1
+            return VList(items3)
         return VList([])
 
     def _join(self, args: list[Val]) -> Val:
@@ -899,7 +932,12 @@ class _BuiltinDispatch:
 
     def _repeat(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr) and isinstance(args[1], VInt):
-            return VStr(args[0].value * args[1].value)
+            rparts: list[str] = []
+            ri = 0
+            while ri < args[1].value:
+                rparts.append(args[0].value)
+                ri += 1
+            return VStr("".join(rparts))
         if isinstance(args[0], VList) and isinstance(args[1], VInt):
             n = args[1].value
             if n <= 0:
@@ -952,9 +990,12 @@ class _BuiltinDispatch:
         return VBool(len(s) > 0 and s.islower()) if s is not None else _FALSE_VAL
 
     def _format(self, args: list[Val]) -> Val:
-        if len(args) < 1 or not isinstance(args[0], VStr):
+        if len(args) < 1:
             return VStr("")
-        template = args[0].value
+        a0 = args[0]
+        if not isinstance(a0, VStr):
+            return VStr("")
+        template = a0.value
         result: list[str] = []
         ai = 1
         i = 0
@@ -980,7 +1021,8 @@ class _BuiltinDispatch:
         return v
 
     def _min(self, args: list[Val]) -> Val:
-        a, b = args[0], args[1]
+        a = args[0]
+        b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value <= b.value else b
         if isinstance(a, VFloat) and isinstance(b, VFloat):
@@ -990,7 +1032,8 @@ class _BuiltinDispatch:
         return a
 
     def _max(self, args: list[Val]) -> Val:
-        a, b = args[0], args[1]
+        a = args[0]
+        b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value >= b.value else b
         if isinstance(a, VFloat) and isinstance(b, VFloat):
@@ -1019,7 +1062,8 @@ class _BuiltinDispatch:
         return VInt(total_i)
 
     def _pow(self, args: list[Val]) -> Val:
-        a, b = args[0], args[1]
+        a = args[0]
+        b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             if b.value < 0:
                 raise _VMThrow(
@@ -1075,15 +1119,13 @@ class _BuiltinDispatch:
         return _ZERO_INT
 
     def _divmod(self, args: list[Val]) -> Val:
-        a, b = args[0], args[1]
+        a = args[0]
+        b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             if b.value == 0:
                 raise _VMThrow(
                     _make_error_struct("ZeroDivisionError", "division by zero")
                 )
-            q = int(a.value / b.value)
-            if (a.value < 0) != (b.value < 0) and a.value % b.value != 0:
-                q = q
             q2 = (
                 a.value // b.value
                 if (a.value >= 0 and b.value > 0) or (a.value <= 0 and b.value < 0)
@@ -1120,7 +1162,8 @@ class _BuiltinDispatch:
 
     def _int_to_float(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt):
-            return VFloat(float(args[0].value))
+            val: int = args[0].value
+            return VFloat(float(val))
         return VFloat(0.0)
 
     def _float_to_int(self, args: list[Val]) -> Val:
@@ -1154,7 +1197,7 @@ class _BuiltinDispatch:
 
     def _rune_to_int(self, args: list[Val]) -> Val:
         if isinstance(args[0], VRune):
-            return VInt(ord(args[0].value))
+            return VInt(ord(args[0].value[0]))
         return _ZERO_INT
 
     def _parse_int(self, args: list[Val]) -> Val:
@@ -1261,12 +1304,11 @@ class _BuiltinDispatch:
 
     def _map_get(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap):
-            m = args[0]
             key = args[1]
             i = 0
-            while i < len(m.keys):
-                if _val_eq(m.keys[i], key):
-                    return m.values[i]
+            while i < len(args[0].keys):
+                if _val_eq(args[0].keys[i], key):
+                    return args[0].values[i]
                 i += 1
             if len(args) > 2:
                 return args[2]
@@ -1275,13 +1317,12 @@ class _BuiltinDispatch:
 
     def _map_delete(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap):
-            m = args[0]
             key = args[1]
             i = 0
-            while i < len(m.keys):
-                if _val_eq(m.keys[i], key):
-                    m.keys.pop(i)
-                    m.values.pop(i)
+            while i < len(args[0].keys):
+                if _val_eq(args[0].keys[i], key):
+                    args[0].keys.pop(i)
+                    args[0].values.pop(i)
                     return _NONE_VAL
                 i += 1
         return _NONE_VAL
@@ -1298,47 +1339,43 @@ class _BuiltinDispatch:
 
     def _map_items(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap):
-            m = args[0]
             result: list[Val] = []
             i = 0
-            while i < len(m.keys):
-                result.append(VTuple([m.keys[i], m.values[i]]))
+            while i < len(args[0].keys):
+                result.append(VTuple([args[0].keys[i], args[0].values[i]]))
                 i += 1
             return VList(result)
         return VList([])
 
     def _map_merge(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap) and isinstance(args[1], VMap):
-            m1 = args[0]
-            m2 = args[1]
-            keys: list[Val] = list(m1.keys)
-            values: list[Val] = list(m1.values)
+            keys: list[Val] = list(args[0].keys)
+            values: list[Val] = list(args[0].values)
             i = 0
-            while i < len(m2.keys):
-                k2 = m2.keys[i]
+            while i < len(args[1].keys):
+                k2 = args[1].keys[i]
                 found = False
                 j = 0
                 while j < len(keys):
                     if _val_eq(keys[j], k2):
-                        values[j] = m2.values[i]
+                        values[j] = args[1].values[i]
                         found = True
                         break
                     j += 1
                 if not found:
                     keys.append(k2)
-                    values.append(m2.values[i])
+                    values.append(args[1].values[i])
                 i += 1
             return VMap(keys, values)
         return _NONE_VAL
 
     def _map_pop_item(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap):
-            m = args[0]
-            if len(m.keys) == 0:
+            if len(args[0].keys) == 0:
                 raise _VMThrow(_make_error_struct("KeyError", "pop from empty map"))
-            k = m.keys.pop()
-            v = m.values.pop()
-            return VTuple([k, v])
+            pk = args[0].keys.pop()
+            pv = args[0].values.pop()
+            return VTuple([pk, pv])
         return _NONE_VAL
 
     def _map_from_keys(self, args: list[Val]) -> Val:
@@ -1371,22 +1408,20 @@ class _BuiltinDispatch:
 
     def _set_add(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet):
-            s = args[0]
             val = args[1]
-            for item in s.items:
-                if _val_eq(item, val):
+            for existing in args[0].items:
+                if _val_eq(existing, val):
                     return _NONE_VAL
-            s.items.append(val)
+            args[0].items.append(val)
         return _NONE_VAL
 
     def _set_remove(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet):
-            s = args[0]
             val = args[1]
             i = 0
-            while i < len(s.items):
-                if _val_eq(s.items[i], val):
-                    s.items.pop(i)
+            while i < len(args[0].items):
+                if _val_eq(args[0].items[i], val):
+                    args[0].items.pop(i)
                     return _NONE_VAL
                 i += 1
         return _NONE_VAL
@@ -1462,10 +1497,10 @@ class _BuiltinDispatch:
         if len(args) < 2:
             return _FALSE_VAL
         v = args[0]
-        if not isinstance(args[1], VStr):
-            return _FALSE_VAL
-        type_name = args[1].value
-        return VBool(_val_is_type(v, type_name, self.vm.module.interface_defs))
+        if isinstance(args[1], VStr):
+            type_name = args[1].value
+            return VBool(_val_is_type(v, type_name, self.vm.module.interface_defs))
+        return _FALSE_VAL
 
     def _floor_div(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
@@ -1518,23 +1553,46 @@ class _BuiltinDispatch:
 
     def _range_list(self, args: list[Val]) -> Val:
         if len(args) == 1 and isinstance(args[0], VInt):
-            return VList([VInt(i) for i in range(args[0].value)])
+            r1: list[Val] = []
+            ri1 = 0
+            end1 = args[0].value
+            while ri1 < end1:
+                r1.append(VInt(ri1))
+                ri1 += 1
+            return VList(r1)
         if len(args) == 2 and isinstance(args[0], VInt) and isinstance(args[1], VInt):
-            return VList([VInt(i) for i in range(args[0].value, args[1].value)])
+            r2: list[Val] = []
+            ri2 = args[0].value
+            end2 = args[1].value
+            while ri2 < end2:
+                r2.append(VInt(ri2))
+                ri2 += 1
+            return VList(r2)
         if (
             len(args) >= 3
             and isinstance(args[0], VInt)
             and isinstance(args[1], VInt)
             and isinstance(args[2], VInt)
         ):
-            return VList(
-                [VInt(i) for i in range(args[0].value, args[1].value, args[2].value)]
-            )
+            r3: list[Val] = []
+            ri3 = args[0].value
+            end3 = args[1].value
+            step3 = args[2].value
+            if step3 > 0:
+                while ri3 < end3:
+                    r3.append(VInt(ri3))
+                    ri3 += step3
+            elif step3 < 0:
+                while ri3 > end3:
+                    r3.append(VInt(ri3))
+                    ri3 += step3
+            return VList(r3)
         return VList([])
 
     def _list_compare(self, args: list[Val]) -> Val:
         if isinstance(args[0], VList) and isinstance(args[1], VList):
-            a, b = args[0].items, args[1].items
+            a = args[0].items
+            b = args[1].items
             i = 0
             while i < len(a) and i < len(b):
                 c = _val_compare(a[i], b[i])
@@ -1550,7 +1608,8 @@ class _BuiltinDispatch:
 
     def _zip(self, args: list[Val]) -> Val:
         if isinstance(args[0], VList) and isinstance(args[1], VList):
-            a, b = args[0].items, args[1].items
+            a = args[0].items
+            b = args[1].items
             n = min(len(a), len(b))
             result: list[Val] = []
             i = 0
@@ -1562,7 +1621,12 @@ class _BuiltinDispatch:
 
     def _chars(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
-            return VList([VRune(c) for c in args[0].value])
+            cv: list[Val] = []
+            ci = 0
+            while ci < len(args[0].value):
+                cv.append(VRune(args[0].value[ci : ci + 1]))
+                ci += 1
+            return VList(cv)
         return VList([])
 
     def _replace_slice(self, args: list[Val]) -> Val:
@@ -1572,11 +1636,9 @@ class _BuiltinDispatch:
             and isinstance(args[2], VInt)
             and isinstance(args[3], VList)
         ):
-            lst = args[0]
             lo = args[1].value
             hi = args[2].value
-            replacement = args[3].items
-            lst.items[lo:hi] = replacement
+            args[0].items[lo:hi] = args[3].items
         return _NONE_VAL
 
     def _encode(self, args: list[Val]) -> Val:
@@ -1597,7 +1659,9 @@ class _BuiltinDispatch:
         pos = self.vm.stdin_pos
         if pos >= len(data):
             return VStr("")
-        end = data.find(b"\n", pos)
+        end = data[pos:].find(b"\n")
+        if end != -1:
+            end = end + pos
         if end == -1:
             end = len(data)
         else:
@@ -1616,21 +1680,24 @@ class _BuiltinDispatch:
         return VStr(rest)
 
     def _read_bytes(self, args: list[Val]) -> Val:
-        data = self.vm.stdin_data
         pos = self.vm.stdin_pos
-        rest = data[pos:]
-        self.vm.stdin_pos = len(data)
-        return VBytes(rest)
+        self.vm.stdin_pos = len(self.vm.stdin_data)
+        return VBytes(self.vm.stdin_data[pos:])
 
     def _read_bytes_n(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt):
-            n = args[0].value
-            data = self.vm.stdin_data
-            pos = self.vm.stdin_pos
-            chunk = data[pos : pos + n]
-            self.vm.stdin_pos = pos + len(chunk)
-            return VBytes(chunk)
+            return self._do_read_bytes_n(args[0].value)
         return VBytes(b"")
+
+    def _do_read_bytes_n(self, n: int) -> Val:
+        data = self.vm.stdin_data
+        pos = self.vm.stdin_pos
+        end = pos + n
+        if end > len(data):
+            end = len(data)
+        chunk = data[pos:end]
+        self.vm.stdin_pos = end
+        return VBytes(chunk)
 
     def _read_file(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
@@ -1649,7 +1716,12 @@ class _BuiltinDispatch:
         return _NONE_VAL
 
     def _args(self, args: list[Val]) -> Val:
-        return VList([VStr(a) for a in self.vm.program_args])
+        items_a: list[Val] = []
+        ai = 0
+        while ai < len(self.vm.program_args):
+            items_a.append(VStr(self.vm.program_args[ai]))
+            ai += 1
+        return VList(items_a)
 
     def _get_env(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
@@ -1749,10 +1821,6 @@ class VM:
     def __init__(
         self,
         module: CompiledModule,
-        *,
-        stdin: bytes = b"",
-        args: list[str] | None = None,
-        env: dict[str, str] | None = None,
     ) -> None:
         self.module: CompiledModule = module
         self.stack: list[Val] = []
@@ -1761,10 +1829,10 @@ class VM:
         self.globals: list[Val] = []
         self.stdout_buf: list[str] = []
         self.stderr_buf: list[str] = []
-        self.stdin_data: bytes = stdin
+        self.stdin_data: bytes = b""
         self.stdin_pos: int = 0
-        self.program_args: list[str] = args if args is not None else []
-        self.env_vars: dict[str, str] = env if env is not None else {}
+        self.program_args: list[str] = []
+        self.env_vars: dict[str, str] = {}
         self.builtins: _BuiltinDispatch = _BuiltinDispatch(self)
         self.pending_exception: Val | None = None
         # Initialize globals — one slot per function
@@ -1820,7 +1888,7 @@ class VM:
                 if len(self.handlers) > 0:
                     self._throw(t.value)
                 else:
-                    raise
+                    raise t
 
     def _dispatch_one(self) -> None:
         while len(self.frames) > 0:
@@ -2258,9 +2326,11 @@ class VM:
                     k = self.stack.pop()
                     pairs[i] = (k, v)
                     i -= 1
-                for k, v in pairs:
-                    ks.append(k)
-                    vs.append(v)
+                pi = 0
+                while pi < len(pairs):
+                    ks.append(pairs[pi][0])
+                    vs.append(pairs[pi][1])
+                    pi += 1
                 self.stack.append(VMap(ks, vs))
             elif op == OP_BUILD_SET:
                 raw: list[Val] = []
@@ -2341,10 +2411,13 @@ class VM:
                     self.handlers.pop()
             elif op == OP_THROW:
                 val = self.stack.pop()
-                if isinstance(val, VNil) and self.pending_exception is not None:
+                if isinstance(val, VNil):
                     pend = self.pending_exception
                     self.pending_exception = None
-                    self._throw(pend)
+                    if pend is not None:
+                        self._throw(pend)
+                    else:
+                        self._throw(val)
                 else:
                     self.pending_exception = None
                     self._throw(val)
@@ -2479,8 +2552,7 @@ class VM:
         if not isinstance(method_name_val, VStr):
             return
         method_name = method_name_val.value
-        # Read argc from trailing pair
-        frame.code.code[frame.ip]  # skip high byte (always 0)
+        _skip = frame.code.code[frame.ip]
         argc = frame.code.code[frame.ip + 1]
         frame.ip += 2
         # Pop args
@@ -2605,7 +2677,7 @@ class VM:
     def _do_call_builtin(self, idx: int) -> None:
         """Call a builtin. Followed by trailing (0, argc) pair encoding arg count."""
         frame = self.frames[-1]
-        frame.code.code[frame.ip]  # skip high byte (always 0)
+        _skip2 = frame.code.code[frame.ip]
         argc = frame.code.code[frame.ip + 1]
         frame.ip += 2
         # Pop args
@@ -2672,7 +2744,7 @@ class VM:
                         _make_error_struct("IndexError", "bytes index out of range")
                     )
                     return
-                self.stack.append(VByte(obj.value[i]))
+                self.stack.append(VByte(int(obj.value[i])))
                 return
         if isinstance(obj, VTuple):
             if isinstance(idx, VInt):
@@ -2900,7 +2972,7 @@ class VM:
                         frame.ip += jump_offset
                         return
                     self.stack.append(VInt(idx.value))
-                    self.stack.append(VByte(collection.value[idx.value]))
+                    self.stack.append(VByte(int(collection.value[idx.value])))
                     self.stack[sp - 1] = VInt(idx.value + 1)
                 else:
                     frame.ip += jump_offset
@@ -2986,5 +3058,10 @@ def vm_run(
 ) -> VMResult:
     """Compile and run a Taytsh module through the bytecode VM."""
     compiled = compile_module(module)
-    vm = VM(compiled, stdin=stdin, args=args, env=env)
+    vm = VM(compiled)
+    vm.stdin_data = stdin
+    if args is not None:
+        vm.program_args = args
+    if env is not None:
+        vm.env_vars = env
     return vm.run()

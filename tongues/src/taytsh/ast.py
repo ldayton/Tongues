@@ -1295,9 +1295,7 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
         for lk, lv in lets.items():
             ld[lk] = _wrap_ann(lv)
         d["lets"] = JDict(ld)
-    body_items: list[JsonValue] = [
-        JDict(_sa_serialize_stmt(s, pfx, plen)) for s in fn.body
-    ]
+    body_items = [JDict(_sa_serialize_stmt(s, pfx, plen)) for s in fn.body]
     d["body"] = JList(body_items)
     vars_dict: dict[str, Ann] = {}
     _sa_collect_vars_stmts(fn.body, vars_dict, pfx, plen)

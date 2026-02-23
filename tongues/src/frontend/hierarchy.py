@@ -154,19 +154,18 @@ def _detect_cycles(
     while i < len(ckeys):
         name = ckeys[i]
         visited: set[str] = set()
-        current: str | None = name
-        while current is not None:
-            assert current is not None
-            if current in visited:
+        cur: str = name
+        while True:
+            if cur in visited:
                 sf = class_source_files.get(name, "")
                 errors.append(HierarchyError(0, 0, "cycle in inheritance: " + name, sf))
                 return True
-            visited.add(current)
-            bases = class_bases.get(current)
+            visited.add(cur)
+            bases = class_bases.get(cur)
             if bases is not None and len(bases) > 0:
-                current = bases[0]
+                cur = bases[0]
             else:
-                current = None
+                break
         i += 1
     return False
 

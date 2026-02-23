@@ -2042,7 +2042,7 @@ class _PerlEmitter:
             if len(args) > 1:
                 return "do { die " + self._a(args, 1) + " unless (" + cond + "); 1 }"
             return "do { die 'AssertError' unless (" + cond + "); 1 }"
-        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        arg_strs = ", ".join(self._expr(ar.value) for ar in args)
         return _safe_name(name) + "(" + arg_strs + ")"
 
     def _contains_expr(self, container: TExpr, needle: TExpr) -> str:

@@ -61,7 +61,6 @@ from .ast import (
 )
 from .check import (
     BOOL_T,
-    BUILTIN_NAMES,
     BYTE_T,
     BYTES_T,
     FLOAT_T,
@@ -182,7 +181,113 @@ from .bytecode import (
 # BUILTIN TABLE
 # ============================================================
 
-BUILTIN_TABLE: list[str] = sorted(BUILTIN_NAMES)
+BUILTIN_TABLE: list[str] = [
+    "Abs",
+    "Add",
+    "Append",
+    "Args",
+    "Assert",
+    "ByteToInt",
+    "Bytes",
+    "BytesFrom",
+    "Ceil",
+    "Chars",
+    "Concat",
+    "Contains",
+    "Count",
+    "Decode",
+    "Delete",
+    "Difference",
+    "DivMod",
+    "Encode",
+    "EndsWith",
+    "Exit",
+    "Find",
+    "FloatToInt",
+    "Floor",
+    "FloorDiv",
+    "Format",
+    "FormatInt",
+    "Get",
+    "GetEnv",
+    "IndexOf",
+    "Insert",
+    "IntToByte",
+    "IntToFloat",
+    "Intersection",
+    "IsAlnum",
+    "IsAlpha",
+    "IsDigit",
+    "IsInf",
+    "IsLower",
+    "IsNaN",
+    "IsNil",
+    "IsSpace",
+    "IsType",
+    "IsUpper",
+    "Items",
+    "Join",
+    "Keys",
+    "Len",
+    "ListCompare",
+    "Lower",
+    "Map",
+    "MapFromKeys",
+    "MapFromPairs",
+    "Max",
+    "Merge",
+    "Min",
+    "ParseFloat",
+    "ParseInt",
+    "Pop",
+    "PopItem",
+    "Pow",
+    "PythonMod",
+    "RFind",
+    "RangeList",
+    "ReadAll",
+    "ReadBytes",
+    "ReadBytesN",
+    "ReadFile",
+    "ReadLine",
+    "Remove",
+    "RemoveAt",
+    "Repeat",
+    "Replace",
+    "ReplaceCount",
+    "ReplaceSlice",
+    "Reverse",
+    "Reversed",
+    "Round",
+    "RuneFromInt",
+    "RuneToInt",
+    "Set",
+    "SetFromList",
+    "Sorted",
+    "Split",
+    "SplitN",
+    "SplitWhitespace",
+    "Sqrt",
+    "StartsWith",
+    "Sum",
+    "ToString",
+    "Trim",
+    "TrimEnd",
+    "TrimStart",
+    "Union",
+    "Unwrap",
+    "Upper",
+    "Values",
+    "WrappingAdd",
+    "WrappingMul",
+    "WrappingSub",
+    "WriteErr",
+    "WriteFile",
+    "WriteOut",
+    "WritelnErr",
+    "WritelnOut",
+    "Zip",
+]
 _BUILTIN_INDEX: dict[str, int] = {}
 _bi = 0
 while _bi < len(BUILTIN_TABLE):
@@ -356,7 +461,9 @@ class Compiler:
         self.fn_param_names: dict[str, list[str]] = {}
 
     def compile_module(self, module: TModule) -> CompiledModule:
-        errors, checker = check_with_info(module)
+        result = check_with_info(module)
+        errors = result[0]
+        checker = result[1]
         if len(errors) > 0:
             msgs: list[str] = []
             i = 0
@@ -593,8 +700,8 @@ class Compiler:
                             fc.add_local(pname, pt)
                     self._collect_locals(case.body, fc)
                 if stmt.default is not None:
-                    if stmt.default.name is not None:
-                        dname = stmt.default.name
+                    dname = stmt.default.name
+                    if dname is not None:
                         if fc.scope.lookup(dname) is None:
                             fc.add_local(dname, VOID_T)
                     self._collect_locals(stmt.default.body, fc)
@@ -987,7 +1094,7 @@ class Compiler:
             self._compile_block(stmt.body, fc)
         for ep in end_patches:
             fc.patch_jump(ep)
-        if has_finally:
+        if stmt.finally_body is not None:
             fc.emit(OP_POP_HANDLER, 0, stmt.pos.line)
             fc.handler_depth -= 1
             # Normal path: run finally then continue
@@ -1485,9 +1592,10 @@ class Compiler:
             pt = self._resolve_param_type(p)
             lit_fc.add_local(p.name, pt)
         is_arrow = expr.annotations.get("fn_lit.arrow") == "true"
-        if is_arrow and len(expr.body) == 1 and isinstance(expr.body[0], TExprStmt):
+        first_stmt = expr.body[0] if len(expr.body) == 1 else None
+        if is_arrow and isinstance(first_stmt, TExprStmt):
             # Arrow fn lit: body is a single expression, compile as return
-            self._compile_expr(expr.body[0].expr, lit_fc)
+            self._compile_expr(first_stmt.expr, lit_fc)
             lit_fc.emit(OP_RETURN, 0, expr.pos.line)
         else:
             self._collect_locals(expr.body, lit_fc)

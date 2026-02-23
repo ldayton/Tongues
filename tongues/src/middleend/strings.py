@@ -627,7 +627,7 @@ def _classify_list_source(
         for e in expr.elements:
             c = _classify_string_expr(e, string_content, list_content, ctx)
             level = _join_content(level, c)
-        return level if level is not None else _C_ASCII
+        return level
     if isinstance(expr, TVar):
         if expr.name in list_content:
             return list_content[expr.name]

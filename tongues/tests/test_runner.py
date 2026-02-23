@@ -178,14 +178,9 @@ from src.middleend.strings import analyze_strings
 from src.taytsh import check as taytsh_check_fn, parse as taytsh_parse
 from src.taytsh.treewalker import run as taytsh_run
 from src.taytsh.ast import (
-    TCall,
-    TFieldAccess,
-    TFnDecl,
-    TStructDecl,
-    TVar,
     serialize_annotations,
 )
-from src.taytsh.check import StructT, check_with_info
+from src.taytsh.check import check_with_info
 
 PARSE_TIMEOUT = 5
 TESTS_DIR = Path(__file__).parent
