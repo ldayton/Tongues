@@ -3846,7 +3846,16 @@ def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> st
                     raise ParseError("invalid \\u escape", lineno, col)
                 hex_val = s[i + 2 : i + 6]
                 try:
-                    result.append(chr(int(hex_val, 16)))
+                    code_point = int(hex_val, 16)
+                    if 0xD800 <= code_point <= 0xDFFF:
+                        raise ParseError(
+                            "surrogate code point U+"
+                            + hex_val.upper()
+                            + " not allowed",
+                            lineno,
+                            col,
+                        )
+                    result.append(chr(code_point))
                     i += 6
                 except ValueError:
                     raise ParseError("invalid \\u escape", lineno, col)
@@ -3858,6 +3867,14 @@ def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> st
                     code_point = int(hex_val, 16)
                     if code_point > 0x10FFFF:
                         raise ParseError("invalid \\U escape", lineno, col)
+                    if 0xD800 <= code_point <= 0xDFFF:
+                        raise ParseError(
+                            "surrogate code point U+"
+                            + hex_val.upper().lstrip("0").zfill(4)
+                            + " not allowed",
+                            lineno,
+                            col,
+                        )
                     result.append(chr(code_point))
                     i += 10
                 except ValueError:
