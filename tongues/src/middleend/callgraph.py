@@ -92,10 +92,9 @@ _STRICT_INT_OPS = {"+", "-", "*"}
 def _add_throws(
     types: set[str], throws: set[str], caught_filter: set[str] | None
 ) -> None:
-    if caught_filter is not None:
-        throws.update(types - caught_filter)
-    else:
-        throws.update(types)
+    for t in types:
+        if caught_filter is None or t not in caught_filter:
+            throws.add(t)
 
 
 # ============================================================
