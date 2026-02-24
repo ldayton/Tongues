@@ -3308,6 +3308,21 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             if argv_idx is not None and argv_idx >= 1:
                 idx = TIntLit(pos, argv_idx - 1, str(argv_idx - 1), _EMPTY_ANN)
                 return TIndex(pos, args_call, idx, _EMPTY_ANN)
+    # hex(x)[2:] → FormatInt(x, 16) (hex() includes "0x" prefix, FormatInt does not)
+    if (
+        _is_ast(slice_node, "Slice")
+        and _is_ast(obj_node, "Call")
+        and _is_ast(get_node(obj_node, "func"), "Name")
+        and get_str(get_node(obj_node, "func"), "id") == "hex"
+    ):
+        lower_jv = slice_node.get("lower")
+        upper_jv = slice_node.get("upper")
+        if (
+            isinstance(lower_jv, JDict)
+            and _get_const_int(lower_jv.entries) == 2
+            and (upper_jv is None or isinstance(upper_jv, JNull))
+        ):
+            return _lower_expr(obj_node, env, ctx)
     obj = _lower_expr(obj_node, env, ctx)
     obj_type = _infer_expr_type(obj_node, env, ctx)
     # Slice access: xs[a:b]

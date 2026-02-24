@@ -1235,8 +1235,11 @@ class _PythonEmitter:
         if isinstance(expr, TUnaryOp):
             return self._unary(expr)
         if isinstance(expr, TTernary):
+            then = self._expr(expr.then_expr)
+            if isinstance(expr.then_expr, TTernary):
+                then = "(" + then + ")"
             return (
-                self._expr(expr.then_expr)
+                then
                 + " if "
                 + self._expr(expr.cond)
                 + " else "
