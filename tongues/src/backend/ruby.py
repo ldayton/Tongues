@@ -42,6 +42,7 @@ from ..taytsh.ast import (
     TModule,
     TNilLit,
     TOpAssignStmt,
+    TOptionalType,
     TParam,
     TPatternEnum,
     TPatternNil,
@@ -1332,6 +1333,10 @@ class _RubyEmitter:
     def _resolve_type_name(self, expr: TExpr) -> str | None:
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
+            if isinstance(typ, TOptionalType):
+                inner = typ.inner
+                if isinstance(inner, TIdentType):
+                    return inner.name
             if isinstance(typ, TIdentType):
                 return typ.name
         return None
