@@ -12,6 +12,18 @@ target="${1:-test-transpiled-local}"
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
 
+# For transpiled tests, ensure we test a freshly built binary.
+if [[ "$target" == "test-transpiled-local" ]]; then
+    rm -f tongues/.out/tongues.py
+    echo "Running: just self-transpile"
+    if ! just self-transpile >"$tmpfile" 2>&1; then
+        echo "Self-transpile failed:"
+        cat "$tmpfile"
+        exit 1
+    fi
+    echo
+fi
+
 echo "Running: just $target"
 echo
 

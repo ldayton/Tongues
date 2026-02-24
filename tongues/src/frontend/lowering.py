@@ -4711,6 +4711,81 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                         ji += 1
                     vi += 1
                 return result_stmts
+    # When the condition is ``guard and isinstance(x[N], T)``, the subscript
+    # access x[N] is protected by the short-circuit guard.  Hoisting the temp
+    # before the if would execute x[N] unconditionally.  Split the And into
+    # nested ifs so the hoist lands inside the guard.
+    if _is_ast(test, "BoolOp") and get_str(get_node(test, "op"), "_type") == "And":
+        values = get_nodes(test, "values")
+        # Find the first operand index that contains an isinstance subscript.
+        first_sub_idx = -1
+        vi = 0
+        while vi < len(values):
+            if len(_find_isinstance_subscripts(values[vi])) > 0:
+                first_sub_idx = vi
+                break
+            vi += 1
+        if first_sub_idx > 0:
+            # Build guard condition from operands before the subscript isinstance.
+            guard_jv: list[JsonValue] = []
+            gi = 0
+            while gi < first_sub_idx:
+                guard_jv.append(JDict(values[gi]))
+                gi += 1
+            if len(guard_jv) == 1:
+                guard_test: ASTNode = values[0]
+            else:
+                guard_test = {
+                    "_type": JStr("BoolOp"),
+                    "op": JDict({"_type": JStr("And")}),
+                    "values": JList(guard_jv),
+                }
+            # Build inner condition from remaining operands.
+            rest_jv: list[JsonValue] = []
+            ri = first_sub_idx
+            while ri < len(values):
+                rest_jv.append(JDict(values[ri]))
+                ri += 1
+            if len(rest_jv) == 1:
+                inner_test: ASTNode = values[first_sub_idx]
+            else:
+                inner_test = {
+                    "_type": JStr("BoolOp"),
+                    "op": JDict({"_type": JStr("And")}),
+                    "values": JList(rest_jv),
+                }
+            body_jv: list[JsonValue] = []
+            bi2 = 0
+            while bi2 < len(body):
+                body_jv.append(JDict(body[bi2]))
+                bi2 += 1
+            orelse_jv: list[JsonValue] = []
+            bi2 = 0
+            while bi2 < len(orelse):
+                orelse_jv.append(JDict(orelse[bi2]))
+                bi2 += 1
+            inner_if: dict[str, JsonValue] = {
+                "_type": node.get("_type", JStr("If")),
+                "test": JDict(inner_test),
+                "body": JList(body_jv),
+                "orelse": JList(orelse_jv),
+                "lineno": node.get("lineno", JInt(0)),
+                "col_offset": node.get("col_offset", JInt(0)),
+            }
+            sf = node.get("_source_file")
+            if sf is not None:
+                inner_if["_source_file"] = sf
+            outer_if: dict[str, JsonValue] = {
+                "_type": node.get("_type", JStr("If")),
+                "test": JDict(guard_test),
+                "body": JList([JDict(inner_if)]),
+                "orelse": JList(orelse_jv),
+                "lineno": node.get("lineno", JInt(0)),
+                "col_offset": node.get("col_offset", JInt(0)),
+            }
+            if sf is not None:
+                outer_if["_source_file"] = sf
+            return _lower_if(outer_if, env, ctx)
     # Extract indexed isinstance args into temp variables
     indexed_subs = _find_isinstance_subscripts(test)
     pre_temps: list[TStmt] = []
