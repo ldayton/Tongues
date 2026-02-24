@@ -1970,10 +1970,9 @@ class Checker:
                     if isinstance(iter_type, MapT):
                         stmt.annotations["iter_kind"] = "map"
                     elif isinstance(iter_type, ListT) and len(stmt.binding) >= 2:
-                        if (
-                            isinstance(iter_type.element, TupleT)
-                            and len(iter_type.element.elements) == len(stmt.binding)
-                        ):
+                        if isinstance(iter_type.element, TupleT) and len(
+                            iter_type.element.elements
+                        ) == len(stmt.binding):
                             stmt.annotations["iter_kind"] = "tuple_unpack"
                         elif len(stmt.binding) == 2:
                             stmt.annotations["iter_kind"] = "enumerate"

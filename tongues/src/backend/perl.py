@@ -932,7 +932,10 @@ class _PerlEmitter:
                 self.indent -= 1
                 self._line("}")
                 return
-            if ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate":
+            if (
+                ann.get("for.enumerate") == "true"
+                or ann.get("iter_kind") == "enumerate"
+            ):
                 if isinstance(iterable, TVar):
                     src = it
                 else:
