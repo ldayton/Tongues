@@ -999,8 +999,7 @@ BUILTIN_NAMES: set[str] = {
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
 # Most builtins are reserved; set-specific operations like Add can be shadowed.
-RESERVED_NAMES: set[str] = set(BUILTIN_NAMES)
-RESERVED_NAMES.discard("Add")
+RESERVED_NAMES: set[str] = set(BUILTIN_NAMES) - {"Add"}
 
 # Built-in error struct names
 BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {

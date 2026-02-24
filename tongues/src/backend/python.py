@@ -209,6 +209,8 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     parent_prec = _PRECEDENCE.get(parent_op, 0)
     if child_prec < parent_prec:
         return True
+    if not is_left and child_prec == parent_prec:
+        return True
     if child_op in _CMP_OPS and parent_op in _CMP_OPS:
         return True
     return False
