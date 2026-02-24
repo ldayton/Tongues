@@ -613,12 +613,14 @@ class _RubyEmitter:
         struct_names: set[str],
         fn_names: set[str],
         struct_fields: dict[str, list[str]],
+        field_types: dict[str, dict[str, TType]],
         enum_names: set[str],
         strict_math: bool = False,
     ) -> None:
         self.struct_names = struct_names
         self.fn_names = fn_names
         self.struct_fields = struct_fields
+        self.field_types = field_types
         self.enum_names = enum_names
         self.strict_math = strict_math
         self.indent: int = 0
@@ -660,6 +662,9 @@ class _RubyEmitter:
         self._line("# frozen_string_literal: true")
         self._line()
         import_insert_pos = len(self.lines)
+        for decl in module.decls:
+            if isinstance(decl, TLetStmt) and decl.typ is not None:
+                self.var_types[decl.name] = decl.typ
         need_blank = False
         for decl in order_decls(module.decls):
             if isinstance(decl, TInterfaceDecl):
@@ -1317,7 +1322,19 @@ class _RubyEmitter:
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
+        if isinstance(expr, TFieldAccess):
+            obj_type = self._resolve_type_name(expr.obj)
+            if obj_type is not None:
+                ft = self.field_types.get(obj_type, {})
+                return isinstance(ft.get(expr.field), TMapType)
         return False
+
+    def _resolve_type_name(self, expr: TExpr) -> str | None:
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            if isinstance(typ, TIdentType):
+                return typ.name
+        return None
 
     def _is_map_for(self, stmt: TForStmt) -> bool:
         if stmt.annotations.get("for.items") == "true":
@@ -1833,6 +1850,27 @@ class _RubyEmitter:
             return obj_str + ".pack('C*').force_encoding('UTF-8')"
         if func.field == "encode":
             return obj_str + '.encode("utf-8").bytes'
+        if func.field == "count" and len(args) == 1:
+            return obj_str + ".scan(" + self._expr(args[0].value) + ").length"
+        if func.field == "replace":
+            if len(args) == 3:
+                return (
+                    obj_str
+                    + ".sub("
+                    + self._expr(args[0].value)
+                    + ", "
+                    + self._expr(args[1].value)
+                    + ")"
+                )
+            if len(args) == 2:
+                return (
+                    obj_str
+                    + ".gsub("
+                    + self._expr(args[0].value)
+                    + ", "
+                    + self._expr(args[1].value)
+                    + ")"
+                )
         if func.field == "get":
             if len(args) == 1:
                 return obj_str + "[" + self._expr(args[0].value) + "]"
@@ -1920,7 +1958,9 @@ class _RubyEmitter:
         if name == "RFind":
             return self._a(args, 0) + ".rindex(" + self._a(args, 1) + ") || -1"
         if name == "Count":
-            if self._is_string_type(args[0].value):
+            if self._is_string_type(args[0].value) or isinstance(
+                args[1].value, TStringLit
+            ):
                 return self._a(args, 0) + ".scan(" + self._a(args, 1) + ").length"
             return self._a(args, 0) + ".count(" + self._a(args, 1) + ")"
         if name == "Replace":
@@ -1964,7 +2004,10 @@ class _RubyEmitter:
         if name == "Reverse":
             return self._a(args, 0) + ".reverse"
         if name == "Repeat":
-            return self._a(args, 0) + " * " + self._a(args, 1)
+            count = self._a(args, 1)
+            if isinstance(args[1].value, TBinaryOp):
+                count = "(" + count + ")"
+            return self._a(args, 0) + " * " + count
         if name == "RemovePrefix":
             return self._a(args, 0) + ".delete_prefix(" + self._a(args, 1) + ")"
         if name == "RemoveSuffix":
@@ -2121,6 +2164,8 @@ class _RubyEmitter:
             return "puts(" + self._a(args, 0) + ")"
         if name == "WritelnErr":
             return "$stderr.puts(" + self._a(args, 0) + ")"
+        if name == "Bytes" or name == "BytesFrom":
+            return self._a(args, 0)
         if name == "ReadLine":
             return "$stdin.gets&.chomp"
         if name == "ReadAll":
@@ -2243,6 +2288,7 @@ def emit_ruby(module: TModule) -> str:
     for _bk in BUILTIN_STRUCTS:
         struct_names.add(_bk)
     struct_fields: dict[str, list[str]] = {}
+    field_types: dict[str, dict[str, TType]] = {}
     enum_names: set[str] = set()
     fn_names: set[str] = set()
     for decl in module.decls:
@@ -2250,19 +2296,29 @@ def emit_ruby(module: TModule) -> str:
             fn_names.add(decl.name)
         elif isinstance(decl, TStructDecl):
             fnames: list[str] = []
+            ftypes: dict[str, TType] = {}
             for f in decl.fields:
                 fnames.append(f.name)
+                if f.typ is not None:
+                    ftypes[f.name] = f.typ
             struct_fields[decl.name] = fnames
+            field_types[decl.name] = ftypes
             for m in decl.methods:
                 fn_names.add(m.name)
         elif isinstance(decl, TInterfaceDecl) and decl.fields:
             struct_fields[decl.name] = [f.name for f in decl.fields]
+            iftypes: dict[str, TType] = {}
+            for f in decl.fields:
+                if f.typ is not None:
+                    iftypes[f.name] = f.typ
+            field_types[decl.name] = iftypes
         elif isinstance(decl, TEnumDecl):
             enum_names.add(decl.name)
     emitter = _RubyEmitter(
         struct_names,
         fn_names,
         struct_fields,
+        field_types,
         enum_names,
         module.strict_math,
     )
