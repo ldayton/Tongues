@@ -137,8 +137,20 @@ test-transpiled-local target="python":
     #!/usr/bin/env bash
     set -euo pipefail
     declare -A ext=([python]=py [ruby]=rb [perl]=pl)
-    uv run --directory tongues pytest tests/test_runner.py \
-        --transpiled ".out/tongues.${ext[{{target}}]}" -v
+    case "{{target}}" in
+        python)
+            uv run --directory tongues pytest tests/test_runner.py \
+                --transpiled ".out/tongues.${ext[{{target}}]}" -v
+            ;;
+        ruby)
+            cd tongues && ruby bin/test-transpiled.rb ".out/tongues.rb"
+            ;;
+        *)
+            echo "No native test harness for {{target}}, falling back to pytest"
+            uv run --directory tongues pytest tests/test_runner.py \
+                --transpiled ".out/tongues.${ext[{{target}}]}" -v
+            ;;
+    esac
 
 # Run test suite against a transpiled binary in Docker
 test-transpiled target="python":

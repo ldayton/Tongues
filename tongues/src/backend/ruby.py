@@ -216,8 +216,13 @@ def _restore_name(name: str, annotations: Ann) -> str:
 
 
 def _safe_type_name(name: str) -> str:
+    """Ensure name is a valid Ruby constant (starts with uppercase)."""
     if name in _RUBY_BUILTINS:
         return name + "_"
+    if len(name) > 0 and name[0] == "_":
+        return "X" + name[1:]
+    if len(name) > 0 and name[0].islower():
+        return name[0].upper() + name[1:]
     return name
 
 
