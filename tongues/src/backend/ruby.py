@@ -1854,6 +1854,9 @@ class _RubyEmitter:
             )
         if func.field == "encode":
             return obj_str + '.encode("utf-8").bytes'
+        if func.field == "copy" and len(args) == 0:
+            if not isinstance(func.obj, TVar) or self._is_map_type(func.obj):
+                return obj_str + ".dup"
         if func.field == "count" and len(args) == 1:
             return obj_str + ".scan(" + self._expr(args[0].value) + ").length"
         if func.field == "replace":
