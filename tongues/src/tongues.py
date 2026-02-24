@@ -1419,18 +1419,27 @@ def _pipeline_post_parse(
     strict_tostring: bool,
 ) -> tuple[int, str]:
     """Run pipeline phases after parsing. Returns (exit_code, output)."""
-    result = verify_subset(ast_dict)
-    subset_errors = result.errors()
-    if len(subset_errors) > 0:
-        err_strs: list[str] = []
-        sei = 0
-        while sei < len(subset_errors):
-            err_strs.append(str(subset_errors[sei]))
-            sei += 1
-        _print_errors(err_strs)
-        return (1, "")
-    if stop_at == "subset":
-        return (0, "")
+    if stop_at != "names":
+        result = verify_subset(ast_dict)
+        subset_errors = result.errors()
+        if len(subset_errors) > 0:
+            err_strs: list[str] = []
+            sei = 0
+            while sei < len(subset_errors):
+                err_strs.append(str(subset_errors[sei]))
+                sei += 1
+            _print_errors(err_strs)
+            return (1, "")
+        if stop_at == "subset":
+            subset_warnings = result.warnings()
+            if len(subset_warnings) > 0:
+                warn_strs: list[str] = []
+                swi = 0
+                while swi < len(subset_warnings):
+                    warn_strs.append(str(subset_warnings[swi]))
+                    swi += 1
+                _print_errors(warn_strs)
+            return (0, "")
     name_result = resolve_names(ast_dict)
     name_errors = name_result.errors()
     if len(name_errors) > 0:
@@ -1442,6 +1451,14 @@ def _pipeline_post_parse(
         _print_errors(err_strs)
         return (1, "")
     if stop_at == "names":
+        name_warnings = name_result.warnings
+        if len(name_warnings) > 0:
+            warn_strs: list[str] = []
+            nwi = 0
+            while nwi < len(name_warnings):
+                warn_strs.append(str(name_warnings[nwi]))
+                nwi += 1
+            _print_errors(warn_strs)
         return (0, to_json(_name_table_to_dict(name_result.table)))
     known_classes: set[str] = set()
     node_classes: set[str] = set()
@@ -1578,7 +1595,17 @@ def _pipeline_post_parse(
         _print_errors(err_strs)
         return (1, "")
     if stop_at == "inference":
-        return (0, to_json(JDict(ast_dict)))
+        reveals_out = JList([])
+        inf_reveals = inf_result.reveals()
+        ri = 0
+        while ri < len(inf_reveals):
+            rev = inf_reveals[ri]
+            reveals_out.items.append(
+                JDict({"line": JInt(rev[0]), "type": JStr(rev[1])})
+            )
+            ri += 1
+        d: dict[str, JsonValue] = {"ast": JDict(ast_dict), "reveals": reveals_out}
+        return (0, to_json(JDict(d)))
     module, lower_errors = lower(
         ast_dict,
         sig_result,
@@ -1829,9 +1856,6 @@ def taytsh_pipeline(argv: list[str]) -> int:
     source, err = read_source(filepath)
     if err != 0:
         return err
-    if len(source) == 0:
-        print("error: no input provided", file=sys.stderr)
-        return 2
     tokens = taytsh_tokenize(source)
     parser = TaytshParser(tokens)
     module = parser.parse_program()

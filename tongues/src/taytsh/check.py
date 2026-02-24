@@ -627,7 +627,7 @@ def _nil_check_var(cond: TExpr) -> tuple[str, str] | None:
 
 
 def _collect_nil_checks(
-    cond: TExpr, binary_only: bool = False, chain_op: str = "&&"
+    cond: TExpr, binary_only: bool, chain_op: str
 ) -> list[tuple[str, str]]:
     """Extract nil-check variables from a condition, walking into chains."""
     result: list[tuple[str, str]] = []
@@ -999,8 +999,7 @@ BUILTIN_NAMES: set[str] = {
 
 # Names reserved for user bindings (top-level decls, locals, params, etc.).
 # Most builtins are reserved; set-specific operations like Add can be shadowed.
-RESERVED_NAMES: set[str] = set(BUILTIN_NAMES)
-RESERVED_NAMES.discard("Add")
+RESERVED_NAMES: set[str] = set(BUILTIN_NAMES) - {"Add"}
 
 # Built-in error struct names
 BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
@@ -1598,7 +1597,7 @@ class Checker:
                 if isinstance(s.expr.func, TVar) and s.expr.func.name == "Assert":
                     if len(s.expr.args) > 0:
                         assert_cond = s.expr.args[0].value
-                        checks = _collect_nil_checks(assert_cond)
+                        checks = _collect_nil_checks(assert_cond, False, "&&")
                         for var_name, check_kind in checks:
                             if "." in var_name:
                                 var_type = self._lookup_field_type(var_name, s.pos)
@@ -1839,8 +1838,8 @@ class Checker:
         # Nil narrowing in then/else bodies via == nil / != nil checks
         # (IsNil deliberately excluded — it doesn't narrow in then-body)
         narrowings: list[tuple[str, Type, Type]] = []
-        var_checks = _collect_nil_checks(stmt.cond, True)
-        all_checks = _collect_nil_checks(stmt.cond)
+        var_checks = _collect_nil_checks(stmt.cond, True, "&&")
+        all_checks = _collect_nil_checks(stmt.cond, False, "&&")
         checks: list[tuple[str, str]] = []
         fc_i = 0
         while fc_i < len(var_checks):
@@ -1922,7 +1921,7 @@ class Checker:
         self.in_loop = True
         saved_uninit = set(self.uninitialized)
         self.enter_scope()
-        nil_checks = _collect_nil_checks(stmt.cond)
+        nil_checks = _collect_nil_checks(stmt.cond, False, "&&")
         for var_name, check_kind in nil_checks:
             if "." in var_name:
                 var_type = self._lookup_field_type(var_name, stmt.pos)
@@ -2435,7 +2434,7 @@ class Checker:
     def check_binary_op(self, expr: TBinaryOp) -> Type | None:
         left = self.check_expr(expr.left, None)
         if expr.op == "&&":
-            checks = _collect_nil_checks(expr.left)
+            checks = _collect_nil_checks(expr.left, False, "&&")
             tc = _collect_type_checks(expr.left)
             if len(checks) > 0 or len(tc) > 0:
                 self.enter_scope()
@@ -2701,8 +2700,8 @@ class Checker:
             )
         # Nil narrowing (same pattern as check_if_stmt)
         narrowings: list[tuple[str, Type, Type]] = []
-        var_checks = _collect_nil_checks(expr.cond, True)
-        all_checks = _collect_nil_checks(expr.cond)
+        var_checks = _collect_nil_checks(expr.cond, True, "&&")
+        all_checks = _collect_nil_checks(expr.cond, False, "&&")
         checks: list[tuple[str, str]] = []
         fc_i = 0
         while fc_i < len(var_checks):
@@ -4676,7 +4675,7 @@ class Checker:
             t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("ReadFile requires string path", pos)
-            return UnionT(kind="union", members=[STRING_T, BYTES_T])
+            return BYTES_T
         if name == "WriteFile":
             if not _bctx_require(ctx, 2):
                 return None

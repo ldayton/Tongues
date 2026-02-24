@@ -659,7 +659,10 @@ def _sa_collect_vars_expr(
     if isinstance(expr, TVar):
         a = _sa_strip(expr.annotations, pfx, plen)
         if a:
-            result.setdefault(expr.name, {}).update(a)
+            if expr.name not in result:
+                result[expr.name] = {}
+            for ak in a:
+                result[expr.name][ak] = a[ak]
     elif isinstance(expr, TBinaryOp):
         _sa_collect_vars_expr(expr.left, result, pfx, plen)
         _sa_collect_vars_expr(expr.right, result, pfx, plen)
@@ -1242,7 +1245,10 @@ def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, JsonValue]
             rest = k[7:]
             dot = rest.find(".")
             if dot != -1:
-                binder.setdefault(rest[:dot], {})[rest[dot + 1 :]] = _wrap_value(v)
+                bkey = rest[:dot]
+                if bkey not in binder:
+                    binder[bkey] = {}
+                binder[bkey][rest[dot + 1 :]] = _wrap_value(v)
             else:
                 d[k] = _wrap_value(v)
         else:

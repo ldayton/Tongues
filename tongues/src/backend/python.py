@@ -209,6 +209,8 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     parent_prec = _PRECEDENCE.get(parent_op, 0)
     if child_prec < parent_prec:
         return True
+    if not is_left and child_prec == parent_prec:
+        return True
     if child_op in _CMP_OPS and parent_op in _CMP_OPS:
         return True
     return False
@@ -1233,8 +1235,11 @@ class _PythonEmitter:
         if isinstance(expr, TUnaryOp):
             return self._unary(expr)
         if isinstance(expr, TTernary):
+            then = self._expr(expr.then_expr)
+            if isinstance(expr.then_expr, TTernary):
+                then = "(" + then + ")"
             return (
-                self._expr(expr.then_expr)
+                then
                 + " if "
                 + self._expr(expr.cond)
                 + " else "
@@ -1787,9 +1792,12 @@ class _PythonEmitter:
         if name == "Contains":
             return self._a(args, 1) + " in " + self._a(args, 0)
         if name == "Concat":
-            return self._a(args, 0) + " + " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "+", True)
+            right = self._maybe_paren(args[1].value, "+", False)
+            return left + " + " + right
         if name == "Repeat":
-            return self._a(args, 0) + " * " + self._a(args, 1)
+            count = self._maybe_paren(args[1].value, "*", False)
+            return self._a(args, 0) + " * " + count
         if name == "Format":
             return self._format_call(args)
         if name == "Assert":

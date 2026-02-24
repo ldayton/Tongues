@@ -1331,7 +1331,12 @@ def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return TFloatLit(pos, val.value, repr(val.value), _EMPTY_ANN)
     if isinstance(val, JStr):
         if get_bool(node, "_is_bytes"):
-            return TBytesLit(pos, val.value.encode("latin-1"), _EMPTY_ANN)
+            byte_vals: list[int] = []
+            bci = 0
+            while bci < len(val.value):
+                byte_vals.append(ord(val.value[bci]))
+                bci += 1
+            return TBytesLit(pos, bytes(byte_vals), _EMPTY_ANN)
         return TStringLit(pos, val.value, _EMPTY_ANN)
     if isinstance(val, JNull) or val is None:
         return TNilLit(pos, _EMPTY_ANN)
@@ -3308,6 +3313,21 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             if argv_idx is not None and argv_idx >= 1:
                 idx = TIntLit(pos, argv_idx - 1, str(argv_idx - 1), _EMPTY_ANN)
                 return TIndex(pos, args_call, idx, _EMPTY_ANN)
+    # hex(x)[2:] → FormatInt(x, 16) (hex() includes "0x" prefix, FormatInt does not)
+    if (
+        _is_ast(slice_node, "Slice")
+        and _is_ast(obj_node, "Call")
+        and _is_ast(get_node(obj_node, "func"), "Name")
+        and get_str(get_node(obj_node, "func"), "id") == "hex"
+    ):
+        lower_jv = slice_node.get("lower")
+        upper_jv = slice_node.get("upper")
+        if (
+            isinstance(lower_jv, JDict)
+            and _get_const_int(lower_jv.entries) == 2
+            and (upper_jv is None or isinstance(upper_jv, JNull))
+        ):
+            return _lower_expr(obj_node, env, ctx)
     obj = _lower_expr(obj_node, env, ctx)
     obj_type = _infer_expr_type(obj_node, env, ctx)
     # Slice access: xs[a:b]
@@ -3992,9 +4012,7 @@ def _lower_with_open(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
         call = _make_call(pos, "ReadFile", [path_expr])
-        val_type: TypeNode = UnionType(
-            [PrimitiveType("string"), PrimitiveType("bytes")]
-        )
+        val_type: TypeNode = PrimitiveType("bytes")
         if name not in env.declared:
             env.declared.add(name)
             env.var_types[name] = val_type
