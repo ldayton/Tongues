@@ -163,22 +163,20 @@ def f(s: str | None) -> int:
 error: ambiguous
 ---
 
-=== int truthiness not allowed
+=== int truthiness allowed (lowered to != 0)
 def f(x: int) -> int:
     if x:
         return x
     return 0
 ---
-error: truthiness
 ---
 
-=== float truthiness not allowed
+=== float truthiness allowed (lowered to != 0.0)
 def f(x: float) -> int:
     if x:
         return 1
     return 0
 ---
-error: truthiness
 ---
 
 === explicit none check for optional list allowed

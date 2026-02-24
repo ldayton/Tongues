@@ -212,13 +212,15 @@ def _is_assignable(
         if isinstance(expected, InterfaceRef):
             return True
         return False
-    # bool <: int <: float
+    # bool <: int <: float, byte <: int
     if isinstance(actual, PrimitiveType) and isinstance(expected, PrimitiveType):
         if actual.kind == "bool" and expected.kind == "int":
             return True
         if actual.kind == "bool" and expected.kind == "float":
             return True
         if actual.kind == "int" and expected.kind == "float":
+            return True
+        if actual.kind == "byte" and expected.kind == "int":
             return True
     # T assignable to T?
     if isinstance(expected, OptionalType):
@@ -669,12 +671,12 @@ def _resolve_attr(
         if attr == "get":
             return FuncType([key_t], OptionalType(val_t))
         if attr == "keys":
-            return FuncType([], SliceType(key_t))
+            return FuncType([], SetType(key_t))
         if attr == "values":
             return FuncType([], SliceType(val_t))
         if attr == "items":
             items_elem = TupleType([key_t, val_t], False)
-            return FuncType([], SliceType(items_elem))
+            return FuncType([], SetType(items_elem))
         if attr == "pop":
             return FuncType([key_t], val_t)
         if attr == "update":
@@ -1010,6 +1012,10 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         and rt.kind == "string"
     ):
         return STR_TYPE
+    # Set operations (&, |, ^)
+    if isinstance(lt, SetType) and isinstance(rt, SetType):
+        if op_type in ("BitAnd", "BitOr", "BitXor"):
+            return lt
     # List concatenation
     if isinstance(lt, SliceType) and isinstance(rt, SliceType):
         if not _is_assignable(
@@ -1599,7 +1605,18 @@ def _validate_subscript_assign(
                 + _type_name(obj_type.value),
             )
     elif isinstance(obj_type, SliceType):
-        if not _is_assignable(val_type, obj_type.element, ctx.hier_result):
+        is_slice = len(slc) > 0 and get_str(slc, "_type") == "Slice"
+        if is_slice:
+            if not _is_assignable(val_type, obj_type, ctx.hier_result):
+                ctx.result.add_error(
+                    lineno,
+                    0,
+                    "cannot assign "
+                    + _type_name(val_type)
+                    + " to "
+                    + _type_name(obj_type),
+                )
+        elif not _is_assignable(val_type, obj_type.element, ctx.hier_result):
             ctx.result.add_error(
                 lineno,
                 0,
@@ -2101,14 +2118,8 @@ def _check_type_truthiness(
     if isinstance(typ, PrimitiveType) and typ.kind == "bool":
         return
     if isinstance(typ, PrimitiveType) and typ.kind == "int":
-        ctx.result.add_error(
-            lineno, 0, "truthiness of int not allowed (zero is valid data)"
-        )
         return
     if isinstance(typ, PrimitiveType) and typ.kind == "float":
-        ctx.result.add_error(
-            lineno, 0, "truthiness of float not allowed (zero is valid data)"
-        )
         return
     if isinstance(typ, OptionalType):
         inner = typ.inner
@@ -2807,6 +2818,25 @@ def _subclass_has_method(base_name: str, method_name: str, ctx: _InferCtx) -> bo
     return False
 
 
+def _class_has_attr(class_name: str, attr_name: str, ctx: _InferCtx) -> bool:
+    """Check if a class has the given attribute, including inherited ones."""
+    current = class_name
+    while current != "":
+        cls = ctx.field_result.classes.get(current)
+        if cls is not None:
+            if attr_name in cls.fields or attr_name in cls.const_fields:
+                return True
+        methods = ctx.sig_result.methods.get(current)
+        if methods is not None and attr_name in methods:
+            return True
+        bases = ctx.class_bases.get(current)
+        if bases is not None and len(bases) > 0:
+            current = bases[0]
+        else:
+            current = ""
+    return False
+
+
 def _all_members_have_attr(source: str, attr_name: str, ctx: _InferCtx) -> bool:
     """Check if all union members have the given attribute (field, const_field, or method)."""
     parts = _split_union_parts(source)
@@ -2816,16 +2846,7 @@ def _all_members_have_attr(source: str, attr_name: str, ctx: _InferCtx) -> bool:
         if p == "None":
             i += 1
             continue
-        found = False
-        cls = ctx.field_result.classes.get(p)
-        if cls is not None:
-            if attr_name in cls.fields or attr_name in cls.const_fields:
-                found = True
-        if not found:
-            attr_methods = ctx.sig_result.methods.get(p)
-            if attr_methods is not None and attr_name in attr_methods:
-                found = True
-        if not found:
+        if not _class_has_attr(p, attr_name, ctx):
             return False
         i += 1
     return len(parts) > 0

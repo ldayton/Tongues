@@ -628,7 +628,12 @@ def _run_transpiled(
         errors = [line for line in stderr_text.split("\n") if line.strip()]
         return PhaseResult(errors=errors)
     if not expect_json:
-        return PhaseResult()
+        warnings = (
+            [line for line in stderr_text.split("\n") if line.strip()]
+            if stderr_text
+            else []
+        )
+        return PhaseResult(warnings=warnings)
     stdout_text = result.stdout.decode(errors="replace").strip()
     if not stdout_text:
         return PhaseResult()
@@ -816,7 +821,15 @@ def run_hierarchy(source: str) -> PhaseResult:
 def run_inference(source: str) -> PhaseResult:
     """Run the full Python frontend pipeline (phases 2-9), checking inference errors."""
     if TRANSPILED_BINARY is not None:
-        return _run_transpiled(source, ["--stop-at", "inference"])
+        result = _run_transpiled(source, ["--stop-at", "inference"])
+        if result.errors:
+            return result
+        if result.data and "reveals" in result.data:
+            reveals = []
+            for rev in result.data["reveals"]:
+                reveals.append((rev["line"], rev["type"]))
+            return PhaseResult(reveals=reveals)
+        return result
     try:
         ast_dict = parse(source)
     except Exception as e:
@@ -962,6 +975,12 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         hier_errors = hier_result.errors()
         if hier_errors:
             return (None, str(hier_errors[0]))
+        inf_result = _run_inference(
+            ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+        )
+        inf_errors = inf_result.errors()
+        if inf_errors:
+            return (None, str(inf_errors[0]))
         from src.frontend.lowering import lower
         from src.taytsh.emit import to_source
 
@@ -1225,6 +1244,12 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         hier_errors = hier_result.errors()
         if hier_errors:
             return (None, str(hier_errors[0]))
+        inf_result = _run_inference(
+            ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+        )
+        inf_errors = inf_result.errors()
+        if inf_errors:
+            return (None, str(inf_errors[0]))
         module, lower_errors = lower(
             ast_dict,
             sig_result,
