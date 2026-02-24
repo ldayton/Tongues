@@ -1331,7 +1331,12 @@ def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return TFloatLit(pos, val.value, repr(val.value), _EMPTY_ANN)
     if isinstance(val, JStr):
         if get_bool(node, "_is_bytes"):
-            return TBytesLit(pos, val.value.encode("latin-1"), _EMPTY_ANN)
+            byte_vals: list[int] = []
+            bci = 0
+            while bci < len(val.value):
+                byte_vals.append(ord(val.value[bci]))
+                bci += 1
+            return TBytesLit(pos, bytes(byte_vals), _EMPTY_ANN)
         return TStringLit(pos, val.value, _EMPTY_ANN)
     if isinstance(val, JNull) or val is None:
         return TNilLit(pos, _EMPTY_ANN)
@@ -4007,9 +4012,7 @@ def _lower_with_open(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
         call = _make_call(pos, "ReadFile", [path_expr])
-        val_type: TypeNode = UnionType(
-            [PrimitiveType("string"), PrimitiveType("bytes")]
-        )
+        val_type: TypeNode = PrimitiveType("bytes")
         if name not in env.declared:
             env.declared.add(name)
             env.var_types[name] = val_type

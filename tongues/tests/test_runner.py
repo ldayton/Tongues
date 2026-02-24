@@ -634,14 +634,19 @@ def _run_transpiled(
             else []
         )
         return PhaseResult(warnings=warnings)
+    warnings = (
+        [line for line in stderr_text.split("\n") if line.strip()]
+        if stderr_text
+        else []
+    )
     stdout_text = result.stdout.decode(errors="replace").strip()
     if not stdout_text:
-        return PhaseResult()
+        return PhaseResult(warnings=warnings)
     try:
         data = json.loads(stdout_text)
     except json.JSONDecodeError:
         return PhaseResult(errors=[f"Invalid JSON output: {stdout_text[:200]}"])
-    return PhaseResult(data=data)
+    return PhaseResult(data=data, warnings=warnings)
 
 
 # ---------------------------------------------------------------------------
