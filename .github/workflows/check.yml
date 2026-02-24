@@ -72,6 +72,7 @@ jobs:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
       - run: just self-transpile
+      - run: just test-transpiled-local
 
   check:
     if: always()
