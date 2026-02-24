@@ -955,6 +955,16 @@ class _PerlEmitter:
                 self.indent -= 1
                 self._line("}")
                 return
+        if len(binding) == 2:
+            item = self._tmp("__item")
+            self._line("for my " + item + " (@{" + it + "}) {")
+            self.indent += 1
+            self._line("my " + key_var + " = " + item + "->[0];")
+            self._line("my " + val_var + " = " + item + "->[1];")
+            self._emit_stmts(body)
+            self.indent -= 1
+            self._line("}")
+            return
         item = self._tmp("__item")
         self._line("for my " + item + " (@{" + it + "}) {")
         self.indent += 1
