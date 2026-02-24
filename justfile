@@ -307,7 +307,7 @@ versions:
     exit $failed
 
 # Run all tests in Docker
-test: test-backend test-taytsh self-transpile test-transpiled
+test: test-backend test-taytsh self-transpile test-transpiled (self-transpile "ruby") (test-transpiled "ruby")
 
 # Run all tests locally (requires matching runtime versions)
 test-local:
@@ -329,13 +329,15 @@ test-local:
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     just self-transpile && results[self-transpile]=✅ || { results[self-transpile]=❌; failed=1; }
     just test-transpiled-local && results[transpiled]=✅ || { results[transpiled]=❌; failed=1; }
+    just self-transpile ruby && results[self-transpile-rb]=✅ || { results[self-transpile-rb]=❌; failed=1; }
+    just test-transpiled-local ruby && results[transpiled-rb]=✅ || { results[transpiled-rb]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "         TEST-LOCAL SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh self-transpile transpiled; do
+    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh self-transpile transpiled self-transpile-rb transpiled-rb; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
