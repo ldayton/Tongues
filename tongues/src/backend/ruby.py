@@ -200,7 +200,41 @@ _EXCEPTION_MAP: dict[str, str] = {
 }
 
 
+_METHOD_NAME_MAP: dict[str, str] = {
+    "__repr__": "to_s",
+    "__str__": "to_s",
+    "__eq__": "==",
+    "__ne__": "!=",
+    "__lt__": "<",
+    "__le__": "<=",
+    "__gt__": ">",
+    "__ge__": ">=",
+    "__hash__": "hash",
+    "__len__": "length",
+    "__contains__": "include?",
+    "__iter__": "each",
+}
+
+
 def _safe_name(name: str) -> str:
+    """Convert name to safe Ruby identifier, preserving leading underscores."""
+    mapped = _METHOD_NAME_MAP.get(name)
+    if mapped is not None:
+        return mapped
+    prefix = ""
+    if name.startswith("_"):
+        prefix = "_"
+    name = to_snake(name)
+    if name == "":
+        return "_"
+    result = prefix + name
+    if result in _RUBY_RESERVED:
+        return result + "_"
+    return result
+
+
+def _safe_module_name(name: str) -> str:
+    """Like _safe_name but strips leading underscores for module-level vars."""
     name = to_snake(name)
     if name == "":
         return "_"
@@ -233,8 +267,38 @@ def _restore_name(name: str, annotations: Ann) -> str:
     return _safe_name(name)
 
 
+def _restore_module_name(name: str, annotations: Ann) -> str:
+    """Restore name for module-level variables (no leading underscore)."""
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_module_name(annotations[key])
+    return _safe_module_name(name)
+
+
+_TYPE_NAME_MAP: dict[str, str] = {
+    "dict": "Hash",
+    "Dict": "Hash",
+    "list": "Array",
+    "List": "Array",
+    "str": "String",
+    "Str": "String",
+    "int": "Integer",
+    "Int": "Integer",
+    "bool": "TrueClass",
+    "Bool": "TrueClass",
+    "tuple": "Array",
+    "Tuple": "Array",
+    "set": "Set",
+    "Set": "Set",
+    "bytes": "Array",
+}
+
+
 def _safe_type_name(name: str) -> str:
     """Ensure name is a valid Ruby constant (starts with uppercase)."""
+    mapped = _TYPE_NAME_MAP.get(name)
+    if mapped is not None:
+        return mapped
     if name in _RUBY_BUILTINS:
         return name + "_"
     if len(name) > 0 and name[0] == "_":
@@ -581,14 +645,14 @@ class _RubyEmitter:
             safe = _restore_local_name(name, annotations)
             self.local_names[name] = safe
             return safe
-        return _restore_name(name, annotations)
+        return _restore_module_name(name, annotations)
 
     def _ref_name(self, name: str, annotations: Ann) -> str:
         """Reference a variable — use local form if declared locally."""
         local = self.local_names.get(name)
         if local is not None:
             return local
-        return _restore_name(name, annotations)
+        return _restore_module_name(name, annotations)
 
     # ── Module ────────────────────────────────────────────────
 
@@ -747,6 +811,10 @@ class _RubyEmitter:
         if isinstance(typ, TSetType):
             self._needs_set = True
             return "Set.new"
+        if isinstance(typ, TTupleType):
+            return "[]"
+        if isinstance(typ, TIdentType):
+            return _safe_type_name(typ.name) + ".new"
         return "nil"
 
     # ── Function / Method ─────────────────────────────────────
@@ -804,7 +872,7 @@ class _RubyEmitter:
                 continue
             name = self._decl_name(p.name, p.annotations)
             if p.has_default:
-                parts.append(name + ": " + self._zero_value(p.typ))
+                parts.append(name + " = " + self._zero_value(p.typ))
             else:
                 parts.append(name)
         return ", ".join(parts)
@@ -1761,6 +1829,22 @@ class _RubyEmitter:
         obj_str = self._expr(func.obj)
         if isinstance(func.obj, (TBinaryOp, TUnaryOp, TTernary)):
             obj_str = "(" + obj_str + ")"
+        if func.field == "decode":
+            return obj_str + ".pack('C*').force_encoding('UTF-8')"
+        if func.field == "encode":
+            return obj_str + '.encode("utf-8").bytes'
+        if func.field == "get":
+            if len(args) == 1:
+                return obj_str + "[" + self._expr(args[0].value) + "]"
+            if len(args) == 2:
+                return (
+                    obj_str
+                    + ".fetch("
+                    + self._expr(args[0].value)
+                    + ", "
+                    + self._expr(args[1].value)
+                    + ")"
+                )
         arg_strs = ", ".join(self._expr(a.value) for a in args)
         if arg_strs:
             return obj_str + "." + _safe_name(func.field) + "(" + arg_strs + ")"
@@ -2050,7 +2134,7 @@ class _RubyEmitter:
         if name == "GetEnv":
             return "ENV.fetch(" + self._a(args, 0) + ', "")'
         if name == "ReadFile":
-            return "File.read(" + self._a(args, 0) + ")"
+            return "File.binread(" + self._a(args, 0) + ").bytes"
         if name == "WriteFile":
             return "File.write(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Exit":

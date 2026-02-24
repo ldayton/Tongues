@@ -1,2 +1,2 @@
 === method with default bool param
-def parse(strict: false)
+def parse(strict = false)
