@@ -793,7 +793,7 @@ class _RubyEmitter:
         iter_is_map = self._is_map_for(for_stmt)
         if iter_is_map and len(binding) == 2:
             pass  # Ruby hash.each gives |k, v|
-        elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
+        elif self._is_enumerate_for(for_stmt):
             iterable += ".each_with_index"
             binders = (
                 _restore_name(binding[1], for_stmt.annotations)
@@ -1136,6 +1136,7 @@ class _RubyEmitter:
             )
         elif len(binding) == 2:
             iter_is_map = self._is_map_for(stmt)
+            is_enumerate = self._is_enumerate_for(stmt)
             if iter_is_map:
                 self._line(
                     self._expr(stmt.iterable)
@@ -1145,13 +1146,22 @@ class _RubyEmitter:
                     + _restore_name(binding[1], ann)
                     + "|"
                 )
-            else:
+            elif is_enumerate:
                 self._line(
                     self._expr(stmt.iterable)
                     + ".each_with_index do |"
                     + _restore_name(binding[1], ann)
                     + ", "
                     + _restore_name(binding[0], ann)
+                    + "|"
+                )
+            else:
+                self._line(
+                    self._expr(stmt.iterable)
+                    + ".each do |"
+                    + _restore_name(binding[0], ann)
+                    + ", "
+                    + _restore_name(binding[1], ann)
                     + "|"
                 )
         else:
@@ -1195,6 +1205,10 @@ class _RubyEmitter:
         return not isinstance(stmt.iterable, TRange) and self._is_map_type(
             stmt.iterable
         )
+
+    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
+        ann = stmt.annotations
+        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
 
     def _is_string_type(self, expr: TExpr) -> bool:
         if isinstance(expr, TStringLit):

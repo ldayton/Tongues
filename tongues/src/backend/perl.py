@@ -932,25 +932,26 @@ class _PerlEmitter:
                 self.indent -= 1
                 self._line("}")
                 return
-            if isinstance(iterable, TVar):
-                src = it
-            else:
-                src = self._tmp("__src")
-                self._line("my " + src + " = " + it + ";")
-            if self._is_string_expr(iterable):
-                chars = self._tmp("__chars")
-                self._line("my " + chars + " = [split(//, " + src + ")];")
-                self._line("for my " + key_var + " (0 .. $#{" + chars + "}) {")
-                self.indent += 1
-                self._line("my " + val_var + " = " + chars + "->[" + key_var + "];")
-            else:
-                self._line("for my " + key_var + " (0 .. $#{" + src + "}) {")
-                self.indent += 1
-                self._line("my " + val_var + " = " + src + "->[" + key_var + "];")
-            self._emit_stmts(body)
-            self.indent -= 1
-            self._line("}")
-            return
+            if ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate":
+                if isinstance(iterable, TVar):
+                    src = it
+                else:
+                    src = self._tmp("__src")
+                    self._line("my " + src + " = " + it + ";")
+                if self._is_string_expr(iterable):
+                    chars = self._tmp("__chars")
+                    self._line("my " + chars + " = [split(//, " + src + ")];")
+                    self._line("for my " + key_var + " (0 .. $#{" + chars + "}) {")
+                    self.indent += 1
+                    self._line("my " + val_var + " = " + chars + "->[" + key_var + "];")
+                else:
+                    self._line("for my " + key_var + " (0 .. $#{" + src + "}) {")
+                    self.indent += 1
+                    self._line("my " + val_var + " = " + src + "->[" + key_var + "];")
+                self._emit_stmts(body)
+                self.indent -= 1
+                self._line("}")
+                return
         item = self._tmp("__item")
         self._line("for my " + item + " (@{" + it + "}) {")
         self.indent += 1
@@ -2208,6 +2209,10 @@ class _PerlEmitter:
             return True
         typ = self._expr_type(expr)
         return _is_list_type(typ)
+
+    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
+        ann = stmt.annotations
+        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
 
     def _is_map_expr(self, expr: TExpr) -> bool:
         if isinstance(expr, TMapLit):

@@ -1,5 +1,8 @@
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
+# Quick pre-push check: lint, fmt, subset, test-local
+prep: lint fmt subset test-local
+
 # Verify all transpiler source is subset-compliant
 subset:
     #!/usr/bin/env bash
