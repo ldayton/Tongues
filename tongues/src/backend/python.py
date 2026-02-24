@@ -549,7 +549,7 @@ class _PythonEmitter:
         if len(decl.fields) > 0:
             msg_field: TFieldDecl | None = None
             for fld in decl.fields:
-                if fld.name == "message":
+                if fld.name == "message" or fld.name == "msg":
                     msg_field = fld
                     break
             if msg_field is not None:

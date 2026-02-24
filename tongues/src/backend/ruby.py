@@ -675,7 +675,7 @@ class _RubyEmitter:
         if is_error:
             msg_field: TFieldDecl | None = None
             for f in fields:
-                if f.name == "message":
+                if f.name == "message" or f.name == "msg":
                     msg_field = f
                     break
             if msg_field is not None:
