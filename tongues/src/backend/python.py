@@ -1789,9 +1789,12 @@ class _PythonEmitter:
         if name == "Contains":
             return self._a(args, 1) + " in " + self._a(args, 0)
         if name == "Concat":
-            return self._a(args, 0) + " + " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "+", True)
+            right = self._maybe_paren(args[1].value, "+", False)
+            return left + " + " + right
         if name == "Repeat":
-            return self._a(args, 0) + " * " + self._a(args, 1)
+            count = self._maybe_paren(args[1].value, "*", False)
+            return self._a(args, 0) + " * " + count
         if name == "Format":
             return self._format_call(args)
         if name == "Assert":
