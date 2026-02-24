@@ -1125,12 +1125,6 @@ class Checker:
         self.uninitialized: set[str] = set()
         self._declared: dict[str, Type] = {}
         self.expr_types: dict[tuple[int, int], Type] = {}
-        # Register built-in error structs
-        for name, fields in BUILTIN_STRUCTS.items():
-            st = StructT(
-                kind="struct", name=name, fields=dict(fields), methods={}, parent=None
-            )
-            self.types[name] = st
 
     def error(self, msg: str, pos: Pos) -> None:
         self.errors.append(CheckError(msg, pos.line, pos.col, pos.source_file))
@@ -1325,6 +1319,13 @@ class Checker:
     # ── Pass 1: Collect declarations ──────────────────────────
 
     def collect_declarations(self, module: TModule) -> None:
+        # Register built-in error structs before user declarations
+        for bname in BUILTIN_STRUCTS:
+            bfields = BUILTIN_STRUCTS[bname]
+            st = StructT(
+                kind="struct", name=bname, fields=bfields, methods={}, parent=None
+            )
+            self.types[bname] = st
         # First pass: register all type names (structs, interfaces, enums)
         # so they can reference each other
         for decl in module.decls:
