@@ -1847,7 +1847,11 @@ class _RubyEmitter:
         if isinstance(func.obj, (TBinaryOp, TUnaryOp, TTernary)):
             obj_str = "(" + obj_str + ")"
         if func.field == "decode":
-            return obj_str + ".pack('C*').force_encoding('UTF-8')"
+            return (
+                obj_str
+                + ".pack('C*').force_encoding('UTF-8')"
+                + ".tap { |s| raise ArgumentError unless s.valid_encoding? }"
+            )
         if func.field == "encode":
             return obj_str + '.encode("utf-8").bytes'
         if func.field == "count" and len(args) == 1:
@@ -2016,7 +2020,11 @@ class _RubyEmitter:
         if name == "Encode":
             return self._a(args, 0) + '.encode("utf-8").bytes'
         if name == "Decode":
-            return self._a(args, 0) + ".pack('C*').force_encoding('UTF-8')"
+            return (
+                self._a(args, 0)
+                + ".pack('C*').force_encoding('UTF-8')"
+                + ".tap { |s| raise ArgumentError unless s.valid_encoding? }"
+            )
         # Set operations
         if name == "Add":
             self._needs_set = True
