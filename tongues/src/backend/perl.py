@@ -126,16 +126,29 @@ def _restore_name(name: str, annotations: Ann) -> str:
     return _safe_name(name)
 
 
+_PERL_ESCAPE_MAP: dict[str, str] = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\n": "\\n",
+    "\t": "\\t",
+    "\r": "\\r",
+    "$": "\\$",
+    "@": "\\@",
+}
+
+
 def _escape_perl_string(value: str) -> str:
-    return (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-        .replace("\r", "\\r")
-        .replace("$", "\\$")
-        .replace("@", "\\@")
-    )
+    out: list[str] = []
+    i = 0
+    while i < len(value):
+        c = value[i]
+        esc = _PERL_ESCAPE_MAP.get(c)
+        if esc is not None:
+            out.append(esc)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
 
 
 def _escape_perl_regex(s: str) -> str:

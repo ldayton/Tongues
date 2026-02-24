@@ -119,7 +119,6 @@ from .types import (
     has_key,
 )
 
-_EMPTY_ANN: Ann = {}
 
 TAYTSH_KEYWORDS: set[str] = {
     "bool",
@@ -171,7 +170,7 @@ def _safe_name(name: str) -> str:
 def _name_ann(safe: str, original: str) -> Ann:
     """Annotation recording the original Python name, if renamed."""
     if safe == original:
-        return _EMPTY_ANN
+        return {}
     return {"name.original." + safe: original}
 
 
@@ -257,7 +256,7 @@ def _emit_hoisted_placeholders(
             pos,
             safe,
             TPrimitive(pos, "int"),
-            TIntLit(pos, 0, "0", _EMPTY_ANN),
+            TIntLit(pos, 0, "0", {}),
             _name_ann(safe, hname),
         )
         env.hoisted_stmts[hname] = placeholder
@@ -513,13 +512,13 @@ def _expand_genexpr_to_set_add(
     comp_env = env.copy()
     comp_env.declared.add(orig_name)
     elt_expr = _lower_expr(elt, comp_env, ctx)
-    result_var = TVar(pos, var_name, _EMPTY_ANN)
+    result_var = TVar(pos, var_name, {})
     add_call = _make_call(pos, "Add", [result_var, elt_expr])
-    body: list[TStmt] = [TExprStmt(pos, add_call, _EMPTY_ANN)]
+    body: list[TStmt] = [TExprStmt(pos, add_call, {})]
     ifs = get_nodes(gen, "ifs")
     if len(ifs) > 0 and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
-        body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+        body = [TIfStmt(pos, cond, body, None, {})]
     for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
     return [for_stmt]
 
@@ -550,9 +549,9 @@ def _lower_dict_literal_typed(
                 kval = k.get("value")
                 if isinstance(kval, JBool):
                     if kval.value is True:
-                        key_expr = TIntLit(pos, 1, "1", _EMPTY_ANN)
+                        key_expr = TIntLit(pos, 1, "1", {})
                     else:
-                        key_expr = TIntLit(pos, 0, "0", _EMPTY_ANN)
+                        key_expr = TIntLit(pos, 0, "0", {})
                 else:
                     key_expr = _lower_expr(k, env, ctx)
             else:
@@ -561,7 +560,7 @@ def _lower_dict_literal_typed(
         i += 1
     if len(entries) == 0:
         return _make_call(pos, "Map", [])
-    return TMapLit(pos, entries, _EMPTY_ANN)
+    return TMapLit(pos, entries, {})
 
 
 def _is_bytes_slice(td: TypeNode) -> bool:
@@ -575,27 +574,27 @@ def _default_value_for_type(pos: Pos, td: TypeNode) -> TExpr:
     """Return a zero/default value for a given TypeNode."""
     kind = _type_dict_kind(td)
     if kind == "float":
-        return TFloatLit(pos, 0.0, "0.0", _EMPTY_ANN)
+        return TFloatLit(pos, 0.0, "0.0", {})
     if kind == "string":
-        return TStringLit(pos, "", _EMPTY_ANN)
+        return TStringLit(pos, "", {})
     if kind == "bool":
-        return TBoolLit(pos, False, _EMPTY_ANN)
+        return TBoolLit(pos, False, {})
     if isinstance(td, TupleType) and len(td.elements) >= 2:
         parts: list[TExpr] = []
         i = 0
         while i < len(td.elements):
             parts.append(_default_value_for_type(pos, td.elements[i]))
             i += 1
-        return TTupleLit(pos, parts, _EMPTY_ANN)
+        return TTupleLit(pos, parts, {})
     if kind == "Slice":
-        return TListLit(pos, [], _EMPTY_ANN)
+        return TListLit(pos, [], {})
     if kind == "Map":
         return _make_call(pos, "Map", [])
     if kind == "Set":
         return _make_call(pos, "Set", [])
     if kind == "Optional" or kind == "InterfaceRef" or kind == "StructRef":
-        return TNilLit(pos, _EMPTY_ANN)
-    return TIntLit(pos, 0, "0", _EMPTY_ANN)
+        return TNilLit(pos, {})
+    return TIntLit(pos, 0, "0", {})
 
 
 def _types_comparable(left: TypeNode, right: TypeNode) -> bool:
@@ -1235,14 +1234,14 @@ def _make_call(pos: Pos, name: str, args: list[TExpr]) -> TCall:
     while i < len(args):
         targs.append(TArg(pos, None, args[i]))
         i += 1
-    return TCall(pos, TVar(pos, name, _EMPTY_ANN), targs, _EMPTY_ANN)
+    return TCall(pos, TVar(pos, name, {}), targs, {})
 
 
 def _len_expr(pos: Pos, obj: TExpr, obj_type: TypeNode) -> TExpr:
     """Len(obj) for most types, literal int for fixed-size tuples."""
     if isinstance(obj_type, TupleType):
         n = len(obj_type.elements)
-        return TIntLit(pos, n, str(n), _EMPTY_ANN)
+        return TIntLit(pos, n, str(n), {})
     return _make_call(pos, "Len", [obj])
 
 
@@ -1259,7 +1258,7 @@ def _make_named_call(
     while i < len(named):
         targs.append(TArg(pos, named[i][0], named[i][1]))
         i += 1
-    return TCall(pos, TVar(pos, name, _EMPTY_ANN), targs, _EMPTY_ANN)
+    return TCall(pos, TVar(pos, name, {}), targs, {})
 
 
 def _make_method_call(pos: Pos, obj: TExpr, method: str, args: list[TExpr]) -> TCall:
@@ -1269,7 +1268,7 @@ def _make_method_call(pos: Pos, obj: TExpr, method: str, args: list[TExpr]) -> T
     while i < len(args):
         targs.append(TArg(pos, None, args[i]))
         i += 1
-    return TCall(pos, TFieldAccess(pos, obj, method, _EMPTY_ANN), targs, _EMPTY_ANN)
+    return TCall(pos, TFieldAccess(pos, obj, method, {}), targs, {})
 
 
 def _lower_expr(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -1316,7 +1315,7 @@ def _lower_expr(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     ctx.errors.append(
         LoweringError(0, 0, "unsupported expression type '" + str(t) + "'", low_sf)
     )
-    return TVar(pos, "__error__", _EMPTY_ANN)
+    return TVar(pos, "__error__", {})
 
 
 def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -1324,11 +1323,11 @@ def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     pos = _node_pos(node)
     val = node.get("value")
     if isinstance(val, JBool):
-        return TBoolLit(pos, val.value, _EMPTY_ANN)
+        return TBoolLit(pos, val.value, {})
     if isinstance(val, JInt):
-        return TIntLit(pos, val.value, str(val.value), _EMPTY_ANN)
+        return TIntLit(pos, val.value, str(val.value), {})
     if isinstance(val, JFloat):
-        return TFloatLit(pos, val.value, repr(val.value), _EMPTY_ANN)
+        return TFloatLit(pos, val.value, repr(val.value), {})
     if isinstance(val, JStr):
         if get_bool(node, "_is_bytes"):
             byte_vals: list[int] = []
@@ -1336,11 +1335,11 @@ def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             while bci < len(val.value):
                 byte_vals.append(ord(val.value[bci]))
                 bci += 1
-            return TBytesLit(pos, bytes(byte_vals), _EMPTY_ANN)
-        return TStringLit(pos, val.value, _EMPTY_ANN)
+            return TBytesLit(pos, bytes(byte_vals), {})
+        return TStringLit(pos, val.value, {})
     if isinstance(val, JNull) or val is None:
-        return TNilLit(pos, _EMPTY_ANN)
-    return TNilLit(pos, _EMPTY_ANN)
+        return TNilLit(pos, {})
+    return TNilLit(pos, {})
 
 
 def _lower_name(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -1348,15 +1347,15 @@ def _lower_name(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     pos = _node_pos(node)
     name = get_str(node, "id")
     if name == "True":
-        return TBoolLit(pos, True, _EMPTY_ANN)
+        return TBoolLit(pos, True, {})
     if name == "False":
-        return TBoolLit(pos, False, _EMPTY_ANN)
+        return TBoolLit(pos, False, {})
     if name == "None":
-        return TNilLit(pos, _EMPTY_ANN)
+        return TNilLit(pos, {})
     if name == "_":
-        return TNilLit(pos, _EMPTY_ANN)
+        return TNilLit(pos, {})
     if name == "self":
-        return TVar(pos, "this", _EMPTY_ANN)
+        return TVar(pos, "this", {})
     safe = _safe_name(name)
     return TVar(pos, safe, _name_ann(safe, name))
 
@@ -1370,12 +1369,12 @@ def _lower_attribute(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if _is_ast(obj_node, "Name"):
         obj_name = get_str(obj_node, "id")
         if obj_name in ctx.known_classes and attr.isupper():
-            return TVar(pos, obj_name + "_" + attr, _EMPTY_ANN)
+            return TVar(pos, obj_name + "_" + attr, {})
         # sys.argv → Args()
         if obj_name == "sys" and attr == "argv":
             return _make_call(pos, "Args", [])
         if obj_name == "sys" and attr == "maxsize":
-            return TIntLit(pos, 9223372036854775807, "9223372036854775807", _EMPTY_ANN)
+            return TIntLit(pos, 9223372036854775807, "9223372036854775807", {})
         # sys.stdin.readline() etc are handled in _lower_call
     # sys.stdin / sys.stdout / sys.stderr attribute chains
     if _is_ast(obj_node, "Attribute"):
@@ -1384,13 +1383,13 @@ def _lower_attribute(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if _is_ast(inner_obj, "Name") and get_str(inner_obj, "id") == "sys":
             if inner_attr == "stdin" and attr == "buffer":
                 # Return a placeholder for sys.stdin.buffer
-                return TVar(pos, "__stdin_buffer__", _EMPTY_ANN)
+                return TVar(pos, "__stdin_buffer__", {})
             if inner_attr == "stdout" and attr == "buffer":
-                return TVar(pos, "__stdout_buffer__", _EMPTY_ANN)
+                return TVar(pos, "__stdout_buffer__", {})
             if inner_attr == "stderr" and attr == "buffer":
-                return TVar(pos, "__stderr_buffer__", _EMPTY_ANN)
+                return TVar(pos, "__stderr_buffer__", {})
     obj = _lower_expr(obj_node, env, ctx)
-    return TFieldAccess(pos, obj, attr, _EMPTY_ANN)
+    return TFieldAccess(pos, obj, attr, {})
 
 
 def _bool_to_int(pos: Pos, expr: TExpr) -> TExpr:
@@ -1398,9 +1397,9 @@ def _bool_to_int(pos: Pos, expr: TExpr) -> TExpr:
     return TTernary(
         pos,
         expr,
-        TIntLit(pos, 1, "1", _EMPTY_ANN),
-        TIntLit(pos, 0, "0", _EMPTY_ANN),
-        _EMPTY_ANN,
+        TIntLit(pos, 1, "1", {}),
+        TIntLit(pos, 0, "0", {}),
+        {},
     )
 
 
@@ -1456,7 +1455,7 @@ def _lower_binop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if _is_type_dict(left_type, ["Tuple"]) or _is_type_dict(right_type, ["Tuple"]):
             return _lower_tuple_concat(left_node, right_node, env, ctx)
         left, right = _coerce_arithmetic(pos, left, right, left_type, right_type)
-        return TBinaryOp(pos, "+", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, "+", left, right, {})
     if op_type == "Sub":
         if _is_type_dict(left_type, ["Set"]):
             return _make_call(pos, "Difference", [left, right])
@@ -1470,14 +1469,14 @@ def _lower_binop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 ],
             )
         left, right = _coerce_arithmetic(pos, left, right, left_type, right_type)
-        return TBinaryOp(pos, "-", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, "-", left, right, {})
     if op_type == "Mult":
         if _is_type_dict(left_type, ["string", "bytes", "Slice", "Tuple"]):
             return _make_call(pos, "Repeat", [left, right])
         if _is_type_dict(right_type, ["string", "bytes", "Slice", "Tuple"]):
             return _make_call(pos, "Repeat", [right, left])
         left, right = _coerce_arithmetic(pos, left, right, left_type, right_type)
-        return TBinaryOp(pos, "*", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, "*", left, right, {})
     if op_type == "FloorDiv":
         left, right = _coerce_arithmetic(pos, left, right, left_type, right_type)
         return _make_call(pos, "FloorDiv", [left, right])
@@ -1491,7 +1490,7 @@ def _lower_binop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             if _is_type_dict(right_type, ["bool"]):
                 right = _bool_to_int(pos, right)
             right = _make_call(pos, "IntToFloat", [right])
-        return TBinaryOp(pos, "/", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, "/", left, right, {})
     if op_type == "Mod":
         left, right = _coerce_arithmetic(pos, left, right, left_type, right_type)
         return _make_call(pos, "PythonMod", [left, right])
@@ -1514,7 +1513,7 @@ def _lower_binop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             left = _bool_to_int(pos, left)
         if _is_type_dict(right_type, ["bool"]):
             right = _bool_to_int(pos, right)
-        return TBinaryOp(pos, "&", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, "&", left, right, {})
     if op_type == "BitOr":
         # Dict merge: a | b
         if _is_type_dict(left_type, ["Map"]):
@@ -1535,7 +1534,7 @@ def _lower_binop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             left = _bool_to_int(pos, left)
         if _is_type_dict(right_type, ["bool"]):
             right = _bool_to_int(pos, right)
-        return TBinaryOp(pos, "|", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, "|", left, right, {})
     if op_type == "BitXor":
         if _is_type_dict(left_type, ["Set"]):
             u = _make_call(pos, "Union", [left, right])
@@ -1551,20 +1550,20 @@ def _lower_binop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             left = _bool_to_int(pos, left)
         if _is_type_dict(right_type, ["bool"]):
             right = _bool_to_int(pos, right)
-        return TBinaryOp(pos, "^", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, "^", left, right, {})
     if op_type == "LShift":
         if _is_type_dict(left_type, ["bool"]):
             left = _bool_to_int(pos, left)
         if _is_type_dict(right_type, ["bool"]):
             right = _bool_to_int(pos, right)
-        return TBinaryOp(pos, "<<", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, "<<", left, right, {})
     if op_type == "RShift":
         if _is_type_dict(left_type, ["bool"]):
             left = _bool_to_int(pos, left)
         if _is_type_dict(right_type, ["bool"]):
             right = _bool_to_int(pos, right)
-        return TBinaryOp(pos, ">>", left, right, _EMPTY_ANN)
-    return TBinaryOp(pos, "+", left, right, _EMPTY_ANN)
+        return TBinaryOp(pos, ">>", left, right, {})
+    return TBinaryOp(pos, "+", left, right, {})
 
 
 def _lower_tuple_concat(
@@ -1586,13 +1585,13 @@ def _lower_tuple_concat(
     for e in right_elts:
         all_elts.append(e)
     if len(all_elts) == 0:
-        return TNilLit(pos, _EMPTY_ANN)
+        return TNilLit(pos, {})
     elements: list[TExpr] = []
     for e in all_elts:
         elements.append(_lower_expr(e, env, ctx))
     if len(elements) == 1:
-        return TListLit(pos, elements, _EMPTY_ANN)
-    return TTupleLit(pos, elements, _EMPTY_ANN)
+        return TListLit(pos, elements, {})
+    return TTupleLit(pos, elements, {})
 
 
 def _lower_boolop_chain(
@@ -1601,7 +1600,7 @@ def _lower_boolop_chain(
     """Recursively lower non-bool and/or chain to nested ternaries."""
     v = values[idx]
     if not isinstance(v, dict):
-        return TBoolLit(pos, True, _EMPTY_ANN)
+        return TBoolLit(pos, True, {})
     if idx == len(values) - 1:
         return _lower_expr(v, env, ctx)
     left = _lower_expr(v, env, ctx)
@@ -1617,8 +1616,8 @@ def _lower_boolop_chain(
     cond = _lower_as_bool(v, env, ctx)
     rest = _lower_boolop_chain(pos, values, op_type, idx + 1, env, ctx)
     if op_type == "And":
-        return TTernary(pos, cond, rest, left, _EMPTY_ANN)
-    return TTernary(pos, cond, left, rest, _EMPTY_ANN)
+        return TTernary(pos, cond, rest, left, {})
+    return TTernary(pos, cond, left, rest, {})
 
 
 def _lower_boolop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -1630,7 +1629,7 @@ def _lower_boolop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if len(values) < 2:
         if len(values) == 1 and isinstance(values[0], dict):
             return _lower_expr(values[0], env, ctx)
-        return TBoolLit(pos, True, _EMPTY_ANN)
+        return TBoolLit(pos, True, {})
     # Check if all operands are bool — if so, use && / ||
     all_bool = True
     for v in values:
@@ -1641,13 +1640,13 @@ def _lower_boolop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         op_str = "&&" if op_type == "And" else "||"
         first = values[0]
         if not isinstance(first, dict):
-            return TBoolLit(pos, True, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
         result: TExpr = _lower_as_bool(first, env, ctx)
         i = 1
         while i < len(values):
             v = values[i]
             right = _lower_as_bool(v, env, ctx)
-            result = TBinaryOp(pos, op_str, result, right, _EMPTY_ANN)
+            result = TBinaryOp(pos, op_str, result, right, {})
             i += 1
         return result
     # Non-bool operands: use ternaries for Python short-circuit semantics
@@ -1664,13 +1663,13 @@ def _lower_compare(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     ops = get_nodes(node, "ops")
     comparators = get_nodes(node, "comparators")
     if len(ops) == 0 or len(comparators) == 0:
-        return TBoolLit(pos, True, _EMPTY_ANN)
+        return TBoolLit(pos, True, {})
     # Single comparison
     if len(ops) == 1:
         op_node = ops[0]
         comp_node = comparators[0]
         if not isinstance(op_node, dict) or not isinstance(comp_node, dict):
-            return TBoolLit(pos, True, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
         return _lower_single_compare(left_node, op_node, comp_node, env, ctx)
     # Chained comparison: a < b < c → a < b && b < c
     left = _lower_expr(left_node, env, ctx)
@@ -1691,11 +1690,11 @@ def _lower_compare(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         prev_expr = right
         i += 1
     if len(parts) == 0:
-        return TBoolLit(pos, True, _EMPTY_ANN)
+        return TBoolLit(pos, True, {})
     result = parts[0]
     i = 1
     while i < len(parts):
-        result = TBinaryOp(pos, "&&", result, parts[i], _EMPTY_ANN)
+        result = TBinaryOp(pos, "&&", result, parts[i], {})
         i += 1
     return result
 
@@ -1716,23 +1715,23 @@ def _lower_degenerate_tuple_compare(
     # () vs () → equal
     if left_len == 0 and right_len == 0:
         if op_type in ("Eq", "LtE", "GtE"):
-            return TBoolLit(pos, True, _EMPTY_ANN)
-        return TBoolLit(pos, False, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
+        return TBoolLit(pos, False, {})
     # () vs non-empty → empty is less
     if left_len == 0:
         if op_type in ("Lt", "LtE"):
-            return TBoolLit(pos, True, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
         if op_type in ("Eq", "Gt", "GtE"):
-            return TBoolLit(pos, False, _EMPTY_ANN)
+            return TBoolLit(pos, False, {})
         if op_type == "NotEq":
-            return TBoolLit(pos, True, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
     if right_len == 0:
         if op_type in ("Gt", "GtE"):
-            return TBoolLit(pos, True, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
         if op_type in ("Eq", "Lt", "LtE"):
-            return TBoolLit(pos, False, _EMPTY_ANN)
+            return TBoolLit(pos, False, {})
         if op_type == "NotEq":
-            return TBoolLit(pos, True, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
     # (x,) vs (y,) → compare x and y directly
     if (
         left_elts is not None
@@ -1760,9 +1759,9 @@ def _lower_degenerate_tuple_compare(
                 le, {"_type": JStr("Eq")}, right_elts[0], env, ctx
             )
             if op_type == "Lt":
-                return TBinaryOp(pos, "||", first_cmp, first_eq, _EMPTY_ANN)
+                return TBinaryOp(pos, "||", first_cmp, first_eq, {})
             if op_type == "LtE":
-                return TBoolLit(pos, True, _EMPTY_ANN)
+                return TBoolLit(pos, True, {})
     # Fallback: lower normally (may cause type errors for unsupported cases)
     left = _lower_expr(left_node, env, ctx)
     right = _lower_expr(right_node, env, ctx)
@@ -1789,14 +1788,14 @@ def _lower_set_compare(
         pos,
         "==",
         _make_call(pos, "Len", [diff]),
-        TIntLit(pos, 0, "0", _EMPTY_ANN),
-        _EMPTY_ANN,
+        TIntLit(pos, 0, "0", {}),
+        {},
     )
     if op_type in ("LtE", "GtE"):
         return is_sub
     # proper subset/superset: also require not equal
-    not_eq = TBinaryOp(pos, "!=", left, right, _EMPTY_ANN)
-    return TBinaryOp(pos, "&&", not_eq, is_sub, _EMPTY_ANN)
+    not_eq = TBinaryOp(pos, "!=", left, right, {})
+    return TBinaryOp(pos, "&&", not_eq, is_sub, {})
 
 
 def _lower_list_compare(
@@ -1807,9 +1806,9 @@ def _lower_list_compare(
     left = _lower_expr(left_node, env, ctx)
     right = _lower_expr(right_node, env, ctx)
     cmp = _make_call(pos, "ListCompare", [left, right])
-    zero = TIntLit(pos, 0, "0", _EMPTY_ANN)
+    zero = TIntLit(pos, 0, "0", {})
     op_map: dict[str, str] = {"Lt": "<", "LtE": "<=", "Gt": ">", "GtE": ">="}
-    return TBinaryOp(pos, op_map[op_type], cmp, zero, _EMPTY_ANN)
+    return TBinaryOp(pos, op_map[op_type], cmp, zero, {})
 
 
 def _lower_tuple_compare(
@@ -1827,31 +1826,31 @@ def _lower_tuple_compare(
     if len(left_elts) == 0 and not _is_ast(left_node, "Tuple"):
         left = _lower_expr(left_node, env, ctx)
         right = _lower_expr(right_node, env, ctx)
-        return TBoolLit(pos, False, _EMPTY_ANN)
+        return TBoolLit(pos, False, {})
     if len(right_elts) == 0 and not _is_ast(right_node, "Tuple"):
         left = _lower_expr(left_node, env, ctx)
         right = _lower_expr(right_node, env, ctx)
-        return TBoolLit(pos, False, _EMPTY_ANN)
+        return TBoolLit(pos, False, {})
     min_len = min(len(left_elts), len(right_elts))
     # Build from the innermost comparison outward
     # For <: a0 < b0 || (a0 == b0 && (a1 < b1 || (a1 == b1 && ... tail)))
     # tail: if same length, False for <, True for <=; if different length, shorter < longer
     if op_type in ("Lt", "LtE"):
         if len(left_elts) < len(right_elts):
-            tail: TExpr = TBoolLit(pos, True, _EMPTY_ANN)
+            tail: TExpr = TBoolLit(pos, True, {})
         elif len(left_elts) > len(right_elts):
-            tail = TBoolLit(pos, False, _EMPTY_ANN)
+            tail = TBoolLit(pos, False, {})
         else:
-            tail = TBoolLit(pos, op_type == "LtE", _EMPTY_ANN)
+            tail = TBoolLit(pos, op_type == "LtE", {})
         cmp_op = "Lt"
     else:
         # Gt, GtE: reverse — a > b is b < a
         if len(left_elts) > len(right_elts):
-            tail = TBoolLit(pos, True, _EMPTY_ANN)
+            tail = TBoolLit(pos, True, {})
         elif len(left_elts) < len(right_elts):
-            tail = TBoolLit(pos, False, _EMPTY_ANN)
+            tail = TBoolLit(pos, False, {})
         else:
-            tail = TBoolLit(pos, op_type == "GtE", _EMPTY_ANN)
+            tail = TBoolLit(pos, op_type == "GtE", {})
         cmp_op = "Gt"
     result = tail
     i = min_len - 1
@@ -1864,13 +1863,13 @@ def _lower_tuple_compare(
         rt_type = _infer_expr_type(re, env, ctx)
         a_c, b_c = _coerce_compare(pos, a, b, lt_type, rt_type)
         op_str = "<" if cmp_op == "Lt" else ">"
-        elem_lt = TBinaryOp(pos, op_str, a_c, b_c, _EMPTY_ANN)
+        elem_lt = TBinaryOp(pos, op_str, a_c, b_c, {})
         a2 = _lower_expr(le, env, ctx)
         b2 = _lower_expr(re, env, ctx)
         a2_c, b2_c = _coerce_compare(pos, a2, b2, lt_type, rt_type)
-        elem_eq = TBinaryOp(pos, "==", a2_c, b2_c, _EMPTY_ANN)
-        inner = TBinaryOp(pos, "&&", elem_eq, result, _EMPTY_ANN)
-        result = TBinaryOp(pos, "||", elem_lt, inner, _EMPTY_ANN)
+        elem_eq = TBinaryOp(pos, "==", a2_c, b2_c, {})
+        inner = TBinaryOp(pos, "&&", elem_eq, result, {})
+        result = TBinaryOp(pos, "||", elem_lt, inner, {})
         i -= 1
     return result
 
@@ -1891,15 +1890,15 @@ def _lower_single_compare(
         if _is_ast(comp_node, "Constant") and isinstance(comp_node.get("value"), JNull):
             left = _lower_expr(left_node, env, ctx)
             if isinstance(left, TVar):
-                return TBinaryOp(pos, "!=", left, TNilLit(pos, _EMPTY_ANN), _EMPTY_ANN)
-            return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [left]), _EMPTY_ANN)
+                return TBinaryOp(pos, "!=", left, TNilLit(pos, {}), {})
+            return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [left]), {})
     # isinstance check in compare context
     # in operator
     if op_type == "In":
         return _lower_in_expr(left_node, comp_node, env, ctx)
     if op_type == "NotIn":
         inner = _lower_in_expr(left_node, comp_node, env, ctx)
-        return TUnaryOp(pos, "!", inner, _EMPTY_ANN)
+        return TUnaryOp(pos, "!", inner, {})
     # Degenerate tuple comparisons: (), (x,) — can't represent in Taytsh
     if _is_ast(left_node, "Tuple") or _is_ast(comp_node, "Tuple"):
         left_elts: list[ASTNode] | None = (
@@ -1928,9 +1927,9 @@ def _lower_single_compare(
         )
         if not _is_optional_type(other_type):
             if op_type in ("Eq",):
-                return TBoolLit(pos, False, _EMPTY_ANN)
+                return TBoolLit(pos, False, {})
             if op_type in ("NotEq",):
-                return TBoolLit(pos, True, _EMPTY_ANN)
+                return TBoolLit(pos, True, {})
     left_type = _infer_expr_type(left_node, env, ctx)
     right_type = _infer_expr_type(comp_node, env, ctx)
     # rune vs single-char string literal → promote string to rune
@@ -1942,7 +1941,7 @@ def _lower_single_compare(
             return promoted
     # Cross-type equality for incompatible types → false/true
     if op_type in ("Eq", "NotEq") and not _types_comparable(left_type, right_type):
-        return TBoolLit(pos, op_type == "NotEq", _EMPTY_ANN)
+        return TBoolLit(pos, op_type == "NotEq", {})
     # Set ordering: <= (subset), < (proper subset), >= (superset), > (proper superset)
     if (
         op_type in ("LtE", "Lt", "GtE", "Gt")
@@ -1986,12 +1985,12 @@ def _maybe_promote_rune_compare(
         rch = _single_char_str_value(right_node)
         if rch is not None:
             lhs = _lower_expr(left_node, env, ctx)
-            return _make_compare_expr(pos, lhs, op_node, TRuneLit(pos, rch, _EMPTY_ANN))
+            return _make_compare_expr(pos, lhs, op_node, TRuneLit(pos, rch, {}))
     if rt_rune:
         lch = _single_char_str_value(left_node)
         if lch is not None:
             rhs = _lower_expr(right_node, env, ctx)
-            return _make_compare_expr(pos, TRuneLit(pos, lch, _EMPTY_ANN), op_node, rhs)
+            return _make_compare_expr(pos, TRuneLit(pos, lch, {}), op_node, rhs)
     return None
 
 
@@ -2071,7 +2070,7 @@ def _make_compare_expr(pos: Pos, left: TExpr, op_node: ASTNode, right: TExpr) ->
         "GtE": ">=",
     }
     op_str = op_map.get(op_type, "==")
-    return TBinaryOp(pos, op_str, left, right, _EMPTY_ANN)
+    return TBinaryOp(pos, op_str, left, right, {})
 
 
 def _lower_in_expr(
@@ -2084,18 +2083,18 @@ def _lower_in_expr(
         elts = get_nodes(right_node, "elts")
         left = _lower_expr(left_node, env, ctx)
         if len(elts) == 0:
-            return TBoolLit(pos, False, _EMPTY_ANN)
+            return TBoolLit(pos, False, {})
         parts: list[TExpr] = []
         i = 0
         while i < len(elts):
             e = elts[i]
             right = _lower_expr(e, env, ctx)
-            parts.append(TBinaryOp(pos, "==", left, right, _EMPTY_ANN))
+            parts.append(TBinaryOp(pos, "==", left, right, {}))
             i += 1
         result: TExpr = parts[0]
         i = 1
         while i < len(parts):
-            result = TBinaryOp(pos, "||", result, parts[i], _EMPTY_ANN)
+            result = TBinaryOp(pos, "||", result, parts[i], {})
             i += 1
         return result
     # x in collection → Contains(collection, x)
@@ -2110,7 +2109,7 @@ def _lower_in_expr(
             lk = _type_dict_kind(lt)
             rk = _type_dict_kind(right_type.key)
             if lk != "" and rk != "" and lk != rk:
-                return TBoolLit(pos, False, _EMPTY_ANN)
+                return TBoolLit(pos, False, {})
     left = _lower_expr(left_node, env, ctx)
     right = _lower_expr(right_node, env, ctx)
     return _make_call(pos, "Contains", [right, left])
@@ -2128,22 +2127,22 @@ def _lower_unaryop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if _is_ast(operand_node, "Constant") and isinstance(
             operand_node.get("value"), JNull
         ):
-            return TBoolLit(pos, True, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
         if _is_optional_type(operand_type):
             # not x (optional) → IsNil(x)
             operand = _lower_expr(operand_node, env, ctx)
             return _make_call(pos, "IsNil", [operand])
         if _is_type_dict(operand_type, ["bool"]):
             operand = _lower_expr(operand_node, env, ctx)
-            return TUnaryOp(pos, "!", operand, _EMPTY_ANN)
+            return TUnaryOp(pos, "!", operand, {})
         # Non-bool not: lower as bool then negate
-        return TUnaryOp(pos, "!", _lower_as_bool(operand_node, env, ctx), _EMPTY_ANN)
+        return TUnaryOp(pos, "!", _lower_as_bool(operand_node, env, ctx), {})
     if op_type == "USub":
         operand_type = _infer_expr_type(operand_node, env, ctx)
         operand = _lower_expr(operand_node, env, ctx)
         if _is_type_dict(operand_type, ["bool"]):
             operand = _bool_to_int(pos, operand)
-        return TUnaryOp(pos, "-", operand, _EMPTY_ANN)
+        return TUnaryOp(pos, "-", operand, {})
     if op_type == "UAdd":
         return _lower_expr(operand_node, env, ctx)
     if op_type == "Invert":
@@ -2151,7 +2150,7 @@ def _lower_unaryop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         operand = _lower_expr(operand_node, env, ctx)
         if _is_type_dict(operand_type, ["bool"]):
             operand = _bool_to_int(pos, operand)
-        return TUnaryOp(pos, "~", operand, _EMPTY_ANN)
+        return TUnaryOp(pos, "~", operand, {})
     return _lower_expr(operand_node, env, ctx)
 
 
@@ -2183,7 +2182,7 @@ def _lower_call(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         a = args[i]
         lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
         i += 1
-    return TCall(pos, func, lowered_args, _EMPTY_ANN)
+    return TCall(pos, func, lowered_args, {})
 
 
 def _lower_name_call(
@@ -2202,18 +2201,18 @@ def _lower_name_call(
             arg_type = _infer_expr_type(args[0], env, ctx)
             if isinstance(arg_type, TupleType):
                 n = len(arg_type.elements)
-                return TIntLit(pos, n, str(n), _EMPTY_ANN)
+                return TIntLit(pos, n, str(n), {})
             if _is_ast(args[0], "Tuple"):
                 elts = get_nodes(args[0], "elts")
                 n = len(elts)
-                return TIntLit(pos, n, str(n), _EMPTY_ANN)
+                return TIntLit(pos, n, str(n), {})
             if _is_sys_argv(args[0]):
                 return TBinaryOp(
                     pos,
                     "+",
                     _make_call(pos, "Len", [_make_call(pos, "Args", [])]),
-                    TIntLit(pos, 1, "1", _EMPTY_ANN),
-                    _EMPTY_ANN,
+                    TIntLit(pos, 1, "1", {}),
+                    {},
                 )
             return _make_call(pos, "Len", [_lower_expr(args[0], env, ctx)])
     if fname == "sum":
@@ -2270,7 +2269,7 @@ def _lower_name_call(
             return _make_call(pos, "Abs", [abs_a])
     if fname == "int":
         if len(args) == 0:
-            return TIntLit(pos, 0, "0", _EMPTY_ANN)
+            return TIntLit(pos, 0, "0", {})
         if len(args) >= 1 and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
             arg = _lower_expr(args[0], env, ctx)
@@ -2283,20 +2282,18 @@ def _lower_name_call(
                 return TTernary(
                     pos,
                     arg,
-                    TIntLit(pos, 1, "1", _EMPTY_ANN),
-                    TIntLit(pos, 0, "0", _EMPTY_ANN),
-                    _EMPTY_ANN,
+                    TIntLit(pos, 1, "1", {}),
+                    TIntLit(pos, 0, "0", {}),
+                    {},
                 )
             if _is_type_dict(arg_type, ["float"]):
                 return _make_call(pos, "FloatToInt", [arg])
             if _is_type_dict(arg_type, ["byte"]):
                 return _make_call(pos, "ByteToInt", [arg])
-            return _make_call(
-                pos, "ParseInt", [arg, TIntLit(pos, 10, "10", _EMPTY_ANN)]
-            )
+            return _make_call(pos, "ParseInt", [arg, TIntLit(pos, 10, "10", {})])
     if fname == "float":
         if len(args) == 0:
-            return TFloatLit(pos, 0.0, "0.0", _EMPTY_ANN)
+            return TFloatLit(pos, 0.0, "0.0", {})
         if len(args) > 0 and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
             arg = _lower_expr(args[0], env, ctx)
@@ -2313,45 +2310,37 @@ def _lower_name_call(
             return _make_call(pos, "ToString", [_lower_expr(args[0], env, ctx)])
     if fname == "bool":
         if len(args) == 0:
-            return TBoolLit(pos, False, _EMPTY_ANN)
+            return TBoolLit(pos, False, {})
         if len(args) > 0 and isinstance(args[0], dict):
             # bool(None) → false
             if _is_ast(args[0], "Constant") and isinstance(args[0].get("value"), JNull):
-                return TBoolLit(pos, False, _EMPTY_ANN)
+                return TBoolLit(pos, False, {})
             arg_type = _infer_expr_type(args[0], env, ctx)
             arg = _lower_expr(args[0], env, ctx)
             # bool(optional) → !IsNil(x)
             if _is_optional_type(arg_type):
-                return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [arg]), _EMPTY_ANN)
+                return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [arg]), {})
             if _is_type_dict(arg_type, ["int"]):
-                return TBinaryOp(
-                    pos, "!=", arg, TIntLit(pos, 0, "0", _EMPTY_ANN), _EMPTY_ANN
-                )
+                return TBinaryOp(pos, "!=", arg, TIntLit(pos, 0, "0", {}), {})
             if _is_type_dict(arg_type, ["float"]):
-                return TBinaryOp(
-                    pos, "!=", arg, TFloatLit(pos, 0.0, "0.0", _EMPTY_ANN), _EMPTY_ANN
-                )
+                return TBinaryOp(pos, "!=", arg, TFloatLit(pos, 0.0, "0.0", {}), {})
             if _is_type_dict(arg_type, ["string"]):
-                return TBinaryOp(
-                    pos, "!=", arg, TStringLit(pos, "", _EMPTY_ANN), _EMPTY_ANN
-                )
+                return TBinaryOp(pos, "!=", arg, TStringLit(pos, "", {}), {})
             if _is_type_dict(arg_type, ["bool"]):
                 return arg
             if isinstance(arg_type, TupleType):
                 if len(arg_type.elements) > 0:
-                    return TBoolLit(pos, True, _EMPTY_ANN)
-                return TBoolLit(pos, False, _EMPTY_ANN)
+                    return TBoolLit(pos, True, {})
+                return TBoolLit(pos, False, {})
             if _is_type_dict(arg_type, ["bytes", "Slice", "Map", "Set"]):
                 return TBinaryOp(
                     pos,
                     "!=",
                     _make_call(pos, "Len", [arg]),
-                    TIntLit(pos, 0, "0", _EMPTY_ANN),
-                    _EMPTY_ANN,
+                    TIntLit(pos, 0, "0", {}),
+                    {},
                 )
-            return TBinaryOp(
-                pos, "!=", arg, TIntLit(pos, 0, "0", _EMPTY_ANN), _EMPTY_ANN
-            )
+            return TBinaryOp(pos, "!=", arg, TIntLit(pos, 0, "0", {}), {})
     if fname == "chr":
         if len(args) > 0 and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
@@ -2368,7 +2357,7 @@ def _lower_name_call(
             arg_type = _infer_expr_type(args[0], env, ctx)
             arg = _lower_expr(args[0], env, ctx)
             if _is_type_dict(arg_type, ["string"]):
-                indexed = TIndex(pos, arg, TIntLit(pos, 0, "0", _EMPTY_ANN), _EMPTY_ANN)
+                indexed = TIndex(pos, arg, TIntLit(pos, 0, "0", {}), {})
                 return _make_call(pos, "RuneToInt", [indexed])
             return _make_call(pos, "RuneToInt", [arg])
     if fname == "zip":
@@ -2380,19 +2369,19 @@ def _lower_name_call(
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
             tnames = _isinstance_types_from_args(args)
             if len(tnames) == 0:
-                return TBoolLit(pos, True, _EMPTY_ANN)
+                return TBoolLit(pos, True, {})
             lowered_arg = _lower_expr(args[0], env, ctx)
             result_expr: TExpr = _make_call(
-                pos, "IsType", [lowered_arg, TStringLit(pos, tnames[0], _EMPTY_ANN)]
+                pos, "IsType", [lowered_arg, TStringLit(pos, tnames[0], {})]
             )
             ti = 1
             while ti < len(tnames):
                 right: TExpr = _make_call(
                     pos,
                     "IsType",
-                    [lowered_arg, TStringLit(pos, tnames[ti], _EMPTY_ANN)],
+                    [lowered_arg, TStringLit(pos, tnames[ti], {})],
                 )
-                result_expr = TBinaryOp(pos, "||", result_expr, right, _EMPTY_ANN)
+                result_expr = TBinaryOp(pos, "||", result_expr, right, {})
                 ti += 1
             return result_expr
     if fname == "any" or fname == "all":
@@ -2400,7 +2389,7 @@ def _lower_name_call(
             a0_type = get_str(args[0], "_type")
             if a0_type == "GeneratorExp" or a0_type == "ListComp":
                 return _lower_any_all(fname, args[0], env, ctx)
-        return TBoolLit(pos, True, _EMPTY_ANN)
+        return TBoolLit(pos, True, {})
     if fname == "repr":
         if len(args) > 0 and isinstance(args[0], dict):
             return _make_call(pos, "ToString", [_lower_expr(args[0], env, ctx)])
@@ -2427,9 +2416,9 @@ def _lower_name_call(
                             pos,
                             "RangeList",
                             [
-                                TIntLit(pos, 0, "0", _EMPTY_ANN),
+                                TIntLit(pos, 0, "0", {}),
                                 end,
-                                TIntLit(pos, 1, "1", _EMPTY_ANN),
+                                TIntLit(pos, 1, "1", {}),
                             ],
                         )
                     if (
@@ -2442,7 +2431,7 @@ def _lower_name_call(
                         return _make_call(
                             pos,
                             "RangeList",
-                            [start, end, TIntLit(pos, 1, "1", _EMPTY_ANN)],
+                            [start, end, TIntLit(pos, 1, "1", {})],
                         )
                     if (
                         len(rargs) >= 3
@@ -2463,11 +2452,9 @@ def _lower_name_call(
                         elems: list[TExpr] = []
                         ci = 0
                         while ci < len(s_jv.value):
-                            elems.append(
-                                TStringLit(pos, s_jv.value[ci : ci + 1], _EMPTY_ANN)
-                            )
+                            elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
                             ci += 1
-                        return TListLit(pos, elems, _EMPTY_ANN)
+                        return TListLit(pos, elems, {})
                 return _make_call(pos, "Chars", [_lower_expr(args[0], env, ctx)])
             # list(zip(...)) → Zip(...)
             if _is_ast(args[0], "Call"):
@@ -2480,7 +2467,7 @@ def _lower_name_call(
             return _make_call(pos, "ListFrom", [_lower_expr(args[0], env, ctx)])
     if fname == "bytes":
         if len(args) == 0:
-            return TBytesLit(pos, b"", _EMPTY_ANN)
+            return TBytesLit(pos, b"", {})
         if len(args) == 1 and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
             if _is_type_dict(arg_type, ["int"]):
@@ -2508,12 +2495,10 @@ def _lower_name_call(
                     set_elems: list[TExpr] = []
                     ci = 0
                     while ci < len(s_jv.value):
-                        set_elems.append(
-                            TStringLit(pos, s_jv.value[ci : ci + 1], _EMPTY_ANN)
-                        )
+                        set_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
                         ci += 1
                     return _make_call(
-                        pos, "SetFromList", [TListLit(pos, set_elems, _EMPTY_ANN)]
+                        pos, "SetFromList", [TListLit(pos, set_elems, {})]
                     )
             # set(list_expr) → SetFromList(list_expr)
             if _is_type_dict(arg_type, ["Slice"]):
@@ -2525,14 +2510,14 @@ def _lower_name_call(
                     return _make_call(
                         pos,
                         "SetFromList",
-                        [TListLit(pos, lowered_arg.elements, _EMPTY_ANN)],
+                        [TListLit(pos, lowered_arg.elements, {})],
                     )
                 return _make_call(pos, "SetFromList", [lowered_arg])
             # set(any_iterable) → SetFromList(expr)
             return _make_call(pos, "SetFromList", [_lower_expr(args[0], env, ctx)])
     if fname == "tuple":
         if len(args) == 0:
-            return TListLit(pos, [], _EMPTY_ANN)
+            return TListLit(pos, [], {})
         if len(args) == 1 and isinstance(args[0], dict):
             # tuple(range(...)) → RangeList(...)
             if _is_ast(args[0], "Call"):
@@ -2547,11 +2532,9 @@ def _lower_name_call(
                     tup_elems: list[TExpr] = []
                     ci = 0
                     while ci < len(s_jv.value):
-                        tup_elems.append(
-                            TStringLit(pos, s_jv.value[ci : ci + 1], _EMPTY_ANN)
-                        )
+                        tup_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
                         ci += 1
-                    return TListLit(pos, tup_elems, _EMPTY_ANN)
+                    return TListLit(pos, tup_elems, {})
             # tuple(set) → Sorted(set)
             if _is_type_dict(arg_type, ["Set"]):
                 return _make_call(pos, "Sorted", [_lower_expr(args[0], env, ctx)])
@@ -2560,9 +2543,9 @@ def _lower_name_call(
             return TSlice(
                 pos,
                 arg,
-                TIntLit(pos, 0, "0", _EMPTY_ANN),
+                TIntLit(pos, 0, "0", {}),
                 _make_call(pos, "Len", [arg]),
-                _EMPTY_ANN,
+                {},
             )
     if fname == "dict":
         if len(args) == 0:
@@ -2584,7 +2567,7 @@ def _lower_name_call(
             return _make_call(
                 pos,
                 "FormatInt",
-                [int_arg, TIntLit(pos, 16, "16", _EMPTY_ANN)],
+                [int_arg, TIntLit(pos, 16, "16", {})],
             )
     if fname == "divmod":
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
@@ -2596,7 +2579,7 @@ def _lower_name_call(
                     _make_call(pos, "FloorDiv", [div_a, div_b]),
                     _make_call(pos, "PythonMod", [div_a, div_b]),
                 ],
-                _EMPTY_ANN,
+                {},
             )
     if fname == "print":
         return _lower_print_call(pos, args, keywords, env, ctx)
@@ -2612,8 +2595,8 @@ def _lower_name_call(
         if len(args) > 0 and isinstance(args[0], dict):
             exc_args.append(TArg(pos, None, _lower_expr(args[0], env, ctx)))
         else:
-            exc_args.append(TArg(pos, None, TStringLit(pos, "", _EMPTY_ANN)))
-        return TCall(pos, TVar(pos, fname, _EMPTY_ANN), exc_args, _EMPTY_ANN)
+            exc_args.append(TArg(pos, None, TStringLit(pos, "", {})))
+        return TCall(pos, TVar(pos, fname, {}), exc_args, {})
     # Struct constructor
     if fname in ctx.known_classes:
         return _lower_struct_constructor(pos, fname, args, keywords, env, ctx)
@@ -2634,7 +2617,7 @@ def _lower_name_call(
             lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
             i += 1
     safe = _safe_name(fname)
-    return TCall(pos, TVar(pos, safe, _name_ann(safe, fname)), lowered_args, _EMPTY_ANN)
+    return TCall(pos, TVar(pos, safe, _name_ann(safe, fname)), lowered_args, {})
 
 
 def _has_keyword_true(keywords: list[ASTNode], name: str) -> bool:
@@ -2669,7 +2652,7 @@ def _lower_print_call(
 ) -> TExpr:
     """Lower print() to WritelnOut/WriteOut/WritelnErr or Print()."""
     # Get the argument (print typically has one arg in subset)
-    arg_expr: TExpr = TStringLit(pos, "", _EMPTY_ANN)
+    arg_expr: TExpr = TStringLit(pos, "", {})
     is_string = True
     if len(args) > 0 and isinstance(args[0], dict):
         arg_type = _infer_expr_type(args[0], env, ctx)
@@ -2711,14 +2694,14 @@ def _lower_print_call(
     # For non-string values: use Print() with named args
     if is_stderr:
         return _make_named_call(
-            pos, "Print", [arg_expr], [("stderr", TBoolLit(pos, True, _EMPTY_ANN))]
+            pos, "Print", [arg_expr], [("stderr", TBoolLit(pos, True, {}))]
         )
     if no_newline:
         return _make_named_call(
-            pos, "Print", [arg_expr], [("newline", TBoolLit(pos, False, _EMPTY_ANN))]
+            pos, "Print", [arg_expr], [("newline", TBoolLit(pos, False, {}))]
         )
     return _make_named_call(
-        pos, "Print", [arg_expr], [("newline", TBoolLit(pos, True, _EMPTY_ANN))]
+        pos, "Print", [arg_expr], [("newline", TBoolLit(pos, True, {}))]
     )
 
 
@@ -2746,7 +2729,7 @@ def _lower_struct_constructor(
         if kw_name != "" and len(kw_val) > 0:
             lowered_args.append(TArg(pos, kw_name, _lower_expr(kw_val, env, ctx)))
         i += 1
-    return TCall(pos, TVar(pos, class_name, _EMPTY_ANN), lowered_args, _EMPTY_ANN)
+    return TCall(pos, TVar(pos, class_name, {}), lowered_args, {})
 
 
 def _lower_method_call(
@@ -2769,7 +2752,7 @@ def _lower_method_call(
             if len(args) > 0 and isinstance(args[0], dict):
                 exit_args.append(_lower_expr(args[0], env, ctx))
             else:
-                exit_args.append(TIntLit(pos, 0, "0", _EMPTY_ANN))
+                exit_args.append(TIntLit(pos, 0, "0", {}))
             return _make_call(pos, "Exit", exit_args)
     # sys.stdin methods
     if _is_ast(obj_node, "Attribute"):
@@ -2828,7 +2811,7 @@ def _lower_method_call(
                 fk_args.append(_lower_expr(a, env, ctx))
                 fi += 1
             if len(fk_args) == 1:
-                fk_args.append(TNilLit(pos, _EMPTY_ANN))
+                fk_args.append(TNilLit(pos, {}))
             return _make_call(pos, "MapFromKeys", fk_args)
     obj = _lower_expr(obj_node, env, ctx)
     # Unwrap pointer for type dispatch
@@ -2864,9 +2847,7 @@ def _lower_method_call(
             a = args[i]
             lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
             i += 1
-    return TCall(
-        pos, TFieldAccess(pos, obj, method_name, _EMPTY_ANN), lowered_args, _EMPTY_ANN
-    )
+    return TCall(pos, TFieldAccess(pos, obj, method_name, {}), lowered_args, {})
 
 
 def _lower_string_method(
@@ -2887,9 +2868,7 @@ def _lower_string_method(
         if len(lowered) == 0:
             return _make_call(pos, "SplitWhitespace", [obj])
         if len(lowered) == 2:
-            plus_one = TBinaryOp(
-                pos, "+", lowered[1], TIntLit(pos, 1, "1", _EMPTY_ANN), _EMPTY_ANN
-            )
+            plus_one = TBinaryOp(pos, "+", lowered[1], TIntLit(pos, 1, "1", {}), {})
             return _make_call(pos, "SplitN", [obj, lowered[0], plus_one])
         return _make_call(pos, "Split", [obj] + lowered)
     if method == "replace":
@@ -2904,15 +2883,15 @@ def _lower_string_method(
         return _lower_startswith_endswith(pos, "EndsWith", obj, args, env, ctx)
     if method == "strip":
         if len(lowered) == 0:
-            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", {})]
         return _make_call(pos, "Trim", [obj] + lowered)
     if method == "lstrip":
         if len(lowered) == 0:
-            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", {})]
         return _make_call(pos, "TrimStart", [obj] + lowered)
     if method == "rstrip":
         if len(lowered) == 0:
-            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", {})]
         return _make_call(pos, "TrimEnd", [obj] + lowered)
     if method == "lower":
         return _make_call(pos, "Lower", [obj])
@@ -2956,11 +2935,11 @@ def _lower_startswith_endswith(
                 parts.append(_make_call(pos, func_name, [obj, lowered_e]))
                 i += 1
             if len(parts) == 0:
-                return TBoolLit(pos, False, _EMPTY_ANN)
+                return TBoolLit(pos, False, {})
             result: TExpr = parts[0]
             i = 1
             while i < len(parts):
-                result = TBinaryOp(pos, "||", result, parts[i], _EMPTY_ANN)
+                result = TBinaryOp(pos, "||", result, parts[i], {})
                 i += 1
             return result
         # Single argument
@@ -3001,14 +2980,14 @@ def _lower_list_method(
     if method == "pop":
         if len(lowered) == 0:
             return _make_call(pos, "Pop", [obj])
-        return TIndex(pos, obj, lowered[0], _EMPTY_ANN)
+        return TIndex(pos, obj, lowered[0], {})
     if method == "index":
         if len(lowered) >= 2:
             val = lowered[0]
             start = lowered[1]
-            sliced = TSlice(pos, obj, start, _make_call(pos, "Len", [obj]), _EMPTY_ANN)
+            sliced = TSlice(pos, obj, start, _make_call(pos, "Len", [obj]), {})
             return TBinaryOp(
-                pos, "+", _make_call(pos, "IndexOf", [sliced, val]), start, _EMPTY_ANN
+                pos, "+", _make_call(pos, "IndexOf", [sliced, val]), start, {}
             )
         return _make_call(pos, "IndexOf", [obj] + lowered)
     if method == "remove":
@@ -3021,18 +3000,18 @@ def _lower_list_method(
         return TSlice(
             pos,
             obj,
-            TIntLit(pos, 0, "0", _EMPTY_ANN),
+            TIntLit(pos, 0, "0", {}),
             _make_call(pos, "Len", [obj]),
-            _EMPTY_ANN,
+            {},
         )
     if method == "count":
         return _make_call(pos, "Count", [obj] + lowered)
     if method == "clear":
-        return TListLit(pos, [], _EMPTY_ANN)
+        return TListLit(pos, [], {})
     if method == "reverse":
-        return TNilLit(pos, _EMPTY_ANN)
+        return TNilLit(pos, {})
     if method == "sort":
-        return TNilLit(pos, _EMPTY_ANN)
+        return TNilLit(pos, {})
     return _make_method_call(pos, obj, method, lowered)
 
 
@@ -3064,7 +3043,7 @@ def _lower_dict_method(
     if method == "copy":
         return _make_call(pos, "Merge", [obj, _make_call(pos, "Map", [])])
     if method == "pop":
-        return TIndex(pos, obj, lowered[0], _EMPTY_ANN)
+        return TIndex(pos, obj, lowered[0], {})
     if method == "setdefault":
         return _make_call(pos, "Get", [obj] + lowered)
     if method == "update":
@@ -3092,7 +3071,7 @@ def _method_side_effects(value_node: ASTNode, env: _Env, ctx: _LowerCtx) -> list
         if len(vargs) > 0 and isinstance(vargs[0], dict):
             obj = _lower_expr(obj_node, env, ctx)
             key = _lower_expr(vargs[0], env, ctx)
-            return [TExprStmt(pos, _make_call(pos, "Delete", [obj, key]), _EMPTY_ANN)]
+            return [TExprStmt(pos, _make_call(pos, "Delete", [obj, key]), {})]
     # dict.setdefault(k, v) → if !Contains(d, k) { d[k] = v }
     if _is_type_dict(actual, ["Map"]) and method == "setdefault":
         if (
@@ -3103,27 +3082,23 @@ def _method_side_effects(value_node: ASTNode, env: _Env, ctx: _LowerCtx) -> list
             obj = _lower_expr(obj_node, env, ctx)
             key = _lower_expr(vargs[0], env, ctx)
             default = _lower_expr(vargs[1], env, ctx)
-            cond = TUnaryOp(
-                pos, "!", _make_call(pos, "Contains", [obj, key]), _EMPTY_ANN
-            )
-            assign = TAssignStmt(
-                pos, TIndex(pos, obj, key, _EMPTY_ANN), default, _EMPTY_ANN
-            )
-            return [TIfStmt(pos, cond, [assign], None, _EMPTY_ANN)]
+            cond = TUnaryOp(pos, "!", _make_call(pos, "Contains", [obj, key]), {})
+            assign = TAssignStmt(pos, TIndex(pos, obj, key, {}), default, {})
+            return [TIfStmt(pos, cond, [assign], None, {})]
     # list.pop(i) → RemoveAt(xs, i)
     if _is_type_dict(actual, ["Slice"]) and method == "pop":
         if len(vargs) > 0 and isinstance(vargs[0], dict):
             obj = _lower_expr(obj_node, env, ctx)
             idx = _lower_expr(vargs[0], env, ctx)
-            return [TExprStmt(pos, _make_call(pos, "RemoveAt", [obj, idx]), _EMPTY_ANN)]
+            return [TExprStmt(pos, _make_call(pos, "RemoveAt", [obj, idx]), {})]
     # list.sort() → xs = Sorted(xs)
     if _is_type_dict(actual, ["Slice"]) and method == "sort":
         obj = _lower_expr(obj_node, env, ctx)
-        return [TAssignStmt(pos, obj, _make_call(pos, "Sorted", [obj]), _EMPTY_ANN)]
+        return [TAssignStmt(pos, obj, _make_call(pos, "Sorted", [obj]), {})]
     # list.reverse() → xs = Reversed(xs)
     if _is_type_dict(actual, ["Slice"]) and method == "reverse":
         obj = _lower_expr(obj_node, env, ctx)
-        return [TAssignStmt(pos, obj, _make_call(pos, "Reversed", [obj]), _EMPTY_ANN)]
+        return [TAssignStmt(pos, obj, _make_call(pos, "Reversed", [obj]), {})]
     return []
 
 
@@ -3183,8 +3158,8 @@ def _lower_set_method(
                 pos,
                 "==",
                 _make_call(pos, "Len", [diff]),
-                TIntLit(pos, 0, "0", _EMPTY_ANN),
-                _EMPTY_ANN,
+                TIntLit(pos, 0, "0", {}),
+                {},
             )
     if method == "issuperset":
         if len(lowered) == 1:
@@ -3193,8 +3168,8 @@ def _lower_set_method(
                 pos,
                 "==",
                 _make_call(pos, "Len", [diff]),
-                TIntLit(pos, 0, "0", _EMPTY_ANN),
-                _EMPTY_ANN,
+                TIntLit(pos, 0, "0", {}),
+                {},
             )
     if method == "isdisjoint":
         if len(lowered) == 1:
@@ -3203,8 +3178,8 @@ def _lower_set_method(
                 pos,
                 "==",
                 _make_call(pos, "Len", [inter]),
-                TIntLit(pos, 0, "0", _EMPTY_ANN),
-                _EMPTY_ANN,
+                TIntLit(pos, 0, "0", {}),
+                {},
             )
     return _make_method_call(pos, obj, method, lowered)
 
@@ -3237,23 +3212,21 @@ def _lower_bytes_method(
         return _make_call(pos, "Count", [obj] + lowered)
     if method == "strip":
         if len(lowered) == 0:
-            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", {})]
         return _make_call(pos, "Trim", [obj] + lowered)
     if method == "lstrip":
         if len(lowered) == 0:
-            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", {})]
         return _make_call(pos, "TrimStart", [obj] + lowered)
     if method == "rstrip":
         if len(lowered) == 0:
-            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", _EMPTY_ANN)]
+            lowered = [TStringLit(pos, " \t\n\r\x0b\x0c", {})]
         return _make_call(pos, "TrimEnd", [obj] + lowered)
     if method == "split":
         if len(lowered) == 0:
             return _make_call(pos, "SplitWhitespace", [obj])
         if len(lowered) == 2:
-            plus_one = TBinaryOp(
-                pos, "+", lowered[1], TIntLit(pos, 1, "1", _EMPTY_ANN), _EMPTY_ANN
-            )
+            plus_one = TBinaryOp(pos, "+", lowered[1], TIntLit(pos, 1, "1", {}), {})
             return _make_call(pos, "SplitN", [obj, lowered[0], plus_one])
         return _make_call(pos, "Split", [obj] + lowered)
     if method == "join":
@@ -3305,14 +3278,14 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             if low_val is not None and not has_upper:
                 if low_val <= 1:
                     return args_call
-                low = TIntLit(pos, low_val - 1, str(low_val - 1), _EMPTY_ANN)
+                low = TIntLit(pos, low_val - 1, str(low_val - 1), {})
                 high = _make_call(pos, "Len", [args_call])
-                return TSlice(pos, _make_call(pos, "Args", []), low, high, _EMPTY_ANN)
+                return TSlice(pos, _make_call(pos, "Args", []), low, high, {})
         else:
             argv_idx = _get_const_int(slice_node)
             if argv_idx is not None and argv_idx >= 1:
-                idx = TIntLit(pos, argv_idx - 1, str(argv_idx - 1), _EMPTY_ANN)
-                return TIndex(pos, args_call, idx, _EMPTY_ANN)
+                idx = TIntLit(pos, argv_idx - 1, str(argv_idx - 1), {})
+                return TIndex(pos, args_call, idx, {})
     # hex(x)[2:] → FormatInt(x, 16) (hex() includes "0x" prefix, FormatInt does not)
     if (
         _is_ast(slice_node, "Slice")
@@ -3337,7 +3310,7 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         low: TExpr
         high: TExpr
         if lower_jv is None or isinstance(lower_jv, JNull):
-            low = TIntLit(pos, 0, "0", _EMPTY_ANN)
+            low = TIntLit(pos, 0, "0", {})
         elif isinstance(lower_jv, JDict):
             lower_val = lower_jv.entries
             if (
@@ -3348,7 +3321,7 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             else:
                 low = _lower_expr(lower_val, env, ctx)
         else:
-            low = TIntLit(pos, 0, "0", _EMPTY_ANN)
+            low = TIntLit(pos, 0, "0", {})
         if upper_jv is None or isinstance(upper_jv, JNull):
             high = _len_expr(pos, obj, obj_type)
         elif isinstance(upper_jv, JDict):
@@ -3362,7 +3335,7 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 high = _lower_expr(upper_val, env, ctx)
         else:
             high = _len_expr(pos, obj, obj_type)
-        return TSlice(pos, obj, low, high, _EMPTY_ANN)
+        return TSlice(pos, obj, low, high, {})
     # Tuple index: t[0] → t.0 (only for multi-element tuples, not single-element)
     if _is_type_dict(obj_type, ["Tuple"]) and not _is_single_elem_tuple(obj_type):
         if _is_ast(slice_node, "Constant"):
@@ -3371,7 +3344,7 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 idx_val = idx_jv.value
                 if idx_val < 0 and isinstance(obj_type, TupleType):
                     idx_val = len(obj_type.elements) + idx_val
-                return TTupleAccess(pos, obj, idx_val, _EMPTY_ANN)
+                return TTupleAccess(pos, obj, idx_val, {})
         if _is_ast(slice_node, "UnaryOp"):
             op_node = get_node(slice_node, "op")
             if get_str(op_node, "_type") == "USub":
@@ -3380,7 +3353,7 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                     op_val_jv = operand.get("value")
                     if isinstance(op_val_jv, JInt) and isinstance(obj_type, TupleType):
                         idx_val = len(obj_type.elements) - op_val_jv.value
-                        return TTupleAccess(pos, obj, idx_val, _EMPTY_ANN)
+                        return TTupleAccess(pos, obj, idx_val, {})
     # Negative index: xs[-1] → xs[Len(xs) - 1]
     is_string = _is_type_dict(obj_type, ["string"])
     if _is_ast(slice_node, "Constant"):
@@ -3391,10 +3364,10 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 pos,
                 "-",
                 _len_expr(pos, obj, obj_type),
-                TIntLit(pos, n, str(n), _EMPTY_ANN),
-                _EMPTY_ANN,
+                TIntLit(pos, n, str(n), {}),
+                {},
             )
-            result = TIndex(pos, obj, idx_expr, _EMPTY_ANN)
+            result = TIndex(pos, obj, idx_expr, {})
             if is_string:
                 return _make_call(pos, "ToString", [result])
             return result
@@ -3409,16 +3382,16 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                         pos,
                         "-",
                         _len_expr(pos, obj, obj_type),
-                        TIntLit(pos, op_val_jv.value, str(op_val_jv.value), _EMPTY_ANN),
-                        _EMPTY_ANN,
+                        TIntLit(pos, op_val_jv.value, str(op_val_jv.value), {}),
+                        {},
                     )
-                    result = TIndex(pos, obj, idx_expr, _EMPTY_ANN)
+                    result = TIndex(pos, obj, idx_expr, {})
                     if is_string:
                         return _make_call(pos, "ToString", [result])
                     return result
     # Normal index
     idx = _lower_expr(slice_node, env, ctx)
-    result = TIndex(pos, obj, idx, _EMPTY_ANN)
+    result = TIndex(pos, obj, idx, {})
     if is_string:
         return _make_call(pos, "ToString", [result])
     return result
@@ -3441,14 +3414,14 @@ def _lower_ternary_cond(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 and isinstance(comp.get("value"), JNull)
             ):
                 left = _lower_expr(left_node, env, ctx)
-                return TBinaryOp(pos, "==", left, TNilLit(pos, _EMPTY_ANN), _EMPTY_ANN)
+                return TBinaryOp(pos, "==", left, TNilLit(pos, {}), {})
             if (
                 op_type == "IsNot"
                 and _is_ast(comp, "Constant")
                 and isinstance(comp.get("value"), JNull)
             ):
                 left = _lower_expr(left_node, env, ctx)
-                return TBinaryOp(pos, "!=", left, TNilLit(pos, _EMPTY_ANN), _EMPTY_ANN)
+                return TBinaryOp(pos, "!=", left, TNilLit(pos, {}), {})
     return _lower_as_bool(node, env, ctx)
 
 
@@ -3461,7 +3434,7 @@ def _lower_ifexp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     cond = _lower_ternary_cond(test, env, ctx)
     then_expr = _lower_expr(body, env, ctx)
     else_expr = _lower_expr(orelse, env, ctx)
-    return TTernary(pos, cond, then_expr, else_expr, _EMPTY_ANN)
+    return TTernary(pos, cond, then_expr, else_expr, {})
 
 
 def _lower_list_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -3474,7 +3447,7 @@ def _lower_list_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         e = elts[i]
         elements.append(_lower_expr(e, env, ctx))
         i += 1
-    return TListLit(pos, elements, _EMPTY_ANN)
+    return TListLit(pos, elements, {})
 
 
 def _lower_dict_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -3492,7 +3465,7 @@ def _lower_dict_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         i += 1
     if len(entries) == 0:
         return _make_call(pos, "Map", [])
-    return TMapLit(pos, entries, _EMPTY_ANN)
+    return TMapLit(pos, entries, {})
 
 
 def _lower_set_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -3505,7 +3478,7 @@ def _lower_set_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         e = elts[i]
         elements.append(_lower_expr(e, env, ctx))
         i += 1
-    return TSetLit(pos, elements, _EMPTY_ANN)
+    return TSetLit(pos, elements, {})
 
 
 def _lower_list_from_tuple(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -3518,7 +3491,7 @@ def _lower_list_from_tuple(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         e = elts[i]
         elements.append(_lower_expr(e, env, ctx))
         i += 1
-    return TListLit(pos, elements, _EMPTY_ANN)
+    return TListLit(pos, elements, {})
 
 
 def _lower_tuple_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -3532,10 +3505,10 @@ def _lower_tuple_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         elements.append(_lower_expr(e, env, ctx))
         i += 1
     if len(elements) == 0:
-        return TListLit(pos, [], _EMPTY_ANN)
+        return TListLit(pos, [], {})
     if len(elements) == 1:
-        return TListLit(pos, elements, _EMPTY_ANN)
-    return TTupleLit(pos, elements, _EMPTY_ANN)
+        return TListLit(pos, elements, {})
+    return TTupleLit(pos, elements, {})
 
 
 def _lower_fstring(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
@@ -3558,7 +3531,7 @@ def _lower_fstring(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             fmt_args.append(_lower_expr(inner, env, ctx))
         i += 1
     template = "".join(template_parts)
-    all_args: list[TExpr] = [TStringLit(pos, template, _EMPTY_ANN)]
+    all_args: list[TExpr] = [TStringLit(pos, template, {})]
     for _fa in fmt_args:
         all_args.append(_fa)
     return _make_call(pos, "Format", all_args)
@@ -3572,10 +3545,10 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
     is_any = fname == "any"
     default_val = not is_any
     if len(generators) == 0:
-        return TBoolLit(pos, default_val, _EMPTY_ANN)
+        return TBoolLit(pos, default_val, {})
     gen = generators[0]
     if not isinstance(gen, dict):
-        return TBoolLit(pos, default_val, _EMPTY_ANN)
+        return TBoolLit(pos, default_val, {})
     target = get_node(gen, "target")
     iter_node = get_node(gen, "iter")
     binding, b_ann = _extract_binding(target)
@@ -3589,26 +3562,24 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
     cid = ctx.comp_counter
     ctx.comp_counter = cid + 1
     rname = "__comp_" + str(cid) + "__"
-    result_var = TVar(pos, rname, _EMPTY_ANN)
+    result_var = TVar(pos, rname, {})
     bool_type: TType = TPrimitive(pos, "bool")
-    let_stmt = TLetStmt(
-        pos, rname, bool_type, TBoolLit(pos, default_val, _EMPTY_ANN), _EMPTY_ANN
-    )
+    let_stmt = TLetStmt(pos, rname, bool_type, TBoolLit(pos, default_val, {}), {})
     cond: TExpr = elt_expr
     if not is_any:
-        cond = TUnaryOp(pos, "!", elt_expr, _EMPTY_ANN)
-    set_val = TBoolLit(pos, is_any, _EMPTY_ANN)
+        cond = TUnaryOp(pos, "!", elt_expr, {})
+    set_val = TBoolLit(pos, is_any, {})
     inner_body: list[TStmt] = [
-        TAssignStmt(pos, result_var, set_val, _EMPTY_ANN),
-        TBreakStmt(pos, _EMPTY_ANN),
+        TAssignStmt(pos, result_var, set_val, {}),
+        TBreakStmt(pos, {}),
     ]
     gen_ifs = get_nodes(gen, "ifs")
     if len(gen_ifs) > 0 and isinstance(gen_ifs[0], dict):
         gen_cond = _lower_as_bool(gen_ifs[0], comp_env, ctx)
-        check_body: list[TStmt] = [TIfStmt(pos, cond, inner_body, None, _EMPTY_ANN)]
-        body: list[TStmt] = [TIfStmt(pos, gen_cond, check_body, None, _EMPTY_ANN)]
+        check_body: list[TStmt] = [TIfStmt(pos, cond, inner_body, None, {})]
+        body: list[TStmt] = [TIfStmt(pos, gen_cond, check_body, None, {})]
     else:
-        body = [TIfStmt(pos, cond, inner_body, None, _EMPTY_ANN)]
+        body = [TIfStmt(pos, cond, inner_body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
     for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
@@ -3648,10 +3619,10 @@ def _lower_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     elt = get_node(node, "elt")
     generators = get_nodes(node, "generators")
     if len(generators) == 0:
-        return TListLit(pos, [], _EMPTY_ANN)
+        return TListLit(pos, [], {})
     gen = generators[0]
     if not isinstance(gen, dict):
-        return TListLit(pos, [], _EMPTY_ANN)
+        return TListLit(pos, [], {})
     # Build innermost env with all generator bindings and types
     comp_env = env.copy()
     gi = 0
@@ -3676,13 +3647,11 @@ def _lower_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     cid = ctx.comp_counter
     ctx.comp_counter = cid + 1
     rname = "__comp_" + str(cid) + "__"
-    result_var = TVar(pos, rname, _EMPTY_ANN)
+    result_var = TVar(pos, rname, {})
     list_type: TType = TListType(pos, elt_ttype)
-    let_stmt = TLetStmt(
-        pos, rname, list_type, TListLit(pos, [], _EMPTY_ANN), _EMPTY_ANN
-    )
+    let_stmt = TLetStmt(pos, rname, list_type, TListLit(pos, [], {}), {})
     append_call = _make_call(pos, "Append", [result_var, elt_expr])
-    body: list[TStmt] = [TExprStmt(pos, append_call, _EMPTY_ANN)]
+    body: list[TStmt] = [TExprStmt(pos, append_call, {})]
     # Build nested for loops from innermost to outermost
     gi = len(generators) - 1
     while gi >= 0:
@@ -3695,7 +3664,7 @@ def _lower_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             g_ifs = get_nodes(g, "ifs")
             if len(g_ifs) > 0 and isinstance(g_ifs[0], dict):
                 cond = _lower_as_bool(g_ifs[0], comp_env, ctx)
-                body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+                body = [TIfStmt(pos, cond, body, None, {})]
             f_ann: Ann = {}
             f_ann.update(g_ann)
             body = [TForStmt(pos, gb, g_iter_expr, body, f_ann)]
@@ -3732,15 +3701,15 @@ def _lower_setcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     cid = ctx.comp_counter
     ctx.comp_counter = cid + 1
     rname = "__comp_" + str(cid) + "__"
-    result_var = TVar(pos, rname, _EMPTY_ANN)
+    result_var = TVar(pos, rname, {})
     set_type: TType = TSetType(pos, TPrimitive(pos, "int"))
-    let_stmt = TLetStmt(pos, rname, set_type, empty_set, _EMPTY_ANN)
+    let_stmt = TLetStmt(pos, rname, set_type, empty_set, {})
     add_call = _make_call(pos, "Add", [result_var, elt_expr])
-    body: list[TStmt] = [TExprStmt(pos, add_call, _EMPTY_ANN)]
+    body: list[TStmt] = [TExprStmt(pos, add_call, {})]
     ifs = get_nodes(gen, "ifs")
     if len(ifs) > 0 and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
-        body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+        body = [TIfStmt(pos, cond, body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
     for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
@@ -3797,15 +3766,15 @@ def _lower_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     cid = ctx.comp_counter
     ctx.comp_counter = cid + 1
     rname = "__comp_" + str(cid) + "__"
-    result_var = TVar(pos, rname, _EMPTY_ANN)
+    result_var = TVar(pos, rname, {})
     map_type: TType = TMapType(pos, key_ttype, val_ttype)
-    let_stmt = TLetStmt(pos, rname, map_type, _make_call(pos, "Map", []), _EMPTY_ANN)
-    idx_target = TIndex(pos, result_var, key_expr, _EMPTY_ANN)
-    body: list[TStmt] = [TAssignStmt(pos, idx_target, val_expr, _EMPTY_ANN)]
+    let_stmt = TLetStmt(pos, rname, map_type, _make_call(pos, "Map", []), {})
+    idx_target = TIndex(pos, result_var, key_expr, {})
+    body: list[TStmt] = [TAssignStmt(pos, idx_target, val_expr, {})]
     ifs = get_nodes(gen, "ifs")
     if len(ifs) > 0 and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
-        body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+        body = [TIfStmt(pos, cond, body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
     if is_items:
@@ -3827,10 +3796,10 @@ def _expand_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     elt = get_node(node, "elt")
     generators = get_nodes(node, "generators")
     if len(generators) == 0:
-        return [TReturnStmt(pos, TListLit(pos, [], _EMPTY_ANN), _EMPTY_ANN)]
+        return [TReturnStmt(pos, TListLit(pos, [], {}), {})]
     gen = generators[0]
     if not isinstance(gen, dict):
-        return [TReturnStmt(pos, TListLit(pos, [], _EMPTY_ANN), _EMPTY_ANN)]
+        return [TReturnStmt(pos, TListLit(pos, [], {}), {})]
     target = get_node(gen, "target")
     iter_node = get_node(gen, "iter")
     orig_name = get_str(target, "id")
@@ -3841,24 +3810,22 @@ def _expand_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     comp_env = env.copy()
     comp_env.declared.add(orig_name)
     elt_expr = _lower_expr(elt, comp_env, ctx)
-    result_var = TVar(pos, "__result__", _EMPTY_ANN)
+    result_var = TVar(pos, "__result__", {})
     # Build: let __result__: list[...] = []
     ret_type = env.return_type
     result_type: TType = _typenode_to_ttype(pos, ret_type)
-    let_stmt = TLetStmt(
-        pos, "__result__", result_type, TListLit(pos, [], _EMPTY_ANN), _EMPTY_ANN
-    )
+    let_stmt = TLetStmt(pos, "__result__", result_type, TListLit(pos, [], {}), {})
     # Build: for target_name in iter { Append(__result__, elt) }
     append_call = _make_call(pos, "Append", [result_var, elt_expr])
-    body: list[TStmt] = [TExprStmt(pos, append_call, _EMPTY_ANN)]
+    body: list[TStmt] = [TExprStmt(pos, append_call, {})]
     # Handle optional filter (ifs in generator)
     ifs = get_nodes(gen, "ifs")
     if len(ifs) > 0 and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
-        body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+        body = [TIfStmt(pos, cond, body, None, {})]
     for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
     # Return __result__
-    return_stmt = TReturnStmt(pos, result_var, _EMPTY_ANN)
+    return_stmt = TReturnStmt(pos, result_var, {})
     return [let_stmt, for_stmt, return_stmt]
 
 
@@ -3869,10 +3836,10 @@ def _expand_setcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     generators = get_nodes(node, "generators")
     empty_set = _make_call(pos, "Set", [])
     if len(generators) == 0:
-        return [TReturnStmt(pos, empty_set, _EMPTY_ANN)]
+        return [TReturnStmt(pos, empty_set, {})]
     gen = generators[0]
     if not isinstance(gen, dict):
-        return [TReturnStmt(pos, empty_set, _EMPTY_ANN)]
+        return [TReturnStmt(pos, empty_set, {})]
     target = get_node(gen, "target")
     iter_node = get_node(gen, "iter")
     orig_name = get_str(target, "id")
@@ -3882,18 +3849,18 @@ def _expand_setcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     comp_env = env.copy()
     comp_env.declared.add(orig_name)
     elt_expr = _lower_expr(elt, comp_env, ctx)
-    result_var = TVar(pos, "__result__", _EMPTY_ANN)
+    result_var = TVar(pos, "__result__", {})
     ret_type = env.return_type
     result_type: TType = _typenode_to_ttype(pos, ret_type)
-    let_stmt = TLetStmt(pos, "__result__", result_type, empty_set, _EMPTY_ANN)
+    let_stmt = TLetStmt(pos, "__result__", result_type, empty_set, {})
     add_call = _make_call(pos, "Add", [result_var, elt_expr])
-    body: list[TStmt] = [TExprStmt(pos, add_call, _EMPTY_ANN)]
+    body: list[TStmt] = [TExprStmt(pos, add_call, {})]
     ifs = get_nodes(gen, "ifs")
     if len(ifs) > 0 and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
-        body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+        body = [TIfStmt(pos, cond, body, None, {})]
     for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
-    return_stmt = TReturnStmt(pos, result_var, _EMPTY_ANN)
+    return_stmt = TReturnStmt(pos, result_var, {})
     return [let_stmt, for_stmt, return_stmt]
 
 
@@ -3904,10 +3871,10 @@ def _expand_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     value_node = get_node(node, "value")
     generators = get_nodes(node, "generators")
     if len(generators) == 0:
-        return [TReturnStmt(pos, _make_call(pos, "Map", []), _EMPTY_ANN)]
+        return [TReturnStmt(pos, _make_call(pos, "Map", []), {})]
     gen = generators[0]
     if not isinstance(gen, dict):
-        return [TReturnStmt(pos, _make_call(pos, "Map", []), _EMPTY_ANN)]
+        return [TReturnStmt(pos, _make_call(pos, "Map", []), {})]
     target = get_node(gen, "target")
     iter_node = get_node(gen, "iter")
     orig_name = get_str(target, "id")
@@ -3918,20 +3885,18 @@ def _expand_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     comp_env.declared.add(orig_name)
     key_expr = _lower_expr(key_node, comp_env, ctx)
     val_expr = _lower_expr(value_node, comp_env, ctx)
-    result_var = TVar(pos, "__result__", _EMPTY_ANN)
+    result_var = TVar(pos, "__result__", {})
     ret_type = env.return_type
     result_type: TType = _typenode_to_ttype(pos, ret_type)
-    let_stmt = TLetStmt(
-        pos, "__result__", result_type, _make_call(pos, "Map", []), _EMPTY_ANN
-    )
-    idx_target = TIndex(pos, result_var, key_expr, _EMPTY_ANN)
-    body: list[TStmt] = [TAssignStmt(pos, idx_target, val_expr, _EMPTY_ANN)]
+    let_stmt = TLetStmt(pos, "__result__", result_type, _make_call(pos, "Map", []), {})
+    idx_target = TIndex(pos, result_var, key_expr, {})
+    body: list[TStmt] = [TAssignStmt(pos, idx_target, val_expr, {})]
     ifs = get_nodes(gen, "ifs")
     if len(ifs) > 0 and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
-        body = [TIfStmt(pos, cond, body, None, _EMPTY_ANN)]
+        body = [TIfStmt(pos, cond, body, None, {})]
     for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
-    return_stmt = TReturnStmt(pos, result_var, _EMPTY_ANN)
+    return_stmt = TReturnStmt(pos, result_var, {})
     return [let_stmt, for_stmt, return_stmt]
 
 
@@ -3949,37 +3914,35 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if _is_optional_type(expr_type):
         expr = _lower_expr(node, env, ctx)
         if isinstance(expr, TVar):
-            return TBinaryOp(pos, "!=", expr, TNilLit(pos, _EMPTY_ANN), _EMPTY_ANN)
-        return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [expr]), _EMPTY_ANN)
+            return TBinaryOp(pos, "!=", expr, TNilLit(pos, {}), {})
+        return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [expr]), {})
     if _is_interface_type(expr_type):
         expr = _lower_expr(node, env, ctx)
         if isinstance(expr, TVar):
-            return TBinaryOp(pos, "!=", expr, TNilLit(pos, _EMPTY_ANN), _EMPTY_ANN)
-        return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [expr]), _EMPTY_ANN)
+            return TBinaryOp(pos, "!=", expr, TNilLit(pos, {}), {})
+        return TUnaryOp(pos, "!", _make_call(pos, "IsNil", [expr]), {})
     # Inline truthiness for known types
     if _is_type_dict(expr_type, ["string"]):
         expr = _lower_expr(node, env, ctx)
-        return TBinaryOp(pos, "!=", expr, TStringLit(pos, "", _EMPTY_ANN), _EMPTY_ANN)
+        return TBinaryOp(pos, "!=", expr, TStringLit(pos, "", {}), {})
     if _is_type_dict(expr_type, ["int"]):
         expr = _lower_expr(node, env, ctx)
-        return TBinaryOp(pos, "!=", expr, TIntLit(pos, 0, "0", _EMPTY_ANN), _EMPTY_ANN)
+        return TBinaryOp(pos, "!=", expr, TIntLit(pos, 0, "0", {}), {})
     if _is_type_dict(expr_type, ["float"]):
         expr = _lower_expr(node, env, ctx)
-        return TBinaryOp(
-            pos, "!=", expr, TFloatLit(pos, 0.0, "0.0", _EMPTY_ANN), _EMPTY_ANN
-        )
+        return TBinaryOp(pos, "!=", expr, TFloatLit(pos, 0.0, "0.0", {}), {})
     if isinstance(expr_type, TupleType):
         if len(expr_type.elements) > 0:
-            return TBoolLit(pos, True, _EMPTY_ANN)
-        return TBoolLit(pos, False, _EMPTY_ANN)
+            return TBoolLit(pos, True, {})
+        return TBoolLit(pos, False, {})
     if _is_type_dict(expr_type, ["bytes", "Slice", "Map", "Set"]):
         expr = _lower_expr(node, env, ctx)
         return TBinaryOp(
             pos,
             "!=",
             _make_call(pos, "Len", [expr]),
-            TIntLit(pos, 0, "0", _EMPTY_ANN),
-            _EMPTY_ANN,
+            TIntLit(pos, 0, "0", {}),
+            {},
         )
     # Comparison/BoolOp already return bool
     t = get_str(node, "_type")
@@ -4021,13 +3984,13 @@ def _lower_with_open(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if name in env.hoisted_stmts:
             _backpatch_hoisted(pos, name, val_type, env)
         target: TExpr = TVar(pos, safe, ann)
-        return [TAssignStmt(pos, target, call, _EMPTY_ANN)]
+        return [TAssignStmt(pos, target, call, {})]
     # mode "w" or "wb": with open(path, "w") as f: f.write(data) → WriteFile(path, data)
     call_node = get_node(stmt, "value")
     data_args = get_nodes(call_node, "args")
     data_expr = _lower_expr(data_args[0], env, ctx)
     call = _make_call(pos, "WriteFile", [path_expr, data_expr])
-    return [TExprStmt(pos, call, _EMPTY_ANN)]
+    return [TExprStmt(pos, call, {})]
 
 
 def _lower_stmts(stmts: list[ASTNode], env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -4079,9 +4042,9 @@ def _lower_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if t == "Assert":
         return _lower_assert(node, env, ctx)
     if t == "Break":
-        return [TBreakStmt(pos, _EMPTY_ANN)]
+        return [TBreakStmt(pos, {})]
     if t == "Continue":
-        return [TContinueStmt(pos, _EMPTY_ANN)]
+        return [TContinueStmt(pos, {})]
     if t == "With":
         return _lower_with_open(node, env, ctx)
     if t == "Pass":
@@ -4095,10 +4058,10 @@ def _lower_return(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     pos = _node_pos(node)
     val_jv = node.get("value")
     if val_jv is None or isinstance(val_jv, JNull):
-        return [TReturnStmt(pos, None, _EMPTY_ANN)]
+        return [TReturnStmt(pos, None, {})]
     ret_type = env.return_type
     if isinstance(ret_type, PrimitiveType) and ret_type.kind == "void":
-        return [TReturnStmt(pos, None, _EMPTY_ANN)]
+        return [TReturnStmt(pos, None, {})]
     if isinstance(val_jv, JDict):
         return_val = val_jv.entries
         if _is_ast(return_val, "ListComp") or _is_ast(return_val, "GeneratorExp"):
@@ -4108,8 +4071,8 @@ def _lower_return(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if _is_ast(return_val, "DictComp"):
             return _expand_dictcomp(return_val, env, ctx)
         expr = _lower_expr(return_val, env, ctx)
-        return [TReturnStmt(pos, expr, _EMPTY_ANN)]
-    return [TReturnStmt(pos, None, _EMPTY_ANN)]
+        return [TReturnStmt(pos, expr, {})]
+    return [TReturnStmt(pos, None, {})]
 
 
 def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -4131,7 +4094,7 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if name == "_":
             # _ = expr → just evaluate as expr statement
             expr = _lower_expr(value_node, env, ctx)
-            return [TExprStmt(pos, expr, _EMPTY_ANN)]
+            return [TExprStmt(pos, expr, {})]
         value = _lower_expr(value_node, env, ctx)
         val_type: TypeNode = _infer_expr_type(value_node, env, ctx)
         if _is_type_dict(val_type, ["void"]):
@@ -4149,7 +4112,7 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if name in env.hoisted_stmts:
             _backpatch_hoisted(pos, name, val_type, env)
         target: TExpr = TVar(pos, safe, ann)
-        stmts: list[TStmt] = [TAssignStmt(pos, target, value, _EMPTY_ANN)]
+        stmts: list[TStmt] = [TAssignStmt(pos, target, value, {})]
         stmts.extend(_method_side_effects(value_node, env, ctx))
         return stmts
     # Attribute assignment: obj.field = expr
@@ -4157,9 +4120,9 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         attr = get_str(target_node, "attr")
         obj_node = get_node(target_node, "value")
         obj = _lower_expr(obj_node, env, ctx)
-        target_fa: TExpr = TFieldAccess(pos, obj, attr, _EMPTY_ANN)
+        target_fa: TExpr = TFieldAccess(pos, obj, attr, {})
         value = _lower_expr(value_node, env, ctx)
-        return [TAssignStmt(pos, target_fa, value, _EMPTY_ANN)]
+        return [TAssignStmt(pos, target_fa, value, {})]
     # Subscript assignment: xs[i] = expr
     if _is_ast(target_node, "Subscript"):
         obj_node = get_node(target_node, "value")
@@ -4174,18 +4137,18 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             if isinstance(lower_jv, JDict):
                 low = _lower_expr(lower_jv.entries, env, ctx)
             else:
-                low = TIntLit(pos, 0, "0", _EMPTY_ANN)
+                low = TIntLit(pos, 0, "0", {})
             if isinstance(upper_jv, JDict):
                 high = _lower_expr(upper_jv.entries, env, ctx)
             else:
                 high = _make_call(pos, "Len", [obj])
             value = _lower_expr(value_node, env, ctx)
             call = _make_call(pos, "ReplaceSlice", [obj, low, high, value])
-            return [TExprStmt(pos, call, _EMPTY_ANN)]
+            return [TExprStmt(pos, call, {})]
         idx = _lower_expr(slice_node, env, ctx)
-        target = TIndex(pos, obj, idx, _EMPTY_ANN)
+        target = TIndex(pos, obj, idx, {})
         value = _lower_expr(value_node, env, ctx)
-        return [TAssignStmt(pos, target, value, _EMPTY_ANN)]
+        return [TAssignStmt(pos, target, value, {})]
     return []
 
 
@@ -4229,7 +4192,7 @@ def _lower_tuple_assign(
                         _make_call(pos, "FloorDiv", [a_expr, b_expr]),
                         _make_call(pos, "PythonMod", [a_expr, b_expr]),
                     ],
-                    _EMPTY_ANN,
+                    {},
                 )
             else:
                 value = _make_call(pos, "DivMod", lowered_args)
@@ -4247,15 +4210,15 @@ def _lower_tuple_assign(
                         env.declared.add(name)
                         env.var_types[name] = PrimitiveType(result_kind)
                         prim = TPrimitive(pos, result_kind)
-                        init: TExpr = TIntLit(pos, 0, "0", _EMPTY_ANN)
+                        init: TExpr = TIntLit(pos, 0, "0", {})
                         if use_float:
-                            init = TFloatLit(pos, 0.0, "0.0", _EMPTY_ANN)
+                            init = TFloatLit(pos, 0.0, "0.0", {})
                         stmts.append(TLetStmt(pos, safe, prim, init, ann))
                     elif name in env.hoisted_stmts:
                         _backpatch_hoisted(pos, name, PrimitiveType(result_kind), env)
                     targets.append(TVar(pos, safe, ann))
                 i += 1
-            stmts.append(TTupleAssignStmt(pos, targets, value, _EMPTY_ANN))
+            stmts.append(TTupleAssignStmt(pos, targets, value, {}))
             return stmts
     value = _lower_expr(value_node, env, ctx)
     val_type = _infer_expr_type(value_node, env, ctx)
@@ -4286,7 +4249,7 @@ def _lower_tuple_assign(
                 _backpatch_hoisted(pos, name, et, env)
             targets.append(TVar(pos, safe, ann))
         i += 1
-    stmts.append(TTupleAssignStmt(pos, targets, value, _EMPTY_ANN))
+    stmts.append(TTupleAssignStmt(pos, targets, value, {}))
     return stmts
 
 
@@ -4325,8 +4288,8 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         # void-returning function assigned to optional → call + nil
         val_type = _infer_expr_type(value_node, env, ctx)
         if _is_type_dict(val_type, ["void"]) and isinstance(type_dict, OptionalType):
-            stmts.append(TExprStmt(pos, _lower_expr(value_node, env, ctx), _EMPTY_ANN))
-            val = TNilLit(pos, _EMPTY_ANN)
+            stmts.append(TExprStmt(pos, _lower_expr(value_node, env, ctx), {}))
+            val = TNilLit(pos, {})
         elif _is_variadic_tuple(type_dict) and _is_ast(value_node, "Tuple"):
             val = _lower_list_from_tuple(value_node, env, ctx)
         elif _is_single_elem_tuple(type_dict) and _is_ast(value_node, "Tuple"):
@@ -4337,9 +4300,7 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             genexpr = get_nodes(value_node, "args")[0]
             if already_declared:
                 target = TVar(pos, safe, ann)
-                stmts.append(
-                    TAssignStmt(pos, target, _make_call(pos, "Set", []), _EMPTY_ANN)
-                )
+                stmts.append(TAssignStmt(pos, target, _make_call(pos, "Set", []), {}))
             else:
                 stmts.append(
                     TLetStmt(pos, safe, ttype, _make_call(pos, "Set", []), ann)
@@ -4354,7 +4315,7 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if val is not None:
             if already_declared:
                 target = TVar(pos, safe, ann)
-                stmts.append(TAssignStmt(pos, target, val, _EMPTY_ANN))
+                stmts.append(TAssignStmt(pos, target, val, {}))
             else:
                 stmts.append(TLetStmt(pos, safe, ttype, val, ann))
         stmts.extend(_method_side_effects(value_node, env, ctx))
@@ -4382,25 +4343,19 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 if _is_type_dict(vtype, ["rune"]):
                     value = _make_call(pos, "ToString", [value])
             return [
-                TAssignStmt(
-                    pos, target, _make_call(pos, "Concat", [target, value]), _EMPTY_ANN
-                )
+                TAssignStmt(pos, target, _make_call(pos, "Concat", [target, value]), {})
             ]
         if _is_type_dict(target_type, ["Slice"]):
             target = _lower_expr(target_node, env, ctx)
             other = _lower_extend_arg(value_node, env, ctx)
             return [
-                TAssignStmt(
-                    pos, target, _make_call(pos, "Concat", [target, other]), _EMPTY_ANN
-                )
+                TAssignStmt(pos, target, _make_call(pos, "Concat", [target, other]), {})
             ]
         if _is_type_dict(target_type, ["Tuple"]):
             target = _lower_expr(target_node, env, ctx)
             other = _lower_expr(value_node, env, ctx)
             return [
-                TAssignStmt(
-                    pos, target, _make_call(pos, "Concat", [target, other]), _EMPTY_ANN
-                )
+                TAssignStmt(pos, target, _make_call(pos, "Concat", [target, other]), {})
             ]
     # dict |= other → dict = Merge(dict, other)
     # set |= other → set = Union(set, other)
@@ -4410,17 +4365,13 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             target = _lower_expr(target_node, env, ctx)
             value = _lower_expr(value_node, env, ctx)
             return [
-                TAssignStmt(
-                    pos, target, _make_call(pos, "Merge", [target, value]), _EMPTY_ANN
-                )
+                TAssignStmt(pos, target, _make_call(pos, "Merge", [target, value]), {})
             ]
         if _is_type_dict(target_type, ["Set"]):
             target = _lower_expr(target_node, env, ctx)
             value = _lower_expr(value_node, env, ctx)
             return [
-                TAssignStmt(
-                    pos, target, _make_call(pos, "Union", [target, value]), _EMPTY_ANN
-                )
+                TAssignStmt(pos, target, _make_call(pos, "Union", [target, value]), {})
             ]
     # set &= other → set = Intersection(set, other)
     if op_type == "BitAnd":
@@ -4433,7 +4384,7 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                     pos,
                     target,
                     _make_call(pos, "Intersection", [target, value]),
-                    _EMPTY_ANN,
+                    {},
                 )
             ]
     # set -= other → set = Difference(set, other)
@@ -4447,7 +4398,7 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                     pos,
                     target,
                     _make_call(pos, "Difference", [target, value]),
-                    _EMPTY_ANN,
+                    {},
                 )
             ]
     # tuple *= n → target = Repeat(target, n)
@@ -4457,9 +4408,7 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             target = _lower_expr(target_node, env, ctx)
             value = _lower_expr(value_node, env, ctx)
             return [
-                TAssignStmt(
-                    pos, target, _make_call(pos, "Repeat", [target, value]), _EMPTY_ANN
-                )
+                TAssignStmt(pos, target, _make_call(pos, "Repeat", [target, value]), {})
             ]
     # set ^= other → set = Difference(Union(set, other), Intersection(set, other))
     if op_type == "BitXor":
@@ -4470,9 +4419,7 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             u = _make_call(pos, "Union", [target, value])
             inter = _make_call(pos, "Intersection", [target, value])
             return [
-                TAssignStmt(
-                    pos, target, _make_call(pos, "Difference", [u, inter]), _EMPTY_ANN
-                )
+                TAssignStmt(pos, target, _make_call(pos, "Difference", [u, inter]), {})
             ]
     target = _lower_expr(target_node, env, ctx)
     value = _lower_expr(value_node, env, ctx)
@@ -4490,7 +4437,7 @@ def _lower_aug_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         "RShift": ">>=",
     }
     op_str = op_map.get(op_type, "+=")
-    return [TOpAssignStmt(pos, target, op_str, value, _EMPTY_ANN)]
+    return [TOpAssignStmt(pos, target, op_str, value, {})]
 
 
 def _scan_hoist_names(nodes: list[ASTNode], env: _Env) -> list[str]:
@@ -4818,7 +4765,7 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             sub_type = _infer_expr_type(sub_node, env, ctx)
             ttype = _typenode_to_ttype(pos, sub_type)
             lowered_expr = _lower_expr(sub_node, env, ctx)
-            pre_temps.append(TLetStmt(pos, temp_name, ttype, lowered_expr, _EMPTY_ANN))
+            pre_temps.append(TLetStmt(pos, temp_name, ttype, lowered_expr, {}))
             env.var_types[temp_name] = sub_type
             env.declared.add(temp_name)
             _replace_subscript_in_ast(test, key, temp_name)
@@ -4859,7 +4806,7 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     else_body: list[TStmt] | None = None
     if len(orelse) > 0:
         else_body = _lower_stmts(orelse, env, ctx)
-    pre_stmts.append(TIfStmt(pos, cond, then_body, else_body, _EMPTY_ANN))
+    pre_stmts.append(TIfStmt(pos, cond, then_body, else_body, {}))
     # Negated isinstance guard: narrow env for subsequent code
     if _is_negated_isinstance(test) and _is_guard_body(body) and len(orelse) == 0:
         operand = get_node(test, "operand")
@@ -5198,7 +5145,7 @@ def _lower_isinstance_chain(
             ci = 1
             while ci < len(extra_conds):
                 right = _lower_as_bool(extra_conds[ci], case_env, ctx)
-                cond = TBinaryOp(pos, "&&", cond, right, _EMPTY_ANN)
+                cond = TBinaryOp(pos, "&&", cond, right, {})
                 ci += 1
             cond_pre: list[TStmt] = []
             if len(case_env.pre_stmts) > 0:
@@ -5213,23 +5160,21 @@ def _lower_isinstance_chain(
             while k < len(cond_pre):
                 case_body.append(cond_pre[k])
                 k += 1
-            case_body.append(TIfStmt(pos, cond, then_body, nested_else, _EMPTY_ANN))
+            case_body.append(TIfStmt(pos, cond, then_body, nested_else, {}))
         else:
             case_body = _lower_stmts(body_stmts, case_env, ctx)
-        pattern = TPatternType(
-            pos, binding_name, TIdentType(pos, type_name), _EMPTY_ANN
-        )
-        cases.append(TMatchCase(pos, pattern, case_body, _EMPTY_ANN))
+        pattern = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
+        cases.append(TMatchCase(pos, pattern, case_body, {}))
         i += 1
     default: TDefault | None = None
     if else_body_nodes is not None and len(else_body_nodes) > 0:
         else_stmts = _lower_stmts(else_body_nodes, env, ctx)
-        default = TDefault(pos, None, else_stmts, _EMPTY_ANN)
+        default = TDefault(pos, None, else_stmts, {})
     elif has_extra:
-        default = TDefault(pos, None, [], _EMPTY_ANN)
+        default = TDefault(pos, None, [], {})
     else:
-        default = TDefault(pos, None, [], _EMPTY_ANN)
-    pre_stmts.append(TMatchStmt(pos, expr, cases, default, _EMPTY_ANN))
+        default = TDefault(pos, None, [], {})
+    pre_stmts.append(TMatchStmt(pos, expr, cases, default, {}))
     return pre_stmts
 
 
@@ -5249,7 +5194,7 @@ def _lower_while(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             pre_stmts.append(cond_pre[k])
             k += 1
     stmts = _lower_stmts(body, env, ctx)
-    pre_stmts.append(TWhileStmt(pos, cond, stmts, _EMPTY_ANN))
+    pre_stmts.append(TWhileStmt(pos, cond, stmts, {}))
     return pre_stmts
 
 
@@ -5308,11 +5253,11 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             items: list[TExpr] = []
             j = 0
             while j < len(elems):
-                items.append(TTupleAccess(pos, iter_lowered, j, _EMPTY_ANN))
+                items.append(TTupleAccess(pos, iter_lowered, j, {}))
                 j += 1
             binding, b_ann = _extract_binding(target_node)
             body_stmts = _lower_stmts(body, env, ctx)
-            list_expr = TListLit(pos, items, _EMPTY_ANN)
+            list_expr = TListLit(pos, items, {})
             pre_stmts.append(TForStmt(pos, binding, list_expr, body_stmts, b_ann))
             return pre_stmts
     # Regular iteration: for x in xs
@@ -5358,7 +5303,7 @@ def _extract_binding(target_node: ASTNode) -> tuple[list[str], Ann]:
                     ann["name.original." + safe] = orig
             i += 1
         return (names, ann)
-    return (["_"], _EMPTY_ANN)
+    return (["_"], {})
 
 
 def _lower_for_range(
@@ -5410,14 +5355,14 @@ def _lower_for_enumerate(
             items_list: list[TExpr] = []
             j = 0
             while j < len(elems):
-                items_list.append(TTupleAccess(pos, iter_lowered, j, _EMPTY_ANN))
+                items_list.append(TTupleAccess(pos, iter_lowered, j, {}))
                 j += 1
             body_stmts = _lower_stmts(body, env, ctx)
             return [
                 TForStmt(
                     pos,
                     binding,
-                    TListLit(pos, items_list, _EMPTY_ANN),
+                    TListLit(pos, items_list, {}),
                     body_stmts,
                     b_ann,
                 )
@@ -5459,9 +5404,9 @@ def _lower_extend_arg(arg_node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                     pos,
                     "RangeList",
                     [
-                        TIntLit(pos, 0, "0", _EMPTY_ANN),
+                        TIntLit(pos, 0, "0", {}),
                         end,
-                        TIntLit(pos, 1, "1", _EMPTY_ANN),
+                        TIntLit(pos, 1, "1", {}),
                     ],
                 )
             if (
@@ -5474,7 +5419,7 @@ def _lower_extend_arg(arg_node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 return _make_call(
                     pos,
                     "RangeList",
-                    [start, end, TIntLit(pos, 1, "1", _EMPTY_ANN)],
+                    [start, end, TIntLit(pos, 1, "1", {})],
                 )
             if (
                 len(rargs) >= 3
@@ -5494,9 +5439,9 @@ def _lower_extend_arg(arg_node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             ext_elems: list[TExpr] = []
             ci = 0
             while ci < len(s_jv.value):
-                ext_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], _EMPTY_ANN))
+                ext_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
                 ci += 1
-            return TListLit(pos, ext_elems, _EMPTY_ANN)
+            return TListLit(pos, ext_elems, {})
     return _lower_expr(arg_node, env, ctx)
 
 
@@ -5514,13 +5459,9 @@ def _ensure_set_expr(arg_node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 ens_elems: list[TExpr] = []
                 ci = 0
                 while ci < len(s_jv.value):
-                    ens_elems.append(
-                        TStringLit(pos, s_jv.value[ci : ci + 1], _EMPTY_ANN)
-                    )
+                    ens_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
                     ci += 1
-                return _make_call(
-                    pos, "SetFromList", [TListLit(pos, ens_elems, _EMPTY_ANN)]
-                )
+                return _make_call(pos, "SetFromList", [TListLit(pos, ens_elems, {})])
         return _make_call(
             pos,
             "SetFromList",
@@ -5551,23 +5492,15 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             # list.clear() → xs = []
             if _is_type_dict(obj_type, ["Slice"]) and method == "clear":
                 obj = _lower_expr(obj_node, env, ctx)
-                return [
-                    TAssignStmt(pos, obj, TListLit(pos, [], _EMPTY_ANN), _EMPTY_ANN)
-                ]
+                return [TAssignStmt(pos, obj, TListLit(pos, [], {}), {})]
             # list.reverse() → xs = Reversed(xs)
             if _is_type_dict(obj_type, ["Slice"]) and method == "reverse":
                 obj = _lower_expr(obj_node, env, ctx)
-                return [
-                    TAssignStmt(
-                        pos, obj, _make_call(pos, "Reversed", [obj]), _EMPTY_ANN
-                    )
-                ]
+                return [TAssignStmt(pos, obj, _make_call(pos, "Reversed", [obj]), {})]
             # list.sort() → xs = Sorted(xs)
             if _is_type_dict(obj_type, ["Slice"]) and method == "sort":
                 obj = _lower_expr(obj_node, env, ctx)
-                return [
-                    TAssignStmt(pos, obj, _make_call(pos, "Sorted", [obj]), _EMPTY_ANN)
-                ]
+                return [TAssignStmt(pos, obj, _make_call(pos, "Sorted", [obj]), {})]
             # list.extend(other) → xs = Concat(xs, other)
             if _is_type_dict(obj_type, ["Slice"]) and method == "extend":
                 vargs = get_nodes(value, "args")
@@ -5579,7 +5512,7 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                             pos,
                             obj,
                             _make_call(pos, "Concat", [obj, other_expr]),
-                            _EMPTY_ANN,
+                            {},
                         )
                     ]
             # dict.pop(k) / dict.pop(k, default) → Delete(d, k)
@@ -5588,11 +5521,7 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 if len(vargs) > 0 and isinstance(vargs[0], dict):
                     obj = _lower_expr(obj_node, env, ctx)
                     key = _lower_expr(vargs[0], env, ctx)
-                    return [
-                        TExprStmt(
-                            pos, _make_call(pos, "Delete", [obj, key]), _EMPTY_ANN
-                        )
-                    ]
+                    return [TExprStmt(pos, _make_call(pos, "Delete", [obj, key]), {})]
             # list.pop() → Pop(xs); list.pop(i) → RemoveAt(xs, i)
             if _is_type_dict(obj_type, ["Slice"]) and method == "pop":
                 vargs = get_nodes(value, "args")
@@ -5603,14 +5532,14 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                         TExprStmt(
                             pos,
                             _make_call(pos, "RemoveAt", [obj, idx]),
-                            _EMPTY_ANN,
+                            {},
                         )
                     ]
-                return [TExprStmt(pos, _make_call(pos, "Pop", [obj]), _EMPTY_ANN)]
+                return [TExprStmt(pos, _make_call(pos, "Pop", [obj]), {})]
             # dict.clear() → d = Map()
             if _is_type_dict(obj_type, ["Map"]) and method == "clear":
                 obj = _lower_expr(obj_node, env, ctx)
-                return [TAssignStmt(pos, obj, _make_call(pos, "Map", []), _EMPTY_ANN)]
+                return [TAssignStmt(pos, obj, _make_call(pos, "Map", []), {})]
             # dict.update(other) → d = Merge(d, other)
             if _is_type_dict(obj_type, ["Map"]) and method == "update":
                 vargs = get_nodes(value, "args")
@@ -5619,7 +5548,7 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                     other = _lower_expr(vargs[0], env, ctx)
                     return [
                         TAssignStmt(
-                            pos, obj, _make_call(pos, "Merge", [obj, other]), _EMPTY_ANN
+                            pos, obj, _make_call(pos, "Merge", [obj, other]), {}
                         )
                     ]
             # set.update(other, ...) → s = Union(s, SetFromList(other))
@@ -5634,13 +5563,13 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                         other = _ensure_set_expr(va, env, ctx)
                         result = _make_call(pos, "Union", [result, other])
                         vi += 1
-                    return [TAssignStmt(pos, obj, result, _EMPTY_ANN)]
+                    return [TAssignStmt(pos, obj, result, {})]
             # set.clear() → s = Set()
             if _is_type_dict(obj_type, ["Set"]) and method == "clear":
                 obj = _lower_expr(obj_node, env, ctx)
-                return [TAssignStmt(pos, obj, _make_call(pos, "Set", []), _EMPTY_ANN)]
+                return [TAssignStmt(pos, obj, _make_call(pos, "Set", []), {})]
     expr = _lower_expr(value, env, ctx)
-    return [TExprStmt(pos, expr, _EMPTY_ANN)]
+    return [TExprStmt(pos, expr, {})]
 
 
 def _lower_try(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -5676,7 +5605,7 @@ def _lower_try(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     finally_body: list[TStmt] | None = None
     if len(finalbody) > 0:
         finally_body = _lower_stmts(finalbody, env, ctx)
-    return [TTryStmt(pos, body_stmts, catches, finally_body, _EMPTY_ANN)]
+    return [TTryStmt(pos, body_stmts, catches, finally_body, {})]
 
 
 def _lower_raise(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -5685,8 +5614,8 @@ def _lower_raise(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     exc_jv = node.get("exc")
     if isinstance(exc_jv, JDict):
         expr = _lower_expr(exc_jv.entries, env, ctx)
-        return [TThrowStmt(pos, expr, _EMPTY_ANN)]
-    return [TThrowStmt(pos, TVar(pos, "e", _EMPTY_ANN), _EMPTY_ANN)]
+        return [TThrowStmt(pos, expr, {})]
+    return [TThrowStmt(pos, TVar(pos, "e", {}), {})]
 
 
 def _lower_assert(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -5699,7 +5628,7 @@ def _lower_assert(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if isinstance(msg_jv, JDict):
         args.append(_lower_expr(msg_jv.entries, env, ctx))
     call = _make_call(pos, "Assert", args)
-    return [TExprStmt(pos, call, _EMPTY_ANN)]
+    return [TExprStmt(pos, call, {})]
 
 
 # ---------------------------------------------------------------------------
@@ -5763,7 +5692,7 @@ def _build_function(
         ret_type = _typenode_to_ttype(pos, func_info.return_type)
     body_nodes = get_nodes(node, "body")
     body = _lower_stmts(body_nodes, func_env, ctx)
-    return TFnDecl(pos, name, params, ret_type, body, _EMPTY_ANN)
+    return TFnDecl(pos, name, params, ret_type, body, {})
 
 
 def _build_method(
@@ -5785,7 +5714,7 @@ def _build_method(
     self_type: TypeNode = PointerType(StructRef(class_name))
     func_env.var_types["this"] = self_type
     func_env.declared.add("this")
-    params.append(TParam(pos, "this", None, _EMPTY_ANN))
+    params.append(TParam(pos, "this", None, {}))
     if func_info is not None:
         i = 0
         while i < len(func_info.params):
@@ -5830,7 +5759,7 @@ def _build_method(
         ret_type = _typenode_to_ttype(pos, func_info.return_type)
     body_nodes = get_nodes(node, "body")
     body = _lower_stmts(body_nodes, func_env, ctx)
-    return TFnDecl(pos, name, params, ret_type, body, _EMPTY_ANN)
+    return TFnDecl(pos, name, params, ret_type, body, {})
 
 
 def _collect_ancestor_fields(
@@ -6045,7 +5974,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                             val_type = PrimitiveType("error")
                         ttype = _typenode_to_ttype(pos, val_type)
                         value = _lower_expr(value_node, _Env(), ctx)
-                        result.append(TLetStmt(pos, name, ttype, value, _EMPTY_ANN))
+                        result.append(TLetStmt(pos, name, ttype, value, {}))
                         ctx.constant_types[name] = val_type
         # Module-level ALL_CAPS annotated assignments
         if _is_ast(node, "AnnAssign"):
@@ -6071,7 +6000,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                     ttype = _typenode_to_ttype(pos, type_dict)
                     value_node = get_node(node, "value")
                     value = _lower_expr(value_node, _Env(), ctx)
-                    result.append(TLetStmt(pos, name, ttype, value, _EMPTY_ANN))
+                    result.append(TLetStmt(pos, name, ttype, value, {}))
                     ctx.constant_types[name] = type_dict
         # Class-level constants
         if _is_ast(node, "ClassDef"):
@@ -6098,7 +6027,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                                 value = _lower_expr(value_node, _Env(), ctx)
                                 const_name = class_name + "_" + fname
                                 result.append(
-                                    TLetStmt(pos, const_name, ttype, value, _EMPTY_ANN)
+                                    TLetStmt(pos, const_name, ttype, value, {})
                                 )
                                 ctx.constant_types[const_name] = val_type
                 if _is_ast(item, "AnnAssign"):
@@ -6125,9 +6054,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                             value_node = get_node(item, "value")
                             value = _lower_expr(value_node, _Env(), ctx)
                             const_name = class_name + "_" + fname
-                            result.append(
-                                TLetStmt(pos, const_name, ttype, value, _EMPTY_ANN)
-                            )
+                            result.append(TLetStmt(pos, const_name, ttype, value, {}))
                             ctx.constant_types[const_name] = c_type_dict
                 j += 1
         i += 1

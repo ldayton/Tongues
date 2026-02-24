@@ -1,2 +1,2 @@
 === read file binary mode
-File.read(path)
+File.binread(path).bytes
