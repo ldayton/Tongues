@@ -361,7 +361,7 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     if child_prec < parent_prec:
         return True
     if child_prec == parent_prec and not is_left:
-        return child_op in _CMP_OPS
+        return True
     if parent_op in ("==", "!=") and child_op in _CMP_OPS:
         return True
     return False
@@ -2200,7 +2200,13 @@ class _RubyEmitter:
                 return self._a(args, 0) + ".key?(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".include?(" + self._a(args, 1) + ")"
         if name == "Concat":
-            return self._a(args, 0) + " + " + self._a(args, 1)
+            left = self._a(args, 0)
+            right = self._a(args, 1)
+            if isinstance(args[0].value, TTernary):
+                left = "(" + left + ")"
+            if isinstance(args[1].value, TTernary):
+                right = "(" + right + ")"
+            return left + " + " + right
         if name == "Format":
             return self._format_call(args, call)
         if name == "IsType":
