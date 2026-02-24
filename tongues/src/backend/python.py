@@ -713,7 +713,7 @@ class _PythonEmitter:
         iter_is_map = self._is_map_for(for_stmt)
         if iter_is_map:
             iterable += ".items()"
-        elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
+        elif self._is_enumerate_for(for_stmt):
             iterable = "enumerate(" + iterable + ")"
         body = for_stmt.body
         if prov == "list_comprehension":
@@ -986,9 +986,19 @@ class _PythonEmitter:
             )
         elif len(binding) == 2:
             iter_is_map = self._is_map_for(stmt)
-            method = ".items()" if iter_is_map else ""
-            wrapper = "" if iter_is_map else "enumerate("
-            suffix = "" if iter_is_map else ")"
+            is_enumerate = self._is_enumerate_for(stmt)
+            if iter_is_map:
+                method = ".items()"
+                wrapper = ""
+                suffix = ""
+            elif is_enumerate:
+                method = ""
+                wrapper = "enumerate("
+                suffix = ")"
+            else:
+                method = ""
+                wrapper = ""
+                suffix = ""
             self._line(
                 "for "
                 + _restore_name(binding[0], ann)
@@ -1060,6 +1070,11 @@ class _PythonEmitter:
         return not isinstance(stmt.iterable, TRange) and self._is_map_type(
             stmt.iterable
         )
+
+    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
+        """Check if a for-loop is an enumerate iteration."""
+        ann = stmt.annotations
+        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
 
     def _emit_try(self, stmt: TTryStmt) -> None:
         self._line("try:")

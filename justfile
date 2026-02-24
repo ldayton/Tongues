@@ -1,5 +1,14 @@
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
+# Quick pre-push check: lint, fmt, subset, test-local
+prep:
+    #!/usr/bin/env bash
+    log=/tmp/tongues-prep-$(date +%s).log
+    rc=0
+    { just lint && just fmt && just subset && just test-local; } 2>&1 | tee "$log" || rc=$?
+    echo "$log"
+    exit $rc
+
 # Verify all transpiler source is subset-compliant
 subset:
     #!/usr/bin/env bash

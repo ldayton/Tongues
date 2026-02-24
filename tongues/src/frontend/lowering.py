@@ -5307,6 +5307,7 @@ def _lower_for_enumerate(
     if not isinstance(inner, dict):
         return []
     binding, b_ann = _extract_binding(target_node)
+    b_ann["for.enumerate"] = "true"
     inner_type = _infer_expr_type(inner, env, ctx)
     # Enumerate over fixed-size tuple → enumerate over list of accesses
     if isinstance(inner_type, TupleType) and not inner_type.variadic:
