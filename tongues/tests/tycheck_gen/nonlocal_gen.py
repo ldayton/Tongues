@@ -715,7 +715,7 @@ def patch_generator() -> None:
     """Monkey-patch ExprGen to add nonlocal generation rules.
 
     Usage:
-        from tests.check.nonlocal_gen import patch_generator
+        from tests.tycheck_gen.nonlocal_gen import patch_generator
         patch_generator()
     """
     from . import Generator

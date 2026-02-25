@@ -16,7 +16,7 @@ and for each spec generate a pair of small programs:
 This is the "success/failure pair" methodology from the If-T type-narrowing
 benchmark [1].  The key insight is that each pair isolates exactly one
 narrowing capability: the success case exercises it, the failure case probes
-the opposite.  Unlike the random-program generator in tests/check/ (which
+the opposite.  Unlike the random-program generator in tests/tycheck_gen/ (which
 builds well-typed programs and mutates them), this module tests whether the
 checker can *derive* narrowing from code patterns — the perception problem
 rather than the judgment problem.
@@ -76,8 +76,8 @@ from src.taytsh.check import (
 )
 
 
-from tests.check.types import make_ttype
-from tests.check.ast_helpers import (
+from tests.tycheck_gen.types import make_ttype
+from tests.tycheck_gen.ast_helpers import (
     P,
     A,
     var as _var,

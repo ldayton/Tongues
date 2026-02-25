@@ -6,11 +6,11 @@ import pytest
 
 from src.taytsh.emit import to_source
 
-from tests.check import Generator
-from tests.check.exhaust import ALL_CONFIGS, run_exhaustiveness
-from tests.check.features import FeatureVector
-from tests.check.harness import run_mutations, run_well_typed
-from tests.check.narrow import ALL_SPECS, run_narrowing_spec
+from tests.tycheck_gen import Generator
+from tests.tycheck_gen.exhaust import ALL_CONFIGS, run_exhaustiveness
+from tests.tycheck_gen.features import FeatureVector
+from tests.tycheck_gen.harness import run_mutations, run_well_typed
+from tests.tycheck_gen.narrow import ALL_SPECS, run_narrowing_spec
 
 
 class TestWellTyped:
