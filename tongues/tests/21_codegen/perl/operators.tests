@@ -4,7 +4,7 @@ if (grep { $_ == 2 } @{$xs}) {
 }
 
 === not in operator
-if (!grep { $_ == 2 } @{$xs}) {
+if (!(grep { $_ == 2 } @{$xs})) {
     say("missing");
 }
 

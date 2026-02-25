@@ -376,7 +376,7 @@ class _PerlEmitter:
     def emit_module(self, module: TModule) -> None:
         self._line("use v5.36;")
         self._line("use utf8;")
-        self._line("no warnings 'uninitialized';")
+        self._line("no warnings 'uninitialized', 'numeric';")
         self._line("use POSIX qw(floor ceil);")
         self._line("use List::Util qw(min max sum);")
         self._line("use Scalar::Util qw(looks_like_number);")
@@ -1015,8 +1015,29 @@ class _PerlEmitter:
                     self.var_types[binding[0]] = iter_type.element
             elif self._is_string_expr(iterable):
                 self._line("for my " + name + " (split(//, " + it + ")) {")
+            elif self._is_bytes_expr(iterable):
+                self._line(
+                    "for my "
+                    + name
+                    + " (unpack('C*', "
+                    + it
+                    + ")) {"
+                )
             else:
-                self._line("for my " + name + " (@{" + safe + "}) {")
+                if iter_type is None and not self._is_list_expr(iterable):
+                    self._line(
+                        "for my "
+                        + name
+                        + " (ref("
+                        + it
+                        + ") eq 'ARRAY' ? @{"
+                        + safe
+                        + "} : split(//, "
+                        + it
+                        + ")) {"
+                    )
+                else:
+                    self._line("for my " + name + " (@{" + safe + "}) {")
                 if isinstance(iter_type, TListType):
                     self.var_types[binding[0]] = iter_type.element
             self.indent += 1
@@ -1239,6 +1260,10 @@ class _PerlEmitter:
 
     def _type_match_cond(self, typ: TType, expr: str, is_optional: bool = False) -> str:
         if isinstance(typ, TIdentType):
+            if typ.name in ("dict", "Dict"):
+                return "ref(" + expr + ") eq 'HASH'"
+            if typ.name in ("list", "List"):
+                return "ref(" + expr + ") eq 'ARRAY'"
             if typ.name in self.struct_names:
                 return "eval { " + expr + "->isa('" + typ.name + "') }"
             return (
@@ -1348,13 +1373,21 @@ class _PerlEmitter:
                     if neg is not None:
                         idx = neg
                 return "substr(" + self._expr(expr.obj) + ", " + idx + ", 1)"
-            if self._is_list_expr(expr.obj) or self._is_int_expr(expr.index):
+            if self._is_list_expr(expr.obj):
                 idx2 = self._expr(expr.index)
                 if expr.annotations.get("provenance") == "negative_index":
                     neg2 = self._negative_index(expr)
                     if neg2 is not None:
                         idx2 = neg2
                 return self._expr(expr.obj) + "->[" + idx2 + "]"
+            if self._is_int_expr(expr.index):
+                obj_s = self._expr(expr.obj)
+                idx2 = self._expr(expr.index)
+                if expr.annotations.get("provenance") == "negative_index":
+                    neg2 = self._negative_index(expr)
+                    if neg2 is not None:
+                        idx2 = neg2
+                return "(ref(" + obj_s + ") ? " + obj_s + "->[" + idx2 + "] : substr(" + obj_s + ", " + idx2 + ", 1))"
             return self._expr(expr.obj) + "->{" + self._hash_key(expr.index) + "}"
         if isinstance(expr, TSlice):
             return self._slice(expr)
@@ -1441,6 +1474,43 @@ class _PerlEmitter:
                     + "))"
                 )
             return "substr(" + obj + ", " + low + ", (" + high + ") - (" + low + "))"
+        obj_type = self._expr_type(expr.obj)
+        if obj_type is None and not self._is_list_expr(expr.obj):
+            if prov == "open_end" and self._is_len_call(expr.high):
+                return (
+                    "(!ref("
+                    + obj
+                    + ") ? substr("
+                    + obj
+                    + ", "
+                    + low
+                    + ") : [ @{"
+                    + obj
+                    + "}["
+                    + low
+                    + " .. $#{"
+                    + obj
+                    + "}] ])"
+                )
+            return (
+                "(!ref("
+                + obj
+                + ") ? substr("
+                + obj
+                + ", "
+                + low
+                + ", ("
+                + high
+                + ") - ("
+                + low
+                + ")) : [ @{"
+                + obj
+                + "}["
+                + low
+                + " .. ("
+                + high
+                + ") - 1] ])"
+            )
         if prov == "open_end" and self._is_len_call(expr.high):
             safe = self._deref_safe(obj)
             return "[ @{" + safe + "}[" + low + " .. $#{" + safe + "}] ]"
@@ -1516,9 +1586,8 @@ class _PerlEmitter:
                 isinstance(expr.operand, TCall)
                 and isinstance(expr.operand.func, TVar)
                 and expr.operand.func.name == "Contains"
-                and expr.operand.annotations.get("provenance") == "not_in_operator"
             ):
-                return "!" + self._builtin_call("Contains", expr.operand.args)
+                return "!(" + self._builtin_call("Contains", expr.operand.args) + ")"
             inner = self._expr(expr.operand)
             if isinstance(expr.operand, (TBinaryOp, TTernary)):
                 return "!(" + inner + ")"
@@ -1562,26 +1631,38 @@ class _PerlEmitter:
             return "(" + self._expr(expr) + ")"
         return self._expr(expr)
 
+    def _is_numeric_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, (TIntLit, TFloatLit, TBoolLit)):
+            return True
+        if isinstance(expr, TBinaryOp) and expr.op in (
+            "+", "-", "*", "/", "//", "%", "**", "&", "|", "^", "<<", ">>",
+        ):
+            return True
+        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
+            return True
+        if isinstance(expr, TFieldAccess):
+            if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
+                return True
+        if isinstance(expr, TVar) and expr.name in self.enum_names:
+            return True
+        typ = self._expr_type(expr)
+        return isinstance(typ, TPrimitive) and typ.kind in ("int", "float", "bool")
+
     def _binary_op(self, op: str, left: TExpr, right: TExpr | None = None) -> str:
         is_str = self._is_string_expr(left) or (
             right is not None and self._is_string_expr(right)
+        )
+        is_num = self._is_numeric_expr(left) or (
+            right is not None and self._is_numeric_expr(right)
         )
         if op in ("and", "&&"):
             return "&&"
         if op in ("or", "||"):
             return "||"
-        if op == "==" and is_str:
-            return "eq"
-        if op == "!=" and is_str:
-            return "ne"
-        if op == "<" and is_str:
-            return "lt"
-        if op == ">" and is_str:
-            return "gt"
-        if op == "<=" and is_str:
-            return "le"
-        if op == ">=" and is_str:
-            return "ge"
+        if op in ("==", "!=", "<", ">", "<=", ">=") and is_str and not is_num:
+            return {"==": "eq", "!=": "ne", "<": "lt", ">": "gt", "<=": "le", ">=": "ge"}[op]
+        if op in ("==", "!=") and not is_num:
+            return "eq" if op == "==" else "ne"
         if op == "+" and is_str:
             return "."
         return op
@@ -1768,6 +1849,40 @@ class _PerlEmitter:
             if len(args) > 0:
                 return "splice(@{" + obj + "}, " + self._expr(args[0].value) + ", 1)"
             return "pop(@{" + obj + "})"
+        if method == "replace" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            old = self._expr(args[0].value)
+            new = self._expr(args[1].value)
+            if len(args) == 3:
+                cnt = self._expr(args[2].value)
+                return (
+                    "do { my $__s = "
+                    + obj
+                    + "; my $__o = "
+                    + old
+                    + "; my $__n = "
+                    + new
+                    + "; my $__c = "
+                    + cnt
+                    + "; while ($__c > 0 && $__s =~ s/\\Q$__o\\E/$__n/) { $__c-- } $__s }"
+                )
+            return (
+                "do { my $__s = "
+                + obj
+                + "; my $__o = "
+                + old
+                + "; my $__n = "
+                + new
+                + "; $__s =~ s/\\Q$__o\\E/$__n/g; $__s }"
+            )
+        if method == "index" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            sub_str = self._expr(args[0].value)
+            return "index(" + obj + ", " + sub_str + ")"
+        if method == "find" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            sub_str = self._expr(args[0].value)
+            return "index(" + obj + ", " + sub_str + ")"
         obj = self._expr(func.obj)
         safe_method = _safe_name(method)
         arg_strs = ", ".join(self._expr(a.value) for a in args)
