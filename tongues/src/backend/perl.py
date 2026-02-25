@@ -73,7 +73,9 @@ from ..taytsh.check import BUILTIN_NAMES, BUILTIN_STRUCTS
 
 _PERL_RESERVED = frozenset(
     {
+        "abs",
         "and",
+        "bin",
         "cmp",
         "continue",
         "do",
@@ -84,7 +86,9 @@ _PERL_RESERVED = frozenset(
         "foreach",
         "ge",
         "gt",
+        "hex",
         "if",
+        "join",
         "last",
         "le",
         "lt",
@@ -93,6 +97,7 @@ _PERL_RESERVED = frozenset(
         "next",
         "no",
         "not",
+        "oct",
         "or",
         "package",
         "return",
@@ -110,9 +115,11 @@ _PERL_RESERVED = frozenset(
 def _safe_name(name: str) -> str:
     if name == "_":
         return "_unused"
+    prefix = "_" if name.startswith("_") and len(name) > 1 else ""
     safe = to_snake(name)
     if not safe:
         return "_unused"
+    safe = prefix + safe
     if safe in _PERL_RESERVED:
         return safe + "_"
     return safe
@@ -273,6 +280,8 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
 
 
 def _is_primitive(typ: TType | None, kind: str) -> bool:
+    if isinstance(typ, TOptionalType):
+        typ = typ.inner
     return isinstance(typ, TPrimitive) and typ.kind == kind
 
 
@@ -294,6 +303,20 @@ def _is_string_type(typ: TType | None) -> bool:
 
 def _is_bytes_type(typ: TType | None) -> bool:
     return _is_primitive(typ, "bytes")
+
+
+def _same_type_kind(a: TType, b: TType) -> bool:
+    if isinstance(a, TPrimitive) and isinstance(b, TPrimitive):
+        return a.kind == b.kind
+    if isinstance(a, TListType) and isinstance(b, TListType):
+        return True
+    if isinstance(a, TMapType) and isinstance(b, TMapType):
+        return True
+    if isinstance(a, TSetType) and isinstance(b, TSetType):
+        return True
+    if isinstance(a, TIdentType) and isinstance(b, TIdentType):
+        return a.name == b.name
+    return False
 
 
 _STRICT_INT_BINARY: dict[str, str] = {
@@ -328,12 +351,18 @@ class _PerlEmitter:
         self.function_names = function_names
         self.struct_fields = struct_fields
         self.strict_math = strict_math
+        self.sft: dict[str, dict[str, TType]] = {}
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
         self.var_types: dict[str, TType] = {}
         self.tmp_counter: int = 0
         self.var_alias: dict[str, str] = {}
+        self.fwd_declared: set[str] = set()
+        self.in_package: bool = False
+        self.module_var_names: set[str] = set()
+        self.local_names: set[str] = set()
+        self.fn_ret: dict[str, TType] = {}
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -352,15 +381,34 @@ class _PerlEmitter:
     def emit_module(self, module: TModule) -> None:
         self._line("use v5.36;")
         self._line("use utf8;")
+        self._line("no warnings 'uninitialized';")
         self._line("use POSIX qw(floor ceil);")
         self._line("use List::Util qw(min max sum);")
         self._line("use Scalar::Util qw(looks_like_number);")
         self._line("use Encode qw(encode decode);")
         self._line()
         self._line("package main;")
+        ordered = order_decls(module.decls)
+        fwd_seen: set[str] = set()
+        fwd: list[str] = []
+        for decl in ordered:
+            if isinstance(decl, TLetStmt):
+                self.var_types[decl.name] = decl.typ
+                self.module_var_names.add(decl.name)
+                safe = _restore_name(decl.name, decl.annotations)
+                self.fwd_declared.add(decl.name)
+                if safe not in fwd_seen:
+                    fwd.append("my $" + safe + ";")
+                    fwd_seen.add(safe)
+        for decl in ordered:
+            if isinstance(decl, TFnDecl) and decl.ret is not None:
+                self.fn_ret[decl.name] = decl.ret
+        if fwd:
+            for f in fwd:
+                self._line(f)
         need_blank = False
         current_package = "main"
-        for decl in order_decls(module.decls):
+        for decl in ordered:
             if isinstance(decl, TInterfaceDecl):
                 if need_blank:
                     self._line()
@@ -410,10 +458,20 @@ class _PerlEmitter:
         if decl.parent is not None:
             self._line("use parent -norequire, '" + decl.parent + "';")
             self._line()
+        str_method = ""
+        for method in decl.methods:
+            if method.name == "to_string":
+                str_method = "to_string"
+                break
+            if method.name == "__repr__":
+                str_method = "__repr__"
+        if str_method != "":
+            self._line("use overload '\"\"' => \\&" + str_method + ", fallback => 1;")
+            self._line()
         self._emit_constructor(decl)
         for method in decl.methods:
             self._line()
-            self._emit_method(method)
+            self._emit_method(method, decl.name)
 
     def _emit_constructor(self, decl: TStructDecl) -> None:
         self._emit_constructor_fields(decl.fields)
@@ -449,7 +507,11 @@ class _PerlEmitter:
 
     def _emit_fn(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
-        self.var_types = {}
+        fn_types: dict[str, TType] = {}
+        for name in self.module_var_names:
+            if name in old_var_types:
+                fn_types[name] = old_var_types[name]
+        self.var_types = fn_types
         args: list[str] = []
         for p in decl.params:
             if p.typ is not None:
@@ -466,14 +528,25 @@ class _PerlEmitter:
         self._line("}")
         self.var_types = old_var_types
 
-    def _emit_method(self, decl: TFnDecl) -> None:
+    def _emit_method(self, decl: TFnDecl, struct_name: str = "") -> None:
         old_var_types = self.var_types.copy()
-        self.var_types = {}
+        method_types: dict[str, TType] = {}
+        for name in self.module_var_names:
+            if name in old_var_types:
+                method_types[name] = old_var_types[name]
+        self.var_types = method_types
+        old_in_package = self.in_package
+        self.in_package = True
+        old_local_names = self.local_names
+        self.local_names = set()
         args: list[str] = ["$self"]
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
+                self.local_names.add(p.name)
                 args.append("$" + _restore_name(p.name, p.annotations))
+            elif struct_name:
+                self.var_types[p.name] = TIdentType(decl.pos, struct_name)
         self._line("sub " + _safe_name(decl.name) + " {")
         self.indent += 1
         self._line("my (" + ", ".join(args) + ") = @_;")
@@ -484,6 +557,8 @@ class _PerlEmitter:
             self._line("return;")
         self._emit_stmts(decl.body)
         self.self_name = old_self
+        self.in_package = old_in_package
+        self.local_names = old_local_names
         self.indent -= 1
         self._line("}")
         self.var_types = old_var_types
@@ -629,12 +704,14 @@ class _PerlEmitter:
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
             self.var_types[stmt.name] = stmt.typ
+            self.local_names.add(stmt.name)
             safe = "$" + _restore_name(stmt.name, stmt.annotations)
+            prefix = "" if stmt.name in self.fwd_declared else "my "
             unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if stmt.value is not None and not unused:
-                self._line("my " + safe + " = " + self._expr(stmt.value) + ";")
+                self._line(prefix + safe + " = " + self._expr(stmt.value) + ";")
             else:
-                self._line("my " + safe + " = " + self._zero_value(stmt.typ) + ";")
+                self._line(prefix + safe + " = " + self._zero_value(stmt.typ) + ";")
             return
         if isinstance(stmt, TAssignStmt):
             self._line(self._target(stmt.target) + " = " + self._expr(stmt.value) + ";")
@@ -728,7 +805,7 @@ class _PerlEmitter:
                 return
             if name == "Delete":
                 m = self._a(expr.args, 0)
-                k = self._a(expr.args, 1)
+                k = self._hash_key(expr.args[1].value)
                 self._line("delete " + m + "->{" + k + "};")
                 return
         if isinstance(expr, TStringLit):
@@ -744,7 +821,8 @@ class _PerlEmitter:
                     unused_indices.add(int(s))
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
-            if i in unused_indices:
+            is_discard = isinstance(t, TVar) and t.name == "_"
+            if i in unused_indices or is_discard:
                 parts.append("undef")
             else:
                 parts.append(self._target(t))
@@ -919,16 +997,36 @@ class _PerlEmitter:
         self, binding: list[str], iterable: TExpr, body: list[TStmt], ann: Ann
     ) -> None:
         it = self._expr(iterable)
+        safe = self._deref_safe(it)
         if len(binding) == 1:
             name = "$" + _restore_name(binding[0], ann)
+            iter_type = self._expr_type(iterable)
             if self._is_map_expr(iterable):
-                self._line("for my " + name + " (keys %{" + it + "}) {")
+                if isinstance(iter_type, TMapType) and isinstance(
+                    iter_type.key, TTupleType
+                ):
+                    tmp = self._tmp("__k")
+                    self._line("for my " + tmp + " (keys %{" + safe + "}) {")
+                    self.indent += 1
+                    self._line("my " + name + ' = [split("\\0", ' + tmp + ")];")
+                    self.var_types[binding[0]] = iter_type.key
+                    self._emit_stmts(body)
+                    self.indent -= 1
+                    self._line("}")
+                    return
+                self._line("for my " + name + " (keys %{" + safe + "}) {")
+                if isinstance(iter_type, TMapType):
+                    self.var_types[binding[0]] = iter_type.key
             elif self._is_set_expr(iterable):
-                self._line("for my " + name + " (keys %{" + it + "}) {")
+                self._line("for my " + name + " (keys %{" + safe + "}) {")
+                if isinstance(iter_type, TSetType):
+                    self.var_types[binding[0]] = iter_type.element
             elif self._is_string_expr(iterable):
                 self._line("for my " + name + " (split(//, " + it + ")) {")
             else:
-                self._line("for my " + name + " (@{" + it + "}) {")
+                self._line("for my " + name + " (@{" + safe + "}) {")
+                if isinstance(iter_type, TListType):
+                    self.var_types[binding[0]] = iter_type.element
             self.indent += 1
             self._emit_stmts(body)
             self.indent -= 1
@@ -938,8 +1036,12 @@ class _PerlEmitter:
             key_var = "$" + _restore_name(binding[0], ann)
             val_var = "$" + _restore_name(binding[1], ann)
             if self._is_map_expr(iterable) or ann.get("for.items") == "true":
-                self._line("for my " + key_var + " (keys %{" + it + "}) {")
+                self._line("for my " + key_var + " (keys %{" + safe + "}) {")
                 self.indent += 1
+                iter_type = self._expr_type(iterable)
+                if isinstance(iter_type, TMapType):
+                    self.var_types[binding[0]] = iter_type.key
+                    self.var_types[binding[1]] = iter_type.value
                 self._line("my " + val_var + " = " + it + "->{" + key_var + "};")
                 self._emit_stmts(body)
                 self.indent -= 1
@@ -970,7 +1072,7 @@ class _PerlEmitter:
                 return
         if len(binding) == 2:
             item = self._tmp("__item")
-            self._line("for my " + item + " (@{" + it + "}) {")
+            self._line("for my " + item + " (@{" + safe + "}) {")
             self.indent += 1
             self._line("my " + key_var + " = " + item + "->[0];")
             self._line("my " + val_var + " = " + item + "->[1];")
@@ -979,8 +1081,12 @@ class _PerlEmitter:
             self._line("}")
             return
         item = self._tmp("__item")
-        self._line("for my " + item + " (@{" + it + "}) {")
+        self._line("for my " + item + " (@{" + safe + "}) {")
         self.indent += 1
+        for idx, b in enumerate(binding):
+            self._line(
+                "my $" + _restore_name(b, ann) + " = " + item + "->[" + str(idx) + "];"
+            )
         self._emit_stmts(body)
         self.indent -= 1
         self._line("}")
@@ -1208,17 +1314,41 @@ class _PerlEmitter:
             if expr.name in self.var_alias:
                 return self.var_alias[expr.name]
             if expr.name in self.function_names and expr.name not in self.var_types:
-                return "\\&" + _restore_name(expr.name, expr.annotations)
+                prefix = "main::" if self.in_package else ""
+                return "\\&" + prefix + _restore_name(expr.name, expr.annotations)
+            if expr.name in self.struct_names and expr.name not in self.var_types:
+                return expr.name + "->new()"
+            if expr.name in self.enum_names and expr.name not in self.var_types:
+                return expr.name
+            if expr.name in self._PYTHON_BUILTINS and expr.name not in self.var_types:
+                return "(" + self._PYTHON_BUILTINS[expr.name] + ")"
             return "$" + _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
             if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
                 return expr.obj.name + "::" + expr.field
             return self._expr(expr.obj) + "->{" + _safe_name(expr.field) + "}"
         if isinstance(expr, TTupleAccess):
-            return self._expr(expr.obj) + "->[" + str(expr.index) + "]"
+            obj = self._expr(expr.obj)
+            idx = str(expr.index)
+            obj_t = self._expr_type(expr.obj)
+            if isinstance(obj_t, TTupleType):
+                return (
+                    "(ref("
+                    + obj
+                    + ") ? "
+                    + obj
+                    + "->["
+                    + idx
+                    + '] : (split("\\0", '
+                    + obj
+                    + "))["
+                    + idx
+                    + "])"
+                )
+            return obj + "->[" + idx + "]"
         if isinstance(expr, TIndex):
             if self._is_map_expr(expr.obj) or self._is_set_expr(expr.obj):
-                return self._expr(expr.obj) + "->{" + self._expr(expr.index) + "}"
+                return self._expr(expr.obj) + "->{" + self._hash_key(expr.index) + "}"
             if self._is_string_expr(expr.obj) or self._is_bytes_expr(expr.obj):
                 idx = self._expr(expr.index)
                 if expr.annotations.get("provenance") == "negative_index":
@@ -1226,12 +1356,14 @@ class _PerlEmitter:
                     if neg is not None:
                         idx = neg
                 return "substr(" + self._expr(expr.obj) + ", " + idx + ", 1)"
-            idx2 = self._expr(expr.index)
-            if expr.annotations.get("provenance") == "negative_index":
-                neg2 = self._negative_index(expr)
-                if neg2 is not None:
-                    idx2 = neg2
-            return self._expr(expr.obj) + "->[" + idx2 + "]"
+            if self._is_list_expr(expr.obj) or self._is_int_expr(expr.index):
+                idx2 = self._expr(expr.index)
+                if expr.annotations.get("provenance") == "negative_index":
+                    neg2 = self._negative_index(expr)
+                    if neg2 is not None:
+                        idx2 = neg2
+                return self._expr(expr.obj) + "->[" + idx2 + "]"
+            return self._expr(expr.obj) + "->{" + self._hash_key(expr.index) + "}"
         if isinstance(expr, TSlice):
             return self._slice(expr)
         if isinstance(expr, TBinaryOp):
@@ -1262,13 +1394,13 @@ class _PerlEmitter:
             if not expr.entries:
                 return "{}"
             pairs = ", ".join(
-                self._expr(k) + " => " + self._expr(v) for k, v in expr.entries
+                self._hash_key(k) + " => " + self._expr(v) for k, v in expr.entries
             )
             return "{ " + pairs + " }"
         if isinstance(expr, TSetLit):
             if not expr.elements:
                 return "{}"
-            elems = ", ".join(self._expr(e) for e in expr.elements)
+            elems = ", ".join(self._hash_key(e) for e in expr.elements)
             return "do { my $__s = {}; $__s->{$_} = 1 for (" + elems + "); $__s }"
         if isinstance(expr, TFnLit):
             return self._fn_lit(expr)
@@ -1302,6 +1434,20 @@ class _PerlEmitter:
         if self._is_string_expr(expr.obj) or self._is_bytes_expr(expr.obj):
             if prov == "open_end" and self._is_len_call(expr.high):
                 return "substr(" + obj + ", " + low + ")"
+            if self._is_negative_literal(expr.high):
+                return (
+                    "substr("
+                    + obj
+                    + ", "
+                    + low
+                    + ", length("
+                    + obj
+                    + ") + "
+                    + high
+                    + " - ("
+                    + low
+                    + "))"
+                )
             return "substr(" + obj + ", " + low + ", (" + high + ") - (" + low + "))"
         if prov == "open_end" and self._is_len_call(expr.high):
             safe = self._deref_safe(obj)
@@ -1322,6 +1468,17 @@ class _PerlEmitter:
 
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
+        if (
+            op == "*"
+            and isinstance(expr.left, TCall)
+            and isinstance(expr.left.func, TVar)
+            and expr.left.func.name == "Repeat"
+            and self._is_string_expr(expr.left.args[0].value)
+        ):
+            s = self._a(expr.left.args, 0)
+            repeat_n = self._a(expr.left.args, 1)
+            right = self._expr(expr.right)
+            return "(" + s + " x (" + repeat_n + " * " + right + "))"
         if self.strict_math and op in _STRICT_INT_BINARY:
             if self._is_int_expr(expr.left) and self._is_int_expr(expr.right):
                 fn = _STRICT_INT_BINARY[op]
@@ -1503,11 +1660,34 @@ class _PerlEmitter:
             return self._target(stmt.target) + " = " + self._expr(stmt.value) + ";"
         return None
 
+    _PYTHON_BUILTINS: dict[str, str] = {
+        "oct": "sub { sprintf('0o%o', $_[0]) }",
+        "bin": "sub { sprintf('0b%b', $_[0]) }",
+        "hex": "sub { sprintf('0x%x', $_[0]) }",
+        "reversed": "sub { [reverse @{$_[0]}] }",
+        "bytes_": 'sub { "\\0" x $_[0] }',
+    }
+    _PYTHON_CALL_MAP: dict[str, str] = {
+        "bytes_": "bytes",
+        "reversed": "reversed",
+    }
+
+    def _python_builtin_call(self, name: str, args: list[TArg]) -> str:
+        orig = self._PYTHON_CALL_MAP[name]
+        a = self._expr(args[0].value)
+        if orig == "bytes":
+            return '("\\0" x ' + a + ")"
+        if orig == "reversed":
+            return "[reverse @{" + a + "}]"
+        raise ValueError(name)
+
     def _call(self, expr: TCall) -> str:
         func = expr.func
         args = expr.args
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr.annotations)
+        if isinstance(func, TVar) and func.name in self._PYTHON_CALL_MAP:
+            return self._python_builtin_call(func.name, args)
         if isinstance(func, TVar) and func.name in self.struct_names:
             return self._struct_call(func.name, args)
         if isinstance(func, TFieldAccess):
@@ -1518,7 +1698,8 @@ class _PerlEmitter:
             if isinstance(vtyp, TFuncType):
                 return self._expr(func) + "->(" + arg_strs + ")"
             if func.name in self.function_names:
-                return _safe_name(func.name) + "(" + arg_strs + ")"
+                prefix = "main::" if self.in_package else ""
+                return prefix + _safe_name(func.name) + "(" + arg_strs + ")"
         fn_expr = self._expr(func)
         arg_strs2 = ", ".join(self._expr(a.value) for a in args)
         return fn_expr + "->(" + arg_strs2 + ")"
@@ -1541,10 +1722,73 @@ class _PerlEmitter:
         return name + "->new(" + ", ".join(vals2) + ")"
 
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
+        method = func.field
+        if method == "decode" and not self._is_known_struct_method(func.obj, method):
+            return self._expr(func.obj)
+        if method == "clear" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            safe = self._deref_safe(obj)
+            if self._is_map_expr(func.obj) or self._is_set_expr(func.obj):
+                return "do { %{" + safe + "} = () }"
+            return "do { @{" + safe + "} = () }"
+        if method == "get" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            key = self._hash_key(args[0].value)
+            if len(args) >= 2:
+                default = self._expr(args[1].value)
+                return "(" + obj + "->{" + key + "} // " + default + ")"
+            return obj + "->{" + key + "}"
+        if method == "append" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            val = self._expr(args[0].value)
+            return "push(@{" + obj + "}, " + val + ")"
+        if method == "keys" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            return "[keys %{" + obj + "}]"
+        if method == "values" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            return "[values %{" + obj + "}]"
+        if method == "items" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            return "[map { [$_, " + obj + "->{$_}] } keys %{" + obj + "}]"
+        if method == "update" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            src = self._expr(args[0].value)
+            return (
+                "do { my $__src = "
+                + src
+                + "; "
+                + obj
+                + "->{$_} = $__src->{$_} for keys %{$__src} }"
+            )
+        if method == "setdefault" and not self._is_known_struct_method(
+            func.obj, method
+        ):
+            obj = self._expr(func.obj)
+            key = self._hash_key(args[0].value)
+            default = self._expr(args[1].value) if len(args) >= 2 else "undef"
+            return "(" + obj + "->{" + key + "} //= " + default + ")"
+        if method == "pop" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            if self._is_map_expr(func.obj):
+                key = self._hash_key(args[0].value)
+                return "delete " + obj + "->{" + key + "}"
+            if len(args) > 0:
+                return "splice(@{" + obj + "}, " + self._expr(args[0].value) + ", 1)"
+            return "pop(@{" + obj + "})"
         obj = self._expr(func.obj)
-        method = _safe_name(func.field)
+        safe_method = _safe_name(method)
         arg_strs = ", ".join(self._expr(a.value) for a in args)
-        return obj + "->" + method + "(" + arg_strs + ")"
+        return obj + "->" + safe_method + "(" + arg_strs + ")"
+
+    def _is_known_struct_method(self, obj: TExpr, method: str) -> bool:
+        if isinstance(obj, TVar):
+            typ = self.var_types.get(obj.name)
+            if isinstance(typ, TIdentType):
+                return True
+            if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
+                return True
+        return False
 
     def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:
         if name == "FloorDiv":
@@ -1707,15 +1951,33 @@ class _PerlEmitter:
                     + self._a(args, 1)
                     + "; my $__c = () = $__s =~ /\\Q$__n\\E/g; $__c }"
                 )
+            a0 = self._a(args, 0)
+            a1 = self._a(args, 1)
             cmp_op = "eq" if self._is_string_expr(args[1].value) else "=="
+            if isinstance(args[1].value, TStringLit):
+                pat = _escape_perl_regex(args[1].value.value)
+                str_count = "do { my $__c = () = " + a0 + " =~ /" + pat + "/g; $__c }"
+            else:
+                str_count = (
+                    "do { my $__n = "
+                    + a1
+                    + "; my $__c = () = "
+                    + a0
+                    + " =~ /\\Q$__n\\E/g; $__c }"
+                )
             return (
-                "scalar(grep { $_ "
+                "(!ref("
+                + a0
+                + ") ? "
+                + str_count
+                + " : "
+                + "scalar(grep { $_ "
                 + cmp_op
                 + " "
-                + self._a(args, 1)
+                + a1
                 + " } @{"
-                + self._a(args, 0)
-                + "})"
+                + a0
+                + "}))"
             )
         if name == "Replace":
             if isinstance(args[1].value, TStringLit) and isinstance(
@@ -1775,14 +2037,14 @@ class _PerlEmitter:
             s = self._a(args, 0)
             pfx = args[1].value
             if isinstance(pfx, TStringLit):
-                pat = "\\Q" + pfx.value + "\\E"
+                pat = _escape_perl_regex(pfx.value)
                 return "((" + s + " =~ /^" + pat + "/) ? 1 : 0)"
             return "((" + s + " =~ /^\\Q${\\ " + self._a(args, 1) + "}\\E/) ? 1 : 0)"
         if name == "EndsWith":
             s = self._a(args, 0)
             sfx = args[1].value
             if isinstance(sfx, TStringLit):
-                pat = "\\Q" + sfx.value + "\\E"
+                pat = _escape_perl_regex(sfx.value)
                 return "((" + s + " =~ /" + pat + "$/) ? 1 : 0)"
             return "((" + s + " =~ /\\Q${\\ " + self._a(args, 1) + "}\\E$/) ? 1 : 0)"
         if name == "IsDigit":
@@ -1801,18 +2063,53 @@ class _PerlEmitter:
             return "encode('UTF-8', " + self._a(args, 0) + ")"
         if name == "Decode":
             return "decode('UTF-8', " + self._a(args, 0) + ")"
+        if name == "Bytes":
+            return '("\\0" x ' + self._a(args, 0) + ")"
+        if name == "BytesFrom":
+            return "pack('C*', @{" + self._a(args, 0) + "})"
         if name == "Add":
-            return self._a(args, 0) + "->{" + self._a(args, 1) + "} = 1"
+            return self._a(args, 0) + "->{" + self._hash_key(args[1].value) + "} = 1"
         if name == "Remove":
-            return "delete " + self._a(args, 0) + "->{" + self._a(args, 1) + "}"
+            return (
+                "delete "
+                + self._a(args, 0)
+                + "->{"
+                + self._hash_key(args[1].value)
+                + "}"
+            )
+        if name == "Union":
+            a = self._deref_safe(self._a(args, 0))
+            b = self._deref_safe(self._a(args, 1))
+            return "do { my $__s = {%{" + a + "}, %{" + b + "}}; $__s }"
+        if name == "Intersection":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "do { my $__a = "
+                + a
+                + "; my $__b = "
+                + b
+                + "; my $__s = {}; for (keys %{$__a}) { $__s->{$_} = 1 if exists $__b->{$_} } $__s }"
+            )
+        if name == "Difference":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "do { my $__a = "
+                + a
+                + "; my $__b = "
+                + b
+                + "; my $__s = {}; for (keys %{$__a}) { $__s->{$_} = 1 unless exists $__b->{$_} } $__s }"
+            )
         if name == "Get":
+            k = self._hash_key(args[1].value)
             if len(args) == 3:
                 if ann is not None and ann.get("provenance") == "dict_get_default":
                     return (
                         "("
                         + self._a(args, 0)
                         + "->{"
-                        + self._a(args, 1)
+                        + k
                         + "} // "
                         + self._a(args, 2)
                         + ")"
@@ -1821,18 +2118,24 @@ class _PerlEmitter:
                     "(exists "
                     + self._a(args, 0)
                     + "->{"
-                    + self._a(args, 1)
+                    + k
                     + "} ? "
                     + self._a(args, 0)
                     + "->{"
-                    + self._a(args, 1)
+                    + k
                     + "} : "
                     + self._a(args, 2)
                     + ")"
                 )
-            return self._a(args, 0) + "->{" + self._a(args, 1) + "}"
+            return self._a(args, 0) + "->{" + k + "}"
         if name == "Delete":
-            return "delete " + self._a(args, 0) + "->{" + self._a(args, 1) + "}"
+            return (
+                "delete "
+                + self._a(args, 0)
+                + "->{"
+                + self._hash_key(args[1].value)
+                + "}"
+            )
         if name == "Merge":
             a0 = self._deref_safe(self._a(args, 0))
             a1 = self._deref_safe(self._a(args, 1))
@@ -1915,14 +2218,23 @@ class _PerlEmitter:
             sorted_arg = args[0].value
             if self.strict_math and self._is_float_list(sorted_arg):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
+            a = self._a(args, 0)
+            if self._is_set_expr(sorted_arg):
+                return "[sort keys %{" + a + "}]"
             typ = self._expr_type(sorted_arg)
             if isinstance(typ, TListType) and _is_string_type(typ.element):
-                return "[sort @{" + self._a(args, 0) + "}]"
-            return "[sort { $a <=> $b } @{" + self._a(args, 0) + "}]"
+                return "[sort @{" + a + "}]"
+            return "[sort { $a <=> $b } @{" + a + "}]"
         if name == "ListFrom":
-            return "[@{" + self._deref_safe(self._a(args, 0)) + "}]"
+            a = self._a(args, 0)
+            if self._is_set_expr(args[0].value):
+                return "[keys %{" + self._deref_safe(a) + "}]"
+            return "[@{" + self._deref_safe(a) + "}]"
         if name == "Reversed":
-            return "[reverse @{" + self._a(args, 0) + "}]"
+            a = self._a(args, 0)
+            if self._is_set_expr(args[0].value):
+                return "[reverse keys %{" + a + "}]"
+            return "[reverse @{" + a + "}]"
         if name == "Map":
             if len(args) == 0:
                 return "{}"
@@ -1940,11 +2252,10 @@ class _PerlEmitter:
         if name == "SetFromList":
             if isinstance(args[0].value, TSetLit):
                 return self._a(args, 0)
-            return (
-                "do { my $__s = {}; $__s->{$_} = 1 for @{"
-                + self._deref_safe(self._a(args, 0))
-                + "}; $__s }"
-            )
+            a = self._deref_safe(self._a(args, 0))
+            if self._is_set_expr(args[0].value):
+                return "do { my $__s = {}; $__s->{$_} = 1 for keys %{" + a + "}; $__s }"
+            return "do { my $__s = {}; $__s->{$_} = 1 for @{" + a + "}; $__s }"
         if name == "ToString":
             inner_expr = args[0].value
             inner = self._expr(inner_expr)
@@ -2047,14 +2358,17 @@ class _PerlEmitter:
                 return "[ @{" + self._expr(left) + "}, @{" + self._expr(right) + "} ]"
             return "(" + self._expr(left) + " . " + self._expr(right) + ")"
         if name == "Repeat":
+            count = self._a(args, 1)
+            if isinstance(args[1].value, (TBinaryOp, TTernary)):
+                count = "(" + count + ")"
             if self._is_list_expr(args[0].value):
                 elem = args[0].value
                 if isinstance(elem, TListLit) and len(elem.elements) == 1:
                     inner = self._expr(elem.elements[0])
                 else:
                     inner = "@{" + self._a(args, 0) + "}"
-                return "[(" + inner + ") x " + self._a(args, 1) + "]"
-            return "(" + self._a(args, 0) + " x " + self._a(args, 1) + ")"
+                return "[(" + inner + ") x " + count + "]"
+            return "(" + self._a(args, 0) + " x " + count + ")"
         if name == "Format":
             if ann is not None and ann.get("provenance") == "f_string":
                 return self._format_interpolated(args)
@@ -2065,7 +2379,18 @@ class _PerlEmitter:
                 type_name = type_arg.value
             else:
                 type_name = self._expr(type_arg)
-            return "eval { " + self._a(args, 0) + "->isa('" + type_name + "') }"
+            a0 = self._a(args, 0)
+            if type_name in ("dict", "Dict"):
+                return "ref(" + a0 + ") eq 'HASH'"
+            if type_name in ("list", "List"):
+                return "ref(" + a0 + ") eq 'ARRAY'"
+            if type_name in ("str", "Str"):
+                return "(!ref(" + a0 + ") && !looks_like_number(" + a0 + "))"
+            if type_name in ("int", "Int", "float", "Float"):
+                return "looks_like_number(" + a0 + ")"
+            if type_name in ("bool", "Bool"):
+                return "!ref(" + a0 + ")"
+            return "eval { " + a0 + "->isa('" + type_name + "') }"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
@@ -2080,9 +2405,44 @@ class _PerlEmitter:
         if self._is_string_expr(container):
             return "index(" + c + ", " + n + ") >= 0"
         if self._is_map_expr(container) or self._is_set_expr(container):
-            return "exists(" + c + "->{" + n + "})"
-        cmp_op = "eq" if self._is_string_expr(needle) else "=="
-        return "grep { $_ " + cmp_op + " " + n + " } @{" + c + "}"
+            return "exists(" + c + "->{" + self._hash_key(needle) + "})"
+        if self._is_list_expr(container):
+            cmp_op = self._list_elem_cmp(container, needle)
+            return "grep { $_ " + cmp_op + " " + n + " } @{" + c + "}"
+        cmp_op = self._list_elem_cmp(container, needle)
+        nk = self._hash_key(needle)
+        return (
+            "(!ref("
+            + c
+            + ") ? index("
+            + c
+            + ", "
+            + n
+            + ") >= 0 : ref("
+            + c
+            + ") eq 'HASH' ? exists("
+            + c
+            + "->{"
+            + nk
+            + "}) : grep { $_ "
+            + cmp_op
+            + " "
+            + n
+            + " } @{"
+            + c
+            + "})"
+        )
+
+    def _list_elem_cmp(self, container: TExpr, needle: TExpr) -> str:
+        if self._is_string_expr(needle):
+            return "eq"
+        typ = self._expr_type(container)
+        if isinstance(typ, TListType) and _is_string_type(typ.element):
+            return "eq"
+        nt = self._expr_type(needle)
+        if isinstance(nt, TOptionalType) and _is_string_type(nt.inner):
+            return "eq"
+        return "=="
 
     def _len_call(self, expr: TExpr) -> str:
         s = self._expr(expr)
@@ -2090,7 +2450,9 @@ class _PerlEmitter:
             return "length(" + s + ")"
         if self._is_map_expr(expr) or self._is_set_expr(expr):
             return "scalar(keys %{ +" + s + " })"
-        return "scalar(@{" + self._deref_safe(s) + "})"
+        if self._is_list_expr(expr):
+            return "scalar(@{" + self._deref_safe(s) + "})"
+        return "(ref(" + s + ") eq 'ARRAY' ? scalar(@{" + s + "}) : length(" + s + "))"
 
     def _deref_safe(self, s: str) -> str:
         """Wrap expressions that are ambiguous inside @{} / %{} deref."""
@@ -2099,6 +2461,17 @@ class _PerlEmitter:
         if s == "{}":
             return "({})"
         return s
+
+    def _hash_key(self, expr: TExpr) -> str:
+        if isinstance(expr, TTupleLit):
+            parts = [self._expr(e) for e in expr.elements]
+            return 'join("\\0", ' + ", ".join(parts) + ")"
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            if isinstance(typ, TTupleType):
+                v = self._expr(expr)
+                return "(ref(" + v + ') ? join("\\0", @{' + v + "}) : " + v + ")"
+        return self._expr(expr)
 
     def _a(self, args: list[TArg], i: int) -> str:
         return self._expr(args[i].value)
@@ -2175,6 +2548,8 @@ class _PerlEmitter:
         if isinstance(typ, TUnionType):
             return "undef"
         if isinstance(typ, TIdentType):
+            if typ.name in self.struct_fields:
+                return typ.name + "->new()"
             return "undef"
         if isinstance(typ, TFuncType):
             return "undef"
@@ -2205,6 +2580,100 @@ class _PerlEmitter:
             )
         if isinstance(expr, TSetLit):
             return TSetType(expr.pos, TPrimitive(expr.pos, "int"))
+        if isinstance(expr, TSlice):
+            obj_t = self._expr_type(expr.obj)
+            if _is_string_type(obj_t) or _is_bytes_type(obj_t):
+                return obj_t
+            if _is_list_type(obj_t):
+                return obj_t
+        if isinstance(expr, TIndex):
+            obj_t = self._expr_type(expr.obj)
+            if _is_string_type(obj_t) or _is_bytes_type(obj_t):
+                return TPrimitive(expr.pos, "string")
+            if isinstance(obj_t, TListType):
+                return obj_t.element
+            if isinstance(obj_t, TMapType):
+                return obj_t.value
+        if isinstance(expr, TFieldAccess):
+            obj_t = self._expr_type(expr.obj)
+            if isinstance(obj_t, TIdentType):
+                ftypes = self.sft.get(obj_t.name, {})
+                result = ftypes.get(expr.field)
+                if result is not None:
+                    return result
+            if isinstance(obj_t, TOptionalType) and isinstance(obj_t.inner, TIdentType):
+                ftypes = self.sft.get(obj_t.inner.name, {})
+                result = ftypes.get(expr.field)
+                if result is not None:
+                    return result
+            found: TType | None = None
+            for sname, sft_entry in self.sft.items():
+                if expr.field in sft_entry:
+                    ft = sft_entry[expr.field]
+                    if found is None:
+                        found = ft
+                    elif not _same_type_kind(found, ft):
+                        found = None
+                        break
+            return found
+        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
+            name = expr.func.name
+            if name in ("Len", "Ord", "Hash", "IndexOf", "Count"):
+                return TPrimitive(expr.pos, "int")
+            if name in (
+                "ToString",
+                "Join",
+                "Lower",
+                "Upper",
+                "Strip",
+                "LStrip",
+                "RStrip",
+                "Replace",
+                "Trim",
+            ):
+                return TPrimitive(expr.pos, "string")
+            if name == "ToFloat":
+                return TPrimitive(expr.pos, "float")
+            if name == "Sorted" or name == "ListFrom" or name == "Reversed":
+                if expr.args:
+                    inner = self._expr_type(expr.args[0].value)
+                    if isinstance(inner, TListType):
+                        return inner
+                    if isinstance(inner, TSetType):
+                        return TListType(expr.pos, inner.element)
+                return TListType(expr.pos, TPrimitive(expr.pos, "int"))
+            if name == "Get":
+                if len(expr.args) >= 3:
+                    return self._expr_type(expr.args[2].value)
+                if expr.args:
+                    obj_t = self._expr_type(expr.args[0].value)
+                    if isinstance(obj_t, TMapType):
+                        return obj_t.value
+                return None
+            if name == "Map" or name == "Merge":
+                return TMapType(
+                    expr.pos, TPrimitive(expr.pos, "int"), TPrimitive(expr.pos, "int")
+                )
+            if name == "Set":
+                return TSetType(expr.pos, TPrimitive(expr.pos, "int"))
+            ret = self.fn_ret.get(name)
+            if ret is not None:
+                return ret
+        if isinstance(expr, TBinaryOp):
+            if expr.op in ("+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"):
+                lt = self._expr_type(expr.left)
+                if lt is not None:
+                    return lt
+                return self._expr_type(expr.right)
+            if expr.op in ("==", "!=", "<", ">", "<=", ">=", "and", "or", "not"):
+                return TPrimitive(expr.pos, "bool")
+        if isinstance(expr, TUnaryOp):
+            if expr.op in ("-", "~"):
+                return self._expr_type(expr.operand)
+            if expr.op == "!":
+                return TPrimitive(expr.pos, "bool")
+        if isinstance(expr, TTernary):
+            return self._expr_type(expr.then_expr)
         return None
 
     def _is_string_expr(self, expr: TExpr) -> bool:
@@ -2268,7 +2737,8 @@ class _PerlEmitter:
             return self._is_int_expr(expr.left)
         if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
             return self._is_int_expr(expr.operand)
-        return False
+        typ = self._expr_type(expr)
+        return isinstance(typ, TPrimitive) and typ.kind == "int"
 
     def _is_float_expr(self, expr: TExpr) -> bool:
         if isinstance(expr, TFloatLit):
@@ -2301,6 +2771,13 @@ class _PerlEmitter:
 
     def _is_zero(self, expr: TExpr) -> bool:
         return isinstance(expr, TIntLit) and expr.value == 0
+
+    def _is_negative_literal(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TUnaryOp)
+            and expr.op == "-"
+            and isinstance(expr.operand, TIntLit)
+        )
 
     def _is_len_call(self, expr: TExpr) -> bool:
         return (
@@ -2376,18 +2853,23 @@ def emit_perl(module: TModule) -> str:
             enum_names.add(decl.name)
     function_names: set[str] = set()
     struct_fields: dict[str, list[str]] = {}
+    struct_field_types: dict[str, dict[str, TType]] = {}
     for decl in module.decls:
         if isinstance(decl, TFnDecl):
             function_names.add(decl.name)
         elif isinstance(decl, TStructDecl):
             fnames: list[str] = []
+            ftypes: dict[str, TType] = {}
             for f in decl.fields:
                 fnames.append(f.name)
+                ftypes[f.name] = f.typ
             struct_fields[decl.name] = fnames
+            struct_field_types[decl.name] = ftypes
             for method in decl.methods:
                 function_names.add(method.name)
         elif isinstance(decl, TInterfaceDecl) and decl.fields:
             struct_fields[decl.name] = [f.name for f in decl.fields]
+            struct_field_types[decl.name] = {f.name: f.typ for f in decl.fields}
     emitter = _PerlEmitter(
         struct_names,
         enum_names,
@@ -2395,5 +2877,6 @@ def emit_perl(module: TModule) -> str:
         struct_fields,
         module.strict_math,
     )
+    emitter.sft = struct_field_types
     emitter.emit_module(module)
     return emitter.output()
