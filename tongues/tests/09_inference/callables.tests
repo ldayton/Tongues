@@ -243,3 +243,83 @@ def main() -> int:
 ---
 ok
 ---
+
+=== wrong arg type in assignment call not allowed
+def make_int(x: int) -> int:
+    return x
+def main() -> int:
+    s: str = "x"
+    y: int = 0
+    y = make_int(s)
+    return y
+---
+error: argument 1 has type str, expected int
+---
+
+=== wrong arg type in annotated assignment call not allowed
+def make_int(x: int) -> int:
+    return x
+def main() -> int:
+    s: str = "x"
+    y: int = make_int(s)
+    return y
+---
+error: argument 1 has type str, expected int
+---
+
+=== wrong arg type in for iterable call not allowed
+def get_items(x: int) -> list[int]:
+    return [x]
+def main() -> int:
+    s: str = "x"
+    for item in get_items(s):
+        return item
+    return 0
+---
+error: argument 1 has type str, expected int
+---
+
+=== wrong arg type in assert call not allowed
+def is_valid(x: int) -> bool:
+    return True
+def main() -> int:
+    s: str = "x"
+    assert is_valid(s)
+    return 0
+---
+error: argument 1 has type str, expected int
+---
+
+=== wrong arg type in augmented assignment call not allowed
+def get_delta(x: int) -> int:
+    return x
+def main() -> int:
+    s: str = "x"
+    n: int = 0
+    n += get_delta(s)
+    return n
+---
+error: argument 1 has type str, expected int
+---
+
+=== wrong arg type in nested call in return not allowed
+def make_int(x: int) -> int:
+    return x
+def main() -> int:
+    s: str = "x"
+    return make_int(s) + 1
+---
+error: argument 1 has type str, expected int
+---
+
+=== wrong arg type in unaryop call not allowed
+def check(x: int) -> bool:
+    return True
+def main() -> int:
+    s: str = "x"
+    if not check(s):
+        return 1
+    return 0
+---
+error: argument 1 has type str, expected int
+---

@@ -1404,10 +1404,9 @@ def _validate_return(
     _validate_expr_access(value, env, ctx, lineno)
     if len(ctx.result._errors) > 0:
         return
-    if _is_type(value, ["Call"]):
-        _validate_call_args(value, env, ctx, lineno)
-        if len(ctx.result._errors) > 0:
-            return
+    _validate_expr_calls(value, env, ctx, lineno)
+    if len(ctx.result._errors) > 0:
+        return
     _validate_return_value(value, func_info.return_type, env, ctx, lineno)
     if len(ctx.result._errors) > 0:
         return
@@ -1435,6 +1434,9 @@ def _validate_assign(
             if _check_iterator_escape_assign(value, env, ctx, lineno):
                 return
             if _check_generator_escape_assign(value, env, ctx, lineno):
+                return
+            _validate_expr_calls(value, env, ctx, lineno)
+            if len(ctx.result._errors) > 0:
                 return
     val_type = _synth_expr(value, env, ctx)
     i = 0
@@ -1646,6 +1648,9 @@ def _validate_ann_assign(
         if name != "":
             env.set(name, ann_type, ann_str)
             if len(value) > 0:
+                _validate_expr_calls(value, env, ctx, lineno)
+                if len(ctx.result._errors) > 0:
+                    return
                 val_type = _synth_expr(value, env, ctx)
                 if not _is_assignable(val_type, ann_type, ctx.hier_result):
                     ctx.result.add_error(
@@ -1666,6 +1671,7 @@ def _validate_aug_assign(
     if len(target) == 0 or len(value) == 0:
         return
     lineno = get_int(stmt, "lineno")
+    _validate_expr_calls(value, env, ctx, lineno)
     _synth_expr(value, env, ctx)
 
 
@@ -1711,7 +1717,31 @@ def _validate_expr_stmt(
                         _check_generator_escape_arg(arg, attr, env, ctx, lineno)
                     j += 1
     _synth_expr(value, env, ctx)
-    _validate_call_args(value, env, ctx, lineno)
+    _validate_expr_calls(value, env, ctx, lineno)
+
+
+def _validate_expr_calls(
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> None:
+    """Walk an expression and validate args for every Call found."""
+    if not isinstance(node, dict):
+        return
+    t = get_str(node, "_type")
+    if t == "Call":
+        _validate_call_args(node, env, ctx, lineno)
+        args = get_nodes(node, "args")
+        j = 0
+        while j < len(args):
+            _validate_expr_calls(args[j], env, ctx, lineno)
+            j += 1
+        return
+    if t == "BinOp":
+        _validate_expr_calls(get_node(node, "left"), env, ctx, lineno)
+        _validate_expr_calls(get_node(node, "right"), env, ctx, lineno)
+        return
+    if t == "UnaryOp":
+        _validate_expr_calls(get_node(node, "operand"), env, ctx, lineno)
+        return
 
 
 def _validate_call_args(
@@ -1949,10 +1979,9 @@ def _validate_if(
     orelse = get_nodes(stmt, "orelse")
     lineno = get_int(stmt, "lineno")
     if len(test) > 0:
-        if _is_type(test, ["Call"]):
-            _validate_call_args(test, env, ctx, lineno)
-            if len(ctx.result._errors) > 0:
-                return False
+        _validate_expr_calls(test, env, ctx, lineno)
+        if len(ctx.result._errors) > 0:
+            return False
         _check_truthiness(test, env, ctx, lineno)
     then_env = env.copy()
     else_env = env.copy()
@@ -2008,8 +2037,7 @@ def _validate_while(
     body = get_nodes(stmt, "body")
     lineno = get_int(stmt, "lineno")
     if len(test) > 0:
-        if _is_type(test, ["Call"]):
-            _validate_call_args(test, env, ctx, lineno)
+        _validate_expr_calls(test, env, ctx, lineno)
         _check_truthiness(test, env, ctx, lineno)
     loop_env = env.copy()
     _validate_stmts(body, loop_env, func_info, ctx)
@@ -2022,6 +2050,9 @@ def _validate_for(
     iter_node = get_node(stmt, "iter")
     body = get_nodes(stmt, "body")
     if len(iter_node) > 0:
+        _validate_expr_calls(iter_node, env, ctx, get_int(stmt, "lineno"))
+        if len(ctx.result._errors) > 0:
+            return
         iter_type = _synth_expr(iter_node, env, ctx)
         elem = _iteration_element(iter_type)
         if len(target) > 0:
@@ -2034,6 +2065,10 @@ def _validate_assert(
 ) -> None:
     test = get_node(stmt, "test")
     if len(test) == 0:
+        return
+    lineno = get_int(stmt, "lineno")
+    _validate_expr_calls(test, env, ctx, lineno)
+    if len(ctx.result._errors) > 0:
         return
     dummy_else = env.copy()
     _extract_narrowing(test, env, dummy_else, ctx)
