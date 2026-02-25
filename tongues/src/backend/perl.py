@@ -2035,7 +2035,7 @@ class _PerlEmitter:
             )
         if name == "SplitN":
             if isinstance(args[1].value, TStringLit):
-                pat = "\\Q" + _escape_perl_regex(args[1].value.value) + "\\E"
+                pat = _escape_perl_regex(args[1].value.value)
                 return (
                     "[split(/"
                     + pat

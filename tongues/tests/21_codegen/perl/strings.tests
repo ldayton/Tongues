@@ -37,7 +37,7 @@ my $c = () = "abcabc" =~ /abc/g;
 my $r = rindex("abcabc", "abc");
 
 === SplitN and SplitWhitespace
-my $parts = [split(/\Q,\E/, "a,b,c,d", 2)];
+my $parts = [split(/,/, "a,b,c,d", 2)];
 my $words = [grep { length($_) > 0 } split(/\s+/, "  hello   world  ")];
 
 === Concat strings
