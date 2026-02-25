@@ -1436,6 +1436,10 @@ def _validate_assign(
                 return
             if _check_generator_escape_assign(value, env, ctx, lineno):
                 return
+            if _is_type(value, ["Call"]):
+                _validate_call_args(value, env, ctx, lineno)
+                if len(ctx.result._errors) > 0:
+                    return
     val_type = _synth_expr(value, env, ctx)
     i = 0
     while i < len(targets):
@@ -1646,6 +1650,10 @@ def _validate_ann_assign(
         if name != "":
             env.set(name, ann_type, ann_str)
             if len(value) > 0:
+                if _is_type(value, ["Call"]):
+                    _validate_call_args(value, env, ctx, lineno)
+                    if len(ctx.result._errors) > 0:
+                        return
                 val_type = _synth_expr(value, env, ctx)
                 if not _is_assignable(val_type, ann_type, ctx.hier_result):
                     ctx.result.add_error(
@@ -1666,6 +1674,8 @@ def _validate_aug_assign(
     if len(target) == 0 or len(value) == 0:
         return
     lineno = get_int(stmt, "lineno")
+    if _is_type(value, ["Call"]):
+        _validate_call_args(value, env, ctx, lineno)
     _synth_expr(value, env, ctx)
 
 
@@ -2022,6 +2032,10 @@ def _validate_for(
     iter_node = get_node(stmt, "iter")
     body = get_nodes(stmt, "body")
     if len(iter_node) > 0:
+        if _is_type(iter_node, ["Call"]):
+            _validate_call_args(iter_node, env, ctx, get_int(stmt, "lineno"))
+            if len(ctx.result._errors) > 0:
+                return
         iter_type = _synth_expr(iter_node, env, ctx)
         elem = _iteration_element(iter_type)
         if len(target) > 0:
@@ -2035,6 +2049,11 @@ def _validate_assert(
     test = get_node(stmt, "test")
     if len(test) == 0:
         return
+    lineno = get_int(stmt, "lineno")
+    if _is_type(test, ["Call"]):
+        _validate_call_args(test, env, ctx, lineno)
+        if len(ctx.result._errors) > 0:
+            return
     dummy_else = env.copy()
     _extract_narrowing(test, env, dummy_else, ctx)
 
