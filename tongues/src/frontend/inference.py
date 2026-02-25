@@ -2442,6 +2442,31 @@ def _narrow_compare(
             if path != "":
                 then_env.guard_attr(path)
         return
+    if op_type == "Eq" and comp_is_none:
+        if _is_type(left, ["Name"]):
+            name = get_str(left, "id")
+            if name != "":
+                _narrow_to_non_none(name, else_env, ctx)
+        if _is_type(left, ["Attribute"]):
+            path = _attr_path(left)
+            if path != "":
+                else_env.guard_attr(path)
+        return
+    if op_type == "NotEq" and comp_is_none:
+        if _is_type(left, ["Name"]):
+            name = get_str(left, "id")
+            if name != "":
+                _narrow_to_non_none(name, then_env, ctx)
+        if _is_type(left, ["Attribute"]):
+            path = _attr_path(left)
+            if path != "":
+                then_env.guard_attr(path)
+        return
+    if op_type == "Eq" and not comp_is_none:
+        if _is_type(left, ["Name"]):
+            name = get_str(left, "id")
+            if name != "":
+                _narrow_to_non_none(name, then_env, ctx)
     if op_type == "Eq":
         if _is_type(left, ["Attribute"]):
             attr = get_str(left, "attr")
