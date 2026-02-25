@@ -153,6 +153,11 @@ def _escape_perl_string(value: str) -> str:
     return "".join(out)
 
 
+def _escape_quotemeta(value: str) -> str:
+    """Escape a string for use inside \\Q...\\E in a Perl regex."""
+    return value.replace("\\", "\\\\").replace("/", "\\/").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
+
 def _escape_perl_regex(s: str) -> str:
     result: list[str] = []
     for ch in s:
@@ -270,7 +275,10 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     if child_prec < parent_prec:
         return True
     if child_prec == parent_prec and not is_left:
-        return child_op in _CMP_OPS
+        if child_op in _CMP_OPS:
+            return True
+        if parent_op in ("-", "/", "%", "//"):
+            return True
     return False
 
 
@@ -1261,9 +1269,9 @@ class _PerlEmitter:
     def _type_match_cond(self, typ: TType, expr: str, is_optional: bool = False) -> str:
         if isinstance(typ, TIdentType):
             if typ.name in ("dict", "Dict"):
-                return "ref(" + expr + ") eq 'HASH'"
+                return "(ref(" + expr + ") eq 'HASH')"
             if typ.name in ("list", "List"):
-                return "ref(" + expr + ") eq 'ARRAY'"
+                return "(ref(" + expr + ") eq 'ARRAY')"
             if typ.name in self.struct_names:
                 return "eval { " + expr + "->isa('" + typ.name + "') }"
             return (
@@ -1849,6 +1857,11 @@ class _PerlEmitter:
             if len(args) > 0:
                 return "splice(@{" + obj + "}, " + self._expr(args[0].value) + ", 1)"
             return "pop(@{" + obj + "})"
+        if method == "copy" and not self._is_known_struct_method(func.obj, method):
+            obj = self._expr(func.obj)
+            if self._is_list_expr(func.obj):
+                return "[@{" + obj + "}]"
+            return "{%{" + obj + "}}"
         if method == "replace" and not self._is_known_struct_method(func.obj, method):
             obj = self._expr(func.obj)
             old = self._expr(args[0].value)
@@ -2144,14 +2157,14 @@ class _PerlEmitter:
             s = self._a(args, 0)
             pfx = args[1].value
             if isinstance(pfx, TStringLit):
-                pat = _escape_perl_string(pfx.value)
+                pat = _escape_quotemeta(pfx.value)
                 return "((" + s + " =~ /^\\Q" + pat + "\\E/) ? 1 : 0)"
             return "((" + s + " =~ /^\\Q${\\ " + self._a(args, 1) + "}\\E/) ? 1 : 0)"
         if name == "EndsWith":
             s = self._a(args, 0)
             sfx = args[1].value
             if isinstance(sfx, TStringLit):
-                pat = _escape_perl_string(sfx.value)
+                pat = _escape_quotemeta(sfx.value)
                 return "((" + s + " =~ /\\Q" + pat + "\\E$/) ? 1 : 0)"
             return "((" + s + " =~ /\\Q${\\ " + self._a(args, 1) + "}\\E$/) ? 1 : 0)"
         if name == "IsDigit":
@@ -2488,9 +2501,9 @@ class _PerlEmitter:
                 type_name = self._expr(type_arg)
             a0 = self._a(args, 0)
             if type_name in ("dict", "Dict"):
-                return "ref(" + a0 + ") eq 'HASH'"
+                return "(ref(" + a0 + ") eq 'HASH')"
             if type_name in ("list", "List"):
-                return "ref(" + a0 + ") eq 'ARRAY'"
+                return "(ref(" + a0 + ") eq 'ARRAY')"
             if type_name in ("str", "Str"):
                 return "(!ref(" + a0 + ") && !looks_like_number(" + a0 + "))"
             if type_name in ("int", "Int", "float", "Float"):

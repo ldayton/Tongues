@@ -11,6 +11,7 @@ use JSON::PP ();
 use Time::HiRes qw(time);
 use IPC::Open3;
 use POSIX ();
+use Scalar::Util qw(blessed);
 use Symbol qw(gensym);
 
 my $TONGUES_DIR = File::Spec->rel2abs(File::Spec->catdir(dirname(__FILE__), ".."));
@@ -104,7 +105,11 @@ sub run_inprocess ($argv, $stdin_data = "") {
         $FORK_MODE = 1;
         eval { main() };
         if ($@) {
-            print STDERR $@;
+            my $err = $@;
+            if (ref($err) && ref($err) eq 'HASH' || blessed($err)) {
+                $err = $err->{msg} // $err->{message} // "$err";
+            }
+            print STDERR $err;
             close STDOUT; close STDERR;
             POSIX::_exit(1);
         }
@@ -331,6 +336,9 @@ sub resolve_dotpath ($obj, $dotpath) {
         if ($part eq "length") {
             if (ref($current) eq "ARRAY") {
                 return scalar @$current;
+            }
+            if (ref($current) eq "HASH") {
+                return scalar(keys %$current);
             }
             return length($current);
         }
