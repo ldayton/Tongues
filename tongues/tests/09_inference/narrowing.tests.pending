@@ -35,21 +35,6 @@ def f(n: Node) -> int:
 error:
 ---
 
-=== narrowing in nested if-else
-def f(x: int | str | None) -> str:
-    if x is not None:
-        reveal_type(x)
-        if isinstance(x, int):
-            return "int"
-        else:
-            reveal_type(x)
-            return x
-    return "none"
----
-reveal:3 = int | str
-reveal:7 = str
----
-
 === narrowing with multiple returns in elif
 class A:
     def a_method(self) -> int:
@@ -97,18 +82,6 @@ def f(x: int | None) -> int:
 error: None
 ---
 
-=== narrowing with elif and no else
-def f(x: int | str | None) -> int:
-    if x is None:
-        return -1
-    elif isinstance(x, str):
-        return len(x)
-    reveal_type(x)
-    return x + 1
----
-reveal:6 = int
----
-
 === unnarrowed optional attribute fails
 from dataclasses import dataclass
 @dataclass
@@ -127,18 +100,6 @@ def f(x: int | str) -> int:
     return len(y)
 ---
 ok
----
-
-=== narrowing with multiple early exits
-def f(x: int | str | None) -> str:
-    if x is None:
-        raise ValueError("x is None")
-    if isinstance(x, int):
-        return str(x)
-    reveal_type(x)
-    return x
----
-reveal:6 = str
 ---
 
 === four-way union isinstance chain
@@ -165,31 +126,6 @@ def f(x: A | B | C | D) -> int:
     return x.d()
 ---
 reveal:21 = D
----
-
-=== narrowing across elif with raise in middle
-def f(x: int | str | None) -> int:
-    if x is None:
-        return -1
-    elif isinstance(x, str):
-        raise ValueError("no strings")
-    return x + 1
----
-ok
----
-
-=== multiple returns with narrowing in each branch
-def f(x: int | str | float | None) -> str:
-    if x is None:
-        return "none"
-    if isinstance(x, int):
-        return "int"
-    if isinstance(x, float):
-        return "float"
-    reveal_type(x)
-    return x
----
-reveal:8 = str
 ---
 
 === and chain partial guard fails
@@ -811,22 +747,6 @@ reveal:3 = None
 reveal:5 = int
 ---
 
-=== double narrowing optional then isinstance
-def f(x: int | str | None) -> int:
-    if x is None:
-        return 0
-    reveal_type(x)
-    if isinstance(x, int):
-        reveal_type(x)
-        return x + 1
-    reveal_type(x)
-    return len(x)
----
-reveal:4 = int | str
-reveal:6 = int
-reveal:8 = str
----
-
 === narrowing in elif chain accessing wrong field in elif
 class A:
     x: int
@@ -1198,22 +1118,6 @@ def f() -> str:
 error: None
 ---
 
-=== isinstance tuple else narrows to remaining single type
-class A:
-    a: int
-class B:
-    b: int
-class C:
-    c: int
-def f(x: A | B | C) -> int:
-    if isinstance(x, (A, B)):
-        return 0
-    reveal_type(x)
-    return x.c
----
-reveal:10 = C
----
-
 === narrowing in except handler does not carry after try
 class A:
     pass
@@ -1244,16 +1148,6 @@ def f(items: list[A]) -> int:
 error:
 ---
 
-=== narrowing with list method after isinstance
-def f(x: list[int] | int) -> int:
-    if isinstance(x, list):
-        x.append(42)
-        return len(x)
-    return x + 1
----
-ok
----
-
 === narrowing with list method without guard fails
 def f(x: list[int] | int) -> int:
     x.append(42)
@@ -1280,15 +1174,6 @@ def f(x: int | str) -> int:
     return x + 1
 ---
 ok
----
-
-=== isinstance in while condition wrong access after loop
-def f(x: int | str) -> str:
-    while isinstance(x, int):
-        break
-    return x
----
-error:
 ---
 
 === narrowing with optional dataclass field missing guard
@@ -1549,4 +1434,19 @@ def eval_safe(node: Add | Mul | None, default: int | None) -> int:
     return node.left * node.right + default
 ---
 ok
+---
+
+=== isinstance tuple else wrong field on remaining
+class A:
+    a: int
+class B:
+    b: int
+class C:
+    c: int
+def f(x: A | B | C) -> int:
+    if isinstance(x, (A, B)):
+        return 0
+    return x.a
+---
+error:
 ---

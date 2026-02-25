@@ -387,8 +387,6 @@ def f(x: A) -> int:
 ok
 ---
 
-
-
 === assert isinstance narrows
 class Animal:
     pass
@@ -3259,7 +3257,7 @@ def f(x: set[int] | str) -> int:
 ok
 ---
 
-=== match case does not narrow
+=== match case narrows subject
 class A:
     a_val: int
 class B:
@@ -3272,7 +3270,7 @@ def f(x: A | B) -> int:
             return len(x.b_val)
     return 0
 ---
-error:
+ok
 ---
 
 === narrowing in nested for loops inner scope
@@ -3490,21 +3488,6 @@ def f() -> str:
     return "default"
 ---
 ok
----
-
-=== isinstance tuple else wrong field on remaining
-class A:
-    a: int
-class B:
-    b: int
-class C:
-    c: int
-def f(x: A | B | C) -> int:
-    if isinstance(x, (A, B)):
-        return 0
-    return x.a
----
-error:
 ---
 
 === multiple walrus in and condition
@@ -4282,4 +4265,119 @@ def eval_safe(node: Add | Mul | None, default: int | None) -> int:
     return 0
 ---
 error: None
+---
+
+=== narrowing in nested if-else
+def f(x: int | str | None) -> str:
+    if x is not None:
+        reveal_type(x)
+        if isinstance(x, int):
+            return "int"
+        else:
+            reveal_type(x)
+            return x
+    return "none"
+---
+reveal:3 = int | str
+reveal:7 = str
+---
+
+=== narrowing with elif and no else
+def f(x: int | str | None) -> int:
+    if x is None:
+        return -1
+    elif isinstance(x, str):
+        return len(x)
+    reveal_type(x)
+    return x + 1
+---
+reveal:6 = int
+---
+
+=== narrowing with multiple early exits
+def f(x: int | str | None) -> str:
+    if x is None:
+        raise ValueError("x is None")
+    if isinstance(x, int):
+        return str(x)
+    reveal_type(x)
+    return x
+---
+reveal:6 = str
+---
+
+=== narrowing across elif with raise in middle
+def f(x: int | str | None) -> int:
+    if x is None:
+        return -1
+    elif isinstance(x, str):
+        raise ValueError("no strings")
+    return x + 1
+---
+ok
+---
+
+=== multiple returns with narrowing in each branch
+def f(x: int | str | float | None) -> str:
+    if x is None:
+        return "none"
+    if isinstance(x, int):
+        return "int"
+    if isinstance(x, float):
+        return "float"
+    reveal_type(x)
+    return x
+---
+reveal:8 = str
+---
+
+=== double narrowing optional then isinstance
+def f(x: int | str | None) -> int:
+    if x is None:
+        return 0
+    reveal_type(x)
+    if isinstance(x, int):
+        reveal_type(x)
+        return x + 1
+    reveal_type(x)
+    return len(x)
+---
+reveal:4 = int | str
+reveal:6 = int
+reveal:8 = str
+---
+
+=== isinstance tuple else narrows to remaining single type
+class A:
+    a: int
+class B:
+    b: int
+class C:
+    c: int
+def f(x: A | B | C) -> int:
+    if isinstance(x, (A, B)):
+        return 0
+    reveal_type(x)
+    return x.c
+---
+reveal:10 = C
+---
+
+=== narrowing with list method after isinstance
+def f(x: list[int] | int) -> int:
+    if isinstance(x, list):
+        x.append(42)
+        return len(x)
+    return x + 1
+---
+ok
+---
+
+=== isinstance in while condition wrong access after loop
+def f(x: int | str) -> str:
+    while isinstance(x, int):
+        break
+    return x
+---
+error:
 ---

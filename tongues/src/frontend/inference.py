@@ -27,6 +27,7 @@ from .types import (
     SetType,
     TupleType,
     OptionalType,
+    UnionType,
     PointerType,
     StructRef,
     InterfaceRef,
@@ -305,6 +306,21 @@ def _is_assignable(
                 return False
             j += 1
         return _is_assignable(actual.ret, expected.ret, hier)
+    # T assignable to Union if assignable to any variant
+    if isinstance(expected, UnionType):
+        j = 0
+        while j < len(expected.variants):
+            if _is_assignable(actual, expected.variants[j], hier):
+                return True
+            j += 1
+    # Union assignable to T if every variant is assignable
+    if isinstance(actual, UnionType):
+        j = 0
+        while j < len(actual.variants):
+            if not _is_assignable(actual.variants[j], expected, hier):
+                return False
+            j += 1
+        return True
     return False
 
 
@@ -2137,12 +2153,29 @@ def _validate_try(
 def _validate_match(
     stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
 ) -> None:
+    subject = get_node(stmt, "subject")
+    subj_name = ""
+    if len(subject) > 0 and _is_type(subject, ["Name"]):
+        subj_name = get_str(subject, "id")
     cases = get_nodes(stmt, "cases")
     j = 0
     while j < len(cases):
         case = cases[j]
+        case_env = env.copy()
+        if subj_name != "":
+            pattern = get_node(case, "pattern")
+            if len(pattern) > 0 and _is_type(pattern, ["MatchClass"]):
+                cls = get_node(pattern, "cls")
+                if len(cls) > 0 and _is_type(cls, ["Name"]):
+                    cls_name = get_str(cls, "id")
+                    if cls_name != "":
+                        sig_errors: list[SignatureError] = []
+                        narrowed = py_type_to_type_dict(
+                            cls_name, ctx.known_classes, sig_errors, 0, 0
+                        )
+                        case_env.narrow(subj_name, narrowed, cls_name)
         case_body = get_nodes(case, "body")
-        _validate_stmts(case_body, env.copy(), func_info, ctx)
+        _validate_stmts(case_body, case_env, func_info, ctx)
         j += 1
 
 
@@ -2374,22 +2407,40 @@ def _narrow_isinstance(
         name = _attr_path(target)
     if name == "":
         return
-    narrow_name = ""
+    narrow_names: list[str] = []
     if _is_type(type_arg, ["Name"]):
-        narrow_name = get_str(type_arg, "id")
-    if narrow_name == "":
+        n = get_str(type_arg, "id")
+        if n != "":
+            narrow_names.append(n)
+    elif _is_type(type_arg, ["Tuple"]):
+        elts = get_nodes(type_arg, "elts")
+        j = 0
+        while j < len(elts):
+            if _is_type(elts[j], ["Name"]):
+                n = get_str(elts[j], "id")
+                if n != "":
+                    narrow_names.append(n)
+            j += 1
+    if len(narrow_names) == 0:
         return
-    sig_errors: list[SignatureError] = []
-    narrowed = py_type_to_type_dict(narrow_name, ctx.known_classes, sig_errors, 0, 0)
-    then_env.narrow(name, narrowed, narrow_name)
+    if len(narrow_names) == 1:
+        narrow_name = narrow_names[0]
+        sig_errors: list[SignatureError] = []
+        narrowed = py_type_to_type_dict(
+            narrow_name, ctx.known_classes, sig_errors, 0, 0
+        )
+        then_env.narrow(name, narrowed, narrow_name)
     source = else_env.get_source(name)
     if source != "" and _is_union_source(source):
         parts = _split_union_parts(source)
+        narrow_set: set[str] = set(narrow_names)
         remaining: list[str] = []
         j = 0
         while j < len(parts):
-            if parts[j] != narrow_name:
-                remaining.append(parts[j])
+            p = parts[j]
+            base = p.split("[")[0] if "[" in p else p
+            if p not in narrow_set and base not in narrow_set:
+                remaining.append(p)
             j += 1
         if len(remaining) == 1:
             sig_errors2: list[SignatureError] = []
