@@ -579,6 +579,8 @@ def _default_value_for_type(pos: Pos, td: TypeNode) -> TExpr:
         return TStringLit(pos, "", {})
     if kind == "bool":
         return TBoolLit(pos, False, {})
+    if kind == "bytes":
+        return TBytesLit(pos, b"", {})
     if isinstance(td, TupleType) and len(td.elements) >= 2:
         parts: list[TExpr] = []
         i = 0
@@ -983,6 +985,20 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             method_name = get_str(func, "attr")
             obj_n = get_node(func, "value")
             obj_t = _infer_expr_type(obj_n, env, ctx)
+            if _is_ast(obj_n, "Attribute"):
+                buf_obj = get_node(obj_n, "value")
+                buf_attr = get_str(obj_n, "attr")
+                if _is_ast(buf_obj, "Attribute"):
+                    sys_obj = get_node(buf_obj, "value")
+                    sys_attr = get_str(buf_obj, "attr")
+                    if (
+                        _is_ast(sys_obj, "Name")
+                        and get_str(sys_obj, "id") == "sys"
+                        and sys_attr == "stdin"
+                        and buf_attr == "buffer"
+                        and method_name == "read"
+                    ):
+                        return PrimitiveType("bytes")
             if _is_struct_type(obj_t):
                 sname = _struct_name(obj_t)
                 return _method_return_type(ctx, sname, method_name)

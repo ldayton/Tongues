@@ -2367,7 +2367,7 @@ class Checker:
     def check_expr(self, expr: TExpr, expected: Type | None) -> Type | None:
         """Type-check an expression and return its type. Returns None on error."""
         if isinstance(expr, TIntLit):
-            if expr.value < -(2**63) or expr.value >= 2**64:
+            if len(expr.raw) > 20 or (len(expr.raw) == 20 and expr.raw > "18446744073709551615"):
                 self.error("integer literal too large", expr.pos)
             return INT_T
         if isinstance(expr, TFloatLit):

@@ -2232,7 +2232,12 @@ class _PerlEmitter:
         if name == "Encode":
             return "encode('UTF-8', " + self._a(args, 0) + ")"
         if name == "Decode":
-            return "decode('UTF-8', " + self._a(args, 0) + ", Encode::FB_CROAK)"
+            a = self._a(args, 0)
+            return (
+                "do { my $__d = eval { decode('UTF-8', "
+                + a
+                + ", Encode::FB_CROAK) }; if ($@) { die bless({message => \"$@\"}, 'ValueError') } $__d }"
+            )
         if name == "Bytes":
             return '("\\0" x ' + self._a(args, 0) + ")"
         if name == "BytesFrom":
