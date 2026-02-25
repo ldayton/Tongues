@@ -756,7 +756,7 @@ def _node_pos(node: ASTNode) -> Pos:
     )
 
 
-def _is_ast(node: JsonValue, type_name: str) -> bool:
+def _is_ast(node: ASTNode, type_name: str) -> bool:
     """Check if node is a dict-AST of given type."""
     if isinstance(node, JDict):
         return get_str(node.entries, "_type") == type_name
