@@ -323,3 +323,36 @@ def main() -> int:
 ---
 error: argument 1 has type str, expected int
 ---
+
+=== call with is not None guard in and ok
+def check(x: int) -> bool:
+    return x > 0
+def f(x: int | None) -> bool:
+    if x is not None and check(x):
+        return True
+    return False
+---
+ok
+---
+
+=== call with is None guard in or ok
+def check(x: int) -> bool:
+    return x > 0
+def f(x: int | None) -> bool:
+    if x is None or check(x):
+        return True
+    return False
+---
+ok
+---
+
+=== call in and without guard not allowed
+def check(x: int) -> bool:
+    return x > 0
+def f(x: int | None) -> bool:
+    if True and check(x):
+        return True
+    return False
+---
+error: argument 1 has type int | None, expected int
+---

@@ -335,3 +335,55 @@ def f(x: int | str) -> None:
 ---
 reveal:3 = int
 ---
+
+=== and chain narrows both sides
+def f(x: int | None, y: str | None) -> int:
+    if x is not None and y is not None:
+        reveal_type(x)
+        reveal_type(y)
+        return x + len(y)
+    return 0
+---
+reveal:3 = int
+reveal:4 = str
+---
+
+=== and chain three vars
+def f(a: int | None, b: int | None, c: int | None) -> int:
+    if a is not None and b is not None and c is not None:
+        reveal_type(a)
+        reveal_type(b)
+        reveal_type(c)
+        return a + b + c
+    return 0
+---
+reveal:3 = int
+reveal:4 = int
+reveal:5 = int
+---
+
+=== and chain isinstance plus is not None
+def f(x: int | str, y: int | None) -> int:
+    if isinstance(x, int) and y is not None:
+        reveal_type(x)
+        reveal_type(y)
+        return x + y
+    return 0
+---
+reveal:3 = int
+reveal:4 = int
+---
+
+=== isinstance short-circuit and allows attribute access
+class A:
+    pass
+class B(A):
+    flag: int
+def f(x: A) -> int:
+    if isinstance(x, B) and x.flag > 0:
+        return x.flag
+    return 0
+---
+ok
+---
+

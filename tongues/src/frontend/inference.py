@@ -1090,8 +1090,25 @@ def _synth_boolop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     values = get_nodes(node, "values")
     if len(values) == 0:
         return ANY_TYPE
-    last = values[len(values) - 1]
-    return _synth_expr(last, env, ctx)
+    op = get_node(node, "op")
+    op_t = get_str(op, "_type")
+    if op_t == "And":
+        work = env.copy()
+        j = 0
+        while j < len(values) - 1:
+            dummy = env.copy()
+            _extract_narrowing(values[j], work, dummy, ctx)
+            j += 1
+        return _synth_expr(values[len(values) - 1], work, ctx)
+    if op_t == "Or":
+        work = env.copy()
+        j = 0
+        while j < len(values) - 1:
+            dummy = env.copy()
+            _extract_narrowing(values[j], dummy, work, ctx)
+            j += 1
+        return _synth_expr(values[len(values) - 1], work, ctx)
+    return _synth_expr(values[len(values) - 1], env, ctx)
 
 
 def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
@@ -1741,6 +1758,31 @@ def _validate_expr_calls(
         return
     if t == "UnaryOp":
         _validate_expr_calls(get_node(node, "operand"), env, ctx, lineno)
+        return
+    if t == "BoolOp":
+        op = get_node(node, "op")
+        op_t = get_str(op, "_type")
+        values = get_nodes(node, "values")
+        if op_t == "And":
+            work = env.copy()
+            j = 0
+            while j < len(values):
+                _validate_expr_calls(values[j], work, ctx, lineno)
+                if j < len(values) - 1:
+                    dummy = env.copy()
+                    _extract_narrowing(values[j], work, dummy, ctx)
+                j += 1
+            return
+        if op_t == "Or":
+            work = env.copy()
+            j = 0
+            while j < len(values):
+                _validate_expr_calls(values[j], work, ctx, lineno)
+                if j < len(values) - 1:
+                    dummy = env.copy()
+                    _extract_narrowing(values[j], dummy, work, ctx)
+                j += 1
+            return
         return
 
 
