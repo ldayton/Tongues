@@ -2562,7 +2562,9 @@ class _PerlEmitter:
         nt = self._expr_type(needle)
         if isinstance(nt, TOptionalType) and _is_string_type(nt.inner):
             return "eq"
-        return "=="
+        if self._is_numeric_expr(needle):
+            return "=="
+        return "eq"
 
     def _len_call(self, expr: TExpr) -> str:
         s = self._expr(expr)
