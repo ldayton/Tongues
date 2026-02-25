@@ -148,6 +148,8 @@ def _escape_perl_string(value: str) -> str:
         esc = _PERL_ESCAPE_MAP.get(c)
         if esc is not None:
             out.append(esc)
+        elif ord(c) < 32 or ord(c) > 126:
+            out.append("\\x{" + hex(ord(c))[2:] + "}")
         else:
             out.append(c)
         i += 1
@@ -391,6 +393,8 @@ class _PerlEmitter:
         self._line("use List::Util qw(min max sum);")
         self._line("use Scalar::Util qw(looks_like_number);")
         self._line("use Encode qw(encode decode);")
+        self._line("binmode(STDOUT, ':utf8');")
+        self._line("binmode(STDERR, ':utf8');")
         self._line()
         self._line("package main;")
         ordered = order_decls(module.decls)
@@ -1488,7 +1492,8 @@ class _PerlEmitter:
                 )
             return "substr(" + obj + ", " + low + ", (" + high + ") - (" + low + "))"
         obj_type = self._expr_type(expr.obj)
-        if obj_type is None and not self._is_list_expr(expr.obj):
+        is_list = self._is_list_expr(expr.obj) or _is_list_type(obj_type)
+        if not is_list:
             if prov == "open_end" and self._is_len_call(expr.high):
                 return (
                     "(!ref("
@@ -2187,7 +2192,7 @@ class _PerlEmitter:
         if name == "Encode":
             return "encode('UTF-8', " + self._a(args, 0) + ")"
         if name == "Decode":
-            return "decode('UTF-8', " + self._a(args, 0) + ")"
+            return "decode('UTF-8', " + self._a(args, 0) + ", Encode::FB_CROAK)"
         if name == "Bytes":
             return '("\\0" x ' + self._a(args, 0) + ")"
         if name == "BytesFrom":
@@ -2437,9 +2442,9 @@ class _PerlEmitter:
         if name == "WritelnErr":
             return "say STDERR " + self._a(args, 0)
         if name == "ReadLine":
-            return "scalar(<STDIN>)"
+            return "do { my $__l = scalar(<STDIN>); defined($__l) ? decode('UTF-8', $__l, Encode::FB_CROAK) : $__l }"
         if name == "ReadAll":
-            return "do { local $/; scalar(<STDIN>) }"
+            return "do { local $/; decode('UTF-8', scalar(<STDIN>), Encode::FB_CROAK) }"
         if name == "ReadBytes":
             return "do { local $/; scalar(<STDIN>) }"
         if name == "ReadBytesN":
@@ -2448,7 +2453,7 @@ class _PerlEmitter:
             return (
                 "do { my $__p = "
                 + self._a(args, 0)
-                + "; open(my $__fh, '<', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d }"
+                + "; open(my $__fh, '<:raw', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d }"
             )
         if name == "WriteFile":
             return (
