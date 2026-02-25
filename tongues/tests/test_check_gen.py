@@ -61,10 +61,9 @@ class TestNarrowing:
         for f in failures:
             label = "should accept" if f.expected_clean else "should reject"
             msgs.append(f"  {f.case} ({label}): {f.actual_errors}")
-        msg = f"Spec '{spec.name}': {len(failures)} failure(s):\n" + "\n".join(msgs)
-        if spec.structure == "bool_var":
-            pytest.xfail(msg)
-        pytest.fail(msg)
+        pytest.fail(
+            f"Spec '{spec.name}': {len(failures)} failure(s):\n" + "\n".join(msgs)
+        )
 
 
 class TestExhaustiveness:

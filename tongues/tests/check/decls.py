@@ -46,6 +46,7 @@ class DeclGen:
                     pos=P,
                     name=info.resolved.name,
                     annotations=A,
+                    fields=[],
                 )
             )
 

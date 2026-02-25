@@ -283,3 +283,15 @@ fn Main() -> void {
 ---
 error: cannot index optional
 ---
+
+=== valid: bool variable narrowing
+fn Main() -> void {
+    let val: int?
+    let cond: bool = val != nil
+    if cond {
+        let used: int = val + 1
+    }
+}
+---
+ok
+---

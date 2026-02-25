@@ -111,6 +111,7 @@ _CIRCLE = StructT(
     fields={"radius": INT_T},
     methods={},
     parent="Shape",
+    field_order=["radius"],
 )
 _SQUARE = StructT(
     kind="struct",
@@ -118,10 +119,9 @@ _SQUARE = StructT(
     fields={"side": INT_T},
     methods={},
     parent="Shape",
+    field_order=["side"],
 )
-_SHAPE = InterfaceT(
-    kind="interface", name="Shape", variants=["Circle", "Square"]
-)
+_SHAPE = InterfaceT(kind="interface", name="Shape", variants=["Circle", "Square"])
 
 # A struct with a unique field for reject-case testing.
 _POINT = StructT(
@@ -130,10 +130,11 @@ _POINT = StructT(
     fields={"x": INT_T, "y": INT_T},
     methods={},
     parent=None,
+    field_order=["x", "y"],
 )
 
 _TYPE_DECLS: list[TModuleItem] = [
-    TInterfaceDecl(pos=P, name="Shape", annotations=A),
+    TInterfaceDecl(pos=P, name="Shape", annotations=A, fields=[]),
     TStructDecl(
         pos=P,
         name="Circle",
@@ -239,7 +240,9 @@ def _field(obj, field: str) -> TFieldAccess:
 
 
 def _if(cond, then_body, else_body=None) -> TIfStmt:
-    return TIfStmt(pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A)
+    return TIfStmt(
+        pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A
+    )
 
 
 def _while(cond, body) -> TWhileStmt:
@@ -255,7 +258,9 @@ def _binop(left, op, right) -> TBinaryOp:
 
 
 def _ternary(cond, then_expr, else_expr) -> TTernary:
-    return TTernary(pos=P, cond=cond, then_expr=then_expr, else_expr=else_expr, annotations=A)
+    return TTernary(
+        pos=P, cond=cond, then_expr=then_expr, else_expr=else_expr, annotations=A
+    )
 
 
 def _filler_stmts(n: int) -> list:
@@ -267,6 +272,7 @@ def _filler_stmts(n: int) -> list:
 
 
 # ── Condition builders ───────────────────────────────────────────
+
 
 def _nil_neq_cond(var_name: str) -> TBinaryOp:
     """x != nil"""
@@ -300,6 +306,7 @@ def _not_isnil_cond(var_name: str) -> TUnaryOp:
 
 # ── Use-site builders ───────────────────────────────────────────
 
+
 def _use_at_type(var_name: str, typ: Type) -> list:
     """Generate a statement that uses var_name assuming it has the given type.
 
@@ -309,7 +316,9 @@ def _use_at_type(var_name: str, typ: Type) -> list:
     if isinstance(typ, StructT):
         # Access the first field
         field_name = next(iter(typ.fields))
-        return [_let("_used", typ.fields[field_name], _field(_var(var_name), field_name))]
+        return [
+            _let("_used", typ.fields[field_name], _field(_var(var_name), field_name))
+        ]
     if type_eq(typ, INT_T):
         return [_let("_used", INT_T, _binop(_var(var_name), "+", _int(1)))]
     if type_eq(typ, STRING_T):
@@ -325,7 +334,9 @@ def _use_at_type_named(var_name: str, typ: Type, bind_name: str) -> list:
     """Like _use_at_type but with a custom binding name to avoid shadowing."""
     if isinstance(typ, StructT):
         field_name = next(iter(typ.fields))
-        return [_let(bind_name, typ.fields[field_name], _field(_var(var_name), field_name))]
+        return [
+            _let(bind_name, typ.fields[field_name], _field(_var(var_name), field_name))
+        ]
     if type_eq(typ, INT_T):
         return [_let(bind_name, INT_T, _binop(_var(var_name), "+", _int(1)))]
     if type_eq(typ, STRING_T):
@@ -344,7 +355,13 @@ def _use_wrong_type(var_name: str, narrowed_type: Type, input_type: Type) -> lis
         inner = remove_nil(input_type)
         if isinstance(inner, StructT):
             field_name = next(iter(inner.fields))
-            return [_let("_wrong", inner.fields[field_name], _field(_var(var_name), field_name))]
+            return [
+                _let(
+                    "_wrong",
+                    inner.fields[field_name],
+                    _field(_var(var_name), field_name),
+                )
+            ]
         if type_eq(inner, INT_T):
             return [_let("_wrong", INT_T, _binop(_var(var_name), "+", _int(1)))]
     # Variable was narrowed to non-nil or a specific struct; try to use nil operations
@@ -361,6 +378,7 @@ def _use_wrong_type(var_name: str, narrowed_type: Type, input_type: Type) -> lis
 
 
 # ── Narrowing type name for IsType ───────────────────────────────
+
 
 def _istype_target(narrowed_type: Type) -> str | None:
     if isinstance(narrowed_type, StructT):
@@ -418,7 +436,9 @@ def _build_narrowing_module(
         if cond is None:
             return _empty_module()
         # Only nil checks narrow in while conditions
-        while_body = filler + use_stmts + [TReturnStmt(pos=P, value=None, annotations=A)]
+        while_body = (
+            filler + use_stmts + [TReturnStmt(pos=P, value=None, annotations=A)]
+        )
         body.append(_while(cond, while_body))
 
     elif spec.structure == "ternary":
@@ -438,7 +458,11 @@ def _build_narrowing_module(
         use_expr = _make_narrowed_use_expr(var, spec.narrowed_type)
         # use_expr needs to be bool for && to work
         # So we do: x != nil && Len(x) > 0 or similar
-        right = _binop(use_expr, ">", _int(0)) if not type_eq(spec.narrowed_type, BOOL_T) else use_expr
+        right = (
+            _binop(use_expr, ">", _int(0))
+            if not type_eq(spec.narrowed_type, BOOL_T)
+            else use_expr
+        )
         chain = _binop(cond, "&&", right)
         body.append(_let("_result", BOOL_T, chain))
 
@@ -449,7 +473,11 @@ def _build_narrowing_module(
         if inv_cond is None:
             return _empty_module()
         use_expr = _make_narrowed_use_expr(var, spec.narrowed_type)
-        right = _binop(use_expr, ">", _int(0)) if not type_eq(spec.narrowed_type, BOOL_T) else use_expr
+        right = (
+            _binop(use_expr, ">", _int(0))
+            if not type_eq(spec.narrowed_type, BOOL_T)
+            else use_expr
+        )
         chain = _binop(inv_cond, "||", right)
         body.append(_let("_result", BOOL_T, chain))
 
@@ -560,7 +588,11 @@ def _build_match_body(spec, var, use_stmts, filler):
                     type_name=make_ttype(spec.narrowed_type),
                     annotations=A,
                 )
-                cases.append(TMatchCase(pos=P, pattern=pat, body=filler + use_stmts, annotations=A))
+                cases.append(
+                    TMatchCase(
+                        pos=P, pattern=pat, body=filler + use_stmts, annotations=A
+                    )
+                )
             else:
                 # Other cases get empty bodies
                 other_st = _CIRCLE if vname == "Circle" else _SQUARE
@@ -572,13 +604,15 @@ def _build_match_body(spec, var, use_stmts, filler):
                 )
                 cases.append(TMatchCase(pos=P, pattern=pat, body=[], annotations=A))
 
-        body.append(TMatchStmt(
-            pos=P,
-            expr=_var(var),
-            cases=cases,
-            default=None,
-            annotations=A,
-        ))
+        body.append(
+            TMatchStmt(
+                pos=P,
+                expr=_var(var),
+                cases=cases,
+                default=None,
+                annotations=A,
+            )
+        )
 
     elif isinstance(spec.input_type, UnionT):
         # Match on union with optional
@@ -588,7 +622,11 @@ def _build_match_body(spec, var, use_stmts, filler):
             if type_eq(m, NIL_T):
                 pat = TPatternNil(pos=P)
                 if type_eq(spec.narrowed_type, NIL_T):
-                    cases.append(TMatchCase(pos=P, pattern=pat, body=filler + use_stmts, annotations=A))
+                    cases.append(
+                        TMatchCase(
+                            pos=P, pattern=pat, body=filler + use_stmts, annotations=A
+                        )
+                    )
                 else:
                     cases.append(TMatchCase(pos=P, pattern=pat, body=[], annotations=A))
             else:
@@ -599,17 +637,23 @@ def _build_match_body(spec, var, use_stmts, filler):
                     annotations=A,
                 )
                 if type_eq(m, spec.narrowed_type):
-                    cases.append(TMatchCase(pos=P, pattern=pat, body=filler + use_stmts, annotations=A))
+                    cases.append(
+                        TMatchCase(
+                            pos=P, pattern=pat, body=filler + use_stmts, annotations=A
+                        )
+                    )
                 else:
                     cases.append(TMatchCase(pos=P, pattern=pat, body=[], annotations=A))
 
-        body.append(TMatchStmt(
-            pos=P,
-            expr=_var(var),
-            cases=cases,
-            default=None,
-            annotations=A,
-        ))
+        body.append(
+            TMatchStmt(
+                pos=P,
+                expr=_var(var),
+                cases=cases,
+                default=None,
+                annotations=A,
+            )
+        )
 
     return body
 
@@ -620,6 +664,7 @@ _HOLDER = StructT(
     fields={"data": make_optional(INT_T)},
     methods={},
     parent=None,
+    field_order=["data"],
 )
 
 _HOLDER_DECL = TStructDecl(
@@ -639,7 +684,9 @@ def _build_field_path_module(spec, use_stmts, filler):
     # Condition: obj.data != nil
     cond = _binop(_field(_var("obj"), "data"), "!=", _nil())
     # In narrowed context, obj.data should be int
-    narrowed_use = [_let("_used", INT_T, _binop(_field(_var("obj"), "data"), "+", _int(1)))]
+    narrowed_use = [
+        _let("_used", INT_T, _binop(_field(_var("obj"), "data"), "+", _int(1)))
+    ]
     body.append(_if(cond, filler + narrowed_use))
 
     decls = list(_TYPE_DECLS) + [_HOLDER_DECL]
@@ -667,6 +714,7 @@ def _empty_module() -> TModule:
 
 
 # ── Guard condition builders ─────────────────────────────────────
+
 
 def _make_guard_cond(spec: NarrowingSpec, var: str):
     """Build the condition that narrows var to spec.narrowed_type."""
@@ -771,22 +819,33 @@ _GUARD_TYPE_COMBOS: list[tuple[str, Type, Type]] = [
 # Structures that support each guard form
 _GUARD_STRUCTURES: dict[str, list[str]] = {
     "nil_neq": [
-        "if_then", "if_else", "guard_return", "while_body", "ternary",
-        "and_chain", "or_chain", "assert",
+        "if_then",
+        "if_else",
+        "guard_return",
+        "while_body",
+        "ternary",
+        "and_chain",
+        "or_chain",
+        "assert",
         # New patterns that test inference limitations:
-        "bool_var",           # let ok = x != nil; if ok { use(x) }
+        "bool_var",  # let ok = x != nil; if ok { use(x) }
         "reassign_then_guard",  # let tmp = x; if tmp != nil { use(tmp) }
-        "field_path",         # if obj.field != nil { use(obj.field) }
-        "double_guard",       # if x == nil { return }; if y == nil { return }; use both
-        "elif_narrow",        # if x == nil { skip } else { use(x) }
+        "field_path",  # if obj.field != nil { use(obj.field) }
+        "double_guard",  # if x == nil { return }; if y == nil { return }; use both
+        "elif_narrow",  # if x == nil { skip } else { use(x) }
     ],
     "nil_eq": ["if_then"],
     "istype": [
-        "if_then", "if_else", "guard_return", "ternary", "and_chain", "match",
+        "if_then",
+        "if_else",
+        "guard_return",
+        "ternary",
+        "and_chain",
+        "match",
         # New patterns:
-        "bool_var",           # let ok = IsType(x, "T"); if ok { use(x.field) }
+        "bool_var",  # let ok = IsType(x, "T"); if ok { use(x.field) }
         "reassign_then_guard",  # let tmp = x; if IsType(tmp, "T") { use(tmp.field) }
-        "nested_narrow",      # if x != nil { if IsType(x, "T") { use(x.field) } }
+        "nested_narrow",  # if x != nil { if IsType(x, "T") { use(x.field) } }
     ],
     "not_istype": ["guard_return"],
     "isnil": ["guard_return"],
@@ -812,14 +871,16 @@ def enumerate_specs() -> list[NarrowingSpec]:
                 if structure == "match" and isinstance(input_type, UnionT):
                     continue
                 name = f"{guard}__{structure}__filler{filler}__{_type_label(input_type)}_to_{_type_label(narrowed_type)}"
-                specs.append(NarrowingSpec(
-                    name=name,
-                    input_type=input_type,
-                    narrowed_type=narrowed_type,
-                    guard=guard,
-                    structure=structure,
-                    filler=filler,
-                ))
+                specs.append(
+                    NarrowingSpec(
+                        name=name,
+                        input_type=input_type,
+                        narrowed_type=narrowed_type,
+                        guard=guard,
+                        structure=structure,
+                        filler=filler,
+                    )
+                )
     return specs
 
 
@@ -838,6 +899,7 @@ def _type_label(t: Type) -> str:
 
 # ── Runner ───────────────────────────────────────────────────────
 
+
 def run_narrowing_spec(spec: NarrowingSpec) -> list[NarrowingFailure]:
     """Run one narrowing spec, returning failures (if any)."""
     failures: list[NarrowingFailure] = []
@@ -850,16 +912,28 @@ def run_narrowing_spec(spec: NarrowingSpec) -> list[NarrowingFailure]:
     # Filter out unrelated errors
     accept_msgs = _filter_errors(accept_msgs)
     if accept_msgs:
-        failures.append(NarrowingFailure(
-            spec_name=spec.name,
-            case="accept",
-            expected_clean=True,
-            actual_errors=accept_msgs,
-        ))
+        failures.append(
+            NarrowingFailure(
+                spec_name=spec.name,
+                case="accept",
+                expected_clean=True,
+                actual_errors=accept_msgs,
+            )
+        )
 
     # Reject case: use the wrong type (only for structures where we can
     # construct a meaningful wrong-type access)
-    if spec.structure not in ("ternary", "and_chain", "or_chain", "bool_var", "reassign_then_guard", "field_path", "double_guard", "nested_narrow", "elif_narrow"):
+    if spec.structure not in (
+        "ternary",
+        "and_chain",
+        "or_chain",
+        "bool_var",
+        "reassign_then_guard",
+        "field_path",
+        "double_guard",
+        "nested_narrow",
+        "elif_narrow",
+    ):
         reject_use = _use_wrong_type("val", spec.narrowed_type, spec.input_type)
         reject_module = _build_narrowing_module(spec, reject_use)
         reject_errors = check(reject_module)
@@ -867,12 +941,14 @@ def run_narrowing_spec(spec: NarrowingSpec) -> list[NarrowingFailure]:
         reject_msgs = _filter_errors(reject_msgs)
         # We expect at least one error
         if not reject_msgs:
-            failures.append(NarrowingFailure(
-                spec_name=spec.name,
-                case="reject",
-                expected_clean=False,
-                actual_errors=[],
-            ))
+            failures.append(
+                NarrowingFailure(
+                    spec_name=spec.name,
+                    case="reject",
+                    expected_clean=False,
+                    actual_errors=[],
+                )
+            )
 
     return failures
 
@@ -880,9 +956,9 @@ def run_narrowing_spec(spec: NarrowingSpec) -> list[NarrowingFailure]:
 def _filter_errors(msgs: list[str]) -> list[str]:
     """Remove errors that aren't related to narrowing."""
     return [
-        m for m in msgs
-        if "missing Main" not in m
-        and "variable used before assignment" not in m
+        m
+        for m in msgs
+        if "missing Main" not in m and "variable used before assignment" not in m
     ]
 
 
@@ -896,6 +972,7 @@ def run_all() -> tuple[list[NarrowingFailure], int]:
 
 
 # ── Reporting ────────────────────────────────────────────────────
+
 
 def report() -> None:
     """Run all specs and print a summary."""

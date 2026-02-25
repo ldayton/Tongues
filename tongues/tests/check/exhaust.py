@@ -218,14 +218,24 @@ def _large_enum_config() -> TypeConfig:
 
 def _simple_interface_config() -> TypeConfig:
     s1 = StructT(
-        kind="struct", name="Circle", fields={"r": INT_T}, methods={}, parent="Shape"
+        kind="struct",
+        name="Circle",
+        fields={"r": INT_T},
+        methods={},
+        parent="Shape",
+        field_order=["r"],
     )
     s2 = StructT(
-        kind="struct", name="Square", fields={"s": INT_T}, methods={}, parent="Shape"
+        kind="struct",
+        name="Square",
+        fields={"s": INT_T},
+        methods={},
+        parent="Shape",
+        field_order=["s"],
     )
     it = InterfaceT(kind="interface", name="Shape", variants=["Circle", "Square"])
     decls: list[TModuleItem] = [
-        TInterfaceDecl(pos=P, name="Shape", annotations=A),
+        TInterfaceDecl(pos=P, name="Shape", annotations=A, fields=[]),
         TStructDecl(
             pos=P,
             name="Circle",
@@ -259,10 +269,17 @@ def _simple_interface_config() -> TypeConfig:
 def _interface_4_config() -> TypeConfig:
     names = ["Lit", "Bin", "Neg", "Call"]
     structs = []
-    decls: list[TModuleItem] = [TInterfaceDecl(pos=P, name="Expr", annotations=A)]
+    decls: list[TModuleItem] = [
+        TInterfaceDecl(pos=P, name="Expr", annotations=A, fields=[])
+    ]
     for n in names:
         st = StructT(
-            kind="struct", name=n, fields={"v": INT_T}, methods={}, parent="Expr"
+            kind="struct",
+            name=n,
+            fields={"v": INT_T},
+            methods={},
+            parent="Expr",
+            field_order=["v"],
         )
         structs.append(st)
         decls.append(
@@ -355,15 +372,25 @@ def _optional_config() -> TypeConfig:
 
 def _union_with_interface_config() -> TypeConfig:
     s1 = StructT(
-        kind="struct", name="Lit", fields={"v": INT_T}, methods={}, parent="Node"
+        kind="struct",
+        name="Lit",
+        fields={"v": INT_T},
+        methods={},
+        parent="Node",
+        field_order=["v"],
     )
     s2 = StructT(
-        kind="struct", name="Bin", fields={"v": INT_T}, methods={}, parent="Node"
+        kind="struct",
+        name="Bin",
+        fields={"v": INT_T},
+        methods={},
+        parent="Node",
+        field_order=["v"],
     )
     it = InterfaceT(kind="interface", name="Node", variants=["Lit", "Bin"])
     union = UnionT(kind="union", members=[it, INT_T])
     decls: list[TModuleItem] = [
-        TInterfaceDecl(pos=P, name="Node", annotations=A),
+        TInterfaceDecl(pos=P, name="Node", annotations=A, fields=[]),
         TStructDecl(
             pos=P,
             name="Lit",
