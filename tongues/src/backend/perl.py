@@ -1195,6 +1195,11 @@ class _PerlEmitter:
             self._emit_stmts(catch.body)
             self.indent -= 1
         if has_chain:
+            if not has_default:
+                self._line("} else {")
+                self.indent += 1
+                self._line("die " + err + ";")
+                self.indent -= 1
             self._line("}")
 
     def _catch_condition(self, catch: TCatch, err: str) -> str | None:
@@ -2453,7 +2458,7 @@ class _PerlEmitter:
             return (
                 "do { my $__p = "
                 + self._a(args, 0)
-                + "; open(my $__fh, '<:raw', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d }"
+                + "; open(my $__fh, '<:encoding(UTF-8)', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d }"
             )
         if name == "WriteFile":
             return (
