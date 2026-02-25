@@ -153,15 +153,16 @@ def _escape_perl_string(value: str) -> str:
     return "".join(out)
 
 
-def _escape_quotemeta(value: str) -> str:
-    """Escape a string for use inside \\Q...\\E in a Perl regex."""
-    return value.replace("\\", "\\\\").replace("/", "\\/").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-
 
 def _escape_perl_regex(s: str) -> str:
     result: list[str] = []
     for ch in s:
-        if ch in r".^$*+?{}[]\|()/":
+        if ch == "$" or ch == "@":
+            h = hex(ord(ch))[2:]
+            if len(h) == 1:
+                h = "0" + h
+            result.append("\\x{" + h + "}")
+        elif ch in r".^*+?{}[]\|()/":
             result.append("\\" + ch)
         elif ch == "\n":
             result.append("\\n")
@@ -2157,15 +2158,15 @@ class _PerlEmitter:
             s = self._a(args, 0)
             pfx = args[1].value
             if isinstance(pfx, TStringLit):
-                pat = _escape_quotemeta(pfx.value)
-                return "((" + s + " =~ /^\\Q" + pat + "\\E/) ? 1 : 0)"
+                pat = _escape_perl_regex(pfx.value)
+                return "((" + s + " =~ /^" + pat + "/) ? 1 : 0)"
             return "((" + s + " =~ /^\\Q${\\ " + self._a(args, 1) + "}\\E/) ? 1 : 0)"
         if name == "EndsWith":
             s = self._a(args, 0)
             sfx = args[1].value
             if isinstance(sfx, TStringLit):
-                pat = _escape_quotemeta(sfx.value)
-                return "((" + s + " =~ /\\Q" + pat + "\\E$/) ? 1 : 0)"
+                pat = _escape_perl_regex(sfx.value)
+                return "((" + s + " =~ /" + pat + "$/) ? 1 : 0)"
             return "((" + s + " =~ /\\Q${\\ " + self._a(args, 1) + "}\\E$/) ? 1 : 0)"
         if name == "IsDigit":
             return "(" + self._a(args, 0) + " =~ /^\\d+$/ ? 1 : 0)"
@@ -2176,9 +2177,9 @@ class _PerlEmitter:
         if name == "IsSpace":
             return "(" + self._a(args, 0) + " =~ /^\\s+$/ ? 1 : 0)"
         if name == "IsUpper":
-            return "(" + self._a(args, 0) + " =~ /^[A-Z]+$/ ? 1 : 0)"
+            return "(" + self._a(args, 0) + " =~ /[A-Z]/ && " + self._a(args, 0) + " !~ /[a-z]/ ? 1 : 0)"
         if name == "IsLower":
-            return "(" + self._a(args, 0) + " =~ /^[a-z]+$/ ? 1 : 0)"
+            return "(" + self._a(args, 0) + " =~ /[a-z]/ && " + self._a(args, 0) + " !~ /[A-Z]/ ? 1 : 0)"
         if name == "Encode":
             return "encode('UTF-8', " + self._a(args, 0) + ")"
         if name == "Decode":
