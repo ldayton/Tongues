@@ -384,10 +384,17 @@ class _PerlEmitter:
         self._line()
         self._line("package main;")
         ordered = order_decls(module.decls)
+        has_types = any(
+            isinstance(d, (TStructDecl, TEnumDecl, TInterfaceDecl)) for d in ordered
+        )
         for decl in ordered:
             if isinstance(decl, TLetStmt):
                 self.var_types[decl.name] = decl.typ
                 self.module_var_names.add(decl.name)
+                if has_types:
+                    safe = _restore_name(decl.name, decl.annotations)
+                    self.fwd_declared.add(decl.name)
+                    self._line("our $" + safe + ";")
         for decl in ordered:
             if isinstance(decl, TFnDecl) and decl.ret is not None:
                 self.fn_ret[decl.name] = decl.ret

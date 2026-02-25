@@ -10,6 +10,7 @@ use File::Temp qw(tempfile);
 use JSON::PP ();
 use Time::HiRes qw(time);
 use IPC::Open3;
+use POSIX ();
 use Symbol qw(gensym);
 
 my $TONGUES_DIR = File::Spec->rel2abs(File::Spec->catdir(dirname(__FILE__), ".."));
@@ -67,66 +68,76 @@ my %RUNTIMES = (
 # resolves to the override at compile time.
 # ---------------------------------------------------------------------------
 
-{
-    package TonguesTestExit;
-    sub new { my ($class, $code) = @_; bless { code => $code }, $class; }
-}
-
-our $EXIT_TRAP_ACTIVE = 0;
+our $FORK_MODE = 0;
 BEGIN {
     *CORE::GLOBAL::exit = sub {
-        if ($EXIT_TRAP_ACTIVE) {
-            die TonguesTestExit->new($_[0] // 0);
+        if ($FORK_MODE) {
+            # In forked child: flush and _exit immediately (bypasses eval catches)
+            close STDOUT; close STDERR;
+            POSIX::_exit($_[0] // 0);
         }
         CORE::exit($_[0] // 0);
     };
 }
 
 # ---------------------------------------------------------------------------
-# In-process execution
+# In-process execution (fork per test, 3s timeout)
 # ---------------------------------------------------------------------------
 
 sub run_inprocess ($argv, $stdin_data = "") {
-    my $out = "";
-    my $err_out = "";
-    my $code = 0;
-    # Save originals
-    open(my $save_stdout, ">&", \*STDOUT) or die "dup stdout: $!";
-    open(my $save_stderr, ">&", \*STDERR) or die "dup stderr: $!";
-    open(my $save_stdin,  "<&", \*STDIN)  or die "dup stdin: $!";
-    my @save_argv = @ARGV;
-    eval {
-        # Redirect STDOUT/STDERR to scalars
-        close STDOUT;
-        open(STDOUT, ">", \$out) or die "redirect stdout: $!";
-        close STDERR;
-        open(STDERR, ">", \$err_out) or die "redirect stderr: $!";
-        close STDIN;
-        open(STDIN, "<", \$stdin_data) or die "redirect stdin: $!";
+    my ($out_fh, $out_file) = tempfile("out_XXXXXX", TMPDIR => 1);
+    my ($err_fh, $err_file) = tempfile("err_XXXXXX", TMPDIR => 1);
+    my ($in_fh, $in_file) = tempfile("in_XXXXXX", TMPDIR => 1);
+    close $out_fh;
+    close $err_fh;
+    print $in_fh $stdin_data;
+    close $in_fh;
+    my $pid = fork();
+    die "fork failed: $!" unless defined $pid;
+    if ($pid == 0) {
+        open(STDOUT, ">", $out_file) or POSIX::_exit(99);
+        open(STDERR, ">", $err_file) or POSIX::_exit(99);
+        STDOUT->autoflush(1);
+        STDERR->autoflush(1);
+        open(STDIN, "<", $in_file) or POSIX::_exit(99);
         @ARGV = @$argv;
-        local $EXIT_TRAP_ACTIVE = 1;
-        main();
-    };
-    my $exc = $@;
-    # Restore everything
-    @ARGV = @save_argv;
-    close STDOUT;
-    open(STDOUT, ">&", $save_stdout) or die "restore stdout: $!";
-    close STDERR;
-    open(STDERR, ">&", $save_stderr) or die "restore stderr: $!";
-    close STDIN;
-    open(STDIN, "<&", $save_stdin) or die "restore stdin: $!";
-    if ($exc) {
-        if (ref($exc) eq "TonguesTestExit") {
-            $code = $exc->{code};
-        } else {
-            my $msg = "$exc";
-            chomp $msg;
-            $err_out .= "$msg\n";
-            $code = 1;
+        $FORK_MODE = 1;
+        eval { main() };
+        if ($@) {
+            print STDERR $@;
+            close STDOUT; close STDERR;
+            POSIX::_exit(1);
         }
+        close STDOUT; close STDERR;
+        POSIX::_exit(0);
     }
-    return { stdout => $out, stderr => $err_out, exit => $code };
+    # Parent: wait with timeout
+    my $timed_out = 0;
+    eval {
+        local $SIG{ALRM} = sub { die "TIMEOUT\n" };
+        alarm(3);
+        waitpid($pid, 0);
+        alarm(0);
+    };
+    if ($@ && $@ eq "TIMEOUT\n") {
+        $timed_out = 1;
+        kill 9, $pid;
+        waitpid($pid, 0);
+    }
+    my $exit_raw = $?;
+    my $code;
+    if ($timed_out) {
+        $code = 1;
+    } elsif ($exit_raw & 127) {
+        $code = 1;  # killed by signal
+    } else {
+        $code = $exit_raw >> 8;
+    }
+    my $out = do { local $/; open my $f, "<", $out_file; $f ? <$f> : "" };
+    my $err_out = do { local $/; open my $f, "<", $err_file; $f ? <$f> : "" };
+    $err_out .= "TIMEOUT after 3s\n" if $timed_out;
+    unlink $out_file, $err_file, $in_file;
+    return { stdout => $out // "", stderr => $err_out // "", exit => $code };
 }
 
 sub run_transpiled_phase ($source, $cli_args, %opts) {
