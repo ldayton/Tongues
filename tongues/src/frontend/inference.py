@@ -1949,6 +1949,10 @@ def _validate_if(
     orelse = get_nodes(stmt, "orelse")
     lineno = get_int(stmt, "lineno")
     if len(test) > 0:
+        if _is_type(test, ["Call"]):
+            _validate_call_args(test, env, ctx, lineno)
+            if len(ctx.result._errors) > 0:
+                return False
         _check_truthiness(test, env, ctx, lineno)
     then_env = env.copy()
     else_env = env.copy()
@@ -2004,6 +2008,8 @@ def _validate_while(
     body = get_nodes(stmt, "body")
     lineno = get_int(stmt, "lineno")
     if len(test) > 0:
+        if _is_type(test, ["Call"]):
+            _validate_call_args(test, env, ctx, lineno)
         _check_truthiness(test, env, ctx, lineno)
     loop_env = env.copy()
     _validate_stmts(body, loop_env, func_info, ctx)
