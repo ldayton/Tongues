@@ -6,6 +6,7 @@ from .ordering import order_decls
 from .util import to_snake
 from ..taytsh.ast import (
     Ann,
+    Pos,
     TArg,
     TAssignStmt,
     TBinaryOp,
@@ -988,6 +989,8 @@ class _PerlEmitter:
                 return
         self._line("for my " + i + " (" + range_expr + ") {")
         self.indent += 1
+        if binding:
+            self.var_types[binding[0]] = TPrimitive(Pos(0, 0), "int")
         if len(binding) >= 2:
             self._line("my $" + _restore_name(binding[1], ann) + " = " + i + ";")
         self._emit_stmts(body)
@@ -1088,6 +1091,7 @@ class _PerlEmitter:
                     self._line("for my " + key_var + " (0 .. $#{" + src + "}) {")
                     self.indent += 1
                     self._line("my " + val_var + " = " + src + "->[" + key_var + "];")
+                self.var_types[binding[0]] = TPrimitive(Pos(0, 0), "int")
                 self._emit_stmts(body)
                 self.indent -= 1
                 self._line("}")
@@ -2391,7 +2395,7 @@ class _PerlEmitter:
                 + s
                 + "; my $__b = "
                 + base
-                + "; $__b == 10 ? int($__s) : $__b == 16 ? hex($__s) : $__b == 8 ? oct($__s) : $__b == 2 ? oct('0b' . $__s) : int($__s) }"
+                + "; $__b == 0 ? ($__s =~ /^0[xX]/ ? hex($__s) : $__s =~ /^0[oO]/ ? oct($__s) : $__s =~ /^0[bB]/ ? oct($__s) : int($__s)) : $__b == 10 ? int($__s) : $__b == 16 ? hex($__s) : $__b == 8 ? oct($__s) : $__b == 2 ? oct('0b' . $__s) : int($__s) }"
             )
         if name == "ParseFloat":
             return "(" + self._a(args, 0) + " + 0.0)"
