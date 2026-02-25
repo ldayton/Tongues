@@ -1010,7 +1010,7 @@ class _PerlEmitter:
                     iter_type.key, TTupleType
                 ):
                     tmp = self._tmp("__k")
-                    self._line("for my " + tmp + " (keys %{" + safe + "}) {")
+                    self._line("for my " + tmp + " (sort keys %{" + safe + "}) {")
                     self.indent += 1
                     self._line("my " + name + ' = [split("\\0", ' + tmp + ")];")
                     self.var_types[binding[0]] = iter_type.key
@@ -1018,11 +1018,11 @@ class _PerlEmitter:
                     self.indent -= 1
                     self._line("}")
                     return
-                self._line("for my " + name + " (keys %{" + safe + "}) {")
+                self._line("for my " + name + " (sort keys %{" + safe + "}) {")
                 if isinstance(iter_type, TMapType):
                     self.var_types[binding[0]] = iter_type.key
             elif self._is_set_expr(iterable):
-                self._line("for my " + name + " (keys %{" + safe + "}) {")
+                self._line("for my " + name + " (sort keys %{" + safe + "}) {")
                 if isinstance(iter_type, TSetType):
                     self.var_types[binding[0]] = iter_type.element
             elif self._is_string_expr(iterable):
@@ -1061,7 +1061,7 @@ class _PerlEmitter:
             key_var = "$" + _restore_name(binding[0], ann)
             val_var = "$" + _restore_name(binding[1], ann)
             if self._is_map_expr(iterable) or ann.get("for.items") == "true":
-                self._line("for my " + key_var + " (keys %{" + safe + "}) {")
+                self._line("for my " + key_var + " (sort keys %{" + safe + "}) {")
                 self.indent += 1
                 iter_type = self._expr_type(iterable)
                 if isinstance(iter_type, TMapType):
@@ -1830,13 +1830,13 @@ class _PerlEmitter:
             return "push(@{" + obj + "}, " + val + ")"
         if method == "keys" and not self._is_known_struct_method(func.obj, method):
             obj = self._expr(func.obj)
-            return "[keys %{" + obj + "}]"
+            return "[sort keys %{" + obj + "}]"
         if method == "values" and not self._is_known_struct_method(func.obj, method):
             obj = self._expr(func.obj)
             return "[values %{" + obj + "}]"
         if method == "items" and not self._is_known_struct_method(func.obj, method):
             obj = self._expr(func.obj)
-            return "[map { [$_, " + obj + "->{$_}] } keys %{" + obj + "}]"
+            return "[map { [$_, " + obj + "->{$_}] } sort keys %{" + obj + "}]"
         if method == "update" and not self._is_known_struct_method(func.obj, method):
             obj = self._expr(func.obj)
             src = self._expr(args[0].value)
@@ -1845,7 +1845,7 @@ class _PerlEmitter:
                 + src
                 + "; "
                 + obj
-                + "->{$_} = $__src->{$_} for keys %{$__src} }"
+                + "->{$_} = $__src->{$_} for sort keys %{$__src} }"
             )
         if method == "setdefault" and not self._is_known_struct_method(
             func.obj, method
@@ -2214,7 +2214,7 @@ class _PerlEmitter:
                 + a
                 + "; my $__b = "
                 + b
-                + "; my $__s = {}; for (keys %{$__a}) { $__s->{$_} = 1 if exists $__b->{$_} } $__s }"
+                + "; my $__s = {}; for (sort keys %{$__a}) { $__s->{$_} = 1 if exists $__b->{$_} } $__s }"
             )
         if name == "Difference":
             a = self._a(args, 0)
@@ -2224,7 +2224,7 @@ class _PerlEmitter:
                 + a
                 + "; my $__b = "
                 + b
-                + "; my $__s = {}; for (keys %{$__a}) { $__s->{$_} = 1 unless exists $__b->{$_} } $__s }"
+                + "; my $__s = {}; for (sort keys %{$__a}) { $__s->{$_} = 1 unless exists $__b->{$_} } $__s }"
             )
         if name == "Get":
             k = self._hash_key(args[1].value)
@@ -2266,14 +2266,14 @@ class _PerlEmitter:
             a1 = self._deref_safe(self._a(args, 1))
             return "{ %{" + a0 + "}, %{" + a1 + "} }"
         if name == "Keys":
-            return "[keys %{" + self._a(args, 0) + "}]"
+            return "[sort keys %{" + self._a(args, 0) + "}]"
         if name == "Values":
             return "[values %{" + self._a(args, 0) + "}]"
         if name == "Items":
             return (
                 "do { my $__m = "
                 + self._a(args, 0)
-                + "; [map { [$_, $__m->{$_}] } keys %{$__m}] }"
+                + "; [map { [$_, $__m->{$_}] } sort keys %{$__m}] }"
             )
         if name == "Len":
             return self._len_call(args[0].value)
@@ -2353,7 +2353,7 @@ class _PerlEmitter:
         if name == "ListFrom":
             a = self._a(args, 0)
             if self._is_set_expr(args[0].value):
-                return "[keys %{" + self._deref_safe(a) + "}]"
+                return "[sort keys %{" + self._deref_safe(a) + "}]"
             return "[@{" + self._deref_safe(a) + "}]"
         if name == "Reversed":
             a = self._a(args, 0)
@@ -2379,7 +2379,7 @@ class _PerlEmitter:
                 return self._a(args, 0)
             a = self._deref_safe(self._a(args, 0))
             if self._is_set_expr(args[0].value):
-                return "do { my $__s = {}; $__s->{$_} = 1 for keys %{" + a + "}; $__s }"
+                return "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{" + a + "}; $__s }"
             return "do { my $__s = {}; $__s->{$_} = 1 for @{" + a + "}; $__s }"
         if name == "ToString":
             inner_expr = args[0].value

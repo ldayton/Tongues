@@ -123,6 +123,7 @@ class StructT(Type):
     fields: dict[str, Type]
     methods: dict[str, FnT]
     parent: str | None
+    field_order: list[str]
     min_fields: int = -1
 
 
@@ -1322,7 +1323,12 @@ class Checker:
         for bname in BUILTIN_STRUCTS:
             bfields = BUILTIN_STRUCTS[bname]
             st = StructT(
-                kind="struct", name=bname, fields=bfields, methods={}, parent=None
+                kind="struct",
+                name=bname,
+                fields=bfields,
+                methods={},
+                parent=None,
+                field_order=list(bfields.keys()),
             )
             self.types[bname] = st
         # First pass: register all type names (structs, interfaces, enums)
@@ -1342,6 +1348,7 @@ class Checker:
                     fields={},
                     methods={},
                     parent=decl.parent,
+                    field_order=[],
                 )
                 self.types[decl.name] = st
             elif isinstance(decl, TInterfaceDecl):
@@ -1383,6 +1390,7 @@ class Checker:
                 for f in decl.fields:
                     ft = self.resolve_type(f.typ)
                     st2.fields[f.name] = ft
+                    st2.field_order.append(f.name)
                     if not f.has_default:
                         min_f += 1
                 st2.min_fields = min_f
@@ -3145,7 +3153,7 @@ class Checker:
     def check_struct_constructor(
         self, st: StructT, args: list[TArg], pos: Pos
     ) -> Type | None:
-        field_names = list(st.fields.keys())
+        field_names = st.field_order if st.field_order else list(st.fields.keys())
         if len(args) == 0 and len(field_names) == 0:
             return st
         min_f = st.min_fields if st.min_fields >= 0 else len(field_names)

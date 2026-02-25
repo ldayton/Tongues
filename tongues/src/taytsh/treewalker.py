@@ -377,7 +377,12 @@ class VStruct(Value):
 
     def ty(self) -> Type:
         return StructT(
-            kind="struct", name=self.struct_name, fields={}, methods={}, parent=None
+            kind="struct",
+            name=self.struct_name,
+            fields={},
+            methods={},
+            parent=None,
+            field_order=[],
         )
 
     def to_string(self) -> str:
@@ -855,6 +860,7 @@ def _resolve_index(index: ModuleIndex, checker: Checker) -> None:
                             fields={},
                             methods={},
                             parent=None,
+                            field_order=[],
                         )
                     )
                 else:

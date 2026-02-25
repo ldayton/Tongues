@@ -5792,7 +5792,7 @@ def _collect_ancestor_fields(
                     if field_name not in seen:
                         akeys.append(field_name)
                     j += 1
-            for k in anc_info.fields:
+            for k in anc_info.field_order:
                 if k not in seen and k not in akeys:
                     akeys.append(k)
             j = 0
@@ -5838,7 +5838,7 @@ def _build_struct(
                         fkeys.append(field_name)
                         seen.add(field_name)
                     j += 1
-            for k in cls_info.fields:
+            for k in cls_info.field_order:
                 if k not in seen:
                     fkeys.append(k)
                     seen.add(k)
@@ -5910,7 +5910,7 @@ def _build_struct(
                         fkeys.append(field_name)
                         seen.add(field_name)
                     j += 1
-            for k in cls_info.fields:
+            for k in cls_info.field_order:
                 if k not in seen:
                     fkeys.append(k)
                     seen.add(k)

@@ -37,12 +37,12 @@ for my $x (@{$xs}) {
 }
 
 === for over map keys
-for my $k (keys %{$m}) {
+for my $k (sort keys %{$m}) {
     say($k);
 }
 
 === for over map key-value pairs
-for my $k (keys %{$m}) {
+for my $k (sort keys %{$m}) {
     my $v = $m->{$k};
     say(sprintf("%s: %s", $k, ("" . $v)));
 }
@@ -53,7 +53,7 @@ for my $ch (split(//, "hello")) {
 }
 
 === for over set
-for my $v (keys %{$s}) {
+for my $v (sort keys %{$s}) {
     say(("" . $v));
 }
 
