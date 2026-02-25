@@ -123,6 +123,7 @@ class StructT(Type):
     fields: dict[str, Type]
     methods: dict[str, FnT]
     parent: str | None
+    field_order: list[str]
     min_fields: int = -1
 
 
@@ -409,16 +410,16 @@ def _unwrap_nil_union(t: Type) -> Type:
     return t
 
 
-def _literal_key_value(expr: TExpr) -> tuple[str, str] | None:
-    """Extract a comparable value from a literal key expression."""
+def _literal_key_value(expr: TExpr) -> str | None:
+    """Extract a comparable string key from a literal key expression."""
     if isinstance(expr, TIntLit):
-        return ("int", str(expr.value))
+        return "int:" + str(expr.value)
     if isinstance(expr, TStringLit):
-        return ("string", expr.value)
+        return "string:" + expr.value
     if isinstance(expr, TBoolLit):
-        return ("bool", str(expr.value))
+        return "bool:" + str(expr.value)
     if isinstance(expr, TFloatLit):
-        return ("float", expr.raw)
+        return "float:" + expr.raw
     return None
 
 
@@ -954,6 +955,7 @@ BUILTIN_NAMES: set[str] = {
     "ReadBytes",
     "ReadBytesN",
     "ReadFile",
+    "ReadFileBytes",
     "WriteFile",
     "Args",
     "GetEnv",
@@ -1322,7 +1324,12 @@ class Checker:
         for bname in BUILTIN_STRUCTS:
             bfields = BUILTIN_STRUCTS[bname]
             st = StructT(
-                kind="struct", name=bname, fields=bfields, methods={}, parent=None
+                kind="struct",
+                name=bname,
+                fields=bfields,
+                methods={},
+                parent=None,
+                field_order=list(bfields.keys()),
             )
             self.types[bname] = st
         # First pass: register all type names (structs, interfaces, enums)
@@ -1342,6 +1349,7 @@ class Checker:
                     fields={},
                     methods={},
                     parent=decl.parent,
+                    field_order=[],
                 )
                 self.types[decl.name] = st
             elif isinstance(decl, TInterfaceDecl):
@@ -1383,6 +1391,7 @@ class Checker:
                 for f in decl.fields:
                     ft = self.resolve_type(f.typ)
                     st2.fields[f.name] = ft
+                    st2.field_order.append(f.name)
                     if not f.has_default:
                         min_f += 1
                 st2.min_fields = min_f
@@ -2358,7 +2367,9 @@ class Checker:
     def check_expr(self, expr: TExpr, expected: Type | None) -> Type | None:
         """Type-check an expression and return its type. Returns None on error."""
         if isinstance(expr, TIntLit):
-            if expr.value < -(2**63) or expr.value >= 2**64:
+            if len(expr.raw) > 20 or (
+                len(expr.raw) == 20 and expr.raw > "18446744073709551615"
+            ):
                 self.error("integer literal too large", expr.pos)
             return INT_T
         if isinstance(expr, TFloatLit):
@@ -3145,7 +3156,7 @@ class Checker:
     def check_struct_constructor(
         self, st: StructT, args: list[TArg], pos: Pos
     ) -> Type | None:
-        field_names = list(st.fields.keys())
+        field_names = st.field_order if st.field_order else list(st.fields.keys())
         if len(args) == 0 and len(field_names) == 0:
             return st
         min_f = st.min_fields if st.min_fields >= 0 else len(field_names)
@@ -3339,7 +3350,7 @@ class Checker:
         check_key = key_expected if key_expected is not None else key_type
         check_val = val_expected if val_expected is not None else val_type
         # Track literal keys for duplicate detection
-        seen_keys: list[tuple[str, str]] = []
+        seen_keys: list[str] = []
         k0_val = _literal_key_value(expr.entries[0][0])
         if k0_val is not None:
             seen_keys.append(k0_val)
@@ -4675,6 +4686,13 @@ class Checker:
             t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("ReadFile requires string path", pos)
+            return STRING_T
+        if name == "ReadFileBytes":
+            if not _bctx_require(ctx, 1):
+                return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("ReadFileBytes requires string path", pos)
             return BYTES_T
         if name == "WriteFile":
             if not _bctx_require(ctx, 2):

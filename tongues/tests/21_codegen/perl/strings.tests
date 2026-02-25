@@ -24,8 +24,8 @@ my $s = do { my $__s = "aabbcc"; $__s =~ s/bb/XX/g; $__s };
 say(uc("hello"));
 
 === StartsWith and EndsWith
-say(("" . (($s =~ /^\Qhello\E/) ? 1 : 0)));
-say(("" . (($s =~ /\Qworld\E$/) ? 1 : 0)));
+say(("" . (($s =~ /^hello/) ? 1 : 0)));
+say(("" . (($s =~ /world$/) ? 1 : 0)));
 
 === Trim functions
 my $s = do { my $__t = "  hello  "; $__t =~ s/^[ ]+|[ ]+$//g; $__t };
@@ -37,7 +37,7 @@ my $c = () = "abcabc" =~ /abc/g;
 my $r = rindex("abcabc", "abc");
 
 === SplitN and SplitWhitespace
-my $parts = [split(/\Q,\E/, "a,b,c,d", 2)];
+my $parts = [split(/,/, "a,b,c,d", 2)];
 my $words = [grep { length($_) > 0 } split(/\s+/, "  hello   world  ")];
 
 === Concat strings

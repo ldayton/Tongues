@@ -708,6 +708,8 @@ class _BuiltinDispatch:
             return self._read_bytes_n(args)
         if name == "ReadFile":
             return self._read_file(args)
+        if name == "ReadFileBytes":
+            return self._read_file_bytes(args)
         if name == "WriteFile":
             return self._write_file(args)
         if name == "Args":
@@ -1713,6 +1715,21 @@ class _BuiltinDispatch:
         return VBytes(chunk)
 
     def _read_file(self, args: list[Val]) -> Val:
+        if isinstance(args[0], VStr):
+            try:
+                with open(args[0].value, "rb") as f:
+                    data = f.read()
+                if isinstance(data, bytes):
+                    try:
+                        return VStr(data.decode("utf-8"))
+                    except UnicodeDecodeError as e:
+                        raise _VMThrow(_make_error_struct("ValueError", str(e)))
+                return VStr("")
+            except OSError as e:
+                raise _VMThrow(_make_error_struct("IOError", str(e)))
+        return VStr("")
+
+    def _read_file_bytes(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
             try:
                 return _read_file_bytes(args[0].value)

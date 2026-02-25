@@ -131,7 +131,8 @@ Built-in functions with documented throw behavior are a fixed set. The pass trea
 | `Unwrap(x)`                          | `NilError`    | nil value              |
 | `Assert(cond)` / `Assert(cond, msg)` | `AssertError` | false condition        |
 | `Pop(xs)`                            | `IndexError`  | empty list             |
-| `ReadFile(path)`                     | `IOError`     | file operation failure |
+| `ReadFile(path)`                     | `IOError`, `ValueError` | file operation failure, invalid UTF-8 |
+| `ReadFileBytes(path)`                | `IOError`     | file operation failure |
 | `WriteFile(path, d)`                 | `IOError`     | file operation failure |
 
 ### Built-in operation throws
@@ -352,17 +353,9 @@ fn Propagate(s: string) -> int {
 
 ```taytsh
 fn ReadConfig(path: string) -> string {
-    let content: string | bytes = ReadFile(path)
-    match content {
-        case s: string {
-            return s
-        }
-        case b: bytes {
-            return Decode(b)
-        }
-    }
+    return ReadFile(path)
 }
--- function: callgraph.throws="IOError"  (ReadFile can throw, not caught)
+-- function: callgraph.throws="IOError,ValueError"  (ReadFile can throw, not caught)
 ```
 
 ## Postconditions

@@ -1176,7 +1176,8 @@ let input: string = ReadAll()
 let data: bytes = ReadBytes()
 let chunk: bytes = ReadBytesN(1024)
 WriteOut(Encode("binary output"))
-let content: string | bytes = ReadFile("input.txt")
+let content: string = ReadFile("input.txt")
+let raw: bytes = ReadFileBytes("input.txt")
 WriteFile("output.txt", result)
 let args: list[string] = Args()
 let home: string? = GetEnv("HOME")
@@ -1207,12 +1208,13 @@ To write other types, convert first: `WritelnOut(ToString(n))`.
 
 ### Files
 
-| Function             | Signature                         | Description       |
-| -------------------- | --------------------------------- | ----------------- |
-| `ReadFile(path)`     | `string -> string \| bytes`       | read entire file  |
-| `WriteFile(path, d)` | `string, string \| bytes -> void` | write entire file |
+| Function              | Signature                         | Description              |
+| --------------------- | --------------------------------- | ------------------------ |
+| `ReadFile(path)`      | `string -> string`                | read file as UTF-8 text  |
+| `ReadFileBytes(path)` | `string -> bytes`                 | read file as raw bytes   |
+| `WriteFile(path, d)`  | `string, string \| bytes -> void` | write entire file        |
 
-`ReadFile` returns `string` if the file contains valid UTF-8, `bytes` otherwise. `WriteFile` accepts `string` or `bytes` — string arguments are written as UTF-8 — and writes the contents to the file, creating it if it doesn't exist and overwriting if it does. Both throw `IOError` on failure (missing file, permission denied, etc.).
+`ReadFile` reads the file and decodes it as UTF-8, throwing `ValueError` on invalid encoding. `ReadFileBytes` reads the file as raw bytes. `WriteFile` accepts `string` or `bytes` — string arguments are written as UTF-8 — and writes the contents to the file, creating it if it doesn't exist and overwriting if it does. All three throw `IOError` on file operation failure (missing file, permission denied, etc.).
 
 ### System
 

@@ -53,7 +53,15 @@ from ..taytsh.check import (
 )
 
 # Additional runtime builtins not in BUILTIN_NAMES
-_EXTRA_BUILTINS = {"Floor", "Ceil", "ReadFile", "WriteFile", "Sorted", "Reverse"}
+_EXTRA_BUILTINS = {
+    "Floor",
+    "Ceil",
+    "ReadFile",
+    "ReadFileBytes",
+    "WriteFile",
+    "Sorted",
+    "Reverse",
+}
 
 # Combined set for call target resolution
 _ALL_BUILTINS: set[str] = set()
@@ -78,7 +86,8 @@ BUILTIN_THROWS: dict[str, set[str]] = {
     "Unwrap": {"NilError"},
     "Assert": {"AssertError"},
     "Pop": {"IndexError"},
-    "ReadFile": {"IOError"},
+    "ReadFile": {"IOError", "ValueError"},
+    "ReadFileBytes": {"IOError"},
     "WriteFile": {"IOError"},
 }
 

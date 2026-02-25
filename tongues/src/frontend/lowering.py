@@ -579,6 +579,8 @@ def _default_value_for_type(pos: Pos, td: TypeNode) -> TExpr:
         return TStringLit(pos, "", {})
     if kind == "bool":
         return TBoolLit(pos, False, {})
+    if kind == "bytes":
+        return TBytesLit(pos, b"", {})
     if isinstance(td, TupleType) and len(td.elements) >= 2:
         parts: list[TExpr] = []
         i = 0
@@ -983,6 +985,20 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             method_name = get_str(func, "attr")
             obj_n = get_node(func, "value")
             obj_t = _infer_expr_type(obj_n, env, ctx)
+            if _is_ast(obj_n, "Attribute"):
+                buf_obj = get_node(obj_n, "value")
+                buf_attr = get_str(obj_n, "attr")
+                if _is_ast(buf_obj, "Attribute"):
+                    sys_obj = get_node(buf_obj, "value")
+                    sys_attr = get_str(buf_obj, "attr")
+                    if (
+                        _is_ast(sys_obj, "Name")
+                        and get_str(sys_obj, "id") == "sys"
+                        and sys_attr == "stdin"
+                        and buf_attr == "buffer"
+                        and method_name == "read"
+                    ):
+                        return PrimitiveType("bytes")
             if _is_struct_type(obj_t):
                 sname = _struct_name(obj_t)
                 return _method_return_type(ctx, sname, method_name)
@@ -3968,13 +3984,13 @@ def _lower_with_open(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     body = get_nodes(node, "body")
     stmt = body[0]
     if mode == "rb":
-        # with open(path, "rb") as f: raw = f.read() → raw = ReadFile(path)
+        # with open(path, "rb") as f: raw = f.read() → raw = ReadFileBytes(path)
         targets = get_nodes(stmt, "targets")
         target_node = targets[0]
         name = get_str(target_node, "id")
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
-        call = _make_call(pos, "ReadFile", [path_expr])
+        call = _make_call(pos, "ReadFileBytes", [path_expr])
         val_type: TypeNode = PrimitiveType("bytes")
         if name not in env.declared:
             env.declared.add(name)
@@ -5792,7 +5808,7 @@ def _collect_ancestor_fields(
                     if field_name not in seen:
                         akeys.append(field_name)
                     j += 1
-            for k in anc_info.fields:
+            for k in anc_info.field_order:
                 if k not in seen and k not in akeys:
                     akeys.append(k)
             j = 0
@@ -5838,7 +5854,7 @@ def _build_struct(
                         fkeys.append(field_name)
                         seen.add(field_name)
                     j += 1
-            for k in cls_info.fields:
+            for k in cls_info.field_order:
                 if k not in seen:
                     fkeys.append(k)
                     seen.add(k)
@@ -5910,7 +5926,7 @@ def _build_struct(
                         fkeys.append(field_name)
                         seen.add(field_name)
                     j += 1
-            for k in cls_info.fields:
+            for k in cls_info.field_order:
                 if k not in seen:
                     fkeys.append(k)
                     seen.add(k)

@@ -165,6 +165,14 @@ def escape_string(value: str) -> str:
         esc = _STRING_ESCAPE_MAP.get(c)
         if esc is not None:
             out.append(esc)
+        elif ord(c) < 32 or ord(c) > 126:
+            cp = ord(c)
+            if cp <= 0xFFFF:
+                h = hex(cp)[2:]
+                out.append("\\u" + "0" * (4 - len(h)) + h)
+            else:
+                h = hex(cp)[2:]
+                out.append("\\U" + "0" * (8 - len(h)) + h)
         else:
             out.append(c)
         i += 1

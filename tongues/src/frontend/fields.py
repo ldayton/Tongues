@@ -93,6 +93,7 @@ class ClassInfo:
     def __init__(self, name: str) -> None:
         self.name: str = name
         self.fields: dict[str, FieldInfo] = {}
+        self.field_order: list[str] = []
         self.init_params: list[str] = []
         self.param_to_field: dict[str, str] = {}
         self.const_fields: dict[str, str] = {}
@@ -103,7 +104,7 @@ class ClassInfo:
     def to_dict(self) -> JsonValue:
         """Serialize to a JsonValue dict for test assertions."""
         fields: dict[str, JsonValue] = {}
-        fkeys = list(self.fields.keys())
+        fkeys = self.field_order if self.field_order else list(self.fields.keys())
         i = 0
         while i < len(fkeys):
             fields[fkeys[i]] = self.fields[fkeys[i]].to_dict()
@@ -727,6 +728,8 @@ def _collect_init_fields(
                                     info.param_to_field[param_name] = field_name
                                 else:
                                     ann_has_default = True
+                            if field_name not in info.fields:
+                                info.field_order.append(field_name)
                             info.fields[field_name] = FieldInfo(
                                 name=field_name,
                                 typ=typ,
@@ -794,6 +797,8 @@ def _collect_init_fields(
                                             0,
                                         )
                                         typ = _unwrap_field_type(typ)
+                                        if field_name not in info.fields:
+                                            info.field_order.append(field_name)
                                         info.fields[field_name] = FieldInfo(
                                             name=field_name,
                                             typ=typ,
@@ -804,6 +809,8 @@ def _collect_init_fields(
                                             default=None,
                                         )
                                 elif is_const_str:
+                                    if field_name not in info.fields:
+                                        info.field_order.append(field_name)
                                     info.fields[field_name] = FieldInfo(
                                         name=field_name,
                                         typ=PrimitiveType("string"),
@@ -821,6 +828,8 @@ def _collect_init_fields(
                                         stmt_lineno,
                                     )
                                     if inferred_typ is not None:
+                                        if field_name not in info.fields:
+                                            info.field_order.append(field_name)
                                         info.fields[field_name] = FieldInfo(
                                             name=field_name,
                                             typ=_unwrap_field_type(inferred_typ),
@@ -928,6 +937,8 @@ def _collect_class_fields(
                             return
                         has_default = True
                         default_expr = _make_default_expr(value_node)
+                    if field_name not in info.fields:
+                        info.field_order.append(field_name)
                     info.fields[field_name] = FieldInfo(
                         name=field_name,
                         typ=typ,
@@ -949,13 +960,13 @@ def _collect_class_fields(
                 return
         i += 1
     if is_dc and not has_init:
-        fkeys = list(info.fields.keys())
+        fkeys = info.field_order if info.field_order else list(info.fields.keys())
         j = 0
         while j < len(fkeys):
             info.init_params.append(fkeys[j])
             j += 1
     known_field_set: set[str] = set()
-    fkeys = list(info.fields.keys())
+    fkeys = info.field_order if info.field_order else list(info.fields.keys())
     j = 0
     while j < len(fkeys):
         known_field_set.add(fkeys[j])
@@ -989,7 +1000,7 @@ def _collect_class_fields(
             if not kind_from_param:
                 info.const_fields["kind"] = _pascal_to_kebab(class_name)
     if class_name in node_classes:
-        fkeys = list(info.fields.keys())
+        fkeys = info.field_order if info.field_order else list(info.fields.keys())
         j = 0
         while j < len(fkeys):
             fname = fkeys[j]

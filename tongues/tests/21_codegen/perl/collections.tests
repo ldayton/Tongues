@@ -11,9 +11,9 @@ my $v = (exists $m->{"b"} ? $m->{"b"} : 0);
 my $v = $m->{"b"};
 
 === Keys Values Items on map
-my $ks = [keys %{$m}];
+my $ks = [sort keys %{$m}];
 my $vs = [values %{$m}];
-my $ps = do { my $__m = $m; [map { [$_, $__m->{$_}] } keys %{$__m}] };
+my $ps = do { my $__m = $m; [map { [$_, $__m->{$_}] } sort keys %{$__m}] };
 
 === Contains on map
 if (exists($m->{"a"})) {

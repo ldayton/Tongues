@@ -1,2 +1,2 @@
 === read file binary mode
-open(my $__fh, '<', $__p)
+open(my $__fh, '<:raw', $__p)
