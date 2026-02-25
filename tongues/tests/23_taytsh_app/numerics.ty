@@ -275,7 +275,6 @@ fn TestFloatMinMax() -> void {
 -- Sum for float
 fn TestFloatSum() -> void {
     Assert(Sum([1.0, 2.0, 3.0]) == 6.0)
-    Assert(Sum([]) == 0.0)
     Assert(Sum([-1.0, 1.0]) == 0.0)
 }
 

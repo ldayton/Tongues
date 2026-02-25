@@ -80,6 +80,8 @@ def to_snake(name: str) -> str:
     """Convert camelCase/PascalCase to snake_case."""
     if name.startswith("_"):
         name = name[1:]
+    if name.isupper():
+        return name
     if "_" in name or name.islower():
         return name.lower()
     result: list[str] = []
@@ -140,20 +142,41 @@ def to_screaming_snake(name: str) -> str:
     return to_snake(name).upper()
 
 
+_STRING_ESCAPE_MAP: dict[str, str] = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\n": "\\n",
+    "\t": "\\t",
+    "\r": "\\r",
+    "\f": "\\f",
+    "\v": "\\v",
+    "\x00": "\\x00",
+    "\x01": "\\u0001",
+    "\x7f": "\\u007f",
+}
+
+
 def escape_string(value: str) -> str:
     """Escape a string for use in a string literal (without quotes)."""
-    return (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-        .replace("\r", "\\r")
-        .replace("\f", "\\f")
-        .replace("\v", "\\v")
-        .replace("\x00", "\\x00")
-        .replace("\x01", "\\u0001")
-        .replace("\x7f", "\\u007f")
-    )
+    out: list[str] = []
+    i = 0
+    while i < len(value):
+        c = value[i]
+        esc = _STRING_ESCAPE_MAP.get(c)
+        if esc is not None:
+            out.append(esc)
+        elif ord(c) < 32 or ord(c) > 126:
+            cp = ord(c)
+            if cp <= 0xFFFF:
+                h = hex(cp)[2:]
+                out.append("\\u" + "0" * (4 - len(h)) + h)
+            else:
+                h = hex(cp)[2:]
+                out.append("\\U" + "0" * (8 - len(h)) + h)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
 
 
 class Emitter:

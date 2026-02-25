@@ -150,8 +150,8 @@
           "name": "storage.type.generic.taytsh"
         },
         {
-          "match": "\\bself\\b",
-          "name": "variable.language.self.taytsh"
+          "match": "\\bthis\\b",
+          "name": "variable.language.this.taytsh"
         }
       ]
     },
@@ -160,7 +160,7 @@
       "name": "keyword.control.taytsh"
     },
     "operators": {
-      "match": "(->|=>|\\?\\:|\\|\\||&&|==|!=|<=|>=|<<=|>>=|<<|>>|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|[+\\-*/%&|^~!<>?:=])",
+      "match": "(->|=>|\\?\\:|\\|\\||&&|==|!=|<=|>=|<<=|>>=|>>>|<<|>>|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|[+\\-*/%&|^~!<>?:=])",
       "name": "keyword.operator.taytsh"
     }
   }

@@ -1,0 +1,16 @@
+=== method with default bool param
+import sys
+class Parser:
+    text: str
+    def __init__(self, text: str):
+        self.text: str = text
+    def parse(self, strict: bool = False) -> str:
+        if strict:
+            return self.text.upper()
+        return self.text
+def main() -> None:
+    p: Parser = Parser(text=sys.argv[1])
+    result: str = p.parse()
+    print(result)
+if __name__ == "__main__":
+    main()

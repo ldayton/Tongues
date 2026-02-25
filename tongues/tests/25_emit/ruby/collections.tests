@@ -1,0 +1,2 @@
+=== set from dict items
+s = Set.new(d.to_a

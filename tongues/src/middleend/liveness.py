@@ -514,7 +514,9 @@ def _binding_used_in_stmts(
 # ============================================================
 
 
-def _analyze_tuple_targets_in_stmts(stmts: list[TStmt]) -> None:
+def _analyze_tuple_targets_in_stmts(
+    stmts: list[TStmt], continuation: list[TStmt]
+) -> None:
     """Mark unused tuple target indices in statements."""
     for i, stmt in enumerate(stmts):
         if isinstance(stmt, TTupleAssignStmt):
@@ -523,28 +525,33 @@ def _analyze_tuple_targets_in_stmts(stmts: list[TStmt]) -> None:
             for j, t in enumerate(stmt.targets):
                 if isinstance(t, TVar) and t.name != "_":
                     first = _first_access_in_stmts(t.name, remaining)
+                    if first is None:
+                        first = _first_access_in_stmts(t.name, continuation)
                     if first != "read":
                         unused.append(str(j))
             stmt.annotations["liveness.tuple_unused_indices"] = ",".join(unused)
+        outer: list[TStmt] = stmts[i + 1 :]
+        for cs in continuation:
+            outer.append(cs)
         if isinstance(stmt, TIfStmt):
-            _analyze_tuple_targets_in_stmts(stmt.then_body)
+            _analyze_tuple_targets_in_stmts(stmt.then_body, outer)
             if stmt.else_body is not None:
-                _analyze_tuple_targets_in_stmts(stmt.else_body)
+                _analyze_tuple_targets_in_stmts(stmt.else_body, outer)
         elif isinstance(stmt, TWhileStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body)
+            _analyze_tuple_targets_in_stmts(stmt.body, outer)
         elif isinstance(stmt, TForStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body)
+            _analyze_tuple_targets_in_stmts(stmt.body, outer)
         elif isinstance(stmt, TTryStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body)
+            _analyze_tuple_targets_in_stmts(stmt.body, outer)
             for catch in stmt.catches:
-                _analyze_tuple_targets_in_stmts(catch.body)
+                _analyze_tuple_targets_in_stmts(catch.body, outer)
             if stmt.finally_body is not None:
-                _analyze_tuple_targets_in_stmts(stmt.finally_body)
+                _analyze_tuple_targets_in_stmts(stmt.finally_body, outer)
         elif isinstance(stmt, TMatchStmt):
             for case in stmt.cases:
-                _analyze_tuple_targets_in_stmts(case.body)
+                _analyze_tuple_targets_in_stmts(case.body, outer)
             if stmt.default is not None:
-                _analyze_tuple_targets_in_stmts(stmt.default.body)
+                _analyze_tuple_targets_in_stmts(stmt.default.body, outer)
 
 
 # ============================================================
@@ -556,7 +563,7 @@ def _analyze_fn(decl: TFnDecl) -> None:
     """Run liveness analysis on a single function."""
     _analyze_initial_value_in_stmts(decl.body)
     _analyze_catch_and_match_bindings(decl.body)
-    _analyze_tuple_targets_in_stmts(decl.body)
+    _analyze_tuple_targets_in_stmts(decl.body, [])
 
 
 # ============================================================

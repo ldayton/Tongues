@@ -1,0 +1,13 @@
+-- Circle implements Shape, but is declared before Shape.
+-- Backends emitting in source order crash: Shape isn't defined yet.
+
+struct Circle : Shape {
+    radius: float
+}
+
+interface Shape {}
+
+fn Main() -> void {
+    let c: Shape = Circle(3.14)
+    Assert(true)
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .ordering import order_decls
 from .util import escape_string
 from ..taytsh.ast import (
     Ann,
@@ -149,6 +150,8 @@ _PYTHON_BUILTINS = frozenset(
         "type",
         "vars",
         "zip",
+        "dataclass",
+        "field",
     }
 )
 
@@ -206,6 +209,8 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     parent_prec = _PRECEDENCE.get(parent_op, 0)
     if child_prec < parent_prec:
         return True
+    if not is_left and child_prec == parent_prec:
+        return True
     if child_op in _CMP_OPS and parent_op in _CMP_OPS:
         return True
     return False
@@ -232,6 +237,15 @@ def _scan_imports(
                 for fld in decl.fields:
                     if isinstance(fld.typ, (TListType, TMapType, TSetType)):
                         needs_field = True
+                    if fld.has_default and isinstance(fld.typ, TIdentType):
+                        needs_field = True
+        if isinstance(decl, TInterfaceDecl) and decl.fields:
+            needs_dataclass = True
+            for fld in decl.fields:
+                if isinstance(fld.typ, (TListType, TMapType, TSetType)):
+                    needs_field = True
+                if fld.has_default and isinstance(fld.typ, TIdentType):
+                    needs_field = True
         if isinstance(decl, (TFnDecl, TStructDecl)):
             r_sys, r_math, r_os = _scan_decl_builtins(decl)
             if r_sys:
@@ -450,7 +464,7 @@ class _PythonEmitter:
             module
         )
         plain_imports: list[str] = []
-        from_imports: list[str] = []
+        from_imports: list[str] = ["from __future__ import annotations"]
         if needs_sys:
             plain_imports.append("import sys")
         if needs_os:
@@ -462,17 +476,30 @@ class _PythonEmitter:
         elif needs_dataclass:
             from_imports.append("from dataclasses import dataclass")
         if plain_imports or from_imports:
-            for line in plain_imports:
+            for line in from_imports:
                 self._line(line)
             if plain_imports and from_imports:
                 self._line()
-            for line in from_imports:
+            for line in plain_imports:
                 self._line(line)
             self._line()
         self._line()
         need_blank = False
-        for decl in module.decls:
+        for decl in order_decls(module.decls):
             if isinstance(decl, TInterfaceDecl):
+                if need_blank:
+                    self._line()
+                    self._line()
+                if decl.fields:
+                    self._line("@dataclass")
+                self._line("class " + decl.name + ":")
+                self.indent += 1
+                if not decl.fields:
+                    self._line("pass")
+                for fld in decl.fields:
+                    self._emit_field(fld)
+                self.indent -= 1
+                need_blank = True
                 continue
             if need_blank:
                 self._line()
@@ -482,6 +509,9 @@ class _PythonEmitter:
                 need_blank = True
             elif isinstance(decl, TEnumDecl):
                 self._emit_enum(decl)
+                need_blank = True
+            elif isinstance(decl, TLetStmt):
+                self._emit_let(decl)
                 need_blank = True
             elif isinstance(decl, TFnDecl):
                 self._emit_fn(decl)
@@ -503,6 +533,8 @@ class _PythonEmitter:
         if not is_error and decl.parent is not None:
             if decl.parent in BUILTIN_STRUCTS:
                 is_error = True
+        if not is_error and decl.annotations.get("_is_exception") is not None:
+            is_error = True
         if is_error:
             self._emit_error_struct(decl)
         else:
@@ -519,7 +551,7 @@ class _PythonEmitter:
         if len(decl.fields) > 0:
             msg_field: TFieldDecl | None = None
             for fld in decl.fields:
-                if fld.name == "message":
+                if fld.name == "message" or fld.name == "msg":
                     msg_field = fld
                     break
             if msg_field is not None:
@@ -559,16 +591,22 @@ class _PythonEmitter:
 
     def _emit_field(self, fld: TFieldDecl) -> None:
         typ_str = self._type(fld.typ)
-        default = self._field_default(fld.typ)
-        self._line(fld.name + ": " + typ_str + " = " + default)
+        default = self._field_default(fld.typ, fld.has_default)
+        self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
 
-    def _field_default(self, typ: TType) -> str:
+    def _field_default(self, typ: TType, has_default: bool = False) -> str:
         if isinstance(typ, TListType):
             return "field(default_factory=list)"
         if isinstance(typ, TMapType):
             return "field(default_factory=dict)"
         if isinstance(typ, TSetType):
             return "field(default_factory=set)"
+        if (
+            has_default
+            and isinstance(typ, TIdentType)
+            and typ.name in self.struct_names
+        ):
+            return "field(default_factory=" + typ.name + ")"
         return self._zero_value(typ)
 
     def _zero_value(self, typ: TType) -> str:
@@ -594,7 +632,8 @@ class _PythonEmitter:
                 self.var_types[p.name] = p.typ
         params = self._params(decl.params, with_self=False)
         ret = self._type(decl.ret)
-        self._line("def " + decl.name + "(" + params + ") -> " + ret + ":")
+        fname = "main" if decl.name == "Main" else decl.name
+        self._line("def " + fname + "(" + params + ") -> " + ret + ":")
         self.indent += 1
         if not decl.body:
             self._line("pass")
@@ -628,9 +667,10 @@ class _PythonEmitter:
                 if with_self:
                     parts.append("self")
                 continue
-            parts.append(
-                _restore_name(p.name, p.annotations) + ": " + self._type(p.typ)
-            )
+            s = _restore_name(p.name, p.annotations) + ": " + self._type(p.typ)
+            if p.has_default:
+                s = s + " = " + self._zero_value(p.typ)
+            parts.append(s)
         return ", ".join(parts)
 
     # ── Statements ────────────────────────────────────────────
@@ -664,17 +704,18 @@ class _PythonEmitter:
         acc = _restore_name(let_stmt.name, let_stmt.annotations)
         binding = for_stmt.binding
         if isinstance(for_stmt.iterable, TRange):
-            args = ", ".join(self._expr(a) for a in for_stmt.iterable.args)
+            args = self._join_exprs(for_stmt.iterable.args, ", ")
             iterable = "range(" + args + ")"
         else:
             iterable = self._expr(for_stmt.iterable)
-        binders = ", ".join(_restore_name(b, for_stmt.annotations) for b in binding)
-        iter_is_map = not isinstance(for_stmt.iterable, TRange) and self._is_map_type(
-            for_stmt.iterable
-        )
+        binder_parts2: list[str] = []
+        for b in binding:
+            binder_parts2.append(_restore_name(b, for_stmt.annotations))
+        binders = ", ".join(binder_parts2)
+        iter_is_map = self._is_map_for(for_stmt)
         if iter_is_map:
             iterable += ".items()"
-        elif len(binding) == 2 and not isinstance(for_stmt.iterable, TRange):
+        elif self._is_enumerate_for(for_stmt):
             iterable = "enumerate(" + iterable + ")"
         body = for_stmt.body
         if prov == "list_comprehension":
@@ -685,27 +726,27 @@ class _PythonEmitter:
                     return (
                         acc + " = [" + val + " for " + binders + " in " + iterable + "]"
                     )
-            if len(body) == 1 and isinstance(body[0], TIfStmt):
+            if len(body) == 1:
                 if_stmt = body[0]
-                if len(if_stmt.then_body) == 1 and isinstance(
-                    if_stmt.then_body[0], TExprStmt
-                ):
-                    call = if_stmt.then_body[0].expr
-                    if self._is_append_to(call, let_stmt.name):
-                        val = self._expr(call.args[1].value)
-                        guard = self._expr(if_stmt.cond)
-                        return (
-                            acc
-                            + " = ["
-                            + val
-                            + " for "
-                            + binders
-                            + " in "
-                            + iterable
-                            + " if "
-                            + guard
-                            + "]"
-                        )
+                if isinstance(if_stmt, TIfStmt) and len(if_stmt.then_body) == 1:
+                    then_first = if_stmt.then_body[0]
+                    if isinstance(then_first, TExprStmt):
+                        call = then_first.expr
+                        if self._is_append_to(call, let_stmt.name):
+                            val = self._expr(call.args[1].value)
+                            guard = self._expr(if_stmt.cond)
+                            return (
+                                acc
+                                + " = ["
+                                + val
+                                + " for "
+                                + binders
+                                + " in "
+                                + iterable
+                                + " if "
+                                + guard
+                                + "]"
+                            )
         elif prov == "dict_comprehension":
             if len(body) == 1 and isinstance(body[0], TAssignStmt):
                 target = body[0].target
@@ -735,22 +776,28 @@ class _PythonEmitter:
         return None
 
     def _is_append_to(self, expr: TExpr, name: str) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Append"
-            and isinstance(expr.args[0].value, TVar)
-            and expr.args[0].value.name == name
-        )
+        if not isinstance(expr, TCall):
+            return False
+        if not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Append":
+            return False
+        first = expr.args[0].value
+        if not isinstance(first, TVar):
+            return False
+        return first.name == name
 
     def _is_add_to(self, expr: TExpr, name: str) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Add"
-            and isinstance(expr.args[0].value, TVar)
-            and expr.args[0].value.name == name
-        )
+        if not isinstance(expr, TCall):
+            return False
+        if not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Add":
+            return False
+        first = expr.args[0].value
+        if not isinstance(first, TVar):
+            return False
+        return first.name == name
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
@@ -896,8 +943,10 @@ class _PythonEmitter:
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
         if else_body is None or len(else_body) == 0:
             return
-        if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
+        elif_stmt: TStmt | None = None
+        if len(else_body) == 1:
             elif_stmt = else_body[0]
+        if isinstance(elif_stmt, TIfStmt):
             self._line("elif " + self._expr(elif_stmt.cond) + ":")
             self.indent += 1
             if len(elif_stmt.then_body) == 0:
@@ -923,8 +972,11 @@ class _PythonEmitter:
         binding = stmt.binding
         ann = stmt.annotations
         if isinstance(stmt.iterable, TRange):
-            args = ", ".join(self._expr(a) for a in stmt.iterable.args)
-            binders = ", ".join(_restore_name(b, ann) for b in binding)
+            args = self._join_exprs(stmt.iterable.args, ", ")
+            binder_parts: list[str] = []
+            for b in binding:
+                binder_parts.append(_restore_name(b, ann))
+            binders = ", ".join(binder_parts)
             self._line("for " + binders + " in range(" + args + "):")
         elif len(binding) == 1:
             self._line(
@@ -935,10 +987,20 @@ class _PythonEmitter:
                 + ":"
             )
         elif len(binding) == 2:
-            iter_is_map = self._is_map_type(stmt.iterable)
-            method = ".items()" if iter_is_map else ""
-            wrapper = "" if iter_is_map else "enumerate("
-            suffix = "" if iter_is_map else ")"
+            iter_is_map = self._is_map_for(stmt)
+            is_enumerate = self._is_enumerate_for(stmt)
+            if iter_is_map:
+                method = ".items()"
+                wrapper = ""
+                suffix = ""
+            elif is_enumerate:
+                method = ""
+                wrapper = "enumerate("
+                suffix = ")"
+            else:
+                method = ""
+                wrapper = ""
+                suffix = ""
             self._line(
                 "for "
                 + _restore_name(binding[0], ann)
@@ -952,7 +1014,10 @@ class _PythonEmitter:
                 + ":"
             )
         else:
-            binders = ", ".join(_restore_name(b, ann) for b in binding)
+            binder_parts3: list[str] = []
+            for b in binding:
+                binder_parts3.append(_restore_name(b, ann))
+            binders = ", ".join(binder_parts3)
             self._line("for " + binders + " in " + self._expr(stmt.iterable) + ":")
         self.indent += 1
         if not stmt.body:
@@ -999,6 +1064,19 @@ class _PythonEmitter:
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
         return False
+
+    def _is_map_for(self, stmt: TForStmt) -> bool:
+        """Check if a for-loop iterates over map items."""
+        if stmt.annotations.get("for.items") == "true":
+            return True
+        return not isinstance(stmt.iterable, TRange) and self._is_map_type(
+            stmt.iterable
+        )
+
+    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
+        """Check if a for-loop is an enumerate iteration."""
+        ann = stmt.annotations
+        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
 
     def _emit_try(self, stmt: TTryStmt) -> None:
         self._line("try:")
@@ -1141,7 +1219,7 @@ class _PythonEmitter:
                 return "self"
             return _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
-            return self._expr(expr.obj) + "." + expr.field
+            return self._expr(expr.obj) + "." + _safe_name(expr.field)
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
         if isinstance(expr, TIndex):
@@ -1157,15 +1235,18 @@ class _PythonEmitter:
         if isinstance(expr, TUnaryOp):
             return self._unary(expr)
         if isinstance(expr, TTernary):
+            then = self._expr(expr.then_expr)
+            if isinstance(expr.then_expr, TTernary):
+                then = "(" + then + ")"
             return (
-                self._expr(expr.then_expr)
+                then
                 + " if "
                 + self._expr(expr.cond)
                 + " else "
                 + self._expr(expr.else_expr)
             )
         if isinstance(expr, TListLit):
-            elems = ", ".join(self._expr(e) for e in expr.elements)
+            elems = self._join_exprs(expr.elements, ", ")
             return "[" + elems + "]"
         if isinstance(expr, TMapLit):
             if not expr.entries:
@@ -1177,10 +1258,10 @@ class _PythonEmitter:
         if isinstance(expr, TSetLit):
             if not expr.elements:
                 return "set()"
-            elems = ", ".join(self._expr(e) for e in expr.elements)
+            elems = self._join_exprs(expr.elements, ", ")
             return "{" + elems + "}"
         if isinstance(expr, TTupleLit):
-            elems = ", ".join(self._expr(e) for e in expr.elements)
+            elems = self._join_exprs(expr.elements, ", ")
             if len(expr.elements) == 1:
                 return "(" + elems + ",)"
             return "(" + elems + ")"
@@ -1367,10 +1448,11 @@ class _PythonEmitter:
             for p in expr.params
             if p.typ is not None
         )
+        first = expr.body[0] if expr.body else None
         if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
-            expr.body[0], TExprStmt
+            first, TExprStmt
         ):
-            return "lambda " + params + ": " + self._expr(expr.body[0].expr)
+            return "lambda " + params + ": " + self._expr(first.expr)
         name = "_fn"
         self._line("def " + name + "(" + params + "):")
         self.indent += 1
@@ -1397,19 +1479,34 @@ class _PythonEmitter:
             return self._method_call(func, args)
         # Regular call
         fn_name = self._expr(func)
-        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        arg_strs = self._join_args(args, ", ")
         return fn_name + "(" + arg_strs + ")"
 
     def _struct_call(self, name: str, args: list[TArg]) -> str:
-        has_named = any(a.name is not None for a in args)
+        has_named = False
+        for a in args:
+            if a.name is not None:
+                has_named = True
+                break
         if has_named:
             ordered = self.struct_fields.get(name, [])
             if ordered:
                 named: dict[str, str] = {}
                 for a in args:
                     if a.name is not None:
-                        named[a.name] = self._expr(a.value)
-                vals = [named.get(f, "None") for f in ordered]
+                        k = a.name
+                        if k not in ordered:
+                            k = _safe_name(k)
+                        named[k] = self._expr(a.value)
+                if len(named) < len(ordered):
+                    parts2: list[str] = []
+                    for f in ordered:
+                        if f in named:
+                            parts2.append(f + "=" + named[f])
+                    return name + "(" + ", ".join(parts2) + ")"
+                vals: list[str] = []
+                for f in ordered:
+                    vals.append(named.get(f, "None"))
                 return name + "(" + ", ".join(vals) + ")"
         parts: list[str] = []
         for a in args:
@@ -1420,7 +1517,7 @@ class _PythonEmitter:
         obj_str = self._expr(func.obj)
         if isinstance(func.obj, (TBinaryOp, TUnaryOp, TTernary)):
             obj_str = "(" + obj_str + ")"
-        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        arg_strs = self._join_args(args, ", ")
         return obj_str + "." + func.field + "(" + arg_strs + ")"
 
     def _builtin_call(self, name: str, args: list[TArg]) -> str:
@@ -1496,6 +1593,17 @@ class _PythonEmitter:
                 + self._a(args, 2)
                 + ")"
             )
+        if name == "ReplaceCount":
+            return (
+                self._a(args, 0)
+                + ".replace("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ", "
+                + self._a(args, 3)
+                + ")"
+            )
         if name == "StartsWith":
             return self._a(args, 0) + ".startswith(" + self._a(args, 1) + ")"
         if name == "EndsWith":
@@ -1533,6 +1641,12 @@ class _PythonEmitter:
             return self._a(args, 0) + ".get(" + self._a(args, 1) + ")"
         if name == "Delete":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ", None)"
+        if name == "Union":
+            return self._a(args, 0) + " | " + self._a(args, 1)
+        if name == "Intersection":
+            return self._a(args, 0) + " & " + self._a(args, 1)
+        if name == "Difference":
+            return self._a(args, 0) + " - " + self._a(args, 1)
         if name == "Merge":
             return "{**" + self._a(args, 0) + ", **" + self._a(args, 1) + "}"
         if name == "Keys":
@@ -1573,6 +1687,8 @@ class _PythonEmitter:
         if name == "Sum":
             return "sum(" + self._a(args, 0) + ")"
         if name == "Round":
+            if len(args) == 2:
+                return "round(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return "round(" + self._a(args, 0) + ")"
         if name == "DivMod":
             return "divmod(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -1580,6 +1696,8 @@ class _PythonEmitter:
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
             return "sorted(" + self._a(args, 0) + ")"
+        if name == "ListFrom":
+            return "list(" + self._a(args, 0) + ")"
         if name == "Reversed":
             return "list(reversed(" + self._a(args, 0) + "))"
         if name == "Reverse":
@@ -1591,6 +1709,10 @@ class _PythonEmitter:
         if name == "Set":
             if len(args) == 0:
                 return "set()"
+            return "set(" + self._a(args, 0) + ")"
+        if name == "SetFromList":
+            if isinstance(args[0].value, TSetLit):
+                return self._a(args, 0)
             return "set(" + self._a(args, 0) + ")"
         if name == "ToString":
             return "str(" + self._a(args, 0) + ")"
@@ -1614,6 +1736,8 @@ class _PythonEmitter:
             return self._a(args, 0)
         if name == "Unwrap":
             return self._a(args, 0)
+        if name == "IsNil":
+            return self._a(args, 0) + " is None"
         if name == "Sqrt":
             return "math.sqrt(" + self._a(args, 0) + ")"
         if name == "Floor":
@@ -1643,7 +1767,10 @@ class _PythonEmitter:
             return "sys.stdin.buffer.read(" + self._a(args, 0) + ")"
         if name == "ReadFile":
             p = self._a(args, 0)
-            return "open(" + p + ").read()"
+            return "open(" + p + ', "r", encoding="utf-8").read()'
+        if name == "ReadFileBytes":
+            p = self._a(args, 0)
+            return "open(" + p + ', "rb").read()'
         if name == "WriteFile":
             p = self._a(args, 0)
             d = self._a(args, 1)
@@ -1668,9 +1795,12 @@ class _PythonEmitter:
         if name == "Contains":
             return self._a(args, 1) + " in " + self._a(args, 0)
         if name == "Concat":
-            return self._a(args, 0) + " + " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "+", True)
+            right = self._maybe_paren(args[1].value, "+", False)
+            return left + " + " + right
         if name == "Repeat":
-            return self._a(args, 0) + " * " + self._a(args, 1)
+            count = self._maybe_paren(args[1].value, "*", False)
+            return self._a(args, 0) + " * " + count
         if name == "Format":
             return self._format_call(args)
         if name == "Assert":
@@ -1678,12 +1808,39 @@ class _PythonEmitter:
             if len(args) > 1:
                 return "assert " + cond + ", " + self._a(args, 1)
             return "assert " + cond
+        if name == "IsType":
+            type_arg = args[1].value
+            if isinstance(type_arg, TStringLit):
+                type_name = type_arg.value
+            else:
+                type_name = self._expr(type_arg)
+            return "isinstance(" + self._a(args, 0) + ", " + type_name + ")"
+        if name == "Bytes" or name == "BytesFrom":
+            return "bytes(" + self._a(args, 0) + ")"
         # Fallback
-        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        arg_strs = self._join_args(args, ", ")
         return name + "(" + arg_strs + ")"
 
     def _a(self, args: list[TArg], i: int) -> str:
         return self._expr(args[i].value)
+
+    def _join_args(self, args: list[TArg], sep: str = ", ") -> str:
+        parts: list[str] = []
+        for a in args:
+            parts.append(self._expr(a.value))
+        return sep.join(parts)
+
+    def _join_exprs(self, exprs: list[TExpr], sep: str = ", ") -> str:
+        parts: list[str] = []
+        for e in exprs:
+            parts.append(self._expr(e))
+        return sep.join(parts)
+
+    def _join_types(self, types: list[TType], sep: str = ", ") -> str:
+        parts: list[str] = []
+        for t in types:
+            parts.append(self._type(t))
+        return sep.join(parts)
 
     def _format_int(self, args: list[TArg]) -> str:
         n = self._a(args, 0)
@@ -1701,7 +1858,7 @@ class _PythonEmitter:
     def _format_call(self, args: list[TArg]) -> str:
         template_expr = args[0].value
         if not isinstance(template_expr, TStringLit):
-            arg_strs = ", ".join(self._expr(a.value) for a in args)
+            arg_strs = self._join_args(args, ", ")
             return "Format(" + arg_strs + ")"
         template = template_expr.value
         fmt_args = args[1:]
@@ -1712,12 +1869,12 @@ class _PythonEmitter:
             marker = "\x00PH" + str(i) + "\x00"
             markers[marker] = i
             result = result.replace("{}", marker, 1)
-        # Escape remaining literal braces
+        # Escape remaining literal braces and quotes in the template
         result = result.replace("{", "{{").replace("}", "}}")
+        result = result.replace('"', '\\"')
         # Restore placeholders as f-string interpolations
         for mk, idx in markers.items():
             result = result.replace(mk, "{" + self._expr(fmt_args[idx].value) + "}")
-        result = result.replace('"', '\\"')
         return 'f"' + result + '"'
 
     # ── Types ─────────────────────────────────────────────────
@@ -1732,14 +1889,13 @@ class _PythonEmitter:
         if isinstance(typ, TSetType):
             return "set[" + self._type(typ.element) + "]"
         if isinstance(typ, TTupleType):
-            parts = ", ".join(self._type(e) for e in typ.elements)
-            return "tuple[" + parts + "]"
+            return "tuple[" + self._join_types(typ.elements, ", ") + "]"
         if isinstance(typ, TIdentType):
             return typ.name
         if isinstance(typ, TOptionalType):
             return self._type(typ.inner) + " | None"
         if isinstance(typ, TUnionType):
-            return " | ".join(self._type(m) for m in typ.members)
+            return self._join_types(typ.members, " | ")
         if isinstance(typ, TFuncType):
             return "object"
         return "object"
@@ -1777,7 +1933,17 @@ def emit_python(module: TModule) -> str:
     for decl in module.decls:
         if isinstance(decl, TStructDecl):
             struct_names.add(decl.name)
-            struct_fields[decl.name] = [f.name for f in decl.fields]
+            fnames: list[str] = []
+            for f in decl.fields:
+                fnames.append(_safe_name(f.name))
+            struct_fields[decl.name] = fnames
+        elif isinstance(decl, TInterfaceDecl):
+            struct_names.add(decl.name)
+            if decl.fields:
+                ifnames: list[str] = []
+                for f in decl.fields:
+                    ifnames.append(_safe_name(f.name))
+                struct_fields[decl.name] = ifnames
     emitter = _PythonEmitter(struct_names, struct_fields, module.strict_math)
     emitter.emit_module(module)
     return emitter.output()

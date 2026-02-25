@@ -1,0 +1,2 @@
+=== set from dict items
+s: set[tuple[str, int]] = set(list(d.items()))

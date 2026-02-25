@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 from ..frontend.types import JsonValue, JStr, JInt, JFloat, JBool, JNull, JList, JDict
 
@@ -171,10 +171,11 @@ class TStructDecl(TDecl):
 
 @dataclass
 class TInterfaceDecl(TDecl):
-    """interface Name { }."""
+    """interface Name { fields }."""
 
     name: str
     annotations: Ann
+    fields: list[TFieldDecl]
 
 
 @dataclass
@@ -658,7 +659,10 @@ def _sa_collect_vars_expr(
     if isinstance(expr, TVar):
         a = _sa_strip(expr.annotations, pfx, plen)
         if a:
-            result.setdefault(expr.name, {}).update(a)
+            if expr.name not in result:
+                result[expr.name] = {}
+            for ak in a:
+                result[expr.name][ak] = a[ak]
     elif isinstance(expr, TBinaryOp):
         _sa_collect_vars_expr(expr.left, result, pfx, plen)
         _sa_collect_vars_expr(expr.right, result, pfx, plen)
@@ -805,48 +809,431 @@ def _wrap_ann(ann: Ann) -> JsonValue:
     return JDict(d)
 
 
-def _wrap_raw(obj: JsonValue) -> JsonValue:
-    """Recursively wrap a raw Python value tree (from asdict) as JsonValue."""
-    if obj is None:
-        return JNull()
-    if isinstance(obj, bool):
-        return JBool(obj)
-    if isinstance(obj, int):
-        return JInt(obj)
-    if isinstance(obj, float):
-        return JFloat(obj)
-    if isinstance(obj, str):
-        return JStr(obj)
-    if isinstance(obj, bytes):
-        items: list[JsonValue] = []
-        i = 0
-        while i < len(obj):
-            items.append(JInt(obj[i]))
-            i += 1
-        return JList(items)
-    if isinstance(obj, tuple):
-        items: list[JsonValue] = []
-        i = 0
-        while i < len(obj):
-            items.append(_wrap_raw(obj[i]))
-            i += 1
-        return JList(items)
-    if isinstance(obj, list):
-        items: list[JsonValue] = []
-        i = 0
-        while i < len(obj):
-            items.append(_wrap_raw(obj[i]))
-            i += 1
-        return JList(items)
-    if isinstance(obj, dict):
-        d: dict[str, JsonValue] = {}
-        keys = list(obj.keys())
-        i = 0
-        while i < len(keys):
-            d[keys[i]] = _wrap_raw(obj[keys[i]])
-            i += 1
-        return JDict(d)
+def _pos_json(p: Pos) -> JsonValue:
+    return JDict({"line": JInt(p.line), "col": JInt(p.col)})
+
+
+def _ann_json(a: Ann) -> JsonValue:
+    d: dict[str, JsonValue] = {}
+    keys = list(a.keys())
+    i = 0
+    while i < len(keys):
+        d[keys[i]] = JStr(a[keys[i]])
+        i += 1
+    return JDict(d)
+
+
+def _types_json(items: list[TType]) -> JsonValue:
+    result: list[JsonValue] = []
+    i = 0
+    while i < len(items):
+        result.append(_type_json(items[i]))
+        i += 1
+    return JList(result)
+
+
+def _exprs_json(items: list[TExpr]) -> JsonValue:
+    result: list[JsonValue] = []
+    i = 0
+    while i < len(items):
+        result.append(_expr_json(items[i]))
+        i += 1
+    return JList(result)
+
+
+def _stmts_json(items: list[TStmt]) -> JsonValue:
+    result: list[JsonValue] = []
+    i = 0
+    while i < len(items):
+        result.append(_stmt_json(items[i]))
+        i += 1
+    return JList(result)
+
+
+def _strs_json(items: list[str]) -> JsonValue:
+    result: list[JsonValue] = []
+    i = 0
+    while i < len(items):
+        result.append(JStr(items[i]))
+        i += 1
+    return JList(result)
+
+
+def _type_json(t: TType) -> JsonValue:
+    d: dict[str, JsonValue] = {"pos": _pos_json(t.pos)}
+    if isinstance(t, TPrimitive):
+        d["kind"] = JStr(t.kind)
+    elif isinstance(t, TListType):
+        d["element"] = _type_json(t.element)
+    elif isinstance(t, TMapType):
+        d["key"] = _type_json(t.key)
+        d["value"] = _type_json(t.value)
+    elif isinstance(t, TSetType):
+        d["element"] = _type_json(t.element)
+    elif isinstance(t, TTupleType):
+        d["elements"] = _types_json(t.elements)
+    elif isinstance(t, TFuncType):
+        d["params"] = _types_json(t.params)
+    elif isinstance(t, TIdentType):
+        d["name"] = JStr(t.name)
+    elif isinstance(t, TUnionType):
+        d["members"] = _types_json(t.members)
+    elif isinstance(t, TOptionalType):
+        d["inner"] = _type_json(t.inner)
+    return JDict(d)
+
+
+def _param_json(p: TParam) -> JsonValue:
+    d: dict[str, JsonValue] = {
+        "pos": _pos_json(p.pos),
+        "name": JStr(p.name),
+        "typ": _type_json(p.typ) if p.typ is not None else JNull(),
+        "annotations": _ann_json(p.annotations),
+        "has_default": JBool(p.has_default),
+    }
+    return JDict(d)
+
+
+def _field_decl_json(f: TFieldDecl) -> JsonValue:
+    return JDict(
+        {
+            "pos": _pos_json(f.pos),
+            "name": JStr(f.name),
+            "typ": _type_json(f.typ),
+            "has_default": JBool(f.has_default),
+        }
+    )
+
+
+def _arg_json(a: TArg) -> JsonValue:
+    return JDict(
+        {
+            "pos": _pos_json(a.pos),
+            "name": JStr(a.name) if a.name is not None else JNull(),
+            "value": _expr_json(a.value),
+        }
+    )
+
+
+def _pattern_json(p: TPattern) -> JsonValue:
+    d: dict[str, JsonValue] = {"pos": _pos_json(p.pos)}
+    if isinstance(p, TPatternType):
+        d["name"] = JStr(p.name)
+        d["type_name"] = _type_json(p.type_name)
+        d["annotations"] = _ann_json(p.annotations)
+    elif isinstance(p, TPatternEnum):
+        d["enum_name"] = JStr(p.enum_name)
+        d["variant"] = JStr(p.variant)
+    return JDict(d)
+
+
+def _match_case_json(c: TMatchCase) -> JsonValue:
+    return JDict(
+        {
+            "pos": _pos_json(c.pos),
+            "pattern": _pattern_json(c.pattern),
+            "body": _stmts_json(c.body),
+            "annotations": _ann_json(c.annotations),
+        }
+    )
+
+
+def _default_json(d: TDefault) -> JsonValue:
+    return JDict(
+        {
+            "pos": _pos_json(d.pos),
+            "name": JStr(d.name) if d.name is not None else JNull(),
+            "body": _stmts_json(d.body),
+            "annotations": _ann_json(d.annotations),
+        }
+    )
+
+
+def _catch_json(c: TCatch) -> JsonValue:
+    return JDict(
+        {
+            "pos": _pos_json(c.pos),
+            "name": JStr(c.name),
+            "types": _types_json(c.types),
+            "body": _stmts_json(c.body),
+            "annotations": _ann_json(c.annotations),
+        }
+    )
+
+
+def _expr_json(e: TExpr) -> JsonValue:
+    d: dict[str, JsonValue] = {"pos": _pos_json(e.pos)}
+    if isinstance(e, TRange):
+        d["args"] = _exprs_json(e.args)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TIntLit):
+        d["value"] = JInt(e.value)
+        d["raw"] = JStr(e.raw)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TFloatLit):
+        d["value"] = JFloat(e.value)
+        d["raw"] = JStr(e.raw)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TByteLit):
+        d["value"] = JInt(e.value)
+        d["raw"] = JStr(e.raw)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TStringLit):
+        d["value"] = JStr(e.value)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TRuneLit):
+        d["value"] = JStr(e.value)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TBytesLit):
+        blist: list[JsonValue] = []
+        bi = 0
+        while bi < len(e.value):
+            blist.append(JInt(int(e.value[bi])))
+            bi += 1
+        d["value"] = JList(blist)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TBoolLit):
+        d["value"] = JBool(e.value)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TNilLit):
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TVar):
+        d["name"] = JStr(e.name)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TBinaryOp):
+        d["op"] = JStr(e.op)
+        d["left"] = _expr_json(e.left)
+        d["right"] = _expr_json(e.right)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TUnaryOp):
+        d["op"] = JStr(e.op)
+        d["operand"] = _expr_json(e.operand)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TTernary):
+        d["cond"] = _expr_json(e.cond)
+        d["then_expr"] = _expr_json(e.then_expr)
+        d["else_expr"] = _expr_json(e.else_expr)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TFieldAccess):
+        d["obj"] = _expr_json(e.obj)
+        d["field"] = JStr(e.field)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TTupleAccess):
+        d["obj"] = _expr_json(e.obj)
+        d["index"] = JInt(e.index)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TIndex):
+        d["obj"] = _expr_json(e.obj)
+        d["index"] = _expr_json(e.index)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TSlice):
+        d["obj"] = _expr_json(e.obj)
+        d["low"] = _expr_json(e.low)
+        d["high"] = _expr_json(e.high)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TCall):
+        d["func"] = _expr_json(e.func)
+        alist: list[JsonValue] = []
+        ai = 0
+        while ai < len(e.args):
+            alist.append(_arg_json(e.args[ai]))
+            ai += 1
+        d["args"] = JList(alist)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TListLit):
+        d["elements"] = _exprs_json(e.elements)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TMapLit):
+        elist: list[JsonValue] = []
+        ei = 0
+        while ei < len(e.entries):
+            k, v = e.entries[ei]
+            elist.append(JList([_expr_json(k), _expr_json(v)]))
+            ei += 1
+        d["entries"] = JList(elist)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TSetLit):
+        d["elements"] = _exprs_json(e.elements)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TTupleLit):
+        d["elements"] = _exprs_json(e.elements)
+        d["annotations"] = _ann_json(e.annotations)
+    elif isinstance(e, TFnLit):
+        plist: list[JsonValue] = []
+        pi = 0
+        while pi < len(e.params):
+            plist.append(_param_json(e.params[pi]))
+            pi += 1
+        d["params"] = JList(plist)
+        d["ret"] = _type_json(e.ret)
+        d["body"] = _stmts_json(e.body)
+        d["annotations"] = _ann_json(e.annotations)
+    return JDict(d)
+
+
+def _stmt_json(s: TStmt) -> JsonValue:
+    d: dict[str, JsonValue] = {"pos": _pos_json(s.pos)}
+    if isinstance(s, TLetStmt):
+        d["name"] = JStr(s.name)
+        d["typ"] = _type_json(s.typ)
+        d["value"] = _expr_json(s.value) if s.value is not None else JNull()
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TAssignStmt):
+        d["target"] = _expr_json(s.target)
+        d["value"] = _expr_json(s.value)
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TOpAssignStmt):
+        d["target"] = _expr_json(s.target)
+        d["op"] = JStr(s.op)
+        d["value"] = _expr_json(s.value)
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TTupleAssignStmt):
+        d["targets"] = _exprs_json(s.targets)
+        d["value"] = _expr_json(s.value)
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TReturnStmt):
+        d["value"] = _expr_json(s.value) if s.value is not None else JNull()
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TBreakStmt):
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TContinueStmt):
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TThrowStmt):
+        d["expr"] = _expr_json(s.expr)
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TExprStmt):
+        d["expr"] = _expr_json(s.expr)
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TIfStmt):
+        d["cond"] = _expr_json(s.cond)
+        d["then_body"] = _stmts_json(s.then_body)
+        d["else_body"] = (
+            _stmts_json(s.else_body) if s.else_body is not None else JNull()
+        )
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TWhileStmt):
+        d["cond"] = _expr_json(s.cond)
+        d["body"] = _stmts_json(s.body)
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TForStmt):
+        blist: list[JsonValue] = []
+        bi = 0
+        while bi < len(s.binding):
+            blist.append(JStr(s.binding[bi]))
+            bi += 1
+        d["binding"] = JList(blist)
+        d["iterable"] = _expr_json(s.iterable)
+        d["body"] = _stmts_json(s.body)
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TMatchStmt):
+        d["expr"] = _expr_json(s.expr)
+        clist: list[JsonValue] = []
+        ci = 0
+        while ci < len(s.cases):
+            clist.append(_match_case_json(s.cases[ci]))
+            ci += 1
+        d["cases"] = JList(clist)
+        d["default"] = _default_json(s.default) if s.default is not None else JNull()
+        d["annotations"] = _ann_json(s.annotations)
+    elif isinstance(s, TTryStmt):
+        d["body"] = _stmts_json(s.body)
+        calist: list[JsonValue] = []
+        cai = 0
+        while cai < len(s.catches):
+            calist.append(_catch_json(s.catches[cai]))
+            cai += 1
+        d["catches"] = JList(calist)
+        d["finally_body"] = (
+            _stmts_json(s.finally_body) if s.finally_body is not None else JNull()
+        )
+        d["annotations"] = _ann_json(s.annotations)
+    return JDict(d)
+
+
+def _decl_json(decl: TModuleItem) -> JsonValue:
+    if isinstance(decl, TFnDecl):
+        plist: list[JsonValue] = []
+        pi = 0
+        while pi < len(decl.params):
+            plist.append(_param_json(decl.params[pi]))
+            pi += 1
+        return JDict(
+            {
+                "pos": _pos_json(decl.pos),
+                "name": JStr(decl.name),
+                "params": JList(plist),
+                "ret": _type_json(decl.ret),
+                "body": _stmts_json(decl.body),
+                "annotations": _ann_json(decl.annotations),
+            }
+        )
+    if isinstance(decl, TStructDecl):
+        flist: list[JsonValue] = []
+        fi = 0
+        while fi < len(decl.fields):
+            flist.append(_field_decl_json(decl.fields[fi]))
+            fi += 1
+        mlist: list[JsonValue] = []
+        mi = 0
+        while mi < len(decl.methods):
+            mlist.append(_decl_json(decl.methods[mi]))
+            mi += 1
+        return JDict(
+            {
+                "pos": _pos_json(decl.pos),
+                "name": JStr(decl.name),
+                "parent": JStr(decl.parent) if decl.parent is not None else JNull(),
+                "fields": JList(flist),
+                "methods": JList(mlist),
+                "annotations": _ann_json(decl.annotations),
+            }
+        )
+    if isinstance(decl, TInterfaceDecl):
+        flist: list[JsonValue] = []
+        fi = 0
+        while fi < len(decl.fields):
+            flist.append(_field_decl_json(decl.fields[fi]))
+            fi += 1
+        return JDict(
+            {
+                "pos": _pos_json(decl.pos),
+                "name": JStr(decl.name),
+                "fields": JList(flist),
+                "annotations": _ann_json(decl.annotations),
+            }
+        )
+    if isinstance(decl, TEnumDecl):
+        vlist: list[JsonValue] = []
+        vi = 0
+        while vi < len(decl.variants):
+            vlist.append(JStr(decl.variants[vi]))
+            vi += 1
+        return JDict(
+            {
+                "pos": _pos_json(decl.pos),
+                "name": JStr(decl.name),
+                "variants": JList(vlist),
+                "annotations": _ann_json(decl.annotations),
+            }
+        )
+    if isinstance(decl, TLetStmt):
+        return _stmt_json(decl)
     return JNull()
+
+
+def to_dict(module: TModule) -> JsonValue:
+    """Serialize a TModule to a JsonValue tree."""
+    dlist: list[JsonValue] = []
+    i = 0
+    while i < len(module.decls):
+        dlist.append(_decl_json(module.decls[i]))
+        i += 1
+    d: dict[str, JsonValue] = {
+        "decls": JList(dlist),
+        "strict_math": JBool(module.strict_math),
+        "strict_tostring": JBool(module.strict_tostring),
+    }
+    return JDict(d)
 
 
 def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, JsonValue]:
@@ -858,7 +1245,10 @@ def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, JsonValue]
             rest = k[7:]
             dot = rest.find(".")
             if dot != -1:
-                binder.setdefault(rest[:dot], {})[rest[dot + 1 :]] = _wrap_value(v)
+                bkey = rest[:dot]
+                if bkey not in binder:
+                    binder[bkey] = {}
+                binder[bkey][rest[dot + 1 :]] = _wrap_value(v)
             else:
                 d[k] = _wrap_value(v)
         else:
@@ -911,9 +1301,7 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
         for lk, lv in lets.items():
             ld[lk] = _wrap_ann(lv)
         d["lets"] = JDict(ld)
-    body_items: list[JsonValue] = [
-        JDict(_sa_serialize_stmt(s, pfx, plen)) for s in fn.body
-    ]
+    body_items = [JDict(_sa_serialize_stmt(s, pfx, plen)) for s in fn.body]
     d["body"] = JList(body_items)
     vars_dict: dict[str, Ann] = {}
     _sa_collect_vars_stmts(fn.body, vars_dict, pfx, plen)
@@ -929,11 +1317,6 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
         if escapes:
             d["escapes"] = JDict(escapes)
     return d
-
-
-def to_dict(module: TModule) -> JsonValue:
-    """Serialize a TModule to a JsonValue tree via dataclasses.asdict."""
-    return _wrap_raw(asdict(module))
 
 
 def serialize_annotations(module: TModule, prefix: str) -> dict[str, JsonValue]:

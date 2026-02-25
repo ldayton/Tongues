@@ -33,11 +33,22 @@ from .frontend.types import (
     get_nodes,
     has_key,
 )
-from .taytsh.ast import TLetStmt, to_dict as module_to_dict
-from .taytsh.check import Checker
+from .taytsh.ast import (
+    TLetStmt,
+    serialize_annotations,
+    to_dict as module_to_dict,
+)
+from .taytsh.check import Checker, check_with_info
+from .taytsh.emit import to_source
+from .taytsh.parse import Parser as TaytshParser
+from .taytsh.tokens import tokenize as taytsh_tokenize
+from .middleend.callgraph import analyze_callgraph, serialize_callgraph
+from .middleend.hoisting import analyze_hoisting
+from .middleend.liveness import analyze_liveness
+from .middleend.ownership import analyze_ownership
 from .middleend.returns import analyze_returns
 from .middleend.scope import analyze_scope
-from .middleend.liveness import analyze_liveness
+from .middleend.strings import analyze_strings
 from .backend.python import emit_python
 from .backend.perl import emit_perl
 from .backend.ruby import emit_ruby
@@ -69,6 +80,7 @@ PHASES: list[str] = [
     "hierarchy",
     "inference",
     "lowering",
+    "lowering-text",
     "analyze",
 ]
 
@@ -79,7 +91,8 @@ Options:
   --target TARGET     Output language: c, csharp, dart, go, java, javascript,
                       lua, perl, php, python, ruby, rust, swift, typescript, zig
   --stop-at PHASE     Stop after phase: parse, subset, names, signatures,
-                      fields, hierarchy, inference, lowering, analyze
+                      fields, hierarchy, inference, lowering, lowering-text,
+                      analyze
   --project           Read NUL-delimited multi-file input (path\\0source\\0...)
   --strict            Enable strict math and strict tostring
   --strict-math       Enable strict math mode
@@ -1406,18 +1419,27 @@ def _pipeline_post_parse(
     strict_tostring: bool,
 ) -> tuple[int, str]:
     """Run pipeline phases after parsing. Returns (exit_code, output)."""
-    result = verify_subset(ast_dict)
-    subset_errors = result.errors()
-    if len(subset_errors) > 0:
-        err_strs: list[str] = []
-        sei = 0
-        while sei < len(subset_errors):
-            err_strs.append(str(subset_errors[sei]))
-            sei += 1
-        _print_errors(err_strs)
-        return (1, "")
-    if stop_at == "subset":
-        return (0, "")
+    if stop_at != "names":
+        result = verify_subset(ast_dict)
+        subset_errors = result.errors()
+        if len(subset_errors) > 0:
+            err_strs: list[str] = []
+            sei = 0
+            while sei < len(subset_errors):
+                err_strs.append(str(subset_errors[sei]))
+                sei += 1
+            _print_errors(err_strs)
+            return (1, "")
+        if stop_at == "subset":
+            subset_warnings = result.warnings()
+            if len(subset_warnings) > 0:
+                warn_strs: list[str] = []
+                swi = 0
+                while swi < len(subset_warnings):
+                    warn_strs.append(str(subset_warnings[swi]))
+                    swi += 1
+                _print_errors(warn_strs)
+            return (0, "")
     name_result = resolve_names(ast_dict)
     name_errors = name_result.errors()
     if len(name_errors) > 0:
@@ -1429,6 +1451,14 @@ def _pipeline_post_parse(
         _print_errors(err_strs)
         return (1, "")
     if stop_at == "names":
+        name_warnings = name_result.warnings
+        if len(name_warnings) > 0:
+            warn_strs: list[str] = []
+            nwi = 0
+            while nwi < len(name_warnings):
+                warn_strs.append(str(name_warnings[nwi]))
+                nwi += 1
+            _print_errors(warn_strs)
         return (0, to_json(_name_table_to_dict(name_result.table)))
     known_classes: set[str] = set()
     node_classes: set[str] = set()
@@ -1445,6 +1475,14 @@ def _pipeline_post_parse(
                 if base == "Node" or base.endswith("Node"):
                     node_classes.add(mname)
                 bi += 1
+        ki += 1
+    class_bases: dict[str, list[str]] = {}
+    ki = 0
+    while ki < len(mkeys):
+        mname = mkeys[ki]
+        info = name_result.table.module_names[mname]
+        if info.kind == "class":
+            class_bases[mname] = list(info.bases)
         ki += 1
     type_aliases: dict[str, str] = {}
     ta_body = get_nodes(ast_dict, "body")
@@ -1468,7 +1506,9 @@ def _pipeline_post_parse(
                             if ta_str != "":
                                 type_aliases[ta_name] = ta_str
         tai += 1
-    sig_result = collect_signatures(ast_dict, known_classes, node_classes, type_aliases)
+    sig_result = collect_signatures(
+        ast_dict, known_classes, node_classes, type_aliases, class_bases
+    )
     sig_errors = sig_result.errors()
     if len(sig_errors) > 0:
         err_strs: list[str] = []
@@ -1519,14 +1559,6 @@ def _pipeline_post_parse(
         return (1, "")
     if stop_at == "fields":
         return (0, to_json(field_result.to_dict()))
-    class_bases: dict[str, list[str]] = {}
-    ki = 0
-    while ki < len(mkeys2):
-        mname = mkeys2[ki]
-        info = name_result.table.module_names[mname]
-        if info.kind == "class":
-            class_bases[mname] = list(info.bases)
-        ki += 1
     class_source_files: dict[str, str] = {}
     csf_body = get_nodes(ast_dict, "body")
     csf_i = 0
@@ -1563,7 +1595,17 @@ def _pipeline_post_parse(
         _print_errors(err_strs)
         return (1, "")
     if stop_at == "inference":
-        return (0, to_json(JDict(ast_dict)))
+        reveals_out = JList([])
+        inf_reveals = inf_result.reveals()
+        ri = 0
+        while ri < len(inf_reveals):
+            rev = inf_reveals[ri]
+            reveals_out.items.append(
+                JDict({"line": JInt(rev[0]), "type": JStr(rev[1])})
+            )
+            ri += 1
+        d: dict[str, JsonValue] = {"ast": JDict(ast_dict), "reveals": reveals_out}
+        return (0, to_json(JDict(d)))
     module, lower_errors = lower(
         ast_dict,
         sig_result,
@@ -1588,6 +1630,8 @@ def _pipeline_post_parse(
         module.strict_math = True
     if strict_tostring:
         module.strict_tostring = True
+    if stop_at == "lowering-text":
+        return (0, to_source(module))
     if stop_at == "lowering":
         return (0, to_json(module_to_dict(module)))
     checker = Checker()
@@ -1673,7 +1717,7 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
     while i < len(args):
         arg = args[i]
         if arg == "--help" or arg == "-h":
-            sys.stdout.write(USAGE)
+            print(str(USAGE), end="")
             sys.exit(0)
         elif arg == "--target":
             if i + 1 >= len(args):
@@ -1750,43 +1794,191 @@ def _parse_project_input(data: str) -> list[tuple[str, str]]:
     return result
 
 
-def main() -> int:
+TAYTSH_PHASES: list[str] = [
+    "parse",
+    "check",
+    "returns",
+    "scope",
+    "liveness",
+    "strings",
+    "hoisting",
+    "ownership",
+    "callgraph",
+]
+
+TAYTSH_EMIT_TARGETS: list[str] = ["python", "perl", "ruby"]
+
+
+def taytsh_pipeline(argv: list[str]) -> int:
+    """Handle taytsh --stop-at/--emit subcommand."""
+    stop_at: str | None = None
+    emit_target: str | None = None
+    strict_math = False
+    strict_tostring = False
+    filepath: str | None = None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--stop-at":
+            if i + 1 >= len(argv):
+                print("error: --stop-at requires an argument", file=sys.stderr)
+                return 2
+            stop_at = argv[i + 1]
+            i += 2
+        elif arg == "--emit":
+            if i + 1 >= len(argv):
+                print("error: --emit requires an argument", file=sys.stderr)
+                return 2
+            emit_target = argv[i + 1]
+            i += 2
+        elif arg == "--strict":
+            strict_math = True
+            strict_tostring = True
+            i += 1
+        elif arg == "--strict-math":
+            strict_math = True
+            i += 1
+        elif arg == "--strict-tostring":
+            strict_tostring = True
+            i += 1
+        elif arg.startswith("-"):
+            print("error: unknown flag '" + arg + "'", file=sys.stderr)
+            return 2
+        else:
+            filepath = arg
+            i += 1
+    if stop_at is not None and stop_at not in TAYTSH_PHASES:
+        print("error: unknown taytsh phase '" + stop_at + "'", file=sys.stderr)
+        return 2
+    if emit_target is not None and emit_target not in TAYTSH_EMIT_TARGETS:
+        print("error: unknown emit target '" + emit_target + "'", file=sys.stderr)
+        return 2
+    source, err = read_source(filepath)
+    if err != 0:
+        return err
+    tokens = taytsh_tokenize(source)
+    parser = TaytshParser(tokens)
+    module = parser.parse_program()
+    if strict_math:
+        module.strict_math = True
+    if strict_tostring:
+        module.strict_tostring = True
+    if stop_at == "parse":
+        d: dict[str, JsonValue] = {
+            "strict_math": JBool(module.strict_math),
+            "strict_tostring": JBool(module.strict_tostring),
+        }
+        print(to_json(JDict(d)))
+        return 0
+    check_result = check_with_info(module)
+    errors = check_result[0]
+    checker = check_result[1]
+    if len(errors) > 0:
+        ei = 0
+        while ei < len(errors):
+            print(str(errors[ei]), file=sys.stderr)
+            ei += 1
+        return 1
+    if stop_at == "check":
+        return 0
+    if stop_at == "returns":
+        analyze_returns(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "returns"))))
+        return 0
+    if stop_at == "scope":
+        analyze_scope(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "scope"))))
+        return 0
+    if stop_at == "liveness":
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "liveness"))))
+        return 0
+    if stop_at == "strings":
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        analyze_strings(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "strings"))))
+        return 0
+    if stop_at == "hoisting":
+        analyze_hoisting(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "hoisting"))))
+        return 0
+    if stop_at == "ownership":
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        analyze_ownership(module, checker)
+        print(to_json(JDict(serialize_annotations(module, "ownership"))))
+        return 0
+    if stop_at == "callgraph":
+        analyze_callgraph(module, checker)
+        print(to_json(JDict(serialize_callgraph(module, checker))))
+        return 0
+    if emit_target is not None:
+        analyze_returns(module, checker)
+        analyze_scope(module, checker)
+        analyze_liveness(module, checker)
+        result = ""
+        if emit_target == "python":
+            result = emit_python(module)
+        elif emit_target == "perl":
+            result = emit_perl(module)
+        elif emit_target == "ruby":
+            result = emit_ruby(module)
+        print(result)
+        return 0
+    print("error: --stop-at or --emit required", file=sys.stderr)
+    return 2
+
+
+def main() -> None:
     """Main entry point."""
     if len(sys.argv) > 1 and sys.argv[1] == "taytsh":
+        taytsh_args = sys.argv[2:]
+        has_pipeline_flag = False
+        ti = 0
+        while ti < len(taytsh_args):
+            if taytsh_args[ti] == "--stop-at" or taytsh_args[ti] == "--emit":
+                has_pipeline_flag = True
+                break
+            ti += 1
+        if has_pipeline_flag:
+            sys.exit(taytsh_pipeline(taytsh_args))
         from .taytsh.cli import main as taytsh_main
 
-        return taytsh_main(sys.argv[2:])
+        return taytsh_main(taytsh_args)  # type: ignore[return-value]
     target, stop_at, strict_math, strict_tostring, project, input_file, output_file = (
         parse_args()
     )
     if project:
         source, err = read_source(input_file)
         if err != 0:
-            return err
+            sys.exit(err)
         if len(source) == 0:
             print("error: no input provided", file=sys.stderr)
-            return 2
+            sys.exit(2)
         files = _parse_project_input(source)
         if len(files) == 0:
             print("error: no .py files found in directory", file=sys.stderr)
-            return 1
-        return main_project(
-            files, target, stop_at, strict_math, strict_tostring, output_file
+            sys.exit(1)
+        sys.exit(
+            main_project(
+                files, target, stop_at, strict_math, strict_tostring, output_file
+            )
         )
     source, err = read_source(input_file)
     if err != 0:
-        return err
+        sys.exit(err)
     if len(source) == 0:
         print("error: no input provided", file=sys.stderr)
-        return 2
+        sys.exit(2)
     exit_code, output = run_pipeline(
         source, target, stop_at, strict_math, strict_tostring
     )
     if exit_code != 0:
-        return exit_code
+        sys.exit(exit_code)
     if len(output) > 0:
-        return write_output(output, output_file)
-    return 0
+        sys.exit(write_output(output, output_file))
 
 
 def main_project(

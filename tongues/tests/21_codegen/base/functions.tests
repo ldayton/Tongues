@@ -18,6 +18,11 @@ fn Main() -> void {
     WritelnOut(ToString(result))
 }
 
+=== Main emits as lowercase main
+fn Main() -> void {
+    WritelnOut("hello")
+}
+
 === function literal block body
 fn Apply(f: fn[int, void], x: int) -> void {
     f(x)

@@ -3730,9 +3730,8 @@ def make_arguments() -> ASTNode:
 
 def make_constant_from_token(tok: Token) -> ASTNode:
     """Create Constant node from number or string token with proper end position."""
-    jval: JsonValue
     if tok.type == TK_NUMBER:
-        jval = parse_number_value(tok.value)
+        jval: JsonValue = parse_number_value(tok.value)
     else:
         svalue = parse_string_value(tok.value, tok.lineno, tok.col)
         jval = JStr(svalue)
@@ -3847,7 +3846,16 @@ def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> st
                     raise ParseError("invalid \\u escape", lineno, col)
                 hex_val = s[i + 2 : i + 6]
                 try:
-                    result.append(chr(int(hex_val, 16)))
+                    code_point = int(hex_val, 16)
+                    if 0xD800 <= code_point <= 0xDFFF:
+                        raise ParseError(
+                            "surrogate code point U+"
+                            + hex_val.upper()
+                            + " not allowed",
+                            lineno,
+                            col,
+                        )
+                    result.append(chr(code_point))
                     i += 6
                 except ValueError:
                     raise ParseError("invalid \\u escape", lineno, col)
@@ -3859,6 +3867,14 @@ def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> st
                     code_point = int(hex_val, 16)
                     if code_point > 0x10FFFF:
                         raise ParseError("invalid \\U escape", lineno, col)
+                    if 0xD800 <= code_point <= 0xDFFF:
+                        raise ParseError(
+                            "surrogate code point U+"
+                            + hex_val.upper().lstrip("0").zfill(4)
+                            + " not allowed",
+                            lineno,
+                            col,
+                        )
                     result.append(chr(code_point))
                     i += 10
                 except ValueError:

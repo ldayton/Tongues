@@ -1,0 +1,3 @@
+=== interface with fields
+package Animal;
+sub new {

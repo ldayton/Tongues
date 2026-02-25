@@ -8,7 +8,10 @@ all = $stdin.read
 line = $stdin.gets&.chomp
 
 === ReadFile emits open idiom
-File.read("input.txt")
+File.read("input.txt", encoding: "utf-8")
+
+=== ReadFileBytes emits open idiom
+File.binread("input.txt").bytes
 
 === WriteFile emits open idiom
 File.write("output.txt", "hello")

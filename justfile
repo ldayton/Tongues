@@ -1,5 +1,14 @@
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
+# Quick pre-push check: lint, fmt, subset, test-local
+prep:
+    #!/usr/bin/env bash
+    log=/tmp/tongues-prep-$(date +%s).log
+    rc=0
+    { just lint && just fmt && just subset && just test-local; } 2>&1 | tee "$log" || rc=$?
+    echo "$log"
+    exit $rc
+
 # Verify all transpiler source is subset-compliant
 subset:
     #!/usr/bin/env bash
@@ -59,9 +68,13 @@ test-middleend-local:
 test-backend-local:
     uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
 
+# Run declaration ordering tests locally
+test-ordering-local:
+    uv run --directory tongues pytest tests/test_runner.py -k test_ordering -v
+
 # Run taytsh tests locally
 test-taytsh-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" tests/test_taytsh_vm.py -v
 
 # Run all tests locally in a single pytest invocation
 test-all-local:
@@ -108,24 +121,49 @@ check:
     echo "══════════════════════════════════════"
     exit $failed
 
-# Self-transpile: feed all source files through --stop-at analyze
-self-transpile:
+# Self-transpile: emit to .out/tongues.{ext}
+self-transpile target="python":
     #!/usr/bin/env bash
     set -euo pipefail
-    cd tongues
-    uv run python -c "
-    import sys, os
-    b = sys.stdout.buffer
-    for dp, _, fns in sorted(os.walk('src')):
-        for fn in sorted(fns):
-            if not fn.endswith('.py'):
-                continue
-            p = os.path.join(dp, fn)
-            s = open(p).read()
-            if 'tongues: skip' in '\n'.join(s.split('\n', 5)[:5]):
-                continue
-            b.write(p.encode() + b'\x00' + s.encode() + b'\x00')
-    " | uv run python -m src.tongues --project --stop-at analyze >/dev/null
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
+    mkdir -p tongues/.out
+    cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
+    if [ "{{target}}" = "python" ]; then
+        uv run python3 -c "import ast; ast.parse(open('.out/tongues.py').read())"
+    fi
+
+# Run test suite against a transpiled binary locally
+test-transpiled-local target="python":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
+    case "{{target}}" in
+        python)
+            uv run --directory tongues pytest tests/test_runner.py \
+                --transpiled ".out/tongues.${ext[{{target}}]}" -v
+            ;;
+        ruby)
+            cd tongues && ruby bin/test-transpiled.rb ".out/tongues.rb"
+            ;;
+        perl)
+            cd tongues && perl bin/test-transpiled.pl ".out/tongues.pl"
+            ;;
+        *)
+            echo "No native test harness for {{target}}, falling back to pytest"
+            uv run --directory tongues pytest tests/test_runner.py \
+                --transpiled ".out/tongues.${ext[{{target}}]}" -v
+            ;;
+    esac
+
+# Run test suite against a transpiled binary in Docker
+test-transpiled target="python":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
+    docker build -t tongues-{{target}} docker/{{target}}
+    docker run --rm -v "$(pwd):/workspace" tongues-{{target}} \
+        uv run --directory tongues pytest tests/test_runner.py \
+        --transpiled ".out/tongues.${ext[{{target}}]}" -v
 
 # Build Docker image for a language
 docker-build lang:
@@ -201,7 +239,7 @@ test-backend:
 test-taytsh:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" tests/test_taytsh_vm.py -v
 
 # Check if formatters are installed
 formatters:
@@ -272,7 +310,7 @@ versions:
     exit $failed
 
 # Run all tests in Docker
-test: test-backend test-taytsh
+test: test-backend test-taytsh self-transpile test-transpiled (self-transpile "ruby") (test-transpiled "ruby") (self-transpile "perl") (test-transpiled "perl")
 
 # Run all tests locally (requires matching runtime versions)
 test-local:
@@ -292,13 +330,19 @@ test-local:
     just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
     just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
+    just self-transpile && results[self-transpile]=✅ || { results[self-transpile]=❌; failed=1; }
+    just test-transpiled-local && results[transpiled]=✅ || { results[transpiled]=❌; failed=1; }
+    just self-transpile ruby && results[self-transpile-rb]=✅ || { results[self-transpile-rb]=❌; failed=1; }
+    just test-transpiled-local ruby && results[transpiled-rb]=✅ || { results[transpiled-rb]=❌; failed=1; }
+    just self-transpile perl && results[self-transpile-pl]=✅ || { results[self-transpile-pl]=❌; failed=1; }
+    just test-transpiled-local perl && results[transpiled-pl]=✅ || { results[transpiled-pl]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "         TEST-LOCAL SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh; do
+    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh self-transpile transpiled self-transpile-rb transpiled-rb self-transpile-pl transpiled-pl; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

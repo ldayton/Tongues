@@ -13,6 +13,54 @@ Each backend is a tree walker. For each IR node type, the backend has an emitter
 
 These are not phases — they happen together during the single tree walk. The emitter for a `for` node might check provenance, read scope annotations, and pattern-match the body, all in one method.
 
+## Declaration Ordering
+
+The Taytsh IR has forward-reference semantics: all top-level declarations are visible throughout the module regardless of position (see `12-taytsh-ir-spec.md`, Module Structure). Target languages do not necessarily share this property. Backends emitting languages where class/struct declarations are evaluated top-to-bottom must emit declarations in dependency order.
+
+### Dependency graph
+
+Nodes are top-level declarations: structs, interfaces, enums, and top-level lets.
+
+Edges: declaration A depends on declaration B when:
+
+- A implements B (struct `: Interface`)
+- A has a field whose type mentions B (directly or as a type parameter)
+- A is a top-level `let` whose initializer references B
+
+Functions are excluded — function bodies are not evaluated at definition time in any target, and function signatures referencing not-yet-defined types are legal in every target Tongues supports.
+
+### Algorithm
+
+Topologically sort declarations so that dependencies are emitted before dependents. When no dependency exists between two declarations, preserve the original IR order for determinism.
+
+Cycles between struct field types are possible (`struct A { b: B? }`, `struct B { a: A? }`). These references are always through optional, collection, or function types — a struct cannot directly contain itself. All target languages handle this via reference/pointer semantics. When a cycle exists, the backend breaks it arbitrarily; the circular references work regardless of order because the types are indirect.
+
+### Target classification
+
+| Ordering    | Targets                                       | Reason                                                                 |
+| ----------- | --------------------------------------------- | ---------------------------------------------------------------------- |
+| Not needed  | Go, Rust, Swift, Zig, C#, Dart, Java          | All declarations within a file/package/module are mutually visible     |
+| Required    | Python, JavaScript, TypeScript, Ruby, Perl, Lua | Class/struct declarations are evaluated top-to-bottom                  |
+| Forward decl | C                                             | Requires forward declarations (`struct Foo;`) before first reference  |
+
+### Target-specific notes
+
+**Python** — Class bases and `@dataclass` field annotations are evaluated at class definition time. Dependency ordering alone is sufficient; `from __future__ import annotations` is not needed because the topological sort guarantees all referenced types exist before use.
+
+**JavaScript / TypeScript** — `class` declarations are not hoisted. A class extending another must appear after the base class definition.
+
+**Ruby** — A class inheriting from another must appear after the parent. Mixins and reopened classes are not used by Tongues, so simple dependency order suffices.
+
+**Perl** — Package definitions are evaluated top-to-bottom. Parent packages must be defined before `use parent`.
+
+**Lua** — All definitions (`local X = ...`) are sequential. Metatables and class-emulating tables must be defined before use.
+
+**C** — Emit forward declarations for all struct types at the top of the file, then emit full definitions in dependency order. This two-pass approach avoids issues with mutually recursive struct pointers.
+
+### Interaction with project compilation
+
+The project merge phase (`04a-project-and-imports.md`) sorts files by import dependencies, not by type dependencies. Two structs in different files may have a type dependency without an import dependency (because all names become visible after merge). The backend's declaration ordering pass is therefore necessary even when the project merge has already run.
+
 ## Idiomatic Output
 
 Every backend emits unconditionally idiomatic output by default. `for i in range(n)` becomes `for i in 0..n` in Rust, `for (int i = 0; i < n; i++)` in Java, `map[K]V{"a": 1}` becomes `HashMap::from(...)` in Rust — regardless of annotations. This is the backend's native translation of IR constructs into the target's natural forms.

@@ -1,0 +1,17 @@
+-- Parent and Child reference each other via optional/collection fields.
+-- Whichever is emitted first, the other type isn't defined yet.
+
+struct Parent {
+    children: list[Child]
+}
+
+struct Child {
+    parent: Parent?
+}
+
+fn Main() -> void {
+    let p: Parent = Parent([])
+    let c: Child = Child(p)
+    Append(p.children, c)
+    Assert(Len(p.children) == 1)
+}

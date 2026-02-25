@@ -76,6 +76,47 @@ def f() -> list[str]:
 Args()
 ---
 
+=== argv element string comparison
+import sys
+def f() -> bool:
+    args = sys.argv[1:]
+    return args[0] == "--help"
+---
+== "--help"
+---
+
+=== argv slice-from-one is just Args
+import sys
+def f() -> int:
+    return len(sys.argv[1:])
+---
+return Len(Args())
+---
+
+=== argv slice-from-two offsets by one
+import sys
+def f() -> list[str]:
+    return sys.argv[2:]
+---
+Args()[1:
+---
+
+=== argv index offsets for program name
+import sys
+def f() -> str:
+    return sys.argv[1]
+---
+return Args()[0]
+---
+
+=== argv length includes program name
+import sys
+def f() -> bool:
+    return len(sys.argv) > 1
+---
+Len(Args()) + 1 > 1
+---
+
 === getenv no default
 import os
 def f(name: str) -> str | None:
@@ -90,4 +131,28 @@ def f(name: str) -> str:
     return os.getenv(name, "fallback")
 ---
 GetEnv(name, "fallback")
+---
+
+=== with open read binary
+def f(path: str) -> bytes:
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        return b""
+    return raw
+---
+ReadFileBytes(path)
+---
+
+=== with open write text
+def f(path: str, data: str) -> bool:
+    try:
+        with open(path, "w") as fh:
+            fh.write(data)
+    except OSError:
+        return False
+    return True
+---
+WriteFile(path, data)
 ---

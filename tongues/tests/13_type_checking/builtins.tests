@@ -844,20 +844,20 @@ fn Main() -> void {
 ok
 ---
 
-=== ReadFile returns string or bytes
+=== ReadFile returns string
 fn Main() -> void {
-    let b: string | bytes = ReadFile("test.txt")
+    let s: string = ReadFile("test.txt")
 }
 ---
 ok
 ---
 
-=== ReadFile to bytes rejected
+=== ReadFileBytes returns bytes
 fn Main() -> void {
-    let b: bytes = ReadFile("test.txt")
+    let b: bytes = ReadFileBytes("test.txt")
 }
 ---
-error: cannot assign
+ok
 ---
 
 === WriteFile with string

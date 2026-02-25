@@ -35,6 +35,7 @@ from ..taytsh.ast import (
     TModule,
     TNilLit,
     TOpAssignStmt,
+    TParam,
     TPatternEnum,
     TPatternNil,
     TPatternType,
@@ -63,7 +64,6 @@ from ..taytsh.check import (
     Checker,
     FLOAT_T,
     INT_T,
-    InterfaceT,
     ListT,
     MapT,
     NIL_T,
@@ -627,7 +627,7 @@ def _classify_list_source(
         for e in expr.elements:
             c = _classify_string_expr(e, string_content, list_content, ctx)
             level = _join_content(level, c)
-        return level if level is not None else _C_ASCII
+        return level
     if isinstance(expr, TVar):
         if expr.name in list_content:
             return list_content[expr.name]
@@ -958,9 +958,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 case_declared.add(pat.name)
             elif isinstance(pat, TPatternEnum):
                 enum_t = ctx.checker.types.get(pat.enum_name)
-                if enum_t is not None and isinstance(enum_t, (InterfaceT, StructT)):
-                    covered.append(enum_t)
-                elif enum_t is not None and isinstance(enum_t, Type):
+                if enum_t is not None:
                     covered.append(enum_t)
             elif isinstance(pat, TPatternNil):
                 covered.append(NIL_T)
@@ -995,7 +993,7 @@ def _compute_contents(ctx: _StringsCtx) -> None:
             string_content[name] = _C_ASCII
             has_non_dead_source = False
             for src in ctx.string_sources.get(name, []):
-                if src.kind == "expr":
+                if src.kind == "expr" and src.expr is not None:
                     string_content[name] = _classify_string_expr(
                         src.expr, string_content, list_content, ctx
                     )
@@ -1074,6 +1072,18 @@ def _stamp_bindings(ctx: _StringsCtx) -> None:
         ann["strings.len_called"] = "true" if info.len_called else "false"
 
 
+def _register_param_type(
+    ctx: _StringsCtx, p: TParam, pt: Type, declared: set[str]
+) -> None:
+    ctx.var_types[p.name] = pt
+    declared.add(p.name)
+    if _contains_string_type(pt):
+        _register_string_binding(ctx, p.name, p.annotations, pt, None, True)
+    if _is_list_of_string_type(pt):
+        ctx.list_string_types[p.name] = pt
+        ctx.list_string_sources[p.name] = []
+
+
 def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) -> None:
     ctx = _StringsCtx(
         checker=checker,
@@ -1089,18 +1099,9 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
     declared: set[str] = set()
     for p in decl.params:
         if p.typ is not None:
-            pt = checker.resolve_type(p.typ)
+            _register_param_type(ctx, p, checker.resolve_type(p.typ), declared)
         elif p.name == "this" and self_type is not None:
-            pt = self_type
-        else:
-            continue
-        ctx.var_types[p.name] = pt
-        declared.add(p.name)
-        if _contains_string_type(pt):
-            _register_string_binding(ctx, p.name, p.annotations, pt, None, True)
-        if _is_list_of_string_type(pt):
-            ctx.list_string_types[p.name] = pt
-            ctx.list_string_sources[p.name] = []
+            _register_param_type(ctx, p, self_type, declared)
 
     _walk_stmts(decl.body, ctx, declared)
     _compute_contents(ctx)

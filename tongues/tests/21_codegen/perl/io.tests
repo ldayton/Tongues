@@ -2,13 +2,16 @@
 print("no newline");
 
 === ReadAll and ReadLine
-my $all = do { local $/; scalar(<STDIN>) };
+my $all = do { local $/; decode('UTF-8', scalar(<STDIN>), Encode::FB_CROAK) };
 
 === ReadLine returns optional
-my $line = scalar(<STDIN>);
+my $line = do { my $__l = scalar(<STDIN>); defined($__l) ? decode('UTF-8', $__l, Encode::FB_CROAK) : $__l };
 
 === ReadFile emits open idiom
-my $data = do { my $__p = "input.txt"; open(my $__fh, '<', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d };
+my $data = do { my $__p = "input.txt"; open(my $__fh, '<:encoding(UTF-8)', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d };
+
+=== ReadFileBytes emits open idiom
+my $data = do { my $__p = "input.txt"; open(my $__fh, '<:raw', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d };
 
 === WriteFile emits open idiom
 do { my $__p = "output.txt"; my $__d = "hello"; open(my $__fh, '>', $__p) or die $__p; print $__fh $__d; close($__fh) };

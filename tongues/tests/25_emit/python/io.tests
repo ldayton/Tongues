@@ -1,0 +1,2 @@
+=== read file binary mode
+open(path, "rb").read()

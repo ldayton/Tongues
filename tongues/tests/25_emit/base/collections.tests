@@ -1,0 +1,7 @@
+=== set from dict items
+def main() -> None:
+    d: dict[str, int] = {"a": 1, "b": 2}
+    s: set[tuple[str, int]] = set(d.items())
+    print(str(len(s)))
+if __name__ == "__main__":
+    main()

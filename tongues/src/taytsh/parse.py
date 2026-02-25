@@ -244,10 +244,14 @@ class Parser:
             if self.peek(1).value == "@":
                 self.advance()
                 self.advance()
-                semantic.update(self._parse_ann_entries())
+                entries = self._parse_ann_entries()
+                for k in entries:
+                    semantic[k] = entries[k]
             elif self.peek(1).value == "[":
                 self.advance()
-                advisory.update(self._parse_ann_entries())
+                entries = self._parse_ann_entries()
+                for k in entries:
+                    advisory[k] = entries[k]
             else:
                 break
         return advisory, semantic
@@ -273,8 +277,10 @@ class Parser:
                         raise self.error("unknown annotation '" + key + "'")
                 semantic: dict[str, str] = {}
                 seen_decl = True
-            decl.annotations.update(advisory)
-            decl.annotations.update(semantic)
+            for k in advisory:
+                decl.annotations[k] = advisory[k]
+            for k in semantic:
+                decl.annotations[k] = semantic[k]
             decls.append(decl)
         module = TModule(decls)
         module.strict_math = strict_math
@@ -378,7 +384,7 @@ class Parser:
         name_tok = self.expect_ident()
         self.expect("{")
         self.expect("}")
-        return TInterfaceDecl(pos, name_tok.value, {})
+        return TInterfaceDecl(pos, name_tok.value, {}, [])
 
     def parse_enum_decl(self) -> TEnumDecl:
         pos = self._pos()
@@ -477,7 +483,11 @@ class Parser:
 
     def parse_stmt(self) -> TStmt:
         advisory, semantic = self.parse_annotations()
-        ann: dict[str, str] = {**advisory, **semantic}
+        ann: dict[str, str] = {}
+        for k in advisory:
+            ann[k] = advisory[k]
+        for k in semantic:
+            ann[k] = semantic[k]
         tok = self.current()
         if tok.value == "let":
             stmt: TStmt = self.parse_let_stmt()
@@ -505,8 +515,8 @@ class Parser:
             stmt = self.parse_throw_stmt()
         else:
             stmt = self.parse_expr_stmt()
-        if ann:
-            stmt.annotations.update(ann)
+        for k in ann:
+            stmt.annotations[k] = ann[k]
         return stmt
 
     def parse_let_stmt(self) -> TLetStmt:
@@ -553,9 +563,8 @@ class Parser:
             second_name = self.expect_ident()
             binding.append(second_name.value)
         self.expect("in")
-        iterable: TExpr
         if self.at("range"):
-            iterable = self.parse_range()
+            iterable: TExpr = self.parse_range()
         else:
             iterable = self.parse_expr()
         body = self.parse_block()
@@ -831,7 +840,11 @@ class Parser:
     def parse_postfix(self) -> TExpr:
         """Postfix = Annotation* Primary ( Suffix )*"""
         advisory, semantic = self.parse_annotations()
-        ann: dict[str, str] = {**advisory, **semantic}
+        ann: dict[str, str] = {}
+        for k in advisory:
+            ann[k] = advisory[k]
+        for k in semantic:
+            ann[k] = semantic[k]
         expr = self.parse_primary()
         while True:
             if self.at("."):
@@ -863,8 +876,8 @@ class Parser:
                 expr = TCall(expr.pos, expr, args, {})
             else:
                 break
-        if ann:
-            expr.annotations.update(ann)
+        for k in ann:
+            expr.annotations[k] = ann[k]
         return expr
 
     def parse_arg_list(self) -> list[TArg]:

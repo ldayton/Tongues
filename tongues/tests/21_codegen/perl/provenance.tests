@@ -1,5 +1,5 @@
 === not in operator (raised)
-if (!grep { $_ == 2 } @{$xs}) {
+if (!(grep { $_ == 2 } @{$xs})) {
     say("missing");
 }
 
