@@ -152,14 +152,30 @@ fn Main() -> void {
 Foo.throws = IndexError
 ---
 
-=== builtin ReadFile throws IOError
-fn Foo(path: string) -> string | bytes {
+=== builtin ReadFile throws IOError and ValueError
+fn Foo(path: string) -> string {
     return ReadFile(path)
 }
 fn Main() -> void {
     try {
-        let content: string | bytes = Foo("test.txt")
-        WritelnOut(ToString(content))
+        let content: string = Foo("test.txt")
+        WritelnOut(content)
+    } catch e: IOError {
+        WritelnOut("io")
+    }
+}
+---
+Foo.throws = IOError;ValueError
+---
+
+=== builtin ReadFileBytes throws IOError
+fn Foo(path: string) -> bytes {
+    return ReadFileBytes(path)
+}
+fn Main() -> void {
+    try {
+        let content: bytes = Foo("test.txt")
+        WritelnOut(ToString(Len(content)))
     } catch e: IOError {
         WritelnOut("io")
     }

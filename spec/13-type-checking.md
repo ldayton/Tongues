@@ -146,7 +146,7 @@ Loop variables, match bindings, and catch bindings are scoped to their block —
 
 Built-in function names are reserved and cannot be used for any binding — local variables, parameters, loop variables, match bindings, catch bindings, struct names, enum names, interface names, or function names.
 
-Reserved names include: `Abs`, `Min`, `Max`, `Sum`, `Pow`, `Round`, `Floor`, `Ceil`, `Sqrt`, `DivMod`, `Len`, `Concat`, `Append`, `Insert`, `Pop`, `RemoveAt`, `IndexOf`, `Contains`, `Reversed`, `Sorted`, `RangeList`, `Map`, `Get`, `Delete`, `Keys`, `Values`, `Items`, `Merge`, `Set`, `Remove`, `Union`, `Intersection`, `Difference`, `ToString`, `Format`, `Encode`, `Decode`, `Bytes`, `BytesFrom`, `Split`, `SplitN`, `SplitWhitespace`, `Join`, `Find`, `RFind`, `Count`, `Replace`, `Repeat`, `Reverse`, `StartsWith`, `EndsWith`, `Upper`, `Lower`, `Trim`, `TrimStart`, `TrimEnd`, `RuneFromInt`, `RuneToInt`, `ParseInt`, `ParseFloat`, `FormatInt`, `IntToFloat`, `FloatToInt`, `ByteToInt`, `IntToByte`, `IsDigit`, `IsAlpha`, `IsAlnum`, `IsSpace`, `IsUpper`, `IsLower`, `IsType`, `WriteOut`, `WriteErr`, `WritelnOut`, `WritelnErr`, `ReadLine`, `ReadAll`, `ReadBytes`, `ReadBytesN`, `ReadFile`, `WriteFile`, `Args`, `GetEnv`, `Exit`, `Assert`, `Unwrap`, `IsNaN`, `IsInf`, `WrappingAdd`, `WrappingSub`, `WrappingMul`.
+Reserved names include: `Abs`, `Min`, `Max`, `Sum`, `Pow`, `Round`, `Floor`, `Ceil`, `Sqrt`, `DivMod`, `Len`, `Concat`, `Append`, `Insert`, `Pop`, `RemoveAt`, `IndexOf`, `Contains`, `Reversed`, `Sorted`, `RangeList`, `Map`, `Get`, `Delete`, `Keys`, `Values`, `Items`, `Merge`, `Set`, `Remove`, `Union`, `Intersection`, `Difference`, `ToString`, `Format`, `Encode`, `Decode`, `Bytes`, `BytesFrom`, `Split`, `SplitN`, `SplitWhitespace`, `Join`, `Find`, `RFind`, `Count`, `Replace`, `Repeat`, `Reverse`, `StartsWith`, `EndsWith`, `Upper`, `Lower`, `Trim`, `TrimStart`, `TrimEnd`, `RuneFromInt`, `RuneToInt`, `ParseInt`, `ParseFloat`, `FormatInt`, `IntToFloat`, `FloatToInt`, `ByteToInt`, `IntToByte`, `IsDigit`, `IsAlpha`, `IsAlnum`, `IsSpace`, `IsUpper`, `IsLower`, `IsType`, `WriteOut`, `WriteErr`, `WritelnOut`, `WritelnErr`, `ReadLine`, `ReadAll`, `ReadBytes`, `ReadBytesN`, `ReadFile`, `ReadFileBytes`, `WriteFile`, `Args`, `GetEnv`, `Exit`, `Assert`, `Unwrap`, `IsNaN`, `IsInf`, `WrappingAdd`, `WrappingSub`, `WrappingMul`.
 
 Exception: `Add` is a built-in but not reserved — it can be used as a binding name.
 
@@ -641,7 +641,8 @@ The checker validates every built-in function call for argument count, argument 
 | `ReadAll()`          | `-> string`                       |
 | `ReadBytes()`        | `-> bytes`                        |
 | `ReadBytesN(n)`      | `int -> bytes`                    |
-| `ReadFile(path)`     | `string -> string \| bytes`       |
+| `ReadFile(path)`      | `string -> string`                |
+| `ReadFileBytes(path)` | `string -> bytes`                 |
 | `WriteFile(path, d)` | `string, string \| bytes -> void` |
 | `Args()`             | `-> list[string]`                 |
 | `GetEnv(name)`       | `string -> string?`               |

@@ -955,6 +955,7 @@ BUILTIN_NAMES: set[str] = {
     "ReadBytes",
     "ReadBytesN",
     "ReadFile",
+    "ReadFileBytes",
     "WriteFile",
     "Args",
     "GetEnv",
@@ -4683,6 +4684,13 @@ class Checker:
             t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, STRING_T):
                 self.error("ReadFile requires string path", pos)
+            return STRING_T
+        if name == "ReadFileBytes":
+            if not _bctx_require(ctx, 1):
+                return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None and not type_eq(t, STRING_T):
+                self.error("ReadFileBytes requires string path", pos)
             return BYTES_T
         if name == "WriteFile":
             if not _bctx_require(ctx, 2):

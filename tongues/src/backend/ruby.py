@@ -2195,6 +2195,8 @@ class _RubyEmitter:
         if name == "GetEnv":
             return "ENV.fetch(" + self._a(args, 0) + ', "")'
         if name == "ReadFile":
+            return "File.read(" + self._a(args, 0) + ', encoding: "utf-8")'
+        if name == "ReadFileBytes":
             return "File.binread(" + self._a(args, 0) + ").bytes"
         if name == "WriteFile":
             return "File.write(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"

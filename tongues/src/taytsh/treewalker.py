@@ -623,6 +623,7 @@ _RESERVED_BINDINGS: set[str] = {
     "Ceil",
     "Sqrt",
     "ReadFile",
+    "ReadFileBytes",
     "WriteFile",
     # Built-in error struct names (treated as reserved for simplicity)
     "KeyError",
@@ -3611,14 +3612,26 @@ def _bi_read_file(rt: Runtime, args: list[Value]) -> Value:
     try:
         with open(path.value, "rb") as f:
             data = f.read()
-        if isinstance(data, str):
-            return VString(data)
         if isinstance(data, bytes):
             try:
                 return VString(data.decode("utf-8"))
-            except UnicodeDecodeError:
-                return VBytes(data)
+            except UnicodeDecodeError as e:
+                rt._throw_err("ValueError", str(e))
+                return VNil()
         return VNil()
+    except OSError as e:
+        rt._throw_err("IOError", str(e))
+        return VNil()
+
+
+def _bi_read_file_bytes(rt: Runtime, args: list[Value]) -> Value:
+    path = args[0]
+    if not isinstance(path, VString):
+        raise TaytshRuntimeFault("ReadFileBytes expects string", None)
+    try:
+        with open(path.value, "rb") as f:
+            data = f.read()
+        return VBytes(data)
     except OSError as e:
         rt._throw_err("IOError", str(e))
         return VNil()
@@ -3857,6 +3870,8 @@ def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
         return _bi_read_bytes_n(rt, args)
     if name == "ReadFile":
         return _bi_read_file(rt, args)
+    if name == "ReadFileBytes":
+        return _bi_read_file_bytes(rt, args)
     if name == "WriteFile":
         return _bi_write_file(rt, args)
     if name == "Args":
@@ -3962,6 +3977,7 @@ _BUILTIN_NAMES_RT: set[str] = {
     "ReadBytes",
     "ReadBytesN",
     "ReadFile",
+    "ReadFileBytes",
     "WriteFile",
     "Args",
     "GetEnv",

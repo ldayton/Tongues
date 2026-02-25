@@ -156,7 +156,6 @@ def _escape_perl_string(value: str) -> str:
     return "".join(out)
 
 
-
 def _escape_perl_regex(s: str) -> str:
     result: list[str] = []
     for ch in s:
@@ -1032,13 +1031,7 @@ class _PerlEmitter:
             elif self._is_string_expr(iterable):
                 self._line("for my " + name + " (split(//, " + it + ")) {")
             elif self._is_bytes_expr(iterable):
-                self._line(
-                    "for my "
-                    + name
-                    + " (unpack('C*', "
-                    + it
-                    + ")) {"
-                )
+                self._line("for my " + name + " (unpack('C*', " + it + ")) {")
             else:
                 if iter_type is None and not self._is_list_expr(iterable):
                     self._line(
@@ -1409,7 +1402,19 @@ class _PerlEmitter:
                     neg2 = self._negative_index(expr)
                     if neg2 is not None:
                         idx2 = neg2
-                return "(ref(" + obj_s + ") ? " + obj_s + "->[" + idx2 + "] : substr(" + obj_s + ", " + idx2 + ", 1))"
+                return (
+                    "(ref("
+                    + obj_s
+                    + ") ? "
+                    + obj_s
+                    + "->["
+                    + idx2
+                    + "] : substr("
+                    + obj_s
+                    + ", "
+                    + idx2
+                    + ", 1))"
+                )
             return self._expr(expr.obj) + "->{" + self._hash_key(expr.index) + "}"
         if isinstance(expr, TSlice):
             return self._slice(expr)
@@ -1658,7 +1663,18 @@ class _PerlEmitter:
         if isinstance(expr, (TIntLit, TFloatLit, TBoolLit)):
             return True
         if isinstance(expr, TBinaryOp) and expr.op in (
-            "+", "-", "*", "/", "//", "%", "**", "&", "|", "^", "<<", ">>",
+            "+",
+            "-",
+            "*",
+            "/",
+            "//",
+            "%",
+            "**",
+            "&",
+            "|",
+            "^",
+            "<<",
+            ">>",
         ):
             return True
         if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
@@ -1683,7 +1699,14 @@ class _PerlEmitter:
         if op in ("or", "||"):
             return "||"
         if op in ("==", "!=", "<", ">", "<=", ">=") and is_str and not is_num:
-            return {"==": "eq", "!=": "ne", "<": "lt", ">": "gt", "<=": "le", ">=": "ge"}[op]
+            return {
+                "==": "eq",
+                "!=": "ne",
+                "<": "lt",
+                ">": "gt",
+                "<=": "le",
+                ">=": "ge",
+            }[op]
         if op in ("==", "!=") and not is_num:
             return "eq" if op == "==" else "ne"
         if op == "+" and is_str:
@@ -2191,9 +2214,21 @@ class _PerlEmitter:
         if name == "IsSpace":
             return "(" + self._a(args, 0) + " =~ /^\\s+$/ ? 1 : 0)"
         if name == "IsUpper":
-            return "(" + self._a(args, 0) + " =~ /[A-Z]/ && " + self._a(args, 0) + " !~ /[a-z]/ ? 1 : 0)"
+            return (
+                "("
+                + self._a(args, 0)
+                + " =~ /[A-Z]/ && "
+                + self._a(args, 0)
+                + " !~ /[a-z]/ ? 1 : 0)"
+            )
         if name == "IsLower":
-            return "(" + self._a(args, 0) + " =~ /[a-z]/ && " + self._a(args, 0) + " !~ /[A-Z]/ ? 1 : 0)"
+            return (
+                "("
+                + self._a(args, 0)
+                + " =~ /[a-z]/ && "
+                + self._a(args, 0)
+                + " !~ /[A-Z]/ ? 1 : 0)"
+            )
         if name == "Encode":
             return "encode('UTF-8', " + self._a(args, 0) + ")"
         if name == "Decode":
@@ -2389,7 +2424,11 @@ class _PerlEmitter:
                 return self._a(args, 0)
             a = self._deref_safe(self._a(args, 0))
             if self._is_set_expr(args[0].value):
-                return "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{" + a + "}; $__s }"
+                return (
+                    "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{"
+                    + a
+                    + "}; $__s }"
+                )
             return "do { my $__s = {}; $__s->{$_} = 1 for @{" + a + "}; $__s }"
         if name == "ToString":
             inner_expr = args[0].value
@@ -2459,6 +2498,12 @@ class _PerlEmitter:
                 "do { my $__p = "
                 + self._a(args, 0)
                 + "; open(my $__fh, '<:encoding(UTF-8)', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d }"
+            )
+        if name == "ReadFileBytes":
+            return (
+                "do { my $__p = "
+                + self._a(args, 0)
+                + "; open(my $__fh, '<:raw', $__p) or die $__p; local $/; my $__d = <$__fh>; close($__fh); $__d }"
             )
         if name == "WriteFile":
             return (

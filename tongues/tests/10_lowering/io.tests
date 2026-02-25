@@ -142,7 +142,7 @@ def f(path: str) -> bytes:
         return b""
     return raw
 ---
-ReadFile(path)
+ReadFileBytes(path)
 ---
 
 === with open write text

@@ -1767,6 +1767,9 @@ class _PythonEmitter:
             return "sys.stdin.buffer.read(" + self._a(args, 0) + ")"
         if name == "ReadFile":
             p = self._a(args, 0)
+            return "open(" + p + ', "r", encoding="utf-8").read()'
+        if name == "ReadFileBytes":
+            p = self._a(args, 0)
             return "open(" + p + ', "rb").read()'
         if name == "WriteFile":
             p = self._a(args, 0)

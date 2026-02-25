@@ -250,6 +250,7 @@ BUILTIN_TABLE: list[str] = [
     "ReadBytes",
     "ReadBytesN",
     "ReadFile",
+    "ReadFileBytes",
     "ReadLine",
     "Remove",
     "RemoveAt",

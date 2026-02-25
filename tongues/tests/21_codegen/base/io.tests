@@ -21,8 +21,14 @@ fn Main() -> void {
 
 === ReadFile emits open idiom
 fn Main() -> void {
-    let data: string | bytes = ReadFile("input.txt")
-    WritelnOut(ToString(data))
+    let data: string = ReadFile("input.txt")
+    WritelnOut(data)
+}
+
+=== ReadFileBytes emits open idiom
+fn Main() -> void {
+    let data: bytes = ReadFileBytes("input.txt")
+    WritelnOut(ToString(Len(data)))
 }
 
 === WriteFile emits open idiom

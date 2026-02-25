@@ -3968,13 +3968,13 @@ def _lower_with_open(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     body = get_nodes(node, "body")
     stmt = body[0]
     if mode == "rb":
-        # with open(path, "rb") as f: raw = f.read() → raw = ReadFile(path)
+        # with open(path, "rb") as f: raw = f.read() → raw = ReadFileBytes(path)
         targets = get_nodes(stmt, "targets")
         target_node = targets[0]
         name = get_str(target_node, "id")
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
-        call = _make_call(pos, "ReadFile", [path_expr])
+        call = _make_call(pos, "ReadFileBytes", [path_expr])
         val_type: TypeNode = PrimitiveType("bytes")
         if name not in env.declared:
             env.declared.add(name)

@@ -844,9 +844,17 @@ fn Main() -> void {
 ok
 ---
 
-=== ReadFile returns bytes
+=== ReadFile returns string
 fn Main() -> void {
-    let b: bytes = ReadFile("test.txt")
+    let s: string = ReadFile("test.txt")
+}
+---
+ok
+---
+
+=== ReadFileBytes returns bytes
+fn Main() -> void {
+    let b: bytes = ReadFileBytes("test.txt")
 }
 ---
 ok
