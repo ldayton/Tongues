@@ -737,6 +737,7 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
 
 def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     """Synthesize return type of a call."""
+    _validate_call_args(node, env, ctx, get_int(node, "lineno"))
     func = get_node(node, "func")
     if len(func) == 0:
         return ANY_TYPE
@@ -1281,6 +1282,7 @@ class _InferCtx:
         self.class_bases: dict[str, list[str]] = class_bases
         self.result: InferenceResult = result
         self.module_vars: dict[str, TypeNode] = {}
+        self.validated_calls: set[int] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -1720,6 +1722,10 @@ def _validate_call_args(
     """Validate argument types in function/method calls."""
     if not _is_type(node, ["Call"]):
         return
+    call_id = id(node)
+    if call_id in ctx.validated_calls:
+        return
+    ctx.validated_calls.add(call_id)
     func = get_node(node, "func")
     args = get_nodes(node, "args")
     if len(func) == 0:
