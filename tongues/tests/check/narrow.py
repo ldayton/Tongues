@@ -48,35 +48,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.taytsh.ast import (
-    Ann,
-    Pos,
-    TArg,
-    TBinaryOp,
-    TBoolLit,
-    TCall,
-    TExprStmt,
-    TFieldAccess,
     TFieldDecl,
-    TFnDecl,
-    TIfStmt,
-    TIntLit,
     TInterfaceDecl,
-    TLetStmt,
     TMatchCase,
     TMatchStmt,
     TModule,
     TModuleItem,
-    TNilLit,
     TPatternNil,
     TPatternType,
     TPrimitive,
     TReturnStmt,
-    TStringLit,
     TStructDecl,
-    TTernary,
-    TUnaryOp,
-    TVar,
-    TWhileStmt,
 )
 from src.taytsh.check import (
     BOOL_T,
@@ -95,9 +77,27 @@ from src.taytsh.check import (
 
 
 from tests.check.types import make_ttype
-
-P = Pos(1, 1)
-A: Ann = {}
+from tests.check.ast_helpers import (
+    P,
+    A,
+    var as _var,
+    int_lit as _int,
+    nil_lit as _nil,
+    str_lit as _str,
+    let_stmt as _let,
+    return_stmt as _return,
+    expr_stmt as _expr_stmt,
+    call as _call,
+    field_access as _field,
+    if_stmt as _if,
+    while_stmt as _while,
+    not_op as _not,
+    binop as _binop,
+    ternary as _ternary,
+    filler_stmts as _filler_stmts,
+    build_module,
+    filter_noise_errors,
+)
 
 
 # ── Type scaffolding ────────────────────────────────────────────
@@ -193,82 +193,6 @@ class NarrowingFailure:
     case: str  # "accept" or "reject"
     expected_clean: bool
     actual_errors: list[str]
-
-
-# ── AST helpers ──────────────────────────────────────────────────
-
-
-def _var(name: str) -> TVar:
-    return TVar(pos=P, name=name, annotations=A)
-
-
-def _int(n: int) -> TIntLit:
-    return TIntLit(pos=P, value=n, raw=str(n), annotations=A)
-
-
-def _nil() -> TNilLit:
-    return TNilLit(pos=P, annotations=A)
-
-
-def _bool(v: bool) -> TBoolLit:
-    return TBoolLit(pos=P, value=v, annotations=A)
-
-
-def _str(s: str) -> TStringLit:
-    return TStringLit(pos=P, value=s, annotations=A)
-
-
-def _let(name: str, typ: Type, value=None) -> TLetStmt:
-    return TLetStmt(pos=P, name=name, typ=make_ttype(typ), value=value, annotations=A)
-
-
-def _return(value=None) -> TReturnStmt:
-    return TReturnStmt(pos=P, value=value, annotations=A)
-
-
-def _expr_stmt(expr) -> TExprStmt:
-    return TExprStmt(pos=P, expr=expr, annotations=A)
-
-
-def _call(func_name: str, *args) -> TCall:
-    targs = [TArg(pos=P, name=None, value=a) for a in args]
-    return TCall(pos=P, func=_var(func_name), args=targs, annotations=A)
-
-
-def _field(obj, field: str) -> TFieldAccess:
-    return TFieldAccess(pos=P, obj=obj, field=field, annotations=A)
-
-
-def _if(cond, then_body, else_body=None) -> TIfStmt:
-    return TIfStmt(
-        pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A
-    )
-
-
-def _while(cond, body) -> TWhileStmt:
-    return TWhileStmt(pos=P, cond=cond, body=body, annotations=A)
-
-
-def _not(expr) -> TUnaryOp:
-    return TUnaryOp(pos=P, op="!", operand=expr, annotations=A)
-
-
-def _binop(left, op, right) -> TBinaryOp:
-    return TBinaryOp(pos=P, op=op, left=left, right=right, annotations=A)
-
-
-def _ternary(cond, then_expr, else_expr) -> TTernary:
-    return TTernary(
-        pos=P, cond=cond, then_expr=then_expr, else_expr=else_expr, annotations=A
-    )
-
-
-def _filler_stmts(n: int) -> list:
-    """Generate n harmless filler statements to increase distance between guard and use."""
-    stmts = []
-    for i in range(n):
-        stmts.append(_let(f"_filler{i}", INT_T, _int(i)))
-    return stmts
 
 
 # ── Condition builders ───────────────────────────────────────────
@@ -557,15 +481,7 @@ def _build_narrowing_module(
     else:
         return _empty_module()
 
-    main = TFnDecl(
-        pos=P,
-        name="Main",
-        params=[],
-        ret=TPrimitive(pos=P, kind="void"),
-        body=body,
-        annotations=A,
-    )
-    return TModule(decls=list(_TYPE_DECLS) + [main])
+    return build_module(_TYPE_DECLS, body)
 
 
 def _build_match_body(spec, var, use_stmts, filler):
@@ -689,28 +605,11 @@ def _build_field_path_module(spec, use_stmts, filler):
     ]
     body.append(_if(cond, filler + narrowed_use))
 
-    decls = list(_TYPE_DECLS) + [_HOLDER_DECL]
-    main = TFnDecl(
-        pos=P,
-        name="Main",
-        params=[],
-        ret=TPrimitive(pos=P, kind="void"),
-        body=body,
-        annotations=A,
-    )
-    return TModule(decls=decls + [main])
+    return build_module(list(_TYPE_DECLS) + [_HOLDER_DECL], body)
 
 
 def _empty_module() -> TModule:
-    main = TFnDecl(
-        pos=P,
-        name="Main",
-        params=[],
-        ret=TPrimitive(pos=P, kind="void"),
-        body=[],
-        annotations=A,
-    )
-    return TModule(decls=list(_TYPE_DECLS) + [main])
+    return build_module(_TYPE_DECLS, [])
 
 
 # ── Guard condition builders ─────────────────────────────────────
@@ -955,11 +854,7 @@ def run_narrowing_spec(spec: NarrowingSpec) -> list[NarrowingFailure]:
 
 def _filter_errors(msgs: list[str]) -> list[str]:
     """Remove errors that aren't related to narrowing."""
-    return [
-        m
-        for m in msgs
-        if "missing Main" not in m and "variable used before assignment" not in m
-    ]
+    return filter_noise_errors(msgs)
 
 
 def run_all() -> tuple[list[NarrowingFailure], int]:

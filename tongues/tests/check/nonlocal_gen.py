@@ -61,19 +61,22 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from src.taytsh.ast import (
-    Pos,
-    TArg,
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
+    TContinueStmt,
     TExpr,
     TExprStmt,
+    TFieldAccess,
     TFnDecl,
     TFnLit,
     TForStmt,
     TIfStmt,
     TIndex,
     TLetStmt,
+    TListLit,
+    TMapLit,
     TMatchCase,
     TMatchStmt,
     TModule,
@@ -82,65 +85,36 @@ from src.taytsh.ast import (
     TPatternType,
     TRange,
     TReturnStmt,
+    TSetLit,
     TSlice,
     TStmt,
     TStructDecl,
+    TTernary,
     TThrowStmt,
     TTryStmt,
+    TTupleAccess,
     TTupleAssignStmt,
     TTupleLit,
-    TTupleAccess,
-    TTernary,
     TUnaryOp,
     TVar,
     TWhileStmt,
-    TNilLit,
-    TFieldAccess,
-    TIntLit,
-    TFloatLit,
-    TBoolLit,
-    TByteLit,
-    TBytesLit,
-    TStringLit,
-    TRuneLit,
-    TListLit,
-    TMapLit,
-    TSetLit,
-    TBreakStmt,
-    TContinueStmt,
 )
 from src.taytsh.check import (
-    BOOL_T,
-    BYTE_T,
-    BYTES_T,
-    FLOAT_T,
-    INT_T,
     NIL_T,
-    RUNE_T,
-    STRING_T,
     VOID_T,
-    EnumT,
     FnT,
     InterfaceT,
-    ListT,
-    MapT,
-    SetT,
-    StructT,
-    TupleT,
     Type,
-    UnionT,
     type_eq,
 )
 
 from .types import make_ttype
+from .ast_helpers import P, A, zero_value as _zero_value
 
 if TYPE_CHECKING:
     from . import Generator
     from .exprs import ExprGen
     from .stmts import StmtGen
-
-P = Pos(1, 1)
-A: dict[str, str] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -407,63 +381,6 @@ def _find_match_candidate(
                 if type_eq(ftype, target):
                     return (b.name, b.typ, st.name, fname)
     return None
-
-
-# ---------------------------------------------------------------------------
-# Zero-value helper
-# ---------------------------------------------------------------------------
-
-
-def _zero_value(t: Type) -> TExpr:
-    if type_eq(t, INT_T):
-        return TIntLit(pos=P, value=0, raw="0", annotations=A)
-    if type_eq(t, FLOAT_T):
-        return TFloatLit(pos=P, value=0.0, raw="0.0", annotations=A)
-    if type_eq(t, BOOL_T):
-        return TBoolLit(pos=P, value=False, annotations=A)
-    if type_eq(t, BYTE_T):
-        return TByteLit(pos=P, value=0, raw="0x00", annotations=A)
-    if type_eq(t, BYTES_T):
-        return TBytesLit(pos=P, value=b"", annotations=A)
-    if type_eq(t, STRING_T):
-        return TStringLit(pos=P, value="", annotations=A)
-    if type_eq(t, RUNE_T):
-        return TRuneLit(pos=P, value="a", annotations=A)
-    if type_eq(t, NIL_T):
-        return TNilLit(pos=P, annotations=A)
-    if isinstance(t, StructT):
-        args = [
-            TArg(pos=P, name=f, value=_zero_value(ft)) for f, ft in t.fields.items()
-        ]
-        return TCall(
-            pos=P,
-            func=TVar(pos=P, name=t.name, annotations=A),
-            args=args,
-            annotations=A,
-        )
-    if isinstance(t, ListT):
-        return TListLit(pos=P, elements=[], annotations=A)
-    if isinstance(t, MapT):
-        return TMapLit(pos=P, entries=[], annotations=A)
-    if isinstance(t, SetT):
-        return TSetLit(pos=P, elements=[], annotations=A)
-    if isinstance(t, TupleT):
-        return TTupleLit(
-            pos=P, elements=[_zero_value(e) for e in t.elements], annotations=A
-        )
-    if isinstance(t, EnumT):
-        return TFieldAccess(
-            pos=P,
-            obj=TVar(pos=P, name=t.name, annotations=A),
-            field=t.variants[0],
-            annotations=A,
-        )
-    if isinstance(t, UnionT):
-        for m in t.members:
-            if type_eq(m, NIL_T):
-                return TNilLit(pos=P, annotations=A)
-        return _zero_value(t.members[0])
-    return TIntLit(pos=P, value=0, raw="0", annotations=A)
 
 
 # ---------------------------------------------------------------------------

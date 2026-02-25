@@ -7,17 +7,14 @@ from itertools import combinations
 from typing import Callable
 
 from src.taytsh.ast import (
-    Pos,
     TDefault,
     TEnumDecl,
-    TFnDecl,
     TInterfaceDecl,
     TLetStmt,
     TMatchCase,
     TMatchStmt,
     TModule,
     TModuleItem,
-    TPrimitive,
     TPattern,
     TPatternEnum,
     TPatternNil,
@@ -25,6 +22,7 @@ from src.taytsh.ast import (
     TStructDecl,
     TVar,
     TFieldDecl,
+    TPrimitive,
 )
 from src.taytsh.check import (
     INT_T,
@@ -39,9 +37,7 @@ from src.taytsh.check import (
 )
 
 from .types import make_ttype
-
-P = Pos(1, 1)
-A: dict[str, str] = {}
+from .ast_helpers import P, A, build_module as _build_module_from_body, filter_noise_errors
 
 
 @dataclass
@@ -91,15 +87,7 @@ def _build_module(
     config: TypeConfig, cases: list[CaseSpec], with_default: bool
 ) -> TModule:
     body = _make_let_and_match(config.scrutinee_type, "val", cases, with_default)
-    main = TFnDecl(
-        pos=P,
-        name="Main",
-        params=[],
-        ret=TPrimitive(pos=P, kind="void"),
-        body=body,
-        annotations=A,
-    )
-    return TModule(decls=list(config.decls) + [main])
+    return _build_module_from_body(config.decls, body)
 
 
 def _powerset(items: list[CaseSpec]) -> list[list[CaseSpec]]:
@@ -493,13 +481,8 @@ def run_exhaustiveness(config: TypeConfig) -> list[ExhaustivenessFailure]:
         errors = check(module)
         error_msgs = [e.msg for e in errors]
         has_exhaust_error = any("non-exhaustive" in m for m in error_msgs)
-        # Filter to only exhaustiveness-relevant errors
         other_errors = [
-            m
-            for m in error_msgs
-            if "non-exhaustive" not in m
-            and "missing Main" not in m
-            and "variable used before assignment" not in m
+            m for m in filter_noise_errors(error_msgs) if "non-exhaustive" not in m
         ]
 
         if expected_exhaust and has_exhaust_error:

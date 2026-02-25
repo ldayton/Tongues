@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.taytsh.ast import (
-    Pos,
     TEnumDecl,
     TFieldDecl,
     TFnDecl,
@@ -23,12 +22,10 @@ from src.taytsh.check import (
 )
 
 from .types import make_ttype
+from .ast_helpers import P, A
 
 if TYPE_CHECKING:
     from . import Generator
-
-P = Pos(1, 1)
-A: dict[str, str] = {}
 
 
 class DeclGen:
