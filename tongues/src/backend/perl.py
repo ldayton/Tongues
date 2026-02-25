@@ -73,9 +73,7 @@ from ..taytsh.check import BUILTIN_NAMES, BUILTIN_STRUCTS
 
 _PERL_RESERVED = frozenset(
     {
-        "abs",
         "and",
-        "bin",
         "cmp",
         "continue",
         "do",
@@ -86,9 +84,7 @@ _PERL_RESERVED = frozenset(
         "foreach",
         "ge",
         "gt",
-        "hex",
         "if",
-        "join",
         "last",
         "le",
         "lt",
@@ -97,7 +93,6 @@ _PERL_RESERVED = frozenset(
         "next",
         "no",
         "not",
-        "oct",
         "or",
         "package",
         "return",
@@ -389,23 +384,13 @@ class _PerlEmitter:
         self._line()
         self._line("package main;")
         ordered = order_decls(module.decls)
-        fwd_seen: set[str] = set()
-        fwd: list[str] = []
         for decl in ordered:
             if isinstance(decl, TLetStmt):
                 self.var_types[decl.name] = decl.typ
                 self.module_var_names.add(decl.name)
-                safe = _restore_name(decl.name, decl.annotations)
-                self.fwd_declared.add(decl.name)
-                if safe not in fwd_seen:
-                    fwd.append("my $" + safe + ";")
-                    fwd_seen.add(safe)
         for decl in ordered:
             if isinstance(decl, TFnDecl) and decl.ret is not None:
                 self.fn_ret[decl.name] = decl.ret
-        if fwd:
-            for f in fwd:
-                self._line(f)
         need_blank = False
         current_package = "main"
         for decl in ordered:
@@ -2037,15 +2022,15 @@ class _PerlEmitter:
             s = self._a(args, 0)
             pfx = args[1].value
             if isinstance(pfx, TStringLit):
-                pat = _escape_perl_regex(pfx.value)
-                return "((" + s + " =~ /^" + pat + "/) ? 1 : 0)"
+                pat = _escape_perl_string(pfx.value)
+                return "((" + s + " =~ /^\\Q" + pat + "\\E/) ? 1 : 0)"
             return "((" + s + " =~ /^\\Q${\\ " + self._a(args, 1) + "}\\E/) ? 1 : 0)"
         if name == "EndsWith":
             s = self._a(args, 0)
             sfx = args[1].value
             if isinstance(sfx, TStringLit):
-                pat = _escape_perl_regex(sfx.value)
-                return "((" + s + " =~ /" + pat + "$/) ? 1 : 0)"
+                pat = _escape_perl_string(sfx.value)
+                return "((" + s + " =~ /\\Q" + pat + "\\E$/) ? 1 : 0)"
             return "((" + s + " =~ /\\Q${\\ " + self._a(args, 1) + "}\\E$/) ? 1 : 0)"
         if name == "IsDigit":
             return "(" + self._a(args, 0) + " =~ /^\\d+$/ ? 1 : 0)"
@@ -2402,7 +2387,7 @@ class _PerlEmitter:
     def _contains_expr(self, container: TExpr, needle: TExpr) -> str:
         c = self._expr(container)
         n = self._expr(needle)
-        if self._is_string_expr(container):
+        if self._is_string_expr(container) or self._is_bytes_expr(container):
             return "index(" + c + ", " + n + ") >= 0"
         if self._is_map_expr(container) or self._is_set_expr(container):
             return "exists(" + c + "->{" + self._hash_key(needle) + "})"
@@ -2452,7 +2437,20 @@ class _PerlEmitter:
             return "scalar(keys %{ +" + s + " })"
         if self._is_list_expr(expr):
             return "scalar(@{" + self._deref_safe(s) + "})"
-        return "(ref(" + s + ") eq 'ARRAY' ? scalar(@{" + s + "}) : length(" + s + "))"
+        safe = self._deref_safe(s)
+        return (
+            "(ref("
+            + s
+            + ") eq 'ARRAY' ? scalar(@{"
+            + safe
+            + "}) : ref("
+            + s
+            + ") eq 'HASH' ? scalar(keys %{"
+            + safe
+            + "}) : length("
+            + s
+            + "))"
+        )
 
     def _deref_safe(self, s: str) -> str:
         """Wrap expressions that are ambiguous inside @{} / %{} deref."""
