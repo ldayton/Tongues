@@ -2,7 +2,7 @@
 
 from typing import Callable
 
-from .signatures import annotation_to_str
+from .typecollect import annotation_to_str
 from .types import (
     JStr,
     JInt,

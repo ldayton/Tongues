@@ -75,13 +75,13 @@ from ..taytsh.ast import (
     TVar,
     TWhileStmt,
 )
-from .signatures import (
+from .typecollect import (
     ParamInfo,
     SignatureResult,
     annotation_to_str,
     py_type_to_type_dict,
 )
-from .fields import FieldResult
+from .typecollect import FieldResult
 from .hierarchy import HierarchyResult
 from .types import (
     TypeNode,

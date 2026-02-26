@@ -12,8 +12,7 @@ from .frontend.bind import (
     IMPORT_ONLY_MODULES,
     ALLOWED_FROM_MODULES,
 )
-from .frontend.signatures import collect_signatures
-from .frontend.fields import collect_fields
+from .frontend.typecollect import collect_signatures, collect_fields
 from .frontend.hierarchy import build_hierarchy
 from .frontend.inference import run_inference
 from .frontend.lowering import lower

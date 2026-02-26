@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from src.frontend.fields import collect_fields
+from src.frontend.typecollect import collect_fields
 from src.frontend.hierarchy import build_hierarchy
 from src.frontend.inference import run_inference as _run_inference
 from src.frontend.bind import bind, resolve_names
 from src.frontend.parse import parse
-from src.frontend.signatures import collect_signatures
+from src.frontend.typecollect import collect_signatures
 from src.frontend.bind import verify as verify_subset
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 

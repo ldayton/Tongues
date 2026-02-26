@@ -10,14 +10,14 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 from __future__ import annotations
 
 
-from .signatures import (
+from .typecollect import (
     FuncInfo,
     SignatureResult,
     annotation_to_str,
     py_type_to_type_dict,
-    SignatureError,
+    TypeCollectError,
 )
-from .fields import FieldResult
+from .typecollect import FieldResult
 from .hierarchy import HierarchyResult
 from .types import (
     TypeNode,
@@ -1711,7 +1711,7 @@ def _validate_ann_assign(
     if len(annotation) == 0:
         return
     ann_str = annotation_to_str(annotation)
-    sig_errors: list[SignatureError] = []
+    sig_errors: list[TypeCollectError] = []
     ann_type = py_type_to_type_dict(ann_str, ctx.known_classes, sig_errors, lineno, 0)
     if _is_type(target, ["Name"]):
         name = get_str(target, "id")
@@ -2268,7 +2268,7 @@ def _validate_match(
                 if len(cls) > 0 and _is_type(cls, ["Name"]):
                     cls_name = get_str(cls, "id")
                     if cls_name != "":
-                        sig_errors: list[SignatureError] = []
+                        sig_errors: list[TypeCollectError] = []
                         narrowed = py_type_to_type_dict(
                             cls_name, ctx.known_classes, sig_errors, 0, 0
                         )
@@ -2454,7 +2454,7 @@ def _extract_narrowing(
             elif source != "" and _is_optional_source(source):
                 non_none = _non_none_parts(source)
                 if len(non_none) == 1:
-                    sig_errors: list[SignatureError] = []
+                    sig_errors: list[TypeCollectError] = []
                     narrowed = py_type_to_type_dict(
                         non_none[0], ctx.known_classes, sig_errors, 0, 0
                     )
@@ -2539,14 +2539,14 @@ def _narrow_isinstance(
         return
     if len(narrow_names) == 1:
         narrow_name = narrow_names[0]
-        sig_errors: list[SignatureError] = []
+        sig_errors: list[TypeCollectError] = []
         narrowed = py_type_to_type_dict(
             narrow_name, ctx.known_classes, sig_errors, 0, 0
         )
         then_env.narrow(name, narrowed, narrow_name)
     elif len(narrow_names) > 1:
         union_source = " | ".join(narrow_names)
-        sig_errors: list[SignatureError] = []
+        sig_errors: list[TypeCollectError] = []
         first_type = py_type_to_type_dict(
             narrow_names[0], ctx.known_classes, sig_errors, 0, 0
         )
@@ -2564,14 +2564,14 @@ def _narrow_isinstance(
                 remaining.append(p)
             j += 1
         if len(remaining) == 1:
-            sig_errors2: list[SignatureError] = []
+            sig_errors2: list[TypeCollectError] = []
             rem_type = py_type_to_type_dict(
                 remaining[0], ctx.known_classes, sig_errors2, 0, 0
             )
             else_env.narrow(name, rem_type, remaining[0])
         elif len(remaining) > 1:
             new_source = " | ".join(remaining)
-            sig_errors2: list[SignatureError] = []
+            sig_errors2: list[TypeCollectError] = []
             rem_type = py_type_to_type_dict(
                 new_source, ctx.known_classes, sig_errors2, 0, 0
             )
@@ -2689,7 +2689,7 @@ def _narrow_compare(
                         elif obj_name != "":
                             parts = _split_union_parts(src)
                             if found_class in parts:
-                                sig_e: list[SignatureError] = []
+                                sig_e: list[TypeCollectError] = []
                                 then_env.narrow(
                                     obj_name,
                                     py_type_to_type_dict(
@@ -2708,7 +2708,7 @@ def _narrow_compare(
                                         remaining.append(parts[j2])
                                     j2 += 1
                                 if len(remaining) == 1:
-                                    sig_e2: list[SignatureError] = []
+                                    sig_e2: list[TypeCollectError] = []
                                     else_env.narrow(
                                         obj_name,
                                         py_type_to_type_dict(
@@ -2722,7 +2722,7 @@ def _narrow_compare(
                                     )
                                 elif len(remaining) > 1:
                                     new_src = " | ".join(remaining)
-                                    sig_e2: list[SignatureError] = []
+                                    sig_e2: list[TypeCollectError] = []
                                     else_env.narrow(
                                         obj_name,
                                         py_type_to_type_dict(
@@ -2761,7 +2761,7 @@ def _narrow_compare(
                         if found_class != "":
                             parts = _split_union_parts(src)
                             if found_class in parts:
-                                sig_e3: list[SignatureError] = []
+                                sig_e3: list[TypeCollectError] = []
                                 else_env.narrow(
                                     obj_name,
                                     py_type_to_type_dict(
@@ -2780,7 +2780,7 @@ def _narrow_compare(
                                         remaining2.append(parts[j3])
                                     j3 += 1
                                 if len(remaining2) == 1:
-                                    sig_e4: list[SignatureError] = []
+                                    sig_e4: list[TypeCollectError] = []
                                     then_env.narrow(
                                         obj_name,
                                         py_type_to_type_dict(
@@ -2794,7 +2794,7 @@ def _narrow_compare(
                                     )
                                 elif len(remaining2) > 1:
                                     new_src2 = " | ".join(remaining2)
-                                    sig_e4: list[SignatureError] = []
+                                    sig_e4: list[TypeCollectError] = []
                                     then_env.narrow(
                                         obj_name,
                                         py_type_to_type_dict(
@@ -2819,14 +2819,14 @@ def _narrow_to_non_none(name: str, env: TypeEnv, ctx: _InferCtx) -> None:
     if source != "" and _is_optional_source(source):
         non_none = _non_none_parts(source)
         if len(non_none) == 1:
-            sig_errors: list[SignatureError] = []
+            sig_errors: list[TypeCollectError] = []
             narrowed = py_type_to_type_dict(
                 non_none[0], ctx.known_classes, sig_errors, 0, 0
             )
             env.narrow(name, narrowed, non_none[0])
         elif len(non_none) > 1:
             new_source = " | ".join(non_none)
-            sig_errors3: list[SignatureError] = []
+            sig_errors3: list[TypeCollectError] = []
             narrowed = py_type_to_type_dict(
                 new_source, ctx.known_classes, sig_errors3, 0, 0
             )
@@ -2882,7 +2882,7 @@ def _narrow_or_isinstance(
     if name == "" or len(type_names) == 0:
         return
     union_source = " | ".join(type_names)
-    sig_errors: list[SignatureError] = []
+    sig_errors: list[TypeCollectError] = []
     first_type = py_type_to_type_dict(
         type_names[0], ctx.known_classes, sig_errors, 0, 0
     )
@@ -3627,7 +3627,7 @@ def run_inference(
                 if var_name != "":
                     ann_str = annotation_to_str(annotation)
                     if ann_str != "":
-                        sig_errors: list[SignatureError] = []
+                        sig_errors: list[TypeCollectError] = []
                         var_type = py_type_to_type_dict(
                             ann_str, known_classes, sig_errors, 0, 0
                         )
