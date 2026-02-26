@@ -32,6 +32,7 @@ from .types import (
     InterfaceRef,
     FuncType,
     IteratorType,
+    LiteralType,
     ANY_TYPE,
     INT_TYPE,
     FLOAT_TYPE,
@@ -44,6 +45,7 @@ from .types import (
     combine_types,
     remove_from_union,
     union_variant_names,
+    _variant_name,
     type_name as _type_name_fn,
     JStr,
     JInt,
@@ -161,6 +163,9 @@ def _is_assignable(
         if isinstance(expected, InterfaceRef):
             return True
         return False
+    # LiteralType delegates to its base
+    if isinstance(actual, LiteralType):
+        return _is_assignable(actual.base, expected, hier)
     # bool <: int <: float, byte <: int
     if isinstance(actual, PrimitiveType) and isinstance(expected, PrimitiveType):
         if actual.kind == "bool" and expected.kind == "int":
@@ -662,7 +667,7 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
         if fld is not None:
             return fld.typ
         if attr in cls.const_fields:
-            return STR_TYPE
+            return LiteralType(cls.const_fields[attr], PrimitiveType("string"))
     methods = ctx.tc_result.methods.get(sname)
     if methods is not None:
         method = methods.get(attr)
@@ -2435,13 +2440,53 @@ def _narrow_isinstance(
         else_env.narrow(name, remaining_type)
 
 
+def _pascal_to_kebab(name: str) -> str:
+    """PascalCase to kebab-case: BinaryOp -> binary-op."""
+    result: list[str] = []
+    i = 0
+    while i < len(name):
+        ch = name[i]
+        if ch.isupper() and i > 0:
+            prev = name[i - 1]
+            if prev.islower() or prev.isdigit():
+                result.append("-")
+            elif prev.isupper() and i + 1 < len(name) and name[i + 1].islower():
+                result.append("-")
+        result.append(ch)
+        i += 1
+    return "".join(result).lower()
+
+
+def _find_variant_by_const_field(
+    union_type: UnionType,
+    field_name: str,
+    field_value: str,
+    ctx: _InferCtx,
+) -> TypeNode | None:
+    """Find the union variant whose const_fields[field_name] == field_value."""
+    i = 0
+    while i < len(union_type.variants):
+        vname = _variant_name(union_type.variants[i])
+        if vname != "":
+            cls = ctx.tc_result.classes.get(vname)
+            if cls is not None:
+                cf_val = cls.const_fields.get(field_name)
+                if cf_val is not None and cf_val == field_value:
+                    return union_type.variants[i]
+                if cf_val is None and field_name == "kind":
+                    if _pascal_to_kebab(vname) == field_value:
+                        return union_type.variants[i]
+        i += 1
+    return None
+
+
 def _narrow_compare(
     test: ASTNode,
     then_env: TypeEnv,
     else_env: TypeEnv,
     ctx: _InferCtx,
 ) -> None:
-    """Narrow from comparison (x is None, x is not None, x.kind == "foo")."""
+    """Narrow from comparison (x is None, x is not None, x.attr == "foo")."""
     left = get_node(test, "left")
     ops = get_nodes(test, "ops")
     comparators = get_nodes(test, "comparators")
@@ -2509,100 +2554,71 @@ def _narrow_compare(
     if op_type == "Eq":
         if _is_type(left, ["Attribute"]):
             attr = get_str(left, "attr")
-            if attr == "kind":
-                comp_v = comp.get("value")
-                if isinstance(comp_v, JStr):
-                    comp_value = comp_v.value
-                    obj_node = get_node(left, "value")
-                    obj_name = ""
-                    obj_type: TypeNode | None = None
-                    if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
-                        obj_name = get_str(obj_node, "id")
-                        if obj_name != "":
-                            obj_type = then_env.get_type(obj_name)
-                    if len(obj_node) > 0 and _is_type(obj_node, ["Attribute"]):
-                        kind_path = _attr_path(obj_node)
-                        if kind_path != "":
-                            then_env.guard_attr(kind_path)
-                    if obj_type is not None and isinstance(obj_type, UnionType):
-                        found_class = ""
-                        all_classes = list(ctx.known_classes)
-                        j = 0
-                        while j < len(all_classes):
-                            if all_classes[j].lower() == comp_value.lower():
-                                found_class = all_classes[j]
-                                break
-                            j += 1
-                        if found_class == "":
-                            k_lineno = get_int(test, "lineno")
-                            ctx.result.add_error(
-                                k_lineno,
-                                0,
-                                "kind value '"
-                                + comp_value
-                                + "' does not match any known type",
-                            )
-                        elif obj_name != "":
-                            variant_names = union_variant_names(obj_type)
-                            if found_class in variant_names:
-                                sig_e: list[TypeCollectError] = []
-                                narrowed_type = py_type_to_type_dict(
-                                    found_class,
-                                    ctx.known_classes,
-                                    sig_e,
-                                    0,
-                                    0,
-                                )
-                                then_env.narrow(obj_name, narrowed_type)
-                                else_remaining = remove_from_union(
-                                    obj_type, [narrowed_type]
-                                )
-                                else_env.narrow(obj_name, else_remaining)
-                return
+            comp_v = comp.get("value")
+            if isinstance(comp_v, JStr):
+                comp_value = comp_v.value
+                obj_node = get_node(left, "value")
+                obj_name = ""
+                obj_type: TypeNode | None = None
+                if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
+                    obj_name = get_str(obj_node, "id")
+                    if obj_name != "":
+                        obj_type = then_env.get_type(obj_name)
+                if len(obj_node) > 0 and _is_type(obj_node, ["Attribute"]):
+                    attr_path = _attr_path(obj_node)
+                    if attr_path != "":
+                        then_env.guard_attr(attr_path)
+                if obj_type is not None and isinstance(obj_type, UnionType):
+                    matched = _find_variant_by_const_field(
+                        obj_type,
+                        attr,
+                        comp_value,
+                        ctx,
+                    )
+                    if matched is None:
+                        k_lineno = get_int(test, "lineno")
+                        ctx.result.add_error(
+                            k_lineno,
+                            0,
+                            attr
+                            + " value '"
+                            + comp_value
+                            + "' does not match any known type",
+                        )
+                    elif obj_name != "":
+                        then_env.narrow(obj_name, matched)
+                        else_remaining = remove_from_union(obj_type, [matched])
+                        else_env.narrow(obj_name, else_remaining)
+            return
     if op_type == "NotEq" and not comp_is_none:
         if _is_type(left, ["Attribute"]):
             attr = get_str(left, "attr")
-            if attr == "kind":
-                comp_v = comp.get("value")
-                if isinstance(comp_v, JStr):
-                    comp_value = comp_v.value
-                    obj_node = get_node(left, "value")
-                    obj_name = ""
-                    obj_type2: TypeNode | None = None
-                    if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
-                        obj_name = get_str(obj_node, "id")
-                        if obj_name != "":
-                            obj_type2 = else_env.get_type(obj_name)
-                    if (
-                        obj_name != ""
-                        and obj_type2 is not None
-                        and isinstance(obj_type2, UnionType)
-                    ):
-                        found_class = ""
-                        all_classes = list(ctx.known_classes)
-                        j = 0
-                        while j < len(all_classes):
-                            if all_classes[j].lower() == comp_value.lower():
-                                found_class = all_classes[j]
-                                break
-                            j += 1
-                        if found_class != "":
-                            variant_names2 = union_variant_names(obj_type2)
-                            if found_class in variant_names2:
-                                sig_e3: list[TypeCollectError] = []
-                                narrowed_type2 = py_type_to_type_dict(
-                                    found_class,
-                                    ctx.known_classes,
-                                    sig_e3,
-                                    0,
-                                    0,
-                                )
-                                else_env.narrow(obj_name, narrowed_type2)
-                                then_remaining = remove_from_union(
-                                    obj_type2, [narrowed_type2]
-                                )
-                                then_env.narrow(obj_name, then_remaining)
-                return
+            comp_v = comp.get("value")
+            if isinstance(comp_v, JStr):
+                comp_value = comp_v.value
+                obj_node = get_node(left, "value")
+                obj_name = ""
+                obj_type2: TypeNode | None = None
+                if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
+                    obj_name = get_str(obj_node, "id")
+                    if obj_name != "":
+                        obj_type2 = else_env.get_type(obj_name)
+                if (
+                    obj_name != ""
+                    and obj_type2 is not None
+                    and isinstance(obj_type2, UnionType)
+                ):
+                    matched = _find_variant_by_const_field(
+                        obj_type2,
+                        attr,
+                        comp_value,
+                        ctx,
+                    )
+                    if matched is not None:
+                        else_env.narrow(obj_name, matched)
+                        then_remaining = remove_from_union(obj_type2, [matched])
+                        then_env.narrow(obj_name, then_remaining)
+            return
 
 
 def _narrow_to_non_none(name: str, env: TypeEnv, ctx: _InferCtx) -> None:
@@ -2982,9 +2998,7 @@ def _check_needs_narrowing(
                 lineno, 0, "cannot access attribute on object without narrowing"
             )
         elif context == "subscript":
-            ctx.result.add_error(
-                lineno, 0, "cannot subscript object without narrowing"
-            )
+            ctx.result.add_error(lineno, 0, "cannot subscript object without narrowing")
         return
     if context == "attribute" and attr_name != "":
         sname = _struct_name(typ)
@@ -3336,9 +3350,7 @@ def _class_has_attr(class_name: str, attr_name: str, ctx: _InferCtx) -> bool:
     return False
 
 
-def _all_union_members_have_attr(
-    typ: TypeNode, attr_name: str, ctx: _InferCtx
-) -> bool:
+def _all_union_members_have_attr(typ: TypeNode, attr_name: str, ctx: _InferCtx) -> bool:
     """Check if all union variant struct/interface types have the given attribute."""
     if not isinstance(typ, UnionType):
         return False

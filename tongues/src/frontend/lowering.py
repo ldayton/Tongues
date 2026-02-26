@@ -95,6 +95,7 @@ from .types import (
     InterfaceRef,
     FuncType,
     UnionType,
+    LiteralType,
     INT_TYPE,
     FLOAT_TYPE,
     BOOL_TYPE,
@@ -300,6 +301,8 @@ def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
         if len(parts2) >= 2:
             return TUnionType(pos, parts2)
         return TPrimitive(pos, "error")
+    if isinstance(t, LiteralType):
+        return _typenode_to_ttype(pos, t.base)
     return TPrimitive(pos, "error")
 
 

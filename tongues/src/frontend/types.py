@@ -108,6 +108,14 @@ class IteratorType(TypeNode):
     element: TypeNode
 
 
+@dataclass
+class LiteralType(TypeNode):
+    """A literal type: Literal["foo"], Literal[42], Literal[true]."""
+
+    lit_value: str
+    base: PrimitiveType
+
+
 # ============================================================
 # LITERAL TYPE NODES (for default values)
 # ============================================================
@@ -340,6 +348,8 @@ def contains_any(t: TypeNode) -> bool:
                 return True
             i += 1
         return False
+    if isinstance(t, LiteralType):
+        return False
     return False
 
 
@@ -394,6 +404,10 @@ def type_name(t: TypeNode) -> str:
         return " | ".join(parts)
     if isinstance(t, IteratorType):
         return "Iterator[" + type_name(t.element) + "]"
+    if isinstance(t, LiteralType):
+        if t.base.kind == "string":
+            return 'Literal["' + t.lit_value + '"]'
+        return "Literal[" + t.lit_value + "]"
     return "unknown"
 
 
@@ -464,6 +478,8 @@ def type_eq(a: TypeNode, b: TypeNode) -> bool:
                 return False
             i += 1
         return True
+    if isinstance(a, LiteralType) and isinstance(b, LiteralType):
+        return a.lit_value == b.lit_value and a.base.kind == b.base.kind
     return a == b
 
 
@@ -495,6 +511,43 @@ def combine_types(types: list[TypeNode]) -> TypeNode:
         if not is_dup:
             deduped.append(flat[i])
         i += 1
+    # Literal absorption: base type absorbs its literals
+    base_kinds: set[str] = set()
+    i = 0
+    while i < len(deduped):
+        di = deduped[i]
+        if isinstance(di, PrimitiveType):
+            base_kinds.add(di.kind)
+        i += 1
+    absorbed: list[TypeNode] = []
+    has_lit_true = False
+    has_lit_false = False
+    i = 0
+    while i < len(deduped):
+        d = deduped[i]
+        if isinstance(d, LiteralType):
+            if d.base.kind not in base_kinds:
+                if d.base.kind == "bool" and d.lit_value == "true":
+                    has_lit_true = True
+                if d.base.kind == "bool" and d.lit_value == "false":
+                    has_lit_false = True
+                absorbed.append(d)
+        else:
+            absorbed.append(d)
+        i += 1
+    if has_lit_true and has_lit_false:
+        merged: list[TypeNode] = []
+        i = 0
+        while i < len(absorbed):
+            d2 = absorbed[i]
+            if isinstance(d2, LiteralType) and d2.base.kind == "bool":
+                pass
+            else:
+                merged.append(d2)
+            i += 1
+        merged.append(PrimitiveType("bool"))
+        absorbed = merged
+    deduped = absorbed
     if len(deduped) == 0:
         return PrimitiveType("void")
     if len(deduped) == 1:
@@ -668,6 +721,14 @@ def typenode_to_dict(t: TypeNode) -> JsonValue:
                 "_type": JStr("FuncType"),
                 "params": JList(params),
                 "ret": typenode_to_dict(t.ret),
+            }
+        )
+    if isinstance(t, LiteralType):
+        return JDict(
+            {
+                "_type": JStr("LiteralType"),
+                "lit_value": JStr(t.lit_value),
+                "base": typenode_to_dict(t.base),
             }
         )
     if isinstance(t, UnionType):
