@@ -10,7 +10,14 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 from __future__ import annotations
 
 
-from .cfg import FlowGraph, lookup_alias
+from .cfg import (
+    FlowAssign,
+    FlowGraph,
+    FlowJoin,
+    FlowLoopHead,
+    get_type_at,
+    lookup_alias,
+)
 from .typecollect import (
     FuncInfo,
     TypeCollectResult,
@@ -1292,6 +1299,9 @@ class _InferCtx:
         self.result: InferenceResult = result
         self.flow_graphs: dict[str, FlowGraph] = flow_graphs
         self.current_graph: FlowGraph | None = None
+        self.assigned_types: dict[int, TypeNode] = {}
+        self.initial_types: dict[str, TypeNode] = {}
+        self.current_flow_id: int = -1
         self.module_vars: dict[str, TypeNode] = {}
         self._func_err_start: int = 0
         self._func_err_limit: int = 0
@@ -1303,6 +1313,72 @@ def _has_new_errors(ctx: _InferCtx, snapshot: int) -> bool:
 
 def _func_err_budget_exhausted(ctx: _InferCtx) -> bool:
     return (len(ctx.result._errors) - ctx._func_err_start) >= ctx._func_err_limit
+
+
+def _find_succ_assign(ctx: _InferCtx, name: str, lineno: int) -> int:
+    """Find a FlowAssign successor of current_flow_id matching name+lineno."""
+    graph = ctx.current_graph
+    if graph is None or ctx.current_flow_id < 0:
+        return -1
+    succs = graph.successors(ctx.current_flow_id)
+    i = 0
+    while i < len(succs):
+        node = graph.node_at(succs[i])
+        if node is not None and isinstance(node, FlowAssign):
+            if node.name == name and node.lineno == lineno:
+                return node.id
+        i += 1
+    return -1
+
+
+def _find_succ_join(graph: FlowGraph, from_id: int) -> int:
+    """Find a FlowJoin successor of from_id."""
+    succs = graph.successors(from_id)
+    i = 0
+    while i < len(succs):
+        node = graph.node_at(succs[i])
+        if node is not None and isinstance(node, FlowJoin):
+            return node.id
+        i += 1
+    return -1
+
+
+def _find_succ_loop_head(ctx: _InferCtx) -> int:
+    """Find a FlowLoopHead successor of current_flow_id."""
+    graph = ctx.current_graph
+    if graph is None or ctx.current_flow_id < 0:
+        return -1
+    succs = graph.successors(ctx.current_flow_id)
+    i = 0
+    while i < len(succs):
+        node = graph.node_at(succs[i])
+        if node is not None and isinstance(node, FlowLoopHead):
+            return node.id
+        i += 1
+    return -1
+
+
+def _cfg_merge_env(env: TypeEnv, ctx: _InferCtx, node_id: int) -> None:
+    """Update env types using CFG backward walk at node_id."""
+    graph = ctx.current_graph
+    if graph is None:
+        return
+    keys = list(env.types.keys())
+    i = 0
+    while i < len(keys):
+        k = keys[i]
+        if "." not in k:
+            t = get_type_at(
+                graph,
+                node_id,
+                k,
+                ctx.initial_types,
+                ctx.assigned_types,
+                ctx.known_classes,
+            )
+            if t is not None:
+                env.types[k] = t
+        i += 1
 
 
 # ---------------------------------------------------------------------------
@@ -1327,15 +1403,20 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
     else:
         graph_key = "module::" + func_name
     ctx.current_graph = ctx.flow_graphs.get(graph_key)
+    ctx.current_flow_id = 0
+    ctx.assigned_types = {}
+    ctx.initial_types = {}
     env = TypeEnv()
     i = 0
     while i < len(func_info.params):
         p = func_info.params[i]
         env.set(p.name, p.typ)
+        ctx.initial_types[p.name] = p.typ
         i += 1
     if receiver != "":
         self_type = PointerType(StructRef(receiver))
         env.set("this", self_type)
+        ctx.initial_types["this"] = self_type
     body = get_nodes(func_node, "body")
     if len(body) == 0:
         return
@@ -1499,6 +1580,10 @@ def _validate_assign(
                         )
                         return
                     env.set(name, val_type)
+                flow_id = _find_succ_assign(ctx, name, lineno)
+                if flow_id >= 0:
+                    ctx.assigned_types[flow_id] = val_type
+                    ctx.current_flow_id = flow_id
         elif _is_type(tgt, ["Tuple", "List"]):
             _validate_unpack(tgt, val_type, value, env, ctx, lineno)
         elif _is_type(tgt, ["Subscript"]):
@@ -1654,6 +1739,10 @@ def _validate_ann_assign(
         name = get_str(target, "id")
         if name != "":
             env.set(name, ann_type)
+            flow_id = _find_succ_assign(ctx, name, lineno)
+            if flow_id >= 0:
+                ctx.assigned_types[flow_id] = ann_type
+                ctx.current_flow_id = flow_id
             if len(value) > 0:
                 err_snap = len(ctx.result._errors)
                 _validate_expr_access(value, env, ctx, lineno)
@@ -1691,6 +1780,15 @@ def _validate_aug_assign(
         return
     _validate_expr_calls(value, env, ctx, lineno)
     _synth_expr(value, env, ctx)
+    if _is_type(target, ["Name"]):
+        aug_name = get_str(target, "id")
+        if aug_name != "":
+            aug_t = env.get_type(aug_name)
+            if aug_t is not None:
+                flow_id = _find_succ_assign(ctx, aug_name, lineno)
+                if flow_id >= 0:
+                    ctx.assigned_types[flow_id] = aug_t
+                    ctx.current_flow_id = flow_id
 
 
 def _validate_expr_stmt(
@@ -2139,11 +2237,14 @@ def _validate_if(
         if _has_new_errors(ctx, err_snap):
             return False
         _check_truthiness(test, env, ctx, lineno)
+    saved_flow_id = ctx.current_flow_id
     then_env = env.copy()
     else_env = env.copy()
     if len(test) > 0:
         _extract_narrowing(test, then_env, else_env, ctx)
     then_returns = _validate_stmts(body, then_env, func_info, ctx)
+    then_flow_id = ctx.current_flow_id
+    ctx.current_flow_id = saved_flow_id
     else_returns = False
     if len(orelse) > 0:
         is_elif = len(orelse) == 1 and _is_type(orelse[0], ["If"])
@@ -2175,10 +2276,27 @@ def _validate_if(
         while j < len(gkeys):
             env.guarded_attrs.add(gkeys[j])
             j += 1
+        ctx.current_flow_id = then_flow_id
     elif not then_returns and not else_returns and len(orelse) > 0:
-        _merge_branch_envs(then_env, else_env, env, ctx.hier_result)
+        graph = ctx.current_graph
+        join_id = -1
+        if graph is not None and then_flow_id >= 0:
+            join_id = _find_succ_join(graph, then_flow_id)
+        if join_id >= 0:
+            _cfg_merge_env(env, ctx, join_id)
+            ctx.current_flow_id = join_id
+        else:
+            _merge_branch_envs(then_env, else_env, env, ctx.hier_result)
     elif not then_returns and len(orelse) == 0:
-        _merge_no_else(then_env, else_env, env, ctx.hier_result)
+        graph = ctx.current_graph
+        join_id = -1
+        if graph is not None and then_flow_id >= 0:
+            join_id = _find_succ_join(graph, then_flow_id)
+        if join_id >= 0:
+            _cfg_merge_env(env, ctx, join_id)
+            ctx.current_flow_id = join_id
+        else:
+            _merge_no_else(then_env, else_env, env, ctx.hier_result)
     return then_returns and else_returns
 
 
@@ -2195,6 +2313,10 @@ def _validate_while(
             return
         _validate_expr_calls(test, env, ctx, lineno)
         _check_truthiness(test, env, ctx, lineno)
+    saved_flow_id = ctx.current_flow_id
+    head_id = _find_succ_loop_head(ctx)
+    if head_id >= 0:
+        ctx.current_flow_id = head_id
     loop_env = env.copy()
     else_env = env.copy()
     if len(test) > 0:
@@ -2214,7 +2336,12 @@ def _validate_while(
             env.types[ekeys[j]] = else_env.types[ekeys[j]]
             j += 1
     elif not body_returns:
-        _merge_branch_envs(else_env, loop_env, env, ctx.hier_result)
+        if head_id >= 0 and ctx.current_graph is not None:
+            _cfg_merge_env(env, ctx, head_id)
+        else:
+            _merge_branch_envs(else_env, loop_env, env, ctx.hier_result)
+    if head_id >= 0:
+        ctx.current_flow_id = head_id
 
 
 def _validate_for(
@@ -2232,6 +2359,10 @@ def _validate_for(
         elem = _iteration_element(iter_type)
         if len(target) > 0:
             _bind_target(target, elem, env)
+    saved_flow_id = ctx.current_flow_id
+    head_id = _find_succ_loop_head(ctx)
+    if head_id >= 0:
+        ctx.current_flow_id = head_id
     loop_env = env.copy()
     if len(target) > 0:
         tname = get_str(target, "id")
@@ -2240,7 +2371,17 @@ def _validate_for(
             if t is not None:
                 loop_env.set(tname, t)
     _validate_stmts(body, loop_env, func_info, ctx)
-    _merge_branch_envs(env, loop_env, env, ctx.hier_result)
+    graph = ctx.current_graph
+    join_id = -1
+    if graph is not None and head_id >= 0:
+        join_id = _find_succ_join(graph, head_id)
+    if join_id >= 0:
+        _cfg_merge_env(env, ctx, join_id)
+        ctx.current_flow_id = join_id
+    else:
+        _merge_branch_envs(env, loop_env, env, ctx.hier_result)
+        if head_id >= 0:
+            ctx.current_flow_id = head_id
 
 
 def _validate_assert(
