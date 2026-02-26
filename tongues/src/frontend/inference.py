@@ -46,6 +46,8 @@ from .types import (
     remove_from_union,
     union_variant_names,
     _variant_name,
+    map_subtypes,
+    get_subtypes,
     type_name as _type_name_fn,
     JStr,
     JInt,
@@ -683,17 +685,18 @@ def _resolve_attr(
         return ANY_TYPE
     # Union: resolve on each variant
     if isinstance(obj_type, UnionType):
+        subs = get_subtypes(obj_type)
         resolved: list[TypeNode] = []
         i = 0
-        while i < len(obj_type.variants):
-            r = _resolve_attr(obj_type.variants[i], attr, value_node, env, ctx)
+        while i < len(subs):
+            r = _resolve_attr(subs[i], attr, value_node, env, ctx)
             if is_any(r):
                 return ANY_TYPE
             resolved.append(r)
             i += 1
         if len(resolved) == 0:
             return ANY_TYPE
-        return combine_types(resolved)
+        return map_subtypes(obj_type, resolved)
     # Struct field access
     sname = _struct_name(obj_type)
     if sname != "":
@@ -2156,6 +2159,23 @@ def _merge_branch_envs(
         j += 1
 
 
+def _has_never_narrowing(pre_env: TypeEnv, post_env: TypeEnv) -> bool:
+    """Check if any variable was narrowed to never between pre and post envs."""
+    keys = list(post_env.types.keys())
+    i = 0
+    while i < len(keys):
+        k = keys[i]
+        t = post_env.types[k]
+        if isinstance(t, PrimitiveType) and t.kind == "never":
+            pre_t = pre_env.types.get(k)
+            if pre_t is not None and not (
+                isinstance(pre_t, PrimitiveType) and pre_t.kind == "never"
+            ):
+                return True
+        i += 1
+    return False
+
+
 def _validate_if(
     stmt: ASTNode,
     env: TypeEnv,
@@ -2183,6 +2203,12 @@ def _validate_if(
     then_returns = _validate_stmts(body, then_env, func_info, ctx)
     else_returns = False
     if len(orelse) > 0:
+        is_elif = len(orelse) == 1 and _is_type(orelse[0], ["If"])
+        if not is_elif and _has_never_narrowing(env, else_env):
+            else_lineno = get_int(orelse[0], "lineno")
+            ctx.result.add_error(
+                else_lineno, 0, "unreachable code: all union variants already handled"
+            )
         else_returns = _validate_stmts(orelse, else_env, func_info, ctx)
     if then_returns and not else_returns:
         ekeys = list(else_env.types.keys())
@@ -2770,6 +2796,20 @@ def _narrow_compare(
                         then_env.narrow(obj_name, matched)
                         else_remaining = remove_from_union(obj_type, [matched])
                         else_env.narrow(obj_name, else_remaining)
+                elif obj_type is not None and obj_name != "":
+                    sn = _struct_name(obj_type)
+                    if sn != "":
+                        cls = ctx.tc_result.classes.get(sn)
+                        if cls is not None:
+                            cf_val = cls.const_fields.get(attr)
+                            matches = False
+                            if cf_val is not None and cf_val == comp_value:
+                                matches = True
+                            if cf_val is None and attr == "kind":
+                                if _pascal_to_kebab(sn) == comp_value:
+                                    matches = True
+                            if matches:
+                                else_env.narrow(obj_name, PrimitiveType("never"))
             return
     if op_type == "NotEq" and not comp_is_none:
         if _is_type(left, ["Name"]):
@@ -2808,6 +2848,20 @@ def _narrow_compare(
                         else_env.narrow(obj_name, matched)
                         then_remaining = remove_from_union(obj_type2, [matched])
                         then_env.narrow(obj_name, then_remaining)
+                elif obj_name != "" and obj_type2 is not None:
+                    sn = _struct_name(obj_type2)
+                    if sn != "":
+                        cls = ctx.tc_result.classes.get(sn)
+                        if cls is not None:
+                            cf_val = cls.const_fields.get(attr)
+                            matches = False
+                            if cf_val is not None and cf_val == comp_value:
+                                matches = True
+                            if cf_val is None and attr == "kind":
+                                if _pascal_to_kebab(sn) == comp_value:
+                                    matches = True
+                            if matches:
+                                then_env.narrow(obj_name, PrimitiveType("never"))
             return
 
 

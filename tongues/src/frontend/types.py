@@ -304,6 +304,39 @@ def has_key(node: dict[str, JsonValue], key: str) -> bool:
 # ============================================================
 
 
+def map_subtypes(t: TypeNode, replacements: list[TypeNode]) -> TypeNode:
+    """Rebuild a union/optional by replacing leaf types with the given list.
+
+    Extracts the structural shape of t (Union, Optional+Union, Optional, plain)
+    and reconstructs it from replacements. Callers iterate get_subtypes(t),
+    transform each element, and pass the results here.
+    """
+    if isinstance(t, UnionType):
+        return combine_types(replacements)
+    if isinstance(t, OptionalType):
+        if isinstance(t.inner, UnionType):
+            return combine_types(replacements)
+        if len(replacements) == 1:
+            return OptionalType(replacements[0])
+        return combine_types(replacements)
+    if len(replacements) == 1:
+        return replacements[0]
+    return combine_types(replacements)
+
+
+def get_subtypes(t: TypeNode) -> list[TypeNode]:
+    """Extract leaf variant types from a union/optional for iteration."""
+    if isinstance(t, UnionType):
+        return t.variants
+    if isinstance(t, OptionalType):
+        if isinstance(t.inner, UnionType):
+            return t.inner.variants
+        result: list[TypeNode] = [t.inner]
+        return result
+    result2: list[TypeNode] = [t]
+    return result2
+
+
 def is_any(t: TypeNode) -> bool:
     """Check if a type is the 'any' type."""
     if isinstance(t, InterfaceRef) and t.name == "any":

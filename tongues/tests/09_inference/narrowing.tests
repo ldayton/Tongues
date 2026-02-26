@@ -5867,3 +5867,66 @@ def f(x: A | B) -> int:
 ---
 ok
 ---
+
+=== unreachable else after exhaustive discrimination
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    a_val: int
+@dataclass
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> int:
+    if x.kind == "a":
+        return x.a_val
+    elif x.kind == "b":
+        return len(x.b_val)
+    else:
+        return 0
+---
+error:16: unreachable code: all union variants already handled
+---
+
+=== no error for exhaustive discrimination without else
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    a_val: int
+@dataclass
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> int:
+    if x.kind == "a":
+        return x.a_val
+    return len(x.b_val)
+---
+ok
+---
+
+=== no error for non-exhaustive elif without else
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    a_val: int
+@dataclass
+class B:
+    kind: str
+    b_val: str
+@dataclass
+class C:
+    kind: str
+    c_val: float
+def f(x: A | B | C) -> int:
+    if x.kind == "a":
+        return x.a_val
+    elif x.kind == "b":
+        return len(x.b_val)
+    return 0
+---
+ok
+---
