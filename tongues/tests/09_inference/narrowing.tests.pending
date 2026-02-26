@@ -454,27 +454,6 @@ def eval_expr(e: Add | Sub | Neg) -> int:
 ok
 ---
 
-=== isinstance else return narrows remainder
-def f(x: int | str) -> int:
-    if isinstance(x, int):
-        pass
-    else:
-        return 0
-    reveal_type(x)
-    return x + 1
----
-reveal:6 = int
----
-
-=== assert false is early exit
-def f(x: int | None) -> int:
-    if x is None:
-        assert False
-    reveal_type(x)
-    return x + 1
----
-reveal:4 = int
----
 
 === attribute access before isinstance guard fails
 class A:
@@ -1167,14 +1146,6 @@ def f(items: list[A]) -> list[int]:
 error:
 ---
 
-=== isinstance in while condition narrows body
-def f(x: int | str) -> int:
-    while isinstance(x, str):
-        return len(x)
-    return x + 1
----
-ok
----
 
 === narrowing with optional dataclass field missing guard
 from dataclasses import dataclass
@@ -1348,14 +1319,6 @@ def f(x: int | None) -> int:
 error:
 ---
 
-=== is None in while condition narrows body
-def f(x: int | None) -> int:
-    while x is None:
-        return 0
-    return x + 1
----
-ok
----
 
 === narrowing with comparison on unnarrowed value
 def f(x: int | None) -> str:

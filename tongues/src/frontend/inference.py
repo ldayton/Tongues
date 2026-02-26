@@ -1403,6 +1403,11 @@ def _validate_stmt(
         return False
     if t == "Assert":
         _validate_assert(stmt, env, func_info, ctx)
+        test = get_node(stmt, "test")
+        if len(test) > 0 and _is_type(test, ["Constant"]):
+            val = test.get("value")
+            if isinstance(val, JBool) and not val.value:
+                return True
         return False
     if t == "Pass":
         return False
@@ -2067,6 +2072,22 @@ def _validate_if(
         while j < len(gkeys):
             env.guarded_attrs.add(gkeys[j])
             j += 1
+    elif else_returns and not then_returns:
+        tkeys = list(then_env.types.keys())
+        j = 0
+        while j < len(tkeys):
+            env.types[tkeys[j]] = then_env.types[tkeys[j]]
+            j += 1
+        skeys = list(then_env.source_types.keys())
+        j = 0
+        while j < len(skeys):
+            env.source_types[skeys[j]] = then_env.source_types[skeys[j]]
+            j += 1
+        gkeys = list(then_env.guarded_attrs)
+        j = 0
+        while j < len(gkeys):
+            env.guarded_attrs.add(gkeys[j])
+            j += 1
     elif not then_returns and len(orelse) == 0:
         ekeys = list(else_env.types.keys())
         j = 0
@@ -2098,7 +2119,28 @@ def _validate_while(
         _validate_expr_calls(test, env, ctx, lineno)
         _check_truthiness(test, env, ctx, lineno)
     loop_env = env.copy()
-    _validate_stmts(body, loop_env, func_info, ctx)
+    else_env = env.copy()
+    if len(test) > 0:
+        _extract_narrowing(test, loop_env, else_env, ctx)
+    body_returns = _validate_stmts(body, loop_env, func_info, ctx)
+    has_break = False
+    j = 0
+    while j < len(body):
+        bt = get_str(body[j], "_type") if isinstance(body[j], dict) else ""
+        if bt == "Break":
+            has_break = True
+        j += 1
+    if body_returns and not has_break:
+        ekeys = list(else_env.types.keys())
+        j = 0
+        while j < len(ekeys):
+            env.types[ekeys[j]] = else_env.types[ekeys[j]]
+            j += 1
+        skeys = list(else_env.source_types.keys())
+        j = 0
+        while j < len(skeys):
+            env.source_types[skeys[j]] = else_env.source_types[skeys[j]]
+            j += 1
 
 
 def _validate_for(
