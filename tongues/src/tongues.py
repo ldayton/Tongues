@@ -12,7 +12,7 @@ from .frontend.bind import (
     IMPORT_ONLY_MODULES,
     ALLOWED_FROM_MODULES,
 )
-from .frontend.typecollect import collect_signatures, collect_fields
+from .frontend.typecollect import collect_signatures, collect_types
 from .frontend.hierarchy import build_hierarchy
 from .frontend.inference import run_inference
 from .frontend.lowering import lower
@@ -1457,59 +1457,20 @@ def _pipeline_post_parse(
     known_classes = bind_result.known_classes
     node_classes = bind_result.node_classes
     class_bases = bind_result.class_bases
-    sig_result = collect_signatures(
-        ast_dict, known_classes, node_classes, bind_result.type_aliases, class_bases
-    )
-    sig_errors = sig_result.errors()
-    if len(sig_errors) > 0:
-        err_strs: list[str] = []
-        sei = 0
-        while sei < len(sig_errors):
-            err_strs.append(str(sig_errors[sei]))
-            sei += 1
-        _print_errors(err_strs)
-        return (1, "")
     if stop_at == "signatures":
+        sig_result = collect_signatures(
+            ast_dict, known_classes, node_classes, bind_result.type_aliases, class_bases
+        )
+        sig_errors = sig_result.errors()
+        if len(sig_errors) > 0:
+            err_strs: list[str] = []
+            sei = 0
+            while sei < len(sig_errors):
+                err_strs.append(str(sig_errors[sei]))
+                sei += 1
+            _print_errors(err_strs)
+            return (1, "")
         return (0, to_json(sig_result.to_dict()))
-    hierarchy_roots: set[str] = set()
-    base_counts: dict[str, int] = {}
-    parent_of: dict[str, str] = {}
-    ki = 0
-    mkeys2 = list(bind_result.table.module_names.keys())
-    while ki < len(mkeys2):
-        mname = mkeys2[ki]
-        info = bind_result.table.module_names[mname]
-        if info.kind == "class":
-            bi = 0
-            while bi < len(info.bases):
-                base = info.bases[bi]
-                if base not in base_counts:
-                    base_counts[base] = 0
-                base_counts[base] = base_counts[base] + 1
-                parent_of[mname] = base
-                bi += 1
-        ki += 1
-    bkeys = list(base_counts.keys())
-    ki = 0
-    while ki < len(bkeys):
-        bname = bkeys[ki]
-        if bname not in parent_of:
-            hierarchy_roots.add(bname)
-        ki += 1
-    field_result = collect_fields(
-        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
-    )
-    field_errors = field_result.errors()
-    if len(field_errors) > 0:
-        err_strs: list[str] = []
-        fei = 0
-        while fei < len(field_errors):
-            err_strs.append(str(field_errors[fei]))
-            fei += 1
-        _print_errors(err_strs)
-        return (1, "")
-    if stop_at == "fields":
-        return (0, to_json(field_result.to_dict()))
     hier_result = build_hierarchy(
         known_classes, class_bases, bind_result.class_source_files
     )
@@ -1524,8 +1485,32 @@ def _pipeline_post_parse(
         return (1, "")
     if stop_at == "hierarchy":
         return (0, to_json(hier_result.to_dict()))
+    hierarchy_roots: set[str] = set()
+    hri = 0
+    while hri < len(hier_result.hierarchy_roots):
+        hierarchy_roots.add(hier_result.hierarchy_roots[hri])
+        hri += 1
+    tc_result = collect_types(
+        ast_dict,
+        known_classes,
+        node_classes,
+        bind_result.type_aliases,
+        class_bases,
+        hierarchy_roots,
+    )
+    tc_errors = tc_result.errors()
+    if len(tc_errors) > 0:
+        err_strs: list[str] = []
+        tei = 0
+        while tei < len(tc_errors):
+            err_strs.append(str(tc_errors[tei]))
+            tei += 1
+        _print_errors(err_strs)
+        return (1, "")
+    if stop_at == "fields":
+        return (0, to_json(tc_result.fields_to_dict()))
     inf_result = run_inference(
-        ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+        ast_dict, tc_result, hier_result, known_classes, class_bases
     )
     inf_errors = inf_result.errors()
     if len(inf_errors) > 0:
@@ -1550,8 +1535,7 @@ def _pipeline_post_parse(
         return (0, to_json(JDict(d)))
     module, lower_errors = lower(
         ast_dict,
-        sig_result,
-        field_result,
+        tc_result,
         hier_result,
         known_classes,
         class_bases,

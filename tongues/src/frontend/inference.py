@@ -12,12 +12,11 @@ from __future__ import annotations
 
 from .typecollect import (
     FuncInfo,
-    SignatureResult,
+    TypeCollectResult,
     annotation_to_str,
     py_type_to_type_dict,
     TypeCollectError,
 )
-from .typecollect import FieldResult
 from .hierarchy import HierarchyResult
 from .types import (
     TypeNode,
@@ -574,7 +573,7 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if typ is not None:
         return typ
     # User-defined function reference -> FuncType
-    func_info = ctx.sig_result.functions.get(name)
+    func_info = ctx.tc_result.functions.get(name)
     if func_info is not None:
         params: list[TypeNode] = []
         j = 0
@@ -739,14 +738,14 @@ def _resolve_attr(
 
 def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
     """Resolve attribute on a struct type."""
-    cls = ctx.field_result.classes.get(sname)
+    cls = ctx.tc_result.classes.get(sname)
     if cls is not None:
         fld = cls.fields.get(attr)
         if fld is not None:
             return fld.typ
         if attr in cls.const_fields:
             return STR_TYPE
-    methods = ctx.sig_result.methods.get(sname)
+    methods = ctx.tc_result.methods.get(sname)
     if methods is not None:
         method = methods.get(attr)
         if method is not None:
@@ -913,7 +912,7 @@ def _synth_name_call(
     if fname == "print":
         return VOID_TYPE
     # User-defined function
-    func_info = ctx.sig_result.functions.get(fname)
+    func_info = ctx.tc_result.functions.get(fname)
     if func_info is not None:
         return func_info.return_type
     # Class constructor
@@ -967,7 +966,7 @@ def _synth_method_call(
     # Direct method return type from sig table
     sname = _struct_name(obj_type)
     if sname != "":
-        methods = ctx.sig_result.methods.get(sname)
+        methods = ctx.tc_result.methods.get(sname)
         if methods is not None:
             method = methods.get(attr)
             if method is not None:
@@ -1328,15 +1327,13 @@ class _InferCtx:
 
     def __init__(
         self,
-        sig_result: SignatureResult,
-        field_result: FieldResult,
+        tc_result: TypeCollectResult,
         hier_result: HierarchyResult,
         known_classes: set[str],
         class_bases: dict[str, list[str]],
         result: InferenceResult,
     ) -> None:
-        self.sig_result: SignatureResult = sig_result
-        self.field_result: FieldResult = field_result
+        self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
         self.known_classes: set[str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
@@ -1354,11 +1351,11 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
     func_name = get_str(func_node, "name")
     func_info: FuncInfo | None = None
     if receiver != "":
-        methods = ctx.sig_result.methods.get(receiver)
+        methods = ctx.tc_result.methods.get(receiver)
         if methods is not None:
             func_info = methods.get(func_name)
     else:
-        func_info = ctx.sig_result.functions.get(func_name)
+        func_info = ctx.tc_result.functions.get(func_name)
     if func_info is None:
         return
     env = TypeEnv()
@@ -1590,7 +1587,7 @@ def _infer_source(value: ASTNode, env: TypeEnv, ctx: _InferCtx) -> str:
         if len(func) > 0 and _is_type(func, ["Name"]):
             fname = get_str(func, "id")
             if fname != "":
-                fi = ctx.sig_result.functions.get(fname)
+                fi = ctx.tc_result.functions.get(fname)
                 if fi is not None:
                     return fi.return_py_type
     return ""
@@ -1865,7 +1862,7 @@ def _validate_call_args(
         fname = get_str(func, "id")
         if fname == "":
             return
-        func_info = ctx.sig_result.functions.get(fname)
+        func_info = ctx.tc_result.functions.get(fname)
         if func_info is not None:
             _check_call_args(func_info, args, env, ctx, lineno)
             return
@@ -1898,7 +1895,7 @@ def _validate_call_args(
         if _is_type(obj, ["Name"]):
             obj_name = get_str(obj, "id")
             if obj_name != "" and obj_name in ctx.known_classes:
-                methods = ctx.sig_result.methods.get(obj_name)
+                methods = ctx.tc_result.methods.get(obj_name)
                 if methods is not None and attr in methods:
                     ctx.result.add_error(
                         lineno,
@@ -1908,7 +1905,7 @@ def _validate_call_args(
                     return
         sname = _struct_name(obj_type)
         if sname != "":
-            methods = ctx.sig_result.methods.get(sname)
+            methods = ctx.tc_result.methods.get(sname)
             method: FuncInfo | None = None
             if methods is not None:
                 method = methods.get(attr)
@@ -3549,7 +3546,7 @@ def _subclass_has_method(base_name: str, method_name: str, ctx: _InferCtx) -> bo
         j = 0
         while j < len(bases):
             if bases[j] == base_name:
-                cls_methods = ctx.sig_result.methods.get(cls)
+                cls_methods = ctx.tc_result.methods.get(cls)
                 if cls_methods is not None and method_name in cls_methods:
                     return True
             j += 1
@@ -3561,11 +3558,11 @@ def _class_has_attr(class_name: str, attr_name: str, ctx: _InferCtx) -> bool:
     """Check if a class has the given attribute, including inherited ones."""
     current = class_name
     while current != "":
-        cls = ctx.field_result.classes.get(current)
+        cls = ctx.tc_result.classes.get(current)
         if cls is not None:
             if attr_name in cls.fields or attr_name in cls.const_fields:
                 return True
-        methods = ctx.sig_result.methods.get(current)
+        methods = ctx.tc_result.methods.get(current)
         if methods is not None and attr_name in methods:
             return True
         bases = ctx.class_bases.get(current)
@@ -3598,8 +3595,7 @@ def _all_members_have_attr(source: str, attr_name: str, ctx: _InferCtx) -> bool:
 
 def run_inference(
     tree: ASTNode,
-    sig_result: SignatureResult,
-    field_result: FieldResult,
+    tc_result: TypeCollectResult,
     hier_result: HierarchyResult,
     known_classes: set[str],
     class_bases: dict[str, list[str]],
@@ -3607,7 +3603,7 @@ def run_inference(
     """Run type inference and validation on the module AST."""
     result = InferenceResult()
     ctx = _InferCtx(
-        sig_result, field_result, hier_result, known_classes, class_bases, result
+        tc_result, hier_result, known_classes, class_bases, result
     )
     body = get_nodes(tree, "body")
     if len(body) == 0:

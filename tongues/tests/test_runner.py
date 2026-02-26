@@ -14,13 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from src.frontend.typecollect import collect_fields
+from src.frontend.typecollect import collect_signatures, collect_types
 from src.frontend.hierarchy import build_hierarchy
 from src.frontend.inference import run_inference as _run_inference
-from src.frontend.bind import bind, resolve_names
+from src.frontend.bind import bind, resolve_names, verify as verify_subset
 from src.frontend.parse import parse
-from src.frontend.typecollect import collect_signatures
-from src.frontend.bind import verify as verify_subset
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 
 TONGUES_DIR = Path(__file__).parent.parent
@@ -706,30 +704,17 @@ def run_sigs(source: str) -> PhaseResult:
         ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
-    result = verify_subset(ast_dict)
-    sub_errors = result.errors()
-    if sub_errors:
-        return PhaseResult(errors=[e.message for e in sub_errors])
-    name_result = resolve_names(ast_dict)
-    name_errors = name_result.errors()
-    if name_errors:
-        return PhaseResult(errors=[e.message for e in name_errors])
-    # Build known_classes and node_classes from name table
-    known_classes: set[str] = set()
-    node_classes: set[str] = set()
-    class_bases: dict[str, list[str]] = {}
-    table = name_result.table
-    for name, info in table.module_names.items():
-        if info.kind == "class":
-            known_classes.add(name)
-            class_bases[name] = list(info.bases)
-            if len(info.bases) > 0:
-                # Check if any base is "Node" or ends with "Node"
-                for base in info.bases:
-                    if base == "Node" or base.endswith("Node"):
-                        node_classes.add(name)
+    bind_result = bind(ast_dict)
+    if not bind_result.subset_ok():
+        return PhaseResult(errors=[e.message for e in bind_result.subset_violations])
+    if not bind_result.names_ok():
+        return PhaseResult(errors=[e.message for e in bind_result.name_violations])
     sig_result = collect_signatures(
-        ast_dict, known_classes, node_classes, None, class_bases
+        ast_dict,
+        bind_result.known_classes,
+        bind_result.node_classes,
+        bind_result.type_aliases,
+        bind_result.class_bases,
     )
     sig_errors = sig_result.errors()
     if sig_errors:
@@ -745,51 +730,29 @@ def run_fields(source: str) -> PhaseResult:
         ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
-    result = verify_subset(ast_dict)
-    sub_errors = result.errors()
-    if sub_errors:
-        return PhaseResult(errors=[e.message for e in sub_errors])
-    name_result = resolve_names(ast_dict)
-    name_errors = name_result.errors()
-    if name_errors:
-        return PhaseResult(errors=[e.message for e in name_errors])
-    # Build known_classes, node_classes, hierarchy_roots from name table
-    known_classes: set[str] = set()
-    node_classes: set[str] = set()
-    class_bases: dict[str, list[str]] = {}
-    base_counts: dict[str, int] = {}
-    parent_of: dict[str, str] = {}
-    table = name_result.table
-    for name, info in table.module_names.items():
-        if info.kind == "class":
-            known_classes.add(name)
-            class_bases[name] = list(info.bases)
-            for base in info.bases:
-                if base == "Node" or base.endswith("Node"):
-                    node_classes.add(name)
-                if base in known_classes or base[0:1].isupper():
-                    if base not in base_counts:
-                        base_counts[base] = 0
-                    base_counts[base] += 1
-                    parent_of[name] = base
-    # Hierarchy roots: classes that are bases of others but have no parent themselves
-    hierarchy_roots: set[str] = set()
-    for base_name in base_counts:
-        if base_name not in parent_of:
-            hierarchy_roots.add(base_name)
-    sig_result = collect_signatures(
-        ast_dict, known_classes, node_classes, None, class_bases
+    bind_result = bind(ast_dict)
+    if not bind_result.subset_ok():
+        return PhaseResult(errors=[e.message for e in bind_result.subset_violations])
+    if not bind_result.names_ok():
+        return PhaseResult(errors=[e.message for e in bind_result.name_violations])
+    hier_result = build_hierarchy(
+        bind_result.known_classes, bind_result.class_bases
     )
-    sig_errors = sig_result.errors()
-    if sig_errors:
-        return PhaseResult(errors=[str(e) for e in sig_errors])
-    field_result = collect_fields(
-        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+    hier_errors = hier_result.errors()
+    if hier_errors:
+        return PhaseResult(errors=[str(e) for e in hier_errors])
+    tc_result = collect_types(
+        ast_dict,
+        bind_result.known_classes,
+        bind_result.node_classes,
+        bind_result.type_aliases,
+        bind_result.class_bases,
+        set(hier_result.hierarchy_roots),
     )
-    field_errors = field_result.errors()
-    if field_errors:
-        return PhaseResult(errors=[str(e) for e in field_errors])
-    return PhaseResult(data=field_result.to_dict())
+    tc_errors = tc_result.errors()
+    if tc_errors:
+        return PhaseResult(errors=[str(e) for e in tc_errors])
+    return PhaseResult(data=tc_result.fields_to_dict())
 
 
 def run_hierarchy(source: str) -> PhaseResult:
@@ -800,23 +763,14 @@ def run_hierarchy(source: str) -> PhaseResult:
         ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
-    result = verify_subset(ast_dict)
-    sub_errors = result.errors()
-    if sub_errors:
-        return PhaseResult(errors=[e.message for e in sub_errors])
-    name_result = resolve_names(ast_dict)
-    name_errors = name_result.errors()
-    if name_errors:
-        return PhaseResult(errors=[e.message for e in name_errors])
-    # Build known_classes and class_bases from name table
-    known_classes: set[str] = set()
-    class_bases: dict[str, list[str]] = {}
-    table = name_result.table
-    for name, info in table.module_names.items():
-        if info.kind == "class":
-            known_classes.add(name)
-            class_bases[name] = list(info.bases)
-    hier_result = build_hierarchy(known_classes, class_bases)
+    bind_result = bind(ast_dict)
+    if not bind_result.subset_ok():
+        return PhaseResult(errors=[e.message for e in bind_result.subset_violations])
+    if not bind_result.names_ok():
+        return PhaseResult(errors=[e.message for e in bind_result.name_violations])
+    hier_result = build_hierarchy(
+        bind_result.known_classes, bind_result.class_bases
+    )
     hier_errors = hier_result.errors()
     if hier_errors:
         return PhaseResult(errors=[str(e) for e in hier_errors])
@@ -839,56 +793,31 @@ def run_inference(source: str) -> PhaseResult:
         ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
-    result = verify_subset(ast_dict)
-    sub_errors = result.errors()
-    if sub_errors:
-        return PhaseResult(errors=[e.message for e in sub_errors])
-    name_result = resolve_names(ast_dict)
-    name_errors = name_result.errors()
-    if name_errors:
-        return PhaseResult(errors=[e.message for e in name_errors])
-    known_classes: set[str] = set()
-    node_classes: set[str] = set()
-    class_bases: dict[str, list[str]] = {}
-    base_counts: dict[str, int] = {}
-    parent_of: dict[str, str] = {}
-    table = name_result.table
-    for name, info in table.module_names.items():
-        if info.kind == "class":
-            known_classes.add(name)
-            class_bases[name] = list(info.bases)
-            for base in info.bases:
-                if base == "Node" or base.endswith("Node"):
-                    node_classes.add(name)
-                if base in known_classes or base[0:1].isupper():
-                    if base not in base_counts:
-                        base_counts[base] = 0
-                    base_counts[base] += 1
-                    parent_of[name] = base
-    hierarchy_roots: set[str] = set()
-    for base_name in base_counts:
-        if base_name not in parent_of:
-            hierarchy_roots.add(base_name)
-    sig_result = collect_signatures(
-        ast_dict, known_classes, node_classes, None, class_bases
+    bind_result = bind(ast_dict)
+    if not bind_result.subset_ok():
+        return PhaseResult(errors=[e.message for e in bind_result.subset_violations])
+    if not bind_result.names_ok():
+        return PhaseResult(errors=[e.message for e in bind_result.name_violations])
+    hier_result = build_hierarchy(
+        bind_result.known_classes, bind_result.class_bases
     )
-    sig_errors = sig_result.errors()
-    if sig_errors:
-        return PhaseResult(errors=[str(e) for e in sig_errors])
-    field_result = collect_fields(
-        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
-    )
-    field_errors = field_result.errors()
-    if field_errors:
-        return PhaseResult(errors=[str(e) for e in field_errors])
-    from src.frontend.hierarchy import build_hierarchy
-
-    hier_result = build_hierarchy(known_classes, class_bases)
     hier_errors = hier_result.errors()
     if hier_errors:
         return PhaseResult(errors=[str(e) for e in hier_errors])
+    tc_result = collect_types(
+        ast_dict,
+        bind_result.known_classes,
+        bind_result.node_classes,
+        bind_result.type_aliases,
+        bind_result.class_bases,
+        hier_result.hierarchy_roots,
+    )
+    tc_errors = tc_result.errors()
+    if tc_errors:
+        return PhaseResult(errors=[str(e) for e in tc_errors])
     inf_result = _run_inference(
-        ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+        ast_dict, tc_result, hier_result,
+        bind_result.known_classes, bind_result.class_bases,
     )
     inf_errors = inf_result.errors()
     if inf_errors:
@@ -932,56 +861,31 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         return (result.stdout.decode(errors="replace"), None)
     try:
         ast_dict = parse(source)
-        result = verify_subset(ast_dict)
-        sub_errors = result.errors()
-        if sub_errors:
-            return (None, sub_errors[0].message)
-        name_result = resolve_names(ast_dict)
-        name_errors = name_result.errors()
-        if name_errors:
-            return (None, name_errors[0].message)
-        known_classes: set[str] = set()
-        node_classes: set[str] = set()
-        class_bases: dict[str, list[str]] = {}
-        base_counts: dict[str, int] = {}
-        parent_of: dict[str, str] = {}
-        table = name_result.table
-        for name, info in table.module_names.items():
-            if info.kind == "class":
-                known_classes.add(name)
-                class_bases[name] = list(info.bases)
-                for base in info.bases:
-                    if base == "Node" or base.endswith("Node"):
-                        node_classes.add(name)
-                    if base in known_classes or base[0:1].isupper():
-                        if base not in base_counts:
-                            base_counts[base] = 0
-                        base_counts[base] += 1
-                        parent_of[name] = base
-        hierarchy_roots: set[str] = set()
-        for base_name in base_counts:
-            if base_name not in parent_of:
-                hierarchy_roots.add(base_name)
-        sig_result = collect_signatures(
-            ast_dict, known_classes, node_classes, None, class_bases
+        bind_result = bind(ast_dict)
+        if not bind_result.subset_ok():
+            return (None, bind_result.subset_violations[0].message)
+        if not bind_result.names_ok():
+            return (None, bind_result.name_violations[0].message)
+        hier_result = build_hierarchy(
+            bind_result.known_classes, bind_result.class_bases
         )
-        sig_errors = sig_result.errors()
-        if sig_errors:
-            return (None, str(sig_errors[0]))
-        field_result = collect_fields(
-            ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
-        )
-        field_errors = field_result.errors()
-        if field_errors:
-            return (None, str(field_errors[0]))
-        from src.frontend.hierarchy import build_hierarchy
-
-        hier_result = build_hierarchy(known_classes, class_bases)
         hier_errors = hier_result.errors()
         if hier_errors:
             return (None, str(hier_errors[0]))
+        tc_result = collect_types(
+            ast_dict,
+            bind_result.known_classes,
+            bind_result.node_classes,
+            bind_result.type_aliases,
+            bind_result.class_bases,
+            hier_result.hierarchy_roots,
+        )
+        tc_errors = tc_result.errors()
+        if tc_errors:
+            return (None, str(tc_errors[0]))
         inf_result = _run_inference(
-            ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+            ast_dict, tc_result, hier_result,
+            bind_result.known_classes, bind_result.class_bases,
         )
         inf_errors = inf_result.errors()
         if inf_errors:
@@ -990,13 +894,8 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         from src.taytsh.emit import to_source
 
         module, lower_errors = lower(
-            ast_dict,
-            sig_result,
-            field_result,
-            hier_result,
-            known_classes,
-            class_bases,
-            source,
+            ast_dict, tc_result, hier_result,
+            bind_result.known_classes, bind_result.class_bases, source,
         )
         if lower_errors:
             return (None, str(lower_errors[0]))
@@ -1200,69 +1099,40 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         return (None, f"no emitter for '{lang}'")
     try:
         ast_dict = parse(source)
-        result = verify_subset(ast_dict)
-        sub_errors = result.errors()
-        if sub_errors:
-            return (None, sub_errors[0].message)
-        name_result = resolve_names(ast_dict)
-        name_errors = name_result.errors()
-        if name_errors:
-            return (None, name_errors[0].message)
-        known_classes: set[str] = set()
-        node_classes: set[str] = set()
-        class_bases: dict[str, list[str]] = {}
-        base_counts: dict[str, int] = {}
-        parent_of: dict[str, str] = {}
-        table = name_result.table
-        for name, info in table.module_names.items():
-            if info.kind == "class":
-                known_classes.add(name)
-                class_bases[name] = list(info.bases)
-                for base in info.bases:
-                    if base == "Node" or base.endswith("Node"):
-                        node_classes.add(name)
-                    if base in known_classes or base[0:1].isupper():
-                        if base not in base_counts:
-                            base_counts[base] = 0
-                        base_counts[base] += 1
-                        parent_of[name] = base
-        hierarchy_roots: set[str] = set()
-        for base_name in base_counts:
-            if base_name not in parent_of:
-                hierarchy_roots.add(base_name)
-        sig_result = collect_signatures(
-            ast_dict, known_classes, node_classes, None, class_bases
+        bind_result = bind(ast_dict)
+        if not bind_result.subset_ok():
+            return (None, bind_result.subset_violations[0].message)
+        if not bind_result.names_ok():
+            return (None, bind_result.name_violations[0].message)
+        hier_result = build_hierarchy(
+            bind_result.known_classes, bind_result.class_bases
         )
-        sig_errors = sig_result.errors()
-        if sig_errors:
-            return (None, str(sig_errors[0]))
-        field_result = collect_fields(
-            ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
-        )
-        field_errors = field_result.errors()
-        if field_errors:
-            return (None, str(field_errors[0]))
-        from src.frontend.hierarchy import build_hierarchy
-        from src.frontend.lowering import lower
-
-        hier_result = build_hierarchy(known_classes, class_bases)
         hier_errors = hier_result.errors()
         if hier_errors:
             return (None, str(hier_errors[0]))
+        tc_result = collect_types(
+            ast_dict,
+            bind_result.known_classes,
+            bind_result.node_classes,
+            bind_result.type_aliases,
+            bind_result.class_bases,
+            hier_result.hierarchy_roots,
+        )
+        tc_errors = tc_result.errors()
+        if tc_errors:
+            return (None, str(tc_errors[0]))
         inf_result = _run_inference(
-            ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+            ast_dict, tc_result, hier_result,
+            bind_result.known_classes, bind_result.class_bases,
         )
         inf_errors = inf_result.errors()
         if inf_errors:
             return (None, str(inf_errors[0]))
+        from src.frontend.lowering import lower
+
         module, lower_errors = lower(
-            ast_dict,
-            sig_result,
-            field_result,
-            hier_result,
-            known_classes,
-            class_bases,
-            source,
+            ast_dict, tc_result, hier_result,
+            bind_result.known_classes, bind_result.class_bases, source,
         )
         if lower_errors:
             return (None, str(lower_errors[0]))
