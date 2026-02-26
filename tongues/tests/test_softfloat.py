@@ -15,7 +15,7 @@ import struct
 
 import pytest
 
-from src.lib.softfloat import (
+from src.backend.softfloat import (
     F64_SIGN,
     f64_abs,
     f64_add,
@@ -40,7 +40,7 @@ from src.lib.softfloat import (
     str_to_f64,
 )
 
-import src.lib.softfloat as _sf
+import src.backend.softfloat as _sf
 
 ROUNDS = 500_000
 SEED = 0xF64
