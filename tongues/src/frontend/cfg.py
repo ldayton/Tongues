@@ -113,6 +113,7 @@ class FlowGraph:
         self.nodes: list[FlowNode] = []
         self.start_id: int = 0
         self._succ: dict[int, list[int]] = {}
+        self.cond_map: dict[int, list[int]] = {}
 
     def add(self, node: FlowNode) -> int:
         self.nodes.append(node)
@@ -512,6 +513,7 @@ def _build_condition(
                     true_id, false_id = _build_condition(
                         operand, prev_id, graph, aliases
                     )
+                    graph.cond_map[prev_id] = [false_id, true_id]
                     return (false_id, true_id)
     if target != "" and narrow_type != "":
         narrow_id = graph.next_id()
@@ -527,6 +529,7 @@ def _build_condition(
         widen_id = graph.next_id()
         widen = FlowWiden(id=widen_id, prev=[prev_id], narrow_id=narrow_id)
         graph.add(widen)
+        graph.cond_map[prev_id] = [narrow_id, widen_id]
         return (narrow_id, widen_id)
     nid = graph.next_id()
     join_true = FlowJoin(id=nid, prev=[prev_id])
@@ -534,6 +537,7 @@ def _build_condition(
     nid2 = graph.next_id()
     join_false = FlowJoin(id=nid2, prev=[prev_id])
     graph.add(join_false)
+    graph.cond_map[prev_id] = [nid, nid2]
     return (nid, nid2)
 
 
@@ -620,7 +624,8 @@ def _build_assert(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     if len(test) == 0:
         return prev_id
     aliases = _collect_aliases(graph)
-    true_id, _false_id = _build_condition(test, prev_id, graph, aliases)
+    true_id, false_id = _build_condition(test, prev_id, graph, aliases)
+    graph.cond_map[prev_id] = [true_id, false_id]
     return true_id
 
 
