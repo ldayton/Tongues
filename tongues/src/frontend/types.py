@@ -397,6 +397,128 @@ def type_name(t: TypeNode) -> str:
     return "unknown"
 
 
+def is_bytes_type(t: TypeNode) -> bool:
+    """Check if t represents bytes (either PrimitiveType("bytes") or SliceType(byte))."""
+    if isinstance(t, PrimitiveType) and t.kind == "bytes":
+        return True
+    if isinstance(t, SliceType):
+        if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
+            return True
+    return False
+
+
+def type_eq(a: TypeNode, b: TypeNode) -> bool:
+    """Check structural equality of two TypeNodes."""
+    if is_bytes_type(a) and is_bytes_type(b):
+        return True
+    if isinstance(a, PrimitiveType) and isinstance(b, PrimitiveType):
+        return a.kind == b.kind
+    if isinstance(a, PrimitiveType) or isinstance(b, PrimitiveType):
+        return False
+    if isinstance(a, SliceType) and isinstance(b, SliceType):
+        return type_eq(a.element, b.element)
+    if isinstance(a, MapType) and isinstance(b, MapType):
+        return type_eq(a.key, b.key) and type_eq(a.value, b.value)
+    if isinstance(a, SetType) and isinstance(b, SetType):
+        return type_eq(a.element, b.element)
+    if isinstance(a, OptionalType) and isinstance(b, OptionalType):
+        return type_eq(a.inner, b.inner)
+    if isinstance(a, TupleType) and isinstance(b, TupleType):
+        if a.variadic != b.variadic:
+            return False
+        if len(a.elements) != len(b.elements):
+            return False
+        j = 0
+        while j < len(a.elements):
+            if not type_eq(a.elements[j], b.elements[j]):
+                return False
+            j += 1
+        return True
+    if isinstance(a, PointerType) and isinstance(b, PointerType):
+        return type_eq(a.target, b.target)
+    if isinstance(a, StructRef) and isinstance(b, StructRef):
+        return a.name == b.name
+    if isinstance(a, InterfaceRef) and isinstance(b, InterfaceRef):
+        return a.name == b.name
+    if isinstance(a, FuncType) and isinstance(b, FuncType):
+        if len(a.params) != len(b.params):
+            return False
+        j = 0
+        while j < len(a.params):
+            if not type_eq(a.params[j], b.params[j]):
+                return False
+            j += 1
+        return type_eq(a.ret, b.ret)
+    if isinstance(a, UnionType) and isinstance(b, UnionType):
+        if len(a.variants) != len(b.variants):
+            return False
+        i = 0
+        while i < len(a.variants):
+            found = False
+            j = 0
+            while j < len(b.variants):
+                if type_eq(a.variants[i], b.variants[j]):
+                    found = True
+                j += 1
+            if not found:
+                return False
+            i += 1
+        return True
+    return a == b
+
+
+def combine_types(types: list[TypeNode]) -> TypeNode:
+    """Flatten, deduplicate, and normalize a list of types into a single type."""
+    # Flatten nested unions
+    flat: list[TypeNode] = []
+    i = 0
+    while i < len(types):
+        t = types[i]
+        if isinstance(t, UnionType):
+            j = 0
+            while j < len(t.variants):
+                flat.append(t.variants[j])
+                j += 1
+        else:
+            flat.append(t)
+        i += 1
+    # Deduplicate via type_eq
+    deduped: list[TypeNode] = []
+    i = 0
+    while i < len(flat):
+        is_dup = False
+        j = 0
+        while j < len(deduped):
+            if type_eq(flat[i], deduped[j]):
+                is_dup = True
+            j += 1
+        if not is_dup:
+            deduped.append(flat[i])
+        i += 1
+    if len(deduped) == 0:
+        return PrimitiveType("void")
+    if len(deduped) == 1:
+        return deduped[0]
+    # Check for None/void among variants
+    has_none = False
+    others: list[TypeNode] = []
+    i = 0
+    while i < len(deduped):
+        d = deduped[i]
+        if isinstance(d, PrimitiveType) and d.kind == "void":
+            has_none = True
+        else:
+            others.append(d)
+        i += 1
+    if has_none:
+        if len(others) == 0:
+            return PrimitiveType("void")
+        if len(others) == 1:
+            return OptionalType(others[0])
+        return OptionalType(UnionType(others))
+    return UnionType(deduped)
+
+
 def typenode_to_dict(t: TypeNode) -> JsonValue:
     """Convert a TypeNode to a JsonValue dict for serialization."""
     if isinstance(t, PrimitiveType):

@@ -41,6 +41,8 @@ from .types import (
     VOID_TYPE,
     BYTES_TYPE,
     is_any,
+    type_eq as _type_eq,
+    combine_types,
     type_name as _type_name_fn,
     JStr,
     JInt,
@@ -131,60 +133,6 @@ def _is_type(node: ASTNode, type_names: list[str]) -> bool:
         i += 1
     return False
 
-
-def _is_bytes_type(t: TypeNode) -> bool:
-    """Check if t represents bytes (either PrimitiveType("bytes") or SliceType(byte))."""
-    if isinstance(t, PrimitiveType) and t.kind == "bytes":
-        return True
-    if isinstance(t, SliceType):
-        if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
-            return True
-    return False
-
-
-def _type_eq(a: TypeNode, b: TypeNode) -> bool:
-    """Check structural equality of two TypeNodes."""
-    if _is_bytes_type(a) and _is_bytes_type(b):
-        return True
-    if isinstance(a, PrimitiveType) and isinstance(b, PrimitiveType):
-        return a.kind == b.kind
-    if isinstance(a, PrimitiveType) or isinstance(b, PrimitiveType):
-        return False
-    if isinstance(a, SliceType) and isinstance(b, SliceType):
-        return _type_eq(a.element, b.element)
-    if isinstance(a, MapType) and isinstance(b, MapType):
-        return _type_eq(a.key, b.key) and _type_eq(a.value, b.value)
-    if isinstance(a, SetType) and isinstance(b, SetType):
-        return _type_eq(a.element, b.element)
-    if isinstance(a, OptionalType) and isinstance(b, OptionalType):
-        return _type_eq(a.inner, b.inner)
-    if isinstance(a, TupleType) and isinstance(b, TupleType):
-        if a.variadic != b.variadic:
-            return False
-        if len(a.elements) != len(b.elements):
-            return False
-        j = 0
-        while j < len(a.elements):
-            if not _type_eq(a.elements[j], b.elements[j]):
-                return False
-            j += 1
-        return True
-    if isinstance(a, PointerType) and isinstance(b, PointerType):
-        return _type_eq(a.target, b.target)
-    if isinstance(a, StructRef) and isinstance(b, StructRef):
-        return a.name == b.name
-    if isinstance(a, InterfaceRef) and isinstance(b, InterfaceRef):
-        return a.name == b.name
-    if isinstance(a, FuncType) and isinstance(b, FuncType):
-        if len(a.params) != len(b.params):
-            return False
-        j = 0
-        while j < len(a.params):
-            if not _type_eq(a.params[j], b.params[j]):
-                return False
-            j += 1
-        return _type_eq(a.ret, b.ret)
-    return a == b
 
 
 def _type_name(t: TypeNode) -> str:
@@ -778,15 +726,7 @@ def _resolve_attr(
             i += 1
         if len(resolved) == 0:
             return ANY_TYPE
-        all_same = True
-        i = 1
-        while i < len(resolved):
-            if not _type_eq(resolved[0], resolved[i]):
-                all_same = False
-            i += 1
-        if all_same:
-            return resolved[0]
-        return UnionType(resolved)
+        return combine_types(resolved)
     # Struct field access
     sname = _struct_name(obj_type)
     if sname != "":
@@ -1023,7 +963,7 @@ def _synth_method_call(
                 all_func = False
             ui += 1
         if all_func and len(ret_types) > 0:
-            return UnionType(ret_types)
+            return combine_types(ret_types)
     # Direct method return type from sig table
     sname = _struct_name(obj_type)
     if sname != "":
