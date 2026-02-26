@@ -288,16 +288,18 @@ def _is_assignable(
         return _is_assignable(actual.ret, expected.ret, hier)
     # T assignable to Union if assignable to any variant
     if isinstance(expected, UnionType):
+        ev = get_subtypes(expected)
         j = 0
-        while j < len(expected.variants):
-            if _is_assignable(actual, expected.variants[j], hier):
+        while j < len(ev):
+            if _is_assignable(actual, ev[j], hier):
                 return True
             j += 1
     # Union assignable to T if every variant is assignable
     if isinstance(actual, UnionType):
+        av = get_subtypes(actual)
         j = 0
-        while j < len(actual.variants):
-            if not _is_assignable(actual.variants[j], expected, hier):
+        while j < len(av):
+            if not _is_assignable(av[j], expected, hier):
                 return False
             j += 1
         return True
