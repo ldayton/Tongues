@@ -4800,3 +4800,865 @@ def f(x: int | str) -> int:
 ---
 ok
 ---
+=== raise not isinstance wrong type fails
+class Base:
+    pass
+class Child(Base):
+    def value(self) -> int:
+        return 1
+def f(x: Base) -> int:
+    if not isinstance(x, Child):
+        raise TypeError("expected Child")
+    return x.missing_method()
+---
+error: missing_method
+---
+=== isinstance on self wrong subclass fails
+class Base:
+    def method(self) -> int:
+        if isinstance(self, Child):
+            return self.wrong_method()
+        return 0
+class Child(Base):
+    def child_value(self) -> int:
+        return 42
+---
+error: wrong_method
+---
+=== isinstance with superclass else access fails
+class A:
+    pass
+class B(A):
+    pass
+class C(B):
+    def deep_method(self) -> int:
+        return 1
+def f(x: A) -> int:
+    if isinstance(x, C):
+        return 0
+    return x.deep_method()
+---
+error: deep_method
+---
+=== isinstance both branches wrong method fails
+class A:
+    def method_a(self) -> str:
+        return "a"
+class B:
+    def method_b(self) -> str:
+        return "b"
+def f(x: A | B) -> str:
+    if isinstance(x, A):
+        return x.method_b()
+    return "ok"
+---
+error: method_b
+---
+=== isinstance narrows but reassignment loses it fails
+class A:
+    def a_method(self) -> int:
+        return 1
+class B:
+    pass
+def f(x: A | B) -> int:
+    if isinstance(x, A):
+        x = B()
+        return x.a_method()
+    return 0
+---
+error: a_method
+---
+=== or isinstance does not narrow then branch fails
+class A:
+    def only_a(self) -> int:
+        return 1
+class B:
+    pass
+class C:
+    pass
+def f(x: A | B | C) -> int:
+    if isinstance(x, A) or isinstance(x, B):
+        return x.only_a()
+    return 0
+---
+error: only_a
+---
+=== or isinstance merges but no unique method
+class A:
+    pass
+class B(A):
+    flag: int
+class C(A):
+    name: str
+def f(x: A) -> int:
+    if isinstance(x, B) or isinstance(x, C):
+        return x.flag
+    return 0
+---
+error: flag
+---
+=== assert isinstance on union wrong type access after
+class A:
+    pass
+class B(A):
+    data: int
+def f(x: A | B) -> int:
+    assert isinstance(x, A)
+    return x.data
+---
+error: cannot access
+---
+=== isinstance or isinstance wrong field in else
+class A:
+    flag: int
+class B:
+    flag: int
+class C:
+    other: int
+def f(x: A | B | C) -> int:
+    if isinstance(x, A) or isinstance(x, B):
+        return x.flag
+    return x.flag
+---
+error: attribute 'flag' not available
+---
+=== narrowing with reassignment in elif chain wrong access
+class A:
+    x: int
+class B:
+    y: int
+class C:
+    z: int
+def f(val: A | B | C) -> int:
+    if isinstance(val, A):
+        return val.y
+    return 0
+---
+error: cannot access
+---
+=== isinstance narrowing lost after assignment in branch access fails
+class A:
+    pass
+class B(A):
+    extra: int
+def f(x: A | B) -> int:
+    if isinstance(x, B):
+        x = A()
+        return x.extra
+    return 0
+---
+error: cannot access
+---
+=== assert not isinstance then access subclass field fails
+class A:
+    pass
+class B(A):
+    extra: int
+def f(x: A | B) -> int:
+    assert not isinstance(x, B)
+    return x.extra
+---
+error: cannot access
+---
+=== isinstance narrowing with two unions wrong access
+class A:
+    x: int
+class B:
+    y: int
+class C:
+    p: int
+class D:
+    q: int
+def f(u1: A | B, u2: C | D) -> int:
+    if isinstance(u1, A):
+        return u1.y
+    return 0
+---
+error: cannot access
+---
+=== narrowing in elif chain accessing wrong field in elif
+class A:
+    x: int
+class B:
+    y: str
+class C:
+    z: float
+def f(val: A | B | C) -> str:
+    if isinstance(val, A):
+        return str(val.x)
+    elif isinstance(val, B):
+        return str(val.z)
+    return ""
+---
+error: cannot access
+---
+=== narrowing does not persist after for loop iteration
+class A:
+    pass
+class B(A):
+    val: int
+def f(items: list[A]) -> int:
+    for item in items:
+        if isinstance(item, B):
+            pass
+    return item.val
+---
+error: cannot access
+---
+=== isinstance reassignment to parent loses narrowing
+class A:
+    pass
+class B(A):
+    bval: int
+def f(x: A) -> int:
+    if isinstance(x, B):
+        x = A()
+        return x.bval
+    return 0
+---
+error: cannot access
+---
+=== deep inheritance isinstance wrong field on base
+class A:
+    pass
+class B(A):
+    b_field: int
+class C(B):
+    c_field: str
+def f(x: A) -> str:
+    return x.c_field
+---
+error:
+---
+=== isinstance on same var twice wrong access in outer
+class A:
+    pass
+class B(A):
+    pass
+class C(B):
+    deep: int
+def f(x: A) -> int:
+    if isinstance(x, B):
+        return x.deep
+    return 0
+---
+error: cannot access
+---
+=== multiple isinstance on different vars wrong access
+class A:
+    pass
+class B(A):
+    x: int
+class C:
+    pass
+class D(C):
+    y: str
+def f(a: A, c: C) -> str:
+    if isinstance(a, B):
+        return c.y
+    return ""
+---
+error:
+---
+=== is None early return then isinstance wrong access
+class A:
+    pass
+class B(A):
+    val: int
+def f(x: A | None) -> int:
+    if x is None:
+        return 0
+    return x.val
+---
+error:
+---
+=== narrowing does not survive function call on same var
+class A:
+    pass
+class B(A):
+    val: int
+def make_a() -> A:
+    return A()
+def f(x: A) -> int:
+    if isinstance(x, B):
+        x = make_a()
+        return x.val
+    return 0
+---
+error:
+---
+=== chained assert isinstance wrong access after first
+class A:
+    pass
+class B(A):
+    b_val: int
+def f(x: A, y: A) -> int:
+    assert isinstance(x, B)
+    return x.b_val + y.b_val
+---
+error:
+---
+=== assert isinstance then reassignment resets
+class A:
+    pass
+class B(A):
+    val: int
+def f(x: A) -> int:
+    assert isinstance(x, B)
+    x = A()
+    return x.val
+---
+error:
+---
+=== narrowing with walrus elif missing guard
+def get_a() -> int | None:
+    return None
+def get_b() -> str | None:
+    return None
+def f() -> str:
+    if (a := get_a()) is not None:
+        return str(a)
+    elif (b := get_b()) is not None:
+        return b
+    return b
+---
+error: None
+---
+=== narrowing in except handler does not carry after try
+class A:
+    pass
+class B(A):
+    val: int
+def f(x: A) -> int:
+    try:
+        pass
+    except Exception as e:
+        if isinstance(x, B):
+            pass
+    return x.val
+---
+error:
+---
+=== isinstance narrowing does not persist after loop without return
+class A:
+    pass
+class B(A):
+    val: int
+def f(items: list[A]) -> int:
+    for item in items:
+        if isinstance(item, B):
+            pass
+    return item.val
+---
+error:
+---
+=== isinstance tuple else wrong field on remaining
+class A:
+    a: int
+class B:
+    b: int
+class C:
+    c: int
+def f(x: A | B | C) -> int:
+    if isinstance(x, (A, B)):
+        return 0
+    return x.a
+---
+error:
+---
+
+=== kind discrimination wrong field in then branch
+class A:
+    kind: str
+    a_val: int
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> str:
+    if x.kind == "a":
+        return x.b_val
+    return ""
+---
+error: cannot access
+---
+=== kind discrimination early return wrong access after
+class A:
+    kind: str
+    a_val: int
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> str:
+    if x.kind == "a":
+        return str(x.a_val)
+    return str(x.a_val)
+---
+error:
+---
+=== isinstance with continue wrong branch fails
+class A:
+    pass
+class B(A):
+    x: int
+def f(items: list[A]) -> int:
+    total: int = 0
+    for item in items:
+        if isinstance(item, B):
+            continue
+        total += item.x
+    return total
+---
+error: cannot access
+---
+=== narrowing in nested for loops inner does not leak to outer
+class A:
+    pass
+class B(A):
+    val: int
+def f(matrix: list[list[A]]) -> int:
+    total: int = 0
+    for row in matrix:
+        for item in row:
+            if isinstance(item, B):
+                total += item.val
+        total += item.val
+    return total
+---
+error:
+---
+=== narrowing with list method without guard fails
+def f(x: list[int] | int) -> int:
+    x.append(42)
+    return 0
+---
+error:
+---
+=== isinstance tuple shared method call on union
+class A:
+    def shared(self) -> int:
+        return 1
+class B:
+    def shared(self) -> int:
+        return 2
+class C:
+    def other(self) -> int:
+        return 3
+def f(x: A | B | C) -> int:
+    if isinstance(x, (A, B)):
+        return x.shared()
+    return x.other()
+---
+ok
+---
+=== unnarrowed optional attribute fails
+from dataclasses import dataclass
+@dataclass
+class Node:
+    child: "Node | None"
+def f(n: Node) -> int:
+    return n.child.value
+---
+error: None
+---
+=== nested optional missing inner guard fails
+from dataclasses import dataclass
+@dataclass
+class A:
+    b: "B | None"
+@dataclass
+class B:
+    c: "C | None"
+@dataclass
+class C:
+    value: int
+def f(a: A) -> int:
+    if a.b is not None:
+        return a.b.c.value
+    return 0
+---
+error: None
+---
+=== narrowing with nested isinstance missing inner guard
+class A:
+    pass
+class B(A):
+    inner: "C | None"
+class C:
+    val: int
+def f(x: A) -> int:
+    if isinstance(x, B):
+        return x.inner.val
+    return 0
+---
+error: cannot access
+---
+=== narrowing with optional dataclass field missing guard
+from dataclasses import dataclass
+@dataclass
+class Inner:
+    val: int
+@dataclass
+class Outer:
+    inner: Inner | None
+def f(o: Outer) -> int:
+    return o.inner.val
+---
+error: None
+---
+=== narrowing with triple optional chain missing middle guard
+from dataclasses import dataclass
+@dataclass
+class C:
+    val: int
+@dataclass
+class B:
+    c: C | None
+@dataclass
+class A:
+    b: B | None
+def f(a: A) -> int:
+    if a.b is not None:
+        return a.b.c.val
+    return 0
+---
+error: None
+---
+=== attribute guard on wrong field fails
+from dataclasses import dataclass
+@dataclass
+class Pair:
+    left: int | None
+    right: int | None
+def f(p: Pair) -> int:
+    if p.left is not None:
+        return p.left + p.right
+    return 0
+---
+error: None
+---
+=== multiple attribute guards missing one fails
+from dataclasses import dataclass
+@dataclass
+class Triple:
+    a: int | None
+    b: int | None
+    c: int | None
+def f(t: Triple) -> int:
+    if t.a is not None and t.b is not None:
+        return t.a + t.b + t.c
+    return 0
+---
+error: None
+---
+=== narrowing with comparison on unnarrowed value
+def f(x: int | None) -> str:
+    if x > 0:
+        return "positive"
+    return "other"
+---
+error: None
+---
+=== multiple attribute path guards missing last
+from dataclasses import dataclass
+@dataclass
+class Config:
+    host: str | None
+    port: int | None
+    name: str | None
+def f(c: Config) -> str:
+    if c.host is not None and c.port is not None:
+        return c.host + ":" + str(c.port) + "/" + c.name
+    return ""
+---
+error: None
+---
+=== and chain partial guard fails
+def f(x: int | None, y: str | None) -> int:
+    if x is not None:
+        return x + len(y)
+    return 0
+---
+error: None
+---
+=== isinstance short-circuit or disallows attribute access
+class A:
+    pass
+class B(A):
+    flag: int
+def f(x: A) -> int:
+    if isinstance(x, B) or x.flag > 0:
+        return 0
+    return 0
+---
+error: flag
+---
+=== not isinstance short-circuit and disallows attribute access
+class A:
+    pass
+class B(A):
+    flag: int
+def f(x: A) -> int:
+    if not isinstance(x, B) and x.flag > 0:
+        return 0
+    return 0
+---
+error: flag
+---
+=== isinstance ternary condition wrong branch
+class A:
+    pass
+class B(A):
+    flag: int
+def f(x: A) -> int:
+    return 0 if isinstance(x, B) else x.flag
+---
+error: flag
+---
+=== isinstance or non-isinstance in or does not narrow
+class A:
+    pass
+class B(A):
+    flag: int
+def f(x: A, cond: bool) -> int:
+    if cond or isinstance(x, B):
+        return x.flag
+    return 0
+---
+error: flag
+---
+=== attribute access before isinstance guard fails
+class A:
+    pass
+class B(A):
+    flag: int
+def f(x: A) -> int:
+    if x.flag and isinstance(x, B):
+        return x.flag
+    return 0
+---
+error: cannot access
+---
+=== isinstance narrows in ternary wrong access in false branch
+class A:
+    pass
+class B(A):
+    x: int
+def f(val: A | B) -> int:
+    return 0 if isinstance(val, B) else val.x
+---
+error: cannot access
+---
+=== truthiness does not narrow in or chain with field access
+class C:
+    val: int
+def f(x: C | None) -> int:
+    if x is not None or x.val > 0:
+        return 0
+    return 0
+---
+error: cannot access
+---
+=== walrus in while condition without guard fails
+def get_next() -> int | None:
+    return None
+def f() -> int:
+    total: int = 0
+    while True:
+        val: int | None = get_next()
+        total += val
+    return total
+---
+error: cannot use
+---
+=== multiple optional guards missing one fails
+def f(a: int | None, b: str | None) -> int:
+    if a is None:
+        return 0
+    return a + len(b)
+---
+error: cannot
+---
+=== isinstance conditional return wrong branch
+class A:
+    pass
+class B(A):
+    val: int
+def f(x: A) -> int:
+    return 0 if isinstance(x, B) else x.val
+---
+error:
+---
+=== isinstance and is not None wrong order fails
+class A:
+    extra: int | None
+class B:
+    pass
+def f(x: A | B) -> int:
+    if x.extra is not None and isinstance(x, A):
+        return x.extra
+    return 0
+---
+error:
+---
+=== attribute narrowing resets after reassignment
+from dataclasses import dataclass
+@dataclass
+class Node:
+    child: "Node | None"
+def f(n: Node) -> int:
+    if n.child is not None:
+        val: int = n.child.value
+    n = Node(None)
+    return 0
+---
+error:
+---
+=== narrowing lost after assignment
+def f(x: int | None) -> int:
+    if x is not None:
+        x = None
+        return x + 1
+    return 0
+---
+error: None
+---
+=== isinstance sub class reset on container reassignment
+class A:
+    pass
+class B(A):
+    b_val: int
+class C:
+    a: A
+def f(x: C) -> int:
+    if isinstance(x.a, B):
+        x = C()
+        return x.a.b_val
+    return 0
+---
+error: b_val
+---
+=== isinstance on attribute parent reassigned then access fails
+class Inner:
+    pass
+class InnerSub(Inner):
+    val: int
+class Outer:
+    member: Inner
+def f() -> int:
+    obj: Outer = Outer()
+    if isinstance(obj.member, InnerSub):
+        obj = Outer()
+        return obj.member.val
+    return 0
+---
+error: cannot access
+---
+=== isinstance in list comprehension without filter fails
+class A:
+    pass
+class B(A):
+    val: int
+def f(items: list[A]) -> list[int]:
+    return [item.val for item in items]
+---
+error: cannot access
+---
+=== comprehension isinstance filter wrong attribute
+class A:
+    pass
+class B(A):
+    val: int
+def f(items: list[A]) -> list[int]:
+    return [item.val for item in items]
+---
+error:
+---
+=== narrowing assignment to None destroys previous narrowing
+def f(x: int | None) -> int:
+    if x is not None:
+        x = None
+        return x + 1
+    return 0
+---
+error:
+---
+=== isinstance break in loop does not narrow after loop
+def f(x: int | str) -> str:
+    for i in range(10):
+        if isinstance(x, int):
+            break
+    return x
+---
+error:
+---
+=== walrus isinstance wrong branch access
+class A:
+    pass
+class B(A):
+    x: int
+def make() -> A:
+    return B()
+def f() -> int:
+    if isinstance((val := make()), B):
+        return 0
+    return val.x
+---
+error: cannot access
+---
+=== isinstance in method wrong access on self
+class A:
+    def process(self) -> int:
+        return self.extra
+class B(A):
+    extra: int
+---
+error:
+---
+=== isinstance assert in loop body wrong access after loop
+class A:
+    pass
+class B(A):
+    val: int
+def f(items: list[A]) -> int:
+    for item in items:
+        assert isinstance(item, B)
+    return item.val
+---
+error:
+---
+=== not isinstance accesses subtype in wrong branch fails
+def f(x: int | str) -> str:
+    if not isinstance(x, int):
+        return str(x + 1)
+    return "was int"
+---
+error: str
+---
+=== union shared method different return types
+class A:
+    def value(self) -> int:
+        return 1
+class B:
+    def value(self) -> str:
+        return "x"
+def f(x: A | B) -> int:
+    return x.value()
+---
+error:
+---
+=== isinstance on attribute wrong type access
+class Inner:
+    pass
+class InnerA(Inner):
+    val: int
+class InnerB(Inner):
+    name: str
+class WrapperA:
+    child: InnerA
+class WrapperB:
+    child: InnerB
+def f(w: WrapperA | WrapperB) -> int:
+    return w.child.val
+---
+error:
+---

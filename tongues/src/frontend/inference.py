@@ -475,6 +475,30 @@ class TypeEnv:
     def is_attr_guarded(self, path: str) -> bool:
         return path in self.guarded_attrs
 
+    def evict_guarded_attrs(self, name: str) -> None:
+        """Remove all guarded/narrowed attr paths rooted at name."""
+        prefix = name + "."
+        to_remove: list[str] = []
+        keys = list(self.guarded_attrs)
+        i = 0
+        while i < len(keys):
+            k = keys[i]
+            if k == name or k.startswith(prefix):
+                to_remove.append(k)
+            i += 1
+        j = 0
+        while j < len(to_remove):
+            self.guarded_attrs.discard(to_remove[j])
+            j += 1
+        type_keys = list(self.types.keys())
+        i = 0
+        while i < len(type_keys):
+            k = type_keys[i]
+            if k.startswith(prefix):
+                self.types.pop(k)
+                self.source_types.pop(k, "")
+            i += 1
+
 
 # ---------------------------------------------------------------------------
 # Expression type synthesis
@@ -495,6 +519,30 @@ _EAGER_CONSUMERS: set[str] = {
 }
 
 _ITERATOR_FUNCS: set[str] = {"enumerate", "zip", "reversed"}
+
+_BUILTIN_FUNCS: set[str] = {
+    "len",
+    "int",
+    "str",
+    "float",
+    "bool",
+    "abs",
+    "ord",
+    "chr",
+    "repr",
+    "hash",
+    "range",
+    "print",
+    "sum",
+    "min",
+    "max",
+    "sorted",
+    "list",
+    "tuple",
+    "set",
+    "dict",
+    "type",
+}
 
 
 def _synth_expr(
@@ -718,6 +766,27 @@ def _resolve_attr(
         if attr == "clear":
             return FuncType([], VOID_TYPE)
         return ANY_TYPE
+    # Union: resolve on each variant
+    if isinstance(obj_type, UnionType):
+        resolved: list[TypeNode] = []
+        i = 0
+        while i < len(obj_type.variants):
+            r = _resolve_attr(obj_type.variants[i], attr, value_node, env, ctx)
+            if is_any(r):
+                return ANY_TYPE
+            resolved.append(r)
+            i += 1
+        if len(resolved) == 0:
+            return ANY_TYPE
+        all_same = True
+        i = 1
+        while i < len(resolved):
+            if not _type_eq(resolved[0], resolved[i]):
+                all_same = False
+            i += 1
+        if all_same:
+            return resolved[0]
+        return UnionType(resolved)
     # Struct field access
     sname = _struct_name(obj_type)
     if sname != "":
@@ -942,6 +1011,19 @@ def _synth_method_call(
         if attr == "get" and len(args) >= 2 and isinstance(attr_type.ret, OptionalType):
             return attr_type.ret.inner
         return attr_type.ret
+    if isinstance(attr_type, UnionType):
+        ret_types: list[TypeNode] = []
+        all_func = True
+        ui = 0
+        while ui < len(attr_type.variants):
+            v = attr_type.variants[ui]
+            if isinstance(v, FuncType):
+                ret_types.append(v.ret)
+            else:
+                all_func = False
+            ui += 1
+        if all_func and len(ret_types) > 0:
+            return UnionType(ret_types)
     # Direct method return type from sig table
     sname = _struct_name(obj_type)
     if sname != "":
@@ -1185,6 +1267,12 @@ def _synth_listcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     comp_env = env.copy()
     _bind_comprehension_vars(generators, comp_env, ctx)
     if len(elt) > 0:
+        lineno = get_int(node, "lineno")
+        if lineno == 0 and len(generators) > 0:
+            lineno = get_int(generators[0], "lineno")
+        _validate_expr_access(elt, comp_env, ctx, lineno)
+        if len(ctx.result._errors) > 0:
+            return SliceType(ANY_TYPE)
         return SliceType(_synth_expr(elt, comp_env, ctx))
     return SliceType(ANY_TYPE)
 
@@ -1473,6 +1561,9 @@ def _validate_assign(
                 return
             if _check_generator_escape_assign(value, env, ctx, lineno):
                 return
+            _validate_expr_access(value, env, ctx, lineno)
+            if len(ctx.result._errors) > 0:
+                return
             _validate_expr_calls(value, env, ctx, lineno)
             if len(ctx.result._errors) > 0:
                 return
@@ -1483,6 +1574,7 @@ def _validate_assign(
         if _is_type(tgt, ["Name"]):
             name = get_str(tgt, "id")
             if name != "":
+                env.evict_guarded_attrs(name)
                 existing = env.get_type(name)
                 if existing is not None:
                     if not _type_eq(val_type, existing):
@@ -1686,6 +1778,9 @@ def _validate_ann_assign(
         if name != "":
             env.set(name, ann_type, ann_str)
             if len(value) > 0:
+                _validate_expr_access(value, env, ctx, lineno)
+                if len(ctx.result._errors) > 0:
+                    return
                 _validate_expr_calls(value, env, ctx, lineno)
                 if len(ctx.result._errors) > 0:
                     return
@@ -1709,6 +1804,12 @@ def _validate_aug_assign(
     if len(target) == 0 or len(value) == 0:
         return
     lineno = get_int(stmt, "lineno")
+    _check_needs_narrowing(value, env, ctx, lineno, "arithmetic", "")
+    if len(ctx.result._errors) > 0:
+        return
+    _validate_expr_access(value, env, ctx, lineno)
+    if len(ctx.result._errors) > 0:
+        return
     _validate_expr_calls(value, env, ctx, lineno)
     _synth_expr(value, env, ctx)
 
@@ -1754,6 +1855,9 @@ def _validate_expr_stmt(
                     else:
                         _check_generator_escape_arg(arg, attr, env, ctx, lineno)
                     j += 1
+    _validate_expr_access(value, env, ctx, lineno)
+    if len(ctx.result._errors) > 0:
+        return
     _synth_expr(value, env, ctx)
     _validate_expr_calls(value, env, ctx, lineno)
 
@@ -2042,6 +2146,9 @@ def _validate_if(
     orelse = get_nodes(stmt, "orelse")
     lineno = get_int(stmt, "lineno")
     if len(test) > 0:
+        _validate_expr_access(test, env, ctx, lineno)
+        if len(ctx.result._errors) > 0:
+            return False
         _validate_expr_calls(test, env, ctx, lineno)
         if len(ctx.result._errors) > 0:
             return False
@@ -2116,6 +2223,9 @@ def _validate_while(
     body = get_nodes(stmt, "body")
     lineno = get_int(stmt, "lineno")
     if len(test) > 0:
+        _validate_expr_access(test, env, ctx, lineno)
+        if len(ctx.result._errors) > 0:
+            return
         _validate_expr_calls(test, env, ctx, lineno)
         _check_truthiness(test, env, ctx, lineno)
     loop_env = env.copy()
@@ -2157,7 +2267,14 @@ def _validate_for(
         elem = _iteration_element(iter_type)
         if len(target) > 0:
             _bind_target(target, elem, env)
-    _validate_stmts(body, env, func_info, ctx)
+    loop_env = env.copy()
+    if len(target) > 0:
+        tname = get_str(target, "id")
+        if tname != "":
+            t = env.get_type(tname)
+            if t is not None:
+                loop_env.set(tname, t, env.get_source(tname))
+    _validate_stmts(body, loop_env, func_info, ctx)
 
 
 def _validate_assert(
@@ -2369,9 +2486,10 @@ def _extract_narrowing(
         if op_t == "Or":
             values = get_nodes(test, "values")
             _narrow_or_isinstance(values, then_env, ctx)
+            dummy_then = else_env.copy()
             j = 0
             while j < len(values):
-                _extract_narrowing(values[j], then_env, else_env, ctx)
+                _extract_narrowing(values[j], dummy_then, else_env, ctx)
                 j += 1
             return
     if t == "NamedExpr":
@@ -2401,6 +2519,11 @@ def _extract_narrowing(
                         non_none[0], ctx.known_classes, sig_errors, 0, 0
                     )
                     then_env.narrow(name, narrowed, non_none[0])
+        return
+    if t == "Attribute":
+        path = _attr_path(test)
+        if path != "":
+            then_env.guard_attr(path)
         return
 
 
@@ -2447,6 +2570,15 @@ def _narrow_isinstance(
         name = get_str(target, "id")
     elif _is_type(target, ["Attribute"]):
         name = _attr_path(target)
+    elif _is_type(target, ["NamedExpr"]):
+        walrus_target = get_node(target, "target")
+        if len(walrus_target) > 0 and _is_type(walrus_target, ["Name"]):
+            name = get_str(walrus_target, "id")
+            walrus_value = get_node(target, "value")
+            if name != "" and len(walrus_value) > 0:
+                vt = _synth_expr(walrus_value, then_env, ctx)
+                then_env.set(name, vt, _type_name(vt))
+                else_env.set(name, vt, _type_name(vt))
     if name == "":
         return
     narrow_names: list[str] = []
@@ -2472,6 +2604,13 @@ def _narrow_isinstance(
             narrow_name, ctx.known_classes, sig_errors, 0, 0
         )
         then_env.narrow(name, narrowed, narrow_name)
+    elif len(narrow_names) > 1:
+        union_source = " | ".join(narrow_names)
+        sig_errors: list[SignatureError] = []
+        first_type = py_type_to_type_dict(
+            narrow_names[0], ctx.known_classes, sig_errors, 0, 0
+        )
+        then_env.narrow(name, first_type, union_source)
     source = else_env.get_source(name)
     if source != "" and _is_union_source(source):
         parts = _split_union_parts(source)
@@ -2585,6 +2724,10 @@ def _narrow_compare(
                             src = then_env.get_source(obj_name)
                             if src != "" and _is_union_source(src):
                                 is_union = True
+                    if len(obj_node) > 0 and _is_type(obj_node, ["Attribute"]):
+                        kind_path = _attr_path(obj_node)
+                        if kind_path != "":
+                            then_env.guard_attr(kind_path)
                     if is_union:
                         found_class = ""
                         all_classes = list(ctx.known_classes)
@@ -2754,7 +2897,56 @@ def _narrow_or_isinstance(
     values: list[ASTNode], then_env: TypeEnv, ctx: _InferCtx
 ) -> None:
     """Handle isinstance(x,A) or isinstance(x,B) in then branch."""
-    pass
+    name = ""
+    type_names: list[str] = []
+    i = 0
+    while i < len(values):
+        v = values[i]
+        if not _is_type(v, ["Call"]):
+            return
+        func = get_node(v, "func")
+        if not (
+            len(func) > 0
+            and _is_type(func, ["Name"])
+            and get_str(func, "id") == "isinstance"
+        ):
+            return
+        args = get_nodes(v, "args")
+        if len(args) < 2:
+            return
+        target = args[0]
+        if not _is_type(target, ["Name"]):
+            return
+        tname = get_str(target, "id")
+        if tname == "":
+            return
+        if name == "":
+            name = tname
+        elif tname != name:
+            return
+        type_arg = args[1]
+        if _is_type(type_arg, ["Name"]):
+            tn = get_str(type_arg, "id")
+            if tn != "":
+                type_names.append(tn)
+        elif _is_type(type_arg, ["Tuple"]):
+            elts = get_nodes(type_arg, "elts")
+            j = 0
+            while j < len(elts):
+                if _is_type(elts[j], ["Name"]):
+                    tn = get_str(elts[j], "id")
+                    if tn != "":
+                        type_names.append(tn)
+                j += 1
+        i += 1
+    if name == "" or len(type_names) == 0:
+        return
+    union_source = " | ".join(type_names)
+    sig_errors: list[SignatureError] = []
+    first_type = py_type_to_type_dict(
+        type_names[0], ctx.known_classes, sig_errors, 0, 0
+    )
+    then_env.narrow(name, first_type, union_source)
 
 
 # ---------------------------------------------------------------------------
@@ -3006,6 +3198,12 @@ def _check_needs_narrowing(
     typ = env.get_type(name)
     if typ is None:
         return
+    if isinstance(typ, PrimitiveType) and typ.kind == "void":
+        if context == "arithmetic":
+            ctx.result.add_error(lineno, 0, "cannot use None in arithmetic")
+        elif context == "attribute":
+            ctx.result.add_error(lineno, 0, "cannot access '" + attr_name + "' on None")
+        return
     if isinstance(typ, OptionalType):
         if context == "arithmetic":
             ctx.result.add_error(
@@ -3062,17 +3260,36 @@ def _check_needs_narrowing(
             )
         return
     if source == "object":
-        if context == "arithmetic":
-            ctx.result.add_error(
-                lineno, 0, "cannot use object in arithmetic without narrowing"
-            )
-        elif context == "attribute":
-            ctx.result.add_error(
-                lineno, 0, "cannot access attribute on object without narrowing"
-            )
-        elif context == "subscript":
-            ctx.result.add_error(lineno, 0, "cannot subscript object without narrowing")
-        return
+        if is_any(typ):
+            pass
+        elif isinstance(typ, PrimitiveType):
+            pass
+        elif _struct_name(typ) != "":
+            pass
+        elif isinstance(typ, SliceType) or isinstance(typ, MapType):
+            pass
+        else:
+            if context == "arithmetic":
+                ctx.result.add_error(
+                    lineno, 0, "cannot use object in arithmetic without narrowing"
+                )
+            elif context == "attribute":
+                ctx.result.add_error(
+                    lineno, 0, "cannot access attribute on object without narrowing"
+                )
+            elif context == "subscript":
+                ctx.result.add_error(
+                    lineno, 0, "cannot subscript object without narrowing"
+                )
+            return
+    if context == "attribute" and attr_name != "":
+        sname = _struct_name(typ)
+        if sname != "" and sname in ctx.known_classes:
+            if not _class_has_attr(sname, attr_name, ctx):
+                if not _all_subclasses_have_attr(sname, attr_name, ctx):
+                    ctx.result.add_error(
+                        lineno, 0, "cannot access '" + attr_name + "' on " + sname
+                    )
 
 
 def _validate_expr_access(
@@ -3096,16 +3313,164 @@ def _validate_expr_access(
             _check_needs_narrowing(binop_right, env, ctx, lineno, "arithmetic", "")
         if len(ctx.result._errors) > 0:
             return
+        if len(binop_left) > 0 and not _is_type(binop_left, ["Name"]):
+            lt = _synth_expr(binop_left, env, ctx)
+            if isinstance(lt, OptionalType):
+                ctx.result.add_error(
+                    lineno, 0, "cannot use optional type in arithmetic (may be None)"
+                )
+                return
+        if len(binop_right) > 0 and not _is_type(binop_right, ["Name"]):
+            rt = _synth_expr(binop_right, env, ctx)
+            if isinstance(rt, OptionalType):
+                ctx.result.add_error(
+                    lineno, 0, "cannot use optional type in arithmetic (may be None)"
+                )
+                return
+        binop_op = get_node(node, "op")
+        binop_op_t = get_str(binop_op, "_type")
+        if binop_op_t != "Mult":
+            ltype = _synth_expr(binop_left, env, ctx)
+            rtype = _synth_expr(binop_right, env, ctx)
+            l_str = isinstance(ltype, PrimitiveType) and ltype.kind == "string"
+            r_str = isinstance(rtype, PrimitiveType) and rtype.kind == "string"
+            r_num = isinstance(rtype, PrimitiveType) and rtype.kind in (
+                "int",
+                "float",
+                "bool",
+            )
+            l_num = isinstance(ltype, PrimitiveType) and ltype.kind in (
+                "int",
+                "float",
+                "bool",
+            )
+            if l_str and r_num:
+                ctx.result.add_error(lineno, 0, "cannot use str in arithmetic")
+                return
+            if r_str and l_num:
+                ctx.result.add_error(lineno, 0, "cannot use str in arithmetic")
+                return
         if len(binop_left) > 0:
             _validate_expr_access(binop_left, env, ctx, lineno)
         if len(binop_right) > 0:
             _validate_expr_access(binop_right, env, ctx, lineno)
+        return
+    if t == "Compare":
+        ops = get_nodes(node, "ops")
+        is_ordering = False
+        oi = 0
+        while oi < len(ops):
+            op_type = get_str(ops[oi], "_type")
+            if op_type in ("Lt", "LtE", "Gt", "GtE"):
+                is_ordering = True
+            oi += 1
+        cmp_left = get_node(node, "left")
+        if is_ordering:
+            if len(cmp_left) > 0:
+                _check_needs_narrowing(cmp_left, env, ctx, lineno, "arithmetic", "")
+            if len(ctx.result._errors) > 0:
+                return
+            comparators = get_nodes(node, "comparators")
+            ci = 0
+            while ci < len(comparators):
+                _check_needs_narrowing(
+                    comparators[ci], env, ctx, lineno, "arithmetic", ""
+                )
+                if len(ctx.result._errors) > 0:
+                    return
+                ci += 1
+        if len(cmp_left) > 0:
+            _validate_expr_access(cmp_left, env, ctx, lineno)
+            if len(ctx.result._errors) > 0:
+                return
+        comparators = get_nodes(node, "comparators")
+        ci = 0
+        while ci < len(comparators):
+            _validate_expr_access(comparators[ci], env, ctx, lineno)
+            if len(ctx.result._errors) > 0:
+                return
+            ci += 1
         return
     if t == "Attribute":
         value = get_node(node, "value")
         attr_str = get_str(node, "attr")
         if len(value) > 0 and attr_str != "kind":
             _check_needs_narrowing(value, env, ctx, lineno, "attribute", attr_str)
+        if len(ctx.result._errors) > 0:
+            return
+        if (
+            len(value) > 0
+            and _is_type(value, ["Name"])
+            and get_str(value, "id") == "self"
+            and attr_str != ""
+        ):
+            self_type = env.get_type("self")
+            use_this = self_type is None
+            if self_type is not None and is_any(self_type):
+                use_this = True
+            if not use_this and self_type is not None:
+                check_sname = _struct_name(self_type)
+                if check_sname != "" and check_sname in ctx.known_classes:
+                    if not _class_has_attr(check_sname, attr_str, ctx):
+                        if not _all_subclasses_have_attr(check_sname, attr_str, ctx):
+                            ctx.result.add_error(
+                                lineno,
+                                0,
+                                "cannot access '" + attr_str + "' on " + check_sname,
+                            )
+                            return
+            if use_this:
+                this_type = env.get_type("this")
+                if this_type is not None:
+                    sname = _struct_name(this_type)
+                    if sname != "" and sname in ctx.known_classes:
+                        if not _class_has_attr(sname, attr_str, ctx):
+                            if not _all_subclasses_have_attr(sname, attr_str, ctx):
+                                ctx.result.add_error(
+                                    lineno,
+                                    0,
+                                    "cannot access '" + attr_str + "' on " + sname,
+                                )
+                                return
+        if len(value) > 0 and not _is_type(value, ["Name"]) and attr_str != "kind":
+            val_path = _attr_path(value)
+            is_guarded = val_path != "" and env.is_attr_guarded(val_path)
+            obj_type = _synth_expr(value, env, ctx)
+            if not is_guarded and isinstance(obj_type, OptionalType):
+                ctx.result.add_error(
+                    lineno,
+                    0,
+                    "cannot access '" + attr_str + "' on optional type (may be None)",
+                )
+                return
+            if _is_type(value, ["Attribute"]):
+                check_type = obj_type
+                if isinstance(check_type, OptionalType):
+                    check_type = check_type.inner
+                sname = _struct_name(check_type)
+                if sname != "" and sname in ctx.known_classes:
+                    if not _class_has_attr(sname, attr_str, ctx):
+                        if not _all_subclasses_have_attr(sname, attr_str, ctx):
+                            ctx.result.add_error(
+                                lineno,
+                                0,
+                                "cannot access '" + attr_str + "' on " + sname,
+                            )
+                            return
+                if not is_guarded and isinstance(check_type, UnionType):
+                    vi = 0
+                    while vi < len(check_type.variants):
+                        v = check_type.variants[vi]
+                        vsname = _struct_name(v)
+                        if vsname != "" and vsname in ctx.known_classes:
+                            if not _class_has_attr(vsname, attr_str, ctx):
+                                ctx.result.add_error(
+                                    lineno,
+                                    0,
+                                    "cannot access '" + attr_str + "' on " + vsname,
+                                )
+                                return
+                        vi += 1
         if len(value) > 0:
             _validate_expr_access(value, env, ctx, lineno)
         return
@@ -3122,13 +3487,116 @@ def _validate_expr_access(
         if len(ctx.result._errors) > 0:
             return
         call_args = get_nodes(node, "args")
+        is_builtin_call = (
+            _is_type(call_func, ["Name"]) and get_str(call_func, "id") in _BUILTIN_FUNCS
+        )
         j = 0
         while j < len(call_args):
+            if is_builtin_call:
+                _check_builtin_arg_optional(call_args[j], env, ctx, lineno)
+                if len(ctx.result._errors) > 0:
+                    return
             _validate_expr_access(call_args[j], env, ctx, lineno)
             if len(ctx.result._errors) > 0:
                 return
             j += 1
         return
+    if t == "BoolOp":
+        op = get_node(node, "op")
+        op_t = get_str(op, "_type")
+        values = get_nodes(node, "values")
+        if len(values) == 0:
+            return
+        _validate_expr_access(values[0], env, ctx, lineno)
+        if len(ctx.result._errors) > 0:
+            return
+        if len(values) > 1:
+            narrowed_env = env.copy()
+            dummy_env = env.copy()
+            if op_t == "And":
+                _extract_narrowing(values[0], narrowed_env, dummy_env, ctx)
+            elif op_t == "Or":
+                _extract_narrowing(values[0], dummy_env, narrowed_env, ctx)
+            j = 1
+            while j < len(values):
+                _validate_expr_access(values[j], narrowed_env, ctx, lineno)
+                if len(ctx.result._errors) > 0:
+                    return
+                if j + 1 < len(values):
+                    dummy2 = narrowed_env.copy()
+                    if op_t == "And":
+                        _extract_narrowing(values[j], narrowed_env, dummy2, ctx)
+                    elif op_t == "Or":
+                        _extract_narrowing(values[j], dummy2, narrowed_env, ctx)
+                j += 1
+        return
+    if t == "IfExp":
+        test = get_node(node, "test")
+        ifbody = get_node(node, "body")
+        orelse = get_node(node, "orelse")
+        if len(test) > 0:
+            _validate_expr_access(test, env, ctx, lineno)
+            if len(ctx.result._errors) > 0:
+                return
+        then_env = env.copy()
+        else_env = env.copy()
+        if len(test) > 0:
+            _extract_narrowing(test, then_env, else_env, ctx)
+        if len(ifbody) > 0:
+            _validate_expr_access(ifbody, then_env, ctx, lineno)
+            if len(ctx.result._errors) > 0:
+                return
+        if len(orelse) > 0:
+            _validate_expr_access(orelse, else_env, ctx, lineno)
+        return
+
+
+def _all_subclasses_have_attr(base_name: str, attr_name: str, ctx: _InferCtx) -> bool:
+    """Check if all direct subclasses of base_name have the given attribute.
+
+    Only returns True when there are 2+ subclasses, to avoid suppressing
+    errors in simple base/child hierarchies where narrowing is expected.
+    """
+    all_classes = list(ctx.class_bases.keys())
+    count = 0
+    i = 0
+    while i < len(all_classes):
+        cls = all_classes[i]
+        bases = ctx.class_bases.get(cls, [])
+        j = 0
+        while j < len(bases):
+            if bases[j] == base_name:
+                count += 1
+                if not _class_has_attr(cls, attr_name, ctx):
+                    return False
+            j += 1
+        i += 1
+    return count >= 2
+
+
+def _check_builtin_arg_optional(
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int
+) -> None:
+    """Check if a builtin function argument is optional (may be None)."""
+    if _is_type(node, ["Name"]):
+        name = get_str(node, "id")
+        if name == "":
+            return
+        typ = env.get_type(name)
+        if typ is not None and isinstance(typ, OptionalType):
+            ctx.result.add_error(
+                lineno,
+                0,
+                "cannot use optional type in arithmetic (may be None)",
+            )
+            return
+        source = env.get_source(name)
+        if source != "" and _is_optional_source(source):
+            ctx.result.add_error(
+                lineno,
+                0,
+                "cannot use " + source + " in arithmetic (may be None)",
+            )
 
 
 def _subclass_has_method(base_name: str, method_name: str, ctx: _InferCtx) -> bool:

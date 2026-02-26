@@ -946,7 +946,9 @@ class _RubyEmitter:
                 if_stmt = body[0]
                 if isinstance(if_stmt, TIfStmt) and len(if_stmt.then_body) == 1:
                     then_first = if_stmt.then_body[0]
-                    if isinstance(then_first, TExprStmt):
+                    if isinstance(then_first, TExprStmt) and isinstance(
+                        then_first.expr, TCall
+                    ):
                         call = then_first.expr
                         if self._is_append_to(call, let_stmt.name):
                             val = self._expr(call.args[1].value)

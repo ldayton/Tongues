@@ -875,7 +875,8 @@ class Verifier:
             self.error(node, "builtin", "open() only allowed in with-open idiom")
         # Check enumerate/zip only allowed in for-loop iter or eager consumer
         if (
-            func_name in ("enumerate", "zip")
+            func_name is not None
+            and func_name in ("enumerate", "zip")
             and not self.in_for_iter
             and not self.in_eager_consumer
         ):
