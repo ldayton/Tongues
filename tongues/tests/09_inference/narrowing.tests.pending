@@ -1,24 +1,3 @@
-=== walrus narrows optional
-def get_value() -> int | None:
-    return 42
-def f() -> int:
-    if (val := get_value()) is not None:
-        reveal_type(val)
-        return val
-    return 0
----
-reveal:5 = int
----
-=== walrus truthiness narrows optional
-def get_name() -> str | None:
-    return "hello"
-def f() -> str:
-    if name := get_name():
-        return name
-    return "default"
----
-ok
----
 === attribute narrowing resets after reassignment
 from dataclasses import dataclass
 @dataclass
@@ -50,14 +29,6 @@ def f(n: Node) -> int:
     return n.child.value
 ---
 error: None
----
-=== walrus isinstance narrows
-def f(x: int | str) -> int:
-    if isinstance(y := x, int):
-        return y + 1
-    return len(y)
----
-ok
 ---
 === and chain partial guard fails
 def f(x: int | None, y: str | None) -> int:

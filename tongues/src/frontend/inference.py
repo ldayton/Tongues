@@ -2511,6 +2511,16 @@ def _narrow_compare(
     comparators = get_nodes(test, "comparators")
     if len(left) == 0 or len(ops) == 0 or len(comparators) == 0:
         return
+    if _is_type(left, ["NamedExpr"]):
+        ne_target = get_node(left, "target")
+        ne_value = get_node(left, "value")
+        if len(ne_target) > 0 and _is_type(ne_target, ["Name"]):
+            ne_name = get_str(ne_target, "id")
+            if ne_name != "" and len(ne_value) > 0:
+                vt = _synth_expr(ne_value, then_env, ctx)
+                then_env.set(ne_name, vt, _type_name(vt))
+                else_env.set(ne_name, vt, _type_name(vt))
+            left = ne_target
     op = ops[0]
     comp = comparators[0]
     op_type = get_str(op, "_type")

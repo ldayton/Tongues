@@ -4771,3 +4771,32 @@ def f(x: A | B | C) -> str:
 ---
 ok
 ---
+=== walrus narrows optional
+def get_value() -> int | None:
+    return 42
+def f() -> int:
+    if (val := get_value()) is not None:
+        reveal_type(val)
+        return val
+    return 0
+---
+reveal:5 = int
+---
+=== walrus truthiness narrows optional
+def get_value() -> int | None:
+    return 42
+def f() -> int:
+    if val := get_value():
+        return val
+    return 0
+---
+ok
+---
+=== walrus isinstance narrows
+def f(x: int | str) -> int:
+    if isinstance(y := x, int):
+        return y + 1
+    return len(y)
+---
+ok
+---
