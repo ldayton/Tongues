@@ -2,6 +2,7 @@
 
 from typing import Callable
 
+from .cfg import build_cfg, FlowGraph
 from .typecollect import annotation_to_str
 from .types import (
     JStr,
@@ -2562,6 +2563,7 @@ class BindResult:
         self.class_bases: dict[str, list[str]] = {}
         self.type_aliases: dict[str, str] = {}
         self.class_source_files: dict[str, str] = {}
+        self.flow_graphs: dict[str, FlowGraph] = {}
 
     def subset_ok(self) -> bool:
         return len(self.subset_violations) == 0
@@ -2645,4 +2647,29 @@ def run_bind(ast_dict: ASTNode) -> BindResult:
     result.name_warnings = name_result.warnings
     if result.names_ok():
         _compute_derived(ast_dict, name_result.table, result)
+    body = get_nodes(ast_dict, "body")
+    graphs: dict[str, FlowGraph] = {}
+    i = 0
+    while i < len(body):
+        node = body[i]
+        t = get_str(node, "_type")
+        if t == "FunctionDef":
+            fname = get_str(node, "name")
+            fn_body = get_nodes(node, "body")
+            if fname != "" and len(fn_body) > 0:
+                graphs["module::" + fname] = build_cfg(fn_body)
+        if t == "ClassDef":
+            cname = get_str(node, "name")
+            cbody = get_nodes(node, "body")
+            j = 0
+            while j < len(cbody):
+                m = cbody[j]
+                if get_str(m, "_type") == "FunctionDef":
+                    mname = get_str(m, "name")
+                    m_body = get_nodes(m, "body")
+                    if mname != "" and len(m_body) > 0:
+                        graphs[cname + "::" + mname] = build_cfg(m_body)
+                j += 1
+        i += 1
+    result.flow_graphs = graphs
     return result

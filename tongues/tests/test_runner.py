@@ -815,6 +815,7 @@ def run_inference(source: str) -> PhaseResult:
         hier_result,
         bind_result.known_classes,
         bind_result.class_bases,
+        bind_result.flow_graphs,
     )
     inf_errors = inf_result.errors()
     if inf_errors:
@@ -886,6 +887,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
             hier_result,
             bind_result.known_classes,
             bind_result.class_bases,
+            bind_result.flow_graphs,
         )
         inf_errors = inf_result.errors()
         if inf_errors:
@@ -1131,6 +1133,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
             hier_result,
             bind_result.known_classes,
             bind_result.class_bases,
+            bind_result.flow_graphs,
         )
         inf_errors = inf_result.errors()
         if inf_errors:

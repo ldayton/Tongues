@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from .types import (
     TypeNode,
     ASTNode,
+    JNull,
     combine_types,
     get_str,
     get_int,
@@ -117,7 +118,7 @@ class FlowGraph:
         self.nodes.append(node)
         return node.id
 
-    def get(self, nid: int) -> FlowNode | None:
+    def node_at(self, nid: int) -> FlowNode | None:
         if nid < 0 or nid >= len(self.nodes):
             return None
         return self.nodes[nid]
@@ -180,7 +181,7 @@ def _is_none_compare(node: ASTNode) -> tuple[str, str]:
     if get_str(comp, "_type") != "Constant":
         return ("", "")
     cv = comp.get("value")
-    if cv is not None:
+    if cv is not None and not isinstance(cv, JNull):
         return ("", "")
     if get_str(left, "_type") != "Name":
         return ("", "")
@@ -282,7 +283,7 @@ def _build_stmts(stmts: list[ASTNode], prev_id: int, graph: FlowGraph) -> int:
             i += 1
             continue
         cur = _build_stmt(stmt, cur, graph)
-        node = graph.get(cur)
+        node = graph.node_at(cur)
         if node is not None and isinstance(node, FlowUnreachable):
             return cur
         i += 1
@@ -376,7 +377,7 @@ def _build_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
 
 
 def _build_ann_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
-    """Build flow node for annotated assignment."""
+    """Build flow node for annotated assignment, detecting condition aliases."""
     target = get_node(stmt, "target")
     value = get_node(stmt, "value")
     lineno = get_int(stmt, "lineno")
@@ -387,6 +388,49 @@ def _build_ann_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     name = get_str(target, "id")
     if name == "" or len(value) == 0:
         return prev_id
+    if _is_isinstance_call(value):
+        tgt_name, type_name = _isinstance_target_and_type(value)
+        if tgt_name != "" and type_name != "":
+            nid = graph.next_id()
+            node = FlowCondAlias(
+                id=nid,
+                prev=[prev_id],
+                alias_name=name,
+                target=tgt_name,
+                narrow_type="isinstance",
+                type_name=type_name,
+                field_name="",
+            )
+            graph.add(node)
+            return nid
+    none_target, none_kind = _is_none_compare(value)
+    if none_target != "" and none_kind != "":
+        nid = graph.next_id()
+        node = FlowCondAlias(
+            id=nid,
+            prev=[prev_id],
+            alias_name=name,
+            target=none_target,
+            narrow_type=none_kind,
+            type_name="",
+            field_name="",
+        )
+        graph.add(node)
+        return nid
+    cf_obj, cf_field, cf_value = _is_const_field_compare(value)
+    if cf_obj != "" and cf_field != "" and cf_value != "":
+        nid = graph.next_id()
+        node = FlowCondAlias(
+            id=nid,
+            prev=[prev_id],
+            alias_name=name,
+            target=cf_obj,
+            narrow_type="const_field",
+            type_name=cf_value,
+            field_name=cf_field,
+        )
+        graph.add(node)
+        return nid
     nid = graph.next_id()
     assign = FlowAssign(id=nid, prev=[prev_id], name=name, lineno=lineno)
     graph.add(assign)
@@ -449,7 +493,7 @@ def _build_condition(
             name = get_str(test, "id")
             alias_id = aliases.get(name)
             if alias_id is not None:
-                alias_node = graph.get(alias_id)
+                alias_node = graph.node_at(alias_id)
                 if alias_node is not None and isinstance(alias_node, FlowCondAlias):
                     target = alias_node.target
                     narrow_type = alias_node.narrow_type
@@ -507,8 +551,8 @@ def _build_if(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     else_end = false_id
     if len(orelse) > 0:
         else_end = _build_stmts(orelse, false_id, graph)
-    then_node = graph.get(then_end)
-    else_node = graph.get(else_end)
+    then_node = graph.node_at(then_end)
+    else_node = graph.node_at(else_end)
     then_dead = then_node is not None and isinstance(then_node, FlowUnreachable)
     else_dead = else_node is not None and isinstance(else_node, FlowUnreachable)
     if then_dead and else_dead:
@@ -539,7 +583,7 @@ def _build_while(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     if len(test) > 0:
         true_id, false_id = _build_condition(test, head_id, graph, aliases)
     body_end = _build_stmts(body, true_id, graph)
-    body_node = graph.get(body_end)
+    body_node = graph.node_at(body_end)
     if body_node is None or not isinstance(body_node, FlowUnreachable):
         head.prev.append(body_end)
     return false_id
@@ -561,7 +605,7 @@ def _build_for(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
             assign = FlowAssign(id=assign_id, prev=[head_id], name=name, lineno=lineno)
             graph.add(assign)
     body_end = _build_stmts(body, assign_id, graph)
-    body_node = graph.get(body_end)
+    body_node = graph.node_at(body_end)
     if body_node is None or not isinstance(body_node, FlowUnreachable):
         head.prev.append(body_end)
     join_id = graph.next_id()
@@ -636,7 +680,7 @@ def resolve_types(
     while len(worklist) > 0:
         nid = worklist[0]
         worklist = worklist[1:]
-        node = graph.get(nid)
+        node = graph.node_at(nid)
         if node is None:
             continue
         in_types = _merge_predecessors(node.prev, types_at)
@@ -799,7 +843,7 @@ def _compute_out(
                 pass
         return out
     if isinstance(node, FlowWiden):
-        narrow_node = graph.get(node.narrow_id)
+        narrow_node = graph.node_at(node.narrow_id)
         if narrow_node is not None and isinstance(narrow_node, FlowNarrow):
             cur = out.get(narrow_node.target)
             if cur is not None:

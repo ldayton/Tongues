@@ -1510,7 +1510,12 @@ def _pipeline_post_parse(
     if stop_at == "fields":
         return (0, to_json(tc_result.fields_to_dict()))
     inf_result = run_inference(
-        ast_dict, tc_result, hier_result, known_classes, class_bases
+        ast_dict,
+        tc_result,
+        hier_result,
+        known_classes,
+        class_bases,
+        bind_result.flow_graphs,
     )
     inf_errors = inf_result.errors()
     if len(inf_errors) > 0:

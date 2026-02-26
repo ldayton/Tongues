@@ -10,6 +10,7 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 from __future__ import annotations
 
 
+from .cfg import FlowGraph, lookup_alias
 from .typecollect import (
     FuncInfo,
     TypeCollectResult,
@@ -357,7 +358,6 @@ class TypeEnv:
     def __init__(self) -> None:
         self.types: dict[str, TypeNode] = {}
         self.guarded_attrs: set[str] = set()
-        self.cond_aliases: dict[str, CondAlias] = {}
 
     def copy(self) -> TypeEnv:
         env = TypeEnv()
@@ -370,11 +370,6 @@ class TypeEnv:
         i = 0
         while i < len(gkeys):
             env.guarded_attrs.add(gkeys[i])
-            i += 1
-        akeys = list(self.cond_aliases.keys())
-        i = 0
-        while i < len(akeys):
-            env.cond_aliases[akeys[i]] = self.cond_aliases[akeys[i]]
             i += 1
         return env
 
@@ -1288,12 +1283,15 @@ class _InferCtx:
         known_classes: set[str],
         class_bases: dict[str, list[str]],
         result: InferenceResult,
+        flow_graphs: dict[str, FlowGraph],
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
         self.known_classes: set[str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
         self.result: InferenceResult = result
+        self.flow_graphs: dict[str, FlowGraph] = flow_graphs
+        self.current_graph: FlowGraph | None = None
         self.module_vars: dict[str, TypeNode] = {}
         self._func_err_start: int = 0
         self._func_err_limit: int = 0
@@ -1324,6 +1322,11 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
         func_info = ctx.tc_result.functions.get(func_name)
     if func_info is None:
         return
+    if receiver != "":
+        graph_key = receiver + "::" + func_name
+    else:
+        graph_key = "module::" + func_name
+    ctx.current_graph = ctx.flow_graphs.get(graph_key)
     env = TypeEnv()
     i = 0
     while i < len(func_info.params):
@@ -1496,7 +1499,6 @@ def _validate_assign(
                         )
                         return
                     env.set(name, val_type)
-                _detect_cond_alias(name, value, env)
         elif _is_type(tgt, ["Tuple", "List"]):
             _validate_unpack(tgt, val_type, value, env, ctx, lineno)
         elif _is_type(tgt, ["Subscript"]):
@@ -1504,66 +1506,6 @@ def _validate_assign(
         elif _is_type(tgt, ["Attribute"]):
             pass
         i += 1
-
-
-def _detect_cond_alias(name: str, value: ASTNode, env: TypeEnv) -> None:
-    """Detect and record condition aliases like flag = isinstance(x, T)."""
-    if not isinstance(value, dict):
-        return
-    vt = get_str(value, "_type")
-    if vt == "Call":
-        func = get_node(value, "func")
-        if (
-            len(func) > 0
-            and _is_type(func, ["Name"])
-            and get_str(func, "id") == "isinstance"
-        ):
-            args = get_nodes(value, "args")
-            if len(args) >= 2:
-                target = args[0]
-                type_arg = args[1]
-                if _is_type(target, ["Name"]) and _is_type(type_arg, ["Name"]):
-                    tgt_name = get_str(target, "id")
-                    tname = get_str(type_arg, "id")
-                    if tgt_name != "" and tname != "":
-                        env.cond_aliases[name] = CondAlias(
-                            tgt_name, "isinstance", tname, ""
-                        )
-        return
-    if vt == "Compare":
-        left = get_node(value, "left")
-        ops = get_nodes(value, "ops")
-        comparators = get_nodes(value, "comparators")
-        if len(left) == 0 or len(ops) == 0 or len(comparators) == 0:
-            return
-        comp = comparators[0]
-        op_type = get_str(ops[0], "_type")
-        if _is_type(comp, ["Constant"]) and _is_null_value(comp):
-            if _is_type(left, ["Name"]):
-                tgt_name = get_str(left, "id")
-                if tgt_name != "":
-                    if op_type == "Is" or op_type == "Eq":
-                        env.cond_aliases[name] = CondAlias(tgt_name, "is_none", "", "")
-                    elif op_type == "IsNot" or op_type == "NotEq":
-                        env.cond_aliases[name] = CondAlias(
-                            tgt_name, "is_not_none", "", ""
-                        )
-            return
-        if _is_type(left, ["Attribute"]) and op_type == "Eq":
-            attr = get_str(left, "attr")
-            obj_node = get_node(left, "value")
-            comp_v = comp.get("value")
-            if (
-                len(obj_node) > 0
-                and _is_type(obj_node, ["Name"])
-                and isinstance(comp_v, JStr)
-                and attr != ""
-            ):
-                obj_name = get_str(obj_node, "id")
-                if obj_name != "":
-                    env.cond_aliases[name] = CondAlias(
-                        obj_name, "const_field", comp_v.value, attr
-                    )
 
 
 def _is_empty_collection(node: ASTNode) -> bool:
@@ -1730,7 +1672,6 @@ def _validate_ann_assign(
                         + " to "
                         + _type_name(ann_type),
                     )
-                _detect_cond_alias(name, value, env)
 
 
 def _validate_aug_assign(
@@ -2523,10 +2464,17 @@ def _extract_narrowing(
     if t == "Name":
         name = get_str(test, "id")
         if name != "":
-            alias = then_env.cond_aliases.get(name)
-            if alias is not None:
-                _apply_alias_narrowing(alias, then_env, else_env, ctx)
-                return
+            if ctx.current_graph is not None:
+                flow_alias = lookup_alias(ctx.current_graph, name)
+                if flow_alias is not None:
+                    alias = CondAlias(
+                        flow_alias.target,
+                        flow_alias.narrow_type,
+                        flow_alias.type_name,
+                        flow_alias.field_name,
+                    )
+                    _apply_alias_narrowing(alias, then_env, else_env, ctx)
+                    return
             typ = then_env.get_type(name)
             if typ is not None and isinstance(typ, OptionalType):
                 then_env.narrow(name, typ.inner)
@@ -3657,10 +3605,13 @@ def run_inference(
     hier_result: HierarchyResult,
     known_classes: set[str],
     class_bases: dict[str, list[str]],
+    flow_graphs: dict[str, FlowGraph],
 ) -> InferenceResult:
     """Run type inference and validation on the module AST."""
     result = InferenceResult()
-    ctx = _InferCtx(tc_result, hier_result, known_classes, class_bases, result)
+    ctx = _InferCtx(
+        tc_result, hier_result, known_classes, class_bases, result, flow_graphs
+    )
     body = get_nodes(tree, "body")
     if len(body) == 0:
         return result
