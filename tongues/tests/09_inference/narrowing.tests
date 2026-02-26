@@ -4421,3 +4421,252 @@ def f(x: int | None) -> int:
 ---
 ok
 ---
+=== narrowing with multiple returns in elif
+class A:
+    def a_method(self) -> int:
+        return 1
+class B:
+    def b_method(self) -> int:
+        return 2
+class C:
+    def c_method(self) -> int:
+        return 3
+def f(x: A | B | C) -> int:
+    if isinstance(x, A):
+        reveal_type(x)
+        return x.a_method()
+    elif isinstance(x, B):
+        reveal_type(x)
+        return x.b_method()
+    else:
+        reveal_type(x)
+        return x.c_method()
+---
+reveal:12 = A
+reveal:15 = B
+reveal:18 = C
+---
+=== four-way union isinstance chain
+class A:
+    def a(self) -> int:
+        return 1
+class B:
+    def b(self) -> int:
+        return 2
+class C:
+    def c(self) -> int:
+        return 3
+class D:
+    def d(self) -> int:
+        return 4
+def f(x: A | B | C | D) -> int:
+    if isinstance(x, A):
+        return x.a()
+    if isinstance(x, B):
+        return x.b()
+    if isinstance(x, C):
+        return x.c()
+    reveal_type(x)
+    return x.d()
+---
+reveal:20 = D
+---
+=== isinstance narrows union removes checked type from else
+class A:
+    x: int
+class B:
+    x: int
+class C:
+    y: int
+def f(val: A | B | C) -> int:
+    if isinstance(val, A):
+        return val.x
+    if isinstance(val, B):
+        return val.x
+    reveal_type(val)
+    return val.y
+---
+reveal:12 = C
+---
+=== assert isinstance on union then use narrowed
+class A:
+    pass
+class B(A):
+    data: int
+def f(x: A | B) -> int:
+    assert isinstance(x, B)
+    reveal_type(x)
+    return x.data
+---
+reveal:7 = B
+---
+=== isinstance narrows optional else to None
+def f(x: int | None) -> int:
+    if isinstance(x, int):
+        return x + 1
+    reveal_type(x)
+    return 0
+---
+reveal:4 = None
+---
+=== isinstance on optional else branch is None
+def f(x: int | None) -> int:
+    if not isinstance(x, int):
+        reveal_type(x)
+        return 0
+    reveal_type(x)
+    return x + 1
+---
+reveal:3 = None
+reveal:5 = int
+---
+=== isinstance reassignment preserves new type not narrowed type
+class A:
+    pass
+class B(A):
+    bval: int
+class C(A):
+    cval: int
+def f(x: A) -> int:
+    if isinstance(x, B):
+        x = C()
+        reveal_type(x)
+        return x.cval
+    return 0
+---
+reveal:10 = C
+---
+=== mixed guards is None then isinstance then kind
+from dataclasses import dataclass
+@dataclass
+class Add:
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Mul:
+    kind: str
+    left: int
+    right: int
+def eval_node(node: Add | Mul | None) -> int:
+    if node is None:
+        return 0
+    if node.kind == "add":
+        return node.left + node.right
+    return node.left * node.right
+---
+ok
+---
+=== assert is not None then kind discrimination
+from dataclasses import dataclass
+@dataclass
+class Add:
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Mul:
+    kind: str
+    left: int
+    right: int
+def f(node: Add | Mul | None) -> int:
+    assert node is not None
+    if node.kind == "add":
+        return node.left + node.right
+    return node.left * node.right
+---
+ok
+---
+=== narrowing with union of three including None
+class A:
+    a_val: int
+class B:
+    b_val: str
+def f(x: A | B | None) -> str:
+    if x is None:
+        return "none"
+    reveal_type(x)
+    if isinstance(x, A):
+        return str(x.a_val)
+    reveal_type(x)
+    return x.b_val
+---
+reveal:8 = A | B
+reveal:11 = B
+---
+=== narrowing across multiple early exits
+class A:
+    a_val: int
+class B:
+    b_val: str
+class C:
+    c_val: float
+class D:
+    d_val: bool
+def f(x: A | B | C | D) -> float:
+    if isinstance(x, A):
+        return float(x.a_val)
+    if isinstance(x, B):
+        return float(len(x.b_val))
+    if isinstance(x, C):
+        return x.c_val
+    reveal_type(x)
+    if x.d_val:
+        return 1.0
+    return 0.0
+---
+reveal:16 = D
+---
+=== deep elif isinstance with fallthrough on each level
+class A:
+    a: int
+class B:
+    b: str
+class C:
+    c: float
+class D:
+    d: bool
+def f(x: A | B | C | D) -> str:
+    result: str = ""
+    if isinstance(x, A):
+        reveal_type(x)
+        result = str(x.a)
+    elif isinstance(x, B):
+        reveal_type(x)
+        result = x.b
+    elif isinstance(x, C):
+        reveal_type(x)
+        result = str(x.c)
+    else:
+        reveal_type(x)
+        result = str(x.d)
+    return result
+---
+reveal:12 = A
+reveal:15 = B
+reveal:18 = C
+reveal:21 = D
+---
+=== three guard types in single function
+from dataclasses import dataclass
+@dataclass
+class Add:
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Mul:
+    kind: str
+    left: int
+    right: int
+def eval_safe(node: Add | Mul | None, default: int | None) -> int:
+    if node is None:
+        return 0
+    if default is None:
+        default = 0
+    if node.kind == "add":
+        return node.left + node.right + default
+    return node.left * node.right + default
+---
+ok
+---

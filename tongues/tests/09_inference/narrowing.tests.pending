@@ -9,7 +9,6 @@ def f() -> int:
 ---
 reveal:5 = int
 ---
-
 === walrus truthiness narrows optional
 def get_name() -> str | None:
     return "hello"
@@ -20,7 +19,6 @@ def f() -> str:
 ---
 ok
 ---
-
 === attribute narrowing resets after reassignment
 from dataclasses import dataclass
 @dataclass
@@ -34,33 +32,6 @@ def f(n: Node) -> int:
 ---
 error:
 ---
-
-=== narrowing with multiple returns in elif
-class A:
-    def a_method(self) -> int:
-        return 1
-class B:
-    def b_method(self) -> int:
-        return 2
-class C:
-    def c_method(self) -> int:
-        return 3
-def f(x: A | B | C) -> int:
-    if isinstance(x, A):
-        reveal_type(x)
-        return x.a_method()
-    elif isinstance(x, B):
-        reveal_type(x)
-        return x.b_method()
-    else:
-        reveal_type(x)
-        return x.c_method()
----
-reveal:13 = A
-reveal:16 = B
-reveal:19 = C
----
-
 === early return from nested function preserves outer narrowing
 def outer(x: int | None) -> int:
     if x is None:
@@ -71,7 +42,6 @@ def outer(x: int | None) -> int:
 ---
 ok
 ---
-
 === narrowing lost after assignment
 def f(x: int | None) -> int:
     if x is not None:
@@ -81,7 +51,6 @@ def f(x: int | None) -> int:
 ---
 error: None
 ---
-
 === unnarrowed optional attribute fails
 from dataclasses import dataclass
 @dataclass
@@ -92,7 +61,6 @@ def f(n: Node) -> int:
 ---
 error: None
 ---
-
 === walrus isinstance narrows
 def f(x: int | str) -> int:
     if isinstance(y := x, int):
@@ -101,33 +69,6 @@ def f(x: int | str) -> int:
 ---
 ok
 ---
-
-=== four-way union isinstance chain
-class A:
-    def a(self) -> int:
-        return 1
-class B:
-    def b(self) -> int:
-        return 2
-class C:
-    def c(self) -> int:
-        return 3
-class D:
-    def d(self) -> int:
-        return 4
-def f(x: A | B | C | D) -> int:
-    if isinstance(x, A):
-        return x.a()
-    if isinstance(x, B):
-        return x.b()
-    if isinstance(x, C):
-        return x.c()
-    reveal_type(x)
-    return x.d()
----
-reveal:21 = D
----
-
 === and chain partial guard fails
 def f(x: int | None, y: str | None) -> int:
     if x is not None:
@@ -136,7 +77,6 @@ def f(x: int | None, y: str | None) -> int:
 ---
 error: None
 ---
-
 === not isinstance accesses subtype in wrong branch fails
 def f(x: int | str) -> str:
     if not isinstance(x, int):
@@ -145,7 +85,6 @@ def f(x: int | str) -> str:
 ---
 error: str
 ---
-
 === raise not isinstance wrong type fails
 class Base:
     pass
@@ -159,7 +98,6 @@ def f(x: Base) -> int:
 ---
 error: missing_method
 ---
-
 === isinstance on self wrong subclass fails
 class Base:
     def method(self) -> int:
@@ -172,7 +110,6 @@ class Child(Base):
 ---
 error: wrong_method
 ---
-
 === nested optional missing inner guard fails
 from dataclasses import dataclass
 @dataclass
@@ -191,7 +128,6 @@ def f(a: A) -> int:
 ---
 error: None
 ---
-
 === attribute guard on wrong field fails
 from dataclasses import dataclass
 @dataclass
@@ -205,7 +141,6 @@ def f(p: Pair) -> int:
 ---
 error: None
 ---
-
 === isinstance with superclass else access fails
 class A:
     pass
@@ -221,7 +156,6 @@ def f(x: A) -> int:
 ---
 error: deep_method
 ---
-
 === isinstance both branches wrong method fails
 class A:
     def method_a(self) -> str:
@@ -236,7 +170,6 @@ def f(x: A | B) -> str:
 ---
 error: method_b
 ---
-
 === isinstance narrows but reassignment loses it fails
 class A:
     def a_method(self) -> int:
@@ -251,7 +184,6 @@ def f(x: A | B) -> int:
 ---
 error: a_method
 ---
-
 === or isinstance does not narrow then branch fails
 class A:
     def only_a(self) -> int:
@@ -267,7 +199,6 @@ def f(x: A | B | C) -> int:
 ---
 error: only_a
 ---
-
 === multiple attribute guards missing one fails
 from dataclasses import dataclass
 @dataclass
@@ -282,7 +213,6 @@ def f(t: Triple) -> int:
 ---
 error: None
 ---
-
 === isinstance short-circuit or disallows attribute access
 class A:
     pass
@@ -295,7 +225,6 @@ def f(x: A) -> int:
 ---
 error: flag
 ---
-
 === not isinstance short-circuit and disallows attribute access
 class A:
     pass
@@ -308,7 +237,6 @@ def f(x: A) -> int:
 ---
 error: flag
 ---
-
 === isinstance ternary condition wrong branch
 class A:
     pass
@@ -319,7 +247,6 @@ def f(x: A) -> int:
 ---
 error: flag
 ---
-
 === isinstance sub class reset on container reassignment
 class A:
     pass
@@ -335,7 +262,6 @@ def f(x: C) -> int:
 ---
 error: b_val
 ---
-
 === or isinstance merges but no unique method
 class A:
     pass
@@ -350,7 +276,6 @@ def f(x: A) -> int:
 ---
 error: flag
 ---
-
 === isinstance or non-isinstance in or does not narrow
 class A:
     pass
@@ -363,7 +288,6 @@ def f(x: A, cond: bool) -> int:
 ---
 error: flag
 ---
-
 === isinstance break in loop does not narrow after loop
 def f(x: int | str) -> str:
     for i in range(10):
@@ -373,7 +297,6 @@ def f(x: int | str) -> str:
 ---
 error:
 ---
-
 === narrowing compound guard is not None and kind check
 from dataclasses import dataclass
 @dataclass
@@ -391,7 +314,6 @@ def f(x: A | B | None) -> int:
 ---
 ok
 ---
-
 === negated compound guard not or narrows
 from dataclasses import dataclass
 @dataclass
@@ -409,7 +331,6 @@ def f(x: A | B | None) -> int:
 ---
 ok
 ---
-
 === kind discrimination else narrows in two-way union
 from dataclasses import dataclass
 @dataclass
@@ -427,7 +348,6 @@ def f(x: A | B) -> str:
 ---
 ok
 ---
-
 === kind discrimination elif chain
 from dataclasses import dataclass
 @dataclass
@@ -453,8 +373,6 @@ def eval_expr(e: Add | Sub | Neg) -> int:
 ---
 ok
 ---
-
-
 === attribute access before isinstance guard fails
 class A:
     pass
@@ -467,38 +385,6 @@ def f(x: A) -> int:
 ---
 error: cannot access
 ---
-
-=== isinstance narrows union removes checked type from else
-class A:
-    x: int
-class B:
-    x: int
-class C:
-    y: int
-def f(val: A | B | C) -> int:
-    if isinstance(val, A):
-        return val.x
-    if isinstance(val, B):
-        return val.x
-    reveal_type(val)
-    return val.y
----
-reveal:11 = C
----
-
-=== assert isinstance on union then use narrowed
-class A:
-    pass
-class B(A):
-    data: int
-def f(x: A | B) -> int:
-    assert isinstance(x, B)
-    reveal_type(x)
-    return x.data
----
-reveal:6 = B
----
-
 === assert isinstance on union wrong type access after
 class A:
     pass
@@ -510,7 +396,6 @@ def f(x: A | B) -> int:
 ---
 error: cannot access
 ---
-
 === isinstance or isinstance wrong field in else
 class A:
     flag: int
@@ -525,7 +410,6 @@ def f(x: A | B | C) -> int:
 ---
 error: attribute 'flag' not available
 ---
-
 === isinstance narrows in ternary wrong access in false branch
 class A:
     pass
@@ -536,7 +420,6 @@ def f(val: A | B) -> int:
 ---
 error: cannot access
 ---
-
 === truthiness does not narrow in or chain with field access
 class C:
     val: int
@@ -547,7 +430,6 @@ def f(x: C | None) -> int:
 ---
 error: cannot access
 ---
-
 === walrus isinstance wrong branch access
 class A:
     pass
@@ -562,7 +444,6 @@ def f() -> int:
 ---
 error: cannot access
 ---
-
 === narrowing with reassignment in elif chain wrong access
 class A:
     x: int
@@ -577,7 +458,6 @@ def f(val: A | B | C) -> int:
 ---
 error: cannot access
 ---
-
 === isinstance with continue wrong branch fails
 class A:
     pass
@@ -593,7 +473,6 @@ def f(items: list[A]) -> int:
 ---
 error: cannot access
 ---
-
 === union shared method different return types
 class A:
     def value(self) -> int:
@@ -606,7 +485,6 @@ def f(x: A | B) -> int:
 ---
 error:
 ---
-
 === isinstance narrowing lost after assignment in branch access fails
 class A:
     pass
@@ -620,7 +498,6 @@ def f(x: A | B) -> int:
 ---
 error: cannot access
 ---
-
 === isinstance on attribute parent reassigned then access fails
 class Inner:
     pass
@@ -637,7 +514,6 @@ def f() -> int:
 ---
 error: cannot access
 ---
-
 === assert not isinstance then access subclass field fails
 class A:
     pass
@@ -649,7 +525,6 @@ def f(x: A | B) -> int:
 ---
 error: cannot access
 ---
-
 === walrus in while condition without guard fails
 def get_next() -> int | None:
     return None
@@ -662,7 +537,6 @@ def f() -> int:
 ---
 error: cannot use
 ---
-
 === isinstance narrowing in nested function
 class A:
     pass
@@ -677,7 +551,6 @@ def f(x: A) -> int:
 ---
 ok
 ---
-
 === multiple optional guards missing one fails
 def f(a: int | None, b: str | None) -> int:
     if a is None:
@@ -686,7 +559,6 @@ def f(a: int | None, b: str | None) -> int:
 ---
 error: cannot
 ---
-
 === isinstance narrowing with two unions wrong access
 class A:
     x: int
@@ -703,29 +575,6 @@ def f(u1: A | B, u2: C | D) -> int:
 ---
 error: cannot access
 ---
-
-=== isinstance narrows optional else to None
-def f(x: int | None) -> int:
-    if isinstance(x, int):
-        return x + 1
-    reveal_type(x)
-    return 0
----
-reveal:4 = None
----
-
-=== isinstance on optional else branch is None
-def f(x: int | None) -> int:
-    if not isinstance(x, int):
-        reveal_type(x)
-        return 0
-    reveal_type(x)
-    return x + 1
----
-reveal:3 = None
-reveal:5 = int
----
-
 === narrowing in elif chain accessing wrong field in elif
 class A:
     x: int
@@ -742,7 +591,6 @@ def f(val: A | B | C) -> str:
 ---
 error: cannot access
 ---
-
 === narrowing with nested isinstance missing inner guard
 class A:
     pass
@@ -757,7 +605,6 @@ def f(x: A) -> int:
 ---
 error: cannot access
 ---
-
 === narrowing does not persist after for loop iteration
 class A:
     pass
@@ -771,24 +618,6 @@ def f(items: list[A]) -> int:
 ---
 error: cannot access
 ---
-
-=== isinstance reassignment preserves new type not narrowed type
-class A:
-    pass
-class B(A):
-    bval: int
-class C(A):
-    cval: int
-def f(x: A) -> int:
-    if isinstance(x, B):
-        x = C()
-        reveal_type(x)
-        return x.cval
-    return 0
----
-reveal:9 = C
----
-
 === isinstance reassignment to parent loses narrowing
 class A:
     pass
@@ -802,7 +631,6 @@ def f(x: A) -> int:
 ---
 error: cannot access
 ---
-
 === deep inheritance isinstance wrong field on base
 class A:
     pass
@@ -815,7 +643,6 @@ def f(x: A) -> str:
 ---
 error:
 ---
-
 === not isinstance and attribute access fails
 class A:
     pass
@@ -828,25 +655,6 @@ def f(x: A) -> int:
 ---
 error: cannot access
 ---
-
-=== isinstance tuple shared method call on union
-class A:
-    def shared(self) -> int:
-        return 1
-class B:
-    def shared(self) -> int:
-        return 2
-class C:
-    def other(self) -> int:
-        return 3
-def f(x: A | B | C) -> int:
-    if isinstance(x, (A, B)):
-        return x.shared()
-    return x.other()
----
-ok
----
-
 === isinstance in list comprehension without filter fails
 class A:
     pass
@@ -857,7 +665,6 @@ def f(items: list[A]) -> list[int]:
 ---
 error: cannot access
 ---
-
 === is not None and kind discrimination compound
 class A:
     kind: str
@@ -872,7 +679,6 @@ def f(x: A | B | None) -> int:
 ---
 ok
 ---
-
 === kind discrimination else accesses remaining field
 class A:
     kind: str
@@ -887,7 +693,6 @@ def f(x: A | B) -> str:
 ---
 ok
 ---
-
 === isinstance on attribute wrong type access
 class Inner:
     pass
@@ -904,7 +709,6 @@ def f(w: WrapperA | WrapperB) -> int:
 ---
 error:
 ---
-
 === isinstance in method wrong access on self
 class A:
     def process(self) -> int:
@@ -914,7 +718,6 @@ class B(A):
 ---
 error:
 ---
-
 === kind discrimination elif chain three types
 class A:
     kind: str
@@ -935,7 +738,6 @@ def f(x: A | B | C) -> str:
 ---
 ok
 ---
-
 === isinstance on same var twice wrong access in outer
 class A:
     pass
@@ -950,7 +752,6 @@ def f(x: A) -> int:
 ---
 error: cannot access
 ---
-
 === multiple isinstance on different vars wrong access
 class A:
     pass
@@ -967,7 +768,6 @@ def f(a: A, c: C) -> str:
 ---
 error:
 ---
-
 === is None early return then isinstance wrong access
 class A:
     pass
@@ -980,7 +780,6 @@ def f(x: A | None) -> int:
 ---
 error:
 ---
-
 === narrowing does not survive function call on same var
 class A:
     pass
@@ -996,29 +795,6 @@ def f(x: A) -> int:
 ---
 error:
 ---
-
-=== mixed guards is None then isinstance then kind
-from dataclasses import dataclass
-@dataclass
-class Add:
-    kind: str
-    left: int
-    right: int
-@dataclass
-class Mul:
-    kind: str
-    left: int
-    right: int
-def eval_node(node: Add | Mul | None) -> int:
-    if node is None:
-        return 0
-    if node.kind == "add":
-        return node.left + node.right
-    return node.left * node.right
----
-ok
----
-
 === chained assert isinstance wrong access after first
 class A:
     pass
@@ -1030,7 +806,6 @@ def f(x: A, y: A) -> int:
 ---
 error:
 ---
-
 === narrowing in nested for loops inner does not leak to outer
 class A:
     pass
@@ -1047,7 +822,6 @@ def f(matrix: list[list[A]]) -> int:
 ---
 error:
 ---
-
 === assert isinstance then reassignment resets
 class A:
     pass
@@ -1060,28 +834,6 @@ def f(x: A) -> int:
 ---
 error:
 ---
-
-=== assert is not None then kind discrimination
-from dataclasses import dataclass
-@dataclass
-class Add:
-    kind: str
-    left: int
-    right: int
-@dataclass
-class Mul:
-    kind: str
-    left: int
-    right: int
-def f(node: Add | Mul | None) -> int:
-    assert node is not None
-    if node.kind == "add":
-        return node.left + node.right
-    return node.left * node.right
----
-ok
----
-
 === narrowing with walrus elif missing guard
 def get_a() -> int | None:
     return None
@@ -1096,7 +848,6 @@ def f() -> str:
 ---
 error: None
 ---
-
 === narrowing in except handler does not carry after try
 class A:
     pass
@@ -1112,7 +863,6 @@ def f(x: A) -> int:
 ---
 error:
 ---
-
 === isinstance narrowing does not persist after loop without return
 class A:
     pass
@@ -1126,7 +876,6 @@ def f(items: list[A]) -> int:
 ---
 error:
 ---
-
 === narrowing with list method without guard fails
 def f(x: list[int] | int) -> int:
     x.append(42)
@@ -1134,7 +883,6 @@ def f(x: list[int] | int) -> int:
 ---
 error:
 ---
-
 === comprehension isinstance filter wrong attribute
 class A:
     pass
@@ -1145,8 +893,6 @@ def f(items: list[A]) -> list[int]:
 ---
 error:
 ---
-
-
 === narrowing with optional dataclass field missing guard
 from dataclasses import dataclass
 @dataclass
@@ -1160,7 +906,6 @@ def f(o: Outer) -> int:
 ---
 error: None
 ---
-
 === narrowing with triple optional chain missing middle guard
 from dataclasses import dataclass
 @dataclass
@@ -1179,7 +924,6 @@ def f(a: A) -> int:
 ---
 error: None
 ---
-
 === isinstance assert in loop body wrong access after loop
 class A:
     pass
@@ -1192,7 +936,6 @@ def f(items: list[A]) -> int:
 ---
 error:
 ---
-
 === isinstance narrowing with multiple inheritance
 class A:
     a_val: int
@@ -1207,7 +950,6 @@ def f(x: A) -> float:
 ---
 ok
 ---
-
 === isinstance multiple inheritance accesses both parent fields
 class A:
     a_val: int
@@ -1222,7 +964,6 @@ def f(x: A) -> str:
 ---
 ok
 ---
-
 === kind discrimination with early return pattern
 class A:
     kind: str
@@ -1242,25 +983,6 @@ def f(x: A | B | C) -> str:
 ---
 ok
 ---
-
-=== narrowing with union of three including None
-class A:
-    a_val: int
-class B:
-    b_val: str
-def f(x: A | B | None) -> str:
-    if x is None:
-        return "none"
-    reveal_type(x)
-    if isinstance(x, A):
-        return str(x.a_val)
-    reveal_type(x)
-    return x.b_val
----
-reveal:8 = A | B
-reveal:11 = B
----
-
 === isinstance conditional return wrong branch
 class A:
     pass
@@ -1271,31 +993,6 @@ def f(x: A) -> int:
 ---
 error:
 ---
-
-=== narrowing across multiple early exits
-class A:
-    a_val: int
-class B:
-    b_val: str
-class C:
-    c_val: float
-class D:
-    d_val: bool
-def f(x: A | B | C | D) -> float:
-    if isinstance(x, A):
-        return float(x.a_val)
-    if isinstance(x, B):
-        return float(len(x.b_val))
-    if isinstance(x, C):
-        return x.c_val
-    reveal_type(x)
-    if x.d_val:
-        return 1.0
-    return 0.0
----
-reveal:17 = D
----
-
 === isinstance and is not None wrong order fails
 class A:
     extra: int | None
@@ -1308,7 +1005,6 @@ def f(x: A | B) -> int:
 ---
 error:
 ---
-
 === narrowing assignment to None destroys previous narrowing
 def f(x: int | None) -> int:
     if x is not None:
@@ -1318,8 +1014,6 @@ def f(x: int | None) -> int:
 ---
 error:
 ---
-
-
 === narrowing with comparison on unnarrowed value
 def f(x: int | None) -> str:
     if x > 0:
@@ -1328,7 +1022,6 @@ def f(x: int | None) -> str:
 ---
 error: None
 ---
-
 === multiple attribute path guards missing last
 from dataclasses import dataclass
 @dataclass
@@ -1343,62 +1036,6 @@ def f(c: Config) -> str:
 ---
 error: None
 ---
-
-=== deep elif isinstance with fallthrough on each level
-class A:
-    a: int
-class B:
-    b: str
-class C:
-    c: float
-class D:
-    d: bool
-def f(x: A | B | C | D) -> str:
-    result: str = ""
-    if isinstance(x, A):
-        reveal_type(x)
-        result = str(x.a)
-    elif isinstance(x, B):
-        reveal_type(x)
-        result = x.b
-    elif isinstance(x, C):
-        reveal_type(x)
-        result = str(x.c)
-    else:
-        reveal_type(x)
-        result = str(x.d)
-    return result
----
-reveal:13 = A
-reveal:16 = B
-reveal:19 = C
-reveal:22 = D
----
-
-=== three guard types in single function
-from dataclasses import dataclass
-@dataclass
-class Add:
-    kind: str
-    left: int
-    right: int
-@dataclass
-class Mul:
-    kind: str
-    left: int
-    right: int
-def eval_safe(node: Add | Mul | None, default: int | None) -> int:
-    if node is None:
-        return 0
-    if default is None:
-        default = 0
-    if node.kind == "add":
-        return node.left + node.right + default
-    return node.left * node.right + default
----
-ok
----
-
 === isinstance tuple else wrong field on remaining
 class A:
     a: int
@@ -1412,4 +1049,22 @@ def f(x: A | B | C) -> int:
     return x.a
 ---
 error:
+---
+
+=== isinstance tuple shared method call on union
+class A:
+    def shared(self) -> int:
+        return 1
+class B:
+    def shared(self) -> int:
+        return 2
+class C:
+    def other(self) -> int:
+        return 3
+def f(x: A | B | C) -> int:
+    if isinstance(x, (A, B)):
+        return x.shared()
+    return x.other()
+---
+ok
 ---

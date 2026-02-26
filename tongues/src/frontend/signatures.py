@@ -694,7 +694,16 @@ def _resolve_non_none_union(
         if chain0[j] in common:
             return InterfaceRef(chain0[j])
         j += 1
-    return InterfaceRef("any")
+    variants2: list[TypeNode] = []
+    i = 0
+    while i < len(members):
+        variants2.append(
+            py_type_to_type_dict(members[i], known_classes, errors, lineno, col)
+        )
+        i += 1
+    if len(variants2) == 1:
+        return variants2[0]
+    return UnionType(variants2)
 
 
 # ---------------------------------------------------------------------------
