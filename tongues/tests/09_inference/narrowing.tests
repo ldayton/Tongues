@@ -5662,3 +5662,126 @@ def f(w: WrapperA | WrapperB) -> int:
 ---
 error:
 ---
+
+=== aliased isinstance narrows in if
+def f(x: int | str) -> int:
+    flag: bool = isinstance(x, int)
+    if flag:
+        return x + 1
+    return len(x)
+---
+ok
+---
+
+=== aliased isinstance narrows else branch
+def f(x: int | str) -> int:
+    flag: bool = isinstance(x, int)
+    if flag:
+        return x
+    return len(x)
+---
+ok
+---
+
+=== aliased isinstance with not
+def f(x: int | str) -> int:
+    flag: bool = isinstance(x, str)
+    if not flag:
+        return x + 1
+    return len(x)
+---
+ok
+---
+
+=== aliased is None narrows
+def f(x: int | None) -> int:
+    is_missing: bool = x is None
+    if is_missing:
+        return 0
+    return x + 1
+---
+ok
+---
+
+=== aliased is not None narrows
+def f(x: int | None) -> int:
+    present: bool = x is not None
+    if present:
+        return x + 1
+    return 0
+---
+ok
+---
+
+=== aliased isinstance with reveal_type
+def f(x: int | str) -> None:
+    flag: bool = isinstance(x, int)
+    if flag:
+        reveal_type(x)
+---
+reveal:4 = int
+---
+
+=== aliased isinstance reveal_type in else
+def f(x: int | str) -> None:
+    flag: bool = isinstance(x, int)
+    if flag:
+        pass
+    else:
+        reveal_type(x)
+---
+reveal:6 = str
+---
+
+=== aliased const field narrows union
+from dataclasses import dataclass
+@dataclass
+class Add:
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Sub:
+    kind: str
+    left: int
+    right: int
+def eval(node: Add | Sub) -> int:
+    is_add: bool = node.kind == "add"
+    if is_add:
+        return node.left + node.right
+    return node.left - node.right
+---
+ok
+---
+
+=== no-else merge uses combine_types
+def f(x: int | str) -> int | str:
+    if isinstance(x, int):
+        x = x + 1
+    return x
+---
+ok
+---
+
+=== for loop body changes visible after loop
+def f(items: list[int]) -> int | None:
+    result: int | None = None
+    for item in items:
+        result = item
+    return result
+---
+ok
+---
+
+=== while loop body changes visible after loop
+def f() -> int | None:
+    result: int | None = None
+    items: list[int] = [1, 2, 3]
+    i: int = 0
+    while i < len(items):
+        result = items[i]
+        i += 1
+    return result
+---
+ok
+---

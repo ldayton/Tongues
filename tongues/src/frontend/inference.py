@@ -310,12 +310,25 @@ def _struct_name(t: TypeNode) -> str:
 # ---------------------------------------------------------------------------
 
 
+class CondAlias:
+    """A condition alias: flag = isinstance(x, T) or x is None, etc."""
+
+    def __init__(
+        self, target: str, narrow_type: str, type_name: str, field_name: str
+    ) -> None:
+        self.target: str = target
+        self.narrow_type: str = narrow_type
+        self.type_name: str = type_name
+        self.field_name: str = field_name
+
+
 class TypeEnv:
     """Flow-sensitive type environment for a function body."""
 
     def __init__(self) -> None:
         self.types: dict[str, TypeNode] = {}
         self.guarded_attrs: set[str] = set()
+        self.cond_aliases: dict[str, CondAlias] = {}
 
     def copy(self) -> TypeEnv:
         env = TypeEnv()
@@ -328,6 +341,11 @@ class TypeEnv:
         i = 0
         while i < len(gkeys):
             env.guarded_attrs.add(gkeys[i])
+            i += 1
+        akeys = list(self.cond_aliases.keys())
+        i = 0
+        while i < len(akeys):
+            env.cond_aliases[akeys[i]] = self.cond_aliases[akeys[i]]
             i += 1
         return env
 
@@ -513,6 +531,8 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return FuncType([ANY_TYPE], INT_TYPE)
     if name == "bool":
         return FuncType([ANY_TYPE], BOOL_TYPE)
+    if name == "pow":
+        return FuncType([INT_TYPE, INT_TYPE], INT_TYPE)
     # Module-level variable
     mod_var = ctx.module_vars.get(name)
     if mod_var is not None:
@@ -754,6 +774,8 @@ def _synth_name_call(
                 if has_int or has_bool:
                     return INT_TYPE
             return ft
+        return INT_TYPE
+    if fname == "pow":
         return INT_TYPE
     if fname == "isinstance":
         return BOOL_TYPE
@@ -1464,6 +1486,7 @@ def _validate_assign(
                         )
                         return
                     env.set(name, val_type)
+                _detect_cond_alias(name, value, env)
         elif _is_type(tgt, ["Tuple", "List"]):
             _validate_unpack(tgt, val_type, value, env, ctx, lineno)
         elif _is_type(tgt, ["Subscript"]):
@@ -1471,6 +1494,66 @@ def _validate_assign(
         elif _is_type(tgt, ["Attribute"]):
             pass
         i += 1
+
+
+def _detect_cond_alias(name: str, value: ASTNode, env: TypeEnv) -> None:
+    """Detect and record condition aliases like flag = isinstance(x, T)."""
+    if not isinstance(value, dict):
+        return
+    vt = get_str(value, "_type")
+    if vt == "Call":
+        func = get_node(value, "func")
+        if (
+            len(func) > 0
+            and _is_type(func, ["Name"])
+            and get_str(func, "id") == "isinstance"
+        ):
+            args = get_nodes(value, "args")
+            if len(args) >= 2:
+                target = args[0]
+                type_arg = args[1]
+                if _is_type(target, ["Name"]) and _is_type(type_arg, ["Name"]):
+                    tgt_name = get_str(target, "id")
+                    tname = get_str(type_arg, "id")
+                    if tgt_name != "" and tname != "":
+                        env.cond_aliases[name] = CondAlias(
+                            tgt_name, "isinstance", tname, ""
+                        )
+        return
+    if vt == "Compare":
+        left = get_node(value, "left")
+        ops = get_nodes(value, "ops")
+        comparators = get_nodes(value, "comparators")
+        if len(left) == 0 or len(ops) == 0 or len(comparators) == 0:
+            return
+        comp = comparators[0]
+        op_type = get_str(ops[0], "_type")
+        if _is_type(comp, ["Constant"]) and _is_null_value(comp):
+            if _is_type(left, ["Name"]):
+                tgt_name = get_str(left, "id")
+                if tgt_name != "":
+                    if op_type == "Is" or op_type == "Eq":
+                        env.cond_aliases[name] = CondAlias(tgt_name, "is_none", "", "")
+                    elif op_type == "IsNot" or op_type == "NotEq":
+                        env.cond_aliases[name] = CondAlias(
+                            tgt_name, "is_not_none", "", ""
+                        )
+            return
+        if _is_type(left, ["Attribute"]) and op_type == "Eq":
+            attr = get_str(left, "attr")
+            obj_node = get_node(left, "value")
+            comp_v = comp.get("value")
+            if (
+                len(obj_node) > 0
+                and _is_type(obj_node, ["Name"])
+                and isinstance(comp_v, JStr)
+                and attr != ""
+            ):
+                obj_name = get_str(obj_node, "id")
+                if obj_name != "":
+                    env.cond_aliases[name] = CondAlias(
+                        obj_name, "const_field", comp_v.value, attr
+                    )
 
 
 def _is_empty_collection(node: ASTNode) -> bool:
@@ -1637,6 +1720,7 @@ def _validate_ann_assign(
                         + " to "
                         + _type_name(ann_type),
                     )
+                _detect_cond_alias(name, value, env)
 
 
 def _validate_aug_assign(
@@ -1979,6 +2063,94 @@ def _validate_collection_method_args(
                     )
 
 
+def _flatten_for_merge(t: TypeNode, out: list[TypeNode]) -> None:
+    """Expand OptionalType and UnionType into flat list for combine_types."""
+    if isinstance(t, OptionalType):
+        _flatten_for_merge(t.inner, out)
+        out.append(VOID_TYPE)
+    elif isinstance(t, UnionType):
+        i = 0
+        while i < len(t.variants):
+            _flatten_for_merge(t.variants[i], out)
+            i += 1
+    else:
+        out.append(t)
+
+
+def _merge_no_else(
+    then_env: TypeEnv, else_env: TypeEnv, out: TypeEnv, hier: HierarchyResult
+) -> None:
+    """Merge if-without-else: only update vars present in both branches."""
+    ekeys = list(else_env.types.keys())
+    j = 0
+    while j < len(ekeys):
+        k = ekeys[j]
+        then_t = then_env.types.get(k)
+        else_t = else_env.types[k]
+        if then_t is not None:
+            if _type_eq(else_t, then_t):
+                out.types[k] = else_t
+            elif _is_assignable(then_t, else_t, hier):
+                out.types[k] = else_t
+            elif _is_assignable(else_t, then_t, hier):
+                out.types[k] = then_t
+            else:
+                parts: list[TypeNode] = []
+                _flatten_for_merge(then_t, parts)
+                _flatten_for_merge(else_t, parts)
+                out.types[k] = combine_types(parts)
+        j += 1
+
+
+def _merge_branch_envs(
+    env_a: TypeEnv, env_b: TypeEnv, out: TypeEnv, hier: HierarchyResult
+) -> None:
+    """Merge two branch environments into out using combine_types."""
+    all_keys: list[str] = []
+    akeys = list(env_a.types.keys())
+    j = 0
+    while j < len(akeys):
+        all_keys.append(akeys[j])
+        j += 1
+    bkeys = list(env_b.types.keys())
+    j = 0
+    while j < len(bkeys):
+        k = bkeys[j]
+        found = False
+        ki = 0
+        while ki < len(all_keys):
+            if all_keys[ki] == k:
+                found = True
+            ki += 1
+        if not found:
+            all_keys.append(k)
+        j += 1
+    j = 0
+    while j < len(all_keys):
+        k = all_keys[j]
+        in_a = k in env_a.types
+        in_b = k in env_b.types
+        if in_a and in_b:
+            ta = env_a.types[k]
+            tb = env_b.types[k]
+            if _type_eq(ta, tb):
+                out.types[k] = ta
+            elif _is_assignable(ta, tb, hier):
+                out.types[k] = tb
+            elif _is_assignable(tb, ta, hier):
+                out.types[k] = ta
+            else:
+                parts: list[TypeNode] = []
+                _flatten_for_merge(ta, parts)
+                _flatten_for_merge(tb, parts)
+                out.types[k] = combine_types(parts)
+        elif in_a:
+            out.types[k] = env_a.types[k]
+        elif in_b:
+            out.types[k] = env_b.types[k]
+        j += 1
+
+
 def _validate_if(
     stmt: ASTNode,
     env: TypeEnv,
@@ -2029,21 +2201,10 @@ def _validate_if(
         while j < len(gkeys):
             env.guarded_attrs.add(gkeys[j])
             j += 1
+    elif not then_returns and not else_returns and len(orelse) > 0:
+        _merge_branch_envs(then_env, else_env, env, ctx.hier_result)
     elif not then_returns and len(orelse) == 0:
-        ekeys = list(else_env.types.keys())
-        j = 0
-        while j < len(ekeys):
-            k = ekeys[j]
-            else_t = else_env.types[k]
-            then_t = then_env.types.get(k)
-            if then_t is not None:
-                if _type_eq(else_t, then_t):
-                    env.types[k] = else_t
-                elif _is_assignable(then_t, else_t, ctx.hier_result):
-                    env.types[k] = else_t
-                elif _is_assignable(else_t, then_t, ctx.hier_result):
-                    env.types[k] = then_t
-            j += 1
+        _merge_no_else(then_env, else_env, env, ctx.hier_result)
     return then_returns and else_returns
 
 
@@ -2078,6 +2239,8 @@ def _validate_while(
         while j < len(ekeys):
             env.types[ekeys[j]] = else_env.types[ekeys[j]]
             j += 1
+    elif not body_returns:
+        _merge_branch_envs(else_env, loop_env, env, ctx.hier_result)
 
 
 def _validate_for(
@@ -2103,6 +2266,7 @@ def _validate_for(
             if t is not None:
                 loop_env.set(tname, t)
     _validate_stmts(body, loop_env, func_info, ctx)
+    _merge_branch_envs(env, loop_env, env, ctx.hier_result)
 
 
 def _validate_assert(
@@ -2324,6 +2488,10 @@ def _extract_narrowing(
     if t == "Name":
         name = get_str(test, "id")
         if name != "":
+            alias = then_env.cond_aliases.get(name)
+            if alias is not None:
+                _apply_alias_narrowing(alias, then_env, else_env, ctx)
+                return
             typ = then_env.get_type(name)
             if typ is not None and isinstance(typ, OptionalType):
                 then_env.narrow(name, typ.inner)
@@ -2619,6 +2787,47 @@ def _narrow_compare(
                         then_remaining = remove_from_union(obj_type2, [matched])
                         then_env.narrow(obj_name, then_remaining)
             return
+
+
+def _apply_alias_narrowing(
+    alias: CondAlias,
+    then_env: TypeEnv,
+    else_env: TypeEnv,
+    ctx: _InferCtx,
+) -> None:
+    """Apply narrowing from a condition alias (flag = isinstance(x, T), etc)."""
+    target = alias.target
+    if alias.narrow_type == "isinstance":
+        sig_errors: list[TypeCollectError] = []
+        narrowed = py_type_to_type_dict(
+            alias.type_name, ctx.known_classes, sig_errors, 0, 0
+        )
+        then_env.narrow(target, narrowed)
+        else_type = else_env.get_type(target)
+        if else_type is not None:
+            sig_e_rm: list[TypeCollectError] = []
+            remove_t = py_type_to_type_dict(
+                alias.type_name, ctx.known_classes, sig_e_rm, 0, 0
+            )
+            remaining = remove_from_union(else_type, [remove_t])
+            else_env.narrow(target, remaining)
+        return
+    if alias.narrow_type == "is_none":
+        _narrow_to_non_none(target, else_env, ctx)
+        return
+    if alias.narrow_type == "is_not_none":
+        _narrow_to_non_none(target, then_env, ctx)
+        return
+    if alias.narrow_type == "const_field":
+        obj_type = then_env.get_type(target)
+        if obj_type is not None and isinstance(obj_type, UnionType):
+            matched = _find_variant_by_const_field(
+                obj_type, alias.field_name, alias.type_name, ctx
+            )
+            if matched is not None:
+                then_env.narrow(target, matched)
+                else_remaining = remove_from_union(obj_type, [matched])
+                else_env.narrow(target, else_remaining)
 
 
 def _narrow_to_non_none(name: str, env: TypeEnv, ctx: _InferCtx) -> None:
