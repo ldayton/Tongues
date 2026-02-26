@@ -142,7 +142,7 @@ class B(Base):
 def f(x: A | B) -> None:
     pass
 ---
-functions.f.params.0.typ._type = InterfaceRef
+functions.f.params.0.typ._type = Union
 ---
 
 === union dedup

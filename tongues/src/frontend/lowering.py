@@ -177,6 +177,64 @@ def _name_ann(safe: str, original: str) -> Ann:
 # Type dict to TType conversion
 # ---------------------------------------------------------------------------
 
+_LOWER_ANCESTORS: dict[str, list[str]] = {}
+
+
+def _resolve_struct_union(t: UnionType) -> TypeNode:
+    """Resolve a union of related structs to their common ancestor interface."""
+    names: list[str] = []
+    i = 0
+    while i < len(t.variants):
+        v = t.variants[i]
+        if isinstance(v, PointerType) and isinstance(v.target, StructRef):
+            names.append(v.target.name)
+        elif isinstance(v, StructRef):
+            names.append(v.name)
+        else:
+            return t
+        i += 1
+    if len(names) < 2:
+        return t
+    chain0 = _ancestor_chain_hier(names[0])
+    common: set[str] = set(chain0)
+    i = 1
+    while i < len(names):
+        chain_i = _ancestor_chain_hier(names[i])
+        chain_set: set[str] = set(chain_i)
+        new_common: set[str] = set()
+        j = 0
+        while j < len(chain0):
+            if chain0[j] in chain_set and chain0[j] in common:
+                new_common.add(chain0[j])
+            j += 1
+        common = new_common
+        i += 1
+    j = 0
+    while j < len(chain0):
+        if chain0[j] in common:
+            return InterfaceRef(chain0[j])
+        j += 1
+    return t
+
+
+def _ancestor_chain_hier(name: str) -> list[str]:
+    """Get ancestor chain from the lowering ancestors dict."""
+    chain: list[str] = [name]
+    visited: set[str] = set()
+    visited.add(name)
+    cur = name
+    while True:
+        parents = _LOWER_ANCESTORS.get(cur)
+        if parents is None or len(parents) == 0:
+            break
+        parent = parents[0]
+        if parent in visited:
+            break
+        chain.append(parent)
+        visited.add(parent)
+        cur = parent
+    return chain
+
 
 def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
     """Convert a TypeNode (from signatures/inference) to a Taytsh TType node."""
@@ -231,6 +289,9 @@ def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
         fn_parts.append(_typenode_to_ttype(pos, t.ret))
         return TFuncType(pos, fn_parts)
     if isinstance(t, UnionType):
+        resolved = _resolve_struct_union(t)
+        if not isinstance(resolved, UnionType):
+            return _typenode_to_ttype(pos, resolved)
         parts2: list[TType] = []
         i = 0
         while i < len(t.variants):
@@ -6168,6 +6229,13 @@ def lower(
 
     Returns (module, errors). If errors is non-empty, module may be None.
     """
+    _LOWER_ANCESTORS.clear()
+    akeys = list(hier_result.ancestors.keys())
+    ai = 0
+    while ai < len(akeys):
+        _LOWER_ANCESTORS[akeys[ai]] = hier_result.ancestors[akeys[ai]]
+        ai += 1
     ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases, source)
     module = _build_module(tree, ctx)
+    _LOWER_ANCESTORS.clear()
     return (module, ctx.errors)

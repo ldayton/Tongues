@@ -623,25 +623,6 @@ def _resolve_union(
     return _resolve_non_none_union(unique, known_classes, errors, lineno, col)
 
 
-def _ancestor_chain(name: str) -> list[str]:
-    """Get the ancestor chain from name up to topmost root, inclusive."""
-    chain: list[str] = [name]
-    visited: set[str] = set()
-    visited.add(name)
-    cur = name
-    while True:
-        parents = _CLASS_BASES.get(cur)
-        if parents is None or len(parents) == 0:
-            break
-        parent = parents[0]
-        if parent in visited:
-            break
-        chain.append(parent)
-        visited.add(parent)
-        cur = parent
-    return chain
-
-
 def _resolve_non_none_union(
     members: list[str],
     known_classes: set[str],
@@ -649,54 +630,17 @@ def _resolve_non_none_union(
     lineno: int,
     col: int,
 ) -> TypeNode:
-    """Resolve a union with no None members to the nearest common ancestor."""
-    all_classes = True
+    """Resolve a union with no None members to a UnionType."""
+    variants: list[TypeNode] = []
     i = 0
     while i < len(members):
-        if members[i] not in known_classes:
-            all_classes = False
-            break
-        i += 1
-    if not all_classes or len(_CLASS_BASES) == 0:
-        variants: list[TypeNode] = []
-        i = 0
-        while i < len(members):
-            variants.append(
-                py_type_to_type_dict(members[i], known_classes, errors, lineno, col)
-            )
-            i += 1
-        if len(variants) == 1:
-            return variants[0]
-        return UnionType(variants)
-    chain0 = _ancestor_chain(members[0])
-    common: set[str] = set(chain0)
-    i = 1
-    while i < len(members):
-        chain_i = _ancestor_chain(members[i])
-        chain_set: set[str] = set(chain_i)
-        new_common: set[str] = set()
-        j = 0
-        while j < len(chain0):
-            if chain0[j] in chain_set and chain0[j] in common:
-                new_common.add(chain0[j])
-            j += 1
-        common = new_common
-        i += 1
-    j = 0
-    while j < len(chain0):
-        if chain0[j] in common:
-            return InterfaceRef(chain0[j])
-        j += 1
-    variants2: list[TypeNode] = []
-    i = 0
-    while i < len(members):
-        variants2.append(
+        variants.append(
             py_type_to_type_dict(members[i], known_classes, errors, lineno, col)
         )
         i += 1
-    if len(variants2) == 1:
-        return variants2[0]
-    return UnionType(variants2)
+    if len(variants) == 1:
+        return variants[0]
+    return UnionType(variants)
 
 
 # ---------------------------------------------------------------------------

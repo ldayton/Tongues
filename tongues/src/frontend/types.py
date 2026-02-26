@@ -519,6 +519,107 @@ def combine_types(types: list[TypeNode]) -> TypeNode:
     return UnionType(deduped)
 
 
+def _removal_matches(variant: TypeNode, target: TypeNode) -> bool:
+    """Check if variant matches target for union removal.
+
+    Uses type_eq, but also matches generic containers with any-element against
+    concrete containers (e.g. SliceType(any) matches SliceType(str)).
+    """
+    if type_eq(variant, target):
+        return True
+    if isinstance(variant, SliceType) and isinstance(target, SliceType):
+        if is_any(target.element):
+            return True
+    if isinstance(variant, MapType) and isinstance(target, MapType):
+        if is_any(target.key) and is_any(target.value):
+            return True
+    if isinstance(variant, SetType) and isinstance(target, SetType):
+        if is_any(target.element):
+            return True
+    if isinstance(variant, TupleType) and isinstance(target, TupleType):
+        if len(target.elements) > 0 and is_any(target.elements[0]):
+            return True
+    return False
+
+
+def remove_from_union(t: TypeNode, to_remove: list[TypeNode]) -> TypeNode:
+    """Remove variants matching any type in to_remove."""
+    if isinstance(t, UnionType):
+        remaining: list[TypeNode] = []
+        i = 0
+        while i < len(t.variants):
+            matched = False
+            j = 0
+            while j < len(to_remove):
+                if _removal_matches(t.variants[i], to_remove[j]):
+                    matched = True
+                j += 1
+            if not matched:
+                remaining.append(t.variants[i])
+            i += 1
+        if len(remaining) == 0:
+            return PrimitiveType("any")
+        if len(remaining) == 1:
+            return remaining[0]
+        return UnionType(remaining)
+    if isinstance(t, OptionalType) and isinstance(t.inner, UnionType):
+        remaining2: list[TypeNode] = []
+        i = 0
+        while i < len(t.inner.variants):
+            matched = False
+            j = 0
+            while j < len(to_remove):
+                if _removal_matches(t.inner.variants[i], to_remove[j]):
+                    matched = True
+                j += 1
+            if not matched:
+                remaining2.append(t.inner.variants[i])
+            i += 1
+        if len(remaining2) == 0:
+            return PrimitiveType("void")
+        if len(remaining2) == 1:
+            return OptionalType(remaining2[0])
+        return OptionalType(UnionType(remaining2))
+    if isinstance(t, OptionalType):
+        j = 0
+        while j < len(to_remove):
+            if _removal_matches(t.inner, to_remove[j]):
+                return PrimitiveType("void")
+            j += 1
+    return t
+
+
+def _variant_name(v: TypeNode) -> str:
+    """Extract struct/interface name from a single variant."""
+    if isinstance(v, StructRef):
+        return v.name
+    if isinstance(v, InterfaceRef):
+        return v.name
+    if isinstance(v, PointerType) and isinstance(v.target, StructRef):
+        return v.target.name
+    return ""
+
+
+def union_variant_names(t: TypeNode) -> list[str]:
+    """Extract struct/interface names from union variants."""
+    result: list[str] = []
+    inner = t
+    if isinstance(t, OptionalType):
+        inner = t.inner
+    if isinstance(inner, UnionType):
+        i = 0
+        while i < len(inner.variants):
+            vn = _variant_name(inner.variants[i])
+            if vn != "":
+                result.append(vn)
+            i += 1
+    else:
+        vn = _variant_name(inner)
+        if vn != "":
+            result.append(vn)
+    return result
+
+
 def typenode_to_dict(t: TypeNode) -> JsonValue:
     """Convert a TypeNode to a JsonValue dict for serialization."""
     if isinstance(t, PrimitiveType):

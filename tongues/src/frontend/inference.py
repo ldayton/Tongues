@@ -42,6 +42,8 @@ from .types import (
     is_any,
     type_eq as _type_eq,
     combine_types,
+    remove_from_union,
+    union_variant_names,
     type_name as _type_name_fn,
     JStr,
     JInt,
@@ -299,77 +301,6 @@ def _struct_name(t: TypeNode) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Source type tracking
-# ---------------------------------------------------------------------------
-
-
-def _split_union_parts(py_type: str) -> list[str]:
-    """Split 'int | str | None' into ['int', 'str', 'None']."""
-    parts: list[str] = []
-    depth = 0
-    current: list[str] = []
-    i = 0
-    while i < len(py_type):
-        c = py_type[i]
-        if c == "[":
-            depth += 1
-            current.append(c)
-        elif c == "]":
-            depth -= 1
-            current.append(c)
-        elif (
-            c == " "
-            and depth == 0
-            and i + 2 < len(py_type)
-            and py_type[i + 1] == "|"
-            and py_type[i + 2] == " "
-        ):
-            parts.append("".join(current).strip())
-            current: list[str] = []
-            i += 3
-            continue
-        else:
-            current.append(c)
-        i += 1
-    tail = "".join(current).strip()
-    if tail != "":
-        parts.append(tail)
-    return parts
-
-
-def _is_union_source(py_type: str) -> bool:
-    parts = _split_union_parts(py_type)
-    return len(parts) > 1
-
-
-def _is_optional_source(py_type: str) -> bool:
-    parts = _split_union_parts(py_type)
-    if len(parts) < 2:
-        return False
-    i = 0
-    while i < len(parts):
-        if parts[i] == "None":
-            return True
-        i += 1
-    return False
-
-
-def _non_none_parts(py_type: str) -> list[str]:
-    parts = _split_union_parts(py_type)
-    result: list[str] = []
-    i = 0
-    while i < len(parts):
-        if parts[i] != "None":
-            result.append(parts[i])
-        i += 1
-    return result
-
-
-def _needs_narrowing(py_type: str) -> bool:
-    return _is_union_source(py_type) or py_type == "object"
-
-
-# ---------------------------------------------------------------------------
 # Type environment
 # ---------------------------------------------------------------------------
 
@@ -379,7 +310,6 @@ class TypeEnv:
 
     def __init__(self) -> None:
         self.types: dict[str, TypeNode] = {}
-        self.source_types: dict[str, str] = {}
         self.guarded_attrs: set[str] = set()
 
     def copy(self) -> TypeEnv:
@@ -389,11 +319,6 @@ class TypeEnv:
         while i < len(tkeys):
             env.types[tkeys[i]] = self.types[tkeys[i]]
             i += 1
-        skeys = list(self.source_types.keys())
-        i = 0
-        while i < len(skeys):
-            env.source_types[skeys[i]] = self.source_types[skeys[i]]
-            i += 1
         gkeys = list(self.guarded_attrs)
         i = 0
         while i < len(gkeys):
@@ -401,19 +326,14 @@ class TypeEnv:
             i += 1
         return env
 
-    def set(self, name: str, typ: TypeNode, source: str) -> None:
+    def set(self, name: str, typ: TypeNode) -> None:
         self.types[name] = typ
-        self.source_types[name] = source
 
     def get_type(self, name: str) -> TypeNode | None:
         return self.types.get(name)
 
-    def get_source(self, name: str) -> str:
-        return self.source_types.get(name, "")
-
-    def narrow(self, name: str, typ: TypeNode, source: str) -> None:
+    def narrow(self, name: str, typ: TypeNode) -> None:
         self.types[name] = typ
-        self.source_types[name] = source
 
     def guard_attr(self, path: str) -> None:
         self.guarded_attrs.add(path)
@@ -442,7 +362,6 @@ class TypeEnv:
             k = type_keys[i]
             if k.startswith(prefix):
                 self.types.pop(k)
-                self.source_types.pop(k, "")
             i += 1
 
 
@@ -1273,7 +1192,7 @@ def _synth_namedexpr(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if len(target) > 0 and _is_type(target, ["Name"]):
         name = get_str(target, "id")
         if name != "":
-            env.set(name, vt, _type_name(vt))
+            env.set(name, vt)
     return vt
 
 
@@ -1307,7 +1226,7 @@ def _bind_target(target: ASTNode, typ: TypeNode, env: TypeEnv) -> None:
     if _is_type(target, ["Name"]):
         name = get_str(target, "id")
         if name != "":
-            env.set(name, typ, _type_name(typ))
+            env.set(name, typ)
     elif _is_type(target, ["Tuple", "List"]):
         elts = get_nodes(target, "elts")
         if isinstance(typ, TupleType):
@@ -1372,11 +1291,11 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
     i = 0
     while i < len(func_info.params):
         p = func_info.params[i]
-        env.set(p.name, p.typ, p.py_type)
+        env.set(p.name, p.typ)
         i += 1
     if receiver != "":
         self_type = PointerType(StructRef(receiver))
-        env.set("this", self_type, receiver)
+        env.set("this", self_type)
     body = get_nodes(func_node, "body")
     if len(body) == 0:
         return
@@ -1528,8 +1447,7 @@ def _validate_assign(
                 existing = env.get_type(name)
                 if existing is not None:
                     if not _type_eq(val_type, existing):
-                        source = _infer_source(value, env, ctx)
-                        env.set(name, val_type, source)
+                        env.set(name, val_type)
                 else:
                     if _is_empty_collection(value) and is_any(_element_type(val_type)):
                         ctx.result.add_error(
@@ -1540,8 +1458,7 @@ def _validate_assign(
                             + " needs type annotation",
                         )
                         return
-                    source = _infer_source(value, env, ctx)
-                    env.set(name, val_type, source)
+                    env.set(name, val_type)
         elif _is_type(tgt, ["Tuple", "List"]):
             _validate_unpack(tgt, val_type, value, env, ctx, lineno)
         elif _is_type(tgt, ["Subscript"]):
@@ -1574,36 +1491,6 @@ def _collection_name(node: ASTNode) -> str:
     if t == "Set":
         return "set"
     return "collection"
-
-
-def _infer_source(value: ASTNode, env: TypeEnv, ctx: _InferCtx) -> str:
-    """Infer the source type string for an expression."""
-    t = get_str(value, "_type")
-    if t == "Constant":
-        v = value.get("value")
-        if v is None or isinstance(v, JNull):
-            return "None"
-        if isinstance(v, JBool):
-            return "bool"
-        if isinstance(v, JInt):
-            return "int"
-        if isinstance(v, JFloat):
-            return "float"
-        if isinstance(v, JStr):
-            return "str"
-    if t == "Name":
-        name = get_str(value, "id")
-        if name != "":
-            return env.get_source(name)
-    if t == "Call":
-        func = get_node(value, "func")
-        if len(func) > 0 and _is_type(func, ["Name"]):
-            fname = get_str(func, "id")
-            if fname != "":
-                fi = ctx.tc_result.functions.get(fname)
-                if fi is not None:
-                    return fi.return_py_type
-    return ""
 
 
 def _validate_unpack(
@@ -1726,7 +1613,7 @@ def _validate_ann_assign(
     if _is_type(target, ["Name"]):
         name = get_str(target, "id")
         if name != "":
-            env.set(name, ann_type, ann_str)
+            env.set(name, ann_type)
             if len(value) > 0:
                 err_snap = len(ctx.result._errors)
                 _validate_expr_access(value, env, ctx, lineno)
@@ -2121,11 +2008,6 @@ def _validate_if(
         while j < len(ekeys):
             env.types[ekeys[j]] = else_env.types[ekeys[j]]
             j += 1
-        skeys = list(else_env.source_types.keys())
-        j = 0
-        while j < len(skeys):
-            env.source_types[skeys[j]] = else_env.source_types[skeys[j]]
-            j += 1
         gkeys = list(else_env.guarded_attrs)
         j = 0
         while j < len(gkeys):
@@ -2136,11 +2018,6 @@ def _validate_if(
         j = 0
         while j < len(tkeys):
             env.types[tkeys[j]] = then_env.types[tkeys[j]]
-            j += 1
-        skeys = list(then_env.source_types.keys())
-        j = 0
-        while j < len(skeys):
-            env.source_types[skeys[j]] = then_env.source_types[skeys[j]]
             j += 1
         gkeys = list(then_env.guarded_attrs)
         j = 0
@@ -2157,9 +2034,6 @@ def _validate_if(
             if then_t is not None:
                 if _type_eq(else_t, then_t):
                     env.types[k] = else_t
-                    es = else_env.source_types.get(k, "")
-                    if es != "":
-                        env.source_types[k] = es
                 elif _is_assignable(then_t, else_t, ctx.hier_result):
                     env.types[k] = else_t
                 elif _is_assignable(else_t, then_t, ctx.hier_result):
@@ -2199,11 +2073,6 @@ def _validate_while(
         while j < len(ekeys):
             env.types[ekeys[j]] = else_env.types[ekeys[j]]
             j += 1
-        skeys = list(else_env.source_types.keys())
-        j = 0
-        while j < len(skeys):
-            env.source_types[skeys[j]] = else_env.source_types[skeys[j]]
-            j += 1
 
 
 def _validate_for(
@@ -2227,7 +2096,7 @@ def _validate_for(
         if tname != "":
             t = env.get_type(tname)
             if t is not None:
-                loop_env.set(tname, t, env.get_source(tname))
+                loop_env.set(tname, t)
     _validate_stmts(body, loop_env, func_info, ctx)
 
 
@@ -2287,7 +2156,7 @@ def _validate_match(
                         narrowed = py_type_to_type_dict(
                             cls_name, ctx.known_classes, sig_errors, 0, 0
                         )
-                        case_env.narrow(subj_name, narrowed, cls_name)
+                        case_env.narrow(subj_name, narrowed)
         case_body = get_nodes(case, "body")
         _validate_stmts(case_body, case_env, func_info, ctx)
         j += 1
@@ -2368,18 +2237,6 @@ def _check_type_truthiness(
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional set")
             return
         return
-    source = ""
-    if _is_type(node, ["Name"]):
-        name = get_str(node, "id")
-        if name != "":
-            source = env.get_source(name)
-    if source != "" and _is_optional_source(source):
-        non_none = _non_none_parts(source)
-        if len(non_none) == 1:
-            nn = non_none[0]
-            if nn == "str":
-                ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional str")
-                return
     if isinstance(typ, PrimitiveType) and typ.kind == "string":
         return
     if isinstance(typ, SliceType):
@@ -2454,26 +2311,17 @@ def _extract_narrowing(
             name = get_str(target, "id")
             if name != "":
                 vt = _synth_expr(value, then_env, ctx)
-                then_env.set(name, vt, _type_name(vt))
-                else_env.set(name, vt, _type_name(vt))
+                then_env.set(name, vt)
+                else_env.set(name, vt)
                 if isinstance(vt, OptionalType):
-                    then_env.set(name, vt.inner, _type_name(vt.inner))
+                    then_env.set(name, vt.inner)
         return
     if t == "Name":
         name = get_str(test, "id")
         if name != "":
             typ = then_env.get_type(name)
-            source = then_env.get_source(name)
             if typ is not None and isinstance(typ, OptionalType):
-                then_env.narrow(name, typ.inner, _type_name(typ.inner))
-            elif source != "" and _is_optional_source(source):
-                non_none = _non_none_parts(source)
-                if len(non_none) == 1:
-                    sig_errors: list[TypeCollectError] = []
-                    narrowed = py_type_to_type_dict(
-                        non_none[0], ctx.known_classes, sig_errors, 0, 0
-                    )
-                    then_env.narrow(name, narrowed, non_none[0])
+                then_env.narrow(name, typ.inner)
         return
     if t == "Attribute":
         path = _attr_path(test)
@@ -2532,8 +2380,8 @@ def _narrow_isinstance(
             walrus_value = get_node(target, "value")
             if name != "" and len(walrus_value) > 0:
                 vt = _synth_expr(walrus_value, then_env, ctx)
-                then_env.set(name, vt, _type_name(vt))
-                else_env.set(name, vt, _type_name(vt))
+                then_env.set(name, vt)
+                else_env.set(name, vt)
     if name == "":
         return
     narrow_names: list[str] = []
@@ -2558,39 +2406,33 @@ def _narrow_isinstance(
         narrowed = py_type_to_type_dict(
             narrow_name, ctx.known_classes, sig_errors, 0, 0
         )
-        then_env.narrow(name, narrowed, narrow_name)
+        then_env.narrow(name, narrowed)
     elif len(narrow_names) > 1:
-        union_source = " | ".join(narrow_names)
         sig_errors: list[TypeCollectError] = []
-        first_type = py_type_to_type_dict(
-            narrow_names[0], ctx.known_classes, sig_errors, 0, 0
-        )
-        then_env.narrow(name, first_type, union_source)
-    source = else_env.get_source(name)
-    if source != "" and _is_union_source(source):
-        parts = _split_union_parts(source)
-        narrow_set: set[str] = set(narrow_names)
-        remaining: list[str] = []
-        j = 0
-        while j < len(parts):
-            p = parts[j]
-            base = p.split("[")[0] if "[" in p else p
-            if p not in narrow_set and base not in narrow_set:
-                remaining.append(p)
-            j += 1
-        if len(remaining) == 1:
-            sig_errors2: list[TypeCollectError] = []
-            rem_type = py_type_to_type_dict(
-                remaining[0], ctx.known_classes, sig_errors2, 0, 0
+        variants: list[TypeNode] = []
+        ni = 0
+        while ni < len(narrow_names):
+            variants.append(
+                py_type_to_type_dict(
+                    narrow_names[ni], ctx.known_classes, sig_errors, 0, 0
+                )
             )
-            else_env.narrow(name, rem_type, remaining[0])
-        elif len(remaining) > 1:
-            new_source = " | ".join(remaining)
-            sig_errors2: list[TypeCollectError] = []
-            rem_type = py_type_to_type_dict(
-                new_source, ctx.known_classes, sig_errors2, 0, 0
+            ni += 1
+        then_env.narrow(name, UnionType(variants))
+    else_type = else_env.get_type(name)
+    if else_type is not None:
+        remove_types: list[TypeNode] = []
+        ri = 0
+        while ri < len(narrow_names):
+            sig_e_rm: list[TypeCollectError] = []
+            remove_types.append(
+                py_type_to_type_dict(
+                    narrow_names[ri], ctx.known_classes, sig_e_rm, 0, 0
+                )
             )
-            else_env.narrow(name, rem_type, new_source)
+            ri += 1
+        remaining_type = remove_from_union(else_type, remove_types)
+        else_env.narrow(name, remaining_type)
 
 
 def _narrow_compare(
@@ -2612,8 +2454,8 @@ def _narrow_compare(
             ne_name = get_str(ne_target, "id")
             if ne_name != "" and len(ne_value) > 0:
                 vt = _synth_expr(ne_value, then_env, ctx)
-                then_env.set(ne_name, vt, _type_name(vt))
-                else_env.set(ne_name, vt, _type_name(vt))
+                then_env.set(ne_name, vt)
+                else_env.set(ne_name, vt)
             left = ne_target
     op = ops[0]
     comp = comparators[0]
@@ -2672,18 +2514,17 @@ def _narrow_compare(
                 if isinstance(comp_v, JStr):
                     comp_value = comp_v.value
                     obj_node = get_node(left, "value")
-                    is_union = False
+                    obj_name = ""
+                    obj_type: TypeNode | None = None
                     if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
                         obj_name = get_str(obj_node, "id")
                         if obj_name != "":
-                            src = then_env.get_source(obj_name)
-                            if src != "" and _is_union_source(src):
-                                is_union = True
+                            obj_type = then_env.get_type(obj_name)
                     if len(obj_node) > 0 and _is_type(obj_node, ["Attribute"]):
                         kind_path = _attr_path(obj_node)
                         if kind_path != "":
                             then_env.guard_attr(kind_path)
-                    if is_union:
+                    if obj_type is not None and isinstance(obj_type, UnionType):
                         found_class = ""
                         all_classes = list(ctx.known_classes)
                         j = 0
@@ -2702,53 +2543,21 @@ def _narrow_compare(
                                 + "' does not match any known type",
                             )
                         elif obj_name != "":
-                            parts = _split_union_parts(src)
-                            if found_class in parts:
+                            variant_names = union_variant_names(obj_type)
+                            if found_class in variant_names:
                                 sig_e: list[TypeCollectError] = []
-                                then_env.narrow(
-                                    obj_name,
-                                    py_type_to_type_dict(
-                                        found_class,
-                                        ctx.known_classes,
-                                        sig_e,
-                                        0,
-                                        0,
-                                    ),
+                                narrowed_type = py_type_to_type_dict(
                                     found_class,
+                                    ctx.known_classes,
+                                    sig_e,
+                                    0,
+                                    0,
                                 )
-                                remaining: list[str] = []
-                                j2 = 0
-                                while j2 < len(parts):
-                                    if parts[j2] != found_class:
-                                        remaining.append(parts[j2])
-                                    j2 += 1
-                                if len(remaining) == 1:
-                                    sig_e2: list[TypeCollectError] = []
-                                    else_env.narrow(
-                                        obj_name,
-                                        py_type_to_type_dict(
-                                            remaining[0],
-                                            ctx.known_classes,
-                                            sig_e2,
-                                            0,
-                                            0,
-                                        ),
-                                        remaining[0],
-                                    )
-                                elif len(remaining) > 1:
-                                    new_src = " | ".join(remaining)
-                                    sig_e2: list[TypeCollectError] = []
-                                    else_env.narrow(
-                                        obj_name,
-                                        py_type_to_type_dict(
-                                            new_src,
-                                            ctx.known_classes,
-                                            sig_e2,
-                                            0,
-                                            0,
-                                        ),
-                                        new_src,
-                                    )
+                                then_env.narrow(obj_name, narrowed_type)
+                                else_remaining = remove_from_union(
+                                    obj_type, [narrowed_type]
+                                )
+                                else_env.narrow(obj_name, else_remaining)
                 return
     if op_type == "NotEq" and not comp_is_none:
         if _is_type(left, ["Attribute"]):
@@ -2759,12 +2568,16 @@ def _narrow_compare(
                     comp_value = comp_v.value
                     obj_node = get_node(left, "value")
                     obj_name = ""
-                    src = ""
+                    obj_type2: TypeNode | None = None
                     if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
                         obj_name = get_str(obj_node, "id")
                         if obj_name != "":
-                            src = else_env.get_source(obj_name)
-                    if obj_name != "" and src != "" and _is_union_source(src):
+                            obj_type2 = else_env.get_type(obj_name)
+                    if (
+                        obj_name != ""
+                        and obj_type2 is not None
+                        and isinstance(obj_type2, UnionType)
+                    ):
                         found_class = ""
                         all_classes = list(ctx.known_classes)
                         j = 0
@@ -2774,78 +2587,29 @@ def _narrow_compare(
                                 break
                             j += 1
                         if found_class != "":
-                            parts = _split_union_parts(src)
-                            if found_class in parts:
+                            variant_names2 = union_variant_names(obj_type2)
+                            if found_class in variant_names2:
                                 sig_e3: list[TypeCollectError] = []
-                                else_env.narrow(
-                                    obj_name,
-                                    py_type_to_type_dict(
-                                        found_class,
-                                        ctx.known_classes,
-                                        sig_e3,
-                                        0,
-                                        0,
-                                    ),
+                                narrowed_type2 = py_type_to_type_dict(
                                     found_class,
+                                    ctx.known_classes,
+                                    sig_e3,
+                                    0,
+                                    0,
                                 )
-                                remaining2: list[str] = []
-                                j3 = 0
-                                while j3 < len(parts):
-                                    if parts[j3] != found_class:
-                                        remaining2.append(parts[j3])
-                                    j3 += 1
-                                if len(remaining2) == 1:
-                                    sig_e4: list[TypeCollectError] = []
-                                    then_env.narrow(
-                                        obj_name,
-                                        py_type_to_type_dict(
-                                            remaining2[0],
-                                            ctx.known_classes,
-                                            sig_e4,
-                                            0,
-                                            0,
-                                        ),
-                                        remaining2[0],
-                                    )
-                                elif len(remaining2) > 1:
-                                    new_src2 = " | ".join(remaining2)
-                                    sig_e4: list[TypeCollectError] = []
-                                    then_env.narrow(
-                                        obj_name,
-                                        py_type_to_type_dict(
-                                            new_src2,
-                                            ctx.known_classes,
-                                            sig_e4,
-                                            0,
-                                            0,
-                                        ),
-                                        new_src2,
-                                    )
+                                else_env.narrow(obj_name, narrowed_type2)
+                                then_remaining = remove_from_union(
+                                    obj_type2, [narrowed_type2]
+                                )
+                                then_env.narrow(obj_name, then_remaining)
                 return
 
 
 def _narrow_to_non_none(name: str, env: TypeEnv, ctx: _InferCtx) -> None:
     """Narrow a variable to its non-None part."""
     typ = env.get_type(name)
-    source = env.get_source(name)
     if typ is not None and isinstance(typ, OptionalType):
-        env.narrow(name, typ.inner, _type_name(typ.inner))
-        return
-    if source != "" and _is_optional_source(source):
-        non_none = _non_none_parts(source)
-        if len(non_none) == 1:
-            sig_errors: list[TypeCollectError] = []
-            narrowed = py_type_to_type_dict(
-                non_none[0], ctx.known_classes, sig_errors, 0, 0
-            )
-            env.narrow(name, narrowed, non_none[0])
-        elif len(non_none) > 1:
-            new_source = " | ".join(non_none)
-            sig_errors3: list[TypeCollectError] = []
-            narrowed = py_type_to_type_dict(
-                new_source, ctx.known_classes, sig_errors3, 0, 0
-            )
-            env.narrow(name, narrowed, new_source)
+        env.narrow(name, typ.inner)
 
 
 def _narrow_or_isinstance(
@@ -2896,12 +2660,23 @@ def _narrow_or_isinstance(
         i += 1
     if name == "" or len(type_names) == 0:
         return
-    union_source = " | ".join(type_names)
     sig_errors: list[TypeCollectError] = []
-    first_type = py_type_to_type_dict(
-        type_names[0], ctx.known_classes, sig_errors, 0, 0
-    )
-    then_env.narrow(name, first_type, union_source)
+    if len(type_names) == 1:
+        narrowed = py_type_to_type_dict(
+            type_names[0], ctx.known_classes, sig_errors, 0, 0
+        )
+        then_env.narrow(name, narrowed)
+    else:
+        variants: list[TypeNode] = []
+        ni = 0
+        while ni < len(type_names):
+            variants.append(
+                py_type_to_type_dict(
+                    type_names[ni], ctx.known_classes, sig_errors, 0, 0
+                )
+            )
+            ni += 1
+        then_env.narrow(name, UnionType(variants))
 
 
 # ---------------------------------------------------------------------------
@@ -3149,7 +2924,6 @@ def _check_needs_narrowing(
     name = get_str(node, "id")
     if name == "":
         return
-    source = env.get_source(name)
     typ = env.get_type(name)
     if typ is None:
         return
@@ -3175,25 +2949,9 @@ def _check_needs_narrowing(
                 lineno, 0, "cannot subscript optional type (may be None)"
             )
         return
-    if source != "" and _is_optional_source(source):
-        if context == "arithmetic":
-            ctx.result.add_error(
-                lineno, 0, "cannot use " + source + " in arithmetic (may be None)"
-            )
-        elif context == "attribute":
-            ctx.result.add_error(
-                lineno,
-                0,
-                "cannot access '" + attr_name + "' on optional type (may be None)",
-            )
-        elif context == "subscript":
-            ctx.result.add_error(
-                lineno, 0, "cannot subscript optional type (may be None)"
-            )
-        return
-    if source != "" and _is_union_source(source):
+    if isinstance(typ, UnionType):
         if context == "attribute" and attr_name != "":
-            if _all_members_have_attr(source, attr_name, ctx):
+            if _all_union_members_have_attr(typ, attr_name, ctx):
                 return
             ctx.result.add_error(
                 lineno,
@@ -3214,29 +2972,20 @@ def _check_needs_narrowing(
                 lineno, 0, "cannot subscript union type without narrowing"
             )
         return
-    if source == "object":
-        if is_any(typ):
-            pass
-        elif isinstance(typ, PrimitiveType):
-            pass
-        elif _struct_name(typ) != "":
-            pass
-        elif isinstance(typ, SliceType) or isinstance(typ, MapType):
-            pass
-        else:
-            if context == "arithmetic":
-                ctx.result.add_error(
-                    lineno, 0, "cannot use object in arithmetic without narrowing"
-                )
-            elif context == "attribute":
-                ctx.result.add_error(
-                    lineno, 0, "cannot access attribute on object without narrowing"
-                )
-            elif context == "subscript":
-                ctx.result.add_error(
-                    lineno, 0, "cannot subscript object without narrowing"
-                )
-            return
+    if isinstance(typ, InterfaceRef) and ctx.hier_result.is_hierarchy_root(typ.name):
+        if context == "arithmetic":
+            ctx.result.add_error(
+                lineno, 0, "cannot use object in arithmetic without narrowing"
+            )
+        elif context == "attribute":
+            ctx.result.add_error(
+                lineno, 0, "cannot access attribute on object without narrowing"
+            )
+        elif context == "subscript":
+            ctx.result.add_error(
+                lineno, 0, "cannot subscript object without narrowing"
+            )
+        return
     if context == "attribute" and attr_name != "":
         sname = _struct_name(typ)
         if sname != "" and sname in ctx.known_classes:
@@ -3548,14 +3297,6 @@ def _check_builtin_arg_optional(
                 0,
                 "cannot use optional type in arithmetic (may be None)",
             )
-            return
-        source = env.get_source(name)
-        if source != "" and _is_optional_source(source):
-            ctx.result.add_error(
-                lineno,
-                0,
-                "cannot use " + source + " in arithmetic (may be None)",
-            )
 
 
 def _subclass_has_method(base_name: str, method_name: str, ctx: _InferCtx) -> bool:
@@ -3595,19 +3336,21 @@ def _class_has_attr(class_name: str, attr_name: str, ctx: _InferCtx) -> bool:
     return False
 
 
-def _all_members_have_attr(source: str, attr_name: str, ctx: _InferCtx) -> bool:
-    """Check if all union members have the given attribute (field, const_field, or method)."""
-    parts = _split_union_parts(source)
+def _all_union_members_have_attr(
+    typ: TypeNode, attr_name: str, ctx: _InferCtx
+) -> bool:
+    """Check if all union variant struct/interface types have the given attribute."""
+    if not isinstance(typ, UnionType):
+        return False
+    names = union_variant_names(typ)
+    if len(names) == 0:
+        return False
     i = 0
-    while i < len(parts):
-        p = parts[i]
-        if p == "None":
-            i += 1
-            continue
-        if not _class_has_attr(p, attr_name, ctx):
+    while i < len(names):
+        if not _class_has_attr(names[i], attr_name, ctx):
             return False
         i += 1
-    return len(parts) > 0
+    return True
 
 
 # ---------------------------------------------------------------------------
