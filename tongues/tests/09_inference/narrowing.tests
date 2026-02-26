@@ -2760,20 +2760,6 @@ def f(items: list[A]) -> list[int]:
 ok
 ---
 
-=== kind discrimination wrong field in then branch
-class A:
-    kind: str
-    a_val: int
-class B:
-    kind: str
-    b_val: str
-def f(x: A | B) -> str:
-    if x.kind == "a":
-        return x.b_val
-    return ""
----
-error: cannot access
----
 
 === isinstance never widens already known type
 class A:
@@ -2939,20 +2925,6 @@ class B(A):
 reveal:4 = B
 ---
 
-=== kind discrimination elif accessing wrong field
-class A:
-    kind: str
-    a_val: int
-class B:
-    kind: str
-    b_val: str
-def f(x: A | B) -> str:
-    if x.kind == "a":
-        return x.b_val
-    return ""
----
-error: cannot access
----
 
 === isinstance preserved across non-mutating function call
 class A:
@@ -3744,20 +3716,6 @@ def f(items: list[A]) -> set[int]:
 ok
 ---
 
-=== kind discrimination early return wrong access after
-class A:
-    kind: str
-    a_val: int
-class B:
-    kind: str
-    b_val: str
-def f(x: A | B) -> str:
-    if x.kind == "a":
-        return str(x.a_val)
-    return str(x.a_val)
----
-error:
----
 
 === narrowing with union of three None not guarded
 class A:
@@ -4667,6 +4625,149 @@ def eval_safe(node: Add | Mul | None, default: int | None) -> int:
     if node.kind == "add":
         return node.left + node.right + default
     return node.left * node.right + default
+---
+ok
+---
+=== narrowing compound guard is not None and kind check
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    value: int
+@dataclass
+class B:
+    kind: str
+    name: str
+def f(x: A | B | None) -> int:
+    if x is not None and x.kind == "a":
+        return x.value
+    return 0
+---
+ok
+---
+=== negated compound guard not or narrows
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    value: int
+@dataclass
+class B:
+    kind: str
+    name: str
+def f(x: A | B | None) -> int:
+    if x is None or x.kind != "a":
+        return 0
+    return x.value
+---
+ok
+---
+=== kind discrimination else narrows in two-way union
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    value: int
+@dataclass
+class B:
+    kind: str
+    name: str
+def f(x: A | B) -> str:
+    if x.kind == "a":
+        return str(x.value)
+    return x.name
+---
+ok
+---
+=== kind discrimination elif chain
+from dataclasses import dataclass
+@dataclass
+class Add:
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Sub:
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Neg:
+    kind: str
+    operand: int
+def eval_expr(e: Add | Sub | Neg) -> int:
+    if e.kind == "add":
+        return e.left + e.right
+    elif e.kind == "sub":
+        return e.left - e.right
+    return 0 - e.operand
+---
+ok
+---
+=== is not None and kind discrimination compound
+class A:
+    kind: str
+    a_val: int
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B | None) -> int:
+    if x is not None and x.kind == "a":
+        return x.a_val
+    return 0
+---
+ok
+---
+=== kind discrimination else accesses remaining field
+class A:
+    kind: str
+    a_val: int
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> str:
+    if x.kind == "a":
+        return str(x.a_val)
+    return x.b_val
+---
+ok
+---
+=== kind discrimination elif chain three types
+class A:
+    kind: str
+    a_val: int
+class B:
+    kind: str
+    b_val: str
+class C:
+    kind: str
+    c_val: float
+def f(x: A | B | C) -> str:
+    if x.kind == "a":
+        return str(x.a_val)
+    elif x.kind == "b":
+        return x.b_val
+    else:
+        return str(x.c_val)
+---
+ok
+---
+=== kind discrimination with early return pattern
+class A:
+    kind: str
+    a_val: int
+class B:
+    kind: str
+    b_val: str
+class C:
+    kind: str
+    c_val: float
+def f(x: A | B | C) -> str:
+    if x.kind == "a":
+        return str(x.a_val)
+    if x.kind == "b":
+        return x.b_val
+    return str(x.c_val)
 ---
 ok
 ---

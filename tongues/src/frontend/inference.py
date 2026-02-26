@@ -2576,15 +2576,15 @@ def _narrow_compare(
                             if src != "" and _is_union_source(src):
                                 is_union = True
                     if is_union:
-                        found = False
+                        found_class = ""
                         all_classes = list(ctx.known_classes)
                         j = 0
                         while j < len(all_classes):
                             if all_classes[j].lower() == comp_value.lower():
-                                found = True
+                                found_class = all_classes[j]
                                 break
                             j += 1
-                        if not found:
+                        if found_class == "":
                             k_lineno = get_int(test, "lineno")
                             ctx.result.add_error(
                                 k_lineno,
@@ -2593,6 +2593,126 @@ def _narrow_compare(
                                 + comp_value
                                 + "' does not match any known type",
                             )
+                        elif obj_name != "":
+                            parts = _split_union_parts(src)
+                            if found_class in parts:
+                                sig_e: list[SignatureError] = []
+                                then_env.narrow(
+                                    obj_name,
+                                    py_type_to_type_dict(
+                                        found_class,
+                                        ctx.known_classes,
+                                        sig_e,
+                                        0,
+                                        0,
+                                    ),
+                                    found_class,
+                                )
+                                remaining: list[str] = []
+                                j2 = 0
+                                while j2 < len(parts):
+                                    if parts[j2] != found_class:
+                                        remaining.append(parts[j2])
+                                    j2 += 1
+                                if len(remaining) == 1:
+                                    sig_e2: list[SignatureError] = []
+                                    else_env.narrow(
+                                        obj_name,
+                                        py_type_to_type_dict(
+                                            remaining[0],
+                                            ctx.known_classes,
+                                            sig_e2,
+                                            0,
+                                            0,
+                                        ),
+                                        remaining[0],
+                                    )
+                                elif len(remaining) > 1:
+                                    new_src = " | ".join(remaining)
+                                    sig_e2: list[SignatureError] = []
+                                    else_env.narrow(
+                                        obj_name,
+                                        py_type_to_type_dict(
+                                            new_src,
+                                            ctx.known_classes,
+                                            sig_e2,
+                                            0,
+                                            0,
+                                        ),
+                                        new_src,
+                                    )
+                return
+    if op_type == "NotEq" and not comp_is_none:
+        if _is_type(left, ["Attribute"]):
+            attr = get_str(left, "attr")
+            if attr == "kind":
+                comp_v = comp.get("value")
+                if isinstance(comp_v, JStr):
+                    comp_value = comp_v.value
+                    obj_node = get_node(left, "value")
+                    obj_name = ""
+                    src = ""
+                    if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
+                        obj_name = get_str(obj_node, "id")
+                        if obj_name != "":
+                            src = else_env.get_source(obj_name)
+                    if obj_name != "" and src != "" and _is_union_source(src):
+                        found_class = ""
+                        all_classes = list(ctx.known_classes)
+                        j = 0
+                        while j < len(all_classes):
+                            if all_classes[j].lower() == comp_value.lower():
+                                found_class = all_classes[j]
+                                break
+                            j += 1
+                        if found_class != "":
+                            parts = _split_union_parts(src)
+                            if found_class in parts:
+                                sig_e3: list[SignatureError] = []
+                                else_env.narrow(
+                                    obj_name,
+                                    py_type_to_type_dict(
+                                        found_class,
+                                        ctx.known_classes,
+                                        sig_e3,
+                                        0,
+                                        0,
+                                    ),
+                                    found_class,
+                                )
+                                remaining2: list[str] = []
+                                j3 = 0
+                                while j3 < len(parts):
+                                    if parts[j3] != found_class:
+                                        remaining2.append(parts[j3])
+                                    j3 += 1
+                                if len(remaining2) == 1:
+                                    sig_e4: list[SignatureError] = []
+                                    then_env.narrow(
+                                        obj_name,
+                                        py_type_to_type_dict(
+                                            remaining2[0],
+                                            ctx.known_classes,
+                                            sig_e4,
+                                            0,
+                                            0,
+                                        ),
+                                        remaining2[0],
+                                    )
+                                elif len(remaining2) > 1:
+                                    new_src2 = " | ".join(remaining2)
+                                    sig_e4: list[SignatureError] = []
+                                    then_env.narrow(
+                                        obj_name,
+                                        py_type_to_type_dict(
+                                            new_src2,
+                                            ctx.known_classes,
+                                            sig_e4,
+                                            0,
+                                            0,
+                                        ),
+                                        new_src2,
+                                    )
                 return
 
 
