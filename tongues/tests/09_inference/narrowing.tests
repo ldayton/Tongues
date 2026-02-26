@@ -2965,7 +2965,7 @@ def f(x: str | None) -> str:
         return x
     return ""
 ---
-reveal:3 = str
+reveal:3 = Literal["hello"]
 ---
 
 === optional equality does not narrow else
@@ -5782,6 +5782,88 @@ def f() -> int | None:
         result = items[i]
         i += 1
     return result
+---
+ok
+---
+
+=== equality narrows str to literal
+def f(x: str) -> None:
+    if x == "hello":
+        reveal_type(x)
+---
+reveal:3 = Literal["hello"]
+---
+
+=== equality narrows int to literal
+def f(x: int) -> None:
+    if x == 42:
+        reveal_type(x)
+---
+reveal:3 = Literal[42]
+---
+
+=== equality does not narrow else branch
+def f(x: str) -> None:
+    if x == "hello":
+        pass
+    else:
+        reveal_type(x)
+---
+reveal:5 = str
+---
+
+=== not-equal narrows else to literal
+def f(x: str) -> None:
+    if x != "hello":
+        reveal_type(x)
+    else:
+        reveal_type(x)
+---
+reveal:3 = str
+reveal:5 = Literal["hello"]
+---
+
+=== literal type in arithmetic
+def f(x: int) -> int:
+    if x == 42:
+        return x + 1
+    return x
+---
+ok
+---
+
+=== literal assignable to base type
+def f(x: str) -> str:
+    if x == "hello":
+        y: str = x
+        return y
+    return x
+---
+ok
+---
+
+=== equality does not narrow union variable
+def f(x: int | str) -> None:
+    if x == "hello":
+        reveal_type(x)
+---
+reveal:3 = int | str
+---
+
+=== never assignable to any type
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    a_val: int
+@dataclass
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> int:
+    if x.kind == "a":
+        return x.a_val
+    return len(x.b_val)
 ---
 ok
 ---

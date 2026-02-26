@@ -141,6 +141,29 @@ def _type_name(t: TypeNode) -> str:
     return _type_name_fn(t)
 
 
+def _prim_kind(t: TypeNode) -> str:
+    """Extract primitive kind from PrimitiveType or LiteralType."""
+    if isinstance(t, PrimitiveType):
+        return t.kind
+    if isinstance(t, LiteralType):
+        return t.base.kind
+    return ""
+
+
+def _extract_literal(node: ASTNode) -> LiteralType | None:
+    """Extract a LiteralType from a Constant AST node."""
+    v = node.get("value")
+    if isinstance(v, JStr):
+        if not get_bool(node, "_is_bytes"):
+            return LiteralType(v.value, PrimitiveType("string"))
+    if isinstance(v, JInt):
+        return LiteralType(str(v.value), PrimitiveType("int"))
+    if isinstance(v, JBool):
+        val = "true" if v.value else "false"
+        return LiteralType(val, PrimitiveType("bool"))
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Assignability
 # ---------------------------------------------------------------------------
@@ -155,6 +178,8 @@ def _is_assignable(
     if _type_eq(actual, expected):
         return True
     if is_any(actual) or is_any(expected):
+        return True
+    if isinstance(actual, PrimitiveType) and actual.kind == "never":
         return True
     # void (None literal) assignable to Optional
     if isinstance(actual, PrimitiveType) and actual.kind == "void":
@@ -572,7 +597,7 @@ def _resolve_attr(
     if isinstance(obj_type, PointerType) and not isinstance(obj_type.target, StructRef):
         obj_type = obj_type.target
     # String methods
-    if isinstance(obj_type, PrimitiveType) and obj_type.kind == "string":
+    if _prim_kind(obj_type) == "string":
         if (
             attr == "upper"
             or attr == "lower"
@@ -930,7 +955,7 @@ def _element_type(t: TypeNode) -> TypeNode:
     if isinstance(t, TupleType):
         if len(t.elements) > 0:
             return t.elements[0]
-    if isinstance(t, PrimitiveType) and t.kind == "string":
+    if _prim_kind(t) == "string":
         return STR_TYPE
     return ANY_TYPE
 
@@ -942,7 +967,7 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return ANY_TYPE
     obj_type = _synth_expr(value, env, ctx)
     # String indexing
-    if isinstance(obj_type, PrimitiveType) and obj_type.kind == "string":
+    if _prim_kind(obj_type) == "string":
         return STR_TYPE
     # List indexing
     if isinstance(obj_type, SliceType):
@@ -987,12 +1012,7 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     rt = _synth_expr(right, env, ctx)
     op_type = get_str(op, "_type")
     # String concatenation
-    if (
-        isinstance(lt, PrimitiveType)
-        and lt.kind == "string"
-        and isinstance(rt, PrimitiveType)
-        and rt.kind == "string"
-    ):
+    if _prim_kind(lt) == "string" and _prim_kind(rt) == "string":
         return STR_TYPE
     # Set operations (&, |, ^)
     if isinstance(lt, SetType) and isinstance(rt, SetType):
@@ -1015,37 +1035,22 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
             )
         return lt
     # Numeric
-    lt_num = isinstance(lt, PrimitiveType) and lt.kind in ("int", "float", "bool")
-    rt_num = isinstance(rt, PrimitiveType) and rt.kind in ("int", "float", "bool")
+    lt_num = _prim_kind(lt) in ("int", "float", "bool")
+    rt_num = _prim_kind(rt) in ("int", "float", "bool")
     if lt_num and rt_num:
         if op_type in ("BitAnd", "BitOr", "BitXor"):
-            if (
-                isinstance(lt, PrimitiveType)
-                and lt.kind == "bool"
-                and isinstance(rt, PrimitiveType)
-                and rt.kind == "bool"
-            ):
+            if _prim_kind(lt) == "bool" and _prim_kind(rt) == "bool":
                 return BOOL_TYPE
             return INT_TYPE
-        if (isinstance(lt, PrimitiveType) and lt.kind == "float") or (
-            isinstance(rt, PrimitiveType) and rt.kind == "float"
-        ):
+        if _prim_kind(lt) == "float" or _prim_kind(rt) == "float":
             return FLOAT_TYPE
         return INT_TYPE
     # String * int
-    if (
-        isinstance(lt, PrimitiveType)
-        and lt.kind == "string"
-        and isinstance(rt, PrimitiveType)
-        and (rt.kind == "int" or rt.kind == "bool")
-    ):
+    lk = _prim_kind(lt)
+    rk = _prim_kind(rt)
+    if lk == "string" and (rk == "int" or rk == "bool"):
         return STR_TYPE
-    if (
-        isinstance(lt, PrimitiveType)
-        and (lt.kind == "int" or lt.kind == "bool")
-        and isinstance(rt, PrimitiveType)
-        and rt.kind == "string"
-    ):
+    if (lk == "int" or lk == "bool") and rk == "string":
         return STR_TYPE
     return ANY_TYPE
 
@@ -1060,7 +1065,7 @@ def _synth_unaryop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if op_type == "Not":
         return BOOL_TYPE
     if op_type == "USub" or op_type == "UAdd":
-        if isinstance(ot, PrimitiveType) and ot.kind == "bool":
+        if _prim_kind(ot) == "bool":
             return INT_TYPE
         return ot
     if op_type == "Invert":
@@ -2383,17 +2388,19 @@ def _check_type_truthiness(
     lineno: int,
 ) -> None:
     """Check if a type has unambiguous truthiness."""
-    if isinstance(typ, PrimitiveType) and typ.kind == "bool":
+    pk = _prim_kind(typ)
+    if pk == "bool":
         return
-    if isinstance(typ, PrimitiveType) and typ.kind == "int":
+    if pk == "int":
         return
-    if isinstance(typ, PrimitiveType) and typ.kind == "float":
+    if pk == "float":
         return
     if isinstance(typ, OptionalType):
         inner = typ.inner
-        if isinstance(inner, PrimitiveType) and inner.kind in ("int", "float", "bool"):
+        inner_pk = _prim_kind(inner)
+        if inner_pk in ("int", "float", "bool"):
             return
-        if isinstance(inner, PrimitiveType) and inner.kind == "string":
+        if inner_pk == "string":
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional str")
             return
         if isinstance(inner, SliceType):
@@ -2406,7 +2413,7 @@ def _check_type_truthiness(
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional set")
             return
         return
-    if isinstance(typ, PrimitiveType) and typ.kind == "string":
+    if pk == "string":
         return
     if isinstance(typ, SliceType):
         return
@@ -2719,6 +2726,12 @@ def _narrow_compare(
             name = get_str(left, "id")
             if name != "":
                 _narrow_to_non_none(name, then_env, ctx)
+                if _is_type(comp, ["Constant"]):
+                    lit = _extract_literal(comp)
+                    if lit is not None:
+                        cur = then_env.get_type(name)
+                        if cur is not None and _prim_kind(cur) == lit.base.kind:
+                            then_env.narrow(name, lit)
     if op_type == "Eq":
         if _is_type(left, ["Attribute"]):
             attr = get_str(left, "attr")
@@ -2759,6 +2772,15 @@ def _narrow_compare(
                         else_env.narrow(obj_name, else_remaining)
             return
     if op_type == "NotEq" and not comp_is_none:
+        if _is_type(left, ["Name"]):
+            name = get_str(left, "id")
+            if name != "":
+                if _is_type(comp, ["Constant"]):
+                    lit = _extract_literal(comp)
+                    if lit is not None:
+                        cur = else_env.get_type(name)
+                        if cur is not None and _prim_kind(cur) == lit.base.kind:
+                            else_env.narrow(name, lit)
         if _is_type(left, ["Attribute"]):
             attr = get_str(left, "attr")
             comp_v = comp.get("value")
@@ -3152,6 +3174,8 @@ def _check_needs_narrowing(
     typ = env.get_type(name)
     if typ is None:
         return
+    if isinstance(typ, PrimitiveType) and typ.kind == "never":
+        return
     if isinstance(typ, PrimitiveType) and typ.kind == "void":
         if context == "arithmetic":
             ctx.result.add_error(lineno, 0, "cannot use None in arithmetic")
@@ -3258,18 +3282,10 @@ def _validate_expr_access(
         if binop_op_t != "Mult":
             ltype = _synth_expr(binop_left, env, ctx)
             rtype = _synth_expr(binop_right, env, ctx)
-            l_str = isinstance(ltype, PrimitiveType) and ltype.kind == "string"
-            r_str = isinstance(rtype, PrimitiveType) and rtype.kind == "string"
-            r_num = isinstance(rtype, PrimitiveType) and rtype.kind in (
-                "int",
-                "float",
-                "bool",
-            )
-            l_num = isinstance(ltype, PrimitiveType) and ltype.kind in (
-                "int",
-                "float",
-                "bool",
-            )
+            l_str = _prim_kind(ltype) == "string"
+            r_str = _prim_kind(rtype) == "string"
+            r_num = _prim_kind(rtype) in ("int", "float", "bool")
+            l_num = _prim_kind(ltype) in ("int", "float", "bool")
             if l_str and r_num:
                 ctx.result.add_error(lineno, 0, "cannot use str in arithmetic")
                 return

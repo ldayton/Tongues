@@ -365,6 +365,8 @@ def type_name(t: TypeNode) -> str:
             return "str"
         if t.kind == "void":
             return "None"
+        if t.kind == "never":
+            return "never"
         return t.kind
     if isinstance(t, SliceType):
         return "list[" + type_name(t.element) + "]"
@@ -498,6 +500,17 @@ def combine_types(types: list[TypeNode]) -> TypeNode:
         else:
             flat.append(t)
         i += 1
+    # Filter out never
+    filtered: list[TypeNode] = []
+    i = 0
+    while i < len(flat):
+        f = flat[i]
+        if isinstance(f, PrimitiveType) and f.kind == "never":
+            pass
+        else:
+            filtered.append(f)
+        i += 1
+    flat = filtered
     # Deduplicate via type_eq
     deduped: list[TypeNode] = []
     i = 0
@@ -611,7 +624,7 @@ def remove_from_union(t: TypeNode, to_remove: list[TypeNode]) -> TypeNode:
                 remaining.append(t.variants[i])
             i += 1
         if len(remaining) == 0:
-            return PrimitiveType("any")
+            return PrimitiveType("never")
         if len(remaining) == 1:
             return remaining[0]
         return UnionType(remaining)
@@ -768,3 +781,4 @@ STR_TYPE: TypeNode = PrimitiveType("string")
 VOID_TYPE: TypeNode = PrimitiveType("void")
 BYTE_TYPE: TypeNode = PrimitiveType("byte")
 BYTES_TYPE: TypeNode = SliceType(PrimitiveType("byte"))
+NEVER_TYPE: TypeNode = PrimitiveType("never")
