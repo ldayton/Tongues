@@ -10,16 +10,7 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 from __future__ import annotations
 
 
-from .cfg import (
-    FlowGraph,
-    FlowAssign,
-    FlowCondAlias,
-    FlowJoin,
-    FlowLoopHead,
-    FlowUnreachable,
-    get_type_at,
-    lookup_alias,
-)
+from .cfg import FlowGraph, FlowAssign, FlowCondAlias, FlowJoin, FlowLoopHead, FlowUnreachable, get_type_at, lookup_alias
 from .typecollect import (
     FuncInfo,
     TypeCollectResult,
@@ -1332,11 +1323,7 @@ def _find_succ_assign(ctx: _InferCtx, name: str, lineno: int) -> int:
     while i < len(succs):
         node = graph.node_at(succs[i])
         if node is not None:
-            if (
-                isinstance(node, FlowAssign)
-                and node.name == name
-                and node.lineno == lineno
-            ):
+            if isinstance(node, FlowAssign) and node.name == name and node.lineno == lineno:
                 return node.id
             if isinstance(node, FlowCondAlias) and node.alias_name == name:
                 return node.id
@@ -1449,12 +1436,7 @@ def _cfg_merge_env(env: TypeEnv, ctx: _InferCtx, node_id: int) -> None:
         k = keys[i]
         if "." not in k:
             t = get_type_at(
-                graph,
-                node_id,
-                k,
-                ctx.initial_types,
-                ctx.assigned_types,
-                ctx.known_classes,
+                graph, node_id, k, ctx.initial_types, ctx.assigned_types, ctx.known_classes
             )
             if t is not None:
                 env.set(k, t)
@@ -2492,7 +2474,11 @@ def _validate_for(
         exit_join = _find_succ_join(graph, loop_head)
         if exit_join >= 0:
             ctx.current_flow_id = exit_join
-    _merge_branch_envs(env, loop_env, env, ctx.hier_result)
+            _cfg_merge_env(env, ctx, exit_join)
+        else:
+            _merge_branch_envs(env, loop_env, env, ctx.hier_result)
+    else:
+        _merge_branch_envs(env, loop_env, env, ctx.hier_result)
 
 
 def _validate_assert(

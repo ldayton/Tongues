@@ -15,8 +15,6 @@ from .types import (
     TypeNode,
     ASTNode,
     JNull,
-    OptionalType,
-    PrimitiveType,
     combine_types,
     get_str,
     get_int,
@@ -910,21 +908,6 @@ def _apply_widen_type(
 # ---------------------------------------------------------------------------
 
 
-def _combine_flat(variants: list[TypeNode]) -> TypeNode:
-    """Flatten OptionalType variants before combining to avoid double-optional."""
-    flat: list[TypeNode] = []
-    i = 0
-    while i < len(variants):
-        v = variants[i]
-        if isinstance(v, OptionalType):
-            flat.append(v.inner)
-            flat.append(PrimitiveType("void"))
-        else:
-            flat.append(v)
-        i += 1
-    return combine_types(flat)
-
-
 def _walk_prevs(
     graph: FlowGraph,
     prev_ids: list[int],
@@ -979,7 +962,7 @@ def _walk_prevs(
         return None
     if len(variants) == 1:
         return variants[0]
-    return _combine_flat(variants)
+    return combine_types(variants)
 
 
 def _walk_loop_head(
@@ -1047,7 +1030,7 @@ def _walk_loop_head(
         elif len(variants) == 1:
             new_t = variants[0]
         else:
-            new_t = _combine_flat(variants)
+            new_t = combine_types(variants)
         if cur is not None and new_t is not None and type_eq(cur, new_t):
             return new_t
         cur = new_t
