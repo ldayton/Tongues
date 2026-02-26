@@ -133,7 +133,6 @@ def _is_type(node: ASTNode, type_names: list[str]) -> bool:
     return False
 
 
-
 def _type_name(t: TypeNode) -> str:
     return _type_name_fn(t)
 
@@ -1209,8 +1208,9 @@ def _synth_listcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         lineno = get_int(node, "lineno")
         if lineno == 0 and len(generators) > 0:
             lineno = get_int(generators[0], "lineno")
+        err_snap = len(ctx.result._errors)
         _validate_expr_access(elt, comp_env, ctx, lineno)
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return SliceType(ANY_TYPE)
         return SliceType(_synth_expr(elt, comp_env, ctx))
     return SliceType(ANY_TYPE)
@@ -1339,6 +1339,16 @@ class _InferCtx:
         self.class_bases: dict[str, list[str]] = class_bases
         self.result: InferenceResult = result
         self.module_vars: dict[str, TypeNode] = {}
+        self._func_err_start: int = 0
+        self._func_err_limit: int = 0
+
+
+def _has_new_errors(ctx: _InferCtx, snapshot: int) -> bool:
+    return len(ctx.result._errors) > snapshot
+
+
+def _func_err_budget_exhausted(ctx: _InferCtx) -> bool:
+    return (len(ctx.result._errors) - ctx._func_err_start) >= ctx._func_err_limit
 
 
 # ---------------------------------------------------------------------------
@@ -1370,6 +1380,8 @@ def _validate_func(func_node: ASTNode, ctx: _InferCtx, receiver: str) -> None:
     body = get_nodes(func_node, "body")
     if len(body) == 0:
         return
+    ctx._func_err_start = len(ctx.result._errors)
+    ctx._func_err_limit = 5
     _validate_stmts(body, env, func_info, ctx)
 
 
@@ -1386,7 +1398,7 @@ def _validate_stmts(
         if not isinstance(stmt, dict):
             i += 1
             continue
-        if len(ctx.result._errors) > 0:
+        if _func_err_budget_exhausted(ctx):
             return False
         returned = _validate_stmt(stmt, env, func_info, ctx)
         if returned:
@@ -1464,14 +1476,15 @@ def _validate_return(
         return
     if _check_generator_escape_return(value, env, ctx, lineno):
         return
+    err_snap = len(ctx.result._errors)
     _validate_expr_access(value, env, ctx, lineno)
-    if len(ctx.result._errors) > 0:
+    if _has_new_errors(ctx, err_snap):
         return
     _validate_expr_calls(value, env, ctx, lineno)
-    if len(ctx.result._errors) > 0:
+    if _has_new_errors(ctx, err_snap):
         return
     _validate_return_value(value, func_info.return_type, env, ctx, lineno)
-    if len(ctx.result._errors) > 0:
+    if _has_new_errors(ctx, err_snap):
         return
     actual = _synth_expr(value, env, ctx)
     expected = func_info.return_type
@@ -1491,6 +1504,7 @@ def _validate_assign(
     if len(targets) == 0 or len(value) == 0:
         return
     lineno = get_int(stmt, "lineno")
+    err_snap = len(ctx.result._errors)
     if len(targets) == 1:
         tgt = targets[0]
         if _is_type(tgt, ["Name"]):
@@ -1499,12 +1513,11 @@ def _validate_assign(
             if _check_generator_escape_assign(value, env, ctx, lineno):
                 return
             _validate_expr_access(value, env, ctx, lineno)
-            if len(ctx.result._errors) > 0:
-                return
             _validate_expr_calls(value, env, ctx, lineno)
-            if len(ctx.result._errors) > 0:
-                return
-    val_type = _synth_expr(value, env, ctx)
+    if _has_new_errors(ctx, err_snap):
+        val_type = ANY_TYPE
+    else:
+        val_type = _synth_expr(value, env, ctx)
     i = 0
     while i < len(targets):
         tgt = targets[i]
@@ -1715,11 +1728,12 @@ def _validate_ann_assign(
         if name != "":
             env.set(name, ann_type, ann_str)
             if len(value) > 0:
+                err_snap = len(ctx.result._errors)
                 _validate_expr_access(value, env, ctx, lineno)
-                if len(ctx.result._errors) > 0:
+                if _has_new_errors(ctx, err_snap):
                     return
                 _validate_expr_calls(value, env, ctx, lineno)
-                if len(ctx.result._errors) > 0:
+                if _has_new_errors(ctx, err_snap):
                     return
                 val_type = _synth_expr(value, env, ctx)
                 if not _is_assignable(val_type, ann_type, ctx.hier_result):
@@ -1741,11 +1755,12 @@ def _validate_aug_assign(
     if len(target) == 0 or len(value) == 0:
         return
     lineno = get_int(stmt, "lineno")
+    err_snap = len(ctx.result._errors)
     _check_needs_narrowing(value, env, ctx, lineno, "arithmetic", "")
-    if len(ctx.result._errors) > 0:
+    if _has_new_errors(ctx, err_snap):
         return
     _validate_expr_access(value, env, ctx, lineno)
-    if len(ctx.result._errors) > 0:
+    if _has_new_errors(ctx, err_snap):
         return
     _validate_expr_calls(value, env, ctx, lineno)
     _synth_expr(value, env, ctx)
@@ -1792,8 +1807,9 @@ def _validate_expr_stmt(
                     else:
                         _check_generator_escape_arg(arg, attr, env, ctx, lineno)
                     j += 1
+    err_snap = len(ctx.result._errors)
     _validate_expr_access(value, env, ctx, lineno)
-    if len(ctx.result._errors) > 0:
+    if _has_new_errors(ctx, err_snap):
         return
     _synth_expr(value, env, ctx)
     _validate_expr_calls(value, env, ctx, lineno)
@@ -2083,11 +2099,12 @@ def _validate_if(
     orelse = get_nodes(stmt, "orelse")
     lineno = get_int(stmt, "lineno")
     if len(test) > 0:
+        err_snap = len(ctx.result._errors)
         _validate_expr_access(test, env, ctx, lineno)
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return False
         _validate_expr_calls(test, env, ctx, lineno)
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return False
         _check_truthiness(test, env, ctx, lineno)
     then_env = env.copy()
@@ -2095,8 +2112,6 @@ def _validate_if(
     if len(test) > 0:
         _extract_narrowing(test, then_env, else_env, ctx)
     then_returns = _validate_stmts(body, then_env, func_info, ctx)
-    if len(ctx.result._errors) > 0:
-        return False
     else_returns = False
     if len(orelse) > 0:
         else_returns = _validate_stmts(orelse, else_env, func_info, ctx)
@@ -2160,8 +2175,9 @@ def _validate_while(
     body = get_nodes(stmt, "body")
     lineno = get_int(stmt, "lineno")
     if len(test) > 0:
+        err_snap = len(ctx.result._errors)
         _validate_expr_access(test, env, ctx, lineno)
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return
         _validate_expr_calls(test, env, ctx, lineno)
         _check_truthiness(test, env, ctx, lineno)
@@ -2197,8 +2213,9 @@ def _validate_for(
     iter_node = get_node(stmt, "iter")
     body = get_nodes(stmt, "body")
     if len(iter_node) > 0:
+        err_snap = len(ctx.result._errors)
         _validate_expr_calls(iter_node, env, ctx, get_int(stmt, "lineno"))
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return
         iter_type = _synth_expr(iter_node, env, ctx)
         elem = _iteration_element(iter_type)
@@ -2221,8 +2238,9 @@ def _validate_assert(
     if len(test) == 0:
         return
     lineno = get_int(stmt, "lineno")
+    err_snap = len(ctx.result._errors)
     _validate_expr_calls(test, env, ctx, lineno)
-    if len(ctx.result._errors) > 0:
+    if _has_new_errors(ctx, err_snap):
         return
     dummy_else = env.copy()
     _extract_narrowing(test, env, dummy_else, ctx)
@@ -3236,19 +3254,18 @@ def _validate_expr_access(
     lineno: int,
 ) -> None:
     """Check for un-narrowed access on object/union/optional types in an expression."""
-    if len(ctx.result._errors) > 0:
-        return
     t = get_str(node, "_type")
     if t == "BinOp":
+        err_snap = len(ctx.result._errors)
         binop_left = get_node(node, "left")
         binop_right = get_node(node, "right")
         if len(binop_left) > 0:
             _check_needs_narrowing(binop_left, env, ctx, lineno, "arithmetic", "")
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return
         if len(binop_right) > 0:
             _check_needs_narrowing(binop_right, env, ctx, lineno, "arithmetic", "")
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return
         if len(binop_left) > 0 and not _is_type(binop_left, ["Name"]):
             lt = _synth_expr(binop_left, env, ctx)
@@ -3293,6 +3310,7 @@ def _validate_expr_access(
             _validate_expr_access(binop_right, env, ctx, lineno)
         return
     if t == "Compare":
+        err_snap = len(ctx.result._errors)
         ops = get_nodes(node, "ops")
         is_ordering = False
         oi = 0
@@ -3305,7 +3323,7 @@ def _validate_expr_access(
         if is_ordering:
             if len(cmp_left) > 0:
                 _check_needs_narrowing(cmp_left, env, ctx, lineno, "arithmetic", "")
-            if len(ctx.result._errors) > 0:
+            if _has_new_errors(ctx, err_snap):
                 return
             comparators = get_nodes(node, "comparators")
             ci = 0
@@ -3313,27 +3331,28 @@ def _validate_expr_access(
                 _check_needs_narrowing(
                     comparators[ci], env, ctx, lineno, "arithmetic", ""
                 )
-                if len(ctx.result._errors) > 0:
+                if _has_new_errors(ctx, err_snap):
                     return
                 ci += 1
         if len(cmp_left) > 0:
             _validate_expr_access(cmp_left, env, ctx, lineno)
-            if len(ctx.result._errors) > 0:
+            if _has_new_errors(ctx, err_snap):
                 return
         comparators = get_nodes(node, "comparators")
         ci = 0
         while ci < len(comparators):
             _validate_expr_access(comparators[ci], env, ctx, lineno)
-            if len(ctx.result._errors) > 0:
+            if _has_new_errors(ctx, err_snap):
                 return
             ci += 1
         return
     if t == "Attribute":
+        err_snap = len(ctx.result._errors)
         value = get_node(node, "value")
         attr_str = get_str(node, "attr")
         if len(value) > 0 and attr_str != "kind":
             _check_needs_narrowing(value, env, ctx, lineno, "attribute", attr_str)
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return
         if (
             len(value) > 0
@@ -3418,10 +3437,11 @@ def _validate_expr_access(
             _validate_expr_access(value, env, ctx, lineno)
         return
     if t == "Call":
+        err_snap = len(ctx.result._errors)
         call_func = get_node(node, "func")
         if len(call_func) > 0:
             _validate_expr_access(call_func, env, ctx, lineno)
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return
         call_args = get_nodes(node, "args")
         is_builtin_call = (
@@ -3431,21 +3451,22 @@ def _validate_expr_access(
         while j < len(call_args):
             if is_builtin_call:
                 _check_builtin_arg_optional(call_args[j], env, ctx, lineno)
-                if len(ctx.result._errors) > 0:
+                if _has_new_errors(ctx, err_snap):
                     return
             _validate_expr_access(call_args[j], env, ctx, lineno)
-            if len(ctx.result._errors) > 0:
+            if _has_new_errors(ctx, err_snap):
                 return
             j += 1
         return
     if t == "BoolOp":
+        err_snap = len(ctx.result._errors)
         op = get_node(node, "op")
         op_t = get_str(op, "_type")
         values = get_nodes(node, "values")
         if len(values) == 0:
             return
         _validate_expr_access(values[0], env, ctx, lineno)
-        if len(ctx.result._errors) > 0:
+        if _has_new_errors(ctx, err_snap):
             return
         if len(values) > 1:
             narrowed_env = env.copy()
@@ -3457,7 +3478,7 @@ def _validate_expr_access(
             j = 1
             while j < len(values):
                 _validate_expr_access(values[j], narrowed_env, ctx, lineno)
-                if len(ctx.result._errors) > 0:
+                if _has_new_errors(ctx, err_snap):
                     return
                 if j + 1 < len(values):
                     dummy2 = narrowed_env.copy()
@@ -3468,12 +3489,13 @@ def _validate_expr_access(
                 j += 1
         return
     if t == "IfExp":
+        err_snap = len(ctx.result._errors)
         test = get_node(node, "test")
         ifbody = get_node(node, "body")
         orelse = get_node(node, "orelse")
         if len(test) > 0:
             _validate_expr_access(test, env, ctx, lineno)
-            if len(ctx.result._errors) > 0:
+            if _has_new_errors(ctx, err_snap):
                 return
         then_env = env.copy()
         else_env = env.copy()
@@ -3481,7 +3503,7 @@ def _validate_expr_access(
             _extract_narrowing(test, then_env, else_env, ctx)
         if len(ifbody) > 0:
             _validate_expr_access(ifbody, then_env, ctx, lineno)
-            if len(ctx.result._errors) > 0:
+            if _has_new_errors(ctx, err_snap):
                 return
         if len(orelse) > 0:
             _validate_expr_access(orelse, else_env, ctx, lineno)
@@ -3602,9 +3624,7 @@ def run_inference(
 ) -> InferenceResult:
     """Run type inference and validation on the module AST."""
     result = InferenceResult()
-    ctx = _InferCtx(
-        tc_result, hier_result, known_classes, class_bases, result
-    )
+    ctx = _InferCtx(tc_result, hier_result, known_classes, class_bases, result)
     body = get_nodes(tree, "body")
     if len(body) == 0:
         return result
@@ -3642,8 +3662,6 @@ def run_inference(
             while ei < len(result._errors):
                 result._errors[ei].source_file = sf
                 ei += 1
-            if len(result._errors) > 0:
-                return result
         elif t == "ClassDef":
             class_name = get_str(node, "name")
             class_body = get_nodes(node, "body")
@@ -3660,8 +3678,6 @@ def run_inference(
                     while ei < len(result._errors):
                         result._errors[ei].source_file = stmt_sf
                         ei += 1
-                    if len(result._errors) > 0:
-                        return result
                 j += 1
         i += 1
     return result

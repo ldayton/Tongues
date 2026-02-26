@@ -6168,8 +6168,6 @@ def lower(
 
     Returns (module, errors). If errors is non-empty, module may be None.
     """
-    ctx = _LowerCtx(
-        tc_result, hier_result, known_classes, class_bases, source
-    )
+    ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases, source)
     module = _build_module(tree, ctx)
     return (module, ctx.errors)

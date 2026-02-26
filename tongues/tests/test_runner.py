@@ -17,7 +17,7 @@ import pytest
 from src.frontend.typecollect import collect_signatures, collect_types
 from src.frontend.hierarchy import build_hierarchy
 from src.frontend.inference import run_inference as _run_inference
-from src.frontend.bind import bind, resolve_names, verify as verify_subset
+from src.frontend.bind import run_bind, resolve_names, verify as verify_subset
 from src.frontend.parse import parse
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 
@@ -704,7 +704,7 @@ def run_sigs(source: str) -> PhaseResult:
         ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
-    bind_result = bind(ast_dict)
+    bind_result = run_bind(ast_dict)
     if not bind_result.subset_ok():
         return PhaseResult(errors=[e.message for e in bind_result.subset_violations])
     if not bind_result.names_ok():
@@ -730,14 +730,12 @@ def run_fields(source: str) -> PhaseResult:
         ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
-    bind_result = bind(ast_dict)
+    bind_result = run_bind(ast_dict)
     if not bind_result.subset_ok():
         return PhaseResult(errors=[e.message for e in bind_result.subset_violations])
     if not bind_result.names_ok():
         return PhaseResult(errors=[e.message for e in bind_result.name_violations])
-    hier_result = build_hierarchy(
-        bind_result.known_classes, bind_result.class_bases
-    )
+    hier_result = build_hierarchy(bind_result.known_classes, bind_result.class_bases)
     hier_errors = hier_result.errors()
     if hier_errors:
         return PhaseResult(errors=[str(e) for e in hier_errors])
@@ -763,14 +761,12 @@ def run_hierarchy(source: str) -> PhaseResult:
         ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
-    bind_result = bind(ast_dict)
+    bind_result = run_bind(ast_dict)
     if not bind_result.subset_ok():
         return PhaseResult(errors=[e.message for e in bind_result.subset_violations])
     if not bind_result.names_ok():
         return PhaseResult(errors=[e.message for e in bind_result.name_violations])
-    hier_result = build_hierarchy(
-        bind_result.known_classes, bind_result.class_bases
-    )
+    hier_result = build_hierarchy(bind_result.known_classes, bind_result.class_bases)
     hier_errors = hier_result.errors()
     if hier_errors:
         return PhaseResult(errors=[str(e) for e in hier_errors])
@@ -793,14 +789,12 @@ def run_inference(source: str) -> PhaseResult:
         ast_dict = parse(source)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
-    bind_result = bind(ast_dict)
+    bind_result = run_bind(ast_dict)
     if not bind_result.subset_ok():
         return PhaseResult(errors=[e.message for e in bind_result.subset_violations])
     if not bind_result.names_ok():
         return PhaseResult(errors=[e.message for e in bind_result.name_violations])
-    hier_result = build_hierarchy(
-        bind_result.known_classes, bind_result.class_bases
-    )
+    hier_result = build_hierarchy(bind_result.known_classes, bind_result.class_bases)
     hier_errors = hier_result.errors()
     if hier_errors:
         return PhaseResult(errors=[str(e) for e in hier_errors])
@@ -816,8 +810,11 @@ def run_inference(source: str) -> PhaseResult:
     if tc_errors:
         return PhaseResult(errors=[str(e) for e in tc_errors])
     inf_result = _run_inference(
-        ast_dict, tc_result, hier_result,
-        bind_result.known_classes, bind_result.class_bases,
+        ast_dict,
+        tc_result,
+        hier_result,
+        bind_result.known_classes,
+        bind_result.class_bases,
     )
     inf_errors = inf_result.errors()
     if inf_errors:
@@ -861,7 +858,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         return (result.stdout.decode(errors="replace"), None)
     try:
         ast_dict = parse(source)
-        bind_result = bind(ast_dict)
+        bind_result = run_bind(ast_dict)
         if not bind_result.subset_ok():
             return (None, bind_result.subset_violations[0].message)
         if not bind_result.names_ok():
@@ -884,8 +881,11 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         if tc_errors:
             return (None, str(tc_errors[0]))
         inf_result = _run_inference(
-            ast_dict, tc_result, hier_result,
-            bind_result.known_classes, bind_result.class_bases,
+            ast_dict,
+            tc_result,
+            hier_result,
+            bind_result.known_classes,
+            bind_result.class_bases,
         )
         inf_errors = inf_result.errors()
         if inf_errors:
@@ -894,8 +894,12 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         from src.taytsh.emit import to_source
 
         module, lower_errors = lower(
-            ast_dict, tc_result, hier_result,
-            bind_result.known_classes, bind_result.class_bases, source,
+            ast_dict,
+            tc_result,
+            hier_result,
+            bind_result.known_classes,
+            bind_result.class_bases,
+            source,
         )
         if lower_errors:
             return (None, str(lower_errors[0]))
@@ -1099,7 +1103,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         return (None, f"no emitter for '{lang}'")
     try:
         ast_dict = parse(source)
-        bind_result = bind(ast_dict)
+        bind_result = run_bind(ast_dict)
         if not bind_result.subset_ok():
             return (None, bind_result.subset_violations[0].message)
         if not bind_result.names_ok():
@@ -1122,8 +1126,11 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         if tc_errors:
             return (None, str(tc_errors[0]))
         inf_result = _run_inference(
-            ast_dict, tc_result, hier_result,
-            bind_result.known_classes, bind_result.class_bases,
+            ast_dict,
+            tc_result,
+            hier_result,
+            bind_result.known_classes,
+            bind_result.class_bases,
         )
         inf_errors = inf_result.errors()
         if inf_errors:
@@ -1131,8 +1138,12 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         from src.frontend.lowering import lower
 
         module, lower_errors = lower(
-            ast_dict, tc_result, hier_result,
-            bind_result.known_classes, bind_result.class_bases, source,
+            ast_dict,
+            tc_result,
+            hier_result,
+            bind_result.known_classes,
+            bind_result.class_bases,
+            source,
         )
         if lower_errors:
             return (None, str(lower_errors[0]))

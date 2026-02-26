@@ -2633,7 +2633,7 @@ def _compute_derived(
         csf_i += 1
 
 
-def bind(ast_dict: ASTNode) -> BindResult:
+def run_bind(ast_dict: ASTNode) -> BindResult:
     """Run subset verification, name resolution, and compute derived data."""
     result = BindResult()
     verify_result = verify(ast_dict)

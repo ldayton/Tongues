@@ -6,7 +6,7 @@ import sys
 
 from .frontend.parse import parse, ParseError
 from .frontend.bind import (
-    bind,
+    run_bind,
     NameInfo,
     NameTable,
     IMPORT_ONLY_MODULES,
@@ -1419,7 +1419,7 @@ def _pipeline_post_parse(
     strict_tostring: bool,
 ) -> tuple[int, str]:
     """Run pipeline phases after parsing. Returns (exit_code, output)."""
-    bind_result = bind(ast_dict)
+    bind_result = run_bind(ast_dict)
     if not bind_result.subset_ok() and stop_at != "names":
         err_strs: list[str] = []
         sei = 0
