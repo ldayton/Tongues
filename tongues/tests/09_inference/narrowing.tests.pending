@@ -32,16 +32,6 @@ def f(n: Node) -> int:
 ---
 error:
 ---
-=== early return from nested function preserves outer narrowing
-def outer(x: int | None) -> int:
-    if x is None:
-        return -1
-    def inner() -> int:
-        return 0
-    return x + inner()
----
-ok
----
 === narrowing lost after assignment
 def f(x: int | None) -> int:
     if x is not None:
@@ -461,20 +451,6 @@ def f() -> int:
 ---
 error: cannot use
 ---
-=== isinstance narrowing in nested function
-class A:
-    pass
-class B(A):
-    data: int
-def f(x: A) -> int:
-    if isinstance(x, B):
-        def inner() -> int:
-            return x.data
-        return inner()
-    return 0
----
-ok
----
 === multiple optional guards missing one fails
 def f(a: int | None, b: str | None) -> int:
     if a is None:
@@ -811,34 +787,6 @@ def f(items: list[A]) -> int:
     return item.val
 ---
 error:
----
-=== isinstance narrowing with multiple inheritance
-class A:
-    a_val: int
-class B:
-    b_val: str
-class C(A, B):
-    c_val: float
-def f(x: A) -> float:
-    if isinstance(x, C):
-        return x.c_val
-    return 0.0
----
-ok
----
-=== isinstance multiple inheritance accesses both parent fields
-class A:
-    a_val: int
-class B:
-    b_val: str
-class C(A, B):
-    c_val: float
-def f(x: A) -> str:
-    if isinstance(x, C):
-        return str(x.a_val) + x.b_val
-    return ""
----
-ok
 ---
 === isinstance conditional return wrong branch
 class A:
