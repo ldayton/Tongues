@@ -801,12 +801,6 @@ def _compute_out(
     graph: FlowGraph,
 ) -> dict[str, TypeNode]:
     """Compute output types for a single flow node."""
-    from .types import (
-        OptionalType,
-        remove_from_union,
-    )
-    from .typecollect import py_type_to_type_dict, TypeCollectError
-
     out: dict[str, TypeNode] = {}
     ikeys = list(in_types.keys())
     oi = 0
@@ -825,46 +819,16 @@ def _compute_out(
     if isinstance(node, FlowNarrow):
         cur = out.get(node.target)
         if cur is not None:
-            if node.narrow_type == "isinstance":
-                sig_errors: list[TypeCollectError] = []
-                narrowed = py_type_to_type_dict(
-                    node.type_name, ctx.known_classes, sig_errors, 0, 0
-                )
-                out[node.target] = narrowed
-            elif node.narrow_type == "is_none":
-                pass
-            elif node.narrow_type == "is_not_none":
-                if isinstance(cur, OptionalType):
-                    out[node.target] = cur.inner
-            elif node.narrow_type == "truthy":
-                if isinstance(cur, OptionalType):
-                    out[node.target] = cur.inner
-            elif node.narrow_type == "const_field":
-                pass
+            out[node.target] = _apply_narrow_type(cur, node, ctx.known_classes)
         return out
     if isinstance(node, FlowWiden):
         narrow_node = graph.node_at(node.narrow_id)
         if narrow_node is not None and isinstance(narrow_node, FlowNarrow):
             cur = out.get(narrow_node.target)
             if cur is not None:
-                if narrow_node.narrow_type == "isinstance":
-                    sig_errors2: list[TypeCollectError] = []
-                    remove_t = py_type_to_type_dict(
-                        narrow_node.type_name,
-                        ctx.known_classes,
-                        sig_errors2,
-                        0,
-                        0,
-                    )
-                    remaining = remove_from_union(cur, [remove_t])
-                    out[narrow_node.target] = remaining
-                elif narrow_node.narrow_type == "is_none":
-                    if isinstance(cur, OptionalType):
-                        out[narrow_node.target] = cur.inner
-                elif narrow_node.narrow_type == "is_not_none":
-                    pass
-                elif narrow_node.narrow_type == "truthy":
-                    pass
+                out[narrow_node.target] = _apply_widen_type(
+                    cur, narrow_node, ctx.known_classes
+                )
         return out
     if isinstance(node, FlowJoin):
         return out
@@ -873,6 +837,359 @@ def _compute_out(
     if isinstance(node, FlowUnreachable):
         return out
     return out
+
+
+# ---------------------------------------------------------------------------
+# Narrowing / widening helpers
+# ---------------------------------------------------------------------------
+
+
+def _apply_narrow_type(
+    cur_type: TypeNode,
+    narrow_node: FlowNarrow,
+    known_classes: set[str],
+) -> TypeNode:
+    """Apply true-branch narrowing to a type."""
+    from .types import OptionalType
+    from .typecollect import py_type_to_type_dict, TypeCollectError
+
+    if narrow_node.narrow_type == "isinstance":
+        sig_errors: list[TypeCollectError] = []
+        narrowed = py_type_to_type_dict(
+            narrow_node.type_name, known_classes, sig_errors, 0, 0
+        )
+        return narrowed
+    if narrow_node.narrow_type == "is_none":
+        return cur_type
+    if narrow_node.narrow_type == "is_not_none":
+        if isinstance(cur_type, OptionalType):
+            return cur_type.inner
+        return cur_type
+    if narrow_node.narrow_type == "truthy":
+        if isinstance(cur_type, OptionalType):
+            return cur_type.inner
+        return cur_type
+    return cur_type
+
+
+def _apply_widen_type(
+    cur_type: TypeNode,
+    narrow_node: FlowNarrow,
+    known_classes: set[str],
+) -> TypeNode:
+    """Apply false-branch (inverse) narrowing to a type."""
+    from .types import OptionalType, remove_from_union
+    from .typecollect import py_type_to_type_dict, TypeCollectError
+
+    if narrow_node.narrow_type == "isinstance":
+        sig_errors: list[TypeCollectError] = []
+        remove_t = py_type_to_type_dict(
+            narrow_node.type_name, known_classes, sig_errors, 0, 0
+        )
+        return remove_from_union(cur_type, [remove_t])
+    if narrow_node.narrow_type == "is_none":
+        if isinstance(cur_type, OptionalType):
+            return cur_type.inner
+        return cur_type
+    if narrow_node.narrow_type == "is_not_none":
+        return cur_type
+    if narrow_node.narrow_type == "truthy":
+        return cur_type
+    return cur_type
+
+
+# ---------------------------------------------------------------------------
+# Backward-walk type resolver
+# ---------------------------------------------------------------------------
+
+
+def _walk_prevs(
+    graph: FlowGraph,
+    prev_ids: list[int],
+    variable: str,
+    initial_types: dict[str, TypeNode],
+    assigned_types: dict[int, TypeNode],
+    known_classes: set[str],
+    cache: dict[str, TypeNode],
+    visiting: dict[str, bool],
+    depth: int,
+) -> TypeNode | None:
+    """Walk backward through predecessors and merge results."""
+    if len(prev_ids) == 0:
+        return None
+    if len(prev_ids) == 1:
+        return _walk_back(
+            graph,
+            prev_ids[0],
+            variable,
+            initial_types,
+            assigned_types,
+            known_classes,
+            cache,
+            visiting,
+            depth,
+        )
+    variants: list[TypeNode] = []
+    i = 0
+    while i < len(prev_ids):
+        t = _walk_back(
+            graph,
+            prev_ids[i],
+            variable,
+            initial_types,
+            assigned_types,
+            known_classes,
+            cache,
+            visiting,
+            depth,
+        )
+        if t is not None:
+            dup = False
+            j = 0
+            while j < len(variants):
+                if type_eq(variants[j], t):
+                    dup = True
+                j += 1
+            if not dup:
+                variants.append(t)
+        i += 1
+    if len(variants) == 0:
+        return None
+    if len(variants) == 1:
+        return variants[0]
+    return combine_types(variants)
+
+
+def _walk_loop_head(
+    graph: FlowGraph,
+    node: FlowLoopHead,
+    variable: str,
+    initial_types: dict[str, TypeNode],
+    assigned_types: dict[int, TypeNode],
+    known_classes: set[str],
+    cache: dict[str, TypeNode],
+    visiting: dict[str, bool],
+    depth: int,
+) -> TypeNode | None:
+    """Fixed-point iteration for loop headers."""
+    if len(node.prev) == 0:
+        return None
+    entry_t = _walk_back(
+        graph,
+        node.prev[0],
+        variable,
+        initial_types,
+        assigned_types,
+        known_classes,
+        cache,
+        visiting,
+        depth,
+    )
+    if len(node.prev) < 2:
+        return entry_t
+    cur = entry_t
+    cache_key = variable + ":" + str(node.id)
+    max_passes = 3
+    p = 0
+    while p < max_passes:
+        if cur is not None:
+            cache[cache_key] = cur
+        variants: list[TypeNode] = []
+        if cur is not None:
+            variants.append(cur)
+        bi = 1
+        while bi < len(node.prev):
+            bt = _walk_back(
+                graph,
+                node.prev[bi],
+                variable,
+                initial_types,
+                assigned_types,
+                known_classes,
+                cache,
+                visiting,
+                depth,
+            )
+            if bt is not None:
+                dup = False
+                vi = 0
+                while vi < len(variants):
+                    if type_eq(variants[vi], bt):
+                        dup = True
+                    vi += 1
+                if not dup:
+                    variants.append(bt)
+            bi += 1
+        if len(variants) == 0:
+            new_t: TypeNode | None = None
+        elif len(variants) == 1:
+            new_t = variants[0]
+        else:
+            new_t = combine_types(variants)
+        if cur is not None and new_t is not None and type_eq(cur, new_t):
+            return new_t
+        cur = new_t
+        p += 1
+    return cur
+
+
+def _walk_back(
+    graph: FlowGraph,
+    node_id: int,
+    variable: str,
+    initial_types: dict[str, TypeNode],
+    assigned_types: dict[int, TypeNode],
+    known_classes: set[str],
+    cache: dict[str, TypeNode],
+    visiting: dict[str, bool],
+    depth: int,
+) -> TypeNode | None:
+    """Recursive backward walker — resolves the type of variable at node_id."""
+    if depth > 200:
+        return None
+    cache_key = variable + ":" + str(node_id)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    if visiting.get(cache_key) is True:
+        return cache.get(cache_key)
+    visiting[cache_key] = True
+    node = graph.node_at(node_id)
+    if node is None:
+        visiting[cache_key] = False
+        return None
+    result: TypeNode | None = None
+    if isinstance(node, FlowStart):
+        result = initial_types.get(variable)
+    elif isinstance(node, FlowAssign):
+        if node.name == variable:
+            result = assigned_types.get(node.id)
+        else:
+            result = _walk_prevs(
+                graph,
+                node.prev,
+                variable,
+                initial_types,
+                assigned_types,
+                known_classes,
+                cache,
+                visiting,
+                depth + 1,
+            )
+    elif isinstance(node, FlowCondAlias):
+        result = _walk_prevs(
+            graph,
+            node.prev,
+            variable,
+            initial_types,
+            assigned_types,
+            known_classes,
+            cache,
+            visiting,
+            depth + 1,
+        )
+    elif isinstance(node, FlowNarrow):
+        prev_t = _walk_prevs(
+            graph,
+            node.prev,
+            variable,
+            initial_types,
+            assigned_types,
+            known_classes,
+            cache,
+            visiting,
+            depth + 1,
+        )
+        if node.target == variable and prev_t is not None:
+            result = _apply_narrow_type(prev_t, node, known_classes)
+        else:
+            result = prev_t
+    elif isinstance(node, FlowWiden):
+        narrow_node = graph.node_at(node.narrow_id)
+        prev_t = _walk_prevs(
+            graph,
+            node.prev,
+            variable,
+            initial_types,
+            assigned_types,
+            known_classes,
+            cache,
+            visiting,
+            depth + 1,
+        )
+        if (
+            narrow_node is not None
+            and isinstance(narrow_node, FlowNarrow)
+            and narrow_node.target == variable
+            and prev_t is not None
+        ):
+            result = _apply_widen_type(prev_t, narrow_node, known_classes)
+        else:
+            result = prev_t
+    elif isinstance(node, FlowJoin):
+        result = _walk_prevs(
+            graph,
+            node.prev,
+            variable,
+            initial_types,
+            assigned_types,
+            known_classes,
+            cache,
+            visiting,
+            depth + 1,
+        )
+    elif isinstance(node, FlowLoopHead):
+        result = _walk_loop_head(
+            graph,
+            node,
+            variable,
+            initial_types,
+            assigned_types,
+            known_classes,
+            cache,
+            visiting,
+            depth + 1,
+        )
+    elif isinstance(node, FlowUnreachable):
+        result = _walk_prevs(
+            graph,
+            node.prev,
+            variable,
+            initial_types,
+            assigned_types,
+            known_classes,
+            cache,
+            visiting,
+            depth + 1,
+        )
+    visiting[cache_key] = False
+    if result is not None:
+        cache[cache_key] = result
+    return result
+
+
+def get_type_at(
+    graph: FlowGraph,
+    node_id: int,
+    variable: str,
+    initial_types: dict[str, TypeNode],
+    assigned_types: dict[int, TypeNode],
+    known_classes: set[str],
+) -> TypeNode | None:
+    """Query the type of a variable at a specific flow node via backward walk."""
+    cache: dict[str, TypeNode] = {}
+    visiting: dict[str, bool] = {}
+    return _walk_back(
+        graph,
+        node_id,
+        variable,
+        initial_types,
+        assigned_types,
+        known_classes,
+        cache,
+        visiting,
+        0,
+    )
 
 
 # ---------------------------------------------------------------------------

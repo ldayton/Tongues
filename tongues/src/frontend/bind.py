@@ -551,6 +551,9 @@ class Verifier:
             "Assert",
             "Yield",
             "YieldFrom",
+            "Load",
+            "Store",
+            "Del",
         }
         return node_type in known
 
