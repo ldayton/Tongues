@@ -2916,8 +2916,8 @@ class Parser:
             if has_keyword:
                 raise self.error("positional argument follows keyword argument")
 
-            # Positional argument (may include comprehension)
-            arg = self.parse_test()
+            # Positional argument (may include comprehension or walrus)
+            arg = self.parse_namedexpr_test()
 
             # Check for comprehension making this a generator expression
             if self.match("for"):

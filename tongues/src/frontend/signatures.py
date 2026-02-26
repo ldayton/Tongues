@@ -17,6 +17,7 @@ from .types import (
     SetType,
     TupleType,
     OptionalType,
+    UnionType,
     PointerType,
     StructRef,
     InterfaceRef,
@@ -656,13 +657,24 @@ def _resolve_non_none_union(
     col: int,
 ) -> TypeNode:
     """Resolve a union with no None members to the nearest common ancestor."""
-    if len(_CLASS_BASES) == 0:
-        return InterfaceRef("any")
+    all_classes = True
     i = 0
     while i < len(members):
         if members[i] not in known_classes:
-            return InterfaceRef("any")
+            all_classes = False
+            break
         i += 1
+    if not all_classes or len(_CLASS_BASES) == 0:
+        variants: list[TypeNode] = []
+        i = 0
+        while i < len(members):
+            variants.append(
+                py_type_to_type_dict(members[i], known_classes, errors, lineno, col)
+            )
+            i += 1
+        if len(variants) == 1:
+            return variants[0]
+        return UnionType(variants)
     chain0 = _ancestor_chain(members[0])
     common: set[str] = set(chain0)
     i = 1
@@ -682,7 +694,16 @@ def _resolve_non_none_union(
         if chain0[j] in common:
             return InterfaceRef(chain0[j])
         j += 1
-    return InterfaceRef("any")
+    variants2: list[TypeNode] = []
+    i = 0
+    while i < len(members):
+        variants2.append(
+            py_type_to_type_dict(members[i], known_classes, errors, lineno, col)
+        )
+        i += 1
+    if len(variants2) == 1:
+        return variants2[0]
+    return UnionType(variants2)
 
 
 # ---------------------------------------------------------------------------

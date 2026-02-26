@@ -353,6 +353,8 @@ def type_name(t: TypeNode) -> str:
     if isinstance(t, PrimitiveType):
         if t.kind == "string":
             return "str"
+        if t.kind == "void":
+            return "None"
         return t.kind
     if isinstance(t, SliceType):
         return "list[" + type_name(t.element) + "]"

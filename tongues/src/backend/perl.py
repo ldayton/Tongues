@@ -611,7 +611,9 @@ class _PerlEmitter:
                 if_stmt = body[0]
                 if isinstance(if_stmt, TIfStmt) and len(if_stmt.then_body) == 1:
                     then_first = if_stmt.then_body[0]
-                    if isinstance(then_first, TExprStmt):
+                    if isinstance(then_first, TExprStmt) and isinstance(
+                        then_first.expr, TCall
+                    ):
                         call = then_first.expr
                         if self._is_append_to(call, let_stmt.name):
                             if binding_name:
@@ -2040,21 +2042,21 @@ class _PerlEmitter:
             )
         if name == "TrimStart":
             s2 = self._a(args, 0)
-            chars2 = args[1].value
-            if isinstance(chars2, TStringLit):
-                if chars2.value == " \t\n\r":
+            chars2_expr: TExpr = args[1].value
+            if isinstance(chars2_expr, TStringLit):
+                if chars2_expr.value == " \t\n\r":
                     return "do { my $__t = " + s2 + "; $__t =~ s/^\\s+//; $__t }"
-                raw2 = _escape_regex_charclass(chars2.value)
+                raw2 = _escape_regex_charclass(chars2_expr.value)
                 return "do { my $__t = " + s2 + "; $__t =~ s/^[" + raw2 + "]+//; $__t }"
             c2 = self._a(args, 1)
             return "do { my $__t = " + s2 + "; $__t =~ s/^[" + c2 + "]+//; $__t }"
         if name == "TrimEnd":
             s3 = self._a(args, 0)
-            chars3 = args[1].value
-            if isinstance(chars3, TStringLit):
-                if chars3.value == " \t\n\r":
+            chars3_expr: TExpr = args[1].value
+            if isinstance(chars3_expr, TStringLit):
+                if chars3_expr.value == " \t\n\r":
                     return "do { my $__t = " + s3 + "; $__t =~ s/\\s+$//; $__t }"
-                raw3 = _escape_regex_charclass(chars3.value)
+                raw3 = _escape_regex_charclass(chars3_expr.value)
                 return "do { my $__t = " + s3 + "; $__t =~ s/[" + raw3 + "]+$//; $__t }"
             c3 = self._a(args, 1)
             return "do { my $__t = " + s3 + "; $__t =~ s/[" + c3 + "]+$//; $__t }"
@@ -2067,8 +2069,9 @@ class _PerlEmitter:
                 + "; [split(/\\Q$__sep\\E/, $__s)] }"
             )
         if name == "SplitN":
-            if isinstance(args[1].value, TStringLit):
-                pat = _escape_perl_regex(args[1].value.value)
+            splitn_val: TExpr = args[1].value
+            if isinstance(splitn_val, TStringLit):
+                pat = _escape_perl_regex(splitn_val.value)
                 return (
                     "[split(/"
                     + pat
@@ -2096,11 +2099,11 @@ class _PerlEmitter:
         if name == "RFind":
             return "rindex(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Count":
-            if self._is_string_expr(args[0].value) or self._is_bytes_expr(
-                args[0].value
-            ):
-                if isinstance(args[1].value, TStringLit):
-                    pat = _escape_perl_regex(args[1].value.value)
+            count_arg0: TExpr = args[0].value
+            count_arg1: TExpr = args[1].value
+            if self._is_string_expr(count_arg0) or self._is_bytes_expr(count_arg0):
+                if isinstance(count_arg1, TStringLit):
+                    pat = _escape_perl_regex(count_arg1.value)
                     return "() = " + self._a(args, 0) + " =~ /" + pat + "/g"
                 return (
                     "do { my $__s = "
@@ -2111,9 +2114,9 @@ class _PerlEmitter:
                 )
             a0 = self._a(args, 0)
             a1 = self._a(args, 1)
-            cmp_op = "eq" if self._is_string_expr(args[1].value) else "=="
-            if isinstance(args[1].value, TStringLit):
-                pat = _escape_perl_regex(args[1].value.value)
+            cmp_op = "eq" if self._is_string_expr(count_arg1) else "=="
+            if isinstance(count_arg1, TStringLit):
+                pat = _escape_perl_regex(count_arg1.value)
                 str_count = "do { my $__c = () = " + a0 + " =~ /" + pat + "/g; $__c }"
             else:
                 str_count = (
@@ -2138,11 +2141,11 @@ class _PerlEmitter:
                 + "}))"
             )
         if name == "Replace":
-            if isinstance(args[1].value, TStringLit) and isinstance(
-                args[2].value, TStringLit
-            ):
-                old_lit = _escape_perl_regex(args[1].value.value)
-                new_lit = _escape_perl_replacement(args[2].value.value)
+            repl_arg1: TExpr = args[1].value
+            repl_arg2: TExpr = args[2].value
+            if isinstance(repl_arg1, TStringLit) and isinstance(repl_arg2, TStringLit):
+                old_lit = _escape_perl_regex(repl_arg1.value)
+                new_lit = _escape_perl_replacement(repl_arg2.value)
                 return (
                     "do { my $__s = "
                     + self._a(args, 0)
@@ -2162,11 +2165,13 @@ class _PerlEmitter:
                 + "; $__s =~ s/\\Q$__o\\E/$__n/g; $__s }"
             )
         if name == "ReplaceCount":
-            if isinstance(args[1].value, TStringLit) and isinstance(
-                args[2].value, TStringLit
+            rcount_arg1: TExpr = args[1].value
+            rcount_arg2: TExpr = args[2].value
+            if isinstance(rcount_arg1, TStringLit) and isinstance(
+                rcount_arg2, TStringLit
             ):
-                old_lit = _escape_perl_regex(args[1].value.value)
-                new_lit = _escape_perl_replacement(args[2].value.value)
+                old_lit = _escape_perl_regex(rcount_arg1.value)
+                new_lit = _escape_perl_replacement(rcount_arg2.value)
                 return (
                     "do { my $__s = "
                     + self._a(args, 0)
@@ -2193,14 +2198,14 @@ class _PerlEmitter:
             return "scalar(reverse(" + self._a(args, 0) + "))"
         if name == "StartsWith":
             s = self._a(args, 0)
-            pfx = args[1].value
+            pfx: TExpr = args[1].value
             if isinstance(pfx, TStringLit):
                 pat = _escape_perl_regex(pfx.value)
                 return "((" + s + " =~ /^" + pat + "/) ? 1 : 0)"
             return "((" + s + " =~ /^\\Q${\\ " + self._a(args, 1) + "}\\E/) ? 1 : 0)"
         if name == "EndsWith":
             s = self._a(args, 0)
-            sfx = args[1].value
+            sfx: TExpr = args[1].value
             if isinstance(sfx, TStringLit):
                 pat = _escape_perl_regex(sfx.value)
                 return "((" + s + " =~ /" + pat + "$/) ? 1 : 0)"

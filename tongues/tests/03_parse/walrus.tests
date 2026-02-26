@@ -30,6 +30,12 @@ ok
 ok
 ---
 
+=== walrus in call argument
+isinstance(y := x, int)
+---
+ok
+---
+
 === walrus lambda not allowed
 (lambda: x := 1)
 ---
