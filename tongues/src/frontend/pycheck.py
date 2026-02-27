@@ -878,13 +878,26 @@ def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if len(func) == 0:
         return ANY_TYPE
     args = get_nodes(node, "args")
+    keywords = get_nodes(node, "keywords")
+    ai = 0
+    while ai < len(args):
+        _synth_expr(args[ai], env, ctx)
+        ai += 1
+    ki = 0
+    while ki < len(keywords):
+        kw_val = get_node(keywords[ki], "value")
+        if len(kw_val) > 0:
+            _synth_expr(kw_val, env, ctx)
+        ki += 1
     # Direct name call
     if _is_type(func, ["Name"]):
         fname = get_str(func, "id")
         if fname != "":
+            _synth_expr(func, env, ctx)
             return _synth_name_call(fname, args, node, env, ctx)
     # Method call
     if _is_type(func, ["Attribute"]):
+        _synth_expr(func, env, ctx)
         return _synth_method_call(func, args, node, env, ctx)
     # Generic constructor: list[T](), set[T](), dict[K,V](), frozenset[T]()
     if _is_type(func, ["Subscript"]):
@@ -892,6 +905,7 @@ def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         if _is_type(sv, ["Name"]):
             base = get_str(sv, "id")
             if base != "":
+                _synth_expr(func, env, ctx)
                 return _synth_name_call(base, args, node, env, ctx)
     # Callable variable
     func_type = _synth_expr(func, env, ctx)
@@ -1146,6 +1160,8 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if len(value) == 0:
         return ANY_TYPE
     obj_type = _synth_expr(value, env, ctx)
+    if len(slc) > 0 and not _is_type(slc, ["Slice"]):
+        _synth_expr(slc, env, ctx)
     # String indexing
     if _prim_kind(obj_type) == "string":
         return STR_TYPE
@@ -1302,6 +1318,7 @@ def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     then_env = env.copy()
     else_env = env.copy()
     if len(test) > 0:
+        _synth_expr(test, env, ctx)
         _extract_narrowing(test, then_env, else_env, ctx)
     orelse_t = VOID_TYPE
     if len(orelse) > 0:
@@ -1411,10 +1428,13 @@ def _bind_comprehension_vars(
             iter_type = _synth_expr(iter_node, env, ctx)
             elem = _iteration_element(iter_type)
             _bind_target(target, elem, env)
+            if len(target) > 0:
+                _synth_expr(target, env, ctx)
         ifs = get_nodes(gen, "ifs")
         j = 0
         while j < len(ifs):
             cond = ifs[j]
+            _synth_expr(cond, env, ctx)
             dummy_else = env.copy()
             _extract_narrowing(cond, env, dummy_else, ctx)
             j += 1
@@ -1431,6 +1451,7 @@ def _synth_namedexpr(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         name = get_str(target, "id")
         if name != "":
             env.set(name, vt)
+            _synth_expr(target, env, ctx)
     return vt
 
 
@@ -1816,6 +1837,9 @@ def _validate_stmt(
     if t == "Break" or t == "Continue":
         return True
     if t == "Raise":
+        exc = get_node(stmt, "exc")
+        if len(exc) > 0:
+            _synth_expr(exc, env, ctx)
         return True
     if t == "Try":
         _validate_try(stmt, env, func_info, ctx)
@@ -1914,12 +1938,13 @@ def _validate_assign(
                     ca_id = _find_succ_cond_alias(ctx, name)
                     if ca_id >= 0:
                         ctx.current_flow_id = ca_id
+                _synth_expr(tgt, env, ctx)
         elif _is_type(tgt, ["Tuple", "List"]):
             _validate_unpack(tgt, val_type, value, env, ctx, lineno)
         elif _is_type(tgt, ["Subscript"]):
             _validate_subscript_assign(tgt, val_type, env, ctx, lineno)
         elif _is_type(tgt, ["Attribute"]):
-            pass
+            _synth_expr(tgt, env, ctx)
         i += 1
 
 
@@ -1965,6 +1990,7 @@ def _validate_unpack(
         j = 0
         while j < len(elts):
             _bind_target(elts[j], ANY_TYPE, env)
+            _synth_expr(elts[j], env, ctx)
             j += 1
         return
     if val_type.variadic:
@@ -1974,6 +2000,7 @@ def _validate_unpack(
         j = 0
         while j < len(elts):
             _bind_target(elts[j], elem, env)
+            _synth_expr(elts[j], env, ctx)
             j += 1
         return
     if len(elts) != len(val_type.elements):
@@ -1990,6 +2017,7 @@ def _validate_unpack(
     j = 0
     while j < len(elts):
         _bind_target(elts[j], val_type.elements[j], env)
+        _synth_expr(elts[j], env, ctx)
         j += 1
 
 
@@ -2078,6 +2106,7 @@ def _validate_ann_assign(
                 ca_id = _find_succ_cond_alias(ctx, name)
                 if ca_id >= 0:
                     ctx.current_flow_id = ca_id
+            _synth_expr(target, env, ctx)
             if len(value) > 0:
                 err_snap = len(ctx.result._errors)
                 _validate_expr_access(value, env, ctx, lineno)
@@ -2633,6 +2662,7 @@ def _validate_for(
         elem = _iteration_element(iter_type)
         if len(target) > 0:
             _bind_target(target, elem, env)
+            _synth_expr(target, env, ctx)
     head_id = _find_succ_loop_head_walk(ctx, 4)
     if head_id >= 0:
         ctx.current_flow_id = head_id
@@ -2697,8 +2727,10 @@ def _validate_match(
 ) -> None:
     subject = get_node(stmt, "subject")
     subj_name = ""
-    if len(subject) > 0 and _is_type(subject, ["Name"]):
-        subj_name = get_str(subject, "id")
+    if len(subject) > 0:
+        _synth_expr(subject, env, ctx)
+        if _is_type(subject, ["Name"]):
+            subj_name = get_str(subject, "id")
     cases = get_nodes(stmt, "cases")
     j = 0
     while j < len(cases):
