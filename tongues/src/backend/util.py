@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 from ..taytsh.ast import (
+    TArg,
     TAssignStmt,
     TBinaryOp,
     TCall,
     TExpr,
     TExprStmt,
     TFieldAccess,
+    TFloatLit,
     TFnLit,
     TForStmt,
     TIfStmt,
     TIndex,
+    TIntLit,
     TLetStmt,
     TListLit,
+    TListType,
     TMapLit,
     TMatchStmt,
     TOpAssignStmt,
+    TPrimitive,
     TRange,
     TReturnStmt,
     TSetLit,
@@ -29,6 +34,7 @@ from ..taytsh.ast import (
     TTupleAssignStmt,
     TTupleLit,
     TTryStmt,
+    TType,
     TUnaryOp,
     TVar,
     TWhileStmt,
@@ -193,6 +199,24 @@ def escape_string(value: str) -> str:
     return "".join(out)
 
 
+STRICT_INT_BINARY: dict[str, str] = {
+    "+": "checked_add_i64",
+    "-": "checked_sub_i64",
+    "*": "checked_mul_i64",
+    "/": "checked_div_i64",
+    "%": "checked_rem_i64",
+    "<<": "checked_shl_i64",
+    ">>": "checked_shr_i64",
+    ">>>": "logical_shr_i64",
+}
+
+STRICT_INT_COMPOUND: dict[str, str] = {
+    "+=": "checked_add_i64",
+    "-=": "checked_sub_i64",
+    "*=": "checked_mul_i64",
+}
+
+
 class Emitter:
     """Base class for code emitters with indentation tracking."""
 
@@ -200,6 +224,7 @@ class Emitter:
         self.indent: int = 0
         self.lines: list[str] = []
         self._indent_str = indent_str
+        self.var_types: dict[str, TType] = {}
 
     def _line(self, text: str = "") -> None:
         """Emit a line with current indentation."""
@@ -211,6 +236,83 @@ class Emitter:
     def output(self) -> str:
         """Return the accumulated output as a string."""
         return "\n".join(self.lines)
+
+    def _expr(self, expr: TExpr) -> str:
+        raise NotImplementedError
+
+    def _a(self, args: list[TArg], i: int) -> str:
+        return self._expr(args[i].value)
+
+    def _is_append_to(self, expr: TExpr, name: str) -> bool:
+        if not isinstance(expr, TCall):
+            return False
+        if not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Append":
+            return False
+        first = expr.args[0].value
+        if not isinstance(first, TVar):
+            return False
+        return first.name == name
+
+    def _is_add_to(self, expr: TExpr, name: str) -> bool:
+        if not isinstance(expr, TCall):
+            return False
+        if not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Add":
+            return False
+        first = expr.args[0].value
+        if not isinstance(first, TVar):
+            return False
+        return first.name == name
+
+    def _is_int_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TIntLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "int"
+        if isinstance(expr, TBinaryOp):
+            return self._is_int_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
+            return self._is_int_expr(expr.operand)
+        return False
+
+    def _is_float_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TFloatLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "float"
+        if isinstance(expr, TBinaryOp):
+            return self._is_float_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op == "-":
+            return self._is_float_expr(expr.operand)
+        return False
+
+    def _is_float_list(self, expr: TExpr) -> bool:
+        if isinstance(expr, TListLit) and expr.elements:
+            return self._is_float_expr(expr.elements[0])
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            if isinstance(typ, TListType) and isinstance(typ.element, TPrimitive):
+                return typ.element.kind == "float"
+        return False
+
+    def _is_zero(self, expr: TExpr) -> bool:
+        return isinstance(expr, TIntLit) and expr.value == 0
+
+    def _is_len_call(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Len"
+        )
+
+    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
+        ann = stmt.annotations
+        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
 
 
 # ── Builtin call collection ──────────────────────────────────

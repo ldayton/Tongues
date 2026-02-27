@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from .ordering import order_decls
-from .util import Emitter, collect_builtin_calls, escape_string
+from .util import (
+    STRICT_INT_BINARY,
+    STRICT_INT_COMPOUND,
+    Emitter,
+    collect_builtin_calls,
+    escape_string,
+)
 from ..taytsh.ast import (
     Ann,
     TArg,
@@ -307,24 +313,6 @@ def _scan_decl_builtins(decl: TDecl) -> tuple[bool, bool, bool]:
 # ============================================================
 
 
-_STRICT_INT_BINARY = {
-    "+": "checked_add_i64",
-    "-": "checked_sub_i64",
-    "*": "checked_mul_i64",
-    "/": "checked_div_i64",
-    "%": "checked_rem_i64",
-    "<<": "checked_shl_i64",
-    ">>": "checked_shr_i64",
-    ">>>": "logical_shr_i64",
-}
-
-_STRICT_INT_COMPOUND = {
-    "+=": "checked_add_i64",
-    "-=": "checked_sub_i64",
-    "*=": "checked_mul_i64",
-}
-
-
 class _PythonEmitter(Emitter):
     def __init__(
         self,
@@ -337,7 +325,6 @@ class _PythonEmitter(Emitter):
         self.struct_fields = struct_fields
         self.strict_math = strict_math
         self.self_name: str | None = None
-        self.var_types: dict[str, TType] = {}
 
     # ── Module ────────────────────────────────────────────────
 
@@ -659,30 +646,6 @@ class _PythonEmitter(Emitter):
                     )
         return None
 
-    def _is_append_to(self, expr: TExpr, name: str) -> bool:
-        if not isinstance(expr, TCall):
-            return False
-        if not isinstance(expr.func, TVar):
-            return False
-        if expr.func.name != "Append":
-            return False
-        first = expr.args[0].value
-        if not isinstance(first, TVar):
-            return False
-        return first.name == name
-
-    def _is_add_to(self, expr: TExpr, name: str) -> bool:
-        if not isinstance(expr, TCall):
-            return False
-        if not isinstance(expr.func, TVar):
-            return False
-        if expr.func.name != "Add":
-            return False
-        first = expr.args[0].value
-        if not isinstance(first, TVar):
-            return False
-        return first.name == name
-
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
             self._emit_let(stmt)
@@ -693,10 +656,10 @@ class _PythonEmitter(Emitter):
         elif isinstance(stmt, TOpAssignStmt):
             if (
                 self.strict_math
-                and stmt.op in _STRICT_INT_COMPOUND
+                and stmt.op in STRICT_INT_COMPOUND
                 and self._is_int_expr(stmt.target)
             ):
-                fn = _STRICT_INT_COMPOUND[stmt.op]
+                fn = STRICT_INT_COMPOUND[stmt.op]
                 self._line(
                     self._expr(stmt.target)
                     + " = "
@@ -909,58 +872,18 @@ class _PythonEmitter(Emitter):
         self._emit_stmts(stmt.body)
         self.indent -= 1
 
-    def _is_int_expr(self, expr: TExpr) -> bool:
-        if isinstance(expr, TIntLit):
-            return True
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "int"
-        if isinstance(expr, TBinaryOp):
-            return self._is_int_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
-            return self._is_int_expr(expr.operand)
-        return False
-
-    def _is_float_expr(self, expr: TExpr) -> bool:
-        if isinstance(expr, TFloatLit):
-            return True
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "float"
-        if isinstance(expr, TBinaryOp):
-            return self._is_float_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op == "-":
-            return self._is_float_expr(expr.operand)
-        return False
-
-    def _is_float_list(self, expr: TExpr) -> bool:
-        if isinstance(expr, TListLit) and expr.elements:
-            return self._is_float_expr(expr.elements[0])
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            if isinstance(typ, TListType) and isinstance(typ.element, TPrimitive):
-                return typ.element.kind == "float"
-        return False
-
     def _is_map_type(self, expr: TExpr) -> bool:
-        """Check if an expression refers to a variable with map type."""
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
         return False
 
     def _is_map_for(self, stmt: TForStmt) -> bool:
-        """Check if a for-loop iterates over map items."""
         if stmt.annotations.get("for.items") == "true":
             return True
         return not isinstance(stmt.iterable, TRange) and self._is_map_type(
             stmt.iterable
         )
-
-    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
-        """Check if a for-loop is an enumerate iteration."""
-        ann = stmt.annotations
-        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
 
     def _emit_try(self, stmt: TTryStmt) -> None:
         self._line("try:")
@@ -1200,15 +1123,6 @@ class _PythonEmitter(Emitter):
                 return "-" + self._expr(idx.right)
         return None
 
-    def _is_zero(self, expr: TExpr) -> bool:
-        return isinstance(expr, TIntLit) and expr.value == 0
-
-    def _is_len_call(self, expr: TExpr) -> bool:
-        if isinstance(expr, TCall):
-            if isinstance(expr.func, TVar) and expr.func.name == "Len":
-                return True
-        return False
-
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
         # 0.0 / 0.0 raises ZeroDivisionError in Python; emit float("nan")
@@ -1221,8 +1135,8 @@ class _PythonEmitter(Emitter):
         ):
             return 'float("nan")'
         if self.strict_math:
-            if op in _STRICT_INT_BINARY and self._is_int_expr(expr.left):
-                fn = _STRICT_INT_BINARY[op]
+            if op in STRICT_INT_BINARY and self._is_int_expr(expr.left):
+                fn = STRICT_INT_BINARY[op]
                 return (
                     fn
                     + "("
@@ -1704,9 +1618,6 @@ class _PythonEmitter(Emitter):
         # Fallback
         arg_strs = self._join_args(args, ", ")
         return name + "(" + arg_strs + ")"
-
-    def _a(self, args: list[TArg], i: int) -> str:
-        return self._expr(args[i].value)
 
     def _join_args(self, args: list[TArg], sep: str = ", ") -> str:
         parts: list[str] = []

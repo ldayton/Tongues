@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from .ordering import order_decls
-from .util import Emitter, collect_builtin_calls, escape_string, to_snake
+from .util import (
+    STRICT_INT_BINARY,
+    STRICT_INT_COMPOUND,
+    Emitter,
+    collect_builtin_calls,
+    escape_string,
+    to_snake,
+)
 from ..taytsh.ast import (
     Ann,
     TArg,
@@ -479,22 +486,6 @@ def _scan_expr_for_needs(expr: TExpr, flags: list[bool]) -> None:
 # STRICT MATH
 # ============================================================
 
-_STRICT_INT_BINARY: dict[str, str] = {
-    "+": "checked_add_i64",
-    "-": "checked_sub_i64",
-    "*": "checked_mul_i64",
-    "/": "checked_div_i64",
-    "%": "checked_rem_i64",
-    "<<": "checked_shl_i64",
-    ">>": "checked_shr_i64",
-    ">>>": "logical_shr_i64",
-}
-
-_STRICT_INT_COMPOUND: dict[str, str] = {
-    "+=": "checked_add_i64",
-    "-=": "checked_sub_i64",
-    "*=": "checked_mul_i64",
-}
 
 # ============================================================
 # EMITTER
@@ -519,7 +510,6 @@ class _RubyEmitter(Emitter):
         self.enum_names = enum_names
         self.strict_math = strict_math
         self.self_name: str | None = None
-        self.var_types: dict[str, TType] = {}
         self._needs_set: bool = False
         self.in_fn: bool = False
         self.local_names: dict[str, str] = {}
@@ -889,30 +879,6 @@ class _RubyEmitter(Emitter):
                     )
         return None
 
-    def _is_append_to(self, expr: TExpr, name: str) -> bool:
-        if not isinstance(expr, TCall):
-            return False
-        if not isinstance(expr.func, TVar):
-            return False
-        if expr.func.name != "Append":
-            return False
-        first = expr.args[0].value
-        if not isinstance(first, TVar):
-            return False
-        return first.name == name
-
-    def _is_add_to(self, expr: TExpr, name: str) -> bool:
-        if not isinstance(expr, TCall):
-            return False
-        if not isinstance(expr.func, TVar):
-            return False
-        if expr.func.name != "Add":
-            return False
-        first = expr.args[0].value
-        if not isinstance(first, TVar):
-            return False
-        return first.name == name
-
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
             self._emit_let(stmt)
@@ -923,10 +889,10 @@ class _RubyEmitter(Emitter):
         elif isinstance(stmt, TOpAssignStmt):
             if (
                 self.strict_math
-                and stmt.op in _STRICT_INT_COMPOUND
+                and stmt.op in STRICT_INT_COMPOUND
                 and self._is_int_expr(stmt.target)
             ):
-                fn = _STRICT_INT_COMPOUND[stmt.op]
+                fn = STRICT_INT_COMPOUND[stmt.op]
                 tgt = self._expr(stmt.target)
                 self._line(
                     tgt + " = " + fn + "(" + tgt + ", " + self._expr(stmt.value) + ")"
@@ -1233,52 +1199,12 @@ class _RubyEmitter(Emitter):
             stmt.iterable
         )
 
-    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
-        ann = stmt.annotations
-        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
-
     def _is_string_type(self, expr: TExpr) -> bool:
         if isinstance(expr, TStringLit):
             return True
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "string"
-        return False
-
-    def _is_int_expr(self, expr: TExpr) -> bool:
-        if isinstance(expr, TIntLit):
-            return True
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "int"
-        if isinstance(expr, TBinaryOp):
-            return self._is_int_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
-            return self._is_int_expr(expr.operand)
-        return False
-
-    def _is_float_expr(self, expr: TExpr) -> bool:
-        if isinstance(expr, TFloatLit):
-            return True
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "float"
-        if isinstance(expr, TBinaryOp):
-            return self._is_float_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op == "-":
-            return self._is_float_expr(expr.operand)
-        return False
-
-    def _is_float_list(self, expr: TExpr) -> bool:
-        if isinstance(expr, TListLit) and expr.elements:
-            return self._is_float_expr(expr.elements[0])
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return (
-                isinstance(typ, TListType)
-                and isinstance(typ.element, TPrimitive)
-                and typ.element.kind == "float"
-            )
         return False
 
     def _emit_try(self, stmt: TTryStmt) -> None:
@@ -1530,21 +1456,11 @@ class _RubyEmitter(Emitter):
                 return "-" + self._expr(idx.right)
         return None
 
-    def _is_zero(self, expr: TExpr) -> bool:
-        return isinstance(expr, TIntLit) and expr.value == 0
-
-    def _is_len_call(self, expr: TExpr) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Len"
-        )
-
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
-        if self.strict_math and op in _STRICT_INT_BINARY:
+        if self.strict_math and op in STRICT_INT_BINARY:
             if self._is_int_expr(expr.left) and self._is_int_expr(expr.right):
-                fn = _STRICT_INT_BINARY[op]
+                fn = STRICT_INT_BINARY[op]
                 return (
                     fn
                     + "("
@@ -2127,9 +2043,6 @@ class _RubyEmitter(Emitter):
         # Fallback
         arg_strs = ", ".join(self._expr(ar.value) for ar in args)
         return _safe_name(name) + "(" + arg_strs + ")"
-
-    def _a(self, args: list[TArg], i: int) -> str:
-        return self._expr(args[i].value)
 
     def _trim_chars(self, expr: TExpr) -> str:
         if isinstance(expr, TStringLit):
