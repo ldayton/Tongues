@@ -222,33 +222,41 @@ def _has_flow_stmt(stmts: list[TStmt], check_continue: bool) -> bool:
 # ============================================================
 
 
+def _find_let_stmts(stmts: list[TStmt]) -> list[TLetStmt]:
+    """Recursively find all TLetStmt nodes in control flow bodies."""
+    result: list[TLetStmt] = []
+    for stmt in stmts:
+        if isinstance(stmt, TLetStmt):
+            result.append(stmt)
+        if isinstance(stmt, TIfStmt):
+            result.extend(_find_let_stmts(stmt.then_body))
+            if stmt.else_body is not None:
+                result.extend(_find_let_stmts(stmt.else_body))
+        elif isinstance(stmt, TWhileStmt):
+            result.extend(_find_let_stmts(stmt.body))
+        elif isinstance(stmt, TForStmt):
+            result.extend(_find_let_stmts(stmt.body))
+        elif isinstance(stmt, TTryStmt):
+            result.extend(_find_let_stmts(stmt.body))
+            for catch in stmt.catches:
+                result.extend(_find_let_stmts(catch.body))
+        elif isinstance(stmt, TMatchStmt):
+            for case in stmt.cases:
+                result.extend(_find_let_stmts(case.body))
+            if stmt.default is not None:
+                result.extend(_find_let_stmts(stmt.default.body))
+    return result
+
+
 def _collect_let_decls(
     stmts: list[TStmt], declared: set[str], checker: Checker
 ) -> dict[str, str]:
-    """Recursively find TLetStmt inside stmts, returning {name: type_string} for undeclared names."""
+    """Return {name: type_string} for let bindings not already in declared."""
     result: dict[str, str] = {}
-    for stmt in stmts:
-        if isinstance(stmt, TLetStmt):
-            if stmt.name not in declared:
-                resolved = checker.resolve_type(stmt.typ)
-                result[stmt.name] = type_name(resolved)
-        if isinstance(stmt, TIfStmt):
-            result.update(_collect_let_decls(stmt.then_body, declared, checker))
-            if stmt.else_body is not None:
-                result.update(_collect_let_decls(stmt.else_body, declared, checker))
-        elif isinstance(stmt, TWhileStmt):
-            result.update(_collect_let_decls(stmt.body, declared, checker))
-        elif isinstance(stmt, TForStmt):
-            result.update(_collect_let_decls(stmt.body, declared, checker))
-        elif isinstance(stmt, TTryStmt):
-            result.update(_collect_let_decls(stmt.body, declared, checker))
-            for catch in stmt.catches:
-                result.update(_collect_let_decls(catch.body, declared, checker))
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                result.update(_collect_let_decls(case.body, declared, checker))
-            if stmt.default is not None:
-                result.update(_collect_let_decls(stmt.default.body, declared, checker))
+    for let in _find_let_stmts(stmts):
+        if let.name not in declared:
+            resolved = checker.resolve_type(let.typ)
+            result[let.name] = type_name(resolved)
     return result
 
 
@@ -534,27 +542,9 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
 def _collect_fn_let_bindings(
     stmts: list[TStmt], bindings: dict[str, Type], checker: Checker
 ) -> None:
-    """Recursively collect all let bindings in a function to build the type map."""
-    for stmt in stmts:
-        if isinstance(stmt, TLetStmt):
-            bindings[stmt.name] = checker.resolve_type(stmt.typ)
-        if isinstance(stmt, TIfStmt):
-            _collect_fn_let_bindings(stmt.then_body, bindings, checker)
-            if stmt.else_body is not None:
-                _collect_fn_let_bindings(stmt.else_body, bindings, checker)
-        elif isinstance(stmt, TWhileStmt):
-            _collect_fn_let_bindings(stmt.body, bindings, checker)
-        elif isinstance(stmt, TForStmt):
-            _collect_fn_let_bindings(stmt.body, bindings, checker)
-        elif isinstance(stmt, TTryStmt):
-            _collect_fn_let_bindings(stmt.body, bindings, checker)
-            for catch in stmt.catches:
-                _collect_fn_let_bindings(catch.body, bindings, checker)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                _collect_fn_let_bindings(case.body, bindings, checker)
-            if stmt.default is not None:
-                _collect_fn_let_bindings(stmt.default.body, bindings, checker)
+    """Collect all let bindings in a function to build the type map."""
+    for let in _find_let_stmts(stmts):
+        bindings[let.name] = checker.resolve_type(let.typ)
 
 
 # ============================================================
