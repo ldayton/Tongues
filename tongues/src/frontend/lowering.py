@@ -4,6 +4,10 @@ Transforms the typed Python dict-AST into Taytsh IR nodes (TModule from
 taytsh/ast.py), using type information from phases 5-9 (signatures, fields,
 hierarchy, pycheck).
 
+Instrumentation:
+  _DBG_PRINT_LOOKUP_FALLBACK - log when _lookup_expr_type falls back to
+                               _infer_expr_type_inner due to type disagreement
+
 Written in the Tongues subset (no generators, closures, lambdas, getattr).
 """
 
