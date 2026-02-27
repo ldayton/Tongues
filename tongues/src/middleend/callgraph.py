@@ -418,18 +418,10 @@ def _compute_sccs(keys: list[str], edges: dict[str, set[str]]) -> list[list[str]
 def _detect_recursion(
     fn_decls: dict[str, TFnDecl],
     edges: dict[str, set[str]],
-) -> tuple[list[list[str]], dict[str, int]]:
-    """Detect SCCs and write recursion annotations.
-
-    Returns SCCs in reverse topo order and a mapping from fn key to SCC index.
-    """
+) -> list[list[str]]:
+    """Detect SCCs and write recursion annotations. Returns SCCs in reverse topo order."""
     keys = list(fn_decls.keys())
     sccs = _compute_sccs(keys, edges)
-    key_to_scc: dict[str, int] = {}
-    for i, scc in enumerate(sccs):
-        for key in scc:
-            key_to_scc[key] = i
-
     scc_counter = 0
     for i, scc in enumerate(sccs):
         is_recursive = False
@@ -453,7 +445,7 @@ def _detect_recursion(
             )
             decl.annotations["callgraph.recursive_group"] = group_id
 
-    return sccs, key_to_scc
+    return sccs
 
 
 # ============================================================
@@ -873,6 +865,6 @@ def _walk_tail_expr(expr: TExpr, *, tail: bool) -> None:
 def analyze_callgraph(module: TModule, checker: Checker) -> None:
     """Run callgraph analysis on all functions in the module."""
     fn_decls, edges, fn_structs = _build_call_graph(module, checker)
-    sccs, _ = _detect_recursion(fn_decls, edges)
+    sccs = _detect_recursion(fn_decls, edges)
     _propagate_throws(sccs, fn_decls, fn_structs, edges, checker, module.strict_math)
     _detect_tail_calls(fn_decls)
