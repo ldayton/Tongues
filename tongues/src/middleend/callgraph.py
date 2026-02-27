@@ -6,6 +6,8 @@ and tail call identification for every function and method in the module.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
@@ -169,6 +171,15 @@ class _TypeResolver:
 # ============================================================
 
 
+@dataclass
+class _EdgeCtx:
+    caller: str
+    edges: dict[str, set[str]]
+    fn_decls: dict[str, TFnDecl]
+    checker: Checker
+    resolver: _TypeResolver
+
+
 def _build_call_graph(
     module: TModule, checker: Checker
 ) -> tuple[
@@ -204,134 +215,109 @@ def _build_call_graph(
     for fn_key, decl in fn_decls.items():
         resolver = _TypeResolver(checker)
         resolver.init_from_fn(decl, fn_structs[fn_key])
-        _collect_edges(decl.body, fn_key, edges, fn_decls, checker, resolver)
+        ctx = _EdgeCtx(fn_key, edges, fn_decls, checker, resolver)
+        _collect_edges(decl.body, ctx)
 
     return fn_decls, edges, fn_structs
 
 
-def _collect_edges(
-    stmts: list[TStmt],
-    caller: str,
-    edges: dict[str, set[str]],
-    fn_decls: dict[str, TFnDecl],
-    checker: Checker,
-    resolver: _TypeResolver,
-) -> None:
+def _collect_edges(stmts: list[TStmt], ctx: _EdgeCtx) -> None:
     for stmt in stmts:
-        _collect_edges_stmt(stmt, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_stmt(stmt, ctx)
 
 
-def _collect_edges_stmt(
-    stmt: TStmt,
-    caller: str,
-    edges: dict[str, set[str]],
-    fn_decls: dict[str, TFnDecl],
-    checker: Checker,
-    resolver: _TypeResolver,
-) -> None:
+def _collect_edges_stmt(stmt: TStmt, ctx: _EdgeCtx) -> None:
     if isinstance(stmt, TExprStmt):
-        _collect_edges_expr(stmt.expr, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.expr, ctx)
     elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.value, ctx)
     elif isinstance(stmt, TThrowStmt):
-        _collect_edges_expr(stmt.expr, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.expr, ctx)
     elif isinstance(stmt, TLetStmt):
         if stmt.value is not None:
-            _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
-        resolver.register_let(stmt.name, checker.resolve_type(stmt.typ))
+            _collect_edges_expr(stmt.value, ctx)
+        ctx.resolver.register_let(stmt.name, ctx.checker.resolve_type(stmt.typ))
     elif isinstance(stmt, TAssignStmt):
-        _collect_edges_expr(stmt.target, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.target, ctx)
+        _collect_edges_expr(stmt.value, ctx)
     elif isinstance(stmt, TOpAssignStmt):
-        _collect_edges_expr(stmt.target, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.target, ctx)
+        _collect_edges_expr(stmt.value, ctx)
     elif isinstance(stmt, TTupleAssignStmt):
         for t in stmt.targets:
-            _collect_edges_expr(t, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(t, ctx)
+        _collect_edges_expr(stmt.value, ctx)
     elif isinstance(stmt, TIfStmt):
-        _collect_edges_expr(stmt.cond, caller, edges, fn_decls, checker, resolver)
-        _collect_edges(stmt.then_body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.cond, ctx)
+        _collect_edges(stmt.then_body, ctx)
         if stmt.else_body is not None:
-            _collect_edges(stmt.else_body, caller, edges, fn_decls, checker, resolver)
+            _collect_edges(stmt.else_body, ctx)
     elif isinstance(stmt, TWhileStmt):
-        _collect_edges_expr(stmt.cond, caller, edges, fn_decls, checker, resolver)
-        _collect_edges(stmt.body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.cond, ctx)
+        _collect_edges(stmt.body, ctx)
     elif isinstance(stmt, TForStmt):
         if isinstance(stmt.iterable, TRange):
             for a in stmt.iterable.args:
-                _collect_edges_expr(a, caller, edges, fn_decls, checker, resolver)
+                _collect_edges_expr(a, ctx)
         else:
-            _collect_edges_expr(
-                stmt.iterable, caller, edges, fn_decls, checker, resolver
-            )
-        _collect_edges(stmt.body, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(stmt.iterable, ctx)
+        _collect_edges(stmt.body, ctx)
     elif isinstance(stmt, TMatchStmt):
-        _collect_edges_expr(stmt.expr, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.expr, ctx)
         for case in stmt.cases:
-            _collect_edges(case.body, caller, edges, fn_decls, checker, resolver)
+            _collect_edges(case.body, ctx)
         if stmt.default is not None:
-            _collect_edges(
-                stmt.default.body, caller, edges, fn_decls, checker, resolver
-            )
+            _collect_edges(stmt.default.body, ctx)
     elif isinstance(stmt, TTryStmt):
-        _collect_edges(stmt.body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges(stmt.body, ctx)
         for catch in stmt.catches:
-            _collect_edges(catch.body, caller, edges, fn_decls, checker, resolver)
+            _collect_edges(catch.body, ctx)
         if stmt.finally_body is not None:
-            _collect_edges(
-                stmt.finally_body, caller, edges, fn_decls, checker, resolver
-            )
+            _collect_edges(stmt.finally_body, ctx)
 
 
-def _collect_edges_expr(
-    expr: TExpr,
-    caller: str,
-    edges: dict[str, set[str]],
-    fn_decls: dict[str, TFnDecl],
-    checker: Checker,
-    resolver: _TypeResolver,
-) -> None:
+def _collect_edges_expr(expr: TExpr, ctx: _EdgeCtx) -> None:
     if isinstance(expr, TCall):
-        for callee_key in _resolve_all_call_targets(expr, fn_decls, checker, resolver):
-            edges[caller].add(callee_key)
-        # Also walk args
-        _collect_edges_expr(expr.func, caller, edges, fn_decls, checker, resolver)
+        for callee_key in _resolve_all_call_targets(
+            expr, ctx.fn_decls, ctx.checker, ctx.resolver
+        ):
+            ctx.edges[ctx.caller].add(callee_key)
+        _collect_edges_expr(expr.func, ctx)
         for arg in expr.args:
-            _collect_edges_expr(arg.value, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(arg.value, ctx)
     elif isinstance(expr, TBinaryOp):
-        _collect_edges_expr(expr.left, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.right, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.left, ctx)
+        _collect_edges_expr(expr.right, ctx)
     elif isinstance(expr, TUnaryOp):
-        _collect_edges_expr(expr.operand, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.operand, ctx)
     elif isinstance(expr, TTernary):
-        _collect_edges_expr(expr.cond, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.then_expr, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.else_expr, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.cond, ctx)
+        _collect_edges_expr(expr.then_expr, ctx)
+        _collect_edges_expr(expr.else_expr, ctx)
     elif isinstance(expr, TFieldAccess):
-        _collect_edges_expr(expr.obj, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.obj, ctx)
     elif isinstance(expr, TIndex):
-        _collect_edges_expr(expr.obj, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.index, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.obj, ctx)
+        _collect_edges_expr(expr.index, ctx)
     elif isinstance(expr, TSlice):
-        _collect_edges_expr(expr.obj, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.low, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.high, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.obj, ctx)
+        _collect_edges_expr(expr.low, ctx)
+        _collect_edges_expr(expr.high, ctx)
     elif isinstance(expr, TListLit):
         for e in expr.elements:
-            _collect_edges_expr(e, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(e, ctx)
     elif isinstance(expr, TMapLit):
         for k, v in expr.entries:
-            _collect_edges_expr(k, caller, edges, fn_decls, checker, resolver)
-            _collect_edges_expr(v, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(k, ctx)
+            _collect_edges_expr(v, ctx)
     elif isinstance(expr, TSetLit):
         for e in expr.elements:
-            _collect_edges_expr(e, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(e, ctx)
     elif isinstance(expr, TTupleLit):
         for e in expr.elements:
-            _collect_edges_expr(e, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(e, ctx)
     elif isinstance(expr, TFnLit):
-        _collect_edges(expr.body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges(expr.body, ctx)
 
 
 def _resolve_all_call_targets(
