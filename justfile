@@ -66,7 +66,7 @@ test-lowering-local:
 
 # Run all middleend tests locally (type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph, taytsh, tycheck-gen)
 test-middleend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
 
 # Run backend tests (codegen + apptests) locally
 test-backend-local:
@@ -174,7 +174,7 @@ test-frontend:
 test-middleend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
 
 # Run backend tests (codegen + apptests) in Docker
 test-backend:
