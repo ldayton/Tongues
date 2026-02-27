@@ -1313,8 +1313,12 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TTupleAccess):
             obj = self._expr(expr.obj)
             idx = str(expr.index)
-            obj_t = self._expr_type(expr.obj)
-            if isinstance(obj_t, TTupleType):
+            obj_ann: str = expr.obj.annotations.get("type", "")
+            is_tuple = obj_ann.startswith("(") if obj_ann != "" else False
+            if not is_tuple:
+                obj_t = self._expr_type(expr.obj)
+                is_tuple = isinstance(obj_t, TTupleType)
+            if is_tuple:
                 return (
                     "(ref("
                     + obj
@@ -1452,8 +1456,7 @@ class _PerlEmitter(Emitter):
                     + "))"
                 )
             return "substr(" + obj + ", " + low + ", (" + high + ") - (" + low + "))"
-        obj_type = self._expr_type(expr.obj)
-        is_list = self._is_list_expr(expr.obj) or _is_list_type(obj_type)
+        is_list = self._is_list_expr(expr.obj)
         if not is_list:
             if prov == "open_end" and self._is_len_call(expr.high):
                 return (
@@ -2347,8 +2350,14 @@ class _PerlEmitter(Emitter):
             a = self._a(args, 0)
             if self._is_set_expr(sorted_arg):
                 return "[sort keys %{" + a + "}]"
-            typ = self._expr_type(sorted_arg)
-            if isinstance(typ, TListType) and _is_string_type(typ.element):
+            sorted_ann: str = sorted_arg.annotations.get("type", "")
+            is_str_list = sorted_ann == "list[string]" or sorted_ann == "list[rune]"
+            if not is_str_list:
+                typ = self._expr_type(sorted_arg)
+                is_str_list = isinstance(typ, TListType) and _is_string_type(
+                    typ.element
+                )
+            if is_str_list:
                 return "[sort @{" + a + "}]"
             return "[sort { $a <=> $b } @{" + a + "}]"
         if name == "ListFrom":
@@ -2572,12 +2581,19 @@ class _PerlEmitter(Emitter):
     def _list_elem_cmp(self, container: TExpr, needle: TExpr) -> str:
         if self._is_string_expr(needle):
             return "eq"
-        typ = self._expr_type(container)
-        if isinstance(typ, TListType) and _is_string_type(typ.element):
+        c_ann: str = container.annotations.get("type", "")
+        if c_ann == "list[string]" or c_ann == "list[rune]":
             return "eq"
-        nt = self._expr_type(needle)
-        if isinstance(nt, TOptionalType) and _is_string_type(nt.inner):
+        n_ann: str = needle.annotations.get("type", "")
+        if n_ann == "nil | string" or n_ann == "nil | rune":
             return "eq"
+        if c_ann == "" and n_ann == "":
+            typ = self._expr_type(container)
+            if isinstance(typ, TListType) and _is_string_type(typ.element):
+                return "eq"
+            nt = self._expr_type(needle)
+            if isinstance(nt, TOptionalType) and _is_string_type(nt.inner):
+                return "eq"
         if self._is_numeric_expr(needle):
             return "=="
         return "eq"
