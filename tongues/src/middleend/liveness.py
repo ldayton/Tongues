@@ -7,6 +7,7 @@ unused tuple assignment targets.
 
 from __future__ import annotations
 
+from .expr_reads import expr_reads, target_reads
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
@@ -45,86 +46,6 @@ from ..taytsh.check import Checker
 
 
 # ============================================================
-# EXPRESSION READS
-# ============================================================
-
-
-def _expr_reads(name: str, expr: TExpr) -> bool:
-    """Check if expression reads the variable."""
-    if isinstance(expr, TVar):
-        return expr.name == name
-    if isinstance(expr, TBinaryOp):
-        return _expr_reads(name, expr.left) or _expr_reads(name, expr.right)
-    if isinstance(expr, TUnaryOp):
-        return _expr_reads(name, expr.operand)
-    if isinstance(expr, TTernary):
-        return (
-            _expr_reads(name, expr.cond)
-            or _expr_reads(name, expr.then_expr)
-            or _expr_reads(name, expr.else_expr)
-        )
-    if isinstance(expr, TFieldAccess):
-        return _expr_reads(name, expr.obj)
-    if isinstance(expr, TTupleAccess):
-        return _expr_reads(name, expr.obj)
-    if isinstance(expr, TIndex):
-        return _expr_reads(name, expr.obj) or _expr_reads(name, expr.index)
-    if isinstance(expr, TSlice):
-        return (
-            _expr_reads(name, expr.obj)
-            or _expr_reads(name, expr.low)
-            or _expr_reads(name, expr.high)
-        )
-    if isinstance(expr, TCall):
-        if _expr_reads(name, expr.func):
-            return True
-        for a in expr.args:
-            if _expr_reads(name, a.value):
-                return True
-        return False
-    if isinstance(expr, TListLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TSetLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            if _expr_reads(name, k) or _expr_reads(name, v):
-                return True
-        return False
-    # Literals and TFnLit (can't capture) don't read outer vars
-    return False
-
-
-# ============================================================
-# TARGET READS
-# ============================================================
-
-
-def _target_reads(name: str, target: TExpr) -> bool:
-    """Check if assignment target reads the variable (index/field chains)."""
-    if isinstance(target, TVar):
-        return False
-    if isinstance(target, TIndex):
-        return _expr_reads(name, target.obj) or _expr_reads(name, target.index)
-    if isinstance(target, TFieldAccess):
-        return _expr_reads(name, target.obj)
-    if isinstance(target, TTupleAccess):
-        return _expr_reads(name, target.obj)
-    return False
-
-
-# ============================================================
 # FIRST ACCESS TYPE
 # ============================================================
 
@@ -141,47 +62,47 @@ def _first_access_in_stmts(name: str, stmts: list[TStmt]) -> str | None:
 def _first_access_type(name: str, stmt: TStmt) -> str | None:
     """Determine if first access to `name` in stmt is 'read', 'write', or None."""
     if isinstance(stmt, TLetStmt):
-        if stmt.value is not None and _expr_reads(name, stmt.value):
+        if stmt.value is not None and expr_reads(name, stmt.value):
             return "read"
         return None
     if isinstance(stmt, TAssignStmt):
-        if _expr_reads(name, stmt.value):
+        if expr_reads(name, stmt.value):
             return "read"
         if isinstance(stmt.target, TVar) and stmt.target.name == name:
             return "write"
-        if _target_reads(name, stmt.target):
+        if target_reads(name, stmt.target):
             return "read"
         return None
     if isinstance(stmt, TOpAssignStmt):
         # OpAssign reads before writing (x += 1 reads x)
         if isinstance(stmt.target, TVar) and stmt.target.name == name:
             return "read"
-        if _expr_reads(name, stmt.value):
+        if expr_reads(name, stmt.value):
             return "read"
-        if _target_reads(name, stmt.target):
+        if target_reads(name, stmt.target):
             return "read"
         return None
     if isinstance(stmt, TTupleAssignStmt):
-        if _expr_reads(name, stmt.value):
+        if expr_reads(name, stmt.value):
             return "read"
         for target in stmt.targets:
             if isinstance(target, TVar) and target.name == name:
                 return "write"
         return None
     if isinstance(stmt, TExprStmt):
-        if _expr_reads(name, stmt.expr):
+        if expr_reads(name, stmt.expr):
             return "read"
         return None
     if isinstance(stmt, TReturnStmt):
-        if stmt.value is not None and _expr_reads(name, stmt.value):
+        if stmt.value is not None and expr_reads(name, stmt.value):
             return "read"
         return None
     if isinstance(stmt, TThrowStmt):
-        if _expr_reads(name, stmt.expr):
+        if expr_reads(name, stmt.expr):
             return "read"
         return None
     if isinstance(stmt, TIfStmt):
-        if _expr_reads(name, stmt.cond):
+        if expr_reads(name, stmt.cond):
             return "read"
         then_result = _first_access_in_stmts(name, stmt.then_body)
         else_result = (
@@ -195,7 +116,7 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
             return "write"
         return None
     if isinstance(stmt, TWhileStmt):
-        if _expr_reads(name, stmt.cond):
+        if expr_reads(name, stmt.cond):
             return "read"
         result = _first_access_in_stmts(name, stmt.body)
         if result == "read":
@@ -204,9 +125,9 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
     if isinstance(stmt, TForStmt):
         if isinstance(stmt.iterable, TRange):
             for a in stmt.iterable.args:
-                if _expr_reads(name, a):
+                if expr_reads(name, a):
                     return "read"
-        elif _expr_reads(name, stmt.iterable):
+        elif expr_reads(name, stmt.iterable):
             return "read"
         result = _first_access_in_stmts(name, stmt.body)
         if result == "read":
@@ -232,7 +153,7 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
                 return finally_result
         return None
     if isinstance(stmt, TMatchStmt):
-        if _expr_reads(name, stmt.expr):
+        if expr_reads(name, stmt.expr):
             return "read"
         results: list[str | None] = []
         for case in stmt.cases:
