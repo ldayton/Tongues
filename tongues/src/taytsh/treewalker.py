@@ -869,7 +869,7 @@ def _resolve_index(index: ModuleIndex, checker: Checker) -> None:
             ret = checker.resolve_type(mi.decl.ret)
             mi.sig = FnSig(tuple(params), ret)
     for fi in index.funcs.values():
-        params = []
+        params: list[Type] = []
         for p in fi.decl.params:
             if p.typ is not None:
                 params.append(checker.resolve_type(p.typ))

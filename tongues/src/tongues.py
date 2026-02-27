@@ -5,14 +5,14 @@ from __future__ import annotations
 import sys
 
 from .frontend.parse import parse, ParseError
-from .frontend.subset import (
-    verify as verify_subset,
+from .frontend.bind import (
+    run_bind,
+    NameInfo,
+    NameTable,
     IMPORT_ONLY_MODULES,
     ALLOWED_FROM_MODULES,
 )
-from .frontend.names import NameInfo, NameTable, resolve_names
-from .frontend.signatures import annotation_to_str, collect_signatures
-from .frontend.fields import collect_fields
+from .frontend.typecollect import collect_signatures, collect_types
 from .frontend.hierarchy import build_hierarchy
 from .frontend.inference import run_inference
 from .frontend.lowering import lower
@@ -42,7 +42,8 @@ from .taytsh.check import Checker, check_with_info
 from .taytsh.emit import to_source
 from .taytsh.parse import Parser as TaytshParser
 from .taytsh.tokens import tokenize as taytsh_tokenize
-from .middleend.callgraph import analyze_callgraph, serialize_callgraph
+from .middleend.callgraph import analyze_callgraph
+from .middleend.callgraph_serial import serialize_callgraph
 from .middleend.hoisting import analyze_hoisting
 from .middleend.liveness import analyze_liveness
 from .middleend.ownership import analyze_ownership
@@ -1419,158 +1420,61 @@ def _pipeline_post_parse(
     strict_tostring: bool,
 ) -> tuple[int, str]:
     """Run pipeline phases after parsing. Returns (exit_code, output)."""
-    if stop_at != "names":
-        result = verify_subset(ast_dict)
-        subset_errors = result.errors()
-        if len(subset_errors) > 0:
-            err_strs: list[str] = []
-            sei = 0
-            while sei < len(subset_errors):
-                err_strs.append(str(subset_errors[sei]))
-                sei += 1
-            _print_errors(err_strs)
-            return (1, "")
-        if stop_at == "subset":
-            subset_warnings = result.warnings()
-            if len(subset_warnings) > 0:
-                warn_strs: list[str] = []
-                swi = 0
-                while swi < len(subset_warnings):
-                    warn_strs.append(str(subset_warnings[swi]))
-                    swi += 1
-                _print_errors(warn_strs)
-            return (0, "")
-    name_result = resolve_names(ast_dict)
-    name_errors = name_result.errors()
-    if len(name_errors) > 0:
+    bind_result = run_bind(ast_dict)
+    if not bind_result.subset_ok() and stop_at != "names":
+        err_strs: list[str] = []
+        sei = 0
+        while sei < len(bind_result.subset_violations):
+            err_strs.append(str(bind_result.subset_violations[sei]))
+            sei += 1
+        _print_errors(err_strs)
+        return (1, "")
+    if stop_at == "subset":
+        if len(bind_result.subset_warnings) > 0:
+            warn_strs: list[str] = []
+            swi = 0
+            while swi < len(bind_result.subset_warnings):
+                warn_strs.append(str(bind_result.subset_warnings[swi]))
+                swi += 1
+            _print_errors(warn_strs)
+        return (0, "")
+    if not bind_result.names_ok():
         err_strs: list[str] = []
         nei = 0
-        while nei < len(name_errors):
-            err_strs.append(str(name_errors[nei]))
+        while nei < len(bind_result.name_violations):
+            err_strs.append(str(bind_result.name_violations[nei]))
             nei += 1
         _print_errors(err_strs)
         return (1, "")
     if stop_at == "names":
-        name_warnings = name_result.warnings
-        if len(name_warnings) > 0:
+        if len(bind_result.name_warnings) > 0:
             warn_strs: list[str] = []
             nwi = 0
-            while nwi < len(name_warnings):
-                warn_strs.append(str(name_warnings[nwi]))
+            while nwi < len(bind_result.name_warnings):
+                warn_strs.append(str(bind_result.name_warnings[nwi]))
                 nwi += 1
             _print_errors(warn_strs)
-        return (0, to_json(_name_table_to_dict(name_result.table)))
-    known_classes: set[str] = set()
-    node_classes: set[str] = set()
-    mkeys = list(name_result.table.module_names.keys())
-    ki = 0
-    while ki < len(mkeys):
-        mname = mkeys[ki]
-        info = name_result.table.module_names[mname]
-        if info.kind == "class":
-            known_classes.add(mname)
-            bi = 0
-            while bi < len(info.bases):
-                base = info.bases[bi]
-                if base == "Node" or base.endswith("Node"):
-                    node_classes.add(mname)
-                bi += 1
-        ki += 1
-    class_bases: dict[str, list[str]] = {}
-    ki = 0
-    while ki < len(mkeys):
-        mname = mkeys[ki]
-        info = name_result.table.module_names[mname]
-        if info.kind == "class":
-            class_bases[mname] = list(info.bases)
-        ki += 1
-    type_aliases: dict[str, str] = {}
-    ta_body = get_nodes(ast_dict, "body")
-    tai = 0
-    while tai < len(ta_body):
-        ta_stmt = ta_body[tai]
-        if get_str(ta_stmt, "_type") == "Assign":
-            ta_targets = get_nodes(ta_stmt, "targets")
-            if len(ta_targets) == 1:
-                ta_target = ta_targets[0]
-                if get_str(ta_target, "_type") == "Name":
-                    ta_name = get_str(ta_target, "id")
-                    if ta_name != "":
-                        ta_info = name_result.table.module_names.get(ta_name)
-                        if ta_info is not None and ta_info.kind == "type_alias":
-                            ta_value_v = ta_stmt.get("value")
-                            ta_value: ASTNode | None = None
-                            if isinstance(ta_value_v, JDict):
-                                ta_value = ta_value_v.entries
-                            ta_str = annotation_to_str(ta_value)
-                            if ta_str != "":
-                                type_aliases[ta_name] = ta_str
-        tai += 1
-    sig_result = collect_signatures(
-        ast_dict, known_classes, node_classes, type_aliases, class_bases
-    )
-    sig_errors = sig_result.errors()
-    if len(sig_errors) > 0:
-        err_strs: list[str] = []
-        sei = 0
-        while sei < len(sig_errors):
-            err_strs.append(str(sig_errors[sei]))
-            sei += 1
-        _print_errors(err_strs)
-        return (1, "")
+        return (0, to_json(_name_table_to_dict(bind_result.table)))
+    known_classes = bind_result.known_classes
+    node_classes = bind_result.node_classes
+    class_bases = bind_result.class_bases
     if stop_at == "signatures":
+        sig_result = collect_signatures(
+            ast_dict, known_classes, node_classes, bind_result.type_aliases, class_bases
+        )
+        sig_errors = sig_result.errors()
+        if len(sig_errors) > 0:
+            err_strs: list[str] = []
+            sei = 0
+            while sei < len(sig_errors):
+                err_strs.append(str(sig_errors[sei]))
+                sei += 1
+            _print_errors(err_strs)
+            return (1, "")
         return (0, to_json(sig_result.to_dict()))
-    hierarchy_roots: set[str] = set()
-    base_counts: dict[str, int] = {}
-    parent_of: dict[str, str] = {}
-    ki = 0
-    mkeys2 = list(name_result.table.module_names.keys())
-    while ki < len(mkeys2):
-        mname = mkeys2[ki]
-        info = name_result.table.module_names[mname]
-        if info.kind == "class":
-            bi = 0
-            while bi < len(info.bases):
-                base = info.bases[bi]
-                if base not in base_counts:
-                    base_counts[base] = 0
-                base_counts[base] = base_counts[base] + 1
-                parent_of[mname] = base
-                bi += 1
-        ki += 1
-    bkeys = list(base_counts.keys())
-    ki = 0
-    while ki < len(bkeys):
-        bname = bkeys[ki]
-        if bname not in parent_of:
-            hierarchy_roots.add(bname)
-        ki += 1
-    field_result = collect_fields(
-        ast_dict, known_classes, node_classes, hierarchy_roots, sig_result
+    hier_result = build_hierarchy(
+        known_classes, class_bases, bind_result.class_source_files
     )
-    field_errors = field_result.errors()
-    if len(field_errors) > 0:
-        err_strs: list[str] = []
-        fei = 0
-        while fei < len(field_errors):
-            err_strs.append(str(field_errors[fei]))
-            fei += 1
-        _print_errors(err_strs)
-        return (1, "")
-    if stop_at == "fields":
-        return (0, to_json(field_result.to_dict()))
-    class_source_files: dict[str, str] = {}
-    csf_body = get_nodes(ast_dict, "body")
-    csf_i = 0
-    while csf_i < len(csf_body):
-        csf_node = csf_body[csf_i]
-        if get_str(csf_node, "_type") == "ClassDef":
-            csf_name = get_str(csf_node, "name")
-            csf_sf = get_str(csf_node, "_source_file")
-            if csf_name != "" and csf_sf != "":
-                class_source_files[csf_name] = csf_sf
-        csf_i += 1
-    hier_result = build_hierarchy(known_classes, class_bases, class_source_files)
     hier_errors = hier_result.errors()
     if len(hier_errors) > 0:
         err_strs: list[str] = []
@@ -1582,8 +1486,37 @@ def _pipeline_post_parse(
         return (1, "")
     if stop_at == "hierarchy":
         return (0, to_json(hier_result.to_dict()))
+    hierarchy_roots: set[str] = set()
+    hri = 0
+    while hri < len(hier_result.hierarchy_roots):
+        hierarchy_roots.add(hier_result.hierarchy_roots[hri])
+        hri += 1
+    tc_result = collect_types(
+        ast_dict,
+        known_classes,
+        node_classes,
+        bind_result.type_aliases,
+        class_bases,
+        hierarchy_roots,
+    )
+    tc_errors = tc_result.errors()
+    if len(tc_errors) > 0:
+        err_strs: list[str] = []
+        tei = 0
+        while tei < len(tc_errors):
+            err_strs.append(str(tc_errors[tei]))
+            tei += 1
+        _print_errors(err_strs)
+        return (1, "")
+    if stop_at == "fields":
+        return (0, to_json(tc_result.fields_to_dict()))
     inf_result = run_inference(
-        ast_dict, sig_result, field_result, hier_result, known_classes, class_bases
+        ast_dict,
+        tc_result,
+        hier_result,
+        known_classes,
+        class_bases,
+        bind_result.flow_graphs,
     )
     inf_errors = inf_result.errors()
     if len(inf_errors) > 0:
@@ -1608,8 +1541,7 @@ def _pipeline_post_parse(
         return (0, to_json(JDict(d)))
     module, lower_errors = lower(
         ast_dict,
-        sig_result,
-        field_result,
+        tc_result,
         hier_result,
         known_classes,
         class_bases,

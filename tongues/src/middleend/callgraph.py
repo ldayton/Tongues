@@ -6,7 +6,8 @@ and tail call identification for every function and method in the module.
 
 from __future__ import annotations
 
-from ..frontend.types import JDict, JStr, JsonValue
+from dataclasses import dataclass
+
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
@@ -67,8 +68,7 @@ _EXTRA_BUILTINS = {
 _ALL_BUILTINS: set[str] = set()
 for _bn in BUILTIN_NAMES:
     _ALL_BUILTINS.add(_bn)
-for _bn in _EXTRA_BUILTINS:
-    _ALL_BUILTINS.add(_bn)
+_ALL_BUILTINS |= _EXTRA_BUILTINS
 
 
 # ============================================================
@@ -170,6 +170,15 @@ class _TypeResolver:
 # ============================================================
 
 
+@dataclass
+class _EdgeCtx:
+    caller: str
+    edges: dict[str, set[str]]
+    fn_decls: dict[str, TFnDecl]
+    checker: Checker
+    resolver: _TypeResolver
+
+
 def _build_call_graph(
     module: TModule, checker: Checker
 ) -> tuple[
@@ -205,134 +214,109 @@ def _build_call_graph(
     for fn_key, decl in fn_decls.items():
         resolver = _TypeResolver(checker)
         resolver.init_from_fn(decl, fn_structs[fn_key])
-        _collect_edges(decl.body, fn_key, edges, fn_decls, checker, resolver)
+        ctx = _EdgeCtx(fn_key, edges, fn_decls, checker, resolver)
+        _collect_edges(decl.body, ctx)
 
     return fn_decls, edges, fn_structs
 
 
-def _collect_edges(
-    stmts: list[TStmt],
-    caller: str,
-    edges: dict[str, set[str]],
-    fn_decls: dict[str, TFnDecl],
-    checker: Checker,
-    resolver: _TypeResolver,
-) -> None:
+def _collect_edges(stmts: list[TStmt], ctx: _EdgeCtx) -> None:
     for stmt in stmts:
-        _collect_edges_stmt(stmt, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_stmt(stmt, ctx)
 
 
-def _collect_edges_stmt(
-    stmt: TStmt,
-    caller: str,
-    edges: dict[str, set[str]],
-    fn_decls: dict[str, TFnDecl],
-    checker: Checker,
-    resolver: _TypeResolver,
-) -> None:
+def _collect_edges_stmt(stmt: TStmt, ctx: _EdgeCtx) -> None:
     if isinstance(stmt, TExprStmt):
-        _collect_edges_expr(stmt.expr, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.expr, ctx)
     elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.value, ctx)
     elif isinstance(stmt, TThrowStmt):
-        _collect_edges_expr(stmt.expr, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.expr, ctx)
     elif isinstance(stmt, TLetStmt):
         if stmt.value is not None:
-            _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
-        resolver.register_let(stmt.name, checker.resolve_type(stmt.typ))
+            _collect_edges_expr(stmt.value, ctx)
+        ctx.resolver.register_let(stmt.name, ctx.checker.resolve_type(stmt.typ))
     elif isinstance(stmt, TAssignStmt):
-        _collect_edges_expr(stmt.target, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.target, ctx)
+        _collect_edges_expr(stmt.value, ctx)
     elif isinstance(stmt, TOpAssignStmt):
-        _collect_edges_expr(stmt.target, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.target, ctx)
+        _collect_edges_expr(stmt.value, ctx)
     elif isinstance(stmt, TTupleAssignStmt):
         for t in stmt.targets:
-            _collect_edges_expr(t, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(stmt.value, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(t, ctx)
+        _collect_edges_expr(stmt.value, ctx)
     elif isinstance(stmt, TIfStmt):
-        _collect_edges_expr(stmt.cond, caller, edges, fn_decls, checker, resolver)
-        _collect_edges(stmt.then_body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.cond, ctx)
+        _collect_edges(stmt.then_body, ctx)
         if stmt.else_body is not None:
-            _collect_edges(stmt.else_body, caller, edges, fn_decls, checker, resolver)
+            _collect_edges(stmt.else_body, ctx)
     elif isinstance(stmt, TWhileStmt):
-        _collect_edges_expr(stmt.cond, caller, edges, fn_decls, checker, resolver)
-        _collect_edges(stmt.body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.cond, ctx)
+        _collect_edges(stmt.body, ctx)
     elif isinstance(stmt, TForStmt):
         if isinstance(stmt.iterable, TRange):
             for a in stmt.iterable.args:
-                _collect_edges_expr(a, caller, edges, fn_decls, checker, resolver)
+                _collect_edges_expr(a, ctx)
         else:
-            _collect_edges_expr(
-                stmt.iterable, caller, edges, fn_decls, checker, resolver
-            )
-        _collect_edges(stmt.body, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(stmt.iterable, ctx)
+        _collect_edges(stmt.body, ctx)
     elif isinstance(stmt, TMatchStmt):
-        _collect_edges_expr(stmt.expr, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(stmt.expr, ctx)
         for case in stmt.cases:
-            _collect_edges(case.body, caller, edges, fn_decls, checker, resolver)
+            _collect_edges(case.body, ctx)
         if stmt.default is not None:
-            _collect_edges(
-                stmt.default.body, caller, edges, fn_decls, checker, resolver
-            )
+            _collect_edges(stmt.default.body, ctx)
     elif isinstance(stmt, TTryStmt):
-        _collect_edges(stmt.body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges(stmt.body, ctx)
         for catch in stmt.catches:
-            _collect_edges(catch.body, caller, edges, fn_decls, checker, resolver)
+            _collect_edges(catch.body, ctx)
         if stmt.finally_body is not None:
-            _collect_edges(
-                stmt.finally_body, caller, edges, fn_decls, checker, resolver
-            )
+            _collect_edges(stmt.finally_body, ctx)
 
 
-def _collect_edges_expr(
-    expr: TExpr,
-    caller: str,
-    edges: dict[str, set[str]],
-    fn_decls: dict[str, TFnDecl],
-    checker: Checker,
-    resolver: _TypeResolver,
-) -> None:
+def _collect_edges_expr(expr: TExpr, ctx: _EdgeCtx) -> None:
     if isinstance(expr, TCall):
-        for callee_key in _resolve_all_call_targets(expr, fn_decls, checker, resolver):
-            edges[caller].add(callee_key)
-        # Also walk args
-        _collect_edges_expr(expr.func, caller, edges, fn_decls, checker, resolver)
+        for callee_key in _resolve_all_call_targets(
+            expr, ctx.fn_decls, ctx.checker, ctx.resolver
+        ):
+            ctx.edges[ctx.caller].add(callee_key)
+        _collect_edges_expr(expr.func, ctx)
         for arg in expr.args:
-            _collect_edges_expr(arg.value, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(arg.value, ctx)
     elif isinstance(expr, TBinaryOp):
-        _collect_edges_expr(expr.left, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.right, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.left, ctx)
+        _collect_edges_expr(expr.right, ctx)
     elif isinstance(expr, TUnaryOp):
-        _collect_edges_expr(expr.operand, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.operand, ctx)
     elif isinstance(expr, TTernary):
-        _collect_edges_expr(expr.cond, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.then_expr, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.else_expr, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.cond, ctx)
+        _collect_edges_expr(expr.then_expr, ctx)
+        _collect_edges_expr(expr.else_expr, ctx)
     elif isinstance(expr, TFieldAccess):
-        _collect_edges_expr(expr.obj, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.obj, ctx)
     elif isinstance(expr, TIndex):
-        _collect_edges_expr(expr.obj, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.index, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.obj, ctx)
+        _collect_edges_expr(expr.index, ctx)
     elif isinstance(expr, TSlice):
-        _collect_edges_expr(expr.obj, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.low, caller, edges, fn_decls, checker, resolver)
-        _collect_edges_expr(expr.high, caller, edges, fn_decls, checker, resolver)
+        _collect_edges_expr(expr.obj, ctx)
+        _collect_edges_expr(expr.low, ctx)
+        _collect_edges_expr(expr.high, ctx)
     elif isinstance(expr, TListLit):
         for e in expr.elements:
-            _collect_edges_expr(e, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(e, ctx)
     elif isinstance(expr, TMapLit):
         for k, v in expr.entries:
-            _collect_edges_expr(k, caller, edges, fn_decls, checker, resolver)
-            _collect_edges_expr(v, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(k, ctx)
+            _collect_edges_expr(v, ctx)
     elif isinstance(expr, TSetLit):
         for e in expr.elements:
-            _collect_edges_expr(e, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(e, ctx)
     elif isinstance(expr, TTupleLit):
         for e in expr.elements:
-            _collect_edges_expr(e, caller, edges, fn_decls, checker, resolver)
+            _collect_edges_expr(e, ctx)
     elif isinstance(expr, TFnLit):
-        _collect_edges(expr.body, caller, edges, fn_decls, checker, resolver)
+        _collect_edges(expr.body, ctx)
 
 
 def _resolve_all_call_targets(
@@ -434,18 +418,10 @@ def _compute_sccs(keys: list[str], edges: dict[str, set[str]]) -> list[list[str]
 def _detect_recursion(
     fn_decls: dict[str, TFnDecl],
     edges: dict[str, set[str]],
-) -> tuple[list[list[str]], dict[str, int]]:
-    """Detect SCCs and write recursion annotations.
-
-    Returns SCCs in reverse topo order and a mapping from fn key to SCC index.
-    """
+) -> list[list[str]]:
+    """Detect SCCs and write recursion annotations. Returns SCCs in reverse topo order."""
     keys = list(fn_decls.keys())
     sccs = _compute_sccs(keys, edges)
-    key_to_scc: dict[str, int] = {}
-    for i, scc in enumerate(sccs):
-        for key in scc:
-            key_to_scc[key] = i
-
     scc_counter = 0
     for i, scc in enumerate(sccs):
         is_recursive = False
@@ -469,7 +445,7 @@ def _detect_recursion(
             )
             decl.annotations["callgraph.recursive_group"] = group_id
 
-    return sccs, key_to_scc
+    return sccs
 
 
 # ============================================================
@@ -477,28 +453,32 @@ def _detect_recursion(
 # ============================================================
 
 
-def _check_op_throws(
-    op: str,
-    left_expr: TExpr,
-    throws: set[str],
-    resolver: _TypeResolver,
-    strict_math: bool,
-    caught_filter: set[str] | None,
-) -> None:
+@dataclass
+class _ThrowCtx:
+    throws: set[str]
+    checker: Checker
+    resolver: _TypeResolver
+    fn_decls: dict[str, TFnDecl]
+    strict_math: bool
+    callee_throws: dict[str, set[str]]
+    caught_filter: set[str] | None
+
+
+def _check_op_throws(op: str, left_expr: TExpr, ctx: _ThrowCtx) -> None:
     """Check if an operator can throw based on operand types."""
-    left_t = resolver.resolve(left_expr)
+    left_t = ctx.resolver.resolve(left_expr)
     if op in _DIV_OPS:
         if left_t is not None and (type_eq(left_t, INT_T) or type_eq(left_t, BYTE_T)):
-            _add_throws({"ZeroDivisionError"}, throws, caught_filter)
-    if strict_math and op == "%" and left_t is not None:
+            _add_throws({"ZeroDivisionError"}, ctx.throws, ctx.caught_filter)
+    if ctx.strict_math and op == "%" and left_t is not None:
         if not type_eq(left_t, INT_T) and not type_eq(left_t, BYTE_T):
-            _add_throws({"ValueError"}, throws, caught_filter)
-    if strict_math and op in _STRICT_INT_OPS:
+            _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
+    if ctx.strict_math and op in _STRICT_INT_OPS:
         if left_t is None or type_eq(left_t, INT_T):
-            _add_throws({"ValueError"}, throws, caught_filter)
-    if strict_math and op in ("<<", ">>>"):
+            _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
+    if ctx.strict_math and op in ("<<", ">>>"):
         if left_t is None or type_eq(left_t, INT_T):
-            _add_throws({"ValueError"}, throws, caught_filter)
+            _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
 
 
 def _propagate_throws(
@@ -519,16 +499,10 @@ def _propagate_throws(
             resolver = _TypeResolver(checker)
             resolver.init_from_fn(decl, fn_structs[key])
             throws: set[str] = set()
-            _collect_fn_throws(
-                decl.body,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                throw_sets,
-                None,
+            ctx = _ThrowCtx(
+                throws, checker, resolver, fn_decls, strict_math, throw_sets, None
             )
+            _collect_fn_throws(decl.body, ctx)
             throw_sets[key] = throws
 
         # Fixed point for SCC
@@ -552,311 +526,72 @@ def _propagate_throws(
     return throw_sets
 
 
-def _collect_fn_throws(
-    stmts: list[TStmt],
-    throws: set[str],
-    checker: Checker,
-    resolver: _TypeResolver,
-    fn_decls: dict[str, TFnDecl],
-    strict_math: bool,
-    callee_throws: dict[str, set[str]],
-    caught_filter: set[str] | None,
-) -> None:
+def _collect_fn_throws(stmts: list[TStmt], ctx: _ThrowCtx) -> None:
     """Collect throws including transitive callee throws, with try/catch filtering."""
     for stmt in stmts:
-        _collect_fn_throws_stmt(
-            stmt,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_stmt(stmt, ctx)
 
 
-def _collect_fn_throws_stmt(
-    stmt: TStmt,
-    throws: set[str],
-    checker: Checker,
-    resolver: _TypeResolver,
-    fn_decls: dict[str, TFnDecl],
-    strict_math: bool,
-    callee_throws: dict[str, set[str]],
-    caught_filter: set[str] | None,
-) -> None:
+def _collect_fn_throws_stmt(stmt: TStmt, ctx: _ThrowCtx) -> None:
     if isinstance(stmt, TThrowStmt):
         if isinstance(stmt.expr, TCall):
             func = stmt.expr.func
             if isinstance(func, TVar):
-                _add_throws({func.name}, throws, caught_filter)
+                _add_throws({func.name}, ctx.throws, ctx.caught_filter)
         elif isinstance(stmt.expr, TVar):
             name = stmt.expr.name
-            if name in resolver.catch_vars:
-                _add_throws(resolver.catch_vars[name], throws, caught_filter)
+            if name in ctx.resolver.catch_vars:
+                _add_throws(
+                    ctx.resolver.catch_vars[name], ctx.throws, ctx.caught_filter
+                )
             else:
-                _add_throws({name}, throws, caught_filter)
-        _collect_fn_throws_expr(
-            stmt.expr,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+                _add_throws({name}, ctx.throws, ctx.caught_filter)
+        _collect_fn_throws_expr(stmt.expr, ctx)
     elif isinstance(stmt, TExprStmt):
-        _collect_fn_throws_expr(
-            stmt.expr,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(stmt.expr, ctx)
     elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _collect_fn_throws_expr(
-            stmt.value,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(stmt.value, ctx)
     elif isinstance(stmt, TLetStmt):
         if stmt.value is not None:
-            _collect_fn_throws_expr(
-                stmt.value,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
-        resolver.register_let(stmt.name, checker.resolve_type(stmt.typ))
+            _collect_fn_throws_expr(stmt.value, ctx)
+        ctx.resolver.register_let(stmt.name, ctx.checker.resolve_type(stmt.typ))
     elif isinstance(stmt, TAssignStmt):
-        _collect_fn_throws_expr(
-            stmt.target,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws_expr(
-            stmt.value,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(stmt.target, ctx)
+        _collect_fn_throws_expr(stmt.value, ctx)
     elif isinstance(stmt, TOpAssignStmt):
-        _collect_fn_throws_expr(
-            stmt.target,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws_expr(
-            stmt.value,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _check_op_throws(
-            stmt.op.rstrip("="),
-            stmt.target,
-            throws,
-            resolver,
-            strict_math,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(stmt.target, ctx)
+        _collect_fn_throws_expr(stmt.value, ctx)
+        _check_op_throws(stmt.op.rstrip("="), stmt.target, ctx)
     elif isinstance(stmt, TTupleAssignStmt):
         for t in stmt.targets:
-            _collect_fn_throws_expr(
-                t,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
-        _collect_fn_throws_expr(
-            stmt.value,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+            _collect_fn_throws_expr(t, ctx)
+        _collect_fn_throws_expr(stmt.value, ctx)
     elif isinstance(stmt, TIfStmt):
-        _collect_fn_throws_expr(
-            stmt.cond,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws(
-            stmt.then_body,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(stmt.cond, ctx)
+        _collect_fn_throws(stmt.then_body, ctx)
         if stmt.else_body is not None:
-            _collect_fn_throws(
-                stmt.else_body,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+            _collect_fn_throws(stmt.else_body, ctx)
     elif isinstance(stmt, TWhileStmt):
-        _collect_fn_throws_expr(
-            stmt.cond,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws(
-            stmt.body,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(stmt.cond, ctx)
+        _collect_fn_throws(stmt.body, ctx)
     elif isinstance(stmt, TForStmt):
         if isinstance(stmt.iterable, TRange):
             for a in stmt.iterable.args:
-                _collect_fn_throws_expr(
-                    a,
-                    throws,
-                    checker,
-                    resolver,
-                    fn_decls,
-                    strict_math,
-                    callee_throws,
-                    caught_filter,
-                )
+                _collect_fn_throws_expr(a, ctx)
         else:
-            _collect_fn_throws_expr(
-                stmt.iterable,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
-        _collect_fn_throws(
-            stmt.body,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+            _collect_fn_throws_expr(stmt.iterable, ctx)
+        _collect_fn_throws(stmt.body, ctx)
     elif isinstance(stmt, TMatchStmt):
-        _collect_fn_throws_expr(
-            stmt.expr,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(stmt.expr, ctx)
         for case in stmt.cases:
-            _collect_fn_throws(
-                case.body,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+            _collect_fn_throws(case.body, ctx)
         if stmt.default is not None:
-            _collect_fn_throws(
-                stmt.default.body,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+            _collect_fn_throws(stmt.default.body, ctx)
     elif isinstance(stmt, TTryStmt):
-        _collect_fn_throws_try(
-            stmt,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_try(stmt, ctx)
 
 
-def _collect_fn_throws_try(
-    stmt: TTryStmt,
-    throws: set[str],
-    checker: Checker,
-    resolver: _TypeResolver,
-    fn_decls: dict[str, TFnDecl],
-    strict_math: bool,
-    callee_throws: dict[str, set[str]],
-    outer_filter: set[str] | None,
-) -> None:
+def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
     has_catch_all = False
     caught_types: set[str] = set()
     for catch in stmt.catches:
@@ -864,38 +599,26 @@ def _collect_fn_throws_try(
             has_catch_all = True
         else:
             for ct in catch.types:
-                resolved = checker.resolve_type(ct)
+                resolved = ctx.checker.resolve_type(ct)
                 if isinstance(resolved, StructT):
                     caught_types.add(resolved.name)
 
-    # Collect throws from try body
+    # Collect throws from try body with no caught_filter
     try_throws: set[str] = set()
-    _collect_fn_throws(
-        stmt.body,
-        try_throws,
-        checker,
-        resolver,
-        fn_decls,
-        strict_math,
-        callee_throws,
-        None,
-    )
+    saved_filter = ctx.caught_filter
+    saved_throws = ctx.throws
+    ctx.throws = try_throws
+    ctx.caught_filter = None
+    _collect_fn_throws(stmt.body, ctx)
+    ctx.throws = saved_throws
+    ctx.caught_filter = saved_filter
 
-    if has_catch_all:
+    if not has_catch_all:
         residual: set[str] = set()
-    else:
-        residual = set()
         for _tt in try_throws:
             if _tt not in caught_types:
                 residual.add(_tt)
-
-    if outer_filter is not None:
-        for _tt in residual:
-            if _tt not in outer_filter:
-                throws.add(_tt)
-    else:
-        for _tt in residual:
-            throws.add(_tt)
+        _add_throws(residual, ctx.throws, ctx.caught_filter)
 
     # Process catch bodies
     for i, catch in enumerate(stmt.catches):
@@ -903,7 +626,7 @@ def _collect_fn_throws_try(
             preceding_caught: set[str] = set()
             for j in range(i):
                 for ct in stmt.catches[j].types:
-                    resolved = checker.resolve_type(ct)
+                    resolved = ctx.checker.resolve_type(ct)
                     if isinstance(resolved, StructT):
                         preceding_caught.add(resolved.name)
             catch_handles: set[str] = set()
@@ -913,304 +636,103 @@ def _collect_fn_throws_try(
         else:
             catch_handles = set()
             for ct in catch.types:
-                resolved = checker.resolve_type(ct)
+                resolved = ctx.checker.resolve_type(ct)
                 if isinstance(resolved, StructT):
                     catch_handles.add(resolved.name)
 
-        prev = resolver.catch_vars.get(catch.name)
-        resolver.catch_vars[catch.name] = catch_handles
-        _collect_fn_throws(
-            catch.body,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            outer_filter,
-        )
+        prev = ctx.resolver.catch_vars.get(catch.name)
+        ctx.resolver.catch_vars[catch.name] = catch_handles
+        _collect_fn_throws(catch.body, ctx)
         if prev is not None:
-            resolver.catch_vars[catch.name] = prev
+            ctx.resolver.catch_vars[catch.name] = prev
         else:
-            resolver.catch_vars.pop(catch.name, None)
+            ctx.resolver.catch_vars.pop(catch.name, None)
 
     if stmt.finally_body is not None:
-        _collect_fn_throws(
-            stmt.finally_body,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            outer_filter,
-        )
+        _collect_fn_throws(stmt.finally_body, ctx)
 
 
-def _collect_fn_throws_expr(
-    expr: TExpr,
-    throws: set[str],
-    checker: Checker,
-    resolver: _TypeResolver,
-    fn_decls: dict[str, TFnDecl],
-    strict_math: bool,
-    callee_throws: dict[str, set[str]],
-    caught_filter: set[str] | None,
-) -> None:
+def _collect_fn_throws_expr(expr: TExpr, ctx: _ThrowCtx) -> None:
     if isinstance(expr, TCall):
         if isinstance(expr.func, TVar):
             name = expr.func.name
-            if name in BUILTIN_THROWS and name not in checker.functions:
-                _add_throws(BUILTIN_THROWS[name], throws, caught_filter)
-            if strict_math and name == "Sorted" and name not in checker.functions:
-                _add_throws({"ValueError"}, throws, caught_filter)
-            if strict_math and name == "Pow" and name not in checker.functions:
-                _add_throws({"ValueError"}, throws, caught_filter)
-            # Transitive throws from user-defined callee
-            targets = _resolve_all_call_targets(expr, fn_decls, checker, resolver)
+            if name in BUILTIN_THROWS and name not in ctx.checker.functions:
+                _add_throws(BUILTIN_THROWS[name], ctx.throws, ctx.caught_filter)
+            if ctx.strict_math and name == "Sorted":
+                if name not in ctx.checker.functions:
+                    _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
+            if ctx.strict_math and name == "Pow":
+                if name not in ctx.checker.functions:
+                    _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
+            targets = _resolve_all_call_targets(
+                expr, ctx.fn_decls, ctx.checker, ctx.resolver
+            )
             for target in targets:
-                if target in callee_throws:
-                    _add_throws(callee_throws[target], throws, caught_filter)
+                if target in ctx.callee_throws:
+                    _add_throws(
+                        ctx.callee_throws[target], ctx.throws, ctx.caught_filter
+                    )
         elif isinstance(expr.func, TFieldAccess):
-            targets = _resolve_all_call_targets(expr, fn_decls, checker, resolver)
+            targets = _resolve_all_call_targets(
+                expr, ctx.fn_decls, ctx.checker, ctx.resolver
+            )
             for target in targets:
-                if target in callee_throws:
-                    _add_throws(callee_throws[target], throws, caught_filter)
-            _collect_fn_throws_expr(
-                expr.func.obj,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+                if target in ctx.callee_throws:
+                    _add_throws(
+                        ctx.callee_throws[target], ctx.throws, ctx.caught_filter
+                    )
+            _collect_fn_throws_expr(expr.func.obj, ctx)
         else:
-            # Function-value call — conservative: union all throw sets
             all_throws: set[str] = set()
-            for t in callee_throws.values():
+            for t in ctx.callee_throws.values():
                 all_throws |= t
-            _add_throws(all_throws, throws, caught_filter)
+            _add_throws(all_throws, ctx.throws, ctx.caught_filter)
         for arg in expr.args:
-            _collect_fn_throws_expr(
-                arg.value,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+            _collect_fn_throws_expr(arg.value, ctx)
     elif isinstance(expr, TBinaryOp):
-        _collect_fn_throws_expr(
-            expr.left,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws_expr(
-            expr.right,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _check_op_throws(
-            expr.op, expr.left, throws, resolver, strict_math, caught_filter
-        )
+        _collect_fn_throws_expr(expr.left, ctx)
+        _collect_fn_throws_expr(expr.right, ctx)
+        _check_op_throws(expr.op, expr.left, ctx)
     elif isinstance(expr, TUnaryOp):
-        _collect_fn_throws_expr(
-            expr.operand,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        if strict_math and expr.op == "-":
-            op_t = resolver.resolve(expr.operand)
+        _collect_fn_throws_expr(expr.operand, ctx)
+        if ctx.strict_math and expr.op == "-":
+            op_t = ctx.resolver.resolve(expr.operand)
             if op_t is not None and type_eq(op_t, INT_T):
-                _add_throws({"ValueError"}, throws, caught_filter)
+                _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
     elif isinstance(expr, TTernary):
-        _collect_fn_throws_expr(
-            expr.cond,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws_expr(
-            expr.then_expr,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws_expr(
-            expr.else_expr,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(expr.cond, ctx)
+        _collect_fn_throws_expr(expr.then_expr, ctx)
+        _collect_fn_throws_expr(expr.else_expr, ctx)
     elif isinstance(expr, TIndex):
-        _collect_fn_throws_expr(
-            expr.obj,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws_expr(
-            expr.index,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        obj_t = resolver.resolve(expr.obj)
+        _collect_fn_throws_expr(expr.obj, ctx)
+        _collect_fn_throws_expr(expr.index, ctx)
+        obj_t = ctx.resolver.resolve(expr.obj)
         if obj_t is not None and isinstance(obj_t, MapT):
-            _add_throws({"KeyError"}, throws, caught_filter)
+            _add_throws({"KeyError"}, ctx.throws, ctx.caught_filter)
         else:
-            _add_throws({"IndexError"}, throws, caught_filter)
+            _add_throws({"IndexError"}, ctx.throws, ctx.caught_filter)
     elif isinstance(expr, TSlice):
-        _collect_fn_throws_expr(
-            expr.obj,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws_expr(
-            expr.low,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _collect_fn_throws_expr(
-            expr.high,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
-        _add_throws({"IndexError"}, throws, caught_filter)
+        _collect_fn_throws_expr(expr.obj, ctx)
+        _collect_fn_throws_expr(expr.low, ctx)
+        _collect_fn_throws_expr(expr.high, ctx)
+        _add_throws({"IndexError"}, ctx.throws, ctx.caught_filter)
     elif isinstance(expr, TFieldAccess):
-        _collect_fn_throws_expr(
-            expr.obj,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws_expr(expr.obj, ctx)
     elif isinstance(expr, TListLit):
         for e in expr.elements:
-            _collect_fn_throws_expr(
-                e,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+            _collect_fn_throws_expr(e, ctx)
     elif isinstance(expr, TMapLit):
         for k, v in expr.entries:
-            _collect_fn_throws_expr(
-                k,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
-            _collect_fn_throws_expr(
-                v,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+            _collect_fn_throws_expr(k, ctx)
+            _collect_fn_throws_expr(v, ctx)
     elif isinstance(expr, TSetLit):
         for e in expr.elements:
-            _collect_fn_throws_expr(
-                e,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+            _collect_fn_throws_expr(e, ctx)
     elif isinstance(expr, TTupleLit):
         for e in expr.elements:
-            _collect_fn_throws_expr(
-                e,
-                throws,
-                checker,
-                resolver,
-                fn_decls,
-                strict_math,
-                callee_throws,
-                caught_filter,
-            )
+            _collect_fn_throws_expr(e, ctx)
     elif isinstance(expr, TFnLit):
-        _collect_fn_throws(
-            expr.body,
-            throws,
-            checker,
-            resolver,
-            fn_decls,
-            strict_math,
-            callee_throws,
-            caught_filter,
-        )
+        _collect_fn_throws(expr.body, ctx)
 
 
 # ============================================================
@@ -1343,180 +865,6 @@ def _walk_tail_expr(expr: TExpr, *, tail: bool) -> None:
 def analyze_callgraph(module: TModule, checker: Checker) -> None:
     """Run callgraph analysis on all functions in the module."""
     fn_decls, edges, fn_structs = _build_call_graph(module, checker)
-    sccs, _ = _detect_recursion(fn_decls, edges)
+    sccs = _detect_recursion(fn_decls, edges)
     _propagate_throws(sccs, fn_decls, fn_structs, edges, checker, module.strict_math)
     _detect_tail_calls(fn_decls)
-
-
-# ============================================================
-# SERIALIZATION
-# ============================================================
-
-
-def _sc_collect_calls_stmts(
-    stmts: list[TStmt],
-    calls: dict[str, dict[str, JsonValue]],
-    checker: Checker,
-) -> None:
-    i = 0
-    while i < len(stmts):
-        _sc_collect_calls_stmt(stmts[i], calls, checker)
-        i += 1
-
-
-def _sc_collect_calls_stmt(
-    stmt: TStmt,
-    calls: dict[str, dict[str, JsonValue]],
-    checker: Checker,
-) -> None:
-    if isinstance(stmt, TExprStmt):
-        _sc_collect_calls_expr(stmt.expr, calls, checker)
-    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _sc_collect_calls_expr(stmt.value, calls, checker)
-    elif isinstance(stmt, TThrowStmt):
-        _sc_collect_calls_expr(stmt.expr, calls, checker)
-    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
-        _sc_collect_calls_expr(stmt.value, calls, checker)
-    elif isinstance(stmt, TAssignStmt):
-        _sc_collect_calls_expr(stmt.target, calls, checker)
-        _sc_collect_calls_expr(stmt.value, calls, checker)
-    elif isinstance(stmt, TOpAssignStmt):
-        _sc_collect_calls_expr(stmt.target, calls, checker)
-        _sc_collect_calls_expr(stmt.value, calls, checker)
-    elif isinstance(stmt, TTupleAssignStmt):
-        for t in stmt.targets:
-            _sc_collect_calls_expr(t, calls, checker)
-        _sc_collect_calls_expr(stmt.value, calls, checker)
-    elif isinstance(stmt, TIfStmt):
-        _sc_collect_calls_expr(stmt.cond, calls, checker)
-        _sc_collect_calls_stmts(stmt.then_body, calls, checker)
-        if stmt.else_body is not None:
-            _sc_collect_calls_stmts(stmt.else_body, calls, checker)
-    elif isinstance(stmt, TWhileStmt):
-        _sc_collect_calls_expr(stmt.cond, calls, checker)
-        _sc_collect_calls_stmts(stmt.body, calls, checker)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _sc_collect_calls_expr(a, calls, checker)
-        else:
-            _sc_collect_calls_expr(stmt.iterable, calls, checker)
-        _sc_collect_calls_stmts(stmt.body, calls, checker)
-    elif isinstance(stmt, TMatchStmt):
-        _sc_collect_calls_expr(stmt.expr, calls, checker)
-        for case in stmt.cases:
-            _sc_collect_calls_stmts(case.body, calls, checker)
-        if stmt.default is not None:
-            _sc_collect_calls_stmts(stmt.default.body, calls, checker)
-    elif isinstance(stmt, TTryStmt):
-        _sc_collect_calls_stmts(stmt.body, calls, checker)
-        for catch in stmt.catches:
-            _sc_collect_calls_stmts(catch.body, calls, checker)
-        if stmt.finally_body is not None:
-            _sc_collect_calls_stmts(stmt.finally_body, calls, checker)
-
-
-def _sc_collect_calls_expr(
-    expr: TExpr,
-    calls: dict[str, dict[str, JsonValue]],
-    checker: Checker,
-) -> None:
-    if isinstance(expr, TCall):
-        name: str | None = None
-        if isinstance(expr.func, TVar):
-            n = expr.func.name
-            t = checker.types.get(n)
-            if t is not None and isinstance(t, StructT):
-                name = None
-            elif n in checker.functions:
-                name = n
-            else:
-                name = None
-        elif isinstance(expr.func, TFieldAccess):
-            name = expr.func.field
-        if name is not None:
-            ann = expr.annotations.get("callgraph.is_tail_call")
-            if ann is not None:
-                is_tail = JStr(str(ann))
-            else:
-                is_tail = JStr("false")
-            if name not in calls:
-                calls[name] = {}
-            calls[name]["is_tail_call"] = is_tail
-        if isinstance(expr.func, TFieldAccess):
-            _sc_collect_calls_expr(expr.func.obj, calls, checker)
-        elif not isinstance(expr.func, TVar):
-            _sc_collect_calls_expr(expr.func, calls, checker)
-        for arg in expr.args:
-            _sc_collect_calls_expr(arg.value, calls, checker)
-    elif isinstance(expr, TBinaryOp):
-        _sc_collect_calls_expr(expr.left, calls, checker)
-        _sc_collect_calls_expr(expr.right, calls, checker)
-    elif isinstance(expr, TUnaryOp):
-        _sc_collect_calls_expr(expr.operand, calls, checker)
-    elif isinstance(expr, TTernary):
-        _sc_collect_calls_expr(expr.cond, calls, checker)
-        _sc_collect_calls_expr(expr.then_expr, calls, checker)
-        _sc_collect_calls_expr(expr.else_expr, calls, checker)
-    elif isinstance(expr, TFieldAccess):
-        _sc_collect_calls_expr(expr.obj, calls, checker)
-    elif isinstance(expr, TIndex):
-        _sc_collect_calls_expr(expr.obj, calls, checker)
-        _sc_collect_calls_expr(expr.index, calls, checker)
-    elif isinstance(expr, TSlice):
-        _sc_collect_calls_expr(expr.obj, calls, checker)
-        _sc_collect_calls_expr(expr.low, calls, checker)
-        _sc_collect_calls_expr(expr.high, calls, checker)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _sc_collect_calls_expr(e, calls, checker)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _sc_collect_calls_expr(k, calls, checker)
-            _sc_collect_calls_expr(v, calls, checker)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _sc_collect_calls_expr(e, calls, checker)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _sc_collect_calls_expr(e, calls, checker)
-    elif isinstance(expr, TFnLit):
-        _sc_collect_calls_stmts(expr.body, calls, checker)
-
-
-def _sc_serialize_fn(decl: TFnDecl, checker: Checker) -> dict[str, JsonValue]:
-    """Serialize one function's callgraph data."""
-    d: dict[str, JsonValue] = {}
-    pfx = "callgraph."
-    plen = len(pfx)
-    keys = list(decl.annotations.keys())
-    i = 0
-    while i < len(keys):
-        k = keys[i]
-        if k.startswith(pfx):
-            d[k[plen:]] = JStr(str(decl.annotations[k]))
-        i += 1
-    calls: dict[str, dict[str, JsonValue]] = {}
-    _sc_collect_calls_stmts(decl.body, calls, checker)
-    if len(calls) > 0:
-        call_entries: dict[str, JsonValue] = {}
-        ckeys = list(calls.keys())
-        ci = 0
-        while ci < len(ckeys):
-            call_entries[ckeys[ci]] = JDict(calls[ckeys[ci]])
-            ci += 1
-        d["calls"] = JDict(call_entries)
-    return d
-
-
-def serialize_callgraph(module: TModule, checker: Checker) -> dict[str, JsonValue]:
-    """Serialize callgraph annotations and call info for all functions."""
-    result: dict[str, JsonValue] = {}
-    for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = JDict(_sc_serialize_fn(decl, checker))
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                key = decl.name + "." + method.name
-                result[key] = JDict(_sc_serialize_fn(method, checker))
-    return result

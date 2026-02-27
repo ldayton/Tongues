@@ -4648,8 +4648,9 @@ class Checker:
                     self.error("Format arguments must be string", args[i].pos)
                 i += 1
             # Check placeholder count matches arg count
-            if isinstance(args[0].value, TStringLit):
-                placeholders = args[0].value.value.count("{}")
+            fmt_val: TExpr = args[0].value
+            if isinstance(fmt_val, TStringLit):
+                placeholders = fmt_val.value.count("{}")
                 arg_count = n - 1
                 if placeholders != arg_count:
                     self.error(
