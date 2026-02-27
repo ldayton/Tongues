@@ -79,6 +79,7 @@ from .types import (
 _DBG_PRINT_EXPR_TYPES: bool = False
 _DBG_PRINT_BUDGET_EXHAUSTION: bool = False
 _DBG_PRINT_NARROWING: bool = False
+_DBG_PRINT_ATTR_LOOKUP: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -3818,20 +3819,31 @@ def _subclass_has_method(base_name: str, method_name: str, ctx: _InferCtx) -> bo
 
 def _class_has_attr(class_name: str, attr_name: str, ctx: _InferCtx) -> bool:
     """Check if a class has the given attribute, including inherited ones."""
+    chain: list[str] = []
     current = class_name
     while current != "":
+        if _DBG_PRINT_ATTR_LOOKUP:
+            chain.append(current)
         cls = ctx.tc_result.classes.get(current)
         if cls is not None:
             if attr_name in cls.fields or attr_name in cls.const_fields:
+                if _DBG_PRINT_ATTR_LOOKUP:
+                    print(
+                        f"DBG attr hit: {class_name}.{attr_name} (field on {current})"
+                    )
                 return True
         methods = ctx.tc_result.methods.get(current)
         if methods is not None and attr_name in methods:
+            if _DBG_PRINT_ATTR_LOOKUP:
+                print(f"DBG attr hit: {class_name}.{attr_name} (method on {current})")
             return True
         bases = ctx.class_bases.get(current)
         if bases is not None and len(bases) > 0:
             current = bases[0]
         else:
             current = ""
+    if _DBG_PRINT_ATTR_LOOKUP:
+        print(f"DBG attr miss: {class_name}.{attr_name} (chain: {' -> '.join(chain)})")
     return False
 
 
