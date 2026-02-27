@@ -68,8 +68,7 @@ _EXTRA_BUILTINS = {
 _ALL_BUILTINS: set[str] = set()
 for _bn in BUILTIN_NAMES:
     _ALL_BUILTINS.add(_bn)
-for _bn in _EXTRA_BUILTINS:
-    _ALL_BUILTINS.add(_bn)
+_ALL_BUILTINS |= _EXTRA_BUILTINS
 
 
 # ============================================================
