@@ -4521,7 +4521,7 @@ def _stamp_uids_walk(node: ASTNode, counter: list[int]) -> None:
     while i < len(keys):
         k = keys[i]
         i += 1
-        if k.startswith("_"):
+        if len(k) > 0 and k[0] == "_":
             continue
         v = node[k]
         if isinstance(v, JDict):

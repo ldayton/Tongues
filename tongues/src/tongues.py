@@ -1511,8 +1511,8 @@ def _pipeline_post_parse(
     if stop_at == "fields":
         return (0, to_json(tc_result.fields_to_dict()))
     shadow_env = os.getenv("TONGUES_SHADOW")
-    if shadow_env is not None and shadow_env != "":
-        stamp_uids(ast_dict)
+    shadow = shadow_env is not None and shadow_env != ""
+    stamp_uids(ast_dict)
     inf_result = run_pycheck(
         ast_dict,
         tc_result,
@@ -1530,7 +1530,7 @@ def _pipeline_post_parse(
             iei += 1
         _print_errors(err_strs)
         return (1, "")
-    if shadow_env is not None and shadow_env != "":
+    if shadow:
         report_expr_coverage(ast_dict, inf_result)
     if stop_at == "pycheck":
         reveals_out = JList([])
@@ -1552,6 +1552,7 @@ def _pipeline_post_parse(
         class_bases,
         source,
         inf_result,
+        shadow,
     )
     if len(lower_errors) > 0:
         err_strs: list[str] = []

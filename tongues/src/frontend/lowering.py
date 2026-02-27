@@ -6265,12 +6265,14 @@ def lower(
     class_bases: dict[str, list[str]],
     source: str,
     pycheck_result: PycheckResult | None = None,
+    shadow: bool = False,
 ) -> tuple[TModule | None, list[LoweringError]]:
     """Lower the Python AST to Taytsh IR.
 
     Returns (module, errors). If errors is non-empty, module may be None.
     """
-    _SHADOW_MODE[0] = pycheck_result is not None and len(pycheck_result.expr_types) > 0
+    has_expr_types = pycheck_result is not None and len(pycheck_result.expr_types) > 0
+    _SHADOW_MODE[0] = shadow and has_expr_types
     _LOWER_ANCESTORS.clear()
     akeys = list(hier_result.ancestors.keys())
     ai = 0
