@@ -3919,9 +3919,7 @@ def _count_expr_nodes(
         if k.startswith("_"):
             continue
         v = node[k]
-        if isinstance(v, dict):
-            _count_expr_nodes(v, expr_types, totals, covered)
-        elif isinstance(v, JDict):
+        if isinstance(v, JDict):
             _count_expr_nodes(v.entries, expr_types, totals, covered)
         elif isinstance(v, JList):
             li = 0
@@ -3929,17 +3927,6 @@ def _count_expr_nodes(
                 item = v.items[li]
                 if isinstance(item, JDict):
                     _count_expr_nodes(item.entries, expr_types, totals, covered)
-                elif isinstance(item, dict):
-                    _count_expr_nodes(item, expr_types, totals, covered)
-                li += 1
-        elif isinstance(v, list):
-            li = 0
-            while li < len(v):
-                item = v[li]
-                if isinstance(item, JDict):
-                    _count_expr_nodes(item.entries, expr_types, totals, covered)
-                elif isinstance(item, dict):
-                    _count_expr_nodes(item, expr_types, totals, covered)
                 li += 1
 
 

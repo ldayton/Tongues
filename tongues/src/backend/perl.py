@@ -2526,7 +2526,7 @@ class _PerlEmitter:
         if name == "Args":
             return "[@ARGV]"
         if name == "GetEnv":
-            return "($ENV{" + self._a(args, 0) + "} // '')"
+            return "$ENV{" + self._a(args, 0) + "}"
         if name == "Exit":
             return "exit(" + self._a(args, 0) + ")"
         if name == "Pow":

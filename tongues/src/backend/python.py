@@ -1780,7 +1780,7 @@ class _PythonEmitter:
         if name == "Args":
             return "sys.argv[1:]"
         if name == "GetEnv":
-            return "os.environ.get(" + self._a(args, 0) + ', "")'
+            return "os.getenv(" + self._a(args, 0) + ")"
         if name == "Exit":
             return "sys.exit(" + self._a(args, 0) + ")"
         # Operator forms

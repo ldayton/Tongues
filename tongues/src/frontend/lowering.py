@@ -9,7 +9,6 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass
 
@@ -163,7 +162,8 @@ TAYTSH_KEYWORDS: set[str] = {
     "while",
 }
 
-_SHADOW_MODE: list[bool] = [os.getenv("TONGUES_SHADOW", "") != ""]
+
+_SHADOW_MODE: list[bool] = [False]
 _SHADOW_LOG: list[list[str]] = [[]]
 
 
@@ -6270,6 +6270,7 @@ def lower(
 
     Returns (module, errors). If errors is non-empty, module may be None.
     """
+    _SHADOW_MODE[0] = pycheck_result is not None and len(pycheck_result.expr_types) > 0
     _LOWER_ANCESTORS.clear()
     akeys = list(hier_result.ancestors.keys())
     ai = 0

@@ -21,9 +21,6 @@ from .types import (
 )
 
 
-_NEXT_UID: list[int] = [0]
-
-
 def _wrap_node(d: ASTNode) -> JDict:
     return JDict(d)
 
@@ -3673,8 +3670,6 @@ def make_node(
 ) -> ASTNode:
     """Create an AST dict node with position info."""
     result: ASTNode = {"_type": JStr(type_name)}
-    result["_uid"] = JInt(_NEXT_UID[0])
-    _NEXT_UID[0] += 1
     result["lineno"] = JInt(lineno)
     result["col_offset"] = JInt(col)
     result["end_lineno"] = JInt(lineno)
@@ -4496,7 +4491,6 @@ def set_context_list(nodes: list[ASTNode], ctx_name: str) -> None:
 
 def parse(source: str) -> ASTNode:
     """Parse Python source to dict-based AST."""
-    _NEXT_UID[0] = 0
     tokens = tokenize(source)
     parser = Parser(tokens)
     module = parser.parse_module()
@@ -4508,3 +4502,34 @@ def parse(source: str) -> ASTNode:
             tok.col,
         )
     return module
+
+
+def stamp_uids(node: ASTNode) -> None:
+    """Walk the AST and stamp a unique _uid on each dict node with _type."""
+    counter: list[int] = [0]
+    _stamp_uids_walk(node, counter)
+
+
+def _stamp_uids_walk(node: ASTNode, counter: list[int]) -> None:
+    if not isinstance(node, dict):
+        return
+    if "_type" in node:
+        node["_uid"] = JInt(counter[0])
+        counter[0] += 1
+    keys = list(node.keys())
+    i = 0
+    while i < len(keys):
+        k = keys[i]
+        i += 1
+        if k.startswith("_"):
+            continue
+        v = node[k]
+        if isinstance(v, JDict):
+            _stamp_uids_walk(v.entries, counter)
+        elif isinstance(v, JList):
+            j = 0
+            while j < len(v.items):
+                item = v.items[j]
+                if isinstance(item, JDict):
+                    _stamp_uids_walk(item.entries, counter)
+                j += 1
