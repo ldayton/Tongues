@@ -75,13 +75,12 @@ from ..taytsh.ast import (
     TVar,
     TWhileStmt,
 )
-from .signatures import (
+from .typecollect import (
     ParamInfo,
-    SignatureResult,
+    TypeCollectResult,
     annotation_to_str,
     py_type_to_type_dict,
 )
-from .fields import FieldResult
 from .hierarchy import HierarchyResult
 from .types import (
     TypeNode,
@@ -96,6 +95,7 @@ from .types import (
     InterfaceRef,
     FuncType,
     UnionType,
+    LiteralType,
     INT_TYPE,
     FLOAT_TYPE,
     BOOL_TYPE,
@@ -178,6 +178,64 @@ def _name_ann(safe: str, original: str) -> Ann:
 # Type dict to TType conversion
 # ---------------------------------------------------------------------------
 
+_LOWER_ANCESTORS: dict[str, list[str]] = {}
+
+
+def _resolve_struct_union(t: UnionType) -> TypeNode:
+    """Resolve a union of related structs to their common ancestor interface."""
+    names: list[str] = []
+    i = 0
+    while i < len(t.variants):
+        v = t.variants[i]
+        if isinstance(v, PointerType) and isinstance(v.target, StructRef):
+            names.append(v.target.name)
+        elif isinstance(v, StructRef):
+            names.append(v.name)
+        else:
+            return t
+        i += 1
+    if len(names) < 2:
+        return t
+    chain0 = _ancestor_chain_hier(names[0])
+    common: set[str] = set(chain0)
+    i = 1
+    while i < len(names):
+        chain_i = _ancestor_chain_hier(names[i])
+        chain_set: set[str] = set(chain_i)
+        new_common: set[str] = set()
+        j = 0
+        while j < len(chain0):
+            if chain0[j] in chain_set and chain0[j] in common:
+                new_common.add(chain0[j])
+            j += 1
+        common = new_common
+        i += 1
+    j = 0
+    while j < len(chain0):
+        if chain0[j] in common:
+            return InterfaceRef(chain0[j])
+        j += 1
+    return t
+
+
+def _ancestor_chain_hier(name: str) -> list[str]:
+    """Get ancestor chain from the lowering ancestors dict."""
+    chain: list[str] = [name]
+    visited: set[str] = set()
+    visited.add(name)
+    cur = name
+    while True:
+        parents = _LOWER_ANCESTORS.get(cur)
+        if parents is None or len(parents) == 0:
+            break
+        parent = parents[0]
+        if parent in visited:
+            break
+        chain.append(parent)
+        visited.add(parent)
+        cur = parent
+    return chain
+
 
 def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
     """Convert a TypeNode (from signatures/inference) to a Taytsh TType node."""
@@ -232,6 +290,9 @@ def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
         fn_parts.append(_typenode_to_ttype(pos, t.ret))
         return TFuncType(pos, fn_parts)
     if isinstance(t, UnionType):
+        resolved = _resolve_struct_union(t)
+        if not isinstance(resolved, UnionType):
+            return _typenode_to_ttype(pos, resolved)
         parts2: list[TType] = []
         i = 0
         while i < len(t.variants):
@@ -240,6 +301,8 @@ def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
         if len(parts2) >= 2:
             return TUnionType(pos, parts2)
         return TPrimitive(pos, "error")
+    if isinstance(t, LiteralType):
+        return _typenode_to_ttype(pos, t.base)
     return TPrimitive(pos, "error")
 
 
@@ -318,7 +381,7 @@ def _lookup_method_params(
         class_name = obj_type.name
     if class_name == "":
         return None
-    class_methods = ctx.sig_result.methods.get(class_name)
+    class_methods = ctx.tc_result.methods.get(class_name)
     if class_methods is None:
         return None
     func_info = class_methods.get(method_name)
@@ -688,15 +751,13 @@ class _LowerCtx:
 
     def __init__(
         self,
-        sig_result: SignatureResult,
-        field_result: FieldResult,
+        tc_result: TypeCollectResult,
         hier_result: HierarchyResult,
         known_classes: set[str],
         class_bases: dict[str, list[str]],
         source: str,
     ) -> None:
-        self.sig_result: SignatureResult = sig_result
-        self.field_result: FieldResult = field_result
+        self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
         self.known_classes: set[str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
@@ -797,7 +858,7 @@ def _get_param_type(param: ParamInfo) -> TypeNode:
 
 def _func_return_type(ctx: _LowerCtx, name: str) -> TypeNode:
     """Get return type of a function from signatures."""
-    info = ctx.sig_result.functions.get(name)
+    info = ctx.tc_result.functions.get(name)
     if info is not None:
         return info.return_type
     return VOID_TYPE
@@ -805,7 +866,7 @@ def _func_return_type(ctx: _LowerCtx, name: str) -> TypeNode:
 
 def _method_return_type(ctx: _LowerCtx, class_name: str, method_name: str) -> TypeNode:
     """Get return type of a method from signatures."""
-    class_methods = ctx.sig_result.methods.get(class_name)
+    class_methods = ctx.tc_result.methods.get(class_name)
     if class_methods is not None:
         info = class_methods.get(method_name)
         if info is not None:
@@ -861,7 +922,7 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         vt = env.var_types.get(name)
         if vt is not None:
             return vt
-        fi = ctx.sig_result.functions.get(name)
+        fi = ctx.tc_result.functions.get(name)
         if fi is not None:
             param_types: list[TypeNode] = []
             j = 0
@@ -889,14 +950,14 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             obj_type = obj_type.inner
         if _is_struct_type(obj_type):
             sname = _struct_name(obj_type)
-            cls_info = ctx.field_result.classes.get(sname)
+            cls_info = ctx.tc_result.classes.get(sname)
             if cls_info is not None:
                 field_info = cls_info.fields.get(attr)
                 if field_info is not None:
                     return field_info.typ
         if _is_interface_type(obj_type):
             iname = _interface_name(obj_type)
-            cls_info = ctx.field_result.classes.get(iname)
+            cls_info = ctx.tc_result.classes.get(iname)
             if cls_info is not None:
                 field_info = cls_info.fields.get(attr)
                 if field_info is not None:
@@ -2619,7 +2680,7 @@ def _lower_name_call(
     # Regular function call
     lowered_args: list[TArg] = []
     if len(keywords) > 0:
-        func_info = ctx.sig_result.functions.get(fname)
+        func_info = ctx.tc_result.functions.get(fname)
         params: list[ParamInfo] | None = None
         if func_info is not None:
             params = func_info.params
@@ -5664,7 +5725,7 @@ def _build_function(
     if is_entry_point:
         name = "Main"
     # Get params and return type from signatures
-    func_info = ctx.sig_result.functions.get(get_str(node, "name"))
+    func_info = ctx.tc_result.functions.get(get_str(node, "name"))
     params: list[TParam] = []
     func_env = env.copy()
     func_env.hoisted_stmts = {}
@@ -5721,7 +5782,7 @@ def _build_method(
     pos = _node_pos(node)
     name = get_str(node, "name")
     # Get method signature
-    class_methods = ctx.sig_result.methods.get(class_name, {})
+    class_methods = ctx.tc_result.methods.get(class_name, {})
     func_info = class_methods.get(name)
     params: list[TParam] = []
     func_env = env.copy()
@@ -5797,7 +5858,7 @@ def _collect_ancestor_fields(
     i = 0
     while i < len(chain):
         anc = chain[i]
-        anc_info = ctx.field_result.classes.get(anc)
+        anc_info = ctx.tc_result.classes.get(anc)
         if anc_info is not None:
             akeys: list[str] = []
             if len(anc_info.init_params) > 0:
@@ -5841,7 +5902,7 @@ def _build_struct(
             if parent_root is not None:
                 ann = {"_parent_interface": parent_root}
         iface_fields: list[TFieldDecl] = []
-        cls_info = ctx.field_result.classes.get(name)
+        cls_info = ctx.tc_result.classes.get(name)
         if cls_info is not None:
             seen: set[str] = set()
             fkeys: list[str] = []
@@ -5900,7 +5961,7 @@ def _build_struct(
         parent = ctx.hier_result.root_of(name)
     # Build fields
     fields: list[TFieldDecl] = []
-    cls_info = ctx.field_result.classes.get(name)
+    cls_info = ctx.tc_result.classes.get(name)
     if cls_info is not None:
         if is_exception and len(cls_info.fields) == 0:
             fields.append(TFieldDecl(pos, "message", TPrimitive(pos, "string")))
@@ -6161,8 +6222,7 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
 
 def lower(
     tree: ASTNode,
-    sig_result: SignatureResult,
-    field_result: FieldResult,
+    tc_result: TypeCollectResult,
     hier_result: HierarchyResult,
     known_classes: set[str],
     class_bases: dict[str, list[str]],
@@ -6172,8 +6232,13 @@ def lower(
 
     Returns (module, errors). If errors is non-empty, module may be None.
     """
-    ctx = _LowerCtx(
-        sig_result, field_result, hier_result, known_classes, class_bases, source
-    )
+    _LOWER_ANCESTORS.clear()
+    akeys = list(hier_result.ancestors.keys())
+    ai = 0
+    while ai < len(akeys):
+        _LOWER_ANCESTORS[akeys[ai]] = hier_result.ancestors[akeys[ai]]
+        ai += 1
+    ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases, source)
     module = _build_module(tree, ctx)
+    _LOWER_ANCESTORS.clear()
     return (module, ctx.errors)

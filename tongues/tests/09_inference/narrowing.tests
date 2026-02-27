@@ -2965,7 +2965,7 @@ def f(x: str | None) -> str:
         return x
     return ""
 ---
-reveal:3 = str
+reveal:3 = Literal["hello"]
 ---
 
 === optional equality does not narrow else
@@ -5661,4 +5661,272 @@ def f(w: WrapperA | WrapperB) -> int:
     return w.child.val
 ---
 error:
+---
+
+=== aliased isinstance narrows in if
+def f(x: int | str) -> int:
+    flag: bool = isinstance(x, int)
+    if flag:
+        return x + 1
+    return len(x)
+---
+ok
+---
+
+=== aliased isinstance narrows else branch
+def f(x: int | str) -> int:
+    flag: bool = isinstance(x, int)
+    if flag:
+        return x
+    return len(x)
+---
+ok
+---
+
+=== aliased isinstance with not
+def f(x: int | str) -> int:
+    flag: bool = isinstance(x, str)
+    if not flag:
+        return x + 1
+    return len(x)
+---
+ok
+---
+
+=== aliased is None narrows
+def f(x: int | None) -> int:
+    is_missing: bool = x is None
+    if is_missing:
+        return 0
+    return x + 1
+---
+ok
+---
+
+=== aliased is not None narrows
+def f(x: int | None) -> int:
+    present: bool = x is not None
+    if present:
+        return x + 1
+    return 0
+---
+ok
+---
+
+=== aliased isinstance with reveal_type
+def f(x: int | str) -> None:
+    flag: bool = isinstance(x, int)
+    if flag:
+        reveal_type(x)
+---
+reveal:4 = int
+---
+
+=== aliased isinstance reveal_type in else
+def f(x: int | str) -> None:
+    flag: bool = isinstance(x, int)
+    if flag:
+        pass
+    else:
+        reveal_type(x)
+---
+reveal:6 = str
+---
+
+=== aliased const field narrows union
+from dataclasses import dataclass
+@dataclass
+class Add:
+    kind: str
+    left: int
+    right: int
+@dataclass
+class Sub:
+    kind: str
+    left: int
+    right: int
+def eval(node: Add | Sub) -> int:
+    is_add: bool = node.kind == "add"
+    if is_add:
+        return node.left + node.right
+    return node.left - node.right
+---
+ok
+---
+
+=== no-else merge uses combine_types
+def f(x: int | str) -> int | str:
+    if isinstance(x, int):
+        x = x + 1
+    return x
+---
+ok
+---
+
+=== for loop body changes visible after loop
+def f(items: list[int]) -> int | None:
+    result: int | None = None
+    for item in items:
+        result = item
+    return result
+---
+ok
+---
+
+=== while loop body changes visible after loop
+def f() -> int | None:
+    result: int | None = None
+    items: list[int] = [1, 2, 3]
+    i: int = 0
+    while i < len(items):
+        result = items[i]
+        i += 1
+    return result
+---
+ok
+---
+
+=== equality narrows str to literal
+def f(x: str) -> None:
+    if x == "hello":
+        reveal_type(x)
+---
+reveal:3 = Literal["hello"]
+---
+
+=== equality narrows int to literal
+def f(x: int) -> None:
+    if x == 42:
+        reveal_type(x)
+---
+reveal:3 = Literal[42]
+---
+
+=== equality does not narrow else branch
+def f(x: str) -> None:
+    if x == "hello":
+        pass
+    else:
+        reveal_type(x)
+---
+reveal:5 = str
+---
+
+=== not-equal narrows else to literal
+def f(x: str) -> None:
+    if x != "hello":
+        reveal_type(x)
+    else:
+        reveal_type(x)
+---
+reveal:3 = str
+reveal:5 = Literal["hello"]
+---
+
+=== literal type in arithmetic
+def f(x: int) -> int:
+    if x == 42:
+        return x + 1
+    return x
+---
+ok
+---
+
+=== literal assignable to base type
+def f(x: str) -> str:
+    if x == "hello":
+        y: str = x
+        return y
+    return x
+---
+ok
+---
+
+=== equality does not narrow union variable
+def f(x: int | str) -> None:
+    if x == "hello":
+        reveal_type(x)
+---
+reveal:3 = int | str
+---
+
+=== never assignable to any type
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    a_val: int
+@dataclass
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> int:
+    if x.kind == "a":
+        return x.a_val
+    return len(x.b_val)
+---
+ok
+---
+
+=== unreachable else after exhaustive discrimination
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    a_val: int
+@dataclass
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> int:
+    if x.kind == "a":
+        return x.a_val
+    elif x.kind == "b":
+        return len(x.b_val)
+    else:
+        return 0
+---
+error:16: unreachable code: all union variants already handled
+---
+
+=== no error for exhaustive discrimination without else
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    a_val: int
+@dataclass
+class B:
+    kind: str
+    b_val: str
+def f(x: A | B) -> int:
+    if x.kind == "a":
+        return x.a_val
+    return len(x.b_val)
+---
+ok
+---
+
+=== no error for non-exhaustive elif without else
+from dataclasses import dataclass
+@dataclass
+class A:
+    kind: str
+    a_val: int
+@dataclass
+class B:
+    kind: str
+    b_val: str
+@dataclass
+class C:
+    kind: str
+    c_val: float
+def f(x: A | B | C) -> int:
+    if x.kind == "a":
+        return x.a_val
+    elif x.kind == "b":
+        return len(x.b_val)
+    return 0
+---
+ok
 ---

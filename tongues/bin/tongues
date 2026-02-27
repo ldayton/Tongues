@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.tongues import main, main_project, parse_args
 from src.frontend.parse import parse
-from src.frontend.subset import (
+from src.frontend.bind import (
     verify as verify_subset,
     extract_imports,
     ProjectVerifyResult,

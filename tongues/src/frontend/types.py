@@ -108,6 +108,14 @@ class IteratorType(TypeNode):
     element: TypeNode
 
 
+@dataclass
+class LiteralType(TypeNode):
+    """A literal type: Literal["foo"], Literal[42], Literal[true]."""
+
+    lit_value: str
+    base: PrimitiveType
+
+
 # ============================================================
 # LITERAL TYPE NODES (for default values)
 # ============================================================
@@ -296,6 +304,39 @@ def has_key(node: dict[str, JsonValue], key: str) -> bool:
 # ============================================================
 
 
+def map_subtypes(t: TypeNode, replacements: list[TypeNode]) -> TypeNode:
+    """Rebuild a union/optional by replacing leaf types with the given list.
+
+    Extracts the structural shape of t (Union, Optional+Union, Optional, plain)
+    and reconstructs it from replacements. Callers iterate get_subtypes(t),
+    transform each element, and pass the results here.
+    """
+    if isinstance(t, UnionType):
+        return combine_types(replacements)
+    if isinstance(t, OptionalType):
+        if isinstance(t.inner, UnionType):
+            return combine_types(replacements)
+        if len(replacements) == 1:
+            return OptionalType(replacements[0])
+        return combine_types(replacements)
+    if len(replacements) == 1:
+        return replacements[0]
+    return combine_types(replacements)
+
+
+def get_subtypes(t: TypeNode) -> list[TypeNode]:
+    """Extract leaf variant types from a union/optional for iteration."""
+    if isinstance(t, UnionType):
+        return t.variants
+    if isinstance(t, OptionalType):
+        if isinstance(t.inner, UnionType):
+            return t.inner.variants
+        result: list[TypeNode] = [t.inner]
+        return result
+    result2: list[TypeNode] = [t]
+    return result2
+
+
 def is_any(t: TypeNode) -> bool:
     """Check if a type is the 'any' type."""
     if isinstance(t, InterfaceRef) and t.name == "any":
@@ -340,6 +381,8 @@ def contains_any(t: TypeNode) -> bool:
                 return True
             i += 1
         return False
+    if isinstance(t, LiteralType):
+        return False
     return False
 
 
@@ -355,6 +398,8 @@ def type_name(t: TypeNode) -> str:
             return "str"
         if t.kind == "void":
             return "None"
+        if t.kind == "never":
+            return "never"
         return t.kind
     if isinstance(t, SliceType):
         return "list[" + type_name(t.element) + "]"
@@ -394,7 +439,284 @@ def type_name(t: TypeNode) -> str:
         return " | ".join(parts)
     if isinstance(t, IteratorType):
         return "Iterator[" + type_name(t.element) + "]"
+    if isinstance(t, LiteralType):
+        if t.base.kind == "string":
+            return 'Literal["' + t.lit_value + '"]'
+        return "Literal[" + t.lit_value + "]"
     return "unknown"
+
+
+def is_bytes_type(t: TypeNode) -> bool:
+    """Check if t represents bytes (either PrimitiveType("bytes") or SliceType(byte))."""
+    if isinstance(t, PrimitiveType) and t.kind == "bytes":
+        return True
+    if isinstance(t, SliceType):
+        if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
+            return True
+    return False
+
+
+def type_eq(a: TypeNode, b: TypeNode) -> bool:
+    """Check structural equality of two TypeNodes."""
+    if is_bytes_type(a) and is_bytes_type(b):
+        return True
+    if isinstance(a, PrimitiveType) and isinstance(b, PrimitiveType):
+        return a.kind == b.kind
+    if isinstance(a, PrimitiveType) or isinstance(b, PrimitiveType):
+        return False
+    if isinstance(a, SliceType) and isinstance(b, SliceType):
+        return type_eq(a.element, b.element)
+    if isinstance(a, MapType) and isinstance(b, MapType):
+        return type_eq(a.key, b.key) and type_eq(a.value, b.value)
+    if isinstance(a, SetType) and isinstance(b, SetType):
+        return type_eq(a.element, b.element)
+    if isinstance(a, OptionalType) and isinstance(b, OptionalType):
+        return type_eq(a.inner, b.inner)
+    if isinstance(a, TupleType) and isinstance(b, TupleType):
+        if a.variadic != b.variadic:
+            return False
+        if len(a.elements) != len(b.elements):
+            return False
+        j = 0
+        while j < len(a.elements):
+            if not type_eq(a.elements[j], b.elements[j]):
+                return False
+            j += 1
+        return True
+    if isinstance(a, PointerType) and isinstance(b, PointerType):
+        return type_eq(a.target, b.target)
+    if isinstance(a, StructRef) and isinstance(b, StructRef):
+        return a.name == b.name
+    if isinstance(a, InterfaceRef) and isinstance(b, InterfaceRef):
+        return a.name == b.name
+    if isinstance(a, FuncType) and isinstance(b, FuncType):
+        if len(a.params) != len(b.params):
+            return False
+        j = 0
+        while j < len(a.params):
+            if not type_eq(a.params[j], b.params[j]):
+                return False
+            j += 1
+        return type_eq(a.ret, b.ret)
+    if isinstance(a, UnionType) and isinstance(b, UnionType):
+        if len(a.variants) != len(b.variants):
+            return False
+        i = 0
+        while i < len(a.variants):
+            found = False
+            j = 0
+            while j < len(b.variants):
+                if type_eq(a.variants[i], b.variants[j]):
+                    found = True
+                j += 1
+            if not found:
+                return False
+            i += 1
+        return True
+    if isinstance(a, LiteralType) and isinstance(b, LiteralType):
+        return a.lit_value == b.lit_value and a.base.kind == b.base.kind
+    return a == b
+
+
+def combine_types(types: list[TypeNode]) -> TypeNode:
+    """Flatten, deduplicate, and normalize a list of types into a single type."""
+    # Flatten nested unions
+    flat: list[TypeNode] = []
+    i = 0
+    while i < len(types):
+        t = types[i]
+        if isinstance(t, UnionType):
+            j = 0
+            while j < len(t.variants):
+                flat.append(t.variants[j])
+                j += 1
+        else:
+            flat.append(t)
+        i += 1
+    # Filter out never
+    filtered: list[TypeNode] = []
+    i = 0
+    while i < len(flat):
+        f = flat[i]
+        if isinstance(f, PrimitiveType) and f.kind == "never":
+            pass
+        else:
+            filtered.append(f)
+        i += 1
+    flat = filtered
+    # Deduplicate via type_eq
+    deduped: list[TypeNode] = []
+    i = 0
+    while i < len(flat):
+        is_dup = False
+        j = 0
+        while j < len(deduped):
+            if type_eq(flat[i], deduped[j]):
+                is_dup = True
+            j += 1
+        if not is_dup:
+            deduped.append(flat[i])
+        i += 1
+    # Literal absorption: base type absorbs its literals
+    base_kinds: set[str] = set()
+    i = 0
+    while i < len(deduped):
+        di = deduped[i]
+        if isinstance(di, PrimitiveType):
+            base_kinds.add(di.kind)
+        i += 1
+    absorbed: list[TypeNode] = []
+    has_lit_true = False
+    has_lit_false = False
+    i = 0
+    while i < len(deduped):
+        d = deduped[i]
+        if isinstance(d, LiteralType):
+            if d.base.kind not in base_kinds:
+                if d.base.kind == "bool" and d.lit_value == "true":
+                    has_lit_true = True
+                if d.base.kind == "bool" and d.lit_value == "false":
+                    has_lit_false = True
+                absorbed.append(d)
+        else:
+            absorbed.append(d)
+        i += 1
+    if has_lit_true and has_lit_false:
+        merged: list[TypeNode] = []
+        i = 0
+        while i < len(absorbed):
+            d2 = absorbed[i]
+            if isinstance(d2, LiteralType) and d2.base.kind == "bool":
+                pass
+            else:
+                merged.append(d2)
+            i += 1
+        merged.append(PrimitiveType("bool"))
+        absorbed = merged
+    deduped = absorbed
+    if len(deduped) == 0:
+        return PrimitiveType("void")
+    if len(deduped) == 1:
+        return deduped[0]
+    # Check for None/void among variants
+    has_none = False
+    others: list[TypeNode] = []
+    i = 0
+    while i < len(deduped):
+        d = deduped[i]
+        if isinstance(d, PrimitiveType) and d.kind == "void":
+            has_none = True
+        else:
+            others.append(d)
+        i += 1
+    if has_none:
+        if len(others) == 0:
+            return PrimitiveType("void")
+        if len(others) == 1:
+            return OptionalType(others[0])
+        return OptionalType(UnionType(others))
+    return UnionType(deduped)
+
+
+def _removal_matches(variant: TypeNode, target: TypeNode) -> bool:
+    """Check if variant matches target for union removal.
+
+    Uses type_eq, but also matches generic containers with any-element against
+    concrete containers (e.g. SliceType(any) matches SliceType(str)).
+    """
+    if type_eq(variant, target):
+        return True
+    if isinstance(variant, SliceType) and isinstance(target, SliceType):
+        if is_any(target.element):
+            return True
+    if isinstance(variant, MapType) and isinstance(target, MapType):
+        if is_any(target.key) and is_any(target.value):
+            return True
+    if isinstance(variant, SetType) and isinstance(target, SetType):
+        if is_any(target.element):
+            return True
+    if isinstance(variant, TupleType) and isinstance(target, TupleType):
+        if len(target.elements) > 0 and is_any(target.elements[0]):
+            return True
+    return False
+
+
+def remove_from_union(t: TypeNode, to_remove: list[TypeNode]) -> TypeNode:
+    """Remove variants matching any type in to_remove."""
+    if isinstance(t, UnionType):
+        remaining: list[TypeNode] = []
+        i = 0
+        while i < len(t.variants):
+            matched = False
+            j = 0
+            while j < len(to_remove):
+                if _removal_matches(t.variants[i], to_remove[j]):
+                    matched = True
+                j += 1
+            if not matched:
+                remaining.append(t.variants[i])
+            i += 1
+        if len(remaining) == 0:
+            return PrimitiveType("never")
+        if len(remaining) == 1:
+            return remaining[0]
+        return UnionType(remaining)
+    if isinstance(t, OptionalType) and isinstance(t.inner, UnionType):
+        remaining2: list[TypeNode] = []
+        i = 0
+        while i < len(t.inner.variants):
+            matched = False
+            j = 0
+            while j < len(to_remove):
+                if _removal_matches(t.inner.variants[i], to_remove[j]):
+                    matched = True
+                j += 1
+            if not matched:
+                remaining2.append(t.inner.variants[i])
+            i += 1
+        if len(remaining2) == 0:
+            return PrimitiveType("void")
+        if len(remaining2) == 1:
+            return OptionalType(remaining2[0])
+        return OptionalType(UnionType(remaining2))
+    if isinstance(t, OptionalType):
+        j = 0
+        while j < len(to_remove):
+            if _removal_matches(t.inner, to_remove[j]):
+                return PrimitiveType("void")
+            j += 1
+    return t
+
+
+def _variant_name(v: TypeNode) -> str:
+    """Extract struct/interface name from a single variant."""
+    if isinstance(v, StructRef):
+        return v.name
+    if isinstance(v, InterfaceRef):
+        return v.name
+    if isinstance(v, PointerType) and isinstance(v.target, StructRef):
+        return v.target.name
+    return ""
+
+
+def union_variant_names(t: TypeNode) -> list[str]:
+    """Extract struct/interface names from union variants."""
+    result: list[str] = []
+    inner = t
+    if isinstance(t, OptionalType):
+        inner = t.inner
+    if isinstance(inner, UnionType):
+        i = 0
+        while i < len(inner.variants):
+            vn = _variant_name(inner.variants[i])
+            if vn != "":
+                result.append(vn)
+            i += 1
+    else:
+        vn = _variant_name(inner)
+        if vn != "":
+            result.append(vn)
+    return result
 
 
 def typenode_to_dict(t: TypeNode) -> JsonValue:
@@ -447,6 +769,14 @@ def typenode_to_dict(t: TypeNode) -> JsonValue:
                 "ret": typenode_to_dict(t.ret),
             }
         )
+    if isinstance(t, LiteralType):
+        return JDict(
+            {
+                "_type": JStr("LiteralType"),
+                "lit_value": JStr(t.lit_value),
+                "base": typenode_to_dict(t.base),
+            }
+        )
     if isinstance(t, UnionType):
         variants: list[JsonValue] = []
         i = 0
@@ -484,3 +814,4 @@ STR_TYPE: TypeNode = PrimitiveType("string")
 VOID_TYPE: TypeNode = PrimitiveType("void")
 BYTE_TYPE: TypeNode = PrimitiveType("byte")
 BYTES_TYPE: TypeNode = SliceType(PrimitiveType("byte"))
+NEVER_TYPE: TypeNode = PrimitiveType("never")
