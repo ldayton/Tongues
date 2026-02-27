@@ -26,15 +26,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just test-cli-local
-      - run: just test-parse-local
-      - run: just test-subset-local
-      - run: just test-names-local
-      - run: just test-signatures-local
-      - run: just test-fields-local
-      - run: just test-hierarchy-local
-      - run: just test-pycheck-local
-      - run: just test-lowering-local
+      - run: just test-frontend-local
 
   middleend:
     runs-on: ubuntu-latest
@@ -47,7 +39,6 @@ jobs:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
       - run: just test-middleend-local
-      - run: just test-taytsh-local
 
   backend:
     runs-on: ubuntu-latest

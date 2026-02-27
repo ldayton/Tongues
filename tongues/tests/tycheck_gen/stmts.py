@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.taytsh.ast import (
-    Pos,
     TArg,
     TAssignStmt,
     TBinaryOp,
@@ -69,12 +68,10 @@ from src.taytsh.check import (
 )
 
 from .types import make_ttype
+from .ast_helpers import P, A
 
 if TYPE_CHECKING:
     from . import Generator
-
-P = Pos(1, 1)
-A: dict[str, str] = {}
 
 MAX_STMT_DEPTH = 3
 
@@ -313,7 +310,7 @@ class StmtGen:
                 TLetStmt(pos=P, name=tgt_name, typ=ttype, value=init, annotations=A)
             )
             targets.append(TVar(pos=P, name=tgt_name, annotations=A))
-        self._pending_stmts = preamble
+        self._pending_stmts = self._pending_stmts + preamble
         return TTupleAssignStmt(
             pos=P,
             targets=targets,

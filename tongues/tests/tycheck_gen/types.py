@@ -153,7 +153,14 @@ class TypePool:
             fname = self.names.var_name()
             ftype = self._random_value_type()
             fields[fname] = ftype
-        st = StructT(kind="struct", name=name, fields=fields, methods={}, parent=parent)
+        st = StructT(
+            kind="struct",
+            name=name,
+            fields=fields,
+            methods={},
+            parent=parent,
+            field_order=list(fields.keys()),
+        )
         self.structs.append(StructInfo(st, parent))
         self.pool.append(st)
         return st

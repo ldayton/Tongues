@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.taytsh.ast import (
-    Pos,
     TArg,
     TCall,
     TExpr,
@@ -28,11 +27,10 @@ from src.taytsh.check import (
     type_eq,
 )
 
+from .ast_helpers import P, A
+
 if TYPE_CHECKING:
     from . import Generator
-
-P = Pos(1, 1)
-A: dict[str, str] = {}
 
 
 class BuiltinGen:
