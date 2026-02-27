@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from random import Random
 
 from src.taytsh.ast import (
-    Pos,
     TArg,
     TAssignStmt,
     TBoolLit,
@@ -38,9 +37,7 @@ from src.taytsh.ast import (
 from src.taytsh.check import (
     BUILTIN_NAMES,
 )
-
-P = Pos(1, 1)
-A: dict[str, str] = {}
+from .ast_helpers import P, A
 
 _PRIM_KINDS = ["int", "float", "bool", "byte", "bytes", "string", "rune"]
 

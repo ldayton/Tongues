@@ -1126,9 +1126,16 @@ class Checker:
         self.uninitialized: set[str] = set()
         self._declared: dict[str, Type] = {}
         self.expr_types: dict[tuple[int, int], Type] = {}
+        self.bool_facts: dict[str, TExpr] = {}
 
     def error(self, msg: str, pos: Pos) -> None:
         self.errors.append(CheckError(msg, pos.line, pos.col, pos.source_file))
+
+    def _resolve_bool_var(self, cond: TExpr) -> TExpr:
+        """If cond is a bool variable with a stored narrowing fact, return it."""
+        if isinstance(cond, TVar) and cond.name in self.bool_facts:
+            return self.bool_facts[cond.name]
+        return cond
 
     # ── Scope management ──────────────────────────────────────
 
@@ -1716,6 +1723,8 @@ class Checker:
                 )
         elif not _has_zero_value(declared_type):
             self.uninitialized.add(stmt.name)
+        if stmt.value is not None and type_eq(declared_type, BOOL_T):
+            self.bool_facts[stmt.name] = stmt.value
         self.declare(stmt.name, declared_type, stmt.pos)
 
     def check_assign_stmt(self, stmt: TAssignStmt) -> None:
@@ -1847,8 +1856,9 @@ class Checker:
         # Nil narrowing in then/else bodies via == nil / != nil checks
         # (IsNil deliberately excluded — it doesn't narrow in then-body)
         narrowings: list[tuple[str, Type, Type]] = []
-        var_checks = _collect_nil_checks(stmt.cond, True, "&&")
-        all_checks = _collect_nil_checks(stmt.cond, False, "&&")
+        narrow_cond = self._resolve_bool_var(stmt.cond)
+        var_checks = _collect_nil_checks(narrow_cond, True, "&&")
+        all_checks = _collect_nil_checks(narrow_cond, False, "&&")
         checks: list[tuple[str, str]] = []
         fc_i = 0
         while fc_i < len(var_checks):
@@ -1871,7 +1881,7 @@ class Checker:
                 elif check_kind == "is_nil":
                     narrowings.append((var_name, NIL_T, remove_nil(var_type)))
         # IsType narrowing: isinstance(x, T) → narrow x to T in then, keep original in else
-        type_checks = _collect_type_checks(stmt.cond)
+        type_checks = _collect_type_checks(narrow_cond)
         for tc_var, tc_type_name, tc_positive in type_checks:
             if "." in tc_var:
                 current = self._lookup_field_type(tc_var, stmt.pos)
@@ -1930,7 +1940,8 @@ class Checker:
         self.in_loop = True
         saved_uninit = set(self.uninitialized)
         self.enter_scope()
-        nil_checks = _collect_nil_checks(stmt.cond, False, "&&")
+        narrow_cond = self._resolve_bool_var(stmt.cond)
+        nil_checks = _collect_nil_checks(narrow_cond, False, "&&")
         for var_name, check_kind in nil_checks:
             if "." in var_name:
                 var_type = self._lookup_field_type(var_name, stmt.pos)

@@ -24,6 +24,10 @@ subset:
     done
     exit $failed
 
+# Run all frontend tests locally (cli, parse, subset, names, sigs, fields, hierarchy, inference, lowering)
+test-frontend-local:
+    uv run --directory tongues pytest tests/test_runner.py -k "test_cli or test_parse or test_subset or test_names or test_sigs or test_fields or test_hierarchy or test_inference or test_lowering" -v
+
 # Run CLI tests locally
 test-cli-local:
     uv run --directory tongues pytest tests/test_runner.py -k test_cli -v
@@ -60,9 +64,9 @@ test-inference-local:
 test-lowering-local:
     uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
 
-# Run middleend tests locally
+# Run all middleend tests locally (type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph, taytsh, tycheck-gen)
 test-middleend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph" -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
 
 # Run backend tests (codegen + apptests) locally
 test-backend-local:
@@ -76,9 +80,9 @@ test-ordering-local:
 test-taytsh-local:
     uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" tests/test_taytsh_vm.py -v
 
-# Run all tests locally in a single pytest invocation
-test-all-local:
-    uv run --directory tongues pytest tests/ -v
+# Run generative type-checker tests locally
+test-tycheck-gen-local:
+    uv run --directory tongues pytest tests/test_tycheck_gen.py -v
 
 # Lint (--fix to apply changes)
 lint *ARGS:
@@ -95,25 +99,16 @@ check:
     just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
     just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
     just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
-    just test-cli && results[cli]=✅ || { results[cli]=❌; failed=1; }
-    just test-parse && results[parse]=✅ || { results[parse]=❌; failed=1; }
-    just test-subset && results[subset-tests]=✅ || { results[subset-tests]=❌; failed=1; }
-    just test-names && results[names]=✅ || { results[names]=❌; failed=1; }
-    just test-signatures && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
-    just test-fields && results[fields]=✅ || { results[fields]=❌; failed=1; }
-    just test-hierarchy && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
-    just test-inference && results[inference]=✅ || { results[inference]=❌; failed=1; }
-    just test-lowering && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
+    just test-frontend && results[frontend]=✅ || { results[frontend]=❌; failed=1; }
     just test-middleend && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-backend && results[backend]=✅ || { results[backend]=❌; failed=1; }
-    just test-taytsh && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "           CHECK SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in fmt lint subset cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
+    for t in fmt lint subset frontend middleend backend; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
@@ -169,77 +164,23 @@ test-transpiled target="python":
 docker-build lang:
     docker build -t tongues-{{lang}} docker/{{lang}}
 
-# Run CLI tests in Docker
-test-cli:
+# Run all frontend tests in Docker
+test-frontend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_cli -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_cli or test_parse or test_subset or test_names or test_sigs or test_fields or test_hierarchy or test_inference or test_lowering" -v
 
-# Run parse tests in Docker
-test-parse:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_parse -v
-
-# Run subset tests in Docker
-test-subset:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_subset -v
-
-# Run names tests in Docker
-test-names:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_names -v
-
-# Run signatures tests in Docker
-test-signatures:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_sigs -v
-
-# Run fields tests in Docker
-test-fields:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_fields -v
-
-# Run hierarchy tests in Docker
-test-hierarchy:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
-
-# Run inference tests in Docker
-test-inference:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_inference -v
-
-# Run lowering tests in Docker
-test-lowering:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
-
-# Run middleend tests in Docker
+# Run all middleend tests in Docker
 test-middleend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph" -v
+        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
 
 # Run backend tests (codegen + apptests) in Docker
 test-backend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
-
-# Run taytsh tests in Docker
-test-taytsh:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" tests/test_taytsh_vm.py -v
 
 # Check if formatters are installed
 formatters:
@@ -310,7 +251,7 @@ versions:
     exit $failed
 
 # Run all tests in Docker
-test: test-backend test-taytsh self-transpile test-transpiled (self-transpile "ruby") (test-transpiled "ruby") (self-transpile "perl") (test-transpiled "perl")
+test: test-frontend test-middleend test-backend self-transpile test-transpiled (self-transpile "ruby") (test-transpiled "ruby") (self-transpile "perl") (test-transpiled "perl")
 
 # Run all tests locally (requires matching runtime versions)
 test-local:
@@ -318,18 +259,9 @@ test-local:
     declare -A results
     failed=0
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
-    just test-cli-local && results[cli]=✅ || { results[cli]=❌; failed=1; }
-    just test-parse-local && results[parse]=✅ || { results[parse]=❌; failed=1; }
-    just test-subset-local && results[subset]=✅ || { results[subset]=❌; failed=1; }
-    just test-names-local && results[names]=✅ || { results[names]=❌; failed=1; }
-    just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
-    just test-fields-local && results[fields]=✅ || { results[fields]=❌; failed=1; }
-    just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
-    just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
-    just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
+    just test-frontend-local && results[frontend]=✅ || { results[frontend]=❌; failed=1; }
     just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
-    just test-taytsh-local && results[taytsh]=✅ || { results[taytsh]=❌; failed=1; }
     just self-transpile && results[self-transpile]=✅ || { results[self-transpile]=❌; failed=1; }
     just test-transpiled-local && results[transpiled]=✅ || { results[transpiled]=❌; failed=1; }
     just self-transpile ruby && results[self-transpile-rb]=✅ || { results[self-transpile-rb]=❌; failed=1; }
@@ -342,31 +274,7 @@ test-local:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh self-transpile transpiled self-transpile-rb transpiled-rb self-transpile-pl transpiled-pl; do
-        printf "%-14s %s\n" "$t" "${results[$t]}"
-    done
-    echo "══════════════════════════════════════"
-    if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
-    echo "══════════════════════════════════════"
-    exit $failed
-
-# Run full check locally (requires matching runtime versions)
-check-local:
-    #!/usr/bin/env bash
-    declare -A results
-    failed=0
-    just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
-    just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
-    just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
-    just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
-    just test-all-local && results[tests]=✅ || { results[tests]=❌; failed=1; }
-    echo ""
-    echo "══════════════════════════════════════"
-    echo "        CHECK-LOCAL SUMMARY"
-    echo "══════════════════════════════════════"
-    printf "%-14s %s\n" "TARGET" "STATUS"
-    printf "%-14s %s\n" "──────" "──────"
-    for t in versions fmt lint subset tests; do
+    for t in versions frontend middleend backend self-transpile transpiled self-transpile-rb transpiled-rb self-transpile-pl transpiled-pl; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
