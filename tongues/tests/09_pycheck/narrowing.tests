@@ -5930,3 +5930,17 @@ def f(x: A | B | C) -> int:
 ---
 ok
 ---
+
+=== reveal_type expected_type match
+def f(x: int) -> None:
+    reveal_type(x, expected_type="int")
+---
+reveal:2 = int
+---
+
+=== reveal_type expected_type mismatch
+def f(x: int) -> None:
+    reveal_type(x, expected_type="str")
+---
+error: reveal_type: expected 'str', got 'int'
+---

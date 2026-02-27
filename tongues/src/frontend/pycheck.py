@@ -1952,7 +1952,27 @@ def _validate_expr_stmt(
                 args = get_nodes(value, "args")
                 if len(args) == 1:
                     typ = _synth_expr(args[0], env, ctx)
-                    ctx.result.add_reveal(lineno, _type_name(typ))
+                    type_str = _type_name(typ)
+                    ctx.result.add_reveal(lineno, type_str)
+                    keywords = get_nodes(value, "keywords")
+                    ki = 0
+                    while ki < len(keywords):
+                        kw = keywords[ki]
+                        if get_str(kw, "arg") == "expected_type":
+                            kw_val = get_node(kw, "value")
+                            if _is_type(kw_val, ["Constant"]):
+                                expected = get_str(kw_val, "value")
+                                if expected != "" and expected != type_str:
+                                    ctx.result.add_error(
+                                        lineno,
+                                        0,
+                                        "reveal_type: expected '"
+                                        + expected
+                                        + "', got '"
+                                        + type_str
+                                        + "'",
+                                    )
+                        ki += 1
                 return
             if (
                 fname != ""
@@ -3930,11 +3950,19 @@ def _count_expr_nodes(
                 li += 1
 
 
-def report_expr_coverage(tree: ASTNode, result: PycheckResult) -> None:
-    """Print expression type coverage to stderr."""
+def compute_expr_coverage(
+    tree: ASTNode, result: PycheckResult
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Count expression nodes and how many have recorded types."""
     totals: dict[str, int] = {}
     covered: dict[str, int] = {}
     _count_expr_nodes(tree, result.expr_types, totals, covered)
+    return (totals, covered)
+
+
+def report_expr_coverage(tree: ASTNode, result: PycheckResult) -> None:
+    """Print expression type coverage to stderr."""
+    totals, covered = compute_expr_coverage(tree, result)
     print("=== expr type coverage ===", file=sys.stderr)
     names = sorted(totals.keys())
     ni = 0
