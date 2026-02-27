@@ -33,7 +33,7 @@ jobs:
       - run: just test-signatures-local
       - run: just test-fields-local
       - run: just test-hierarchy-local
-      - run: just test-inference-local
+      - run: just test-pycheck-local
       - run: just test-lowering-local
 
   middleend:

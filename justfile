@@ -52,9 +52,9 @@ test-fields-local:
 test-hierarchy-local:
     uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
 
-# Run inference tests locally
-test-inference-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_inference -v
+# Run pycheck tests locally
+test-pycheck-local:
+    uv run --directory tongues pytest tests/test_runner.py -k test_pycheck -v
 
 # Run lowering tests locally
 test-lowering-local:
@@ -102,7 +102,7 @@ check:
     just test-signatures && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-fields && results[fields]=✅ || { results[fields]=❌; failed=1; }
     just test-hierarchy && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
-    just test-inference && results[inference]=✅ || { results[inference]=❌; failed=1; }
+    just test-pycheck && results[pycheck]=✅ || { results[pycheck]=❌; failed=1; }
     just test-lowering && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
     just test-middleend && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-backend && results[backend]=✅ || { results[backend]=❌; failed=1; }
@@ -113,7 +113,7 @@ check:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in fmt lint subset cli parse subset-tests names signatures fields hierarchy inference lowering middleend backend taytsh; do
+    for t in fmt lint subset cli parse subset-tests names signatures fields hierarchy pycheck lowering middleend backend taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
@@ -211,11 +211,11 @@ test-hierarchy:
     docker run --rm -v "$(pwd):/workspace" tongues-python \
         uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
 
-# Run inference tests in Docker
-test-inference:
+# Run pycheck tests in Docker
+test-pycheck:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k test_inference -v
+        uv run --directory tongues pytest tests/test_runner.py -k test_pycheck -v
 
 # Run lowering tests in Docker
 test-lowering:
@@ -325,7 +325,7 @@ test-local:
     just test-signatures-local && results[signatures]=✅ || { results[signatures]=❌; failed=1; }
     just test-fields-local && results[fields]=✅ || { results[fields]=❌; failed=1; }
     just test-hierarchy-local && results[hierarchy]=✅ || { results[hierarchy]=❌; failed=1; }
-    just test-inference-local && results[inference]=✅ || { results[inference]=❌; failed=1; }
+    just test-pycheck-local && results[pycheck]=✅ || { results[pycheck]=❌; failed=1; }
     just test-lowering-local && results[lowering]=✅ || { results[lowering]=❌; failed=1; }
     just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
     just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
@@ -342,7 +342,7 @@ test-local:
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions cli parse subset names signatures fields hierarchy inference lowering middleend backend taytsh self-transpile transpiled self-transpile-rb transpiled-rb self-transpile-pl transpiled-pl; do
+    for t in versions cli parse subset names signatures fields hierarchy pycheck lowering middleend backend taytsh self-transpile transpiled self-transpile-rb transpiled-rb self-transpile-pl transpiled-pl; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

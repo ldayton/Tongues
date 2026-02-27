@@ -2,7 +2,7 @@
 
 Transforms the typed Python dict-AST into Taytsh IR nodes (TModule from
 taytsh/ast.py), using type information from phases 5-9 (signatures, fields,
-hierarchy, inference).
+hierarchy, pycheck).
 
 Written in the Tongues subset (no generators, closures, lambdas, getattr).
 """
@@ -238,7 +238,7 @@ def _ancestor_chain_hier(name: str) -> list[str]:
 
 
 def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
-    """Convert a TypeNode (from signatures/inference) to a Taytsh TType node."""
+    """Convert a TypeNode (from signatures/pycheck) to a Taytsh TType node."""
     if isinstance(t, PrimitiveType):
         return TPrimitive(pos, t.kind)
     if isinstance(t, SliceType):

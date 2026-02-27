@@ -16,7 +16,7 @@ import pytest
 
 from src.frontend.typecollect import collect_signatures, collect_types
 from src.frontend.hierarchy import build_hierarchy
-from src.frontend.inference import run_inference as _run_inference
+from src.frontend.pycheck import run_pycheck as _run_pycheck
 from src.frontend.bind import run_bind, resolve_names, verify as verify_subset
 from src.frontend.parse import parse
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
@@ -195,7 +195,7 @@ TESTS = {
         "sigs":      {"dir": "06_signatures", "run": "phase"},
         "fields":    {"dir": "07_fields",    "run": "phase"},
         "hierarchy": {"dir": "08_hierarchy", "run": "phase"},
-        "inference": {"dir": "09_inference", "run": "phase"},
+        "pycheck":   {"dir": "09_pycheck",   "run": "phase"},
         "lowering":  {"dir": "10_lowering",  "run": "lowering"},
     },
     "middleend": {
@@ -773,10 +773,10 @@ def run_hierarchy(source: str) -> PhaseResult:
     return PhaseResult(data=hier_result.to_dict())
 
 
-def run_inference(source: str) -> PhaseResult:
-    """Run the full Python frontend pipeline (phases 2-9), checking inference errors."""
+def run_pycheck(source: str) -> PhaseResult:
+    """Run the full Python frontend pipeline (phases 2-9), checking type errors."""
     if TRANSPILED_BINARY is not None:
-        result = _run_transpiled(source, ["--stop-at", "inference"])
+        result = _run_transpiled(source, ["--stop-at", "pycheck"])
         if result.errors:
             return result
         if result.data and "reveals" in result.data:
@@ -809,7 +809,7 @@ def run_inference(source: str) -> PhaseResult:
     tc_errors = tc_result.errors()
     if tc_errors:
         return PhaseResult(errors=[str(e) for e in tc_errors])
-    inf_result = _run_inference(
+    inf_result = _run_pycheck(
         ast_dict,
         tc_result,
         hier_result,
@@ -881,7 +881,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         tc_errors = tc_result.errors()
         if tc_errors:
             return (None, str(tc_errors[0]))
-        inf_result = _run_inference(
+        inf_result = _run_pycheck(
             ast_dict,
             tc_result,
             hier_result,
@@ -1127,7 +1127,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         tc_errors = tc_result.errors()
         if tc_errors:
             return (None, str(tc_errors[0]))
-        inf_result = _run_inference(
+        inf_result = _run_pycheck(
             ast_dict,
             tc_result,
             hier_result,
@@ -1376,11 +1376,11 @@ def test_hierarchy(hierarchy_input, hierarchy_expected):
     check_expected(hierarchy_expected, run_hierarchy(hierarchy_input), "hierarchy")
 
 
-def test_inference(inference_input, inference_expected):
+def test_pycheck(pycheck_input, pycheck_expected):
     check_expected(
-        inference_expected,
-        run_inference(inference_input),
-        "inference",
+        pycheck_expected,
+        run_pycheck(pycheck_input),
+        "pycheck",
         lenient_errors=True,
     )
 

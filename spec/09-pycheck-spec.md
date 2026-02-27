@@ -1,8 +1,8 @@
-# Phase 8: Inference
+# Phase 8: Python Type Checking
 
-**Modules:** `frontend/inference.py`, `frontend/type_inference.py`, `frontend/validate.py`
+**Modules:** `frontend/pycheck.py`, `frontend/type_inference.py`, `frontend/validate.py`
 
-Bidirectional type inference with flow-sensitive narrowing and validation. Computes Taytsh types for all expressions, infers local variable types from assignments, enforces type safety constraints, and validates iterator/generator consumption. This phase has two sub-phases: type computation (8a) annotates the AST with inferred types, and type validation (8b) walks the typed AST with a flow-sensitive environment to reject type errors.
+Bidirectional type checking with flow-sensitive narrowing and validation. Computes Taytsh types for all expressions, infers local variable types from assignments, enforces type safety constraints, and validates iterator/generator consumption. This phase has two sub-phases: type computation (8a) annotates the AST with inferred types, and type validation (8b) walks the typed AST with a flow-sensitive environment to reject type errors.
 
 ## Inputs
 

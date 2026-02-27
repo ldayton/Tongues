@@ -14,7 +14,7 @@ from .frontend.bind import (
 )
 from .frontend.typecollect import collect_signatures, collect_types
 from .frontend.hierarchy import build_hierarchy
-from .frontend.inference import run_inference
+from .frontend.pycheck import run_pycheck
 from .frontend.lowering import lower
 from .frontend.types import (
     JsonValue,
@@ -78,7 +78,7 @@ PHASES: list[str] = [
     "signatures",
     "fields",
     "hierarchy",
-    "inference",
+    "pycheck",
     "lowering",
     "lowering-text",
     "analyze",
@@ -91,7 +91,7 @@ Options:
   --target TARGET     Output language: c, csharp, dart, go, java, javascript,
                       lua, perl, php, python, ruby, rust, swift, typescript, zig
   --stop-at PHASE     Stop after phase: parse, subset, names, signatures,
-                      fields, hierarchy, inference, lowering, lowering-text,
+                      fields, hierarchy, pycheck, lowering, lowering-text,
                       analyze
   --project           Read NUL-delimited multi-file input (path\\0source\\0...)
   --strict            Enable strict math and strict tostring
@@ -1509,7 +1509,7 @@ def _pipeline_post_parse(
         return (1, "")
     if stop_at == "fields":
         return (0, to_json(tc_result.fields_to_dict()))
-    inf_result = run_inference(
+    inf_result = run_pycheck(
         ast_dict,
         tc_result,
         hier_result,
@@ -1526,7 +1526,7 @@ def _pipeline_post_parse(
             iei += 1
         _print_errors(err_strs)
         return (1, "")
-    if stop_at == "inference":
+    if stop_at == "pycheck":
         reveals_out = JList([])
         inf_reveals = inf_result.reveals()
         ri = 0

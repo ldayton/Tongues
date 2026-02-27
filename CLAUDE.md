@@ -36,7 +36,7 @@ just test-names-local              # name resolution
 just test-signatures-local         # signature extraction
 just test-fields-local             # field analysis
 just test-hierarchy-local          # type hierarchy
-just test-inference-local          # type inference
+just test-pycheck-local            # python type checking
 just test-lowering-local           # Python → Taytsh lowering
 just test-middleend-local          # type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph
 just test-backend-local            # codegen + apptests

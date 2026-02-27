@@ -1,4 +1,4 @@
-"""Phase 9: Type inference and validation.
+"""Phase 9: Python type checking.
 
 Bidirectional type inference with flow-sensitive narrowing. Computes types for
 all expressions, infers local variable types from assignments, enforces type
@@ -78,8 +78,8 @@ from .types import (
 # ---------------------------------------------------------------------------
 
 
-class InferenceError:
-    """An error found during inference."""
+class PycheckError:
+    """An error found during type checking."""
 
     def __init__(
         self, lineno: int, col: int, message: str, source_file: str = ""
@@ -99,27 +99,27 @@ class InferenceError:
             + str(self.lineno)
             + ":"
             + str(self.col)
-            + ": [inference] "
+            + ": [pycheck] "
             + self.message
         )
 
 
-class InferenceResult:
-    """Result of inference analysis."""
+class PycheckResult:
+    """Result of Python type checking."""
 
     def __init__(self) -> None:
-        self._errors: list[InferenceError] = []
+        self._errors: list[PycheckError] = []
         self._reveals: list[tuple[int, str]] = []
 
     def add_error(
         self, lineno: int, col: int, message: str, source_file: str = ""
     ) -> None:
-        self._errors.append(InferenceError(lineno, col, message, source_file))
+        self._errors.append(PycheckError(lineno, col, message, source_file))
 
     def add_reveal(self, lineno: int, type_str: str) -> None:
         self._reveals.append((lineno, type_str))
 
-    def errors(self) -> list[InferenceError]:
+    def errors(self) -> list[PycheckError]:
         return self._errors
 
     def reveals(self) -> list[tuple[int, str]]:
@@ -1283,7 +1283,7 @@ def _bind_target(target: ASTNode, typ: TypeNode, env: TypeEnv) -> None:
 
 
 class _InferCtx:
-    """Shared context for inference within a module."""
+    """Shared context for type checking within a module."""
 
     def __init__(
         self,
@@ -1291,14 +1291,14 @@ class _InferCtx:
         hier_result: HierarchyResult,
         known_classes: set[str],
         class_bases: dict[str, list[str]],
-        result: InferenceResult,
+        result: PycheckResult,
         flow_graphs: dict[str, FlowGraph],
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
         self.known_classes: set[str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
-        self.result: InferenceResult = result
+        self.result: PycheckResult = result
         self.flow_graphs: dict[str, FlowGraph] = flow_graphs
         self.current_graph: FlowGraph | None = None
         self.assigned_types: dict[int, TypeNode] = {}
@@ -3782,16 +3782,16 @@ def _all_union_members_have_attr(typ: TypeNode, attr_name: str, ctx: _InferCtx) 
 # ---------------------------------------------------------------------------
 
 
-def run_inference(
+def run_pycheck(
     tree: ASTNode,
     tc_result: TypeCollectResult,
     hier_result: HierarchyResult,
     known_classes: set[str],
     class_bases: dict[str, list[str]],
     flow_graphs: dict[str, FlowGraph],
-) -> InferenceResult:
-    """Run type inference and validation on the module AST."""
-    result = InferenceResult()
+) -> PycheckResult:
+    """Run Python type checking on the module AST."""
+    result = PycheckResult()
     ctx = _InferCtx(
         tc_result, hier_result, known_classes, class_bases, result, flow_graphs
     )
