@@ -1000,9 +1000,11 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
         if isinstance(uid_jv, JInt):
             pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
-            if pt is not None and not _is_any_type(pt) and not contains_any(pt):
-                adjusted = _adjust_pycheck_type(node, pt, inner)
-                return adjusted
+            if pt is not None and not _is_any_type(pt):
+                check_t = pt.ret if isinstance(pt, FuncType) else pt
+                if not contains_any(check_t):
+                    adjusted = _adjust_pycheck_type(node, pt, inner)
+                    return adjusted
     if _DBG_PRINT_LOOKUP_FALLBACK:
         nt = get_str(node, "_type") if isinstance(node, dict) else ""
         lineno = get_int(node, "lineno") if isinstance(node, dict) else 0

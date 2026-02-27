@@ -352,10 +352,16 @@ def _is_ancestor(child: str, ancestor: str, hier: HierarchyResult) -> bool:
 
 
 def _struct_name(t: TypeNode) -> str:
-    """Extract struct name from Pointer(StructRef(name)) or StructRef(name)."""
-    if isinstance(t, PointerType) and isinstance(t.target, StructRef):
-        return t.target.name
+    """Extract struct/interface name from Pointer(StructRef/InterfaceRef) or bare ref."""
+    if isinstance(t, PointerType):
+        inner = t.target
+        if isinstance(inner, StructRef):
+            return inner.name
+        if isinstance(inner, InterfaceRef):
+            return inner.name
     if isinstance(t, StructRef):
+        return t.name
+    if isinstance(t, InterfaceRef):
         return t.name
     return ""
 
@@ -682,8 +688,46 @@ def _resolve_attr(
             return FuncType([STR_TYPE], STR_TYPE)
         if attr == "startswith" or attr == "endswith":
             return FuncType([STR_TYPE], BOOL_TYPE)
-        if attr == "find" or attr == "index" or attr == "count":
+        if attr == "find" or attr == "rfind" or attr == "index" or attr == "count":
             return FuncType([STR_TYPE], INT_TYPE)
+        if (
+            attr == "isdigit"
+            or attr == "isalpha"
+            or attr == "isalnum"
+            or attr == "isspace"
+            or attr == "isupper"
+            or attr == "islower"
+        ):
+            return FuncType([], BOOL_TYPE)
+        if attr == "encode":
+            return FuncType([], BYTES_TYPE)
+        if attr == "title" or attr == "capitalize" or attr == "swapcase":
+            return FuncType([], STR_TYPE)
+        if attr == "ljust" or attr == "rjust" or attr == "center" or attr == "zfill":
+            return FuncType([INT_TYPE], STR_TYPE)
+        return ANY_TYPE
+    # Bytes methods
+    if isinstance(obj_type, PrimitiveType) and obj_type.kind == "bytes":
+        if attr == "decode":
+            return FuncType([], STR_TYPE)
+        if attr == "find" or attr == "rfind" or attr == "index" or attr == "count":
+            return FuncType([BYTES_TYPE], INT_TYPE)
+        if attr == "startswith" or attr == "endswith":
+            return FuncType([BYTES_TYPE], BOOL_TYPE)
+        if attr == "replace":
+            return FuncType([BYTES_TYPE, BYTES_TYPE], BYTES_TYPE)
+        if (
+            attr == "upper"
+            or attr == "lower"
+            or attr == "strip"
+            or attr == "lstrip"
+            or attr == "rstrip"
+        ):
+            return FuncType([], BYTES_TYPE)
+        if attr == "split":
+            return FuncType([], SliceType(BYTES_TYPE))
+        if attr == "join":
+            return FuncType([SliceType(BYTES_TYPE)], BYTES_TYPE)
         return ANY_TYPE
     # List methods
     if isinstance(obj_type, SliceType):
@@ -749,6 +793,14 @@ def _resolve_attr(
         if attr == "clear":
             return FuncType([], VOID_TYPE)
         return ANY_TYPE
+    # Tuple methods
+    if isinstance(obj_type, TupleType):
+        if attr == "count" or attr == "index":
+            return FuncType([ANY_TYPE], INT_TYPE)
+        return ANY_TYPE
+    # Iterator methods
+    if isinstance(obj_type, IteratorType):
+        return ANY_TYPE
     # Union: resolve on each variant
     if isinstance(obj_type, UnionType):
         subs = get_subtypes(obj_type)
@@ -810,6 +862,13 @@ def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     # Method call
     if _is_type(func, ["Attribute"]):
         return _synth_method_call(func, args, node, env, ctx)
+    # Generic constructor: list[T](), set[T](), dict[K,V](), frozenset[T]()
+    if _is_type(func, ["Subscript"]):
+        sv = get_node(func, "value")
+        if _is_type(sv, ["Name"]):
+            base = get_str(sv, "id")
+            if base != "":
+                return _synth_name_call(base, args, node, env, ctx)
     # Callable variable
     func_type = _synth_expr(func, env, ctx)
     if isinstance(func_type, FuncType):
@@ -889,7 +948,16 @@ def _synth_name_call(
     if fname == "hash":
         return INT_TYPE
     if fname == "range":
-        return ANY_TYPE
+        return SliceType(INT_TYPE)
+    if fname == "bytes":
+        return BYTES_TYPE
+    if fname == "frozenset":
+        if len(args) > 0:
+            first = args[0]
+            ft = _synth_expr(first, env, ctx)
+            elem = _element_type(ft)
+            return SetType(elem)
+        return SetType(ANY_TYPE)
     if fname == "enumerate":
         if len(args) > 0:
             first = args[0]
@@ -1126,9 +1194,15 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     lt_num = _prim_kind(lt) in ("int", "float", "bool")
     rt_num = _prim_kind(rt) in ("int", "float", "bool")
     if lt_num and rt_num:
-        if op_type in ("BitAnd", "BitOr", "BitXor"):
+        if op_type in ("BitAnd", "BitOr", "BitXor", "LShift", "RShift"):
             if _prim_kind(lt) == "bool" and _prim_kind(rt) == "bool":
                 return BOOL_TYPE
+            return INT_TYPE
+        if op_type == "Div":
+            return FLOAT_TYPE
+        if op_type == "FloorDiv":
+            if _prim_kind(lt) == "float" or _prim_kind(rt) == "float":
+                return FLOAT_TYPE
             return INT_TYPE
         if _prim_kind(lt) == "float" or _prim_kind(rt) == "float":
             return FLOAT_TYPE
@@ -1140,6 +1214,15 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return STR_TYPE
     if (lk == "int" or lk == "bool") and rk == "string":
         return STR_TYPE
+    # List * int
+    if isinstance(lt, SliceType) and (rk == "int" or rk == "bool"):
+        return lt
+    if (lk == "int" or lk == "bool") and isinstance(rt, SliceType):
+        return rt
+    # Dict merge (|)
+    if isinstance(lt, MapType) and isinstance(rt, MapType):
+        if op_type == "BitOr":
+            return lt
     return ANY_TYPE
 
 
@@ -2621,6 +2704,7 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
         return
     t = get_str(test, "_type")
     if t == "Compare":
+        _synth_expr(test, env, ctx)
         return
     if t == "Call":
         func = get_node(test, "func")
