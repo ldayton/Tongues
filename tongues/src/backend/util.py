@@ -2,6 +2,38 @@
 
 from __future__ import annotations
 
+from ..taytsh.ast import (
+    TAssignStmt,
+    TBinaryOp,
+    TCall,
+    TExpr,
+    TExprStmt,
+    TFieldAccess,
+    TFnLit,
+    TForStmt,
+    TIfStmt,
+    TIndex,
+    TLetStmt,
+    TListLit,
+    TMapLit,
+    TMatchStmt,
+    TOpAssignStmt,
+    TRange,
+    TReturnStmt,
+    TSetLit,
+    TSlice,
+    TStmt,
+    TTernary,
+    TThrowStmt,
+    TTupleAccess,
+    TTupleAssignStmt,
+    TTupleLit,
+    TTryStmt,
+    TUnaryOp,
+    TVar,
+    TWhileStmt,
+)
+
 
 # Go reserved words that need renaming
 GO_RESERVED = frozenset(
@@ -99,24 +131,6 @@ def to_snake(name: str) -> str:
     return "".join(result).lower()
 
 
-def replace_format_placeholders(template: str, replacement: str) -> str:
-    """Replace {0}, {1}, ... placeholders with a fixed replacement string."""
-    result: list[str] = []
-    i = 0
-    while i < len(template):
-        if template[i] == "{" and i + 1 < len(template) and template[i + 1].isdigit():
-            j = i + 1
-            while j < len(template) and template[j].isdigit():
-                j += 1
-            if j < len(template) and template[j] == "}":
-                result.append(replacement)
-                i = j + 1
-                continue
-        result.append(template[i])
-        i += 1
-    return "".join(result)
-
-
 def to_camel(name: str) -> str:
     """Convert snake_case to camelCase, preserving leading underscores."""
     prefix = ""
@@ -187,7 +201,7 @@ class Emitter:
         self.lines: list[str] = []
         self._indent_str = indent_str
 
-    def line(self, text: str = "") -> None:
+    def _line(self, text: str = "") -> None:
         """Emit a line with current indentation."""
         if text:
             self.lines.append(self._indent_str * self.indent + text)
@@ -197,3 +211,120 @@ class Emitter:
     def output(self) -> str:
         """Return the accumulated output as a string."""
         return "\n".join(self.lines)
+
+
+# ── Builtin call collection ──────────────────────────────────
+
+
+def collect_builtin_calls(stmts: list[TStmt]) -> set[str]:
+    """Collect builtin function names called in statements."""
+    from ..taytsh.check import BUILTIN_NAMES
+
+    out: set[str] = set()
+    for stmt in stmts:
+        _collect_builtin_calls_stmt(stmt, out, BUILTIN_NAMES)
+    return out
+
+
+def _collect_builtin_calls_stmt(
+    stmt: TStmt, out: set[str], builtin_names: frozenset[str]
+) -> None:
+    if isinstance(stmt, TExprStmt):
+        _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
+    elif isinstance(stmt, TLetStmt):
+        if stmt.value is not None:
+            _collect_builtin_calls_expr(stmt.value, out, builtin_names)
+    elif isinstance(stmt, TAssignStmt):
+        _collect_builtin_calls_expr(stmt.value, out, builtin_names)
+    elif isinstance(stmt, TOpAssignStmt):
+        _collect_builtin_calls_expr(stmt.value, out, builtin_names)
+    elif isinstance(stmt, TTupleAssignStmt):
+        _collect_builtin_calls_expr(stmt.value, out, builtin_names)
+    elif isinstance(stmt, TReturnStmt):
+        if stmt.value is not None:
+            _collect_builtin_calls_expr(stmt.value, out, builtin_names)
+    elif isinstance(stmt, TThrowStmt):
+        _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
+    elif isinstance(stmt, TIfStmt):
+        _collect_builtin_calls_expr(stmt.cond, out, builtin_names)
+        for s in stmt.then_body:
+            _collect_builtin_calls_stmt(s, out, builtin_names)
+        if stmt.else_body is not None:
+            for s in stmt.else_body:
+                _collect_builtin_calls_stmt(s, out, builtin_names)
+    elif isinstance(stmt, TWhileStmt):
+        _collect_builtin_calls_expr(stmt.cond, out, builtin_names)
+        for s in stmt.body:
+            _collect_builtin_calls_stmt(s, out, builtin_names)
+    elif isinstance(stmt, TForStmt):
+        if isinstance(stmt.iterable, TRange):
+            for a in stmt.iterable.args:
+                _collect_builtin_calls_expr(a, out, builtin_names)
+        else:
+            _collect_builtin_calls_expr(stmt.iterable, out, builtin_names)
+        for s in stmt.body:
+            _collect_builtin_calls_stmt(s, out, builtin_names)
+    elif isinstance(stmt, TTryStmt):
+        for s in stmt.body:
+            _collect_builtin_calls_stmt(s, out, builtin_names)
+        for catch in stmt.catches:
+            for s in catch.body:
+                _collect_builtin_calls_stmt(s, out, builtin_names)
+        if stmt.finally_body is not None:
+            for s in stmt.finally_body:
+                _collect_builtin_calls_stmt(s, out, builtin_names)
+    elif isinstance(stmt, TMatchStmt):
+        _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
+        for case in stmt.cases:
+            for s in case.body:
+                _collect_builtin_calls_stmt(s, out, builtin_names)
+        if stmt.default is not None:
+            for s in stmt.default.body:
+                _collect_builtin_calls_stmt(s, out, builtin_names)
+
+
+def _collect_builtin_calls_expr(
+    expr: TExpr, out: set[str], builtin_names: frozenset[str]
+) -> None:
+    if isinstance(expr, TCall):
+        if isinstance(expr.func, TVar) and expr.func.name in builtin_names:
+            out.add(expr.func.name)
+        _collect_builtin_calls_expr(expr.func, out, builtin_names)
+        for a in expr.args:
+            _collect_builtin_calls_expr(a.value, out, builtin_names)
+    elif isinstance(expr, TBinaryOp):
+        _collect_builtin_calls_expr(expr.left, out, builtin_names)
+        _collect_builtin_calls_expr(expr.right, out, builtin_names)
+    elif isinstance(expr, TUnaryOp):
+        _collect_builtin_calls_expr(expr.operand, out, builtin_names)
+    elif isinstance(expr, TTernary):
+        _collect_builtin_calls_expr(expr.cond, out, builtin_names)
+        _collect_builtin_calls_expr(expr.then_expr, out, builtin_names)
+        _collect_builtin_calls_expr(expr.else_expr, out, builtin_names)
+    elif isinstance(expr, TFieldAccess):
+        _collect_builtin_calls_expr(expr.obj, out, builtin_names)
+    elif isinstance(expr, TTupleAccess):
+        _collect_builtin_calls_expr(expr.obj, out, builtin_names)
+    elif isinstance(expr, TIndex):
+        _collect_builtin_calls_expr(expr.obj, out, builtin_names)
+        _collect_builtin_calls_expr(expr.index, out, builtin_names)
+    elif isinstance(expr, TSlice):
+        _collect_builtin_calls_expr(expr.obj, out, builtin_names)
+        _collect_builtin_calls_expr(expr.low, out, builtin_names)
+        _collect_builtin_calls_expr(expr.high, out, builtin_names)
+    elif isinstance(expr, TListLit):
+        for e in expr.elements:
+            _collect_builtin_calls_expr(e, out, builtin_names)
+    elif isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            _collect_builtin_calls_expr(e, out, builtin_names)
+    elif isinstance(expr, TSetLit):
+        for e in expr.elements:
+            _collect_builtin_calls_expr(e, out, builtin_names)
+    elif isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            _collect_builtin_calls_expr(k, out, builtin_names)
+            _collect_builtin_calls_expr(v, out, builtin_names)
+    elif isinstance(expr, TFnLit):
+        for s in expr.body:
+            _collect_builtin_calls_stmt(s, out, builtin_names)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .ordering import order_decls
-from .util import escape_string
+from .util import Emitter, collect_builtin_calls, escape_string
 from ..taytsh.ast import (
     Ann,
     TArg,
@@ -292,7 +292,7 @@ def _scan_decl_builtins(decl: TDecl) -> tuple[bool, bool, bool]:
             if r[2]:
                 needs_os = True
         return needs_sys, needs_math, needs_os
-    for name in _collect_builtin_calls(stmts):
+    for name in collect_builtin_calls(stmts):
         if name in _SYS_BUILTINS:
             needs_sys = True
         if name in _MATH_BUILTINS:
@@ -300,114 +300,6 @@ def _scan_decl_builtins(decl: TDecl) -> tuple[bool, bool, bool]:
         if name in _OS_BUILTINS:
             needs_os = True
     return needs_sys, needs_math, needs_os
-
-
-def _collect_builtin_calls(stmts: list[TStmt]) -> set[str]:
-    """Collect builtin function names called in statements."""
-    out: set[str] = set()
-    for stmt in stmts:
-        _collect_builtin_calls_stmt(stmt, out)
-    return out
-
-
-def _collect_builtin_calls_stmt(stmt: TStmt, out: set[str]) -> None:
-    if isinstance(stmt, TExprStmt):
-        _collect_builtin_calls_expr(stmt.expr, out)
-    elif isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
-            _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TTupleAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
-            _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TThrowStmt):
-        _collect_builtin_calls_expr(stmt.expr, out)
-    elif isinstance(stmt, TIfStmt):
-        _collect_builtin_calls_expr(stmt.cond, out)
-        for s in stmt.then_body:
-            _collect_builtin_calls_stmt(s, out)
-        if stmt.else_body is not None:
-            for s in stmt.else_body:
-                _collect_builtin_calls_stmt(s, out)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_builtin_calls_expr(stmt.cond, out)
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_builtin_calls_expr(a, out)
-        else:
-            _collect_builtin_calls_expr(stmt.iterable, out)
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out)
-    elif isinstance(stmt, TTryStmt):
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out)
-        for catch in stmt.catches:
-            for s in catch.body:
-                _collect_builtin_calls_stmt(s, out)
-        if stmt.finally_body is not None:
-            for s in stmt.finally_body:
-                _collect_builtin_calls_stmt(s, out)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_builtin_calls_expr(stmt.expr, out)
-        for case in stmt.cases:
-            for s in case.body:
-                _collect_builtin_calls_stmt(s, out)
-        if stmt.default is not None:
-            for s in stmt.default.body:
-                _collect_builtin_calls_stmt(s, out)
-
-
-def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
-    if isinstance(expr, TCall):
-        if isinstance(expr.func, TVar) and expr.func.name in BUILTIN_NAMES:
-            out.add(expr.func.name)
-        _collect_builtin_calls_expr(expr.func, out)
-        for a in expr.args:
-            _collect_builtin_calls_expr(a.value, out)
-    elif isinstance(expr, TBinaryOp):
-        _collect_builtin_calls_expr(expr.left, out)
-        _collect_builtin_calls_expr(expr.right, out)
-    elif isinstance(expr, TUnaryOp):
-        _collect_builtin_calls_expr(expr.operand, out)
-    elif isinstance(expr, TTernary):
-        _collect_builtin_calls_expr(expr.cond, out)
-        _collect_builtin_calls_expr(expr.then_expr, out)
-        _collect_builtin_calls_expr(expr.else_expr, out)
-    elif isinstance(expr, TFieldAccess):
-        _collect_builtin_calls_expr(expr.obj, out)
-    elif isinstance(expr, TTupleAccess):
-        _collect_builtin_calls_expr(expr.obj, out)
-    elif isinstance(expr, TIndex):
-        _collect_builtin_calls_expr(expr.obj, out)
-        _collect_builtin_calls_expr(expr.index, out)
-    elif isinstance(expr, TSlice):
-        _collect_builtin_calls_expr(expr.obj, out)
-        _collect_builtin_calls_expr(expr.low, out)
-        _collect_builtin_calls_expr(expr.high, out)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_builtin_calls_expr(k, out)
-            _collect_builtin_calls_expr(v, out)
-    elif isinstance(expr, TFnLit):
-        for s in expr.body:
-            _collect_builtin_calls_stmt(s, out)
 
 
 # ============================================================
@@ -433,29 +325,19 @@ _STRICT_INT_COMPOUND = {
 }
 
 
-class _PythonEmitter:
+class _PythonEmitter(Emitter):
     def __init__(
         self,
         struct_names: set[str],
         struct_fields: dict[str, list[str]],
         strict_math: bool = False,
     ) -> None:
+        super().__init__()
         self.struct_names = struct_names
         self.struct_fields = struct_fields
         self.strict_math = strict_math
-        self.indent: int = 0
-        self.lines: list[str] = []
         self.self_name: str | None = None
         self.var_types: dict[str, TType] = {}
-
-    def _line(self, text: str = "") -> None:
-        if text:
-            self.lines.append("    " * self.indent + text)
-        else:
-            self.lines.append("")
-
-    def output(self) -> str:
-        return "\n".join(self.lines)
 
     # ── Module ────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .ordering import order_decls
-from .util import to_snake
+from .util import Emitter, to_snake
 from ..taytsh.ast import (
     Ann,
     Pos,
@@ -343,7 +343,7 @@ _STRICT_INT_COMPOUND: dict[str, str] = {
 }
 
 
-class _PerlEmitter:
+class _PerlEmitter(Emitter):
     def __init__(
         self,
         struct_names: set[str],
@@ -352,14 +352,13 @@ class _PerlEmitter:
         struct_fields: dict[str, list[str]],
         strict_math: bool = False,
     ) -> None:
+        super().__init__()
         self.struct_names = struct_names
         self.enum_names = enum_names
         self.function_names = function_names
         self.struct_fields = struct_fields
         self.strict_math = strict_math
         self.sft: dict[str, dict[str, TType]] = {}
-        self.indent: int = 0
-        self.lines: list[str] = []
         self.self_name: str | None = None
         self.var_types: dict[str, TType] = {}
         self.tmp_counter: int = 0
@@ -369,15 +368,6 @@ class _PerlEmitter:
         self.module_var_names: set[str] = set()
         self.local_names: set[str] = set()
         self.fn_ret: dict[str, TType] = {}
-
-    def _line(self, text: str = "") -> None:
-        if text:
-            self.lines.append("    " * self.indent + text)
-        else:
-            self.lines.append("")
-
-    def output(self) -> str:
-        return "\n".join(self.lines)
 
     def _tmp(self, prefix: str = "__t") -> str:
         name = "$" + prefix + str(self.tmp_counter)
