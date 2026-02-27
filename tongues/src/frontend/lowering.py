@@ -907,8 +907,8 @@ def _is_nil_guard_test(test: ASTNode, body: ASTNode) -> bool:
 
 
 def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
-    """Infer the type of an expression, with optional shadow comparison."""
-    result = _infer_expr_type_inner(node, env, ctx)
+    """Infer the type of an expression, using pycheck lookup with fallback."""
+    result = _lookup_expr_type(node, env, ctx)
     if _SHADOW_MODE[0]:
         _shadow_check(node, result, ctx)
     return result
@@ -958,15 +958,46 @@ def _adjust_pycheck_type(node: ASTNode, pt: TypeNode) -> TypeNode:
     return pt
 
 
+def _is_any_type(t: TypeNode) -> bool:
+    return isinstance(t, InterfaceRef) and t.name == "any"
+
+
+def _is_void_type(t: TypeNode) -> bool:
+    return isinstance(t, PrimitiveType) and t.kind == "void"
+
+
+_DBG_PRINT_LOOKUP_FALLBACK: bool = False
+
+
 def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Try pycheck lookup first, fall back to _infer_expr_type_inner."""
-    if ctx.pycheck_result is not None:
+    inner = _infer_expr_type_inner(node, env, ctx)
+    if ctx.pycheck_result is not None and not _is_void_type(inner):
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
         if isinstance(uid_jv, JInt):
             pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
-            if pt is not None:
-                return _adjust_pycheck_type(node, pt)
-    return _infer_expr_type_inner(node, env, ctx)
+            if pt is not None and not _is_any_type(pt) and not contains_any(pt):
+                adjusted = _adjust_pycheck_type(node, pt)
+                if repr(adjusted) != repr(inner):
+                    if _DBG_PRINT_LOOKUP_FALLBACK:
+                        nt = get_str(node, "_type") if isinstance(node, dict) else ""
+                        lineno = (
+                            get_int(node, "lineno") if isinstance(node, dict) else 0
+                        )
+                        print(
+                            "lookup_diff:"
+                            + str(lineno)
+                            + ": "
+                            + nt
+                            + " lookup="
+                            + _type_name_str(adjusted)
+                            + " inner="
+                            + _type_name_str(inner),
+                            file=sys.stderr,
+                        )
+                    return inner
+                return adjusted
+    return inner
 
 
 def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
