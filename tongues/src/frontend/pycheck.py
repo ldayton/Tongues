@@ -76,6 +76,10 @@ from .types import (
 )
 
 
+_DBG_PRINT_EXPR_TYPES: bool = False
+_DBG_PRINT_BUDGET_EXHAUSTION: bool = False
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -480,6 +484,20 @@ def _synth_expr(
     uid_jv = node.get("_uid") if isinstance(node, dict) else None
     if isinstance(uid_jv, JInt):
         ctx.result.expr_types[uid_jv.value] = result
+        if _DBG_PRINT_EXPR_TYPES:
+            t = get_str(node, "_type") if isinstance(node, dict) else ""
+            lineno = get_int(node, "lineno") if isinstance(node, dict) else 0
+            print(
+                "DBG expr uid="
+                + str(uid_jv.value)
+                + " "
+                + t
+                + ":"
+                + str(lineno)
+                + " -> "
+                + _type_name(result),
+                file=sys.stderr,
+            )
     return result
 
 
@@ -1574,6 +1592,16 @@ def _validate_stmts(
             i += 1
             continue
         if _func_err_budget_exhausted(ctx):
+            if _DBG_PRINT_BUDGET_EXHAUSTION:
+                lineno = get_int(stmt, "lineno")
+                print(
+                    "DBG budget exhausted at line "
+                    + str(lineno)
+                    + " ("
+                    + str(ctx._func_err_limit)
+                    + " errors)",
+                    file=sys.stderr,
+                )
             return False
         returned = _validate_stmt(stmt, env, func_info, ctx)
         if returned:
