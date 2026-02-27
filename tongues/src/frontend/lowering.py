@@ -768,6 +768,7 @@ class _LowerCtx:
         self.isinstance_temp_counter: int = 0
         self.constant_types: dict[str, TypeNode] = {}
         self.comp_counter: int = 0
+        self.class_nodes: dict[str, ASTNode] = {}
 
 
 class _Env:
@@ -5777,12 +5778,14 @@ def _build_method(
     class_name: str,
     env: _Env,
     ctx: _LowerCtx,
+    source_class: str | None = None,
 ) -> TFnDecl:
     """Build a TFnDecl from a method definition."""
     pos = _node_pos(node)
     name = get_str(node, "name")
-    # Get method signature
-    class_methods = ctx.tc_result.methods.get(class_name, {})
+    # Get method signature — from source class if inherited
+    sig_class = source_class if source_class is not None else class_name
+    class_methods = ctx.tc_result.methods.get(sig_class, {})
     func_info = class_methods.get(name)
     params: list[TParam] = []
     func_env = env.copy()
@@ -5881,6 +5884,43 @@ def _collect_ancestor_fields(
                         (fname, _typenode_to_ttype(pos, finfo.typ), finfo.has_default)
                     )
                     seen.add(fname)
+                j += 1
+        i += 1
+    return result
+
+
+def _collect_ancestor_methods(
+    name: str, own_names: set[str], ctx: _LowerCtx
+) -> list[TFnDecl]:
+    """Collect inherited methods from ancestor classes not overridden by own."""
+    chain: list[str] = []
+    cur = name
+    while True:
+        ancs = ctx.hier_result.ancestors.get(cur)
+        if ancs is None or len(ancs) == 0:
+            break
+        chain.append(ancs[0])
+        cur = ancs[0]
+    chain.reverse()
+    result: list[TFnDecl] = []
+    seen: set[str] = set(own_names)
+    i = 0
+    while i < len(chain):
+        anc = chain[i]
+        anc_node = ctx.class_nodes.get(anc)
+        if anc_node is not None:
+            anc_body = get_nodes(anc_node, "body")
+            env = _Env()
+            j = 0
+            while j < len(anc_body):
+                item = anc_body[j]
+                if _is_ast(item, "FunctionDef"):
+                    mname = get_str(item, "name")
+                    if mname != "__init__" and mname not in seen:
+                        result.append(
+                            _build_method(item, name, env, ctx, source_class=anc)
+                        )
+                        seen.add(mname)
                 j += 1
         i += 1
     return result
@@ -6009,8 +6049,9 @@ def _build_struct(
                     ftype = _typenode_to_ttype(pos, finfo.typ)
                     fields.append(TFieldDecl(pos, fname, ftype, finfo.has_default))
                 j += 1
-    # Build methods
+    # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
+    own_method_names: set[str] = set()
     body = get_nodes(node, "body")
     env = _Env()
     j = 0
@@ -6019,7 +6060,13 @@ def _build_struct(
         if _is_ast(item, "FunctionDef"):
             mname = get_str(item, "name")
             if mname != "__init__":
+                own_method_names.add(mname)
                 methods.append(_build_method(item, name, env, ctx))
+        j += 1
+    ancestor_methods = _collect_ancestor_methods(name, own_method_names, ctx)
+    j = 0
+    while j < len(ancestor_methods):
+        methods.append(ancestor_methods[j])
         j += 1
     ann: Ann = {}
     if is_exception:
@@ -6192,6 +6239,13 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
     i = 0
     while i < len(constants):
         decls.append(constants[i])
+        i += 1
+    # Index class AST nodes for ancestor method lookup
+    i = 0
+    while i < len(body):
+        node = body[i]
+        if _is_ast(node, "ClassDef"):
+            ctx.class_nodes[get_str(node, "name")] = node
         i += 1
     # Build structs/interfaces
     i = 0

@@ -10,31 +10,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .expr_reads import expr_reads, target_reads
+from .type_resolve import StringsResolver
 from ..taytsh.ast import (
     Ann,
     TAssignStmt,
     TBinaryOp,
-    TBoolLit,
-    TByteLit,
-    TBytesLit,
     TCall,
     TEnumDecl,
     TExpr,
     TExprStmt,
     TFieldAccess,
-    TFloatLit,
     TFnDecl,
     TFnLit,
     TForStmt,
     TIfStmt,
     TIndex,
-    TIntLit,
     TLetStmt,
     TListLit,
     TMapLit,
     TMatchStmt,
     TModule,
-    TNilLit,
     TOpAssignStmt,
     TParam,
     TPatternEnum,
@@ -42,7 +37,6 @@ from ..taytsh.ast import (
     TPatternType,
     TRange,
     TReturnStmt,
-    TRuneLit,
     TSetLit,
     TSlice,
     TStmt,
@@ -61,19 +55,13 @@ from ..taytsh.ast import (
 from ..taytsh.check import (
     BOOL_T,
     BYTE_T,
-    BYTES_T,
     Checker,
     FLOAT_T,
     INT_T,
     ListT,
-    MapT,
     NIL_T,
     ERROR_T,
-    RUNE_T,
     STRING_T,
-    SetT,
-    StructT,
-    TupleT,
     Type,
     UnionT,
     normalize_union,
@@ -180,198 +168,8 @@ def _add_list_source(ctx: _StringsCtx, name: str, source: _Source) -> None:
     ctx.list_string_sources[name].append(source)
 
 
-def _resolve_expr_type(expr: TExpr, ctx: _StringsCtx) -> Type | None:
-    if isinstance(expr, TVar):
-        if expr.name in ctx.var_types:
-            return ctx.var_types[expr.name]
-        if expr.name in ctx.checker.functions:
-            return ctx.checker.functions[expr.name]
-        if expr.name in ctx.checker.types:
-            return ctx.checker.types[expr.name]
-        return None
-    if isinstance(expr, TIntLit):
-        return INT_T
-    if isinstance(expr, TFloatLit):
-        return FLOAT_T
-    if isinstance(expr, TBoolLit):
-        return BOOL_T
-    if isinstance(expr, TByteLit):
-        return BYTE_T
-    if isinstance(expr, TStringLit):
-        return STRING_T
-    if isinstance(expr, TRuneLit):
-        return RUNE_T
-    if isinstance(expr, TBytesLit):
-        return BYTES_T
-    if isinstance(expr, TNilLit):
-        return NIL_T
-    if isinstance(expr, TListLit):
-        if len(expr.elements) == 0:
-            return None
-        elem_t = _resolve_expr_type(expr.elements[0], ctx)
-        if elem_t is not None:
-            return ListT(kind="list", element=elem_t)
-        return None
-    if isinstance(expr, TMapLit):
-        if len(expr.entries) == 0:
-            return None
-        key_t = _resolve_expr_type(expr.entries[0][0], ctx)
-        val_t = _resolve_expr_type(expr.entries[0][1], ctx)
-        if key_t is not None and val_t is not None:
-            return MapT(kind="map", key=key_t, value=val_t)
-        return None
-    if isinstance(expr, TSetLit):
-        if len(expr.elements) == 0:
-            return None
-        elem_t = _resolve_expr_type(expr.elements[0], ctx)
-        if elem_t is not None:
-            return SetT(kind="set", element=elem_t)
-        return None
-    if isinstance(expr, TTupleLit):
-        elems: list[Type] = []
-        for e in expr.elements:
-            t = _resolve_expr_type(e, ctx)
-            if t is None:
-                return None
-            elems.append(t)
-        return TupleT(kind="tuple", elements=elems)
-    if isinstance(expr, TFieldAccess):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if isinstance(obj_t, StructT):
-            if expr.field in obj_t.fields:
-                return obj_t.fields[expr.field]
-        return None
-    if isinstance(expr, TIndex):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if isinstance(obj_t, ListT):
-            return obj_t.element
-        if isinstance(obj_t, MapT):
-            return obj_t.value
-        if obj_t is not None and type_eq(obj_t, STRING_T):
-            return RUNE_T
-        if obj_t is not None and type_eq(obj_t, BYTES_T):
-            return BYTE_T
-        return None
-    if isinstance(expr, TSlice):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if isinstance(obj_t, ListT):
-            return obj_t
-        if obj_t is not None and type_eq(obj_t, STRING_T):
-            return STRING_T
-        if obj_t is not None and type_eq(obj_t, BYTES_T):
-            return BYTES_T
-        return None
-    if isinstance(expr, TCall):
-        return _resolve_call_type(expr, ctx)
-    return None
-
-
-def _resolve_call_type(expr: TCall, ctx: _StringsCtx) -> Type | None:
-    if isinstance(expr.func, TVar):
-        name = expr.func.name
-        if name in ctx.checker.functions:
-            return ctx.checker.functions[name].ret
-        if name in ctx.checker.types:
-            return ctx.checker.types[name]
-        if name in (
-            "ToString",
-            "Concat",
-            "FormatInt",
-            "Lower",
-            "Upper",
-            "Trim",
-            "TrimStart",
-            "TrimEnd",
-            "Replace",
-            "Repeat",
-            "Reverse",
-            "Join",
-            "Format",
-            "ReadAll",
-            "Decode",
-        ):
-            return STRING_T
-        if name == "ReadLine":
-            return normalize_union([STRING_T, NIL_T])
-        if name in ("Split", "SplitN", "SplitWhitespace"):
-            return ListT(kind="list", element=STRING_T)
-        if name == "Len":
-            return INT_T
-        if name == "Args":
-            return ListT(kind="list", element=STRING_T)
-        if name == "Keys":
-            if len(expr.args) > 0:
-                t = _resolve_expr_type(expr.args[0].value, ctx)
-                if isinstance(t, MapT):
-                    return ListT(kind="list", element=t.key)
-        if name == "Values":
-            if len(expr.args) > 0:
-                t = _resolve_expr_type(expr.args[0].value, ctx)
-                if isinstance(t, MapT):
-                    return ListT(kind="list", element=t.value)
-        if name == "Items":
-            if len(expr.args) > 0:
-                t = _resolve_expr_type(expr.args[0].value, ctx)
-                if isinstance(t, MapT):
-                    tup = TupleT(kind="tuple", elements=[t.key, t.value])
-                    return ListT(kind="list", element=tup)
-        if name == "Get":
-            if len(expr.args) > 0:
-                t = _resolve_expr_type(expr.args[0].value, ctx)
-                if isinstance(t, MapT):
-                    return normalize_union([t.value, NIL_T])
-        if name == "Map":
-            return None
-        if name == "Set":
-            return None
-        return None
-    if isinstance(expr.func, TFieldAccess):
-        obj_t = _resolve_expr_type(expr.func.obj, ctx)
-        if isinstance(obj_t, StructT) and expr.func.field in obj_t.methods:
-            return obj_t.methods[expr.func.field].ret
-    return None
-
-
-def _resolve_for_binder_types(
-    stmt: TForStmt, ctx: _StringsCtx
-) -> dict[str, Type] | None:
-    if isinstance(stmt.iterable, TRange):
-        result: dict[str, Type] = {}
-        for b in stmt.binding:
-            result[b] = INT_T
-        return result
-    iter_t = _resolve_expr_type(stmt.iterable, ctx)
-    if iter_t is None:
-        return None
-    result2: dict[str, Type] = {}
-    if isinstance(iter_t, ListT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_t.element
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = iter_t.element
-    elif isinstance(iter_t, MapT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_t.key
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = iter_t.key
-            result2[stmt.binding[1]] = iter_t.value
-    elif isinstance(iter_t, SetT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_t.element
-    elif type_eq(iter_t, STRING_T):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = RUNE_T
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = RUNE_T
-    elif type_eq(iter_t, BYTES_T):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = BYTE_T
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = BYTE_T
-    return result2 if len(result2) > 0 else None
+def _make_resolver(ctx: _StringsCtx) -> StringsResolver:
+    return StringsResolver(ctx.var_types, ctx.checker)
 
 
 def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
@@ -582,7 +380,7 @@ def _classify_string_expr(
             if name == "ToString":
                 if len(expr.args) == 0:
                     return _C_UNKNOWN
-                t = _resolve_expr_type(expr.args[0].value, ctx)
+                t = _make_resolver(ctx).resolve(expr.args[0].value)
                 if t is not None and (
                     type_eq(t, INT_T)
                     or type_eq(t, FLOAT_T)
@@ -835,7 +633,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         stmt.annotations["strings.builder"] = _compute_builder(stmt.body, ctx, declared)
         ctx.loop_nodes.append(stmt)
 
-        binder_types = _resolve_for_binder_types(stmt, ctx)
+        binder_types = _make_resolver(ctx).resolve_for_binder_types(stmt)
         child_declared = set(declared)
         for bname in stmt.binding:
             btype = binder_types.get(bname) if binder_types is not None else None
@@ -859,7 +657,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
 
     if isinstance(stmt, TMatchStmt):
         _walk_expr_usage(stmt.expr, ctx)
-        scrutinee_t = _resolve_expr_type(stmt.expr, ctx)
+        scrutinee_t = _make_resolver(ctx).resolve(stmt.expr)
         covered: list[Type] = []
         for case in stmt.cases:
             case_declared = set(declared)
