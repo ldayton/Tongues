@@ -609,9 +609,14 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     name = get_str(node, "id")
     if name == "":
         return ANY_TYPE
-    typ = env.get_type(name)
-    if typ is not None:
-        return typ
+    if name == "self":
+        typ = env.get_type("this")
+        if typ is not None:
+            return typ
+    else:
+        typ = env.get_type(name)
+        if typ is not None:
+            return typ
     # User-defined function reference -> FuncType
     func_info = ctx.tc_result.functions.get(name)
     if func_info is not None:
@@ -628,10 +633,29 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return FuncType([ANY_TYPE], STR_TYPE)
     if name == "int":
         return FuncType([ANY_TYPE], INT_TYPE)
+    if name == "float":
+        return FuncType([ANY_TYPE], FLOAT_TYPE)
     if name == "bool":
         return FuncType([ANY_TYPE], BOOL_TYPE)
     if name == "pow":
         return FuncType([INT_TYPE, INT_TYPE], INT_TYPE)
+    if name == "repr":
+        return FuncType([ANY_TYPE], STR_TYPE)
+    if name == "chr":
+        return FuncType([INT_TYPE], STR_TYPE)
+    if name == "ord":
+        return FuncType([STR_TYPE], INT_TYPE)
+    if name == "abs":
+        return FuncType([INT_TYPE], INT_TYPE)
+    if name == "round":
+        return FuncType([ANY_TYPE], INT_TYPE)
+    if name == "hash":
+        return FuncType([ANY_TYPE], INT_TYPE)
+    if name == "sorted":
+        return FuncType([ANY_TYPE], SliceType(ANY_TYPE))
+    # Class name as bare reference
+    if name in ctx.known_classes:
+        return PointerType(StructRef(name))
     # Module-level variable
     mod_var = ctx.module_vars.get(name)
     if mod_var is not None:
@@ -2230,6 +2254,8 @@ def _validate_call_args(
         return
     func = get_node(node, "func")
     args = get_nodes(node, "args")
+    keywords = get_nodes(node, "keywords")
+    n_kw = len(keywords)
     if len(func) == 0:
         return
     if _is_type(func, ["Name"]):
@@ -2238,13 +2264,13 @@ def _validate_call_args(
             return
         func_info = ctx.tc_result.functions.get(fname)
         if func_info is not None:
-            _check_call_args(func_info, args, env, ctx, lineno)
+            _check_call_args(func_info, args, env, ctx, lineno, n_kw)
             return
         if fname in ctx.known_classes:
             return
         ftype = env.get_type(fname)
         if ftype is not None and isinstance(ftype, FuncType):
-            _check_func_type_args(ftype, args, env, ctx, lineno)
+            _check_func_type_args(ftype, args, env, ctx, lineno, n_kw)
             return
         if fname == "len":
             if len(args) > 0:
@@ -2284,7 +2310,7 @@ def _validate_call_args(
             if methods is not None:
                 method = methods.get(attr)
             if method is not None:
-                _check_call_args(method, args, env, ctx, lineno)
+                _check_call_args(method, args, env, ctx, lineno, n_kw)
                 return
             if _subclass_has_method(sname, attr, ctx):
                 ctx.result.add_error(
@@ -2305,6 +2331,7 @@ def _check_call_args(
     env: TypeEnv,
     ctx: _InferCtx,
     lineno: int,
+    n_keywords: int = 0,
 ) -> None:
     """Check argument types against function parameters."""
     params = func_info.params
@@ -2317,7 +2344,7 @@ def _check_call_args(
             if not params[j].has_default:
                 n_required += 1
         j += 1
-    if len(args) < n_required or len(args) > n_positional:
+    if n_keywords == 0 and (len(args) < n_required or len(args) > n_positional):
         ctx.result.add_error(
             lineno,
             0,
@@ -2351,9 +2378,10 @@ def _check_func_type_args(
     env: TypeEnv,
     ctx: _InferCtx,
     lineno: int,
+    n_keywords: int = 0,
 ) -> None:
     """Check args against a FuncType."""
-    if len(args) != len(ftype.params):
+    if n_keywords == 0 and len(args) != len(ftype.params):
         ctx.result.add_error(
             lineno,
             0,
@@ -2932,6 +2960,8 @@ def _narrow_isinstance(
                 else_env.set(name, vt)
     if name == "":
         return
+    if name == "self":
+        name = "this"
     narrow_names: list[str] = []
     if _is_type(type_arg, ["Name"]):
         n = get_str(type_arg, "id")
