@@ -502,18 +502,26 @@ class _RubyEmitter(Emitter):
         enum_names: set[str],
         strict_math: bool = False,
     ) -> None:
-        super().__init__(indent_str="  ")
         self.struct_names = struct_names
         self.fn_names = fn_names
         self.struct_fields = struct_fields
         self.field_types = field_types
         self.enum_names = enum_names
         self.strict_math = strict_math
+        self.indent: int = 0
+        self.lines: list[str] = []
         self.self_name: str | None = None
+        self.var_types: dict[str, TType] = {}
         self._needs_set: bool = False
         self.in_fn: bool = False
         self.local_names: dict[str, str] = {}
         self._needs_range_helper: bool = False
+
+    def _line(self, text: str = "") -> None:
+        if text:
+            self.lines.append("  " * self.indent + text)
+        else:
+            self.lines.append("")
 
     def _decl_name(self, name: str, annotations: Ann) -> str:
         """Declare a local variable, lowercasing inside function bodies."""

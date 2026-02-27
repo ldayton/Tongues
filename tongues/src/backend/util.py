@@ -34,7 +34,6 @@ from ..taytsh.ast import (
     TTupleAssignStmt,
     TTupleLit,
     TTryStmt,
-    TType,
     TUnaryOp,
     TVar,
     TWhileStmt,
@@ -220,21 +219,13 @@ STRICT_INT_COMPOUND: dict[str, str] = {
 class Emitter:
     """Base class for code emitters with indentation tracking."""
 
-    def __init__(self, indent_str: str = "    ") -> None:
-        self.indent: int = 0
-        self.lines: list[str] = []
-        self._indent_str = indent_str
-        self.var_types: dict[str, TType] = {}
-
     def _line(self, text: str = "") -> None:
-        """Emit a line with current indentation."""
         if text:
-            self.lines.append(self._indent_str * self.indent + text)
+            self.lines.append("    " * self.indent + text)
         else:
             self.lines.append("")
 
     def output(self) -> str:
-        """Return the accumulated output as a string."""
         return "\n".join(self.lines)
 
     def _expr(self, expr: TExpr) -> str:

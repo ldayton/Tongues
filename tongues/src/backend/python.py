@@ -320,11 +320,13 @@ class _PythonEmitter(Emitter):
         struct_fields: dict[str, list[str]],
         strict_math: bool = False,
     ) -> None:
-        super().__init__()
         self.struct_names = struct_names
         self.struct_fields = struct_fields
         self.strict_math = strict_math
+        self.indent: int = 0
+        self.lines: list[str] = []
         self.self_name: str | None = None
+        self.var_types: dict[str, TType] = {}
 
     # ── Module ────────────────────────────────────────────────
 

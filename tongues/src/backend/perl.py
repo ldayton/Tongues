@@ -334,14 +334,16 @@ class _PerlEmitter(Emitter):
         struct_fields: dict[str, list[str]],
         strict_math: bool = False,
     ) -> None:
-        super().__init__()
         self.struct_names = struct_names
         self.enum_names = enum_names
         self.function_names = function_names
         self.struct_fields = struct_fields
         self.strict_math = strict_math
         self.sft: dict[str, dict[str, TType]] = {}
+        self.indent: int = 0
+        self.lines: list[str] = []
         self.self_name: str | None = None
+        self.var_types: dict[str, TType] = {}
         self.tmp_counter: int = 0
         self.var_alias: dict[str, str] = {}
         self.fwd_declared: set[str] = set()
@@ -1700,17 +1702,6 @@ class _PerlEmitter(Emitter):
         self.indent = old_indent
         lines.append("    " * self.indent + "}")
         return "\n".join(lines)
-
-    def _fn_lit_body(self, stmts: list[TStmt]) -> str:
-        parts: list[str] = []
-        for stmt in stmts:
-            inline = self._stmt_inline(stmt)
-            if inline is None:
-                return 'die "unsupported function literal body";'
-            parts.append(inline)
-        if not parts:
-            return "return;"
-        return " ".join(parts)
 
     def _stmt_inline(self, stmt: TStmt) -> str | None:
         if isinstance(stmt, TExprStmt):
