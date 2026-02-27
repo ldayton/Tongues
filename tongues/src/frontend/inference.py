@@ -12,9 +12,11 @@ from __future__ import annotations
 
 from .cfg import (
     FlowAssign,
+    FlowCondAlias,
     FlowGraph,
     FlowJoin,
     FlowLoopHead,
+    FlowNarrow,
     get_type_at,
     lookup_alias,
 )
@@ -1332,20 +1334,8 @@ def _find_succ_assign(ctx: _InferCtx, name: str, lineno: int) -> int:
     return -1
 
 
-def _find_succ_join(graph: FlowGraph, from_id: int) -> int:
-    """Find a FlowJoin successor of from_id."""
-    succs = graph.successors(from_id)
-    i = 0
-    while i < len(succs):
-        node = graph.node_at(succs[i])
-        if node is not None and isinstance(node, FlowJoin):
-            return node.id
-        i += 1
-    return -1
-
-
-def _find_succ_loop_head(ctx: _InferCtx) -> int:
-    """Find a FlowLoopHead successor of current_flow_id."""
+def _find_succ_narrow(ctx: _InferCtx) -> int:
+    """Find a FlowNarrow successor of current_flow_id."""
     graph = ctx.current_graph
     if graph is None or ctx.current_flow_id < 0:
         return -1
@@ -1353,9 +1343,80 @@ def _find_succ_loop_head(ctx: _InferCtx) -> int:
     i = 0
     while i < len(succs):
         node = graph.node_at(succs[i])
-        if node is not None and isinstance(node, FlowLoopHead):
+        if node is not None and isinstance(node, FlowNarrow):
             return node.id
         i += 1
+    return -1
+
+
+def _find_succ_cond_alias(ctx: _InferCtx, name: str) -> int:
+    """Find a FlowCondAlias successor of current_flow_id matching alias_name."""
+    graph = ctx.current_graph
+    if graph is None or ctx.current_flow_id < 0:
+        return -1
+    succs = graph.successors(ctx.current_flow_id)
+    i = 0
+    while i < len(succs):
+        node = graph.node_at(succs[i])
+        if node is not None and isinstance(node, FlowCondAlias):
+            if node.alias_name == name:
+                return node.id
+        i += 1
+    return -1
+
+
+def _find_succ_join_walk(graph: FlowGraph, from_id: int, max_depth: int) -> int:
+    """BFS from from_id for a FlowJoin node, stopping at scope boundaries."""
+    frontier: list[int] = [from_id]
+    depth = 0
+    while depth < max_depth and len(frontier) > 0:
+        next_frontier: list[int] = []
+        fi = 0
+        while fi < len(frontier):
+            succs = graph.successors(frontier[fi])
+            si = 0
+            while si < len(succs):
+                nid = succs[si]
+                node = graph.node_at(nid)
+                if node is not None and isinstance(node, FlowJoin):
+                    return nid
+                if node is None or isinstance(node, FlowLoopHead):
+                    si += 1
+                    continue
+                next_frontier.append(nid)
+                si += 1
+            fi += 1
+        frontier = next_frontier
+        depth += 1
+    return -1
+
+
+def _find_succ_loop_head_walk(ctx: _InferCtx, max_depth: int) -> int:
+    """BFS from current_flow_id for a FlowLoopHead node, stopping at scope boundaries."""
+    graph = ctx.current_graph
+    if graph is None or ctx.current_flow_id < 0:
+        return -1
+    frontier: list[int] = [ctx.current_flow_id]
+    depth = 0
+    while depth < max_depth and len(frontier) > 0:
+        next_frontier: list[int] = []
+        fi = 0
+        while fi < len(frontier):
+            succs = graph.successors(frontier[fi])
+            si = 0
+            while si < len(succs):
+                nid = succs[si]
+                node = graph.node_at(nid)
+                if node is not None and isinstance(node, FlowLoopHead):
+                    return nid
+                if node is None or isinstance(node, FlowJoin):
+                    si += 1
+                    continue
+                next_frontier.append(nid)
+                si += 1
+            fi += 1
+        frontier = next_frontier
+        depth += 1
     return -1
 
 
@@ -1366,6 +1427,7 @@ def _cfg_merge_env(
     env_a: TypeEnv,
     env_b: TypeEnv,
     hier: HierarchyResult,
+    both_only: bool,
 ) -> None:
     """Merge two branch envs into env, using CFG only for assigned vars that diverged."""
     graph = ctx.current_graph
@@ -1398,31 +1460,40 @@ def _cfg_merge_env(
             tb = env_b.types[k]
             if _type_eq(ta, tb):
                 env.types[k] = ta
-            elif graph is not None and "." not in k and k in ctx.assigned_types_by_name:
-                t = get_type_at(
-                    graph,
-                    node_id,
-                    k,
-                    ctx.initial_types,
-                    ctx.assigned_types,
-                    ctx.known_classes,
-                )
-                if t is not None:
-                    env.types[k] = t
-                else:
-                    env.types[k] = combine_types([ta, tb])
-            elif _is_assignable(ta, tb, hier):
-                env.types[k] = tb
-            elif _is_assignable(tb, ta, hier):
-                env.types[k] = ta
             else:
-                parts: list[TypeNode] = []
-                _flatten_for_merge(ta, parts)
-                _flatten_for_merge(tb, parts)
-                env.types[k] = combine_types(parts)
-        elif in_a:
+                cfg_t: TypeNode | None = None
+                if (
+                    graph is not None
+                    and "." not in k
+                    and k in ctx.assigned_types_by_name
+                ):
+                    cfg_t = get_type_at(
+                        graph,
+                        node_id,
+                        k,
+                        ctx.initial_types,
+                        ctx.assigned_types,
+                        ctx.known_classes,
+                    )
+                    if cfg_t is not None and not (
+                        _is_assignable(ta, cfg_t, hier)
+                        or _is_assignable(tb, cfg_t, hier)
+                    ):
+                        cfg_t = None
+                if cfg_t is not None:
+                    env.types[k] = cfg_t
+                elif _is_assignable(ta, tb, hier):
+                    env.types[k] = tb
+                elif _is_assignable(tb, ta, hier):
+                    env.types[k] = ta
+                else:
+                    parts: list[TypeNode] = []
+                    _flatten_for_merge(ta, parts)
+                    _flatten_for_merge(tb, parts)
+                    env.types[k] = combine_types(parts)
+        elif in_a and not both_only:
             env.types[k] = env_a.types[k]
-        elif in_b:
+        elif in_b and not both_only:
             env.types[k] = env_b.types[k]
         j += 1
 
@@ -1632,6 +1703,10 @@ def _validate_assign(
                     ctx.assigned_types[flow_id] = val_type
                     ctx.assigned_types_by_name.add(name)
                     ctx.current_flow_id = flow_id
+                else:
+                    ca_id = _find_succ_cond_alias(ctx, name)
+                    if ca_id >= 0:
+                        ctx.current_flow_id = ca_id
         elif _is_type(tgt, ["Tuple", "List"]):
             _validate_unpack(tgt, val_type, value, env, ctx, lineno)
         elif _is_type(tgt, ["Subscript"]):
@@ -1792,6 +1867,10 @@ def _validate_ann_assign(
                 ctx.assigned_types[flow_id] = ann_type
                 ctx.assigned_types_by_name.add(name)
                 ctx.current_flow_id = flow_id
+            else:
+                ca_id = _find_succ_cond_alias(ctx, name)
+                if ca_id >= 0:
+                    ctx.current_flow_id = ca_id
             if len(value) > 0:
                 err_snap = len(ctx.result._errors)
                 _validate_expr_access(value, env, ctx, lineno)
@@ -2176,80 +2255,6 @@ def _flatten_for_merge(t: TypeNode, out: list[TypeNode]) -> None:
         out.append(t)
 
 
-def _merge_no_else(
-    then_env: TypeEnv, else_env: TypeEnv, out: TypeEnv, hier: HierarchyResult
-) -> None:
-    """Merge if-without-else: only update vars present in both branches."""
-    ekeys = list(else_env.types.keys())
-    j = 0
-    while j < len(ekeys):
-        k = ekeys[j]
-        then_t = then_env.types.get(k)
-        else_t = else_env.types[k]
-        if then_t is not None:
-            if _type_eq(else_t, then_t):
-                out.types[k] = else_t
-            elif _is_assignable(then_t, else_t, hier):
-                out.types[k] = else_t
-            elif _is_assignable(else_t, then_t, hier):
-                out.types[k] = then_t
-            else:
-                parts: list[TypeNode] = []
-                _flatten_for_merge(then_t, parts)
-                _flatten_for_merge(else_t, parts)
-                out.types[k] = combine_types(parts)
-        j += 1
-
-
-def _merge_branch_envs(
-    env_a: TypeEnv, env_b: TypeEnv, out: TypeEnv, hier: HierarchyResult
-) -> None:
-    """Merge two branch environments into out using combine_types."""
-    all_keys: list[str] = []
-    akeys = list(env_a.types.keys())
-    j = 0
-    while j < len(akeys):
-        all_keys.append(akeys[j])
-        j += 1
-    bkeys = list(env_b.types.keys())
-    j = 0
-    while j < len(bkeys):
-        k = bkeys[j]
-        found = False
-        ki = 0
-        while ki < len(all_keys):
-            if all_keys[ki] == k:
-                found = True
-            ki += 1
-        if not found:
-            all_keys.append(k)
-        j += 1
-    j = 0
-    while j < len(all_keys):
-        k = all_keys[j]
-        in_a = k in env_a.types
-        in_b = k in env_b.types
-        if in_a and in_b:
-            ta = env_a.types[k]
-            tb = env_b.types[k]
-            if _type_eq(ta, tb):
-                out.types[k] = ta
-            elif _is_assignable(ta, tb, hier):
-                out.types[k] = tb
-            elif _is_assignable(tb, ta, hier):
-                out.types[k] = ta
-            else:
-                parts: list[TypeNode] = []
-                _flatten_for_merge(ta, parts)
-                _flatten_for_merge(tb, parts)
-                out.types[k] = combine_types(parts)
-        elif in_a:
-            out.types[k] = env_a.types[k]
-        elif in_b:
-            out.types[k] = env_b.types[k]
-        j += 1
-
-
 def _has_never_narrowing(pre_env: TypeEnv, post_env: TypeEnv) -> bool:
     """Check if any variable was narrowed to never between pre and post envs."""
     keys = list(post_env.types.keys())
@@ -2327,26 +2332,17 @@ def _validate_if(
             env.guarded_attrs.add(gkeys[j])
             j += 1
         ctx.current_flow_id = then_flow_id
-    elif not then_returns and not else_returns and len(orelse) > 0:
+    elif not then_returns and (not else_returns or len(orelse) == 0):
         graph = ctx.current_graph
         join_id = -1
         if graph is not None and then_flow_id >= 0:
-            join_id = _find_succ_join(graph, then_flow_id)
+            join_id = _find_succ_join_walk(graph, then_flow_id, 4)
+        both_only = len(orelse) == 0
+        _cfg_merge_env(
+            env, ctx, join_id, then_env, else_env, ctx.hier_result, both_only
+        )
         if join_id >= 0:
-            _cfg_merge_env(env, ctx, join_id, then_env, else_env, ctx.hier_result)
             ctx.current_flow_id = join_id
-        else:
-            _merge_branch_envs(then_env, else_env, env, ctx.hier_result)
-    elif not then_returns and len(orelse) == 0:
-        graph = ctx.current_graph
-        join_id = -1
-        if graph is not None and then_flow_id >= 0:
-            join_id = _find_succ_join(graph, then_flow_id)
-        if join_id >= 0:
-            _cfg_merge_env(env, ctx, join_id, then_env, else_env, ctx.hier_result)
-            ctx.current_flow_id = join_id
-        else:
-            _merge_no_else(then_env, else_env, env, ctx.hier_result)
     return then_returns and else_returns
 
 
@@ -2363,8 +2359,7 @@ def _validate_while(
             return
         _validate_expr_calls(test, env, ctx, lineno)
         _check_truthiness(test, env, ctx, lineno)
-    saved_flow_id = ctx.current_flow_id
-    head_id = _find_succ_loop_head(ctx)
+    head_id = _find_succ_loop_head_walk(ctx, 4)
     if head_id >= 0:
         ctx.current_flow_id = head_id
     loop_env = env.copy()
@@ -2386,10 +2381,7 @@ def _validate_while(
             env.types[ekeys[j]] = else_env.types[ekeys[j]]
             j += 1
     elif not body_returns:
-        if head_id >= 0 and ctx.current_graph is not None:
-            _cfg_merge_env(env, ctx, head_id, else_env, loop_env, ctx.hier_result)
-        else:
-            _merge_branch_envs(else_env, loop_env, env, ctx.hier_result)
+        _cfg_merge_env(env, ctx, head_id, else_env, loop_env, ctx.hier_result, False)
     if head_id >= 0:
         ctx.current_flow_id = head_id
 
@@ -2409,8 +2401,7 @@ def _validate_for(
         elem = _iteration_element(iter_type)
         if len(target) > 0:
             _bind_target(target, elem, env)
-    saved_flow_id = ctx.current_flow_id
-    head_id = _find_succ_loop_head(ctx)
+    head_id = _find_succ_loop_head_walk(ctx, 4)
     if head_id >= 0:
         ctx.current_flow_id = head_id
     loop_env = env.copy()
@@ -2424,14 +2415,12 @@ def _validate_for(
     graph = ctx.current_graph
     join_id = -1
     if graph is not None and head_id >= 0:
-        join_id = _find_succ_join(graph, head_id)
+        join_id = _find_succ_join_walk(graph, head_id, 4)
+    _cfg_merge_env(env, ctx, join_id, env, loop_env, ctx.hier_result, False)
     if join_id >= 0:
-        _cfg_merge_env(env, ctx, join_id, env, loop_env, ctx.hier_result)
         ctx.current_flow_id = join_id
-    else:
-        _merge_branch_envs(env, loop_env, env, ctx.hier_result)
-        if head_id >= 0:
-            ctx.current_flow_id = head_id
+    elif head_id >= 0:
+        ctx.current_flow_id = head_id
 
 
 def _validate_assert(
@@ -2447,6 +2436,9 @@ def _validate_assert(
         return
     dummy_else = env.copy()
     _extract_narrowing(test, env, dummy_else, ctx)
+    narrow_id = _find_succ_narrow(ctx)
+    if narrow_id >= 0:
+        ctx.current_flow_id = narrow_id
 
 
 def _validate_try(
