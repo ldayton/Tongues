@@ -825,6 +825,11 @@ def _synth_name_call(
     if fname == "len":
         return INT_TYPE
     if fname == "abs":
+        if len(args) > 0:
+            at = _synth_expr(args[0], env, ctx)
+            if isinstance(at, PrimitiveType) and at.kind == "bool":
+                return INT_TYPE
+            return at
         return INT_TYPE
     if fname == "ord":
         return INT_TYPE

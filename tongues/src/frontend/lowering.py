@@ -1184,7 +1184,7 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
         if op_type == "Add":
             if _is_type_dict(lt, ["string"]) or _is_type_dict(rt, ["string"]):
                 return STR_TYPE
-            if _is_type_dict(lt, ["float"]):
+            if _is_type_dict(lt, ["float"]) or _is_type_dict(rt, ["float"]):
                 return FLOAT_TYPE
             return INT_TYPE
         if (
