@@ -934,6 +934,41 @@ def _shadow_check(node: ASTNode, lowering_type: TypeNode, ctx: _LowerCtx) -> Non
     )
 
 
+def _adjust_pycheck_type(node: ASTNode, pt: TypeNode) -> TypeNode:
+    """Translate pycheck type conventions to lowering conventions."""
+    if not isinstance(node, dict):
+        return pt
+    t = get_str(node, "_type")
+    # pycheck returns SetType for dict.keys()/items(), lowering uses SliceType
+    if isinstance(pt, SetType) and t == "Call":
+        func = get_node(node, "func")
+        if (
+            isinstance(func, dict)
+            and get_str(func, "_type") == "Attribute"
+            and get_str(func, "attr") in ("keys", "items")
+        ):
+            return SliceType(pt.element)
+    # Lowering promotes bool to int for bitwise ops (IR uses int arithmetic)
+    if t == "BinOp":
+        op = get_node(node, "op")
+        op_t = get_str(op, "_type")
+        if op_t in ("BitAnd", "BitOr", "BitXor", "LShift", "RShift"):
+            if isinstance(pt, PrimitiveType) and pt.kind == "bool":
+                return INT_TYPE
+    return pt
+
+
+def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
+    """Try pycheck lookup first, fall back to _infer_expr_type_inner."""
+    if ctx.pycheck_result is not None:
+        uid_jv = node.get("_uid") if isinstance(node, dict) else None
+        if isinstance(uid_jv, JInt):
+            pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
+            if pt is not None:
+                return _adjust_pycheck_type(node, pt)
+    return _infer_expr_type_inner(node, env, ctx)
+
+
 def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Infer the type of an expression node from context."""
     t = get_str(node, "_type")
