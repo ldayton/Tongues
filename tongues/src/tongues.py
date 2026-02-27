@@ -42,7 +42,8 @@ from .taytsh.check import Checker, check_with_info
 from .taytsh.emit import to_source
 from .taytsh.parse import Parser as TaytshParser
 from .taytsh.tokens import tokenize as taytsh_tokenize
-from .middleend.callgraph import analyze_callgraph, serialize_callgraph
+from .middleend.callgraph import analyze_callgraph
+from .middleend.callgraph_serial import serialize_callgraph
 from .middleend.hoisting import analyze_hoisting
 from .middleend.liveness import analyze_liveness
 from .middleend.ownership import analyze_ownership
