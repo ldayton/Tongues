@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from .frontend.parse import parse, ParseError
@@ -14,7 +15,7 @@ from .frontend.bind import (
 )
 from .frontend.typecollect import collect_signatures, collect_types
 from .frontend.hierarchy import build_hierarchy
-from .frontend.pycheck import run_pycheck
+from .frontend.pycheck import run_pycheck, report_expr_coverage
 from .frontend.lowering import lower
 from .frontend.types import (
     JsonValue,
@@ -1526,6 +1527,8 @@ def _pipeline_post_parse(
             iei += 1
         _print_errors(err_strs)
         return (1, "")
+    if os.getenv("TONGUES_SHADOW", "") != "":
+        report_expr_coverage(ast_dict, inf_result)
     if stop_at == "pycheck":
         reveals_out = JList([])
         inf_reveals = inf_result.reveals()
@@ -1545,6 +1548,7 @@ def _pipeline_post_parse(
         known_classes,
         class_bases,
         source,
+        inf_result,
     )
     if len(lower_errors) > 0:
         err_strs: list[str] = []

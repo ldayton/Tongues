@@ -902,6 +902,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
             bind_result.known_classes,
             bind_result.class_bases,
             source,
+            inf_result,
         )
         if lower_errors:
             return (None, str(lower_errors[0]))
@@ -1147,6 +1148,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
             bind_result.known_classes,
             bind_result.class_bases,
             source,
+            inf_result,
         )
         if lower_errors:
             return (None, str(lower_errors[0]))

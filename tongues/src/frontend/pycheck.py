@@ -9,6 +9,7 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
+import sys
 
 from .cfg import (
     FlowAssign,
@@ -64,6 +65,8 @@ from .types import (
     JBool,
     JFloat,
     JNull,
+    JDict,
+    JList,
     ASTNode,
     get_str,
     get_int,
@@ -110,6 +113,7 @@ class PycheckResult:
     def __init__(self) -> None:
         self._errors: list[PycheckError] = []
         self._reveals: list[tuple[int, str]] = []
+        self.expr_types: dict[int, TypeNode] = {}
 
     def add_error(
         self, lineno: int, col: int, message: str, source_file: str = ""
@@ -467,6 +471,19 @@ _BUILTIN_FUNCS: set[str] = {
 
 
 def _synth_expr(
+    node: ASTNode,
+    env: TypeEnv,
+    ctx: _InferCtx,
+) -> TypeNode:
+    """Synthesize the type of an expression node, recording the result."""
+    result = _synth_expr_inner(node, env, ctx)
+    uid_jv = node.get("_uid") if isinstance(node, dict) else None
+    if isinstance(uid_jv, JInt):
+        ctx.result.expr_types[uid_jv.value] = result
+    return result
+
+
+def _synth_expr_inner(
     node: ASTNode,
     env: TypeEnv,
     ctx: _InferCtx,
@@ -3851,3 +3868,108 @@ def run_pycheck(
                 j += 1
         i += 1
     return result
+
+
+# ---------------------------------------------------------------------------
+# Expression coverage report (TONGUES_SHADOW diagnostic)
+# ---------------------------------------------------------------------------
+
+_EXPR_NODE_TYPES: set[str] = {
+    "Constant",
+    "Name",
+    "Attribute",
+    "Call",
+    "Subscript",
+    "BinOp",
+    "UnaryOp",
+    "Compare",
+    "BoolOp",
+    "IfExp",
+    "List",
+    "Dict",
+    "Set",
+    "Tuple",
+    "ListComp",
+    "SetComp",
+    "DictComp",
+    "JoinedStr",
+    "NamedExpr",
+}
+
+
+def _count_expr_nodes(
+    node: ASTNode,
+    expr_types: dict[int, TypeNode],
+    totals: dict[str, int],
+    covered: dict[str, int],
+) -> None:
+    if not isinstance(node, dict):
+        return
+    t = get_str(node, "_type")
+    if t in _EXPR_NODE_TYPES:
+        totals[t] = totals.get(t, 0) + 1
+        uid_jv = node.get("_uid")
+        if isinstance(uid_jv, JInt) and uid_jv.value in expr_types:
+            covered[t] = covered.get(t, 0) + 1
+    keys = list(node.keys())
+    ki = 0
+    while ki < len(keys):
+        k = keys[ki]
+        ki += 1
+        if k.startswith("_"):
+            continue
+        v = node[k]
+        if isinstance(v, dict):
+            _count_expr_nodes(v, expr_types, totals, covered)
+        elif isinstance(v, JDict):
+            _count_expr_nodes(v.entries, expr_types, totals, covered)
+        elif isinstance(v, JList):
+            li = 0
+            while li < len(v.items):
+                item = v.items[li]
+                if isinstance(item, JDict):
+                    _count_expr_nodes(item.entries, expr_types, totals, covered)
+                elif isinstance(item, dict):
+                    _count_expr_nodes(item, expr_types, totals, covered)
+                li += 1
+        elif isinstance(v, list):
+            li = 0
+            while li < len(v):
+                item = v[li]
+                if isinstance(item, JDict):
+                    _count_expr_nodes(item.entries, expr_types, totals, covered)
+                elif isinstance(item, dict):
+                    _count_expr_nodes(item, expr_types, totals, covered)
+                li += 1
+
+
+def report_expr_coverage(tree: ASTNode, result: PycheckResult) -> None:
+    """Print expression type coverage to stderr."""
+    totals: dict[str, int] = {}
+    covered: dict[str, int] = {}
+    _count_expr_nodes(tree, result.expr_types, totals, covered)
+    print("=== expr type coverage ===", file=sys.stderr)
+    names = sorted(totals.keys())
+    ni = 0
+    while ni < len(names):
+        name = names[ni]
+        t = totals[name]
+        c = covered.get(name, 0)
+        if t > 0:
+            pct = (c * 100) // t
+        else:
+            pct = 0
+        pad = " " * (12 - len(name))
+        print(
+            "  "
+            + name
+            + pad
+            + str(c).rjust(5)
+            + "/"
+            + str(t).ljust(5)
+            + " ("
+            + str(pct).rjust(3)
+            + "%)",
+            file=sys.stderr,
+        )
+        ni += 1

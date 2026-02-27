@@ -9,6 +9,8 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
@@ -82,6 +84,7 @@ from .typecollect import (
     py_type_to_type_dict,
 )
 from .hierarchy import HierarchyResult
+from .pycheck import PycheckResult
 from .types import (
     TypeNode,
     PrimitiveType,
@@ -102,6 +105,7 @@ from .types import (
     STR_TYPE,
     VOID_TYPE,
     contains_any,
+    type_name as _type_name_str,
     JsonValue,
     JStr,
     JInt,
@@ -158,6 +162,9 @@ TAYTSH_KEYWORDS: set[str] = {
     "void",
     "while",
 }
+
+_SHADOW_MODE: list[bool] = [os.getenv("TONGUES_SHADOW", "") != ""]
+_SHADOW_LOG: list[list[str]] = [[]]
 
 
 def _safe_name(name: str) -> str:
@@ -756,6 +763,7 @@ class _LowerCtx:
         known_classes: set[str],
         class_bases: dict[str, list[str]],
         source: str,
+        pycheck_result: PycheckResult | None = None,
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
@@ -768,6 +776,7 @@ class _LowerCtx:
         self.isinstance_temp_counter: int = 0
         self.constant_types: dict[str, TypeNode] = {}
         self.comp_counter: int = 0
+        self.pycheck_result: PycheckResult | None = pycheck_result
 
 
 class _Env:
@@ -898,6 +907,34 @@ def _is_nil_guard_test(test: ASTNode, body: ASTNode) -> bool:
 
 
 def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
+    """Infer the type of an expression, with optional shadow comparison."""
+    result = _infer_expr_type_inner(node, env, ctx)
+    if _SHADOW_MODE[0]:
+        _shadow_check(node, result, ctx)
+    return result
+
+
+def _shadow_check(node: ASTNode, lowering_type: TypeNode, ctx: _LowerCtx) -> None:
+    if ctx.pycheck_result is None:
+        return
+    uid_jv = node.get("_uid")
+    if not isinstance(uid_jv, JInt):
+        return
+    pycheck_type = ctx.pycheck_result.expr_types.get(uid_jv.value)
+    if pycheck_type is None:
+        return
+    if repr(lowering_type) == repr(pycheck_type):
+        return
+    lineno = get_int(node, "lineno")
+    nt = get_str(node, "_type")
+    lt = _type_name_str(lowering_type)
+    pt = _type_name_str(pycheck_type)
+    _SHADOW_LOG[0].append(
+        "shadow:" + str(lineno) + ": " + nt + " lowering=" + lt + " pycheck=" + pt
+    )
+
+
+def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Infer the type of an expression node from context."""
     t = get_str(node, "_type")
     if t == "Constant":
@@ -6227,6 +6264,7 @@ def lower(
     known_classes: set[str],
     class_bases: dict[str, list[str]],
     source: str,
+    pycheck_result: PycheckResult | None = None,
 ) -> tuple[TModule | None, list[LoweringError]]:
     """Lower the Python AST to Taytsh IR.
 
@@ -6238,7 +6276,15 @@ def lower(
     while ai < len(akeys):
         _LOWER_ANCESTORS[akeys[ai]] = hier_result.ancestors[akeys[ai]]
         ai += 1
-    ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases, source)
+    ctx = _LowerCtx(
+        tc_result, hier_result, known_classes, class_bases, source, pycheck_result
+    )
     module = _build_module(tree, ctx)
     _LOWER_ANCESTORS.clear()
+    if _SHADOW_MODE[0] and len(_SHADOW_LOG[0]) > 0:
+        si = 0
+        while si < len(_SHADOW_LOG[0]):
+            print(_SHADOW_LOG[0][si], file=sys.stderr)
+            si += 1
+        _SHADOW_LOG[0] = []
     return (module, ctx.errors)
