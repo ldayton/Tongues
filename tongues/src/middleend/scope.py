@@ -672,9 +672,11 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _ScopeCtx) -> None:
     # Resolve binder types and register them
     binder_types = _resolve_for_binder_types(stmt, ctx)
     for bname in stmt.binding:
-        btype = binder_types.get(bname) if binder_types is not None else None
-        if btype is None:
-            btype = ERROR_T
+        btype = ERROR_T
+        if binder_types is not None:
+            bt = binder_types.get(bname)
+            if bt is not None:
+                btype = bt
         ctx.bindings[bname] = _BindingInfo(
             annotations=stmt.annotations,
             declared_type=btype,

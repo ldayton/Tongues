@@ -987,8 +987,10 @@ def collect_signatures(
     class_bases: dict[str, list[str]] | None = None,
 ) -> SignatureResult:
     """Collect function and method signatures from the module AST."""
-    _TYPE_ALIASES.clear()
-    _CLASS_BASES.clear()
+    while len(_TYPE_ALIASES) > 0:
+        _TYPE_ALIASES.pop(list(_TYPE_ALIASES.keys())[0])
+    while len(_CLASS_BASES) > 0:
+        _CLASS_BASES.pop(list(_CLASS_BASES.keys())[0])
     if class_bases is not None:
         cb_keys = list(class_bases.keys())
         cbi = 0

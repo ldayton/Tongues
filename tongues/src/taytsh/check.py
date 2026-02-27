@@ -2997,7 +2997,8 @@ class Checker:
     def check_call(self, expr: TCall, expected: Type | None) -> Type | None:
         # Struct/interface constructor and builtin dispatch
         if isinstance(expr.func, TVar):
-            resolved = self._try_lookup(expr.func.name)
+            func_name = expr.func.name
+            resolved = self._try_lookup(func_name)
             if resolved is not None and isinstance(resolved, StructT):
                 return self.check_struct_constructor(resolved, expr.args, expr.pos)
             if resolved is not None and isinstance(resolved, InterfaceT):
@@ -3016,38 +3017,35 @@ class Checker:
                             common = keep
                 if common is not None and len(expr.args) <= len(common):
                     for a in expr.args:
-                        if a.name is not None and a.name in common:
-                            at = self.check_expr(a.value, common[a.name])
-                            if at is not None and not is_assignable(at, common[a.name]):
+                        aname = a.name
+                        if aname is None:
+                            self.check_expr(a.value, None)
+                        elif aname in common:
+                            at = self.check_expr(a.value, common[aname])
+                            if at is not None and not is_assignable(at, common[aname]):
                                 self.error(
                                     "field '"
-                                    + a.name
+                                    + aname
                                     + "': cannot assign "
                                     + type_name(at)
                                     + " to "
-                                    + type_name(common[a.name]),
+                                    + type_name(common[aname]),
                                     a.pos,
                                 )
-                        elif a.name is not None:
-                            rname = resolved.name
-                            aname = a.name
+                        else:
                             self.error(
-                                "'" + rname + "' has no field '" + aname + "'",
+                                "'" + func_name + "' has no field '" + aname + "'",
                                 a.pos,
                             )
-                        else:
-                            self.check_expr(a.value, None)
                     return resolved
                 self.error("cannot call " + type_name(resolved), expr.pos)
                 return None
             if resolved is not None and isinstance(resolved, FnT):
-                pnames = self.fn_param_names.get(expr.func.name)
+                pnames = self.fn_param_names.get(func_name)
                 return self.check_fn_call(resolved, expr.args, expr.pos, pnames)
             # Builtin functions (after struct/interface/fn resolution)
-            if expr.func.name in BUILTIN_NAMES and expr.func.name not in self.functions:
-                return self.check_builtin_call(
-                    expr.func.name, expr.args, expr.pos, expected
-                )
+            if func_name in BUILTIN_NAMES and func_name not in self.functions:
+                return self.check_builtin_call(func_name, expr.args, expr.pos, expected)
             if resolved is not None:
                 if resolved.kind == TY_ERROR:
                     return ERROR_T

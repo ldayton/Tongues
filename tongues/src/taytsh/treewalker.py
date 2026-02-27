@@ -3612,13 +3612,11 @@ def _bi_read_file(rt: Runtime, args: list[Value]) -> Value:
     try:
         with open(path.value, "rb") as f:
             data = f.read()
-        if isinstance(data, bytes):
-            try:
-                return VString(data.decode("utf-8"))
-            except UnicodeDecodeError as e:
-                rt._throw_err("ValueError", str(e))
-                return VNil()
-        return VNil()
+        try:
+            return VString(data.decode("utf-8"))
+        except UnicodeDecodeError as e:
+            rt._throw_err("ValueError", str(e))
+            return VNil()
     except OSError as e:
         rt._throw_err("IOError", str(e))
         return VNil()

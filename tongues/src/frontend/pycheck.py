@@ -848,6 +848,8 @@ def _synth_name_call(
     if fname == "repr":
         return STR_TYPE
     if fname == "round":
+        if len(args) >= 2:
+            return FLOAT_TYPE
         return INT_TYPE
     if fname == "sum":
         return INT_TYPE
@@ -874,6 +876,12 @@ def _synth_name_call(
             return ft
         return INT_TYPE
     if fname == "pow":
+        i = 0
+        while i < len(args):
+            at = _synth_expr(args[i], env, ctx)
+            if isinstance(at, PrimitiveType) and at.kind == "float":
+                return FLOAT_TYPE
+            i += 1
         return INT_TYPE
     if fname == "isinstance":
         return BOOL_TYPE
@@ -951,6 +959,12 @@ def _synth_name_call(
     if fname == "any" or fname == "all":
         return BOOL_TYPE
     if fname == "divmod":
+        i = 0
+        while i < len(args):
+            at = _synth_expr(args[i], env, ctx)
+            if isinstance(at, PrimitiveType) and at.kind == "float":
+                return TupleType([FLOAT_TYPE, FLOAT_TYPE], False)
+            i += 1
         return TupleType([INT_TYPE, INT_TYPE], False)
     if fname == "print":
         return VOID_TYPE
@@ -1181,11 +1195,17 @@ def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     else_env = env.copy()
     if len(test) > 0:
         _extract_narrowing(test, then_env, else_env, ctx)
+    orelse_t = VOID_TYPE
     if len(orelse) > 0:
-        _synth_expr(orelse, else_env, ctx)
-    if len(body) > 0:
-        return _synth_expr(body, then_env, ctx)
-    return ANY_TYPE
+        orelse_t = _synth_expr(orelse, else_env, ctx)
+    if len(body) == 0:
+        return ANY_TYPE
+    body_t = _synth_expr(body, then_env, ctx)
+    if isinstance(orelse_t, PrimitiveType) and orelse_t.kind == "void":
+        if isinstance(body_t, OptionalType):
+            return body_t
+        return OptionalType(body_t)
+    return body_t
 
 
 def _synth_list(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:

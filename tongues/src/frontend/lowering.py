@@ -939,11 +939,7 @@ def _shadow_check(node: ASTNode, lowering_type: TypeNode, ctx: _LowerCtx) -> Non
 
 
 def _adjust_pycheck_type(node: ASTNode, pt: TypeNode, inner: TypeNode) -> TypeNode:
-    """Translate pycheck type conventions to lowering conventions.
-
-    The caller only uses the adjusted type when it matches inner (repr equal).
-    These rules normalise pycheck's representation so the two can agree.
-    """
+    """Translate pycheck type conventions to lowering conventions."""
     # Literal[x] → base type (lowering doesn't distinguish literals)
     if isinstance(pt, LiteralType):
         pt = pt.base
@@ -996,7 +992,7 @@ _DBG_PRINT_LOOKUP_FALLBACK: bool = False
 
 
 def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
-    """Use pycheck type when it matches inner (after adjustment), else inner."""
+    """Use pycheck type (after adjustment) when available, else inner."""
     inner = _infer_expr_type_inner(node, env, ctx)
     if ctx.pycheck_result is not None:
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
@@ -1004,22 +1000,19 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
             if pt is not None and not _is_any_type(pt) and not contains_any(pt):
                 adjusted = _adjust_pycheck_type(node, pt, inner)
-                if repr(adjusted) == repr(inner):
-                    return adjusted
-                if _DBG_PRINT_LOOKUP_FALLBACK:
-                    nt = get_str(node, "_type") if isinstance(node, dict) else ""
-                    lineno = get_int(node, "lineno") if isinstance(node, dict) else 0
-                    print(
-                        "lookup_diff:"
-                        + str(lineno)
-                        + ": "
-                        + nt
-                        + " pycheck="
-                        + _type_name_str(adjusted)
-                        + " inner="
-                        + _type_name_str(inner),
-                        file=sys.stderr,
-                    )
+                return adjusted
+    if _DBG_PRINT_LOOKUP_FALLBACK:
+        nt = get_str(node, "_type") if isinstance(node, dict) else ""
+        lineno = get_int(node, "lineno") if isinstance(node, dict) else 0
+        print(
+            "lookup_fallback:"
+            + str(lineno)
+            + ": "
+            + nt
+            + " inner="
+            + _type_name_str(inner),
+            file=sys.stderr,
+        )
     return inner
 
 
@@ -1088,6 +1081,29 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                 field_info = cls_info.fields.get(attr)
                 if field_info is not None:
                     return field_info.typ
+        # Retry with env type when pycheck overrode a narrowed variable type
+        if _is_ast(obj_node, "Name"):
+            env_type = env.var_types.get(get_str(obj_node, "id"))
+            if env_type is not None:
+                env_obj = env_type
+                if isinstance(env_obj, PointerType):
+                    env_obj = env_obj.target
+                if isinstance(env_obj, OptionalType):
+                    env_obj = env_obj.inner
+                if _is_struct_type(env_obj):
+                    sname2 = _struct_name(env_obj)
+                    cls_info2 = ctx.tc_result.classes.get(sname2)
+                    if cls_info2 is not None:
+                        field_info2 = cls_info2.fields.get(attr)
+                        if field_info2 is not None:
+                            return field_info2.typ
+                if _is_interface_type(env_obj):
+                    iname2 = _interface_name(env_obj)
+                    cls_info2 = ctx.tc_result.classes.get(iname2)
+                    if cls_info2 is not None:
+                        field_info2 = cls_info2.fields.get(attr)
+                        if field_info2 is not None:
+                            return field_info2.typ
         return VOID_TYPE
     if t == "Call":
         func = get_node(node, "func")
@@ -4147,10 +4163,23 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             TIntLit(pos, 0, "0", {}),
             {},
         )
-    # Comparison/BoolOp already return bool
+    # Compare already returns bool
     t = get_str(node, "_type")
-    if t == "Compare" or t == "BoolOp":
+    if t == "Compare":
         return _lower_expr(node, env, ctx)
+    if t == "BoolOp":
+        op_node = get_node(node, "op")
+        op_str = "&&" if get_str(op_node, "_type") == "And" else "||"
+        values = get_nodes(node, "values")
+        if len(values) == 0:
+            return TBoolLit(pos, True, {})
+        result: TExpr = _lower_as_bool(values[0], env, ctx)
+        i = 1
+        while i < len(values):
+            right = _lower_as_bool(values[i], env, ctx)
+            result = TBinaryOp(pos, op_str, result, right, {})
+            i += 1
+        return result
     return _lower_expr(node, env, ctx)
 
 
@@ -6362,7 +6391,8 @@ def lower(
     """
     has_expr_types = pycheck_result is not None and len(pycheck_result.expr_types) > 0
     _SHADOW_MODE[0] = shadow and has_expr_types
-    _LOWER_ANCESTORS.clear()
+    while len(_LOWER_ANCESTORS) > 0:
+        _LOWER_ANCESTORS.pop(list(_LOWER_ANCESTORS.keys())[0])
     akeys = list(hier_result.ancestors.keys())
     ai = 0
     while ai < len(akeys):
@@ -6372,7 +6402,8 @@ def lower(
         tc_result, hier_result, known_classes, class_bases, source, pycheck_result
     )
     module = _build_module(tree, ctx)
-    _LOWER_ANCESTORS.clear()
+    while len(_LOWER_ANCESTORS) > 0:
+        _LOWER_ANCESTORS.pop(list(_LOWER_ANCESTORS.keys())[0])
     if _SHADOW_MODE[0] and len(_SHADOW_LOG[0]) > 0:
         si = 0
         while si < len(_SHADOW_LOG[0]):
