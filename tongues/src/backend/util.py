@@ -259,6 +259,9 @@ class Emitter:
         return first.name == name
 
     def _is_int_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "int"
         if isinstance(expr, TIntLit):
             return True
         if isinstance(expr, TVar):
@@ -271,6 +274,9 @@ class Emitter:
         return False
 
     def _is_float_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "float"
         if isinstance(expr, TFloatLit):
             return True
         if isinstance(expr, TVar):
@@ -283,6 +289,9 @@ class Emitter:
         return False
 
     def _is_float_list(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "list[float]"
         if isinstance(expr, TListLit) and expr.elements:
             return self._is_float_expr(expr.elements[0])
         if isinstance(expr, TVar):
