@@ -174,6 +174,7 @@ from src.middleend.ownership import analyze_ownership
 from src.middleend.returns import analyze_returns
 from src.middleend.scope import analyze_scope
 from src.middleend.strings import analyze_strings
+from src.middleend.types import propagate_types
 from src.taytsh import check as taytsh_check_fn, parse as taytsh_parse
 from src.taytsh.treewalker import run as taytsh_run
 from src.taytsh.ast import (
@@ -1052,6 +1053,7 @@ def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | Non
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        propagate_types(module, checker)
         return (emitter(module), None)
     except Exception as e:
         return (None, str(e))
@@ -1159,6 +1161,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        propagate_types(module, checker)
         return (emitter(module), None)
     except Exception as e:
         return (None, str(e))

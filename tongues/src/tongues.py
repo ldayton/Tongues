@@ -1852,6 +1852,7 @@ def taytsh_pipeline(argv: list[str]) -> int:
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        propagate_types(module, checker)
         result = ""
         if emit_target == "python":
             result = emit_python(module)

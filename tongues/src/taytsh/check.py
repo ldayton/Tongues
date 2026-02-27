@@ -2380,6 +2380,7 @@ class Checker:
         result = self._check_expr_inner(expr, expected)
         if result is not None:
             self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            expr.annotations["type"] = type_name(result)
         return result
 
     def _check_expr_inner(self, expr: TExpr, expected: Type | None) -> Type | None:

@@ -1611,6 +1611,14 @@ class _PerlEmitter(Emitter):
         return self._expr(expr)
 
     def _is_numeric_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return (
+                ann == "int"
+                or ann == "float"
+                or ann == "bool"
+                or ann in self.enum_names
+            )
         if isinstance(expr, (TIntLit, TFloatLit, TBoolLit)):
             return True
         if isinstance(expr, TBinaryOp) and expr.op in (
@@ -1628,7 +1636,7 @@ class _PerlEmitter(Emitter):
             ">>",
         ):
             return True
-        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
+        if isinstance(expr, TUnaryOp) and (expr.op == "-" or expr.op == "~"):
             return True
         if isinstance(expr, TFieldAccess):
             if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
@@ -2817,6 +2825,9 @@ class _PerlEmitter(Emitter):
         return None
 
     def _is_string_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "string" or ann == "rune"
         if isinstance(expr, (TStringLit, TRuneLit)):
             return True
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
@@ -2826,6 +2837,9 @@ class _PerlEmitter(Emitter):
         return _is_string_type(typ)
 
     def _is_bytes_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "bytes"
         if isinstance(expr, TBytesLit):
             return True
         typ = self._expr_type(expr)
@@ -2840,12 +2854,18 @@ class _PerlEmitter(Emitter):
         return False
 
     def _is_list_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann.startswith("list[") or ann.startswith("(")
         if isinstance(expr, (TListLit, TTupleLit)):
             return True
         typ = self._expr_type(expr)
         return _is_list_type(typ)
 
     def _is_map_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann.startswith("map[")
         if isinstance(expr, TMapLit):
             return True
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
@@ -2855,6 +2875,9 @@ class _PerlEmitter(Emitter):
         return _is_map_type(typ)
 
     def _is_set_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann.startswith("set[")
         if isinstance(expr, TSetLit):
             return True
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
@@ -2864,6 +2887,9 @@ class _PerlEmitter(Emitter):
         return _is_set_type(typ)
 
     def _is_int_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "int"
         if isinstance(expr, TIntLit):
             return True
         if isinstance(expr, TVar):
@@ -2871,12 +2897,15 @@ class _PerlEmitter(Emitter):
             return isinstance(typ, TPrimitive) and typ.kind == "int"
         if isinstance(expr, TBinaryOp):
             return self._is_int_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
+        if isinstance(expr, TUnaryOp) and (expr.op == "-" or expr.op == "~"):
             return self._is_int_expr(expr.operand)
         typ = self._expr_type(expr)
         return isinstance(typ, TPrimitive) and typ.kind == "int"
 
     def _is_float_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "float"
         if isinstance(expr, TFloatLit):
             return True
         if isinstance(expr, TVar):
@@ -2889,6 +2918,9 @@ class _PerlEmitter(Emitter):
         return False
 
     def _is_float_list(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "list[float]"
         if isinstance(expr, TListLit) and expr.elements:
             return self._is_float_expr(expr.elements[0])
         typ = self._expr_type(expr)
