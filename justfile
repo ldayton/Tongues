@@ -5,9 +5,21 @@ prep:
     #!/usr/bin/env bash
     log=/tmp/tongues-prep-$(date +%s).log
     rc=0
-    { just lint && just fmt && just subset && just test-local; } 2>&1 | tee "$log" || rc=$?
+    { just _lint-fmt-subset && just test-local; } 2>&1 | tee "$log" || rc=$?
     echo "$log"
     exit $rc
+
+# Run lint, fmt, subset in parallel
+_lint-fmt-subset:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    pids=() results=()
+    just lint & pids+=($!)
+    just fmt & pids+=($!)
+    just subset & pids+=($!)
+    failed=0
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    exit $failed
 
 # Verify all transpiler source is subset-compliant
 subset:
@@ -26,7 +38,7 @@ subset:
 
 # Run all frontend tests locally (cli, parse, subset, names, sigs, fields, hierarchy, inference, lowering)
 test-frontend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_cli or test_parse or test_subset or test_names or test_sigs or test_fields or test_hierarchy or test_inference or test_lowering" -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_cli or test_parse or test_subset or test_names or test_sigs or test_fields or test_hierarchy or test_inference or test_lowering" -v -n auto
 
 # Run CLI tests locally
 test-cli-local:
@@ -66,11 +78,11 @@ test-lowering-local:
 
 # Run all middleend tests locally (type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph, taytsh, tycheck-gen)
 test-middleend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto
 
 # Run backend tests (codegen + apptests) locally
 test-backend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
+    uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v -n auto
 
 # Run declaration ordering tests locally
 test-ordering-local:
@@ -259,22 +271,26 @@ test-local:
     declare -A results
     failed=0
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
-    just test-frontend-local && results[frontend]=✅ || { results[frontend]=❌; failed=1; }
-    just test-middleend-local && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
-    just test-backend-local && results[backend]=✅ || { results[backend]=❌; failed=1; }
-    just self-transpile && results[self-transpile]=✅ || { results[self-transpile]=❌; failed=1; }
-    just test-transpiled-local && results[transpiled]=✅ || { results[transpiled]=❌; failed=1; }
-    just self-transpile ruby && results[self-transpile-rb]=✅ || { results[self-transpile-rb]=❌; failed=1; }
-    just test-transpiled-local ruby && results[transpiled-rb]=✅ || { results[transpiled-rb]=❌; failed=1; }
-    just self-transpile perl && results[self-transpile-pl]=✅ || { results[self-transpile-pl]=❌; failed=1; }
-    just test-transpiled-local perl && results[transpiled-pl]=✅ || { results[transpiled-pl]=❌; failed=1; }
+    uv run --directory tongues pytest tests/test_runner.py tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto \
+        && results[tests]=✅ || { results[tests]=❌; failed=1; }
+    # Self-transpile + test all three targets in parallel
+    _st() {
+        local lang=$1
+        just self-transpile "$lang" && just test-transpiled-local "$lang"
+    }
+    _st python & pid_py=$!
+    _st ruby & pid_rb=$!
+    _st perl & pid_pl=$!
+    wait $pid_py && results[transpiled-py]=✅ || { results[transpiled-py]=❌; failed=1; }
+    wait $pid_rb && results[transpiled-rb]=✅ || { results[transpiled-rb]=❌; failed=1; }
+    wait $pid_pl && results[transpiled-pl]=✅ || { results[transpiled-pl]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "         TEST-LOCAL SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions frontend middleend backend self-transpile transpiled self-transpile-rb transpiled-rb self-transpile-pl transpiled-pl; do
+    for t in versions tests transpiled-py transpiled-rb transpiled-pl; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

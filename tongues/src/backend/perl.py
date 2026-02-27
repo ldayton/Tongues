@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .ordering import order_decls
-from .util import to_snake
+from .util import STRICT_INT_BINARY, STRICT_INT_COMPOUND, Emitter, to_snake
 from ..taytsh.ast import (
     Ann,
     Pos,
@@ -325,25 +325,7 @@ def _same_type_kind(a: TType, b: TType) -> bool:
     return False
 
 
-_STRICT_INT_BINARY: dict[str, str] = {
-    "+": "checked_add_i64",
-    "-": "checked_sub_i64",
-    "*": "checked_mul_i64",
-    "/": "checked_div_i64",
-    "%": "checked_rem_i64",
-    "<<": "checked_shl_i64",
-    ">>": "checked_shr_i64",
-    ">>>": "logical_shr_i64",
-}
-
-_STRICT_INT_COMPOUND: dict[str, str] = {
-    "+=": "checked_add_i64",
-    "-=": "checked_sub_i64",
-    "*=": "checked_mul_i64",
-}
-
-
-class _PerlEmitter:
+class _PerlEmitter(Emitter):
     def __init__(
         self,
         struct_names: set[str],
@@ -369,15 +351,6 @@ class _PerlEmitter:
         self.module_var_names: set[str] = set()
         self.local_names: set[str] = set()
         self.fn_ret: dict[str, TType] = {}
-
-    def _line(self, text: str = "") -> None:
-        if text:
-            self.lines.append("    " * self.indent + text)
-        else:
-            self.lines.append("")
-
-    def output(self) -> str:
-        return "\n".join(self.lines)
 
     def _tmp(self, prefix: str = "__t") -> str:
         name = "$" + prefix + str(self.tmp_counter)
@@ -684,30 +657,6 @@ class _PerlEmitter:
                     )
         return None
 
-    def _is_append_to(self, expr: TExpr, name: str) -> bool:
-        if not isinstance(expr, TCall):
-            return False
-        if not isinstance(expr.func, TVar):
-            return False
-        if expr.func.name != "Append":
-            return False
-        first = expr.args[0].value
-        if not isinstance(first, TVar):
-            return False
-        return first.name == name
-
-    def _is_add_to(self, expr: TExpr, name: str) -> bool:
-        if not isinstance(expr, TCall):
-            return False
-        if not isinstance(expr.func, TVar):
-            return False
-        if expr.func.name != "Add":
-            return False
-        first = expr.args[0].value
-        if not isinstance(first, TVar):
-            return False
-        return first.name == name
-
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
             self.var_types[stmt.name] = stmt.typ
@@ -727,10 +676,10 @@ class _PerlEmitter:
             op = stmt.op
             if (
                 self.strict_math
-                and op in _STRICT_INT_COMPOUND
+                and op in STRICT_INT_COMPOUND
                 and self._is_int_expr(stmt.target)
             ):
-                fn = _STRICT_INT_COMPOUND[op]
+                fn = STRICT_INT_COMPOUND[op]
                 tgt = self._target(stmt.target)
                 self._line(
                     tgt + " = " + fn + "(" + tgt + ", " + self._expr(stmt.value) + ");"
@@ -1571,9 +1520,9 @@ class _PerlEmitter:
             repeat_n = self._a(expr.left.args, 1)
             right = self._expr(expr.right)
             return "(" + s + " x (" + repeat_n + " * " + right + "))"
-        if self.strict_math and op in _STRICT_INT_BINARY:
+        if self.strict_math and op in STRICT_INT_BINARY:
             if self._is_int_expr(expr.left) and self._is_int_expr(expr.right):
-                fn = _STRICT_INT_BINARY[op]
+                fn = STRICT_INT_BINARY[op]
                 return (
                     fn
                     + "("
@@ -1753,17 +1702,6 @@ class _PerlEmitter:
         self.indent = old_indent
         lines.append("    " * self.indent + "}")
         return "\n".join(lines)
-
-    def _fn_lit_body(self, stmts: list[TStmt]) -> str:
-        parts: list[str] = []
-        for stmt in stmts:
-            inline = self._stmt_inline(stmt)
-            if inline is None:
-                return 'die "unsupported function literal body";'
-            parts.append(inline)
-        if not parts:
-            return "return;"
-        return " ".join(parts)
 
     def _stmt_inline(self, stmt: TStmt) -> str | None:
         if isinstance(stmt, TExprStmt):
@@ -2678,9 +2616,6 @@ class _PerlEmitter:
                 return "(ref(" + v + ') ? join("\\0", @{' + v + "}) : " + v + ")"
         return self._expr(expr)
 
-    def _a(self, args: list[TArg], i: int) -> str:
-        return self._expr(args[i].value)
-
     def _format_int(self, args: list[TArg]) -> str:
         n = self._a(args, 0)
         base_expr = args[1].value
@@ -2910,10 +2845,6 @@ class _PerlEmitter:
         typ = self._expr_type(expr)
         return _is_list_type(typ)
 
-    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
-        ann = stmt.annotations
-        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
-
     def _is_map_expr(self, expr: TExpr) -> bool:
         if isinstance(expr, TMapLit):
             return True
@@ -2974,21 +2905,11 @@ class _PerlEmitter:
             return -expr.operand.value
         return None
 
-    def _is_zero(self, expr: TExpr) -> bool:
-        return isinstance(expr, TIntLit) and expr.value == 0
-
     def _is_negative_literal(self, expr: TExpr) -> bool:
         return (
             isinstance(expr, TUnaryOp)
             and expr.op == "-"
             and isinstance(expr.operand, TIntLit)
-        )
-
-    def _is_len_call(self, expr: TExpr) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Len"
         )
 
     def _nil_coalesce_value(self, expr: TTernary) -> str | None:

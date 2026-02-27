@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from .ordering import order_decls
-from .util import escape_string, to_snake
+from .util import (
+    STRICT_INT_BINARY,
+    STRICT_INT_COMPOUND,
+    Emitter,
+    collect_builtin_calls,
+    escape_string,
+    to_snake,
+)
 from ..taytsh.ast import (
     Ann,
     TArg,
@@ -404,7 +411,7 @@ def _scan_decl_needs(decl: TDecl) -> tuple[bool, bool]:
             if isinstance(fld.typ, TSetType):
                 needs_set = True
         return needs_set, needs_range
-    for name in _collect_builtin_calls(stmts):
+    for name in collect_builtin_calls(stmts):
         if name in ("Set", "Add", "Remove"):
             needs_set = True
     _scan_stmts_for_needs(stmts, [needs_set, needs_range])
@@ -475,140 +482,17 @@ def _scan_expr_for_needs(expr: TExpr, flags: list[bool]) -> None:
         _scan_expr_for_needs(expr.else_expr, flags)
 
 
-def _collect_builtin_calls(stmts: list[TStmt]) -> set[str]:
-    out: set[str] = set()
-    for stmt in stmts:
-        _collect_builtin_calls_stmt(stmt, out)
-    return out
-
-
-def _collect_builtin_calls_stmt(stmt: TStmt, out: set[str]) -> None:
-    if isinstance(stmt, TExprStmt):
-        _collect_builtin_calls_expr(stmt.expr, out)
-    elif isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
-            _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TTupleAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
-            _collect_builtin_calls_expr(stmt.value, out)
-    elif isinstance(stmt, TThrowStmt):
-        _collect_builtin_calls_expr(stmt.expr, out)
-    elif isinstance(stmt, TIfStmt):
-        _collect_builtin_calls_expr(stmt.cond, out)
-        for s in stmt.then_body:
-            _collect_builtin_calls_stmt(s, out)
-        if stmt.else_body is not None:
-            for s in stmt.else_body:
-                _collect_builtin_calls_stmt(s, out)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_builtin_calls_expr(stmt.cond, out)
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_builtin_calls_expr(a, out)
-        else:
-            _collect_builtin_calls_expr(stmt.iterable, out)
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out)
-    elif isinstance(stmt, TTryStmt):
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out)
-        for catch in stmt.catches:
-            for s in catch.body:
-                _collect_builtin_calls_stmt(s, out)
-        if stmt.finally_body is not None:
-            for s in stmt.finally_body:
-                _collect_builtin_calls_stmt(s, out)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_builtin_calls_expr(stmt.expr, out)
-        for case in stmt.cases:
-            for s in case.body:
-                _collect_builtin_calls_stmt(s, out)
-        if stmt.default is not None:
-            for s in stmt.default.body:
-                _collect_builtin_calls_stmt(s, out)
-
-
-def _collect_builtin_calls_expr(expr: TExpr, out: set[str]) -> None:
-    if isinstance(expr, TCall):
-        if isinstance(expr.func, TVar) and expr.func.name in BUILTIN_NAMES:
-            out.add(expr.func.name)
-        _collect_builtin_calls_expr(expr.func, out)
-        for a in expr.args:
-            _collect_builtin_calls_expr(a.value, out)
-    elif isinstance(expr, TBinaryOp):
-        _collect_builtin_calls_expr(expr.left, out)
-        _collect_builtin_calls_expr(expr.right, out)
-    elif isinstance(expr, TUnaryOp):
-        _collect_builtin_calls_expr(expr.operand, out)
-    elif isinstance(expr, TTernary):
-        _collect_builtin_calls_expr(expr.cond, out)
-        _collect_builtin_calls_expr(expr.then_expr, out)
-        _collect_builtin_calls_expr(expr.else_expr, out)
-    elif isinstance(expr, TFieldAccess):
-        _collect_builtin_calls_expr(expr.obj, out)
-    elif isinstance(expr, TTupleAccess):
-        _collect_builtin_calls_expr(expr.obj, out)
-    elif isinstance(expr, TIndex):
-        _collect_builtin_calls_expr(expr.obj, out)
-        _collect_builtin_calls_expr(expr.index, out)
-    elif isinstance(expr, TSlice):
-        _collect_builtin_calls_expr(expr.obj, out)
-        _collect_builtin_calls_expr(expr.low, out)
-        _collect_builtin_calls_expr(expr.high, out)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_builtin_calls_expr(k, out)
-            _collect_builtin_calls_expr(v, out)
-    elif isinstance(expr, TFnLit):
-        for s in expr.body:
-            _collect_builtin_calls_stmt(s, out)
-
-
 # ============================================================
 # STRICT MATH
 # ============================================================
 
-_STRICT_INT_BINARY: dict[str, str] = {
-    "+": "checked_add_i64",
-    "-": "checked_sub_i64",
-    "*": "checked_mul_i64",
-    "/": "checked_div_i64",
-    "%": "checked_rem_i64",
-    "<<": "checked_shl_i64",
-    ">>": "checked_shr_i64",
-    ">>>": "logical_shr_i64",
-}
-
-_STRICT_INT_COMPOUND: dict[str, str] = {
-    "+=": "checked_add_i64",
-    "-=": "checked_sub_i64",
-    "*=": "checked_mul_i64",
-}
 
 # ============================================================
 # EMITTER
 # ============================================================
 
 
-class _RubyEmitter:
+class _RubyEmitter(Emitter):
     def __init__(
         self,
         struct_names: set[str],
@@ -638,9 +522,6 @@ class _RubyEmitter:
             self.lines.append("  " * self.indent + text)
         else:
             self.lines.append("")
-
-    def output(self) -> str:
-        return "\n".join(self.lines)
 
     def _decl_name(self, name: str, annotations: Ann) -> str:
         """Declare a local variable, lowercasing inside function bodies."""
@@ -1006,30 +887,6 @@ class _RubyEmitter:
                     )
         return None
 
-    def _is_append_to(self, expr: TExpr, name: str) -> bool:
-        if not isinstance(expr, TCall):
-            return False
-        if not isinstance(expr.func, TVar):
-            return False
-        if expr.func.name != "Append":
-            return False
-        first = expr.args[0].value
-        if not isinstance(first, TVar):
-            return False
-        return first.name == name
-
-    def _is_add_to(self, expr: TExpr, name: str) -> bool:
-        if not isinstance(expr, TCall):
-            return False
-        if not isinstance(expr.func, TVar):
-            return False
-        if expr.func.name != "Add":
-            return False
-        first = expr.args[0].value
-        if not isinstance(first, TVar):
-            return False
-        return first.name == name
-
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
             self._emit_let(stmt)
@@ -1040,10 +897,10 @@ class _RubyEmitter:
         elif isinstance(stmt, TOpAssignStmt):
             if (
                 self.strict_math
-                and stmt.op in _STRICT_INT_COMPOUND
+                and stmt.op in STRICT_INT_COMPOUND
                 and self._is_int_expr(stmt.target)
             ):
-                fn = _STRICT_INT_COMPOUND[stmt.op]
+                fn = STRICT_INT_COMPOUND[stmt.op]
                 tgt = self._expr(stmt.target)
                 self._line(
                     tgt + " = " + fn + "(" + tgt + ", " + self._expr(stmt.value) + ")"
@@ -1350,52 +1207,12 @@ class _RubyEmitter:
             stmt.iterable
         )
 
-    def _is_enumerate_for(self, stmt: TForStmt) -> bool:
-        ann = stmt.annotations
-        return ann.get("for.enumerate") == "true" or ann.get("iter_kind") == "enumerate"
-
     def _is_string_type(self, expr: TExpr) -> bool:
         if isinstance(expr, TStringLit):
             return True
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "string"
-        return False
-
-    def _is_int_expr(self, expr: TExpr) -> bool:
-        if isinstance(expr, TIntLit):
-            return True
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "int"
-        if isinstance(expr, TBinaryOp):
-            return self._is_int_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
-            return self._is_int_expr(expr.operand)
-        return False
-
-    def _is_float_expr(self, expr: TExpr) -> bool:
-        if isinstance(expr, TFloatLit):
-            return True
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "float"
-        if isinstance(expr, TBinaryOp):
-            return self._is_float_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op == "-":
-            return self._is_float_expr(expr.operand)
-        return False
-
-    def _is_float_list(self, expr: TExpr) -> bool:
-        if isinstance(expr, TListLit) and expr.elements:
-            return self._is_float_expr(expr.elements[0])
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return (
-                isinstance(typ, TListType)
-                and isinstance(typ.element, TPrimitive)
-                and typ.element.kind == "float"
-            )
         return False
 
     def _emit_try(self, stmt: TTryStmt) -> None:
@@ -1647,21 +1464,11 @@ class _RubyEmitter:
                 return "-" + self._expr(idx.right)
         return None
 
-    def _is_zero(self, expr: TExpr) -> bool:
-        return isinstance(expr, TIntLit) and expr.value == 0
-
-    def _is_len_call(self, expr: TExpr) -> bool:
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Len"
-        )
-
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
-        if self.strict_math and op in _STRICT_INT_BINARY:
+        if self.strict_math and op in STRICT_INT_BINARY:
             if self._is_int_expr(expr.left) and self._is_int_expr(expr.right):
-                fn = _STRICT_INT_BINARY[op]
+                fn = STRICT_INT_BINARY[op]
                 return (
                     fn
                     + "("
@@ -2244,9 +2051,6 @@ class _RubyEmitter:
         # Fallback
         arg_strs = ", ".join(self._expr(ar.value) for ar in args)
         return _safe_name(name) + "(" + arg_strs + ")"
-
-    def _a(self, args: list[TArg], i: int) -> str:
-        return self._expr(args[i].value)
 
     def _trim_chars(self, expr: TExpr) -> str:
         if isinstance(expr, TStringLit):
