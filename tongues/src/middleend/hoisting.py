@@ -323,6 +323,11 @@ def _collect_target_read_names(target: TExpr, out: set[str]) -> None:
         _collect_expr_var_names(target.obj, out)
 
 
+def _collect_stmts_var_names(stmts: list[TStmt], out: set[str]) -> None:
+    for stmt in stmts:
+        _collect_stmt_var_names(stmt, out)
+
+
 def _collect_stmt_var_names(stmt: TStmt, out: set[str]) -> None:
     """Collect variable names in read positions within a statement."""
     if isinstance(stmt, TLetStmt):
@@ -347,47 +352,37 @@ def _collect_stmt_var_names(stmt: TStmt, out: set[str]) -> None:
         _collect_expr_var_names(stmt.expr, out)
     elif isinstance(stmt, TIfStmt):
         _collect_expr_var_names(stmt.cond, out)
-        for s in stmt.then_body:
-            _collect_stmt_var_names(s, out)
+        _collect_stmts_var_names(stmt.then_body, out)
         if stmt.else_body is not None:
-            for s in stmt.else_body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(stmt.else_body, out)
     elif isinstance(stmt, TWhileStmt):
         _collect_expr_var_names(stmt.cond, out)
-        for s in stmt.body:
-            _collect_stmt_var_names(s, out)
+        _collect_stmts_var_names(stmt.body, out)
     elif isinstance(stmt, TForStmt):
         if isinstance(stmt.iterable, TRange):
             for a in stmt.iterable.args:
                 _collect_expr_var_names(a, out)
         else:
             _collect_expr_var_names(stmt.iterable, out)
-        for s in stmt.body:
-            _collect_stmt_var_names(s, out)
+        _collect_stmts_var_names(stmt.body, out)
     elif isinstance(stmt, TTryStmt):
-        for s in stmt.body:
-            _collect_stmt_var_names(s, out)
+        _collect_stmts_var_names(stmt.body, out)
         for catch in stmt.catches:
-            for s in catch.body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(catch.body, out)
         if stmt.finally_body is not None:
-            for s in stmt.finally_body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(stmt.finally_body, out)
     elif isinstance(stmt, TMatchStmt):
         _collect_expr_var_names(stmt.expr, out)
         for case in stmt.cases:
-            for s in case.body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(case.body, out)
         if stmt.default is not None:
-            for s in stmt.default.body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(stmt.default.body, out)
 
 
 def _collect_used_vars(stmts: list[TStmt]) -> set[str]:
-    """Recursively collect all variable names referenced in statements."""
+    """Collect all variable names referenced in statements."""
     out: set[str] = set()
-    for stmt in stmts:
-        _collect_stmt_var_names(stmt, out)
+    _collect_stmts_var_names(stmts, out)
     return out
 
 
