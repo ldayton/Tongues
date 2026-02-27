@@ -9,24 +9,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .type_resolve import TypeResolver
 from ..taytsh.ast import (
     Ann,
     TAssignStmt,
     TBinaryOp,
-    TBoolLit,
-    TByteLit,
-    TBytesLit,
     TCall,
     TExpr,
     TExprStmt,
     TFieldAccess,
-    TFloatLit,
     TFnDecl,
     TFnLit,
     TForStmt,
     TIfStmt,
     TIndex,
-    TIntLit,
     TLetStmt,
     TListLit,
     TMapLit,
@@ -39,11 +35,9 @@ from ..taytsh.ast import (
     TPatternType,
     TRange,
     TReturnStmt,
-    TRuneLit,
     TSetLit,
     TSlice,
     TStmt,
-    TStringLit,
     TStructDecl,
     TThrowStmt,
     TTernary,
@@ -56,23 +50,12 @@ from ..taytsh.ast import (
     TWhileStmt,
 )
 from ..taytsh.check import (
-    BOOL_T,
     BUILTIN_NAMES,
-    BYTE_T,
-    BYTES_T,
     Checker,
-    FLOAT_T,
-    INT_T,
     InterfaceT,
-    ListT,
-    MapT,
     NIL_T,
     ERROR_T,
-    RUNE_T,
-    STRING_T,
-    SetT,
     StructT,
-    TupleT,
     Type,
     UnionT,
     VOID_T,
@@ -143,222 +126,76 @@ def _fork_ctx(
 
 
 # ============================================================
-# TYPE RESOLUTION FOR EXPRESSIONS
+# SCOPE TYPE RESOLVER
 # ============================================================
 
 
-def _resolve_expr_type(expr: TExpr, ctx: _ScopeCtx) -> Type | None:
-    """Resolve the type of an expression for iterable/call target analysis."""
-    if isinstance(expr, TVar):
-        if expr.name in ctx.narrowings:
-            return ctx.narrowings[expr.name]
-        if expr.name in ctx.bindings:
-            return ctx.bindings[expr.name].declared_type
-        if expr.name in ctx.checker.functions:
-            return ctx.checker.functions[expr.name]
-        if expr.name in ctx.checker.types:
-            return ctx.checker.types[expr.name]
-        return None
-    if isinstance(expr, TIntLit):
-        return INT_T
-    if isinstance(expr, TFloatLit):
-        return FLOAT_T
-    if isinstance(expr, TBoolLit):
-        return BOOL_T
-    if isinstance(expr, TByteLit):
-        return BYTE_T
-    if isinstance(expr, TStringLit):
-        return STRING_T
-    if isinstance(expr, TRuneLit):
-        return RUNE_T
-    if isinstance(expr, TBytesLit):
-        return BYTES_T
-    if isinstance(expr, TNilLit):
-        return NIL_T
-    if isinstance(expr, TListLit):
-        if len(expr.elements) > 0:
-            elem_t = _resolve_expr_type(expr.elements[0], ctx)
-            if elem_t is not None:
-                return ListT(kind="list", element=elem_t)
-        return None
-    if isinstance(expr, TMapLit):
-        if len(expr.entries) > 0:
-            kt = _resolve_expr_type(expr.entries[0][0], ctx)
-            vt = _resolve_expr_type(expr.entries[0][1], ctx)
-            if kt is not None and vt is not None:
-                return MapT(kind="map", key=kt, value=vt)
-        return None
-    if isinstance(expr, TSetLit):
-        if len(expr.elements) > 0:
-            elem_t = _resolve_expr_type(expr.elements[0], ctx)
-            if elem_t is not None:
-                return SetT(kind="set", element=elem_t)
-        return None
-    if isinstance(expr, TTupleLit):
-        elems: list[Type] = []
-        for e in expr.elements:
-            t = _resolve_expr_type(e, ctx)
-            if t is None:
-                return None
-            elems.append(t)
+class _ScopeResolver(TypeResolver):
+    """Type resolver for scope analysis — handles scope-specific builtins."""
 
-        return TupleT(kind="tuple", elements=elems)
-    if isinstance(expr, TCall):
-        return _resolve_call_return_type(expr, ctx)
-    if isinstance(expr, TFieldAccess):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if obj_t is not None and isinstance(obj_t, StructT):
-            if expr.field in obj_t.fields:
-                return obj_t.fields[expr.field]
+    def resolve_builtin_call(self, name: str, expr: TCall) -> Type | None:
+        from ..taytsh.check import INT_T, VOID_T, MapT, ListT, STRING_T
+
+        if name == "Len":
+            return INT_T
+        if name in (
+            "Append",
+            "Insert",
+            "RemoveAt",
+            "Delete",
+            "Add",
+            "Remove",
+            "ReplaceSlice",
+        ):
+            return VOID_T
+        if name == "Pop":
+            if len(expr.args) > 0:
+                t = self.resolve(expr.args[0].value)
+                if t is not None and isinstance(t, ListT):
+                    return t.element
+            return None
+        if name in ("FloorDiv", "PythonMod"):
+            if len(expr.args) > 0:
+                return self.resolve(expr.args[0].value)
+            return INT_T
+        if name == "ToString":
+            return STRING_T
+        if name in ("Keys", "Values"):
+            if len(expr.args) > 0:
+                t = self.resolve(expr.args[0].value)
+                if t is not None and isinstance(t, MapT):
+                    if name == "Keys":
+                        return ListT(kind="list", element=t.key)
+                    return ListT(kind="list", element=t.value)
+            return None
+        if name == "Sorted" or name == "Reversed":
+            if len(expr.args) > 0:
+                return self.resolve(expr.args[0].value)
+            return None
+        if name in (
+            "Concat",
+            "Upper",
+            "Lower",
+            "Join",
+            "Replace",
+            "Trim",
+            "TrimStart",
+            "TrimEnd",
+        ):
+            return STRING_T
+        if name in ("Split", "SplitN", "SplitWhitespace"):
+            return ListT(kind="list", element=STRING_T)
+        if name == "Args":
+            return ListT(kind="list", element=STRING_T)
         return None
-    if isinstance(expr, TIndex):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if obj_t is not None:
-            if isinstance(obj_t, ListT):
-                return obj_t.element
-            if isinstance(obj_t, MapT):
-                return obj_t.value
-            if type_eq(obj_t, STRING_T):
-                return RUNE_T
-            if type_eq(obj_t, BYTES_T):
-                return BYTE_T
-        return None
-    if isinstance(expr, TSlice):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if obj_t is not None:
-            if isinstance(obj_t, ListT):
-                return obj_t
-            if type_eq(obj_t, STRING_T):
-                return STRING_T
-            if type_eq(obj_t, BYTES_T):
-                return BYTES_T
-        return None
-    return None
 
 
-def _resolve_call_return_type(expr: TCall, ctx: _ScopeCtx) -> Type | None:
-    """Resolve return type of a call expression."""
-    if isinstance(expr.func, TVar):
-        name = expr.func.name
-        if name in ctx.checker.functions:
-            return ctx.checker.functions[name].ret
-        if name in ctx.checker.types:
-            return ctx.checker.types[name]
-        # Check builtins — simplified, just handle the common ones
-        if name in BUILTIN_NAMES:
-            return _resolve_builtin_return(name, expr, ctx)
-        return None
-    if isinstance(expr.func, TFieldAccess):
-        obj_t = _resolve_expr_type(expr.func.obj, ctx)
-        if obj_t is not None and isinstance(obj_t, StructT):
-            if expr.func.field in obj_t.methods:
-                return obj_t.methods[expr.func.field].ret
-        return None
-    return None
-
-
-def _resolve_builtin_return(name: str, expr: TCall, ctx: _ScopeCtx) -> Type | None:
-    """Resolve return type for common built-in calls."""
-    if name == "Len":
-        return INT_T
-    if name in (
-        "Append",
-        "Insert",
-        "RemoveAt",
-        "Delete",
-        "Add",
-        "Remove",
-        "ReplaceSlice",
-    ):
-        return VOID_T
-    if name == "Pop":
-        if len(expr.args) > 0:
-            t = _resolve_expr_type(expr.args[0].value, ctx)
-            if t is not None and isinstance(t, ListT):
-                return t.element
-        return None
-    if name in ("FloorDiv", "PythonMod"):
-        if len(expr.args) > 0:
-            return _resolve_expr_type(expr.args[0].value, ctx)
-        return INT_T
-    if name == "ToString":
-        return STRING_T
-    if name in ("Keys", "Values"):
-        if len(expr.args) > 0:
-            t = _resolve_expr_type(expr.args[0].value, ctx)
-            if t is not None and isinstance(t, MapT):
-                if name == "Keys":
-                    return ListT(kind="list", element=t.key)
-                return ListT(kind="list", element=t.value)
-        return None
-    if name == "Sorted" or name == "Reversed":
-        if len(expr.args) > 0:
-            return _resolve_expr_type(expr.args[0].value, ctx)
-        return None
-    if name in (
-        "Concat",
-        "Upper",
-        "Lower",
-        "Join",
-        "Replace",
-        "Trim",
-        "TrimStart",
-        "TrimEnd",
-    ):
-        return STRING_T
-    if name in ("Split", "SplitN", "SplitWhitespace"):
-        return ListT(kind="list", element=STRING_T)
-    if name == "Args":
-        return ListT(kind="list", element=STRING_T)
-    return None
-
-
-# ============================================================
-# FOR-BINDER TYPE RESOLUTION
-# ============================================================
-
-
-def _resolve_for_binder_types(stmt: TForStmt, ctx: _ScopeCtx) -> dict[str, Type] | None:
-    """Resolve types for for-loop binder variables. Returns name->type map or None."""
-    if isinstance(stmt.iterable, TRange):
-        result: dict[str, Type] = {}
-        for b in stmt.binding:
-            result[b] = INT_T
-        return result
-    iter_type = _resolve_expr_type(stmt.iterable, ctx)
-    if iter_type is None:
-        return None
-    result2: dict[str, Type] = {}
-    if isinstance(iter_type, ListT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_type.element
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = iter_type.element
-    elif type_eq(iter_type, STRING_T):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = RUNE_T
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = RUNE_T
-    elif type_eq(iter_type, BYTES_T):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = BYTE_T
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = BYTE_T
-    elif isinstance(iter_type, MapT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_type.key
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = iter_type.key
-            result2[stmt.binding[1]] = iter_type.value
-    elif isinstance(iter_type, SetT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_type.element
-    else:
-        return None
-    return result2 if len(result2) > 0 else None
+def _make_scope_resolver(ctx: _ScopeCtx) -> _ScopeResolver:
+    locals: dict[str, Type] = {}
+    for name, info in ctx.bindings.items():
+        locals[name] = info.declared_type
+    locals.update(ctx.narrowings)
+    return _ScopeResolver(locals, ctx.checker)
 
 
 # ============================================================
@@ -670,7 +507,7 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _ScopeCtx) -> None:
         _walk_expr(stmt.iterable, ctx)
 
     # Resolve binder types and register them
-    binder_types = _resolve_for_binder_types(stmt, ctx)
+    binder_types = _make_scope_resolver(ctx).resolve_for_binder_types(stmt)
     for bname in stmt.binding:
         btype = binder_types.get(bname) if binder_types is not None else None
         if btype is None:
@@ -694,7 +531,7 @@ def _walk_match_stmt(stmt: TMatchStmt, ctx: _ScopeCtx) -> None:
     """Handle match-stmt: walk scrutinee, then each case with its binding."""
     _walk_expr(stmt.expr, ctx)
 
-    scrutinee_type = _resolve_expr_type(stmt.expr, ctx)
+    scrutinee_type = _make_scope_resolver(ctx).resolve(stmt.expr)
     covered_types: list[Type] = []
 
     for case in stmt.cases:
@@ -900,7 +737,7 @@ def _check_call_interface_arg(name: str, call: TCall, ctx: _ScopeCtx) -> str | N
             if isinstance(t, StructT):
                 param_types = list(t.fields.values())
     elif isinstance(call.func, TFieldAccess):
-        obj_t = _resolve_expr_type(call.func.obj, ctx)
+        obj_t = _make_scope_resolver(ctx).resolve(call.func.obj)
         if obj_t is not None and isinstance(obj_t, StructT):
             mname = call.func.field
             if mname in obj_t.methods:
