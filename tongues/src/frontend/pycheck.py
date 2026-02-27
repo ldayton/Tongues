@@ -4,7 +4,12 @@ Bidirectional type inference with flow-sensitive narrowing. Computes types for
 all expressions, infers local variable types from assignments, enforces type
 safety constraints, and validates iterator/generator consumption.
 
-Written in the Tongues subset (no generators, closures, lambdas, getattr).
+Instrumentation:
+  reveal_type(expr)             - source-level; prints inferred type during checking
+  _DBG_PRINT_EXPR_TYPES        - compile-time flag; log inferred type for every expression
+  _DBG_PRINT_BUDGET_EXHAUSTION - compile-time flag; log when a narrowing budget is exhausted
+  _DBG_PRINT_NARROWING         - compile-time flag; log flow-sensitive narrowing steps
+  _DBG_PRINT_ATTR_LOOKUP       - compile-time flag; log class attribute lookups (chain, hit/miss)
 """
 
 from __future__ import annotations
