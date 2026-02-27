@@ -182,60 +182,38 @@ def _collect_rune_vars(stmts: list[TStmt], bindings: dict[str, Type]) -> set[str
 
 
 # ============================================================
-# CONTINUE DETECTION
+# CONTINUE / BREAK DETECTION
 # ============================================================
 
 
-def _has_continue(stmts: list[TStmt]) -> bool:
-    """Check for TContinueStmt, stopping at nested loops."""
+def _has_flow_stmt(stmts: list[TStmt], check_continue: bool) -> bool:
+    """Check for continue/break, stopping at nested loops."""
     for stmt in stmts:
-        if isinstance(stmt, TContinueStmt):
+        if check_continue and isinstance(stmt, TContinueStmt):
+            return True
+        if not check_continue and isinstance(stmt, TBreakStmt):
             return True
         if isinstance(stmt, TIfStmt):
-            if _has_continue(stmt.then_body):
+            if _has_flow_stmt(stmt.then_body, check_continue):
                 return True
-            if stmt.else_body is not None and _has_continue(stmt.else_body):
+            if stmt.else_body is not None and _has_flow_stmt(
+                stmt.else_body, check_continue
+            ):
                 return True
         elif isinstance(stmt, TTryStmt):
-            if _has_continue(stmt.body):
+            if _has_flow_stmt(stmt.body, check_continue):
                 return True
             for catch in stmt.catches:
-                if _has_continue(catch.body):
+                if _has_flow_stmt(catch.body, check_continue):
                     return True
         elif isinstance(stmt, TMatchStmt):
             for case in stmt.cases:
-                if _has_continue(case.body):
+                if _has_flow_stmt(case.body, check_continue):
                     return True
-            if stmt.default is not None and _has_continue(stmt.default.body):
+            if stmt.default is not None and _has_flow_stmt(
+                stmt.default.body, check_continue
+            ):
                 return True
-        # TWhileStmt/TForStmt: don't recurse — nested loops own their continues
-    return False
-
-
-def _has_break(stmts: list[TStmt]) -> bool:
-    """Check for TBreakStmt targeting an enclosing loop, stopping at nested loops."""
-    for stmt in stmts:
-        if isinstance(stmt, TBreakStmt):
-            return True
-        if isinstance(stmt, TIfStmt):
-            if _has_break(stmt.then_body):
-                return True
-            if stmt.else_body is not None and _has_break(stmt.else_body):
-                return True
-        elif isinstance(stmt, TTryStmt):
-            if _has_break(stmt.body):
-                return True
-            for catch in stmt.catches:
-                if _has_break(catch.body):
-                    return True
-        elif isinstance(stmt, TMatchStmt):
-            # Nested match does NOT intercept break — recurse through it
-            for case in stmt.cases:
-                if _has_break(case.body):
-                    return True
-            if stmt.default is not None and _has_break(stmt.default.body):
-                return True
-        # TWhileStmt/TForStmt: don't recurse — nested loops own their breaks
     return False
 
 
@@ -438,11 +416,11 @@ def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> 
 
         if isinstance(stmt, TWhileStmt):
             stmt.annotations["hoisting.has_continue"] = (
-                "true" if _has_continue(stmt.body) else "false"
+                "true" if _has_flow_stmt(stmt.body, True) else "false"
             )
         elif isinstance(stmt, TForStmt):
             stmt.annotations["hoisting.has_continue"] = (
-                "true" if _has_continue(stmt.body) else "false"
+                "true" if _has_flow_stmt(stmt.body, True) else "false"
             )
         elif isinstance(stmt, TMatchStmt):
             all_case_stmts: list[TStmt] = []
@@ -451,7 +429,7 @@ def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> 
             if stmt.default is not None:
                 all_case_stmts.extend(stmt.default.body)
             stmt.annotations["hoisting.has_break"] = (
-                "true" if _has_break(all_case_stmts) else "false"
+                "true" if _has_flow_stmt(all_case_stmts, False) else "false"
             )
 
         # Collect let decls inside this control structure
