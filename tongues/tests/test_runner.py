@@ -166,7 +166,8 @@ def check_cli_assertions(
 from src.backend.perl import emit_perl as emit_perl
 from src.backend.python import emit_python as emit_python
 from src.backend.ruby import emit_ruby as emit_ruby
-from src.middleend.callgraph import analyze_callgraph, serialize_callgraph
+from src.middleend.callgraph import analyze_callgraph
+from src.middleend.callgraph_serial import serialize_callgraph
 from src.middleend.hoisting import analyze_hoisting
 from src.middleend.liveness import analyze_liveness
 from src.middleend.ownership import analyze_ownership
