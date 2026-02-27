@@ -13,6 +13,7 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 
@@ -988,7 +989,7 @@ def _is_void_type(t: TypeNode) -> bool:
     return isinstance(t, PrimitiveType) and t.kind == "void"
 
 
-_DBG_PRINT_LOOKUP_FALLBACK: bool = False
+_DBG_PRINT_LOOKUP_FALLBACK: bool = os.getenv("TONGUES_DBG_LOOKUP_FALLBACK") is not None
 
 
 def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:

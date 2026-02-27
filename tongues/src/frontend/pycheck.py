@@ -5,15 +5,16 @@ all expressions, infers local variable types from assignments, enforces type
 safety constraints, and validates iterator/generator consumption.
 
 Instrumentation:
-  reveal_type(expr)             - source-level; prints inferred type during checking
-  _DBG_PRINT_EXPR_TYPES        - compile-time flag; log inferred type for every expression
-  _DBG_PRINT_BUDGET_EXHAUSTION - compile-time flag; log when a narrowing budget is exhausted
-  _DBG_PRINT_NARROWING         - compile-time flag; log flow-sensitive narrowing steps
-  _DBG_PRINT_ATTR_LOOKUP       - compile-time flag; log class attribute lookups (chain, hit/miss)
+  reveal_type(expr)        - source-level; prints inferred type during checking
+  TONGUES_DBG_EXPR_TYPES   - env var; log inferred type for every expression
+  TONGUES_DBG_BUDGET       - env var; log when a narrowing budget is exhausted
+  TONGUES_DBG_NARROWING    - env var; log flow-sensitive narrowing steps
+  TONGUES_DBG_ATTR_LOOKUP  - env var; log class attribute lookups (chain, hit/miss)
 """
 
 from __future__ import annotations
 
+import os
 import sys
 
 from .cfg import (
@@ -81,10 +82,10 @@ from .types import (
 )
 
 
-_DBG_PRINT_EXPR_TYPES: bool = False
-_DBG_PRINT_BUDGET_EXHAUSTION: bool = False
-_DBG_PRINT_NARROWING: bool = False
-_DBG_PRINT_ATTR_LOOKUP: bool = False
+_DBG_PRINT_EXPR_TYPES: bool = os.getenv("TONGUES_DBG_EXPR_TYPES") is not None
+_DBG_PRINT_BUDGET_EXHAUSTION: bool = os.getenv("TONGUES_DBG_BUDGET") is not None
+_DBG_PRINT_NARROWING: bool = os.getenv("TONGUES_DBG_NARROWING") is not None
+_DBG_PRINT_ATTR_LOOKUP: bool = os.getenv("TONGUES_DBG_ATTR_LOOKUP") is not None
 
 
 # ---------------------------------------------------------------------------
