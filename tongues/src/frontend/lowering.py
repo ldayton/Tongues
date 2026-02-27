@@ -938,8 +938,32 @@ def _shadow_check(node: ASTNode, lowering_type: TypeNode, ctx: _LowerCtx) -> Non
     )
 
 
-def _adjust_pycheck_type(node: ASTNode, pt: TypeNode) -> TypeNode:
-    """Translate pycheck type conventions to lowering conventions."""
+def _adjust_pycheck_type(
+    node: ASTNode, pt: TypeNode, inner: TypeNode
+) -> TypeNode:
+    """Translate pycheck type conventions to lowering conventions.
+
+    The caller only uses the adjusted type when it matches inner (repr equal).
+    These rules normalise pycheck's representation so the two can agree.
+    """
+    # Literal[x] → base type (lowering doesn't distinguish literals)
+    if isinstance(pt, LiteralType):
+        pt = pt.base
+    # pycheck says str; lowering says rune (loop variable over string)
+    if (
+        isinstance(pt, PrimitiveType)
+        and pt.kind == "string"
+        and isinstance(inner, PrimitiveType)
+        and inner.kind == "rune"
+    ):
+        return inner
+    # Normalize bytes: pycheck returns SliceType(byte), lowering uses PrimitiveType("bytes")
+    if (
+        isinstance(pt, SliceType)
+        and isinstance(pt.element, PrimitiveType)
+        and pt.element.kind == "byte"
+    ):
+        pt = PrimitiveType("bytes")
     if not isinstance(node, dict):
         return pt
     t = get_str(node, "_type")
@@ -974,33 +998,32 @@ _DBG_PRINT_LOOKUP_FALLBACK: bool = False
 
 
 def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
-    """Try pycheck lookup first, fall back to _infer_expr_type_inner."""
+    """Use pycheck type when it matches inner (after adjustment), else inner."""
     inner = _infer_expr_type_inner(node, env, ctx)
-    if ctx.pycheck_result is not None and not _is_void_type(inner):
+    if ctx.pycheck_result is not None:
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
         if isinstance(uid_jv, JInt):
             pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
             if pt is not None and not _is_any_type(pt) and not contains_any(pt):
-                adjusted = _adjust_pycheck_type(node, pt)
-                if repr(adjusted) != repr(inner):
-                    if _DBG_PRINT_LOOKUP_FALLBACK:
-                        nt = get_str(node, "_type") if isinstance(node, dict) else ""
-                        lineno = (
-                            get_int(node, "lineno") if isinstance(node, dict) else 0
-                        )
-                        print(
-                            "lookup_diff:"
-                            + str(lineno)
-                            + ": "
-                            + nt
-                            + " lookup="
-                            + _type_name_str(adjusted)
-                            + " inner="
-                            + _type_name_str(inner),
-                            file=sys.stderr,
-                        )
-                    return inner
-                return adjusted
+                adjusted = _adjust_pycheck_type(node, pt, inner)
+                if repr(adjusted) == repr(inner):
+                    return adjusted
+                if _DBG_PRINT_LOOKUP_FALLBACK:
+                    nt = get_str(node, "_type") if isinstance(node, dict) else ""
+                    lineno = (
+                        get_int(node, "lineno") if isinstance(node, dict) else 0
+                    )
+                    print(
+                        "lookup_diff:"
+                        + str(lineno)
+                        + ": "
+                        + nt
+                        + " pycheck="
+                        + _type_name_str(adjusted)
+                        + " inner="
+                        + _type_name_str(inner),
+                        file=sys.stderr,
+                    )
     return inner
 
 
