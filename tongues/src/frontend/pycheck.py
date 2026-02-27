@@ -539,6 +539,16 @@ def _synth_expr_inner(
     if t == "UnaryOp":
         return _synth_unaryop(node, env, ctx)
     if t == "Compare":
+        left = get_node(node, "left")
+        if len(left) > 0:
+            _synth_expr(left, env, ctx)
+        comparators = get_nodes(node, "comparators")
+        ci = 0
+        while ci < len(comparators):
+            c = comparators[ci]
+            if isinstance(c, dict):
+                _synth_expr(c, env, ctx)
+            ci += 1
         return BOOL_TYPE
     if t == "BoolOp":
         return _synth_boolop(node, env, ctx)
@@ -1146,6 +1156,7 @@ def _synth_boolop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         work = env.copy()
         j = 0
         while j < len(values) - 1:
+            _synth_expr(values[j], work, ctx)
             dummy = env.copy()
             _extract_narrowing(values[j], work, dummy, ctx)
             j += 1
@@ -1154,6 +1165,7 @@ def _synth_boolop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         work = env.copy()
         j = 0
         while j < len(values) - 1:
+            _synth_expr(values[j], work, ctx)
             dummy = env.copy()
             _extract_narrowing(values[j], dummy, work, ctx)
             j += 1
@@ -1164,10 +1176,13 @@ def _synth_boolop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
 def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     test = get_node(node, "test")
     body = get_node(node, "body")
+    orelse = get_node(node, "orelse")
     then_env = env.copy()
+    else_env = env.copy()
     if len(test) > 0:
-        dummy_else = env.copy()
-        _extract_narrowing(test, then_env, dummy_else, ctx)
+        _extract_narrowing(test, then_env, else_env, ctx)
+    if len(orelse) > 0:
+        _synth_expr(orelse, else_env, ctx)
     if len(body) > 0:
         return _synth_expr(body, then_env, ctx)
     return ANY_TYPE
@@ -1971,6 +1986,7 @@ def _validate_aug_assign(
     if _has_new_errors(ctx, err_snap):
         return
     _validate_expr_calls(value, env, ctx, lineno)
+    _synth_expr(target, env, ctx)
     _synth_expr(value, env, ctx)
     if _is_type(target, ["Name"]):
         aug_name = get_str(target, "id")
@@ -2518,6 +2534,7 @@ def _validate_assert(
     _validate_expr_calls(test, env, ctx, lineno)
     if _has_new_errors(ctx, err_snap):
         return
+    _synth_expr(test, env, ctx)
     dummy_else = env.copy()
     _extract_narrowing(test, env, dummy_else, ctx)
     narrow_id = _find_succ_narrow(ctx)
