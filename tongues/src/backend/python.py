@@ -260,6 +260,15 @@ def _scan_imports(
                 needs_math = True
             if r_os:
                 needs_os = True
+    for decl in module.decls:
+        if isinstance(decl, TStmt):
+            for name in collect_builtin_calls([decl]):
+                if name in _SYS_BUILTINS:
+                    needs_sys = True
+                if name in _MATH_BUILTINS:
+                    needs_math = True
+                if name in _OS_BUILTINS:
+                    needs_os = True
     return needs_sys, needs_dataclass, needs_field, needs_math, needs_os
 
 

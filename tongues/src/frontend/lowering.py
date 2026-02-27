@@ -4,17 +4,11 @@ Transforms the typed Python dict-AST into Taytsh IR nodes (TModule from
 taytsh/ast.py), using type information from phases 5-9 (signatures, fields,
 hierarchy, pycheck).
 
-Instrumentation:
-  _DBG_PRINT_LOOKUP_FALLBACK - log when _lookup_expr_type falls back to
-                               _infer_expr_type_inner due to type disagreement
-
 Written in the Tongues subset (no generators, closures, lambdas, getattr).
 """
 
 from __future__ import annotations
 
-import os
-import sys
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
@@ -109,7 +103,6 @@ from .types import (
     STR_TYPE,
     VOID_TYPE,
     contains_any,
-    type_name as _type_name_str,
     JsonValue,
     JStr,
     JInt,
@@ -166,10 +159,6 @@ TAYTSH_KEYWORDS: set[str] = {
     "void",
     "while",
 }
-
-
-_SHADOW_MODE: list[bool] = [False]
-_SHADOW_LOG: list[list[str]] = [[]]
 
 
 def _safe_name(name: str) -> str:
@@ -914,30 +903,7 @@ def _is_nil_guard_test(test: ASTNode, body: ASTNode) -> bool:
 
 def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Infer the type of an expression, using pycheck lookup with fallback."""
-    result = _lookup_expr_type(node, env, ctx)
-    if _SHADOW_MODE[0]:
-        _shadow_check(node, result, ctx)
-    return result
-
-
-def _shadow_check(node: ASTNode, lowering_type: TypeNode, ctx: _LowerCtx) -> None:
-    if ctx.pycheck_result is None:
-        return
-    uid_jv = node.get("_uid")
-    if not isinstance(uid_jv, JInt):
-        return
-    pycheck_type = ctx.pycheck_result.expr_types.get(uid_jv.value)
-    if pycheck_type is None:
-        return
-    if repr(lowering_type) == repr(pycheck_type):
-        return
-    lineno = get_int(node, "lineno")
-    nt = get_str(node, "_type")
-    lt = _type_name_str(lowering_type)
-    pt = _type_name_str(pycheck_type)
-    _SHADOW_LOG[0].append(
-        "shadow:" + str(lineno) + ": " + nt + " lowering=" + lt + " pycheck=" + pt
-    )
+    return _lookup_expr_type(node, env, ctx)
 
 
 def _adjust_pycheck_type(node: ASTNode, pt: TypeNode, inner: TypeNode) -> TypeNode:
@@ -986,13 +952,6 @@ def _is_any_type(t: TypeNode) -> bool:
     return isinstance(t, InterfaceRef) and t.name == "any"
 
 
-def _is_void_type(t: TypeNode) -> bool:
-    return isinstance(t, PrimitiveType) and t.kind == "void"
-
-
-_DBG_PRINT_LOOKUP_FALLBACK: bool = os.getenv("TONGUES_DBG_LOOKUP_FALLBACK") is not None
-
-
 def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Use pycheck type (after adjustment) when available, else inner."""
     inner = _infer_expr_type_inner(node, env, ctx)
@@ -1005,30 +964,6 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
                 if not contains_any(check_t):
                     adjusted = _adjust_pycheck_type(node, pt, inner)
                     return adjusted
-    if _DBG_PRINT_LOOKUP_FALLBACK:
-        nt = get_str(node, "_type") if isinstance(node, dict) else ""
-        lineno = get_int(node, "lineno") if isinstance(node, dict) else 0
-        reason = "no_entry"
-        if ctx.pycheck_result is not None:
-            uid_jv2 = node.get("_uid") if isinstance(node, dict) else None
-            if isinstance(uid_jv2, JInt):
-                pt2 = ctx.pycheck_result.expr_types.get(uid_jv2.value)
-                if pt2 is not None:
-                    if _is_any_type(pt2):
-                        reason = "any"
-                    else:
-                        reason = "contains_any"
-        print(
-            "lookup_fallback:"
-            + str(lineno)
-            + ": "
-            + nt
-            + " reason="
-            + reason
-            + " inner="
-            + _type_name_str(inner),
-            file=sys.stderr,
-        )
     return inner
 
 
@@ -1081,6 +1016,8 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
             if narrowed is not None:
                 return narrowed
         obj_type = _infer_expr_type(obj_node, env, ctx)
+        if isinstance(obj_type, PointerType):
+            obj_type = obj_type.target
         if isinstance(obj_type, OptionalType):
             obj_type = obj_type.inner
         if _is_struct_type(obj_type):
@@ -1097,7 +1034,6 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                 field_info = cls_info.fields.get(attr)
                 if field_info is not None:
                     return field_info.typ
-        # Retry with env type when pycheck overrode a narrowed variable type
         if _is_ast(obj_node, "Name"):
             env_type = env.var_types.get(get_str(obj_node, "id"))
             if env_type is not None:
@@ -1107,51 +1043,29 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                 if isinstance(env_obj, OptionalType):
                     env_obj = env_obj.inner
                 if _is_struct_type(env_obj):
-                    sname2 = _struct_name(env_obj)
-                    cls_info2 = ctx.tc_result.classes.get(sname2)
-                    if cls_info2 is not None:
-                        field_info2 = cls_info2.fields.get(attr)
-                        if field_info2 is not None:
-                            return field_info2.typ
-                if _is_interface_type(env_obj):
-                    iname2 = _interface_name(env_obj)
-                    cls_info2 = ctx.tc_result.classes.get(iname2)
-                    if cls_info2 is not None:
-                        field_info2 = cls_info2.fields.get(attr)
-                        if field_info2 is not None:
-                            return field_info2.typ
+                    cls_info = ctx.tc_result.classes.get(_struct_name(env_obj))
+                    if cls_info is not None:
+                        field_info = cls_info.fields.get(attr)
+                        if field_info is not None:
+                            return field_info.typ
         return VOID_TYPE
     if t == "Call":
         func = get_node(node, "func")
         if _is_ast(func, "Name"):
             fname = get_str(func, "id")
-            if fname == "len":
-                return INT_TYPE
-            if fname == "min" or fname == "max" or fname == "abs":
-                call_args = get_nodes(node, "args")
-                if len(call_args) > 0 and isinstance(call_args[0], dict):
-                    at = _infer_expr_type(call_args[0], env, ctx)
-                    if _is_type_dict(at, ["bool"]):
-                        return INT_TYPE
-                    return at
+            if fname == "len" or fname == "ord":
                 return INT_TYPE
             if fname == "int":
                 return INT_TYPE
             if fname == "float":
                 return FLOAT_TYPE
-            if fname == "str":
+            if fname == "str" or fname == "chr":
                 return STR_TYPE
-            if fname == "bool":
-                return BOOL_TYPE
-            if fname == "chr":
-                return STR_TYPE
-            if fname == "ord":
-                return INT_TYPE
-            if fname == "isinstance":
+            if fname == "bool" or fname == "isinstance":
                 return BOOL_TYPE
             if fname == "bytes":
                 return PrimitiveType("bytes")
-            if fname == "sorted":
+            if fname == "sorted" or fname == "list":
                 fn_args = get_nodes(node, "args")
                 if len(fn_args) > 0:
                     at = _infer_expr_type(fn_args[0], env, ctx)
@@ -1161,16 +1075,6 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                         return SliceType(at.element)
                     return at
                 return SliceType(INT_TYPE)
-            if fname == "list":
-                fn_args = get_nodes(node, "args")
-                if len(fn_args) > 0:
-                    at = _infer_expr_type(fn_args[0], env, ctx)
-                    if isinstance(at, SetType):
-                        return SliceType(at.element)
-                    return at
-                return SliceType(INT_TYPE)
-            if fname == "divmod":
-                return TupleType([INT_TYPE, INT_TYPE], False)
             if fname == "set" or fname == "frozenset":
                 fn_args = get_nodes(node, "args")
                 if len(fn_args) > 0:
@@ -1179,31 +1083,28 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                         return SetType(at.element)
                     if isinstance(at, SetType):
                         return at
-                    if isinstance(at, TupleType):
-                        return SetType(
-                            at.elements[0] if len(at.elements) > 0 else INT_TYPE
-                        )
+                    if isinstance(at, TupleType) and len(at.elements) > 0:
+                        return SetType(at.elements[0])
                     if _is_type_dict(at, ["string"]):
                         return SetType(PrimitiveType("string"))
                 return SetType(INT_TYPE)
+            if fname == "divmod":
+                return TupleType([INT_TYPE, INT_TYPE], False)
+            if fname == "min" or fname == "max" or fname == "abs":
+                fn_args = get_nodes(node, "args")
+                if len(fn_args) > 0 and isinstance(fn_args[0], dict):
+                    at = _infer_expr_type(fn_args[0], env, ctx)
+                    if _is_type_dict(at, ["bool"]):
+                        return INT_TYPE
+                    return at
+                return INT_TYPE
             if fname in ctx.known_classes:
                 return PointerType(StructRef(fname))
-            rt = _func_return_type(ctx, fname)
-            return rt
-        if _is_ast(func, "Subscript"):
-            sub_value = get_node(func, "value")
-            if _is_ast(sub_value, "Name"):
-                sub_name = get_str(sub_value, "id")
-                if sub_name == "set" or sub_name == "frozenset":
-                    return SetType(STR_TYPE)
-                if sub_name == "dict":
-                    return MapType(STR_TYPE, VOID_TYPE)
-                if sub_name == "list":
-                    return SliceType(VOID_TYPE)
+            return _func_return_type(ctx, fname)
         if _is_ast(func, "Attribute"):
-            method_name = get_str(func, "attr")
             obj_n = get_node(func, "value")
             obj_t = _infer_expr_type(obj_n, env, ctx)
+            method_name = get_str(func, "attr")
             if _is_ast(obj_n, "Attribute"):
                 buf_obj = get_node(obj_n, "value")
                 buf_attr = get_str(obj_n, "attr")
@@ -1219,13 +1120,42 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                     ):
                         return PrimitiveType("bytes")
             if _is_struct_type(obj_t):
-                sname = _struct_name(obj_t)
-                return _method_return_type(ctx, sname, method_name)
+                return _method_return_type(ctx, _struct_name(obj_t), method_name)
             if _is_interface_type(obj_t):
                 iname = _interface_name(obj_t)
                 if iname != "":
                     return _method_return_type(ctx, iname, method_name)
+            if isinstance(obj_t, MapType):
+                if method_name == "get":
+                    args = get_nodes(node, "args")
+                    if len(args) >= 2:
+                        return obj_t.value
+                    return OptionalType(obj_t.value)
+                if method_name == "keys":
+                    return SliceType(obj_t.key)
+                if method_name == "values":
+                    return SliceType(obj_t.value)
+                if method_name == "items":
+                    return SliceType(TupleType([obj_t.key, obj_t.value], False))
+                if method_name == "pop":
+                    return OptionalType(obj_t.value)
+                if method_name == "copy":
+                    return obj_t
+            if isinstance(obj_t, SliceType):
+                if method_name == "pop":
+                    return obj_t.element
+                if method_name == "copy":
+                    return obj_t
+                if method_name == "index":
+                    return INT_TYPE
+            if _is_type_dict(obj_t, ["bytes"]):
+                if method_name == "decode":
+                    return STR_TYPE
             if _is_type_dict(obj_t, ["string"]):
+                if method_name == "split":
+                    return SliceType(STR_TYPE)
+                if method_name == "encode":
+                    return PrimitiveType("bytes")
                 if (
                     method_name == "find"
                     or method_name == "rfind"
@@ -1233,12 +1163,10 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                     or method_name == "count"
                 ):
                     return INT_TYPE
-                if method_name == "split":
-                    return SliceType(STR_TYPE)
-                if method_name == "startswith" or method_name == "endswith":
-                    return BOOL_TYPE
                 if (
-                    method_name == "isdigit"
+                    method_name == "startswith"
+                    or method_name == "endswith"
+                    or method_name == "isdigit"
                     or method_name == "isalpha"
                     or method_name == "isalnum"
                     or method_name == "isspace"
@@ -1246,95 +1174,31 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                     or method_name == "islower"
                 ):
                     return BOOL_TYPE
-                if method_name == "encode":
-                    return PrimitiveType("bytes")
                 return STR_TYPE
-            if _is_type_dict(obj_t, ["Slice"]):
-                if method_name == "pop":
-                    if isinstance(obj_t, SliceType):
-                        return obj_t.element
-                    return INT_TYPE
-                if method_name == "index":
-                    return INT_TYPE
-                if method_name == "copy":
-                    return obj_t
-                return VOID_TYPE
-            if _is_type_dict(obj_t, ["Map"]):
-                if method_name == "get":
-                    if isinstance(obj_t, MapType):
-                        args = get_nodes(node, "args")
-                        if len(args) >= 2:
-                            return obj_t.value
-                        return OptionalType(obj_t.value)
-                    return VOID_TYPE
-                if method_name == "keys":
-                    if isinstance(obj_t, MapType):
-                        return SliceType(obj_t.key)
-                    return SliceType(STR_TYPE)
-                if method_name == "values":
-                    if isinstance(obj_t, MapType):
-                        return SliceType(obj_t.value)
-                    return SliceType(INT_TYPE)
-                if method_name == "items":
-                    if isinstance(obj_t, MapType):
-                        return SliceType(TupleType([obj_t.key, obj_t.value], False))
-                    return SliceType(VOID_TYPE)
-                if method_name == "pop":
-                    if isinstance(obj_t, MapType):
-                        return OptionalType(obj_t.value)
-                    return VOID_TYPE
-                if method_name == "copy":
-                    return obj_t
-                return VOID_TYPE
-            if _is_type_dict(obj_t, ["Slice"]):
-                if (
-                    isinstance(obj_t, SliceType)
-                    and isinstance(obj_t.element, PrimitiveType)
-                    and obj_t.element.kind == "byte"
-                ):
-                    if method_name == "decode":
-                        return STR_TYPE
         return VOID_TYPE
     if t == "BinOp":
         op = get_node(node, "op")
         op_type = get_str(op, "_type")
-        binop_left = get_node(node, "left")
-        right_node = get_node(node, "right")
-        lt = _infer_expr_type(binop_left, env, ctx)
-        rt = _infer_expr_type(right_node, env, ctx)
-        if op_type == "Add":
-            if _is_type_dict(lt, ["string"]) or _is_type_dict(rt, ["string"]):
-                return STR_TYPE
-            if _is_type_dict(lt, ["float"]) or _is_type_dict(rt, ["float"]):
-                return FLOAT_TYPE
-            return INT_TYPE
-        if (
-            op_type == "Sub"
-            or op_type == "Mult"
-            or op_type == "FloorDiv"
-            or op_type == "Mod"
-            or op_type == "Pow"
-        ):
-            if _is_type_dict(lt, ["float"]) or _is_type_dict(rt, ["float"]):
-                return FLOAT_TYPE
-            if op_type == "Mult" and _is_type_dict(lt, ["string"]):
-                return STR_TYPE
-            if op_type == "Mult" and _is_type_dict(lt, ["Slice"]):
-                return lt
-            return INT_TYPE
         if op_type == "Div":
             return FLOAT_TYPE
+        binop_left = get_node(node, "left")
+        lt = _infer_expr_type(binop_left, env, ctx)
         if (
-            op_type == "BitAnd"
-            or op_type == "BitOr"
-            or op_type == "BitXor"
-            or op_type == "LShift"
-            or op_type == "RShift"
+            _is_type_dict(lt, ["string"])
+            or _is_type_dict(lt, ["Slice"])
+            or _is_type_dict(lt, ["Map"])
+            or _is_type_dict(lt, ["Set"])
         ):
-            if _is_type_dict(lt, ["Map"]):
-                return lt
+            return lt
+        right_node = get_node(node, "right")
+        rt = _infer_expr_type(right_node, env, ctx)
+        if _is_type_dict(lt, ["float"]) or _is_type_dict(rt, ["float"]):
+            return FLOAT_TYPE
+        if _is_type_dict(rt, ["string"]):
+            return STR_TYPE
+        if _is_type_dict(lt, ["bool"]):
             return INT_TYPE
-        return INT_TYPE
+        return lt
     if t == "BoolOp":
         vals = get_nodes(node, "values")
         all_bools = True
@@ -1395,25 +1259,20 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
                 obj_t = ct
         if isinstance(obj_t, OptionalType):
             obj_t = obj_t.inner
-        if _is_type_dict(obj_t, ["Slice"]):
+        if isinstance(obj_t, SliceType):
             slc = get_node(node, "slice")
             if _is_ast(slc, "Slice"):
                 return obj_t
-            if isinstance(obj_t, SliceType):
-                return obj_t.element
-        if _is_type_dict(obj_t, ["Map"]):
-            if isinstance(obj_t, MapType):
-                return obj_t.value
-        if _is_type_dict(obj_t, ["Tuple"]):
+            return obj_t.element
+        if isinstance(obj_t, MapType):
+            return obj_t.value
+        if isinstance(obj_t, TupleType):
             slc = get_node(node, "slice")
-            if _is_ast(slc, "Constant") and isinstance(obj_t, TupleType):
+            if _is_ast(slc, "Constant"):
                 idx_val = get_int(slc, "value")
                 if has_key(slc, "value") and 0 <= idx_val < len(obj_t.elements):
                     return obj_t.elements[idx_val]
         if _is_type_dict(obj_t, ["string"]):
-            slc = get_node(node, "slice")
-            if _is_ast(slc, "Slice"):
-                return STR_TYPE
             return STR_TYPE
         if _is_type_dict(obj_t, ["bytes"]):
             slc = get_node(node, "slice")
@@ -6452,14 +6311,11 @@ def lower(
     class_bases: dict[str, list[str]],
     source: str,
     pycheck_result: PycheckResult | None = None,
-    shadow: bool = False,
 ) -> tuple[TModule | None, list[LoweringError]]:
     """Lower the Python AST to Taytsh IR.
 
     Returns (module, errors). If errors is non-empty, module may be None.
     """
-    has_expr_types = pycheck_result is not None and len(pycheck_result.expr_types) > 0
-    _SHADOW_MODE[0] = shadow and has_expr_types
     while len(_LOWER_ANCESTORS) > 0:
         _LOWER_ANCESTORS.pop(list(_LOWER_ANCESTORS.keys())[0])
     akeys = list(hier_result.ancestors.keys())
@@ -6473,10 +6329,4 @@ def lower(
     module = _build_module(tree, ctx)
     while len(_LOWER_ANCESTORS) > 0:
         _LOWER_ANCESTORS.pop(list(_LOWER_ANCESTORS.keys())[0])
-    if _SHADOW_MODE[0] and len(_SHADOW_LOG[0]) > 0:
-        si = 0
-        while si < len(_SHADOW_LOG[0]):
-            print(_SHADOW_LOG[0][si], file=sys.stderr)
-            si += 1
-        _SHADOW_LOG[0] = []
     return (module, ctx.errors)
