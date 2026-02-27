@@ -9,31 +9,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .expr_reads import expr_reads, target_reads
+from .type_resolve import StringsResolver
 from ..taytsh.ast import (
     Ann,
     TAssignStmt,
     TBinaryOp,
-    TBoolLit,
-    TByteLit,
-    TBytesLit,
     TCall,
     TEnumDecl,
     TExpr,
     TExprStmt,
     TFieldAccess,
-    TFloatLit,
     TFnDecl,
     TFnLit,
     TForStmt,
     TIfStmt,
     TIndex,
-    TIntLit,
     TLetStmt,
     TListLit,
     TMapLit,
     TMatchStmt,
     TModule,
-    TNilLit,
     TOpAssignStmt,
     TParam,
     TPatternEnum,
@@ -41,7 +37,6 @@ from ..taytsh.ast import (
     TPatternType,
     TRange,
     TReturnStmt,
-    TRuneLit,
     TSetLit,
     TSlice,
     TStmt,
@@ -60,19 +55,13 @@ from ..taytsh.ast import (
 from ..taytsh.check import (
     BOOL_T,
     BYTE_T,
-    BYTES_T,
     Checker,
     FLOAT_T,
     INT_T,
     ListT,
-    MapT,
     NIL_T,
     ERROR_T,
-    RUNE_T,
     STRING_T,
-    SetT,
-    StructT,
-    TupleT,
     Type,
     UnionT,
     normalize_union,
@@ -89,8 +78,6 @@ _CONTENT_ORDER: dict[str, int] = {_C_ASCII: 0, _C_BMP: 1, _C_UNKNOWN: 2}
 class _BindingInfo:
     annotations: Ann
     name: str
-    declared_type: Type
-    order: int
     binder_name: str | None = None
     base_unknown: bool = False
     content: str = _C_UNKNOWN
@@ -111,7 +98,6 @@ class _StringsCtx:
     var_types: dict[str, Type]
     string_bindings: dict[str, _BindingInfo]
     string_sources: dict[str, list[_Source]]
-    list_string_types: dict[str, Type]
     list_string_sources: dict[str, list[_Source]]
     decl_order: list[str]
     loop_nodes: list[TStmt]
@@ -152,7 +138,6 @@ def _register_string_binding(
     ctx: _StringsCtx,
     name: str,
     annotations: Ann,
-    declared_type: Type,
     binder_name: str | None = None,
     base_unknown: bool = False,
 ) -> None:
@@ -163,8 +148,6 @@ def _register_string_binding(
     info = _BindingInfo(
         annotations=annotations,
         name=name,
-        declared_type=declared_type,
-        order=len(ctx.decl_order),
         binder_name=binder_name,
         base_unknown=base_unknown,
     )
@@ -185,198 +168,8 @@ def _add_list_source(ctx: _StringsCtx, name: str, source: _Source) -> None:
     ctx.list_string_sources[name].append(source)
 
 
-def _resolve_expr_type(expr: TExpr, ctx: _StringsCtx) -> Type | None:
-    if isinstance(expr, TVar):
-        if expr.name in ctx.var_types:
-            return ctx.var_types[expr.name]
-        if expr.name in ctx.checker.functions:
-            return ctx.checker.functions[expr.name]
-        if expr.name in ctx.checker.types:
-            return ctx.checker.types[expr.name]
-        return None
-    if isinstance(expr, TIntLit):
-        return INT_T
-    if isinstance(expr, TFloatLit):
-        return FLOAT_T
-    if isinstance(expr, TBoolLit):
-        return BOOL_T
-    if isinstance(expr, TByteLit):
-        return BYTE_T
-    if isinstance(expr, TStringLit):
-        return STRING_T
-    if isinstance(expr, TRuneLit):
-        return RUNE_T
-    if isinstance(expr, TBytesLit):
-        return BYTES_T
-    if isinstance(expr, TNilLit):
-        return NIL_T
-    if isinstance(expr, TListLit):
-        if len(expr.elements) == 0:
-            return None
-        elem_t = _resolve_expr_type(expr.elements[0], ctx)
-        if elem_t is not None:
-            return ListT(kind="list", element=elem_t)
-        return None
-    if isinstance(expr, TMapLit):
-        if len(expr.entries) == 0:
-            return None
-        key_t = _resolve_expr_type(expr.entries[0][0], ctx)
-        val_t = _resolve_expr_type(expr.entries[0][1], ctx)
-        if key_t is not None and val_t is not None:
-            return MapT(kind="map", key=key_t, value=val_t)
-        return None
-    if isinstance(expr, TSetLit):
-        if len(expr.elements) == 0:
-            return None
-        elem_t = _resolve_expr_type(expr.elements[0], ctx)
-        if elem_t is not None:
-            return SetT(kind="set", element=elem_t)
-        return None
-    if isinstance(expr, TTupleLit):
-        elems: list[Type] = []
-        for e in expr.elements:
-            t = _resolve_expr_type(e, ctx)
-            if t is None:
-                return None
-            elems.append(t)
-        return TupleT(kind="tuple", elements=elems)
-    if isinstance(expr, TFieldAccess):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if isinstance(obj_t, StructT):
-            if expr.field in obj_t.fields:
-                return obj_t.fields[expr.field]
-        return None
-    if isinstance(expr, TIndex):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if isinstance(obj_t, ListT):
-            return obj_t.element
-        if isinstance(obj_t, MapT):
-            return obj_t.value
-        if obj_t is not None and type_eq(obj_t, STRING_T):
-            return RUNE_T
-        if obj_t is not None and type_eq(obj_t, BYTES_T):
-            return BYTE_T
-        return None
-    if isinstance(expr, TSlice):
-        obj_t = _resolve_expr_type(expr.obj, ctx)
-        if isinstance(obj_t, ListT):
-            return obj_t
-        if obj_t is not None and type_eq(obj_t, STRING_T):
-            return STRING_T
-        if obj_t is not None and type_eq(obj_t, BYTES_T):
-            return BYTES_T
-        return None
-    if isinstance(expr, TCall):
-        return _resolve_call_type(expr, ctx)
-    return None
-
-
-def _resolve_call_type(expr: TCall, ctx: _StringsCtx) -> Type | None:
-    if isinstance(expr.func, TVar):
-        name = expr.func.name
-        if name in ctx.checker.functions:
-            return ctx.checker.functions[name].ret
-        if name in ctx.checker.types:
-            return ctx.checker.types[name]
-        if name in (
-            "ToString",
-            "Concat",
-            "FormatInt",
-            "Lower",
-            "Upper",
-            "Trim",
-            "TrimStart",
-            "TrimEnd",
-            "Replace",
-            "Repeat",
-            "Reverse",
-            "Join",
-            "Format",
-            "ReadAll",
-            "Decode",
-        ):
-            return STRING_T
-        if name == "ReadLine":
-            return normalize_union([STRING_T, NIL_T])
-        if name in ("Split", "SplitN", "SplitWhitespace"):
-            return ListT(kind="list", element=STRING_T)
-        if name == "Len":
-            return INT_T
-        if name == "Args":
-            return ListT(kind="list", element=STRING_T)
-        if name == "Keys":
-            if len(expr.args) > 0:
-                t = _resolve_expr_type(expr.args[0].value, ctx)
-                if isinstance(t, MapT):
-                    return ListT(kind="list", element=t.key)
-        if name == "Values":
-            if len(expr.args) > 0:
-                t = _resolve_expr_type(expr.args[0].value, ctx)
-                if isinstance(t, MapT):
-                    return ListT(kind="list", element=t.value)
-        if name == "Items":
-            if len(expr.args) > 0:
-                t = _resolve_expr_type(expr.args[0].value, ctx)
-                if isinstance(t, MapT):
-                    tup = TupleT(kind="tuple", elements=[t.key, t.value])
-                    return ListT(kind="list", element=tup)
-        if name == "Get":
-            if len(expr.args) > 0:
-                t = _resolve_expr_type(expr.args[0].value, ctx)
-                if isinstance(t, MapT):
-                    return normalize_union([t.value, NIL_T])
-        if name == "Map":
-            return None
-        if name == "Set":
-            return None
-        return None
-    if isinstance(expr.func, TFieldAccess):
-        obj_t = _resolve_expr_type(expr.func.obj, ctx)
-        if isinstance(obj_t, StructT) and expr.func.field in obj_t.methods:
-            return obj_t.methods[expr.func.field].ret
-    return None
-
-
-def _resolve_for_binder_types(
-    stmt: TForStmt, ctx: _StringsCtx
-) -> dict[str, Type] | None:
-    if isinstance(stmt.iterable, TRange):
-        result: dict[str, Type] = {}
-        for b in stmt.binding:
-            result[b] = INT_T
-        return result
-    iter_t = _resolve_expr_type(stmt.iterable, ctx)
-    if iter_t is None:
-        return None
-    result2: dict[str, Type] = {}
-    if isinstance(iter_t, ListT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_t.element
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = iter_t.element
-    elif isinstance(iter_t, MapT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_t.key
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = iter_t.key
-            result2[stmt.binding[1]] = iter_t.value
-    elif isinstance(iter_t, SetT):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = iter_t.element
-    elif type_eq(iter_t, STRING_T):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = RUNE_T
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = RUNE_T
-    elif type_eq(iter_t, BYTES_T):
-        if len(stmt.binding) == 1:
-            result2[stmt.binding[0]] = BYTE_T
-        elif len(stmt.binding) == 2:
-            result2[stmt.binding[0]] = INT_T
-            result2[stmt.binding[1]] = BYTE_T
-    return result2 if len(result2) > 0 else None
+def _make_resolver(ctx: _StringsCtx) -> StringsResolver:
+    return StringsResolver(ctx.var_types, ctx.checker)
 
 
 def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
@@ -417,79 +210,6 @@ def _base_var(expr: TExpr) -> str | None:
     return None
 
 
-def _expr_reads(name: str, expr: TExpr) -> bool:
-    if isinstance(expr, TVar):
-        return expr.name == name
-    if isinstance(expr, TBinaryOp):
-        return _expr_reads(name, expr.left) or _expr_reads(name, expr.right)
-    if isinstance(expr, TUnaryOp):
-        return _expr_reads(name, expr.operand)
-    if isinstance(expr, TTernary):
-        return (
-            _expr_reads(name, expr.cond)
-            or _expr_reads(name, expr.then_expr)
-            or _expr_reads(name, expr.else_expr)
-        )
-    if isinstance(expr, TFieldAccess):
-        return _expr_reads(name, expr.obj)
-    if isinstance(expr, TTupleAccess):
-        return _expr_reads(name, expr.obj)
-    if isinstance(expr, TIndex):
-        return _expr_reads(name, expr.obj) or _expr_reads(name, expr.index)
-    if isinstance(expr, TSlice):
-        return (
-            _expr_reads(name, expr.obj)
-            or _expr_reads(name, expr.low)
-            or _expr_reads(name, expr.high)
-        )
-    if isinstance(expr, TCall):
-        if _expr_reads(name, expr.func):
-            return True
-        for a in expr.args:
-            if _expr_reads(name, a.value):
-                return True
-        return False
-    if isinstance(expr, TListLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TSetLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            if _expr_reads(name, k) or _expr_reads(name, v):
-                return True
-        return False
-    return False
-
-
-def _target_reads(name: str, target: TExpr) -> bool:
-    if isinstance(target, TVar):
-        return False
-    if isinstance(target, TIndex):
-        return _expr_reads(name, target.obj) or _expr_reads(name, target.index)
-    if isinstance(target, TFieldAccess):
-        return _expr_reads(name, target.obj)
-    if isinstance(target, TTupleAccess):
-        return _expr_reads(name, target.obj)
-    if isinstance(target, TSlice):
-        return (
-            _expr_reads(name, target.obj)
-            or _expr_reads(name, target.low)
-            or _expr_reads(name, target.high)
-        )
-    return False
-
-
 def _is_accum_concat(value: TExpr, name: str) -> bool:
     if not isinstance(value, TCall):
         return False
@@ -504,7 +224,7 @@ def _is_accum_concat(value: TExpr, name: str) -> bool:
         return False
     i = 1
     while i < len(value.args):
-        if _expr_reads(name, value.args[i].value):
+        if expr_reads(name, value.args[i].value):
             return False
         i += 1
     return True
@@ -512,7 +232,7 @@ def _is_accum_concat(value: TExpr, name: str) -> bool:
 
 def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
     if isinstance(stmt, TLetStmt):
-        if stmt.value is not None and _expr_reads(name, stmt.value):
+        if stmt.value is not None and expr_reads(name, stmt.value):
             return False
         return True
     if isinstance(stmt, TAssignStmt):
@@ -521,32 +241,32 @@ def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
                 found[0] = True
                 return True
             return False
-        if _expr_reads(name, stmt.value) or _target_reads(name, stmt.target):
+        if expr_reads(name, stmt.value) or target_reads(name, stmt.target):
             return False
         return True
     if isinstance(stmt, TOpAssignStmt):
         if isinstance(stmt.target, TVar) and stmt.target.name == name:
             return False
-        if _expr_reads(name, stmt.value) or _expr_reads(name, stmt.target):
+        if expr_reads(name, stmt.value) or expr_reads(name, stmt.target):
             return False
         return True
     if isinstance(stmt, TTupleAssignStmt):
-        if _expr_reads(name, stmt.value):
+        if expr_reads(name, stmt.value):
             return False
         for t in stmt.targets:
             if isinstance(t, TVar) and t.name == name:
                 return False
-            if _target_reads(name, t):
+            if target_reads(name, t):
                 return False
         return True
     if isinstance(stmt, TExprStmt):
-        return not _expr_reads(name, stmt.expr)
+        return not expr_reads(name, stmt.expr)
     if isinstance(stmt, TReturnStmt):
-        return stmt.value is None or (not _expr_reads(name, stmt.value))
+        return stmt.value is None or (not expr_reads(name, stmt.value))
     if isinstance(stmt, TThrowStmt):
-        return not _expr_reads(name, stmt.expr)
+        return not expr_reads(name, stmt.expr)
     if isinstance(stmt, TIfStmt):
-        if _expr_reads(name, stmt.cond):
+        if expr_reads(name, stmt.cond):
             return False
         for s in stmt.then_body:
             if not _builder_walk_stmt(name, s, found):
@@ -557,7 +277,7 @@ def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
                     return False
         return True
     if isinstance(stmt, TWhileStmt):
-        if _expr_reads(name, stmt.cond):
+        if expr_reads(name, stmt.cond):
             return False
         for s in stmt.body:
             if not _builder_walk_stmt(name, s, found):
@@ -566,10 +286,10 @@ def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
     if isinstance(stmt, TForStmt):
         if isinstance(stmt.iterable, TRange):
             for a in stmt.iterable.args:
-                if _expr_reads(name, a):
+                if expr_reads(name, a):
                     return False
         else:
-            if _expr_reads(name, stmt.iterable):
+            if expr_reads(name, stmt.iterable):
                 return False
         for s in stmt.body:
             if not _builder_walk_stmt(name, s, found):
@@ -589,7 +309,7 @@ def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
                     return False
         return True
     if isinstance(stmt, TMatchStmt):
-        if _expr_reads(name, stmt.expr):
+        if expr_reads(name, stmt.expr):
             return False
         for case in stmt.cases:
             for s in case.body:
@@ -660,7 +380,7 @@ def _classify_string_expr(
             if name == "ToString":
                 if len(expr.args) == 0:
                     return _C_UNKNOWN
-                t = _resolve_expr_type(expr.args[0].value, ctx)
+                t = _make_resolver(ctx).resolve(expr.args[0].value)
                 if t is not None and (
                     type_eq(t, INT_T)
                     or type_eq(t, FLOAT_T)
@@ -827,9 +547,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         declared_t = ctx.checker.resolve_type(stmt.typ)
         ctx.var_types[stmt.name] = declared_t
         if _contains_string_type(declared_t):
-            _register_string_binding(
-                ctx, stmt.name, stmt.annotations, declared_t, None, False
-            )
+            _register_string_binding(ctx, stmt.name, stmt.annotations)
             dead = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if not dead:
                 if stmt.value is None:
@@ -839,7 +557,6 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                         ctx, stmt.name, _Source(kind="expr", expr=stmt.value)
                     )
         if _is_list_of_string_type(declared_t):
-            ctx.list_string_types[stmt.name] = declared_t
             if stmt.name not in ctx.list_string_sources:
                 ctx.list_string_sources[stmt.name] = []
             if stmt.value is not None:
@@ -916,7 +633,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         stmt.annotations["strings.builder"] = _compute_builder(stmt.body, ctx, declared)
         ctx.loop_nodes.append(stmt)
 
-        binder_types = _resolve_for_binder_types(stmt, ctx)
+        binder_types = _make_resolver(ctx).resolve_for_binder_types(stmt)
         child_declared = set(declared)
         for bname in stmt.binding:
             btype = ERROR_T
@@ -926,9 +643,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                     btype = bt
             ctx.var_types[bname] = btype
             if _contains_string_type(btype):
-                _register_string_binding(
-                    ctx, bname, stmt.annotations, btype, bname, True
-                )
+                _register_string_binding(ctx, bname, stmt.annotations, bname, True)
             child_declared.add(bname)
 
         _walk_stmts(stmt.body, ctx, child_declared)
@@ -944,7 +659,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
 
     if isinstance(stmt, TMatchStmt):
         _walk_expr_usage(stmt.expr, ctx)
-        scrutinee_t = _resolve_expr_type(stmt.expr, ctx)
+        scrutinee_t = _make_resolver(ctx).resolve(stmt.expr)
         covered: list[Type] = []
         for case in stmt.cases:
             case_declared = set(declared)
@@ -954,9 +669,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 covered.append(case_t)
                 ctx.var_types[pat.name] = case_t
                 if _contains_string_type(case_t):
-                    _register_string_binding(
-                        ctx, pat.name, pat.annotations, case_t, None, True
-                    )
+                    _register_string_binding(ctx, pat.name, pat.annotations, None, True)
                 case_declared.add(pat.name)
             elif isinstance(pat, TPatternEnum):
                 enum_t = ctx.checker.types.get(pat.enum_name)
@@ -975,7 +688,6 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                         ctx,
                         stmt.default.name,
                         stmt.default.annotations,
-                        residual,
                         None,
                         True,
                     )
@@ -1082,9 +794,8 @@ def _register_param_type(
     ctx.var_types[p.name] = pt
     declared.add(p.name)
     if _contains_string_type(pt):
-        _register_string_binding(ctx, p.name, p.annotations, pt, None, True)
+        _register_string_binding(ctx, p.name, p.annotations, None, True)
     if _is_list_of_string_type(pt):
-        ctx.list_string_types[p.name] = pt
         ctx.list_string_sources[p.name] = []
 
 
@@ -1094,7 +805,6 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
         var_types={},
         string_bindings={},
         string_sources={},
-        list_string_types={},
         list_string_sources={},
         decl_order=[],
         loop_nodes=[],

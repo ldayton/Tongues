@@ -182,60 +182,38 @@ def _collect_rune_vars(stmts: list[TStmt], bindings: dict[str, Type]) -> set[str
 
 
 # ============================================================
-# CONTINUE DETECTION
+# CONTINUE / BREAK DETECTION
 # ============================================================
 
 
-def _has_continue(stmts: list[TStmt]) -> bool:
-    """Check for TContinueStmt, stopping at nested loops."""
+def _has_flow_stmt(stmts: list[TStmt], check_continue: bool) -> bool:
+    """Check for continue/break, stopping at nested loops."""
     for stmt in stmts:
-        if isinstance(stmt, TContinueStmt):
+        if check_continue and isinstance(stmt, TContinueStmt):
+            return True
+        if not check_continue and isinstance(stmt, TBreakStmt):
             return True
         if isinstance(stmt, TIfStmt):
-            if _has_continue(stmt.then_body):
+            if _has_flow_stmt(stmt.then_body, check_continue):
                 return True
-            if stmt.else_body is not None and _has_continue(stmt.else_body):
+            if stmt.else_body is not None and _has_flow_stmt(
+                stmt.else_body, check_continue
+            ):
                 return True
         elif isinstance(stmt, TTryStmt):
-            if _has_continue(stmt.body):
+            if _has_flow_stmt(stmt.body, check_continue):
                 return True
             for catch in stmt.catches:
-                if _has_continue(catch.body):
+                if _has_flow_stmt(catch.body, check_continue):
                     return True
         elif isinstance(stmt, TMatchStmt):
             for case in stmt.cases:
-                if _has_continue(case.body):
+                if _has_flow_stmt(case.body, check_continue):
                     return True
-            if stmt.default is not None and _has_continue(stmt.default.body):
+            if stmt.default is not None and _has_flow_stmt(
+                stmt.default.body, check_continue
+            ):
                 return True
-        # TWhileStmt/TForStmt: don't recurse — nested loops own their continues
-    return False
-
-
-def _has_break(stmts: list[TStmt]) -> bool:
-    """Check for TBreakStmt targeting an enclosing loop, stopping at nested loops."""
-    for stmt in stmts:
-        if isinstance(stmt, TBreakStmt):
-            return True
-        if isinstance(stmt, TIfStmt):
-            if _has_break(stmt.then_body):
-                return True
-            if stmt.else_body is not None and _has_break(stmt.else_body):
-                return True
-        elif isinstance(stmt, TTryStmt):
-            if _has_break(stmt.body):
-                return True
-            for catch in stmt.catches:
-                if _has_break(catch.body):
-                    return True
-        elif isinstance(stmt, TMatchStmt):
-            # Nested match does NOT intercept break — recurse through it
-            for case in stmt.cases:
-                if _has_break(case.body):
-                    return True
-            if stmt.default is not None and _has_break(stmt.default.body):
-                return True
-        # TWhileStmt/TForStmt: don't recurse — nested loops own their breaks
     return False
 
 
@@ -244,33 +222,41 @@ def _has_break(stmts: list[TStmt]) -> bool:
 # ============================================================
 
 
+def _find_let_stmts(stmts: list[TStmt]) -> list[TLetStmt]:
+    """Recursively find all TLetStmt nodes in control flow bodies."""
+    result: list[TLetStmt] = []
+    for stmt in stmts:
+        if isinstance(stmt, TLetStmt):
+            result.append(stmt)
+        if isinstance(stmt, TIfStmt):
+            result.extend(_find_let_stmts(stmt.then_body))
+            if stmt.else_body is not None:
+                result.extend(_find_let_stmts(stmt.else_body))
+        elif isinstance(stmt, TWhileStmt):
+            result.extend(_find_let_stmts(stmt.body))
+        elif isinstance(stmt, TForStmt):
+            result.extend(_find_let_stmts(stmt.body))
+        elif isinstance(stmt, TTryStmt):
+            result.extend(_find_let_stmts(stmt.body))
+            for catch in stmt.catches:
+                result.extend(_find_let_stmts(catch.body))
+        elif isinstance(stmt, TMatchStmt):
+            for case in stmt.cases:
+                result.extend(_find_let_stmts(case.body))
+            if stmt.default is not None:
+                result.extend(_find_let_stmts(stmt.default.body))
+    return result
+
+
 def _collect_let_decls(
     stmts: list[TStmt], declared: set[str], checker: Checker
 ) -> dict[str, str]:
-    """Recursively find TLetStmt inside stmts, returning {name: type_string} for undeclared names."""
+    """Return {name: type_string} for let bindings not already in declared."""
     result: dict[str, str] = {}
-    for stmt in stmts:
-        if isinstance(stmt, TLetStmt):
-            if stmt.name not in declared:
-                resolved = checker.resolve_type(stmt.typ)
-                result[stmt.name] = type_name(resolved)
-        if isinstance(stmt, TIfStmt):
-            result.update(_collect_let_decls(stmt.then_body, declared, checker))
-            if stmt.else_body is not None:
-                result.update(_collect_let_decls(stmt.else_body, declared, checker))
-        elif isinstance(stmt, TWhileStmt):
-            result.update(_collect_let_decls(stmt.body, declared, checker))
-        elif isinstance(stmt, TForStmt):
-            result.update(_collect_let_decls(stmt.body, declared, checker))
-        elif isinstance(stmt, TTryStmt):
-            result.update(_collect_let_decls(stmt.body, declared, checker))
-            for catch in stmt.catches:
-                result.update(_collect_let_decls(catch.body, declared, checker))
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                result.update(_collect_let_decls(case.body, declared, checker))
-            if stmt.default is not None:
-                result.update(_collect_let_decls(stmt.default.body, declared, checker))
+    for let in _find_let_stmts(stmts):
+        if let.name not in declared:
+            resolved = checker.resolve_type(let.typ)
+            result[let.name] = type_name(resolved)
     return result
 
 
@@ -337,6 +323,11 @@ def _collect_target_read_names(target: TExpr, out: set[str]) -> None:
         _collect_expr_var_names(target.obj, out)
 
 
+def _collect_stmts_var_names(stmts: list[TStmt], out: set[str]) -> None:
+    for stmt in stmts:
+        _collect_stmt_var_names(stmt, out)
+
+
 def _collect_stmt_var_names(stmt: TStmt, out: set[str]) -> None:
     """Collect variable names in read positions within a statement."""
     if isinstance(stmt, TLetStmt):
@@ -361,47 +352,37 @@ def _collect_stmt_var_names(stmt: TStmt, out: set[str]) -> None:
         _collect_expr_var_names(stmt.expr, out)
     elif isinstance(stmt, TIfStmt):
         _collect_expr_var_names(stmt.cond, out)
-        for s in stmt.then_body:
-            _collect_stmt_var_names(s, out)
+        _collect_stmts_var_names(stmt.then_body, out)
         if stmt.else_body is not None:
-            for s in stmt.else_body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(stmt.else_body, out)
     elif isinstance(stmt, TWhileStmt):
         _collect_expr_var_names(stmt.cond, out)
-        for s in stmt.body:
-            _collect_stmt_var_names(s, out)
+        _collect_stmts_var_names(stmt.body, out)
     elif isinstance(stmt, TForStmt):
         if isinstance(stmt.iterable, TRange):
             for a in stmt.iterable.args:
                 _collect_expr_var_names(a, out)
         else:
             _collect_expr_var_names(stmt.iterable, out)
-        for s in stmt.body:
-            _collect_stmt_var_names(s, out)
+        _collect_stmts_var_names(stmt.body, out)
     elif isinstance(stmt, TTryStmt):
-        for s in stmt.body:
-            _collect_stmt_var_names(s, out)
+        _collect_stmts_var_names(stmt.body, out)
         for catch in stmt.catches:
-            for s in catch.body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(catch.body, out)
         if stmt.finally_body is not None:
-            for s in stmt.finally_body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(stmt.finally_body, out)
     elif isinstance(stmt, TMatchStmt):
         _collect_expr_var_names(stmt.expr, out)
         for case in stmt.cases:
-            for s in case.body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(case.body, out)
         if stmt.default is not None:
-            for s in stmt.default.body:
-                _collect_stmt_var_names(s, out)
+            _collect_stmts_var_names(stmt.default.body, out)
 
 
 def _collect_used_vars(stmts: list[TStmt]) -> set[str]:
-    """Recursively collect all variable names referenced in statements."""
+    """Collect all variable names referenced in statements."""
     out: set[str] = set()
-    for stmt in stmts:
-        _collect_stmt_var_names(stmt, out)
+    _collect_stmts_var_names(stmts, out)
     return out
 
 
@@ -438,11 +419,11 @@ def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> 
 
         if isinstance(stmt, TWhileStmt):
             stmt.annotations["hoisting.has_continue"] = (
-                "true" if _has_continue(stmt.body) else "false"
+                "true" if _has_flow_stmt(stmt.body, True) else "false"
             )
         elif isinstance(stmt, TForStmt):
             stmt.annotations["hoisting.has_continue"] = (
-                "true" if _has_continue(stmt.body) else "false"
+                "true" if _has_flow_stmt(stmt.body, True) else "false"
             )
         elif isinstance(stmt, TMatchStmt):
             all_case_stmts: list[TStmt] = []
@@ -451,7 +432,7 @@ def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> 
             if stmt.default is not None:
                 all_case_stmts.extend(stmt.default.body)
             stmt.annotations["hoisting.has_break"] = (
-                "true" if _has_break(all_case_stmts) else "false"
+                "true" if _has_flow_stmt(all_case_stmts, False) else "false"
             )
 
         # Collect let decls inside this control structure
@@ -556,27 +537,9 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
 def _collect_fn_let_bindings(
     stmts: list[TStmt], bindings: dict[str, Type], checker: Checker
 ) -> None:
-    """Recursively collect all let bindings in a function to build the type map."""
-    for stmt in stmts:
-        if isinstance(stmt, TLetStmt):
-            bindings[stmt.name] = checker.resolve_type(stmt.typ)
-        if isinstance(stmt, TIfStmt):
-            _collect_fn_let_bindings(stmt.then_body, bindings, checker)
-            if stmt.else_body is not None:
-                _collect_fn_let_bindings(stmt.else_body, bindings, checker)
-        elif isinstance(stmt, TWhileStmt):
-            _collect_fn_let_bindings(stmt.body, bindings, checker)
-        elif isinstance(stmt, TForStmt):
-            _collect_fn_let_bindings(stmt.body, bindings, checker)
-        elif isinstance(stmt, TTryStmt):
-            _collect_fn_let_bindings(stmt.body, bindings, checker)
-            for catch in stmt.catches:
-                _collect_fn_let_bindings(catch.body, bindings, checker)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                _collect_fn_let_bindings(case.body, bindings, checker)
-            if stmt.default is not None:
-                _collect_fn_let_bindings(stmt.default.body, bindings, checker)
+    """Collect all let bindings in a function to build the type map."""
+    for let in _find_let_stmts(stmts):
+        bindings[let.name] = checker.resolve_type(let.typ)
 
 
 # ============================================================
