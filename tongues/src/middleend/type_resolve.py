@@ -40,6 +40,8 @@ from ..taytsh.check import (
     StructT,
     TupleT,
     Type,
+    VOID_T,
+    normalize_union,
     type_eq,
 )
 
@@ -193,3 +195,119 @@ class TypeResolver:
         else:
             return None
         return result2 if len(result2) > 0 else None
+
+
+class ScopeResolver(TypeResolver):
+    """Type resolver for scope analysis — handles scope-specific builtins."""
+
+    def resolve_builtin_call(self, name: str, expr: TCall) -> Type | None:
+        if name == "Len":
+            return INT_T
+        if name in (
+            "Append",
+            "Insert",
+            "RemoveAt",
+            "Delete",
+            "Add",
+            "Remove",
+            "ReplaceSlice",
+        ):
+            return VOID_T
+        if name == "Pop":
+            if len(expr.args) > 0:
+                t = self.resolve(expr.args[0].value)
+                if t is not None and isinstance(t, ListT):
+                    return t.element
+            return None
+        if name in ("FloorDiv", "PythonMod"):
+            if len(expr.args) > 0:
+                return self.resolve(expr.args[0].value)
+            return INT_T
+        if name == "ToString":
+            return STRING_T
+        if name in ("Keys", "Values"):
+            if len(expr.args) > 0:
+                t = self.resolve(expr.args[0].value)
+                if t is not None and isinstance(t, MapT):
+                    if name == "Keys":
+                        return ListT(kind="list", element=t.key)
+                    return ListT(kind="list", element=t.value)
+            return None
+        if name == "Sorted" or name == "Reversed":
+            if len(expr.args) > 0:
+                return self.resolve(expr.args[0].value)
+            return None
+        if name in (
+            "Concat",
+            "Upper",
+            "Lower",
+            "Join",
+            "Replace",
+            "Trim",
+            "TrimStart",
+            "TrimEnd",
+        ):
+            return STRING_T
+        if name in ("Split", "SplitN", "SplitWhitespace"):
+            return ListT(kind="list", element=STRING_T)
+        if name == "Args":
+            return ListT(kind="list", element=STRING_T)
+        return None
+
+
+class StringsResolver(TypeResolver):
+    """Type resolver for strings analysis — handles strings-specific builtins."""
+
+    def resolve_builtin_call(self, name: str, expr: TCall) -> Type | None:
+        if name in (
+            "ToString",
+            "Concat",
+            "FormatInt",
+            "Lower",
+            "Upper",
+            "Trim",
+            "TrimStart",
+            "TrimEnd",
+            "Replace",
+            "Repeat",
+            "Reverse",
+            "Join",
+            "Format",
+            "ReadAll",
+            "Decode",
+        ):
+            return STRING_T
+        if name == "ReadLine":
+            return normalize_union([STRING_T, NIL_T])
+        if name in ("Split", "SplitN", "SplitWhitespace"):
+            return ListT(kind="list", element=STRING_T)
+        if name == "Len":
+            return INT_T
+        if name == "Args":
+            return ListT(kind="list", element=STRING_T)
+        if name == "Keys":
+            if len(expr.args) > 0:
+                t = self.resolve(expr.args[0].value)
+                if isinstance(t, MapT):
+                    return ListT(kind="list", element=t.key)
+        if name == "Values":
+            if len(expr.args) > 0:
+                t = self.resolve(expr.args[0].value)
+                if isinstance(t, MapT):
+                    return ListT(kind="list", element=t.value)
+        if name == "Items":
+            if len(expr.args) > 0:
+                t = self.resolve(expr.args[0].value)
+                if isinstance(t, MapT):
+                    tup = TupleT(kind="tuple", elements=[t.key, t.value])
+                    return ListT(kind="list", element=tup)
+        if name == "Get":
+            if len(expr.args) > 0:
+                t = self.resolve(expr.args[0].value)
+                if isinstance(t, MapT):
+                    return normalize_union([t.value, NIL_T])
+        if name == "Map":
+            return None
+        if name == "Set":
+            return None
+        return None

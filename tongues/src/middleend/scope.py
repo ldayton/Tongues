@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .type_resolve import TypeResolver
+from .type_resolve import ScopeResolver
 from ..taytsh.ast import (
     Ann,
     TAssignStmt,
@@ -130,72 +130,12 @@ def _fork_ctx(
 # ============================================================
 
 
-class _ScopeResolver(TypeResolver):
-    """Type resolver for scope analysis — handles scope-specific builtins."""
-
-    def resolve_builtin_call(self, name: str, expr: TCall) -> Type | None:
-        from ..taytsh.check import INT_T, VOID_T, MapT, ListT, STRING_T
-
-        if name == "Len":
-            return INT_T
-        if name in (
-            "Append",
-            "Insert",
-            "RemoveAt",
-            "Delete",
-            "Add",
-            "Remove",
-            "ReplaceSlice",
-        ):
-            return VOID_T
-        if name == "Pop":
-            if len(expr.args) > 0:
-                t = self.resolve(expr.args[0].value)
-                if t is not None and isinstance(t, ListT):
-                    return t.element
-            return None
-        if name in ("FloorDiv", "PythonMod"):
-            if len(expr.args) > 0:
-                return self.resolve(expr.args[0].value)
-            return INT_T
-        if name == "ToString":
-            return STRING_T
-        if name in ("Keys", "Values"):
-            if len(expr.args) > 0:
-                t = self.resolve(expr.args[0].value)
-                if t is not None and isinstance(t, MapT):
-                    if name == "Keys":
-                        return ListT(kind="list", element=t.key)
-                    return ListT(kind="list", element=t.value)
-            return None
-        if name == "Sorted" or name == "Reversed":
-            if len(expr.args) > 0:
-                return self.resolve(expr.args[0].value)
-            return None
-        if name in (
-            "Concat",
-            "Upper",
-            "Lower",
-            "Join",
-            "Replace",
-            "Trim",
-            "TrimStart",
-            "TrimEnd",
-        ):
-            return STRING_T
-        if name in ("Split", "SplitN", "SplitWhitespace"):
-            return ListT(kind="list", element=STRING_T)
-        if name == "Args":
-            return ListT(kind="list", element=STRING_T)
-        return None
-
-
-def _make_scope_resolver(ctx: _ScopeCtx) -> _ScopeResolver:
+def _make_scope_resolver(ctx: _ScopeCtx) -> ScopeResolver:
     locals: dict[str, Type] = {}
     for name, info in ctx.bindings.items():
         locals[name] = info.declared_type
     locals.update(ctx.narrowings)
-    return _ScopeResolver(locals, ctx.checker)
+    return ScopeResolver(locals, ctx.checker)
 
 
 # ============================================================
