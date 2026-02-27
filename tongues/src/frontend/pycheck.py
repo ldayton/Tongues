@@ -78,6 +78,7 @@ from .types import (
 
 _DBG_PRINT_EXPR_TYPES: bool = False
 _DBG_PRINT_BUDGET_EXHAUSTION: bool = False
+_DBG_PRINT_NARROWING: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +398,13 @@ class TypeEnv:
         return self.types.get(name)
 
     def narrow(self, name: str, typ: TypeNode) -> None:
+        if _DBG_PRINT_NARROWING:
+            old = self.types.get(name)
+            old_s = _type_name(old) if old is not None else "?"
+            print(
+                "DBG narrow " + name + ": " + old_s + " -> " + _type_name(typ),
+                file=sys.stderr,
+            )
         self.types[name] = typ
 
     def guard_attr(self, path: str) -> None:
