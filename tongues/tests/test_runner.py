@@ -16,7 +16,11 @@ import pytest
 
 from src.frontend.typecollect import collect_signatures, collect_types
 from src.frontend.hierarchy import build_hierarchy
-from src.frontend.pycheck import run_pycheck as _run_pycheck, compute_expr_coverage, _EXPR_NODE_TYPES
+from src.frontend.pycheck import (
+    run_pycheck as _run_pycheck,
+    compute_expr_coverage,
+    _EXPR_NODE_TYPES,
+)
 from src.frontend.bind import run_bind, resolve_names, verify as verify_subset
 from src.frontend.parse import parse, stamp_uids
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
