@@ -37,7 +37,12 @@ from src.taytsh.check import (
 )
 
 from .types import make_ttype
-from .ast_helpers import P, A, build_module as _build_module_from_body, filter_noise_errors
+from .ast_helpers import (
+    P,
+    A,
+    build_module as _build_module_from_body,
+    filter_noise_errors,
+)
 
 
 @dataclass

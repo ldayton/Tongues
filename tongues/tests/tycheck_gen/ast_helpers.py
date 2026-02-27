@@ -178,9 +178,7 @@ def zero_value(t: Type) -> TExpr:
     if type_eq(t, NIL_T):
         return TNilLit(pos=P, annotations=A)
     if isinstance(t, StructT):
-        args = [
-            TArg(pos=P, name=f, value=zero_value(ft)) for f, ft in t.fields.items()
-        ]
+        args = [TArg(pos=P, name=f, value=zero_value(ft)) for f, ft in t.fields.items()]
         return TCall(
             pos=P,
             func=TVar(pos=P, name=t.name, annotations=A),
