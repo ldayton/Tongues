@@ -1008,11 +1008,23 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     if _DBG_PRINT_LOOKUP_FALLBACK:
         nt = get_str(node, "_type") if isinstance(node, dict) else ""
         lineno = get_int(node, "lineno") if isinstance(node, dict) else 0
+        reason = "no_entry"
+        if ctx.pycheck_result is not None:
+            uid_jv2 = node.get("_uid") if isinstance(node, dict) else None
+            if isinstance(uid_jv2, JInt):
+                pt2 = ctx.pycheck_result.expr_types.get(uid_jv2.value)
+                if pt2 is not None:
+                    if _is_any_type(pt2):
+                        reason = "any"
+                    else:
+                        reason = "contains_any"
         print(
             "lookup_fallback:"
             + str(lineno)
             + ": "
             + nt
+            + " reason="
+            + reason
             + " inner="
             + _type_name_str(inner),
             file=sys.stderr,
@@ -4131,6 +4143,23 @@ def _expand_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
 def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     """Lower an expression as a boolean condition."""
     pos = _node_pos(node)
+    # Structural cases that always need truthiness lowering, regardless of type
+    t = get_str(node, "_type")
+    if t == "Compare":
+        return _lower_expr(node, env, ctx)
+    if t == "BoolOp":
+        op_node = get_node(node, "op")
+        op_str = "&&" if get_str(op_node, "_type") == "And" else "||"
+        values = get_nodes(node, "values")
+        if len(values) == 0:
+            return TBoolLit(pos, True, {})
+        result: TExpr = _lower_as_bool(values[0], env, ctx)
+        i = 1
+        while i < len(values):
+            right = _lower_as_bool(values[i], env, ctx)
+            result = TBinaryOp(pos, op_str, result, right, {})
+            i += 1
+        return result
     expr_type = _infer_expr_type(node, env, ctx)
     if _is_type_dict(expr_type, ["bool"]):
         return _lower_expr(node, env, ctx)
@@ -4167,23 +4196,6 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             TIntLit(pos, 0, "0", {}),
             {},
         )
-    # Compare already returns bool
-    t = get_str(node, "_type")
-    if t == "Compare":
-        return _lower_expr(node, env, ctx)
-    if t == "BoolOp":
-        op_node = get_node(node, "op")
-        op_str = "&&" if get_str(op_node, "_type") == "And" else "||"
-        values = get_nodes(node, "values")
-        if len(values) == 0:
-            return TBoolLit(pos, True, {})
-        result: TExpr = _lower_as_bool(values[0], env, ctx)
-        i = 1
-        while i < len(values):
-            right = _lower_as_bool(values[i], env, ctx)
-            result = TBinaryOp(pos, op_str, result, right, {})
-            i += 1
-        return result
     return _lower_expr(node, env, ctx)
 
 

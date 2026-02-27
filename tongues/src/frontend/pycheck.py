@@ -2713,8 +2713,10 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
             and _is_type(func, ["Name"])
             and get_str(func, "id") == "isinstance"
         ):
+            _synth_expr(test, env, ctx)
             return
     if t == "BoolOp":
+        _synth_expr(test, env, ctx)
         values = get_nodes(test, "values")
         j = 0
         while j < len(values):
@@ -2724,6 +2726,7 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
     if t == "UnaryOp":
         op = get_node(test, "op")
         if get_str(op, "_type") == "Not":
+            _synth_expr(test, env, ctx)
             operand = get_node(test, "operand")
             if len(operand) > 0:
                 _check_truthiness(operand, env, ctx, lineno)
