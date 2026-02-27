@@ -938,9 +938,7 @@ def _shadow_check(node: ASTNode, lowering_type: TypeNode, ctx: _LowerCtx) -> Non
     )
 
 
-def _adjust_pycheck_type(
-    node: ASTNode, pt: TypeNode, inner: TypeNode
-) -> TypeNode:
+def _adjust_pycheck_type(node: ASTNode, pt: TypeNode, inner: TypeNode) -> TypeNode:
     """Translate pycheck type conventions to lowering conventions.
 
     The caller only uses the adjusted type when it matches inner (repr equal).
@@ -1010,9 +1008,7 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
                     return adjusted
                 if _DBG_PRINT_LOOKUP_FALLBACK:
                     nt = get_str(node, "_type") if isinstance(node, dict) else ""
-                    lineno = (
-                        get_int(node, "lineno") if isinstance(node, dict) else 0
-                    )
+                    lineno = get_int(node, "lineno") if isinstance(node, dict) else 0
                     print(
                         "lookup_diff:"
                         + str(lineno)
