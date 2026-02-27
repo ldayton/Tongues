@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .expr_reads import expr_reads, target_reads
 from ..taytsh.ast import (
     Ann,
     TAssignStmt,
@@ -89,8 +90,6 @@ _CONTENT_ORDER: dict[str, int] = {_C_ASCII: 0, _C_BMP: 1, _C_UNKNOWN: 2}
 class _BindingInfo:
     annotations: Ann
     name: str
-    declared_type: Type
-    order: int
     binder_name: str | None = None
     base_unknown: bool = False
     content: str = _C_UNKNOWN
@@ -111,7 +110,6 @@ class _StringsCtx:
     var_types: dict[str, Type]
     string_bindings: dict[str, _BindingInfo]
     string_sources: dict[str, list[_Source]]
-    list_string_types: dict[str, Type]
     list_string_sources: dict[str, list[_Source]]
     decl_order: list[str]
     loop_nodes: list[TStmt]
@@ -152,7 +150,6 @@ def _register_string_binding(
     ctx: _StringsCtx,
     name: str,
     annotations: Ann,
-    declared_type: Type,
     binder_name: str | None = None,
     base_unknown: bool = False,
 ) -> None:
@@ -163,8 +160,6 @@ def _register_string_binding(
     info = _BindingInfo(
         annotations=annotations,
         name=name,
-        declared_type=declared_type,
-        order=len(ctx.decl_order),
         binder_name=binder_name,
         base_unknown=base_unknown,
     )
@@ -417,79 +412,6 @@ def _base_var(expr: TExpr) -> str | None:
     return None
 
 
-def _expr_reads(name: str, expr: TExpr) -> bool:
-    if isinstance(expr, TVar):
-        return expr.name == name
-    if isinstance(expr, TBinaryOp):
-        return _expr_reads(name, expr.left) or _expr_reads(name, expr.right)
-    if isinstance(expr, TUnaryOp):
-        return _expr_reads(name, expr.operand)
-    if isinstance(expr, TTernary):
-        return (
-            _expr_reads(name, expr.cond)
-            or _expr_reads(name, expr.then_expr)
-            or _expr_reads(name, expr.else_expr)
-        )
-    if isinstance(expr, TFieldAccess):
-        return _expr_reads(name, expr.obj)
-    if isinstance(expr, TTupleAccess):
-        return _expr_reads(name, expr.obj)
-    if isinstance(expr, TIndex):
-        return _expr_reads(name, expr.obj) or _expr_reads(name, expr.index)
-    if isinstance(expr, TSlice):
-        return (
-            _expr_reads(name, expr.obj)
-            or _expr_reads(name, expr.low)
-            or _expr_reads(name, expr.high)
-        )
-    if isinstance(expr, TCall):
-        if _expr_reads(name, expr.func):
-            return True
-        for a in expr.args:
-            if _expr_reads(name, a.value):
-                return True
-        return False
-    if isinstance(expr, TListLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TSetLit):
-        for e in expr.elements:
-            if _expr_reads(name, e):
-                return True
-        return False
-    if isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            if _expr_reads(name, k) or _expr_reads(name, v):
-                return True
-        return False
-    return False
-
-
-def _target_reads(name: str, target: TExpr) -> bool:
-    if isinstance(target, TVar):
-        return False
-    if isinstance(target, TIndex):
-        return _expr_reads(name, target.obj) or _expr_reads(name, target.index)
-    if isinstance(target, TFieldAccess):
-        return _expr_reads(name, target.obj)
-    if isinstance(target, TTupleAccess):
-        return _expr_reads(name, target.obj)
-    if isinstance(target, TSlice):
-        return (
-            _expr_reads(name, target.obj)
-            or _expr_reads(name, target.low)
-            or _expr_reads(name, target.high)
-        )
-    return False
-
-
 def _is_accum_concat(value: TExpr, name: str) -> bool:
     if not isinstance(value, TCall):
         return False
@@ -504,7 +426,7 @@ def _is_accum_concat(value: TExpr, name: str) -> bool:
         return False
     i = 1
     while i < len(value.args):
-        if _expr_reads(name, value.args[i].value):
+        if expr_reads(name, value.args[i].value):
             return False
         i += 1
     return True
@@ -512,7 +434,7 @@ def _is_accum_concat(value: TExpr, name: str) -> bool:
 
 def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
     if isinstance(stmt, TLetStmt):
-        if stmt.value is not None and _expr_reads(name, stmt.value):
+        if stmt.value is not None and expr_reads(name, stmt.value):
             return False
         return True
     if isinstance(stmt, TAssignStmt):
@@ -521,32 +443,32 @@ def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
                 found[0] = True
                 return True
             return False
-        if _expr_reads(name, stmt.value) or _target_reads(name, stmt.target):
+        if expr_reads(name, stmt.value) or target_reads(name, stmt.target):
             return False
         return True
     if isinstance(stmt, TOpAssignStmt):
         if isinstance(stmt.target, TVar) and stmt.target.name == name:
             return False
-        if _expr_reads(name, stmt.value) or _expr_reads(name, stmt.target):
+        if expr_reads(name, stmt.value) or expr_reads(name, stmt.target):
             return False
         return True
     if isinstance(stmt, TTupleAssignStmt):
-        if _expr_reads(name, stmt.value):
+        if expr_reads(name, stmt.value):
             return False
         for t in stmt.targets:
             if isinstance(t, TVar) and t.name == name:
                 return False
-            if _target_reads(name, t):
+            if target_reads(name, t):
                 return False
         return True
     if isinstance(stmt, TExprStmt):
-        return not _expr_reads(name, stmt.expr)
+        return not expr_reads(name, stmt.expr)
     if isinstance(stmt, TReturnStmt):
-        return stmt.value is None or (not _expr_reads(name, stmt.value))
+        return stmt.value is None or (not expr_reads(name, stmt.value))
     if isinstance(stmt, TThrowStmt):
-        return not _expr_reads(name, stmt.expr)
+        return not expr_reads(name, stmt.expr)
     if isinstance(stmt, TIfStmt):
-        if _expr_reads(name, stmt.cond):
+        if expr_reads(name, stmt.cond):
             return False
         for s in stmt.then_body:
             if not _builder_walk_stmt(name, s, found):
@@ -557,7 +479,7 @@ def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
                     return False
         return True
     if isinstance(stmt, TWhileStmt):
-        if _expr_reads(name, stmt.cond):
+        if expr_reads(name, stmt.cond):
             return False
         for s in stmt.body:
             if not _builder_walk_stmt(name, s, found):
@@ -566,10 +488,10 @@ def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
     if isinstance(stmt, TForStmt):
         if isinstance(stmt.iterable, TRange):
             for a in stmt.iterable.args:
-                if _expr_reads(name, a):
+                if expr_reads(name, a):
                     return False
         else:
-            if _expr_reads(name, stmt.iterable):
+            if expr_reads(name, stmt.iterable):
                 return False
         for s in stmt.body:
             if not _builder_walk_stmt(name, s, found):
@@ -589,7 +511,7 @@ def _builder_walk_stmt(name: str, stmt: TStmt, found: list[bool]) -> bool:
                     return False
         return True
     if isinstance(stmt, TMatchStmt):
-        if _expr_reads(name, stmt.expr):
+        if expr_reads(name, stmt.expr):
             return False
         for case in stmt.cases:
             for s in case.body:
@@ -827,9 +749,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         declared_t = ctx.checker.resolve_type(stmt.typ)
         ctx.var_types[stmt.name] = declared_t
         if _contains_string_type(declared_t):
-            _register_string_binding(
-                ctx, stmt.name, stmt.annotations, declared_t, None, False
-            )
+            _register_string_binding(ctx, stmt.name, stmt.annotations)
             dead = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if not dead:
                 if stmt.value is None:
@@ -839,7 +759,6 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                         ctx, stmt.name, _Source(kind="expr", expr=stmt.value)
                     )
         if _is_list_of_string_type(declared_t):
-            ctx.list_string_types[stmt.name] = declared_t
             if stmt.name not in ctx.list_string_sources:
                 ctx.list_string_sources[stmt.name] = []
             if stmt.value is not None:
@@ -924,9 +843,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 btype = ERROR_T
             ctx.var_types[bname] = btype
             if _contains_string_type(btype):
-                _register_string_binding(
-                    ctx, bname, stmt.annotations, btype, bname, True
-                )
+                _register_string_binding(ctx, bname, stmt.annotations, bname, True)
             child_declared.add(bname)
 
         _walk_stmts(stmt.body, ctx, child_declared)
@@ -952,9 +869,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 covered.append(case_t)
                 ctx.var_types[pat.name] = case_t
                 if _contains_string_type(case_t):
-                    _register_string_binding(
-                        ctx, pat.name, pat.annotations, case_t, None, True
-                    )
+                    _register_string_binding(ctx, pat.name, pat.annotations, None, True)
                 case_declared.add(pat.name)
             elif isinstance(pat, TPatternEnum):
                 enum_t = ctx.checker.types.get(pat.enum_name)
@@ -973,7 +888,6 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                         ctx,
                         stmt.default.name,
                         stmt.default.annotations,
-                        residual,
                         None,
                         True,
                     )
@@ -1078,9 +992,8 @@ def _register_param_type(
     ctx.var_types[p.name] = pt
     declared.add(p.name)
     if _contains_string_type(pt):
-        _register_string_binding(ctx, p.name, p.annotations, pt, None, True)
+        _register_string_binding(ctx, p.name, p.annotations, None, True)
     if _is_list_of_string_type(pt):
-        ctx.list_string_types[p.name] = pt
         ctx.list_string_sources[p.name] = []
 
 
@@ -1090,7 +1003,6 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
         var_types={},
         string_bindings={},
         string_sources={},
-        list_string_types={},
         list_string_sources={},
         decl_order=[],
         loop_nodes=[],
