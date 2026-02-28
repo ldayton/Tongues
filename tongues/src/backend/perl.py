@@ -1593,8 +1593,12 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TFieldAccess):
             if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
                 return True
-        if isinstance(expr, TVar) and expr.name in self.enum_names:
-            return True
+        if isinstance(expr, TVar):
+            if expr.name in self.enum_names:
+                return True
+            typ: TType | None = self.var_types.get(expr.name)
+            if isinstance(typ, TPrimitive):
+                return typ.kind == "int" or typ.kind == "float" or typ.kind == "bool"
         return False
 
     def _binary_op(self, op: str, left: TExpr, right: TExpr | None = None) -> str:
