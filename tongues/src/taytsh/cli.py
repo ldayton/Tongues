@@ -1,14 +1,14 @@
-"""Taytsh CLI — parse and run .ty files."""  # tongues: skip
+"""Taytsh CLI — parse and run .ty files."""
 
 from __future__ import annotations
 
-import os
 import sys
 
 from . import parse
+from .ast import TModule
 from .compiler import CompileError
-from .treewalker import TaytshRuntimeFault, TaytshTypeError, run
-from .vm import vm_run
+from .treewalker import RunResult, TaytshRuntimeFault, TaytshTypeError, run
+from .vm import VMResult, vm_run
 
 
 USAGE: str = """\
@@ -25,7 +25,7 @@ Options:
 """
 
 
-def main(argv: list[str] | None = None) -> int:
+def cli_main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     filepath: str = ""
     strict = False
@@ -63,21 +63,21 @@ def main(argv: list[str] | None = None) -> int:
         print("taytsh: missing file argument", file=sys.stderr)
         return 2
 
+    raw: bytes = b""
     try:
         with open(filepath, "rb") as f:
             raw = f.read()
-    except FileNotFoundError:
-        print("taytsh: " + filepath + ": No such file or directory", file=sys.stderr)
-        return 1
     except OSError as e:
         print("taytsh: " + filepath + ": " + str(e), file=sys.stderr)
         return 1
+    source: str = ""
     try:
         source = raw.decode("utf-8")
     except ValueError:
         print("taytsh: " + filepath + ": invalid utf-8", file=sys.stderr)
         return 1
 
+    module: TModule = TModule([], False, False)
     try:
         module = parse(source)
     except Exception as e:
@@ -94,13 +94,13 @@ def main(argv: list[str] | None = None) -> int:
     return _run_interp(module)
 
 
-def _run_vm(module) -> int:  # type: ignore[no-untyped-def]
+def _run_vm(module: TModule) -> int:
+    result: VMResult = VMResult(0, "", "")
     try:
         result = vm_run(
             module,
-            sys.stdin.buffer.read() if not sys.stdin.isatty() else b"",
-            sys.argv[1:],
-            dict(os.environ),
+            stdin=sys.stdin.buffer.read(),
+            args=sys.argv[1:],
         )
     except CompileError as e:
         print("taytsh: compile error: " + str(e), file=sys.stderr)
@@ -110,25 +110,20 @@ def _run_vm(module) -> int:  # type: ignore[no-untyped-def]
     return result.exit_code
 
 
-def _run_interp(module) -> int:  # type: ignore[no-untyped-def]
+def _run_interp(module: TModule) -> int:
+    result: RunResult = RunResult(0, b"", b"")
     try:
-        result = run(
-            module,
-            sys.stdin.buffer.read() if not sys.stdin.isatty() else b"",
-            sys.argv[1:],
-            dict(os.environ),
-        )
+        result = run(module, sys.stdin.buffer.read(), sys.argv[1:])
     except TaytshTypeError as e:
         print("taytsh: type error: " + str(e), file=sys.stderr)
         return 1
     except TaytshRuntimeFault as e:
         print("taytsh: runtime error: " + str(e), file=sys.stderr)
         return 1
-
     sys.stdout.buffer.write(result.stdout)
     sys.stderr.buffer.write(result.stderr)
     return result.exit_code
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli_main())

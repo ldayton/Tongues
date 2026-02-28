@@ -1862,7 +1862,7 @@ def main() -> None:
             ti += 1
         if has_pipeline_flag:
             sys.exit(taytsh_pipeline(taytsh_args))
-        from .taytsh.cli import main as taytsh_main
+        from .taytsh.cli import cli_main as taytsh_main
 
         return taytsh_main(taytsh_args)  # type: ignore[return-value]
     target, stop_at, strict_math, strict_tostring, project, input_file, output_file = (
