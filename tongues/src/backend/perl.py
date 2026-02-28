@@ -142,9 +142,7 @@ _PERL_ESCAPE_MAP: dict[str, str] = {
 
 def _escape_perl_string(value: str) -> str:
     out: list[str] = []
-    i = 0
-    while i < len(value):
-        c = value[i]
+    for c in value:
         esc = _PERL_ESCAPE_MAP.get(c)
         if esc is not None:
             out.append(esc)
@@ -152,7 +150,6 @@ def _escape_perl_string(value: str) -> str:
             out.append("\\x{" + hex(ord(c))[2:] + "}")
         else:
             out.append(c)
-        i += 1
     return "".join(out)
 
 
@@ -402,7 +399,7 @@ class _PerlEmitter(Emitter):
                 break
             if method.name == "__repr__":
                 str_method = "__repr__"
-        if str_method != "":
+        if str_method:
             self._line("use overload '\"\"' => \\&" + str_method + ", fallback => 1;")
             self._line()
         self._emit_constructor(decl)
@@ -456,9 +453,9 @@ class _PerlEmitter(Emitter):
                 args.append("$" + _restore_name(p.name, p.annotations))
         self._line("sub " + _safe_name(decl.name) + " {")
         self.indent += 1
-        if len(args) > 0:
+        if args:
             self._line("my (" + ", ".join(args) + ") = @_;")
-        if len(decl.body) == 0:
+        if not decl.body:
             self._line("return;")
         self._emit_stmts(decl.body)
         self.indent -= 1
@@ -488,9 +485,9 @@ class _PerlEmitter(Emitter):
         self.indent += 1
         self._line("my (" + ", ".join(args) + ") = @_;")
         old_self = self.self_name
-        if len(decl.params) > 0 and decl.params[0].typ is None:
+        if decl.params and decl.params[0].typ is None:
             self.self_name = decl.params[0].name
-        if len(decl.body) == 0:
+        if not decl.body:
             self._line("return;")
         self._emit_stmts(decl.body)
         self.self_name = old_self
@@ -730,9 +727,9 @@ class _PerlEmitter(Emitter):
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
         unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
-        if unused_str != "":
+        if unused_str:
             for s in unused_str.split(","):
-                if s != "":
+                if s:
                     unused_indices.add(int(s))
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
@@ -1365,16 +1362,12 @@ class _PerlEmitter(Emitter):
 
     def _int_lit(self, expr: TIntLit) -> str:
         raw = expr.raw
-        if raw.startswith("0x") or raw.startswith("0X"):
-            return raw
-        if raw.startswith("0o") or raw.startswith("0O"):
-            return raw
-        if raw.startswith("0b") or raw.startswith("0B"):
+        if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             return raw
         return str(expr.value)
 
     def _bytes_lit(self, expr: TBytesLit) -> str:
-        if len(expr.value) == 0:
+        if not expr.value:
             return '""'
         nums = ", ".join(str(b) for b in expr.value)
         return "pack('C*', " + nums + ")"
@@ -1563,13 +1556,8 @@ class _PerlEmitter(Emitter):
 
     def _is_numeric_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
-            return (
-                ann == "int"
-                or ann == "float"
-                or ann == "bool"
-                or ann in self.enum_names
-            )
+        if ann:
+            return ann in ("int", "float", "bool") or ann in self.enum_names
         if isinstance(expr, (TIntLit, TFloatLit, TBoolLit)):
             return True
         if isinstance(expr, TBinaryOp) and expr.op in (
@@ -1587,7 +1575,7 @@ class _PerlEmitter(Emitter):
             ">>",
         ):
             return True
-        if isinstance(expr, TUnaryOp) and (expr.op == "-" or expr.op == "~"):
+        if isinstance(expr, TUnaryOp) and expr.op in ("-", "~"):
             return True
         if isinstance(expr, TFieldAccess):
             if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
@@ -1597,7 +1585,7 @@ class _PerlEmitter(Emitter):
                 return True
             typ: TType | None = self.var_types.get(expr.name)
             if isinstance(typ, TPrimitive):
-                return typ.kind == "int" or typ.kind == "float" or typ.kind == "bool"
+                return typ.kind in ("int", "float", "bool")
         return False
 
     def _binary_op(self, op: str, left: TExpr, right: TExpr | None = None) -> str:
@@ -1778,7 +1766,7 @@ class _PerlEmitter(Emitter):
             if self._is_map_expr(func.obj):
                 key = self._hash_key(args[0].value)
                 return "delete " + obj + "->{" + key + "}"
-            if len(args) > 0:
+            if args:
                 return "splice(@{" + obj + "}, " + self._expr(args[0].value) + ", 1)"
             return "pop(@{" + obj + "})"
         if method == "copy" and not self._is_known_struct_method(func.obj, method):
@@ -2286,7 +2274,7 @@ class _PerlEmitter(Emitter):
             if self._is_set_expr(sorted_arg):
                 return "[sort keys %{" + a + "}]"
             sorted_ann: str = sorted_arg.annotations.get("type", "")
-            is_str_list = sorted_ann == "list[string]" or sorted_ann == "list[rune]"
+            is_str_list = sorted_ann in ("list[string]", "list[rune]")
             if is_str_list:
                 return "[sort @{" + a + "}]"
             return "[sort { $a <=> $b } @{" + a + "}]"
@@ -2301,13 +2289,13 @@ class _PerlEmitter(Emitter):
                 return "[reverse keys %{" + a + "}]"
             return "[reverse @{" + a + "}]"
         if name == "Map":
-            if len(args) == 0:
+            if not args:
                 return "{}"
             return (
                 "[map { " + self._a(args, 0) + "->($_) } @{" + self._a(args, 1) + "}]"
             )
         if name == "Set":
-            if len(args) == 0:
+            if not args:
                 return "{}"
             return (
                 "do { my $__s = {}; $__s->{$_} = 1 for @{"
@@ -2512,10 +2500,10 @@ class _PerlEmitter(Emitter):
         if self._is_string_expr(needle):
             return "eq"
         c_ann: str = container.annotations.get("type", "")
-        if c_ann == "list[string]" or c_ann == "list[rune]":
+        if c_ann in ("list[string]", "list[rune]"):
             return "eq"
         n_ann: str = needle.annotations.get("type", "")
-        if n_ann == "nil | string" or n_ann == "nil | rune":
+        if n_ann in ("nil | string", "nil | rune"):
             return "eq"
         if self._is_numeric_expr(needle):
             return "=="
@@ -2546,7 +2534,7 @@ class _PerlEmitter(Emitter):
 
     def _deref_safe(self, s: str) -> str:
         """Wrap expressions that are ambiguous inside @{} / %{} deref."""
-        if s.startswith("do ") or s.startswith("do{"):
+        if s.startswith(("do ", "do{")):
             return "(" + s + ")"
         if s == "{}":
             return "({})"
@@ -2644,8 +2632,8 @@ class _PerlEmitter(Emitter):
 
     def _is_string_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
-            return ann == "string" or ann == "rune"
+        if ann:
+            return ann in ("string", "rune")
         if isinstance(expr, (TStringLit, TRuneLit)):
             return True
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
@@ -2654,12 +2642,12 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TVar):
             typ: TType | None = self.var_types.get(expr.name)
             if isinstance(typ, TPrimitive):
-                return typ.kind == "string" or typ.kind == "rune"
+                return typ.kind in ("string", "rune")
         return False
 
     def _is_bytes_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
+        if ann:
             return ann == "bytes"
         if isinstance(expr, TBytesLit):
             return True
@@ -2678,8 +2666,8 @@ class _PerlEmitter(Emitter):
 
     def _is_list_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
-            return ann.startswith("list[") or ann.startswith("(")
+        if ann:
+            return ann.startswith(("list[", "("))
         if isinstance(expr, (TListLit, TTupleLit)):
             return True
         if isinstance(expr, TVar):
@@ -2689,19 +2677,19 @@ class _PerlEmitter(Emitter):
 
     def _is_map_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
+        if ann:
             return ann.startswith("map[")
         if isinstance(expr, TMapLit):
             return True
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
-            return expr.func.name == "Map" or expr.func.name == "Merge"
+            return expr.func.name in ("Map", "Merge")
         if isinstance(expr, TVar):
             return isinstance(self.var_types.get(expr.name), TMapType)
         return False
 
     def _is_set_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
+        if ann:
             return ann.startswith("set[")
         if isinstance(expr, TSetLit):
             return True

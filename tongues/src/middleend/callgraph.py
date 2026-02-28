@@ -595,7 +595,7 @@ def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
     has_catch_all = False
     caught_types: set[str] = set()
     for catch in stmt.catches:
-        if len(catch.types) == 0:
+        if not catch.types:
             has_catch_all = True
         else:
             for ct in catch.types:
@@ -622,7 +622,7 @@ def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
 
     # Process catch bodies
     for i, catch in enumerate(stmt.catches):
-        if len(catch.types) == 0:
+        if not catch.types:
             preceding_caught: set[str] = set()
             for j in range(i):
                 for ct in stmt.catches[j].types:

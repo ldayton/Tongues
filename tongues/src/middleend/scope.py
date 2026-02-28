@@ -182,7 +182,7 @@ def _check_call_mutation(expr: TCall, ctx: _ScopeCtx) -> None:
     """Check if a call mutates a parameter (mutating builtins or void methods)."""
     # Mutating builtin: first arg is the mutated collection
     if isinstance(expr.func, TVar) and expr.func.name in _MUTATING_BUILTINS:
-        if len(expr.args) > 0:
+        if expr.args:
             base = _get_base_var(expr.args[0].value)
             if base is not None and base in ctx.bindings:
                 info = ctx.bindings[base]
@@ -710,7 +710,7 @@ def _compute_residual_type(
             is_covered = any(type_eq(vt, c) for c in covered)
             if not is_covered:
                 remaining.append(vt)
-        if len(remaining) == 0:
+        if not remaining:
             return ERROR_T
         if len(remaining) == 1:
             return remaining[0]
@@ -730,7 +730,7 @@ def _compute_residual_type(
                         break
             if not is_covered:
                 remaining2.append(m)
-        if len(remaining2) == 0:
+        if not remaining2:
             return ERROR_T
         if len(remaining2) == 1:
             return remaining2[0]

@@ -160,8 +160,8 @@ def _walk_call(expr: TCall, ctx: _OwnershipCtx) -> None:
             for a in expr.args:
                 _walk_expr(a.value, ctx, True)
             return
-        if name == "Append" or name == "Add":
-            if len(expr.args) > 0:
+        if name in ("Append", "Add"):
+            if expr.args:
                 _walk_expr(expr.args[0].value, ctx, False)
             if len(expr.args) > 1:
                 _walk_expr(expr.args[1].value, ctx, True)
@@ -169,7 +169,7 @@ def _walk_call(expr: TCall, ctx: _OwnershipCtx) -> None:
                 _walk_expr(expr.args[i].value, ctx, False)
             return
         if name == "Insert":
-            if len(expr.args) > 0:
+            if expr.args:
                 _walk_expr(expr.args[0].value, ctx, False)
             if len(expr.args) > 1:
                 _walk_expr(expr.args[1].value, ctx, False)
@@ -177,7 +177,7 @@ def _walk_call(expr: TCall, ctx: _OwnershipCtx) -> None:
                 _walk_expr(expr.args[2].value, ctx, True)
             return
         if name == "ReplaceSlice":
-            if len(expr.args) > 0:
+            if expr.args:
                 _walk_expr(expr.args[0].value, ctx, False)
             for i in range(1, len(expr.args)):
                 _walk_expr(expr.args[i].value, ctx, True)

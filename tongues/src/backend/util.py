@@ -81,9 +81,7 @@ _STRING_ESCAPE_MAP: dict[str, str] = {
 def escape_string(value: str) -> str:
     """Escape a string for use in a string literal (without quotes)."""
     out: list[str] = []
-    i = 0
-    while i < len(value):
-        c = value[i]
+    for c in value:
         esc = _STRING_ESCAPE_MAP.get(c)
         if esc is not None:
             out.append(esc)
@@ -97,7 +95,6 @@ def escape_string(value: str) -> str:
                 out.append("\\U" + "0" * (8 - len(h)) + h)
         else:
             out.append(c)
-        i += 1
     return "".join(out)
 
 
@@ -163,7 +160,7 @@ class Emitter:
 
     def _is_int_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
+        if ann:
             return ann == "int"
         if isinstance(expr, TIntLit):
             return True
@@ -172,13 +169,13 @@ class Emitter:
             return isinstance(typ, TPrimitive) and typ.kind == "int"
         if isinstance(expr, TBinaryOp):
             return self._is_int_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and (expr.op == "-" or expr.op == "~"):
+        if isinstance(expr, TUnaryOp) and (expr.op in ("-", "~")):
             return self._is_int_expr(expr.operand)
         return False
 
     def _is_float_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
+        if ann:
             return ann == "float"
         if isinstance(expr, TFloatLit):
             return True
@@ -193,7 +190,7 @@ class Emitter:
 
     def _is_float_list(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
+        if ann:
             return ann == "list[float]"
         if isinstance(expr, TListLit) and expr.elements:
             return self._is_float_expr(expr.elements[0])

@@ -24,29 +24,21 @@ from .types import (
 def get_children(node: ASTNode) -> list[ASTNode]:
     """Get all child nodes from a dict-based AST node."""
     children: list[ASTNode] = []
-    keys = list(node.keys())
-    i = 0
-    while i < len(keys):
-        key = keys[i]
+    for key in node:
         if key.startswith("_") or key in (
             "lineno",
             "col_offset",
             "end_lineno",
             "end_col_offset",
         ):
-            i += 1
             continue
         val = node[key]
         if isinstance(val, JDict) and has_key(val.entries, "_type"):
             children.append(val.entries)
         elif isinstance(val, JList):
-            j = 0
-            while j < len(val.items):
-                item = val.items[j]
+            for item in val.items:
                 if isinstance(item, JDict) and has_key(item.entries, "_type"):
                     children.append(item.entries)
-                j += 1
-        i += 1
     return children
 
 
@@ -54,10 +46,8 @@ def walk(node: ASTNode, visitor: Callable[[ASTNode], None]) -> None:
     """Walk dict-based AST, calling visitor on each node."""
     visitor(node)
     children = get_children(node)
-    i = 0
-    while i < len(children):
-        walk(children[i], visitor)
-        i += 1
+    for child in children:
+        walk(child, visitor)
 
 
 def _has_present(node: ASTNode, key: str) -> bool:
@@ -90,7 +80,7 @@ class Violation:
     def __repr__(self) -> str:
         prefix = "warning" if self.is_warning else "error"
         file_prefix = ""
-        if self.source_file != "":
+        if self.source_file:
             file_prefix = self.source_file + ":"
         return (
             file_prefix
@@ -128,26 +118,20 @@ class VerifyResult:
 
     def errors(self) -> list[Violation]:
         result: list[Violation] = []
-        i = 0
-        while i < len(self.violations):
-            v = self.violations[i]
+        for v in self.violations:
             if not v.is_warning:
                 result.append(v)
-            i += 1
         return result
 
     def warnings(self) -> list[Violation]:
         result: list[Violation] = []
-        i = 0
-        while i < len(self.violations):
-            v = self.violations[i]
+        for v in self.violations:
             if v.is_warning:
                 result.append(v)
-            i += 1
         return result
 
     def ok(self) -> bool:
-        return len(self.errors()) == 0
+        return not self.errors()
 
 
 # Builtins that are explicitly banned
@@ -253,7 +237,7 @@ def is_bare_collection(annotation: ASTNode | None) -> bool:
     if get_str(annotation, "_type") != "Name":
         return False
     name_id = get_str(annotation, "id")
-    if name_id == "":
+    if not name_id:
         return False
     return name_id in BARE_COLLECTION_TYPES
 
@@ -278,7 +262,7 @@ def get_attr_name(node: ASTNode) -> str | None:
     """Get attr from Attribute node."""
     if get_str(node, "_type") == "Attribute":
         val = get_str(node, "attr")
-        if val != "":
+        if val:
             return val
     return None
 
@@ -286,16 +270,13 @@ def get_attr_name(node: ASTNode) -> str | None:
 def is_allowed_dataclass_args(keywords: list[ASTNode]) -> bool:
     """Check if dataclass args are only eq=True, unsafe_hash=True, or kw_only=True."""
     allowed: set[str] = {"eq", "unsafe_hash", "kw_only"}
-    i = 0
-    while i < len(keywords):
-        kw = keywords[i]
+    for kw in keywords:
         arg = get_str(kw, "arg")
         if arg not in allowed:
             return False
         value = get_node(kw, "value")
         if get_str(value, "_type") != "Constant" or get_bool(value, "value") != True:  # noqa: E712
             return False
-        i += 1
     return True
 
 
@@ -313,21 +294,19 @@ def collect_annotated_fields(class_node: ASTNode) -> set[str]:
             # Class-level: x: int = 0
             if target_type == "Name":
                 target_id = get_str(target, "id")
-                if target_id != "":
+                if target_id:
                     fields.add(target_id)
             # Method-level: self.x: int = 0
             if target_type == "Attribute":
                 target_value = get_node(target, "value")
                 if get_name_id(target_value) == "self":
                     attr = get_str(target, "attr")
-                    if attr != "":
+                    if attr:
                         fields.add(attr)
         # Add children to visit
         children = get_children(node)
-        j = 0
-        while j < len(children):
-            nodes_to_visit.append(children[j])
-            j += 1
+        for child in children:
+            nodes_to_visit.append(child)
         i += 1
     return fields
 
@@ -438,10 +417,8 @@ class Verifier:
                 self.warning(node, "syntax", "unknown node type: " + node_type)
             # Still traverse children for all nodes
             children = get_children(node)
-            i = 0
-            while i < len(children):
-                self.visit(children[i])
-                i += 1
+            for child in children:
+                self.visit(child)
 
     def is_known_node(self, node_type: str) -> bool:
         """Check if node type is recognized."""
@@ -562,19 +539,15 @@ class Verifier:
     def visit_Module(self, node: ASTNode) -> None:
         """Visit module - just traverse body."""
         body = get_nodes(node, "body")
-        i = 0
-        while i < len(body):
-            self.visit(body[i])
-            i += 1
+        for stmt in body:
+            self.visit(stmt)
 
     def visit_FunctionDef(self, node: ASTNode) -> None:
         """Check function definition constraints."""
         name = get_str(node, "name")
         # Check decorators
         decorators = get_nodes(node, "decorator_list")
-        i = 0
-        while i < len(decorators):
-            dec = decorators[i]
+        for dec in decorators:
             dec_name = get_name_id(dec)
             if dec_name is None:
                 dec_name = get_attr_name(dec)
@@ -586,7 +559,6 @@ class Verifier:
                 self.error(node, "function", "@property: use explicit getter method")
             else:
                 self.error(node, "function", "decorators are not allowed")
-            i += 1
         # Check nested function
         if self.in_function:
             self.error(
@@ -635,18 +607,12 @@ class Verifier:
         # Also check positional-only args
         posonlyargs = get_nodes(args_node, "posonlyargs")
         all_args: list[ASTNode] = []
-        ai = 0
-        while ai < len(posonlyargs):
-            all_args.append(posonlyargs[ai])
-            ai += 1
-        ai = 0
-        while ai < len(args_list):
-            all_args.append(args_list[ai])
-            ai += 1
-        ai = 0
-        while ai < len(kwonlyargs):
-            all_args.append(kwonlyargs[ai])
-            ai += 1
+        for a in posonlyargs:
+            all_args.append(a)
+        for a in args_list:
+            all_args.append(a)
+        for a in kwonlyargs:
+            all_args.append(a)
         old_annotated = self.annotated_params
         self.annotated_params = set()
         j = 0
@@ -683,19 +649,12 @@ class Verifier:
         defaults = get_nodes(args_node, "defaults")
         kw_defaults = get_jlist(args_node, "kw_defaults")
         all_defaults: list[ASTNode] = []
-        k = 0
-        while k < len(defaults):
-            all_defaults.append(defaults[k])
-            k += 1
-        k = 0
-        while k < len(kw_defaults):
-            kw_d = kw_defaults[k]
+        for d in defaults:
+            all_defaults.append(d)
+        for kw_d in kw_defaults:
             if isinstance(kw_d, JDict):
                 all_defaults.append(kw_d.entries)
-            k += 1
-        k = 0
-        while k < len(all_defaults):
-            d = all_defaults[k]
+        for d in all_defaults:
             d_type = get_str(d, "_type")
             if d_type in ("List", "Dict", "Set"):
                 self.error(
@@ -705,7 +664,6 @@ class Verifier:
                 )
             elif d_type == "Lambda":
                 self.error(node, "function", "lambda: use named function instead")
-            k += 1
         # Visit body
         old_in_function = self.in_function
         old_function_name = self.function_name
@@ -714,10 +672,8 @@ class Verifier:
         self.function_name = name
         self.annotated_locals = set()
         body = get_nodes(node, "body")
-        m = 0
-        while m < len(body):
-            self.visit(body[m])
-            m += 1
+        for stmt in body:
+            self.visit(stmt)
         self.in_function = old_in_function
         self.function_name = old_function_name
         self.annotated_params = old_annotated
@@ -728,15 +684,13 @@ class Verifier:
         name = get_str(node, "name")
         # Check decorators - only @dataclass (no arguments) is allowed
         decorators = get_nodes(node, "decorator_list")
-        i = 0
-        while i < len(decorators):
-            dec = decorators[i]
+        for dec in decorators:
             dec_type = get_str(dec, "_type")
             if dec_type == "Name" and get_str(dec, "id") == "dataclass":
                 pass  # @dataclass with no arguments is allowed
             elif dec_type == "Call":
                 func = get_node(dec, "func")
-                if len(func) > 0 and get_str(func, "id") == "dataclass":
+                if func and get_str(func, "id") == "dataclass":
                     keywords = get_nodes(dec, "keywords")
                     if not is_allowed_dataclass_args(keywords):
                         self.error(
@@ -748,20 +702,16 @@ class Verifier:
                     self.error(node, "class", "class decorator not allowed")
             else:
                 self.error(node, "class", "class decorator not allowed")
-            i += 1
         # Check nested class
         if self.in_class:
             self.error(node, "class", "nested class: define at module level")
         # Check multiple inheritance (Exception doesn't count)
         bases = get_nodes(node, "bases")
         real_bases: list[ASTNode] = []
-        j = 0
-        while j < len(bases):
-            b = bases[j]
+        for b in bases:
             b_name = get_name_id(b)
             if b_name != "Exception":
                 real_bases.append(b)
-            j += 1
         if len(real_bases) > 1:
             self.error(node, "class", "multiple inheritance: use single base class")
         # Collect annotated fields (walk entire class including method bodies)
@@ -773,14 +723,11 @@ class Verifier:
         old_class_name = self.class_name
         self.in_class = True
         self.class_name = name
-        m = 0
-        while m < len(body):
-            child = body[m]
+        for child in body:
             # Check nested class
             if get_str(child, "_type") == "ClassDef":
                 self.error(child, "class", "nested class: define at module level")
             self.visit(child)
-            m += 1
         self.in_class = old_in_class
         self.class_name = old_class_name
         self.annotated_fields = old_fields
@@ -810,24 +757,21 @@ class Verifier:
         # Check if this is an eager consumer (for generator expressions)
         is_eager = func_name is not None and func_name in EAGER_CONSUMERS
         # Also check for str.join method call
-        if not is_eager and len(func) > 0 and get_str(func, "_type") == "Attribute":
+        if not is_eager and func and get_str(func, "_type") == "Attribute":
             if get_str(func, "attr") == "join":
                 is_eager = True
         # Check restricted keyword arguments (min/max key/default, sorted key, print sep)
         keywords = get_nodes(node, "keywords")
         if func_name is not None and func_name in RESTRICTED_KWARGS:
             banned_kwargs = RESTRICTED_KWARGS[func_name]
-            j = 0
-            while j < len(keywords):
-                kw = keywords[j]
+            for kw in keywords:
                 kw_arg = get_str(kw, "arg")
-                if kw_arg != "" and kw_arg in banned_kwargs:
+                if kw_arg and kw_arg in banned_kwargs:
                     self.error(
                         node,
                         "builtin",
                         func_name + "() does not allow " + kw_arg + "= argument",
                     )
-                j += 1
         # Check print: only one positional argument
         args = get_nodes(node, "args")
         if func_name == "print" and len(args) > 1:
@@ -838,53 +782,39 @@ class Verifier:
             )
         # Check field(default_factory=...)
         if func_name == "field":
-            j = 0
-            while j < len(keywords):
-                kw = keywords[j]
+            for kw in keywords:
                 if get_str(kw, "arg") == "default_factory":
                     self.error(
                         node,
                         "class",
                         "field(default_factory=...) not allowed: use simple defaults",
                     )
-                j += 1
         # Check *args in call
-        i = 0
-        while i < len(args):
-            arg = args[i]
+        for arg in args:
             if get_str(arg, "_type") == "Starred":
                 self.error(
                     node, "expression", "*args in call: unpack arguments explicitly"
                 )
                 break
-            i += 1
         # Check **kwargs in call
-        j = 0
-        while j < len(keywords):
-            kw = keywords[j]
+        for kw in keywords:
             if not _has_present(kw, "arg"):
                 self.error(
                     node, "expression", "**kwargs in call: pass arguments explicitly"
                 )
                 break
-            j += 1
         # Visit children
         self.visit(func)
         # Set eager consumer context when visiting args
         old_in_eager = self.in_eager_consumer
         if is_eager:
             self.in_eager_consumer = True
-        k = 0
-        while k < len(args):
-            self.visit(args[k])
-            k += 1
+        for arg in args:
+            self.visit(arg)
         self.in_eager_consumer = old_in_eager
-        m = 0
-        while m < len(keywords):
-            kw = keywords[m]
+        for kw in keywords:
             if _has_present(kw, "value"):
                 self.visit(get_node(kw, "value"))
-            m += 1
 
     def visit_Compare(self, node: ASTNode) -> None:
         """Check comparison constraints."""
@@ -910,18 +840,14 @@ class Verifier:
             i += 1
         # Visit children
         self.visit(get_node(node, "left"))
-        j = 0
-        while j < len(comparators):
-            self.visit(comparators[j])
-            j += 1
+        for comp in comparators:
+            self.visit(comp)
 
     def visit_BoolOp(self, node: ASTNode) -> None:
         """Check boolean operation constraints."""
         values = get_nodes(node, "values")
-        j = 0
-        while j < len(values):
-            self.visit(values[j])
-            j += 1
+        for val in values:
+            self.visit(val)
 
     def visit_Assign(self, node: ASTNode) -> None:
         """Check assignment constraints."""
@@ -942,10 +868,8 @@ class Verifier:
                         "tuple unpack from variable: unpack directly from call",
                     )
         # Visit children
-        j = 0
-        while j < len(targets):
-            self.visit(targets[j])
-            j += 1
+        for tgt in targets:
+            self.visit(tgt)
         self.visit(value)
 
     def visit_AnnAssign(self, node: ASTNode) -> None:
@@ -954,14 +878,14 @@ class Verifier:
         # Track annotated local variables
         if self.in_function and get_str(target, "_type") == "Name":
             target_name = get_str(target, "id")
-            if target_name != "":
+            if target_name:
                 self.annotated_locals.add(target_name)
         # Check bare collection
         if _has_present(node, "annotation"):
             annotation = get_node(node, "annotation")
             if is_bare_collection(annotation):
                 t_name = get_str(target, "id")
-                if t_name == "":
+                if not t_name:
                     t_name = "?"
                 self.error(
                     node,
@@ -1019,7 +943,7 @@ class Verifier:
                 return False
             if get_name_id(get_node(func, "value")) != handle:
                 return False
-            if len(get_nodes(val, "args")) != 0:
+            if get_nodes(val, "args"):
                 return False
         else:
             if get_str(stmt, "_type") != "Expr":
@@ -1052,17 +976,15 @@ class Verifier:
         ctx_expr = get_node(items[0], "context_expr")
         self.visit(ctx_expr)
         body = get_nodes(node, "body")
-        i = 0
-        while i < len(body):
-            self.visit(body[i])
-            i += 1
+        for stmt in body:
+            self.visit(stmt)
         self.in_file_open = old
 
     def visit_For(self, node: ASTNode) -> None:
         """Check for loop constraints."""
         # Check loop else
         orelse = get_nodes(node, "orelse")
-        if len(orelse) > 0:
+        if orelse:
             self.error(node, "control", "loop else: use flag variable instead")
         # Visit children
         if _has_present(node, "target"):
@@ -1076,34 +998,26 @@ class Verifier:
         body = get_nodes(node, "body")
         old_in_for_body = self.in_for_body
         self.in_for_body = True
-        i = 0
-        while i < len(body):
-            self.visit(body[i])
-            i += 1
+        for stmt in body:
+            self.visit(stmt)
         self.in_for_body = old_in_for_body
-        j = 0
-        while j < len(orelse):
-            self.visit(orelse[j])
-            j += 1
+        for stmt in orelse:
+            self.visit(stmt)
 
     def visit_While(self, node: ASTNode) -> None:
         """Check while loop constraints."""
         # Check loop else
         orelse = get_nodes(node, "orelse")
-        if len(orelse) > 0:
+        if orelse:
             self.error(node, "control", "loop else: use flag variable instead")
         # Visit children
         if _has_present(node, "test"):
             self.visit(get_node(node, "test"))
         body = get_nodes(node, "body")
-        i = 0
-        while i < len(body):
-            self.visit(body[i])
-            i += 1
-        j = 0
-        while j < len(orelse):
-            self.visit(orelse[j])
-            j += 1
+        for stmt in body:
+            self.visit(stmt)
+        for stmt in orelse:
+            self.visit(stmt)
 
     def visit_Name(self, node: ASTNode) -> None:
         """Check for banned type names like Any."""
@@ -1182,44 +1096,32 @@ class Verifier:
         # Visit then-branch with guarded variable in scope
         if guarded_var is not None and guarded_var != "":
             self.guarded_vars.add(guarded_var)
-        i = 0
-        while i < len(body):
-            self.visit(body[i])
-            i += 1
+        for stmt in body:
+            self.visit(stmt)
         if guarded_var is not None and guarded_var != "":
             self.guarded_vars.discard(guarded_var)
         # Visit else-branch (no guarding)
-        j = 0
-        while j < len(orelse):
-            self.visit(orelse[j])
-            j += 1
+        for stmt in orelse:
+            self.visit(stmt)
 
     def visit_Try(self, node: ASTNode) -> None:
         """Check try statement constraints."""
         # Check try else
         orelse = get_nodes(node, "orelse")
-        if len(orelse) > 0:
+        if orelse:
             self.error(node, "control", "try else: move else code after try block")
         # Visit children
         body = get_nodes(node, "body")
-        i = 0
-        while i < len(body):
-            self.visit(body[i])
-            i += 1
+        for stmt in body:
+            self.visit(stmt)
         handlers = get_nodes(node, "handlers")
-        j = 0
-        while j < len(handlers):
-            self.visit(handlers[j])
-            j += 1
-        k = 0
-        while k < len(orelse):
-            self.visit(orelse[k])
-            k += 1
+        for handler in handlers:
+            self.visit(handler)
+        for stmt in orelse:
+            self.visit(stmt)
         finalbody = get_nodes(node, "finalbody")
-        m = 0
-        while m < len(finalbody):
-            self.visit(finalbody[m])
-            m += 1
+        for stmt in finalbody:
+            self.visit(stmt)
 
     def visit_ExceptHandler(self, node: ASTNode) -> None:
         """Check except handler constraints."""
@@ -1229,20 +1131,16 @@ class Verifier:
         else:
             self.visit(get_node(node, "type"))
         body = get_nodes(node, "body")
-        i = 0
-        while i < len(body):
-            self.visit(body[i])
-            i += 1
+        for stmt in body:
+            self.visit(stmt)
 
     def visit_Import(self, node: ASTNode) -> None:
         """Check import constraints. Only 'import sys/os' allowed."""
         names = get_nodes(node, "names")
-        i = 0
-        while i < len(names):
-            alias = names[i]
+        for alias in names:
             name = get_str(alias, "name")
             asname = get_str(alias, "asname")
-            if asname != "":
+            if asname:
                 self.error(
                     node,
                     "import",
@@ -1254,24 +1152,20 @@ class Verifier:
                     "import",
                     "import " + name + ": not allowed, code must be self-contained",
                 )
-            i += 1
 
     def visit_ImportFrom(self, node: ASTNode) -> None:
         """Check from-import syntax: no stars, no from sys/os, no banned modules."""
         # Check for star imports
         import_names = get_nodes(node, "names")
-        i = 0
-        while i < len(import_names):
-            alias = import_names[i]
+        for alias in import_names:
             if get_str(alias, "name") == "*":
                 self.error(node, "import", "star import: import names explicitly")
                 return
-            i += 1
         level = get_int(node, "level")
         if level > 0:
             return
         module = get_str(node, "module")
-        if module == "":
+        if not module:
             return
         top_module = module.split(".")[0]
         # sys/os can only be used with `import X`, not `from X import ...`
@@ -1322,19 +1216,16 @@ class Verifier:
     def visit_JoinedStr(self, node: ASTNode) -> None:
         """Visit f-string, check children."""
         values = get_nodes(node, "values")
-        i = 0
-        while i < len(values):
-            self.visit(values[i])
-            i += 1
+        for val in values:
+            self.visit(val)
 
     def visit_Constant(self, node: ASTNode) -> None:
         """Check constant values - reject invalid Unicode in strings."""
         raw = node.get("value")
         if isinstance(raw, JStr):
             value = raw.value
-            i = 0
-            while i < len(value):
-                code = ord(value[i])
+            for ch in value:
+                code = ord(ch)
                 # Reject surrogate code points (not valid Unicode scalar values)
                 if 0xD800 <= code <= 0xDFFF:
                     hex_str = hex(code)[2:].upper().zfill(4)
@@ -1345,7 +1236,6 @@ class Verifier:
                         + hex_str
                         + " not allowed in string literal",
                     )
-                i += 1
 
     def visit_FormattedValue(self, node: ASTNode) -> None:
         """Check f-string replacement field: {expr} only, no !conv or :spec."""
@@ -1369,19 +1259,14 @@ class Verifier:
         if _has_present(node, "elt"):
             self.visit(get_node(node, "elt"))
         generators = get_nodes(node, "generators")
-        i = 0
-        while i < len(generators):
-            gen = generators[i]
+        for gen in generators:
             if _has_present(gen, "target"):
                 self.visit(get_node(gen, "target"))
             if _has_present(gen, "iter"):
                 self.visit(get_node(gen, "iter"))
             ifs = get_nodes(gen, "ifs")
-            j = 0
-            while j < len(ifs):
-                self.visit(ifs[j])
-                j += 1
-            i += 1
+            for if_node in ifs:
+                self.visit(if_node)
 
     def visit_ListComp(self, node: ASTNode) -> None:
         """List comprehensions are eager - set context for enumerate/zip in generators."""
@@ -1390,19 +1275,14 @@ class Verifier:
         if _has_present(node, "elt"):
             self.visit(get_node(node, "elt"))
         generators = get_nodes(node, "generators")
-        i = 0
-        while i < len(generators):
-            gen = generators[i]
+        for gen in generators:
             if _has_present(gen, "target"):
                 self.visit(get_node(gen, "target"))
             if _has_present(gen, "iter"):
                 self.visit(get_node(gen, "iter"))
             ifs = get_nodes(gen, "ifs")
-            j = 0
-            while j < len(ifs):
-                self.visit(ifs[j])
-                j += 1
-            i += 1
+            for if_node in ifs:
+                self.visit(if_node)
         self.in_eager_consumer = old_in_eager
 
     def visit_SetComp(self, node: ASTNode) -> None:
@@ -1412,19 +1292,14 @@ class Verifier:
         if _has_present(node, "elt"):
             self.visit(get_node(node, "elt"))
         generators = get_nodes(node, "generators")
-        i = 0
-        while i < len(generators):
-            gen = generators[i]
+        for gen in generators:
             if _has_present(gen, "target"):
                 self.visit(get_node(gen, "target"))
             if _has_present(gen, "iter"):
                 self.visit(get_node(gen, "iter"))
             ifs = get_nodes(gen, "ifs")
-            j = 0
-            while j < len(ifs):
-                self.visit(ifs[j])
-                j += 1
-            i += 1
+            for if_node in ifs:
+                self.visit(if_node)
         self.in_eager_consumer = old_in_eager
 
     def visit_DictComp(self, node: ASTNode) -> None:
@@ -1436,19 +1311,14 @@ class Verifier:
         if _has_present(node, "value"):
             self.visit(get_node(node, "value"))
         generators = get_nodes(node, "generators")
-        i = 0
-        while i < len(generators):
-            gen = generators[i]
+        for gen in generators:
             if _has_present(gen, "target"):
                 self.visit(get_node(gen, "target"))
             if _has_present(gen, "iter"):
                 self.visit(get_node(gen, "iter"))
             ifs = get_nodes(gen, "ifs")
-            j = 0
-            while j < len(ifs):
-                self.visit(ifs[j])
-                j += 1
-            i += 1
+            for if_node in ifs:
+                self.visit(if_node)
         self.in_eager_consumer = old_in_eager
 
 
@@ -1480,9 +1350,7 @@ def extract_imports(ast_dict: ASTNode) -> list[ImportInfo]:
     """Extract all from-imports from an AST."""
     result: list[ImportInfo] = []
     body = get_nodes(ast_dict, "body")
-    i = 0
-    while i < len(body):
-        node = body[i]
+    for node in body:
         if get_str(node, "_type") == "ImportFrom":
             module = get_str(node, "module")
             level = get_int(node, "level")
@@ -1490,19 +1358,15 @@ def extract_imports(ast_dict: ASTNode) -> list[ImportInfo]:
             if lineno == 0:
                 lineno = 1
             col = get_int(node, "col_offset")
-            if module == "" and level > 0:
+            if not module and level > 0:
                 # from . import X, Y - each name is a module
                 names = get_nodes(node, "names")
-                j = 0
-                while j < len(names):
-                    name_node = names[j]
+                for name_node in names:
                     name = get_str(name_node, "name")
-                    if name != "" and name != "*":
+                    if name and name != "*":
                         result.append(ImportInfo(name, level, lineno, col))
-                    j += 1
             else:
                 result.append(ImportInfo(module, level, lineno, col))
-        i += 1
     return result
 
 
@@ -1517,35 +1381,24 @@ class ProjectVerifyResult:
         """Get all errors as formatted strings."""
         result: list[str] = []
         files = sorted(self.file_results.keys())
-        i = 0
-        while i < len(files):
-            f = files[i]
+        for f in files:
             file_result = self.file_results[f]
             errs = file_result.errors()
-            j = 0
-            while j < len(errs):
-                result.append(f + ": " + str(errs[j]))
-                j += 1
-            i += 1
-        j = 0
-        while j < len(self.unresolved_imports):
-            file_path, imp = self.unresolved_imports[j]
+            for err in errs:
+                result.append(f + ": " + str(err))
+        for file_path, imp in self.unresolved_imports:
             msg = file_path + ":" + str(imp.lineno) + ":" + str(imp.col)
             msg = msg + ": [import] unresolved import: " + imp.module
             result.append(msg)
-            j += 1
         return result
 
     def has_errors(self) -> bool:
         """Check if there are any errors."""
-        if len(self.unresolved_imports) > 0:
+        if self.unresolved_imports:
             return True
-        files = list(self.file_results.keys())
-        i = 0
-        while i < len(files):
-            if not self.file_results[files[i]].ok():
+        for f in self.file_results:
+            if not self.file_results[f].ok():
                 return True
-            i += 1
         return False
 
 
@@ -1707,7 +1560,7 @@ class NameViolation:
 
     def __repr__(self) -> str:
         file_prefix = ""
-        if self.source_file != "":
+        if self.source_file:
             file_prefix = self.source_file + ":"
         return (
             file_prefix
@@ -1746,7 +1599,7 @@ class NameResult:
         return self.violations
 
     def ok(self) -> bool:
-        return len(self.violations) == 0
+        return not self.violations
 
 
 def get_name_id(node: ASTNode) -> str | None:
@@ -1760,28 +1613,29 @@ def get_name_id(node: ASTNode) -> str | None:
 
 def is_all_caps(name: str) -> bool:
     """Check if name is ALL_CAPS (constant convention)."""
-    if len(name) == 0:
+    if not name:
         return False
     i = 0
     while i < len(name):
-        c = name[i]
+        c = name[i : i + 1]
         if c != "_" and not c.isupper() and not c.isdigit():
             return False
         i += 1
     # Must have at least one letter
-    j = 0
     has_letter = False
-    while j < len(name):
-        if name[j].isupper():
+    i = 0
+    while i < len(name):
+        c = name[i : i + 1]
+        if c.isupper():
             has_letter = True
             break
-        j += 1
+        i += 1
     return has_letter
 
 
 def is_type_alias(name: str, value: ASTNode) -> bool:
     """Check if this looks like a type alias (PascalCase = type expression)."""
-    if len(name) == 0:
+    if not name:
         return False
     # Must start with uppercase
     if not name[0].isupper():
@@ -1843,31 +1697,23 @@ class NameResolver:
     def validate_base_classes(self, ast_dict: ASTNode) -> None:
         """Validate that all base class names resolve."""
         body = get_nodes(ast_dict, "body")
-        i = 0
-        while i < len(body):
-            stmt = body[i]
+        for stmt in body:
             if get_str(stmt, "_type") == "ClassDef":
                 bases = get_nodes(stmt, "bases")
-                j = 0
-                while j < len(bases):
-                    base = bases[j]
+                for base in bases:
                     base_name = self._get_base_name(base)
-                    if base_name != "":
+                    if base_name:
                         if not self.resolve_name(base_name, "", ""):
                             self.error(
                                 base,
                                 "undefined",
                                 "name '" + base_name + "' is not defined",
                             )
-                    j += 1
-            i += 1
 
     def pass1_module_names(self, ast_dict: ASTNode) -> None:
         """Pass 1: Collect module-level names (classes, functions, constants)."""
         body = get_nodes(ast_dict, "body")
-        i = 0
-        while i < len(body):
-            stmt = body[i]
+        for stmt in body:
             node_type = get_str(stmt, "_type")
             lineno = get_int(stmt, "lineno")
             col = get_int(stmt, "col_offset")
@@ -1875,12 +1721,10 @@ class NameResolver:
                 name = get_str(stmt, "name")
                 bases: list[str] = []
                 base_nodes = get_nodes(stmt, "bases")
-                bi = 0
-                while bi < len(base_nodes):
-                    base_name = self._get_base_name(base_nodes[bi])
-                    if base_name != "":
+                for base_node in base_nodes:
+                    base_name = self._get_base_name(base_node)
+                    if base_name:
                         bases.append(base_name)
-                    bi += 1
                 info = NameInfo(name, "class", "module", lineno, col, "", "", bases)
                 self._register_module_name(stmt, info)
             elif node_type == "FunctionDef":
@@ -1890,11 +1734,9 @@ class NameResolver:
             elif node_type == "Assign":
                 targets = get_nodes(stmt, "targets")
                 value = get_node(stmt, "value")
-                j = 0
-                while j < len(targets):
-                    target = targets[j]
-                    if get_str(target, "_type") == "Name":
-                        name = get_str(target, "id")
+                for tgt in targets:
+                    if get_str(tgt, "_type") == "Name":
+                        name = get_str(tgt, "id")
                         if is_all_caps(name):
                             info = NameInfo(
                                 name, "constant", "module", lineno, col, "", ""
@@ -1905,7 +1747,6 @@ class NameResolver:
                                 name, "type_alias", "module", lineno, col, "", ""
                             )
                             self._register_module_name(stmt, info)
-                    j += 1
             elif node_type == "AnnAssign":
                 target = get_node(stmt, "target")
                 if get_str(target, "_type") == "Name":
@@ -1915,32 +1756,26 @@ class NameResolver:
                     self._register_module_name(stmt, info)
             elif node_type == "Import":
                 names_list = get_nodes(stmt, "names")
-                j = 0
-                while j < len(names_list):
-                    alias = names_list[j]
+                for alias in names_list:
                     asname_str = get_str(alias, "asname")
                     import_name = get_str(alias, "name")
-                    bound_name = asname_str if asname_str != "" else import_name
-                    if bound_name != "":
+                    bound_name = asname_str if asname_str else import_name
+                    if bound_name:
                         info = NameInfo(
                             bound_name, "import", "module", lineno, col, "", ""
                         )
                         self._register_module_name(stmt, info)
-                    j += 1
             elif node_type == "ImportFrom":
                 names_list = get_nodes(stmt, "names")
-                j = 0
-                while j < len(names_list):
-                    alias = names_list[j]
+                for alias in names_list:
                     asname_str = get_str(alias, "asname")
                     import_name = get_str(alias, "name")
-                    bound_name = asname_str if asname_str != "" else import_name
-                    if bound_name != "" and bound_name != "*":
+                    bound_name = asname_str if asname_str else import_name
+                    if bound_name and bound_name != "*":
                         info = NameInfo(
                             bound_name, "import", "module", lineno, col, "", ""
                         )
                         self._register_module_name(stmt, info)
-                    j += 1
             elif node_type == "If":
                 # Handle TYPE_CHECKING blocks - imports inside are module-level
                 test = get_node(stmt, "test")
@@ -1949,20 +1784,14 @@ class NameResolver:
                     and get_str(test, "id") == "TYPE_CHECKING"
                 ):
                     if_body = get_nodes(stmt, "body")
-                    j = 0
-                    while j < len(if_body):
-                        if_stmt = if_body[j]
+                    for if_stmt in if_body:
                         if get_str(if_stmt, "_type") == "ImportFrom":
                             if_names = get_nodes(if_stmt, "names")
-                            k = 0
-                            while k < len(if_names):
-                                alias = if_names[k]
+                            for alias in if_names:
                                 asname_str = get_str(alias, "asname")
                                 import_name = get_str(alias, "name")
-                                bound_name = (
-                                    asname_str if asname_str != "" else import_name
-                                )
-                                if bound_name != "" and bound_name != "*":
+                                bound_name = asname_str if asname_str else import_name
+                                if bound_name and bound_name != "*":
                                     if_lineno = get_int(if_stmt, "lineno")
                                     if_col = get_int(if_stmt, "col_offset")
                                     info = NameInfo(
@@ -1975,28 +1804,20 @@ class NameResolver:
                                         "",
                                     )
                                     self._register_module_name(if_stmt, info)
-                                k += 1
-                        j += 1
-            i += 1
 
     def pass2_class_names(self, ast_dict: ASTNode) -> None:
         """Pass 2: Collect class-level names (methods, fields)."""
         body = get_nodes(ast_dict, "body")
-        i = 0
-        while i < len(body):
-            stmt = body[i]
+        for stmt in body:
             if get_str(stmt, "_type") == "ClassDef":
                 self.collect_class_members(stmt)
-            i += 1
 
     def collect_class_members(self, class_node: ASTNode) -> None:
         """Collect all members of a class."""
         class_name = get_str(class_node, "name")
         body = get_nodes(class_node, "body")
         # First pass: collect methods and annotated fields
-        i = 0
-        while i < len(body):
-            stmt = body[i]
+        for stmt in body:
             node_type = get_str(stmt, "_type")
             lineno = get_int(stmt, "lineno")
             col = get_int(stmt, "col_offset")
@@ -2010,39 +1831,31 @@ class NameResolver:
                     name = get_str(target, "id")
                     info = NameInfo(name, "field", "class", lineno, col, class_name, "")
                     self.result.table.add_class_member(class_name, info)
-            i += 1
         # Second pass: collect self.x assignments in __init__
-        j = 0
-        while j < len(body):
-            stmt = body[j]
+        for stmt in body:
             if (
                 get_str(stmt, "_type") == "FunctionDef"
                 and get_str(stmt, "name") == "__init__"
             ):
                 self.collect_init_fields(class_name, stmt)
-            j += 1
 
     def collect_init_fields(self, class_name: str, init_node: ASTNode) -> None:
         """Collect self.x = ... fields from __init__."""
         body = get_nodes(init_node, "body")
         nodes_to_visit: list[ASTNode] = []
-        i = 0
-        while i < len(body):
-            nodes_to_visit.append(body[i])
-            i += 1
+        for stmt in body:
+            nodes_to_visit.append(stmt)
         j = 0
         while j < len(nodes_to_visit):
             node = nodes_to_visit[j]
             node_type = get_str(node, "_type")
             if node_type == "Assign":
                 targets = get_nodes(node, "targets")
-                k = 0
-                while k < len(targets):
-                    target = targets[k]
-                    if get_str(target, "_type") == "Attribute":
-                        value_node = get_node(target, "value")
+                for tgt in targets:
+                    if get_str(tgt, "_type") == "Attribute":
+                        value_node = get_node(tgt, "value")
                         if get_name_id(value_node) == "self":
-                            attr = get_str(target, "attr")
+                            attr = get_str(tgt, "attr")
                             existing = self.result.table.get_class_member(
                                 class_name, attr
                             )
@@ -2053,7 +1866,6 @@ class NameResolver:
                                     attr, "field", "class", lineno, col, class_name, ""
                                 )
                                 self.result.table.add_class_member(class_name, info)
-                    k += 1
             elif node_type == "AnnAssign":
                 target = get_node(node, "target")
                 if get_str(target, "_type") == "Attribute":
@@ -2070,40 +1882,31 @@ class NameResolver:
                             self.result.table.add_class_member(class_name, info)
             # Add children for If, While, etc.
             children = get_children(node)
-            m = 0
-            while m < len(children):
-                child = children[m]
+            for child in children:
                 child_type = get_str(child, "_type")
                 # Skip nested functions (shouldn't exist per Phase 3)
                 if child_type != "FunctionDef":
                     nodes_to_visit.append(child)
-                m += 1
             j += 1
 
     def pass3_locals_and_refs(self, ast_dict: ASTNode) -> None:
         """Pass 3: Collect locals and resolve all name references."""
         body = get_nodes(ast_dict, "body")
-        i = 0
-        while i < len(body):
-            stmt = body[i]
+        for stmt in body:
             node_type = get_str(stmt, "_type")
             if node_type == "FunctionDef":
                 self.process_function(stmt, "", get_str(stmt, "name"))
             elif node_type == "ClassDef":
                 self.process_class(stmt)
-            i += 1
 
     def process_class(self, class_node: ASTNode) -> None:
         """Process all methods in a class."""
         class_name = get_str(class_node, "name")
         body = get_nodes(class_node, "body")
-        i = 0
-        while i < len(body):
-            stmt = body[i]
+        for stmt in body:
             if get_str(stmt, "_type") == "FunctionDef":
                 func_name = get_str(stmt, "name")
                 self.process_function(stmt, class_name, func_name)
-            i += 1
 
     def process_function(
         self, func_node: ASTNode, class_name: str, func_name: str
@@ -2138,21 +1941,18 @@ class NameResolver:
             i += 1
         # Collect keyword-only parameters
         kw_list = get_nodes(args_node, "kwonlyargs")
-        i = 0
-        while i < len(kw_list):
-            arg = kw_list[i]
-            arg_name = get_str(arg, "arg")
-            lineno = get_int(arg, "lineno")
-            col = get_int(arg, "col_offset")
+        for kw_arg in kw_list:
+            arg_name = get_str(kw_arg, "arg")
+            lineno = get_int(kw_arg, "lineno")
+            col = get_int(kw_arg, "col_offset")
             if arg_name in ALLOWED_BUILTINS:
                 self.warning(
-                    arg, "shadowing", "parameter '" + arg_name + "' shadows builtin"
+                    kw_arg, "shadowing", "parameter '" + arg_name + "' shadows builtin"
                 )
             info = NameInfo(
                 arg_name, "parameter", "local", lineno, col, class_name, func_name
             )
             self.result.table.add_local(class_name, func_name, info)
-            i += 1
         # Collect local variables from body
         body = get_nodes(func_node, "body")
         self.collect_locals_from_body(body, class_name, func_name)
@@ -2164,20 +1964,16 @@ class NameResolver:
     ) -> None:
         """Collect local variable names from function body."""
         nodes_to_visit: list[ASTNode] = []
-        i = 0
-        while i < len(body):
-            nodes_to_visit.append(body[i])
-            i += 1
+        for stmt in body:
+            nodes_to_visit.append(stmt)
         j = 0
         while j < len(nodes_to_visit):
             node = nodes_to_visit[j]
             node_type = get_str(node, "_type")
             if node_type == "Assign":
                 targets = get_nodes(node, "targets")
-                k = 0
-                while k < len(targets):
-                    self.collect_assign_target(targets[k], class_name, func_name, node)
-                    k += 1
+                for tgt in targets:
+                    self.collect_assign_target(tgt, class_name, func_name, node)
             elif node_type == "AnnAssign":
                 target = get_node(node, "target")
                 if get_str(target, "_type") == "Name":
@@ -2201,7 +1997,7 @@ class NameResolver:
                 self.collect_assign_target(target, class_name, func_name, node)
             elif node_type == "ExceptHandler":
                 exc_name = get_str(node, "name")
-                if has_key(node, "name") and exc_name != "":
+                if has_key(node, "name") and exc_name:
                     existing = self.result.table.get_local(
                         class_name, func_name, exc_name
                     )
@@ -2221,13 +2017,11 @@ class NameResolver:
             elif node_type == "ImportFrom":
                 # Register imported names in local scope
                 names_list = get_nodes(node, "names")
-                k = 0
-                while k < len(names_list):
-                    alias = names_list[k]
+                for alias in names_list:
                     asname_str = get_str(alias, "asname")
                     import_name = get_str(alias, "name")
-                    bound_name = asname_str if asname_str != "" else import_name
-                    if bound_name != "" and bound_name != "*":
+                    bound_name = asname_str if asname_str else import_name
+                    if bound_name and bound_name != "*":
                         existing = self.result.table.get_local(
                             class_name, func_name, bound_name
                         )
@@ -2244,27 +2038,20 @@ class NameResolver:
                                 func_name,
                             )
                             self.result.table.add_local(class_name, func_name, info)
-                    k += 1
             elif node_type == "Match":
                 # Collect pattern variables from match/case
                 cases = get_nodes(node, "cases")
-                k = 0
-                while k < len(cases):
-                    case_node = cases[k]
+                for case_node in cases:
                     pattern = get_node(case_node, "pattern")
                     self.collect_pattern_names(pattern, class_name, func_name, node)
-                    k += 1
             elif node_type == "With":
                 items = get_nodes(node, "items")
-                k = 0
-                while k < len(items):
-                    item = items[k]
+                for item in items:
                     if has_key(item, "optional_vars"):
                         opt_vars = get_node(item, "optional_vars")
                         self.collect_assign_target(
                             opt_vars, class_name, func_name, node
                         )
-                    k += 1
             elif node_type == "NamedExpr":
                 # Walrus operator: (x := expr)
                 target = get_node(node, "target")
@@ -2286,12 +2073,9 @@ class NameResolver:
                         self.result.table.add_local(class_name, func_name, info)
             # Add children (skip nested FunctionDef - shouldn't exist per Phase 3)
             children = get_children(node)
-            m = 0
-            while m < len(children):
-                child = children[m]
+            for child in children:
                 if get_str(child, "_type") != "FunctionDef":
                     nodes_to_visit.append(child)
-                m += 1
             j += 1
 
     def collect_assign_target(
@@ -2311,10 +2095,8 @@ class NameResolver:
                 self.result.table.add_local(class_name, func_name, info)
         elif target_type == "Tuple" or target_type == "List":
             elts = get_nodes(target, "elts")
-            i = 0
-            while i < len(elts):
-                self.collect_assign_target(elts[i], class_name, func_name, stmt)
-                i += 1
+            for elt in elts:
+                self.collect_assign_target(elt, class_name, func_name, stmt)
         # Attribute targets (self.x) are handled in pass2
 
     def collect_pattern_names(
@@ -2325,7 +2107,7 @@ class NameResolver:
         if pattern_type == "MatchAs":
             # MatchAs(pattern=inner, name=bound_name)
             name = get_str(pattern, "name")
-            if has_key(pattern, "name") and name != "" and name != "_":
+            if has_key(pattern, "name") and name and name != "_":
                 existing = self.result.table.get_local(class_name, func_name, name)
                 if existing is None:
                     lineno = get_int(pattern, "lineno")
@@ -2340,25 +2122,19 @@ class NameResolver:
         elif pattern_type == "MatchClass":
             # MatchClass(cls=..., patterns=[], kwd_attrs=[], kwd_patterns=[])
             kwd_patterns = get_nodes(pattern, "kwd_patterns")
-            i = 0
-            while i < len(kwd_patterns):
-                self.collect_pattern_names(kwd_patterns[i], class_name, func_name, stmt)
-                i += 1
+            for kwd_pat in kwd_patterns:
+                self.collect_pattern_names(kwd_pat, class_name, func_name, stmt)
             # Positional patterns
             patterns = get_nodes(pattern, "patterns")
-            i = 0
-            while i < len(patterns):
-                self.collect_pattern_names(patterns[i], class_name, func_name, stmt)
-                i += 1
+            for pat in patterns:
+                self.collect_pattern_names(pat, class_name, func_name, stmt)
         elif pattern_type == "MatchMapping":
             # MatchMapping(keys=[], patterns=[], rest=name)
             patterns = get_nodes(pattern, "patterns")
-            i = 0
-            while i < len(patterns):
-                self.collect_pattern_names(patterns[i], class_name, func_name, stmt)
-                i += 1
+            for pat in patterns:
+                self.collect_pattern_names(pat, class_name, func_name, stmt)
             rest = get_str(pattern, "rest")
-            if has_key(pattern, "rest") and rest != "":
+            if has_key(pattern, "rest") and rest:
                 existing = self.result.table.get_local(class_name, func_name, rest)
                 if existing is None:
                     lineno = get_int(pattern, "lineno")
@@ -2370,14 +2146,12 @@ class NameResolver:
         elif pattern_type == "MatchSequence":
             # MatchSequence(patterns=[])
             patterns = get_nodes(pattern, "patterns")
-            i = 0
-            while i < len(patterns):
-                self.collect_pattern_names(patterns[i], class_name, func_name, stmt)
-                i += 1
+            for pat in patterns:
+                self.collect_pattern_names(pat, class_name, func_name, stmt)
         elif pattern_type == "MatchStar":
             # MatchStar(name=bound_name)
             name = get_str(pattern, "name")
-            if has_key(pattern, "name") and name != "" and name != "_":
+            if has_key(pattern, "name") and name and name != "_":
                 existing = self.result.table.get_local(class_name, func_name, name)
                 if existing is None:
                     lineno = get_int(pattern, "lineno")
@@ -2389,7 +2163,7 @@ class NameResolver:
         elif pattern_type == "MatchOr":
             # MatchOr(patterns=[]) - all alternatives should bind same names
             patterns = get_nodes(pattern, "patterns")
-            if len(patterns) > 0:
+            if patterns:
                 self.collect_pattern_names(patterns[0], class_name, func_name, stmt)
 
     def _collect_target_names(self, target: ASTNode, names: set[str]) -> None:
@@ -2397,14 +2171,12 @@ class NameResolver:
         target_type = get_str(target, "_type")
         if target_type == "Name":
             name = get_str(target, "id")
-            if name != "":
+            if name:
                 names.add(name)
         elif target_type == "Tuple" or target_type == "List":
             elts = get_nodes(target, "elts")
-            i = 0
-            while i < len(elts):
-                self._collect_target_names(elts[i], names)
-                i += 1
+            for elt in elts:
+                self._collect_target_names(elt, names)
 
     def resolve_comprehension_refs(
         self,
@@ -2415,25 +2187,17 @@ class NameResolver:
     ) -> None:
         """Resolve references inside a comprehension with its own scope."""
         comp_vars: set[str] = set()
-        i = 0
-        keys = list(outer_comp_vars)
-        while i < len(keys):
-            comp_vars.add(keys[i])
-            i += 1
+        for key in outer_comp_vars:
+            comp_vars.add(key)
         generators = get_nodes(node, "generators")
-        i = 0
-        while i < len(generators):
-            gen = generators[i]
+        for gen in generators:
             target = get_node(gen, "target")
             self._collect_target_names(target, comp_vars)
-            i += 1
         # Walk all children except nested comprehensions (handled recursively)
         nodes_to_visit: list[ASTNode] = []
         children = get_children(node)
-        i = 0
-        while i < len(children):
-            nodes_to_visit.append(children[i])
-            i += 1
+        for child in children:
+            nodes_to_visit.append(child)
         j = 0
         while j < len(nodes_to_visit):
             child = nodes_to_visit[j]
@@ -2454,12 +2218,9 @@ class NameResolver:
                                 "name '" + name + "' is not defined",
                             )
             grandchildren = get_children(child)
-            m = 0
-            while m < len(grandchildren):
-                gc = grandchildren[m]
+            for gc in grandchildren:
                 if get_str(gc, "_type") != "FunctionDef":
                     nodes_to_visit.append(gc)
-                m += 1
             j += 1
 
     def resolve_references_in_body(
@@ -2467,10 +2228,8 @@ class NameResolver:
     ) -> None:
         """Walk body and resolve all Name nodes with ctx=Load."""
         nodes_to_visit: list[ASTNode] = []
-        i = 0
-        while i < len(body):
-            nodes_to_visit.append(body[i])
-            i += 1
+        for stmt in body:
+            nodes_to_visit.append(stmt)
         j = 0
         while j < len(nodes_to_visit):
             node = nodes_to_visit[j]
@@ -2491,12 +2250,9 @@ class NameResolver:
                         self.error(node, "undefined", msg)
             # Add children (skip nested FunctionDef)
             children = get_children(node)
-            m = 0
-            while m < len(children):
-                child = children[m]
+            for child in children:
                 if get_str(child, "_type") != "FunctionDef":
                     nodes_to_visit.append(child)
-                m += 1
             j += 1
 
     def resolve_name(self, name: str, class_name: str, func_name: str) -> bool:
@@ -2545,10 +2301,10 @@ class BindResult:
         self.flow_graphs: dict[str, FlowGraph] = {}
 
     def subset_ok(self) -> bool:
-        return len(self.subset_violations) == 0
+        return not self.subset_violations
 
     def names_ok(self) -> bool:
-        return len(self.name_violations) == 0
+        return not self.name_violations
 
     def ok(self) -> bool:
         return self.subset_ok() and self.names_ok()
@@ -2561,37 +2317,26 @@ def _compute_derived(
 ) -> None:
     """Compute derived class metadata from the name table."""
     mkeys = list(table.module_names.keys())
-    ki = 0
-    while ki < len(mkeys):
-        mname = mkeys[ki]
+    for mname in mkeys:
         info = table.module_names[mname]
         if info.kind == "class":
             result.known_classes[mname] = mname
-            bi = 0
-            while bi < len(info.bases):
-                base = info.bases[bi]
+            for base in info.bases:
                 if base == "Node" or base.endswith("Node"):
                     result.node_classes.add(mname)
-                bi += 1
-        ki += 1
-    ki = 0
-    while ki < len(mkeys):
-        mname = mkeys[ki]
+    for mname in mkeys:
         info = table.module_names[mname]
         if info.kind == "class":
             result.class_bases[mname] = list(info.bases)
-        ki += 1
     ta_body = get_nodes(ast_dict, "body")
-    tai = 0
-    while tai < len(ta_body):
-        ta_stmt = ta_body[tai]
+    for ta_stmt in ta_body:
         if get_str(ta_stmt, "_type") == "Assign":
             ta_targets = get_nodes(ta_stmt, "targets")
             if len(ta_targets) == 1:
                 ta_target = ta_targets[0]
                 if get_str(ta_target, "_type") == "Name":
                     ta_name = get_str(ta_target, "id")
-                    if ta_name != "":
+                    if ta_name:
                         ta_info = table.module_names.get(ta_name)
                         if ta_info is not None and ta_info.kind == "type_alias":
                             ta_value_v = ta_stmt.get("value")
@@ -2599,19 +2344,15 @@ def _compute_derived(
                             if isinstance(ta_value_v, JDict):
                                 ta_value = ta_value_v.entries
                             ta_str = annotation_to_str(ta_value)
-                            if ta_str != "":
+                            if ta_str:
                                 result.type_aliases[ta_name] = ta_str
-        tai += 1
     csf_body = get_nodes(ast_dict, "body")
-    csf_i = 0
-    while csf_i < len(csf_body):
-        csf_node = csf_body[csf_i]
+    for csf_node in csf_body:
         if get_str(csf_node, "_type") == "ClassDef":
             csf_name = get_str(csf_node, "name")
             csf_sf = get_str(csf_node, "_source_file")
-            if csf_name != "" and csf_sf != "":
+            if csf_name and csf_sf:
                 result.class_source_files[csf_name] = csf_sf
-        csf_i += 1
 
 
 def run_bind(ast_dict: ASTNode) -> BindResult:
@@ -2628,27 +2369,21 @@ def run_bind(ast_dict: ASTNode) -> BindResult:
         _compute_derived(ast_dict, name_result.table, result)
     body = get_nodes(ast_dict, "body")
     graphs: dict[str, FlowGraph] = {}
-    i = 0
-    while i < len(body):
-        node = body[i]
+    for node in body:
         t = get_str(node, "_type")
         if t == "FunctionDef":
             fname = get_str(node, "name")
             fn_body = get_nodes(node, "body")
-            if fname != "" and len(fn_body) > 0:
+            if fname and fn_body:
                 graphs["module::" + fname] = build_cfg(fn_body)
         if t == "ClassDef":
             cname = get_str(node, "name")
             cbody = get_nodes(node, "body")
-            j = 0
-            while j < len(cbody):
-                m = cbody[j]
-                if get_str(m, "_type") == "FunctionDef":
-                    mname = get_str(m, "name")
-                    m_body = get_nodes(m, "body")
-                    if mname != "" and len(m_body) > 0:
+            for member in cbody:
+                if get_str(member, "_type") == "FunctionDef":
+                    mname = get_str(member, "name")
+                    m_body = get_nodes(member, "body")
+                    if mname and m_body:
                         graphs[cname + "::" + mname] = build_cfg(m_body)
-                j += 1
-        i += 1
     result.flow_graphs = graphs
     return result

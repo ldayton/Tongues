@@ -131,15 +131,10 @@ class FlowGraph:
         if cached is not None:
             return cached
         result: list[int] = []
-        i = 0
-        while i < len(self.nodes):
-            node = self.nodes[i]
-            j = 0
-            while j < len(node.prev):
-                if node.prev[j] == nid:
+        for node in self.nodes:
+            for prev in node.prev:
+                if prev == nid:
                     result.append(node.id)
-                j += 1
-            i += 1
         self._succ[nid] = result
         return result
 
@@ -156,7 +151,7 @@ def _is_isinstance_call(node: ASTNode) -> bool:
     if get_str(node, "_type") != "Call":
         return False
     func = get_node(node, "func")
-    if len(func) == 0:
+    if not func:
         return False
     if get_str(func, "_type") != "Name":
         return False
@@ -175,7 +170,7 @@ def _is_none_compare(node: ASTNode) -> tuple[str, str]:
     left = get_node(node, "left")
     ops = get_nodes(node, "ops")
     comparators = get_nodes(node, "comparators")
-    if len(left) == 0 or len(ops) == 0 or len(comparators) == 0:
+    if not left or not ops or not comparators:
         return ("", "")
     comp = comparators[0]
     if get_str(comp, "_type") != "Constant":
@@ -186,12 +181,12 @@ def _is_none_compare(node: ASTNode) -> tuple[str, str]:
     if get_str(left, "_type") != "Name":
         return ("", "")
     name = get_str(left, "id")
-    if name == "":
+    if not name:
         return ("", "")
     op_type = get_str(ops[0], "_type")
-    if op_type == "Is" or op_type == "Eq":
+    if op_type in ("Is", "Eq"):
         return (name, "is_none")
-    if op_type == "IsNot" or op_type == "NotEq":
+    if op_type in ("IsNot", "NotEq"):
         return (name, "is_not_none")
     return ("", "")
 
@@ -208,16 +203,16 @@ def _is_const_field_compare(node: ASTNode) -> tuple[str, str, str]:
     left = get_node(node, "left")
     ops = get_nodes(node, "ops")
     comparators = get_nodes(node, "comparators")
-    if len(left) == 0 or len(ops) == 0 or len(comparators) == 0:
+    if not left or not ops or not comparators:
         return ("", "", "")
     if get_str(left, "_type") != "Attribute":
         return ("", "", "")
     attr = get_str(left, "attr")
     obj_node = get_node(left, "value")
-    if len(obj_node) == 0 or get_str(obj_node, "_type") != "Name":
+    if not obj_node or get_str(obj_node, "_type") != "Name":
         return ("", "", "")
     obj_name = get_str(obj_node, "id")
-    if obj_name == "" or attr == "":
+    if not obj_name or not attr:
         return ("", "", "")
     comp = comparators[0]
     if get_str(comp, "_type") != "Constant":
@@ -248,12 +243,12 @@ def _isinstance_target_and_type(node: ASTNode) -> tuple[str, str]:
     if get_str(target, "_type") != "Name":
         return ("", "")
     name = get_str(target, "id")
-    if name == "":
+    if not name:
         return ("", "")
     if get_str(type_arg, "_type") != "Name":
         return ("", "")
     tname = get_str(type_arg, "id")
-    if tname == "":
+    if not tname:
         return ("", "")
     return (name, tname)
 
@@ -276,17 +271,13 @@ def build_cfg(body: list[ASTNode]) -> FlowGraph:
 def _build_stmts(stmts: list[ASTNode], prev_id: int, graph: FlowGraph) -> int:
     """Build CFG nodes for a statement list.  Returns last node id."""
     cur = prev_id
-    i = 0
-    while i < len(stmts):
-        stmt = stmts[i]
+    for stmt in stmts:
         if not isinstance(stmt, dict):
-            i += 1
             continue
         cur = _build_stmt(stmt, cur, graph)
         node = graph.node_at(cur)
         if node is not None and isinstance(node, FlowUnreachable):
             return cur
-        i += 1
     return cur
 
 
@@ -319,17 +310,17 @@ def _build_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     targets = get_nodes(stmt, "targets")
     value = get_node(stmt, "value")
     lineno = get_int(stmt, "lineno")
-    if len(targets) != 1 or len(value) == 0:
+    if len(targets) != 1 or not value:
         return prev_id
     tgt = targets[0]
     if get_str(tgt, "_type") != "Name":
         return prev_id
     name = get_str(tgt, "id")
-    if name == "":
+    if not name:
         return prev_id
     if _is_isinstance_call(value):
         tgt_name, type_name = _isinstance_target_and_type(value)
-        if tgt_name != "" and type_name != "":
+        if tgt_name and type_name:
             nid = graph.next_id()
             node = FlowCondAlias(
                 id=nid,
@@ -343,7 +334,7 @@ def _build_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
             graph.add(node)
             return nid
     none_target, none_kind = _is_none_compare(value)
-    if none_target != "" and none_kind != "":
+    if none_target and none_kind:
         nid = graph.next_id()
         node = FlowCondAlias(
             id=nid,
@@ -357,7 +348,7 @@ def _build_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
         graph.add(node)
         return nid
     cf_obj, cf_field, cf_value = _is_const_field_compare(value)
-    if cf_obj != "" and cf_field != "" and cf_value != "":
+    if cf_obj and cf_field and cf_value:
         nid = graph.next_id()
         node = FlowCondAlias(
             id=nid,
@@ -381,16 +372,16 @@ def _build_ann_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     target = get_node(stmt, "target")
     value = get_node(stmt, "value")
     lineno = get_int(stmt, "lineno")
-    if len(target) == 0:
+    if not target:
         return prev_id
     if get_str(target, "_type") != "Name":
         return prev_id
     name = get_str(target, "id")
-    if name == "" or len(value) == 0:
+    if not name or not value:
         return prev_id
     if _is_isinstance_call(value):
         tgt_name, type_name = _isinstance_target_and_type(value)
-        if tgt_name != "" and type_name != "":
+        if tgt_name and type_name:
             nid = graph.next_id()
             node = FlowCondAlias(
                 id=nid,
@@ -404,7 +395,7 @@ def _build_ann_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
             graph.add(node)
             return nid
     none_target, none_kind = _is_none_compare(value)
-    if none_target != "" and none_kind != "":
+    if none_target and none_kind:
         nid = graph.next_id()
         node = FlowCondAlias(
             id=nid,
@@ -418,7 +409,7 @@ def _build_ann_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
         graph.add(node)
         return nid
     cf_obj, cf_field, cf_value = _is_const_field_compare(value)
-    if cf_obj != "" and cf_field != "" and cf_value != "":
+    if cf_obj and cf_field and cf_value:
         nid = graph.next_id()
         node = FlowCondAlias(
             id=nid,
@@ -441,12 +432,12 @@ def _build_aug_assign(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     """Build flow node for augmented assignment (+=, etc)."""
     target = get_node(stmt, "target")
     lineno = get_int(stmt, "lineno")
-    if len(target) == 0:
+    if not target:
         return prev_id
     if get_str(target, "_type") != "Name":
         return prev_id
     name = get_str(target, "id")
-    if name == "":
+    if not name:
         return prev_id
     nid = graph.next_id()
     assign = FlowAssign(id=nid, prev=[prev_id], name=name, lineno=lineno)
@@ -467,14 +458,14 @@ def _extract_condition_info(
     t = get_str(test, "_type")
     if t == "Call" and _is_isinstance_call(test):
         tgt, tname = _isinstance_target_and_type(test)
-        if tgt != "" and tname != "":
+        if tgt and tname:
             return (tgt, "isinstance", tname, "")
     if t == "Compare":
         none_tgt, none_kind = _is_none_compare(test)
-        if none_tgt != "" and none_kind != "":
+        if none_tgt and none_kind:
             return (none_tgt, none_kind, "", "")
         cf_obj, cf_field, cf_value = _is_const_field_compare(test)
-        if cf_obj != "" and cf_field != "" and cf_value != "":
+        if cf_obj and cf_field and cf_value:
             return (cf_obj, "const_field", cf_value, cf_field)
     return ("", "", "", "")
 
@@ -487,7 +478,7 @@ def _build_condition(
     Returns (true_branch_id, false_branch_id).
     """
     target, narrow_type, type_name, field_name = _extract_condition_info(test)
-    if target == "" and isinstance(test, dict):
+    if not target and isinstance(test, dict):
         t = get_str(test, "_type")
         if t == "Name":
             name = get_str(test, "id")
@@ -499,7 +490,7 @@ def _build_condition(
                     narrow_type = alias_node.narrow_type
                     type_name = alias_node.type_name
                     field_name = alias_node.field_name
-            if target == "" and name != "":
+            if not target and name:
                 target = name
                 narrow_type = "truthy"
                 type_name = ""
@@ -508,12 +499,12 @@ def _build_condition(
             op = get_node(test, "op")
             if get_str(op, "_type") == "Not":
                 operand = get_node(test, "operand")
-                if len(operand) > 0:
+                if operand:
                     true_id, false_id = _build_condition(
                         operand, prev_id, graph, aliases
                     )
                     return (false_id, true_id)
-    if target != "" and narrow_type != "":
+    if target and narrow_type:
         narrow_id = graph.next_id()
         narrow = FlowNarrow(
             id=narrow_id,
@@ -545,11 +536,11 @@ def _build_if(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     aliases = _collect_aliases(graph)
     true_id = prev_id
     false_id = prev_id
-    if len(test) > 0:
+    if test:
         true_id, false_id = _build_condition(test, prev_id, graph, aliases)
     then_end = _build_stmts(body, true_id, graph)
     else_end = false_id
-    if len(orelse) > 0:
+    if orelse:
         else_end = _build_stmts(orelse, false_id, graph)
     then_node = graph.node_at(then_end)
     else_node = graph.node_at(else_end)
@@ -580,7 +571,7 @@ def _build_while(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     aliases = _collect_aliases(graph)
     true_id = head_id
     false_id = head_id
-    if len(test) > 0:
+    if test:
         true_id, false_id = _build_condition(test, head_id, graph, aliases)
     body_end = _build_stmts(body, true_id, graph)
     body_node = graph.node_at(body_end)
@@ -598,9 +589,9 @@ def _build_for(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     head = FlowLoopHead(id=head_id, prev=[prev_id])
     graph.add(head)
     assign_id = head_id
-    if len(target) > 0 and get_str(target, "_type") == "Name":
+    if target and get_str(target, "_type") == "Name":
         name = get_str(target, "id")
-        if name != "":
+        if name:
             assign_id = graph.next_id()
             assign = FlowAssign(id=assign_id, prev=[head_id], name=name, lineno=lineno)
             graph.add(assign)
@@ -617,7 +608,7 @@ def _build_for(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
 def _build_assert(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
     """Build CFG for assert — narrows the subsequent code."""
     test = get_node(stmt, "test")
-    if len(test) == 0:
+    if not test:
         return prev_id
     aliases = _collect_aliases(graph)
     true_id, _false_id = _build_condition(test, prev_id, graph, aliases)
@@ -635,12 +626,9 @@ def _build_unreachable(stmt: ASTNode, prev_id: int, graph: FlowGraph) -> int:
 def _collect_aliases(graph: FlowGraph) -> dict[str, int]:
     """Collect all condition aliases defined so far."""
     aliases: dict[str, int] = {}
-    i = 0
-    while i < len(graph.nodes):
-        node = graph.nodes[i]
+    for node in graph.nodes:
         if isinstance(node, FlowCondAlias):
             aliases[node.alias_name] = node.id
-        i += 1
     return aliases
 
 
@@ -725,7 +713,7 @@ def _walk_prevs(
     depth: int,
 ) -> TypeNode | None:
     """Walk backward through predecessors and merge results."""
-    if len(prev_ids) == 0:
+    if not prev_ids:
         return None
     if len(prev_ids) == 1:
         return _walk_back(
@@ -740,11 +728,10 @@ def _walk_prevs(
             depth,
         )
     variants: list[TypeNode] = []
-    i = 0
-    while i < len(prev_ids):
+    for prev_id in prev_ids:
         t = _walk_back(
             graph,
-            prev_ids[i],
+            prev_id,
             variable,
             initial_types,
             assigned_types,
@@ -755,15 +742,12 @@ def _walk_prevs(
         )
         if t is not None:
             dup = False
-            j = 0
-            while j < len(variants):
-                if type_eq(variants[j], t):
+            for v in variants:
+                if type_eq(v, t):
                     dup = True
-                j += 1
             if not dup:
                 variants.append(t)
-        i += 1
-    if len(variants) == 0:
+    if not variants:
         return None
     if len(variants) == 1:
         return variants[0]
@@ -782,7 +766,7 @@ def _walk_loop_head(
     depth: int,
 ) -> TypeNode | None:
     """Fixed-point iteration for loop headers."""
-    if len(node.prev) == 0:
+    if not node.prev:
         return None
     entry_t = _walk_back(
         graph,

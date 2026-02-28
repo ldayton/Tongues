@@ -51,33 +51,21 @@ from .types import (
 def _is_type(node: ASTNode, type_names: list[str]) -> bool:
     """Check if node is one of the given AST types."""
     t = get_str(node, "_type")
-    i = 0
-    while i < len(type_names):
-        if t == type_names[i]:
-            return True
-        i += 1
-    return False
+    return t in type_names
 
 
 def _dict_walk(node: ASTNode) -> list[ASTNode]:
     """Walk dict-based AST, returns list of all nodes."""
     result: list[ASTNode] = [node]
-    keys = list(node.keys())
-    i = 0
-    while i < len(keys):
-        key = keys[i]
+    for key in node:
         if not key.startswith("_"):
             value = node[key]
             if isinstance(value, JDict) and has_key(value.entries, "_type"):
                 result = result + _dict_walk(value.entries)
             elif isinstance(value, JList):
-                j = 0
-                while j < len(value.items):
-                    item = value.items[j]
+                for item in value.items:
                     if isinstance(item, JDict) and has_key(item.entries, "_type"):
                         result = result + _dict_walk(item.entries)
-                    j += 1
-        i += 1
     return result
 
 
@@ -144,10 +132,8 @@ class FuncInfo:
     def to_dict(self) -> JsonValue:
         """Serialize to a JsonValue dict for test assertions."""
         param_dicts: list[JsonValue] = []
-        i = 0
-        while i < len(self.params):
-            param_dicts.append(self.params[i].to_dict())
-            i += 1
+        for param in self.params:
+            param_dicts.append(param.to_dict())
         return JDict(
             {
                 "params": JList(param_dicts),
@@ -172,7 +158,7 @@ class TypeCollectError:
 
     def __repr__(self) -> str:
         file_prefix = ""
-        if self.source_file != "":
+        if self.source_file:
             file_prefix = self.source_file + ":"
         return (
             file_prefix
@@ -203,30 +189,18 @@ class SignatureResult:
     def to_dict(self) -> JsonValue:
         """Serialize to nested JsonValue dicts for test assertions."""
         funcs: dict[str, JsonValue] = {}
-        fkeys = list(self.functions.keys())
-        i = 0
-        while i < len(fkeys):
-            name = fkeys[i]
+        for name in self.functions:
             funcs[name] = self.functions[name].to_dict()
-            i += 1
         meths: dict[str, JsonValue] = {}
-        ckeys = list(self.methods.keys())
-        i = 0
-        while i < len(ckeys):
-            cname = ckeys[i]
+        for cname in self.methods:
             class_methods: dict[str, JsonValue] = {}
-            mkeys = list(self.methods[cname].keys())
-            j = 0
-            while j < len(mkeys):
-                mname = mkeys[j]
+            for mname in self.methods[cname]:
                 class_methods[mname] = self.methods[cname][mname].to_dict()
-                j += 1
             meths[cname] = JDict(class_methods)
-            i += 1
         result: dict[str, JsonValue] = {}
-        if len(funcs) > 0:
+        if funcs:
             result["functions"] = JDict(funcs)
-        if len(meths) > 0:
+        if meths:
             result["methods"] = JDict(meths)
         return JDict(result)
 
@@ -261,10 +235,8 @@ def annotation_to_str(node: ASTNode | None) -> str:
     if node_t == "List":
         elts = get_nodes(node, "elts")
         parts: list[str] = []
-        i = 0
-        while i < len(elts):
-            parts.append(annotation_to_str(elts[i]))
-            i += 1
+        for elt in elts:
+            parts.append(annotation_to_str(elt))
         return "[" + ", ".join(parts) + "]"
     if node_t == "Subscript":
         value_node = get_node(node, "value")
@@ -273,10 +245,8 @@ def annotation_to_str(node: ASTNode | None) -> str:
         if get_str(slc, "_type") == "Tuple":
             elts = get_nodes(slc, "elts")
             parts: list[str] = []
-            i = 0
-            while i < len(elts):
-                parts.append(annotation_to_str(elts[i]))
-                i += 1
+            for elt in elts:
+                parts.append(annotation_to_str(elt))
             return base + "[" + ", ".join(parts) + "]"
         return base + "[" + annotation_to_str(slc) + "]"
     if node_t == "BinOp":
@@ -317,9 +287,7 @@ def _split_type_args(s: str) -> list[str]:
     result: list[str] = []
     depth = 0
     current: list[str] = []
-    i = 0
-    while i < len(s):
-        c = s[i]
+    for c in s:
         if c == "[":
             depth += 1
             current.append(c)
@@ -331,9 +299,8 @@ def _split_type_args(s: str) -> list[str]:
             current: list[str] = []
         else:
             current.append(c)
-        i += 1
     tail = "".join(current).strip()
-    if tail != "":
+    if tail:
         result.append(tail)
     return result
 
@@ -367,7 +334,7 @@ def _split_union_members(s: str) -> list[str]:
             current.append(c)
         i += 1
     tail = "".join(current).strip()
-    if tail != "":
+    if tail:
         result.append(tail)
     return result
 
@@ -399,7 +366,7 @@ def py_type_to_type_dict(
 ) -> TypeNode:
     """Convert a Python type string to a TypeNode."""
     s = py_type.strip()
-    if s == "":
+    if not s:
         return InterfaceRef("any")
     # Expand type aliases
     if s in _TYPE_ALIASES:
@@ -492,7 +459,7 @@ def _resolve_subscript(
         elem = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
         return SetType(elem)
     if base == "tuple":
-        if len(args) == 0:
+        if not args:
             errors.append(
                 TypeCollectError(lineno, col, "tuple requires at least 1 type argument")
             )
@@ -502,12 +469,8 @@ def _resolve_subscript(
             elem = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
             return TupleType([elem], True)
         elems: list[TypeNode] = []
-        i = 0
-        while i < len(args):
-            elems.append(
-                py_type_to_type_dict(args[i], known_classes, errors, lineno, col)
-            )
-            i += 1
+        for arg in args:
+            elems.append(py_type_to_type_dict(arg, known_classes, errors, lineno, col))
         return TupleType(elems, False)
     if base == "Optional":
         if len(args) != 1:
@@ -538,16 +501,12 @@ def _resolve_subscript(
         param_types: list[TypeNode] = []
         if param_str.startswith("[") and param_str.endswith("]"):
             param_inner = param_str[1:-1].strip()
-            if param_inner != "":
+            if param_inner:
                 param_parts = _split_type_args(param_inner)
-                j = 0
-                while j < len(param_parts):
+                for part in param_parts:
                     param_types.append(
-                        py_type_to_type_dict(
-                            param_parts[j], known_classes, errors, lineno, col
-                        )
+                        py_type_to_type_dict(part, known_classes, errors, lineno, col)
                     )
-                    j += 1
         ret = py_type_to_type_dict(args[1], known_classes, errors, lineno, col)
         return FuncType(param_types, ret)
     # Sequence/Iterable[T] -> Slice(T)
@@ -593,26 +552,22 @@ def _resolve_union(
     # Deduplicate
     unique: list[str] = []
     seen: set[str] = set()
-    i = 0
-    while i < len(members):
-        m = members[i].strip()
+    for member in members:
+        m = member.strip()
         if m not in seen:
             unique.append(m)
             seen.add(m)
-        i += 1
     # Single type after dedup
     if len(unique) == 1:
         return py_type_to_type_dict(unique[0], known_classes, errors, lineno, col)
     # Check for T | None -> Optional
     has_none = False
     non_none: list[str] = []
-    i = 0
-    while i < len(unique):
-        if unique[i] == "None":
+    for u in unique:
+        if u == "None":
             has_none = True
         else:
-            non_none.append(unique[i])
-        i += 1
+            non_none.append(u)
     if has_none and len(non_none) == 1:
         inner = py_type_to_type_dict(non_none[0], known_classes, errors, lineno, col)
         return OptionalType(inner)
@@ -633,12 +588,10 @@ def _resolve_non_none_union(
 ) -> TypeNode:
     """Resolve a union with no None members to a UnionType."""
     variants: list[TypeNode] = []
-    i = 0
-    while i < len(members):
+    for member in members:
         variants.append(
-            py_type_to_type_dict(members[i], known_classes, errors, lineno, col)
+            py_type_to_type_dict(member, known_classes, errors, lineno, col)
         )
-        i += 1
     if len(variants) == 1:
         return variants[0]
     return UnionType(variants)
@@ -696,37 +649,26 @@ def detect_mutated_params(node: ASTNode) -> set[str]:
     """Detect which parameters are mutated in the function body."""
     mutated: set[str] = set()
     args_node = get_node(node, "args")
-    if len(args_node) == 0:
+    if not args_node:
         return mutated
     param_names: set[str] = set()
     posonlyargs = get_nodes(args_node, "posonlyargs")
     regular_args = get_nodes(args_node, "args")
     kwonlyargs = get_nodes(args_node, "kwonlyargs")
-    i = 0
-    while i < len(posonlyargs):
-        a = posonlyargs[i]
+    for a in posonlyargs:
         name = get_str(a, "arg")
-        if name != "" and name != "self":
+        if name and name != "self":
             param_names.add(name)
-        i += 1
-    i = 0
-    while i < len(regular_args):
-        a = regular_args[i]
+    for a in regular_args:
         name = get_str(a, "arg")
-        if name != "" and name != "self":
+        if name and name != "self":
             param_names.add(name)
-        i += 1
-    i = 0
-    while i < len(kwonlyargs):
-        a = kwonlyargs[i]
+    for a in kwonlyargs:
         name = get_str(a, "arg")
-        if name != "" and name != "self":
+        if name and name != "self":
             param_names.add(name)
-        i += 1
     all_nodes = _dict_walk(node)
-    i = 0
-    while i < len(all_nodes):
-        stmt = all_nodes[i]
+    for stmt in all_nodes:
         if _is_type(stmt, ["Expr"]):
             val = get_node(stmt, "value")
             if _is_type(val, ["Call"]):
@@ -737,21 +679,17 @@ def detect_mutated_params(node: ASTNode) -> set[str]:
                         obj = get_node(func, "value")
                         if _is_type(obj, ["Name"]):
                             obj_id = get_str(obj, "id")
-                            if obj_id != "" and obj_id in param_names:
+                            if obj_id and obj_id in param_names:
                                 mutated.add(obj_id)
         if _is_type(stmt, ["Assign"]):
             targets = get_nodes(stmt, "targets")
-            j = 0
-            while j < len(targets):
-                target = targets[j]
+            for target in targets:
                 if _is_type(target, ["Subscript"]):
                     obj = get_node(target, "value")
                     if _is_type(obj, ["Name"]):
                         obj_id = get_str(obj, "id")
-                        if obj_id != "" and obj_id in param_names:
+                        if obj_id and obj_id in param_names:
                             mutated.add(obj_id)
-                j += 1
-        i += 1
     return mutated
 
 
@@ -787,11 +725,11 @@ def _make_param(
 ) -> ParamInfo | None:
     """Build a ParamInfo from an AST arg node. Returns None on error."""
     param_name = get_str(arg, "arg")
-    if param_name == "":
+    if not param_name:
         return None
     annotation = get_node(arg, "annotation")
     lineno = get_int(arg, "lineno")
-    if len(annotation) == 0:
+    if not annotation:
         errors.append(
             TypeCollectError(
                 lineno,
@@ -841,19 +779,13 @@ def extract_func_info(
     kw_defaults = get_jlist(args, "kw_defaults")
     # Filter self from params
     non_self_posonly: list[ASTNode] = []
-    i = 0
-    while i < len(posonlyargs):
-        a = posonlyargs[i]
+    for a in posonlyargs:
         if get_str(a, "arg") != "self":
             non_self_posonly.append(a)
-        i += 1
     non_self_regular: list[ASTNode] = []
-    i = 0
-    while i < len(regular_args):
-        a = regular_args[i]
+    for a in regular_args:
         if get_str(a, "arg") != "self":
             non_self_regular.append(a)
-        i += 1
     n_positional = len(non_self_posonly) + len(non_self_regular)
     n_defaults = len(defaults)
     had_error = False
@@ -930,7 +862,7 @@ def extract_func_info(
             had_error = True
         i += 1
     returns = get_node(node, "returns")
-    if len(returns) == 0:
+    if not returns:
         if func_name == "__init__":
             returns_node: ASTNode = {
                 "_type": JStr("Constant"),
@@ -988,27 +920,19 @@ def collect_signatures(
     class_bases: dict[str, list[str]] | None = None,
 ) -> SignatureResult:
     """Collect function and method signatures from the module AST."""
-    while len(_TYPE_ALIASES) > 0:
+    while _TYPE_ALIASES:
         _TYPE_ALIASES.pop(list(_TYPE_ALIASES.keys())[0])
-    while len(_CLASS_BASES) > 0:
+    while _CLASS_BASES:
         _CLASS_BASES.pop(list(_CLASS_BASES.keys())[0])
     if class_bases is not None:
-        cb_keys = list(class_bases.keys())
-        cbi = 0
-        while cbi < len(cb_keys):
-            _CLASS_BASES[cb_keys[cbi]] = class_bases[cb_keys[cbi]]
-            cbi += 1
+        for cb_key in list(class_bases.keys()):
+            _CLASS_BASES[cb_key] = class_bases[cb_key]
     if type_aliases is not None:
-        ta_keys = list(type_aliases.keys())
-        tai = 0
-        while tai < len(ta_keys):
-            _TYPE_ALIASES[ta_keys[tai]] = type_aliases[ta_keys[tai]]
-            tai += 1
+        for ta_key in list(type_aliases.keys()):
+            _TYPE_ALIASES[ta_key] = type_aliases[ta_key]
     result = SignatureResult()
     body = get_nodes(tree, "body")
-    i = 0
-    while i < len(body):
-        node = body[i]
+    for node in body:
         t = get_str(node, "_type")
         sf = get_str(node, "_source_file")
         if t == "FunctionDef":
@@ -1024,12 +948,10 @@ def collect_signatures(
             class_name = get_str(node, "name")
             class_body = get_nodes(node, "body")
             class_methods: dict[str, FuncInfo] = {}
-            j = 0
-            while j < len(class_body):
-                stmt = class_body[j]
+            for stmt in class_body:
                 if get_str(stmt, "_type") == "FunctionDef":
                     stmt_sf = get_str(stmt, "_source_file")
-                    if stmt_sf == "":
+                    if not stmt_sf:
                         stmt_sf = sf
                     err_before = len(result._errors)
                     method_info = extract_func_info(
@@ -1041,18 +963,12 @@ def collect_signatures(
                         ei += 1
                     if method_info is not None:
                         class_methods[method_info.name] = method_info
-                j += 1
-            if len(class_methods) > 0:
+            if class_methods:
                 result.methods[class_name] = class_methods
             if class_name in node_classes:
-                mkeys = list(class_methods.keys())
-                j = 0
-                while j < len(mkeys):
-                    mname = mkeys[j]
+                for mname in list(class_methods.keys()):
                     if mname not in _EXCLUDED_METHODS:
                         result.method_to_structs[mname] = class_name
-                    j += 1
-        i += 1
     return result
 
 
@@ -1111,27 +1027,17 @@ class ClassInfo:
         """Serialize to a JsonValue dict for test assertions."""
         fields: dict[str, JsonValue] = {}
         fkeys = self.field_order if self.field_order else list(self.fields.keys())
-        i = 0
-        while i < len(fkeys):
-            fields[fkeys[i]] = self.fields[fkeys[i]].to_dict()
-            i += 1
+        for fkey in fkeys:
+            fields[fkey] = self.fields[fkey].to_dict()
         init_params_jv: list[JsonValue] = []
-        j = 0
-        while j < len(self.init_params):
-            init_params_jv.append(JStr(self.init_params[j]))
-            j += 1
+        for init_param in self.init_params:
+            init_params_jv.append(JStr(init_param))
         ptf: dict[str, JsonValue] = {}
-        ptf_keys = list(self.param_to_field.keys())
-        j = 0
-        while j < len(ptf_keys):
-            ptf[ptf_keys[j]] = JStr(self.param_to_field[ptf_keys[j]])
-            j += 1
+        for ptf_key in list(self.param_to_field.keys()):
+            ptf[ptf_key] = JStr(self.param_to_field[ptf_key])
         cf: dict[str, JsonValue] = {}
-        cf_keys = list(self.const_fields.keys())
-        j = 0
-        while j < len(cf_keys):
-            cf[cf_keys[j]] = JStr(self.const_fields[cf_keys[j]])
-            j += 1
+        for cf_key in list(self.const_fields.keys()):
+            cf[cf_key] = JStr(self.const_fields[cf_key])
         return JDict(
             {
                 "fields": JDict(fields),
@@ -1158,7 +1064,7 @@ class FieldError:
 
     def __repr__(self) -> str:
         file_prefix = ""
-        if self.source_file != "":
+        if self.source_file:
             file_prefix = self.source_file + ":"
         return (
             file_prefix
@@ -1190,11 +1096,8 @@ class FieldResult:
     def to_dict(self) -> JsonValue:
         """Serialize to nested JsonValue dicts for test assertions."""
         classes: dict[str, JsonValue] = {}
-        ckeys = list(self.classes.keys())
-        i = 0
-        while i < len(ckeys):
-            classes[ckeys[i]] = self.classes[ckeys[i]].to_dict()
-            i += 1
+        for ckey in list(self.classes.keys()):
+            classes[ckey] = self.classes[ckey].to_dict()
         return JDict({"classes": JDict(classes)})
 
 
@@ -1206,10 +1109,8 @@ class FieldResult:
 def _wrap_nodes(lst: list[ASTNode]) -> JList:
     """Wrap a list of ASTNode dicts into a JList of JDicts."""
     items: list[JsonValue] = []
-    i = 0
-    while i < len(lst):
-        items.append(JDict(lst[i]))
-        i += 1
+    for item in lst:
+        items.append(JDict(item))
     return JList(items)
 
 
@@ -1322,9 +1223,7 @@ def _pascal_to_kebab(name: str) -> str:
 def _is_dataclass_class(node: ASTNode) -> tuple[bool, bool]:
     """Check decorator_list for @dataclass. Returns (is_dataclass, kw_only)."""
     dec_list = get_nodes(node, "decorator_list")
-    i = 0
-    while i < len(dec_list):
-        dec = dec_list[i]
+    for dec in dec_list:
         if _is_type(dec, ["Name"]) and get_str(dec, "id") == "dataclass":
             return (True, False)
         if _is_type(dec, ["Call"]):
@@ -1332,18 +1231,14 @@ def _is_dataclass_class(node: ASTNode) -> tuple[bool, bool]:
             if _is_type(func, ["Name"]) and get_str(func, "id") == "dataclass":
                 kw_only = False
                 keywords = get_nodes(dec, "keywords")
-                j = 0
-                while j < len(keywords):
-                    kw = keywords[j]
+                for kw in keywords:
                     if get_str(kw, "arg") == "kw_only":
                         val = get_node(kw, "value")
                         if _is_type(val, ["Constant"]):
                             v = val.get("value")
                             if isinstance(v, JBool) and v.value:
                                 kw_only = True
-                    j += 1
                 return (True, kw_only)
-        i += 1
     return (False, False)
 
 
@@ -1360,12 +1255,9 @@ def _is_field_call_default_factory(node: ASTNode) -> bool:
     if not (_is_type(func, ["Name"]) and get_str(func, "id") == "field"):
         return False
     keywords = get_nodes(node, "keywords")
-    i = 0
-    while i < len(keywords):
-        kw = keywords[i]
+    for kw in keywords:
         if get_str(kw, "arg") == "default_factory":
             return True
-        i += 1
     return False
 
 
@@ -1378,33 +1270,27 @@ def _check_no_field_assign_in_block(block: list[ASTNode]) -> str | None:
     """Return field name if self.x = ... found inside block, else None."""
     wrapper: ASTNode = {"_type": JStr("_wrapper"), "body": _wrap_nodes(block)}
     all_nodes = _dict_walk(wrapper)
-    i = 0
-    while i < len(all_nodes):
-        stmt = all_nodes[i]
+    for stmt in all_nodes:
         if _is_type(stmt, ["Assign"]):
             targets = get_nodes(stmt, "targets")
-            j = 0
-            while j < len(targets):
-                target = targets[j]
-                if _is_type(target, ["Attribute"]):
-                    val_node = get_node(target, "value")
+            for tgt in targets:
+                if _is_type(tgt, ["Attribute"]):
+                    val_node = get_node(tgt, "value")
                     if (
                         _is_type(val_node, ["Name"])
                         and get_str(val_node, "id") == "self"
                     ):
-                        attr = get_str(target, "attr")
-                        if attr != "":
+                        attr = get_str(tgt, "attr")
+                        if attr:
                             return attr
-                j += 1
         if _is_type(stmt, ["AnnAssign"]):
             target = get_node(stmt, "target")
             if _is_type(target, ["Attribute"]):
                 val_node = get_node(target, "value")
                 if _is_type(val_node, ["Name"]) and get_str(val_node, "id") == "self":
                     attr = get_str(target, "attr")
-                    if attr != "":
+                    if attr:
                         return attr
-        i += 1
     return None
 
 
@@ -1418,33 +1304,27 @@ def _check_no_new_fields_outside_init(
 ) -> str | None:
     """Return field name if method introduces new self.x not in known_fields."""
     all_nodes = _dict_walk(func)
-    i = 0
-    while i < len(all_nodes):
-        stmt = all_nodes[i]
+    for stmt in all_nodes:
         if _is_type(stmt, ["Assign"]):
             targets = get_nodes(stmt, "targets")
-            j = 0
-            while j < len(targets):
-                target = targets[j]
-                if _is_type(target, ["Attribute"]):
-                    val_node = get_node(target, "value")
+            for tgt in targets:
+                if _is_type(tgt, ["Attribute"]):
+                    val_node = get_node(tgt, "value")
                     if (
                         _is_type(val_node, ["Name"])
                         and get_str(val_node, "id") == "self"
                     ):
-                        fname = get_str(target, "attr")
-                        if fname != "" and fname not in known_fields:
+                        fname = get_str(tgt, "attr")
+                        if fname and fname not in known_fields:
                             return fname
-                j += 1
         if _is_type(stmt, ["AnnAssign"]):
             target = get_node(stmt, "target")
             if _is_type(target, ["Attribute"]):
                 val_node = get_node(target, "value")
                 if _is_type(val_node, ["Name"]) and get_str(val_node, "id") == "self":
                     fname = get_str(target, "attr")
-                    if fname != "" and fname not in known_fields:
+                    if fname and fname not in known_fields:
                         return fname
-        i += 1
     return None
 
 
@@ -1479,12 +1359,12 @@ def _infer_type_from_value(
             return PrimitiveType("string")
     if t == "Name":
         name = get_str(node, "id")
-        if name != "" and name in param_types:
+        if name and name in param_types:
             py_type = param_types[name]
             sig_errors: list[TypeCollectError] = []
             typ = py_type_to_type_dict(py_type, known_classes, sig_errors, lineno, 0)
             return _unwrap_field_type(typ)
-        if name != "":
+        if name:
             errors.append(
                 FieldError(lineno, 0, "cannot infer type for field from '" + name + "'")
             )
@@ -1493,7 +1373,7 @@ def _infer_type_from_value(
         func = get_node(node, "func")
         if _is_type(func, ["Name"]):
             func_name = get_str(func, "id")
-            if func_name != "":
+            if func_name:
                 if func_name in known_classes:
                     return StructRef(func_name)
                 if func_name in func_return_types:
@@ -1547,84 +1427,67 @@ def _collect_init_fields(
     args = get_node(init, "args")
     param_types: dict[str, str] = {}
     args_list = get_nodes(args, "args")
-    i = 0
-    while i < len(args_list):
-        arg = args_list[i]
+    for arg in args_list:
         arg_name = get_str(arg, "arg")
-        if arg_name != "" and arg_name != "self":
+        if arg_name and arg_name != "self":
             info.init_params.append(arg_name)
             annotation = get_node(arg, "annotation")
-            if len(annotation) > 0:
+            if annotation:
                 param_types[arg_name] = annotation_to_str(annotation)
-        i += 1
     posonlyargs = get_nodes(args, "posonlyargs")
-    i = 0
-    while i < len(posonlyargs):
-        arg = posonlyargs[i]
+    for arg in posonlyargs:
         arg_name = get_str(arg, "arg")
-        if arg_name != "" and arg_name != "self":
+        if arg_name and arg_name != "self":
             info.init_params.append(arg_name)
             annotation = get_node(arg, "annotation")
-            if len(annotation) > 0:
+            if annotation:
                 param_types[arg_name] = annotation_to_str(annotation)
-        i += 1
     kwonlyargs = get_nodes(args, "kwonlyargs")
-    i = 0
-    while i < len(kwonlyargs):
-        arg = kwonlyargs[i]
+    for arg in kwonlyargs:
         arg_name = get_str(arg, "arg")
-        if arg_name != "" and arg_name != "self":
+        if arg_name and arg_name != "self":
             info.init_params.append(arg_name)
             annotation = get_node(arg, "annotation")
-            if len(annotation) > 0:
+            if annotation:
                 param_types[arg_name] = annotation_to_str(annotation)
-        i += 1
     # Build param_has_default map from defaults/kw_defaults
     param_has_default: dict[str, bool] = {}
     defaults = get_nodes(args, "defaults")
     kw_defaults = get_jlist(args, "kw_defaults")
     non_self_posonly: list[ASTNode] = []
-    i = 0
-    while i < len(posonlyargs):
-        a = posonlyargs[i]
+    for a in posonlyargs:
         if get_str(a, "arg") != "self":
             non_self_posonly.append(a)
-        i += 1
     non_self_regular: list[ASTNode] = []
-    i = 0
-    while i < len(args_list):
-        a = args_list[i]
+    for a in args_list:
         if get_str(a, "arg") != "self":
             non_self_regular.append(a)
-        i += 1
     n_positional = len(non_self_posonly) + len(non_self_regular)
     n_defaults = len(defaults)
     i = 0
     while i < len(non_self_posonly):
         pname = get_str(non_self_posonly[i], "arg")
-        if pname != "":
+        if pname:
             param_has_default[pname] = i >= n_positional - n_defaults
         i += 1
     i = 0
     while i < len(non_self_regular):
         pname = get_str(non_self_regular[i], "arg")
-        if pname != "":
+        if pname:
             idx = len(non_self_posonly) + i
             param_has_default[pname] = idx >= n_positional - n_defaults
         i += 1
     i = 0
     while i < len(kwonlyargs):
         pname = get_str(kwonlyargs[i], "arg")
-        if pname != "" and pname != "self":
+        if pname and pname != "self":
             has_kw_def = i < len(kw_defaults) and not isinstance(kw_defaults[i], JNull)
             param_has_default[pname] = has_kw_def
         i += 1
     has_computed_init = False
     body = get_nodes(init, "body")
     lineno = get_int(init, "lineno")
-    i = 0
-    while i < len(body):
-        stmt = body[i]
+    for stmt in body:
         stmt_lineno = get_int(stmt, "lineno")
         if stmt_lineno == 0:
             stmt_lineno = lineno
@@ -1643,7 +1506,6 @@ def _collect_init_fields(
                     )
                 )
                 return
-            i += 1
             continue
         if _is_type(stmt, ["AnnAssign"]):
             target = get_node(stmt, "target")
@@ -1651,7 +1513,7 @@ def _collect_init_fields(
                 val_node = get_node(target, "value")
                 if _is_type(val_node, ["Name"]) and get_str(val_node, "id") == "self":
                     field_name = get_str(target, "attr")
-                    if field_name != "":
+                    if field_name:
                         ann = get_node(stmt, "annotation")
                         py_type = annotation_to_str(ann)
                         sig_errors: list[TypeCollectError] = []
@@ -1715,21 +1577,18 @@ def _collect_init_fields(
                                 and get_str(value_node, "id") in param_types
                             ):
                                 has_computed_init = True
-            i += 1
             continue
         if _is_type(stmt, ["Assign"]):
             targets = get_nodes(stmt, "targets")
-            j = 0
-            while j < len(targets):
-                target = targets[j]
-                if _is_type(target, ["Attribute"]):
-                    val_node = get_node(target, "value")
+            for tgt in targets:
+                if _is_type(tgt, ["Attribute"]):
+                    val_node = get_node(tgt, "value")
                     if (
                         _is_type(val_node, ["Name"])
                         and get_str(val_node, "id") == "self"
                     ):
-                        field_name = get_str(target, "attr")
-                        if field_name != "":
+                        field_name = get_str(tgt, "attr")
+                        if field_name:
                             value = get_node(stmt, "value")
                             is_simple_param = (
                                 _is_type(value, ["Name"])
@@ -1831,12 +1690,10 @@ def _collect_init_fields(
                                             )
                                         )
                                         return
-                j += 1
-        i += 1
-    if len(info.init_params) == 0:
+    if not info.init_params:
         for fk in info.fields:
             info.fields[fk].has_default = True
-    if len(info.init_params) > 0:
+    if info.init_params:
         info.needs_constructor = True
     elif has_computed_init:
         info.needs_constructor = True
@@ -1864,14 +1721,12 @@ def _collect_class_fields(
     info.kw_only = kw_only
     seen_fields: set[str] = set()
     body = get_nodes(node, "body")
-    i = 0
-    while i < len(body):
-        stmt = body[i]
+    for stmt in body:
         if _is_type(stmt, ["AnnAssign"]):
             target = get_node(stmt, "target")
             if _is_type(target, ["Name"]):
                 field_name = get_str(target, "id")
-                if field_name != "":
+                if field_name:
                     if field_name in seen_fields:
                         result.add_error(
                             lineno, 0, "field '" + field_name + "' already declared"
@@ -1909,39 +1764,26 @@ def _collect_class_fields(
                         has_default=has_default,
                         default=default_expr,
                     )
-        i += 1
     has_init = False
-    i = 0
-    while i < len(body):
-        stmt = body[i]
+    for stmt in body:
         if _is_type(stmt, ["FunctionDef"]) and get_str(stmt, "name") == "__init__":
             has_init = True
             _collect_init_fields(
                 stmt, info, known_classes, func_return_types, result._errors
             )
-            if len(result._errors) > 0:
+            if result._errors:
                 return
-        i += 1
     if is_dc and not has_init:
         fkeys = info.field_order if info.field_order else list(info.fields.keys())
-        j = 0
-        while j < len(fkeys):
-            info.init_params.append(fkeys[j])
-            j += 1
+        for fkey in fkeys:
+            info.init_params.append(fkey)
     known_field_set: set[str] = set()
     fkeys = info.field_order if info.field_order else list(info.fields.keys())
-    j = 0
-    while j < len(fkeys):
-        known_field_set.add(fkeys[j])
-        j += 1
-    ckeys = list(info.const_fields.keys())
-    j = 0
-    while j < len(ckeys):
-        known_field_set.add(ckeys[j])
-        j += 1
-    i = 0
-    while i < len(body):
-        stmt = body[i]
+    for fkey in fkeys:
+        known_field_set.add(fkey)
+    for ckey in list(info.const_fields.keys()):
+        known_field_set.add(ckey)
+    for stmt in body:
         if _is_type(stmt, ["FunctionDef"]) and get_str(stmt, "name") != "__init__":
             bad = _check_no_new_fields_outside_init(stmt, known_field_set)
             if bad is not None:
@@ -1949,29 +1791,22 @@ def _collect_class_fields(
                     lineno, 0, "field '" + bad + "' must be assigned in __init__"
                 )
                 return
-        i += 1
     if has_init and class_name not in hierarchy_roots:
         if "kind" not in info.const_fields:
             kind_from_param = False
-            j = 0
-            while j < len(info.init_params):
-                p = info.init_params[j]
+            for p in info.init_params:
                 mapped = info.param_to_field.get(p)
                 if mapped == "kind" or p == "kind":
                     kind_from_param = True
-                j += 1
             if not kind_from_param:
                 info.const_fields["kind"] = _pascal_to_kebab(class_name)
     if class_name in node_classes:
         fkeys = info.field_order if info.field_order else list(info.fields.keys())
-        j = 0
-        while j < len(fkeys):
-            fname = fkeys[j]
+        for fname in fkeys:
             if fname not in result.field_to_structs:
                 result.field_to_structs[fname] = []
             if class_name not in result.field_to_structs[fname]:
                 result.field_to_structs[fname].append(class_name)
-            j += 1
     result.classes[class_name] = info
 
 
@@ -1997,17 +1832,12 @@ def collect_fields(
         sig_result: Signature result for function return types.
     """
     func_return_types: dict[str, str] = {}
-    fkeys = list(sig_result.functions.keys())
-    i = 0
-    while i < len(fkeys):
-        func = sig_result.functions[fkeys[i]]
-        func_return_types[fkeys[i]] = func.return_py_type
-        i += 1
+    for fkey in list(sig_result.functions.keys()):
+        func = sig_result.functions[fkey]
+        func_return_types[fkey] = func.return_py_type
     result = FieldResult()
     body = get_nodes(tree, "body")
-    i = 0
-    while i < len(body):
-        node = body[i]
+    for node in body:
         if _is_type(node, ["ClassDef"]):
             sf = get_str(node, "_source_file")
             err_before = len(result._errors)
@@ -2023,9 +1853,8 @@ def collect_fields(
             while ei < len(result._errors):
                 result._errors[ei].source_file = sf
                 ei += 1
-            if len(result._errors) > 0:
+            if result._errors:
                 return result
-        i += 1
     return result
 
 
@@ -2051,11 +1880,8 @@ class TypeCollectResult:
     def fields_to_dict(self) -> JsonValue:
         """Serialize fields portion to JsonValue."""
         classes: dict[str, JsonValue] = {}
-        ckeys = list(self.classes.keys())
-        i = 0
-        while i < len(ckeys):
-            classes[ckeys[i]] = self.classes[ckeys[i]].to_dict()
-            i += 1
+        for ckey in list(self.classes.keys()):
+            classes[ckey] = self.classes[ckey].to_dict()
         return JDict({"classes": JDict(classes)})
 
 
@@ -2076,11 +1902,9 @@ def collect_types(
     result.methods = sig_result.methods
     result.method_to_structs = sig_result.method_to_structs
     sig_errors = sig_result.errors()
-    if len(sig_errors) > 0:
-        i = 0
-        while i < len(sig_errors):
-            result._errors.append(sig_errors[i])
-            i += 1
+    if sig_errors:
+        for sig_error in sig_errors:
+            result._errors.append(sig_error)
         return result
     field_result = collect_fields(
         tree, known_classes, node_classes, hierarchy_roots, sig_result
@@ -2088,9 +1912,7 @@ def collect_types(
     result.classes = field_result.classes
     result.field_to_structs = field_result.field_to_structs
     field_errors = field_result.errors()
-    if len(field_errors) > 0:
-        i = 0
-        while i < len(field_errors):
-            result._errors.append(field_errors[i])
-            i += 1
+    if field_errors:
+        for field_error in field_errors:
+            result._errors.append(field_error)
     return result

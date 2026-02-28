@@ -27,33 +27,26 @@ def _wrap_node(d: ASTNode) -> JDict:
 
 def _wrap_nodes(lst: list[ASTNode]) -> JList:
     items: list[JsonValue] = []
-    i = 0
-    while i < len(lst):
-        items.append(JDict(lst[i]))
-        i += 1
+    for node in lst:
+        items.append(JDict(node))
     return JList(items)
 
 
 def _wrap_strs(lst: list[str]) -> JList:
     items: list[JsonValue] = []
-    i = 0
-    while i < len(lst):
-        items.append(JStr(lst[i]))
-        i += 1
+    for s in lst:
+        items.append(JStr(s))
     return JList(items)
 
 
 def _wrap_opt_nodes(lst: list[ASTNode | None]) -> JList:
     """Wrap a list that may contain None entries (e.g. kw_defaults, dict keys)."""
     items: list[JsonValue] = []
-    i = 0
-    while i < len(lst):
-        v = lst[i]
+    for v in lst:
         if v is not None:
             items.append(JDict(v))
         else:
             items.append(JNull())
-        i += 1
     return JList(items)
 
 
@@ -213,7 +206,7 @@ def is_alnum(c: str) -> bool:
 
 def is_whitespace(c: str) -> bool:
     """Check if character is whitespace (not newline)."""
-    return c == " " or c == "\t"
+    return c in (" ", "\t")
 
 
 def tokenize(source: str) -> list[Token]:
@@ -296,7 +289,7 @@ def tokenize(source: str) -> list[Token]:
                 continue
 
             # String literal
-            if c == '"' or c == "'":
+            if c in ('"', "'"):
                 tok, new_col, new_lineno, new_line = scan_string(
                     line, col, lineno, lines
                 )
@@ -348,9 +341,7 @@ def tokenize(source: str) -> list[Token]:
 
             # Multi-character operators
             matched = False
-            i = 0
-            while i < len(MULTI_OPS):
-                op = MULTI_OPS[i]
+            for op in MULTI_OPS:
                 op_len = len(op)
                 if col + op_len <= line_len and line[col : col + op_len] == op:
                     tokens.append(Token(TK_OP, op, lineno, col))
@@ -361,19 +352,18 @@ def tokenize(source: str) -> list[Token]:
                         bracket_depth -= 1
                     matched = True
                     break
-                i += 1
             if matched:
                 continue
 
             # Single-character operators
             if c in SINGLE_OPS:
                 tokens.append(Token(TK_OP, c, lineno, col))
-                if c == "(" or c == "[" or c == "{":
+                if c in ("(", "[", "{"):
                     bracket_depth += 1
                     bracket_stack.append((c, lineno))
-                elif c == ")" or c == "]" or c == "}":
+                elif c in (")", "]", "}"):
                     bracket_depth -= 1
-                    if len(bracket_stack) > 0:
+                    if bracket_stack:
                         bracket_stack.pop()
                 col += 1
                 continue
@@ -389,7 +379,7 @@ def tokenize(source: str) -> list[Token]:
         lineno += 1
 
     # Check for unmatched brackets
-    if len(bracket_stack) > 0:
+    if bracket_stack:
         open_bracket = bracket_stack[0][0]
         open_line = bracket_stack[0][1]
         raise ParseError(
@@ -688,18 +678,16 @@ class Parser:
             raise self.error(
                 "assignment expression within a comprehension cannot be used in a class body"
             )
-        if self.comp_depth > 0 and len(self.comp_target_names) > 0:
+        if self.comp_depth > 0 and self.comp_target_names:
             name = get_str(target, "id") if isinstance(target, dict) else ""
-            if len(name) > 0:
-                i = 0
-                while i < len(self.comp_target_names):
-                    if name in self.comp_target_names[i]:
+            if name:
+                for target_names in self.comp_target_names:
+                    if name in target_names:
                         raise self.error(
                             "assignment expression cannot rebind comprehension iteration variable '"
                             + name
                             + "'"
                         )
-                    i += 1
 
     def is_match_statement(self) -> bool:
         """Check if current 'match' token starts a match statement (soft keyword check)."""
@@ -786,14 +774,12 @@ class Parser:
         self.skip_newlines()
         while not self.match(TK_ENDMARKER):
             stmts = self.parse_stmt()
-            i = 0
-            while i < len(stmts):
-                body.append(stmts[i])
-                i += 1
+            for stmt in stmts:
+                body.append(stmt)
             self.skip_newlines()
         fields: ASTNode = {"body": _wrap_nodes(body), "type_ignores": JList([])}
         node = make_node("Module", tok.lineno, tok.col, fields)
-        if len(body) > 0:
+        if body:
             end_from_node(node, body[len(body) - 1])
         return node
 
@@ -997,16 +983,13 @@ class Parser:
                 "generator_stop",
                 "annotations",
             }
-            i = 0
-            while i < len(names):
-                nm = names[i]
+            for nm in names:
                 fname = get_str(nm, "name")
-                if len(fname) > 0:
+                if fname:
                     if fname == "braces":
                         raise self.error("not a chance")
                     if fname not in _FUTURE_FEATURES:
                         raise self.error("future feature " + fname + " is not defined")
-                i += 1
 
         module_v: JsonValue = JStr(module) if module is not None else JNull()
         node = make_node(
@@ -1105,7 +1088,7 @@ class Parser:
         set_context_list(targets, "Del")
         fields: ASTNode = {"targets": _wrap_nodes(targets)}
         node = make_node("Delete", tok.lineno, tok.col, fields)
-        if len(targets) > 0:
+        if targets:
             end_from_node(node, targets[len(targets) - 1])
         else:
             end_from_token(node, tok)
@@ -1265,9 +1248,8 @@ class Parser:
             ">>=",
             "<<=",
         ]
-        i = 0
-        while i < len(aug_ops):
-            if self.match_op(aug_ops[i]):
+        for aug_op in aug_ops:
+            if self.match_op(aug_op):
                 op_tok = self.advance()
                 aug_value = self.parse_testlist_star_expr()
                 validate_target(target, "Store", True, False, False)
@@ -1283,7 +1265,6 @@ class Parser:
                     make_node("AugAssign", tok.lineno, tok.col, aug_fields),
                     aug_value,
                 )
-            i += 1
 
         # Check for regular assignment
         if self.match_op("="):
@@ -1298,9 +1279,7 @@ class Parser:
             if get_str(assign_val, "_type") == "Starred":
                 raise self.error("starred expression is not allowed here")
             # Validate starred in targets
-            j = 0
-            while j < len(targets):
-                t = targets[j]
+            for t in targets:
                 tt = get_str(t, "_type")
                 if tt == "Starred":
                     raise self.error(
@@ -1309,15 +1288,12 @@ class Parser:
                 if tt in ("Tuple", "List"):
                     telts = get_nodes(t, "elts")
                     star_count = 0
-                    si = 0
-                    while si < len(telts):
-                        if get_str(telts[si], "_type") == "Starred":
+                    for telt in telts:
+                        if get_str(telt, "_type") == "Starred":
                             star_count += 1
-                        si += 1
                     if star_count > 1:
                         raise self.error("multiple starred expressions in assignment")
-                set_context(targets[j], "Store")
-                j += 1
+                set_context(t, "Store")
             assign_fields: ASTNode = {
                 "targets": _wrap_nodes(targets),
                 "value": _wrap_node(assign_val),
@@ -1437,7 +1413,7 @@ class Parser:
                 "type_params": _wrap_nodes(type_params),
             },
         )
-        if len(body) > 0:
+        if body:
             end_from_node(node, body[len(body) - 1])
         return node
 
@@ -1509,7 +1485,7 @@ class Parser:
                     va_arg = self.parse_arg()
                     vararg = va_arg
                     pname = get_str(va_arg, "arg")
-                    if len(pname) > 0:
+                    if pname:
                         if pname in seen_names:
                             raise self.error("duplicate argument '" + pname + "'")
                         seen_names.add(pname)
@@ -1524,7 +1500,7 @@ class Parser:
                 kw_arg = self.parse_arg()
                 kwarg = kw_arg
                 pname = get_str(kw_arg, "arg")
-                if len(pname) > 0:
+                if pname:
                     if pname in seen_names:
                         raise self.error("duplicate argument '" + pname + "'")
                     seen_names.add(pname)
@@ -1533,7 +1509,7 @@ class Parser:
             # Regular argument
             arg = self.parse_arg()
             pname = get_str(arg, "arg")
-            if len(pname) > 0:
+            if pname:
                 if pname in seen_names:
                     raise self.error("duplicate argument '" + pname + "'")
                 seen_names.add(pname)
@@ -1554,7 +1530,7 @@ class Parser:
                 if default is not None:
                     defaults.append(default)
 
-        if bare_star and len(kwonlyargs) == 0:
+        if bare_star and not kwonlyargs:
             raise self.error("named arguments must follow bare *")
 
         vararg_v: JsonValue = _wrap_node(vararg) if vararg is not None else JNull()
@@ -1602,12 +1578,9 @@ class Parser:
             if not self.match_op(")"):
                 bases, keywords = self.parse_arglist()
             self.expect_op(")")
-            i = 0
-            while i < len(bases):
-                b = bases[i]
+            for b in bases:
                 if get_str(b, "_type") == "GeneratorExp":
                     raise self.error("cannot use generator expression in class bases")
-                i += 1
         self.expect_op(":")
         self.class_depth += 1
         body = self.parse_suite()
@@ -1625,7 +1598,7 @@ class Parser:
                 "type_params": _wrap_nodes(type_params),
             },
         )
-        if len(body) > 0:
+        if body:
             end_from_node(node, body[len(body) - 1])
         return node
 
@@ -1641,7 +1614,7 @@ class Parser:
         if self.match("def"):
             func = self.parse_funcdef()
             func["decorator_list"] = _wrap_nodes(decorators)
-            if len(decorators) > 0:
+            if decorators:
                 d0_lineno = decorators[0].get("lineno")
                 if d0_lineno is not None:
                     func["lineno"] = d0_lineno
@@ -1652,7 +1625,7 @@ class Parser:
         if self.match("async"):
             func = self.parse_async_stmt()
             func["decorator_list"] = _wrap_nodes(decorators)
-            if len(decorators) > 0:
+            if decorators:
                 d0_lineno = decorators[0].get("lineno")
                 if d0_lineno is not None:
                     func["lineno"] = d0_lineno
@@ -1663,7 +1636,7 @@ class Parser:
         if self.match("class"):
             cls = self.parse_classdef()
             cls["decorator_list"] = _wrap_nodes(decorators)
-            if len(decorators) > 0:
+            if decorators:
                 d0_lineno = decorators[0].get("lineno")
                 if d0_lineno is not None:
                     cls["lineno"] = d0_lineno
@@ -1701,8 +1674,8 @@ class Parser:
                 "orelse": _wrap_nodes(orelse),
             },
         )
-        last = orelse if len(orelse) > 0 else body
-        if len(last) > 0:
+        last = orelse if orelse else body
+        if last:
             end_from_node(node, last[len(last) - 1])
         return node
 
@@ -1733,8 +1706,8 @@ class Parser:
                 "orelse": _wrap_nodes(orelse),
             },
         )
-        last = orelse if len(orelse) > 0 else body
-        if len(last) > 0:
+        last = orelse if orelse else body
+        if last:
             end_from_node(node, last[len(last) - 1])
         return node
 
@@ -1764,8 +1737,8 @@ class Parser:
                 "orelse": _wrap_nodes(orelse),
             },
         )
-        last = orelse if len(orelse) > 0 else body
-        if len(last) > 0:
+        last = orelse if orelse else body
+        if last:
             end_from_node(node, last[len(last) - 1])
         return node
 
@@ -1801,8 +1774,8 @@ class Parser:
                 "orelse": _wrap_nodes(orelse),
             },
         )
-        last = orelse if len(orelse) > 0 else body
-        if len(last) > 0:
+        last = orelse if orelse else body
+        if last:
             end_from_node(node, last[len(last) - 1])
         return node
 
@@ -1852,7 +1825,7 @@ class Parser:
                     "body": _wrap_nodes(handler_body),
                 },
             )
-            if len(handler_body) > 0:
+            if handler_body:
                 end_from_node(handler_node, handler_body[len(handler_body) - 1])
             handlers.append(handler_node)
             self.skip_newlines()
@@ -1878,13 +1851,13 @@ class Parser:
             "finalbody": _wrap_nodes(finalbody),
         }
         node = make_node(type_name, tok.lineno, tok.col, fields)
-        if len(finalbody) > 0:
+        if finalbody:
             end_from_node(node, finalbody[len(finalbody) - 1])
-        elif len(orelse) > 0:
+        elif orelse:
             end_from_node(node, orelse[len(orelse) - 1])
-        elif len(handlers) > 0:
+        elif handlers:
             end_from_node(node, handlers[len(handlers) - 1])
-        elif len(body) > 0:
+        elif body:
             end_from_node(node, body[len(body) - 1])
         return node
 
@@ -1903,7 +1876,7 @@ class Parser:
         body = self.parse_suite()
         fields: ASTNode = {"items": _wrap_nodes(items), "body": _wrap_nodes(body)}
         node = make_node("With", tok.lineno, tok.col, fields)
-        if len(body) > 0:
+        if body:
             end_from_node(node, body[len(body) - 1])
         return node
 
@@ -1945,10 +1918,10 @@ class Parser:
             tok.col,
             {"subject": _wrap_node(subject), "cases": _wrap_nodes(cases)},
         )
-        if len(cases) > 0:
+        if cases:
             last_case = cases[len(cases) - 1]
             case_body = get_nodes(last_case, "body")
-            if len(case_body) > 0:
+            if case_body:
                 end_from_node(node, case_body[len(case_body) - 1])
         return node
 
@@ -2316,10 +2289,8 @@ class Parser:
             if self.match(TK_DEDENT) or self.match(TK_ENDMARKER):
                 break
             parsed = self.parse_stmt()
-            i = 0
-            while i < len(parsed):
-                stmts.append(parsed[i])
-                i += 1
+            for p in parsed:
+                stmts.append(p)
         if self.match(TK_DEDENT):
             self.advance()
         return stmts
@@ -2551,7 +2522,7 @@ class Parser:
             ops.append(op)
             comparators.append(self.parse_expr())
 
-        if len(ops) == 0:
+        if not ops:
             return left
         fields: ASTNode = {
             "left": _wrap_node(left),
@@ -2932,7 +2903,7 @@ class Parser:
                     ),
                     self.prev_token(),
                 )
-                if len(args) > 0 or not self.match_op(")"):
+                if args or not self.match_op(")"):
                     raise self.error("generator expression must be parenthesized")
 
             args.append(arg)
@@ -3522,9 +3493,8 @@ class Parser:
         has_fstring = False
         has_bytes = False
         has_str = False
-        i = 0
-        while i < len(strings):
-            val = strings[i].value
+        for s_tok in strings:
+            val = s_tok.value
             quote_pos = 0
             while quote_pos < len(val) and val[quote_pos] not in "\"'":
                 quote_pos += 1
@@ -3536,22 +3506,16 @@ class Parser:
                 has_bytes = True
             else:
                 has_str = True
-            i += 1
         if has_bytes and (has_str or has_fstring):
             raise self.error("cannot mix bytes and nonbytes literals")
 
         if has_fstring:
             # Parse f-string content to extract literal parts and {expr} parts
             values: list[ASTNode] = []
-            j = 0
-            while j < len(strings):
-                s = strings[j]
+            for s in strings:
                 fstring_values = parse_fstring(s.value, s.lineno, s.col)
-                k = 0
-                while k < len(fstring_values):
-                    values.append(fstring_values[k])
-                    k += 1
-                j += 1
+                for fval in fstring_values:
+                    values.append(fval)
             last_str = strings[len(strings) - 1]
             fields: ASTNode = {"values": _wrap_nodes(values)}
             return end_from_token(
@@ -3675,12 +3639,8 @@ def make_node(
     result["end_lineno"] = JInt(lineno)
     result["end_col_offset"] = JInt(col)
     if fields is not None:
-        keys = list(fields.keys())
-        i = 0
-        while i < len(keys):
-            key = keys[i]
+        for key in fields:
             result[key] = fields[key]
-            i += 1
     return result
 
 
@@ -3887,7 +3847,7 @@ def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> st
                     raise ParseError("invalid \\N escape", lineno, col)
                 close_brace = rel + i + 3
                 name = s[i + 3 : close_brace]
-                if len(name) == 0:
+                if not name:
                     raise ParseError("invalid \\N escape: empty name", lineno, col)
                 # Accept the name without resolving — would need unicodedata
                 result.append("\\N{" + name + "}")
@@ -4119,7 +4079,7 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
         if c == "}":
             raise ParseError("f-string: single '}' is not allowed", lineno, col)
         if c == "{":
-            if len(current_str) > 0:
+            if current_str:
                 if is_raw:
                     fields: ASTNode = {"value": JStr(current_str)}
                     values.append(make_node("Constant", lineno, col, fields))
@@ -4137,7 +4097,7 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
                 content, i + 1, lineno, col
             )
             expr_str = expr_str.strip()
-            if len(expr_str) == 0:
+            if not expr_str:
                 raise ParseError("f-string: empty expression not allowed", lineno, col)
             # Check for semicolons in expression
             if ";" in expr_str:
@@ -4153,10 +4113,10 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
             elif conversion == "a":
                 conv_int = ord("a")
             fmt_spec: ASTNode | None = None
-            if len(format_spec_str) > 0:
+            if format_spec_str:
                 # Parse format spec as nested f-string content
                 fmt_values = parse_fstring("f'" + format_spec_str + "'", lineno, col)
-                if len(fmt_values) > 0:
+                if fmt_values:
                     fields = {"values": _wrap_nodes(fmt_values)}
                     fmt_spec = make_node("JoinedStr", lineno, col, fields)
             fmt_spec_v: JsonValue = (
@@ -4173,7 +4133,7 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
             continue
         current_str = current_str + c
         i += 1
-    if len(current_str) > 0:
+    if current_str:
         if is_raw:
             fields = {"value": JStr(current_str)}
             values.append(make_node("Constant", lineno, col, fields))
@@ -4232,17 +4192,15 @@ def _collect_names(node: ASTNode, names: set[str]) -> None:
     ntype = get_str(node, "_type")
     if ntype == "Name":
         nid = get_str(node, "id")
-        if len(nid) > 0:
+        if nid:
             names.add(nid)
     elif ntype in ("Tuple", "List"):
         elts = get_nodes(node, "elts")
-        i = 0
-        while i < len(elts):
-            _collect_names(elts[i], names)
-            i += 1
+        for elt in elts:
+            _collect_names(elt, names)
     elif ntype == "Starred":
         value = get_node(node, "value")
-        if len(value) > 0:
+        if value:
             _collect_names(value, names)
 
 
@@ -4252,20 +4210,14 @@ def _find_named_exprs(node: ASTNode, results: list[ASTNode]) -> None:
         return
     if get_str(node, "_type") == "NamedExpr":
         results.append(node)
-    keys = list(node.keys())
-    ki = 0
-    while ki < len(keys):
-        v = node[keys[ki]]
+    for key in node:
+        v = node[key]
         if isinstance(v, JDict):
             _find_named_exprs(v.entries, results)
         elif isinstance(v, JList):
-            i = 0
-            while i < len(v.items):
-                item = v.items[i]
+            for item in v.items:
                 if isinstance(item, JDict):
                     _find_named_exprs(item.entries, results)
-                i += 1
-        ki += 1
 
 
 def _check_comp_walrus(
@@ -4275,30 +4227,18 @@ def _check_comp_walrus(
 ) -> None:
     """Validate walrus operators in comprehension elements and conditions."""
     target_names: set[str] = set()
-    i = 0
-    while i < len(generators):
-        gen = generators[i]
+    for gen in generators:
         target = get_node(gen, "target")
-        if len(target) > 0:
+        if target:
             _collect_names(target, target_names)
-        i += 1
     named_exprs: list[ASTNode] = []
-    i = 0
-    while i < len(elts):
-        _find_named_exprs(elts[i], named_exprs)
-        i += 1
-    i = 0
-    while i < len(generators):
-        gen = generators[i]
+    for elt in elts:
+        _find_named_exprs(elt, named_exprs)
+    for gen in generators:
         gen_ifs = get_nodes(gen, "ifs")
-        j = 0
-        while j < len(gen_ifs):
-            _find_named_exprs(gen_ifs[j], named_exprs)
-            j += 1
-        i += 1
-    i = 0
-    while i < len(named_exprs):
-        ne = named_exprs[i]
+        for gen_if in gen_ifs:
+            _find_named_exprs(gen_if, named_exprs)
+    for ne in named_exprs:
         if in_class_comp:
             lineno = get_int(ne, "lineno")
             col = get_int(ne, "col_offset")
@@ -4308,9 +4248,9 @@ def _check_comp_walrus(
                 col,
             )
         target = get_node(ne, "target")
-        if len(target) > 0 and get_str(target, "_type") == "Name":
+        if target and get_str(target, "_type") == "Name":
             name = get_str(target, "id")
-            if len(name) > 0 and name in target_names:
+            if name and name in target_names:
                 lineno = get_int(ne, "lineno")
                 col = get_int(ne, "col_offset")
                 raise ParseError(
@@ -4320,14 +4260,11 @@ def _check_comp_walrus(
                     lineno,
                     col,
                 )
-        i += 1
 
 
 def _check_async_generator_return(body: list[ASTNode], func_tok: Token) -> None:
     """Check that an async generator doesn't have 'return value'."""
-    i = 0
-    while i < len(body):
-        stmt = body[i]
+    for stmt in body:
         stype = get_str(stmt, "_type")
         if stype == "Return":
             ret_val = stmt.get("value")
@@ -4351,14 +4288,10 @@ def _check_async_generator_return(body: list[ASTNode], func_tok: Token) -> None:
             _check_async_generator_return(get_nodes(stmt, "orelse"), func_tok)
             _check_async_generator_return(get_nodes(stmt, "finalbody"), func_tok)
             handlers = get_nodes(stmt, "handlers")
-            j = 0
-            while j < len(handlers):
-                h = handlers[j]
+            for h in handlers:
                 _check_async_generator_return(get_nodes(h, "body"), func_tok)
-                j += 1
         elif stype in ("With", "AsyncWith"):
             _check_async_generator_return(get_nodes(stmt, "body"), func_tok)
-        i += 1
 
 
 INVALID_TARGET_TYPES: set[str] = {
@@ -4408,7 +4341,7 @@ def validate_target(
     if not isinstance(node, dict):
         return
     node_type = get_str(node, "_type")
-    if len(node_type) == 0:
+    if not node_type:
         return
     if _is_debug_name(node):
         raise _node_error(node, "cannot assign to __debug__")
@@ -4443,13 +4376,11 @@ def validate_target(
             raise _node_error(node, "cannot use starred expression in del")
     if node_type in ("Tuple", "List"):
         elts = get_nodes(node, "elts")
-        i = 0
-        while i < len(elts):
-            validate_target(elts[i], ctx, False, False, False)
-            i += 1
+        for elt in elts:
+            validate_target(elt, ctx, False, False, False)
     elif node_type == "Starred":
         value = get_node(node, "value")
-        if len(value) > 0:
+        if value:
             validate_target(value, ctx, False, False, False)
 
 
@@ -4463,28 +4394,22 @@ def set_context(node: ASTNode, ctx_name: str) -> None:
     node_type = get_str(node, "_type")
     if node_type == "Tuple":
         elts = get_nodes(node, "elts")
-        i = 0
-        while i < len(elts):
-            set_context(elts[i], ctx_name)
-            i += 1
+        for elt in elts:
+            set_context(elt, ctx_name)
     elif node_type == "List":
         elts = get_nodes(node, "elts")
-        i = 0
-        while i < len(elts):
-            set_context(elts[i], ctx_name)
-            i += 1
+        for elt in elts:
+            set_context(elt, ctx_name)
     elif node_type == "Starred":
         value = get_node(node, "value")
-        if len(value) > 0:
+        if value:
             set_context(value, ctx_name)
 
 
 def set_context_list(nodes: list[ASTNode], ctx_name: str) -> None:
     """Set context on a list of nodes."""
-    i = 0
-    while i < len(nodes):
-        set_context(nodes[i], ctx_name)
-        i += 1
+    for node in nodes:
+        set_context(node, ctx_name)
 
 
 def parse(source: str) -> ASTNode:
@@ -4514,20 +4439,13 @@ def _stamp_uids_walk(node: ASTNode, counter: list[int]) -> None:
     if "_type" in node:
         node["_uid"] = JInt(counter[0])
         counter[0] += 1
-    keys = list(node.keys())
-    i = 0
-    while i < len(keys):
-        k = keys[i]
-        i += 1
-        if len(k) > 0 and k[0] == "_":
+    for k in node:
+        if len(k) > 0 and k[0:1] == "_":
             continue
         v = node[k]
         if isinstance(v, JDict):
             _stamp_uids_walk(v.entries, counter)
         elif isinstance(v, JList):
-            j = 0
-            while j < len(v.items):
-                item = v.items[j]
+            for item in v.items:
                 if isinstance(item, JDict):
                     _stamp_uids_walk(item.entries, counter)
-                j += 1

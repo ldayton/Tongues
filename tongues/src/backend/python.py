@@ -428,10 +428,10 @@ class _PythonEmitter(Emitter):
             params.append(_safe_name(fld.name) + ": " + self._type(fld.typ))
         self._line("def __init__(" + ", ".join(params) + ") -> None:")
         self.indent += 1
-        if len(decl.fields) > 0:
+        if decl.fields:
             msg_field: TFieldDecl | None = None
             for fld in decl.fields:
-                if fld.name == "message" or fld.name == "msg":
+                if fld.name in ("message", "msg"):
                     msg_field = fld
                     break
             if msg_field is not None:
@@ -459,12 +459,12 @@ class _PythonEmitter(Emitter):
         else:
             self._line("class " + decl.name + ":")
         self.indent += 1
-        if len(decl.fields) == 0 and len(decl.methods) == 0:
+        if not decl.fields and not decl.methods:
             self._line("pass")
         for fld in decl.fields:
             self._emit_field(fld)
         for i, method in enumerate(decl.methods):
-            if i > 0 or len(decl.fields) > 0:
+            if i > 0 or decl.fields:
                 self._line()
             self._emit_method(method)
         self.indent -= 1
@@ -491,13 +491,13 @@ class _PythonEmitter(Emitter):
 
     def _zero_value(self, typ: TType) -> str:
         if isinstance(typ, TPrimitive):
-            if typ.kind == "int" or typ.kind == "byte":
+            if typ.kind in ("int", "byte"):
                 return "0"
             if typ.kind == "float":
                 return "0.0"
             if typ.kind == "bool":
                 return "False"
-            if typ.kind == "string" or typ.kind == "rune":
+            if typ.kind in ("string", "rune"):
                 return '""'
             if typ.kind == "bytes":
                 return 'b""'
@@ -531,9 +531,9 @@ class _PythonEmitter(Emitter):
         self._line("def " + decl.name + "(" + params + ") -> " + ret + ":")
         self.indent += 1
         old_self = self.self_name
-        if len(decl.params) > 0 and decl.params[0].typ is None:
+        if decl.params and decl.params[0].typ is None:
             self.self_name = decl.params[0].name
-        if len(decl.body) == 0:
+        if not decl.body:
             self._line("pass")
         self._emit_stmts(decl.body)
         self.self_name = old_self
@@ -728,9 +728,9 @@ class _PythonEmitter(Emitter):
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
         unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
-        if unused_str != "":
+        if unused_str:
             for s in unused_str.split(","):
-                if s != "":
+                if s:
                     unused_indices.add(int(s))
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
@@ -809,7 +809,7 @@ class _PythonEmitter(Emitter):
         if isinstance(elif_stmt, TIfStmt):
             self._line("elif " + self._expr(elif_stmt.cond) + ":")
             self.indent += 1
-            if len(elif_stmt.then_body) == 0:
+            if not elif_stmt.then_body:
                 self._line("pass")
             self._emit_stmts(elif_stmt.then_body)
             self.indent -= 1
@@ -887,7 +887,7 @@ class _PythonEmitter(Emitter):
 
     def _is_map_type(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
+        if ann:
             return ann.startswith("map[")
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
@@ -1096,11 +1096,7 @@ class _PythonEmitter(Emitter):
 
     def _int_lit(self, expr: TIntLit) -> str:
         raw = expr.raw
-        if raw.startswith("0x") or raw.startswith("0X"):
-            return raw
-        if raw.startswith("0o") or raw.startswith("0O"):
-            return raw
-        if raw.startswith("0b") or raw.startswith("0B"):
+        if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             return raw
         return str(expr.value)
 
@@ -1517,11 +1513,11 @@ class _PythonEmitter(Emitter):
         if name == "Reverse":
             return self._a(args, 0) + "[::-1]"
         if name == "Map":
-            if len(args) == 0:
+            if not args:
                 return "{}"
             return "list(map(" + self._a(args, 0) + ", " + self._a(args, 1) + "))"
         if name == "Set":
-            if len(args) == 0:
+            if not args:
                 return "set()"
             return "set(" + self._a(args, 0) + ")"
         if name == "SetFromList":
@@ -1629,7 +1625,7 @@ class _PythonEmitter(Emitter):
             else:
                 type_name = self._expr(type_arg)
             return "isinstance(" + self._a(args, 0) + ", " + type_name + ")"
-        if name == "Bytes" or name == "BytesFrom":
+        if name in ("Bytes", "BytesFrom"):
             return "bytes(" + self._a(args, 0) + ")"
         # Fallback
         arg_strs = self._join_args(args, ", ")

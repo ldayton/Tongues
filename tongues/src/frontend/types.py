@@ -270,12 +270,9 @@ def get_nodes(node: dict[str, JsonValue], key: str) -> list[dict[str, JsonValue]
     v = node.get(key)
     if isinstance(v, JList):
         result: list[dict[str, JsonValue]] = []
-        i = 0
-        while i < len(v.items):
-            item = v.items[i]
+        for item in v.items:
             if isinstance(item, JDict):
                 result.append(item.entries)
-            i += 1
         return result
     return []
 
@@ -350,29 +347,23 @@ def contains_any(t: TypeNode) -> bool:
     if isinstance(t, SetType):
         return contains_any(t.element)
     if isinstance(t, TupleType):
-        i = 0
-        while i < len(t.elements):
-            if contains_any(t.elements[i]):
+        for elem in t.elements:
+            if contains_any(elem):
                 return True
-            i += 1
         return False
     if isinstance(t, OptionalType):
         return contains_any(t.inner)
     if isinstance(t, PointerType):
         return contains_any(t.target)
     if isinstance(t, FuncType):
-        i = 0
-        while i < len(t.params):
-            if contains_any(t.params[i]):
+        for param in t.params:
+            if contains_any(param):
                 return True
-            i += 1
         return contains_any(t.ret)
     if isinstance(t, UnionType):
-        i = 0
-        while i < len(t.variants):
-            if contains_any(t.variants[i]):
+        for variant in t.variants:
+            if contains_any(variant):
                 return True
-            i += 1
         return False
     if isinstance(t, LiteralType):
         return False
@@ -396,12 +387,10 @@ def type_name(t: TypeNode) -> str:
     if isinstance(t, SetType):
         return "set[" + type_name(t.element) + "]"
     if isinstance(t, TupleType):
-        if len(t.elements) > 0:
+        if t.elements:
             parts: list[str] = []
-            i = 0
-            while i < len(t.elements):
-                parts.append(type_name(t.elements[i]))
-                i += 1
+            for elem in t.elements:
+                parts.append(type_name(elem))
             if t.variadic:
                 return "tuple[" + ", ".join(parts) + ", ...]"
             return "tuple[" + ", ".join(parts) + "]"
@@ -420,10 +409,8 @@ def type_name(t: TypeNode) -> str:
         return "Callable"
     if isinstance(t, UnionType):
         parts: list[str] = []
-        i = 0
-        while i < len(t.variants):
-            parts.append(type_name(t.variants[i]))
-            i += 1
+        for variant in t.variants:
+            parts.append(type_name(variant))
         return " | ".join(parts)
     if isinstance(t, IteratorType):
         return "Iterator[" + type_name(t.element) + "]"
@@ -465,11 +452,9 @@ def type_eq(a: TypeNode, b: TypeNode) -> bool:
             return False
         if len(a.elements) != len(b.elements):
             return False
-        j = 0
-        while j < len(a.elements):
-            if not type_eq(a.elements[j], b.elements[j]):
+        for j, elem_a in enumerate(a.elements):
+            if not type_eq(elem_a, b.elements[j]):
                 return False
-            j += 1
         return True
     if isinstance(a, PointerType) and isinstance(b, PointerType):
         return type_eq(a.target, b.target)
@@ -480,26 +465,20 @@ def type_eq(a: TypeNode, b: TypeNode) -> bool:
     if isinstance(a, FuncType) and isinstance(b, FuncType):
         if len(a.params) != len(b.params):
             return False
-        j = 0
-        while j < len(a.params):
-            if not type_eq(a.params[j], b.params[j]):
+        for j, param_a in enumerate(a.params):
+            if not type_eq(param_a, b.params[j]):
                 return False
-            j += 1
         return type_eq(a.ret, b.ret)
     if isinstance(a, UnionType) and isinstance(b, UnionType):
         if len(a.variants) != len(b.variants):
             return False
-        i = 0
-        while i < len(a.variants):
+        for var_a in a.variants:
             found = False
-            j = 0
-            while j < len(b.variants):
-                if type_eq(a.variants[i], b.variants[j]):
+            for var_b in b.variants:
+                if type_eq(var_a, var_b):
                     found = True
-                j += 1
             if not found:
                 return False
-            i += 1
         return True
     if isinstance(a, LiteralType) and isinstance(b, LiteralType):
         return a.lit_value == b.lit_value and a.base.kind == b.base.kind
@@ -510,55 +489,38 @@ def combine_types(types: list[TypeNode]) -> TypeNode:
     """Flatten, deduplicate, and normalize a list of types into a single type."""
     # Flatten nested unions
     flat: list[TypeNode] = []
-    i = 0
-    while i < len(types):
-        t = types[i]
+    for t in types:
         if isinstance(t, UnionType):
-            j = 0
-            while j < len(t.variants):
-                flat.append(t.variants[j])
-                j += 1
+            for variant in t.variants:
+                flat.append(variant)
         else:
             flat.append(t)
-        i += 1
     # Filter out never
     filtered: list[TypeNode] = []
-    i = 0
-    while i < len(flat):
-        f = flat[i]
+    for f in flat:
         if isinstance(f, PrimitiveType) and f.kind == "never":
             pass
         else:
             filtered.append(f)
-        i += 1
     flat = filtered
     # Deduplicate via type_eq
     deduped: list[TypeNode] = []
-    i = 0
-    while i < len(flat):
+    for f in flat:
         is_dup = False
-        j = 0
-        while j < len(deduped):
-            if type_eq(flat[i], deduped[j]):
+        for d in deduped:
+            if type_eq(f, d):
                 is_dup = True
-            j += 1
         if not is_dup:
-            deduped.append(flat[i])
-        i += 1
+            deduped.append(f)
     # Literal absorption: base type absorbs its literals
     base_kinds: set[str] = set()
-    i = 0
-    while i < len(deduped):
-        di = deduped[i]
+    for di in deduped:
         if isinstance(di, PrimitiveType):
             base_kinds.add(di.kind)
-        i += 1
     absorbed: list[TypeNode] = []
     has_lit_true = False
     has_lit_false = False
-    i = 0
-    while i < len(deduped):
-        d = deduped[i]
+    for d in deduped:
         if isinstance(d, LiteralType):
             if d.base.kind not in base_kinds:
                 if d.base.kind == "bool" and d.lit_value == "true":
@@ -568,37 +530,30 @@ def combine_types(types: list[TypeNode]) -> TypeNode:
                 absorbed.append(d)
         else:
             absorbed.append(d)
-        i += 1
     if has_lit_true and has_lit_false:
         merged: list[TypeNode] = []
-        i = 0
-        while i < len(absorbed):
-            d2 = absorbed[i]
+        for d2 in absorbed:
             if isinstance(d2, LiteralType) and d2.base.kind == "bool":
                 pass
             else:
                 merged.append(d2)
-            i += 1
         merged.append(PrimitiveType("bool"))
         absorbed = merged
     deduped = absorbed
-    if len(deduped) == 0:
+    if not deduped:
         return PrimitiveType("void")
     if len(deduped) == 1:
         return deduped[0]
     # Check for None/void among variants
     has_none = False
     others: list[TypeNode] = []
-    i = 0
-    while i < len(deduped):
-        d = deduped[i]
+    for d in deduped:
         if isinstance(d, PrimitiveType) and d.kind == "void":
             has_none = True
         else:
             others.append(d)
-        i += 1
     if has_none:
-        if len(others) == 0:
+        if not others:
             return PrimitiveType("void")
         if len(others) == 1:
             return OptionalType(others[0])
@@ -624,7 +579,7 @@ def _removal_matches(variant: TypeNode, target: TypeNode) -> bool:
         if is_any(target.element):
             return True
     if isinstance(variant, TupleType) and isinstance(target, TupleType):
-        if len(target.elements) > 0 and is_any(target.elements[0]):
+        if target.elements and is_any(target.elements[0]):
             return True
     return False
 
@@ -633,46 +588,36 @@ def remove_from_union(t: TypeNode, to_remove: list[TypeNode]) -> TypeNode:
     """Remove variants matching any type in to_remove."""
     if isinstance(t, UnionType):
         remaining: list[TypeNode] = []
-        i = 0
-        while i < len(t.variants):
+        for variant in t.variants:
             matched = False
-            j = 0
-            while j < len(to_remove):
-                if _removal_matches(t.variants[i], to_remove[j]):
+            for rm in to_remove:
+                if _removal_matches(variant, rm):
                     matched = True
-                j += 1
             if not matched:
-                remaining.append(t.variants[i])
-            i += 1
-        if len(remaining) == 0:
+                remaining.append(variant)
+        if not remaining:
             return PrimitiveType("never")
         if len(remaining) == 1:
             return remaining[0]
         return UnionType(remaining)
     if isinstance(t, OptionalType) and isinstance(t.inner, UnionType):
         remaining2: list[TypeNode] = []
-        i = 0
-        while i < len(t.inner.variants):
+        for variant in t.inner.variants:
             matched = False
-            j = 0
-            while j < len(to_remove):
-                if _removal_matches(t.inner.variants[i], to_remove[j]):
+            for rm in to_remove:
+                if _removal_matches(variant, rm):
                     matched = True
-                j += 1
             if not matched:
-                remaining2.append(t.inner.variants[i])
-            i += 1
-        if len(remaining2) == 0:
+                remaining2.append(variant)
+        if not remaining2:
             return PrimitiveType("void")
         if len(remaining2) == 1:
             return OptionalType(remaining2[0])
         return OptionalType(UnionType(remaining2))
     if isinstance(t, OptionalType):
-        j = 0
-        while j < len(to_remove):
-            if _removal_matches(t.inner, to_remove[j]):
+        for rm in to_remove:
+            if _removal_matches(t.inner, rm):
                 return PrimitiveType("void")
-            j += 1
     return t
 
 
@@ -694,15 +639,13 @@ def union_variant_names(t: TypeNode) -> list[str]:
     if isinstance(t, OptionalType):
         inner = t.inner
     if isinstance(inner, UnionType):
-        i = 0
-        while i < len(inner.variants):
-            vn = _variant_name(inner.variants[i])
-            if vn != "":
+        for variant in inner.variants:
+            vn = _variant_name(variant)
+            if vn:
                 result.append(vn)
-            i += 1
     else:
         vn = _variant_name(inner)
-        if vn != "":
+        if vn:
             result.append(vn)
     return result
 
@@ -725,10 +668,8 @@ def typenode_to_dict(t: TypeNode) -> JsonValue:
         return JDict({"_type": JStr("Set"), "element": typenode_to_dict(t.element)})
     if isinstance(t, TupleType):
         elems: list[JsonValue] = []
-        i = 0
-        while i < len(t.elements):
-            elems.append(typenode_to_dict(t.elements[i]))
-            i += 1
+        for elem in t.elements:
+            elems.append(typenode_to_dict(elem))
         return JDict(
             {
                 "_type": JStr("Tuple"),
@@ -746,10 +687,8 @@ def typenode_to_dict(t: TypeNode) -> JsonValue:
         return JDict({"_type": JStr("InterfaceRef"), "name": JStr(t.name)})
     if isinstance(t, FuncType):
         params: list[JsonValue] = []
-        i = 0
-        while i < len(t.params):
-            params.append(typenode_to_dict(t.params[i]))
-            i += 1
+        for param in t.params:
+            params.append(typenode_to_dict(param))
         return JDict(
             {
                 "_type": JStr("FuncType"),
@@ -767,10 +706,8 @@ def typenode_to_dict(t: TypeNode) -> JsonValue:
         )
     if isinstance(t, UnionType):
         variants: list[JsonValue] = []
-        i = 0
-        while i < len(t.variants):
-            variants.append(typenode_to_dict(t.variants[i]))
-            i += 1
+        for variant in t.variants:
+            variants.append(typenode_to_dict(variant))
         return JDict({"_type": JStr("Union"), "members": JList(variants)})
     if isinstance(t, NilLit):
         return JDict({"_type": JStr("NilLit")})

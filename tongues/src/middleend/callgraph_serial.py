@@ -178,7 +178,7 @@ def _sc_serialize_fn(decl: TFnDecl, checker: Checker) -> dict[str, JsonValue]:
             d[k[plen:]] = JStr(str(decl.annotations[k]))
     calls: dict[str, dict[str, JsonValue]] = {}
     _sc_collect_calls_stmts(decl.body, calls, checker)
-    if len(calls) > 0:
+    if calls:
         call_entries: dict[str, JsonValue] = {}
         for ck in calls:
             call_entries[ck] = JDict(calls[ck])
