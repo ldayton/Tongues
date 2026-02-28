@@ -812,7 +812,9 @@ def _resolve_attr(
             return FuncType([INT_TYPE], STR_TYPE)
         return ANY_TYPE
     # Bytes methods
-    if isinstance(obj_type, SliceType) and _prim_kind(obj_type.element) == "byte":
+    if _prim_kind(obj_type) == "bytes" or (
+        isinstance(obj_type, SliceType) and _prim_kind(obj_type.element) == "byte"
+    ):
         if attr == "decode":
             return FuncType([], STR_TYPE)
         if attr == "find" or attr == "rfind" or attr == "index" or attr == "count":
@@ -1317,6 +1319,8 @@ def _element_type(t: TypeNode) -> TypeNode:
             return t.elements[0]
     if _prim_kind(t) == "string":
         return STR_TYPE
+    if _prim_kind(t) == "bytes":
+        return PrimitiveType("byte")
     return ANY_TYPE
 
 
@@ -1353,6 +1357,11 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     # String indexing
     if _prim_kind(obj_type) == "string":
         return STR_TYPE
+    # Bytes indexing
+    if _prim_kind(obj_type) == "bytes":
+        if len(slc) > 0 and _is_type(slc, ["Slice"]):
+            return obj_type
+        return PrimitiveType("byte")
     # List indexing
     if isinstance(obj_type, SliceType):
         if len(slc) > 0 and _is_type(slc, ["Slice"]):
@@ -1683,6 +1692,8 @@ def _iteration_element(t: TypeNode) -> TypeNode:
             return t.elements[0]
     if isinstance(t, PrimitiveType) and t.kind == "string":
         return STR_TYPE
+    if isinstance(t, PrimitiveType) and t.kind == "bytes":
+        return PrimitiveType("byte")
     return ANY_TYPE
 
 
