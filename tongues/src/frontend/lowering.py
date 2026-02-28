@@ -6414,9 +6414,7 @@ def lower(
     while ai < len(akeys):
         _LOWER_ANCESTORS[akeys[ai]] = hier_result.ancestors[akeys[ai]]
         ai += 1
-    ctx = _LowerCtx(
-        tc_result, hier_result, known_classes, class_bases, pycheck_result
-    )
+    ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases, pycheck_result)
     module = _build_module(tree, ctx)
     print_fallback_stats()
     while len(_LOWER_ANCESTORS) > 0:
