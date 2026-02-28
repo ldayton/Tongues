@@ -1434,7 +1434,11 @@ def _pipeline_post_parse(
         while _ai < len(_ak):
             _bare = _ak[_ai]
             _prefixed = _bare_to_prefixed[_bare]
-            if _prefixed != "" and _prefixed in known_classes and _bare not in known_classes:
+            if (
+                _prefixed != ""
+                and _prefixed in known_classes
+                and _bare not in known_classes
+            ):
                 known_classes[_bare] = _prefixed
             _ai += 1
     node_classes = bind_result.node_classes
@@ -1954,7 +1958,13 @@ def main_project(
         k += 1
     combined_source = "\n".join(all_source_parts)
     exit_code, output = _pipeline_post_parse(
-        merged_ast, combined_source, target, stop_at, strict_math, strict_tostring, file_renames
+        merged_ast,
+        combined_source,
+        target,
+        stop_at,
+        strict_math,
+        strict_tostring,
+        file_renames,
     )
     if exit_code != 0:
         return exit_code
