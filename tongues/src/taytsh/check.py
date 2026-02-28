@@ -651,23 +651,6 @@ def _collect_nil_checks(
     return result
 
 
-def _istype_var_from_call(call: TCall) -> tuple[str, str] | None:
-    """Extract (var_path, type_name) from IsType(x, "T")."""
-    if not (isinstance(call.func, TVar) and call.func.name == "IsType"):
-        return None
-    if len(call.args) < 2:
-        return None
-    first = call.args[0].value
-    second = call.args[1].value
-    if not isinstance(second, TStringLit):
-        return None
-    type_name = second.value
-    path = _field_access_path(first)
-    if path is not None:
-        return (path, type_name)
-    return None
-
-
 def _istype_var_from_call_pos(
     call: TCall, positive: bool
 ) -> tuple[str, str, bool] | None:
@@ -3476,11 +3459,6 @@ class Checker:
         local_names = set(param_names)
         for s in stmts:
             self._scan_stmt_for_captures(s, local_names, pos)
-
-    def check_closure_captures_expr(
-        self, expr: TExpr, param_names: set[str], pos: Pos
-    ) -> None:
-        self._scan_expr_for_captures(expr, param_names, pos)
 
     def _scan_expr_for_captures(
         self, expr: TExpr, param_names: set[str], pos: Pos

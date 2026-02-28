@@ -206,7 +206,6 @@ class VStruct(Val):
 @dataclass
 class VFunc(Val):
     code_index: int
-    captures: list[Val]
     type_sig: str = ""
 
 

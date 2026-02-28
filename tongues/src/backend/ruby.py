@@ -380,20 +380,6 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
 # ============================================================
 
 
-def _scan_needs(module: TModule) -> tuple[bool, bool]:
-    """Return (needs_set, needs_range_helper)."""
-    needs_set = False
-    needs_range = False
-    for decl in module.decls:
-        if isinstance(decl, (TFnDecl, TStructDecl)):
-            has_set, has_range = _scan_decl_needs(decl)
-            if has_set:
-                needs_set = True
-            if has_range:
-                needs_range = True
-    return needs_set, needs_range
-
-
 def _scan_decl_needs(decl: TDecl) -> tuple[bool, bool]:
     needs_set = False
     needs_range = False

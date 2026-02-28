@@ -387,7 +387,6 @@ def _walk_assign_target_uses(target: TExpr, ctx: _ScopeCtx) -> None:
 
 def _walk_if_stmt(stmt: TIfStmt, ctx: _ScopeCtx) -> None:
     """Handle if-stmt with potential nil narrowing."""
-    narrowed_name: str | None = None
     then_narrowings: dict[str, Type] = {}
     else_narrowings: dict[str, Type] = {}
 
@@ -415,7 +414,6 @@ def _walk_if_stmt(stmt: TIfStmt, ctx: _ScopeCtx) -> None:
             if name in ctx.bindings:
                 declared = ctx.bindings[name].declared_type
                 if contains_nil(declared):
-                    narrowed_name = name
                     non_nil = remove_nil(declared)
                     if is_neq:
                         then_narrowings[name] = non_nil

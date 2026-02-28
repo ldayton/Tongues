@@ -1139,9 +1139,6 @@ class Compiler:
             fc.emit(OP_IS_TYPE, idx, line)
             match_jump = fc.emit_jump(OP_JUMP_IF_TRUE, line)
             # Not matched — continue to next type (value still on stack)
-            no_match = fc.current_offset()
-            # Patch match_jump: on match, pop value and push true
-            match_target = fc.current_offset()
             # Actually JUMP_IF_TRUE already popped the bool.
             # On false path: stack is [value], continue.
             # On true path: we jumped to match_target with stack [value].
@@ -1605,7 +1602,7 @@ class Compiler:
             lit_fc.emit(OP_RETURN_VOID, 0, expr.pos.line)
         code_idx = len(self.code_objects)
         self.code_objects.append(lit_fc.to_code_object(len(expr.params)))
-        fc.emit_const(VFunc(code_idx, []), expr.pos.line)
+        fc.emit_const(VFunc(code_idx), expr.pos.line)
 
     def _field_const(self, name: str, fc: _FnCompiler, line: int) -> int:
         """Add a field name to the constant pool and return its index."""

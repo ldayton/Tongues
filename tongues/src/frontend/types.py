@@ -250,13 +250,6 @@ def get_int(node: dict[str, JsonValue], key: str) -> int:
     return 0
 
 
-def get_float(node: dict[str, JsonValue], key: str) -> float:
-    v = node.get(key)
-    if isinstance(v, JFloat):
-        return v.value
-    return 0.0
-
-
 def get_bool(node: dict[str, JsonValue], key: str) -> bool:
     v = node.get(key)
     if isinstance(v, JBool):
@@ -384,11 +377,6 @@ def contains_any(t: TypeNode) -> bool:
     if isinstance(t, LiteralType):
         return False
     return False
-
-
-def is_void(t: TypeNode) -> bool:
-    """Check if a type is void."""
-    return isinstance(t, PrimitiveType) and t.kind == "void"
 
 
 def type_name(t: TypeNode) -> str:
@@ -812,6 +800,4 @@ FLOAT_TYPE: TypeNode = PrimitiveType("float")
 BOOL_TYPE: TypeNode = PrimitiveType("bool")
 STR_TYPE: TypeNode = PrimitiveType("string")
 VOID_TYPE: TypeNode = PrimitiveType("void")
-BYTE_TYPE: TypeNode = PrimitiveType("byte")
 BYTES_TYPE: TypeNode = SliceType(PrimitiveType("byte"))
-NEVER_TYPE: TypeNode = PrimitiveType("never")

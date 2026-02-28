@@ -44,7 +44,6 @@ from src.taytsh.check import (
     RUNE_T,
     STRING_T,
     EnumT,
-    InterfaceT,
     ListT,
     MapT,
     SetT,
