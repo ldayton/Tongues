@@ -930,7 +930,9 @@ def _resolve_attr(
     return ANY_TYPE
 
 
-def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
+def _resolve_struct_attr(
+    sname: str, attr: str, ctx: _InferCtx, _depth: int = 0
+) -> TypeNode:
     """Resolve attribute on a struct type."""
     cls = ctx.tc_result.classes.get(sname)
     if cls is not None:
@@ -979,6 +981,28 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
                     k += 1
                 return FuncType(params_a, method.return_type)
         current = anc
+    if _depth < 3:
+        all_classes = list(ctx.class_bases.keys())
+        resolved: TypeNode = ANY_TYPE
+        found = 0
+        i = 0
+        while i < len(all_classes):
+            child = all_classes[i]
+            child_bases = ctx.class_bases.get(child, [])
+            j = 0
+            while j < len(child_bases):
+                if child_bases[j] == sname:
+                    found += 1
+                    sub_type = _resolve_struct_attr(child, attr, ctx, _depth + 1)
+                    if sub_type != ANY_TYPE:
+                        if resolved == ANY_TYPE:
+                            resolved = sub_type
+                        elif resolved != sub_type:
+                            return ANY_TYPE
+                j += 1
+            i += 1
+        if found >= 2 and resolved != ANY_TYPE:
+            return resolved
     return ANY_TYPE
 
 
