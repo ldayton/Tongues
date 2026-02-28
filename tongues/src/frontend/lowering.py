@@ -212,11 +212,14 @@ def _record_fallback(reason: str, node: ASTNode | None = None) -> None:
         detail[key] = detail.get(key, 0) + 1
     if _FALLBACK_LOCATIONS and node is not None and reason == "is_any":
         ntype = get_str(node, "_type")
+        line = get_int(node, "lineno")
+        sf = get_str(node, "_source_file")
         if ntype == "Attribute":
             attr = get_str(node, "attr")
-            line = get_int(node, "lineno")
-            sf = get_str(node, "_source_file")
             print(f"  is_any .{attr} at {sf}:{line}", file=sys.stderr)
+        elif ntype == "Name":
+            name = get_str(node, "id")
+            print(f"  is_any {name} at {sf}:{line}", file=sys.stderr)
 
 
 def print_fallback_stats() -> None:

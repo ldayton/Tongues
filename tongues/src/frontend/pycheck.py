@@ -1066,6 +1066,12 @@ def _synth_name_call(
         return STR_TYPE
     if fname == "repr":
         return STR_TYPE
+    if fname == "hex":
+        return STR_TYPE
+    if fname == "oct":
+        return STR_TYPE
+    if fname == "bin":
+        return STR_TYPE
     if fname == "round":
         if len(args) >= 2:
             return FLOAT_TYPE

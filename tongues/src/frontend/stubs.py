@@ -31,6 +31,7 @@ def lookup_module_type(name: str) -> TypeNode | None:
     """Look up a module type by name."""
     return MODULE_TYPES.get(name)
 
+
 # Module-level attributes: MODULE_ATTRS[module][attr] -> TypeNode
 MODULE_ATTRS: dict[str, dict[str, TypeNode]] = {
     "sys": {
