@@ -1318,11 +1318,11 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         _lower = get_node(slc, "lower")
         _upper = get_node(slc, "upper")
         _step = get_node(slc, "step")
-        if len(_lower) > 0:
+        if _lower:
             _synth_expr(_lower, env, ctx)
-        if len(_upper) > 0:
+        if _upper:
             _synth_expr(_upper, env, ctx)
-        if len(_step) > 0:
+        if _step:
             _synth_expr(_step, env, ctx)
     # String indexing
     if _prim_kind(obj_type) == "string":
@@ -2009,7 +2009,7 @@ def _validate_stmt(
     if t == "Assert":
         _validate_assert(stmt, env, func_info, ctx)
         test = get_node(stmt, "test")
-        if len(test) > 0 and _is_type(test, ["Constant"]):
+        if test and _is_type(test, ["Constant"]):
             val = test.get("value")
             if isinstance(val, JBool) and not val.value:
                 return True
@@ -3209,7 +3209,7 @@ def _narrow_isinstance(
         name = _attr_path(target)
     elif _is_type(target, ["NamedExpr"]):
         walrus_target = get_node(target, "target")
-        if len(walrus_target) > 0 and _is_type(walrus_target, ["Name"]):
+        if walrus_target and _is_type(walrus_target, ["Name"]):
             name = get_str(walrus_target, "id")
             walrus_value = get_node(target, "value")
             if name and walrus_value:
@@ -3328,7 +3328,7 @@ def _narrow_compare(
     if _is_type(left, ["NamedExpr"]):
         ne_target = get_node(left, "target")
         ne_value = get_node(left, "value")
-        if len(ne_target) > 0 and _is_type(ne_target, ["Name"]):
+        if ne_target and _is_type(ne_target, ["Name"]):
             ne_name = get_str(ne_target, "id")
             if ne_name and ne_value:
                 vt = _synth_expr(ne_value, then_env, ctx)
@@ -3691,11 +3691,11 @@ def _check_generator_escape_return(
     if _is_type(value, ["Call"]):
         call_func = get_node(value, "func")
         call_args = get_nodes(value, "args")
-        if len(call_func) > 0 and _is_type(call_func, ["Name"]):
+        if call_func and _is_type(call_func, ["Name"]):
             wrapper_name = get_str(call_func, "id")
             if wrapper_name in _EAGER_CONSUMERS:
                 return False
-        if len(call_func) > 0 and _is_type(call_func, ["Attribute"]):
+        if call_func and _is_type(call_func, ["Attribute"]):
             attr_name = get_str(call_func, "attr")
             if attr_name == "join":
                 return False
@@ -3703,7 +3703,7 @@ def _check_generator_escape_return(
         while j < len(call_args):
             call_arg = call_args[j]
             if _is_generator_expr(call_arg):
-                if len(call_func) > 0 and _is_type(call_func, ["Name"]):
+                if call_func and _is_type(call_func, ["Name"]):
                     wrapper_name = get_str(call_func, "id")
                     if wrapper_name in _EAGER_CONSUMERS:
                         return False
@@ -3943,22 +3943,22 @@ def _validate_expr_access(
         err_snap = len(ctx.result._errors)
         binop_left = get_node(node, "left")
         binop_right = get_node(node, "right")
-        if len(binop_left) > 0:
+        if binop_left:
             _check_needs_narrowing(binop_left, env, ctx, lineno, "arithmetic", "")
         if _has_new_errors(ctx, err_snap):
             return
-        if len(binop_right) > 0:
+        if binop_right:
             _check_needs_narrowing(binop_right, env, ctx, lineno, "arithmetic", "")
         if _has_new_errors(ctx, err_snap):
             return
-        if len(binop_left) > 0 and not _is_type(binop_left, ["Name"]):
+        if binop_left and not _is_type(binop_left, ["Name"]):
             lt = _synth_expr(binop_left, env, ctx)
             if isinstance(lt, OptionalType):
                 ctx.result.add_error(
                     lineno, 0, "cannot use optional type in arithmetic (may be None)"
                 )
                 return
-        if len(binop_right) > 0 and not _is_type(binop_right, ["Name"]):
+        if binop_right and not _is_type(binop_right, ["Name"]):
             rt = _synth_expr(binop_right, env, ctx)
             if isinstance(rt, OptionalType):
                 ctx.result.add_error(
@@ -3980,9 +3980,9 @@ def _validate_expr_access(
             if r_str and l_num:
                 ctx.result.add_error(lineno, 0, "cannot use str in arithmetic")
                 return
-        if len(binop_left) > 0:
+        if binop_left:
             _validate_expr_access(binop_left, env, ctx, lineno)
-        if len(binop_right) > 0:
+        if binop_right:
             _validate_expr_access(binop_right, env, ctx, lineno)
         return
     if t == "Compare":
@@ -3997,7 +3997,7 @@ def _validate_expr_access(
             oi += 1
         cmp_left = get_node(node, "left")
         if is_ordering:
-            if len(cmp_left) > 0:
+            if cmp_left:
                 _check_needs_narrowing(cmp_left, env, ctx, lineno, "arithmetic", "")
             if _has_new_errors(ctx, err_snap):
                 return
@@ -4010,7 +4010,7 @@ def _validate_expr_access(
                 if _has_new_errors(ctx, err_snap):
                     return
                 ci += 1
-        if len(cmp_left) > 0:
+        if cmp_left:
             _validate_expr_access(cmp_left, env, ctx, lineno)
             if _has_new_errors(ctx, err_snap):
                 return
@@ -4115,7 +4115,7 @@ def _validate_expr_access(
     if t == "Call":
         err_snap = len(ctx.result._errors)
         call_func = get_node(node, "func")
-        if len(call_func) > 0:
+        if call_func:
             _validate_expr_access(call_func, env, ctx, lineno)
         if _has_new_errors(ctx, err_snap):
             return
@@ -4177,7 +4177,7 @@ def _validate_expr_access(
         else_env = env.copy()
         if test:
             _extract_narrowing(test, then_env, else_env, ctx)
-        if len(ifbody) > 0:
+        if ifbody:
             _validate_expr_access(ifbody, then_env, ctx, lineno)
             if _has_new_errors(ctx, err_snap):
                 return
@@ -4348,7 +4348,7 @@ def run_pycheck(
             target = get_node(node, "target")
             if len(target) > 0 and get_str(target, "_type") == "Name":
                 val = get_node(node, "value")
-                if len(val) > 0:
+                if val:
                     _synth_expr(val, mod_env, ctx)
         elif t == "Assign":
             targets = get_nodes(node, "targets")
@@ -4356,7 +4356,7 @@ def run_pycheck(
                 var_name = get_str(targets[0], "id")
                 if var_name != "":
                     val = get_node(node, "value")
-                    if len(val) > 0:
+                    if val:
                         vt = _synth_expr(val, mod_env, ctx)
                         if not is_any(vt):
                             ctx.module_vars[var_name] = vt
