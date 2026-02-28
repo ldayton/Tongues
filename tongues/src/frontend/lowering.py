@@ -9,6 +9,8 @@ Written in the Tongues subset (no generators, closures, lambdas, getattr).
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
@@ -160,6 +162,36 @@ TAYTSH_KEYWORDS: set[str] = {
     "void",
     "while",
 }
+
+# Fallback instrumentation (enabled by TONGUES_FALLBACK_STATS=1)
+_FALLBACK_STATS_ENABLED: bool = os.getenv("TONGUES_FALLBACK_STATS") is not None
+_FALLBACK_COUNTS: dict[str, int] = {
+    "no_uid": 0,
+    "no_entry": 0,
+    "is_any": 0,
+    "contains_any": 0,
+    "success": 0,
+}
+
+
+def _record_fallback(reason: str) -> None:
+    if _FALLBACK_STATS_ENABLED:
+        _FALLBACK_COUNTS[reason] = _FALLBACK_COUNTS.get(reason, 0) + 1
+
+
+def print_fallback_stats() -> None:
+    """Print fallback statistics to stderr."""
+    if not _FALLBACK_STATS_ENABLED:
+        return
+    print("=== lowering fallback stats ===", file=sys.stderr)
+    total = 0
+    for k, v in _FALLBACK_COUNTS.items():
+        if k != "success":
+            total = total + v
+    for k in ["success", "no_uid", "no_entry", "is_any", "contains_any"]:
+        v = _FALLBACK_COUNTS.get(k, 0)
+        print(f"  {k}: {v}", file=sys.stderr)
+    print(f"  total_fallback: {total}", file=sys.stderr)
 
 
 def _safe_name(name: str) -> str:
@@ -957,12 +989,22 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Use pycheck type (after adjustment) when available, else fallback."""
     if ctx.pycheck_result is not None:
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
-        if isinstance(uid_jv, JInt):
-            pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
-            if pt is not None and not _is_any_type(pt):
-                check_t = pt.ret if isinstance(pt, FuncType) else pt
-                if not contains_any(check_t):
-                    return _adjust_pycheck_type(node, pt, env)
+        if not isinstance(uid_jv, JInt):
+            _record_fallback("no_uid")
+            return _infer_expr_type_fallback(node, env, ctx)
+        pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
+        if pt is None:
+            _record_fallback("no_entry")
+            return _infer_expr_type_fallback(node, env, ctx)
+        if _is_any_type(pt):
+            _record_fallback("is_any")
+            return _infer_expr_type_fallback(node, env, ctx)
+        check_t = pt.ret if isinstance(pt, FuncType) else pt
+        if contains_any(check_t):
+            _record_fallback("contains_any")
+            return _infer_expr_type_fallback(node, env, ctx)
+        _record_fallback("success")
+        return _adjust_pycheck_type(node, pt, env)
     return _infer_expr_type_fallback(node, env, ctx)
 
 
@@ -6347,6 +6389,7 @@ def lower(
         tc_result, hier_result, known_classes, class_bases, source, pycheck_result
     )
     module = _build_module(tree, ctx)
+    print_fallback_stats()
     while len(_LOWER_ANCESTORS) > 0:
         _LOWER_ANCESTORS.pop(list(_LOWER_ANCESTORS.keys())[0])
     return (module, ctx.errors)

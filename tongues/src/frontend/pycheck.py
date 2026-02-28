@@ -17,6 +17,12 @@ from __future__ import annotations
 import os
 import sys
 
+from .stubs import (
+    lookup_module_attr,
+    lookup_module_func,
+    lookup_stub_attr,
+    lookup_stub_method,
+)
 from .cfg import (
     FlowAssign,
     FlowCondAlias,
@@ -722,8 +728,15 @@ def _synth_attribute(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     attr = get_str(node, "attr")
     if len(value) == 0 or attr == "":
         return ANY_TYPE
-    if _is_type(value, ["Name"]) and get_str(value, "id") == "sys" and attr == "argv":
-        return SliceType(STR_TYPE)
+    # Module attribute lookup (sys.argv, os.environ, etc.)
+    if _is_type(value, ["Name"]):
+        module = get_str(value, "id")
+        stub_type = lookup_module_attr(module, attr)
+        if stub_type is not None:
+            return stub_type
+        stub_func = lookup_module_func(module, attr)
+        if stub_func is not None:
+            return stub_func
     path = _attr_path(node)
     if path != "":
         narrowed = env.get_type(path)
@@ -748,6 +761,14 @@ def _resolve_attr(
     # Unwrap Pointer to collection (not struct)
     if isinstance(obj_type, PointerType) and not isinstance(obj_type.target, StructRef):
         obj_type = obj_type.target
+    # Stub types (TextIO, BytesIO, etc.)
+    if isinstance(obj_type, PrimitiveType):
+        stub_method = lookup_stub_method(obj_type.kind, attr)
+        if stub_method is not None:
+            return stub_method
+        stub_attr = lookup_stub_attr(obj_type.kind, attr)
+        if stub_attr is not None:
+            return stub_attr
     # String methods
     if _prim_kind(obj_type) == "string":
         if (
