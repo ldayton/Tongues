@@ -233,7 +233,7 @@ class ScopeResolver(TypeResolver):
                         return ListT(kind="list", element=t.key)
                     return ListT(kind="list", element=t.value)
             return None
-        if name == "Sorted" or name == "Reversed":
+        if name in ("Sorted", "Reversed"):
             if len(expr.args) > 0:
                 return self.resolve(expr.args[0].value)
             return None

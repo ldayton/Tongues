@@ -160,7 +160,7 @@ def _walk_call(expr: TCall, ctx: _OwnershipCtx) -> None:
             for a in expr.args:
                 _walk_expr(a.value, ctx, True)
             return
-        if name == "Append" or name == "Add":
+        if name in ("Append", "Add"):
             if expr.args:
                 _walk_expr(expr.args[0].value, ctx, False)
             if len(expr.args) > 1:

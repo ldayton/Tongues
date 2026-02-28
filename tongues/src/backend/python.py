@@ -431,7 +431,7 @@ class _PythonEmitter(Emitter):
         if decl.fields:
             msg_field: TFieldDecl | None = None
             for fld in decl.fields:
-                if fld.name == "message" or fld.name == "msg":
+                if fld.name in ("message", "msg"):
                     msg_field = fld
                     break
             if msg_field is not None:
@@ -491,13 +491,13 @@ class _PythonEmitter(Emitter):
 
     def _zero_value(self, typ: TType) -> str:
         if isinstance(typ, TPrimitive):
-            if typ.kind == "int" or typ.kind == "byte":
+            if typ.kind in ("int", "byte"):
                 return "0"
             if typ.kind == "float":
                 return "0.0"
             if typ.kind == "bool":
                 return "False"
-            if typ.kind == "string" or typ.kind == "rune":
+            if typ.kind in ("string", "rune"):
                 return '""'
             if typ.kind == "bytes":
                 return 'b""'
@@ -726,9 +726,9 @@ class _PythonEmitter(Emitter):
     def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
         unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
         unused_indices: set[int] = set()
-        if unused_str != "":
+        if unused_str:
             for s in unused_str.split(","):
-                if s != "":
+                if s:
                     unused_indices.add(int(s))
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
@@ -885,7 +885,7 @@ class _PythonEmitter(Emitter):
 
     def _is_map_type(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        if ann != "":
+        if ann:
             return ann.startswith("map[")
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
@@ -1627,7 +1627,7 @@ class _PythonEmitter(Emitter):
             else:
                 type_name = self._expr(type_arg)
             return "isinstance(" + self._a(args, 0) + ", " + type_name + ")"
-        if name == "Bytes" or name == "BytesFrom":
+        if name in ("Bytes", "BytesFrom"):
             return "bytes(" + self._a(args, 0) + ")"
         # Fallback
         arg_strs = self._join_args(args, ", ")

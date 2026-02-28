@@ -110,7 +110,7 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
             if stmt.else_body is not None
             else None
         )
-        if then_result == "read" or else_result == "read":
+        if "read" in (then_result, else_result):
             return "read"
         if then_result == "write" and else_result == "write":
             return "write"
