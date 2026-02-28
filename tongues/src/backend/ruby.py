@@ -797,7 +797,7 @@ class _RubyEmitter(Emitter):
         if prov == "list_comprehension":
             if len(body) == 1 and isinstance(body[0], TExprStmt):
                 call = body[0].expr
-                if self._is_append_to(call, let_stmt.name):
+                if isinstance(call, TCall) and self._is_append_to(call, let_stmt.name):
                     val = self._expr(call.args[1].value)
                     return (
                         acc
@@ -817,7 +817,9 @@ class _RubyEmitter(Emitter):
                         then_first.expr, TCall
                     ):
                         call = then_first.expr
-                        if self._is_append_to(call, let_stmt.name):
+                        if isinstance(call, TCall) and self._is_append_to(
+                            call, let_stmt.name
+                        ):
                             val = self._expr(call.args[1].value)
                             guard = self._expr(if_stmt.cond)
                             return (
@@ -857,7 +859,7 @@ class _RubyEmitter(Emitter):
             self._needs_set = True
             if len(body) == 1 and isinstance(body[0], TExprStmt):
                 call = body[0].expr
-                if self._is_add_to(call, let_stmt.name):
+                if isinstance(call, TCall) and self._is_add_to(call, let_stmt.name):
                     val = self._expr(call.args[1].value)
                     if val == binders:
                         return acc + " = Set.new(" + iterable + ")"
