@@ -341,7 +341,7 @@ def _is_ancestor(child: str, ancestor: str, hier: HierarchyResult) -> bool:
             return False
         visited.add(current)
         bases = hier.ancestors.get(current)
-        if not bases:
+        if bases is None or len(bases) == 0:
             return False
         for base in bases:
             if base == ancestor:
@@ -433,7 +433,9 @@ class TypeEnv:
             self.guarded_attrs.discard(key)
         type_keys = list(self.types.keys())
         for type_key in type_keys:
-            if type_key.startswith(attr_prefix) or type_key.startswith(subscript_prefix):
+            if type_key.startswith(attr_prefix) or type_key.startswith(
+                subscript_prefix
+            ):
                 self.types.pop(type_key)
 
 
@@ -924,7 +926,7 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
             break
         visited.add(current)
         bases = ctx.hier_result.ancestors.get(current)
-        if not bases:
+        if bases is None or len(bases) == 0:
             break
         anc = bases[0]
         anc_cls = ctx.tc_result.classes.get(anc)
@@ -950,9 +952,9 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
 def _find_parent_class(class_name: str, ctx: _InferCtx) -> str:
     """Find the parent class name, returning '' if unknown or not in our type tables."""
     bases = ctx.hier_result.ancestors.get(class_name)
-    if not bases:
+    if bases is None or len(bases) == 0:
         bases = ctx.class_bases.get(class_name)
-    if bases:
+    if bases is not None and len(bases) > 0:
         parent = bases[0]
         if parent in ctx.known_classes:
             return parent
@@ -1990,9 +1992,9 @@ def _validate_assign(
         val_type = ANY_TYPE
     else:
         val_type = _synth_expr(value, env, ctx)
-    for tgt in targets:
-        if _is_type(tgt, ["Name"]):
-            name = get_str(tgt, "id")
+    for target in targets:
+        if _is_type(target, ["Name"]):
+            name = get_str(target, "id")
             if name:
                 env.evict_guarded_attrs(name)
                 existing = env.get_type(name)
@@ -2023,13 +2025,13 @@ def _validate_assign(
                     ca_id = _find_succ_cond_alias(ctx, name)
                     if ca_id >= 0:
                         ctx.current_flow_id = ca_id
-                _synth_expr(tgt, env, ctx)
-        elif _is_type(tgt, ["Tuple", "List"]):
-            _validate_unpack(tgt, val_type, value, env, ctx, lineno)
-        elif _is_type(tgt, ["Subscript"]):
-            _validate_subscript_assign(tgt, val_type, env, ctx, lineno)
-        elif _is_type(tgt, ["Attribute"]):
-            _synth_expr(tgt, env, ctx)
+                _synth_expr(target, env, ctx)
+        elif _is_type(target, ["Tuple", "List"]):
+            _validate_unpack(target, val_type, value, env, ctx, lineno)
+        elif _is_type(target, ["Subscript"]):
+            _validate_subscript_assign(target, val_type, env, ctx, lineno)
+        elif _is_type(target, ["Attribute"]):
+            _synth_expr(target, env, ctx)
 
 
 def _is_empty_collection(node: ASTNode) -> bool:
@@ -2137,7 +2139,7 @@ def _validate_subscript_assign(
                 + _type_name(obj_type.value),
             )
     elif isinstance(obj_type, SliceType):
-        is_slice = slc and get_str(slc, "_type") == "Slice"
+        is_slice = len(slc) > 0 and get_str(slc, "_type") == "Slice"
         if is_slice:
             if not _is_assignable(val_type, obj_type, ctx.hier_result):
                 ctx.result.add_error(
@@ -2813,11 +2815,7 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
         return
     if t == "Call":
         func = get_node(test, "func")
-        if (
-            func
-            and _is_type(func, ["Name"])
-            and get_str(func, "id") == "isinstance"
-        ):
+        if func and _is_type(func, ["Name"]) and get_str(func, "id") == "isinstance":
             _synth_expr(test, env, ctx)
             return
     if t == "BoolOp":
@@ -2930,11 +2928,7 @@ def _extract_narrowing(
     t = get_str(test, "_type")
     if t == "Call":
         func = get_node(test, "func")
-        if (
-            func
-            and _is_type(func, ["Name"])
-            and get_str(func, "id") == "isinstance"
-        ):
+        if func and _is_type(func, ["Name"]) and get_str(func, "id") == "isinstance":
             _narrow_isinstance(test, then_env, else_env, ctx)
             return
     if t == "Compare":
@@ -3100,11 +3094,9 @@ def _narrow_isinstance(
     elif len(narrow_names) > 1:
         sig_errors: list[TypeCollectError] = []
         variants: list[TypeNode] = []
-        for narrow_name in narrow_names:
+        for nn in narrow_names:
             variants.append(
-                py_type_to_type_dict(
-                    narrow_name, ctx.known_classes, sig_errors, 0, 0
-                )
+                py_type_to_type_dict(nn, ctx.known_classes, sig_errors, 0, 0)
             )
         then_env.narrow(name, UnionType(variants))
     else_type = else_env.get_type(name)
@@ -3113,9 +3105,7 @@ def _narrow_isinstance(
         for nname in narrow_names:
             sig_e_rm: list[TypeCollectError] = []
             remove_types.append(
-                py_type_to_type_dict(
-                    nname, ctx.known_classes, sig_e_rm, 0, 0
-                )
+                py_type_to_type_dict(nname, ctx.known_classes, sig_e_rm, 0, 0)
             )
         remaining_type = remove_from_union(else_type, remove_types)
         else_env.narrow(name, remaining_type)
@@ -3404,7 +3394,7 @@ def _narrow_or_isinstance(
             return
         func = get_node(v, "func")
         if not (
-            func
+            len(func) > 0
             and _is_type(func, ["Name"])
             and get_str(func, "id") == "isinstance"
         ):
@@ -3444,11 +3434,9 @@ def _narrow_or_isinstance(
         then_env.narrow(name, narrowed)
     else:
         variants: list[TypeNode] = []
-        for tn in type_names:
+        for tni in type_names:
             variants.append(
-                py_type_to_type_dict(
-                    tn, ctx.known_classes, sig_errors, 0, 0
-                )
+                py_type_to_type_dict(tni, ctx.known_classes, sig_errors, 0, 0)
             )
         then_env.narrow(name, UnionType(variants))
 
@@ -3837,9 +3825,7 @@ def _validate_expr_access(
                 return
             comparators = get_nodes(node, "comparators")
             for comparator in comparators:
-                _check_needs_narrowing(
-                    comparator, env, ctx, lineno, "arithmetic", ""
-                )
+                _check_needs_narrowing(comparator, env, ctx, lineno, "arithmetic", "")
                 if _has_new_errors(ctx, err_snap):
                     return
         if cmp_left:
@@ -3896,7 +3882,7 @@ def _validate_expr_access(
                                 return
         if value and not _is_type(value, ["Name"]) and attr_str != "kind":
             val_path = _attr_path(value)
-            is_guarded = val_path and env.is_attr_guarded(val_path)
+            is_guarded = val_path != "" and env.is_attr_guarded(val_path)
             obj_type = _synth_expr(value, env, ctx)
             if not is_guarded and isinstance(obj_type, OptionalType):
                 ctx.result.add_error(
@@ -4080,7 +4066,7 @@ def _class_has_attr(class_name: str, attr_name: str, ctx: _InferCtx) -> bool:
                 print(f"DBG attr hit: {class_name}.{attr_name} (method on {current})")
             return True
         bases = ctx.class_bases.get(current)
-        if bases:
+        if bases is not None and len(bases) > 0:
             current = bases[0]
         else:
             current = ""
@@ -4128,11 +4114,7 @@ def run_pycheck(
         if t == "AnnAssign":
             target = get_node(node, "target")
             annotation = get_node(node, "annotation")
-            if (
-                target
-                and get_str(target, "_type") == "Name"
-                and annotation
-            ):
+            if target and get_str(target, "_type") == "Name" and annotation:
                 var_name = get_str(target, "id")
                 if var_name:
                     ann_str = annotation_to_str(annotation)

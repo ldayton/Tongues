@@ -315,7 +315,7 @@ def _ancestor_chain_hier(name: str) -> list[str]:
     cur = name
     while True:
         parents = _LOWER_ANCESTORS.get(cur)
-        if not parents:
+        if parents is None or len(parents) == 0:
             break
         parent = parents[0]
         if parent in visited:
@@ -5470,8 +5470,10 @@ def _lower_extend_arg(arg_node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         s_jv = arg_node.get("value")
         if isinstance(s_jv, JStr):
             ext_elems: list[TExpr] = []
-            for ch in s_jv.value:
-                ext_elems.append(TStringLit(pos, ch, {}))
+            ci = 0
+            while ci < len(s_jv.value):
+                ext_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
+                ci += 1
             return TListLit(pos, ext_elems, {})
     return _lower_expr(arg_node, env, ctx)
 
@@ -5488,8 +5490,10 @@ def _ensure_set_expr(arg_node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             s_jv = arg_node.get("value")
             if isinstance(s_jv, JStr):
                 ens_elems: list[TExpr] = []
-                for ch in s_jv.value:
-                    ens_elems.append(TStringLit(pos, ch, {}))
+                ci = 0
+                while ci < len(s_jv.value):
+                    ens_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
+                    ci += 1
                 return _make_call(pos, "SetFromList", [TListLit(pos, ens_elems, {})])
         return _make_call(
             pos,
