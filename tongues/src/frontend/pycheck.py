@@ -1206,6 +1206,10 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return ANY_TYPE
     lt = _synth_expr(left, env, ctx)
     rt = _synth_expr(right, env, ctx)
+    if lt == ANY_TYPE and rt != ANY_TYPE:
+        lt = rt
+    if rt == ANY_TYPE and lt != ANY_TYPE:
+        rt = lt
     op_type = get_str(op, "_type")
     # String concatenation
     if _prim_kind(lt) == "string" and _prim_kind(rt) == "string":
@@ -1276,7 +1280,7 @@ def _synth_unaryop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if op_type == "Not":
         return BOOL_TYPE
     if op_type == "USub" or op_type == "UAdd":
-        if _prim_kind(ot) == "bool":
+        if _prim_kind(ot) == "bool" or ot == ANY_TYPE:
             return INT_TYPE
         return ot
     if op_type == "Invert":

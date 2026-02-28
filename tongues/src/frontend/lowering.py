@@ -76,6 +76,7 @@ from ..taytsh.ast import (
     TWhileStmt,
 )
 from .typecollect import (
+    ClassInfo,
     ParamInfo,
     TypeCollectResult,
     annotation_to_str,
@@ -906,19 +907,17 @@ def _infer_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     return _lookup_expr_type(node, env, ctx)
 
 
-def _adjust_pycheck_type(node: ASTNode, pt: TypeNode, inner: TypeNode) -> TypeNode:
+def _adjust_pycheck_type(node: ASTNode, pt: TypeNode, env: _Env) -> TypeNode:
     """Translate pycheck type conventions to lowering conventions."""
     # Literal[x] → base type (lowering doesn't distinguish literals)
     if isinstance(pt, LiteralType):
         pt = pt.base
     # pycheck says str; lowering says rune (loop variable over string)
-    if (
-        isinstance(pt, PrimitiveType)
-        and pt.kind == "string"
-        and isinstance(inner, PrimitiveType)
-        and inner.kind == "rune"
-    ):
-        return inner
+    if isinstance(pt, PrimitiveType) and pt.kind == "string":
+        if _is_ast(node, "Name"):
+            vt = env.var_types.get(get_str(node, "id"))
+            if isinstance(vt, PrimitiveType) and vt.kind == "rune":
+                return vt
     # Normalize bytes: pycheck returns SliceType(byte), lowering uses PrimitiveType("bytes")
     if (
         isinstance(pt, SliceType)
@@ -953,8 +952,7 @@ def _is_any_type(t: TypeNode) -> bool:
 
 
 def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
-    """Use pycheck type (after adjustment) when available, else inner."""
-    inner = _infer_expr_type_inner(node, env, ctx)
+    """Use pycheck type (after adjustment) when available, else fallback."""
     if ctx.pycheck_result is not None:
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
         if isinstance(uid_jv, JInt):
@@ -962,13 +960,146 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             if pt is not None and not _is_any_type(pt):
                 check_t = pt.ret if isinstance(pt, FuncType) else pt
                 if not contains_any(check_t):
-                    adjusted = _adjust_pycheck_type(node, pt, inner)
-                    return adjusted
-    return inner
+                    return _adjust_pycheck_type(node, pt, env)
+    return _infer_expr_type_fallback(node, env, ctx)
 
 
-def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
-    """Infer the type of an expression node from context."""
+def _infer_name_call_type(
+    node: ASTNode, fname: str, env: _Env, ctx: _LowerCtx
+) -> TypeNode:
+    """Infer return type of a Name-based call (builtins + struct constructors)."""
+    if fname == "len" or fname == "ord":
+        return INT_TYPE
+    if fname == "int":
+        return INT_TYPE
+    if fname == "float":
+        return FLOAT_TYPE
+    if fname == "str" or fname == "chr":
+        return STR_TYPE
+    if fname == "bool" or fname == "isinstance":
+        return BOOL_TYPE
+    if fname == "bytes":
+        return PrimitiveType("bytes")
+    if fname == "sorted" or fname == "list":
+        fn_args = get_nodes(node, "args")
+        if len(fn_args) > 0:
+            at = _infer_expr_type(fn_args[0], env, ctx)
+            if isinstance(at, MapType):
+                return SliceType(at.key)
+            if isinstance(at, SetType):
+                return SliceType(at.element)
+            return at
+        return SliceType(INT_TYPE)
+    if fname == "set" or fname == "frozenset":
+        fn_args = get_nodes(node, "args")
+        if len(fn_args) > 0:
+            at = _infer_expr_type(fn_args[0], env, ctx)
+            if isinstance(at, SliceType):
+                return SetType(at.element)
+            if isinstance(at, SetType):
+                return at
+            if isinstance(at, TupleType) and len(at.elements) > 0:
+                return SetType(at.elements[0])
+            if _is_type_dict(at, ["string"]):
+                return SetType(PrimitiveType("string"))
+        return SetType(INT_TYPE)
+    if fname == "divmod":
+        return TupleType([INT_TYPE, INT_TYPE], False)
+    if fname == "min" or fname == "max" or fname == "abs":
+        fn_args = get_nodes(node, "args")
+        if len(fn_args) > 0 and isinstance(fn_args[0], dict):
+            at = _infer_expr_type(fn_args[0], env, ctx)
+            if _is_type_dict(at, ["bool"]):
+                return INT_TYPE
+            return at
+        return INT_TYPE
+    if fname in ctx.known_classes:
+        return PointerType(StructRef(fname))
+    return _func_return_type(ctx, fname)
+
+
+def _infer_method_call_type(
+    node: ASTNode, func: ASTNode, env: _Env, ctx: _LowerCtx
+) -> TypeNode:
+    """Infer return type of an Attribute-based method call."""
+    obj_n = get_node(func, "value")
+    obj_t = _infer_expr_type(obj_n, env, ctx)
+    method_name = get_str(func, "attr")
+    if _is_ast(obj_n, "Attribute"):
+        buf_obj = get_node(obj_n, "value")
+        buf_attr = get_str(obj_n, "attr")
+        if _is_ast(buf_obj, "Attribute"):
+            sys_obj = get_node(buf_obj, "value")
+            sys_attr = get_str(buf_obj, "attr")
+            if (
+                _is_ast(sys_obj, "Name")
+                and get_str(sys_obj, "id") == "sys"
+                and sys_attr == "stdin"
+                and buf_attr == "buffer"
+                and method_name == "read"
+            ):
+                return PrimitiveType("bytes")
+    if _is_struct_type(obj_t):
+        return _method_return_type(ctx, _struct_name(obj_t), method_name)
+    if _is_interface_type(obj_t):
+        iname = _interface_name(obj_t)
+        if iname != "":
+            return _method_return_type(ctx, iname, method_name)
+    if isinstance(obj_t, MapType):
+        if method_name == "get":
+            args = get_nodes(node, "args")
+            if len(args) >= 2:
+                return obj_t.value
+            return OptionalType(obj_t.value)
+        if method_name == "keys":
+            return SliceType(obj_t.key)
+        if method_name == "values":
+            return SliceType(obj_t.value)
+        if method_name == "items":
+            return SliceType(TupleType([obj_t.key, obj_t.value], False))
+        if method_name == "pop":
+            return OptionalType(obj_t.value)
+        if method_name == "copy":
+            return obj_t
+    if isinstance(obj_t, SliceType):
+        if method_name == "pop":
+            return obj_t.element
+        if method_name == "copy":
+            return obj_t
+        if method_name == "index":
+            return INT_TYPE
+    if _is_type_dict(obj_t, ["bytes"]):
+        if method_name == "decode":
+            return STR_TYPE
+    if _is_type_dict(obj_t, ["string"]):
+        if method_name == "split":
+            return SliceType(STR_TYPE)
+        if method_name == "encode":
+            return PrimitiveType("bytes")
+        if (
+            method_name == "find"
+            or method_name == "rfind"
+            or method_name == "index"
+            or method_name == "count"
+        ):
+            return INT_TYPE
+        if (
+            method_name == "startswith"
+            or method_name == "endswith"
+            or method_name == "isdigit"
+            or method_name == "isalpha"
+            or method_name == "isalnum"
+            or method_name == "isspace"
+            or method_name == "isupper"
+            or method_name == "islower"
+        ):
+            return BOOL_TYPE
+        return STR_TYPE
+    return VOID_TYPE
+
+
+def _infer_expr_type_fallback(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
+    """Fallback type inference for nodes pycheck doesn't cover."""
     t = get_str(node, "_type")
     if t == "Constant":
         val = node.get("value")
@@ -1052,129 +1183,39 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
     if t == "Call":
         func = get_node(node, "func")
         if _is_ast(func, "Name"):
-            fname = get_str(func, "id")
-            if fname == "len" or fname == "ord":
-                return INT_TYPE
-            if fname == "int":
-                return INT_TYPE
-            if fname == "float":
-                return FLOAT_TYPE
-            if fname == "str" or fname == "chr":
-                return STR_TYPE
-            if fname == "bool" or fname == "isinstance":
-                return BOOL_TYPE
-            if fname == "bytes":
-                return PrimitiveType("bytes")
-            if fname == "sorted" or fname == "list":
-                fn_args = get_nodes(node, "args")
-                if len(fn_args) > 0:
-                    at = _infer_expr_type(fn_args[0], env, ctx)
-                    if isinstance(at, MapType):
-                        return SliceType(at.key)
-                    if isinstance(at, SetType):
-                        return SliceType(at.element)
-                    return at
-                return SliceType(INT_TYPE)
-            if fname == "set" or fname == "frozenset":
-                fn_args = get_nodes(node, "args")
-                if len(fn_args) > 0:
-                    at = _infer_expr_type(fn_args[0], env, ctx)
-                    if isinstance(at, SliceType):
-                        return SetType(at.element)
-                    if isinstance(at, SetType):
-                        return at
-                    if isinstance(at, TupleType) and len(at.elements) > 0:
-                        return SetType(at.elements[0])
-                    if _is_type_dict(at, ["string"]):
-                        return SetType(PrimitiveType("string"))
-                return SetType(INT_TYPE)
-            if fname == "divmod":
-                return TupleType([INT_TYPE, INT_TYPE], False)
-            if fname == "min" or fname == "max" or fname == "abs":
-                fn_args = get_nodes(node, "args")
-                if len(fn_args) > 0 and isinstance(fn_args[0], dict):
-                    at = _infer_expr_type(fn_args[0], env, ctx)
-                    if _is_type_dict(at, ["bool"]):
-                        return INT_TYPE
-                    return at
-                return INT_TYPE
-            if fname in ctx.known_classes:
-                return PointerType(StructRef(fname))
-            return _func_return_type(ctx, fname)
+            return _infer_name_call_type(node, get_str(func, "id"), env, ctx)
         if _is_ast(func, "Attribute"):
-            obj_n = get_node(func, "value")
-            obj_t = _infer_expr_type(obj_n, env, ctx)
-            method_name = get_str(func, "attr")
-            if _is_ast(obj_n, "Attribute"):
-                buf_obj = get_node(obj_n, "value")
-                buf_attr = get_str(obj_n, "attr")
-                if _is_ast(buf_obj, "Attribute"):
-                    sys_obj = get_node(buf_obj, "value")
-                    sys_attr = get_str(buf_obj, "attr")
-                    if (
-                        _is_ast(sys_obj, "Name")
-                        and get_str(sys_obj, "id") == "sys"
-                        and sys_attr == "stdin"
-                        and buf_attr == "buffer"
-                        and method_name == "read"
-                    ):
-                        return PrimitiveType("bytes")
-            if _is_struct_type(obj_t):
-                return _method_return_type(ctx, _struct_name(obj_t), method_name)
-            if _is_interface_type(obj_t):
-                iname = _interface_name(obj_t)
-                if iname != "":
-                    return _method_return_type(ctx, iname, method_name)
-            if isinstance(obj_t, MapType):
-                if method_name == "get":
-                    args = get_nodes(node, "args")
-                    if len(args) >= 2:
-                        return obj_t.value
-                    return OptionalType(obj_t.value)
-                if method_name == "keys":
-                    return SliceType(obj_t.key)
-                if method_name == "values":
-                    return SliceType(obj_t.value)
-                if method_name == "items":
-                    return SliceType(TupleType([obj_t.key, obj_t.value], False))
-                if method_name == "pop":
-                    return OptionalType(obj_t.value)
-                if method_name == "copy":
-                    return obj_t
-            if isinstance(obj_t, SliceType):
-                if method_name == "pop":
-                    return obj_t.element
-                if method_name == "copy":
-                    return obj_t
-                if method_name == "index":
-                    return INT_TYPE
-            if _is_type_dict(obj_t, ["bytes"]):
-                if method_name == "decode":
-                    return STR_TYPE
-            if _is_type_dict(obj_t, ["string"]):
-                if method_name == "split":
-                    return SliceType(STR_TYPE)
-                if method_name == "encode":
-                    return PrimitiveType("bytes")
-                if (
-                    method_name == "find"
-                    or method_name == "rfind"
-                    or method_name == "index"
-                    or method_name == "count"
-                ):
-                    return INT_TYPE
-                if (
-                    method_name == "startswith"
-                    or method_name == "endswith"
-                    or method_name == "isdigit"
-                    or method_name == "isalpha"
-                    or method_name == "isalnum"
-                    or method_name == "isspace"
-                    or method_name == "isupper"
-                    or method_name == "islower"
-                ):
-                    return BOOL_TYPE
-                return STR_TYPE
+            return _infer_method_call_type(node, func, env, ctx)
+        return VOID_TYPE
+    if t == "Subscript":
+        obj = get_node(node, "value")
+        obj_t = _infer_expr_type(obj, env, ctx)
+        if _is_type_dict(obj_t, ["void"]) and _is_ast(obj, "Name"):
+            ct = ctx.constant_types.get(get_str(obj, "id"))
+            if ct is not None:
+                obj_t = ct
+        if isinstance(obj_t, OptionalType):
+            obj_t = obj_t.inner
+        if isinstance(obj_t, SliceType):
+            slc = get_node(node, "slice")
+            if _is_ast(slc, "Slice"):
+                return obj_t
+            return obj_t.element
+        if isinstance(obj_t, MapType):
+            return obj_t.value
+        if isinstance(obj_t, TupleType):
+            slc = get_node(node, "slice")
+            if _is_ast(slc, "Constant"):
+                idx_val = get_int(slc, "value")
+                if has_key(slc, "value") and 0 <= idx_val < len(obj_t.elements):
+                    return obj_t.elements[idx_val]
+        if _is_type_dict(obj_t, ["string"]):
+            return STR_TYPE
+        if _is_type_dict(obj_t, ["bytes"]):
+            slc = get_node(node, "slice")
+            if _is_ast(slc, "Slice"):
+                return PrimitiveType("bytes")
+            return PrimitiveType("byte")
         return VOID_TYPE
     if t == "BinOp":
         op = get_node(node, "op")
@@ -1234,7 +1275,6 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
         ifexp_body = get_node(node, "body")
         body_t = _infer_expr_type(ifexp_body, env, ctx)
         ifexp_orelse = get_node(node, "orelse")
-        # x if x is not None else default → unwrap optional if condition is nil-guard
         ifexp_test = get_node(node, "test")
         if isinstance(body_t, OptionalType) and _is_nil_guard_test(
             ifexp_test, ifexp_body
@@ -1250,36 +1290,8 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
         if isinstance(body_t, OptionalType) and body_t.inner == orelse_t:
             return orelse_t
         return body_t
-    if t == "Subscript":
-        obj = get_node(node, "value")
-        obj_t = _infer_expr_type(obj, env, ctx)
-        if _is_type_dict(obj_t, ["void"]) and _is_ast(obj, "Name"):
-            ct = ctx.constant_types.get(get_str(obj, "id"))
-            if ct is not None:
-                obj_t = ct
-        if isinstance(obj_t, OptionalType):
-            obj_t = obj_t.inner
-        if isinstance(obj_t, SliceType):
-            slc = get_node(node, "slice")
-            if _is_ast(slc, "Slice"):
-                return obj_t
-            return obj_t.element
-        if isinstance(obj_t, MapType):
-            return obj_t.value
-        if isinstance(obj_t, TupleType):
-            slc = get_node(node, "slice")
-            if _is_ast(slc, "Constant"):
-                idx_val = get_int(slc, "value")
-                if has_key(slc, "value") and 0 <= idx_val < len(obj_t.elements):
-                    return obj_t.elements[idx_val]
-        if _is_type_dict(obj_t, ["string"]):
-            return STR_TYPE
-        if _is_type_dict(obj_t, ["bytes"]):
-            slc = get_node(node, "slice")
-            if _is_ast(slc, "Slice"):
-                return PrimitiveType("bytes")
-            return PrimitiveType("byte")
-        return VOID_TYPE
+    if t == "JoinedStr":
+        return STR_TYPE
     if t == "List":
         elts = get_nodes(node, "elts")
         elem_type: TypeNode = VOID_TYPE
@@ -1311,8 +1323,6 @@ def _infer_expr_type_inner(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode
             parts.append(_infer_expr_type(e, env, ctx))
             i += 1
         return TupleType(parts, False)
-    if t == "JoinedStr":
-        return STR_TYPE
     return VOID_TYPE
 
 
@@ -2467,6 +2477,16 @@ def _lower_conversion_call(
     return None
 
 
+def _string_to_char_list(pos: Pos, s: str) -> list[TExpr]:
+    """Split a string constant into a list of single-character TStringLits."""
+    elems: list[TExpr] = []
+    ci = 0
+    while ci < len(s):
+        elems.append(TStringLit(pos, s[ci : ci + 1], {}))
+        ci += 1
+    return elems
+
+
 def _lower_collection_call(
     fname: str,
     pos: Pos,
@@ -2530,12 +2550,7 @@ def _lower_collection_call(
                 if _is_ast(args[0], "Constant"):
                     s_jv = args[0].get("value")
                     if isinstance(s_jv, JStr):
-                        elems: list[TExpr] = []
-                        ci = 0
-                        while ci < len(s_jv.value):
-                            elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
-                            ci += 1
-                        return TListLit(pos, elems, {})
+                        return TListLit(pos, _string_to_char_list(pos, s_jv.value), {})
                 return _make_call(pos, "Chars", [_lower_expr(args[0], env, ctx)])
             if _is_ast(args[0], "Call"):
                 rfunc = get_node(args[0], "func")
@@ -2559,13 +2574,10 @@ def _lower_collection_call(
             if _is_type_dict(arg_type, ["string"]) and _is_ast(args[0], "Constant"):
                 s_jv = args[0].get("value")
                 if isinstance(s_jv, JStr):
-                    set_elems: list[TExpr] = []
-                    ci = 0
-                    while ci < len(s_jv.value):
-                        set_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
-                        ci += 1
                     return _make_call(
-                        pos, "SetFromList", [TListLit(pos, set_elems, {})]
+                        pos,
+                        "SetFromList",
+                        [TListLit(pos, _string_to_char_list(pos, s_jv.value), {})],
                     )
             if _is_type_dict(arg_type, ["Slice"]):
                 return _make_call(pos, "SetFromList", [_lower_expr(args[0], env, ctx)])
@@ -2591,12 +2603,7 @@ def _lower_collection_call(
             if _is_type_dict(arg_type, ["string"]) and _is_ast(args[0], "Constant"):
                 s_jv = args[0].get("value")
                 if isinstance(s_jv, JStr):
-                    tup_elems: list[TExpr] = []
-                    ci = 0
-                    while ci < len(s_jv.value):
-                        tup_elems.append(TStringLit(pos, s_jv.value[ci : ci + 1], {}))
-                        ci += 1
-                    return TListLit(pos, tup_elems, {})
+                    return TListLit(pos, _string_to_char_list(pos, s_jv.value), {})
             if _is_type_dict(arg_type, ["Set"]):
                 return _make_call(pos, "Sorted", [_lower_expr(args[0], env, ctx)])
             arg = _lower_expr(args[0], env, ctx)
@@ -2835,20 +2842,15 @@ def _lower_struct_constructor(
     return TCall(pos, TVar(pos, class_name, {}), lowered_args, {})
 
 
-def _lower_method_call(
-    func_node: ASTNode,
+def _try_lower_stdlib_method(
+    pos: Pos,
+    obj_node: ASTNode,
+    method_name: str,
     args: list[ASTNode],
-    keywords: list[ASTNode],
-    node: ASTNode,
     env: _Env,
     ctx: _LowerCtx,
-) -> TExpr:
-    """Lower a method call."""
-    pos = _node_pos(node)
-    method_name = get_str(func_node, "attr")
-    obj_node = get_node(func_node, "value")
-    obj_type = _infer_expr_type(obj_node, env, ctx)
-    # sys.exit(n) → Exit(n)
+) -> TExpr | None:
+    """Try to lower stdlib method calls (sys, os, dict.fromkeys). Returns None if not applicable."""
     if _is_ast(obj_node, "Name") and get_str(obj_node, "id") == "sys":
         if method_name == "exit":
             exit_args: list[TExpr] = []
@@ -2857,7 +2859,6 @@ def _lower_method_call(
             else:
                 exit_args.append(TIntLit(pos, 0, "0", {}))
             return _make_call(pos, "Exit", exit_args)
-    # sys.stdin methods
     if _is_ast(obj_node, "Attribute"):
         inner_obj = get_node(obj_node, "value")
         inner_attr = get_str(obj_node, "attr")
@@ -2867,7 +2868,6 @@ def _lower_method_call(
                     return _make_call(pos, "ReadLine", [])
                 if method_name == "read":
                     return _make_call(pos, "ReadAll", [])
-    # sys.stdin.buffer.read / sys.stdout.buffer.write / sys.stderr.buffer.write
     if _is_ast(obj_node, "Attribute"):
         inner_obj = get_node(obj_node, "value")
         inner_attr = get_str(obj_node, "attr")
@@ -2894,7 +2894,6 @@ def _lower_method_call(
                             return _make_call(
                                 pos, "WriteErr", [_lower_expr(args[0], env, ctx)]
                             )
-    # os.getenv
     if _is_ast(obj_node, "Name") and get_str(obj_node, "id") == "os":
         if method_name == "getenv":
             lowered: list[TExpr] = []
@@ -2904,7 +2903,6 @@ def _lower_method_call(
                 lowered.append(_lower_expr(a, env, ctx))
                 i += 1
             return _make_call(pos, "GetEnv", lowered)
-    # dict.fromkeys(keys, value?)
     if _is_ast(obj_node, "Name") and get_str(obj_node, "id") == "dict":
         if method_name == "fromkeys":
             fk_args: list[TExpr] = []
@@ -2916,6 +2914,25 @@ def _lower_method_call(
             if len(fk_args) == 1:
                 fk_args.append(TNilLit(pos, {}))
             return _make_call(pos, "MapFromKeys", fk_args)
+    return None
+
+
+def _lower_method_call(
+    func_node: ASTNode,
+    args: list[ASTNode],
+    keywords: list[ASTNode],
+    node: ASTNode,
+    env: _Env,
+    ctx: _LowerCtx,
+) -> TExpr:
+    """Lower a method call."""
+    pos = _node_pos(node)
+    method_name = get_str(func_node, "attr")
+    obj_node = get_node(func_node, "value")
+    obj_type = _infer_expr_type(obj_node, env, ctx)
+    stdlib = _try_lower_stdlib_method(pos, obj_node, method_name, args, env, ctx)
+    if stdlib is not None:
+        return stdlib
     obj = _lower_expr(obj_node, env, ctx)
     # Unwrap pointer for type dispatch
     actual_type = _unwrap_pointer(obj_type)
@@ -3363,6 +3380,31 @@ def _get_const_int(node: ASTNode) -> int | None:
     return None
 
 
+def _lower_slice_bound(
+    pos: Pos, jv: JsonValue | None, default: TExpr, env: _Env, ctx: _LowerCtx
+) -> TExpr:
+    """Lower a single slice bound, returning default if absent."""
+    if isinstance(jv, JDict):
+        return _lower_expr(jv.entries, env, ctx)
+    return default
+
+
+def _lower_slice(
+    pos: Pos,
+    obj: TExpr,
+    obj_type: TypeNode,
+    slice_node: ASTNode,
+    env: _Env,
+    ctx: _LowerCtx,
+) -> TExpr:
+    """Lower a slice access xs[a:b] into TSlice."""
+    lower_jv = slice_node.get("lower")
+    upper_jv = slice_node.get("upper")
+    low = _lower_slice_bound(pos, lower_jv, TIntLit(pos, 0, "0", {}), env, ctx)
+    high = _lower_slice_bound(pos, upper_jv, _len_expr(pos, obj, obj_type), env, ctx)
+    return TSlice(pos, obj, low, high, {})
+
+
 def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     """Lower a Subscript node."""
     pos = _node_pos(node)
@@ -3406,39 +3448,8 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             return _lower_expr(obj_node, env, ctx)
     obj = _lower_expr(obj_node, env, ctx)
     obj_type = _infer_expr_type(obj_node, env, ctx)
-    # Slice access: xs[a:b]
     if _is_ast(slice_node, "Slice"):
-        lower_jv = slice_node.get("lower")
-        upper_jv = slice_node.get("upper")
-        low: TExpr
-        high: TExpr
-        if lower_jv is None or isinstance(lower_jv, JNull):
-            low = TIntLit(pos, 0, "0", {})
-        elif isinstance(lower_jv, JDict):
-            lower_val = lower_jv.entries
-            if (
-                isinstance(lower_val.get("value"), JNull)
-                and get_str(lower_val, "_type") != "Constant"
-            ):
-                low = _lower_expr(lower_val, env, ctx)
-            else:
-                low = _lower_expr(lower_val, env, ctx)
-        else:
-            low = TIntLit(pos, 0, "0", {})
-        if upper_jv is None or isinstance(upper_jv, JNull):
-            high = _len_expr(pos, obj, obj_type)
-        elif isinstance(upper_jv, JDict):
-            upper_val = upper_jv.entries
-            if (
-                isinstance(upper_val.get("value"), JNull)
-                and get_str(upper_val, "_type") != "Constant"
-            ):
-                high = _lower_expr(upper_val, env, ctx)
-            else:
-                high = _lower_expr(upper_val, env, ctx)
-        else:
-            high = _len_expr(pos, obj, obj_type)
-        return TSlice(pos, obj, low, high, {})
+        return _lower_slice(pos, obj, obj_type, slice_node, env, ctx)
     # Tuple index: t[0] → t.0 (only for multi-element tuples, not single-element)
     if _is_type_dict(obj_type, ["Tuple"]) and not _is_single_elem_tuple(obj_type):
         if _is_ast(slice_node, "Constant"):
@@ -4753,19 +4764,15 @@ def _replace_subscript_in_ast(node: ASTNode, key: str, name: str) -> None:
         ki += 1
 
 
-def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
-    """Lower an if statement, detecting isinstance chains for match."""
-    pos = _node_pos(node)
-    test = get_node(node, "test")
-    body = get_nodes(node, "body")
-    orelse = get_nodes(node, "orelse")
-    # Check for isinstance chain → match statement
-    isinstance_result = _extract_isinstance_chain(node)
-    if isinstance_result is not None:
-        return _lower_isinstance_chain(
-            pos, isinstance_result.cases, isinstance_result.else_body, env, ctx
-        )
-    # Split compound "not isinstance(x, T) or ..." guard into sequential ifs
+def _try_split_guards(
+    node: ASTNode,
+    test: ASTNode,
+    body: list[ASTNode],
+    orelse: list[ASTNode],
+    env: _Env,
+    ctx: _LowerCtx,
+) -> list[TStmt] | None:
+    """Split compound isinstance guards into sequential/nested ifs. Returns None if no split applies."""
     if _is_ast(test, "BoolOp") and len(orelse) == 0 and _is_guard_body(body):
         op = get_node(test, "op")
         if get_str(op, "_type") == "Or":
@@ -4792,13 +4799,8 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                         ji += 1
                     vi += 1
                 return result_stmts
-    # When the condition is ``guard and isinstance(x[N], T)``, the subscript
-    # access x[N] is protected by the short-circuit guard.  Hoisting the temp
-    # before the if would execute x[N] unconditionally.  Split the And into
-    # nested ifs so the hoist lands inside the guard.
     if _is_ast(test, "BoolOp") and get_str(get_node(test, "op"), "_type") == "And":
         values = get_nodes(test, "values")
-        # Find the first operand index that contains an isinstance subscript.
         first_sub_idx = -1
         vi = 0
         while vi < len(values):
@@ -4807,7 +4809,6 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 break
             vi += 1
         if first_sub_idx > 0:
-            # Build guard condition from operands before the subscript isinstance.
             guard_jv: list[JsonValue] = []
             gi = 0
             while gi < first_sub_idx:
@@ -4821,7 +4822,6 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                     "op": JDict({"_type": JStr("And")}),
                     "values": JList(guard_jv),
                 }
-            # Build inner condition from remaining operands.
             rest_jv: list[JsonValue] = []
             ri = first_sub_idx
             while ri < len(values):
@@ -4867,7 +4867,18 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             if sf is not None:
                 outer_if["_source_file"] = sf
             return _lower_if(outer_if, env, ctx)
-    # Extract indexed isinstance args into temp variables
+    return None
+
+
+def _hoist_isinstance_temps(
+    pos: Pos,
+    test: ASTNode,
+    body: list[ASTNode],
+    orelse: list[ASTNode],
+    env: _Env,
+    ctx: _LowerCtx,
+) -> list[TStmt]:
+    """Extract indexed isinstance subscripts into temp let-bindings."""
     indexed_subs = _find_isinstance_subscripts(test)
     pre_temps: list[TStmt] = []
     seen_keys: set[str] = set()
@@ -4894,6 +4905,24 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 _replace_subscript_in_ast(orelse[bi2], key, temp_name)
                 bi2 += 1
         si += 1
+    return pre_temps
+
+
+def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
+    """Lower an if statement, detecting isinstance chains for match."""
+    pos = _node_pos(node)
+    test = get_node(node, "test")
+    body = get_nodes(node, "body")
+    orelse = get_nodes(node, "orelse")
+    isinstance_result = _extract_isinstance_chain(node)
+    if isinstance_result is not None:
+        return _lower_isinstance_chain(
+            pos, isinstance_result.cases, isinstance_result.else_body, env, ctx
+        )
+    split_result = _try_split_guards(node, test, body, orelse, env, ctx)
+    if split_result is not None:
+        return split_result
+    pre_temps = _hoist_isinstance_temps(pos, test, body, orelse, env, ctx)
     # Hoist variables first-assigned inside branches
     all_branch_nodes: list[ASTNode] = []
     bi = 0
@@ -5947,6 +5976,26 @@ def _collect_ancestor_methods(
     return result
 
 
+def _collect_field_keys(cls_info: ClassInfo, inherited: set[str]) -> list[str]:
+    """Collect field keys: init_params first (mapped via param_to_field), then remaining field_order."""
+    seen: set[str] = set(inherited)
+    fkeys: list[str] = []
+    if len(cls_info.init_params) > 0:
+        j = 0
+        while j < len(cls_info.init_params):
+            p = cls_info.init_params[j]
+            field_name = cls_info.param_to_field.get(p, p)
+            if field_name not in seen:
+                fkeys.append(field_name)
+                seen.add(field_name)
+            j += 1
+    for k in cls_info.field_order:
+        if k not in seen:
+            fkeys.append(k)
+            seen.add(k)
+    return fkeys
+
+
 def _build_struct(
     node: ASTNode,
     ctx: _LowerCtx,
@@ -5965,21 +6014,7 @@ def _build_struct(
         iface_fields: list[TFieldDecl] = []
         cls_info = ctx.tc_result.classes.get(name)
         if cls_info is not None:
-            seen: set[str] = set()
-            fkeys: list[str] = []
-            if len(cls_info.init_params) > 0:
-                j = 0
-                while j < len(cls_info.init_params):
-                    p = cls_info.init_params[j]
-                    field_name = cls_info.param_to_field.get(p, p)
-                    if field_name not in seen:
-                        fkeys.append(field_name)
-                        seen.add(field_name)
-                    j += 1
-            for k in cls_info.field_order:
-                if k not in seen:
-                    fkeys.append(k)
-                    seen.add(k)
+            fkeys = _collect_field_keys(cls_info, set())
             j = 0
             while j < len(fkeys):
                 fname = fkeys[j]
@@ -6036,22 +6071,7 @@ def _build_struct(
                 fields.append(TFieldDecl(pos, af_name, af_type, af_has_default))
                 inherited_field_names.add(af_name)
                 af_i += 1
-            # Build own field keys: init_params first, then remaining fields
-            seen: set[str] = set(inherited_field_names)
-            fkeys: list[str] = []
-            if len(cls_info.init_params) > 0:
-                j = 0
-                while j < len(cls_info.init_params):
-                    p = cls_info.init_params[j]
-                    field_name = cls_info.param_to_field.get(p, p)
-                    if field_name not in seen:
-                        fkeys.append(field_name)
-                        seen.add(field_name)
-                    j += 1
-            for k in cls_info.field_order:
-                if k not in seen:
-                    fkeys.append(k)
-                    seen.add(k)
+            fkeys = _collect_field_keys(cls_info, inherited_field_names)
             j = 0
             while j < len(fkeys):
                 fname = fkeys[j]
