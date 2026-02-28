@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -26,6 +27,7 @@ from src.frontend.parse import parse, stamp_uids
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 
 TONGUES_DIR = Path(__file__).parent.parent
+LIB_DIR = TONGUES_DIR / "src" / "lib"
 
 TRANSPILED_BINARY: str | None = os.environ.get("TONGUES_TRANSPILED_BINARY")
 
@@ -39,6 +41,34 @@ if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".py"):
     _spec.loader.exec_module(_TRANSPILED_MODULE)
 
 EXT_TO_LANG = {".py": "python", ".rb": "ruby", ".pl": "perl"}
+
+_LIB_IMPORT_RE = re.compile(r"^from lib\.(\w+) import", re.MULTILINE)
+
+
+def _find_lib_imports(source: str) -> list[str]:
+    """Extract unique lib module names from 'from lib.X import' statements."""
+    return list(dict.fromkeys(_LIB_IMPORT_RE.findall(source)))
+
+
+def _read_lib_sources(names: list[str]) -> list[tuple[str, str]]:
+    """Read lib modules. Returns [(import_path, source)] e.g. [('lib/base64.py', '...')]."""
+    result: list[tuple[str, str]] = []
+    for name in names:
+        file_path = LIB_DIR / f"{name}.py"
+        import_path = f"lib/{name}.py"
+        result.append((import_path, file_path.read_text()))
+    return result
+
+
+def _build_project_input(
+    app_path: str, app_source: str, lib_sources: list[tuple[str, str]]
+) -> bytes:
+    """Build NUL-delimited project input."""
+    parts = [app_path, app_source]
+    for import_path, source in lib_sources:
+        parts.append(import_path)
+        parts.append(source)
+    return "\0".join(parts).encode()
 
 
 def parse_cli_test_file(path: Path) -> list[tuple[str, dict]]:
@@ -846,73 +876,109 @@ def run_type_checking(source: str) -> PhaseResult:
 
 def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
     """Lower Python source to Taytsh text. Returns (output, error)."""
+    lib_names = _find_lib_imports(source)
     if TRANSPILED_BINARY is not None:
-        suffix = ".py"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as tmp:
-            tmp.write(source)
-            tmp.flush()
-            argv = [TRANSPILED_BINARY, "--stop-at", "lowering-text", tmp.name]
+        if lib_names:
+            lib_sources = _read_lib_sources(lib_names)
+            stdin_data = _build_project_input("apptest.py", source, lib_sources)
+            argv = [TRANSPILED_BINARY, "--project", "--stop-at", "lowering-text"]
             if _TRANSPILED_MODULE is not None:
-                result = _run_inprocess(argv)
+                result = _run_inprocess(argv, stdin_data=stdin_data)
             else:
                 cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(cmd, capture_output=True, timeout=30)
-            Path(tmp.name).unlink(missing_ok=True)
+                result = subprocess.run(
+                    cmd, input=stdin_data, capture_output=True, timeout=30
+                )
+        else:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=False
+            ) as tmp:
+                tmp.write(source)
+                tmp.flush()
+                argv = [TRANSPILED_BINARY, "--stop-at", "lowering-text", tmp.name]
+                if _TRANSPILED_MODULE is not None:
+                    result = _run_inprocess(argv)
+                else:
+                    cmd = [*_transpiled_runtime(), *argv]
+                    result = subprocess.run(cmd, capture_output=True, timeout=30)
+                Path(tmp.name).unlink(missing_ok=True)
         if result.returncode != 0:
             stderr = result.stderr.decode(errors="replace").strip()
             return (None, stderr.split("\n")[0] if stderr else "lowering failed")
         return (result.stdout.decode(errors="replace"), None)
     try:
-        ast_dict = parse(source)
-        bind_result = run_bind(ast_dict)
-        if not bind_result.subset_ok():
-            return (None, bind_result.subset_violations[0].message)
-        if not bind_result.names_ok():
-            return (None, bind_result.name_violations[0].message)
-        hier_result = build_hierarchy(
-            bind_result.known_classes, bind_result.class_bases
-        )
-        hier_errors = hier_result.errors()
-        if hier_errors:
-            return (None, str(hier_errors[0]))
-        tc_result = collect_types(
-            ast_dict,
-            bind_result.known_classes,
-            bind_result.node_classes,
-            bind_result.type_aliases,
-            bind_result.class_bases,
-            hier_result.hierarchy_roots,
-        )
-        tc_errors = tc_result.errors()
-        if tc_errors:
-            return (None, str(tc_errors[0]))
-        inf_result = _run_pycheck(
-            ast_dict,
-            tc_result,
-            hier_result,
-            bind_result.known_classes,
-            bind_result.class_bases,
-            bind_result.flow_graphs,
-        )
-        inf_errors = inf_result.errors()
-        if inf_errors:
-            return (None, str(inf_errors[0]))
         from src.frontend.lowering import lower
         from src.taytsh.emit import to_source
+        from src.taytsh.ast import TModule
 
-        module, lower_errors = lower(
-            ast_dict,
-            tc_result,
-            hier_result,
-            bind_result.known_classes,
-            bind_result.class_bases,
-            inf_result,
-        )
-        if lower_errors:
-            return (None, str(lower_errors[0]))
-        if module is None:
-            return (None, "lowering produced no module")
-        output = to_source(module)
+        def _lower_single(src: str):
+            """Lower a single source to TModule. Returns (module, error)."""
+            ast_dict = parse(src)
+            stamp_uids(ast_dict)
+            bind_result = run_bind(ast_dict)
+            if not bind_result.subset_ok():
+                return (None, bind_result.subset_violations[0].message)
+            if not bind_result.names_ok():
+                return (None, bind_result.name_violations[0].message)
+            hier_result = build_hierarchy(
+                bind_result.known_classes, bind_result.class_bases
+            )
+            hier_errors = hier_result.errors()
+            if hier_errors:
+                return (None, str(hier_errors[0]))
+            tc_result = collect_types(
+                ast_dict,
+                bind_result.known_classes,
+                bind_result.node_classes,
+                bind_result.type_aliases,
+                bind_result.class_bases,
+                hier_result.hierarchy_roots,
+            )
+            tc_errors = tc_result.errors()
+            if tc_errors:
+                return (None, str(tc_errors[0]))
+            inf_result = _run_pycheck(
+                ast_dict,
+                tc_result,
+                hier_result,
+                bind_result.known_classes,
+                bind_result.class_bases,
+                bind_result.flow_graphs,
+            )
+            inf_errors = inf_result.errors()
+            if inf_errors:
+                return (None, str(inf_errors[0]))
+            module, lower_errors = lower(
+                ast_dict,
+                tc_result,
+                hier_result,
+                bind_result.known_classes,
+                bind_result.class_bases,
+                inf_result,
+            )
+            if lower_errors:
+                return (None, str(lower_errors[0]))
+            if module is None:
+                return (None, "lowering produced no module")
+            return (module, None)
+
+        # Lower lib modules first, then app module
+        all_decls: list = []
+        if lib_names:
+            lib_sources = _read_lib_sources(lib_names)
+            for _path, lib_src in lib_sources:
+                lib_module, err = _lower_single(lib_src)
+                if err is not None:
+                    return (None, err)
+                all_decls.extend(lib_module.decls)
+
+        app_module, err = _lower_single(source)
+        if err is not None:
+            return (None, err)
+        all_decls.extend(app_module.decls)
+
+        merged = TModule(decls=all_decls)
+        output = to_source(merged)
         return (output, None)
     except Exception as e:
         return (None, str(e))
@@ -1170,27 +1236,123 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
 
 def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
     """Transpile Python apptest source to target language. Returns (output, error)."""
+    lib_names = _find_lib_imports(source)
     if TRANSPILED_BINARY is not None:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
-            tmp.write(source)
-            tmp.flush()
-            argv = [TRANSPILED_BINARY, "--target", target, tmp.name]
+        if lib_names:
+            lib_sources = _read_lib_sources(lib_names)
+            stdin_data = _build_project_input("apptest.py", source, lib_sources)
+            argv = [TRANSPILED_BINARY, "--project", "--target", target]
             if _TRANSPILED_MODULE is not None:
-                result = _run_inprocess(argv)
+                result = _run_inprocess(argv, stdin_data=stdin_data)
             else:
                 cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(cmd, capture_output=True, timeout=30)
-            Path(tmp.name).unlink(missing_ok=True)
+                result = subprocess.run(
+                    cmd, input=stdin_data, capture_output=True, timeout=30
+                )
+        else:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=False
+            ) as tmp:
+                tmp.write(source)
+                tmp.flush()
+                argv = [TRANSPILED_BINARY, "--target", target, tmp.name]
+                if _TRANSPILED_MODULE is not None:
+                    result = _run_inprocess(argv)
+                else:
+                    cmd = [*_transpiled_runtime(), *argv]
+                    result = subprocess.run(cmd, capture_output=True, timeout=30)
+                Path(tmp.name).unlink(missing_ok=True)
         if result.returncode != 0:
             stderr = result.stderr.decode(errors="replace").strip()
             return (None, stderr.split("\n")[0] if stderr else "transpile failed")
         return (result.stdout.decode(errors="replace"), None)
-    taytsh_text, err = lower_to_taytsh(source)
-    if err is not None:
-        return (None, err)
     emitter = EMITTERS.get(target)
     if emitter is None:
         return (None, f"no emitter for target '{target}'")
+    # For lib imports, work directly with TModule to preserve default params
+    if lib_names:
+        try:
+            from src.frontend.lowering import lower
+            from src.taytsh.ast import TModule
+
+            def _lower_single_to_module(src: str):
+                """Lower a single source to TModule."""
+                ast_dict = parse(src)
+                stamp_uids(ast_dict)
+                bind_result = run_bind(ast_dict)
+                if not bind_result.subset_ok():
+                    return (None, bind_result.subset_violations[0].message)
+                if not bind_result.names_ok():
+                    return (None, bind_result.name_violations[0].message)
+                hier_result = build_hierarchy(
+                    bind_result.known_classes, bind_result.class_bases
+                )
+                hier_errors = hier_result.errors()
+                if hier_errors:
+                    return (None, str(hier_errors[0]))
+                tc_result = collect_types(
+                    ast_dict,
+                    bind_result.known_classes,
+                    bind_result.node_classes,
+                    bind_result.type_aliases,
+                    bind_result.class_bases,
+                    hier_result.hierarchy_roots,
+                )
+                tc_errors = tc_result.errors()
+                if tc_errors:
+                    return (None, str(tc_errors[0]))
+                inf_result = _run_pycheck(
+                    ast_dict,
+                    tc_result,
+                    hier_result,
+                    bind_result.known_classes,
+                    bind_result.class_bases,
+                    bind_result.flow_graphs,
+                )
+                inf_errors = inf_result.errors()
+                if inf_errors:
+                    return (None, str(inf_errors[0]))
+                module, lower_errors = lower(
+                    ast_dict,
+                    tc_result,
+                    hier_result,
+                    bind_result.known_classes,
+                    bind_result.class_bases,
+                    inf_result,
+                )
+                if lower_errors:
+                    return (None, str(lower_errors[0]))
+                if module is None:
+                    return (None, "lowering produced no module")
+                return (module, None)
+
+            # Lower lib modules first, then app module
+            all_decls: list = []
+            lib_sources = _read_lib_sources(lib_names)
+            for _path, lib_src in lib_sources:
+                lib_module, err = _lower_single_to_module(lib_src)
+                if err is not None:
+                    return (None, err)
+                all_decls.extend(lib_module.decls)
+            app_module, err = _lower_single_to_module(source)
+            if err is not None:
+                return (None, err)
+            all_decls.extend(app_module.decls)
+            merged = TModule(decls=all_decls)
+
+            # Run Taytsh checker and analyzers directly on merged module
+            errors, checker = check_with_info(merged)
+            if errors:
+                return (None, str(errors[0]))
+            analyze_returns(merged, checker)
+            analyze_scope(merged, checker)
+            analyze_liveness(merged, checker)
+            return (emitter(merged), None)
+        except Exception as e:
+            return (None, str(e))
+    taytsh_text, err = lower_to_taytsh(source)
+    if err is not None:
+        return (None, err)
     return _transpile_with_emitter(taytsh_text, emitter)
 
 

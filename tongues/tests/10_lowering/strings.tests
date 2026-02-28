@@ -1,8 +1,8 @@
-=== string index yields rune
+=== string index returns string
 def f(s: str) -> str:
     return s[0]
 ---
-s[0]
+ToString(s[0])
 ---
 
 === string length is rune count
@@ -207,4 +207,11 @@ def f(s: str) -> None:
         print(str(i))
 ---
 for i, ch in s {
+---
+
+=== bytes index returns int
+def f(b: bytes) -> int:
+    return b[0]
+---
+ByteToInt(b[0])
 ---

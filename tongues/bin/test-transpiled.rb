@@ -11,6 +11,7 @@ require "fileutils"
 
 TONGUES_DIR = File.expand_path("..", __dir__)
 TESTS_DIR = File.join(TONGUES_DIR, "tests")
+LIB_DIR = File.join(TONGUES_DIR, "src", "lib")
 
 # Phase → test config: [dir, runner, is_taytsh, cli_args, expect_json]
 # Runners: :cli, :phase, :lowering, :codegen, :emit, :app, :ordering, :taytsh_app
@@ -674,22 +675,45 @@ def run_emit_tests(test_dir)
   results
 end
 
+def find_lib_imports(source)
+  source.scan(/^from lib\.(\w+) import/).flatten.uniq
+end
+
+def build_project_input(app_path, app_source, lib_sources)
+  parts = [app_path, app_source]
+  lib_sources.each do |import_path, src|
+    parts << import_path
+    parts << src
+  end
+  parts.join("\0")
+end
+
 def run_app_tests(test_dir)
   results = []
   available = RUNTIMES.select { |_, cmd| system("which", cmd[0], out: File::NULL, err: File::NULL) }.keys
   Dir.glob(File.join(test_dir, "apptest_*.py")).sort.each do |test_file|
     stem = File.basename(test_file, ".py")
     source = File.read(test_file)
+    lib_names = find_lib_imports(source)
     available.each do |target|
       test_id = "#{stem}[#{target}]"
-      tmp = Tempfile.new(["test", ".py"])
-      begin
-        tmp.write(source)
-        tmp.flush
-        result = run_inprocess(["--target", target, tmp.path])
-      ensure
-        tmp.close
-        tmp.unlink
+      if lib_names.empty?
+        tmp = Tempfile.new(["test", ".py"])
+        begin
+          tmp.write(source)
+          tmp.flush
+          result = run_inprocess(["--target", target, tmp.path])
+        ensure
+          tmp.close
+          tmp.unlink
+        end
+      else
+        lib_sources = lib_names.map do |name|
+          lib_path = File.join(LIB_DIR, "#{name}.py")
+          ["lib/#{name}.py", File.read(lib_path)]
+        end
+        stdin_data = build_project_input("apptest.py", source, lib_sources)
+        result = run_inprocess(["--project", "--target", target], stdin_data: stdin_data)
       end
       if result[:exit] != 0
         stderr = result[:stderr].strip.split("\n")[0] || "transpile failed"
