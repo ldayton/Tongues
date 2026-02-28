@@ -1112,7 +1112,7 @@ def _stdlib_import_seen(
 
 def merge_project(
     file_asts: list[tuple[str, ASTNode]],
-) -> tuple[ASTNode | None, list[str]]:
+) -> tuple[ASTNode | None, list[str], dict[str, dict[str, str]]]:
     """Full project merge. Returns (merged_ast, errors)."""
     errors: list[str] = []
     universe: set[str] = set()
@@ -1163,7 +1163,7 @@ def merge_project(
         file_import_info[path] = import_entries
         i += 1
     if len(errors) > 0:
-        return (None, errors)
+        return (None, errors, {})
     all_file_names: dict[str, list[tuple[str, int, int, ASTNode]]] = {}
     i = 0
     while i < len(file_asts):
@@ -1355,13 +1355,13 @@ def merge_project(
             mi += 1
         oi += 1
     if len(errors) > 0:
-        return (None, errors)
+        return (None, errors, {})
     wrapped_body = JList([])
     wbi = 0
     while wbi < len(merged_body):
         wrapped_body.items.append(JDict(merged_body[wbi]))
         wbi += 1
-    return ({"_type": JStr("Module"), "body": wrapped_body}, [])
+    return ({"_type": JStr("Module"), "body": wrapped_body}, [], file_renames)
 
 
 def _pipeline_post_parse(
@@ -1371,6 +1371,7 @@ def _pipeline_post_parse(
     stop_at: str | None,
     strict_math: bool,
     strict_tostring: bool,
+    file_renames: dict[str, dict[str, str]] | None = None,
 ) -> tuple[int, str]:
     """Run pipeline phases after parsing. Returns (exit_code, output)."""
     bind_result = run_bind(ast_dict)
@@ -1409,6 +1410,33 @@ def _pipeline_post_parse(
             _print_errors(warn_strs)
         return (0, to_json(_name_table_to_dict(bind_result.table)))
     known_classes = bind_result.known_classes
+    # Add aliases to known_classes (bare → prefixed) from file_renames
+    if file_renames is not None:
+        _bare_to_prefixed: dict[str, str] = {}
+        _frk = list(file_renames.keys())
+        _fri = 0
+        while _fri < len(_frk):
+            _f = _frk[_fri]
+            _renames = file_renames[_f]
+            _rk = list(_renames.keys())
+            _ri = 0
+            while _ri < len(_rk):
+                _bare = _rk[_ri]
+                _prefixed = _renames[_bare]
+                if _bare not in _bare_to_prefixed:
+                    _bare_to_prefixed[_bare] = _prefixed
+                elif _bare_to_prefixed[_bare] != _prefixed:
+                    _bare_to_prefixed[_bare] = ""  # Ambiguous
+                _ri += 1
+            _fri += 1
+        _ak = list(_bare_to_prefixed.keys())
+        _ai = 0
+        while _ai < len(_ak):
+            _bare = _ak[_ai]
+            _prefixed = _bare_to_prefixed[_bare]
+            if _prefixed != "" and _prefixed in known_classes and _bare not in known_classes:
+                known_classes[_bare] = _prefixed
+            _ai += 1
     node_classes = bind_result.node_classes
     class_bases = bind_result.class_bases
     if stop_at == "signatures":
@@ -1912,7 +1940,7 @@ def main_project(
             j += 1
         output = to_json(JList(items))
         return write_output(output, output_file)
-    merged_ast, merge_errors = merge_project(file_asts)
+    merged_ast, merge_errors, file_renames = merge_project(file_asts)
     if len(merge_errors) > 0:
         _print_errors(merge_errors)
         return 1
@@ -1926,7 +1954,7 @@ def main_project(
         k += 1
     combined_source = "\n".join(all_source_parts)
     exit_code, output = _pipeline_post_parse(
-        merged_ast, combined_source, target, stop_at, strict_math, strict_tostring
+        merged_ast, combined_source, target, stop_at, strict_math, strict_tostring, file_renames
     )
     if exit_code != 0:
         return exit_code

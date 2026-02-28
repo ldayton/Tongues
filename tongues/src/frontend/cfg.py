@@ -657,7 +657,7 @@ def _collect_aliases(graph: FlowGraph) -> dict[str, int]:
 def _apply_narrow_type(
     cur_type: TypeNode,
     narrow_node: FlowNarrow,
-    known_classes: set[str],
+    known_classes: dict[str, str],
 ) -> TypeNode:
     """Apply true-branch narrowing to a type."""
     from .types import OptionalType
@@ -685,7 +685,7 @@ def _apply_narrow_type(
 def _apply_widen_type(
     cur_type: TypeNode,
     narrow_node: FlowNarrow,
-    known_classes: set[str],
+    known_classes: dict[str, str],
 ) -> TypeNode:
     """Apply false-branch (inverse) narrowing to a type."""
     from .types import OptionalType, remove_from_union
@@ -719,7 +719,7 @@ def _walk_prevs(
     variable: str,
     initial_types: dict[str, TypeNode],
     assigned_types: dict[int, TypeNode],
-    known_classes: set[str],
+    known_classes: dict[str, str],
     cache: dict[str, TypeNode],
     visiting: dict[str, bool],
     depth: int,
@@ -776,7 +776,7 @@ def _walk_loop_head(
     variable: str,
     initial_types: dict[str, TypeNode],
     assigned_types: dict[int, TypeNode],
-    known_classes: set[str],
+    known_classes: dict[str, str],
     cache: dict[str, TypeNode],
     visiting: dict[str, bool],
     depth: int,
@@ -849,7 +849,7 @@ def _walk_back(
     variable: str,
     initial_types: dict[str, TypeNode],
     assigned_types: dict[int, TypeNode],
-    known_classes: set[str],
+    known_classes: dict[str, str],
     cache: dict[str, TypeNode],
     visiting: dict[str, bool],
     depth: int,
@@ -984,7 +984,7 @@ def get_type_at(
     variable: str,
     initial_types: dict[str, TypeNode],
     assigned_types: dict[int, TypeNode],
-    known_classes: set[str],
+    known_classes: dict[str, str],
 ) -> TypeNode | None:
     """Query the type of a variable at a specific flow node via backward walk."""
     cache: dict[str, TypeNode] = {}

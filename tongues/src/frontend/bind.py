@@ -2536,7 +2536,7 @@ class BindResult:
         self.table: NameTable = NameTable()
         self.name_violations: list[NameViolation] = []
         self.name_warnings: list[NameViolation] = []
-        self.known_classes: set[str] = set()
+        self.known_classes: dict[str, str] = {}
         self.node_classes: set[str] = set()
         self.class_bases: dict[str, list[str]] = {}
         self.type_aliases: dict[str, str] = {}
@@ -2565,7 +2565,7 @@ def _compute_derived(
         mname = mkeys[ki]
         info = table.module_names[mname]
         if info.kind == "class":
-            result.known_classes.add(mname)
+            result.known_classes[mname] = mname
             bi = 0
             while bi < len(info.bases):
                 base = info.bases[bi]

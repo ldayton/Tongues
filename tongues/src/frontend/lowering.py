@@ -850,13 +850,13 @@ class _LowerCtx:
         self,
         tc_result: TypeCollectResult,
         hier_result: HierarchyResult,
-        known_classes: set[str],
+        known_classes: dict[str, str],
         class_bases: dict[str, list[str]],
         pycheck_result: PycheckResult | None = None,
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
-        self.known_classes: set[str] = known_classes
+        self.known_classes: dict[str, str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
         self.errors: list[LoweringError] = []
         self.isinstance_temp_counter: int = 0
@@ -6399,7 +6399,7 @@ def lower(
     tree: ASTNode,
     tc_result: TypeCollectResult,
     hier_result: HierarchyResult,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     class_bases: dict[str, list[str]],
     pycheck_result: PycheckResult | None = None,
 ) -> tuple[TModule | None, list[LoweringError]]:

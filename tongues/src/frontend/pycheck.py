@@ -1676,14 +1676,14 @@ class _InferCtx:
         self,
         tc_result: TypeCollectResult,
         hier_result: HierarchyResult,
-        known_classes: set[str],
+        known_classes: dict[str, str],
         class_bases: dict[str, list[str]],
         result: PycheckResult,
         flow_graphs: dict[str, FlowGraph],
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
-        self.known_classes: set[str] = known_classes
+        self.known_classes: dict[str, str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
         self.result: PycheckResult = result
         self.flow_graphs: dict[str, FlowGraph] = flow_graphs
@@ -2955,11 +2955,31 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
             return
     if t == "BoolOp":
         _synth_expr(test, env, ctx)
+        op = get_node(test, "op")
+        op_t = get_str(op, "_type")
         values = get_nodes(test, "values")
-        j = 0
-        while j < len(values):
-            _check_truthiness(values[j], env, ctx, lineno)
-            j += 1
+        if len(values) == 0:
+            return
+        # Check first value with original env
+        _check_truthiness(values[0], env, ctx, lineno)
+        if len(values) > 1:
+            # Check subsequent values with narrowed env
+            work = env.copy()
+            dummy = env.copy()
+            if op_t == "And":
+                _extract_narrowing(values[0], work, dummy, ctx)
+            elif op_t == "Or":
+                _extract_narrowing(values[0], dummy, work, ctx)
+            j = 1
+            while j < len(values):
+                _check_truthiness(values[j], work, ctx, lineno)
+                if j + 1 < len(values):
+                    dummy2 = work.copy()
+                    if op_t == "And":
+                        _extract_narrowing(values[j], work, dummy2, ctx)
+                    elif op_t == "Or":
+                        _extract_narrowing(values[j], dummy2, work, ctx)
+                j += 1
         return
     if t == "UnaryOp":
         op = get_node(test, "op")
@@ -4248,7 +4268,7 @@ def run_pycheck(
     tree: ASTNode,
     tc_result: TypeCollectResult,
     hier_result: HierarchyResult,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     class_bases: dict[str, list[str]],
     flow_graphs: dict[str, FlowGraph],
 ) -> PycheckResult:
