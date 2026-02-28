@@ -172,6 +172,7 @@ _FALLBACK_COUNTS: dict[str, int] = {
     "is_any": 0,
     "contains_any": 0,
     "success": 0,
+    "synthetic": 0,
 }
 _FALLBACK_DETAILS: dict[str, dict[str, int]] = {
     "is_any": {},
@@ -229,9 +230,9 @@ def print_fallback_stats() -> None:
     print("=== lowering fallback stats ===", file=sys.stderr)
     total = 0
     for k, v in _FALLBACK_COUNTS.items():
-        if k != "success":
+        if k != "success" and k != "synthetic":
             total = total + v
-    for k in ["success", "no_uid", "no_entry", "is_any", "contains_any"]:
+    for k in ["success", "synthetic", "no_uid", "no_entry", "is_any", "contains_any"]:
         v = _FALLBACK_COUNTS.get(k, 0)
         print(f"  {k}: {str(v)}", file=sys.stderr)
     print(f"  total_fallback: {str(total)}", file=sys.stderr)
@@ -1022,9 +1023,33 @@ def _is_any_type(t: TypeNode) -> bool:
     return isinstance(t, InterfaceRef) and t.name == "any"
 
 
+def _is_synthetic(node: ASTNode) -> bool:
+    """Check if node was created synthetically during lowering."""
+    if not isinstance(node, dict):
+        return False
+    syn = node.get("_synthetic")
+    return isinstance(syn, JBool) and syn.value is True
+
+
+def _infer_synthetic_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
+    """Infer type for synthetic nodes created during lowering."""
+    t = get_str(node, "_type")
+    if t == "Name":
+        name = get_str(node, "id")
+        vt = env.var_types.get(name)
+        if vt is not None:
+            return vt
+    elif t == "BoolOp":
+        return BOOL_TYPE
+    return _infer_expr_type_fallback(node, env, ctx)
+
+
 def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Use pycheck type (after adjustment) when available, else fallback."""
     if ctx.pycheck_result is not None:
+        if _is_synthetic(node):
+            _record_fallback("synthetic")
+            return _infer_synthetic_type(node, env, ctx)
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
         if not isinstance(uid_jv, JInt):
             _record_fallback("no_uid")
@@ -4824,6 +4849,7 @@ def _make_name_node(name: str, src_node: ASTNode) -> ASTNode:
     """Create a Python AST Name node with JStr-wrapped values."""
     return {
         "_type": JStr("Name"),
+        "_synthetic": JBool(True),
         "id": JStr(name),
         "lineno": src_node.get("lineno", JInt(0)),
         "col_offset": src_node.get("col_offset", JInt(0)),
@@ -4919,6 +4945,7 @@ def _try_split_guards(
             else:
                 guard_test = {
                     "_type": JStr("BoolOp"),
+                    "_synthetic": JBool(True),
                     "op": JDict({"_type": JStr("And")}),
                     "values": JList(guard_jv),
                 }
@@ -4932,6 +4959,7 @@ def _try_split_guards(
             else:
                 inner_test = {
                     "_type": JStr("BoolOp"),
+                    "_synthetic": JBool(True),
                     "op": JDict({"_type": JStr("And")}),
                     "values": JList(rest_jv),
                 }
@@ -4947,6 +4975,7 @@ def _try_split_guards(
                 bi2 += 1
             inner_if: dict[str, JsonValue] = {
                 "_type": node.get("_type", JStr("If")),
+                "_synthetic": JBool(True),
                 "test": JDict(inner_test),
                 "body": JList(body_jv),
                 "orelse": JList(orelse_jv),
@@ -4958,6 +4987,7 @@ def _try_split_guards(
                 inner_if["_source_file"] = sf
             outer_if: dict[str, JsonValue] = {
                 "_type": node.get("_type", JStr("If")),
+                "_synthetic": JBool(True),
                 "test": JDict(guard_test),
                 "body": JList([JDict(inner_if)]),
                 "orelse": JList(orelse_jv),
