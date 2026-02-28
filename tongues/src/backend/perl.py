@@ -533,10 +533,10 @@ class _PerlEmitter(Emitter):
             if len(body) == 1 and isinstance(body[0], TExprStmt):
                 call = body[0].expr
                 if self._is_append_to(call, let_stmt.name):
-                    if binding_name:
+                    if binding_name is not None:
                         self.var_alias[binding_name] = "$_"
                     val = self._expr(call.args[1].value)
-                    if binding_name:
+                    if binding_name is not None:
                         self.var_alias.pop(binding_name)
                     return "my " + acc + " = [map { " + val + " } @{" + iterable + "}];"
             if len(body) == 1:
@@ -548,10 +548,10 @@ class _PerlEmitter(Emitter):
                     ):
                         call = then_first.expr
                         if self._is_append_to(call, let_stmt.name):
-                            if binding_name:
+                            if binding_name is not None:
                                 self.var_alias[binding_name] = "$_"
                             guard = self._expr(if_stmt.cond)
-                            if binding_name:
+                            if binding_name is not None:
                                 self.var_alias.pop(binding_name)
                             return (
                                 "my "
@@ -2411,7 +2411,7 @@ class _PerlEmitter(Emitter):
         if name == "Args":
             return "[@ARGV]"
         if name == "GetEnv":
-            return "($ENV{" + self._a(args, 0) + "} // '')"
+            return "$ENV{" + self._a(args, 0) + "}"
         if name == "Exit":
             return "exit(" + self._a(args, 0) + ")"
         if name == "Pow":

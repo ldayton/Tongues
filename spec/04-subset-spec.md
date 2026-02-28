@@ -4,7 +4,7 @@
 
 Syntactic gate for transpilation. Walks the AST and rejects Python constructs that have no Taytsh equivalent. Everything that passes this phase is guaranteed to be translatable to Taytsh IR. Restrictions are checkable from AST structure alone — no type information needed.
 
-See phase 8 (inference) for type-level invariants requiring inference.
+See phase 8 (pycheck) for type-level invariants requiring type checking.
 
 ## Type Annotations
 
@@ -132,7 +132,7 @@ Classes whose fields are all class-level string constants and that serve as hier
 | `enumerate(xs)`, `enumerate(xs, start=n)` | Must appear in for-loop header or eager consumer |
 | `zip(xs, ys)`                             | Must appear in for-loop header or eager consumer |
 
-Iterators must not escape: no assignment, no return, no passing to non-consumer functions. Enforcement requires type information (see phase 8).
+Iterators must not escape: no assignment, no return, no passing to non-consumer functions. Enforcement requires type information (see phase 8, pycheck).
 
 ### Comprehensions
 
@@ -189,7 +189,7 @@ Not allowed: `g = (x for x in iter)`, `return (x for x in iter)`.
 
 ### Allowed Methods
 
-Enforcement requires type information; verified during type inference (phase 8).
+Enforcement requires type information; verified during type checking (phase 8).
 
 | Type   | Methods                                                                                                                                                                                         |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

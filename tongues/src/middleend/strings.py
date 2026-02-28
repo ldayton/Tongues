@@ -636,9 +636,11 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         binder_types = _make_resolver(ctx).resolve_for_binder_types(stmt)
         child_declared = set(declared)
         for bname in stmt.binding:
-            btype = binder_types.get(bname) if binder_types is not None else None
-            if btype is None:
-                btype = ERROR_T
+            btype = ERROR_T
+            if binder_types is not None:
+                bt = binder_types.get(bname)
+                if bt is not None:
+                    btype = bt
             ctx.var_types[bname] = btype
             if _contains_string_type(btype):
                 _register_string_binding(ctx, bname, stmt.annotations, bname, True)
@@ -741,7 +743,9 @@ def _compute_contents(ctx: _StringsCtx) -> None:
                 changed = True
 
         for name, info in ctx.string_bindings.items():
-            level = _C_UNKNOWN if info.base_unknown else None
+            level: str | None = None
+            if info.base_unknown:
+                level = _C_UNKNOWN
             for src in ctx.string_sources.get(name, []):
                 if src.kind == "zero":
                     level = _join_content(level, _C_ASCII)

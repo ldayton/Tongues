@@ -1994,7 +1994,7 @@ class _RubyEmitter(Emitter):
         if name == "Args":
             return "ARGV"
         if name == "GetEnv":
-            return "ENV.fetch(" + self._a(args, 0) + ', "")'
+            return "ENV[" + self._a(args, 0) + "]"
         if name == "ReadFile":
             return "File.read(" + self._a(args, 0) + ', encoding: "utf-8")'
         if name == "ReadFileBytes":

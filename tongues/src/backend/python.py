@@ -260,6 +260,15 @@ def _scan_imports(
                 needs_math = True
             if r_os:
                 needs_os = True
+    for decl in module.decls:
+        if isinstance(decl, TStmt):
+            for name in collect_builtin_calls([decl]):
+                if name in _SYS_BUILTINS:
+                    needs_sys = True
+                if name in _MATH_BUILTINS:
+                    needs_math = True
+                if name in _OS_BUILTINS:
+                    needs_os = True
     return needs_sys, needs_dataclass, needs_field, needs_math, needs_os
 
 
@@ -1581,7 +1590,7 @@ class _PythonEmitter(Emitter):
         if name == "Args":
             return "sys.argv[1:]"
         if name == "GetEnv":
-            return "os.environ.get(" + self._a(args, 0) + ', "")'
+            return "os.getenv(" + self._a(args, 0) + ")"
         if name == "Exit":
             return "sys.exit(" + self._a(args, 0) + ")"
         # Operator forms

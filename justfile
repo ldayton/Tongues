@@ -68,9 +68,9 @@ test-fields-local:
 test-hierarchy-local:
     uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
 
-# Run inference tests locally
-test-inference-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_inference -v
+# Run pycheck tests locally
+test-pycheck-local:
+    uv run --directory tongues pytest tests/test_runner.py -k test_pycheck -v
 
 # Run lowering tests locally
 test-lowering-local:
