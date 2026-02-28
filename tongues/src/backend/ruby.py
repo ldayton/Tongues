@@ -1179,6 +1179,9 @@ class _RubyEmitter(Emitter):
         return "(0..." + self._expr(r.args[0]) + ")"
 
     def _is_map_type(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann.startswith("map[")
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
@@ -1208,6 +1211,9 @@ class _RubyEmitter(Emitter):
         )
 
     def _is_string_type(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann == "string" or ann == "rune"
         if isinstance(expr, TStringLit):
             return True
         if isinstance(expr, TVar):

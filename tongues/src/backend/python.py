@@ -884,6 +884,9 @@ class _PythonEmitter(Emitter):
         self.indent -= 1
 
     def _is_map_type(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann != "":
+            return ann.startswith("map[")
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
