@@ -137,7 +137,7 @@ def _find_input_arg(args: list[str]) -> str | None:
 if __name__ == "__main__":
     # Dispatch taytsh subcommand
     if len(sys.argv) > 1 and sys.argv[1] == "taytsh":
-        from src.taytsh.cli import main as taytsh_main
+        from src.taytsh.cli import cli_main as taytsh_main
         sys.exit(taytsh_main(sys.argv[2:]))
 
     # Check for --verify flag (project-level verification, not in subset)

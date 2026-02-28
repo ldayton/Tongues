@@ -1,4 +1,3 @@
-# tongues: skip
 """JSON parser using static union types."""
 
 from __future__ import annotations
@@ -48,15 +47,12 @@ class JsonObject:
     ]
 
 
-JsonValue = JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
-
-
 # -- Parser state --
 
 
 @dataclass
 class ParseResult:
-    value: JsonValue
+    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
     pos: int
 
 
@@ -74,7 +70,7 @@ def _expect(s: str, pos: int, ch: str) -> int:
     if pos >= len(s):
         raise JsonError(f"unexpected end of input, expected '{ch}'")
     if s[pos] != ch:
-        raise JsonError(f"expected '{ch}' at position {pos}, got '{s[pos]}'")
+        raise JsonError(f"expected '{ch}' at position {str(pos)}, got '{s[pos]}'")
     return pos + 1
 
 
@@ -84,19 +80,19 @@ def _expect(s: str, pos: int, ch: str) -> int:
 def _parse_null(s: str, pos: int) -> ParseResult:
     if s[pos : pos + 4] == "null":
         return ParseResult(JsonNull(), pos + 4)
-    raise JsonError(f"expected 'null' at position {pos}")
+    raise JsonError(f"expected 'null' at position {str(pos)}")
 
 
 def _parse_true(s: str, pos: int) -> ParseResult:
     if s[pos : pos + 4] == "true":
         return ParseResult(JsonBool(True), pos + 4)
-    raise JsonError(f"expected 'true' at position {pos}")
+    raise JsonError(f"expected 'true' at position {str(pos)}")
 
 
 def _parse_false(s: str, pos: int) -> ParseResult:
     if s[pos : pos + 5] == "false":
         return ParseResult(JsonBool(False), pos + 5)
-    raise JsonError(f"expected 'false' at position {pos}")
+    raise JsonError(f"expected 'false' at position {str(pos)}")
 
 
 # -- Number parser --
@@ -111,7 +107,7 @@ def _parse_number(s: str, pos: int) -> ParseResult:
     if pos < len(s) and s[pos] == "-":
         pos += 1
     if pos >= len(s) or not _is_digit(s[pos]):
-        raise JsonError(f"expected digit at position {pos}")
+        raise JsonError(f"expected digit at position {str(pos)}")
     if s[pos] == "0":
         pos += 1
     else:
@@ -120,7 +116,7 @@ def _parse_number(s: str, pos: int) -> ParseResult:
     if pos < len(s) and s[pos] == ".":
         pos += 1
         if pos >= len(s) or not _is_digit(s[pos]):
-            raise JsonError(f"expected digit after '.' at position {pos}")
+            raise JsonError(f"expected digit after '.' at position {str(pos)}")
         while pos < len(s) and _is_digit(s[pos]):
             pos += 1
     if pos < len(s) and (s[pos] == "e" or s[pos] == "E"):
@@ -128,7 +124,7 @@ def _parse_number(s: str, pos: int) -> ParseResult:
         if pos < len(s) and (s[pos] == "+" or s[pos] == "-"):
             pos += 1
         if pos >= len(s) or not _is_digit(s[pos]):
-            raise JsonError(f"expected digit in exponent at position {pos}")
+            raise JsonError(f"expected digit in exponent at position {str(pos)}")
         while pos < len(s) and _is_digit(s[pos]):
             pos += 1
     num_str: str = s[start:pos]
@@ -150,12 +146,12 @@ def _hex_value(ch: str) -> int:
 
 def _parse_hex4(s: str, pos: int) -> tuple[int, int]:
     if pos + 4 > len(s):
-        raise JsonError(f"incomplete unicode escape at position {pos}")
+        raise JsonError(f"incomplete unicode escape at position {str(pos)}")
     result: int = 0
     for i in range(4):
         v: int = _hex_value(s[pos + i])
         if v < 0:
-            raise JsonError(f"invalid hex digit at position {pos + i}")
+            raise JsonError(f"invalid hex digit at position {str(pos + i)}")
         result = result * 16 + v
     return result, pos + 4
 
@@ -203,12 +199,16 @@ def _parse_string_body(s: str, pos: int) -> tuple[str, int]:
                         if low >= 0xDC00 and low <= 0xDFFF:
                             code = 0x10000 + (code - 0xD800) * 0x400 + (low - 0xDC00)
                         else:
-                            raise JsonError(f"invalid low surrogate at position {pos}")
+                            raise JsonError(
+                                f"invalid low surrogate at position {str(pos)}"
+                            )
                     else:
-                        raise JsonError(f"missing low surrogate at position {pos}")
+                        raise JsonError(f"missing low surrogate at position {str(pos)}")
                 parts.append(chr(code))
             else:
-                raise JsonError(f"invalid escape '\\{esc}' at position {pos}")
+                raise JsonError(
+                    "invalid escape '\\" + esc + "' at position " + str(pos)
+                )
         else:
             parts.append(ch)
             pos += 1
@@ -232,7 +232,9 @@ def _parse_string_raw(s: str, pos: int) -> tuple[str, int]:
 def _parse_array(s: str, pos: int) -> ParseResult:
     pos = _expect(s, pos, "[")
     pos = _skip_ws(s, pos)
-    items: list[JsonValue] = []
+    items: list[
+        JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
+    ] = []
     if pos < len(s) and s[pos] == "]":
         return ParseResult(JsonArray(items), pos + 1)
     result: ParseResult = _parse_value(s, pos)
@@ -250,7 +252,11 @@ def _parse_array(s: str, pos: int) -> ParseResult:
 def _parse_object(s: str, pos: int) -> ParseResult:
     pos = _expect(s, pos, "{")
     pos = _skip_ws(s, pos)
-    entries: list[tuple[str, JsonValue]] = []
+    entries: list[
+        tuple[
+            str, JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
+        ]
+    ] = []
     if pos < len(s) and s[pos] == "}":
         return ParseResult(JsonObject(entries), pos + 1)
     key, pos = _parse_string_raw(s, _skip_ws(s, pos))
@@ -294,22 +300,26 @@ def _parse_value(s: str, pos: int) -> ParseResult:
     elif ch == "-" or _is_digit(ch):
         return _parse_number(s, pos)
     else:
-        raise JsonError(f"unexpected character '{ch}' at position {pos}")
+        raise JsonError(f"unexpected character '{ch}' at position {str(pos)}")
 
 
-def parse(s: str) -> JsonValue:
+def parse(
+    s: str,
+) -> JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject:
     """Parse a JSON string into a JsonValue."""
     result: ParseResult = _parse_value(s, 0)
     pos: int = _skip_ws(s, result.pos)
     if pos < len(s):
-        raise JsonError(f"trailing content at position {pos}")
+        raise JsonError(f"trailing content at position {str(pos)}")
     return result.value
 
 
 # -- Serialization --
 
 
-def stringify(value: JsonValue) -> str:
+def stringify(
+    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+) -> str:
     """Serialize a JsonValue to a JSON string."""
     if isinstance(value, JsonNull):
         return "null"
@@ -372,31 +382,42 @@ def _escape_string(s: str) -> str:
 # -- Accessors --
 
 
-def get_string(value: JsonValue) -> str:
+def get_string(
+    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+) -> str:
     if isinstance(value, JsonString):
         return value.value
     raise JsonError("expected JsonString")
 
 
-def get_number(value: JsonValue) -> float:
+def get_number(
+    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+) -> float:
     if isinstance(value, JsonNumber):
         return value.value
     raise JsonError("expected JsonNumber")
 
 
-def get_bool(value: JsonValue) -> bool:
+def get_bool(
+    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+) -> bool:
     if isinstance(value, JsonBool):
         return value.value
     raise JsonError("expected JsonBool")
 
 
-def get_items(value: JsonValue) -> list[JsonValue]:
+def get_items(
+    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+) -> list[JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject]:
     if isinstance(value, JsonArray):
         return value.items
     raise JsonError("expected JsonArray")
 
 
-def get_field(value: JsonValue, key: str) -> JsonValue:
+def get_field(
+    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+    key: str,
+) -> JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject:
     if isinstance(value, JsonObject):
         for k, v in value.entries:
             if k == key:
@@ -405,7 +426,9 @@ def get_field(value: JsonValue, key: str) -> JsonValue:
     raise JsonError("expected JsonObject")
 
 
-def is_null(value: JsonValue) -> bool:
+def is_null(
+    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+) -> bool:
     return isinstance(value, JsonNull)
 
 
@@ -414,7 +437,9 @@ def is_null(value: JsonValue) -> bool:
 
 def _check(name: str, input: str, expected: str) -> bool:
     try:
-        v: JsonValue = parse(input)
+        v: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
+            parse(input)
+        )
         actual: str = stringify(v)
         if actual == expected:
             print("  PASS " + name)
@@ -427,7 +452,7 @@ def _check(name: str, input: str, expected: str) -> bool:
         return False
 
 
-def main() -> int:
+def _self_test() -> int:
     passed: int = 0
     failed: int = 0
     cases: list[tuple[str, str, str]] = [
@@ -477,10 +502,14 @@ def main() -> int:
 
     # accessor test
     try:
-        doc: JsonValue = parse('{"name":"alice","age":30,"scores":[95,87]}')
+        doc: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
+            parse('{"name":"alice","age":30,"scores":[95,87]}')
+        )
         assert get_string(get_field(doc, "name")) == "alice"
         assert get_number(get_field(doc, "age")) == 30.0
-        scores: list[JsonValue] = get_items(get_field(doc, "scores"))
+        scores: list[
+            JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
+        ] = get_items(get_field(doc, "scores"))
         assert len(scores) == 2
         assert get_number(scores[0]) == 95.0
         print("  PASS accessors")
@@ -508,4 +537,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_self_test())
