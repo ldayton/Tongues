@@ -1590,7 +1590,7 @@ def _synth_dictcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     _bind_comprehension_vars(generators, comp_env, ctx)
     kt = ANY_TYPE
     vt = ANY_TYPE
-    if len(key) > 0:
+    if key:
         kt = _synth_expr(key, comp_env, ctx)
     if value:
         vt = _synth_expr(value, comp_env, ctx)
@@ -2020,7 +2020,7 @@ def _validate_stmt(
         return True
     if t == "Raise":
         exc = get_node(stmt, "exc")
-        if len(exc) > 0:
+        if exc:
             _synth_expr(exc, env, ctx)
         return True
     if t == "Try":
@@ -2221,7 +2221,7 @@ def _validate_subscript_assign(
         return
     obj_type = _synth_expr(value, env, ctx)
     if isinstance(obj_type, MapType):
-        if len(slc) > 0:
+        if slc:
             key_actual = _synth_expr(slc, env, ctx)
             if not _is_assignable(key_actual, obj_type.key, ctx.hier_result):
                 ctx.result.add_error(
@@ -2995,7 +2995,7 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
         if get_str(op, "_type") == "Not":
             _synth_expr(test, env, ctx)
             operand = get_node(test, "operand")
-            if len(operand) > 0:
+            if operand:
                 _check_truthiness(operand, env, ctx, lineno)
             return
     if t == "NamedExpr":
@@ -3086,7 +3086,7 @@ def _extract_narrowing(
         op = get_node(test, "op")
         if get_str(op, "_type") == "Not":
             operand = get_node(test, "operand")
-            if len(operand) > 0:
+            if operand:
                 _extract_narrowing(operand, else_env, then_env, ctx)
             return
     if t == "BoolOp":
@@ -3401,11 +3401,11 @@ def _narrow_compare(
                 obj_node = get_node(left, "value")
                 obj_name = ""
                 obj_type: TypeNode | None = None
-                if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
+                if obj_node and _is_type(obj_node, ["Name"]):
                     obj_name = get_str(obj_node, "id")
                     if obj_name:
                         obj_type = then_env.get_type(obj_name)
-                if len(obj_node) > 0 and _is_type(obj_node, ["Attribute"]):
+                if obj_node and _is_type(obj_node, ["Attribute"]):
                     attr_path = _attr_path(obj_node)
                     if attr_path:
                         then_env.guard_attr(attr_path)
@@ -3463,7 +3463,7 @@ def _narrow_compare(
                 obj_node = get_node(left, "value")
                 obj_name = ""
                 obj_type2: TypeNode | None = None
-                if len(obj_node) > 0 and _is_type(obj_node, ["Name"]):
+                if obj_node and _is_type(obj_node, ["Name"]):
                     obj_name = get_str(obj_node, "id")
                     if obj_name:
                         obj_type2 = else_env.get_type(obj_name)
