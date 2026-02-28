@@ -285,46 +285,6 @@ def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     return False
 
 
-def _is_primitive(typ: TType | None, kind: str) -> bool:
-    if isinstance(typ, TOptionalType):
-        typ = typ.inner
-    return isinstance(typ, TPrimitive) and typ.kind == kind
-
-
-def _is_list_type(typ: TType | None) -> bool:
-    return isinstance(typ, (TListType, TTupleType))
-
-
-def _is_map_type(typ: TType | None) -> bool:
-    return isinstance(typ, TMapType)
-
-
-def _is_set_type(typ: TType | None) -> bool:
-    return isinstance(typ, TSetType)
-
-
-def _is_string_type(typ: TType | None) -> bool:
-    return _is_primitive(typ, "string") or _is_primitive(typ, "rune")
-
-
-def _is_bytes_type(typ: TType | None) -> bool:
-    return _is_primitive(typ, "bytes")
-
-
-def _same_type_kind(a: TType, b: TType) -> bool:
-    if isinstance(a, TPrimitive) and isinstance(b, TPrimitive):
-        return a.kind == b.kind
-    if isinstance(a, TListType) and isinstance(b, TListType):
-        return True
-    if isinstance(a, TMapType) and isinstance(b, TMapType):
-        return True
-    if isinstance(a, TSetType) and isinstance(b, TSetType):
-        return True
-    if isinstance(a, TIdentType) and isinstance(b, TIdentType):
-        return a.name == b.name
-    return False
-
-
 class _PerlEmitter(Emitter):
     def __init__(
         self,
@@ -958,7 +918,11 @@ class _PerlEmitter(Emitter):
         safe = self._deref_safe(it)
         if len(binding) == 1:
             name = "$" + _restore_name(binding[0], ann)
-            iter_type = self._expr_type(iterable)
+            iter_type: TType | None = (
+                self.var_types.get(iterable.name)
+                if isinstance(iterable, TVar)
+                else None
+            )
             if self._is_map_expr(iterable):
                 if isinstance(iter_type, TMapType) and isinstance(
                     iter_type.key, TTupleType
@@ -984,20 +948,7 @@ class _PerlEmitter(Emitter):
             elif self._is_bytes_expr(iterable):
                 self._line("for my " + name + " (unpack('C*', " + it + ")) {")
             else:
-                if iter_type is None and not self._is_list_expr(iterable):
-                    self._line(
-                        "for my "
-                        + name
-                        + " (ref("
-                        + it
-                        + ") eq 'ARRAY' ? @{"
-                        + safe
-                        + "} : split(//, "
-                        + it
-                        + ")) {"
-                    )
-                else:
-                    self._line("for my " + name + " (@{" + safe + "}) {")
+                self._line("for my " + name + " (@{" + safe + "}) {")
                 if isinstance(iter_type, TListType):
                     self.var_types[binding[0]] = iter_type.element
             self.indent += 1
@@ -1011,10 +962,11 @@ class _PerlEmitter(Emitter):
             if self._is_map_expr(iterable) or ann.get("for.items") == "true":
                 self._line("for my " + key_var + " (sort keys %{" + safe + "}) {")
                 self.indent += 1
-                iter_type = self._expr_type(iterable)
-                if isinstance(iter_type, TMapType):
-                    self.var_types[binding[0]] = iter_type.key
-                    self.var_types[binding[1]] = iter_type.value
+                if isinstance(iterable, TVar):
+                    iter_type2: TType | None = self.var_types.get(iterable.name)
+                    if isinstance(iter_type2, TMapType):
+                        self.var_types[binding[0]] = iter_type2.key
+                        self.var_types[binding[1]] = iter_type2.value
                 self._line("my " + val_var + " = " + it + "->{" + key_var + "};")
                 self._emit_stmts(body)
                 self.indent -= 1
@@ -1314,10 +1266,7 @@ class _PerlEmitter(Emitter):
             obj = self._expr(expr.obj)
             idx = str(expr.index)
             obj_ann: str = expr.obj.annotations.get("type", "")
-            is_tuple = obj_ann.startswith("(") if obj_ann != "" else False
-            if not is_tuple:
-                obj_t = self._expr_type(expr.obj)
-                is_tuple = isinstance(obj_t, TTupleType)
+            is_tuple = obj_ann.startswith("(")
             if is_tuple:
                 return (
                     "(ref("
@@ -1646,8 +1595,7 @@ class _PerlEmitter(Emitter):
                 return True
         if isinstance(expr, TVar) and expr.name in self.enum_names:
             return True
-        typ = self._expr_type(expr)
-        return isinstance(typ, TPrimitive) and typ.kind in ("int", "float", "bool")
+        return False
 
     def _binary_op(self, op: str, left: TExpr, right: TExpr | None = None) -> str:
         is_str = self._is_string_expr(left) or (
@@ -2352,11 +2300,6 @@ class _PerlEmitter(Emitter):
                 return "[sort keys %{" + a + "}]"
             sorted_ann: str = sorted_arg.annotations.get("type", "")
             is_str_list = sorted_ann == "list[string]" or sorted_ann == "list[rune]"
-            if not is_str_list:
-                typ = self._expr_type(sorted_arg)
-                is_str_list = isinstance(typ, TListType) and _is_string_type(
-                    typ.element
-                )
             if is_str_list:
                 return "[sort @{" + a + "}]"
             return "[sort { $a <=> $b } @{" + a + "}]"
@@ -2587,13 +2530,6 @@ class _PerlEmitter(Emitter):
         n_ann: str = needle.annotations.get("type", "")
         if n_ann == "nil | string" or n_ann == "nil | rune":
             return "eq"
-        if c_ann == "" and n_ann == "":
-            typ = self._expr_type(container)
-            if isinstance(typ, TListType) and _is_string_type(typ.element):
-                return "eq"
-            nt = self._expr_type(needle)
-            if isinstance(nt, TOptionalType) and _is_string_type(nt.inner):
-                return "eq"
         if self._is_numeric_expr(needle):
             return "=="
         return "eq"
@@ -2719,127 +2655,6 @@ class _PerlEmitter(Emitter):
             return "undef"
         return "undef"
 
-    def _expr_type(self, expr: TExpr) -> TType | None:
-        if isinstance(expr, TVar):
-            return self.var_types.get(expr.name)
-        if isinstance(expr, TStringLit):
-            return TPrimitive(expr.pos, "string")
-        if isinstance(expr, TRuneLit):
-            return TPrimitive(expr.pos, "rune")
-        if isinstance(expr, TBytesLit):
-            return TPrimitive(expr.pos, "bytes")
-        if isinstance(expr, TBoolLit):
-            return TPrimitive(expr.pos, "bool")
-        if isinstance(expr, TIntLit):
-            return TPrimitive(expr.pos, "int")
-        if isinstance(expr, TFloatLit):
-            return TPrimitive(expr.pos, "float")
-        if isinstance(expr, TListLit):
-            return TListType(expr.pos, TPrimitive(expr.pos, "int"))
-        if isinstance(expr, TTupleLit):
-            return TTupleType(expr.pos, [TPrimitive(expr.pos, "int")])
-        if isinstance(expr, TMapLit):
-            return TMapType(
-                expr.pos, TPrimitive(expr.pos, "int"), TPrimitive(expr.pos, "int")
-            )
-        if isinstance(expr, TSetLit):
-            return TSetType(expr.pos, TPrimitive(expr.pos, "int"))
-        if isinstance(expr, TSlice):
-            obj_t = self._expr_type(expr.obj)
-            if _is_string_type(obj_t) or _is_bytes_type(obj_t):
-                return obj_t
-            if _is_list_type(obj_t):
-                return obj_t
-        if isinstance(expr, TIndex):
-            obj_t = self._expr_type(expr.obj)
-            if _is_string_type(obj_t) or _is_bytes_type(obj_t):
-                return TPrimitive(expr.pos, "string")
-            if isinstance(obj_t, TListType):
-                return obj_t.element
-            if isinstance(obj_t, TMapType):
-                return obj_t.value
-        if isinstance(expr, TFieldAccess):
-            obj_t = self._expr_type(expr.obj)
-            if isinstance(obj_t, TIdentType):
-                ftypes = self.sft.get(obj_t.name, {})
-                result = ftypes.get(expr.field)
-                if result is not None:
-                    return result
-            if isinstance(obj_t, TOptionalType) and isinstance(obj_t.inner, TIdentType):
-                ftypes = self.sft.get(obj_t.inner.name, {})
-                result = ftypes.get(expr.field)
-                if result is not None:
-                    return result
-            found: TType | None = None
-            for sname, sft_entry in self.sft.items():
-                if expr.field in sft_entry:
-                    ft = sft_entry[expr.field]
-                    if found is None:
-                        found = ft
-                    elif not _same_type_kind(found, ft):
-                        found = None
-                        break
-            return found
-        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
-            name = expr.func.name
-            if name in ("Len", "Ord", "Hash", "IndexOf", "Count"):
-                return TPrimitive(expr.pos, "int")
-            if name in (
-                "ToString",
-                "Join",
-                "Lower",
-                "Upper",
-                "Strip",
-                "LStrip",
-                "RStrip",
-                "Replace",
-                "Trim",
-            ):
-                return TPrimitive(expr.pos, "string")
-            if name == "ToFloat":
-                return TPrimitive(expr.pos, "float")
-            if name == "Sorted" or name == "ListFrom" or name == "Reversed":
-                if expr.args:
-                    inner = self._expr_type(expr.args[0].value)
-                    if isinstance(inner, TListType):
-                        return inner
-                    if isinstance(inner, TSetType):
-                        return TListType(expr.pos, inner.element)
-                return TListType(expr.pos, TPrimitive(expr.pos, "int"))
-            if name == "Get":
-                if len(expr.args) >= 3:
-                    return self._expr_type(expr.args[2].value)
-                if expr.args:
-                    obj_t = self._expr_type(expr.args[0].value)
-                    if isinstance(obj_t, TMapType):
-                        return obj_t.value
-                return None
-            if name == "Map" or name == "Merge":
-                return TMapType(
-                    expr.pos, TPrimitive(expr.pos, "int"), TPrimitive(expr.pos, "int")
-                )
-            if name == "Set":
-                return TSetType(expr.pos, TPrimitive(expr.pos, "int"))
-            ret = self.fn_ret.get(name)
-            if ret is not None:
-                return ret
-        if isinstance(expr, TBinaryOp):
-            if expr.op in ("+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"):
-                lt = self._expr_type(expr.left)
-                if lt is not None:
-                    return lt
-                return self._expr_type(expr.right)
-            if expr.op in ("==", "!=", "<", ">", "<=", ">=", "and", "or", "not"):
-                return TPrimitive(expr.pos, "bool")
-        if isinstance(expr, TUnaryOp):
-            if expr.op in ("-", "~"):
-                return self._expr_type(expr.operand)
-            if expr.op == "!":
-                return TPrimitive(expr.pos, "bool")
-        if isinstance(expr, TTernary):
-            return self._expr_type(expr.then_expr)
-        return None
-
     def _is_string_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann != "":
@@ -2849,8 +2664,11 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
             if expr.func.name == "ToString":
                 return True
-        typ = self._expr_type(expr)
-        return _is_string_type(typ)
+        if isinstance(expr, TVar):
+            typ: TType | None = self.var_types.get(expr.name)
+            if isinstance(typ, TPrimitive):
+                return typ.kind == "string" or typ.kind == "rune"
+        return False
 
     def _is_bytes_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
@@ -2858,8 +2676,10 @@ class _PerlEmitter(Emitter):
             return ann == "bytes"
         if isinstance(expr, TBytesLit):
             return True
-        typ = self._expr_type(expr)
-        return _is_bytes_type(typ)
+        if isinstance(expr, TVar):
+            typ: TType | None = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "bytes"
+        return False
 
     def _needs_concat_parens(self, expr: TExpr) -> bool:
         if isinstance(expr, TBinaryOp):
@@ -2875,8 +2695,10 @@ class _PerlEmitter(Emitter):
             return ann.startswith("list[") or ann.startswith("(")
         if isinstance(expr, (TListLit, TTupleLit)):
             return True
-        typ = self._expr_type(expr)
-        return _is_list_type(typ)
+        if isinstance(expr, TVar):
+            typ: TType | None = self.var_types.get(expr.name)
+            return isinstance(typ, (TListType, TTupleType))
+        return False
 
     def _is_map_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
@@ -2885,10 +2707,10 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TMapLit):
             return True
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
-            if expr.func.name == "Map" or expr.func.name == "Merge":
-                return True
-        typ = self._expr_type(expr)
-        return _is_map_type(typ)
+            return expr.func.name == "Map" or expr.func.name == "Merge"
+        if isinstance(expr, TVar):
+            return isinstance(self.var_types.get(expr.name), TMapType)
+        return False
 
     def _is_set_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
@@ -2897,10 +2719,10 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TSetLit):
             return True
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
-            if expr.func.name == "Set":
-                return True
-        typ = self._expr_type(expr)
-        return _is_set_type(typ)
+            return expr.func.name == "Set"
+        if isinstance(expr, TVar):
+            return isinstance(self.var_types.get(expr.name), TSetType)
+        return False
 
     def _is_int_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
@@ -2909,14 +2731,13 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TIntLit):
             return True
         if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
+            typ: TType | None = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "int"
         if isinstance(expr, TBinaryOp):
             return self._is_int_expr(expr.left)
         if isinstance(expr, TUnaryOp) and (expr.op == "-" or expr.op == "~"):
             return self._is_int_expr(expr.operand)
-        typ = self._expr_type(expr)
-        return isinstance(typ, TPrimitive) and typ.kind == "int"
+        return False
 
     def _is_float_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
@@ -2925,7 +2746,7 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TFloatLit):
             return True
         if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
+            typ: TType | None = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "float"
         if isinstance(expr, TBinaryOp):
             return self._is_float_expr(expr.left)
@@ -2939,8 +2760,7 @@ class _PerlEmitter(Emitter):
             return ann == "list[float]"
         if isinstance(expr, TListLit) and expr.elements:
             return self._is_float_expr(expr.elements[0])
-        typ = self._expr_type(expr)
-        return isinstance(typ, TListType) and _is_primitive(typ.element, "float")
+        return False
 
     def _static_int(self, expr: TExpr) -> int | None:
         if isinstance(expr, TIntLit):
