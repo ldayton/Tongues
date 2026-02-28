@@ -785,7 +785,9 @@ def _resolve_attr(
             return FuncType([INT_TYPE], STR_TYPE)
         return ANY_TYPE
     # Bytes methods
-    if isinstance(obj_type, PrimitiveType) and obj_type.kind == "bytes":
+    if _prim_kind(obj_type) == "bytes" or (
+        isinstance(obj_type, SliceType) and _prim_kind(obj_type.element) == "byte"
+    ):
         if attr == "decode":
             return FuncType([], STR_TYPE)
         if attr == "find" or attr == "rfind" or attr == "index" or attr == "count":
@@ -806,6 +808,8 @@ def _resolve_attr(
             return FuncType([], SliceType(BYTES_TYPE))
         if attr == "join":
             return FuncType([SliceType(BYTES_TYPE)], BYTES_TYPE)
+        if attr == "hex":
+            return FuncType([], STR_TYPE)
         return ANY_TYPE
     # List methods
     if isinstance(obj_type, SliceType):
@@ -1265,6 +1269,8 @@ def _element_type(t: TypeNode) -> TypeNode:
             return t.elements[0]
     if _prim_kind(t) == "string":
         return STR_TYPE
+    if _prim_kind(t) == "bytes":
+        return PrimitiveType("byte")
     return ANY_TYPE
 
 
@@ -1301,6 +1307,11 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     # String indexing
     if _prim_kind(obj_type) == "string":
         return STR_TYPE
+    # Bytes indexing
+    if _prim_kind(obj_type) == "bytes":
+        if len(slc) > 0 and _is_type(slc, ["Slice"]):
+            return obj_type
+        return PrimitiveType("byte")
     # List indexing
     if isinstance(obj_type, SliceType):
         if slc and _is_type(slc, ["Slice"]):
@@ -1377,8 +1388,8 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
             )
         return lt
     # Numeric
-    lt_num = _prim_kind(lt) in ("int", "float", "bool")
-    rt_num = _prim_kind(rt) in ("int", "float", "bool")
+    lt_num = _prim_kind(lt) in ("int", "float", "bool", "byte")
+    rt_num = _prim_kind(rt) in ("int", "float", "bool", "byte")
     if lt_num and rt_num:
         if op_type in ("BitAnd", "BitOr", "BitXor", "LShift", "RShift"):
             if _prim_kind(lt) == "bool" and _prim_kind(rt) == "bool":
@@ -1619,6 +1630,8 @@ def _iteration_element(t: TypeNode) -> TypeNode:
             return t.elements[0]
     if isinstance(t, PrimitiveType) and t.kind == "string":
         return STR_TYPE
+    if isinstance(t, PrimitiveType) and t.kind == "bytes":
+        return PrimitiveType("byte")
     return ANY_TYPE
 
 
@@ -2918,7 +2931,7 @@ def _check_type_truthiness(
     if isinstance(typ, OptionalType):
         inner = typ.inner
         inner_pk = _prim_kind(inner)
-        if inner_pk in ("int", "float", "bool"):
+        if inner_pk in ("int", "float", "bool", "byte"):
             return
         if inner_pk == "string":
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional str")
@@ -3832,8 +3845,8 @@ def _validate_expr_access(
             rtype = _synth_expr(binop_right, env, ctx)
             l_str = _prim_kind(ltype) == "string"
             r_str = _prim_kind(rtype) == "string"
-            r_num = _prim_kind(rtype) in ("int", "float", "bool")
-            l_num = _prim_kind(ltype) in ("int", "float", "bool")
+            r_num = _prim_kind(rtype) in ("int", "float", "bool", "byte")
+            l_num = _prim_kind(ltype) in ("int", "float", "bool", "byte")
             if l_str and r_num:
                 ctx.result.add_error(lineno, 0, "cannot use str in arithmetic")
                 return
