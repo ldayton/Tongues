@@ -58,6 +58,7 @@ from .types import (
     VOID_TYPE,
     BYTES_TYPE,
     is_any,
+    contains_any,
     type_eq as _type_eq,
     combine_types,
     remove_from_union,
@@ -576,14 +577,31 @@ def _synth_expr_inner(
     if t == "DictComp":
         return _synth_dictcomp(node, env, ctx)
     if t == "GeneratorExp":
-        return ANY_TYPE
+        elt = get_node(node, "elt")
+        generators = get_nodes(node, "generators")
+        comp_env = env.copy()
+        _bind_comprehension_vars(generators, comp_env, ctx)
+        if len(elt) > 0:
+            return IteratorType(_synth_expr(elt, comp_env, ctx))
+        return IteratorType(ANY_TYPE)
     if t == "JoinedStr":
+        vals = get_nodes(node, "values")
+        vi = 0
+        while vi < len(vals):
+            _synth_expr(vals[vi], env, ctx)
+            vi += 1
         return STR_TYPE
     if t == "FormattedValue":
+        fv_val = get_node(node, "value")
+        if len(fv_val) > 0:
+            _synth_expr(fv_val, env, ctx)
         return STR_TYPE
     if t == "NamedExpr":
         return _synth_namedexpr(node, env, ctx)
     if t == "Starred":
+        star_val = get_node(node, "value")
+        if len(star_val) > 0:
+            _synth_expr(star_val, env, ctx)
         return ANY_TYPE
     return ANY_TYPE
 
@@ -869,6 +887,35 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
                     params.append(method.params[j].typ)
                 j += 1
             return FuncType(params, method.return_type)
+    current = sname
+    visited: set[str] = set()
+    while True:
+        if current in visited:
+            break
+        visited.add(current)
+        bases = ctx.hier_result.ancestors.get(current)
+        if bases is None or len(bases) == 0:
+            break
+        anc = bases[0]
+        anc_cls = ctx.tc_result.classes.get(anc)
+        if anc_cls is not None:
+            fld = anc_cls.fields.get(attr)
+            if fld is not None:
+                return fld.typ
+            if attr in anc_cls.const_fields:
+                return LiteralType(anc_cls.const_fields[attr], PrimitiveType("string"))
+        anc_methods = ctx.tc_result.methods.get(anc)
+        if anc_methods is not None:
+            method = anc_methods.get(attr)
+            if method is not None:
+                params_a: list[TypeNode] = []
+                k = 0
+                while k < len(method.params):
+                    if method.params[k].name != "self":
+                        params_a.append(method.params[k].typ)
+                    k += 1
+                return FuncType(params_a, method.return_type)
+        current = anc
     return ANY_TYPE
 
 
@@ -956,6 +1003,8 @@ def _synth_name_call(
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             if isinstance(ft, SliceType):
+                return ft.element
+            if isinstance(ft, IteratorType):
                 return ft.element
             if len(args) >= 2:
                 has_int = False
@@ -1162,6 +1211,16 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     obj_type = _synth_expr(value, env, ctx)
     if len(slc) > 0 and not _is_type(slc, ["Slice"]):
         _synth_expr(slc, env, ctx)
+    if len(slc) > 0 and _is_type(slc, ["Slice"]):
+        _lower = get_node(slc, "lower")
+        _upper = get_node(slc, "upper")
+        _step = get_node(slc, "step")
+        if len(_lower) > 0:
+            _synth_expr(_lower, env, ctx)
+        if len(_upper) > 0:
+            _synth_expr(_upper, env, ctx)
+        if len(_step) > 0:
+            _synth_expr(_step, env, ctx)
     # String indexing
     if _prim_kind(obj_type) == "string":
         return STR_TYPE
@@ -1169,6 +1228,11 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if isinstance(obj_type, SliceType):
         if len(slc) > 0 and _is_type(slc, ["Slice"]):
             return obj_type
+        return obj_type.element
+    # Iterator indexing
+    if isinstance(obj_type, IteratorType):
+        if len(slc) > 0 and _is_type(slc, ["Slice"]):
+            return SliceType(obj_type.element)
         return obj_type.element
     # Dict indexing
     if isinstance(obj_type, MapType):
@@ -1341,8 +1405,12 @@ def _synth_list(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     elts = get_nodes(node, "elts")
     if len(elts) == 0:
         return SliceType(ANY_TYPE)
-    first = elts[0]
-    return SliceType(_synth_expr(first, env, ctx))
+    first_t = _synth_expr(elts[0], env, ctx)
+    i = 1
+    while i < len(elts):
+        _synth_expr(elts[i], env, ctx)
+        i += 1
+    return SliceType(first_t)
 
 
 def _synth_dict(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
@@ -1350,12 +1418,14 @@ def _synth_dict(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     values = get_nodes(node, "values")
     if len(keys) == 0:
         return MapType(ANY_TYPE, ANY_TYPE)
-    k = keys[0]
-    v = values[0]
-    kt = _synth_expr(k, env, ctx)
-    vt = ANY_TYPE
-    if len(values) > 0:
-        vt = _synth_expr(v, env, ctx)
+    kt = _synth_expr(keys[0], env, ctx)
+    vt = _synth_expr(values[0], env, ctx) if len(values) > 0 else ANY_TYPE
+    i = 1
+    while i < len(keys):
+        _synth_expr(keys[i], env, ctx)
+        if i < len(values):
+            _synth_expr(values[i], env, ctx)
+        i += 1
     return MapType(kt, vt)
 
 
@@ -1363,8 +1433,12 @@ def _synth_set(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     elts = get_nodes(node, "elts")
     if len(elts) == 0:
         return SetType(ANY_TYPE)
-    first = elts[0]
-    return SetType(_synth_expr(first, env, ctx))
+    first_t = _synth_expr(elts[0], env, ctx)
+    i = 1
+    while i < len(elts):
+        _synth_expr(elts[i], env, ctx)
+        i += 1
+    return SetType(first_t)
 
 
 def _synth_tuple(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
@@ -1920,6 +1994,10 @@ def _validate_assign(
                 env.evict_guarded_attrs(name)
                 existing = env.get_type(name)
                 if existing is not None:
+                    if contains_any(val_type) and not contains_any(existing):
+                        uid_jv = value.get("_uid") if isinstance(value, dict) else None
+                        if isinstance(uid_jv, JInt):
+                            ctx.result.expr_types[uid_jv.value] = existing
                     if not _type_eq(val_type, existing):
                         env.set(name, val_type)
                 else:
@@ -2120,6 +2198,10 @@ def _validate_ann_assign(
                 if _has_new_errors(ctx, err_snap):
                     return
                 val_type = _synth_expr(value, env, ctx)
+                if contains_any(val_type) and not contains_any(ann_type):
+                    uid_jv = value.get("_uid") if isinstance(value, dict) else None
+                    if isinstance(uid_jv, JInt):
+                        ctx.result.expr_types[uid_jv.value] = ann_type
                 if not _is_assignable(val_type, ann_type, ctx.hier_result):
                     ctx.result.add_error(
                         lineno,
