@@ -24,29 +24,21 @@ from .types import (
 def get_children(node: ASTNode) -> list[ASTNode]:
     """Get all child nodes from a dict-based AST node."""
     children: list[ASTNode] = []
-    keys = list(node.keys())
-    i = 0
-    while i < len(keys):
-        key = keys[i]
+    for key in node:
         if key.startswith("_") or key in (
             "lineno",
             "col_offset",
             "end_lineno",
             "end_col_offset",
         ):
-            i += 1
             continue
         val = node[key]
         if isinstance(val, JDict) and has_key(val.entries, "_type"):
             children.append(val.entries)
         elif isinstance(val, JList):
-            j = 0
-            while j < len(val.items):
-                item = val.items[j]
+            for item in val.items:
                 if isinstance(item, JDict) and has_key(item.entries, "_type"):
                     children.append(item.entries)
-                j += 1
-        i += 1
     return children
 
 
@@ -54,10 +46,8 @@ def walk(node: ASTNode, visitor: Callable[[ASTNode], None]) -> None:
     """Walk dict-based AST, calling visitor on each node."""
     visitor(node)
     children = get_children(node)
-    i = 0
-    while i < len(children):
-        walk(children[i], visitor)
-        i += 1
+    for child in children:
+        walk(child, visitor)
 
 
 def _has_present(node: ASTNode, key: str) -> bool:
@@ -90,7 +80,7 @@ class Violation:
     def __repr__(self) -> str:
         prefix = "warning" if self.is_warning else "error"
         file_prefix = ""
-        if self.source_file != "":
+        if self.source_file:
             file_prefix = self.source_file + ":"
         return (
             file_prefix
@@ -253,7 +243,7 @@ def is_bare_collection(annotation: ASTNode | None) -> bool:
     if get_str(annotation, "_type") != "Name":
         return False
     name_id = get_str(annotation, "id")
-    if name_id == "":
+    if not name_id:
         return False
     return name_id in BARE_COLLECTION_TYPES
 
@@ -278,7 +268,7 @@ def get_attr_name(node: ASTNode) -> str | None:
     """Get attr from Attribute node."""
     if get_str(node, "_type") == "Attribute":
         val = get_str(node, "attr")
-        if val != "":
+        if val:
             return val
     return None
 
@@ -313,14 +303,14 @@ def collect_annotated_fields(class_node: ASTNode) -> set[str]:
             # Class-level: x: int = 0
             if target_type == "Name":
                 target_id = get_str(target, "id")
-                if target_id != "":
+                if target_id:
                     fields.add(target_id)
             # Method-level: self.x: int = 0
             if target_type == "Attribute":
                 target_value = get_node(target, "value")
                 if get_name_id(target_value) == "self":
                     attr = get_str(target, "attr")
-                    if attr != "":
+                    if attr:
                         fields.add(attr)
         # Add children to visit
         children = get_children(node)
@@ -821,7 +811,7 @@ class Verifier:
             while j < len(keywords):
                 kw = keywords[j]
                 kw_arg = get_str(kw, "arg")
-                if kw_arg != "" and kw_arg in banned_kwargs:
+                if kw_arg and kw_arg in banned_kwargs:
                     self.error(
                         node,
                         "builtin",
@@ -954,14 +944,14 @@ class Verifier:
         # Track annotated local variables
         if self.in_function and get_str(target, "_type") == "Name":
             target_name = get_str(target, "id")
-            if target_name != "":
+            if target_name:
                 self.annotated_locals.add(target_name)
         # Check bare collection
         if _has_present(node, "annotation"):
             annotation = get_node(node, "annotation")
             if is_bare_collection(annotation):
                 t_name = get_str(target, "id")
-                if t_name == "":
+                if not t_name:
                     t_name = "?"
                 self.error(
                     node,
@@ -1242,7 +1232,7 @@ class Verifier:
             alias = names[i]
             name = get_str(alias, "name")
             asname = get_str(alias, "asname")
-            if asname != "":
+            if asname:
                 self.error(
                     node,
                     "import",
@@ -1271,7 +1261,7 @@ class Verifier:
         if level > 0:
             return
         module = get_str(node, "module")
-        if module == "":
+        if not module:
             return
         top_module = module.split(".")[0]
         # sys/os can only be used with `import X`, not `from X import ...`
@@ -1490,14 +1480,14 @@ def extract_imports(ast_dict: ASTNode) -> list[ImportInfo]:
             if lineno == 0:
                 lineno = 1
             col = get_int(node, "col_offset")
-            if module == "" and level > 0:
+            if not module and level > 0:
                 # from . import X, Y - each name is a module
                 names = get_nodes(node, "names")
                 j = 0
                 while j < len(names):
                     name_node = names[j]
                     name = get_str(name_node, "name")
-                    if name != "" and name != "*":
+                    if name and name != "*":
                         result.append(ImportInfo(name, level, lineno, col))
                     j += 1
             else:
@@ -1707,7 +1697,7 @@ class NameViolation:
 
     def __repr__(self) -> str:
         file_prefix = ""
-        if self.source_file != "":
+        if self.source_file:
             file_prefix = self.source_file + ":"
         return (
             file_prefix
@@ -1852,7 +1842,7 @@ class NameResolver:
                 while j < len(bases):
                     base = bases[j]
                     base_name = self._get_base_name(base)
-                    if base_name != "":
+                    if base_name:
                         if not self.resolve_name(base_name, "", ""):
                             self.error(
                                 base,
@@ -1878,7 +1868,7 @@ class NameResolver:
                 bi = 0
                 while bi < len(base_nodes):
                     base_name = self._get_base_name(base_nodes[bi])
-                    if base_name != "":
+                    if base_name:
                         bases.append(base_name)
                     bi += 1
                 info = NameInfo(name, "class", "module", lineno, col, "", "", bases)
@@ -1920,8 +1910,8 @@ class NameResolver:
                     alias = names_list[j]
                     asname_str = get_str(alias, "asname")
                     import_name = get_str(alias, "name")
-                    bound_name = asname_str if asname_str != "" else import_name
-                    if bound_name != "":
+                    bound_name = asname_str if asname_str else import_name
+                    if bound_name:
                         info = NameInfo(
                             bound_name, "import", "module", lineno, col, "", ""
                         )
@@ -1934,8 +1924,8 @@ class NameResolver:
                     alias = names_list[j]
                     asname_str = get_str(alias, "asname")
                     import_name = get_str(alias, "name")
-                    bound_name = asname_str if asname_str != "" else import_name
-                    if bound_name != "" and bound_name != "*":
+                    bound_name = asname_str if asname_str else import_name
+                    if bound_name and bound_name != "*":
                         info = NameInfo(
                             bound_name, "import", "module", lineno, col, "", ""
                         )
@@ -1959,10 +1949,8 @@ class NameResolver:
                                 alias = if_names[k]
                                 asname_str = get_str(alias, "asname")
                                 import_name = get_str(alias, "name")
-                                bound_name = (
-                                    asname_str if asname_str != "" else import_name
-                                )
-                                if bound_name != "" and bound_name != "*":
+                                bound_name = asname_str if asname_str else import_name
+                                if bound_name and bound_name != "*":
                                     if_lineno = get_int(if_stmt, "lineno")
                                     if_col = get_int(if_stmt, "col_offset")
                                     info = NameInfo(
@@ -2201,7 +2189,7 @@ class NameResolver:
                 self.collect_assign_target(target, class_name, func_name, node)
             elif node_type == "ExceptHandler":
                 exc_name = get_str(node, "name")
-                if has_key(node, "name") and exc_name != "":
+                if has_key(node, "name") and exc_name:
                     existing = self.result.table.get_local(
                         class_name, func_name, exc_name
                     )
@@ -2226,8 +2214,8 @@ class NameResolver:
                     alias = names_list[k]
                     asname_str = get_str(alias, "asname")
                     import_name = get_str(alias, "name")
-                    bound_name = asname_str if asname_str != "" else import_name
-                    if bound_name != "" and bound_name != "*":
+                    bound_name = asname_str if asname_str else import_name
+                    if bound_name and bound_name != "*":
                         existing = self.result.table.get_local(
                             class_name, func_name, bound_name
                         )
@@ -2325,7 +2313,7 @@ class NameResolver:
         if pattern_type == "MatchAs":
             # MatchAs(pattern=inner, name=bound_name)
             name = get_str(pattern, "name")
-            if has_key(pattern, "name") and name != "" and name != "_":
+            if has_key(pattern, "name") and name and name != "_":
                 existing = self.result.table.get_local(class_name, func_name, name)
                 if existing is None:
                     lineno = get_int(pattern, "lineno")
@@ -2358,7 +2346,7 @@ class NameResolver:
                 self.collect_pattern_names(patterns[i], class_name, func_name, stmt)
                 i += 1
             rest = get_str(pattern, "rest")
-            if has_key(pattern, "rest") and rest != "":
+            if has_key(pattern, "rest") and rest:
                 existing = self.result.table.get_local(class_name, func_name, rest)
                 if existing is None:
                     lineno = get_int(pattern, "lineno")
@@ -2377,7 +2365,7 @@ class NameResolver:
         elif pattern_type == "MatchStar":
             # MatchStar(name=bound_name)
             name = get_str(pattern, "name")
-            if has_key(pattern, "name") and name != "" and name != "_":
+            if has_key(pattern, "name") and name and name != "_":
                 existing = self.result.table.get_local(class_name, func_name, name)
                 if existing is None:
                     lineno = get_int(pattern, "lineno")
@@ -2397,7 +2385,7 @@ class NameResolver:
         target_type = get_str(target, "_type")
         if target_type == "Name":
             name = get_str(target, "id")
-            if name != "":
+            if name:
                 names.add(name)
         elif target_type == "Tuple" or target_type == "List":
             elts = get_nodes(target, "elts")
@@ -2591,7 +2579,7 @@ def _compute_derived(
                 ta_target = ta_targets[0]
                 if get_str(ta_target, "_type") == "Name":
                     ta_name = get_str(ta_target, "id")
-                    if ta_name != "":
+                    if ta_name:
                         ta_info = table.module_names.get(ta_name)
                         if ta_info is not None and ta_info.kind == "type_alias":
                             ta_value_v = ta_stmt.get("value")
@@ -2599,7 +2587,7 @@ def _compute_derived(
                             if isinstance(ta_value_v, JDict):
                                 ta_value = ta_value_v.entries
                             ta_str = annotation_to_str(ta_value)
-                            if ta_str != "":
+                            if ta_str:
                                 result.type_aliases[ta_name] = ta_str
         tai += 1
     csf_body = get_nodes(ast_dict, "body")
@@ -2609,7 +2597,7 @@ def _compute_derived(
         if get_str(csf_node, "_type") == "ClassDef":
             csf_name = get_str(csf_node, "name")
             csf_sf = get_str(csf_node, "_source_file")
-            if csf_name != "" and csf_sf != "":
+            if csf_name and csf_sf:
                 result.class_source_files[csf_name] = csf_sf
         csf_i += 1
 
@@ -2635,7 +2623,7 @@ def run_bind(ast_dict: ASTNode) -> BindResult:
         if t == "FunctionDef":
             fname = get_str(node, "name")
             fn_body = get_nodes(node, "body")
-            if fname != "" and len(fn_body) > 0:
+            if fname and fn_body:
                 graphs["module::" + fname] = build_cfg(fn_body)
         if t == "ClassDef":
             cname = get_str(node, "name")
@@ -2646,7 +2634,7 @@ def run_bind(ast_dict: ASTNode) -> BindResult:
                 if get_str(m, "_type") == "FunctionDef":
                     mname = get_str(m, "name")
                     m_body = get_nodes(m, "body")
-                    if mname != "" and len(m_body) > 0:
+                    if mname and m_body:
                         graphs[cname + "::" + mname] = build_cfg(m_body)
                 j += 1
         i += 1
