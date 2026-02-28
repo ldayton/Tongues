@@ -3,7 +3,6 @@ __pycache__/
 .ruff_cache/
 .out/
 .php-cs-fixer.cache
-.envrc
 .direnv/
 editors/vscode/*.vsix
 *.egg-info
