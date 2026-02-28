@@ -77,7 +77,12 @@ def cli_main(argv: list[str] | None = None) -> int:
         print("taytsh: " + filepath + ": invalid utf-8", file=sys.stderr)
         return 1
 
-    module: TModule = parse(source)
+    module: TModule = TModule([], False, False)
+    try:
+        module = parse(source)
+    except Exception as e:
+        print(str(e), file=sys.stderr)
+        return 1
 
     if strict or strict_math:
         module.strict_math = True
@@ -92,7 +97,11 @@ def cli_main(argv: list[str] | None = None) -> int:
 def _run_vm(module: TModule) -> int:
     result: VMResult = VMResult(0, "", "")
     try:
-        result = vm_run(module, stdin=sys.stdin.buffer.read())
+        result = vm_run(
+            module,
+            stdin=sys.stdin.buffer.read(),
+            args=sys.argv[1:],
+        )
     except CompileError as e:
         print("taytsh: compile error: " + str(e), file=sys.stderr)
         return 1
@@ -104,7 +113,7 @@ def _run_vm(module: TModule) -> int:
 def _run_interp(module: TModule) -> int:
     result: RunResult = RunResult(0, b"", b"")
     try:
-        result = run(module, sys.stdin.buffer.read())
+        result = run(module, sys.stdin.buffer.read(), sys.argv[1:])
     except TaytshTypeError as e:
         print("taytsh: type error: " + str(e), file=sys.stderr)
         return 1
