@@ -901,7 +901,9 @@ def _resolve_attr(
     return ANY_TYPE
 
 
-def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
+def _resolve_struct_attr(
+    sname: str, attr: str, ctx: _InferCtx, _depth: int = 0
+) -> TypeNode:
     """Resolve attribute on a struct type."""
     cls = ctx.tc_result.classes.get(sname)
     if cls is not None:
@@ -946,6 +948,28 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
                         params_a.append(param.typ)
                 return FuncType(params_a, method.return_type)
         current = anc
+    if _depth < 3:
+        all_classes = list(ctx.class_bases.keys())
+        resolved: TypeNode = ANY_TYPE
+        found = 0
+        i = 0
+        while i < len(all_classes):
+            child = all_classes[i]
+            child_bases = ctx.class_bases.get(child, [])
+            j = 0
+            while j < len(child_bases):
+                if child_bases[j] == sname:
+                    found += 1
+                    sub_type = _resolve_struct_attr(child, attr, ctx, _depth + 1)
+                    if sub_type != ANY_TYPE:
+                        if resolved == ANY_TYPE:
+                            resolved = sub_type
+                        elif resolved != sub_type:
+                            return ANY_TYPE
+                j += 1
+            i += 1
+        if found >= 2 and resolved != ANY_TYPE:
+            return resolved
     return ANY_TYPE
 
 
@@ -2766,8 +2790,20 @@ def _validate_try(
     finalbody = get_nodes(stmt, "finalbody")
     _validate_stmts(body, env, func_info, ctx)
     for handler in handlers:
+        handler_env = env.copy()
+        exc_type_node = get_node(handler, "type")
+        exc_name = get_str(handler, "name")
+        if exc_type_node and exc_name:
+            if _is_type(exc_type_node, ["Name"]):
+                cls_name = get_str(exc_type_node, "id")
+                if cls_name:
+                    sig_errors: list[TypeCollectError] = []
+                    resolved = py_type_to_type_dict(
+                        cls_name, ctx.known_classes, sig_errors, 0, 0
+                    )
+                    handler_env.set(exc_name, resolved)
         hbody = get_nodes(handler, "body")
-        _validate_stmts(hbody, env.copy(), func_info, ctx)
+        _validate_stmts(hbody, handler_env, func_info, ctx)
     _validate_stmts(orelse, env, func_info, ctx)
     _validate_stmts(finalbody, env, func_info, ctx)
 
