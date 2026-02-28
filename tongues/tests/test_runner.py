@@ -46,8 +46,8 @@ _LIB_IMPORT_RE = re.compile(r"^from lib\.(\w+) import", re.MULTILINE)
 
 
 def _find_lib_imports(source: str) -> list[str]:
-    """Extract lib module names from 'from lib.X import' statements."""
-    return _LIB_IMPORT_RE.findall(source)
+    """Extract unique lib module names from 'from lib.X import' statements."""
+    return list(dict.fromkeys(_LIB_IMPORT_RE.findall(source)))
 
 
 def _read_lib_sources(names: list[str]) -> list[tuple[str, str]]:
@@ -906,59 +906,79 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
             stderr = result.stderr.decode(errors="replace").strip()
             return (None, stderr.split("\n")[0] if stderr else "lowering failed")
         return (result.stdout.decode(errors="replace"), None)
-    if lib_names:
-        return (None, "lib imports not supported without TRANSPILED_BINARY")
     try:
-        ast_dict = parse(source)
-        bind_result = run_bind(ast_dict)
-        if not bind_result.subset_ok():
-            return (None, bind_result.subset_violations[0].message)
-        if not bind_result.names_ok():
-            return (None, bind_result.name_violations[0].message)
-        hier_result = build_hierarchy(
-            bind_result.known_classes, bind_result.class_bases
-        )
-        hier_errors = hier_result.errors()
-        if hier_errors:
-            return (None, str(hier_errors[0]))
-        tc_result = collect_types(
-            ast_dict,
-            bind_result.known_classes,
-            bind_result.node_classes,
-            bind_result.type_aliases,
-            bind_result.class_bases,
-            hier_result.hierarchy_roots,
-        )
-        tc_errors = tc_result.errors()
-        if tc_errors:
-            return (None, str(tc_errors[0]))
-        inf_result = _run_pycheck(
-            ast_dict,
-            tc_result,
-            hier_result,
-            bind_result.known_classes,
-            bind_result.class_bases,
-            bind_result.flow_graphs,
-        )
-        inf_errors = inf_result.errors()
-        if inf_errors:
-            return (None, str(inf_errors[0]))
         from src.frontend.lowering import lower
         from src.taytsh.emit import to_source
+        from src.taytsh.ast import TModule
 
-        module, lower_errors = lower(
-            ast_dict,
-            tc_result,
-            hier_result,
-            bind_result.known_classes,
-            bind_result.class_bases,
-            inf_result,
-        )
-        if lower_errors:
-            return (None, str(lower_errors[0]))
-        if module is None:
-            return (None, "lowering produced no module")
-        output = to_source(module)
+        def _lower_single(src: str):
+            """Lower a single source to TModule. Returns (module, error)."""
+            ast_dict = parse(src)
+            stamp_uids(ast_dict)
+            bind_result = run_bind(ast_dict)
+            if not bind_result.subset_ok():
+                return (None, bind_result.subset_violations[0].message)
+            if not bind_result.names_ok():
+                return (None, bind_result.name_violations[0].message)
+            hier_result = build_hierarchy(
+                bind_result.known_classes, bind_result.class_bases
+            )
+            hier_errors = hier_result.errors()
+            if hier_errors:
+                return (None, str(hier_errors[0]))
+            tc_result = collect_types(
+                ast_dict,
+                bind_result.known_classes,
+                bind_result.node_classes,
+                bind_result.type_aliases,
+                bind_result.class_bases,
+                hier_result.hierarchy_roots,
+            )
+            tc_errors = tc_result.errors()
+            if tc_errors:
+                return (None, str(tc_errors[0]))
+            inf_result = _run_pycheck(
+                ast_dict,
+                tc_result,
+                hier_result,
+                bind_result.known_classes,
+                bind_result.class_bases,
+                bind_result.flow_graphs,
+            )
+            inf_errors = inf_result.errors()
+            if inf_errors:
+                return (None, str(inf_errors[0]))
+            module, lower_errors = lower(
+                ast_dict,
+                tc_result,
+                hier_result,
+                bind_result.known_classes,
+                bind_result.class_bases,
+                inf_result,
+            )
+            if lower_errors:
+                return (None, str(lower_errors[0]))
+            if module is None:
+                return (None, "lowering produced no module")
+            return (module, None)
+
+        # Lower lib modules first, then app module
+        all_decls: list = []
+        if lib_names:
+            lib_sources = _read_lib_sources(lib_names)
+            for _path, lib_src in lib_sources:
+                lib_module, err = _lower_single(lib_src)
+                if err is not None:
+                    return (None, err)
+                all_decls.extend(lib_module.decls)
+
+        app_module, err = _lower_single(source)
+        if err is not None:
+            return (None, err)
+        all_decls.extend(app_module.decls)
+
+        merged = TModule(decls=all_decls)
+        output = to_source(merged)
         return (output, None)
     except Exception as e:
         return (None, str(e))
@@ -1246,14 +1266,93 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
             stderr = result.stderr.decode(errors="replace").strip()
             return (None, stderr.split("\n")[0] if stderr else "transpile failed")
         return (result.stdout.decode(errors="replace"), None)
-    if lib_names:
-        return (None, "lib imports not supported without TRANSPILED_BINARY")
-    taytsh_text, err = lower_to_taytsh(source)
-    if err is not None:
-        return (None, err)
     emitter = EMITTERS.get(target)
     if emitter is None:
         return (None, f"no emitter for target '{target}'")
+    # For lib imports, work directly with TModule to preserve default params
+    if lib_names:
+        try:
+            from src.frontend.lowering import lower
+            from src.taytsh.ast import TModule
+
+            def _lower_single_to_module(src: str):
+                """Lower a single source to TModule."""
+                ast_dict = parse(src)
+                stamp_uids(ast_dict)
+                bind_result = run_bind(ast_dict)
+                if not bind_result.subset_ok():
+                    return (None, bind_result.subset_violations[0].message)
+                if not bind_result.names_ok():
+                    return (None, bind_result.name_violations[0].message)
+                hier_result = build_hierarchy(
+                    bind_result.known_classes, bind_result.class_bases
+                )
+                hier_errors = hier_result.errors()
+                if hier_errors:
+                    return (None, str(hier_errors[0]))
+                tc_result = collect_types(
+                    ast_dict,
+                    bind_result.known_classes,
+                    bind_result.node_classes,
+                    bind_result.type_aliases,
+                    bind_result.class_bases,
+                    hier_result.hierarchy_roots,
+                )
+                tc_errors = tc_result.errors()
+                if tc_errors:
+                    return (None, str(tc_errors[0]))
+                inf_result = _run_pycheck(
+                    ast_dict,
+                    tc_result,
+                    hier_result,
+                    bind_result.known_classes,
+                    bind_result.class_bases,
+                    bind_result.flow_graphs,
+                )
+                inf_errors = inf_result.errors()
+                if inf_errors:
+                    return (None, str(inf_errors[0]))
+                module, lower_errors = lower(
+                    ast_dict,
+                    tc_result,
+                    hier_result,
+                    bind_result.known_classes,
+                    bind_result.class_bases,
+                    inf_result,
+                )
+                if lower_errors:
+                    return (None, str(lower_errors[0]))
+                if module is None:
+                    return (None, "lowering produced no module")
+                return (module, None)
+
+            # Lower lib modules first, then app module
+            all_decls: list = []
+            lib_sources = _read_lib_sources(lib_names)
+            for _path, lib_src in lib_sources:
+                lib_module, err = _lower_single_to_module(lib_src)
+                if err is not None:
+                    return (None, err)
+                all_decls.extend(lib_module.decls)
+            app_module, err = _lower_single_to_module(source)
+            if err is not None:
+                return (None, err)
+            all_decls.extend(app_module.decls)
+            merged = TModule(decls=all_decls)
+
+            # Run Taytsh checker and analyzers directly on merged module
+            errors, checker = check_with_info(merged)
+            if errors:
+                return (None, str(errors[0]))
+            analyze_returns(merged, checker)
+            analyze_scope(merged, checker)
+            analyze_liveness(merged, checker)
+            return (emitter(merged), None)
+        except Exception as e:
+            return (None, str(e))
+    taytsh_text, err = lower_to_taytsh(source)
+    if err is not None:
+        return (None, err)
     return _transpile_with_emitter(taytsh_text, emitter)
 
 

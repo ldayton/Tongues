@@ -16,6 +16,7 @@ use Symbol qw(gensym);
 
 my $TONGUES_DIR = File::Spec->rel2abs(File::Spec->catdir(dirname(__FILE__), ".."));
 my $TESTS_DIR = File::Spec->catdir($TONGUES_DIR, "tests");
+my $LIB_DIR = File::Spec->catdir($TONGUES_DIR, "src", "lib");
 
 # Phase -> test config
 # Runners: cli, phase, lowering, codegen, emit, app, ordering, taytsh_app
@@ -810,6 +811,20 @@ sub run_emit_tests ($test_dir) {
     return \@results;
 }
 
+sub find_lib_imports ($source) {
+    my @matches = ($source =~ /^from lib\.(\w+) import/gm);
+    my %seen;
+    return grep { !$seen{$_}++ } @matches;
+}
+
+sub build_project_input ($app_path, $app_source, $lib_sources) {
+    my @parts = ($app_path, $app_source);
+    for my $lib (@$lib_sources) {
+        push @parts, $lib->[0], $lib->[1];
+    }
+    return join("\0", @parts);
+}
+
 sub run_app_tests ($test_dir) {
     my @results;
     my @available;
@@ -825,13 +840,28 @@ sub run_app_tests ($test_dir) {
         open(my $fh, "<", $test_file) or next;
         my $source = do { local $/; <$fh> };
         close $fh;
+        my @lib_names = find_lib_imports($source);
         for my $target (@available) {
             my $test_id = "$stem" . "[$target]";
-            my ($tfh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
-            print $tfh $source;
-            close $tfh;
-            my $result = run_inprocess(["--target", $target, $tmpfile]);
-            unlink $tmpfile;
+            my $result;
+            if (@lib_names == 0) {
+                my ($tfh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
+                print $tfh $source;
+                close $tfh;
+                $result = run_inprocess(["--target", $target, $tmpfile]);
+                unlink $tmpfile;
+            } else {
+                my @lib_sources;
+                for my $name (@lib_names) {
+                    my $lib_path = File::Spec->catfile($LIB_DIR, "$name.py");
+                    open(my $lfh, "<", $lib_path) or next;
+                    my $lib_src = do { local $/; <$lfh> };
+                    close $lfh;
+                    push @lib_sources, ["lib/$name.py", $lib_src];
+                }
+                my $stdin_data = build_project_input("apptest.py", $source, \@lib_sources);
+                $result = run_inprocess(["--project", "--target", $target], $stdin_data);
+            }
             if ($result->{exit} != 0) {
                 my $stderr = $result->{stderr};
                 $stderr =~ s/^\s+|\s+$//g;

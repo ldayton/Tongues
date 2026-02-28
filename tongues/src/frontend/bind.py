@@ -1282,10 +1282,11 @@ class Verifier:
                 "from " + module + " import: use 'import " + top_module + "' instead",
             )
             return
-        # Only allowed stdlib modules can be from-imported
+        # Only allowed stdlib modules and lib.* can be from-imported
         if (
             module not in ALLOWED_FROM_MODULES
             and top_module not in ALLOWED_FROM_MODULES
+            and top_module != "lib"
         ):
             self.error(
                 node,
