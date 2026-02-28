@@ -299,7 +299,6 @@ class _PerlEmitter(Emitter):
         self.function_names = function_names
         self.struct_fields = struct_fields
         self.strict_math = strict_math
-        self.sft: dict[str, dict[str, TType]] = {}
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -1666,22 +1665,6 @@ class _PerlEmitter(Emitter):
         lines.append("    " * self.indent + "}")
         return "\n".join(lines)
 
-    def _stmt_inline(self, stmt: TStmt) -> str | None:
-        if isinstance(stmt, TExprStmt):
-            return self._expr(stmt.expr) + ";"
-        if isinstance(stmt, TReturnStmt):
-            if stmt.value is None:
-                return "return;"
-            return "return " + self._expr(stmt.value) + ";"
-        if isinstance(stmt, TLetStmt):
-            n = "$" + _restore_name(stmt.name, stmt.annotations)
-            if stmt.value is not None:
-                return "my " + n + " = " + self._expr(stmt.value) + ";"
-            return "my " + n + " = " + self._zero_value(stmt.typ) + ";"
-        if isinstance(stmt, TAssignStmt):
-            return self._target(stmt.target) + " = " + self._expr(stmt.value) + ";"
-        return None
-
     _PYTHON_BUILTINS: dict[str, str] = {
         "oct": "sub { sprintf('0o%o', $_[0]) }",
         "bin": "sub { sprintf('0b%b', $_[0]) }",
@@ -2837,6 +2820,5 @@ def emit_perl(module: TModule) -> str:
         struct_fields,
         module.strict_math,
     )
-    emitter.sft = struct_field_types
     emitter.emit_module(module)
     return emitter.output()

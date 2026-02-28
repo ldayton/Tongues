@@ -850,15 +850,6 @@ def _stmts_json(items: list[TStmt]) -> JsonValue:
     return JList(result)
 
 
-def _strs_json(items: list[str]) -> JsonValue:
-    result: list[JsonValue] = []
-    i = 0
-    while i < len(items):
-        result.append(JStr(items[i]))
-        i += 1
-    return JList(result)
-
-
 def _type_json(t: TType) -> JsonValue:
     d: dict[str, JsonValue] = {"pos": _pos_json(t.pos)}
     if isinstance(t, TPrimitive):

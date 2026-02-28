@@ -421,8 +421,3 @@ def analyze_returns(module: TModule, checker: Checker) -> None:
             st = checker.types.get(decl.name)
             for method in decl.methods:
                 _analyze_fn(method, checker, self_type=st)
-
-
-def contains_return(stmts: list[TStmt]) -> bool:
-    """Public utility: check if statement list contains any return (recursive)."""
-    return _contains_return(stmts)

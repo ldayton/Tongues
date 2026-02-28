@@ -175,9 +175,6 @@ class Parser:
         tok = self.current()
         return Pos(tok.line, tok.col)
 
-    def _tok_pos(self, tok: Token) -> Pos:
-        return Pos(tok.line, tok.col)
-
     # ── Annotations ───────────────────────────────────────────
 
     def _parse_ann_entries(self) -> dict[str, str]:

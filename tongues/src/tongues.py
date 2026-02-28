@@ -550,53 +550,6 @@ def _collect_module_names(
     return result
 
 
-def _detect_collisions(
-    file_names: dict[str, list[tuple[str, int, int]]],
-) -> list[str]:
-    """Return error messages for cross-file name collisions."""
-    name_to_locs: dict[str, list[tuple[str, int]]] = {}
-    fkeys = list(file_names.keys())
-    i = 0
-    while i < len(fkeys):
-        f = fkeys[i]
-        names = file_names[f]
-        j = 0
-        while j < len(names):
-            name, lineno, col = names[j]
-            if name not in name_to_locs:
-                name_to_locs[name] = []
-            name_to_locs[name].append((f, lineno))
-            j += 1
-        i += 1
-    errors: list[str] = []
-    nkeys = list(name_to_locs.keys())
-    nkeys.sort()
-    i = 0
-    while i < len(nkeys):
-        name = nkeys[i]
-        locs = name_to_locs[name]
-        if len(locs) > 1:
-            si = 1
-            while si < len(locs):
-                skey = locs[si]
-                sj = si - 1
-                while sj >= 0 and locs[sj][0] > skey[0]:
-                    locs[sj + 1] = locs[sj]
-                    sj -= 1
-                locs[sj + 1] = skey
-                si += 1
-            msg = "error: duplicate name '" + name + "' defined in "
-            j = 0
-            while j < len(locs):
-                if j > 0:
-                    msg = msg + " and "
-                msg = msg + locs[j][0] + ":" + str(locs[j][1])
-                j += 1
-            errors.append(msg)
-        i += 1
-    return errors
-
-
 def _ast_equal(a: ASTNode, b: ASTNode) -> bool:
     """Deep structural comparison of AST nodes, ignoring position metadata."""
     ignore: set[str] = {
@@ -1545,7 +1498,6 @@ def _pipeline_post_parse(
         hier_result,
         known_classes,
         class_bases,
-        source,
     )
     if len(lower_errors) > 0:
         err_strs: list[str] = []
