@@ -166,7 +166,7 @@ def _first_access_type(name: str, stmt: TStmt) -> str | None:
             if dflt_result == "read":
                 return "read"
             results.append(dflt_result)
-        all_write = len(results) > 0
+        all_write = bool(results)
         for r in results:
             if r != "write":
                 all_write = False

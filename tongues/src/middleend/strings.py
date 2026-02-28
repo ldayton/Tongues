@@ -185,7 +185,7 @@ def _compute_residual_type(scrutinee: Type | None, covered: list[Type]) -> Type:
                     break
             if not is_covered:
                 remaining.append(m)
-        if len(remaining) == 0:
+        if not remaining:
             return ERROR_T
         if len(remaining) == 1:
             return remaining[0]
@@ -222,11 +222,9 @@ def _is_accum_concat(value: TExpr, name: str) -> bool:
     first = value.args[0].value
     if not (isinstance(first, TVar) and first.name == name):
         return False
-    i = 1
-    while i < len(value.args):
-        if expr_reads(name, value.args[i].value):
+    for arg in value.args[1:]:
+        if expr_reads(name, arg.value):
             return False
-        i += 1
     return True
 
 
@@ -378,7 +376,7 @@ def _classify_string_expr(
             if name in ("ReadAll", "ReadLine", "ReadFile", "Decode"):
                 return _C_UNKNOWN
             if name == "ToString":
-                if len(expr.args) == 0:
+                if not expr.args:
                     return _C_UNKNOWN
                 t = _make_resolver(ctx).resolve(expr.args[0].value)
                 if t is not None and (
@@ -402,7 +400,7 @@ def _classify_string_expr(
                 )
                 return _join_content(a, b)
             if name == "Format":
-                if len(expr.args) == 0:
+                if not expr.args:
                     return _C_UNKNOWN
                 level: str | None = None
                 for fa in expr.args:
@@ -422,7 +420,7 @@ def _classify_string_expr(
                 "Repeat",
                 "Reverse",
             ):
-                if len(expr.args) == 0:
+                if not expr.args:
                     return _C_UNKNOWN
                 return _classify_string_expr(
                     expr.args[0].value, string_content, list_content, ctx
