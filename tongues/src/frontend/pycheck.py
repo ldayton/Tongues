@@ -556,7 +556,7 @@ def _synth_expr_inner(
         return _synth_unaryop(node, env, ctx)
     if t == "Compare":
         left = get_node(node, "left")
-        if len(left) > 0:
+        if left:
             _synth_expr(left, env, ctx)
         comparators = get_nodes(node, "comparators")
         ci = 0
@@ -589,7 +589,7 @@ def _synth_expr_inner(
         generators = get_nodes(node, "generators")
         comp_env = env.copy()
         _bind_comprehension_vars(generators, comp_env, ctx)
-        if len(elt) > 0:
+        if elt:
             return IteratorType(_synth_expr(elt, comp_env, ctx))
         return IteratorType(ANY_TYPE)
     if t == "JoinedStr":
@@ -1055,7 +1055,7 @@ def _synth_name_call(
     if fname == "len":
         return INT_TYPE
     if fname == "abs":
-        if len(args) > 0:
+        if args:
             at = _synth_expr(args[0], env, ctx)
             if isinstance(at, PrimitiveType) and at.kind == "bool":
                 return INT_TYPE
@@ -1080,7 +1080,7 @@ def _synth_name_call(
     if fname == "sum":
         return INT_TYPE
     if fname == "min" or fname == "max":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             if isinstance(ft, SliceType):
@@ -1120,14 +1120,14 @@ def _synth_name_call(
     if fname == "bytes":
         return BYTES_TYPE
     if fname == "frozenset":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             elem = _element_type(ft)
             return SetType(elem)
         return SetType(ANY_TYPE)
     if fname == "enumerate":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             elem = _element_type(ft)
@@ -1143,14 +1143,14 @@ def _synth_name_call(
             j += 1
         return IteratorType(TupleType(elems, False))
     if fname == "reversed":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             elem = _element_type(ft)
             return IteratorType(elem)
         return IteratorType(ANY_TYPE)
     if fname == "sorted":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             if isinstance(ft, IteratorType):
@@ -1159,7 +1159,7 @@ def _synth_name_call(
             return SliceType(elem)
         return SliceType(ANY_TYPE)
     if fname == "list":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             if isinstance(ft, IteratorType):
@@ -1168,7 +1168,7 @@ def _synth_name_call(
             return SliceType(elem)
         return SliceType(ANY_TYPE)
     if fname == "tuple":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             if isinstance(ft, IteratorType):
@@ -1177,14 +1177,14 @@ def _synth_name_call(
             return TupleType([elem], True)
         return TupleType([], False)
     if fname == "set":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             elem = _element_type(ft)
             return SetType(elem)
         return SetType(ANY_TYPE)
     if fname == "dict":
-        if len(args) > 0:
+        if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             if isinstance(ft, IteratorType):
@@ -1302,9 +1302,9 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         if narrowed is not None:
             value = get_node(node, "value")
             slc = get_node(node, "slice")
-            if len(value) > 0:
+            if value:
                 _synth_expr(value, env, ctx)
-            if len(slc) > 0 and not _is_type(slc, ["Slice"]):
+            if slc and not _is_type(slc, ["Slice"]):
                 _synth_expr(slc, env, ctx)
             return narrowed
     value = get_node(node, "value")
@@ -1312,9 +1312,9 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if len(value) == 0:
         return ANY_TYPE
     obj_type = _synth_expr(value, env, ctx)
-    if len(slc) > 0 and not _is_type(slc, ["Slice"]):
+    if slc and not _is_type(slc, ["Slice"]):
         _synth_expr(slc, env, ctx)
-    if len(slc) > 0 and _is_type(slc, ["Slice"]):
+    if slc and _is_type(slc, ["Slice"]):
         _lower = get_node(slc, "lower")
         _upper = get_node(slc, "upper")
         _step = get_node(slc, "step")
@@ -1329,12 +1329,12 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return STR_TYPE
     # List indexing
     if isinstance(obj_type, SliceType):
-        if len(slc) > 0 and _is_type(slc, ["Slice"]):
+        if slc and _is_type(slc, ["Slice"]):
             return obj_type
         return obj_type.element
     # Iterator indexing
     if isinstance(obj_type, IteratorType):
-        if len(slc) > 0 and _is_type(slc, ["Slice"]):
+        if slc and _is_type(slc, ["Slice"]):
             return SliceType(obj_type.element)
         return obj_type.element
     # Dict indexing
@@ -1344,7 +1344,7 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if isinstance(obj_type, TupleType):
         if obj_type.variadic and len(obj_type.elements) > 0:
             return obj_type.elements[0]
-        if len(slc) > 0 and _is_type(slc, ["Constant"]):
+        if slc and _is_type(slc, ["Constant"]):
             _synth_expr(slc, env, ctx)
             slc_v = slc.get("value")
             if isinstance(slc_v, JInt):
@@ -1489,11 +1489,11 @@ def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     orelse = get_node(node, "orelse")
     then_env = env.copy()
     else_env = env.copy()
-    if len(test) > 0:
+    if test:
         _synth_expr(test, env, ctx)
         _extract_narrowing(test, then_env, else_env, ctx)
     orelse_t = VOID_TYPE
-    if len(orelse) > 0:
+    if orelse:
         orelse_t = _synth_expr(orelse, else_env, ctx)
     if len(body) == 0:
         return ANY_TYPE
@@ -1560,7 +1560,7 @@ def _synth_listcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     generators = get_nodes(node, "generators")
     comp_env = env.copy()
     _bind_comprehension_vars(generators, comp_env, ctx)
-    if len(elt) > 0:
+    if elt:
         lineno = get_int(node, "lineno")
         if lineno == 0 and len(generators) > 0:
             lineno = get_int(generators[0], "lineno")
@@ -1577,7 +1577,7 @@ def _synth_setcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     generators = get_nodes(node, "generators")
     comp_env = env.copy()
     _bind_comprehension_vars(generators, comp_env, ctx)
-    if len(elt) > 0:
+    if elt:
         return SetType(_synth_expr(elt, comp_env, ctx))
     return SetType(ANY_TYPE)
 
@@ -1592,7 +1592,7 @@ def _synth_dictcomp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     vt = ANY_TYPE
     if len(key) > 0:
         kt = _synth_expr(key, comp_env, ctx)
-    if len(value) > 0:
+    if value:
         vt = _synth_expr(value, comp_env, ctx)
     return MapType(kt, vt)
 
@@ -1610,7 +1610,7 @@ def _bind_comprehension_vars(
             iter_type = _synth_expr(iter_node, env, ctx)
             elem = _iteration_element(iter_type)
             _bind_target(target, elem, env)
-            if len(target) > 0:
+            if target:
                 _synth_expr(target, env, ctx)
         ifs = get_nodes(gen, "ifs")
         j = 0
@@ -1629,7 +1629,7 @@ def _synth_namedexpr(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if len(value) == 0:
         return ANY_TYPE
     vt = _synth_expr(value, env, ctx)
-    if len(target) > 0 and _is_type(target, ["Name"]):
+    if target and _is_type(target, ["Name"]):
         name = get_str(target, "id")
         if name:
             env.set(name, vt)
@@ -2293,7 +2293,7 @@ def _validate_ann_assign(
                 if ca_id >= 0:
                     ctx.current_flow_id = ca_id
             _synth_expr(target, env, ctx)
-            if len(value) > 0:
+            if value:
                 err_snap = len(ctx.result._errors)
                 _validate_expr_access(value, env, ctx, lineno)
                 if _has_new_errors(ctx, err_snap):
@@ -2489,7 +2489,7 @@ def _validate_call_args(
             _check_func_type_args(ftype, args, env, ctx, lineno, n_kw)
             return
         if fname == "len":
-            if len(args) > 0:
+            if args:
                 a = args[0]
                 at = _synth_expr(a, env, ctx)
                 if isinstance(at, PrimitiveType) and at.kind in (
@@ -2637,7 +2637,7 @@ def _validate_collection_method_args(
     if isinstance(obj_type, SliceType):
         elem = obj_type.element
         if method == "append":
-            if len(args) > 0:
+            if args:
                 at = _synth_expr(args[0], env, ctx)
                 if not _is_assignable(at, elem, ctx.hier_result):
                     ctx.result.add_error(
@@ -2649,7 +2649,7 @@ def _validate_collection_method_args(
                         + _type_name(elem),
                     )
         elif method == "extend":
-            if len(args) > 0:
+            if args:
                 at = _synth_expr(args[0], env, ctx)
                 aelem = _element_type(at)
                 if not _is_assignable(aelem, elem, ctx.hier_result):
@@ -2676,7 +2676,7 @@ def _validate_collection_method_args(
     elif isinstance(obj_type, SetType):
         elem = obj_type.element
         if method == "add":
-            if len(args) > 0:
+            if args:
                 at = _synth_expr(args[0], env, ctx)
                 if not _is_assignable(at, elem, ctx.hier_result):
                     ctx.result.add_error(
@@ -2731,7 +2731,7 @@ def _validate_if(
     body = get_nodes(stmt, "body")
     orelse = get_nodes(stmt, "orelse")
     lineno = get_int(stmt, "lineno")
-    if len(test) > 0:
+    if test:
         err_snap = len(ctx.result._errors)
         _validate_expr_access(test, env, ctx, lineno)
         if _has_new_errors(ctx, err_snap):
@@ -2743,13 +2743,13 @@ def _validate_if(
     saved_flow_id = ctx.current_flow_id
     then_env = env.copy()
     else_env = env.copy()
-    if len(test) > 0:
+    if test:
         _extract_narrowing(test, then_env, else_env, ctx)
     then_returns = _validate_stmts(body, then_env, func_info, ctx)
     then_flow_id = ctx.current_flow_id
     ctx.current_flow_id = saved_flow_id
     else_returns = False
-    if len(orelse) > 0:
+    if orelse:
         is_elif = len(orelse) == 1 and _is_type(orelse[0], ["If"])
         if not is_elif and _has_never_narrowing(env, else_env):
             else_lineno = get_int(orelse[0], "lineno")
@@ -2800,7 +2800,7 @@ def _validate_while(
     test = get_node(stmt, "test")
     body = get_nodes(stmt, "body")
     lineno = get_int(stmt, "lineno")
-    if len(test) > 0:
+    if test:
         err_snap = len(ctx.result._errors)
         _validate_expr_access(test, env, ctx, lineno)
         if _has_new_errors(ctx, err_snap):
@@ -2812,7 +2812,7 @@ def _validate_while(
         ctx.current_flow_id = head_id
     loop_env = env.copy()
     else_env = env.copy()
-    if len(test) > 0:
+    if test:
         _extract_narrowing(test, loop_env, else_env, ctx)
     body_returns = _validate_stmts(body, loop_env, func_info, ctx)
     has_break = False
@@ -2847,14 +2847,14 @@ def _validate_for(
             return
         iter_type = _synth_expr(iter_node, env, ctx)
         elem = _iteration_element(iter_type)
-        if len(target) > 0:
+        if target:
             _bind_target(target, elem, env)
             _synth_expr(target, env, ctx)
     head_id = _find_succ_loop_head_walk(ctx, 4)
     if head_id >= 0:
         ctx.current_flow_id = head_id
     loop_env = env.copy()
-    if len(target) > 0:
+    if target:
         tname = get_str(target, "id")
         if tname:
             t = env.get_type(tname)
@@ -3000,7 +3000,7 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
             return
     if t == "NamedExpr":
         value = get_node(test, "value")
-        if len(value) > 0:
+        if value:
             vt = _synth_expr(value, env, ctx)
             _check_type_truthiness(vt, env, test, ctx, lineno)
         return
@@ -4103,12 +4103,12 @@ def _validate_expr_access(
                                 )
                                 return
                         vi += 1
-        if len(value) > 0:
+        if value:
             _validate_expr_access(value, env, ctx, lineno)
         return
     if t == "Subscript":
         value = get_node(node, "value")
-        if len(value) > 0:
+        if value:
             _check_needs_narrowing(value, env, ctx, lineno, "subscript", "")
             _validate_expr_access(value, env, ctx, lineno)
         return
@@ -4169,19 +4169,19 @@ def _validate_expr_access(
         test = get_node(node, "test")
         ifbody = get_node(node, "body")
         orelse = get_node(node, "orelse")
-        if len(test) > 0:
+        if test:
             _validate_expr_access(test, env, ctx, lineno)
             if _has_new_errors(ctx, err_snap):
                 return
         then_env = env.copy()
         else_env = env.copy()
-        if len(test) > 0:
+        if test:
             _extract_narrowing(test, then_env, else_env, ctx)
         if len(ifbody) > 0:
             _validate_expr_access(ifbody, then_env, ctx, lineno)
             if _has_new_errors(ctx, err_snap):
                 return
-        if len(orelse) > 0:
+        if orelse:
             _validate_expr_access(orelse, else_env, ctx, lineno)
         return
 
