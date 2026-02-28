@@ -994,6 +994,11 @@ def _adjust_pycheck_type(node: ASTNode, pt: TypeNode, env: _Env) -> TypeNode:
     if not isinstance(node, dict):
         return pt
     t = get_str(node, "_type")
+    # Python: bytes[i] returns int, not byte (pycheck uses taytsh convention)
+    if t == "Subscript" and isinstance(pt, PrimitiveType) and pt.kind == "byte":
+        slc = get_node(node, "slice")
+        if not _is_ast(slc, "Slice"):
+            return INT_TYPE
     # pycheck returns SetType for dict.keys()/items(), lowering uses SliceType
     if isinstance(pt, SetType) and t == "Call":
         func = get_node(node, "func")
@@ -1276,6 +1281,9 @@ def _infer_expr_type_fallback(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeN
             slc = get_node(node, "slice")
             if _is_ast(slc, "Slice"):
                 return obj_t
+            # Python: bytes[i] returns int, not byte
+            if _is_bytes_slice(obj_t):
+                return INT_TYPE
             return obj_t.element
         if isinstance(obj_t, MapType):
             return obj_t.value
@@ -1287,11 +1295,12 @@ def _infer_expr_type_fallback(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeN
                     return obj_t.elements[idx_val]
         if _is_type_dict(obj_t, ["string"]):
             return STR_TYPE
-        if _is_type_dict(obj_t, ["bytes"]):
+        if _is_type_dict(obj_t, ["bytes"]) or _is_bytes_slice(obj_t):
             slc = get_node(node, "slice")
             if _is_ast(slc, "Slice"):
                 return PrimitiveType("bytes")
-            return PrimitiveType("byte")
+            # Python: bytes[i] returns int, not byte
+            return INT_TYPE
         return VOID_TYPE
     if t == "BinOp":
         op = get_node(node, "op")
@@ -2216,14 +2225,8 @@ def _coerce_compare(
         left = _make_call(pos, "IntToFloat", [_bool_to_int(pos, left)])
     elif rt_bool and lt_float:
         right = _make_call(pos, "IntToFloat", [_bool_to_int(pos, right)])
-    else:
-        # byte vs int → convert byte to int
-        lt_byte = _is_type_dict(left_type, ["byte"])
-        rt_byte = _is_type_dict(right_type, ["byte"])
-        if lt_byte and rt_int:
-            left = _make_call(pos, "ByteToInt", [left])
-        elif rt_byte and lt_int:
-            right = _make_call(pos, "ByteToInt", [right])
+    # Note: byte vs int coercion is handled by _lower_subscript wrapping
+    # bytes indexing with ByteToInt, so we don't need to coerce here
     # rune vs string → convert rune to string
     lt_rune = _is_type_dict(left_type, ["rune"])
     rt_rune = _is_type_dict(right_type, ["rune"])
@@ -2520,6 +2523,16 @@ def _lower_conversion_call(
             arg_type = _infer_expr_type(args[0], env, ctx)
             arg = _lower_expr(args[0], env, ctx)
             if _is_type_dict(arg_type, ["string"]):
+                # If arg is a string subscript (s[i]), the lowered result could be:
+                # - TIndex directly (string indexing returns rune in taytsh)
+                # - ToString(TIndex) if lowering wrapped it for Python semantics
+                # For ord(), we need the rune, so use TIndex directly without [0].
+                if isinstance(arg, TIndex):
+                    return _make_call(pos, "RuneToInt", [arg])
+                if isinstance(arg, TCall) and arg.func == "ToString":
+                    inner = arg.args[0]
+                    if isinstance(inner, TIndex):
+                        return _make_call(pos, "RuneToInt", [inner])
                 indexed = TIndex(pos, arg, TIntLit(pos, 0, "0", {}), {})
                 return _make_call(pos, "RuneToInt", [indexed])
             return _make_call(pos, "RuneToInt", [arg])
@@ -6202,6 +6215,133 @@ def _build_struct(
     return TStructDecl(pos, name, parent, fields, methods, ann)
 
 
+def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleItem]:
+    """Extract class-level ALL_CAPS constants from a class body."""
+    result: list[TModuleItem] = []
+    class_name = get_str(class_node, "name")
+    class_body = get_nodes(class_node, "body")
+    j = 0
+    while j < len(class_body):
+        item = class_body[j]
+        if _is_ast(item, "Assign"):
+            targets = get_nodes(item, "targets")
+            if len(targets) > 0:
+                t = targets[0]
+                if _is_ast(t, "Name"):
+                    fname = get_str(t, "id")
+                    if fname == fname.upper() and len(fname) > 1:
+                        pos = _node_pos(item)
+                        value_node = get_node(item, "value")
+                        val_type: TypeNode = _infer_expr_type(value_node, _Env(), ctx)
+                        if _is_type_dict(val_type, ["void"]):
+                            val_type = PrimitiveType("error")
+                        ttype = _typenode_to_ttype(pos, val_type)
+                        value = _lower_expr(value_node, _Env(), ctx)
+                        const_name = class_name + "_" + fname
+                        result.append(TLetStmt(pos, const_name, ttype, value, {}))
+                        ctx.constant_types[const_name] = val_type
+        elif _is_ast(item, "AnnAssign"):
+            target = get_node(item, "target")
+            if _is_ast(target, "Name"):
+                fname = get_str(target, "id")
+                if fname == fname.upper() and len(fname) > 1:
+                    pos = _node_pos(item)
+                    ann_jv = item.get("annotation")
+                    ann_str = ""
+                    if isinstance(ann_jv, JDict):
+                        ann_str = annotation_to_str(ann_jv.entries)
+                    c_type_dict: TypeNode = VOID_TYPE
+                    if ann_str != "":
+                        c_type_dict = py_type_to_type_dict(
+                            ann_str, ctx.known_classes, [], 0, 0
+                        )
+                    if _is_type_dict(c_type_dict, ["void"]):
+                        value_node = get_node(item, "value")
+                        c_type_dict = _infer_expr_type(value_node, _Env(), ctx)
+                    if _is_type_dict(c_type_dict, ["void"]):
+                        c_type_dict = PrimitiveType("error")
+                    ttype = _typenode_to_ttype(pos, c_type_dict)
+                    value_node = get_node(item, "value")
+                    value = _lower_expr(value_node, _Env(), ctx)
+                    const_name = class_name + "_" + fname
+                    result.append(TLetStmt(pos, const_name, ttype, value, {}))
+                    ctx.constant_types[const_name] = c_type_dict
+        j += 1
+    return result
+
+
+def _collect_constant_names(body: list[ASTNode], ctx: _LowerCtx) -> set[str]:
+    """Collect names of module-level ALL_CAPS constants."""
+    names: set[str] = set()
+    i = 0
+    while i < len(body):
+        node = body[i]
+        if _is_ast(node, "Assign"):
+            targets = get_nodes(node, "targets")
+            if len(targets) > 0:
+                t = targets[0]
+                if _is_ast(t, "Name"):
+                    name = get_str(t, "id")
+                    if name == name.upper() and name != "_" and len(name) > 1:
+                        names.add(name)
+        elif _is_ast(node, "AnnAssign"):
+            target = get_node(node, "target")
+            if _is_ast(target, "Name"):
+                name = get_str(target, "id")
+                if name == name.upper() and name != "_" and len(name) > 1:
+                    names.add(name)
+        i += 1
+    return names
+
+
+def _build_module_constant(
+    node: ASTNode, constant_names: set[str], ctx: _LowerCtx
+) -> TModuleItem | None:
+    """Build a TLetStmt for a module-level constant, or None if not a constant."""
+    if _is_ast(node, "Assign"):
+        targets = get_nodes(node, "targets")
+        if len(targets) > 0:
+            t = targets[0]
+            if _is_ast(t, "Name"):
+                name = get_str(t, "id")
+                if name in constant_names:
+                    pos = _node_pos(node)
+                    value_node = get_node(node, "value")
+                    val_type: TypeNode = _infer_expr_type(value_node, _Env(), ctx)
+                    if _is_type_dict(val_type, ["void"]):
+                        val_type = PrimitiveType("error")
+                    ttype = _typenode_to_ttype(pos, val_type)
+                    value = _lower_expr(value_node, _Env(), ctx)
+                    ctx.constant_types[name] = val_type
+                    return TLetStmt(pos, name, ttype, value, {})
+    elif _is_ast(node, "AnnAssign"):
+        target = get_node(node, "target")
+        if _is_ast(target, "Name"):
+            name = get_str(target, "id")
+            if name in constant_names:
+                pos = _node_pos(node)
+                ann_jv = node.get("annotation")
+                ann_str = ""
+                if isinstance(ann_jv, JDict):
+                    ann_str = annotation_to_str(ann_jv.entries)
+                type_dict: TypeNode = VOID_TYPE
+                if ann_str != "":
+                    type_dict = py_type_to_type_dict(
+                        ann_str, ctx.known_classes, [], 0, 0
+                    )
+                if _is_type_dict(type_dict, ["void"]):
+                    value_node = get_node(node, "value")
+                    type_dict = _infer_expr_type(value_node, _Env(), ctx)
+                if _is_type_dict(type_dict, ["void"]):
+                    type_dict = PrimitiveType("error")
+                ttype = _typenode_to_ttype(pos, type_dict)
+                value_node = get_node(node, "value")
+                value = _lower_expr(value_node, _Env(), ctx)
+                ctx.constant_types[name] = type_dict
+                return TLetStmt(pos, name, ttype, value, {})
+    return None
+
+
 def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
     """Extract module-level and class-level constants."""
     result: list[TModuleItem] = []
@@ -6362,12 +6502,6 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
     body = get_nodes(tree, "body")
     decls: list[TModuleItem] = []
     entry_point_func = _detect_entry_point(body)
-    # Build constants first
-    constants = _build_constants(body, ctx)
-    i = 0
-    while i < len(constants):
-        decls.append(constants[i])
-        i += 1
     # Index class AST nodes for ancestor method lookup
     i = 0
     while i < len(body):
@@ -6375,7 +6509,8 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
         if _is_ast(node, "ClassDef"):
             ctx.class_nodes[get_str(node, "name")] = node
         i += 1
-    # Build structs/interfaces
+    # Build structs/interfaces first (needed for type resolution)
+    # Also extract class-level constants
     i = 0
     while i < len(body):
         node = body[i]
@@ -6383,8 +6518,16 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
             decl = _build_struct(node, ctx)
             if decl is not None:
                 decls.append(decl)
+            # Extract class-level constants
+            class_constants = _build_class_constants(node, ctx)
+            j = 0
+            while j < len(class_constants):
+                decls.append(class_constants[j])
+                j += 1
         i += 1
-    # Build functions
+    # Build constants and functions in source order to preserve dependencies
+    # (e.g., a constant that calls a function needs the function defined first)
+    constant_names = _collect_constant_names(body, ctx)
     env = _Env()
     i = 0
     while i < len(body):
@@ -6393,6 +6536,10 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
             fname = get_str(node, "name")
             is_entry = entry_point_func is not None and fname == entry_point_func
             decls.append(_build_function(node, env, ctx, is_entry))
+        elif _is_ast(node, "Assign") or _is_ast(node, "AnnAssign"):
+            const_decl = _build_module_constant(node, constant_names, ctx)
+            if const_decl is not None:
+                decls.append(const_decl)
         i += 1
     return TModule(decls)
 

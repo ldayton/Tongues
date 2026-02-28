@@ -4,6 +4,7 @@ import sys
 
 from lib.base64 import b64decode
 from lib.base64 import b64encode
+from lib.base64 import Base64Error
 
 
 # -- RFC 4648 test vectors --
@@ -101,29 +102,42 @@ def test_roundtrip_empty() -> None:
 
 def test_roundtrip_single_bytes() -> None:
     i: int = 0
+    b: bytes = b""
     while i < 256:
-        b: bytes = bytes([i])
+        b = bytes([i])
         assert b64decode(b64encode(b)) == b
         i += 1
 
 
 def test_roundtrip_two_bytes() -> None:
     pairs: list[list[int]] = [
-        [0, 0], [0, 255], [255, 0], [255, 255],
-        [127, 128], [1, 2], [254, 253], [0, 1],
+        [0, 0],
+        [0, 255],
+        [255, 0],
+        [255, 255],
+        [127, 128],
+        [1, 2],
+        [254, 253],
+        [0, 1],
     ]
+    b: bytes = b""
     for pair in pairs:
-        b: bytes = bytes(pair)
+        b = bytes(pair)
         assert b64decode(b64encode(b)) == b
 
 
 def test_roundtrip_three_bytes() -> None:
     triples: list[list[int]] = [
-        [0, 0, 0], [255, 255, 255], [1, 2, 3],
-        [0, 127, 255], [128, 0, 128], [10, 20, 30],
+        [0, 0, 0],
+        [255, 255, 255],
+        [1, 2, 3],
+        [0, 127, 255],
+        [128, 0, 128],
+        [10, 20, 30],
     ]
+    b: bytes = b""
     for triple in triples:
-        b: bytes = bytes(triple)
+        b = bytes(triple)
         assert b64decode(b64encode(b)) == b
 
 
@@ -189,9 +203,11 @@ def test_decode_each_alphabet_char() -> None:
     """Encoding bytes([i<<2, 0, 0]) puts index i in the first 6-bit slot."""
     alphabet: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     i: int = 0
+    data: bytes = b""
+    encoded: str = ""
     while i < 64:
-        data: bytes = bytes([i << 2, 0, 0])
-        encoded: str = b64encode(data)
+        data = bytes([i << 2, 0, 0])
+        encoded = b64encode(data)
         assert encoded[0] == alphabet[i]
         i += 1
 
@@ -252,14 +268,18 @@ def test_encode_long_binary() -> None:
 def test_encoded_length() -> None:
     """Padded base64 output is always a multiple of 4."""
     i: int = 0
+    j: int = 0
+    vals: list[int] = []
+    data: bytes = b""
+    encoded: str = ""
     while i < 20:
-        vals: list[int] = []
-        j: int = 0
+        vals = []
+        j = 0
         while j < i:
             vals.append(j & 0xFF)
             j += 1
-        data: bytes = bytes(vals)
-        encoded: str = b64encode(data)
+        data = bytes(vals)
+        encoded = b64encode(data)
         assert len(encoded) % 4 == 0
         i += 1
 
@@ -267,20 +287,242 @@ def test_encoded_length() -> None:
 def test_decoded_length() -> None:
     """n input bytes -> ceil(n/3)*4 output chars."""
     cases: list[list[int]] = [
-        [0, 0], [1, 4], [2, 4], [3, 4],
-        [4, 8], [5, 8], [6, 8],
-        [7, 12], [8, 12], [9, 12],
+        [0, 0],
+        [1, 4],
+        [2, 4],
+        [3, 4],
+        [4, 8],
+        [5, 8],
+        [6, 8],
+        [7, 12],
+        [8, 12],
+        [9, 12],
     ]
+    n: int = 0
+    expected_len: int = 0
+    vals: list[int] = []
+    j: int = 0
+    data: bytes = b""
     for case in cases:
-        n: int = case[0]
-        expected_len: int = case[1]
-        vals: list[int] = []
-        j: int = 0
+        n = case[0]
+        expected_len = case[1]
+        vals = []
+        j = 0
         while j < n:
             vals.append(0)
             j += 1
-        data: bytes = bytes(vals)
+        data = bytes(vals)
         assert len(b64encode(data)) == expected_len
+
+
+# -- Invalid input handling (Go stdlib behavior) --
+
+
+def test_invalid_char_position_0() -> None:
+    """Invalid character at position 0."""
+    try:
+        b64decode("!ABC")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 0
+
+
+def test_invalid_char_position_1() -> None:
+    """Invalid character at position 1."""
+    try:
+        b64decode("A!BC")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 1
+
+
+def test_invalid_char_position_2() -> None:
+    """Invalid character at position 2."""
+    try:
+        b64decode("AB!C")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 2
+
+
+def test_invalid_char_position_3() -> None:
+    """Invalid character at position 3."""
+    try:
+        b64decode("ABC!")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 3
+
+
+def test_invalid_char_in_second_group() -> None:
+    """Invalid character in second 4-char group."""
+    try:
+        b64decode("ABCDAB!D")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 6
+
+
+def test_invalid_space() -> None:
+    """Space is not valid base64."""
+    try:
+        b64decode("AB CD")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 2
+
+
+def test_invalid_newline() -> None:
+    """Newline is not valid base64."""
+    try:
+        b64decode("ABCD\nEFGH")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 4
+
+
+def test_invalid_length_1() -> None:
+    """Length 1 is invalid (need at least 2 chars for 1 byte)."""
+    try:
+        b64decode("A")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 1
+
+
+def test_invalid_length_2() -> None:
+    """Length 2 without padding is invalid."""
+    try:
+        b64decode("AB")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 2
+
+
+def test_invalid_length_3() -> None:
+    """Length 3 without padding is invalid."""
+    try:
+        b64decode("ABC")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 3
+
+
+def test_invalid_length_5() -> None:
+    """Length 5 is invalid (not multiple of 4)."""
+    try:
+        b64decode("ABCDE")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 5
+
+
+def test_invalid_padding_middle() -> None:
+    """Padding in wrong position."""
+    try:
+        b64decode("A=CD")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 1
+
+
+def test_invalid_padding_first() -> None:
+    """Padding at start."""
+    try:
+        b64decode("=BCD")
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 0
+
+
+def test_various_invalid_chars() -> None:
+    """Various invalid ASCII characters."""
+    invalid_chars: str = "!@#$%^&*()[]{}|;:',.<>?`~\"\\ "
+    i: int = 0
+    ch: str = ""
+    while i < len(invalid_chars):
+        ch = invalid_chars[i]
+        try:
+            b64decode("ABC" + ch)
+            assert False, "expected Base64Error for char: " + ch
+        except Base64Error as e:
+            assert e.position == 3
+        i += 1
+
+
+# -- Strict mode: non-zero padding bits (RFC 4648 §3.5) --
+
+
+def test_strict_rejects_nonzero_pad_bits_2pad() -> None:
+    """With ==, lower 4 bits of char at n-3 must be zero."""
+    # 'A' = 0 (0b000000) - canonical
+    assert b64decode("YQ==", True) == b"a"
+    # 'B' = 1 (0b000001) - non-zero lower 4 bits
+    try:
+        b64decode("YR==", True)
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 1
+    # 'D' = 3 (0b000011) - non-zero lower 4 bits
+    try:
+        b64decode("YT==", True)
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 1
+
+
+def test_strict_rejects_nonzero_pad_bits_1pad() -> None:
+    """With =, lower 2 bits of char at n-2 must be zero."""
+    # 'I' = 8 (0b001000) - canonical (lower 2 bits = 00)
+    assert b64decode("YWI=", True) == b"ab"
+    # 'J' = 9 (0b001001) - non-zero lower 2 bits
+    try:
+        b64decode("YWJ=", True)
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 2
+    # 'K' = 10 (0b001010) - non-zero lower 2 bits
+    try:
+        b64decode("YWK=", True)
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 2
+
+
+def test_strict_accepts_canonical_padding() -> None:
+    """Strict mode accepts properly zero-padded input."""
+    # All RFC test vectors should pass strict mode
+    assert b64decode("", True) == b""
+    assert b64decode("Zg==", True) == b"f"
+    assert b64decode("Zm8=", True) == b"fo"
+    assert b64decode("Zm9v", True) == b"foo"
+    assert b64decode("Zm9vYg==", True) == b"foob"
+    assert b64decode("Zm9vYmE=", True) == b"fooba"
+    assert b64decode("Zm9vYmFy", True) == b"foobar"
+
+
+def test_strict_github_issue_example() -> None:
+    """The exact example from Go issue #15656."""
+    good: str = "WvLTlMrX9NpYDQlEIFlnDA=="
+    bad: str = "WvLTlMrX9NpYDQlEIFlnDB=="
+    # Good should decode fine
+    b64decode(good, True)
+    # Bad should fail in strict mode
+    try:
+        b64decode(bad, True)
+        assert False, "expected Base64Error"
+    except Base64Error as e:
+        assert e.position == 21  # position of 'B'
+
+
+def test_lenient_accepts_nonzero_pad_bits() -> None:
+    """Non-strict mode (default) accepts non-canonical input."""
+    # These should all succeed without strict=True
+    assert b64decode("YR==") == b"a"  # same as YQ==
+    assert b64decode("YWJ=") == b"ab"  # same as YWI=
+    assert b64decode("WvLTlMrX9NpYDQlEIFlnDB==") == b64decode(
+        "WvLTlMrX9NpYDQlEIFlnDA=="
+    )
 
 
 def main() -> int:
@@ -323,6 +565,37 @@ def main() -> int:
         ("test_encode_long_binary", test_encode_long_binary),
         ("test_encoded_length", test_encoded_length),
         ("test_decoded_length", test_decoded_length),
+        ("test_invalid_char_position_0", test_invalid_char_position_0),
+        ("test_invalid_char_position_1", test_invalid_char_position_1),
+        ("test_invalid_char_position_2", test_invalid_char_position_2),
+        ("test_invalid_char_position_3", test_invalid_char_position_3),
+        ("test_invalid_char_in_second_group", test_invalid_char_in_second_group),
+        ("test_invalid_space", test_invalid_space),
+        ("test_invalid_newline", test_invalid_newline),
+        ("test_invalid_length_1", test_invalid_length_1),
+        ("test_invalid_length_2", test_invalid_length_2),
+        ("test_invalid_length_3", test_invalid_length_3),
+        ("test_invalid_length_5", test_invalid_length_5),
+        ("test_invalid_padding_middle", test_invalid_padding_middle),
+        ("test_invalid_padding_first", test_invalid_padding_first),
+        ("test_various_invalid_chars", test_various_invalid_chars),
+        (
+            "test_strict_rejects_nonzero_pad_bits_2pad",
+            test_strict_rejects_nonzero_pad_bits_2pad,
+        ),
+        (
+            "test_strict_rejects_nonzero_pad_bits_1pad",
+            test_strict_rejects_nonzero_pad_bits_1pad,
+        ),
+        (
+            "test_strict_accepts_canonical_padding",
+            test_strict_accepts_canonical_padding,
+        ),
+        ("test_strict_github_issue_example", test_strict_github_issue_example),
+        (
+            "test_lenient_accepts_nonzero_pad_bits",
+            test_lenient_accepts_nonzero_pad_bits,
+        ),
     ]
     for name, fn in tests:
         try:

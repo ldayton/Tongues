@@ -60,7 +60,9 @@ def _read_lib_sources(names: list[str]) -> list[tuple[str, str]]:
     return result
 
 
-def _build_project_input(app_path: str, app_source: str, lib_sources: list[tuple[str, str]]) -> bytes:
+def _build_project_input(
+    app_path: str, app_source: str, lib_sources: list[tuple[str, str]]
+) -> bytes:
     """Build NUL-delimited project input."""
     parts = [app_path, app_source]
     for import_path, source in lib_sources:
@@ -884,9 +886,13 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
                 result = _run_inprocess(argv, stdin_data=stdin_data)
             else:
                 cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(cmd, input=stdin_data, capture_output=True, timeout=30)
+                result = subprocess.run(
+                    cmd, input=stdin_data, capture_output=True, timeout=30
+                )
         else:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=False
+            ) as tmp:
                 tmp.write(source)
                 tmp.flush()
                 argv = [TRANSPILED_BINARY, "--stop-at", "lowering-text", tmp.name]
@@ -1220,9 +1226,13 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
                 result = _run_inprocess(argv, stdin_data=stdin_data)
             else:
                 cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(cmd, input=stdin_data, capture_output=True, timeout=30)
+                result = subprocess.run(
+                    cmd, input=stdin_data, capture_output=True, timeout=30
+                )
         else:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=False
+            ) as tmp:
                 tmp.write(source)
                 tmp.flush()
                 argv = [TRANSPILED_BINARY, "--target", target, tmp.name]
