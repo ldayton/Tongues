@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -22,6 +23,7 @@ from src.frontend.parse import parse
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 
 TONGUES_DIR = Path(__file__).parent.parent
+LIB_DIR = TONGUES_DIR / "src" / "lib"
 
 TRANSPILED_BINARY: str | None = os.environ.get("TONGUES_TRANSPILED_BINARY")
 
@@ -35,6 +37,32 @@ if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".py"):
     _spec.loader.exec_module(_TRANSPILED_MODULE)
 
 EXT_TO_LANG = {".py": "python", ".rb": "ruby", ".pl": "perl"}
+
+_LIB_IMPORT_RE = re.compile(r"^from lib\.(\w+) import", re.MULTILINE)
+
+
+def _find_lib_imports(source: str) -> list[str]:
+    """Extract lib module names from 'from lib.X import' statements."""
+    return _LIB_IMPORT_RE.findall(source)
+
+
+def _read_lib_sources(names: list[str]) -> list[tuple[str, str]]:
+    """Read lib modules. Returns [(import_path, source)] e.g. [('lib/base64.py', '...')]."""
+    result: list[tuple[str, str]] = []
+    for name in names:
+        file_path = LIB_DIR / f"{name}.py"
+        import_path = f"lib/{name}.py"
+        result.append((import_path, file_path.read_text()))
+    return result
+
+
+def _build_project_input(app_path: str, app_source: str, lib_sources: list[tuple[str, str]]) -> bytes:
+    """Build NUL-delimited project input."""
+    parts = [app_path, app_source]
+    for import_path, source in lib_sources:
+        parts.append(import_path)
+        parts.append(source)
+    return "\0".join(parts).encode()
 
 
 def parse_cli_test_file(path: Path) -> list[tuple[str, dict]]:
@@ -842,22 +870,34 @@ def run_type_checking(source: str) -> PhaseResult:
 
 def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
     """Lower Python source to Taytsh text. Returns (output, error)."""
+    lib_names = _find_lib_imports(source)
     if TRANSPILED_BINARY is not None:
-        suffix = ".py"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as tmp:
-            tmp.write(source)
-            tmp.flush()
-            argv = [TRANSPILED_BINARY, "--stop-at", "lowering-text", tmp.name]
+        if lib_names:
+            lib_sources = _read_lib_sources(lib_names)
+            stdin_data = _build_project_input("apptest.py", source, lib_sources)
+            argv = [TRANSPILED_BINARY, "--project", "--stop-at", "lowering-text"]
             if _TRANSPILED_MODULE is not None:
-                result = _run_inprocess(argv)
+                result = _run_inprocess(argv, stdin_data=stdin_data)
             else:
                 cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(cmd, capture_output=True, timeout=30)
-            Path(tmp.name).unlink(missing_ok=True)
+                result = subprocess.run(cmd, input=stdin_data, capture_output=True, timeout=30)
+        else:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+                tmp.write(source)
+                tmp.flush()
+                argv = [TRANSPILED_BINARY, "--stop-at", "lowering-text", tmp.name]
+                if _TRANSPILED_MODULE is not None:
+                    result = _run_inprocess(argv)
+                else:
+                    cmd = [*_transpiled_runtime(), *argv]
+                    result = subprocess.run(cmd, capture_output=True, timeout=30)
+                Path(tmp.name).unlink(missing_ok=True)
         if result.returncode != 0:
             stderr = result.stderr.decode(errors="replace").strip()
             return (None, stderr.split("\n")[0] if stderr else "lowering failed")
         return (result.stdout.decode(errors="replace"), None)
+    if lib_names:
+        return (None, "lib imports not supported without TRANSPILED_BINARY")
     try:
         ast_dict = parse(source)
         bind_result = run_bind(ast_dict)
@@ -1164,21 +1204,34 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
 
 def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
     """Transpile Python apptest source to target language. Returns (output, error)."""
+    lib_names = _find_lib_imports(source)
     if TRANSPILED_BINARY is not None:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
-            tmp.write(source)
-            tmp.flush()
-            argv = [TRANSPILED_BINARY, "--target", target, tmp.name]
+        if lib_names:
+            lib_sources = _read_lib_sources(lib_names)
+            stdin_data = _build_project_input("apptest.py", source, lib_sources)
+            argv = [TRANSPILED_BINARY, "--project", "--target", target]
             if _TRANSPILED_MODULE is not None:
-                result = _run_inprocess(argv)
+                result = _run_inprocess(argv, stdin_data=stdin_data)
             else:
                 cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(cmd, capture_output=True, timeout=30)
-            Path(tmp.name).unlink(missing_ok=True)
+                result = subprocess.run(cmd, input=stdin_data, capture_output=True, timeout=30)
+        else:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+                tmp.write(source)
+                tmp.flush()
+                argv = [TRANSPILED_BINARY, "--target", target, tmp.name]
+                if _TRANSPILED_MODULE is not None:
+                    result = _run_inprocess(argv)
+                else:
+                    cmd = [*_transpiled_runtime(), *argv]
+                    result = subprocess.run(cmd, capture_output=True, timeout=30)
+                Path(tmp.name).unlink(missing_ok=True)
         if result.returncode != 0:
             stderr = result.stderr.decode(errors="replace").strip()
             return (None, stderr.split("\n")[0] if stderr else "transpile failed")
         return (result.stdout.decode(errors="replace"), None)
+    if lib_names:
+        return (None, "lib imports not supported without TRANSPILED_BINARY")
     taytsh_text, err = lower_to_taytsh(source)
     if err is not None:
         return (None, err)
