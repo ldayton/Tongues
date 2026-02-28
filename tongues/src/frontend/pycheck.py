@@ -671,6 +671,42 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return FuncType([ANY_TYPE], INT_TYPE)
     if name == "sorted":
         return FuncType([ANY_TYPE], SliceType(ANY_TYPE))
+    if name == "isinstance":
+        return FuncType([ANY_TYPE, ANY_TYPE], BOOL_TYPE)
+    if name == "print":
+        return FuncType([ANY_TYPE], VOID_TYPE)
+    if name == "range":
+        return FuncType([INT_TYPE], SliceType(INT_TYPE))
+    if name == "enumerate":
+        return FuncType(
+            [ANY_TYPE], IteratorType(TupleType([INT_TYPE, ANY_TYPE], False))
+        )
+    if name == "reversed":
+        return FuncType([ANY_TYPE], IteratorType(ANY_TYPE))
+    if name == "zip":
+        return FuncType([ANY_TYPE], IteratorType(ANY_TYPE))
+    if name == "min" or name == "max":
+        return FuncType([ANY_TYPE], ANY_TYPE)
+    if name == "sum":
+        return FuncType([ANY_TYPE], INT_TYPE)
+    if name == "any" or name == "all":
+        return FuncType([ANY_TYPE], BOOL_TYPE)
+    if name == "hex":
+        return FuncType([INT_TYPE], STR_TYPE)
+    if name == "bytes":
+        return FuncType([ANY_TYPE], BYTES_TYPE)
+    if name == "list":
+        return FuncType([ANY_TYPE], SliceType(ANY_TYPE))
+    if name == "set" or name == "frozenset":
+        return FuncType([ANY_TYPE], SetType(ANY_TYPE))
+    if name == "dict":
+        return FuncType([ANY_TYPE], MapType(ANY_TYPE, ANY_TYPE))
+    if name == "tuple":
+        return FuncType([ANY_TYPE], TupleType([ANY_TYPE], True))
+    if name == "divmod":
+        return FuncType([INT_TYPE, INT_TYPE], TupleType([INT_TYPE, INT_TYPE], False))
+    if name == "super":
+        return FuncType([], ANY_TYPE)
     # Class name as bare reference
     if name in ctx.known_classes:
         return PointerType(StructRef(name))
@@ -919,6 +955,18 @@ def _resolve_struct_attr(sname: str, attr: str, ctx: _InferCtx) -> TypeNode:
     return ANY_TYPE
 
 
+def _find_parent_class(class_name: str, ctx: _InferCtx) -> str:
+    """Find the parent class name, returning '' if unknown or not in our type tables."""
+    bases = ctx.hier_result.ancestors.get(class_name)
+    if bases is None or len(bases) == 0:
+        bases = ctx.class_bases.get(class_name)
+    if bases is not None and len(bases) > 0:
+        parent = bases[0]
+        if parent in ctx.known_classes:
+            return parent
+    return ""
+
+
 def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     """Synthesize return type of a call."""
     func = get_node(node, "func")
@@ -1131,6 +1179,16 @@ def _synth_name_call(
     # Class constructor
     if fname in ctx.known_classes:
         return PointerType(StructRef(fname))
+    # super() → parent class type
+    if fname == "super":
+        typ = env.get_type("this")
+        if typ is not None and isinstance(typ, PointerType):
+            inner = typ.target
+            if isinstance(inner, StructRef):
+                parent = _find_parent_class(inner.name, ctx)
+                if parent != "":
+                    return PointerType(StructRef(parent))
+        return ANY_TYPE
     # Callable variable
     typ = env.get_type(fname)
     if typ is not None and isinstance(typ, FuncType):
@@ -1242,6 +1300,7 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         if obj_type.variadic and len(obj_type.elements) > 0:
             return obj_type.elements[0]
         if len(slc) > 0 and _is_type(slc, ["Constant"]):
+            _synth_expr(slc, env, ctx)
             slc_v = slc.get("value")
             if isinstance(slc_v, JInt):
                 idx = slc_v.value
@@ -2267,6 +2326,7 @@ def _validate_expr_stmt(
                         if get_str(kw, "arg") == "expected_type":
                             kw_val = get_node(kw, "value")
                             if _is_type(kw_val, ["Constant"]):
+                                _synth_expr(kw_val, env, ctx)
                                 expected = get_str(kw_val, "value")
                                 if expected != "" and expected != type_str:
                                     ctx.result.add_error(
@@ -3197,6 +3257,8 @@ def _narrow_compare(
     comp = comparators[0]
     op_type = get_str(op, "_type")
     comp_is_none = _is_type(comp, ["Constant"]) and _is_null_value(comp)
+    if _is_type(comp, ["Constant"]):
+        _synth_expr(comp, then_env, ctx)
     if op_type == "Is" and comp_is_none:
         if _is_type(left, ["Name"]):
             name = get_str(left, "id")
@@ -4169,7 +4231,8 @@ def run_pycheck(
     i = 0
     while i < len(body):
         node = body[i]
-        if get_str(node, "_type") == "AnnAssign":
+        t = get_str(node, "_type")
+        if t == "AnnAssign":
             target = get_node(node, "target")
             annotation = get_node(node, "annotation")
             if (
@@ -4187,6 +4250,16 @@ def run_pycheck(
                         )
                         if len(sig_errors) == 0:
                             ctx.module_vars[var_name] = var_type
+        elif t == "Assign":
+            targets = get_nodes(node, "targets")
+            if len(targets) == 1 and get_str(targets[0], "_type") == "Name":
+                var_name = get_str(targets[0], "id")
+                if var_name != "":
+                    val = get_node(node, "value")
+                    if len(val) > 0 and get_str(val, "_type") == "Constant":
+                        vt = _synth_constant(val)
+                        if not is_any(vt):
+                            ctx.module_vars[var_name] = vt
         i += 1
     i = 0
     while i < len(body):
