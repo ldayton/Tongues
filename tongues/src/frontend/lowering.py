@@ -668,6 +668,8 @@ def _types_comparable(left: TypeNode, right: TypeNode) -> bool:
     rk = _type_dict_kind(right)
     if lk == "void" or rk == "void":
         return True
+    if lk == "InterfaceRef" or rk == "InterfaceRef":
+        return True
     if lk == rk:
         return True
     if (lk == "rune" and rk == "string") or (lk == "string" and rk == "rune"):
@@ -4363,9 +4365,15 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     stmts: list[TStmt] = []
     if isinstance(value_jv, JDict):
         value_node = value_jv.entries
-        # void-returning function assigned to optional → call + nil
-        val_type = _infer_expr_type(value_node, env, ctx)
-        if _is_type_dict(val_type, ["void"]) and isinstance(type_dict, OptionalType):
+        if (
+            isinstance(type_dict, OptionalType)
+            and _is_ast(value_node, "Call")
+            and _is_ast(get_node(value_node, "func"), "Name")
+            and _is_type_dict(
+                _func_return_type(ctx, get_str(get_node(value_node, "func"), "id")),
+                ["void"],
+            )
+        ):
             stmts.append(TExprStmt(pos, _lower_expr(value_node, env, ctx), {}))
             val = TNilLit(pos, {})
         elif _is_variadic_tuple(type_dict) and _is_ast(value_node, "Tuple"):

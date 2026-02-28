@@ -2377,6 +2377,13 @@ class Checker:
 
     def check_expr(self, expr: TExpr, expected: Type | None) -> Type | None:
         """Type-check an expression and return its type. Returns None on error."""
+        result = self._check_expr_inner(expr, expected)
+        if result is not None:
+            self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            expr.annotations["type"] = type_name(result)
+        return result
+
+    def _check_expr_inner(self, expr: TExpr, expected: Type | None) -> Type | None:
         if isinstance(expr, TIntLit):
             if len(expr.raw) > 20 or (
                 len(expr.raw) == 20 and expr.raw > "18446744073709551615"
@@ -2416,35 +2423,17 @@ class Checker:
         if isinstance(expr, TSlice):
             return self.check_slice(expr)
         if isinstance(expr, TCall):
-            result = self.check_call(expr, expected)
-            if result is not None:
-                self.expr_types[(expr.pos.line, expr.pos.col)] = result
-            return result
+            return self.check_call(expr, expected)
         if isinstance(expr, TListLit):
-            result = self.check_list_lit(expr, expected)
-            if result is not None:
-                self.expr_types[(expr.pos.line, expr.pos.col)] = result
-            return result
+            return self.check_list_lit(expr, expected)
         if isinstance(expr, TMapLit):
-            result = self.check_map_lit(expr, expected)
-            if result is not None:
-                self.expr_types[(expr.pos.line, expr.pos.col)] = result
-            return result
+            return self.check_map_lit(expr, expected)
         if isinstance(expr, TSetLit):
-            result = self.check_set_lit(expr, expected)
-            if result is not None:
-                self.expr_types[(expr.pos.line, expr.pos.col)] = result
-            return result
+            return self.check_set_lit(expr, expected)
         if isinstance(expr, TTupleLit):
-            result = self.check_tuple_lit(expr, expected)
-            if result is not None:
-                self.expr_types[(expr.pos.line, expr.pos.col)] = result
-            return result
+            return self.check_tuple_lit(expr, expected)
         if isinstance(expr, TFnLit):
-            result = self.check_fn_lit(expr, expected)
-            if result is not None:
-                self.expr_types[(expr.pos.line, expr.pos.col)] = result
-            return result
+            return self.check_fn_lit(expr, expected)
         self.error("unhandled expression type", expr.pos)
         return None
 
