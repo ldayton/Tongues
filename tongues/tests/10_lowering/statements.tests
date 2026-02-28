@@ -235,3 +235,16 @@ def f() -> None:
 ---
 let val: int? = get_maybe(5)
 ---
+
+=== optional annotated with method call value
+class Foo:
+    def __init__(self) -> None:
+        self.data: dict[str, str] = {}
+def f(obj: Foo) -> str:
+    val: str | None = obj.data.get("key")
+    if val is None:
+        return ""
+    return val
+---
+let val: string? = Get(obj.data, "key")
+---
