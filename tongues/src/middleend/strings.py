@@ -464,7 +464,7 @@ def _classify_string_expr(
 
 
 def _mark_len_called_from_call(expr: TCall, ctx: _StringsCtx) -> None:
-    if isinstance(expr.func, TVar) and expr.func.name == "Len" and len(expr.args) > 0:
+    if isinstance(expr.func, TVar) and expr.func.name == "Len" and expr.args:
         base = _base_var(expr.args[0].value)
         if base is not None and base in ctx.string_bindings:
             ctx.string_bindings[base].len_called = True

@@ -1530,7 +1530,7 @@ class Parser:
                 if default is not None:
                     defaults.append(default)
 
-        if bare_star and len(kwonlyargs) == 0:
+        if bare_star and not kwonlyargs:
             raise self.error("named arguments must follow bare *")
 
         vararg_v: JsonValue = _wrap_node(vararg) if vararg is not None else JNull()
@@ -2289,10 +2289,8 @@ class Parser:
             if self.match(TK_DEDENT) or self.match(TK_ENDMARKER):
                 break
             parsed = self.parse_stmt()
-            i = 0
-            while i < len(parsed):
-                stmts.append(parsed[i])
-                i += 1
+            for p in parsed:
+                stmts.append(p)
         if self.match(TK_DEDENT):
             self.advance()
         return stmts
@@ -2524,7 +2522,7 @@ class Parser:
             ops.append(op)
             comparators.append(self.parse_expr())
 
-        if len(ops) == 0:
+        if not ops:
             return left
         fields: ASTNode = {
             "left": _wrap_node(left),
@@ -3495,9 +3493,8 @@ class Parser:
         has_fstring = False
         has_bytes = False
         has_str = False
-        i = 0
-        while i < len(strings):
-            val = strings[i].value
+        for s_tok in strings:
+            val = s_tok.value
             quote_pos = 0
             while quote_pos < len(val) and val[quote_pos] not in "\"'":
                 quote_pos += 1
@@ -3509,22 +3506,16 @@ class Parser:
                 has_bytes = True
             else:
                 has_str = True
-            i += 1
         if has_bytes and (has_str or has_fstring):
             raise self.error("cannot mix bytes and nonbytes literals")
 
         if has_fstring:
             # Parse f-string content to extract literal parts and {expr} parts
             values: list[ASTNode] = []
-            j = 0
-            while j < len(strings):
-                s = strings[j]
+            for s in strings:
                 fstring_values = parse_fstring(s.value, s.lineno, s.col)
-                k = 0
-                while k < len(fstring_values):
-                    values.append(fstring_values[k])
-                    k += 1
-                j += 1
+                for fval in fstring_values:
+                    values.append(fval)
             last_str = strings[len(strings) - 1]
             fields: ASTNode = {"values": _wrap_nodes(values)}
             return end_from_token(
@@ -3648,12 +3639,8 @@ def make_node(
     result["end_lineno"] = JInt(lineno)
     result["end_col_offset"] = JInt(col)
     if fields is not None:
-        keys = list(fields.keys())
-        i = 0
-        while i < len(keys):
-            key = keys[i]
+        for key in fields:
             result[key] = fields[key]
-            i += 1
     return result
 
 
@@ -3860,7 +3847,7 @@ def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> st
                     raise ParseError("invalid \\N escape", lineno, col)
                 close_brace = rel + i + 3
                 name = s[i + 3 : close_brace]
-                if len(name) == 0:
+                if not name:
                     raise ParseError("invalid \\N escape: empty name", lineno, col)
                 # Accept the name without resolving — would need unicodedata
                 result.append("\\N{" + name + "}")
@@ -4354,7 +4341,7 @@ def validate_target(
     if not isinstance(node, dict):
         return
     node_type = get_str(node, "_type")
-    if len(node_type) == 0:
+    if not node_type:
         return
     if _is_debug_name(node):
         raise _node_error(node, "cannot assign to __debug__")
@@ -4452,20 +4439,13 @@ def _stamp_uids_walk(node: ASTNode, counter: list[int]) -> None:
     if "_type" in node:
         node["_uid"] = JInt(counter[0])
         counter[0] += 1
-    keys = list(node.keys())
-    i = 0
-    while i < len(keys):
-        k = keys[i]
-        i += 1
-        if len(k) > 0 and k[0] == "_":
+    for k in node:
+        if len(k) > 0 and k[0:1] == "_":
             continue
         v = node[k]
         if isinstance(v, JDict):
             _stamp_uids_walk(v.entries, counter)
         elif isinstance(v, JList):
-            j = 0
-            while j < len(v.items):
-                item = v.items[j]
+            for item in v.items:
                 if isinstance(item, JDict):
                     _stamp_uids_walk(item.entries, counter)
-                j += 1

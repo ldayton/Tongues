@@ -142,9 +142,7 @@ _PERL_ESCAPE_MAP: dict[str, str] = {
 
 def _escape_perl_string(value: str) -> str:
     out: list[str] = []
-    i = 0
-    while i < len(value):
-        c = value[i]
+    for c in value:
         esc = _PERL_ESCAPE_MAP.get(c)
         if esc is not None:
             out.append(esc)
@@ -152,7 +150,6 @@ def _escape_perl_string(value: str) -> str:
             out.append("\\x{" + hex(ord(c))[2:] + "}")
         else:
             out.append(c)
-        i += 1
     return "".join(out)
 
 

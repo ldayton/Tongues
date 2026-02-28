@@ -79,20 +79,20 @@ class TypeResolver:
         if isinstance(expr, TNilLit):
             return NIL_T
         if isinstance(expr, TListLit):
-            if len(expr.elements) > 0:
+            if expr.elements:
                 elem_t = self.resolve(expr.elements[0])
                 if elem_t is not None:
                     return ListT(kind="list", element=elem_t)
             return None
         if isinstance(expr, TMapLit):
-            if len(expr.entries) > 0:
+            if expr.entries:
                 kt = self.resolve(expr.entries[0][0])
                 vt = self.resolve(expr.entries[0][1])
                 if kt is not None and vt is not None:
                     return MapT(kind="map", key=kt, value=vt)
             return None
         if isinstance(expr, TSetLit):
-            if len(expr.elements) > 0:
+            if expr.elements:
                 elem_t = self.resolve(expr.elements[0])
                 if elem_t is not None:
                     return SetT(kind="set", element=elem_t)
@@ -194,7 +194,7 @@ class TypeResolver:
                 result2[stmt.binding[0]] = iter_type.element
         else:
             return None
-        return result2 if len(result2) > 0 else None
+        return result2 if result2 else None
 
 
 class ScopeResolver(TypeResolver):
@@ -214,19 +214,19 @@ class ScopeResolver(TypeResolver):
         ):
             return VOID_T
         if name == "Pop":
-            if len(expr.args) > 0:
+            if expr.args:
                 t = self.resolve(expr.args[0].value)
                 if t is not None and isinstance(t, ListT):
                     return t.element
             return None
         if name in ("FloorDiv", "PythonMod"):
-            if len(expr.args) > 0:
+            if expr.args:
                 return self.resolve(expr.args[0].value)
             return INT_T
         if name == "ToString":
             return STRING_T
         if name in ("Keys", "Values"):
-            if len(expr.args) > 0:
+            if expr.args:
                 t = self.resolve(expr.args[0].value)
                 if t is not None and isinstance(t, MapT):
                     if name == "Keys":
@@ -234,7 +234,7 @@ class ScopeResolver(TypeResolver):
                     return ListT(kind="list", element=t.value)
             return None
         if name in ("Sorted", "Reversed"):
-            if len(expr.args) > 0:
+            if expr.args:
                 return self.resolve(expr.args[0].value)
             return None
         if name in (
@@ -286,23 +286,23 @@ class StringsResolver(TypeResolver):
         if name == "Args":
             return ListT(kind="list", element=STRING_T)
         if name == "Keys":
-            if len(expr.args) > 0:
+            if expr.args:
                 t = self.resolve(expr.args[0].value)
                 if isinstance(t, MapT):
                     return ListT(kind="list", element=t.key)
         if name == "Values":
-            if len(expr.args) > 0:
+            if expr.args:
                 t = self.resolve(expr.args[0].value)
                 if isinstance(t, MapT):
                     return ListT(kind="list", element=t.value)
         if name == "Items":
-            if len(expr.args) > 0:
+            if expr.args:
                 t = self.resolve(expr.args[0].value)
                 if isinstance(t, MapT):
                     tup = TupleT(kind="tuple", elements=[t.key, t.value])
                     return ListT(kind="list", element=tup)
         if name == "Get":
-            if len(expr.args) > 0:
+            if expr.args:
                 t = self.resolve(expr.args[0].value)
                 if isinstance(t, MapT):
                     return normalize_union([t.value, NIL_T])
