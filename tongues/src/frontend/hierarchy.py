@@ -29,7 +29,7 @@ class HierarchyError:
 
     def __repr__(self) -> str:
         file_prefix = ""
-        if self.source_file != "":
+        if self.source_file:
             file_prefix = self.source_file + ":"
         return (
             file_prefix
@@ -63,12 +63,7 @@ class HierarchyResult:
 
     def is_hierarchy_root(self, name: str) -> bool:
         """Check if name is any hierarchy root."""
-        i = 0
-        while i < len(self.hierarchy_roots):
-            if self.hierarchy_roots[i] == name:
-                return True
-            i += 1
-        return False
+        return name in self.hierarchy_roots
 
     def root_of(self, name: str) -> str | None:
         """Find the nearest hierarchy root ancestor (or self if root)."""
@@ -86,21 +81,11 @@ class HierarchyResult:
 
     def is_node(self, name: str) -> bool:
         """Check if name is a node type."""
-        i = 0
-        while i < len(self.node_types):
-            if self.node_types[i] == name:
-                return True
-            i += 1
-        return False
+        return name in self.node_types
 
     def is_exception(self, name: str) -> bool:
         """Check if name is an exception type."""
-        i = 0
-        while i < len(self.exception_types):
-            if self.exception_types[i] == name:
-                return True
-            i += 1
-        return False
+        return name in self.exception_types
 
     def to_dict(self) -> JsonValue:
         """Serialize to nested JsonValue dicts for test assertions."""
@@ -108,26 +93,17 @@ class HierarchyResult:
         if self.hierarchy_root is not None:
             root_jv = JStr(self.hierarchy_root)
         node_types_jv: list[JsonValue] = []
-        i = 0
-        while i < len(self.node_types):
-            node_types_jv.append(JStr(self.node_types[i]))
-            i += 1
+        for nt in self.node_types:
+            node_types_jv.append(JStr(nt))
         exception_types_jv: list[JsonValue] = []
-        i = 0
-        while i < len(self.exception_types):
-            exception_types_jv.append(JStr(self.exception_types[i]))
-            i += 1
+        for et in self.exception_types:
+            exception_types_jv.append(JStr(et))
         ancestors: dict[str, JsonValue] = {}
-        akeys = list(self.ancestors.keys())
-        i = 0
-        while i < len(akeys):
+        for akey in self.ancestors:
             ancestor_list: list[JsonValue] = []
-            j = 0
-            while j < len(self.ancestors[akeys[i]]):
-                ancestor_list.append(JStr(self.ancestors[akeys[i]][j]))
-                j += 1
-            ancestors[akeys[i]] = JList(ancestor_list)
-            i += 1
+            for anc in self.ancestors[akey]:
+                ancestor_list.append(JStr(anc))
+            ancestors[akey] = JList(ancestor_list)
         return JDict(
             {
                 "root": root_jv,
@@ -149,10 +125,7 @@ def _detect_cycles(
     class_source_files: dict[str, str],
 ) -> bool:
     """Check for cycles in the inheritance graph. Returns True if cycle found."""
-    ckeys = list(class_bases.keys())
-    i = 0
-    while i < len(ckeys):
-        name = ckeys[i]
+    for name in class_bases:
         visited: set[str] = set()
         cur: str = name
         while True:
@@ -166,7 +139,6 @@ def _detect_cycles(
                 cur = bases[0]
             else:
                 break
-        i += 1
     return False
 
 
@@ -189,12 +161,10 @@ def _is_exception_subclass(
     if bases is None or len(bases) == 0:
         cache[name] = False
         return False
-    i = 0
-    while i < len(bases):
-        if _is_exception_subclass(bases[i], class_bases, cache):
+    for base in bases:
+        if _is_exception_subclass(base, class_bases, cache):
             cache[name] = True
             return True
-        i += 1
     cache[name] = False
     return False
 
@@ -217,29 +187,18 @@ def _find_hierarchy_roots(
     """
     # Find all classes used as a base
     used_as_base: set[str] = set()
-    ckeys = list(class_bases.keys())
-    i = 0
-    while i < len(ckeys):
-        name = ckeys[i]
+    for name in class_bases:
         bases = class_bases[name]
-        j = 0
-        while j < len(bases):
-            base = bases[j]
+        for base in bases:
             if base != "Exception" and not _is_exception_subclass(
                 base, class_bases, exception_cache
             ):
                 used_as_base.add(base)
-            j += 1
-        i += 1
     # Find roots: used as base and in known_classes
     roots: list[str] = []
-    ukeys = list(used_as_base)
-    i = 0
-    while i < len(ukeys):
-        name = ukeys[i]
+    for name in used_as_base:
         if name in known_classes:
             roots.append(name)
-        i += 1
     return roots
 
 
@@ -263,12 +222,10 @@ def _is_node_subclass(
     if bases is None or len(bases) == 0:
         cache[name] = False
         return False
-    i = 0
-    while i < len(bases):
-        if _is_node_subclass(bases[i], hierarchy_root, class_bases, cache):
+    for base in bases:
+        if _is_node_subclass(base, hierarchy_root, class_bases, cache):
             cache[name] = True
             return True
-        i += 1
     cache[name] = False
     return False
 
@@ -295,44 +252,29 @@ def build_hierarchy(
     )
     result = HierarchyResult()
     # Validate base classes exist
-    ckeys = list(class_bases.keys())
-    i = 0
-    while i < len(ckeys):
-        name = ckeys[i]
+    for name in class_bases:
         bases = class_bases[name]
         sf = src_files.get(name, "")
-        j = 0
-        while j < len(bases):
-            base = bases[j]
+        for base in bases:
             if base != "Exception" and base not in known_classes:
                 result.add_error(0, 0, "'" + base + "' is not defined", sf)
                 return result
-            j += 1
-        i += 1
     # Detect cycles
     if _detect_cycles(class_bases, result._errors, src_files):
         return result
     # Build ancestor lists (direct bases only)
-    i = 0
-    while i < len(ckeys):
-        name = ckeys[i]
+    for name in class_bases:
         bases = class_bases.get(name, [])
         ancestors: list[str] = []
-        j = 0
-        while j < len(bases):
-            if bases[j] != "Exception":
-                ancestors.append(bases[j])
-            j += 1
+        for base in bases:
+            if base != "Exception":
+                ancestors.append(base)
         result.ancestors[name] = ancestors
-        i += 1
     # Detect exception subclasses
     exception_cache: dict[str, bool] = {}
-    i = 0
-    while i < len(ckeys):
-        name = ckeys[i]
+    for name in class_bases:
         if _is_exception_subclass(name, class_bases, exception_cache):
             result.exception_types.append(name)
-        i += 1
     # Find hierarchy roots
     result.hierarchy_roots = _find_hierarchy_roots(
         known_classes, class_bases, exception_cache
@@ -340,16 +282,10 @@ def build_hierarchy(
     if len(result.hierarchy_roots) == 1:
         result.hierarchy_root = result.hierarchy_roots[0]
     # Classify node types
-    ri = 0
-    while ri < len(result.hierarchy_roots):
-        root = result.hierarchy_roots[ri]
+    for root in result.hierarchy_roots:
         node_cache: dict[str, bool] = {}
-        i = 0
-        while i < len(ckeys):
-            name = ckeys[i]
+        for name in class_bases:
             if _is_node_subclass(name, root, class_bases, node_cache):
                 if not result.is_node(name):
                     result.node_types.append(name)
-            i += 1
-        ri += 1
     return result
