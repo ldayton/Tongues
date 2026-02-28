@@ -239,7 +239,7 @@ def print_fallback_stats() -> None:
     if _FALLBACK_VERBOSE:
         for reason in ["is_any", "contains_any"]:
             detail = _FALLBACK_DETAILS[reason]
-            if len(detail) > 0:
+            if detail:
                 print(f"  {reason} breakdown:", file=sys.stderr)
                 keys = list(detail.keys())
                 i = 0
@@ -1364,7 +1364,7 @@ def _infer_expr_type_fallback(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeN
         if op_type == "Or":
             last = vals[len(vals) - 1]
             return _infer_expr_type(last, env, ctx)
-        if len(vals) > 0:
+        if vals:
             return _infer_expr_type(vals[0], env, ctx)
         return BOOL_TYPE
     if t == "Compare":
@@ -1413,9 +1413,9 @@ def _infer_expr_type_fallback(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeN
         vs = get_nodes(node, "values")
         key_type: TypeNode = VOID_TYPE
         val_type: TypeNode = VOID_TYPE
-        if len(ks) > 0 and isinstance(ks[0], dict):
+        if ks and isinstance(ks[0], dict):
             key_type = _infer_expr_type(ks[0], env, ctx)
-        if len(vs) > 0 and isinstance(vs[0], dict):
+        if vs and isinstance(vs[0], dict):
             val_type = _infer_expr_type(vs[0], env, ctx)
         return MapType(key_type, val_type)
     if t == "Set":
@@ -2824,7 +2824,7 @@ def _lower_name_call(
     if fname in ctx.known_classes:
         return _lower_struct_constructor(pos, fname, args, keywords, env, ctx)
     lowered_args: list[TArg] = []
-    if len(keywords) > 0:
+    if keywords:
         func_info = ctx.tc_result.functions.get(fname)
         params: list[ParamInfo] | None = None
         if func_info is not None:
@@ -3068,7 +3068,7 @@ def _lower_method_call(
         return _lower_set_method(pos, obj, method_name, args, env, ctx)
     # Struct method call
     lowered_args: list[TArg] = []
-    if len(keywords) > 0:
+    if keywords:
         method_params = _lookup_method_params(actual_type, method_name, ctx)
         lowered_args = _resolve_kwargs_to_positional(
             pos, args, keywords, method_params, env, ctx
@@ -3223,7 +3223,7 @@ def _lower_list_method(
             )
         return _make_call(pos, "IndexOf", [obj] + lowered)
     if method == "remove":
-        if len(lowered) > 0:
+        if lowered:
             return _make_call(
                 pos, "RemoveAt", [obj, _make_call(pos, "IndexOf", [obj, lowered[0]])]
             )
@@ -4246,7 +4246,7 @@ def _lower_stmts(stmts: list[ASTNode], env: _Env, ctx: _LowerCtx) -> list[TStmt]
     while i < len(stmts):
         stmt_node = stmts[i]
         lowered = _lower_stmt(stmt_node, env, ctx)
-        if len(env.pre_stmts) > 0:
+        if env.pre_stmts:
             pre = env.pre_stmts
             env.pre_stmts = []
             k = 0
@@ -4708,7 +4708,7 @@ def _scan_hoist_names(nodes: list[ASTNode], env: _Env) -> list[str]:
         t = get_str(node, "_type")
         if t == "Assign":
             targets = get_nodes(node, "targets")
-            if len(targets) > 0:
+            if targets:
                 tgt = targets[0]
                 if _is_ast(tgt, "Name"):
                     name = get_str(tgt, "id")
@@ -5068,7 +5068,7 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
     cond = _lower_as_bool(test, env, ctx)
     # Drain pre_stmts from condition lowering (e.g. any/all expansions)
-    if len(env.pre_stmts) > 0:
+    if env.pre_stmts:
         cond_pre = env.pre_stmts
         env.pre_stmts = []
         k = 0
@@ -5079,7 +5079,7 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     body_env = _narrow_isinstance_from_test(test, env)
     then_body = _lower_stmts(body, body_env, ctx)
     else_body: list[TStmt] | None = None
-    if len(orelse) > 0:
+    if orelse:
         else_body = _lower_stmts(orelse, env, ctx)
     pre_stmts.append(TIfStmt(pos, cond, then_body, else_body, {}))
     # Negated isinstance guard: narrow env for subsequent code
@@ -5182,7 +5182,7 @@ def _extract_isinstance_chain(node: ASTNode) -> _IsinstanceChainResult | None:
                 return _IsinstanceChainResult(cases=result, else_body=rest.else_body)
     # Trailing else (non-isinstance orelse)
     else_body: list[ASTNode] | None = None
-    if len(orelse) > 0:
+    if orelse:
         else_body = orelse
     return _IsinstanceChainResult(cases=result, else_body=else_body)
 
@@ -5401,7 +5401,7 @@ def _lower_isinstance_chain(
                 cond = TBinaryOp(pos, "&&", cond, right, {})
                 ci += 1
             cond_pre: list[TStmt] = []
-            if len(case_env.pre_stmts) > 0:
+            if case_env.pre_stmts:
                 cond_pre = case_env.pre_stmts
                 case_env.pre_stmts = []
             then_body = _lower_stmts(body_stmts, case_env, ctx)
@@ -5439,7 +5439,7 @@ def _lower_while(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     pre_stmts: list[TStmt] = []
     _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
     cond = _lower_as_bool(test, env, ctx)
-    if len(env.pre_stmts) > 0:
+    if env.pre_stmts:
         cond_pre = env.pre_stmts
         env.pre_stmts = []
         k = 0
@@ -5501,7 +5501,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     iter_type = _infer_expr_type(iter_node, env, ctx)
     if isinstance(iter_type, TupleType) and not iter_type.variadic:
         elems = iter_type.elements
-        if len(elems) > 0:
+        if elems:
             iter_lowered = _lower_expr(iter_node, env, ctx)
             items: list[TExpr] = []
             j = 0
@@ -5603,7 +5603,7 @@ def _lower_for_enumerate(
     # Enumerate over fixed-size tuple → enumerate over list of accesses
     if isinstance(inner_type, TupleType) and not inner_type.variadic:
         elems = inner_type.elements
-        if len(elems) > 0:
+        if elems:
             iter_lowered = _lower_expr(inner, env, ctx)
             items_list: list[TExpr] = []
             j = 0
@@ -5856,7 +5856,7 @@ def _lower_try(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         )
         i += 1
     finally_body: list[TStmt] | None = None
-    if len(finalbody) > 0:
+    if finalbody:
         finally_body = _lower_stmts(finalbody, env, ctx)
     return [TTryStmt(pos, body_stmts, catches, finally_body, {})]
 
@@ -6250,7 +6250,7 @@ def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleI
         item = class_body[j]
         if _is_ast(item, "Assign"):
             targets = get_nodes(item, "targets")
-            if len(targets) > 0:
+            if targets:
                 t = targets[0]
                 if _is_ast(t, "Name"):
                     fname = get_str(t, "id")
@@ -6303,7 +6303,7 @@ def _collect_constant_names(body: list[ASTNode], ctx: _LowerCtx) -> set[str]:
         node = body[i]
         if _is_ast(node, "Assign"):
             targets = get_nodes(node, "targets")
-            if len(targets) > 0:
+            if targets:
                 t = targets[0]
                 if _is_ast(t, "Name"):
                     name = get_str(t, "id")
@@ -6325,7 +6325,7 @@ def _build_module_constant(
     """Build a TLetStmt for a module-level constant, or None if not a constant."""
     if _is_ast(node, "Assign"):
         targets = get_nodes(node, "targets")
-        if len(targets) > 0:
+        if targets:
             t = targets[0]
             if _is_ast(t, "Name"):
                 name = get_str(t, "id")
@@ -6379,7 +6379,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
         # Module-level ALL_CAPS assignments
         if _is_ast(node, "Assign"):
             targets = get_nodes(node, "targets")
-            if len(targets) > 0:
+            if targets:
                 t = targets[0]
                 if _is_ast(t, "Name"):
                     name = get_str(t, "id")
@@ -6428,7 +6428,7 @@ def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
                 item = class_body[j]
                 if _is_ast(item, "Assign"):
                     targets = get_nodes(item, "targets")
-                    if len(targets) > 0:
+                    if targets:
                         t = targets[0]
                         if _is_ast(t, "Name"):
                             fname = get_str(t, "id")
