@@ -435,14 +435,15 @@ class TypeEnv:
         return path in self.guarded_attrs
 
     def evict_guarded_attrs(self, name: str) -> None:
-        """Remove all guarded/narrowed attr paths rooted at name."""
-        prefix = name + "."
+        """Remove all guarded/narrowed attr paths and subscripts rooted at name."""
+        attr_prefix = name + "."
+        subscript_prefix = name + ":"
         to_remove: list[str] = []
         keys = list(self.guarded_attrs)
         i = 0
         while i < len(keys):
             k = keys[i]
-            if k == name or k.startswith(prefix):
+            if k == name or k.startswith(attr_prefix):
                 to_remove.append(k)
             i += 1
         j = 0
@@ -453,7 +454,7 @@ class TypeEnv:
         i = 0
         while i < len(type_keys):
             k = type_keys[i]
-            if k.startswith(prefix):
+            if k.startswith(attr_prefix) or k.startswith(subscript_prefix):
                 self.types.pop(k)
             i += 1
 
@@ -1294,6 +1295,18 @@ def _element_type(t: TypeNode) -> TypeNode:
 
 
 def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
+    # Check for narrowed subscript type first
+    key = _subscript_key(node)
+    if key != "":
+        narrowed = env.get_type(key)
+        if narrowed is not None:
+            value = get_node(node, "value")
+            slc = get_node(node, "slice")
+            if len(value) > 0:
+                _synth_expr(value, env, ctx)
+            if len(slc) > 0 and not _is_type(slc, ["Slice"]):
+                _synth_expr(slc, env, ctx)
+            return narrowed
     value = get_node(node, "value")
     slc = get_node(node, "slice")
     if len(value) == 0:
@@ -3162,6 +3175,25 @@ def _attr_path(node: ASTNode) -> str:
     return result
 
 
+def _subscript_key(node: ASTNode) -> str:
+    """Build subscript key like 'args:0' for Name[Constant] patterns."""
+    if not _is_type(node, ["Subscript"]):
+        return ""
+    val = get_node(node, "value")
+    slc = get_node(node, "slice")
+    if not _is_type(val, ["Name"]):
+        return ""
+    if not _is_type(slc, ["Constant"]):
+        return ""
+    slc_v = slc.get("value")
+    if not isinstance(slc_v, JInt):
+        return ""
+    base = get_str(val, "id")
+    if base == "":
+        return ""
+    return base + ":" + str(slc_v.value)
+
+
 def _narrow_isinstance(
     test: ASTNode,
     then_env: TypeEnv,
@@ -3188,6 +3220,8 @@ def _narrow_isinstance(
                 vt = _synth_expr(walrus_value, then_env, ctx)
                 then_env.set(name, vt)
                 else_env.set(name, vt)
+    elif _is_type(target, ["Subscript"]):
+        name = _subscript_key(target)
     if name == "":
         return
     if name == "self":

@@ -532,7 +532,7 @@ class _PerlEmitter(Emitter):
             binding_name = for_stmt.binding[0] if for_stmt.binding else None
             if len(body) == 1 and isinstance(body[0], TExprStmt):
                 call = body[0].expr
-                if self._is_append_to(call, let_stmt.name):
+                if isinstance(call, TCall) and self._is_append_to(call, let_stmt.name):
                     if binding_name is not None:
                         self.var_alias[binding_name] = "$_"
                     val = self._expr(call.args[1].value)
