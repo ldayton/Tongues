@@ -290,10 +290,6 @@ def _sort_key(v: Val) -> tuple[int, float, str]:
     return (9, 0.0, "")
 
 
-def _sort_key_pair(p: tuple[Val, Val]) -> tuple[int, float, str]:
-    return _sort_key(p[0])
-
-
 def _sort_key_pairs(keys: list[Val], vals: list[Val]) -> None:
     """Insertion sort for parallel key/value lists by key sort order."""
     i = 1
@@ -436,12 +432,6 @@ def _make_error_struct(type_name: str, message: str) -> VStruct:
         field_names=["message"],
         field_values=[VStr(message)],
     )
-
-
-def _struct_type_name(v: Val) -> str:
-    if isinstance(v, VStruct):
-        return v.type_name
-    return ""
 
 
 def _floor(x: float) -> int:
@@ -1880,7 +1870,7 @@ class VM:
             while j < len(self.module.code_objects):
                 co = self.module.code_objects[j]
                 if co.name == name:
-                    self.globals.append(VFunc(j, [], co.type_sig))
+                    self.globals.append(VFunc(j, co.type_sig))
                     found = True
                     break
                 j += 1
@@ -1967,9 +1957,6 @@ class VM:
             elif op == OP_LOAD_BUILTIN:
                 self.stack.append(VInt(arg))  # placeholder — builtins resolved at call
             elif op == OP_LOAD_CAPTURE:
-                fn_val = self.stack[frame.bp]  # fn itself is in slot 0? No.
-                # Captures are stored in VFunc
-                # For now, skip capture support
                 self.stack.append(_NONE_VAL)
             # ── Stack ─────────────────────────────────────
             elif op == OP_POP:

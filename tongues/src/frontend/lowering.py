@@ -757,16 +757,12 @@ class _LowerCtx:
         hier_result: HierarchyResult,
         known_classes: set[str],
         class_bases: dict[str, list[str]],
-        source: str,
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
         self.known_classes: set[str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
-        self.source: str = source
-        self.source_lines: list[str] = source.split("\n")
         self.errors: list[LoweringError] = []
-        self.current_class: str = ""
         self.isinstance_temp_counter: int = 0
         self.constant_types: dict[str, TypeNode] = {}
         self.comp_counter: int = 0
@@ -830,33 +826,8 @@ def _is_ast(node: ASTNode, type_name: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Source text helpers (for literal format detection)
-# ---------------------------------------------------------------------------
-
-
-def _get_source_text(ctx: _LowerCtx, node: ASTNode) -> str:
-    """Get source text for a node."""
-    lineno = get_int(node, "lineno")
-    col = get_int(node, "col_offset")
-    end_col = get_int(node, "end_col_offset")
-    if lineno == 0 or col == 0 and not has_key(node, "col_offset"):
-        return ""
-    line_idx = lineno - 1
-    if line_idx < 0 or line_idx >= len(ctx.source_lines):
-        return ""
-    line = ctx.source_lines[line_idx]
-    if has_key(node, "end_col_offset"):
-        return line[col:end_col]
-    return line[col:]
-
-
-# ---------------------------------------------------------------------------
 # Type inference helpers (derive types from signatures and annotations)
 # ---------------------------------------------------------------------------
-
-
-def _get_param_type(param: ParamInfo) -> TypeNode:
-    return param.typ
 
 
 def _func_return_type(ctx: _LowerCtx, name: str) -> TypeNode:
@@ -1754,7 +1725,6 @@ def _lower_compare(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     # Chained comparison: a < b < c → a < b && b < c
     left = _lower_expr(left_node, env, ctx)
     parts: list[TExpr] = []
-    prev_node = left_node
     prev_expr = left
     i = 0
     while i < len(ops):
@@ -1766,7 +1736,6 @@ def _lower_compare(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         right = _lower_expr(comp_n, env, ctx)
         cmp = _make_compare_expr(pos, prev_expr, op_n, right)
         parts.append(cmp)
-        prev_node = comp_n
         prev_expr = right
         i += 1
     if len(parts) == 0:
@@ -6288,7 +6257,6 @@ def lower(
     hier_result: HierarchyResult,
     known_classes: set[str],
     class_bases: dict[str, list[str]],
-    source: str,
 ) -> tuple[TModule | None, list[LoweringError]]:
     """Lower the Python AST to Taytsh IR.
 
@@ -6300,7 +6268,7 @@ def lower(
     while ai < len(akeys):
         _LOWER_ANCESTORS[akeys[ai]] = hier_result.ancestors[akeys[ai]]
         ai += 1
-    ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases, source)
+    ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases)
     module = _build_module(tree, ctx)
     _LOWER_ANCESTORS.clear()
     return (module, ctx.errors)

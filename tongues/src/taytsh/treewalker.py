@@ -107,18 +107,6 @@ from .ast import (
 # ============================================================
 
 
-class TaytshError(Exception):
-    """Base error for Taytsh typechecking/evaluation."""
-
-    def __init__(self, msg: str, pos: Pos | None = None):
-        if pos is None:
-            super().__init__(msg)
-        else:
-            super().__init__(f"{msg} at line {pos.line} col {pos.col}")
-        self.msg = msg
-        self.pos = pos
-
-
 class TaytshTypeError(Exception):
     """Static type error."""
 
@@ -662,7 +650,6 @@ class MethodInfo:
 @dataclass
 class StructInfo:
     name: str
-    implements: str | None
     fields: list[FieldInfo]
     field_map: dict[str, FieldInfo]
     methods: dict[str, MethodInfo]
@@ -697,9 +684,6 @@ class ModuleIndex:
     interfaces: dict[str, InterfaceInfo]
     enums: dict[str, EnumInfo]
 
-    def has_type_name(self, name: str) -> bool:
-        return name in self.structs or name in self.interfaces or name in self.enums
-
 
 def _ensure_not_reserved(name: str, *, pos: Pos) -> None:
     if name in _RESERVED_BINDINGS:
@@ -718,7 +702,6 @@ def _builtin_err(name: str) -> StructInfo:
     fi = FieldInfo("message", STRING_T, decl.fields[0])
     return StructInfo(
         name=name,
-        implements=None,
         fields=[fi],
         field_map={"message": fi},
         methods={},
@@ -776,7 +759,6 @@ def _build_index(module: TModule) -> ModuleIndex:
         elif isinstance(sd, TStructDecl):
             structs[sname] = StructInfo(
                 name=sname,
-                implements=sd.parent,
                 fields=[],
                 field_map={},
                 methods={},
@@ -1094,14 +1076,6 @@ def _map_del(m: VMap, key: Value) -> None:
     if idx >= 0:
         m.map_keys.pop(idx)
         m.map_vals.pop(idx)
-
-
-def _map_pop(m: VMap, key: Value) -> Value | None:
-    idx = _map_find(m.map_keys, key)
-    if idx < 0:
-        return None
-    m.map_keys.pop(idx)
-    return m.map_vals.pop(idx)
 
 
 # ---- Set helpers (list-based set avoids set[Value]) ----

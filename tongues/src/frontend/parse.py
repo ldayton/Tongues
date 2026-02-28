@@ -3920,8 +3920,6 @@ def _fstring_find_expr_end(
     conversion = ""
     format_spec = ""
     in_format = False
-    format_depth = 0
-
     while i < length and depth > 0:
         ch = content[i]
         if ch == "\\":
@@ -4003,7 +4001,7 @@ def _fstring_find_expr_end(
                         i += 2
                         if i < length and content[i] == ":":
                             in_format = True
-                            format_depth = depth
+
                             i += 1
                         elif i < length and content[i] == "}":
                             depth -= 1
@@ -4038,7 +4036,7 @@ def _fstring_find_expr_end(
                             i += 3
                             if i < length and content[i] == ":":
                                 in_format = True
-                                format_depth = depth
+
                                 i += 1
                             elif i < length and content[i] == "}":
                                 depth -= 1
@@ -4055,7 +4053,7 @@ def _fstring_find_expr_end(
                     # {expr=:fmt}
                     i += 2
                     in_format = True
-                    format_depth = depth
+
                     continue
                 if i + 1 < length and content[i + 1] == "}":
                     # {expr=}
@@ -4068,7 +4066,7 @@ def _fstring_find_expr_end(
                 continue
             if ch == ":" and depth == 1 and bracket_depth == 0:
                 in_format = True
-                format_depth = depth
+
                 i += 1
                 continue
             expr_parts.append(ch)

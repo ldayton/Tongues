@@ -2045,36 +2045,6 @@ class TypeCollectResult:
     def errors(self) -> list[TypeCollectError | FieldError]:
         return self._errors
 
-    def sig_to_dict(self) -> JsonValue:
-        """Serialize signature portion to JsonValue."""
-        funcs: dict[str, JsonValue] = {}
-        fkeys = list(self.functions.keys())
-        i = 0
-        while i < len(fkeys):
-            name = fkeys[i]
-            funcs[name] = self.functions[name].to_dict()
-            i += 1
-        meths: dict[str, JsonValue] = {}
-        ckeys = list(self.methods.keys())
-        i = 0
-        while i < len(ckeys):
-            cname = ckeys[i]
-            class_methods: dict[str, JsonValue] = {}
-            mkeys = list(self.methods[cname].keys())
-            j = 0
-            while j < len(mkeys):
-                mname = mkeys[j]
-                class_methods[mname] = self.methods[cname][mname].to_dict()
-                j += 1
-            meths[cname] = JDict(class_methods)
-            i += 1
-        result: dict[str, JsonValue] = {}
-        if len(funcs) > 0:
-            result["functions"] = JDict(funcs)
-        if len(meths) > 0:
-            result["methods"] = JDict(meths)
-        return JDict(result)
-
     def fields_to_dict(self) -> JsonValue:
         """Serialize fields portion to JsonValue."""
         classes: dict[str, JsonValue] = {}

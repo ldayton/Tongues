@@ -6,9 +6,7 @@ from .cfg import build_cfg, FlowGraph
 from .typecollect import annotation_to_str
 from .types import (
     JStr,
-    JInt,
     JBool,
-    JFloat,
     JDict,
     JList,
     JNull,
@@ -113,7 +111,6 @@ class VerifyResult:
 
     def __init__(self) -> None:
         self.violations: list[Violation] = []
-        self.node_count: int = 0
 
     def add_error(
         self, lineno: int, col: int, category: str, message: str, source_file: str = ""
@@ -277,21 +274,6 @@ def is_singleton_constant(node: ASTNode) -> bool:
     return isinstance(val, JNull) or isinstance(val, JBool)
 
 
-def is_constant(node: ASTNode) -> bool:
-    """Check if node is a constant literal."""
-    return get_str(node, "_type") == "Constant"
-
-
-def is_obvious_literal(node: ASTNode) -> bool:
-    """Check if node is a literal with obvious type."""
-    if get_str(node, "_type") != "Constant":
-        return False
-    val = node.get("value")
-    if val is None or isinstance(val, JNull):
-        return False
-    return isinstance(val, (JStr, JInt, JBool, JFloat))
-
-
 def get_attr_name(node: ASTNode) -> str | None:
     """Get attr from Attribute node."""
     if get_str(node, "_type") == "Attribute":
@@ -384,7 +366,6 @@ class Verifier:
 
     def visit(self, node: ASTNode) -> None:
         """Dispatch to appropriate visit method."""
-        self.result.node_count += 1
         node_type = get_str(node, "_type")
         # Check banned nodes first
         if node_type in BANNED_NODES:
@@ -1816,8 +1797,6 @@ class NameResolver:
 
     def __init__(self) -> None:
         self.result: NameResult = NameResult()
-        self.current_class: str = ""
-        self.current_func: str = ""
 
     def _register_module_name(self, stmt: ASTNode, info: NameInfo) -> bool:
         """Register a module-level name, erroring on duplicates. Returns True if registered."""
@@ -2129,8 +2108,6 @@ class NameResolver:
         self, func_node: ASTNode, class_name: str, func_name: str
     ) -> None:
         """Process a function: collect params/locals, then resolve references."""
-        self.current_class = class_name
-        self.current_func = func_name
         # Collect parameters
         args_node = get_node(func_node, "args")
         args_list = get_nodes(args_node, "args")
@@ -2180,8 +2157,6 @@ class NameResolver:
         self.collect_locals_from_body(body, class_name, func_name)
         # Resolve all Name references
         self.resolve_references_in_body(body, class_name, func_name)
-        self.current_class = ""
-        self.current_func = ""
 
     def collect_locals_from_body(
         self, body: list[ASTNode], class_name: str, func_name: str
