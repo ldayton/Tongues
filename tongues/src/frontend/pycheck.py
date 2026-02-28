@@ -601,14 +601,14 @@ def _synth_expr_inner(
         return STR_TYPE
     if t == "FormattedValue":
         fv_val = get_node(node, "value")
-        if len(fv_val) > 0:
+        if fv_val:
             _synth_expr(fv_val, env, ctx)
         return STR_TYPE
     if t == "NamedExpr":
         return _synth_namedexpr(node, env, ctx)
     if t == "Starred":
         star_val = get_node(node, "value")
-        if len(star_val) > 0:
+        if star_val:
             _synth_expr(star_val, env, ctx)
         return ANY_TYPE
     return ANY_TYPE
@@ -1008,7 +1008,7 @@ def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     ki = 0
     while ki < len(keywords):
         kw_val = get_node(keywords[ki], "value")
-        if len(kw_val) > 0:
+        if kw_val:
             _synth_expr(kw_val, env, ctx)
         ki += 1
     # Direct name call
@@ -1606,7 +1606,7 @@ def _bind_comprehension_vars(
         gen = generators[i]
         target = get_node(gen, "target")
         iter_node = get_node(gen, "iter")
-        if len(iter_node) > 0:
+        if iter_node:
             iter_type = _synth_expr(iter_node, env, ctx)
             elem = _iteration_element(iter_type)
             _bind_target(target, elem, env)
@@ -2356,7 +2356,7 @@ def _validate_expr_stmt(
     lineno = get_int(stmt, "lineno")
     if _is_type(value, ["Call"]):
         func = get_node(value, "func")
-        if len(func) > 0 and _is_type(func, ["Name"]):
+        if func and _is_type(func, ["Name"]):
             fname = get_str(func, "id")
             if fname == "reveal_type":
                 args = get_nodes(value, "args")
@@ -2393,7 +2393,7 @@ def _validate_expr_stmt(
                     _check_iterator_escape_arg(arg, fname, env, ctx, lineno)
                     _check_generator_escape_arg(arg, fname, env, ctx, lineno)
                     j += 1
-        if len(func) > 0 and _is_type(func, ["Attribute"]):
+        if func and _is_type(func, ["Attribute"]):
             attr = get_str(func, "attr")
             if attr:
                 args = get_nodes(value, "args")
@@ -2840,7 +2840,7 @@ def _validate_for(
     target = get_node(stmt, "target")
     iter_node = get_node(stmt, "iter")
     body = get_nodes(stmt, "body")
-    if len(iter_node) > 0:
+    if iter_node:
         err_snap = len(ctx.result._errors)
         _validate_expr_calls(iter_node, env, ctx, get_int(stmt, "lineno"))
         if _has_new_errors(ctx, err_snap):
@@ -2914,7 +2914,7 @@ def _validate_match(
 ) -> None:
     subject = get_node(stmt, "subject")
     subj_name = ""
-    if len(subject) > 0:
+    if subject:
         _synth_expr(subject, env, ctx)
         if _is_type(subject, ["Name"]):
             subj_name = get_str(subject, "id")
@@ -2925,9 +2925,9 @@ def _validate_match(
         case_env = env.copy()
         if subj_name:
             pattern = get_node(case, "pattern")
-            if len(pattern) > 0 and _is_type(pattern, ["MatchClass"]):
+            if pattern and _is_type(pattern, ["MatchClass"]):
                 cls = get_node(pattern, "cls")
-                if len(cls) > 0 and _is_type(cls, ["Name"]):
+                if cls and _is_type(cls, ["Name"]):
                     cls_name = get_str(cls, "id")
                     if cls_name:
                         sig_errors: list[TypeCollectError] = []
@@ -3624,7 +3624,7 @@ def _is_iterator_call(node: ASTNode) -> str:
     if not _is_type(node, ["Call"]):
         return ""
     func = get_node(node, "func")
-    if len(func) > 0 and _is_type(func, ["Name"]):
+    if func and _is_type(func, ["Name"]):
         fname = get_str(func, "id")
         if fname in _ITERATOR_FUNCS:
             return fname
@@ -3654,7 +3654,7 @@ def _check_iterator_escape_return(
         return True
     if _is_type(value, ["Call"]):
         func = get_node(value, "func")
-        if len(func) > 0 and _is_type(func, ["Name"]):
+        if func and _is_type(func, ["Name"]):
             wrapper_name = get_str(func, "id")
             if wrapper_name in _EAGER_CONSUMERS:
                 return False
