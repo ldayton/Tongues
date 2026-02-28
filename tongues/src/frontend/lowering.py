@@ -216,10 +216,10 @@ def _record_fallback(reason: str, node: ASTNode | None = None) -> None:
         sf = get_str(node, "_source_file")
         if ntype == "Attribute":
             attr = get_str(node, "attr")
-            print(f"  is_any .{attr} at {sf}:{line}", file=sys.stderr)
+            print(f"  is_any .{attr} at {sf}:{str(line)}", file=sys.stderr)
         elif ntype == "Name":
             name = get_str(node, "id")
-            print(f"  is_any {name} at {sf}:{line}", file=sys.stderr)
+            print(f"  is_any {name} at {sf}:{str(line)}", file=sys.stderr)
 
 
 def print_fallback_stats() -> None:
@@ -233,8 +233,8 @@ def print_fallback_stats() -> None:
             total = total + v
     for k in ["success", "no_uid", "no_entry", "is_any", "contains_any"]:
         v = _FALLBACK_COUNTS.get(k, 0)
-        print(f"  {k}: {v}", file=sys.stderr)
-    print(f"  total_fallback: {total}", file=sys.stderr)
+        print(f"  {k}: {str(v)}", file=sys.stderr)
+    print(f"  total_fallback: {str(total)}", file=sys.stderr)
     if _FALLBACK_VERBOSE:
         for reason in ["is_any", "contains_any"]:
             detail = _FALLBACK_DETAILS[reason]
@@ -252,7 +252,7 @@ def print_fallback_stats() -> None:
                         j = j + 1
                     i = i + 1
                 for ntype in keys:
-                    print(f"    {ntype}: {detail[ntype]}", file=sys.stderr)
+                    print(f"    {ntype}: {str(detail[ntype])}", file=sys.stderr)
 
 
 def _safe_name(name: str) -> str:
@@ -852,7 +852,6 @@ class _LowerCtx:
         hier_result: HierarchyResult,
         known_classes: set[str],
         class_bases: dict[str, list[str]],
-        source: str,
         pycheck_result: PycheckResult | None = None,
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
@@ -6402,7 +6401,6 @@ def lower(
     hier_result: HierarchyResult,
     known_classes: set[str],
     class_bases: dict[str, list[str]],
-    source: str,
     pycheck_result: PycheckResult | None = None,
 ) -> tuple[TModule | None, list[LoweringError]]:
     """Lower the Python AST to Taytsh IR.
@@ -6417,7 +6415,7 @@ def lower(
         _LOWER_ANCESTORS[akeys[ai]] = hier_result.ancestors[akeys[ai]]
         ai += 1
     ctx = _LowerCtx(
-        tc_result, hier_result, known_classes, class_bases, source, pycheck_result
+        tc_result, hier_result, known_classes, class_bases, pycheck_result
     )
     module = _build_module(tree, ctx)
     print_fallback_stats()

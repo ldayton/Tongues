@@ -1499,7 +1499,6 @@ def _pipeline_post_parse(
         hier_result,
         known_classes,
         class_bases,
-        source,
         inf_result,
     )
     if len(lower_errors) > 0:

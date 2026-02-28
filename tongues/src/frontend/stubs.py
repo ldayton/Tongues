@@ -9,12 +9,15 @@ from .types import (
     MapType,
     OptionalType,
     PrimitiveType,
-    INT_TYPE,
-    STR_TYPE,
-    BOOL_TYPE,
-    BYTES_TYPE,
-    VOID_TYPE,
 )
+
+# Define primitive types locally to avoid cross-module constant references
+# which can fail during self-transpile checker
+_INT = PrimitiveType("int")
+_STR = PrimitiveType("string")
+_BOOL = PrimitiveType("bool")
+_BYTES = PrimitiveType("bytes")
+_VOID = PrimitiveType("void")
 
 # Synthetic types for IO objects (sys.stdin, sys.stdout, sys.stderr)
 TEXTIO_TYPE = PrimitiveType("TextIO")
@@ -35,37 +38,37 @@ def lookup_module_type(name: str) -> TypeNode | None:
 # Module-level attributes: MODULE_ATTRS[module][attr] -> TypeNode
 MODULE_ATTRS: dict[str, dict[str, TypeNode]] = {
     "sys": {
-        "argv": SliceType(STR_TYPE),
+        "argv": SliceType(_STR),
         "stdin": TEXTIO_TYPE,
         "stdout": TEXTIO_TYPE,
         "stderr": TEXTIO_TYPE,
     },
     "os": {
-        "environ": MapType(STR_TYPE, STR_TYPE),
+        "environ": MapType(_STR, _STR),
     },
 }
 
 # Module-level functions: MODULE_FUNCS[module][func] -> FuncType
 MODULE_FUNCS: dict[str, dict[str, FuncType]] = {
     "sys": {
-        "exit": FuncType([INT_TYPE], VOID_TYPE),
+        "exit": FuncType([_INT], _VOID),
     },
     "os": {
-        "getenv": FuncType([STR_TYPE], OptionalType(STR_TYPE)),
+        "getenv": FuncType([_STR], OptionalType(_STR)),
     },
 }
 
 # Stub type methods: STUB_METHODS[type_name][method] -> FuncType
 STUB_METHODS: dict[str, dict[str, FuncType]] = {
     "TextIO": {
-        "read": FuncType([], STR_TYPE),
-        "readline": FuncType([], STR_TYPE),
-        "write": FuncType([STR_TYPE], INT_TYPE),
-        "isatty": FuncType([], BOOL_TYPE),
+        "read": FuncType([], _STR),
+        "readline": FuncType([], _STR),
+        "write": FuncType([_STR], _INT),
+        "isatty": FuncType([], _BOOL),
     },
     "BytesIO": {
-        "read": FuncType([], BYTES_TYPE),
-        "write": FuncType([BYTES_TYPE], INT_TYPE),
+        "read": FuncType([], _BYTES),
+        "write": FuncType([_BYTES], _INT),
     },
 }
 
