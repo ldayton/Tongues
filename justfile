@@ -231,10 +231,10 @@ formatters:
 versions:
     #!/usr/bin/env bash
     failed=0
-    printf "%-12s %-20s %-20s %s\n" "LANG" "EXPECTED" "LOCAL" "STATUS"
-    printf "%-12s %-20s %-20s %s\n" "----" "--------" "-----" "------"
+    printf "%-12s %-10s %-10s %-6s  %s\n" "LANG" "EXPECTED" "LOCAL" "STATUS" "ORIGIN"
+    printf "%-12s %-10s %-10s %-6s  %s\n" "----" "--------" "-----" "------" "------"
     check() {
-        lang=$1; expected=$2; cmd=$3
+        lang=$1; expected=$2; origin=$3; cmd=$4
         local_ver=$(eval "$cmd" 2>/dev/null || echo "not found")
         if echo "$local_ver" | grep -q "$expected"; then
             status="✅"
@@ -242,24 +242,24 @@ versions:
             status="❌"
             failed=1
         fi
-        printf "%-12s %-20s %-20s %s\n" "$lang" "$expected" "$local_ver" "$status"
+        printf "%-12s %-10s %-10s %-6s  %s\n" "$lang" "$expected" "$local_ver" "$status" "$origin"
     }
-    check "c"          "13."     "gcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
-    check "csharp"     "8."      "dotnet --version | cut -d. -f1-2"
-    check "dart"       "3.2"     "dart --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
-    check "go"         "1.21"    "go version | grep -oE 'go[0-9]+\.[0-9]+' | sed 's/go//'"
-    check "java"       "21"      "java --version 2>&1 | head -1 | grep -oE '[0-9]+' | head -1"
-    check "javascript" "21"      "node --version | grep -oE '[0-9]+' | head -1"
-    check "lua"        "5.4"     "lua -v 2>&1 | grep -oE '[0-9]+\.[0-9]+'"
-    check "perl"       "5.38"    "perl -v | grep -oE 'v[0-9]+\.[0-9]+' | sed 's/v//'"
-    check "php"        "8.3"     "php --version | head -1 | grep -oE '[0-9]+\.[0-9]+'"
-    check "python"     "3.12"    "python --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "python3"    "3.12"    "python3 --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "ruby"       "3."      "ruby --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "rust"       "1.75"    "rustc --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "swift"      "6."      "xcrun swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+'"
-    check "typescript" "5.3"     "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "zig"        "0.14"    "zig version | grep -oE '[0-9]+\.[0-9]+'"
+    check "c"          "13."   "homebrew gcc@13"        "gcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
+    check "csharp"     "8."    "homebrew dotnet@8"      "dotnet --version | cut -d. -f1-2"
+    check "dart"       "3.2"   "dart.dev/archive"       "dart --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
+    check "go"         "1.21"  "homebrew go@1.21"       "go version | grep -oE 'go[0-9]+\.[0-9]+' | sed 's/go//'"
+    check "java"       "21"    "homebrew openjdk@21"    "java --version 2>&1 | head -1 | grep -oE '[0-9]+' | head -1"
+    check "javascript" "21"    "nodejs.org/dist"        "node --version | grep -oE '[0-9]+' | head -1"
+    check "lua"        "5.4"   "homebrew lua"           "lua -v 2>&1 | grep -oE '[0-9]+\.[0-9]+'"
+    check "perl"       "5.38"  "cpan.org/src"           "perl -v | grep -oE 'v[0-9]+\.[0-9]+' | sed 's/v//'"
+    check "php"        "8.3"   "homebrew php@8.3"       "php --version | head -1 | grep -oE '[0-9]+\.[0-9]+'"
+    check "python"     "3.12"  "homebrew python@3.12"   "python --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "python3"    "3.12"  "homebrew python@3.12"   "python3 --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "ruby"       "3."    "homebrew ruby@3.3"      "ruby --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "rust"       "1.75"  "rustup"                 "rustc --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "swift"      "6."    "xcode"                  "xcrun swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+'"
+    check "typescript" "5.3"   "npm typescript@5.3"     "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "zig"        "0.14"  "homebrew zig@0.14"      "zig version | grep -oE '[0-9]+\.[0-9]+'"
     exit $failed
 
 # Run all tests in Docker
