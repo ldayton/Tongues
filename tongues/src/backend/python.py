@@ -1094,11 +1094,7 @@ class _PythonEmitter(Emitter):
 
     def _int_lit(self, expr: TIntLit) -> str:
         raw = expr.raw
-        if raw.startswith("0x") or raw.startswith("0X"):
-            return raw
-        if raw.startswith("0o") or raw.startswith("0O"):
-            return raw
-        if raw.startswith("0b") or raw.startswith("0B"):
+        if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             return raw
         return str(expr.value)
 

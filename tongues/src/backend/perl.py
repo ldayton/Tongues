@@ -1365,11 +1365,7 @@ class _PerlEmitter(Emitter):
 
     def _int_lit(self, expr: TIntLit) -> str:
         raw = expr.raw
-        if raw.startswith("0x") or raw.startswith("0X"):
-            return raw
-        if raw.startswith("0o") or raw.startswith("0O"):
-            return raw
-        if raw.startswith("0b") or raw.startswith("0B"):
+        if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             return raw
         return str(expr.value)
 
@@ -2541,7 +2537,7 @@ class _PerlEmitter(Emitter):
 
     def _deref_safe(self, s: str) -> str:
         """Wrap expressions that are ambiguous inside @{} / %{} deref."""
-        if s.startswith("do ") or s.startswith("do{"):
+        if s.startswith(("do ", "do{")):
             return "(" + s + ")"
         if s == "{}":
             return "({})"
@@ -2674,7 +2670,7 @@ class _PerlEmitter(Emitter):
     def _is_list_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann:
-            return ann.startswith("list[") or ann.startswith("(")
+            return ann.startswith(("list[", "("))
         if isinstance(expr, (TListLit, TTupleLit)):
             return True
         if isinstance(expr, TVar):
