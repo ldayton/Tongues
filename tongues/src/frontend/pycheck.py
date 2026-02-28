@@ -812,7 +812,7 @@ def _resolve_attr(
             return FuncType([INT_TYPE], STR_TYPE)
         return ANY_TYPE
     # Bytes methods
-    if isinstance(obj_type, PrimitiveType) and obj_type.kind == "bytes":
+    if isinstance(obj_type, SliceType) and _prim_kind(obj_type.element) == "byte":
         if attr == "decode":
             return FuncType([], STR_TYPE)
         if attr == "find" or attr == "rfind" or attr == "index" or attr == "count":
@@ -833,6 +833,8 @@ def _resolve_attr(
             return FuncType([], SliceType(BYTES_TYPE))
         if attr == "join":
             return FuncType([SliceType(BYTES_TYPE)], BYTES_TYPE)
+        if attr == "hex":
+            return FuncType([], STR_TYPE)
         return ANY_TYPE
     # List methods
     if isinstance(obj_type, SliceType):
@@ -1427,8 +1429,8 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
             )
         return lt
     # Numeric
-    lt_num = _prim_kind(lt) in ("int", "float", "bool")
-    rt_num = _prim_kind(rt) in ("int", "float", "bool")
+    lt_num = _prim_kind(lt) in ("int", "float", "bool", "byte")
+    rt_num = _prim_kind(rt) in ("int", "float", "bool", "byte")
     if lt_num and rt_num:
         if op_type in ("BitAnd", "BitOr", "BitXor", "LShift", "RShift"):
             if _prim_kind(lt) == "bool" and _prim_kind(rt) == "bool":
@@ -3066,7 +3068,7 @@ def _check_type_truthiness(
     if isinstance(typ, OptionalType):
         inner = typ.inner
         inner_pk = _prim_kind(inner)
-        if inner_pk in ("int", "float", "bool"):
+        if inner_pk in ("int", "float", "bool", "byte"):
             return
         if inner_pk == "string":
             ctx.result.add_error(lineno, 0, "ambiguous truthiness for optional str")
@@ -4012,8 +4014,8 @@ def _validate_expr_access(
             rtype = _synth_expr(binop_right, env, ctx)
             l_str = _prim_kind(ltype) == "string"
             r_str = _prim_kind(rtype) == "string"
-            r_num = _prim_kind(rtype) in ("int", "float", "bool")
-            l_num = _prim_kind(ltype) in ("int", "float", "bool")
+            r_num = _prim_kind(rtype) in ("int", "float", "bool", "byte")
+            l_num = _prim_kind(ltype) in ("int", "float", "bool", "byte")
             if l_str and r_num:
                 ctx.result.add_error(lineno, 0, "cannot use str in arithmetic")
                 return
