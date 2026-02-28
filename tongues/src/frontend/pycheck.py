@@ -2930,8 +2930,20 @@ def _validate_try(
     j = 0
     while j < len(handlers):
         h = handlers[j]
+        handler_env = env.copy()
+        exc_type_node = get_node(h, "type")
+        exc_name = get_str(h, "name")
+        if len(exc_type_node) > 0 and exc_name != "":
+            if _is_type(exc_type_node, ["Name"]):
+                cls_name = get_str(exc_type_node, "id")
+                if cls_name != "":
+                    sig_errors: list[TypeCollectError] = []
+                    resolved = py_type_to_type_dict(
+                        cls_name, ctx.known_classes, sig_errors, 0, 0
+                    )
+                    handler_env.set(exc_name, resolved)
         hbody = get_nodes(h, "body")
-        _validate_stmts(hbody, env.copy(), func_info, ctx)
+        _validate_stmts(hbody, handler_env, func_info, ctx)
         j += 1
     _validate_stmts(orelse, env, func_info, ctx)
     _validate_stmts(finalbody, env, func_info, ctx)
