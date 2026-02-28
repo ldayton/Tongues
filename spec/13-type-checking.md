@@ -2,7 +2,7 @@
 
 **Module:** `taytsh/src/check.py`
 
-Standalone type checker for Taytsh IR. Validates a parsed Taytsh module against the type system defined in the IR spec, enforcing type safety, scoping rules, exhaustive matching, and no-closure invariants. Operates on the parsed AST produced by `taytsh/src/parse.py` — no Python source or frontend tables are involved. This is independent from the frontend's inference phase (spec 09), which validates the Python-to-IR translation; this phase validates the IR itself.
+Standalone type checker for Taytsh IR. Validates a parsed Taytsh module against the type system defined in the IR spec, enforcing type safety, scoping rules, exhaustive matching, and no-closure invariants. Operates on the parsed AST produced by `taytsh/src/parse.py` — no Python source or frontend tables are involved. This is independent from the frontend's pycheck phase (spec 09), which validates the Python-to-IR translation; this phase validates the IR itself.
 
 ## Inputs
 

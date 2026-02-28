@@ -59,8 +59,8 @@ stdout-contains: "ancestors"
 stdout-contains: "root"
 ---
 
-=== stop-at inference
-args: --stop-at inference
+=== stop-at pycheck
+args: --stop-at pycheck
 def add(a: int, b: int) -> int:
     return a + b
 ---
@@ -92,7 +92,7 @@ stdout-contains: "strict_math"
 ---
 
 === early failure parse error stops pipeline
-args: --stop-at inference
+args: --stop-at pycheck
 def (
 ---
 exit: 1

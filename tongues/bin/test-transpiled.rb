@@ -25,7 +25,7 @@ TESTS = {
     "sigs"      => { dir: "06_signatures",  run: :phase, taytsh: false, args: ["--stop-at", "signatures"], json: true  },
     "fields"    => { dir: "07_fields",      run: :phase, taytsh: false, args: ["--stop-at", "fields"],     json: true  },
     "hierarchy" => { dir: "08_hierarchy",   run: :phase, taytsh: false, args: ["--stop-at", "hierarchy"],  json: true  },
-    "inference" => { dir: "09_inference",   run: :phase, taytsh: false, args: ["--stop-at", "inference"],  json: true  },
+    "pycheck"   => { dir: "09_pycheck",     run: :phase, taytsh: false, args: ["--stop-at", "pycheck"],    json: true  },
     "lowering"  => { dir: "10_lowering",    run: :lowering },
   },
   "middleend" => {
@@ -497,13 +497,13 @@ def run_phase_tests(test_dir, phase_name, cfg)
     stem = File.basename(f, ".tests")
     parse_spec_file(f).each do |name, input, expected|
       test_id = "#{stem}/#{name}"
-      lenient = %w[parse inference taytsh_parse taytsh_check].include?(phase_name)
+      lenient = %w[parse pycheck taytsh_parse taytsh_check].include?(phase_name)
       phase_result = run_transpiled_phase(
         input, cfg[:args],
         is_taytsh: cfg[:taytsh],
         expect_json: cfg[:json]
       )
-      if phase_name == "inference" && phase_result[:errors].empty? && phase_result[:data]
+      if phase_name == "pycheck" && phase_result[:errors].empty? && phase_result[:data]
         if phase_result[:data].is_a?(Hash) && phase_result[:data].key?("reveals")
           reveals = phase_result[:data]["reveals"].map { |r| [r["line"], r["type"]] }
           phase_result[:reveals] = reveals

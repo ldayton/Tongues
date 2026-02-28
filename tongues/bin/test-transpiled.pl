@@ -30,7 +30,7 @@ my @TESTS = (
         ["sigs",      { dir => "06_signatures",  run => "phase", taytsh => 0, args => ["--stop-at", "signatures"], json => 1  }],
         ["fields",    { dir => "07_fields",      run => "phase", taytsh => 0, args => ["--stop-at", "fields"],     json => 1  }],
         ["hierarchy", { dir => "08_hierarchy",   run => "phase", taytsh => 0, args => ["--stop-at", "hierarchy"],  json => 1  }],
-        ["inference", { dir => "09_inference",   run => "phase", taytsh => 0, args => ["--stop-at", "inference"],  json => 1  }],
+        ["pycheck",   { dir => "09_pycheck",     run => "phase", taytsh => 0, args => ["--stop-at", "pycheck"],    json => 1  }],
         ["lowering",  { dir => "10_lowering",    run => "lowering" }],
     ]],
     ["middleend", [
@@ -619,13 +619,13 @@ sub run_phase_tests ($test_dir, $phase_name, $cfg) {
         for my $t (@$tests) {
             my ($name, $input, $expected) = @$t;
             my $test_id = "$stem/$name";
-            my $lenient = ($phase_name =~ /^(parse|inference|taytsh_parse|taytsh_check)$/);
+            my $lenient = ($phase_name =~ /^(parse|pycheck|taytsh_parse|taytsh_check)$/);
             my $phase_result = run_transpiled_phase(
                 $input, $cfg->{args},
                 is_taytsh => $cfg->{taytsh},
                 expect_json => $cfg->{json},
             );
-            if ($phase_name eq "inference" && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
+            if ($phase_name eq "pycheck" && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
                 if (ref($phase_result->{data}) eq "HASH" && exists $phase_result->{data}{reveals}) {
                     my @reveals = map { [$_->{line}, $_->{type}] } @{$phase_result->{data}{reveals}};
                     $phase_result->{reveals} = \@reveals;

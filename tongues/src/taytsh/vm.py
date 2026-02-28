@@ -310,11 +310,7 @@ def _sort_key_pairs(keys: list[Val], vals: list[Val]) -> None:
 def _read_file_bytes(path: str) -> VBytes:
     with open(path, "rb") as f:
         data = f.read()
-    if isinstance(data, bytes):
-        return VBytes(data)
-    if isinstance(data, str):
-        return VBytes(data.encode("utf-8"))
-    return VBytes(b"")
+    return VBytes(data)
 
 
 def _write_file_bytes(path: str, data: bytes) -> None:
@@ -1709,12 +1705,10 @@ class _BuiltinDispatch:
             try:
                 with open(args[0].value, "rb") as f:
                     data = f.read()
-                if isinstance(data, bytes):
-                    try:
-                        return VStr(data.decode("utf-8"))
-                    except UnicodeDecodeError as e:
-                        raise _VMThrow(_make_error_struct("ValueError", str(e)))
-                return VStr("")
+                try:
+                    return VStr(data.decode("utf-8"))
+                except UnicodeDecodeError as e:
+                    raise _VMThrow(_make_error_struct("ValueError", str(e)))
             except OSError as e:
                 raise _VMThrow(_make_error_struct("IOError", str(e)))
         return VStr("")

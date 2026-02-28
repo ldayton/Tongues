@@ -71,7 +71,7 @@ The `--stop-at` flag halts the pipeline after the named phase and outputs the in
 | `signatures` | JSON: signature table     |
 | `fields`     | JSON: field table         |
 | `hierarchy`  | JSON: subtype relations   |
-| `inference`  | JSON: typed AST           |
+| `pycheck`    | JSON: typed AST           |
 | `lowering`   | JSON: Taytsh IR Module    |
 | `analyze`    | JSON: annotated Taytsh IR |
 | (omitted)    | Target language source    |

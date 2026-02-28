@@ -5,7 +5,7 @@ The frontend accepts Python source and produces a Taytsh Module. It operates in 
 ## Pipeline
 
 ```
-source → parse → [merge] → subset → names → signatures → fields → hierarchy → inference → lowering → Taytsh Module
+source → parse → [merge] → subset → names → signatures → fields → hierarchy → pycheck → lowering → Taytsh Module
 ```
 
 The merge phase runs only when the input is a directory (project mode). In single-file mode it is skipped.
@@ -46,9 +46,9 @@ Field type inference. Analyzes class bodies and `__init__` methods to determine 
 
 Inheritance analysis. Builds ancestor chains, classifies hierarchy roots as Taytsh interfaces and their subclasses as implementing structs, computes least upper bound for union types.
 
-### 8. Inference (`frontend/inference.py`)
+### 8. Python Type Checking (`frontend/pycheck.py`)
 
-Bidirectional type inference with flow-sensitive narrowing. Computes Taytsh types for all expressions, infers local variable types, enforces type safety constraints, resolves optional/nil semantics, and validates iterator consumption.
+Bidirectional type checking with flow-sensitive narrowing. Computes Taytsh types for all expressions, infers local variable types, enforces type safety constraints, resolves optional/nil semantics, and validates iterator consumption.
 
 ### 9. Lowering (`frontend/lowering.py`)
 
@@ -60,14 +60,14 @@ Each phase produces an artifact consumed by subsequent phases. No phase modifies
 
 | Phase      | Produces       | Consumed by                                                       |
 | ---------- | -------------- | ----------------------------------------------------------------- |
-| parse      | dict-based AST | merge, subset, names, signatures, fields, hierarchy, inference, lowering |
+| parse      | dict-based AST | merge, subset, names, signatures, fields, hierarchy, pycheck, lowering |
 | merge      | merged AST     | subset onward (project mode only)                                 |
 | subset     | (validation)   | —                                                                 |
-| names      | NameTable      | signatures, fields, inference                                     |
-| signatures | SigTable       | fields, inference, lowering                                       |
-| fields     | FieldTable     | inference, lowering                                               |
-| hierarchy  | SubtypeRel     | inference, lowering                                               |
-| inference  | TypedAST       | lowering                                                          |
+| names      | NameTable      | signatures, fields, pycheck                                       |
+| signatures | SigTable       | fields, pycheck, lowering                                         |
+| fields     | FieldTable     | pycheck, lowering                                                 |
+| hierarchy  | SubtypeRel     | pycheck, lowering                                                 |
+| pycheck    | TypedAST       | lowering                                                          |
 | lowering   | Taytsh Module  | middleend, backends                                               |
 
 ## Concept Map

@@ -17,9 +17,13 @@ import pytest
 
 from src.frontend.typecollect import collect_signatures, collect_types
 from src.frontend.hierarchy import build_hierarchy
-from src.frontend.inference import run_inference as _run_inference
+from src.frontend.pycheck import (
+    run_pycheck as _run_pycheck,
+    compute_expr_coverage,
+    _EXPR_NODE_TYPES,
+)
 from src.frontend.bind import run_bind, resolve_names, verify as verify_subset
-from src.frontend.parse import parse
+from src.frontend.parse import parse, stamp_uids
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 
 TONGUES_DIR = Path(__file__).parent.parent
@@ -224,7 +228,7 @@ TESTS = {
         "sigs":      {"dir": "06_signatures", "run": "phase"},
         "fields":    {"dir": "07_fields",    "run": "phase"},
         "hierarchy": {"dir": "08_hierarchy", "run": "phase"},
-        "inference": {"dir": "09_inference", "run": "phase"},
+        "pycheck":   {"dir": "09_pycheck",   "run": "phase"},
         "lowering":  {"dir": "10_lowering",  "run": "lowering"},
     },
     "middleend": {
@@ -802,10 +806,10 @@ def run_hierarchy(source: str) -> PhaseResult:
     return PhaseResult(data=hier_result.to_dict())
 
 
-def run_inference(source: str) -> PhaseResult:
-    """Run the full Python frontend pipeline (phases 2-9), checking inference errors."""
+def run_pycheck(source: str) -> PhaseResult:
+    """Run the full Python frontend pipeline (phases 2-9), checking type errors."""
     if TRANSPILED_BINARY is not None:
-        result = _run_transpiled(source, ["--stop-at", "inference"])
+        result = _run_transpiled(source, ["--stop-at", "pycheck"])
         if result.errors:
             return result
         if result.data and "reveals" in result.data:
@@ -838,7 +842,7 @@ def run_inference(source: str) -> PhaseResult:
     tc_errors = tc_result.errors()
     if tc_errors:
         return PhaseResult(errors=[str(e) for e in tc_errors])
-    inf_result = _run_inference(
+    inf_result = _run_pycheck(
         ast_dict,
         tc_result,
         hier_result,
@@ -922,7 +926,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
         tc_errors = tc_result.errors()
         if tc_errors:
             return (None, str(tc_errors[0]))
-        inf_result = _run_inference(
+        inf_result = _run_pycheck(
             ast_dict,
             tc_result,
             hier_result,
@@ -942,6 +946,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
             hier_result,
             bind_result.known_classes,
             bind_result.class_bases,
+            inf_result,
         )
         if lower_errors:
             return (None, str(lower_errors[0]))
@@ -1167,7 +1172,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         tc_errors = tc_result.errors()
         if tc_errors:
             return (None, str(tc_errors[0]))
-        inf_result = _run_inference(
+        inf_result = _run_pycheck(
             ast_dict,
             tc_result,
             hier_result,
@@ -1186,6 +1191,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
             hier_result,
             bind_result.known_classes,
             bind_result.class_bases,
+            inf_result,
         )
         if lower_errors:
             return (None, str(lower_errors[0]))
@@ -1428,11 +1434,11 @@ def test_hierarchy(hierarchy_input, hierarchy_expected):
     check_expected(hierarchy_expected, run_hierarchy(hierarchy_input), "hierarchy")
 
 
-def test_inference(inference_input, inference_expected):
+def test_pycheck(pycheck_input, pycheck_expected):
     check_expected(
-        inference_expected,
-        run_inference(inference_input),
-        "inference",
+        pycheck_expected,
+        run_pycheck(pycheck_input),
+        "pycheck",
         lenient_errors=True,
     )
 
@@ -1578,6 +1584,70 @@ def test_app(app_source: Path, app_target: str) -> None:
         pytest.fail(
             f"App test failed with exit {result.returncode}\n"
             f"stdout:\n{stdout}\nstderr:\n{stderr}"
+        )
+
+
+_EXPR_COVERAGE_SOURCE = """\
+from dataclasses import dataclass
+@dataclass
+class Pt:
+    x: int
+    y: int
+def f(p: Pt, xs: list[int], d: dict[str, int], s: set[int]) -> str:
+    a: int = 1
+    b: int = p.x + p.y
+    c: int = -a
+    ok: bool = a > b
+    both: bool = ok and ok
+    e: int = a if ok else b
+    t: tuple[int, int] = (a, b)
+    ns: list[int] = [a, b]
+    ds: dict[str, int] = {"k": a}
+    ss: set[int] = {a, b}
+    lc: list[int] = [x for x in xs]
+    sc: set[int] = {x for x in xs}
+    dc: dict[str, int] = {k: a for k in ds}
+    msg: str = f"{a}"
+    n: int = (w := a)
+    ln: int = len(xs)
+    el: int = xs[a]
+    return msg
+"""
+
+
+def test_expr_coverage() -> None:
+    ast_dict = parse(_EXPR_COVERAGE_SOURCE)
+    bind_result = run_bind(ast_dict)
+    assert bind_result.subset_ok()
+    assert bind_result.names_ok()
+    hier_result = build_hierarchy(bind_result.known_classes, bind_result.class_bases)
+    assert not hier_result.errors()
+    tc_result = collect_types(
+        ast_dict,
+        bind_result.known_classes,
+        bind_result.node_classes,
+        bind_result.type_aliases,
+        bind_result.class_bases,
+        hier_result.hierarchy_roots,
+    )
+    assert not tc_result.errors()
+    stamp_uids(ast_dict)
+    inf_result = _run_pycheck(
+        ast_dict,
+        tc_result,
+        hier_result,
+        bind_result.known_classes,
+        bind_result.class_bases,
+        bind_result.flow_graphs,
+    )
+    assert not inf_result.errors()
+    totals, covered = compute_expr_coverage(ast_dict, inf_result)
+    for node_type in sorted(_EXPR_NODE_TYPES):
+        assert totals.get(node_type, 0) > 0, (
+            f"{node_type}: no instances found in test source"
+        )
+        assert covered.get(node_type, 0) > 0, (
+            f"{node_type}: zero coverage ({totals[node_type]} instances)"
         )
 
 
