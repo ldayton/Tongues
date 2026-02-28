@@ -50,7 +50,6 @@ from .middleend.ownership import analyze_ownership
 from .middleend.returns import analyze_returns
 from .middleend.scope import analyze_scope
 from .middleend.strings import analyze_strings
-from .middleend.types import propagate_types
 from .backend.python import emit_python
 from .backend.perl import emit_perl
 from .backend.ruby import emit_ruby
@@ -1593,7 +1592,6 @@ def _pipeline_post_parse(
     analyze_returns(module, checker)
     analyze_scope(module, checker)
     analyze_liveness(module, checker)
-    propagate_types(module, checker)
     if stop_at == "analyze":
         return (0, to_json(module_to_dict(module)))
     if target == "python":
@@ -1852,7 +1850,6 @@ def taytsh_pipeline(argv: list[str]) -> int:
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
-        propagate_types(module, checker)
         result = ""
         if emit_target == "python":
             result = emit_python(module)

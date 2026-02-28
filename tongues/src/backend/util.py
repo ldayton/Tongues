@@ -10,6 +10,7 @@ from ..taytsh.ast import (
     TExpr,
     TExprStmt,
     TFieldAccess,
+    TFloatLit,
     TFnLit,
     TForStmt,
     TIfStmt,
@@ -17,9 +18,11 @@ from ..taytsh.ast import (
     TIntLit,
     TLetStmt,
     TListLit,
+    TListType,
     TMapLit,
     TMatchStmt,
     TOpAssignStmt,
+    TPrimitive,
     TRange,
     TReturnStmt,
     TSetLit,
@@ -31,6 +34,7 @@ from ..taytsh.ast import (
     TTupleAssignStmt,
     TTupleLit,
     TTryStmt,
+    TType,
     TUnaryOp,
     TVar,
     TWhileStmt,
@@ -257,15 +261,45 @@ class Emitter:
 
     def _is_int_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        return ann == "int"
+        if ann != "":
+            return ann == "int"
+        if isinstance(expr, TIntLit):
+            return True
+        if isinstance(expr, TVar):
+            typ: TType | None = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "int"
+        if isinstance(expr, TBinaryOp):
+            return self._is_int_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and (expr.op == "-" or expr.op == "~"):
+            return self._is_int_expr(expr.operand)
+        return False
 
     def _is_float_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        return ann == "float"
+        if ann != "":
+            return ann == "float"
+        if isinstance(expr, TFloatLit):
+            return True
+        if isinstance(expr, TVar):
+            typ: TType | None = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "float"
+        if isinstance(expr, TBinaryOp):
+            return self._is_float_expr(expr.left)
+        if isinstance(expr, TUnaryOp) and expr.op == "-":
+            return self._is_float_expr(expr.operand)
+        return False
 
     def _is_float_list(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
-        return ann == "list[float]"
+        if ann != "":
+            return ann == "list[float]"
+        if isinstance(expr, TListLit) and expr.elements:
+            return self._is_float_expr(expr.elements[0])
+        if isinstance(expr, TVar):
+            typ: TType | None = self.var_types.get(expr.name)
+            if isinstance(typ, TListType) and isinstance(typ.element, TPrimitive):
+                return typ.element.kind == "float"
+        return False
 
     def _is_zero(self, expr: TExpr) -> bool:
         return isinstance(expr, TIntLit) and expr.value == 0

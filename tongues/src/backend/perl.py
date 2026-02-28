@@ -2724,44 +2724,6 @@ class _PerlEmitter(Emitter):
             return isinstance(self.var_types.get(expr.name), TSetType)
         return False
 
-    def _is_int_expr(self, expr: TExpr) -> bool:
-        ann: str = expr.annotations.get("type", "")
-        if ann != "":
-            return ann == "int"
-        if isinstance(expr, TIntLit):
-            return True
-        if isinstance(expr, TVar):
-            typ: TType | None = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "int"
-        if isinstance(expr, TBinaryOp):
-            return self._is_int_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and (expr.op == "-" or expr.op == "~"):
-            return self._is_int_expr(expr.operand)
-        return False
-
-    def _is_float_expr(self, expr: TExpr) -> bool:
-        ann: str = expr.annotations.get("type", "")
-        if ann != "":
-            return ann == "float"
-        if isinstance(expr, TFloatLit):
-            return True
-        if isinstance(expr, TVar):
-            typ: TType | None = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "float"
-        if isinstance(expr, TBinaryOp):
-            return self._is_float_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op == "-":
-            return self._is_float_expr(expr.operand)
-        return False
-
-    def _is_float_list(self, expr: TExpr) -> bool:
-        ann: str = expr.annotations.get("type", "")
-        if ann != "":
-            return ann == "list[float]"
-        if isinstance(expr, TListLit) and expr.elements:
-            return self._is_float_expr(expr.elements[0])
-        return False
-
     def _static_int(self, expr: TExpr) -> int | None:
         if isinstance(expr, TIntLit):
             return expr.value
