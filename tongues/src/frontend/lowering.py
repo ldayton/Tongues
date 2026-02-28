@@ -3544,6 +3544,7 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                         return TTupleAccess(pos, obj, idx_val, {})
     # Negative index: xs[-1] → xs[Len(xs) - 1]
     is_string = _is_type_dict(obj_type, ["string"])
+    is_bytes = _is_type_dict(obj_type, ["bytes"]) or _is_bytes_slice(obj_type)
     if _is_ast(slice_node, "Constant"):
         val_jv = slice_node.get("value")
         if isinstance(val_jv, JInt) and val_jv.value < 0:
@@ -3558,6 +3559,8 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             result = TIndex(pos, obj, idx_expr, {})
             if is_string:
                 return _make_call(pos, "ToString", [result])
+            if is_bytes:
+                return _make_call(pos, "ByteToInt", [result])
             return result
     if _is_ast(slice_node, "UnaryOp"):
         op_node = get_node(slice_node, "op")
@@ -3576,12 +3579,16 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                     result = TIndex(pos, obj, idx_expr, {})
                     if is_string:
                         return _make_call(pos, "ToString", [result])
+                    if is_bytes:
+                        return _make_call(pos, "ByteToInt", [result])
                     return result
     # Normal index
     idx = _lower_expr(slice_node, env, ctx)
     result = TIndex(pos, obj, idx, {})
     if is_string:
         return _make_call(pos, "ToString", [result])
+    if is_bytes:
+        return _make_call(pos, "ByteToInt", [result])
     return result
 
 
