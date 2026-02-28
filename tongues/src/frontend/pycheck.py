@@ -4336,17 +4336,37 @@ def run_pycheck(
                         )
                         if len(sig_errors) == 0:
                             ctx.module_vars[var_name] = var_type
+        i += 1
+    # Pass 2: Create module TypeEnv and synthesize value expressions
+    mod_env = TypeEnv()
+    mvkeys = list(ctx.module_vars.keys())
+    mi = 0
+    while mi < len(mvkeys):
+        mod_env.set(mvkeys[mi], ctx.module_vars[mvkeys[mi]])
+        mi += 1
+    i = 0
+    while i < len(body):
+        node = body[i]
+        t = get_str(node, "_type")
+        if t == "AnnAssign":
+            target = get_node(node, "target")
+            if len(target) > 0 and get_str(target, "_type") == "Name":
+                val = get_node(node, "value")
+                if len(val) > 0:
+                    _synth_expr(val, mod_env, ctx)
         elif t == "Assign":
             targets = get_nodes(node, "targets")
             if len(targets) == 1 and get_str(targets[0], "_type") == "Name":
                 var_name = get_str(targets[0], "id")
                 if var_name != "":
                     val = get_node(node, "value")
-                    if len(val) > 0 and get_str(val, "_type") == "Constant":
-                        vt = _synth_constant(val)
+                    if len(val) > 0:
+                        vt = _synth_expr(val, mod_env, ctx)
                         if not is_any(vt):
                             ctx.module_vars[var_name] = vt
+                            mod_env.set(var_name, vt)
         i += 1
+    # Pass 3: Validate functions
     i = 0
     while i < len(body):
         node = body[i]
