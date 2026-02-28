@@ -456,9 +456,9 @@ class _PerlEmitter(Emitter):
                 args.append("$" + _restore_name(p.name, p.annotations))
         self._line("sub " + _safe_name(decl.name) + " {")
         self.indent += 1
-        if len(args) > 0:
+        if args:
             self._line("my (" + ", ".join(args) + ") = @_;")
-        if len(decl.body) == 0:
+        if not decl.body:
             self._line("return;")
         self._emit_stmts(decl.body)
         self.indent -= 1
@@ -488,9 +488,9 @@ class _PerlEmitter(Emitter):
         self.indent += 1
         self._line("my (" + ", ".join(args) + ") = @_;")
         old_self = self.self_name
-        if len(decl.params) > 0 and decl.params[0].typ is None:
+        if decl.params and decl.params[0].typ is None:
             self.self_name = decl.params[0].name
-        if len(decl.body) == 0:
+        if not decl.body:
             self._line("return;")
         self._emit_stmts(decl.body)
         self.self_name = old_self
@@ -1374,7 +1374,7 @@ class _PerlEmitter(Emitter):
         return str(expr.value)
 
     def _bytes_lit(self, expr: TBytesLit) -> str:
-        if len(expr.value) == 0:
+        if not expr.value:
             return '""'
         nums = ", ".join(str(b) for b in expr.value)
         return "pack('C*', " + nums + ")"
@@ -1778,7 +1778,7 @@ class _PerlEmitter(Emitter):
             if self._is_map_expr(func.obj):
                 key = self._hash_key(args[0].value)
                 return "delete " + obj + "->{" + key + "}"
-            if len(args) > 0:
+            if args:
                 return "splice(@{" + obj + "}, " + self._expr(args[0].value) + ", 1)"
             return "pop(@{" + obj + "})"
         if method == "copy" and not self._is_known_struct_method(func.obj, method):
@@ -2301,13 +2301,13 @@ class _PerlEmitter(Emitter):
                 return "[reverse keys %{" + a + "}]"
             return "[reverse @{" + a + "}]"
         if name == "Map":
-            if len(args) == 0:
+            if not args:
                 return "{}"
             return (
                 "[map { " + self._a(args, 0) + "->($_) } @{" + self._a(args, 1) + "}]"
             )
         if name == "Set":
-            if len(args) == 0:
+            if not args:
                 return "{}"
             return (
                 "do { my $__s = {}; $__s->{$_} = 1 for @{"

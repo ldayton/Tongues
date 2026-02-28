@@ -254,7 +254,7 @@ def _safe_module_name(name: str) -> str:
 def _safe_local_name(name: str) -> str:
     """Like _safe_name but ensures the result starts lowercase (for local vars)."""
     name = _safe_name(name)
-    if len(name) > 0 and name[0].isupper():
+    if name and name[0].isupper():
         return name.lower()
     return name
 
@@ -309,9 +309,9 @@ def _safe_type_name(name: str) -> str:
         return mapped
     if name in _RUBY_BUILTINS:
         return name + "_"
-    if len(name) > 0 and name[0] == "_":
+    if name and name[0] == "_":
         return "X" + name[1:]
-    if len(name) > 0 and name[0].islower():
+    if name and name[0].islower():
         return name[0].upper() + name[1:]
     return name
 
@@ -610,7 +610,7 @@ class _RubyEmitter(Emitter):
             self._line()
             self._emit_initialize(decl.fields, True)
         for i, method in enumerate(decl.methods):
-            if i > 0 or len(decl.fields) > 0:
+            if i > 0 or decl.fields:
                 self._line()
             self._emit_method(method)
         self.indent -= 1
@@ -635,7 +635,7 @@ class _RubyEmitter(Emitter):
             self._line()
             self._emit_initialize(decl.fields, False)
         for i, method in enumerate(decl.methods):
-            if i > 0 or len(decl.fields) > 0:
+            if i > 0 or decl.fields:
                 self._line()
             self._emit_method(method)
         self.indent -= 1
@@ -726,9 +726,9 @@ class _RubyEmitter(Emitter):
         self._line("def " + _safe_name(decl.name) + "(" + params + ")")
         self.indent += 1
         old_self = self.self_name
-        if len(decl.params) > 0 and decl.params[0].typ is None:
+        if decl.params and decl.params[0].typ is None:
             self.self_name = decl.params[0].name
-        if len(decl.body) == 0:
+        if not decl.body:
             self._line("nil")
         self._emit_stmts(decl.body)
         self.self_name = old_self
@@ -1052,7 +1052,7 @@ class _RubyEmitter(Emitter):
         if isinstance(elif_stmt, TIfStmt):
             self._line("elsif " + self._expr(elif_stmt.cond))
             self.indent += 1
-            if len(elif_stmt.then_body) == 0:
+            if not elif_stmt.then_body:
                 self._line("nil")
             self._emit_stmts(elif_stmt.then_body)
             self.indent -= 1
@@ -1142,7 +1142,7 @@ class _RubyEmitter(Emitter):
             binders = ", ".join(binder_parts2)
             self._line(self._expr(stmt.iterable) + ".each do |" + binders + "|")
         self.indent += 1
-        if len(stmt.body) == 0:
+        if not stmt.body:
             self._line("nil")
         self._emit_stmts(stmt.body)
         self.indent -= 1
@@ -1660,7 +1660,7 @@ class _RubyEmitter(Emitter):
             )
         if func.field == "encode":
             return obj_str + '.encode("utf-8").bytes'
-        if func.field == "copy" and len(args) == 0:
+        if func.field == "copy" and not args:
             if not isinstance(func.obj, TVar) or self._is_map_type(func.obj):
                 return obj_str + ".dup"
         if func.field == "count" and len(args) == 1:
@@ -1921,12 +1921,12 @@ class _RubyEmitter(Emitter):
         if name == "Reversed":
             return self._a(args, 0) + ".reverse"
         if name == "Map":
-            if len(args) == 0:
+            if not args:
                 return "{}"
             return self._a(args, 1) + ".map { |_e| " + self._a(args, 0) + ".call(_e) }"
         if name == "Set":
             self._needs_set = True
-            if len(args) == 0:
+            if not args:
                 return "Set.new"
             return "Set.new(" + self._a(args, 0) + ".to_a)"
         if name == "SetFromList":
