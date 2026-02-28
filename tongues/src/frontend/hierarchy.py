@@ -175,7 +175,7 @@ def _is_exception_subclass(
 
 
 def _find_hierarchy_roots(
-    known_classes: set[str],
+    known_classes: dict[str, str],
     class_bases: dict[str, list[str]],
     exception_cache: dict[str, bool],
 ) -> list[str]:
@@ -236,7 +236,7 @@ def _is_node_subclass(
 
 
 def build_hierarchy(
-    known_classes: set[str],
+    known_classes: dict[str, str],
     class_bases: dict[str, list[str]],
     class_source_files: dict[str, str] | None = None,
 ) -> HierarchyResult:

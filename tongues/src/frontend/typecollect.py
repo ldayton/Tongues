@@ -364,7 +364,7 @@ _PRIM_MAP: dict[str, str] = {
 
 def py_type_to_type_dict(
     py_type: str,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     errors: list[TypeCollectError],
     lineno: int,
     col: int,
@@ -409,8 +409,9 @@ def py_type_to_type_dict(
     if s == "tuple":
         return TupleType([InterfaceRef("any")], True)
     # Known class -> Pointer(StructRef)
-    if s in known_classes:
-        return PointerType(StructRef(s))
+    canonical = known_classes.get(s)
+    if canonical is not None:
+        return PointerType(StructRef(canonical))
     errors.append(TypeCollectError(lineno, col, "unknown type '" + s + "'"))
     return InterfaceRef("any")
 
@@ -418,7 +419,7 @@ def py_type_to_type_dict(
 def _resolve_subscript(
     base: str,
     inner: str,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     errors: list[TypeCollectError],
     lineno: int,
     col: int,
@@ -555,7 +556,7 @@ def _resolve_subscript(
 
 def _resolve_union(
     members: list[str],
-    known_classes: set[str],
+    known_classes: dict[str, str],
     errors: list[TypeCollectError],
     lineno: int,
     col: int,
@@ -597,7 +598,7 @@ def _resolve_union(
 
 def _resolve_non_none_union(
     members: list[str],
-    known_classes: set[str],
+    known_classes: dict[str, str],
     errors: list[TypeCollectError],
     lineno: int,
     col: int,
@@ -752,7 +753,7 @@ def _make_param(
     has_default: bool,
     default_node: ASTNode | None,
     mutated_params: set[str],
-    known_classes: set[str],
+    known_classes: dict[str, str],
     errors: list[TypeCollectError],
     func_name: str,
 ) -> ParamInfo | None:
@@ -794,7 +795,7 @@ def _make_param(
 
 def extract_func_info(
     node: ASTNode,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     errors: list[TypeCollectError],
     is_method: bool,
     receiver_type: str,
@@ -953,7 +954,7 @@ _EXCLUDED_METHODS: set[str] = {
 
 def collect_signatures(
     tree: ASTNode,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     node_classes: set[str],
     type_aliases: dict[str, str] | None = None,
     class_bases: dict[str, list[str]] | None = None,
@@ -1427,7 +1428,7 @@ def _check_no_new_fields_outside_init(
 def _infer_type_from_value(
     node: ASTNode,
     param_types: dict[str, str],
-    known_classes: set[str],
+    known_classes: dict[str, str],
     func_return_types: dict[str, str],
     errors: list[FieldError],
     lineno: int,
@@ -1510,7 +1511,7 @@ def _infer_type_from_value(
 def _collect_init_fields(
     init: ASTNode,
     info: ClassInfo,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     func_return_types: dict[str, str],
     errors: list[FieldError],
 ) -> None:
@@ -1820,7 +1821,7 @@ def _collect_init_fields(
 
 def _collect_class_fields(
     node: ASTNode,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     node_classes: set[str],
     hierarchy_roots: set[str],
     func_return_types: dict[str, str],
@@ -1953,7 +1954,7 @@ def _collect_class_fields(
 
 def collect_fields(
     tree: ASTNode,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     node_classes: set[str],
     hierarchy_roots: set[str],
     sig_result: SignatureResult,
@@ -2032,7 +2033,7 @@ class TypeCollectResult:
 
 def collect_types(
     tree: ASTNode,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     node_classes: set[str],
     type_aliases: dict[str, str] | None,
     class_bases: dict[str, list[str]] | None,

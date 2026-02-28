@@ -435,14 +435,15 @@ class TypeEnv:
         return path in self.guarded_attrs
 
     def evict_guarded_attrs(self, name: str) -> None:
-        """Remove all guarded/narrowed attr paths rooted at name."""
-        prefix = name + "."
+        """Remove all guarded/narrowed attr paths and subscripts rooted at name."""
+        attr_prefix = name + "."
+        subscript_prefix = name + ":"
         to_remove: list[str] = []
         keys = list(self.guarded_attrs)
         i = 0
         while i < len(keys):
             k = keys[i]
-            if k == name or k.startswith(prefix):
+            if k == name or k.startswith(attr_prefix):
                 to_remove.append(k)
             i += 1
         j = 0
@@ -453,7 +454,7 @@ class TypeEnv:
         i = 0
         while i < len(type_keys):
             k = type_keys[i]
-            if k.startswith(prefix):
+            if k.startswith(attr_prefix) or k.startswith(subscript_prefix):
                 self.types.pop(k)
             i += 1
 
@@ -1294,6 +1295,18 @@ def _element_type(t: TypeNode) -> TypeNode:
 
 
 def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
+    # Check for narrowed subscript type first
+    key = _subscript_key(node)
+    if key != "":
+        narrowed = env.get_type(key)
+        if narrowed is not None:
+            value = get_node(node, "value")
+            slc = get_node(node, "slice")
+            if len(value) > 0:
+                _synth_expr(value, env, ctx)
+            if len(slc) > 0 and not _is_type(slc, ["Slice"]):
+                _synth_expr(slc, env, ctx)
+            return narrowed
     value = get_node(node, "value")
     slc = get_node(node, "slice")
     if len(value) == 0:
@@ -1676,14 +1689,14 @@ class _InferCtx:
         self,
         tc_result: TypeCollectResult,
         hier_result: HierarchyResult,
-        known_classes: set[str],
+        known_classes: dict[str, str],
         class_bases: dict[str, list[str]],
         result: PycheckResult,
         flow_graphs: dict[str, FlowGraph],
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
-        self.known_classes: set[str] = known_classes
+        self.known_classes: dict[str, str] = known_classes
         self.class_bases: dict[str, list[str]] = class_bases
         self.result: PycheckResult = result
         self.flow_graphs: dict[str, FlowGraph] = flow_graphs
@@ -2951,11 +2964,31 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
             return
     if t == "BoolOp":
         _synth_expr(test, env, ctx)
+        op = get_node(test, "op")
+        op_t = get_str(op, "_type")
         values = get_nodes(test, "values")
-        j = 0
-        while j < len(values):
-            _check_truthiness(values[j], env, ctx, lineno)
-            j += 1
+        if len(values) == 0:
+            return
+        # Check first value with original env
+        _check_truthiness(values[0], env, ctx, lineno)
+        if len(values) > 1:
+            # Check subsequent values with narrowed env
+            work = env.copy()
+            dummy = env.copy()
+            if op_t == "And":
+                _extract_narrowing(values[0], work, dummy, ctx)
+            elif op_t == "Or":
+                _extract_narrowing(values[0], dummy, work, ctx)
+            j = 1
+            while j < len(values):
+                _check_truthiness(values[j], work, ctx, lineno)
+                if j + 1 < len(values):
+                    dummy2 = work.copy()
+                    if op_t == "And":
+                        _extract_narrowing(values[j], work, dummy2, ctx)
+                    elif op_t == "Or":
+                        _extract_narrowing(values[j], dummy2, work, ctx)
+                j += 1
         return
     if t == "UnaryOp":
         op = get_node(test, "op")
@@ -3138,6 +3171,25 @@ def _attr_path(node: ASTNode) -> str:
     return result
 
 
+def _subscript_key(node: ASTNode) -> str:
+    """Build subscript key like 'args:0' for Name[Constant] patterns."""
+    if not _is_type(node, ["Subscript"]):
+        return ""
+    val = get_node(node, "value")
+    slc = get_node(node, "slice")
+    if not _is_type(val, ["Name"]):
+        return ""
+    if not _is_type(slc, ["Constant"]):
+        return ""
+    slc_v = slc.get("value")
+    if not isinstance(slc_v, JInt):
+        return ""
+    base = get_str(val, "id")
+    if base == "":
+        return ""
+    return base + ":" + str(slc_v.value)
+
+
 def _narrow_isinstance(
     test: ASTNode,
     then_env: TypeEnv,
@@ -3164,6 +3216,8 @@ def _narrow_isinstance(
                 vt = _synth_expr(walrus_value, then_env, ctx)
                 then_env.set(name, vt)
                 else_env.set(name, vt)
+    elif _is_type(target, ["Subscript"]):
+        name = _subscript_key(target)
     if not name:
         return
     if name == "self":
@@ -4244,7 +4298,7 @@ def run_pycheck(
     tree: ASTNode,
     tc_result: TypeCollectResult,
     hier_result: HierarchyResult,
-    known_classes: set[str],
+    known_classes: dict[str, str],
     class_bases: dict[str, list[str]],
     flow_graphs: dict[str, FlowGraph],
 ) -> PycheckResult:
@@ -4278,17 +4332,37 @@ def run_pycheck(
                         )
                         if len(sig_errors) == 0:
                             ctx.module_vars[var_name] = var_type
+        i += 1
+    # Pass 2: Create module TypeEnv and synthesize value expressions
+    mod_env = TypeEnv()
+    mvkeys = list(ctx.module_vars.keys())
+    mi = 0
+    while mi < len(mvkeys):
+        mod_env.set(mvkeys[mi], ctx.module_vars[mvkeys[mi]])
+        mi += 1
+    i = 0
+    while i < len(body):
+        node = body[i]
+        t = get_str(node, "_type")
+        if t == "AnnAssign":
+            target = get_node(node, "target")
+            if len(target) > 0 and get_str(target, "_type") == "Name":
+                val = get_node(node, "value")
+                if len(val) > 0:
+                    _synth_expr(val, mod_env, ctx)
         elif t == "Assign":
             targets = get_nodes(node, "targets")
             if len(targets) == 1 and get_str(targets[0], "_type") == "Name":
                 var_name = get_str(targets[0], "id")
                 if var_name != "":
                     val = get_node(node, "value")
-                    if len(val) > 0 and get_str(val, "_type") == "Constant":
-                        vt = _synth_constant(val)
+                    if len(val) > 0:
+                        vt = _synth_expr(val, mod_env, ctx)
                         if not is_any(vt):
                             ctx.module_vars[var_name] = vt
+                            mod_env.set(var_name, vt)
         i += 1
+    # Pass 3: Validate functions
     i = 0
     while i < len(body):
         node = body[i]
