@@ -95,20 +95,20 @@ fn Main() -> void {
 error: list elements must have same type
 ---
 
-=== valid: string indexing returns string
+=== valid: string indexing
 fn Main() -> void {
     let s: string = "hello"
-    let ch: string = s[0]
+    let ch: rune = s[0]
     let sub: string = s[0:3]
 }
 ---
 ok
 ---
 
-=== valid: bytes indexing returns int
+=== valid: bytes indexing
 fn Main() -> void {
     let b: bytes = b"\x00\x01\x02"
-    let first: int = b[0]
+    let first: byte = b[0]
     let sub: bytes = b[0:2]
 }
 ---
@@ -351,7 +351,7 @@ error: cannot assign string to int
 === error: string index with non-int
 fn Main() -> void {
     let s: string = "hello"
-    let ch: string = s["x"]
+    let ch: rune = s["x"]
 }
 ---
 error: index must be int
@@ -360,7 +360,7 @@ error: index must be int
 === error: bytes index with non-int
 fn Main() -> void {
     let b: bytes = b"\x01\x02"
-    let v: int = b["x"]
+    let v: byte = b["x"]
 }
 ---
 error: index must be int
