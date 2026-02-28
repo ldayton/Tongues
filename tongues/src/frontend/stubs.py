@@ -16,9 +16,20 @@ from .types import (
     VOID_TYPE,
 )
 
-# Synthetic struct name for IO objects (sys.stdin, sys.stdout, sys.stderr)
+# Synthetic types for IO objects (sys.stdin, sys.stdout, sys.stderr)
 TEXTIO_TYPE = PrimitiveType("TextIO")
 BYTESIO_TYPE = PrimitiveType("BytesIO")
+
+# Module types - used when a module is referenced as a value (not just attribute access)
+MODULE_TYPES: dict[str, TypeNode] = {
+    "sys": PrimitiveType("module:sys"),
+    "os": PrimitiveType("module:os"),
+}
+
+
+def lookup_module_type(name: str) -> TypeNode | None:
+    """Look up a module type by name."""
+    return MODULE_TYPES.get(name)
 
 # Module-level attributes: MODULE_ATTRS[module][attr] -> TypeNode
 MODULE_ATTRS: dict[str, dict[str, TypeNode]] = {

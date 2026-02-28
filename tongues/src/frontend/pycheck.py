@@ -20,6 +20,7 @@ import sys
 from .stubs import (
     lookup_module_attr,
     lookup_module_func,
+    lookup_module_type,
     lookup_stub_attr,
     lookup_stub_method,
 )
@@ -720,6 +721,10 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     mod_var = ctx.module_vars.get(name)
     if mod_var is not None:
         return mod_var
+    # Imported module (sys, os, etc.)
+    mod_type = lookup_module_type(name)
+    if mod_type is not None:
+        return mod_type
     return ANY_TYPE
 
 

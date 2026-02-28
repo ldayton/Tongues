@@ -165,6 +165,7 @@ TAYTSH_KEYWORDS: set[str] = {
 
 # Fallback instrumentation (enabled by TONGUES_FALLBACK_STATS=1)
 _FALLBACK_STATS_ENABLED: bool = os.getenv("TONGUES_FALLBACK_STATS") is not None
+_FALLBACK_VERBOSE: bool = os.getenv("TONGUES_FALLBACK_VERBOSE") is not None
 _FALLBACK_COUNTS: dict[str, int] = {
     "no_uid": 0,
     "no_entry": 0,
@@ -172,11 +173,40 @@ _FALLBACK_COUNTS: dict[str, int] = {
     "contains_any": 0,
     "success": 0,
 }
+_FALLBACK_DETAILS: dict[str, dict[str, int]] = {
+    "is_any": {},
+    "contains_any": {},
+}
 
 
-def _record_fallback(reason: str) -> None:
+def _record_fallback(reason: str, node: ASTNode | None = None) -> None:
     if _FALLBACK_STATS_ENABLED:
         _FALLBACK_COUNTS[reason] = _FALLBACK_COUNTS.get(reason, 0) + 1
+    if _FALLBACK_VERBOSE and node is not None and reason in _FALLBACK_DETAILS:
+        ntype = get_str(node, "_type")
+        key = ntype
+        if ntype == "Attribute":
+            key = "." + get_str(node, "attr")
+        elif ntype == "Name":
+            key = get_str(node, "id")
+        elif ntype == "Call":
+            func = get_node(node, "func")
+            ft = get_str(func, "_type")
+            if ft == "Name":
+                key = get_str(func, "id") + "()"
+            elif ft == "Attribute":
+                key = "." + get_str(func, "attr") + "()"
+        elif ntype == "Subscript":
+            val = get_node(node, "value")
+            vt = get_str(val, "_type")
+            if vt == "Name":
+                key = get_str(val, "id") + "[]"
+            elif vt == "Attribute":
+                key = "." + get_str(val, "attr") + "[]"
+        if key == "":
+            key = ntype
+        detail = _FALLBACK_DETAILS[reason]
+        detail[key] = detail.get(key, 0) + 1
 
 
 def print_fallback_stats() -> None:
@@ -192,6 +222,24 @@ def print_fallback_stats() -> None:
         v = _FALLBACK_COUNTS.get(k, 0)
         print(f"  {k}: {v}", file=sys.stderr)
     print(f"  total_fallback: {total}", file=sys.stderr)
+    if _FALLBACK_VERBOSE:
+        for reason in ["is_any", "contains_any"]:
+            detail = _FALLBACK_DETAILS[reason]
+            if len(detail) > 0:
+                print(f"  {reason} breakdown:", file=sys.stderr)
+                keys = list(detail.keys())
+                i = 0
+                while i < len(keys):
+                    j = i + 1
+                    while j < len(keys):
+                        if detail[keys[j]] > detail[keys[i]]:
+                            tmp = keys[i]
+                            keys[i] = keys[j]
+                            keys[j] = tmp
+                        j = j + 1
+                    i = i + 1
+                for ntype in keys:
+                    print(f"    {ntype}: {detail[ntype]}", file=sys.stderr)
 
 
 def _safe_name(name: str) -> str:
@@ -997,11 +1045,11 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             _record_fallback("no_entry")
             return _infer_expr_type_fallback(node, env, ctx)
         if _is_any_type(pt):
-            _record_fallback("is_any")
+            _record_fallback("is_any", node)
             return _infer_expr_type_fallback(node, env, ctx)
         check_t = pt.ret if isinstance(pt, FuncType) else pt
         if contains_any(check_t):
-            _record_fallback("contains_any")
+            _record_fallback("contains_any", node)
             return _infer_expr_type_fallback(node, env, ctx)
         _record_fallback("success")
         return _adjust_pycheck_type(node, pt, env)
