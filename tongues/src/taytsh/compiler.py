@@ -459,6 +459,7 @@ class Compiler:
         self._interface_index: dict[str, int] = {}
         self.entry_index: int = -1
         # Checker state
+        self.global_let_types: dict[str, Type] = {}
         self.checker_types: dict[str, Type] = {}
         self.checker_functions: dict[str, FnT] = {}
         self.fn_param_names: dict[str, list[str]] = {}
@@ -491,6 +492,7 @@ class Compiler:
                 self._ensure_global(decl.name)
             elif isinstance(decl, TLetStmt):
                 self._ensure_global(decl.name)
+                self.global_let_types[decl.name] = self._resolve_ttype(decl.typ)
         # Compile all top-level functions
         for decl in module.decls:
             if isinstance(decl, TFnDecl):
@@ -1666,6 +1668,9 @@ class Compiler:
             fn = self.checker_functions.get(expr.name)
             if fn is not None:
                 return fn
+            glt = self.global_let_types.get(expr.name)
+            if glt is not None:
+                return glt
             return VOID_T
         if isinstance(expr, TBinaryOp):
             op = expr.op
