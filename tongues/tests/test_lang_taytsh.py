@@ -26,7 +26,7 @@ _APP_XFAIL_TREEWALKER = {
     "apptest_lists", "apptest_none", "apptest_sets",
     "apptest_truthiness", "apptest_tuples",
 }
-_APP_XFAIL_VM = {"apptest_base64", "apptest_dicts", "apptest_lists", "apptest_tuples"}
+_APP_XFAIL_VM = {"apptest_dicts", "apptest_lists", "apptest_tuples"}
 # fmt: on
 
 

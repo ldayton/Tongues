@@ -1952,7 +1952,8 @@ class VM:
             elif op == OP_LOAD_LOCAL:
                 self.stack.append(self.stack[frame.bp + arg])
             elif op == OP_STORE_LOCAL:
-                self.stack[frame.bp + arg] = self.stack.pop()
+                self.stack[frame.bp + arg] = self.stack[-1]
+                self.stack.pop()
             elif op == OP_LOAD_GLOBAL:
                 self.stack.append(self.globals[arg])
             elif op == OP_STORE_GLOBAL:
