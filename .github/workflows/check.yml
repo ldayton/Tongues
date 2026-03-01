@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  lint:
+  style:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -14,11 +14,11 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just fmt lint subset
+      - run: just style
 
   frontend:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: style
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -26,11 +26,11 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just test-frontend-local
+      - run: just test-frontend
 
   middleend:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: style
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -38,11 +38,11 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just test-middleend-local
+      - run: just test-middleend
 
-  linker:
+  taytsh:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: style
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -50,11 +50,11 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just test-linker-local
+      - run: just test-taytsh
 
   backend:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: style
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -62,11 +62,11 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just test-backend-local
+      - run: just test-backend
 
-  self-hosting:
+  lib:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: style
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -74,12 +74,23 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just self-transpile
-      - run: just test-transpiled-local
+      - run: just test-lib
 
-  self-hosting-ruby:
+  lang-python:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: style
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: extractions/setup-just@v3
+      - run: just lang-python
+
+  lang-ruby:
+    runs-on: ubuntu-latest
+    needs: style
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -90,12 +101,11 @@ jobs:
         with:
           ruby-version: "3.3"
       - uses: extractions/setup-just@v3
-      - run: just self-transpile ruby
-      - run: just test-transpiled-local ruby
+      - run: just lang-ruby
 
-  self-hosting-perl:
+  lang-perl:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: style
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -103,15 +113,14 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just self-transpile perl
-      - run: just test-transpiled-local perl
+      - run: just lang-perl
 
   check:
     if: always()
-    needs: [lint, frontend, middleend, linker, backend, self-hosting, self-hosting-ruby, self-hosting-perl]
+    needs: [style, frontend, middleend, taytsh, backend, lib, lang-python, lang-ruby, lang-perl]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          if [[ "${{ needs.lint.result }}" != "success" || "${{ needs.frontend.result }}" != "success" || "${{ needs.middleend.result }}" != "success" || "${{ needs.linker.result }}" != "success" || "${{ needs.backend.result }}" != "success" || "${{ needs.self-hosting.result }}" != "success" || "${{ needs.self-hosting-ruby.result }}" != "success" || "${{ needs.self-hosting-perl.result }}" != "success" ]]; then
+          if [[ "${{ needs.style.result }}" != "success" || "${{ needs.frontend.result }}" != "success" || "${{ needs.middleend.result }}" != "success" || "${{ needs.taytsh.result }}" != "success" || "${{ needs.backend.result }}" != "success" || "${{ needs.lib.result }}" != "success" || "${{ needs.lang-python.result }}" != "success" || "${{ needs.lang-ruby.result }}" != "success" || "${{ needs.lang-perl.result }}" != "success" ]]; then
             exit 1
           fi
