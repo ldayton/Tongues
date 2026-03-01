@@ -50,17 +50,17 @@ Pure translation pass from Python AST to typed Taytsh IR. Consumes pycheck's typ
 
 Each phase produces an artifact consumed by subsequent phases. No phase modifies a prior artifact.
 
-| Phase      | Produces         | Consumed by                                                            |
-|------------|------------------|------------------------------------------------------------------------|
-| parse      | dict-based AST   | merge, subset, names, signatures, fields, hierarchy, pycheck, lowering |
-| merge      | merged AST       | subset onward (project mode only)                                      |
-| subset     | (validation)     | —                                                                      |
-| names      | NameTable, CFGs  | signatures, fields, pycheck                                           |
-| signatures | FuncInfo table   | fields, pycheck, lowering                                             |
-| hierarchy  | HierarchyResult  | fields, pycheck, lowering                                             |
-| fields     | ClassInfo table  | pycheck, lowering                                                     |
-| pycheck    | expr_types map   | lowering                                                              |
-| lowering   | Taytsh Module    | middleend, backends                                                   |
+| Phase      | Produces        | Consumed by                                                            |
+| ---------- | --------------- | ---------------------------------------------------------------------- |
+| parse      | dict-based AST  | merge, subset, names, signatures, fields, hierarchy, pycheck, lowering |
+| merge      | merged AST      | subset onward (project mode only)                                      |
+| subset     | (validation)    | —                                                                      |
+| names      | NameTable, CFGs | signatures, fields, pycheck                                            |
+| signatures | FuncInfo table  | fields, pycheck, lowering                                              |
+| hierarchy  | HierarchyResult | fields, pycheck, lowering                                              |
+| fields     | ClassInfo table | pycheck, lowering                                                      |
+| pycheck    | expr_types map  | lowering                                                               |
+| lowering   | Taytsh Module   | middleend, backends                                                    |
 
 ## Error Model
 

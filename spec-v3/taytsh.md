@@ -281,25 +281,25 @@ let n: int = Len("café")        -- 4, not 5
 | `TrimStart(s, chars)` | `string, string -> string` | trim characters from start     |
 | `TrimEnd(s, chars)`   | `string, string -> string` | trim characters from end       |
 
-| `Split(s, sep)`        | `string, string -> list[string]`      | split by separator; empty sep is error |
-| `SplitN(s, sep, max)`  | `string, string, int -> list[string]` | split by separator; at most max pieces; max ≤ 0 throws ValueError |
-| `SplitWhitespace(s)`   | `string -> list[string]`              | split on whitespace runs, strip ends   |
-| `Join(sep, parts)`     | `string, list[string] -> string`      | join with separator                    |
-| `Find(s, sub)`         | `string, string -> int`               | index of substring, -1 if missing; empty sub returns 0 |
-| `RFind(s, sub)`        | `string, string -> int`               | last occurrence, -1 if missing         |
-| `Count(s, sub)`        | `string, string -> int`               | count non-overlapping occurrences      |
-| `Contains(s, sub)`     | `string, string -> bool`              | substring test                         |
-| `Replace(s, old, new)` | `string, string, string -> string`    | replace all occurrences                |
-| `Repeat(s, n)`         | `string, int -> string`               | repeat n times; n ≤ 0 yields empty     |
-| `Reverse(s)`           | `string -> string`                    | new string in reverse rune order       |
-| `StartsWith(s, pre)`   | `string, string -> bool`              | prefix test                            |
-| `EndsWith(s, suf)`     | `string, string -> bool`              | suffix test                            |
-| `IsDigit(x)`           | `string \| rune -> bool`              | all characters are digits; false for empty string              |
-| `IsAlpha(x)`           | `string \| rune -> bool`              | all characters are letters; false for empty string             |
-| `IsAlnum(x)`           | `string \| rune -> bool`              | all characters are letters or digits; false for empty string   |
-| `IsSpace(x)`           | `string \| rune -> bool`              | all characters are whitespace; false for empty string          |
-| `IsUpper(x)`           | `string \| rune -> bool`              | all characters are uppercase; false for empty string           |
-| `IsLower(x)`           | `string \| rune -> bool`              | all characters are lowercase; false for empty string           |
+| `Split(s, sep)` | `string, string -> list[string]` | split by separator; empty sep is error |
+| `SplitN(s, sep, max)` | `string, string, int -> list[string]` | split by separator; at most max pieces; max ≤ 0 throws ValueError |
+| `SplitWhitespace(s)` | `string -> list[string]` | split on whitespace runs, strip ends |
+| `Join(sep, parts)` | `string, list[string] -> string` | join with separator |
+| `Find(s, sub)` | `string, string -> int` | index of substring, -1 if missing; empty sub returns 0 |
+| `RFind(s, sub)` | `string, string -> int` | last occurrence, -1 if missing |
+| `Count(s, sub)` | `string, string -> int` | count non-overlapping occurrences |
+| `Contains(s, sub)` | `string, string -> bool` | substring test |
+| `Replace(s, old, new)` | `string, string, string -> string` | replace all occurrences |
+| `Repeat(s, n)` | `string, int -> string` | repeat n times; n ≤ 0 yields empty |
+| `Reverse(s)` | `string -> string` | new string in reverse rune order |
+| `StartsWith(s, pre)` | `string, string -> bool` | prefix test |
+| `EndsWith(s, suf)` | `string, string -> bool` | suffix test |
+| `IsDigit(x)` | `string \| rune -> bool` | all characters are digits; false for empty string |
+| `IsAlpha(x)` | `string \| rune -> bool` | all characters are letters; false for empty string |
+| `IsAlnum(x)` | `string \| rune -> bool` | all characters are letters or digits; false for empty string |
+| `IsSpace(x)` | `string \| rune -> bool` | all characters are whitespace; false for empty string |
+| `IsUpper(x)` | `string \| rune -> bool` | all characters are uppercase; false for empty string |
+| `IsLower(x)` | `string \| rune -> bool` | all characters are lowercase; false for empty string |
 
 ### Format Strings
 
@@ -807,8 +807,6 @@ let empty: set[string] = Set()
 
 `==` and `!=` work on lists, maps, and sets with deep structural comparison, provided the element/key/value types do not transitively contain fn. Lists compare element-wise in order. Maps compare by key-value pairs regardless of insertion order. Sets compare by membership. Interface values are equal iff they hold the same variant type and the underlying structs are structurally equal. Union values are equal iff they hold the same member type and the underlying values are equal.
 
-
-
 ## Indexing and Slicing
 
 Indexing and slicing apply to `string`, `bytes`, and `list[T]`. The rules below are universal across all three.
@@ -1033,9 +1031,9 @@ fn Eval(n: Node) -> int {
 
 The type checker narrows the tested variable to the named struct type within the scope where the check is known to be true — the then-branch of an `if`, the right side of `&&`, the then-branch of a ternary, or after a guard where the negated check exits early.
 
-| Function              | Signature            | Description                                        |
-| --------------------- | -------------------- | -------------------------------------------------- |
-| `IsType(expr, name)`  | `T, string -> bool`  | true if runtime type matches the named struct type |
+| Function             | Signature           | Description                                        |
+| -------------------- | ------------------- | -------------------------------------------------- |
+| `IsType(expr, name)` | `T, string -> bool` | true if runtime type matches the named struct type |
 
 ## Enums
 
@@ -1208,11 +1206,11 @@ To write other types, convert first: `WritelnOut(ToString(n))`.
 
 ### Files
 
-| Function              | Signature                         | Description              |
-| --------------------- | --------------------------------- | ------------------------ |
-| `ReadFile(path)`      | `string -> string`                | read file as UTF-8 text  |
-| `ReadFileBytes(path)` | `string -> bytes`                 | read file as raw bytes   |
-| `WriteFile(path, d)`  | `string, string \| bytes -> void` | write entire file        |
+| Function              | Signature                         | Description             |
+| --------------------- | --------------------------------- | ----------------------- |
+| `ReadFile(path)`      | `string -> string`                | read file as UTF-8 text |
+| `ReadFileBytes(path)` | `string -> bytes`                 | read file as raw bytes  |
+| `WriteFile(path, d)`  | `string, string \| bytes -> void` | write entire file       |
 
 `ReadFile` reads the file and decodes it as UTF-8, throwing `ValueError` on invalid encoding. `ReadFileBytes` reads the file as raw bytes. `WriteFile` accepts `string` or `bytes` — string arguments are written as UTF-8 — and writes the contents to the file, creating it if it doesn't exist and overwriting if it does. All three throw `IOError` on file operation failure (missing file, permission denied, etc.).
 
