@@ -2232,8 +2232,15 @@ def _lower_in_expr(
         left = _lower_expr(left_node, env, ctx)
         if not elts:
             return TBoolLit(pos, False, {})
+        left_type = _infer_expr_type(left_node, env, ctx)
+        lt_rune = _is_type_dict(left_type, ["rune"])
         parts: list[TExpr] = []
         for e in elts:
+            if lt_rune:
+                rch = _single_char_str_value(e)
+                if rch is not None:
+                    parts.append(TBinaryOp(pos, "==", left, TRuneLit(pos, rch, {}), {}))
+                    continue
             right = _lower_expr(e, env, ctx)
             parts.append(TBinaryOp(pos, "==", left, right, {}))
         result: TExpr = parts[0]

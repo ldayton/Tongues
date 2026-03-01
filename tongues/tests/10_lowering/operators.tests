@@ -262,6 +262,46 @@ def f(i: int) -> bool:
 op == "add"
 ---
 
+=== rune in tuple promotes to rune literals
+def f(s: str) -> bool:
+    for ch in s:
+        if ch in ("$", "@"):
+            return True
+    return False
+---
+== '$' || ch == '@'
+---
+
+=== rune not in tuple promotes to rune literals
+def f(s: str) -> bool:
+    for ch in s:
+        if ch not in ("a", "b"):
+            return True
+    return False
+---
+!(ch == 'a' || ch == 'b')
+---
+
+=== rune in single-element tuple promotes to rune literal
+def f(s: str) -> bool:
+    for ch in s:
+        if ch in ("x",):
+            return True
+    return False
+---
+ch == 'x'
+---
+
+=== rune in tuple with escape char promotes to rune literal
+def f(s: str) -> bool:
+    for ch in s:
+        if ch in ("\n", "\t"):
+            return True
+    return False
+---
+== '\n' || ch == '\t'
+---
+
 === field from narrowed optional used in dict containment
 class Base:
     def __init__(self) -> None:
