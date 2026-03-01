@@ -1,4 +1,4 @@
-"""Middleend test phase: typarse, tycheck, scope, returns, liveness, strings, hoisting, ownership, callgraph."""
+"""Middleend test phase: scope, returns, liveness, strings, hoisting, ownership, callgraph."""
 
 import pytest
 
@@ -13,14 +13,10 @@ from tests.harness import (
     run_returns,
     run_scope,
     run_strings,
-    run_tycheck,
-    run_typarse,
 )
 
 # fmt: off
 TESTS = {
-    "typarse":   {"dir": "11_typarse",  "run": "phase"},
-    "tycheck":   {"dir": "12_tycheck",  "run": "phase"},
     "scope":     {"dir": "14_scope",    "run": "phase"},
     "returns":   {"dir": "15_returns",  "run": "phase"},
     "liveness":  {"dir": "16_liveness", "run": "phase"},
@@ -40,24 +36,6 @@ def pytest_generate_tests(metafunc):
             specs = discover_specs(test_dir, cfg.get("glob", "*.tests"))
             params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in specs]
             metafunc.parametrize(f"{fixture},{name}_expected", params)
-
-
-def test_typarse(typarse_input, typarse_expected):
-    check_expected(
-        typarse_expected,
-        run_typarse(typarse_input),
-        "typarse",
-        lenient_errors=True,
-    )
-
-
-def test_tycheck(tycheck_input, tycheck_expected):
-    check_expected(
-        tycheck_expected,
-        run_tycheck(tycheck_input),
-        "tycheck",
-        lenient_errors=True,
-    )
 
 
 def test_returns(returns_input, returns_expected):

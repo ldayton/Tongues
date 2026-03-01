@@ -78,7 +78,7 @@ test-lowering-local:
 
 # Run all middleend tests locally (type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph, taytsh parse/check, tycheck-gen)
 test-middleend-local:
-    uv run --directory tongues pytest tests/test_middleend.py tests/test_taytsh_vm.py tests/test_taytsh_gen_check.py -v -n auto
+    uv run --directory tongues pytest tests/test_middleend.py -v -n auto
 
 # Run linker tests locally
 test-linker-local:
@@ -94,7 +94,7 @@ test-ordering-local:
 
 # Run taytsh tests locally
 test-taytsh-local:
-    uv run --directory tongues pytest tests/test_middleend.py -k "test_typarse or test_tycheck" tests/test_taytsh_app.py tests/test_taytsh_vm.py -v
+    uv run --directory tongues pytest tests/test_taytsh.py tests/test_taytsh_app.py tests/test_taytsh_vm.py tests/test_taytsh_gen_check.py -v
 
 # Run generative type-checker tests locally
 test-tycheck-gen-local:
