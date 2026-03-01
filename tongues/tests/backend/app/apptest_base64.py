@@ -3,6 +3,7 @@
 import sys
 
 from lib.base64 import b64decode
+from lib.base64 import b64decode_strict
 from lib.base64 import b64encode
 from lib.base64 import Base64Error
 
@@ -456,16 +457,16 @@ def test_various_invalid_chars() -> None:
 def test_strict_rejects_nonzero_pad_bits_2pad() -> None:
     """With ==, lower 4 bits of char at n-3 must be zero."""
     # 'A' = 0 (0b000000) - canonical
-    assert b64decode("YQ==", True) == b"a"
+    assert b64decode_strict("YQ==") == b"a"
     # 'B' = 1 (0b000001) - non-zero lower 4 bits
     try:
-        b64decode("YR==", True)
+        b64decode_strict("YR==")
         assert False, "expected Base64Error"
     except Base64Error as e:
         assert e.position == 1
     # 'D' = 3 (0b000011) - non-zero lower 4 bits
     try:
-        b64decode("YT==", True)
+        b64decode_strict("YT==")
         assert False, "expected Base64Error"
     except Base64Error as e:
         assert e.position == 1
@@ -474,16 +475,16 @@ def test_strict_rejects_nonzero_pad_bits_2pad() -> None:
 def test_strict_rejects_nonzero_pad_bits_1pad() -> None:
     """With =, lower 2 bits of char at n-2 must be zero."""
     # 'I' = 8 (0b001000) - canonical (lower 2 bits = 00)
-    assert b64decode("YWI=", True) == b"ab"
+    assert b64decode_strict("YWI=") == b"ab"
     # 'J' = 9 (0b001001) - non-zero lower 2 bits
     try:
-        b64decode("YWJ=", True)
+        b64decode_strict("YWJ=")
         assert False, "expected Base64Error"
     except Base64Error as e:
         assert e.position == 2
     # 'K' = 10 (0b001010) - non-zero lower 2 bits
     try:
-        b64decode("YWK=", True)
+        b64decode_strict("YWK=")
         assert False, "expected Base64Error"
     except Base64Error as e:
         assert e.position == 2
@@ -492,13 +493,13 @@ def test_strict_rejects_nonzero_pad_bits_1pad() -> None:
 def test_strict_accepts_canonical_padding() -> None:
     """Strict mode accepts properly zero-padded input."""
     # All RFC test vectors should pass strict mode
-    assert b64decode("", True) == b""
-    assert b64decode("Zg==", True) == b"f"
-    assert b64decode("Zm8=", True) == b"fo"
-    assert b64decode("Zm9v", True) == b"foo"
-    assert b64decode("Zm9vYg==", True) == b"foob"
-    assert b64decode("Zm9vYmE=", True) == b"fooba"
-    assert b64decode("Zm9vYmFy", True) == b"foobar"
+    assert b64decode_strict("") == b""
+    assert b64decode_strict("Zg==") == b"f"
+    assert b64decode_strict("Zm8=") == b"fo"
+    assert b64decode_strict("Zm9v") == b"foo"
+    assert b64decode_strict("Zm9vYg==") == b"foob"
+    assert b64decode_strict("Zm9vYmE=") == b"fooba"
+    assert b64decode_strict("Zm9vYmFy") == b"foobar"
 
 
 def test_strict_github_issue_example() -> None:
@@ -506,10 +507,10 @@ def test_strict_github_issue_example() -> None:
     good: str = "WvLTlMrX9NpYDQlEIFlnDA=="
     bad: str = "WvLTlMrX9NpYDQlEIFlnDB=="
     # Good should decode fine
-    b64decode(good, True)
+    b64decode_strict(good)
     # Bad should fail in strict mode
     try:
-        b64decode(bad, True)
+        b64decode_strict(bad)
         assert False, "expected Base64Error"
     except Base64Error as e:
         assert e.position == 21  # position of 'B'

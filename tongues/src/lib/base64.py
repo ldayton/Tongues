@@ -60,12 +60,18 @@ def b64encode(data: bytes) -> str:
     return "".join(parts)
 
 
-def b64decode(s: str, strict: bool = False) -> bytes:
-    """Decode a base64 string to bytes. Raises Base64Error on invalid input.
+def b64decode(s: str) -> bytes:
+    """Decode a base64 string to bytes. Raises Base64Error on invalid input."""
+    return _b64decode_impl(s, False)
 
-    If strict=True, rejects non-canonical encodings where unused padding bits
-    are non-zero (RFC 4648 §3.5).
-    """
+
+def b64decode_strict(s: str) -> bytes:
+    """Decode with strict validation of padding bits (RFC 4648 §3.5)."""
+    return _b64decode_impl(s, True)
+
+
+def _b64decode_impl(s: str, strict: bool) -> bytes:
+    """Decode a base64 string to bytes."""
     n: int = len(s)
     if n == 0:
         return b""
