@@ -97,6 +97,64 @@ List and dict literals must have consistent element types. Collection mutations 
 
 Fixed-length tuples have per-element types. Static index access is bounds-checked. Unpacking must match the tuple length. Optional tuples require a guard before unpacking.
 
+## Exceptions
+
+Exceptions are a source-language concept that dissolves at the IR boundary. Python restricts throwability to `Exception` subclasses; Taytsh has no such concept — any struct can be thrown. The `Exception` marker exists so the source language can enforce what is throwable while keeping the IR maximally simple: just structs, `throw`, and `catch`.
+
+Exception classes are `@dataclass` classes that inherit from `Exception`. `Exception` is a marker — it designates the class as throwable but is not a type. It contributes no fields and no methods.
+
+```python
+@dataclass
+class ParseError(Exception):
+    message: str
+    line: int
+    col: int
+```
+
+Exception classes follow the same rules as other classes. Since `Exception` is a marker rather than a real base class, it does not count as inheritance — but an exception class cannot also inherit from another class. Exception classes cannot subclass other exception classes or built-in exceptions; every exception class inherits directly from `Exception`.
+
+`Exception` may appear only as a base class marker and after `except` as a catch-all. It cannot appear in type annotations, variables, or function signatures.
+
+### Built-in Exceptions
+
+Six exceptions are implicitly available without declaration:
+
+| Exception           | Raised by                                                    |
+| ------------------- | ------------------------------------------------------------ |
+| `ValueError`        | `int(s)`, `float(s)` with invalid input; file with bad UTF-8 |
+| `KeyError`          | `d[k]` when key is missing                                   |
+| `IndexError`        | out-of-bounds index or slice, `.pop()` on empty list         |
+| `ZeroDivisionError` | integer `//` or `%` by zero                                  |
+| `AssertionError`    | `assert` failure                                             |
+| `IOError`           | file open, read, or write failure                            |
+
+All six have a single `message: str` field and can be raised explicitly or caught by name.
+
+### raise and try
+
+`raise` accepts an instance of any exception class — built-in or user-defined.
+
+```python
+try:
+    result = parse(text)
+except ParseError as e:
+    print(f"{e.line}:{e.col}: {e.message}")
+except (ValueError, KeyError) as e:
+    print(e.message)
+except Exception:
+    print("unexpected error")
+finally:
+    cleanup()
+```
+
+`except Type as e:` catches exceptions of the named type. Multiple types: `except (A, B) as e:`. `except Exception` is a catch-all. The `as` binding is optional. `finally` runs unconditionally and must not contain `return`, `raise`, `break`, or `continue`. Bare `except:` and `try`/`except` `else` clauses are banned.
+
+### Lowering
+
+The `Exception` marker is erased. Exception classes become plain structs. `raise` becomes `throw`. `except` becomes `catch`. `except Exception` becomes an untyped catch-all.
+
+Python's `AssertionError` maps to Taytsh's `AssertError`. The IR also introduces `NilError` (thrown by `Unwrap` on nil) for runtime nil-safety checks that cannot be resolved statically — it has no source-language equivalent.
+
 ## Restricted Syntax
 
 ### Banned Constructs
@@ -120,10 +178,6 @@ A whitelist of builtins is available. Banned categories: runtime introspection (
 ### F-strings
 
 Conversion specifiers `!r` and `!s` are allowed (desugared to `repr()` and `str()` calls). Format specs (`:,.2f`) are not.
-
-### Exception Handling
-
-`except` clauses accept multiple exception types: `except (ValueError, KeyError) as e:`.
 
 ### Star Unpacking
 

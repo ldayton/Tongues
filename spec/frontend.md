@@ -44,7 +44,7 @@ Bidirectional type checker. Synthesis (bottom-up) infers the type of an expressi
 
 ### Lowering
 
-Pure translation pass from Python AST to typed Taytsh IR. Consumes pycheck's type map to make type-directed code generation decisions (operator dispatch, coercion insertion, truthiness expansion, method routing, etc.). Never infers types — only looks them up. Where Python's type semantics differ from the IR's, a thin adjustment layer translates between them (e.g. `string` → `rune` for character iteration, `bytes[i]` → `int`).
+Pure translation pass from Python AST to typed Taytsh IR. Consumes pycheck's type map to make type-directed code generation decisions (operator dispatch, coercion insertion, truthiness expansion, method routing, exception lowering, etc.). Never infers types — only looks them up. Where Python's type semantics differ from the IR's, a thin adjustment layer translates between them (e.g. `string` → `rune` for character iteration, `bytes[i]` → `int`).
 
 ## Phase Artifacts
 
