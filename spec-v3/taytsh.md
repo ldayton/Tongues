@@ -919,10 +919,12 @@ Interfaces and unions are distinct concepts. `Node` (an interface) and `Literal 
 
 ### Normalization rules
 
-1. **Flatten:** `A | (B | C)` → `A | B | C`
-2. **Deduplicate:** `A | A` → `A`
-3. **Single remaining:** if reduced to 1 type, it's that type (not a 1-element union)
-4. **Unordered:** `int | string` = `string | int`
+`|` is the join of a flat semilattice over types — associative, commutative, and idempotent. The four normalization rules follow directly:
+
+1. **Flatten (associativity):** `A | (B | C)` → `A | B | C`
+2. **Deduplicate (idempotence):** `A | A` → `A`
+3. **Single remaining (identity):** if reduced to 1 type, it's that type (not a 1-element union)
+4. **Unordered (commutativity):** `int | string` = `string | int`
 
 ### Zero values
 

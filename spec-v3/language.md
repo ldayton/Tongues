@@ -4,7 +4,7 @@ Tongues source files are valid Python. They execute unmodified with identical se
 
 ## Principles
 
-Every expression has exactly one concrete type. There is no top type, no `Any`, no partial generics like `list[any]`. Types are either declared in annotations or inferred from context, but never left ambiguous.
+Every expression has exactly one concrete type. The type lattice has no top element — there is no `Any`, no `object`-as-type, no partial generics like `list[any]`. Since every type is an atom or a finite union of atoms, there is nowhere for ambiguity to hide. Types are either declared in annotations or inferred from context.
 
 All dispatch is static. There is no dynamic attribute access, no reflection, no metaprogramming. Every method call and field access can be resolved at compile time.
 
@@ -74,7 +74,7 @@ Protocol methods are allowed: `__init__`, `__new__`, `__repr__`, `__str__`, `__e
 
 ### Narrowing
 
-Variables with optional, union, or interface types cannot be used until narrowed to a concrete type. Narrowing happens through:
+Type narrowing is flow-sensitive refinement: the type of a variable can differ at different program points. Each narrowing operation is a meet in the type lattice — it can only make a type more specific, never more general — so successive narrows compose safely. Variables with optional, union, or interface types cannot be used until narrowed to a concrete type. Narrowing happens through:
 
 - **isinstance**: `if isinstance(x, T)` narrows `x` to `T` in the then-branch and to the remaining union members in the else-branch. `isinstance(x, (A, B))` is equivalent to `isinstance(x, A) or isinstance(x, B)`.
 - **match/case**: Pattern matching narrows each case arm to the matched type. isinstance chains can be written as match statements.

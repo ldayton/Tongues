@@ -1,6 +1,6 @@
 # Middleend
 
-The middleend accepts a Taytsh Module from the frontend and annotates it with analysis results that backends need for idiomatic code generation. It does not transform the IR — the tree structure is unchanged on exit. Every pass reads the IR (and possibly annotations from prior passes) and writes new annotations under a namespaced key prefix. Annotations are write-once: no pass overwrites another's output.
+The middleend accepts a Taytsh Module from the frontend and annotates it with analysis results that backends need for idiomatic code generation. It does not transform the IR — the tree structure is unchanged on exit. Every pass reads the IR (and possibly annotations from prior passes) and writes new annotations under a namespaced key prefix. The annotation map is monotonically increasing over an information ordering — each pass can only add information, never retract it. This guarantees that independent passes commute and that analysis results are stable regardless of pass ordering.
 
 Passes are intra-procedural unless noted otherwise. Each pass processes every function and method independently.
 
@@ -46,7 +46,7 @@ Intra-procedural control flow analysis. Identifies blocks that always terminate 
 
 ### Liveness
 
-Intra-procedural dead store analysis. Identifies bindings whose initial value is overwritten on all paths before any read — letting backends skip the initializer. Identifies unused catch bindings, unused match bindings, and unused tuple assignment targets. Conservative: loops are assumed to execute zero times, so an assignment inside a loop does not kill the initial value.
+Backward must-analysis. Walks each function body from exits to entries, identifying bindings whose initial value is overwritten on all paths before any read — letting backends skip the initializer. Also identifies unused catch bindings, unused match bindings, and unused tuple assignment targets. Conservative: loops are assumed to execute zero times, so an assignment inside a loop does not kill the initial value.
 
 | Annotation                      | Type   | On           | Meaning                                         |
 | ------------------------------- | ------ | ------------ | ----------------------------------------------- |
@@ -59,7 +59,7 @@ Intra-procedural dead store analysis. Identifies bindings whose initial value is
 
 Intra-procedural string classification. Runs when the target set includes languages whose native string encoding is not rune-indexed (Go, Rust, C, Java, C#, JavaScript, TypeScript, Dart, Swift). Classifies every string binding's content (ASCII, BMP, or unknown) and tracks how it is used (indexed, iterated, length-checked). Detects the string builder pattern — a loop accumulating via `s = Concat(s, expr)` — so backends can emit `StringBuilder`/`strings.Builder`/etc.
 
-Content classification propagates through operations: concatenation of two ASCII strings is ASCII; case mapping preserves the content class; trimming never widens.
+Content classification forms a three-element lattice: `ascii ⊑ bmp ⊑ unknown`. Propagation through operations is the lattice join: concatenation of two ASCII strings is `ascii`; concatenation of ASCII and BMP is `bmp`. Every string operation is monotone — no operation can narrow the content class, only widen or preserve it.
 
 | Annotation           | Type   | On       | Meaning                                    |
 | -------------------- | ------ | -------- | ------------------------------------------ |
@@ -98,7 +98,7 @@ Depends on: `scope.*`, `liveness.*`.
 
 ### Call Graph (inter-procedural)
 
-The only inter-procedural pass. Builds a call graph across all functions and methods in the module, then processes strongly connected components in reverse topological order. Computes the transitive throw set for each function (what exception types it may throw), detects direct and mutual recursion via SCC analysis, and identifies tail calls.
+The only inter-procedural pass. Builds a call graph across all functions and methods in the module, then computes the least fixed point of a monotone function on the powerset lattice of exception types: `throw` and calls are joins (add types to the set), `try`/`catch` is a meet (removes types). Processing SCCs in reverse topological order guarantees convergence. Also detects direct and mutual recursion via SCC analysis and identifies tail calls.
 
 | Annotation                  | Type   | On        | Meaning                                          |
 | --------------------------- | ------ | --------- | ------------------------------------------------ |

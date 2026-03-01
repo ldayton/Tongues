@@ -40,7 +40,7 @@ Reads class bodies to extract the typed fields of each struct — their names, t
 
 ### Pycheck
 
-Validates that source code conforms to Tongues' type discipline: every expression must resolve to a fully concrete type with no top type, no partial generics, and no inference gaps. Enforces the semantic constraints that the subset's syntactic restrictions exist to enable — optionals must be narrowed before use, unions must be discriminated before member access, iterators must be eagerly consumed, and empty collections must be annotated. Its output is a total map from every expression to its concrete type.
+Bidirectional type checker. Synthesis (bottom-up) infers the type of an expression from its structure; checking (top-down) propagates an expected type into an expression from its context. This is why annotations are required at boundaries — parameters, returns, empty collections — but not at every expression: synthesis handles most cases, and checking fills in the rest. Enforces the semantic constraints that the subset's syntactic restrictions exist to enable — optionals must be narrowed before use, unions must be discriminated before member access, iterators must be eagerly consumed. Its output is a total map from every expression to its concrete type.
 
 ### Lowering
 
