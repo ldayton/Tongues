@@ -11,28 +11,28 @@ from tests.harness import (
     _TRANSPILED_MODULE,
     _run_inprocess,
     _transpiled_runtime,
-    discover_taytsh_apps,
+    discover_ty_apps,
     taytsh_parse,
     taytsh_run,
 )
 
 TESTS = {
-    "taytsh_app": {"dir": "23_ty_app", "run": "taytsh_app"},
+    "ty_app": {"dir": "23_ty_app", "run": "ty_app"},
 }
 
 
 def pytest_generate_tests(metafunc):
     for name, cfg in TESTS.items():
         test_dir = TESTS_DIR / cfg["dir"]
-        if cfg["run"] == "taytsh_app" and "taytsh_app" in metafunc.fixturenames:
-            apps = discover_taytsh_apps(test_dir)
+        if cfg["run"] == "ty_app" and "ty_app" in metafunc.fixturenames:
+            apps = discover_ty_apps(test_dir)
             params = [pytest.param(p, id=p.stem) for p in apps]
-            metafunc.parametrize("taytsh_app", params)
+            metafunc.parametrize("ty_app", params)
 
 
-def test_taytsh_app(taytsh_app: Path):
+def test_ty_app(ty_app: Path):
     if TRANSPILED_BINARY is not None:
-        argv = [TRANSPILED_BINARY, "taytsh", str(taytsh_app)]
+        argv = [TRANSPILED_BINARY, "taytsh", str(ty_app)]
         if _TRANSPILED_MODULE is not None:
             result = _run_inprocess(argv)
         else:
@@ -42,7 +42,7 @@ def test_taytsh_app(taytsh_app: Path):
             output = (result.stdout + result.stderr).decode(errors="replace").strip()
             pytest.fail(f"Exit code {result.returncode}:\n{output}")
         return
-    source = taytsh_app.read_text()
+    source = ty_app.read_text()
     module = taytsh_parse(source)
     result = taytsh_run(module)
     if result.exit_code != 0:

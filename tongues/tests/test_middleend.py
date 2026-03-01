@@ -13,23 +13,21 @@ from tests.harness import (
     run_returns,
     run_scope,
     run_strings,
-    run_taytsh_check,
-    run_taytsh_parse,
-    run_type_checking,
+    run_tycheck,
+    run_typarse,
 )
 
 # fmt: off
 TESTS = {
-    "taytsh_parse":  {"dir": "11_typarse",  "run": "phase"},
-    "taytsh_check":  {"dir": "12_tycheck",  "run": "phase", "glob": "[!l]*.tests"},
-    "type_checking": {"dir": "12_tycheck",  "run": "phase", "glob": "lowered_*.tests"},
-    "scope":         {"dir": "14_scope",    "run": "phase"},
-    "returns":       {"dir": "15_returns",  "run": "phase"},
-    "liveness":      {"dir": "16_liveness", "run": "phase"},
-    "strings":       {"dir": "17_strings",  "run": "phase"},
-    "hoisting":      {"dir": "18_hoisting", "run": "phase"},
-    "ownership":     {"dir": "19_ownership","run": "phase"},
-    "callgraph":     {"dir": "20_callgraph","run": "phase"},
+    "typarse":   {"dir": "11_typarse",  "run": "phase"},
+    "tycheck":   {"dir": "12_tycheck",  "run": "phase"},
+    "scope":     {"dir": "14_scope",    "run": "phase"},
+    "returns":   {"dir": "15_returns",  "run": "phase"},
+    "liveness":  {"dir": "16_liveness", "run": "phase"},
+    "strings":   {"dir": "17_strings",  "run": "phase"},
+    "hoisting":  {"dir": "18_hoisting", "run": "phase"},
+    "ownership": {"dir": "19_ownership","run": "phase"},
+    "callgraph": {"dir": "20_callgraph","run": "phase"},
 }
 # fmt: on
 
@@ -44,29 +42,21 @@ def pytest_generate_tests(metafunc):
             metafunc.parametrize(f"{fixture},{name}_expected", params)
 
 
-def test_taytsh_parse(taytsh_parse_input, taytsh_parse_expected):
+def test_typarse(typarse_input, typarse_expected):
     check_expected(
-        taytsh_parse_expected,
-        run_taytsh_parse(taytsh_parse_input),
-        "taytsh_parse",
+        typarse_expected,
+        run_typarse(typarse_input),
+        "typarse",
         lenient_errors=True,
     )
 
 
-def test_taytsh_check(taytsh_check_input, taytsh_check_expected):
+def test_tycheck(tycheck_input, tycheck_expected):
     check_expected(
-        taytsh_check_expected,
-        run_taytsh_check(taytsh_check_input),
-        "taytsh_check",
+        tycheck_expected,
+        run_tycheck(tycheck_input),
+        "tycheck",
         lenient_errors=True,
-    )
-
-
-def test_type_checking(type_checking_input, type_checking_expected):
-    check_expected(
-        type_checking_expected,
-        run_type_checking(type_checking_input),
-        "type_checking",
     )
 
 

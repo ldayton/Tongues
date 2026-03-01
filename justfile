@@ -90,7 +90,7 @@ test-ordering-local:
 
 # Run taytsh tests locally
 test-taytsh-local:
-    uv run --directory tongues pytest tests/test_middleend.py -k "test_taytsh" tests/test_ty_app.py tests/test_taytsh_vm.py -v
+    uv run --directory tongues pytest tests/test_middleend.py -k "test_typarse or test_tycheck" tests/test_ty_app.py tests/test_taytsh_vm.py -v
 
 # Run generative type-checker tests locally
 test-tycheck-gen-local:

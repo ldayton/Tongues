@@ -821,22 +821,6 @@ def run_pycheck(source: str) -> PhaseResult:
     return PhaseResult(reveals=inf_result.reveals())
 
 
-def run_type_checking(source: str) -> PhaseResult:
-    """Run the Taytsh type checker on Taytsh source."""
-    if TRANSPILED_BINARY is not None:
-        return _run_transpiled(
-            source, ["--stop-at", "check"], is_taytsh=True, expect_json=False
-        )
-    try:
-        module = taytsh_parse(source)
-    except Exception as e:
-        return PhaseResult(errors=[str(e)])
-    errors, checker = check_with_info(module)
-    if errors:
-        return PhaseResult(errors=[str(e) for e in errors])
-    return PhaseResult()
-
-
 def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
     """Lower Python source to Taytsh text. Returns (output, error)."""
     lib_names = _find_lib_imports(source)
@@ -1030,7 +1014,7 @@ def run_callgraph(source: str) -> PhaseResult:
     return PhaseResult(data=serialize_callgraph(module, checker))
 
 
-def run_taytsh_parse(source: str) -> PhaseResult:
+def run_typarse(source: str) -> PhaseResult:
     if TRANSPILED_BINARY is not None:
         return _run_transpiled(source, ["--stop-at", "parse"], is_taytsh=True)
     try:
@@ -1048,7 +1032,7 @@ def run_taytsh_parse(source: str) -> PhaseResult:
         signal.alarm(0)
 
 
-def run_taytsh_check(source: str) -> PhaseResult:
+def run_tycheck(source: str) -> PhaseResult:
     if TRANSPILED_BINARY is not None:
         return _run_transpiled(
             source, ["--stop-at", "check"], is_taytsh=True, expect_json=False
@@ -1065,7 +1049,7 @@ def run_taytsh_check(source: str) -> PhaseResult:
         signal.alarm(0)
 
 
-def discover_taytsh_apps(test_dir: Path) -> list[Path]:
+def discover_ty_apps(test_dir: Path) -> list[Path]:
     return sorted(test_dir.glob("*.ty"))
 
 

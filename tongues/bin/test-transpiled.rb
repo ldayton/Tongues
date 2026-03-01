@@ -14,7 +14,7 @@ TESTS_DIR = File.join(TONGUES_DIR, "tests")
 LIB_DIR = File.join(TONGUES_DIR, "src", "lib")
 
 # Phase → test config: [dir, runner, is_taytsh, cli_args, expect_json]
-# Runners: :cli, :phase, :lowering, :codegen, :emit, :app, :ordering, :taytsh_app
+# Runners: :cli, :phase, :lowering, :codegen, :emit, :app, :ordering, :ty_app
 TESTS = {
   "cli" => {
     "cli" => { dir: "02_cli", run: :cli },
@@ -30,7 +30,6 @@ TESTS = {
     "lowering"  => { dir: "10_lowering",    run: :lowering },
   },
   "middleend" => {
-    "type_checking" => { dir: "12_tycheck", run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false, glob: "lowered_*.tests" },
     "scope"         => { dir: "14_scope",          run: :phase, taytsh: true, args: ["--stop-at", "scope"],     json: true  },
     "returns"       => { dir: "15_returns",        run: :phase, taytsh: true, args: ["--stop-at", "returns"],   json: true  },
     "liveness"      => { dir: "16_liveness",       run: :phase, taytsh: true, args: ["--stop-at", "liveness"],  json: true  },
@@ -46,9 +45,9 @@ TESTS = {
     "ordering" => { dir: "24_ordering", run: :ordering },
   },
   "taytsh" => {
-    "taytsh_parse" => { dir: "11_typarse",  run: :phase, taytsh: true, args: ["--stop-at", "parse"], json: true  },
-    "taytsh_check" => { dir: "12_tycheck",  run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false, glob: "[!l]*.tests" },
-    "taytsh_app"   => { dir: "23_ty_app",   run: :taytsh_app },
+    "typarse" => { dir: "11_typarse",  run: :phase, taytsh: true, args: ["--stop-at", "parse"], json: true  },
+    "tycheck" => { dir: "12_tycheck",  run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false },
+    "ty_app"  => { dir: "23_ty_app",   run: :ty_app },
   },
 }
 
@@ -499,7 +498,7 @@ def run_phase_tests(test_dir, phase_name, cfg)
     stem = File.basename(f, ".tests")
     parse_spec_file(f).each do |name, input, expected|
       test_id = "#{stem}/#{name}"
-      lenient = %w[parse pycheck taytsh_parse taytsh_check].include?(phase_name)
+      lenient = %w[parse pycheck typarse tycheck].include?(phase_name)
       phase_result = run_transpiled_phase(
         input, cfg[:args],
         is_taytsh: cfg[:taytsh],
@@ -739,7 +738,7 @@ def run_app_tests(test_dir)
   results
 end
 
-def run_taytsh_app_tests(test_dir)
+def run_ty_app_tests(test_dir)
   results = []
   Dir.glob(File.join(test_dir, "*.ty")).sort.each do |test_file|
     stem = File.basename(test_file, ".ty")
@@ -836,8 +835,8 @@ TESTS.each do |section_name, phases|
                       run_emit_tests(test_dir)
                     when :app
                       run_app_tests(test_dir)
-                    when :taytsh_app
-                      run_taytsh_app_tests(test_dir)
+                    when :ty_app
+                      run_ty_app_tests(test_dir)
                     when :ordering
                       run_ordering_tests(test_dir)
                     else

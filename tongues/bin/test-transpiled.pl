@@ -19,7 +19,7 @@ my $TESTS_DIR = File::Spec->catdir($TONGUES_DIR, "tests");
 my $LIB_DIR = File::Spec->catdir($TONGUES_DIR, "src", "lib");
 
 # Phase -> test config
-# Runners: cli, phase, lowering, codegen, emit, app, ordering, taytsh_app
+# Runners: cli, phase, lowering, codegen, emit, app, ordering, ty_app
 my @TESTS = (
     ["cli", [
         ["cli", { dir => "02_cli", run => "cli" }],
@@ -35,7 +35,6 @@ my @TESTS = (
         ["lowering",  { dir => "10_lowering",    run => "lowering" }],
     ]],
     ["middleend", [
-        ["type_checking", { dir => "12_tycheck", run => "phase", taytsh => 1, args => ["--stop-at", "check"], json => 0, glob => "lowered_*.tests" }],
         ["scope",         { dir => "14_scope",          run => "phase", taytsh => 1, args => ["--stop-at", "scope"],     json => 1  }],
         ["returns",       { dir => "15_returns",        run => "phase", taytsh => 1, args => ["--stop-at", "returns"],   json => 1  }],
         ["liveness",      { dir => "16_liveness",       run => "phase", taytsh => 1, args => ["--stop-at", "liveness"],  json => 1  }],
@@ -51,9 +50,9 @@ my @TESTS = (
         ["ordering", { dir => "24_ordering", run => "ordering" }],
     ]],
     ["taytsh", [
-        ["taytsh_parse", { dir => "11_typarse",  run => "phase", taytsh => 1, args => ["--stop-at", "parse"], json => 1  }],
-        ["taytsh_check", { dir => "12_tycheck",  run => "phase", taytsh => 1, args => ["--stop-at", "check"], json => 0, glob => "[!l]*.tests" }],
-        ["taytsh_app",   { dir => "23_ty_app",   run => "taytsh_app" }],
+        ["typarse", { dir => "11_typarse",  run => "phase", taytsh => 1, args => ["--stop-at", "parse"], json => 1  }],
+        ["tycheck", { dir => "12_tycheck",  run => "phase", taytsh => 1, args => ["--stop-at", "check"], json => 0  }],
+        ["ty_app",  { dir => "23_ty_app",   run => "ty_app" }],
     ]],
 );
 
@@ -621,7 +620,7 @@ sub run_phase_tests ($test_dir, $phase_name, $cfg) {
         for my $t (@$tests) {
             my ($name, $input, $expected) = @$t;
             my $test_id = "$stem/$name";
-            my $lenient = ($phase_name =~ /^(parse|pycheck|taytsh_parse|taytsh_check)$/);
+            my $lenient = ($phase_name =~ /^(parse|pycheck|typarse|tycheck)$/);
             my $phase_result = run_transpiled_phase(
                 $input, $cfg->{args},
                 is_taytsh => $cfg->{taytsh},
@@ -890,7 +889,7 @@ sub run_app_tests ($test_dir) {
     return \@results;
 }
 
-sub run_taytsh_app_tests ($test_dir) {
+sub run_ty_app_tests ($test_dir) {
     my @results;
     for my $test_file (sort glob("$test_dir/*.ty")) {
         my $stem = basename($test_file, ".ty");
@@ -1004,8 +1003,8 @@ for my $section (@TESTS) {
             $phase_results = run_emit_tests($test_dir);
         } elsif ($runner eq "app") {
             $phase_results = run_app_tests($test_dir);
-        } elsif ($runner eq "taytsh_app") {
-            $phase_results = run_taytsh_app_tests($test_dir);
+        } elsif ($runner eq "ty_app") {
+            $phase_results = run_ty_app_tests($test_dir);
         } elsif ($runner eq "ordering") {
             $phase_results = run_ordering_tests($test_dir);
         } else {
