@@ -1020,7 +1020,9 @@ class _BuiltinDispatch:
         if len(args) == 1 and isinstance(a, (VList, VTuple)):
             items = a.items
             if len(items) == 0:
-                raise _VMThrow(_make_error_struct("ValueError", "min() arg is an empty sequence"))
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "min() arg is an empty sequence")
+                )
             best = items[0]
             i = 1
             while i < len(items):
@@ -1042,7 +1044,9 @@ class _BuiltinDispatch:
         if len(args) == 1 and isinstance(a, (VList, VTuple)):
             items = a.items
             if len(items) == 0:
-                raise _VMThrow(_make_error_struct("ValueError", "max() arg is an empty sequence"))
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "max() arg is an empty sequence")
+                )
             best = items[0]
             i = 1
             while i < len(items):
