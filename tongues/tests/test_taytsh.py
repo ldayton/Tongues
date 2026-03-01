@@ -12,8 +12,8 @@ from tests.harness import (
 
 # fmt: off
 TESTS = {
-    "typarse": {"dir": "11_typarse", "run": "phase"},
-    "tycheck": {"dir": "12_tycheck", "run": "phase"},
+    "typarse": {"dir": "taytsh/typarse", "run": "phase"},
+    "tycheck": {"dir": "taytsh/tycheck", "run": "phase"},
 }
 # fmt: on
 

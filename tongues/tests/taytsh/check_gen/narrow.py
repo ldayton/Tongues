@@ -76,8 +76,8 @@ from src.taytsh.check import (
 )
 
 
-from tests.tycheck_gen.types import make_ttype
-from tests.tycheck_gen.ast_helpers import (
+from tests.taytsh.check_gen.types import make_ttype
+from tests.taytsh.check_gen.ast_helpers import (
     P,
     A,
     var as _var,

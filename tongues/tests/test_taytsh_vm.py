@@ -7,7 +7,7 @@ import pytest
 from src.taytsh import parse
 from src.taytsh.vm import vm_run
 
-APP_DIR = Path(__file__).parent / "23_ty_app"
+APP_DIR = Path(__file__).parent / "taytsh" / "app"
 
 
 def _run_ty(source: str) -> tuple[int, str, str]:

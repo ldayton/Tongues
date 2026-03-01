@@ -17,13 +17,13 @@ from tests.harness import (
 
 # fmt: off
 TESTS = {
-    "scope":     {"dir": "14_scope",    "run": "phase"},
-    "returns":   {"dir": "15_returns",  "run": "phase"},
-    "liveness":  {"dir": "16_liveness", "run": "phase"},
-    "strings":   {"dir": "17_strings",  "run": "phase"},
-    "hoisting":  {"dir": "18_hoisting", "run": "phase"},
-    "ownership": {"dir": "19_ownership","run": "phase"},
-    "callgraph": {"dir": "20_callgraph","run": "phase"},
+    "scope":     {"dir": "middleend/scope",    "run": "phase"},
+    "returns":   {"dir": "middleend/returns",  "run": "phase"},
+    "liveness":  {"dir": "middleend/liveness", "run": "phase"},
+    "strings":   {"dir": "middleend/strings",  "run": "phase"},
+    "hoisting":  {"dir": "middleend/hoisting", "run": "phase"},
+    "ownership": {"dir": "middleend/ownership","run": "phase"},
+    "callgraph": {"dir": "middleend/callgraph","run": "phase"},
 }
 # fmt: on
 
