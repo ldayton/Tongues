@@ -2213,7 +2213,7 @@ class Runtime:
             if isinstance(left, VString) and isinstance(right, VString):
                 return VBool(_cmp_str(op, left.value, right.value))
             if isinstance(left, VBytes) and isinstance(right, VBytes):
-                return VBool(_cmp_str(op, left.value, right.value))
+                return VBool(_cmp_bytes(op, left.value, right.value))
             if isinstance(left, VTuple) and isinstance(right, VTuple):
                 return VBool(_cmp_tuples(op, left, right))
             if isinstance(left, VList) and isinstance(right, VList):
@@ -2361,6 +2361,16 @@ def _cmp_float(op: str, a: float, b: float) -> bool:
 
 
 def _cmp_str(op: str, a: str, b: str) -> bool:
+    if op == "<":
+        return a < b
+    if op == "<=":
+        return a <= b
+    if op == ">":
+        return a > b
+    return a >= b
+
+
+def _cmp_bytes(op: str, a: bytes, b: bytes) -> bool:
     if op == "<":
         return a < b
     if op == "<=":
@@ -3378,7 +3388,7 @@ def _bi_is_type(rt: Runtime, args: list[Value]) -> Value:
                 break
         return VBool(False)
     if isinstance(v, VEnum):
-        return VBool(v.typ.kind == type_name)
+        return VBool(v.enum_name == type_name)
     if isinstance(v, VInt):
         return VBool(type_name == "int")
     if isinstance(v, VFloat):
