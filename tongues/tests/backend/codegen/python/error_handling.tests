@@ -29,6 +29,15 @@ except (ErrA, ErrB) as e:
 === catch union of types
 except (ErrA, ErrB) as e:
 
+=== throw bare Exception
+raise Exception("something went wrong")
+
+=== throw builtin ValueError
+raise ValueError("bad input")
+
+=== catch builtin ValueError
+except ValueError as e:
+
 === Assert with message
 assert x > 0, "must be positive"
 

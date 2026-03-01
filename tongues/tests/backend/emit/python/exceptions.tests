@@ -1,2 +1,11 @@
 === user-defined exception class
 class ParseError(Exception):
+
+=== raise bare Exception
+raise Exception("something went wrong")
+
+=== raise ValueError
+raise ValueError("bad input")
+
+=== catch bare Exception
+except Exception:

@@ -137,6 +137,32 @@ fn Main() -> void {
     }
 }
 
+=== throw bare Exception
+fn Fail() -> void {
+    throw Exception("something went wrong")
+}
+fn Main() -> void {
+    try {
+        Fail()
+    } catch e: Exception {
+        WritelnOut(e.message)
+    }
+}
+
+=== throw builtin ValueError
+fn Main() -> void {
+    throw ValueError("bad input")
+}
+
+=== catch builtin ValueError
+fn Main() -> void {
+    try {
+        ParseInt("x", 10)
+    } catch e: ValueError {
+        WritelnOut(e.message)
+    }
+}
+
 === Assert with message
 fn Main() -> void {
     let x: int = 42

@@ -93,6 +93,7 @@ try {
 The following error structs are part of the language — available in every program without explicit declaration. Built-in operations that can fail throw these types. User-defined structs that are thrown are ordinary structs; the IR draws no distinction between "error structs" and other structs.
 
 ```
+struct Exception { message: string }
 struct KeyError { message: string }
 struct IndexError { message: string }
 struct ZeroDivisionError { message: string }
@@ -104,6 +105,7 @@ struct IOError { message: string }
 
 | Error               | Thrown by                                                                                 |
 | ------------------- | ----------------------------------------------------------------------------------------- |
+| `Exception`         | generic exception; explicit `throw` only                                                  |
 | `KeyError`          | map indexing with missing key                                                             |
 | `IndexError`        | out-of-bounds index or slice, `Pop` on empty list                                         |
 | `ZeroDivisionError` | int or byte `/` or `%` with zero divisor                                                  |

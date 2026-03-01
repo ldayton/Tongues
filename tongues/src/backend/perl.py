@@ -1698,6 +1698,8 @@ class _PerlEmitter(Emitter):
         return fn_expr + "->(" + arg_strs2 + ")"
 
     def _struct_call(self, name: str, args: list[TArg]) -> str:
+        if name in BUILTIN_STRUCTS and name not in self.struct_fields:
+            return self._builtin_error_call(name, args)
         ordered = self.struct_fields.get(name, [])
         if not args:
             return name + "->new()"
@@ -1713,6 +1715,18 @@ class _PerlEmitter(Emitter):
         for fld in ordered:
             vals2.append(named.get(fld, "undef"))
         return name + "->new(" + ", ".join(vals2) + ")"
+
+    def _builtin_error_call(self, name: str, args: list[TArg]) -> str:
+        fields = list(BUILTIN_STRUCTS[name].keys())
+        pairs: list[str] = []
+        for i, a in enumerate(args):
+            fname = (
+                a.name
+                if a.name is not None
+                else (fields[i] if i < len(fields) else str(i))
+            )
+            pairs.append(fname + " => " + self._expr(a.value))
+        return "bless({" + ", ".join(pairs) + "}, '" + name + "')"
 
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         method = func.field

@@ -198,6 +198,7 @@ _RUBY_BUILTINS = frozenset(
 )
 
 _EXCEPTION_MAP: dict[str, str] = {
+    "Exception": "StandardError",
     "ValueError": "ArgumentError",
     "KeyError": "KeyError",
     "IndexError": "IndexError",
@@ -205,6 +206,10 @@ _EXCEPTION_MAP: dict[str, str] = {
     "AssertError": "RuntimeError",
     "NilError": "RuntimeError",
     "IOError": "IOError",
+    "BaseException": "StandardError",
+    "TypeError": "TypeError",
+    "NotImplementedError": "NotImplementedError",
+    "RuntimeError": "RuntimeError",
 }
 
 
@@ -1648,7 +1653,8 @@ class _RubyEmitter(Emitter):
                 parts.append(_safe_name(fields[i]) + ": " + self._expr(a.value))
             else:
                 parts.append(self._expr(a.value))
-        return _safe_type_name(name) + ".new(" + ", ".join(parts) + ")"
+        rname = _EXCEPTION_MAP.get(name, _safe_type_name(name))
+        return rname + ".new(" + ", ".join(parts) + ")"
 
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         obj_str = self._expr(func.obj)

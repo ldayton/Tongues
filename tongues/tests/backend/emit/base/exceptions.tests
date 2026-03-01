@@ -18,3 +18,27 @@ def main() -> None:
     sys.stdout.buffer.write(result.encode())
 if __name__ == "__main__":
     main()
+
+=== raise bare Exception
+def main() -> None:
+    raise Exception("something went wrong")
+if __name__ == "__main__":
+    main()
+
+=== raise ValueError
+def main() -> None:
+    raise ValueError("bad input")
+if __name__ == "__main__":
+    main()
+
+=== catch bare Exception
+import sys
+def risky() -> str:
+    raise Exception("boom")
+def main() -> None:
+    try:
+        risky()
+    except Exception:
+        sys.stdout.buffer.write(b"caught")
+if __name__ == "__main__":
+    main()

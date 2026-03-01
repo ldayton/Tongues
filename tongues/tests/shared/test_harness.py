@@ -295,7 +295,9 @@ def resolve_dotpath(
                 return JsonNumber(float(len(current.items)))
             if isinstance(current, JsonString):
                 return JsonNumber(float(len(current.value)))
-            raise Exception("length on non-array/string")
+            if isinstance(current, JsonObject):
+                return JsonNumber(float(len(current.entries)))
+            raise Exception("length on non-array/string/object")
         if isinstance(current, JsonArray):
             idx: int = int(part)
             current = current.items[idx]

@@ -33,6 +33,15 @@ rescue ErrA, ErrB => e
 === catch union of types
 rescue ErrA, ErrB => e
 
+=== throw bare Exception
+raise StandardError.new("something went wrong")
+
+=== throw builtin ValueError
+raise ArgumentError.new("bad input")
+
+=== catch builtin ValueError
+rescue ArgumentError => e
+
 === Assert with message
 raise "must be positive" unless x > 0
 
