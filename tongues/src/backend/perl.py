@@ -308,7 +308,7 @@ class _PerlEmitter(Emitter):
         self.local_names: set[str] = set()
         self.fn_ret: dict[str, TType] = {}
 
-    def _tmp(self, prefix: str = "__t") -> str:
+    def _tmp(self, prefix: str) -> str:
         name = "$" + prefix + str(self.tmp_counter)
         self.tmp_counter += 1
         return name

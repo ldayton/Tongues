@@ -1631,19 +1631,19 @@ class _PythonEmitter(Emitter):
         arg_strs = self._join_args(args, ", ")
         return name + "(" + arg_strs + ")"
 
-    def _join_args(self, args: list[TArg], sep: str = ", ") -> str:
+    def _join_args(self, args: list[TArg], sep: str) -> str:
         parts: list[str] = []
         for a in args:
             parts.append(self._expr(a.value))
         return sep.join(parts)
 
-    def _join_exprs(self, exprs: list[TExpr], sep: str = ", ") -> str:
+    def _join_exprs(self, exprs: list[TExpr], sep: str) -> str:
         parts: list[str] = []
         for e in exprs:
             parts.append(self._expr(e))
         return sep.join(parts)
 
-    def _join_types(self, types: list[TType], sep: str = ", ") -> str:
+    def _join_types(self, types: list[TType], sep: str) -> str:
         parts: list[str] = []
         for t in types:
             parts.append(self._type(t))

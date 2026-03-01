@@ -788,7 +788,7 @@ def _is_non_zero_default(dv: TypeNode | None) -> bool:
     if isinstance(dv, NilLit):
         return False
     if isinstance(dv, BoolLit):
-        return dv.value is not False
+        return dv.value
     if isinstance(dv, IntLit):
         return dv.value != 0
     if isinstance(dv, FloatLit):
