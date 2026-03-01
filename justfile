@@ -1,21 +1,21 @@
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
-# Quick pre-push check: lint, fmt, subset, test-local
-prep:
+# Quick pre-push check: style + test (--fix to auto-fix style)
+prep *ARGS:
     #!/usr/bin/env bash
     log=/tmp/tongues-prep-$(date +%s).log
     rc=0
-    { just _lint-fmt-subset && just test-local; } 2>&1 | tee "$log" || rc=$?
+    { just style {{ARGS}} && just test; } 2>&1 | tee "$log" || rc=$?
     echo "$log"
     exit $rc
 
-# Run lint, fmt, subset in parallel
-_lint-fmt-subset:
+# Run lint, fmt, subset in parallel (--fix to auto-fix)
+style *ARGS:
     #!/usr/bin/env bash
     set -uo pipefail
-    pids=() results=()
-    just lint & pids+=($!)
-    just fmt & pids+=($!)
+    pids=()
+    just lint {{ARGS}} & pids+=($!)
+    just fmt {{ARGS}} & pids+=($!)
     just subset & pids+=($!)
     failed=0
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
@@ -36,65 +36,73 @@ subset:
     done
     exit $failed
 
-# Run all frontend tests locally (cli, parse, subset, names, sigs, fields, hierarchy, inference, lowering)
-test-frontend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_cli or test_parse or test_subset or test_names or test_sigs or test_fields or test_hierarchy or test_inference or test_lowering" -v -n auto
+# Run all frontend tests (cli, parse, subset, names, sigs, fields, hierarchy, pycheck, lowering, linker)
+test-frontend:
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py -v -n auto
 
-# Run CLI tests locally
-test-cli-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_cli -v
+# Run CLI tests
+test-cli:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_cli -v
 
-# Run parse tests locally
-test-parse-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_parse -v
+# Run parse tests
+test-parse:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_parse -v
 
-# Run subset tests locally
-test-subset-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_subset -v
+# Run subset tests
+test-subset:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_subset -v
 
-# Run names tests locally
-test-names-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_names -v
+# Run names tests
+test-names:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_names -v
 
-# Run signatures tests locally
-test-signatures-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_sigs -v
+# Run signatures tests
+test-signatures:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_sigs -v
 
-# Run fields tests locally
-test-fields-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_fields -v
+# Run fields tests
+test-fields:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_fields -v
 
-# Run hierarchy tests locally
-test-hierarchy-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
+# Run hierarchy tests
+test-hierarchy:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_hierarchy -v
 
-# Run pycheck tests locally
-test-pycheck-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_pycheck -v
+# Run pycheck tests
+test-pycheck:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_pycheck -v
 
-# Run lowering tests locally
-test-lowering-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
+# Run lowering tests
+test-lowering:
+    uv run --directory tongues pytest tests/test_frontend.py -k test_lowering -v
 
-# Run all middleend tests locally (type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph, taytsh, tycheck-gen)
-test-middleend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto
+# Run linker tests
+test-linker:
+    uv run --directory tongues pytest tests/test_frontend_linker.py -v
 
-# Run backend tests (codegen + apptests) locally
-test-backend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v -n auto
+# Run all middleend tests (scope, returns, liveness, strings, hoisting, ownership, callgraph)
+test-middleend:
+    uv run --directory tongues pytest tests/test_middleend.py -v -n auto
 
-# Run declaration ordering tests locally
-test-ordering-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_ordering -v
+# Run all taytsh tests (typarse, tycheck, app, vm, gen-check)
+test-taytsh:
+    uv run --directory tongues pytest tests/test_taytsh.py tests/test_taytsh_app.py tests/test_taytsh_vm.py tests/test_taytsh_gen_check.py -v
 
-# Run taytsh tests locally
-test-taytsh-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" tests/test_taytsh_vm.py -v
+# Run generative type-checker tests
+test-tycheck-gen:
+    uv run --directory tongues pytest tests/test_taytsh_gen_check.py -v
 
-# Run generative type-checker tests locally
-test-tycheck-gen-local:
-    uv run --directory tongues pytest tests/test_tycheck_gen.py -v
+# Run backend tests (codegen + apptests)
+test-backend:
+    uv run --directory tongues pytest tests/test_backend_codegen.py tests/test_backend_target.py -v -n auto
+
+# Run declaration ordering tests
+test-ordering:
+    uv run --directory tongues pytest tests/test_backend_target.py -k test_ordering -v
+
+# Run softfloat library tests
+test-lib:
+    uv run --directory tongues pytest tests/test_lib_softfloat.py -v
 
 # Lint (--fix to apply changes)
 lint *ARGS:
@@ -103,33 +111,10 @@ lint *ARGS:
 # Format (--fix to apply changes)
 fmt *ARGS:
     uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
-
-check:
-    #!/usr/bin/env bash
-    declare -A results
-    failed=0
-    just fmt && results[fmt]=✅ || { results[fmt]=❌; failed=1; }
-    just lint && results[lint]=✅ || { results[lint]=❌; failed=1; }
-    just subset && results[subset]=✅ || { results[subset]=❌; failed=1; }
-    just test-frontend && results[frontend]=✅ || { results[frontend]=❌; failed=1; }
-    just test-middleend && results[middleend]=✅ || { results[middleend]=❌; failed=1; }
-    just test-backend && results[backend]=✅ || { results[backend]=❌; failed=1; }
-    echo ""
-    echo "══════════════════════════════════════"
-    echo "           CHECK SUMMARY"
-    echo "══════════════════════════════════════"
-    printf "%-14s %s\n" "TARGET" "STATUS"
-    printf "%-14s %s\n" "──────" "──────"
-    for t in fmt lint subset frontend middleend backend; do
-        printf "%-14s %s\n" "$t" "${results[$t]}"
-    done
-    echo "══════════════════════════════════════"
-    if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
-    echo "══════════════════════════════════════"
-    exit $failed
+    npx prettier {{ if ARGS == "--fix" { "--write" } else { "--check" } }} spec/*.md
 
 # Self-transpile: emit to .out/tongues.{ext}
-self-transpile target="python":
+_self-transpile target="python":
     #!/usr/bin/env bash
     set -euo pipefail
     declare -A ext=([python]=py [ruby]=rb [perl]=pl)
@@ -139,60 +124,34 @@ self-transpile target="python":
         uv run python3 -c "import ast; ast.parse(open('.out/tongues.py').read())"
     fi
 
-# Run test suite against a transpiled binary locally
-test-transpiled-local target="python":
+# Self-transpile and test against transpiled Python binary
+lang-python:
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
-    case "{{target}}" in
-        python)
-            uv run --directory tongues pytest tests/test_runner.py \
-                --transpiled ".out/tongues.${ext[{{target}}]}" -v
-            ;;
-        ruby)
-            cd tongues && ruby bin/test-transpiled.rb ".out/tongues.rb"
-            ;;
-        perl)
-            cd tongues && perl bin/test-transpiled.pl ".out/tongues.pl"
-            ;;
-        *)
-            echo "No native test harness for {{target}}, falling back to pytest"
-            uv run --directory tongues pytest tests/test_runner.py \
-                --transpiled ".out/tongues.${ext[{{target}}]}" -v
-            ;;
-    esac
+    just _self-transpile python
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
+        tests/test_frontend_linker.py \
+        --transpiled ".out/tongues.py" -v
 
-# Run test suite against a transpiled binary in Docker
-test-transpiled target="python":
+# Self-transpile and test against transpiled Ruby binary
+lang-ruby:
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
-    docker build -t tongues-{{target}} docker/{{target}}
-    docker run --rm -v "$(pwd):/workspace" tongues-{{target}} \
-        uv run --directory tongues pytest tests/test_runner.py \
-        --transpiled ".out/tongues.${ext[{{target}}]}" -v
+    just _self-transpile ruby
+    cd tongues && ruby bin/test-transpiled.rb ".out/tongues.rb"
 
-# Build Docker image for a language
-docker-build lang:
+# Self-transpile and test against transpiled Perl binary
+lang-perl:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _self-transpile perl
+    cd tongues && perl bin/test-transpiled.pl ".out/tongues.pl"
+
+# Run a just target inside Docker
+docker target lang="python":
     docker build -t tongues-{{lang}} docker/{{lang}}
-
-# Run all frontend tests in Docker
-test-frontend:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_cli or test_parse or test_subset or test_names or test_sigs or test_fields or test_hierarchy or test_inference or test_lowering" -v
-
-# Run all middleend tests in Docker
-test-middleend:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
-
-# Run backend tests (codegen + apptests) in Docker
-test-backend:
-    docker build -t tongues-python docker/python
-    docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
+    docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} just {{target}}
 
 # Check if formatters are installed
 formatters:
@@ -262,35 +221,36 @@ versions:
     check "zig"        "0.14"  "brew zig@0.14"      "brew zig@0.14"      "zig version | grep -oE '[0-9]+\.[0-9]+'"
     exit $failed
 
-# Run all tests in Docker
-test: test-frontend test-middleend test-backend self-transpile test-transpiled (self-transpile "ruby") (test-transpiled "ruby") (self-transpile "perl") (test-transpiled "perl")
-
-# Run all tests locally (requires matching runtime versions)
-test-local:
+# Run all tests (requires matching runtime versions)
+test:
     #!/usr/bin/env bash
     declare -A results
     failed=0
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
-    uv run --directory tongues pytest tests/test_runner.py tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto \
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
+        tests/test_middleend.py tests/test_taytsh.py tests/test_taytsh_app.py \
+        tests/test_taytsh_vm.py tests/test_taytsh_gen_check.py \
+        tests/test_backend_codegen.py tests/test_backend_target.py \
+        tests/test_lib_softfloat.py -v -n auto \
         && results[tests]=✅ || { results[tests]=❌; failed=1; }
     # Self-transpile + test all three targets in parallel
     _st() {
         local lang=$1
-        just self-transpile "$lang" && just test-transpiled-local "$lang"
+        just "lang-$lang"
     }
     _st python & pid_py=$!
     _st ruby & pid_rb=$!
     _st perl & pid_pl=$!
-    wait $pid_py && results[transpiled-py]=✅ || { results[transpiled-py]=❌; failed=1; }
-    wait $pid_rb && results[transpiled-rb]=✅ || { results[transpiled-rb]=❌; failed=1; }
-    wait $pid_pl && results[transpiled-pl]=✅ || { results[transpiled-pl]=❌; failed=1; }
+    wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
+    wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
+    wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
-    echo "         TEST-LOCAL SUMMARY"
+    echo "           TEST SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions tests transpiled-py transpiled-rb transpiled-pl; do
+    for t in versions tests lang-python lang-ruby lang-perl; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

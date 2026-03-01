@@ -14,10 +14,13 @@ TESTS_DIR = File.join(TONGUES_DIR, "tests")
 LIB_DIR = File.join(TONGUES_DIR, "src", "lib")
 
 # Phase → test config: [dir, runner, is_taytsh, cli_args, expect_json]
-# Runners: :cli, :phase, :lowering, :codegen, :emit, :app, :ordering, :taytsh_app
+# Runners: :cli, :linker, :phase, :lowering, :codegen, :emit, :app, :ordering, :ty_app
 TESTS = {
   "cli" => {
     "cli" => { dir: "02_cli", run: :cli },
+  },
+  "linker" => {
+    "linker" => { dir: "03a_linker", run: :linker },
   },
   "frontend" => {
     "parse"     => { dir: "03_parse",      run: :phase, taytsh: false, args: ["--stop-at", "parse"],      json: true  },
@@ -30,7 +33,6 @@ TESTS = {
     "lowering"  => { dir: "10_lowering",    run: :lowering },
   },
   "middleend" => {
-    "type_checking" => { dir: "13_type_checking", run: :phase, taytsh: true, args: ["--stop-at", "check"],     json: false },
     "scope"         => { dir: "14_scope",          run: :phase, taytsh: true, args: ["--stop-at", "scope"],     json: true  },
     "returns"       => { dir: "15_returns",        run: :phase, taytsh: true, args: ["--stop-at", "returns"],   json: true  },
     "liveness"      => { dir: "16_liveness",       run: :phase, taytsh: true, args: ["--stop-at", "liveness"],  json: true  },
@@ -46,9 +48,9 @@ TESTS = {
     "ordering" => { dir: "24_ordering", run: :ordering },
   },
   "taytsh" => {
-    "taytsh_parse" => { dir: "11_taytsh_parse", run: :phase, taytsh: true, args: ["--stop-at", "parse"], json: true  },
-    "taytsh_check" => { dir: "12_taytsh_check", run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false },
-    "taytsh_app"   => { dir: "23_taytsh_app",   run: :taytsh_app },
+    "typarse" => { dir: "11_typarse",  run: :phase, taytsh: true, args: ["--stop-at", "parse"], json: true  },
+    "tycheck" => { dir: "12_tycheck",  run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false },
+    "ty_app"  => { dir: "23_ty_app",   run: :ty_app },
   },
 }
 
@@ -492,13 +494,115 @@ def run_cli_tests(test_dir)
   results
 end
 
-def run_phase_tests(test_dir, phase_name, cfg)
+def parse_linker_test_file(path)
+  lines = File.read(path).split("\n")
+  result = []
+  i = 0
+  while i < lines.length
+    if lines[i].start_with?("=== ")
+      test_name = lines[i][4..].strip
+      i += 1
+      input_lines = []
+      while i < lines.length && !lines[i].start_with?("---")
+        input_lines << lines[i]
+        i += 1
+      end
+      i += 1 if i < lines.length && lines[i] == "---"
+      expected_lines = []
+      while i < lines.length && !lines[i].start_with?("---")
+        expected_lines << lines[i]
+        i += 1
+      end
+      i += 1 if i < lines.length && lines[i] == "---"
+      spec = parse_linker_spec(input_lines, expected_lines)
+      result << [test_name, spec]
+    else
+      i += 1
+    end
+  end
+  result
+end
+
+def parse_linker_spec(input_lines, expected_lines)
+  spec = { files: [], args: [], assertions: [] }
+  current_path = nil
+  current_lines = []
+  input_lines.each do |line|
+    if line.start_with?("file: ")
+      if current_path
+        spec[:files] << [current_path, current_lines.join("\n")]
+      end
+      current_path = line[6..].strip
+      current_lines = []
+    elsif line.start_with?("args: ")
+      if current_path
+        spec[:files] << [current_path, current_lines.join("\n")]
+        current_path = nil
+        current_lines = []
+      end
+      spec[:args] = line[6..].strip.split
+    else
+      current_lines << line
+    end
+  end
+  if current_path
+    spec[:files] << [current_path, current_lines.join("\n")]
+  end
+  expected_lines.each do |line|
+    line = line.strip
+    next if line.empty?
+    if line.start_with?("exit:")
+      spec[:assertions] << [:exit, line[5..].strip.to_i]
+    elsif line.start_with?("exit-not:")
+      spec[:assertions] << [:"exit-not", line[9..].strip.to_i]
+    elsif line.start_with?("stderr:")
+      spec[:assertions] << [:stderr, line[7..].strip]
+    elsif line.start_with?("stderr-contains:")
+      spec[:assertions] << [:"stderr-contains", line[16..].strip]
+    elsif line.start_with?("stderr-empty:")
+      spec[:assertions] << [:"stderr-empty", nil]
+    elsif line.start_with?("stdout-contains:")
+      spec[:assertions] << [:"stdout-contains", line[16..].strip]
+    elsif line.start_with?("stdout-empty:")
+      spec[:assertions] << [:"stdout-empty", nil]
+    end
+  end
+  spec
+end
+
+def run_linker_tests(test_dir)
   results = []
   Dir.glob(File.join(test_dir, "*.tests")).sort.each do |f|
     stem = File.basename(f, ".tests")
+    parse_linker_test_file(f).each do |name, spec|
+      test_id = "#{stem}/#{name}"
+      parts = spec[:files].flat_map { |path, source| [path, source] }
+      stdin_data = parts.join("\0")
+      # Skip tests that need non-emitter targets
+      args = spec[:args]
+      if args.include?("--target")
+        target = args[args.index("--target") + 1]
+        unless EMITTER_LANGS.include?(target)
+          results << [:skip, test_id, nil]
+          next
+        end
+      end
+      result = run_inprocess(args, stdin_data: stdin_data)
+      err = check_cli_assertions(result, spec[:assertions])
+      results << (err ? [:fail, test_id, err] : [:pass, test_id, nil])
+    end
+  end
+  results
+end
+
+def run_phase_tests(test_dir, phase_name, cfg)
+  results = []
+  pattern = cfg[:glob] || "*.tests"
+  Dir.glob(File.join(test_dir, pattern)).sort.each do |f|
+    stem = File.basename(f, ".tests")
     parse_spec_file(f).each do |name, input, expected|
       test_id = "#{stem}/#{name}"
-      lenient = %w[parse pycheck taytsh_parse taytsh_check].include?(phase_name)
+      lenient = %w[parse pycheck typarse tycheck].include?(phase_name)
       phase_result = run_transpiled_phase(
         input, cfg[:args],
         is_taytsh: cfg[:taytsh],
@@ -738,7 +842,7 @@ def run_app_tests(test_dir)
   results
 end
 
-def run_taytsh_app_tests(test_dir)
+def run_ty_app_tests(test_dir)
   results = []
   Dir.glob(File.join(test_dir, "*.ty")).sort.each do |test_file|
     stem = File.basename(test_file, ".ty")
@@ -825,6 +929,8 @@ TESTS.each do |section_name, phases|
     phase_results = case cfg[:run]
                     when :cli
                       run_cli_tests(test_dir)
+                    when :linker
+                      run_linker_tests(test_dir)
                     when :phase
                       run_phase_tests(test_dir, phase_name, cfg)
                     when :lowering
@@ -835,8 +941,8 @@ TESTS.each do |section_name, phases|
                       run_emit_tests(test_dir)
                     when :app
                       run_app_tests(test_dir)
-                    when :taytsh_app
-                      run_taytsh_app_tests(test_dir)
+                    when :ty_app
+                      run_ty_app_tests(test_dir)
                     when :ordering
                       run_ordering_tests(test_dir)
                     else

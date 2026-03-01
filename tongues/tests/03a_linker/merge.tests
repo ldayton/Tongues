@@ -1,0 +1,419 @@
+=== basic merge
+file: a.py
+def foo(x: int) -> int:
+    return x + 1
+file: b.py
+from .a import foo
+
+def bar(x: int) -> int:
+    return foo(x) + 1
+args: --project --stop-at subset
+---
+exit: 0
+---
+
+=== collision resolved
+file: a.py
+class Token:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+file: b.py
+class Token:
+    def __init__(self, kind: str) -> None:
+        self.kind: str = kind
+args: --project --stop-at subset
+---
+exit: 0
+---
+
+=== alias rewriting
+file: a.py
+class Token:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+file: b.py
+from .a import Token as Tok
+
+def make_token(v: str) -> Tok:
+    return Tok(v)
+args: --project --stop-at subset
+---
+exit: 0
+---
+
+=== module attr rewriting
+file: main.py
+from . import parse
+
+def make_token(v: str) -> parse.Token:
+    return parse.Token(v)
+file: parse.py
+class Token:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+args: --project --stop-at subset
+---
+exit: 0
+---
+
+=== cycle
+file: a.py
+from .b import helper
+
+def foo(x: int) -> int:
+    return helper(x)
+file: b.py
+from .a import foo
+
+def helper(x: int) -> int:
+    return x + 1
+args: --project --stop-at subset
+---
+exit: 0
+---
+
+=== unresolved import
+file: a.py
+from .missing import Something
+
+def foo(x: int) -> int:
+    return x
+args: --project --stop-at subset
+---
+exit: 1
+stderr-contains: unresolved
+---
+
+=== nested package
+file: main.py
+from .pkg.mod import helper
+
+def run(x: int) -> int:
+    return helper(x)
+file: pkg/__init__.py
+MOD_NAME: str = "pkg"
+file: pkg/mod.py
+def helper(x: int) -> int:
+    return x + 1
+args: --project --stop-at subset
+---
+exit: 0
+---
+
+=== private prefix
+file: a.py
+def _helper() -> int:
+    return 1
+
+def use_a() -> int:
+    return _helper()
+file: b.py
+def _helper() -> int:
+    return 2
+
+def use_b() -> int:
+    return _helper()
+args: --project --target python
+---
+exit: 0
+stdout-contains: _a_helper
+stdout-contains: _b_helper
+stdout-contains: use_a
+stdout-contains: use_b
+---
+
+=== dedup keeps one copy
+file: a.py
+ASTNode = dict[str, object]
+
+def make_a() -> ASTNode:
+    x: ASTNode = {}
+    return x
+file: b.py
+from .a import make_a
+
+ASTNode = dict[str, object]
+
+def make_b() -> ASTNode:
+    x: ASTNode = make_a()
+    return x
+args: --project --stop-at subset
+---
+exit: 0
+---
+
+=== prefix import refs updated
+file: app.py
+from .lib import Foo as LibFoo
+
+class Foo:
+    def __init__(self, kind: str) -> None:
+        self.kind: str = kind
+
+def app_make() -> LibFoo:
+    return LibFoo("app")
+file: lib.py
+class Foo:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+
+def lib_make() -> Foo:
+    return Foo("lib")
+args: --project --target python
+---
+exit: 0
+stdout-contains: lib_Foo
+stdout-contains: app_Foo
+---
+
+=== prefix module attr
+file: alt.py
+class Token:
+    def __init__(self, kind: str) -> None:
+        self.kind: str = kind
+file: defs.py
+class Token:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+file: main.py
+from . import defs
+
+def make() -> defs.Token:
+    return defs.Token("hi")
+args: --project --stop-at subset
+---
+exit: 0
+---
+
+=== unsafe dedup demoted to prefix
+file: a.py
+def _helper() -> int:
+    return 1
+
+def wrapper() -> int:
+    return _helper()
+file: b.py
+def _helper() -> int:
+    return 2
+
+def wrapper() -> int:
+    return _helper()
+args: --project --target python
+---
+exit: 0
+stdout-contains: _a_helper
+stdout-contains: _b_helper
+stdout-contains: a_wrapper
+stdout-contains: b_wrapper
+---
+
+=== bad attr error
+file: defs.py
+class Token:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+file: main.py
+from . import defs
+
+def make() -> defs.Nonexistent:
+    return defs.Nonexistent()
+args: --project --stop-at subset
+---
+exit: 1
+stderr-contains: Nonexistent
+---
+
+=== subset error includes source file
+file: a.py
+def foo(x: int) -> int:
+    return x + 1
+file: b.py
+from .a import foo
+
+def bar(x) -> int:
+    return foo(x)
+args: --project --stop-at subset
+---
+exit: 1
+stderr-contains: b.py:
+---
+
+=== names error includes source file
+file: a.py
+def foo(x: int) -> int:
+    return x
+file: b.py
+from .a import foo
+
+def bar() -> int:
+    return baz()
+args: --project --stop-at names
+---
+exit: 1
+stderr-contains: b.py:
+---
+
+=== empty input
+args: --project --stop-at subset
+---
+exit-not: 0
+---
+
+=== basic names
+file: a.py
+def foo(x: int) -> int:
+    return x + 1
+file: b.py
+from .a import foo
+
+def bar(x: int) -> int:
+    return foo(x) + 1
+args: --project --stop-at names
+---
+exit: 0
+---
+
+=== basic python emit
+file: a.py
+def foo(x: int) -> int:
+    return x + 1
+file: b.py
+from .a import foo
+
+def bar(x: int) -> int:
+    return foo(x) + 1
+args: --project --target python
+---
+exit: 0
+stdout-contains: foo
+stdout-contains: bar
+---
+
+=== alias python emit
+file: a.py
+class Token:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+file: b.py
+from .a import Token as Tok
+
+def make_token(v: str) -> Tok:
+    return Tok(v)
+args: --project --target python
+---
+exit: 0
+---
+
+=== cycle python emit
+file: a.py
+from .b import helper
+
+def foo(x: int) -> int:
+    return helper(x)
+file: b.py
+from .a import foo
+
+def helper(x: int) -> int:
+    return x + 1
+args: --project --target python
+---
+exit: 0
+---
+
+=== nested python emit
+file: main.py
+from .pkg.mod import helper
+
+def run(x: int) -> int:
+    return helper(x)
+file: pkg/__init__.py
+MOD_NAME: str = "pkg"
+file: pkg/mod.py
+def helper(x: int) -> int:
+    return x + 1
+args: --project --target python
+---
+exit: 0
+---
+
+=== parse output json
+file: a.py
+def foo(x: int) -> int:
+    return x + 1
+file: b.py
+from .a import foo
+
+def bar(x: int) -> int:
+    return foo(x) + 1
+args: --project --stop-at parse
+---
+exit: 0
+stdout-contains: "path"
+stdout-contains: "ast"
+---
+
+=== strict math pragma
+file: a.py
+@@["strict_math"]
+def foo(x: int) -> int:
+    return x + 1
+file: b.py
+from .a import foo
+
+def bar(x: int) -> int:
+    return foo(x)
+args: --project --target python
+---
+exit: 0
+---
+
+=== strict tostring pragma
+file: a.py
+@@["strict_tostring"]
+def foo(x: int) -> int:
+    return x + 1
+file: b.py
+from .a import foo
+
+def bar(x: int) -> int:
+    return foo(x)
+args: --project --target python
+---
+exit: 0
+---
+
+=== strict flag with project
+file: a.py
+def foo(x: int) -> int:
+    return x + 1
+args: --project --target python --strict
+---
+exit: 0
+---
+
+=== public prefix
+file: a.py
+class Token:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+
+def make_a() -> Token:
+    return Token("a")
+file: b.py
+class Token:
+    def __init__(self, kind: str) -> None:
+        self.kind: str = kind
+
+def make_b() -> Token:
+    return Token("b")
+file: c.py
+from .a import Token
+
+def use_a_token() -> Token:
+    return Token("c")
+args: --project --target python
+---
+exit: 0
+stdout-contains: a_Token
+stdout-contains: b_Token
+---
