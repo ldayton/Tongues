@@ -4,7 +4,6 @@ import importlib.util
 import io
 import json
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -42,12 +41,23 @@ if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".py"):
 
 EXT_TO_LANG = {".py": "python", ".rb": "ruby", ".pl": "perl"}
 
-_LIB_IMPORT_RE = re.compile(r"^from lib\.(\w+) import", re.MULTILINE)
+_src_dir = str(TONGUES_DIR / "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+from tests.shared.test_harness import (
+    parse_spec_file as _shared_parse_spec,
+    parse_simple_tests as _shared_parse_simple,
+    parse_cli_test_file as _shared_parse_cli,
+    parse_linker_test_file as _shared_parse_linker,
+    contains_normalized,
+    find_lib_imports as _shared_find_lib_imports,
+    build_project_input as _shared_build_project_input,
+)
 
 
 def _find_lib_imports(source: str) -> list[str]:
     """Extract unique lib module names from 'from lib.X import' statements."""
-    return list(dict.fromkeys(_LIB_IMPORT_RE.findall(source)))
+    return _shared_find_lib_imports(source)
 
 
 def _read_lib_sources(names: list[str]) -> list[tuple[str, str]]:
@@ -64,75 +74,36 @@ def _build_project_input(
     app_path: str, app_source: str, lib_sources: list[tuple[str, str]]
 ) -> bytes:
     """Build NUL-delimited project input."""
-    parts = [app_path, app_source]
-    for import_path, source in lib_sources:
-        parts.append(import_path)
-        parts.append(source)
-    return "\0".join(parts).encode()
+    return _shared_build_project_input(app_path, app_source, lib_sources).encode()
 
 
 def parse_cli_test_file(path: Path) -> list[tuple[str, dict]]:
     """Parse a CLI .tests file into (name, spec) tuples."""
-    lines = path.read_text().split("\n")
+    parsed = _shared_parse_cli(path.read_text())
     result: list[tuple[str, dict]] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("=== "):
-            test_name = line[4:].strip()
-            i += 1
-            input_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                input_lines.append(lines[i])
-                i += 1
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            expected_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                expected_lines.append(lines[i])
-                i += 1
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            spec = _parse_cli_spec(input_lines, expected_lines)
-            result.append((test_name, spec))
-        else:
-            i += 1
+    for name, cli_spec in parsed:
+        spec: dict = {
+            "args": cli_spec.args,
+            "stdin": cli_spec.stdin if cli_spec.stdin else None,
+            "stdin_bytes": bytes.fromhex(cli_spec.stdin_hex)
+            if cli_spec.stdin_hex
+            else None,
+            "assertions": [
+                (
+                    a.kind,
+                    int(a.value)
+                    if a.kind in ("exit", "exit-not")
+                    else (
+                        None if a.kind in ("stderr-empty", "stdout-empty") else a.value
+                    ),
+                )
+                for a in cli_spec.assertions
+            ],
+        }
+        if spec["stdin"] is None and spec["stdin_bytes"] is None:
+            spec["stdin"] = ""
+        result.append((name, spec))
     return result
-
-
-def _parse_cli_spec(input_lines: list[str], expected_lines: list[str]) -> dict:
-    """Parse input + expected lines into a CLI test spec dict."""
-    spec: dict = {"args": [], "stdin": None, "stdin_bytes": None, "assertions": []}
-    body_start = 0
-    if input_lines and input_lines[0].startswith("args:"):
-        args_str = input_lines[0][5:].strip()
-        spec["args"] = args_str.split() if args_str else []
-        body_start = 1
-    remaining = input_lines[body_start:]
-    if remaining and remaining[0].startswith("stdin-bytes:"):
-        hex_str = remaining[0][len("stdin-bytes:") :].strip()
-        spec["stdin_bytes"] = bytes.fromhex(hex_str)
-    else:
-        spec["stdin"] = "\n".join(remaining)
-    for line in expected_lines:
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith("exit:"):
-            spec["assertions"].append(("exit", int(line[5:].strip())))
-        elif line.startswith("exit-not:"):
-            spec["assertions"].append(("exit-not", int(line[9:].strip())))
-        elif line.startswith("stderr:"):
-            spec["assertions"].append(("stderr", line[7:].strip()))
-        elif line.startswith("stderr-contains:"):
-            spec["assertions"].append(("stderr-contains", line[16:].strip()))
-        elif line.startswith("stderr-empty:"):
-            spec["assertions"].append(("stderr-empty", None))
-        elif line.startswith("stdout-contains:"):
-            spec["assertions"].append(("stdout-contains", line[16:].strip()))
-        elif line.startswith("stdout-empty:"):
-            spec["assertions"].append(("stdout-empty", None))
-    return spec
 
 
 def discover_cli_tests(test_dir: Path) -> list[tuple[str, dict]]:
@@ -145,86 +116,27 @@ def discover_cli_tests(test_dir: Path) -> list[tuple[str, dict]]:
 
 
 def parse_linker_test_file(path: Path) -> list[tuple[str, dict]]:
-    """Parse a linker .tests file with file: directives into (name, spec) tuples.
-
-    Format:
-        === test name
-        file: a.py
-        <source for a.py>
-        file: b.py
-        <source for b.py>
-        args: --project --stop-at subset
-        ---
-        exit: 0
-        ---
-    """
-    lines = path.read_text().split("\n")
+    """Parse a linker .tests file with file: directives into (name, spec) tuples."""
+    parsed = _shared_parse_linker(path.read_text())
     result: list[tuple[str, dict]] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("=== "):
-            test_name = line[4:].strip()
-            i += 1
-            input_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                input_lines.append(lines[i])
-                i += 1
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            expected_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                expected_lines.append(lines[i])
-                i += 1
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            spec = _parse_linker_spec(input_lines, expected_lines)
-            result.append((test_name, spec))
-        else:
-            i += 1
+    for name, linker_spec in parsed:
+        spec: dict = {
+            "files": [(f.path, f.source) for f in linker_spec.files],
+            "args": linker_spec.args,
+            "assertions": [
+                (
+                    a.kind,
+                    int(a.value)
+                    if a.kind in ("exit", "exit-not")
+                    else (
+                        None if a.kind in ("stderr-empty", "stdout-empty") else a.value
+                    ),
+                )
+                for a in linker_spec.assertions
+            ],
+        }
+        result.append((name, spec))
     return result
-
-
-def _parse_linker_spec(input_lines: list[str], expected_lines: list[str]) -> dict:
-    """Parse input with file: directives + expected into a linker test spec."""
-    spec: dict = {"files": [], "args": [], "assertions": []}
-    current_path: str | None = None
-    current_lines: list[str] = []
-    for line in input_lines:
-        if line.startswith("file: "):
-            if current_path is not None:
-                spec["files"].append((current_path, "\n".join(current_lines)))
-            current_path = line[6:].strip()
-            current_lines = []
-        elif line.startswith("args: "):
-            if current_path is not None:
-                spec["files"].append((current_path, "\n".join(current_lines)))
-                current_path = None
-                current_lines = []
-            spec["args"] = line[6:].strip().split()
-        else:
-            current_lines.append(line)
-    if current_path is not None:
-        spec["files"].append((current_path, "\n".join(current_lines)))
-    for line in expected_lines:
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith("exit:"):
-            spec["assertions"].append(("exit", int(line[5:].strip())))
-        elif line.startswith("exit-not:"):
-            spec["assertions"].append(("exit-not", int(line[9:].strip())))
-        elif line.startswith("stderr:"):
-            spec["assertions"].append(("stderr", line[7:].strip()))
-        elif line.startswith("stderr-contains:"):
-            spec["assertions"].append(("stderr-contains", line[16:].strip()))
-        elif line.startswith("stderr-empty:"):
-            spec["assertions"].append(("stderr-empty", None))
-        elif line.startswith("stdout-contains:"):
-            spec["assertions"].append(("stdout-contains", line[16:].strip()))
-        elif line.startswith("stdout-empty:"):
-            spec["assertions"].append(("stdout-empty", None))
-    return spec
 
 
 def discover_linker_tests(test_dir: Path) -> list[tuple[str, dict]]:
@@ -359,32 +271,8 @@ signal.signal(signal.SIGALRM, _timeout_handler)
 
 def parse_spec_file(path: Path) -> list[tuple[str, str, str]]:
     """Parse a .tests file into (name, input, expected) tuples."""
-    lines = path.read_text().split("\n")
-    result: list[tuple[str, str, str]] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("=== "):
-            test_name = line[4:].strip()
-            i += 1
-            input_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                input_lines.append(lines[i])
-                i += 1
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            expected_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("---"):
-                expected_lines.append(lines[i])
-                i += 1
-            if i < len(lines) and lines[i] == "---":
-                i += 1
-            test_input = "\n".join(input_lines)
-            expected = "\n".join(expected_lines).strip()
-            result.append((test_name, test_input, expected))
-        else:
-            i += 1
-    return result
+    entries = _shared_parse_spec(path.read_text())
+    return [(e.name, e.input, e.expected) for e in entries]
 
 
 def discover_specs(
@@ -400,22 +288,8 @@ def discover_specs(
 
 def parse_simple_tests(path: Path) -> list[tuple[str, str]]:
     """Parse a file of '=== name' + content blocks into (name, content) pairs."""
-    lines = path.read_text().split("\n")
-    result: list[tuple[str, str]] = []
-    i = 0
-    while i < len(lines):
-        if lines[i].startswith("=== "):
-            name = lines[i][4:].strip()
-            i += 1
-            content_lines: list[str] = []
-            while i < len(lines) and not lines[i].startswith("=== "):
-                content_lines.append(lines[i])
-                i += 1
-            content = "\n".join(content_lines).strip()
-            result.append((name, content))
-        else:
-            i += 1
-    return result
+    entries = _shared_parse_simple(path.read_text())
+    return [(e.name, e.content) for e in entries]
 
 
 def discover_codegen_tests(test_dir: Path, lang: str) -> list[tuple[str, str, str]]:
@@ -620,30 +494,7 @@ def check_expected(
             )
 
 
-def contains_normalized(haystack: str, needle: str) -> bool:
-    """Check if needle appears in haystack, normalizing line-by-line whitespace.
-
-    Each needle line is matched as a substring within the corresponding haystack
-    line (after stripping), and all needle lines must appear as consecutive
-    haystack lines.
-    """
-    needle_lines = [line.strip() for line in needle.strip().split("\n") if line.strip()]
-    haystack_lines = [line.strip() for line in haystack.split("\n") if line.strip()]
-    if not needle_lines:
-        return True
-    for i in range(len(haystack_lines)):
-        if needle_lines[0] in haystack_lines[i]:
-            match = True
-            for j in range(1, len(needle_lines)):
-                if (
-                    i + j >= len(haystack_lines)
-                    or needle_lines[j] not in haystack_lines[i + j]
-                ):
-                    match = False
-                    break
-            if match:
-                return True
-    return False
+# contains_normalized is imported from tests.lib.test_harness
 
 
 # ---------------------------------------------------------------------------

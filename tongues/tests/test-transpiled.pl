@@ -1,13 +1,13 @@
 #!/usr/bin/env perl
 # Native Perl test harness for transpiled Tongues binaries.
 # Loads the transpiled file once, then runs all .tests cases in-process.
+# Shared parsing/assertion logic is transpiled from tests/shared/test_harness.py.
 
 use v5.36;
 use utf8;
 use File::Basename;
 use File::Spec;
 use File::Temp qw(tempfile);
-use JSON::PP ();
 use Time::HiRes qw(time);
 use IPC::Open3;
 use POSIX ();
@@ -67,16 +67,13 @@ my %RUNTIMES = (
 );
 
 # ---------------------------------------------------------------------------
-# Exit capture: a blessed object so we can distinguish exit() from die()
-# Must be installed before loading the transpiled binary so that exit()
-# resolves to the override at compile time.
+# Exit capture
 # ---------------------------------------------------------------------------
 
 our $FORK_MODE = 0;
 BEGIN {
     *CORE::GLOBAL::exit = sub {
         if ($FORK_MODE) {
-            # In forked child: flush and _exit immediately (bypasses eval catches)
             close STDOUT; close STDERR;
             POSIX::_exit($_[0] // 0);
         }
@@ -119,7 +116,6 @@ sub run_inprocess ($argv, $stdin_data = "") {
         close STDOUT; close STDERR;
         POSIX::_exit(0);
     }
-    # Parent: wait with timeout
     my $timed_out = 0;
     eval {
         local $SIG{ALRM} = sub { die "TIMEOUT\n" };
@@ -137,7 +133,7 @@ sub run_inprocess ($argv, $stdin_data = "") {
     if ($timed_out) {
         $code = 1;
     } elsif ($exit_raw & 127) {
-        $code = 1;  # killed by signal
+        $code = 1;
     } else {
         $code = $exit_raw >> 8;
     }
@@ -179,7 +175,7 @@ sub run_transpiled_phase ($source, $cli_args, %opts) {
         return { errors => [], warnings => \@warnings, data => undef, reveals => [] };
     }
     my $data;
-    eval { $data = JSON::PP->new->decode($stdout_text); };
+    eval { $data = json_parse($stdout_text); };
     if ($@) {
         my $preview = substr($stdout_text, 0, 200);
         return { errors => ["Invalid JSON output: $preview"], warnings => [], data => undef, reveals => [] };
@@ -188,527 +184,53 @@ sub run_transpiled_phase ($source, $cli_args, %opts) {
 }
 
 # ---------------------------------------------------------------------------
-# .tests file parsing
-# ---------------------------------------------------------------------------
-
-sub parse_spec_file ($path) {
-    open(my $fh, "<", $path) or die "Cannot open $path: $!";
-    my @lines = <$fh>;
-    close $fh;
-    chomp @lines;
-    my @result;
-    my $i = 0;
-    while ($i < scalar @lines) {
-        if ($lines[$i] =~ /^=== (.*)/) {
-            my $test_name = $1;
-            $test_name =~ s/\s+$//;
-            $i++;
-            my @input_lines;
-            while ($i < scalar @lines && $lines[$i] !~ /^---/) {
-                push @input_lines, $lines[$i];
-                $i++;
-            }
-            $i++ if $i < scalar @lines && $lines[$i] eq "---";
-            my @expected_lines;
-            while ($i < scalar @lines && $lines[$i] !~ /^---/) {
-                push @expected_lines, $lines[$i];
-                $i++;
-            }
-            $i++ if $i < scalar @lines && $lines[$i] eq "---";
-            my $input = join("\n", @input_lines);
-            my $expected = join("\n", @expected_lines);
-            $expected =~ s/\s+$//;
-            push @result, [$test_name, $input, $expected];
-        } else {
-            $i++;
-        }
-    }
-    return \@result;
-}
-
-sub parse_cli_test_file ($path) {
-    open(my $fh, "<", $path) or die "Cannot open $path: $!";
-    my @lines = <$fh>;
-    close $fh;
-    chomp @lines;
-    my @result;
-    my $i = 0;
-    while ($i < scalar @lines) {
-        if ($lines[$i] =~ /^=== (.*)/) {
-            my $test_name = $1;
-            $test_name =~ s/\s+$//;
-            $i++;
-            my @input_lines;
-            while ($i < scalar @lines && $lines[$i] !~ /^---/) {
-                push @input_lines, $lines[$i];
-                $i++;
-            }
-            $i++ if $i < scalar @lines && $lines[$i] eq "---";
-            my @expected_lines;
-            while ($i < scalar @lines && $lines[$i] !~ /^---/) {
-                push @expected_lines, $lines[$i];
-                $i++;
-            }
-            $i++ if $i < scalar @lines && $lines[$i] eq "---";
-            my $spec = parse_cli_spec(\@input_lines, \@expected_lines);
-            push @result, [$test_name, $spec];
-        } else {
-            $i++;
-        }
-    }
-    return \@result;
-}
-
-sub parse_cli_spec ($input_lines, $expected_lines) {
-    my %spec = (args => [], stdin => undef, stdin_bytes => undef, assertions => []);
-    my $body_start = 0;
-    if (@$input_lines && $input_lines->[0] =~ /^args:(.*)/) {
-        my $args_str = $1;
-        $args_str =~ s/^\s+|\s+$//g;
-        $spec{args} = $args_str eq "" ? [] : [split(/\s+/, $args_str)];
-        $body_start = 1;
-    }
-    my @remaining = @$input_lines[$body_start .. $#$input_lines];
-    if (@remaining && $remaining[0] =~ /^stdin-bytes:(.*)/) {
-        my $hex_str = $1;
-        $hex_str =~ s/^\s+|\s+$//g;
-        $spec{stdin_bytes} = pack("H*", $hex_str);
-    } else {
-        $spec{stdin} = join("\n", @remaining);
-    }
-    for my $line (@$expected_lines) {
-        my $stripped = $line;
-        $stripped =~ s/^\s+|\s+$//g;
-        next if $stripped eq "";
-        if ($stripped =~ /^exit:(.*)/) {
-            push @{$spec{assertions}}, ["exit", int($1 =~ s/^\s+|\s+$//gr)];
-        } elsif ($stripped =~ /^exit-not:(.*)/) {
-            push @{$spec{assertions}}, ["exit-not", int($1 =~ s/^\s+|\s+$//gr)];
-        } elsif ($stripped =~ /^stderr:(.*)/) {
-            push @{$spec{assertions}}, ["stderr", $1 =~ s/^\s+|\s+$//gr];
-        } elsif ($stripped =~ /^stderr-contains:(.*)/) {
-            push @{$spec{assertions}}, ["stderr-contains", $1 =~ s/^\s+|\s+$//gr];
-        } elsif ($stripped =~ /^stderr-empty:/) {
-            push @{$spec{assertions}}, ["stderr-empty", undef];
-        } elsif ($stripped =~ /^stdout-contains:(.*)/) {
-            push @{$spec{assertions}}, ["stdout-contains", $1 =~ s/^\s+|\s+$//gr];
-        } elsif ($stripped =~ /^stdout-empty:/) {
-            push @{$spec{assertions}}, ["stdout-empty", undef];
-        }
-    }
-    return \%spec;
-}
-
-sub parse_simple_tests ($path) {
-    open(my $fh, "<", $path) or die "Cannot open $path: $!";
-    my @lines = <$fh>;
-    close $fh;
-    chomp @lines;
-    my @result;
-    my $i = 0;
-    while ($i < scalar @lines) {
-        if ($lines[$i] =~ /^=== (.*)/) {
-            my $name = $1;
-            $name =~ s/\s+$//;
-            $i++;
-            my @content_lines;
-            while ($i < scalar @lines && $lines[$i] !~ /^=== /) {
-                push @content_lines, $lines[$i];
-                $i++;
-            }
-            my $content = join("\n", @content_lines);
-            $content =~ s/\s+$//;
-            push @result, [$name, $content];
-        } else {
-            $i++;
-        }
-    }
-    return \@result;
-}
-
-# ---------------------------------------------------------------------------
-# Assertion checking
-# ---------------------------------------------------------------------------
-
-sub resolve_dotpath ($obj, $dotpath) {
-    my @parts = split(/\./, $dotpath);
-    my $current = $obj;
-    my $i = 0;
-    while ($i < scalar @parts) {
-        my $part = $parts[$i];
-        if ($part eq "length") {
-            if (ref($current) eq "ARRAY") {
-                return scalar @$current;
-            }
-            if (ref($current) eq "HASH") {
-                return scalar(keys %$current);
-            }
-            return length($current);
-        }
-        if (ref($current) eq "ARRAY") {
-            $current = $current->[$part];
-            $i++;
-        } elsif (ref($current) eq "HASH") {
-            if (exists $current->{$part}) {
-                $current = $current->{$part};
-                $i++;
-            } else {
-                my $found = 0;
-                for my $j ($i + 1 .. $#parts) {
-                    my $composite = join(".", @parts[$i .. $j]);
-                    if (exists $current->{$composite}) {
-                        $current = $current->{$composite};
-                        $i = $j + 1;
-                        $found = 1;
-                        last;
-                    }
-                }
-                die "key not found: $part" unless $found;
-            }
-        } else {
-            die "cannot traverse " . ref($current) . " with key '$part'";
-        }
-    }
-    return $current;
-}
-
-sub to_comparable ($value) {
-    return "null" unless defined $value;
-    if (JSON::PP::is_bool($value)) {
-        return $value ? "true" : "false";
-    }
-    if (ref($value) eq "" && _is_numeric($value) && $value =~ /^-?\d+$/) {
-        return "$value";
-    }
-    return "$value";
-}
-
-sub _is_numeric ($v) {
-    return $v =~ /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
-}
-
-sub check_expected ($expected, $result, $phase, %opts) {
-    my $lenient_errors = $opts{lenient_errors} // 0;
-    my @reveal_assertions;
-    my @verdict_lines;
-    for my $line (split(/\n/, $expected)) {
-        my $stripped = $line;
-        $stripped =~ s/^\s+|\s+$//g;
-        if ($stripped =~ /^reveal:(.*)/) {
-            my $rest = $1;
-            my $eq_pos = index($rest, "=");
-            my $lineno = int(substr($rest, 0, $eq_pos) =~ s/^\s+|\s+$//gr);
-            my $expected_type = substr($rest, $eq_pos + 1);
-            $expected_type =~ s/^\s+|\s+$//g;
-            push @reveal_assertions, [$lineno, $expected_type];
-        } else {
-            push @verdict_lines, $line;
-        }
-    }
-    $expected = join("\n", @verdict_lines);
-    $expected =~ s/\s+$//;
-    $expected = "ok" if $expected eq "";
-    if ($expected eq "ok") {
-        if (@{$result->{errors}}) {
-            return "Expected ok, got error: $result->{errors}[0]";
-        }
-        my $err = check_reveals(\@reveal_assertions, $result->{reveals});
-        return $err if $err;
-        return undef;
-    }
-    if ($expected =~ /^error:(.*)/) {
-        my $expected_msg = $1;
-        $expected_msg =~ s/^\s+|\s+$//g;
-        if (!@{$result->{errors}}) {
-            return "Expected error containing '$expected_msg', got ok";
-        }
-        if (!$lenient_errors && $expected_msg ne "") {
-            my $found = 0;
-            for my $e (@{$result->{errors}}) {
-                if (index(lc($e), lc($expected_msg)) >= 0) {
-                    $found = 1;
-                    last;
-                }
-            }
-            return "Expected error containing '$expected_msg', got: @{$result->{errors}}" unless $found;
-        }
-        return undef;
-    }
-    if ($expected =~ /^warning:(.*)/) {
-        my $expected_msg = $1;
-        $expected_msg =~ s/^\s+|\s+$//g;
-        if (!@{$result->{warnings}}) {
-            return "Expected warning containing '$expected_msg', got none";
-        }
-        my $found = 0;
-        for my $w (@{$result->{warnings}}) {
-            if (index(lc($w), lc($expected_msg)) >= 0) {
-                $found = 1;
-                last;
-            }
-        }
-        return "Expected warning containing '$expected_msg', got: @{$result->{warnings}}" unless $found;
-        return undef;
-    }
-    if (@{$result->{errors}}) {
-        return "$phase failed: $result->{errors}[0]";
-    }
-    if (!defined $result->{data}) {
-        return "No data returned from $phase";
-    }
-    for my $line (split(/\n/, $expected)) {
-        $line =~ s/^\s+|\s+$//g;
-        next if $line eq "";
-        unless ($line =~ /=/) {
-            return "Bad assertion (no '='): $line";
-        }
-        my ($path, $expected_val) = split(/=/, $line, 2);
-        $path =~ s/^\s+|\s+$//g;
-        $expected_val =~ s/^\s+|\s+$//g;
-        my $actual;
-        eval { $actual = resolve_dotpath($result->{data}, $path); };
-        if ($@) {
-            return "Path '$path' not found in result: $@";
-        }
-        my $actual_str = to_comparable($actual);
-        if ($expected_val =~ /\./ && $expected_val !~ / /) {
-            eval {
-                my $ref_val = resolve_dotpath($result->{data}, $expected_val);
-                $expected_val = to_comparable($ref_val);
-            };
-            # on error, treat as literal
-        }
-        if ($actual_str ne $expected_val) {
-            return "Assertion failed: $path\n  expected: \"$expected_val\"\n  actual:   \"$actual_str\"";
-        }
-    }
-    return undef;
-}
-
-sub check_reveals ($assertions, $actuals) {
-    for my $a (@$assertions) {
-        my ($lineno, $expected_type) = @$a;
-        my $found = 0;
-        for my $act (@$actuals) {
-            my ($actual_line, $actual_type) = @$act;
-            if ($actual_line == $lineno) {
-                if ($actual_type ne $expected_type) {
-                    return "reveal_type at line $lineno: expected '$expected_type', got '$actual_type'";
-                }
-                $found = 1;
-                last;
-            }
-        }
-        return "No reveal_type found at line $lineno" unless $found;
-    }
-    return undef;
-}
-
-sub contains_normalized ($haystack, $needle) {
-    my @needle_lines = grep { $_ ne "" } map { s/^\s+|\s+$//gr } split(/\n/, $needle);
-    my @haystack_lines = grep { $_ ne "" } map { s/^\s+|\s+$//gr } split(/\n/, $haystack);
-    return 1 if !@needle_lines;
-    for my $i (0 .. $#haystack_lines) {
-        if (index($haystack_lines[$i], $needle_lines[0]) >= 0) {
-            my $match = 1;
-            for my $j (1 .. $#needle_lines) {
-                if ($i + $j > $#haystack_lines || index($haystack_lines[$i + $j], $needle_lines[$j]) < 0) {
-                    $match = 0;
-                    last;
-                }
-            }
-            return 1 if $match;
-        }
-    }
-    return 0;
-}
-
-# ---------------------------------------------------------------------------
-# CLI test helpers
-# ---------------------------------------------------------------------------
-
-sub cli_needs_backend ($spec) {
-    my @args = @{$spec->{args}};
-    return 0 if grep { $_ eq "--stop-at" } @args;
-    my $expects_success = grep { $_->[0] eq "exit" && $_->[1] == 0 } @{$spec->{assertions}};
-    return 0 unless $expects_success;
-    my $target_idx;
-    for my $i (0 .. $#args) {
-        if ($args[$i] eq "--target") {
-            $target_idx = $i;
-            last;
-        }
-    }
-    return 0 unless defined $target_idx;
-    my $target = $args[$target_idx + 1];
-    return !grep { $_ eq $target } @EMITTER_LANGS;
-}
-
-sub check_cli_assertions ($result, $assertions) {
-    for my $a (@$assertions) {
-        my ($kind, $value) = @$a;
-        if ($kind eq "exit") {
-            if ($result->{exit} != $value) {
-                return "expected exit $value, got $result->{exit}\nstderr: $result->{stderr}";
-            }
-        } elsif ($kind eq "exit-not") {
-            if ($result->{exit} == $value) {
-                return "expected exit != $value, got $result->{exit}";
-            }
-        } elsif ($kind eq "stderr") {
-            my $actual = $result->{stderr};
-            $actual =~ s/\s+$//;
-            if ($actual ne $value) {
-                return "expected stderr \"$value\", got \"$actual\"";
-            }
-        } elsif ($kind eq "stderr-contains") {
-            unless (index($result->{stderr}, $value) >= 0) {
-                return "expected stderr to contain \"$value\", got \"$result->{stderr}\"";
-            }
-        } elsif ($kind eq "stderr-empty") {
-            unless ($result->{stderr} eq "") {
-                return "expected empty stderr, got \"$result->{stderr}\"";
-            }
-        } elsif ($kind eq "stdout-contains") {
-            unless (index($result->{stdout}, $value) >= 0) {
-                return "expected stdout to contain \"$value\", got \"$result->{stdout}\"";
-            }
-        } elsif ($kind eq "stdout-empty") {
-            unless ($result->{stdout} eq "") {
-                return "expected empty stdout, got \"" . substr($result->{stdout}, 0, 200) . "\"";
-            }
-        }
-    }
-    return undef;
-}
-
-# ---------------------------------------------------------------------------
 # Test runners
 # ---------------------------------------------------------------------------
+
+sub _read_file ($path) {
+    open(my $fh, "<", $path) or die "Cannot open $path: $!";
+    my $content = do { local $/; <$fh> };
+    close $fh;
+    return $content;
+}
 
 sub run_cli_tests ($test_dir) {
     my @results;
     for my $f (sort glob("$test_dir/*.tests")) {
         my $stem = basename($f, ".tests");
-        my $tests = parse_cli_test_file($f);
+        my $tests = parse_cli_test_file(_read_file($f));
         for my $t (@$tests) {
             my ($name, $spec) = @$t;
             my $test_id = "$stem/$name";
-            if (cli_needs_backend($spec)) {
+            if (cli_needs_backend($spec->{args}, $spec->{assertions}, \@EMITTER_LANGS)) {
                 push @results, ["skip", $test_id, undef];
                 next;
             }
             my $stdin_data;
-            if (defined $spec->{stdin_bytes}) {
-                $stdin_data = $spec->{stdin_bytes};
-            } elsif (defined $spec->{stdin}) {
-                $stdin_data = $spec->{stdin};
+            if ($spec->{stdin_hex} ne "") {
+                $stdin_data = pack("H*", $spec->{stdin_hex});
             } else {
-                $stdin_data = "";
+                $stdin_data = $spec->{stdin};
             }
             my $result = run_inprocess($spec->{args}, $stdin_data);
-            my $err = check_cli_assertions($result, $spec->{assertions});
-            push @results, [$err ? "fail" : "pass", $test_id, $err];
+            my $err = check_cli_assertions($result->{exit}, $result->{stdout}, $result->{stderr}, $spec->{assertions});
+            push @results, [$err eq "" ? "pass" : "fail", $test_id, $err eq "" ? undef : $err];
         }
     }
     return \@results;
-}
-
-sub parse_linker_test_file ($path) {
-    open(my $fh, "<", $path) or die "Cannot open $path: $!";
-    my @lines = <$fh>;
-    close $fh;
-    chomp @lines;
-    my @result;
-    my $i = 0;
-    while ($i < scalar @lines) {
-        if ($lines[$i] =~ /^=== (.*)/) {
-            my $test_name = $1;
-            $test_name =~ s/\s+$//;
-            $i++;
-            my @input_lines;
-            while ($i < scalar @lines && $lines[$i] !~ /^---/) {
-                push @input_lines, $lines[$i];
-                $i++;
-            }
-            $i++ if $i < scalar @lines && $lines[$i] eq "---";
-            my @expected_lines;
-            while ($i < scalar @lines && $lines[$i] !~ /^---/) {
-                push @expected_lines, $lines[$i];
-                $i++;
-            }
-            $i++ if $i < scalar @lines && $lines[$i] eq "---";
-            my $spec = parse_linker_spec(\@input_lines, \@expected_lines);
-            push @result, [$test_name, $spec];
-        } else {
-            $i++;
-        }
-    }
-    return \@result;
-}
-
-sub parse_linker_spec ($input_lines, $expected_lines) {
-    my %spec = (files => [], args => [], assertions => []);
-    my $current_path = undef;
-    my @current_lines;
-    for my $line (@$input_lines) {
-        if ($line =~ /^file: (.+)/) {
-            if (defined $current_path) {
-                push @{$spec{files}}, [$current_path, join("\n", @current_lines)];
-            }
-            $current_path = $1;
-            $current_path =~ s/\s+$//;
-            @current_lines = ();
-        } elsif ($line =~ /^args: (.+)/) {
-            if (defined $current_path) {
-                push @{$spec{files}}, [$current_path, join("\n", @current_lines)];
-                $current_path = undef;
-                @current_lines = ();
-            }
-            my $args_str = $1;
-            $args_str =~ s/\s+$//;
-            $spec{args} = [split(/\s+/, $args_str)];
-        } else {
-            push @current_lines, $line;
-        }
-    }
-    if (defined $current_path) {
-        push @{$spec{files}}, [$current_path, join("\n", @current_lines)];
-    }
-    for my $line (@$expected_lines) {
-        my $stripped = $line;
-        $stripped =~ s/^\s+|\s+$//g;
-        next if $stripped eq "";
-        if ($stripped =~ /^exit:(.*)/) {
-            push @{$spec{assertions}}, ["exit", int($1 =~ s/^\s+|\s+$//gr)];
-        } elsif ($stripped =~ /^exit-not:(.*)/) {
-            push @{$spec{assertions}}, ["exit-not", int($1 =~ s/^\s+|\s+$//gr)];
-        } elsif ($stripped =~ /^stderr:(.*)/) {
-            push @{$spec{assertions}}, ["stderr", $1 =~ s/^\s+|\s+$//gr];
-        } elsif ($stripped =~ /^stderr-contains:(.*)/) {
-            push @{$spec{assertions}}, ["stderr-contains", $1 =~ s/^\s+|\s+$//gr];
-        } elsif ($stripped =~ /^stderr-empty:/) {
-            push @{$spec{assertions}}, ["stderr-empty", undef];
-        } elsif ($stripped =~ /^stdout-contains:(.*)/) {
-            push @{$spec{assertions}}, ["stdout-contains", $1 =~ s/^\s+|\s+$//gr];
-        } elsif ($stripped =~ /^stdout-empty:/) {
-            push @{$spec{assertions}}, ["stdout-empty", undef];
-        }
-    }
-    return \%spec;
 }
 
 sub run_linker_tests ($test_dir) {
     my @results;
     for my $f (sort glob("$test_dir/*.tests")) {
         my $stem = basename($f, ".tests");
-        my $tests = parse_linker_test_file($f);
+        my $tests = parse_linker_test_file(_read_file($f));
         for my $t (@$tests) {
             my ($name, $spec) = @$t;
             my $test_id = "$stem/$name";
             my @parts;
-            for my $file (@{$spec->{files}}) {
-                push @parts, $file->[0], $file->[1];
+            for my $lf (@{$spec->{files}}) {
+                push @parts, $lf->{path}, $lf->{source};
             }
             my $stdin_data = join("\0", @parts);
             my @args = @{$spec->{args}};
@@ -729,8 +251,8 @@ sub run_linker_tests ($test_dir) {
                 }
             }
             my $result = run_inprocess($spec->{args}, $stdin_data);
-            my $err = check_cli_assertions($result, $spec->{assertions});
-            push @results, [$err ? "fail" : "pass", $test_id, $err];
+            my $err = check_cli_assertions($result->{exit}, $result->{stdout}, $result->{stderr}, $spec->{assertions});
+            push @results, [$err eq "" ? "pass" : "fail", $test_id, $err eq "" ? undef : $err];
         }
     }
     return \@results;
@@ -741,24 +263,27 @@ sub run_phase_tests ($test_dir, $phase_name, $cfg) {
     my $pattern = $cfg->{glob} // "*.tests";
     for my $f (sort glob("$test_dir/$pattern")) {
         my $stem = basename($f, ".tests");
-        my $tests = parse_spec_file($f);
-        for my $t (@$tests) {
-            my ($name, $input, $expected) = @$t;
-            my $test_id = "$stem/$name";
+        my $tests = parse_spec_file(_read_file($f));
+        for my $entry (@$tests) {
+            my $test_id = "$stem/$entry->{name}";
             my $lenient = ($phase_name =~ /^(parse|pycheck|typarse|tycheck)$/);
             my $phase_result = run_transpiled_phase(
-                $input, $cfg->{args},
+                $entry->{input}, $cfg->{args},
                 is_taytsh => $cfg->{taytsh},
                 expect_json => $cfg->{json},
             );
+            my $reveals = $phase_result->{reveals};
             if ($phase_name eq "pycheck" && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
-                if (ref($phase_result->{data}) eq "HASH" && exists $phase_result->{data}{reveals}) {
-                    my @reveals = map { [$_->{line}, $_->{type}] } @{$phase_result->{data}{reveals}};
-                    $phase_result->{reveals} = \@reveals;
+                if (blessed($phase_result->{data}) && $phase_result->{data}->isa("JsonObject")) {
+                    eval {
+                        my $reveals_arr = get_items(get_field($phase_result->{data}, "reveals"));
+                        $reveals = [map { [int(get_number(get_field($_, "line"))), get_string(get_field($_, "type"))] } @$reveals_arr];
+                    };
                 }
             }
-            my $err = check_expected($expected, $phase_result, $phase_name, lenient_errors => $lenient);
-            push @results, [$err ? "fail" : "pass", $test_id, $err];
+            my $err = check_expected($entry->{expected}, $phase_result->{errors}, $phase_result->{warnings},
+                                     $phase_result->{data}, $reveals, $phase_name, $lenient ? 1 : 0);
+            push @results, [$err eq "" ? "pass" : "fail", $test_id, $err eq "" ? undef : $err];
         }
     }
     return \@results;
@@ -768,16 +293,15 @@ sub run_lowering_tests ($test_dir) {
     my @results;
     for my $f (sort glob("$test_dir/*.tests")) {
         my $stem = basename($f, ".tests");
-        my $tests = parse_spec_file($f);
-        for my $t (@$tests) {
-            my ($name, $input, $expected) = @$t;
-            my $test_id = "$stem/$name";
+        my $tests = parse_spec_file(_read_file($f));
+        for my $entry (@$tests) {
+            my $test_id = "$stem/$entry->{name}";
             my ($fh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
-            print $fh $input;
+            print $fh $entry->{input};
             close $fh;
             my $result = run_inprocess(["--stop-at", "lowering-text", $tmpfile]);
             unlink $tmpfile;
-            if ($expected =~ /^error:(.*)/) {
+            if ($entry->{expected} =~ /^error:(.*)/) {
                 my $expected_msg = $1;
                 $expected_msg =~ s/^\s+|\s+$//g;
                 if ($result->{exit} == 0) {
@@ -802,8 +326,8 @@ sub run_lowering_tests ($test_dir) {
                 next;
             }
             my $output = $result->{stdout};
-            unless (contains_normalized($output, $expected)) {
-                push @results, ["fail", $test_id, "Expected not found in output:\n--- expected ---\n$expected\n--- got ---\n$output"];
+            unless (contains_normalized($output, $entry->{expected})) {
+                push @results, ["fail", $test_id, "Expected not found in output:\n--- expected ---\n$entry->{expected}\n--- got ---\n$output"];
                 next;
             }
             push @results, ["pass", $test_id, undef];
@@ -831,33 +355,32 @@ sub run_codegen_tests ($test_dir) {
             my $basename_file = basename($base_file);
             my $stem = basename($base_file, ".tests");
             my $lang_file = File::Spec->catfile($lang_dir, $basename_file);
-            my $base_tests = parse_simple_tests($base_file);
+            my $base_tests = parse_simple_tests(_read_file($base_file));
             next unless @$base_tests;
             unless (-f $lang_file) {
-                for my $bt (@$base_tests) {
-                    push @results, ["fail", "$stem/$bt->[0][$lang]", "$lang/$basename_file missing"];
+                for my $entry (@$base_tests) {
+                    push @results, ["fail", "$stem/$entry->{name}[$lang]", "$lang/$basename_file missing"];
                 }
                 next;
             }
-            my $lang_tests = parse_simple_tests($lang_file);
-            my @base_names = map { $_->[0] } @$base_tests;
-            my @lang_names = map { $_->[0] } @$lang_tests;
+            my $lang_tests = parse_simple_tests(_read_file($lang_file));
+            my @base_names = map { $_->{name} } @$base_tests;
+            my @lang_names = map { $_->{name} } @$lang_tests;
             if ("@base_names" ne "@lang_names") {
-                for my $bt (@$base_tests) {
-                    push @results, ["fail", "$stem/$bt->[0][$lang]", "base/lang name mismatch"];
+                for my $entry (@$base_tests) {
+                    push @results, ["fail", "$stem/$entry->{name}[$lang]", "base/lang name mismatch"];
                 }
                 next;
             }
             my %lang_by_name;
             for my $lt (@$lang_tests) {
-                $lang_by_name{$lt->[0]} = $lt->[1];
+                $lang_by_name{$lt->{name}} = $lt->{content};
             }
-            for my $bt (@$base_tests) {
-                my ($name, $source) = @$bt;
-                my $test_id = "$stem/$name" . "[$lang]";
-                my $expected = $lang_by_name{$name};
+            for my $entry (@$base_tests) {
+                my $test_id = "$stem/$entry->{name}" . "[$lang]";
+                my $expected = $lang_by_name{$entry->{name}};
                 my ($fh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".ty", TMPDIR => 1);
-                print $fh $source;
+                print $fh $entry->{content};
                 close $fh;
                 my $result = run_inprocess(["taytsh", "--emit", $lang, $tmpfile]);
                 unlink $tmpfile;
@@ -899,21 +422,20 @@ sub run_emit_tests ($test_dir) {
             my $basename_file = basename($base_file);
             my $stem = basename($base_file, ".tests");
             my $lang_file = File::Spec->catfile($lang_dir, $basename_file);
-            my $base_tests = parse_simple_tests($base_file);
+            my $base_tests = parse_simple_tests(_read_file($base_file));
             next unless @$base_tests;
             next unless -f $lang_file;
-            my $lang_tests = parse_simple_tests($lang_file);
+            my $lang_tests = parse_simple_tests(_read_file($lang_file));
             my %lang_by_name;
             for my $lt (@$lang_tests) {
-                $lang_by_name{$lt->[0]} = $lt->[1];
+                $lang_by_name{$lt->{name}} = $lt->{content};
             }
-            for my $bt (@$base_tests) {
-                my ($name, $source) = @$bt;
-                next unless exists $lang_by_name{$name};
-                my $test_id = "$stem/$name" . "[$lang]";
-                my $expected = $lang_by_name{$name};
+            for my $entry (@$base_tests) {
+                next unless exists $lang_by_name{$entry->{name}};
+                my $test_id = "$stem/$entry->{name}" . "[$lang]";
+                my $expected = $lang_by_name{$entry->{name}};
                 my ($fh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
-                print $fh $source;
+                print $fh $entry->{content};
                 close $fh;
                 my $result = run_inprocess(["--target", $lang, $tmpfile]);
                 unlink $tmpfile;
@@ -936,20 +458,6 @@ sub run_emit_tests ($test_dir) {
     return \@results;
 }
 
-sub find_lib_imports ($source) {
-    my @matches = ($source =~ /^from lib\.(\w+) import/gm);
-    my %seen;
-    return grep { !$seen{$_}++ } @matches;
-}
-
-sub build_project_input ($app_path, $app_source, $lib_sources) {
-    my @parts = ($app_path, $app_source);
-    for my $lib (@$lib_sources) {
-        push @parts, $lib->[0], $lib->[1];
-    }
-    return join("\0", @parts);
-}
-
 sub run_app_tests ($test_dir) {
     my @results;
     my @available;
@@ -962,14 +470,12 @@ sub run_app_tests ($test_dir) {
     @available = sort @available;
     for my $test_file (sort glob("$test_dir/apptest_*.py")) {
         my $stem = basename($test_file, ".py");
-        open(my $fh, "<", $test_file) or next;
-        my $source = do { local $/; <$fh> };
-        close $fh;
-        my @lib_names = find_lib_imports($source);
+        my $source = _read_file($test_file);
+        my $lib_names = find_lib_imports($source);
         for my $target (@available) {
             my $test_id = "$stem" . "[$target]";
             my $result;
-            if (@lib_names == 0) {
+            if (@$lib_names == 0) {
                 my ($tfh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
                 print $tfh $source;
                 close $tfh;
@@ -977,11 +483,9 @@ sub run_app_tests ($test_dir) {
                 unlink $tmpfile;
             } else {
                 my @lib_sources;
-                for my $name (@lib_names) {
+                for my $name (@$lib_names) {
                     my $lib_path = File::Spec->catfile($LIB_DIR, "$name.py");
-                    open(my $lfh, "<", $lib_path) or next;
-                    my $lib_src = do { local $/; <$lfh> };
-                    close $lfh;
+                    my $lib_src = _read_file($lib_path);
                     push @lib_sources, ["lib/$name.py", $lib_src];
                 }
                 my $stdin_data = build_project_input("apptest.py", $source, \@lib_sources);
@@ -1101,7 +605,22 @@ if ($@) {
     exit 1;
 }
 my $t1 = time();
-printf("Loaded in %.1fs\n\n", $t1 - $t0);
+printf("Loaded in %.1fs\n", $t1 - $t0);
+
+my $harness_path = File::Spec->catfile($TONGUES_DIR, ".out", "test_harness.pl");
+unless (-f $harness_path) {
+    print STDERR "Transpiled harness not found: $harness_path\n";
+    exit 1;
+}
+eval {
+    do $harness_path;
+    die $@ if $@;
+};
+if ($@) {
+    print STDERR "Failed to load transpiled harness:\n$@\n";
+    exit 1;
+}
+say "";
 
 my $total_pass = 0;
 my $total_fail = 0;

@@ -139,14 +139,22 @@ lang-ruby:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile ruby
-    cd tongues && ruby bin/test-transpiled.rb ".out/tongues.rb"
+    cd tongues
+    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
+        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
+        | uv run bin/tongues --project --target ruby -o .out/test_harness.rb
+    ruby tests/test-transpiled.rb ".out/tongues.rb"
 
 # Self-transpile and test against transpiled Perl binary
 lang-perl:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile perl
-    cd tongues && perl bin/test-transpiled.pl ".out/tongues.pl"
+    cd tongues
+    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
+        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
+        | uv run bin/tongues --project --target perl -o .out/test_harness.pl
+    perl tests/test-transpiled.pl ".out/tongues.pl"
 
 # Lower to Taytsh and run through treewalker + VM
 lang-taytsh:

@@ -6,6 +6,8 @@ from pathlib import Path
 
 # Add tongues directory to path for src imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add src directory for lib.* imports (used by tests.shared.test_harness)
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 def pytest_addoption(parser):
