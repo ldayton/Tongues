@@ -9,13 +9,13 @@ prep:
     echo "$log"
     exit $rc
 
-# Run lint, fmt, subset in parallel
-style:
+# Run lint, fmt, subset in parallel (--fix to auto-fix)
+style *ARGS:
     #!/usr/bin/env bash
     set -uo pipefail
-    pids=() results=()
-    just lint & pids+=($!)
-    just fmt & pids+=($!)
+    pids=()
+    just lint {{ARGS}} & pids+=($!)
+    just fmt {{ARGS}} & pids+=($!)
     just subset & pids+=($!)
     failed=0
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
