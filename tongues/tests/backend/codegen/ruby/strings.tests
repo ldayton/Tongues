@@ -23,7 +23,7 @@ puts("hello".upcase)
 puts(s.start_with?("hello").to_s)
 
 === Trim functions
-s = "  hello  ".gsub(/^[ ]+|[ ]+$/, "")
+s = "  hello  ".gsub(/\A[ ]+|[ ]+\z/, "")
 
 === Count and RFind on string
 c = "abcabc".scan("abc").length

@@ -1,0 +1,11 @@
+=== strip default whitespace
+.gsub(/\A[
+
+=== strip custom chars
+\A[xy]+|[xy]+\z
+
+=== lstrip default whitespace
+.gsub(/\A[
+
+=== rstrip default whitespace
+]+\z/, "")

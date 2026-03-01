@@ -1,0 +1,11 @@
+=== strip default whitespace
+s.strip(
+
+=== strip custom chars
+s.strip("xy")
+
+=== lstrip default whitespace
+s.lstrip(
+
+=== rstrip default whitespace
+s.rstrip(
