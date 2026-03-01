@@ -15,7 +15,7 @@ These are not phases — they happen together during the single tree walk. The e
 
 ## Declaration Ordering
 
-The Taytsh IR has forward-reference semantics: all top-level declarations are visible throughout the module regardless of position (see `12-taytsh-ir-spec.md`, Module Structure). Target languages do not necessarily share this property. Backends emitting languages where class/struct declarations are evaluated top-to-bottom must emit declarations in dependency order.
+The Taytsh IR has forward-reference semantics: all top-level declarations are visible throughout the module regardless of position (see `taytsh.md`, Module Structure). Target languages do not necessarily share this property. Backends emitting languages where class/struct declarations are evaluated top-to-bottom must emit declarations in dependency order.
 
 ### Dependency graph
 
@@ -59,7 +59,7 @@ Cycles between struct field types are possible (`struct A { b: B? }`, `struct B 
 
 ### Interaction with project compilation
 
-The project merge phase (`04a-project-and-imports.md`) sorts files by import dependencies, not by type dependencies. Two structs in different files may have a type dependency without an import dependency (because all names become visible after merge). The backend's declaration ordering pass is therefore necessary even when the project merge has already run.
+The project merge phase (see `frontend.md`, Merge) sorts files by import dependencies, not by type dependencies. Two structs in different files may have a type dependency without an import dependency (because all names become visible after merge). The backend's declaration ordering pass is therefore necessary even when the project merge has already run.
 
 ## Idiomatic Output
 
@@ -189,9 +189,7 @@ The backend transforms the loop: replace the `let ACC = ""` + loop-with-Concat p
 
 Used by Go, Lua, Perl, and C#.
 
-`hoisting.hoisted_vars` — Go emits `var` declarations before the control structure. Lua emits `local` declarations before the block.
-
-`hoisting.func_hoisted_vars` — Perl reads this to emit `my` declarations at function scope. Perl's block-scoped `my` declarations inside control-flow blocks are invisible to sibling blocks, so all hoisted variables must be pre-declared at function entry.
+`hoisting.hoisted_vars` — Go emits `var` declarations before the control structure. Lua emits `local` declarations before the block. Perl uses this to emit `my` declarations at function scope, since Perl's block-scoped `my` inside control-flow blocks are invisible to sibling blocks.
 
 `hoisting.has_continue` — Lua emits `goto continue_label` with a label at the loop end, since Lua lacks native `continue` (before 5.2) or uses `repeat until true` wrapping.
 

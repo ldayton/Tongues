@@ -152,7 +152,11 @@ Target representations:
 | ------------------- | ------------------------ | -------------------------------------------------------- |
 | `Abs(x)`            | `T -> T`                 | absolute value                                           |
 | `Min(a, b)`         | `T, T -> T`              | smaller of two values                                    |
+| `Min(xs)`           | `list[T] -> T`           | smallest element; throws IndexError if empty             |
+| `Min(xs, key)`      | `list[T], fn[T, K] -> T` | smallest element by key function                         |
 | `Max(a, b)`         | `T, T -> T`              | larger of two values                                     |
+| `Max(xs)`           | `list[T] -> T`           | largest element; throws IndexError if empty              |
+| `Max(xs, key)`      | `list[T], fn[T, K] -> T` | largest element by key function                          |
 | `Sum(xs)`           | `list[T] -> T`           | sum of elements                                          |
 | `Pow(a, b)`         | `T, T -> T`              | exponentiation                                           |
 | `Round(x)`          | `float -> int`           | round to nearest integer                                 |
@@ -164,7 +168,7 @@ Target representations:
 | `WrappingSub(a, b)` | `int, int -> int`        | subtraction wrapping mod 2^64; strict math only          |
 | `WrappingMul(a, b)` | `int, int -> int`        | multiplication wrapping mod 2^64; strict math only       |
 
-`T` in `Min`, `Max` is `int`, `float`, or `byte`. `T` in `Abs`, `Sum`, `Pow` is `int` or `float`. `Sqrt`, `Floor`, and `Ceil` are `float` only. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
+`T` in two-argument `Min`, `Max` is `int`, `float`, or `byte`. The list forms of `Min`, `Max` accept any ordered type. The key forms sort by the key function's return type, which must be ordered. `T` in `Abs`, `Sum`, `Pow` is `int` or `float`. `Sqrt`, `Floor`, and `Ceil` are `float` only. No implicit coercion between numeric types — `Min(int, float)` is a type error. `bool` and `int` are distinct types with no implicit coercion in either direction.
 
 `WrappingAdd`, `WrappingSub`, and `WrappingMul` are available only in strict math mode. They return the unique value in [-2^63, 2^63) congruent to the mathematical result modulo 2^64. These exist to support software floating-point implementation — see Strict Math.
 
@@ -489,7 +493,7 @@ Every name in a function body resolves to exactly one binding. Backends never ne
 
 ### Reserved names
 
-Built-in function names (`Len`, `Append`, `ToString`, `WriteOut`, `WritelnErr`, etc.) are reserved. No binding — top-level declaration, local variable, parameter, or loop variable — may use a reserved name. The one exception is `ToString`: structs may declare a `fn ToString(this) -> string` method to override the default string representation (see Strict ToString). This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
+Built-in function names (`Len`, `Append`, `ToString`, `WriteOut`, `WritelnErr`, etc.) are reserved. No binding — top-level declaration, local variable, parameter, or loop variable — may use a reserved name. Two exceptions: structs may declare `fn ToString(this) -> string` to override the default string representation (see Strict ToString), and `fn LessThan(this, other: Self) -> bool` to define ordering (see Struct Ordering). This keeps name resolution trivial — a call to `Len(xs)` always means the built-in, with no overload resolution or import precedence to consider.
 
 ### Top-level declarations
 
@@ -732,22 +736,23 @@ let n: int = Len(xs)
 
 ### Functions
 
-| Function                      | Signature                     | Description                                        |
-| ----------------------------- | ----------------------------- | -------------------------------------------------- |
-| `Len(xs)`                     | `list[T] -> int`              | element count                                      |
-| `Append(xs, v)`               | `list[T], T -> void`          | append element to end                              |
-| `Insert(xs, i, v)`            | `list[T], int, T -> void`     | insert element at index                            |
-| `Pop(xs)`                     | `list[T] -> T`                | remove and return last; throws IndexError if empty |
-| `RemoveAt(xs, i)`             | `list[T], int -> void`        | remove element at index                            |
-| `IndexOf(xs, v)`              | `list[T], T -> int`           | index of first occurrence, -1 if missing           |
-| `Contains(xs, v)`             | `list[T], T -> bool`          | membership test                                    |
-| `Repeat(xs, n)`               | `list[T], int -> list[T]`     | repeat list n times; n ≤ 0 yields empty list       |
-| `Reversed(xs)`                | `list[T] -> list[T]`          | new list in reverse order                          |
-| `Sorted(xs)`                  | `list[T] -> list[T]`          | new list in ascending order                        |
-| `Concat(a, b)`                | `list[T], list[T] -> list[T]` | concatenation                                      |
-| `RangeList(start, end, step)` | `int, int, int -> list[int]`  | list from range                                    |
+| Function                      | Signature                      | Description                                        |
+| ----------------------------- | ------------------------------ | -------------------------------------------------- |
+| `Len(xs)`                     | `list[T] -> int`               | element count                                      |
+| `Append(xs, v)`               | `list[T], T -> void`           | append element to end                              |
+| `Insert(xs, i, v)`            | `list[T], int, T -> void`      | insert element at index                            |
+| `Pop(xs)`                     | `list[T] -> T`                 | remove and return last; throws IndexError if empty |
+| `RemoveAt(xs, i)`             | `list[T], int -> void`         | remove element at index                            |
+| `IndexOf(xs, v)`              | `list[T], T -> int`            | index of first occurrence, -1 if missing           |
+| `Contains(xs, v)`             | `list[T], T -> bool`           | membership test                                    |
+| `Repeat(xs, n)`               | `list[T], int -> list[T]`      | repeat list n times; n ≤ 0 yields empty list       |
+| `Reversed(xs)`                | `list[T] -> list[T]`           | new list in reverse order                          |
+| `Sorted(xs)`                  | `list[T] -> list[T]`           | new list in ascending order                        |
+| `Sorted(xs, key)`             | `list[T], fn[T, K] -> list[T]` | new list sorted by key function                    |
+| `Concat(a, b)`                | `list[T], list[T] -> list[T]`  | concatenation                                      |
+| `RangeList(start, end, step)` | `int, int, int -> list[int]`   | list from range                                    |
 
-`Sorted` requires `T` to be an ordered type (`int`, `float`, `byte`, `rune`, `string`).
+`Sorted` without a key requires `T` to be an ordered type (`int`, `float`, `byte`, `rune`, `string`, or a struct with a `LessThan` method). `Sorted` with a key sorts by the key function's return type, which must itself be an ordered type.
 
 ## Maps
 
@@ -991,6 +996,10 @@ let n: int = s.Len()
 ```
 
 Methods are functions declared inside a struct with `this` as the first parameter. `this` is the receiver instance; its type is the enclosing struct. Methods are called with `.` syntax.
+
+### Struct Ordering
+
+A struct may declare `fn LessThan(this, other: Self) -> bool` to define a total ordering. `LessThan` is normally a reserved name; this is a permitted exception (like `ToString`). A struct with `LessThan` is an ordered type and can be used with `Sorted`, `Min`, and `Max`. The lowerer generates `LessThan` from Python's `@dataclass(order=True)`, which compares fields in declaration order.
 
 ## Interfaces
 

@@ -75,11 +75,12 @@ Depends on: `scope.*`, `liveness.*`.
 
 Intra-procedural analysis solving three target-specific code generation problems. Detects `continue` inside loop bodies (Lua needs a transformation). Detects `break` inside match cases (C# switch-in-loop workaround). Collects variables that hold runes (Go needs explicit `rune` type declarations for string indexing).
 
-| Annotation              | Type   | On    | Meaning                                 |
-| ----------------------- | ------ | ----- | --------------------------------------- |
-| `hoisting.has_continue` | bool   | loop  | body contains `continue`                |
-| `hoisting.has_break`    | bool   | match | case body contains `break`              |
-| `hoisting.rune_vars`    | string | fn    | comma-separated variable names, or `""` |
+| Annotation              | Type   | On             | Meaning                                              |
+| ----------------------- | ------ | -------------- | ---------------------------------------------------- |
+| `hoisting.hoisted_vars` | string | control struct | variables declared inside but used after, with types |
+| `hoisting.has_continue` | bool   | loop           | body contains `continue`                             |
+| `hoisting.has_break`    | bool   | match          | case body contains `break`                           |
+| `hoisting.rune_vars`    | string | fn             | comma-separated variable names, or `""`              |
 
 Can use `strings.indexed` when available; otherwise performs its own string-indexing detection.
 
