@@ -148,6 +148,10 @@ lang-perl:
     just _self-transpile perl
     cd tongues && perl bin/test-transpiled.pl ".out/tongues.pl"
 
+# Lower to Taytsh and run through treewalker + VM
+lang-taytsh:
+    uv run --directory tongues pytest tests/test_lang_taytsh.py -v
+
 # Run a just target inside Docker
 docker target lang="python":
     docker build -t tongues-{{lang}} docker/{{lang}}
@@ -241,16 +245,18 @@ test:
     _st python & pid_py=$!
     _st ruby & pid_rb=$!
     _st perl & pid_pl=$!
+    _st taytsh & pid_ty=$!
     wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
     wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
+    wait $pid_ty && results[lang-taytsh]=✅ || { results[lang-taytsh]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "           TEST SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-ruby lang-perl; do
+    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
