@@ -1017,6 +1017,17 @@ class _BuiltinDispatch:
 
     def _min(self, args: list[Val]) -> Val:
         a = args[0]
+        if len(args) == 1 and isinstance(a, (VList, VTuple)):
+            items = a.items
+            if len(items) == 0:
+                raise _VMThrow(_make_error_struct("ValueError", "min() arg is an empty sequence"))
+            best = items[0]
+            i = 1
+            while i < len(items):
+                if _val_compare(items[i], best) < 0:
+                    best = items[i]
+                i += 1
+            return best
         b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value <= b.value else b
@@ -1028,6 +1039,17 @@ class _BuiltinDispatch:
 
     def _max(self, args: list[Val]) -> Val:
         a = args[0]
+        if len(args) == 1 and isinstance(a, (VList, VTuple)):
+            items = a.items
+            if len(items) == 0:
+                raise _VMThrow(_make_error_struct("ValueError", "max() arg is an empty sequence"))
+            best = items[0]
+            i = 1
+            while i < len(items):
+                if _val_compare(items[i], best) > 0:
+                    best = items[i]
+                i += 1
+            return best
         b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value >= b.value else b
