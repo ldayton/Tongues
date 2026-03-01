@@ -80,6 +80,10 @@ test-lowering-local:
 test-middleend-local:
     uv run --directory tongues pytest tests/test_middleend.py tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto
 
+# Run linker tests locally
+test-linker-local:
+    uv run --directory tongues pytest tests/test_linker.py -v
+
 # Run backend tests (codegen + apptests) locally
 test-backend-local:
     uv run --directory tongues pytest tests/test_codegen.py tests/test_target.py -v -n auto
@@ -148,6 +152,7 @@ test-transpiled-local target="python":
         python)
             uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
                 tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
+                tests/test_linker.py \
                 --transpiled ".out/tongues.${ext[{{target}}]}" -v
             ;;
         ruby)
@@ -160,6 +165,7 @@ test-transpiled-local target="python":
             echo "No native test harness for {{target}}, falling back to pytest"
             uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
                 tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
+                tests/test_linker.py \
                 --transpiled ".out/tongues.${ext[{{target}}]}" -v
             ;;
     esac
@@ -173,6 +179,7 @@ test-transpiled target="python":
     docker run --rm -v "$(pwd):/workspace" tongues-{{target}} \
         uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
+        tests/test_linker.py \
         --transpiled ".out/tongues.${ext[{{target}}]}" -v
 
 # Build Docker image for a language
@@ -276,7 +283,7 @@ test-local:
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
     uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
-        tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto \
+        tests/test_taytsh_vm.py tests/test_tycheck_gen.py tests/test_linker.py -v -n auto \
         && results[tests]=✅ || { results[tests]=❌; failed=1; }
     # Self-transpile + test all three targets in parallel
     _st() {

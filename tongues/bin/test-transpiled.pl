@@ -19,10 +19,13 @@ my $TESTS_DIR = File::Spec->catdir($TONGUES_DIR, "tests");
 my $LIB_DIR = File::Spec->catdir($TONGUES_DIR, "src", "lib");
 
 # Phase -> test config
-# Runners: cli, phase, lowering, codegen, emit, app, ordering, ty_app
+# Runners: cli, linker, phase, lowering, codegen, emit, app, ordering, ty_app
 my @TESTS = (
     ["cli", [
         ["cli", { dir => "02_cli", run => "cli" }],
+    ]],
+    ["linker", [
+        ["linker", { dir => "03a_linker", run => "linker" }],
     ]],
     ["frontend", [
         ["parse",     { dir => "03_parse",      run => "phase", taytsh => 0, args => ["--stop-at", "parse"],      json => 1  }],
@@ -611,6 +614,128 @@ sub run_cli_tests ($test_dir) {
     return \@results;
 }
 
+sub parse_linker_test_file ($path) {
+    open(my $fh, "<", $path) or die "Cannot open $path: $!";
+    my @lines = <$fh>;
+    close $fh;
+    chomp @lines;
+    my @result;
+    my $i = 0;
+    while ($i < scalar @lines) {
+        if ($lines[$i] =~ /^=== (.*)/) {
+            my $test_name = $1;
+            $test_name =~ s/\s+$//;
+            $i++;
+            my @input_lines;
+            while ($i < scalar @lines && $lines[$i] !~ /^---/) {
+                push @input_lines, $lines[$i];
+                $i++;
+            }
+            $i++ if $i < scalar @lines && $lines[$i] eq "---";
+            my @expected_lines;
+            while ($i < scalar @lines && $lines[$i] !~ /^---/) {
+                push @expected_lines, $lines[$i];
+                $i++;
+            }
+            $i++ if $i < scalar @lines && $lines[$i] eq "---";
+            my $spec = parse_linker_spec(\@input_lines, \@expected_lines);
+            push @result, [$test_name, $spec];
+        } else {
+            $i++;
+        }
+    }
+    return \@result;
+}
+
+sub parse_linker_spec ($input_lines, $expected_lines) {
+    my %spec = (files => [], args => [], assertions => []);
+    my $current_path = undef;
+    my @current_lines;
+    for my $line (@$input_lines) {
+        if ($line =~ /^file: (.+)/) {
+            if (defined $current_path) {
+                push @{$spec{files}}, [$current_path, join("\n", @current_lines)];
+            }
+            $current_path = $1;
+            $current_path =~ s/\s+$//;
+            @current_lines = ();
+        } elsif ($line =~ /^args: (.+)/) {
+            if (defined $current_path) {
+                push @{$spec{files}}, [$current_path, join("\n", @current_lines)];
+                $current_path = undef;
+                @current_lines = ();
+            }
+            my $args_str = $1;
+            $args_str =~ s/\s+$//;
+            $spec{args} = [split(/\s+/, $args_str)];
+        } else {
+            push @current_lines, $line;
+        }
+    }
+    if (defined $current_path) {
+        push @{$spec{files}}, [$current_path, join("\n", @current_lines)];
+    }
+    for my $line (@$expected_lines) {
+        my $stripped = $line;
+        $stripped =~ s/^\s+|\s+$//g;
+        next if $stripped eq "";
+        if ($stripped =~ /^exit:(.*)/) {
+            push @{$spec{assertions}}, ["exit", int($1 =~ s/^\s+|\s+$//gr)];
+        } elsif ($stripped =~ /^exit-not:(.*)/) {
+            push @{$spec{assertions}}, ["exit-not", int($1 =~ s/^\s+|\s+$//gr)];
+        } elsif ($stripped =~ /^stderr:(.*)/) {
+            push @{$spec{assertions}}, ["stderr", $1 =~ s/^\s+|\s+$//gr];
+        } elsif ($stripped =~ /^stderr-contains:(.*)/) {
+            push @{$spec{assertions}}, ["stderr-contains", $1 =~ s/^\s+|\s+$//gr];
+        } elsif ($stripped =~ /^stderr-empty:/) {
+            push @{$spec{assertions}}, ["stderr-empty", undef];
+        } elsif ($stripped =~ /^stdout-contains:(.*)/) {
+            push @{$spec{assertions}}, ["stdout-contains", $1 =~ s/^\s+|\s+$//gr];
+        } elsif ($stripped =~ /^stdout-empty:/) {
+            push @{$spec{assertions}}, ["stdout-empty", undef];
+        }
+    }
+    return \%spec;
+}
+
+sub run_linker_tests ($test_dir) {
+    my @results;
+    for my $f (sort glob("$test_dir/*.tests")) {
+        my $stem = basename($f, ".tests");
+        my $tests = parse_linker_test_file($f);
+        for my $t (@$tests) {
+            my ($name, $spec) = @$t;
+            my $test_id = "$stem/$name";
+            my @parts;
+            for my $file (@{$spec->{files}}) {
+                push @parts, $file->[0], $file->[1];
+            }
+            my $stdin_data = join("\0", @parts);
+            my @args = @{$spec->{args}};
+            if (grep { $_ eq "--target" } @args) {
+                my $target_idx;
+                for my $i (0 .. $#args) {
+                    if ($args[$i] eq "--target") {
+                        $target_idx = $i;
+                        last;
+                    }
+                }
+                if (defined $target_idx) {
+                    my $target = $args[$target_idx + 1];
+                    unless (grep { $_ eq $target } @EMITTER_LANGS) {
+                        push @results, ["skip", $test_id, undef];
+                        next;
+                    }
+                }
+            }
+            my $result = run_inprocess($spec->{args}, $stdin_data);
+            my $err = check_cli_assertions($result, $spec->{assertions});
+            push @results, [$err ? "fail" : "pass", $test_id, $err];
+        }
+    }
+    return \@results;
+}
+
 sub run_phase_tests ($test_dir, $phase_name, $cfg) {
     my @results;
     my $pattern = $cfg->{glob} // "*.tests";
@@ -993,6 +1118,8 @@ for my $section (@TESTS) {
         my $runner = $cfg->{run};
         if ($runner eq "cli") {
             $phase_results = run_cli_tests($test_dir);
+        } elsif ($runner eq "linker") {
+            $phase_results = run_linker_tests($test_dir);
         } elsif ($runner eq "phase") {
             $phase_results = run_phase_tests($test_dir, $phase_name, $cfg);
         } elsif ($runner eq "lowering") {

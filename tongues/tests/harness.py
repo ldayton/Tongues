@@ -144,6 +144,115 @@ def discover_cli_tests(test_dir: Path) -> list[tuple[str, dict]]:
     return results
 
 
+def parse_linker_test_file(path: Path) -> list[tuple[str, dict]]:
+    """Parse a linker .tests file with file: directives into (name, spec) tuples.
+
+    Format:
+        === test name
+        file: a.py
+        <source for a.py>
+        file: b.py
+        <source for b.py>
+        args: --project --stop-at subset
+        ---
+        exit: 0
+        ---
+    """
+    lines = path.read_text().split("\n")
+    result: list[tuple[str, dict]] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("=== "):
+            test_name = line[4:].strip()
+            i += 1
+            input_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("---"):
+                input_lines.append(lines[i])
+                i += 1
+            if i < len(lines) and lines[i] == "---":
+                i += 1
+            expected_lines: list[str] = []
+            while i < len(lines) and not lines[i].startswith("---"):
+                expected_lines.append(lines[i])
+                i += 1
+            if i < len(lines) and lines[i] == "---":
+                i += 1
+            spec = _parse_linker_spec(input_lines, expected_lines)
+            result.append((test_name, spec))
+        else:
+            i += 1
+    return result
+
+
+def _parse_linker_spec(input_lines: list[str], expected_lines: list[str]) -> dict:
+    """Parse input with file: directives + expected into a linker test spec."""
+    spec: dict = {"files": [], "args": [], "assertions": []}
+    current_path: str | None = None
+    current_lines: list[str] = []
+    for line in input_lines:
+        if line.startswith("file: "):
+            if current_path is not None:
+                spec["files"].append((current_path, "\n".join(current_lines)))
+            current_path = line[6:].strip()
+            current_lines = []
+        elif line.startswith("args: "):
+            if current_path is not None:
+                spec["files"].append((current_path, "\n".join(current_lines)))
+                current_path = None
+                current_lines = []
+            spec["args"] = line[6:].strip().split()
+        else:
+            current_lines.append(line)
+    if current_path is not None:
+        spec["files"].append((current_path, "\n".join(current_lines)))
+    for line in expected_lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("exit:"):
+            spec["assertions"].append(("exit", int(line[5:].strip())))
+        elif line.startswith("exit-not:"):
+            spec["assertions"].append(("exit-not", int(line[9:].strip())))
+        elif line.startswith("stderr:"):
+            spec["assertions"].append(("stderr", line[7:].strip()))
+        elif line.startswith("stderr-contains:"):
+            spec["assertions"].append(("stderr-contains", line[16:].strip()))
+        elif line.startswith("stderr-empty:"):
+            spec["assertions"].append(("stderr-empty", None))
+        elif line.startswith("stdout-contains:"):
+            spec["assertions"].append(("stdout-contains", line[16:].strip()))
+        elif line.startswith("stdout-empty:"):
+            spec["assertions"].append(("stdout-empty", None))
+    return spec
+
+
+def discover_linker_tests(test_dir: Path) -> list[tuple[str, dict]]:
+    """Find all linker tests across .tests files."""
+    results = []
+    for test_file in sorted(test_dir.glob("*.tests")):
+        for name, spec in parse_linker_test_file(test_file):
+            results.append((f"{test_file.stem}/{name}", spec))
+    return results
+
+
+def run_linker_test(spec: dict) -> subprocess.CompletedProcess[bytes]:
+    """Run a linker test: encode files as NUL-delimited --project stdin."""
+    parts = []
+    for path, source in spec["files"]:
+        parts.append(path)
+        parts.append(source)
+    stdin_data = "\0".join(parts).encode() if parts else b""
+    if TRANSPILED_BINARY is not None:
+        if _TRANSPILED_MODULE is not None:
+            argv = [TRANSPILED_BINARY, *spec["args"]]
+            return _run_inprocess(argv, stdin_data=stdin_data)
+        cmd = [*_transpiled_cmd(), *spec["args"]]
+    else:
+        cmd = [sys.executable, "-m", "src.tongues", *spec["args"]]
+    return subprocess.run(cmd, input=stdin_data, capture_output=True, cwd=TONGUES_DIR)
+
+
 def run_cli(spec: dict) -> subprocess.CompletedProcess[bytes]:
     """Run tongues CLI from a test spec."""
     if spec["stdin_bytes"] is not None:
