@@ -35,7 +35,7 @@ my @TESTS = (
         ["lowering",  { dir => "10_lowering",    run => "lowering" }],
     ]],
     ["middleend", [
-        ["type_checking", { dir => "13_type_checking", run => "phase", taytsh => 1, args => ["--stop-at", "check"],     json => 0  }],
+        ["type_checking", { dir => "12_tycheck", run => "phase", taytsh => 1, args => ["--stop-at", "check"], json => 0, glob => "lowered_*.tests" }],
         ["scope",         { dir => "14_scope",          run => "phase", taytsh => 1, args => ["--stop-at", "scope"],     json => 1  }],
         ["returns",       { dir => "15_returns",        run => "phase", taytsh => 1, args => ["--stop-at", "returns"],   json => 1  }],
         ["liveness",      { dir => "16_liveness",       run => "phase", taytsh => 1, args => ["--stop-at", "liveness"],  json => 1  }],
@@ -51,9 +51,9 @@ my @TESTS = (
         ["ordering", { dir => "24_ordering", run => "ordering" }],
     ]],
     ["taytsh", [
-        ["taytsh_parse", { dir => "11_taytsh_parse", run => "phase", taytsh => 1, args => ["--stop-at", "parse"], json => 1  }],
-        ["taytsh_check", { dir => "12_taytsh_check", run => "phase", taytsh => 1, args => ["--stop-at", "check"], json => 0  }],
-        ["taytsh_app",   { dir => "23_taytsh_app",   run => "taytsh_app" }],
+        ["taytsh_parse", { dir => "11_typarse",  run => "phase", taytsh => 1, args => ["--stop-at", "parse"], json => 1  }],
+        ["taytsh_check", { dir => "12_tycheck",  run => "phase", taytsh => 1, args => ["--stop-at", "check"], json => 0, glob => "[!l]*.tests" }],
+        ["taytsh_app",   { dir => "23_ty_app",   run => "taytsh_app" }],
     ]],
 );
 
@@ -614,7 +614,8 @@ sub run_cli_tests ($test_dir) {
 
 sub run_phase_tests ($test_dir, $phase_name, $cfg) {
     my @results;
-    for my $f (sort glob("$test_dir/*.tests")) {
+    my $pattern = $cfg->{glob} // "*.tests";
+    for my $f (sort glob("$test_dir/$pattern")) {
         my $stem = basename($f, ".tests");
         my $tests = parse_spec_file($f);
         for my $t (@$tests) {

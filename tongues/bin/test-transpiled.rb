@@ -30,7 +30,7 @@ TESTS = {
     "lowering"  => { dir: "10_lowering",    run: :lowering },
   },
   "middleend" => {
-    "type_checking" => { dir: "13_type_checking", run: :phase, taytsh: true, args: ["--stop-at", "check"],     json: false },
+    "type_checking" => { dir: "12_tycheck", run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false, glob: "lowered_*.tests" },
     "scope"         => { dir: "14_scope",          run: :phase, taytsh: true, args: ["--stop-at", "scope"],     json: true  },
     "returns"       => { dir: "15_returns",        run: :phase, taytsh: true, args: ["--stop-at", "returns"],   json: true  },
     "liveness"      => { dir: "16_liveness",       run: :phase, taytsh: true, args: ["--stop-at", "liveness"],  json: true  },
@@ -46,9 +46,9 @@ TESTS = {
     "ordering" => { dir: "24_ordering", run: :ordering },
   },
   "taytsh" => {
-    "taytsh_parse" => { dir: "11_taytsh_parse", run: :phase, taytsh: true, args: ["--stop-at", "parse"], json: true  },
-    "taytsh_check" => { dir: "12_taytsh_check", run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false },
-    "taytsh_app"   => { dir: "23_taytsh_app",   run: :taytsh_app },
+    "taytsh_parse" => { dir: "11_typarse",  run: :phase, taytsh: true, args: ["--stop-at", "parse"], json: true  },
+    "taytsh_check" => { dir: "12_tycheck",  run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false, glob: "[!l]*.tests" },
+    "taytsh_app"   => { dir: "23_ty_app",   run: :taytsh_app },
   },
 }
 
@@ -494,7 +494,8 @@ end
 
 def run_phase_tests(test_dir, phase_name, cfg)
   results = []
-  Dir.glob(File.join(test_dir, "*.tests")).sort.each do |f|
+  pattern = cfg[:glob] || "*.tests"
+  Dir.glob(File.join(test_dir, pattern)).sort.each do |f|
     stem = File.basename(f, ".tests")
     parse_spec_file(f).each do |name, input, expected|
       test_id = "#{stem}/#{name}"

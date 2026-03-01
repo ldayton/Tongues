@@ -234,7 +234,7 @@ TESTS = {
         "lowering":  {"dir": "10_lowering",  "run": "lowering"},
     },
     "middleend": {
-        "type_checking": {"dir": "13_type_checking", "run": "phase"},
+        "type_checking": {"dir": "12_tycheck", "run": "phase", "glob": "lowered_*.tests"},
         "scope":     {"dir": "14_scope",     "run": "phase"},
         "returns":   {"dir": "15_returns",   "run": "phase"},
         "liveness":  {"dir": "16_liveness",  "run": "phase"},
@@ -250,9 +250,9 @@ TESTS = {
         "ordering":       {"dir": "24_ordering", "run": "ordering"},
     },
     "taytsh": {
-        "taytsh_parse": {"dir": "11_taytsh_parse", "run": "phase"},
-        "taytsh_check": {"dir": "12_taytsh_check", "run": "phase"},
-        "taytsh_app":   {"dir": "23_taytsh_app",   "run": "taytsh_app"},
+        "taytsh_parse": {"dir": "11_typarse",  "run": "phase"},
+        "taytsh_check": {"dir": "12_tycheck",  "run": "phase", "glob": "[!l]*.tests"},
+        "taytsh_app":   {"dir": "23_ty_app",   "run": "taytsh_app"},
     },
 }
 # fmt: on
@@ -317,10 +317,12 @@ def parse_spec_file(path: Path) -> list[tuple[str, str, str]]:
     return result
 
 
-def discover_specs(test_dir: Path) -> list[tuple[str, str, str]]:
+def discover_specs(
+    test_dir: Path, pattern: str = "*.tests"
+) -> list[tuple[str, str, str]]:
     """Glob *.tests in test_dir, return (test_id, input, expected) tuples."""
     results = []
-    for test_file in sorted(test_dir.glob("*.tests")):
+    for test_file in sorted(test_dir.glob(pattern)):
         for name, input_code, expected in parse_spec_file(test_file):
             results.append((f"{test_file.stem}/{name}", input_code, expected))
     return results
@@ -1420,13 +1422,13 @@ def pytest_generate_tests(metafunc):
             elif run == "phase":
                 fixture = f"{name}_input"
                 if fixture in metafunc.fixturenames:
-                    specs = discover_specs(test_dir)
+                    specs = discover_specs(test_dir, cfg.get("glob", "*.tests"))
                     params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in specs]
                     metafunc.parametrize(f"{fixture},{name}_expected", params)
             elif run == "lowering":
                 fixture = f"{name}_input"
                 if fixture in metafunc.fixturenames:
-                    specs = discover_specs(test_dir)
+                    specs = discover_specs(test_dir, cfg.get("glob", "*.tests"))
                     params = [pytest.param(inp, exp, id=tid) for tid, inp, exp in specs]
                     metafunc.parametrize(f"{fixture},{name}_expected", params)
             elif run == "codegen" and "codegen_input" in metafunc.fixturenames:
