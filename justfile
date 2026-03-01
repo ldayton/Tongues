@@ -36,61 +36,61 @@ subset:
     done
     exit $failed
 
-# Run all frontend tests locally (cli, parse, subset, names, sigs, fields, hierarchy, inference, lowering)
+# Run all frontend tests locally (cli, parse, subset, names, sigs, fields, hierarchy, pycheck, lowering)
 test-frontend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_cli or test_parse or test_subset or test_names or test_sigs or test_fields or test_hierarchy or test_inference or test_lowering" -v -n auto
+    uv run --directory tongues pytest tests/test_frontend.py -v -n auto
 
 # Run CLI tests locally
 test-cli-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_cli -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_cli -v
 
 # Run parse tests locally
 test-parse-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_parse -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_parse -v
 
 # Run subset tests locally
 test-subset-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_subset -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_subset -v
 
 # Run names tests locally
 test-names-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_names -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_names -v
 
 # Run signatures tests locally
 test-signatures-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_sigs -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_sigs -v
 
 # Run fields tests locally
 test-fields-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_fields -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_fields -v
 
 # Run hierarchy tests locally
 test-hierarchy-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_hierarchy -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_hierarchy -v
 
 # Run pycheck tests locally
 test-pycheck-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_pycheck -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_pycheck -v
 
 # Run lowering tests locally
 test-lowering-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_lowering -v
+    uv run --directory tongues pytest tests/test_frontend.py -k test_lowering -v
 
-# Run all middleend tests locally (type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph, taytsh, tycheck-gen)
+# Run all middleend tests locally (type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph, taytsh parse/check, tycheck-gen)
 test-middleend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto
+    uv run --directory tongues pytest tests/test_middleend.py tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto
 
 # Run backend tests (codegen + apptests) locally
 test-backend-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v -n auto
+    uv run --directory tongues pytest tests/test_codegen.py tests/test_target.py -v -n auto
 
 # Run declaration ordering tests locally
 test-ordering-local:
-    uv run --directory tongues pytest tests/test_runner.py -k test_ordering -v
+    uv run --directory tongues pytest tests/test_target.py -k test_ordering -v
 
 # Run taytsh tests locally
 test-taytsh-local:
-    uv run --directory tongues pytest tests/test_runner.py -k "test_taytsh" tests/test_taytsh_vm.py -v
+    uv run --directory tongues pytest tests/test_middleend.py -k "test_taytsh" tests/test_ty_app.py tests/test_taytsh_vm.py -v
 
 # Run generative type-checker tests locally
 test-tycheck-gen-local:
@@ -146,7 +146,8 @@ test-transpiled-local target="python":
     declare -A ext=([python]=py [ruby]=rb [perl]=pl)
     case "{{target}}" in
         python)
-            uv run --directory tongues pytest tests/test_runner.py \
+            uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+                tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
                 --transpiled ".out/tongues.${ext[{{target}}]}" -v
             ;;
         ruby)
@@ -157,7 +158,8 @@ test-transpiled-local target="python":
             ;;
         *)
             echo "No native test harness for {{target}}, falling back to pytest"
-            uv run --directory tongues pytest tests/test_runner.py \
+            uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+                tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
                 --transpiled ".out/tongues.${ext[{{target}}]}" -v
             ;;
     esac
@@ -169,7 +171,8 @@ test-transpiled target="python":
     declare -A ext=([python]=py [ruby]=rb [perl]=pl)
     docker build -t tongues-{{target}} docker/{{target}}
     docker run --rm -v "$(pwd):/workspace" tongues-{{target}} \
-        uv run --directory tongues pytest tests/test_runner.py \
+        uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+        tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
         --transpiled ".out/tongues.${ext[{{target}}]}" -v
 
 # Build Docker image for a language
@@ -180,19 +183,19 @@ docker-build lang:
 test-frontend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_cli or test_parse or test_subset or test_names or test_sigs or test_fields or test_hierarchy or test_inference or test_lowering" -v
+        uv run --directory tongues pytest tests/test_frontend.py -v
 
 # Run all middleend tests in Docker
 test-middleend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_type_checking or test_scope or test_returns or test_liveness or (test_strings and not apptest) or test_hoisting or test_ownership or test_callgraph or test_taytsh or test_tycheck_gen" tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
+        uv run --directory tongues pytest tests/test_middleend.py tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v
 
 # Run backend tests (codegen + apptests) in Docker
 test-backend:
     docker build -t tongues-python docker/python
     docker run --rm -v "$(pwd):/workspace" tongues-python \
-        uv run --directory tongues pytest tests/test_runner.py -k "test_codegen or test_app" -v
+        uv run --directory tongues pytest tests/test_codegen.py tests/test_target.py -v
 
 # Check if formatters are installed
 formatters:
@@ -271,7 +274,9 @@ test-local:
     declare -A results
     failed=0
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
-    uv run --directory tongues pytest tests/test_runner.py tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto \
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+        tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
+        tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto \
         && results[tests]=✅ || { results[tests]=❌; failed=1; }
     # Self-transpile + test all three targets in parallel
     _st() {
