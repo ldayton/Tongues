@@ -102,15 +102,15 @@ struct ValueError { message: string }
 struct IOError { message: string }
 ```
 
-| Error               | Thrown by                                                       |
-| ------------------- | --------------------------------------------------------------- |
-| `KeyError`          | map indexing with missing key                                   |
-| `IndexError`        | out-of-bounds index or slice, `Pop` on empty list               |
-| `ZeroDivisionError` | int or byte `/` or `%` with zero divisor                        |
-| `AssertError`       | `Assert` failure                                                |
-| `NilError`          | `Unwrap` on nil                                                 |
-| `ValueError`        | `ParseInt`/`ParseFloat` bad input, `FloatToInt` overflow or NaN |
-| `IOError`           | `ReadFile`/`WriteFile` failure                                  |
+| Error               | Thrown by                                                                                 |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| `KeyError`          | map indexing with missing key                                                             |
+| `IndexError`        | out-of-bounds index or slice, `Pop` on empty list                                         |
+| `ZeroDivisionError` | int or byte `/` or `%` with zero divisor                                                  |
+| `AssertError`       | `Assert` failure                                                                          |
+| `NilError`          | `Unwrap` on nil                                                                           |
+| `ValueError`        | `ParseInt`/`ParseFloat` bad input, `FloatToInt` overflow or NaN, `ReadFile` invalid UTF-8 |
+| `IOError`           | `ReadFile`/`WriteFile` failure                                                            |
 
 ## Numeric Types
 

@@ -14,7 +14,7 @@ All control flow is structured and all resources have lexical lifetimes. Iterato
 
 ### Primitives
 
-`int`, `float`, `str`, `bool`, `bytes`. No implicit conversions in source — `bool` is assignable to `int`, and `int` to `float`, but coercions are inserted explicitly during compilation.
+`int`, `float`, `str`, `bool`, `bytes`. No implicit conversions in source — `bool` may appear where `int` is expected, and `int` where `float` is expected, but the lowerer inserts explicit casts into the IR. At the IR level, these types are fully distinct with no assignability relationship.
 
 ### Collections
 

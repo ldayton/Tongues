@@ -55,7 +55,7 @@ Each phase produces an artifact consumed by subsequent phases. No phase modifies
 | parse      | dict-based AST  | merge, subset, names, signatures, fields, hierarchy, pycheck, lowering |
 | merge      | merged AST      | subset onward (project mode only)                                      |
 | subset     | (validation)    | —                                                                      |
-| names      | NameTable, CFGs | signatures, fields, pycheck                                            |
+| names      | NameTable, CFGs | signatures, hierarchy, fields, pycheck                                 |
 | signatures | FuncInfo table  | fields, pycheck, lowering                                              |
 | hierarchy  | HierarchyResult | fields, pycheck, lowering                                              |
 | fields     | ClassInfo table | pycheck, lowering                                                      |

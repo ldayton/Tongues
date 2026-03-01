@@ -64,6 +64,7 @@ The `--stop-at` flag halts the pipeline after the named phase and outputs the in
 | Phase        | Output Format                                                            |
 | ------------ | ------------------------------------------------------------------------ |
 | `parse`      | JSON: dict-based AST (project mode: JSON array of `{path, ast}` objects) |
+| `merge`      | JSON: merged AST (project mode only; equivalent to `parse` in file mode) |
 | `subset`     | Nothing (validation only)                                                |
 | `names`      | JSON: name table                                                         |
 | `signatures` | JSON: signature table                                                    |

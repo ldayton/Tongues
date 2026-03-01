@@ -57,7 +57,7 @@ Backward must-analysis. Walks each function body from exits to entries, identify
 
 ### Strings (conditional)
 
-Intra-procedural string classification. Runs when the target set includes languages whose native string encoding is not rune-indexed (Go, Rust, C, Java, C#, JavaScript, TypeScript, Dart, Swift). Classifies every string binding's content (ASCII, BMP, or unknown) and tracks how it is used (indexed, iterated, length-checked). Detects the string builder pattern — a loop accumulating via `s = Concat(s, expr)` — so backends can emit `StringBuilder`/`strings.Builder`/etc.
+Intra-procedural string classification. Runs when the target set includes languages whose native string encoding is not rune-indexed (Go, Rust, C, Zig, Java, C#, JavaScript, TypeScript, Dart, Swift, Lua, PHP). Classifies every string binding's content (ASCII, BMP, or unknown) and tracks how it is used (indexed, iterated, length-checked). Detects the string builder pattern — a loop accumulating via `s = Concat(s, expr)` — so backends can emit `StringBuilder`/`strings.Builder`/etc.
 
 Content classification forms a three-element lattice: `ascii ⊑ bmp ⊑ unknown`. Propagation through operations is the lattice join: concatenation of two ASCII strings is `ascii`; concatenation of ASCII and BMP is `bmp`. Every string operation is monotone — no operation can narrow the content class, only widen or preserve it.
 
