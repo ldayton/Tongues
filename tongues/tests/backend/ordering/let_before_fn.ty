@@ -1,0 +1,15 @@
+-- Top-level let initializer calls a function defined earlier.
+-- The function also reads a top-level let defined before it.
+
+let MULTIPLIER: int = 10
+
+fn Scale(x: int) -> int {
+    return x * MULTIPLIER
+}
+
+let SCALED_VALUE: int = Scale(5)
+
+fn Main() -> void {
+    Assert(MULTIPLIER == 10)
+    Assert(SCALED_VALUE == 50)
+}

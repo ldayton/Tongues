@@ -276,3 +276,96 @@ fn Main() -> void {
 ---
 error:
 ---
+
+=== top-level let valid
+let MAX: int = 100
+fn Main() -> void {
+    let x: int = MAX
+}
+---
+ok
+---
+
+=== top-level let type mismatch
+let MAX: int = "hello"
+fn Main() -> void {
+}
+---
+error:
+---
+
+=== top-level let duplicate name
+let X: int = 1
+let X: int = 2
+fn Main() -> void {
+}
+---
+error: duplicate
+---
+
+=== top-level let conflicts with function name
+let Foo: int = 1
+fn Foo() -> void {
+}
+fn Main() -> void {
+}
+---
+error:
+---
+
+=== top-level let conflicts with struct name
+struct Pt {
+    x: int
+}
+let Pt: int = 1
+fn Main() -> void {
+}
+---
+error:
+---
+
+=== top-level let uses struct type
+struct Point {
+    x: int
+    y: int
+}
+let ORIGIN: Point = Point(0, 0)
+fn Main() -> void {
+    let p: Point = ORIGIN
+}
+---
+ok
+---
+
+=== top-level let used in function
+let GREETING: string = "hello"
+fn Greet() -> string {
+    return GREETING
+}
+fn Main() -> void {
+    let s: string = Greet()
+}
+---
+ok
+---
+
+=== top-level let calls function
+fn MakeGreeting() -> string {
+    return "hello"
+}
+let GREETING: string = MakeGreeting()
+fn Main() -> void {
+    let s: string = GREETING
+}
+---
+ok
+---
+
+=== top-level let without initializer
+let X: int
+fn Main() -> void {
+    let y: int = X
+}
+---
+ok
+---

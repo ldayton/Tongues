@@ -142,3 +142,52 @@ struct NoFields {
 ---
 error:
 ---
+
+=== top-level let with initializer
+let MAX_SIZE: int = 100
+fn Main() -> void {}
+---
+ok
+---
+
+=== top-level let without initializer
+let COUNT: int
+fn Main() -> void {}
+---
+ok
+---
+
+=== top-level let string
+let GREETING: string = "hello"
+fn Main() -> void {}
+---
+ok
+---
+
+=== top-level let with complex type
+let ITEMS: list[int] = Append(Append(NewList(), 1), 2)
+fn Main() -> void {}
+---
+ok
+---
+
+=== multiple top-level lets
+let X: int = 1
+let Y: int = 2
+let Z: int = 3
+fn Main() -> void {}
+---
+ok
+---
+
+=== top-level let mixed with other declarations
+let SIZE: int = 10
+struct Point {
+    x: int
+    y: int
+}
+let ORIGIN: Point = Point(0, 0)
+fn Main() -> void {}
+---
+ok
+---

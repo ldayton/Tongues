@@ -574,3 +574,126 @@ def test_vm_app(app_path: Path) -> None:
     if result.exit_code != 0:
         output = (result.stdout + result.stderr).strip()
         pytest.fail(f"Exit code {result.exit_code}:\n{output}")
+
+
+class TestTopLevelLet:
+    def test_int_constant(self) -> None:
+        code, out, err = _run_ty("""
+let MAX: int = 100
+fn Main() -> void {
+    Assert(MAX == 100)
+}
+""")
+        assert code == 0, err
+
+    def test_string_constant(self) -> None:
+        code, out, err = _run_ty("""
+let GREETING: string = "hello"
+fn Main() -> void {
+    Assert(GREETING == "hello")
+}
+""")
+        assert code == 0, err
+
+    def test_used_in_function(self) -> None:
+        code, out, err = _run_ty("""
+let FACTOR: int = 10
+fn Scale(x: int) -> int {
+    return x * FACTOR
+}
+fn Main() -> void {
+    Assert(Scale(5) == 50)
+}
+""")
+        assert code == 0, err
+
+    def test_multiple_constants(self) -> None:
+        code, out, err = _run_ty("""
+let A: int = 2
+let B: int = 3
+let C: int = 5
+fn Main() -> void {
+    Assert(A + B + C == 10)
+}
+""")
+        assert code == 0, err
+
+    def test_struct_constant(self) -> None:
+        code, out, err = _run_ty("""
+struct Point {
+    x: int
+    y: int
+}
+let ORIGIN: Point = Point(0, 0)
+fn Main() -> void {
+    Assert(ORIGIN.x == 0)
+    Assert(ORIGIN.y == 0)
+}
+""")
+        assert code == 0, err
+
+    def test_calls_function(self) -> None:
+        code, out, err = _run_ty("""
+fn MakeGreeting() -> string {
+    return "hi"
+}
+let GREETING: string = MakeGreeting()
+fn Main() -> void {
+    Assert(GREETING == "hi")
+}
+""")
+        assert code == 0, err
+
+    def test_zero_initialized(self) -> None:
+        code, out, err = _run_ty("""
+let X: int
+fn Main() -> void {
+    Assert(X == 0)
+}
+""")
+        assert code == 0, err
+
+    def test_bool_constant(self) -> None:
+        code, out, err = _run_ty("""
+let FLAG: bool = true
+fn Main() -> void {
+    Assert(FLAG)
+}
+""")
+        assert code == 0, err
+
+    def test_float_constant(self) -> None:
+        code, out, err = _run_ty("""
+let PI: float = 3.14
+fn Main() -> void {
+    Assert(PI > 3.0)
+}
+""")
+        assert code == 0, err
+
+    def test_constant_in_expression(self) -> None:
+        code, out, err = _run_ty("""
+let BASE: int = 100
+let OFFSET: int = 42
+fn Main() -> void {
+    let result: int = BASE + OFFSET
+    Assert(result == 142)
+}
+""")
+        assert code == 0, err
+
+    def test_mixed_with_structs_and_functions(self) -> None:
+        code, out, err = _run_ty("""
+struct Config {
+    width: int
+    height: int
+}
+let DEFAULT_CONFIG: Config = Config(80, 24)
+fn GetWidth(c: Config) -> int {
+    return c.width
+}
+fn Main() -> void {
+    Assert(GetWidth(DEFAULT_CONFIG) == 80)
+}
+""")
+        assert code == 0, err

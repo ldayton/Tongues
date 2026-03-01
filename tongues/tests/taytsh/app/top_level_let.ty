@@ -1,0 +1,34 @@
+let MAX_SIZE: int = 256
+let GREETING: string = "hello"
+let DEBUG: bool = false
+
+struct Point {
+    x: int
+    y: int
+}
+
+let ORIGIN: Point = Point(0, 0)
+
+fn MakeTable() -> list[int] {
+    let result: list[int] = NewList()
+    let i: int = 0
+    while i < 5 {
+        result = Append(result, i * i)
+        i = i + 1
+    }
+    return result
+}
+
+let TABLE: list[int] = MakeTable()
+
+fn Main() -> void {
+    Assert(MAX_SIZE == 256)
+    Assert(GREETING == "hello")
+    Assert(!DEBUG)
+    Assert(ORIGIN.x == 0)
+    Assert(ORIGIN.y == 0)
+    Assert(Len(TABLE) == 5)
+    Assert(TABLE[0] == 0)
+    Assert(TABLE[1] == 1)
+    Assert(TABLE[4] == 16)
+}
