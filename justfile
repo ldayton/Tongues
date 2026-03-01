@@ -1,11 +1,11 @@
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
-# Quick pre-push check: style + test
-prep:
+# Quick pre-push check: style + test (--fix to auto-fix style)
+prep *ARGS:
     #!/usr/bin/env bash
     log=/tmp/tongues-prep-$(date +%s).log
     rc=0
-    { just style && just test; } 2>&1 | tee "$log" || rc=$?
+    { just style {{ARGS}} && just test; } 2>&1 | tee "$log" || rc=$?
     echo "$log"
     exit $rc
 
