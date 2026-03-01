@@ -78,7 +78,7 @@ test-lowering-local:
 
 # Run all middleend tests locally (type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph, taytsh parse/check, tycheck-gen)
 test-middleend-local:
-    uv run --directory tongues pytest tests/test_middleend.py tests/test_taytsh_vm.py tests/test_tycheck_gen.py -v -n auto
+    uv run --directory tongues pytest tests/test_middleend.py tests/test_ty_vm.py tests/test_tycheck_gen.py -v -n auto
 
 # Run linker tests locally
 test-linker-local:
@@ -94,7 +94,7 @@ test-ordering-local:
 
 # Run taytsh tests locally
 test-taytsh-local:
-    uv run --directory tongues pytest tests/test_middleend.py -k "test_typarse or test_tycheck" tests/test_ty_app.py tests/test_taytsh_vm.py -v
+    uv run --directory tongues pytest tests/test_middleend.py -k "test_typarse or test_tycheck" tests/test_ty_app.py tests/test_ty_vm.py -v
 
 # Run generative type-checker tests locally
 test-tycheck-gen-local:
@@ -283,7 +283,7 @@ test-local:
     just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
     uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_codegen.py tests/test_target.py tests/test_ty_app.py \
-        tests/test_taytsh_vm.py tests/test_tycheck_gen.py tests/test_linker.py -v -n auto \
+        tests/test_ty_vm.py tests/test_tycheck_gen.py tests/test_linker.py -v -n auto \
         && results[tests]=✅ || { results[tests]=❌; failed=1; }
     # Self-transpile + test all three targets in parallel
     _st() {

@@ -39,6 +39,7 @@ just test-hierarchy-local          # type hierarchy
 just test-pycheck-local            # python type checking
 just test-lowering-local           # Python → Taytsh lowering
 just test-middleend-local          # type checking, scope, returns, liveness, strings, hoisting, ownership, callgraph
+just test-linker-local             # multi-file project merge
 just test-backend-local            # codegen + apptests
 just test-taytsh-local             # Taytsh parser, checker, apptests
 ```
@@ -52,7 +53,7 @@ just versions
 ## Pytest Flags
 
 ```bash
-uv run --directory tongues pytest tests/test_runner.py [OPTIONS]
+uv run --directory tongues pytest tests/<test_file>.py [OPTIONS]
 ```
 
 | Flag              | Description                              |
