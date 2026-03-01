@@ -1,0 +1,11 @@
+=== user-defined exception class
+package ParseError;
+
+=== raise bare Exception
+die bless({message => "something went wrong"}, 'Exception');
+
+=== raise ValueError
+die bless({message => "bad input"}, 'ValueError');
+
+=== catch bare Exception
+my $__err1 = $@;

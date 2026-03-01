@@ -1,0 +1,193 @@
+=== empty function
+fn Main() -> void {}
+---
+ok
+---
+
+=== function with params
+fn Gcd(a: int, b: int) -> int {
+    return a
+}
+---
+ok
+---
+
+=== function returning void
+fn Log(msg: string) -> void {
+    WritelnOut(msg)
+    return
+}
+---
+ok
+---
+
+=== struct with fields
+struct Token {
+    kind: int
+    value: string
+    offset: int
+}
+---
+ok
+---
+
+=== struct with parent
+struct Literal : Node {
+    value: int
+}
+---
+ok
+---
+
+=== struct with method
+struct Span {
+    start: int
+    end: int
+
+    fn Len(this) -> int {
+        return this.end - this.start
+    }
+}
+---
+ok
+---
+
+=== struct with leading method
+struct Foo {
+    fn Bar(this) -> void {}
+
+    x: int
+}
+---
+ok
+---
+
+=== interface
+interface Node {}
+---
+ok
+---
+
+=== enum
+enum TokenKind {
+    Ident
+    Number
+    Eof
+}
+---
+ok
+---
+
+=== multiple declarations
+interface Node {}
+
+struct Literal : Node {
+    value: int
+}
+
+struct BinOp : Node {
+    op: string
+    left: Node
+    right: Node
+}
+
+fn Eval(node: Node) -> int {
+    return 0
+}
+---
+ok
+---
+
+=== method with this and params
+struct Span {
+    start: int
+    end: int
+
+    fn Contains(this, pos: int) -> bool {
+        return pos >= this.start && pos < this.end
+    }
+}
+---
+ok
+---
+
+=== empty enum
+enum Empty {}
+---
+error:
+---
+
+=== missing return type
+fn Main() {}
+---
+error:
+---
+
+=== missing fn name
+fn () -> void {}
+---
+error:
+---
+
+=== struct with no fields
+struct Empty {}
+---
+error:
+---
+
+=== struct with only methods
+struct NoFields {
+    fn DoStuff(this) -> void {}
+}
+---
+error:
+---
+
+=== top-level let with initializer
+let MAX_SIZE: int = 100
+fn Main() -> void {}
+---
+ok
+---
+
+=== top-level let without initializer
+let COUNT: int
+fn Main() -> void {}
+---
+ok
+---
+
+=== top-level let string
+let GREETING: string = "hello"
+fn Main() -> void {}
+---
+ok
+---
+
+=== top-level let with complex type
+let ITEMS: list[int] = Append(Append(NewList(), 1), 2)
+fn Main() -> void {}
+---
+ok
+---
+
+=== multiple top-level lets
+let X: int = 1
+let Y: int = 2
+let Z: int = 3
+fn Main() -> void {}
+---
+ok
+---
+
+=== top-level let mixed with other declarations
+let SIZE: int = 10
+struct Point {
+    x: int
+    y: int
+}
+let ORIGIN: Point = Point(0, 0)
+fn Main() -> void {}
+---
+ok
+---

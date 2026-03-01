@@ -274,17 +274,18 @@ class Parser:
                         raise self.error("unknown annotation '" + key + "'")
                 semantic: dict[str, str] = {}
                 seen_decl = True
-            for k in advisory:
-                decl.annotations[k] = advisory[k]
-            for k in semantic:
-                decl.annotations[k] = semantic[k]
+            if isinstance(decl, TDecl):
+                for k in advisory:
+                    decl.annotations[k] = advisory[k]
+                for k in semantic:
+                    decl.annotations[k] = semantic[k]
             decls.append(decl)
         module = TModule(decls)
         module.strict_math = strict_math
         module.strict_tostring = strict_tostring
         return module
 
-    def parse_decl(self) -> TDecl:
+    def parse_decl(self) -> TModuleItem:
         if self.at("fn"):
             return self.parse_fn_decl()
         if self.at("struct"):
@@ -293,7 +294,9 @@ class Parser:
             return self.parse_interface_decl()
         if self.at("enum"):
             return self.parse_enum_decl()
-        raise self.error("expected declaration (fn, struct, interface, enum)")
+        if self.at("let"):
+            return self.parse_let_stmt()
+        raise self.error("expected declaration (fn, struct, interface, enum, let)")
 
     def parse_fn_decl(self) -> TFnDecl:
         pos = self._pos()

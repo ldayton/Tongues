@@ -17,7 +17,7 @@ from tests.harness import (
 )
 
 TESTS = {
-    "ty_app": {"dir": "23_ty_app", "run": "ty_app"},
+    "ty_app": {"dir": "taytsh/app", "run": "ty_app"},
 }
 
 

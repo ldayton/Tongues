@@ -1,0 +1,45 @@
+=== unused catch variable is omitted
+except ValueError:
+
+=== used catch variable is kept
+except ValueError as e:
+
+=== try with finally
+finally:
+    print("finally")
+
+=== try with multiple catch clauses
+except ValueError:
+
+=== re-throw in catch
+raise e
+
+=== catch-all without type
+except Exception as e:
+
+=== catch-all after typed catch
+except Exception as e:
+
+=== throw and catch struct
+raise AppError("boom")
+
+=== catch union of both error types
+except (ErrA, ErrB) as e:
+
+=== catch union of types
+except (ErrA, ErrB) as e:
+
+=== throw bare Exception
+raise Exception("something went wrong")
+
+=== throw builtin ValueError
+raise ValueError("bad input")
+
+=== catch builtin ValueError
+except ValueError as e:
+
+=== Assert with message
+assert x > 0, "must be positive"
+
+=== Assert without message
+assert x > 0

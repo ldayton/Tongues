@@ -1,0 +1,44 @@
+=== user-defined exception class
+import sys
+class ParseError(Exception):
+    def __init__(self, msg: str, line: int):
+        self.msg: str = msg
+        self.line: int = line
+def parse(text: str) -> str:
+    if not text:
+        raise ParseError("empty", 0)
+    return text
+def main() -> None:
+    result: str = ""
+    try:
+        result = parse("")
+    except ParseError as e:
+        sys.stderr.buffer.write(e.msg.encode())
+        return
+    sys.stdout.buffer.write(result.encode())
+if __name__ == "__main__":
+    main()
+
+=== raise bare Exception
+def main() -> None:
+    raise Exception("something went wrong")
+if __name__ == "__main__":
+    main()
+
+=== raise ValueError
+def main() -> None:
+    raise ValueError("bad input")
+if __name__ == "__main__":
+    main()
+
+=== catch bare Exception
+import sys
+def risky() -> str:
+    raise Exception("boom")
+def main() -> None:
+    try:
+        risky()
+    except Exception:
+        sys.stdout.buffer.write(b"caught")
+if __name__ == "__main__":
+    main()

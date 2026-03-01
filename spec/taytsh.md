@@ -12,7 +12,7 @@ This spec defines Taytsh using a textual syntax to facilitate exposition. The gr
 
 ## Module Structure
 
-A program is a single UTF-8 encoded source file. All declarations — functions, structs, interfaces, and enums — live in one flat namespace. There are no imports, no modules, no packages, no forward declarations. Every name is visible throughout the file regardless of declaration order.
+A program is a single UTF-8 encoded source file. All declarations — functions, structs, interfaces, enums, and top-level `let` bindings — live in one flat namespace. There are no imports, no modules, no packages, no forward declarations. Every name is visible throughout the file regardless of declaration order.
 
 This closed-world property means the compiler can see every type that exists, every function that can be called, and every interface implementation. Exhaustiveness checks in `match` are total — there are no unknown variants.
 
@@ -93,6 +93,7 @@ try {
 The following error structs are part of the language — available in every program without explicit declaration. Built-in operations that can fail throw these types. User-defined structs that are thrown are ordinary structs; the IR draws no distinction between "error structs" and other structs.
 
 ```
+struct Exception { message: string }
 struct KeyError { message: string }
 struct IndexError { message: string }
 struct ZeroDivisionError { message: string }
@@ -104,6 +105,7 @@ struct IOError { message: string }
 
 | Error               | Thrown by                                                                                 |
 | ------------------- | ----------------------------------------------------------------------------------------- |
+| `Exception`         | generic exception; explicit `throw` only                                                  |
 | `KeyError`          | map indexing with missing key                                                             |
 | `IndexError`        | out-of-bounds index or slice, `Pop` on empty list                                         |
 | `ZeroDivisionError` | int or byte `/` or `%` with zero divisor                                                  |
@@ -499,7 +501,17 @@ Built-in function names (`Len`, `Append`, `ToString`, `WriteOut`, `WritelnErr`, 
 
 ### Top-level declarations
 
-Functions, structs, interfaces, and enums live in a single flat namespace and are mutually visible regardless of declaration order (see Module Structure). Top-level names and local names occupy disjoint namespaces — a local variable may share a name with a top-level declaration, and the local binding takes precedence within its scope.
+Functions, structs, interfaces, enums, and top-level `let` bindings live in a single flat namespace and are mutually visible regardless of declaration order (see Module Structure). Top-level names and local names occupy disjoint namespaces — a local variable may share a name with a top-level declaration, and the local binding takes precedence within its scope.
+
+### Top-level `let`
+
+```
+let MAX_SIZE: int = 100
+let GREETING: string = "hello"
+let TABLE: list[int] = make_table()
+```
+
+A top-level `let` declares a module-level constant. It has the same syntax as a local `let` statement. The initializer expression is evaluated once, before `Main` is called, in source order. Top-level `let` bindings may reference functions and other top-level `let` bindings that appear earlier in source order (unlike functions and types, which are order-independent). A top-level `let` without an initializer is zero-initialized.
 
 ## Assignment
 
@@ -1505,7 +1517,7 @@ Whitespace (spaces, tabs, newlines) separates tokens but is otherwise insignific
 
 ```
 Program       = ( Annotation* Decl )*
-Decl          = FnDecl | StructDecl | InterfaceDecl | EnumDecl
+Decl          = FnDecl | StructDecl | InterfaceDecl | EnumDecl | LetStmt
 
 FnDecl        = 'fn' IDENT '(' ParamList ')' '->' Type Block
 ParamList     = ( 'this' ( ',' Param )* | Param ( ',' Param )* )?

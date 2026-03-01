@@ -198,6 +198,7 @@ _RUBY_BUILTINS = frozenset(
 )
 
 _EXCEPTION_MAP: dict[str, str] = {
+    "Exception": "StandardError",
     "ValueError": "ArgumentError",
     "KeyError": "KeyError",
     "IndexError": "IndexError",
@@ -205,6 +206,10 @@ _EXCEPTION_MAP: dict[str, str] = {
     "AssertError": "RuntimeError",
     "NilError": "RuntimeError",
     "IOError": "IOError",
+    "BaseException": "StandardError",
+    "TypeError": "TypeError",
+    "NotImplementedError": "NotImplementedError",
+    "RuntimeError": "RuntimeError",
 }
 
 
@@ -1648,7 +1653,8 @@ class _RubyEmitter(Emitter):
                 parts.append(_safe_name(fields[i]) + ": " + self._expr(a.value))
             else:
                 parts.append(self._expr(a.value))
-        return _safe_type_name(name) + ".new(" + ", ".join(parts) + ")"
+        rname = _EXCEPTION_MAP.get(name, _safe_type_name(name))
+        return rname + ".new(" + ", ".join(parts) + ")"
 
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         obj_str = self._expr(func.obj)
@@ -1745,16 +1751,13 @@ class _RubyEmitter(Emitter):
             return self._a(args, 0) + ".downcase"
         if name == "Trim":
             a0 = self._a(args, 0)
-            chars = self._trim_chars(args[1].value)
-            return a0 + ".gsub(/^[" + chars + "]+|[" + chars + ']+$/, "")'
+            return a0 + self._trim_gsub(args[1].value, "both")
         if name == "TrimStart":
             a0 = self._a(args, 0)
-            chars = self._trim_chars(args[1].value)
-            return a0 + ".gsub(/^[" + chars + ']+/, "")'
+            return a0 + self._trim_gsub(args[1].value, "start")
         if name == "TrimEnd":
             a0 = self._a(args, 0)
-            chars = self._trim_chars(args[1].value)
-            return a0 + ".gsub(/[" + chars + ']+$/, "")'
+            return a0 + self._trim_gsub(args[1].value, "end")
         if name == "Split":
             return self._a(args, 0) + ".split(" + self._a(args, 1) + ", -1)"
         if name == "SplitN":
@@ -2050,6 +2053,28 @@ class _RubyEmitter(Emitter):
         if isinstance(expr, TStringLit):
             return expr.value
         return self._expr(expr)
+
+    def _trim_gsub(self, expr: TExpr, mode: str) -> str:
+        """Emit .gsub for Trim/TrimStart/TrimEnd with \\A/\\z anchors."""
+        if isinstance(expr, TStringLit):
+            c = expr.value
+            if mode == "both":
+                return ".gsub(/\\A[" + c + "]+|[" + c + ']+\\z/, "")'
+            if mode == "start":
+                return ".gsub(/\\A[" + c + ']+/, "")'
+            return ".gsub(/[" + c + ']+\\z/, "")'
+        ce = self._expr(expr)
+        if mode == "both":
+            return (
+                '.gsub(Regexp.new("\\\\A[" + Regexp.escape('
+                + ce
+                + ') + "]+|[" + Regexp.escape('
+                + ce
+                + ') + "]+\\\\z"), "")'
+            )
+        if mode == "start":
+            return '.gsub(Regexp.new("\\\\A[" + Regexp.escape(' + ce + ') + "]+"), "")'
+        return '.gsub(Regexp.new("[" + Regexp.escape(' + ce + ') + "]+\\\\z"), "")'
 
     def _format_int(self, args: list[TArg]) -> str:
         n = self._a(args, 0)

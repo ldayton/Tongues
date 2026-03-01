@@ -1,0 +1,31 @@
+=== strip default whitespace
+def main() -> None:
+    s = "  hello  "
+    x = s.strip()
+    print(x)
+if __name__ == "__main__":
+    main()
+
+=== strip custom chars
+def main() -> None:
+    s = "xxhelloxx"
+    x = s.strip("xy")
+    print(x)
+if __name__ == "__main__":
+    main()
+
+=== lstrip default whitespace
+def main() -> None:
+    s = "  hello  "
+    x = s.lstrip()
+    print(x)
+if __name__ == "__main__":
+    main()
+
+=== rstrip default whitespace
+def main() -> None:
+    s = "  hello  "
+    x = s.rstrip()
+    print(x)
+if __name__ == "__main__":
+    main()

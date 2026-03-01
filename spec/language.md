@@ -101,7 +101,7 @@ Fixed-length tuples have per-element types. Static index access is bounds-checke
 
 Exceptions are a source-language concept that dissolves at the IR boundary. Python restricts throwability to `Exception` subclasses; Taytsh has no such concept — any struct can be thrown. The `Exception` marker exists so the source language can enforce what is throwable while keeping the IR maximally simple: just structs, `throw`, and `catch`.
 
-Exception classes are `@dataclass` classes that inherit from `Exception`. `Exception` is a marker — it designates the class as throwable but is not a type. It contributes no fields and no methods.
+Exception classes are `@dataclass` classes that inherit from `Exception`. `Exception` is a marker — it designates the class as throwable but contributes no fields and no methods. `Exception` is also a concrete exception type with a single `message: str` field that can be raised directly: `raise Exception("msg")`.
 
 ```python
 @dataclass
@@ -113,14 +113,15 @@ class ParseError(Exception):
 
 Exception classes follow the same rules as other classes. Since `Exception` is a marker rather than a real base class, it does not count as inheritance — but an exception class cannot also inherit from another class. Exception classes cannot subclass other exception classes or built-in exceptions; every exception class inherits directly from `Exception`.
 
-`Exception` may appear only as a base class marker and after `except` as a catch-all. It cannot appear in type annotations, variables, or function signatures.
+`Exception` may appear as a base class marker, after `except` as a catch-all, and in `raise` statements as a generic exception. It cannot appear in type annotations, variables, or function signatures.
 
 ### Built-in Exceptions
 
-Six exceptions are implicitly available without declaration:
+Seven exceptions are implicitly available without declaration:
 
 | Exception           | Raised by                                                    |
 | ------------------- | ------------------------------------------------------------ |
+| `Exception`         | generic exception; explicit `raise` only                     |
 | `ValueError`        | `int(s)`, `float(s)` with invalid input; file with bad UTF-8 |
 | `KeyError`          | `d[k]` when key is missing                                   |
 | `IndexError`        | out-of-bounds index or slice, `.pop()` on empty list         |
@@ -128,7 +129,7 @@ Six exceptions are implicitly available without declaration:
 | `AssertionError`    | `assert` failure                                             |
 | `IOError`           | file open, read, or write failure                            |
 
-All six have a single `message: str` field and can be raised explicitly or caught by name.
+All seven have a single `message: str` field and can be raised explicitly or caught by name. `except Exception` remains a catch-all — it catches all exception types, not just instances of `Exception` itself.
 
 ### raise and try
 
@@ -151,7 +152,7 @@ finally:
 
 ### Lowering
 
-The `Exception` marker is erased. Exception classes become plain structs. `raise` becomes `throw`. `except` becomes `catch`. `except Exception` becomes an untyped catch-all.
+`Exception` and user-defined exception classes become plain structs. `raise` becomes `throw`. `except` becomes `catch`. `except Exception` becomes an untyped catch-all. `raise Exception("msg")` becomes `throw Exception("msg")` where `Exception` is a built-in error struct.
 
 Python's `AssertionError` maps to Taytsh's `AssertError`. The IR also introduces `NilError` (thrown by `Unwrap` on nil) for runtime nil-safety checks that cannot be resolved statically — it has no source-language equivalent.
 

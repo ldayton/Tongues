@@ -1,0 +1,11 @@
+=== user-defined exception class
+class ParseError < StandardError
+
+=== raise bare Exception
+raise StandardError.new("something went wrong")
+
+=== raise ValueError
+raise ArgumentError.new("bad input")
+
+=== catch bare Exception
+rescue

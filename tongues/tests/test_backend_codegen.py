@@ -14,8 +14,8 @@ from tests.harness import (
 
 # fmt: off
 TESTS = {
-    "codegen": {"dir": "21_codegen", "run": "codegen"},
-    "emit":    {"dir": "25_emit",    "run": "emit"},
+    "codegen": {"dir": "backend/codegen", "run": "codegen"},
+    "emit":    {"dir": "backend/emit",    "run": "emit"},
 }
 # fmt: on
 

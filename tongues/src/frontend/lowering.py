@@ -5309,7 +5309,15 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     # Regular iteration: for x in xs
     binding, b_ann = _extract_binding(target_node)
     iter_expr = _lower_expr(iter_node, env, ctx)
-    if len(binding) == 1:
+    if len(binding) >= 2 and isinstance(iter_type, SliceType):
+        elem = iter_type.element
+        if isinstance(elem, TupleType) and len(elem.elements) == len(binding):
+            b_ann["iter_kind"] = "tuple_unpack"
+            j = 0
+            while j < len(binding):
+                env.var_types[binding[j]] = elem.elements[j]
+                j += 1
+    elif len(binding) == 1:
         elem_type: TypeNode = VOID_TYPE
         if _is_type_dict(iter_type, ["string"]):
             elem_type = PrimitiveType("rune")

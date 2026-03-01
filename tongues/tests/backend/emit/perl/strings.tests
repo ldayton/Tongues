@@ -1,0 +1,11 @@
+=== strip default whitespace
+s/^[
+
+=== strip custom chars
+s/^[xy]+|[xy]+$//g
+
+=== lstrip default whitespace
+s/^[
+
+=== rstrip default whitespace
+]+$//

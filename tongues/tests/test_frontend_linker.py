@@ -15,10 +15,10 @@ from tests.harness import (
 )
 
 TESTS = {
-    "linker": {"dir": "03a_linker", "run": "linker"},
+    "linker": {"dir": "frontend/linker", "run": "linker"},
 }
 
-FIXTURES = TESTS_DIR / "03a_merge" / "fixtures"
+FIXTURES = TESTS_DIR / "frontend" / "merge" / "fixtures"
 
 
 def pytest_generate_tests(metafunc):

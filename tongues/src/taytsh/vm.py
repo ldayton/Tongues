@@ -56,6 +56,7 @@ from .bytecode import (
     OP_LOAD_ENUM,
     OP_LOAD_GLOBAL,
     OP_LOAD_LOCAL,
+    OP_STORE_GLOBAL,
     OP_MATCH_TYPE,
     OP_MOD_FLOAT,
     OP_MOD_INT,
@@ -1016,6 +1017,26 @@ class _BuiltinDispatch:
 
     def _min(self, args: list[Val]) -> Val:
         a = args[0]
+        if len(args) == 1:
+            items: list[Val] | None = None
+            if isinstance(a, VList):
+                items = a.items
+            elif isinstance(a, VTuple):
+                items = a.items
+            if items is not None:
+                if len(items) == 0:
+                    raise _VMThrow(
+                        _make_error_struct(
+                            "ValueError", "min() arg is an empty sequence"
+                        )
+                    )
+                best = items[0]
+                i = 1
+                while i < len(items):
+                    if _val_compare(items[i], best) < 0:
+                        best = items[i]
+                    i += 1
+                return best
         b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value <= b.value else b
@@ -1027,6 +1048,26 @@ class _BuiltinDispatch:
 
     def _max(self, args: list[Val]) -> Val:
         a = args[0]
+        if len(args) == 1:
+            items: list[Val] | None = None
+            if isinstance(a, VList):
+                items = a.items
+            elif isinstance(a, VTuple):
+                items = a.items
+            if items is not None:
+                if len(items) == 0:
+                    raise _VMThrow(
+                        _make_error_struct(
+                            "ValueError", "max() arg is an empty sequence"
+                        )
+                    )
+                best = items[0]
+                i = 1
+                while i < len(items):
+                    if _val_compare(items[i], best) > 0:
+                        best = items[i]
+                    i += 1
+                return best
         b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value >= b.value else b
@@ -1875,15 +1916,21 @@ class VM:
     def run(self) -> VMResult:
         if self.module.entry_index < 0:
             return VMResult(1, "", "no Main function")
-        entry_code = self.module.code_objects[self.module.entry_index]
-        frame = Frame(code=entry_code, ip=0, bp=len(self.stack))
-        # Allocate locals
-        i = 0
-        while i < entry_code.local_count:
-            self.stack.append(_NONE_VAL)
-            i += 1
-        self.frames.append(frame)
         try:
+            # Run top-level let initializers
+            if self.module.init_index >= 0:
+                init_code = self.module.code_objects[self.module.init_index]
+                init_frame = Frame(code=init_code, ip=0, bp=len(self.stack))
+                self.frames.append(init_frame)
+                self._dispatch()
+            # Run Main
+            entry_code = self.module.code_objects[self.module.entry_index]
+            frame = Frame(code=entry_code, ip=0, bp=len(self.stack))
+            i = 0
+            while i < entry_code.local_count:
+                self.stack.append(_NONE_VAL)
+                i += 1
+            self.frames.append(frame)
             self._dispatch()
             return VMResult(0, "".join(self.stdout_buf), "".join(self.stderr_buf))
         except _VMExit as e:
@@ -1945,9 +1992,12 @@ class VM:
             elif op == OP_LOAD_LOCAL:
                 self.stack.append(self.stack[frame.bp + arg])
             elif op == OP_STORE_LOCAL:
-                self.stack[frame.bp + arg] = self.stack.pop()
+                self.stack[frame.bp + arg] = self.stack[-1]
+                self.stack.pop()
             elif op == OP_LOAD_GLOBAL:
                 self.stack.append(self.globals[arg])
+            elif op == OP_STORE_GLOBAL:
+                self.globals[arg] = self.stack.pop()
             elif op == OP_LOAD_BUILTIN:
                 self.stack.append(VInt(arg))  # placeholder — builtins resolved at call
             elif op == OP_LOAD_CAPTURE:

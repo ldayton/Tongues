@@ -16,8 +16,8 @@ from tests.harness import (
 
 # fmt: off
 TESTS = {
-    "app":      {"dir": "22_app",     "run": "app"},
-    "ordering": {"dir": "24_ordering", "run": "ordering"},
+    "app":      {"dir": "backend/app",      "run": "app"},
+    "ordering": {"dir": "backend/ordering", "run": "ordering"},
 }
 # fmt: on
 

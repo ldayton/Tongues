@@ -33,15 +33,15 @@ from tests.harness import (
 
 # fmt: off
 TESTS = {
-    "cli":       {"dir": "02_cli",        "run": "cli"},
-    "parse":     {"dir": "03_parse",      "run": "phase"},
-    "subset":    {"dir": "04_subset",     "run": "phase"},
-    "names":     {"dir": "05_names",      "run": "phase"},
-    "sigs":      {"dir": "06_signatures", "run": "phase"},
-    "fields":    {"dir": "07_fields",     "run": "phase"},
-    "hierarchy": {"dir": "08_hierarchy",  "run": "phase"},
-    "pycheck":   {"dir": "09_pycheck",    "run": "phase"},
-    "lowering":  {"dir": "10_lowering",   "run": "lowering"},
+    "cli":       {"dir": "frontend/cli",        "run": "cli"},
+    "parse":     {"dir": "frontend/parse",      "run": "phase"},
+    "subset":    {"dir": "frontend/subset",     "run": "phase"},
+    "names":     {"dir": "frontend/names",      "run": "phase"},
+    "sigs":      {"dir": "frontend/signatures", "run": "phase"},
+    "fields":    {"dir": "frontend/fields",     "run": "phase"},
+    "hierarchy": {"dir": "frontend/hierarchy",  "run": "phase"},
+    "pycheck":   {"dir": "frontend/pycheck",    "run": "phase"},
+    "lowering":  {"dir": "frontend/lowering",   "run": "lowering"},
 }
 # fmt: on
 

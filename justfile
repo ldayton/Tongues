@@ -139,14 +139,26 @@ lang-ruby:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile ruby
-    cd tongues && ruby bin/test-transpiled.rb ".out/tongues.rb"
+    cd tongues
+    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
+        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
+        | uv run bin/tongues --project --target ruby -o .out/test_harness.rb
+    ruby tests/test-transpiled.rb ".out/tongues.rb"
 
 # Self-transpile and test against transpiled Perl binary
 lang-perl:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile perl
-    cd tongues && perl bin/test-transpiled.pl ".out/tongues.pl"
+    cd tongues
+    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
+        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
+        | uv run bin/tongues --project --target perl -o .out/test_harness.pl
+    perl tests/test-transpiled.pl ".out/tongues.pl"
+
+# Lower to Taytsh and run through treewalker + VM
+lang-taytsh:
+    uv run --directory tongues pytest tests/test_lang_taytsh.py -v
 
 # Run a just target inside Docker
 docker target lang="python":
@@ -241,16 +253,18 @@ test:
     _st python & pid_py=$!
     _st ruby & pid_rb=$!
     _st perl & pid_pl=$!
+    _st taytsh & pid_ty=$!
     wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
     wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
+    wait $pid_ty && results[lang-taytsh]=✅ || { results[lang-taytsh]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "           TEST SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-14s %s\n" "TARGET" "STATUS"
     printf "%-14s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-ruby lang-perl; do
+    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh; do
         printf "%-14s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
