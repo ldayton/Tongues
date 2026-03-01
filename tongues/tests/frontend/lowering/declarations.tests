@@ -170,3 +170,24 @@ def f(val: Left | Right) -> int:
 ---
 fn f(val: Middle) -> int {
 ---
+
+=== error function with non-zero default parameter value
+def decode(s: str, strict: bool = True) -> str:
+    return s
+---
+error: non-zero default parameter value
+---
+
+=== error method with non-zero default parameter value
+from dataclasses import dataclass
+@dataclass
+class Codec:
+    name: str
+    def decode(self, s: str, strict: bool = True) -> str:
+        return s
+def f() -> None:
+    c = Codec("utf8")
+    _ = c.decode("")
+---
+error: non-zero default parameter value
+---

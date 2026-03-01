@@ -3716,7 +3716,7 @@ def parse_number_value(s: str) -> JsonValue:
     return JInt(int(s, 0))
 
 
-def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str:
+def parse_string_value(s: str, lineno: int, col: int) -> str:
     """Parse a string literal to its value."""
     # Handle prefixes
     prefix = ""
@@ -3757,7 +3757,7 @@ def parse_string_value(s: str, lineno: int = 1, col: int = 0) -> str:
     return result
 
 
-def process_escapes(s: str, is_bytes: bool, lineno: int = 1, col: int = 0) -> str:
+def process_escapes(s: str, is_bytes: bool, lineno: int, col: int) -> str:
     """Process escape sequences in string."""
     result: list[str] = []
     i = 0

@@ -100,6 +100,11 @@ from .types import (
     FuncType,
     UnionType,
     LiteralType,
+    BoolLit,
+    IntLit,
+    FloatLit,
+    StringLit,
+    NilLit,
     INT_TYPE,
     FLOAT_TYPE,
     BOOL_TYPE,
@@ -774,6 +779,23 @@ def _interface_name(td: TypeNode) -> str:
     if isinstance(td, InterfaceRef):
         return td.name
     return ""
+
+
+def _is_non_zero_default(dv: TypeNode | None) -> bool:
+    """True when a default value is not the zero value for its type."""
+    if dv is None:
+        return False
+    if isinstance(dv, NilLit):
+        return False
+    if isinstance(dv, BoolLit):
+        return dv.value
+    if isinstance(dv, IntLit):
+        return dv.value != 0
+    if isinstance(dv, FloatLit):
+        return dv.value != 0.0
+    if isinstance(dv, StringLit):
+        return dv.value != ""
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -5696,6 +5718,19 @@ def _build_function(
     func_env.hoisted_stmts = {}
     if func_info is not None:
         for p in func_info.params:
+            if _is_non_zero_default(p.default_value):
+                sf = get_str(node, "_source_file")
+                ctx.errors.append(
+                    LoweringError(
+                        get_int(node, "lineno"),
+                        get_int(node, "col_offset"),
+                        name
+                        + "() param '"
+                        + p.name
+                        + "' has a non-zero default parameter value",
+                        sf,
+                    )
+                )
             if contains_any(p.typ):
                 sf = get_str(node, "_source_file")
                 ctx.errors.append(
@@ -5759,6 +5794,21 @@ def _build_method(
     if func_info is not None:
         for p in func_info.params:
             if p.name != "self":
+                if _is_non_zero_default(p.default_value):
+                    sf = get_str(node, "_source_file")
+                    ctx.errors.append(
+                        LoweringError(
+                            get_int(node, "lineno"),
+                            get_int(node, "col_offset"),
+                            class_name
+                            + "."
+                            + name
+                            + "() param '"
+                            + p.name
+                            + "' has a non-zero default parameter value",
+                            sf,
+                        )
+                    )
                 if contains_any(p.typ):
                     sf = get_str(node, "_source_file")
                     ctx.errors.append(
