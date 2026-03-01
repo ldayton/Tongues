@@ -1012,6 +1012,18 @@ def _value_eq(a: Value, b: Value) -> bool:
     raise TaytshRuntimeFault("unsupported equality", None)
 
 
+def _value_lt(a: Value, b: Value) -> bool:
+    if isinstance(a, VInt) and isinstance(b, VInt):
+        return a.value < b.value
+    if isinstance(a, VFloat) and isinstance(b, VFloat):
+        return a.value < b.value
+    if isinstance(a, VString) and isinstance(b, VString):
+        return a.value < b.value
+    if isinstance(a, VByte) and isinstance(b, VByte):
+        return a.value < b.value
+    return False
+
+
 def _is_hashable_value(v: Value) -> bool:
     if isinstance(v, VNil):
         return True
@@ -1970,7 +1982,9 @@ class Runtime:
                 if isinstance(inferred, TupleT):
                     expected = inferred
             tup_elems: list[Value] = []
-            if isinstance(expected, TupleT):
+            if isinstance(expected, TupleT) and len(expected.elements) >= len(
+                expr.elements
+            ):
                 ti = 0
                 while ti < len(expr.elements):
                     tup_elems.append(
@@ -2172,6 +2186,12 @@ class Runtime:
             if hi > len(obj.value):
                 self._throw_err("IndexError", "slice bounds out of range")
             return VBytes(obj.value[lo:hi])
+        if isinstance(obj, VTuple):
+            if hi > len(obj.elements):
+                self._throw_err("IndexError", "slice bounds out of range")
+            elems = list(obj.elements[lo:hi])
+            typ = TupleT(kind="tuple", elements=list(obj.typ.elements[lo:hi]))
+            return VTuple(elems, typ)
         raise TaytshRuntimeFault("slicing not supported", pos)
 
     def _eval_binary(self, op: str, left: Value, right: Value, *, pos: Pos) -> Value:
@@ -2192,6 +2212,16 @@ class Runtime:
                 return VBool(_cmp_str(op, left.value, right.value))
             if isinstance(left, VString) and isinstance(right, VString):
                 return VBool(_cmp_str(op, left.value, right.value))
+            if isinstance(left, VBytes) and isinstance(right, VBytes):
+                return VBool(_cmp_str(op, left.value, right.value))
+            if isinstance(left, VTuple) and isinstance(right, VTuple):
+                return VBool(_cmp_tuples(op, left, right))
+            if isinstance(left, VList) and isinstance(right, VList):
+                return VBool(_cmp_lists(op, left, right))
+            if isinstance(left, (VTuple, VList)) and isinstance(right, (VTuple, VList)):
+                le = left.elements
+                re = right.elements
+                return VBool(_cmp_seqs(op, le, re))
             raise TaytshRuntimeFault("invalid comparison operands", pos)
 
         if op in ("|", "^", "&"):
@@ -2338,6 +2368,33 @@ def _cmp_str(op: str, a: str, b: str) -> bool:
     if op == ">":
         return a > b
     return a >= b
+
+
+def _cmp_seqs(op: str, a: list[Value], b: list[Value]) -> bool:
+    i = 0
+    while i < len(a) and i < len(b):
+        if _value_lt(a[i], b[i]):
+            return op in ("<", "<=")
+        if _value_lt(b[i], a[i]):
+            return op in (">", ">=")
+        i += 1
+    la = len(a)
+    lb = len(b)
+    if op == "<":
+        return la < lb
+    if op == "<=":
+        return la <= lb
+    if op == ">":
+        return la > lb
+    return la >= lb
+
+
+def _cmp_tuples(op: str, a: VTuple, b: VTuple) -> bool:
+    return _cmp_seqs(op, a.elements, b.elements)
+
+
+def _cmp_lists(op: str, a: VList, b: VList) -> bool:
+    return _cmp_seqs(op, a.elements, b.elements)
 
 
 # ---- Minimal builtin runtime (expanded in step 4) --------------------------
@@ -2489,6 +2546,12 @@ def _bi_contains(rt: Runtime, args: list[Value]) -> Value:
         return VBool(b.value in a.value)
     if isinstance(a, VString) and isinstance(b, VRune):
         return VBool(b.value in a.value)
+    if isinstance(a, VBytes) and isinstance(b, VBytes):
+        return VBool(b.value in a.value)
+    if isinstance(a, VBytes) and isinstance(b, VInt):
+        return VBool(bytes([b.value & 0xFF]) in a.value)
+    if isinstance(a, VTuple):
+        return VBool(any(_value_eq(x, b) for x in a.elements))
     raise TaytshRuntimeFault("Contains unsupported", None)
 
 
@@ -2588,8 +2651,28 @@ def _bi_divmod(rt: Runtime, args: list[Value]) -> Value:
 def _bi_floor_div(rt: Runtime, args: list[Value]) -> Value:
     a = args[0]
     b = args[1]
+    if isinstance(a, VFloat) or isinstance(b, VFloat):
+        fa = (
+            a.value
+            if isinstance(a, VFloat)
+            else float(a.value)
+            if isinstance(a, VInt)
+            else None
+        )
+        fb = (
+            b.value
+            if isinstance(b, VFloat)
+            else float(b.value)
+            if isinstance(b, VInt)
+            else None
+        )
+        if fa is None or fb is None:
+            raise TaytshRuntimeFault("FloorDiv expects numeric types", None)
+        if fb == 0.0:
+            rt._throw_err("ZeroDivisionError", "division by zero")
+        return VFloat(fa // fb)
     if not isinstance(a, VInt) or not isinstance(b, VInt):
-        raise TaytshRuntimeFault("FloorDiv expects int, int", None)
+        raise TaytshRuntimeFault("FloorDiv expects numeric types", None)
     if b.value == 0:
         rt._throw_err("ZeroDivisionError", "division by zero")
     return VInt(a.value // b.value)
@@ -2598,8 +2681,28 @@ def _bi_floor_div(rt: Runtime, args: list[Value]) -> Value:
 def _bi_python_mod(rt: Runtime, args: list[Value]) -> Value:
     a = args[0]
     b = args[1]
+    if isinstance(a, VFloat) or isinstance(b, VFloat):
+        fa = (
+            a.value
+            if isinstance(a, VFloat)
+            else float(a.value)
+            if isinstance(a, VInt)
+            else None
+        )
+        fb = (
+            b.value
+            if isinstance(b, VFloat)
+            else float(b.value)
+            if isinstance(b, VInt)
+            else None
+        )
+        if fa is None or fb is None:
+            raise TaytshRuntimeFault("PythonMod expects numeric types", None)
+        if fb == 0.0:
+            rt._throw_err("ZeroDivisionError", "division by zero")
+        return VFloat(fa % fb)
     if not isinstance(a, VInt) or not isinstance(b, VInt):
-        raise TaytshRuntimeFault("PythonMod expects int, int", None)
+        raise TaytshRuntimeFault("PythonMod expects numeric types", None)
     if b.value == 0:
         rt._throw_err("ZeroDivisionError", "division by zero")
     return VInt(a.value % b.value)
@@ -2648,6 +2751,17 @@ def _bi_abs(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_min(rt: Runtime, args: list[Value]) -> Value:
     a = args[0]
+    if len(args) == 1 and isinstance(a, (VList, VTuple)):
+        items = a.elements
+        if len(items) == 0:
+            rt._throw_err("ValueError", "min() arg is an empty sequence")
+        best = items[0]
+        i = 1
+        while i < len(items):
+            if _value_lt(items[i], best):
+                best = items[i]
+            i += 1
+        return best
     b = args[1]
     if isinstance(a, VInt) and isinstance(b, VInt):
         return VInt(min(a.value, b.value))
@@ -2662,6 +2776,17 @@ def _bi_min(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_max(rt: Runtime, args: list[Value]) -> Value:
     a = args[0]
+    if len(args) == 1 and isinstance(a, (VList, VTuple)):
+        items = a.elements
+        if len(items) == 0:
+            rt._throw_err("ValueError", "max() arg is an empty sequence")
+        best = items[0]
+        i = 1
+        while i < len(items):
+            if _value_lt(best, items[i]):
+                best = items[i]
+            i += 1
+        return best
     b = args[1]
     if isinstance(a, VInt) and isinstance(b, VInt):
         return VInt(max(a.value, b.value))
@@ -2676,8 +2801,15 @@ def _bi_max(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_sum(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
+    if isinstance(xs, (VSet, VTuple)):
+        itotal: int = 0
+        for e in xs.elements:
+            if not isinstance(e, VInt):
+                raise TaytshRuntimeFault("Sum elements must be numeric", None)
+            itotal += e.value
+        return VInt(itotal)
     if not isinstance(xs, VList):
-        raise TaytshRuntimeFault("Sum expects list", None)
+        raise TaytshRuntimeFault("Sum expects list, set, or tuple", None)
     if len(xs.elements) == 0:
         if type_eq(xs.typ.element, FLOAT_T):
             return VFloat(0.0)
@@ -2821,47 +2953,90 @@ def _bi_format_int(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_upper(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
+    if isinstance(s, VBytes):
+        return VBytes(s.value.upper())
     if not isinstance(s, VString):
-        raise TaytshRuntimeFault("Upper expects string", None)
+        raise TaytshRuntimeFault("Upper expects string or bytes", None)
     return VString(s.value.upper())
 
 
 def _bi_lower(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
+    if isinstance(s, VBytes):
+        return VBytes(s.value.lower())
     if not isinstance(s, VString):
-        raise TaytshRuntimeFault("Lower expects string", None)
+        raise TaytshRuntimeFault("Lower expects string or bytes", None)
     return VString(s.value.lower())
 
 
 def _bi_trim(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     chars = args[1]
+    if isinstance(s, VBytes):
+        c = (
+            chars.value
+            if isinstance(chars, VBytes)
+            else chars.value.encode()
+            if isinstance(chars, VString)
+            else None
+        )
+        if c is None:
+            raise TaytshRuntimeFault("Trim expects compatible types", None)
+        return VBytes(s.value.strip(c))
     if not isinstance(s, VString) or not isinstance(chars, VString):
-        raise TaytshRuntimeFault("Trim expects string, string", None)
+        raise TaytshRuntimeFault("Trim expects string/string or bytes/bytes", None)
     return VString(s.value.strip(chars.value))
 
 
 def _bi_trim_start(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     chars = args[1]
+    if isinstance(s, VBytes):
+        c = (
+            chars.value
+            if isinstance(chars, VBytes)
+            else chars.value.encode()
+            if isinstance(chars, VString)
+            else None
+        )
+        if c is None:
+            raise TaytshRuntimeFault("TrimStart expects compatible types", None)
+        return VBytes(s.value.lstrip(c))
     if not isinstance(s, VString) or not isinstance(chars, VString):
-        raise TaytshRuntimeFault("TrimStart expects string, string", None)
+        raise TaytshRuntimeFault("TrimStart expects string/string or bytes/bytes", None)
     return VString(s.value.lstrip(chars.value))
 
 
 def _bi_trim_end(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     chars = args[1]
+    if isinstance(s, VBytes):
+        c = (
+            chars.value
+            if isinstance(chars, VBytes)
+            else chars.value.encode()
+            if isinstance(chars, VString)
+            else None
+        )
+        if c is None:
+            raise TaytshRuntimeFault("TrimEnd expects compatible types", None)
+        return VBytes(s.value.rstrip(c))
     if not isinstance(s, VString) or not isinstance(chars, VString):
-        raise TaytshRuntimeFault("TrimEnd expects string, string", None)
+        raise TaytshRuntimeFault("TrimEnd expects string/string or bytes/bytes", None)
     return VString(s.value.rstrip(chars.value))
 
 
 def _bi_split(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     sep = args[1]
+    if isinstance(s, VBytes) and isinstance(sep, VBytes):
+        if sep.value == b"":
+            rt._throw_err("ValueError", "Split separator must not be empty")
+        parts_b = s.value.split(sep.value)
+        elems_b: list[Value] = [VBytes(p) for p in parts_b]
+        return VList(elems_b, ListT(kind="list", element=BYTES_T))
     if not isinstance(s, VString) or not isinstance(sep, VString):
-        raise TaytshRuntimeFault("Split expects string, string", None)
+        raise TaytshRuntimeFault("Split expects string/string or bytes/bytes", None)
     if sep.value == "":
         rt._throw_err("ValueError", "Split separator must not be empty")
     parts = s.value.split(sep.value)
@@ -2904,6 +3079,14 @@ def _bi_split_whitespace(rt: Runtime, args: list[Value]) -> Value:
 def _bi_join(rt: Runtime, args: list[Value]) -> Value:
     sep = args[0]
     parts = args[1]
+    if isinstance(sep, VBytes) and isinstance(parts, VList):
+        bs: list[bytes] = []
+        for e in parts.elements:
+            if isinstance(e, VBytes):
+                bs.append(e.value)
+            else:
+                raise TaytshRuntimeFault("Join list element not bytes", None)
+        return VBytes(sep.value.join(bs))
     if not isinstance(sep, VString) or not isinstance(parts, VList):
         raise TaytshRuntimeFault("Join expects string, list[string]", None)
     strs: list[str] = []
@@ -2918,8 +3101,10 @@ def _bi_join(rt: Runtime, args: list[Value]) -> Value:
 def _bi_find(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     sub = args[1]
+    if isinstance(s, VBytes) and isinstance(sub, VBytes):
+        return VInt(s.value.find(sub.value))
     if not isinstance(s, VString) or not isinstance(sub, VString):
-        raise TaytshRuntimeFault("Find expects string, string", None)
+        raise TaytshRuntimeFault("Find expects string/string or bytes/bytes", None)
     return VInt(s.value.find(sub.value))
 
 
@@ -2934,8 +3119,18 @@ def _bi_rfind(rt: Runtime, args: list[Value]) -> Value:
 def _bi_count(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     sub = args[1]
+    if isinstance(s, VList):
+        n = 0
+        for el in s.elements:
+            if _value_eq(el, sub):
+                n += 1
+        return VInt(n)
+    if isinstance(s, VBytes) and isinstance(sub, VBytes):
+        return VInt(s.value.count(sub.value))
     if not isinstance(s, VString) or not isinstance(sub, VString):
-        raise TaytshRuntimeFault("Count expects string, string", None)
+        raise TaytshRuntimeFault(
+            "Count expects string/string, bytes/bytes, or list/value", None
+        )
     return VInt(s.value.count(sub.value))
 
 
@@ -2943,12 +3138,16 @@ def _bi_replace(rt: Runtime, args: list[Value]) -> Value:
     s = args[0]
     old = args[1]
     new = args[2]
+    if isinstance(s, VBytes) and isinstance(old, VBytes) and isinstance(new, VBytes):
+        return VBytes(s.value.replace(old.value, new.value))
     if (
         not isinstance(s, VString)
         or not isinstance(old, VString)
         or not isinstance(new, VString)
     ):
-        raise TaytshRuntimeFault("Replace expects string, string, string", None)
+        raise TaytshRuntimeFault(
+            "Replace expects string/string/string or bytes/bytes/bytes", None
+        )
     return VString(s.value.replace(old.value, new.value))
 
 
@@ -3153,11 +3352,74 @@ def _bi_insert(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_pop(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
+    if isinstance(xs, VSet):
+        if len(xs.elements) == 0:
+            rt._throw_err("KeyError", "Pop on empty set")
+        return xs.elements.pop()
     if not isinstance(xs, VList):
-        raise TaytshRuntimeFault("Pop expects list", None)
+        raise TaytshRuntimeFault("Pop expects list or set", None)
     if len(xs.elements) == 0:
         rt._throw_err("IndexError", "Pop on empty list")
     return xs.elements.pop()
+
+
+def _bi_is_type(rt: Runtime, args: list[Value]) -> Value:
+    v = args[0]
+    if not isinstance(args[1], VString):
+        return VBool(False)
+    type_name = args[1].value
+    if isinstance(v, VStruct):
+        if v.struct_name == type_name:
+            return VBool(True)
+        for decl in rt.module.decls:
+            if isinstance(decl, TStructDecl) and decl.name == v.struct_name:
+                if decl.parent == type_name:
+                    return VBool(True)
+                break
+        return VBool(False)
+    if isinstance(v, VEnum):
+        return VBool(v.typ.kind == type_name)
+    if isinstance(v, VInt):
+        return VBool(type_name == "int")
+    if isinstance(v, VFloat):
+        return VBool(type_name == "float")
+    if isinstance(v, VBool):
+        return VBool(type_name == "bool")
+    if isinstance(v, VString):
+        return VBool(type_name == "string")
+    if isinstance(v, VByte):
+        return VBool(type_name == "byte")
+    if isinstance(v, VBytes):
+        return VBool(type_name == "bytes")
+    if isinstance(v, VRune):
+        return VBool(type_name == "rune")
+    if isinstance(v, VNil):
+        return VBool(type_name == "nil")
+    if isinstance(v, VList):
+        return VBool(type_name == "list")
+    if isinstance(v, VMap):
+        return VBool(type_name == "map")
+    if isinstance(v, VSet):
+        return VBool(type_name == "set")
+    if isinstance(v, VTuple):
+        return VBool(type_name == "tuple")
+    return VBool(False)
+
+
+def _bi_replace_slice(rt: Runtime, args: list[Value]) -> Value:
+    xs = args[0]
+    lo = args[1]
+    hi = args[2]
+    vals = args[3]
+    if (
+        not isinstance(xs, VList)
+        or not isinstance(lo, VInt)
+        or not isinstance(hi, VInt)
+        or not isinstance(vals, VList)
+    ):
+        raise TaytshRuntimeFault("ReplaceSlice expects list, int, int, list", None)
+    xs.elements[lo.value : hi.value] = vals.elements
+    return VNil()
 
 
 def _bi_remove_at(rt: Runtime, args: list[Value]) -> Value:
@@ -3258,8 +3520,26 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
             sresult.append(xs.elements[s_idx[sort_sj]])
             sort_sj += 1
         return VList(sresult, ListT(kind="list", element=xs.typ.element))
+    if isinstance(xs, VTuple):
+        if len(xs.elements) == 0:
+            return VList([], ListT(kind="list", element=INT_T))
+        t_keys: list[tuple[int, float, str]] = []
+        t_idx: list[int] = []
+        sort_ti = 0
+        while sort_ti < len(xs.elements):
+            t_keys.append(_sort_key(xs.elements[sort_ti]))
+            t_idx.append(sort_ti)
+            sort_ti += 1
+        _sort_decorated(t_keys, t_idx)
+        tresult: list[Value] = []
+        sort_tj = 0
+        while sort_tj < len(t_idx):
+            tresult.append(xs.elements[t_idx[sort_tj]])
+            sort_tj += 1
+        elem_t = xs.typ.elements[0] if len(xs.typ.elements) > 0 else INT_T
+        return VList(tresult, ListT(kind="list", element=elem_t))
     if not isinstance(xs, VList):
-        raise TaytshRuntimeFault("Sorted expects list or set", None)
+        raise TaytshRuntimeFault("Sorted expects list, set, or tuple", None)
     if rt.module.strict_math:
         for e in xs.elements:
             if isinstance(e, VFloat) and _isnan(e.value):
@@ -3909,6 +4189,12 @@ def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
         return _bi_floor_div(rt, args)
     if name == "PythonMod":
         return _bi_python_mod(rt, args)
+    if name == "IsNil":
+        return VBool(isinstance(args[0], VNil))
+    if name == "IsType":
+        return _bi_is_type(rt, args)
+    if name == "ReplaceSlice":
+        return _bi_replace_slice(rt, args)
     raise TaytshRuntimeFault("unknown builtin: " + name, None)
 
 
@@ -4013,4 +4299,7 @@ _BUILTIN_NAMES_RT: set[str] = {
     "Exit",
     "FloorDiv",
     "PythonMod",
+    "IsNil",
+    "IsType",
+    "ReplaceSlice",
 }

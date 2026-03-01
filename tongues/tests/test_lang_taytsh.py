@@ -18,14 +18,7 @@ TESTS = {
     "ty_app":   {"dir": "taytsh/app",       "run": "ty_app"},
 }
 
-# Lowered app tests that hit known runtime gaps.
-# treewalker: fn-literal call dispatch not yet supported
-# vm: IndexError in _b64decode_impl stack (#TBD), collection lowering
-_APP_XFAIL_TREEWALKER = {
-    "apptest_bytes", "apptest_dicts", "apptest_floats",
-    "apptest_lists", "apptest_none", "apptest_sets",
-    "apptest_truthiness", "apptest_tuples",
-}
+_APP_XFAIL_TREEWALKER: set[str] = set()
 _APP_XFAIL_VM: set[str] = set()
 # fmt: on
 
