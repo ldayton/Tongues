@@ -231,10 +231,10 @@ formatters:
 versions:
     #!/usr/bin/env bash
     failed=0
-    printf "%-12s %-10s %-10s %-6s  %s\n" "LANG" "EXPECTED" "LOCAL" "STATUS" "ORIGIN"
-    printf "%-12s %-10s %-10s %-6s  %s\n" "----" "--------" "-----" "------" "------"
+    printf "%-12s %-10s %-10s %-6s  %-20s %s\n" "LANG" "EXPECTED" "LOCAL" "STATUS" "MAC" "LINUX"
+    printf "%-12s %-10s %-10s %-6s  %-20s %s\n" "----" "--------" "-----" "------" "---" "-----"
     check() {
-        lang=$1; expected=$2; origin=$3; cmd=$4
+        lang=$1; expected=$2; mac=$3; linux=$4; cmd=$5
         local_ver=$(eval "$cmd" 2>/dev/null || echo "not found")
         if echo "$local_ver" | grep -q "$expected"; then
             status="✅"
@@ -242,24 +242,24 @@ versions:
             status="❌"
             failed=1
         fi
-        printf "%-12s %-10s %-10s %-6s  %s\n" "$lang" "$expected" "$local_ver" "$status" "$origin"
+        printf "%-12s %-10s %-10s %-6s  %-20s %s\n" "$lang" "$expected" "$local_ver" "$status" "$mac" "$linux"
     }
-    check "c"          "13."   "homebrew gcc@13"        "gcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
-    check "csharp"     "8."    "homebrew dotnet@8"      "dotnet --version | cut -d. -f1-2"
-    check "dart"       "3."    "homebrew dart-sdk"      "dart --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
-    check "go"         "1.21"  "homebrew go@1.21"       "go version | grep -oE 'go[0-9]+\.[0-9]+' | sed 's/go//'"
-    check "java"       "21"    "homebrew openjdk@21"    "java --version 2>&1 | head -1 | grep -oE '[0-9]+' | head -1"
-    check "javascript" "20"    "homebrew node@20"       "node --version | grep -oE '[0-9]+' | head -1"
-    check "lua"        "5.4"   "homebrew lua"           "lua -v 2>&1 | grep -oE '[0-9]+\.[0-9]+'"
-    check "perl"       "5."    "homebrew perl"          "perl -v | grep -oE 'v[0-9]+\.[0-9]+' | sed 's/v//'"
-    check "php"        "8.3"   "homebrew php@8.3"       "php --version | head -1 | grep -oE '[0-9]+\.[0-9]+'"
-    check "python"     "3.12"  "homebrew python@3.12"   "python --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "python3"    "3.12"  "homebrew python@3.12"   "python3 --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "ruby"       "3."    "homebrew ruby@3.3"      "ruby --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "rust"       "1.75"  "rustup"                 "rustc --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "swift"      "6."    "homebrew/xcode"         "swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+'"
-    check "typescript" "5.3"   ".direnv npm tsc@5.3"    "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
-    check "zig"        "0.14"  "homebrew zig@0.14"      "zig version | grep -oE '[0-9]+\.[0-9]+'"
+    check "c"          "13."   "brew gcc@13"        "brew gcc@13"        "gcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
+    check "csharp"     "8."    "brew dotnet@8"      "brew dotnet@8"      "dotnet --version | cut -d. -f1-2"
+    check "dart"       "3."    "brew dart-sdk"      "brew dart-sdk"      "dart --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1"
+    check "go"         "1.21"  "brew go@1.21"       "brew go@1.21"       "go version | grep -oE 'go[0-9]+\.[0-9]+' | sed 's/go//'"
+    check "java"       "21"    "brew openjdk@21"    "brew openjdk@21"    "java --version 2>&1 | head -1 | grep -oE '[0-9]+' | head -1"
+    check "javascript" "20"    "brew node@20"       "brew node@20"       "node --version | grep -oE '[0-9]+' | head -1"
+    check "lua"        "5.4"   "brew lua"           "brew lua"           "lua -v 2>&1 | grep -oE '[0-9]+\.[0-9]+'"
+    check "perl"       "5."    "brew perl"          "brew perl"          "perl -v | grep -oE 'v[0-9]+\.[0-9]+' | sed 's/v//'"
+    check "php"        "8.3"   "brew php@8.3"       "brew php@8.3"       "php --version | head -1 | grep -oE '[0-9]+\.[0-9]+'"
+    check "python"     "3.12"  "brew python@3.12"   "brew python@3.12"   "python --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "python3"    "3.12"  "brew python@3.12"   "brew python@3.12"   "python3 --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "ruby"       "3."    "brew ruby@3.3"      "brew ruby@3.3"      "ruby --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "rust"       "1.75"  "rustup"             "rustup"             "rustc --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "swift"      "6."    "xcode"              "brew swift"         "swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+'"
+    check "typescript" "5.3"   ".direnv npm"        ".direnv npm"        "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
+    check "zig"        "0.14"  "brew zig@0.14"      "brew zig@0.14"      "zig version | grep -oE '[0-9]+\.[0-9]+'"
     exit $failed
 
 # Run all tests in Docker
