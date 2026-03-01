@@ -111,6 +111,7 @@ lint *ARGS:
 # Format (--fix to apply changes)
 fmt *ARGS:
     uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
+    npx prettier {{ if ARGS == "--fix" { "--write" } else { "--check" } }} spec/*.md
 
 # Self-transpile: emit to .out/tongues.{ext}
 _self-transpile target="python":
