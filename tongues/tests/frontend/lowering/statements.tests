@@ -112,6 +112,14 @@ def f(xs: list[int]) -> None:
 for i, x in xs {
 ---
 
+=== for tuple destructuring over list of tuples
+def f(pairs: list[tuple[str, int]]) -> None:
+    for name, val in pairs:
+        print(name)
+---
+for name, val in pairs {
+---
+
 === break and continue
 def f() -> None:
     while True:

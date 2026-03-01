@@ -1635,6 +1635,15 @@ class Runtime:
                 try:
                     if len(st.binding) == 1:
                         env.bind(st.binding[0], it.typ.element, lval)
+                    elif st.annotations.get(
+                        "iter_kind"
+                    ) == "tuple_unpack" and isinstance(lval, VTuple):
+                        ti = 0
+                        while ti < len(st.binding) and ti < len(lval.elements):
+                            env.bind(
+                                st.binding[ti], lval.typ.elements[ti], lval.elements[ti]
+                            )
+                            ti += 1
                     else:
                         env.bind(st.binding[0], INT_T, VInt(li))
                         env.bind(st.binding[1], it.typ.element, lval)
@@ -2478,6 +2487,8 @@ def _bi_contains(rt: Runtime, args: list[Value]) -> Value:
         return VBool(_set_has(a.elements, _as_hashable(b)))
     if isinstance(a, VString) and isinstance(b, VString):
         return VBool(b.value in a.value)
+    if isinstance(a, VString) and isinstance(b, VRune):
+        return VBool(b.value in a.value)
     raise TaytshRuntimeFault("Contains unsupported", None)
 
 
@@ -2572,6 +2583,26 @@ def _bi_divmod(rt: Runtime, args: list[Value]) -> Value:
         rt._throw_err("ZeroDivisionError", "division by zero")
     q, r = _int_divmod_trunc(a.value, b.value)
     return VTuple([VInt(q), VInt(r)], TupleT(kind="tuple", elements=[INT_T, INT_T]))
+
+
+def _bi_floor_div(rt: Runtime, args: list[Value]) -> Value:
+    a = args[0]
+    b = args[1]
+    if not isinstance(a, VInt) or not isinstance(b, VInt):
+        raise TaytshRuntimeFault("FloorDiv expects int, int", None)
+    if b.value == 0:
+        rt._throw_err("ZeroDivisionError", "division by zero")
+    return VInt(a.value // b.value)
+
+
+def _bi_python_mod(rt: Runtime, args: list[Value]) -> Value:
+    a = args[0]
+    b = args[1]
+    if not isinstance(a, VInt) or not isinstance(b, VInt):
+        raise TaytshRuntimeFault("PythonMod expects int, int", None)
+    if b.value == 0:
+        rt._throw_err("ZeroDivisionError", "division by zero")
+    return VInt(a.value % b.value)
 
 
 def _wrap_i64(val: int) -> int:
@@ -3011,6 +3042,8 @@ def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
         return VList(
             list(a.elements) * max(0, n.value), ListT(kind="list", element=elem_ty)
         )
+    if isinstance(a, VBytes):
+        return VBytes(a.value * max(0, n.value))
     raise TaytshRuntimeFault("Repeat expects string or list", None)
 
 
@@ -3872,6 +3905,10 @@ def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
         return _bi_get_env(rt, args)
     if name == "Exit":
         return _bi_exit(rt, args)
+    if name == "FloorDiv":
+        return _bi_floor_div(rt, args)
+    if name == "PythonMod":
+        return _bi_python_mod(rt, args)
     raise TaytshRuntimeFault("unknown builtin: " + name, None)
 
 
@@ -3974,4 +4011,6 @@ _BUILTIN_NAMES_RT: set[str] = {
     "Args",
     "GetEnv",
     "Exit",
+    "FloorDiv",
+    "PythonMod",
 }
