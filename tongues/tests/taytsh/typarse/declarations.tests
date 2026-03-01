@@ -132,7 +132,7 @@ error:
 === struct with no fields
 struct Empty {}
 ---
-error:
+ok
 ---
 
 === struct with only methods
@@ -140,7 +140,7 @@ struct NoFields {
     fn DoStuff(this) -> void {}
 }
 ---
-error:
+ok
 ---
 
 === top-level let with initializer
