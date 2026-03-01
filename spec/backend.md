@@ -15,7 +15,7 @@ These are not phases — they happen together during the single tree walk. The e
 
 ## Declaration Ordering
 
-The Taytsh IR has forward-reference semantics: all top-level declarations are visible throughout the module regardless of position (see `12-taytsh-ir-spec.md`, Module Structure). Target languages do not necessarily share this property. Backends emitting languages where class/struct declarations are evaluated top-to-bottom must emit declarations in dependency order.
+The Taytsh IR has forward-reference semantics: all top-level declarations are visible throughout the module regardless of position (see `taytsh.md`, Module Structure). Target languages do not necessarily share this property. Backends emitting languages where class/struct declarations are evaluated top-to-bottom must emit declarations in dependency order.
 
 ### Dependency graph
 
@@ -37,11 +37,11 @@ Cycles between struct field types are possible (`struct A { b: B? }`, `struct B 
 
 ### Target classification
 
-| Ordering    | Targets                                       | Reason                                                                 |
-| ----------- | --------------------------------------------- | ---------------------------------------------------------------------- |
-| Not needed  | Go, Rust, Swift, Zig, C#, Dart, Java          | All declarations within a file/package/module are mutually visible     |
-| Required    | Python, JavaScript, TypeScript, Ruby, Perl, Lua | Class/struct declarations are evaluated top-to-bottom                  |
-| Forward decl | C                                             | Requires forward declarations (`struct Foo;`) before first reference  |
+| Ordering     | Targets                                         | Reason                                                               |
+| ------------ | ----------------------------------------------- | -------------------------------------------------------------------- |
+| Not needed   | Go, Rust, Swift, Zig, C#, Dart, Java            | All declarations within a file/package/module are mutually visible   |
+| Required     | Python, JavaScript, TypeScript, Ruby, Perl, Lua | Class/struct declarations are evaluated top-to-bottom                |
+| Forward decl | C                                               | Requires forward declarations (`struct Foo;`) before first reference |
 
 ### Target-specific notes
 
@@ -59,7 +59,7 @@ Cycles between struct field types are possible (`struct A { b: B? }`, `struct B 
 
 ### Interaction with project compilation
 
-The project merge phase (`04a-project-and-imports.md`) sorts files by import dependencies, not by type dependencies. Two structs in different files may have a type dependency without an import dependency (because all names become visible after merge). The backend's declaration ordering pass is therefore necessary even when the project merge has already run.
+The project merge phase (see `frontend.md`, Merge) sorts files by import dependencies, not by type dependencies. Two structs in different files may have a type dependency without an import dependency (because all names become visible after merge). The backend's declaration ordering pass is therefore necessary even when the project merge has already run.
 
 ## Idiomatic Output
 
@@ -71,39 +71,13 @@ Without provenance, emit the IR literally in target-native syntax. With provenan
 
 ## Annotation Consumption
 
-### scope.*
+### scope.\*
 
 Used by all backends.
 
-`scope.is_const` — emit immutable bindings where the target supports them:
+`scope.is_const` — emit immutable bindings where the target supports them (`const`, `final`, `let` vs `var`, etc.). Targets without const locals (Lua, Perl, PHP, Python, Ruby) ignore this annotation.
 
-| Target     | const form           | Notes                                            |
-| ---------- | -------------------- | ------------------------------------------------ |
-| C          | `const`              | only for primitives and pointers-to-const        |
-| C#         | `readonly` / `const` | `const` for compile-time, `readonly` for runtime |
-| Dart       | `final`              |                                                  |
-| Go         | `const`              | only for untyped constants; else no effect       |
-| Java       | `final`              |                                                  |
-| JavaScript | `const`              |                                                  |
-| Lua        | `local`              | no const; annotation unused                      |
-| Perl       | `my`                 | no const; annotation unused                      |
-| PHP        | n/a                  | no block-scoped const                            |
-| Python     | n/a                  | no const; could emit `Final[]` for type checkers |
-| Ruby       | n/a                  | no local const                                   |
-| Rust       | `let` (default)      | `let mut` when `scope.is_const=false`            |
-| Swift      | `let`                | `var` when `scope.is_const=false`                |
-| TypeScript | `const`              |                                                  |
-| Zig        | `const`              | `var` when `scope.is_const=false`                |
-
-`scope.is_unused` — suppress unused parameter warnings:
-
-| Target | Mechanism                                         |
-| ------ | ------------------------------------------------- |
-| Go     | assign to `_` if unused                           |
-| Rust   | prefix with `_`                                   |
-| Zig    | assign to `_`                                     |
-| C      | `(void)param;`                                    |
-| Others | no action needed (no unused-param compile errors) |
+`scope.is_unused` — suppress unused parameter warnings in targets that enforce them (Go, Rust, Zig, C). Others ignore.
 
 `scope.is_modified` — informs pass-by-value targets whether a parameter's value is mutated. Backends for value-semantics languages (Go, Rust, Swift, C, Zig) use this to decide pointer/reference passing. If `scope.is_modified=true` and the parameter is a struct, the backend may need to pass by pointer.
 
@@ -115,7 +89,7 @@ Used by all backends.
 
 `scope.case_interface` — Go uses this in type-switch emission to choose the right type assertion. When a case binding is used through interface methods, Go emits `v := expr.(InterfaceName)` instead of `v := expr.(ConcreteType)`.
 
-### returns.*
+### returns.\*
 
 Used by a subset of backends.
 
@@ -127,7 +101,7 @@ Used by a subset of backends.
 
 `returns.always_returns` — all backends can use this to suppress "missing return" warnings or omit unreachable default returns.
 
-### liveness.*
+### liveness.\*
 
 Used by all backends for cleaner output.
 
@@ -139,7 +113,7 @@ Used by all backends for cleaner output.
 
 `liveness.tuple_unused_indices` — emit `_` for unused targets. Go: `_, b := f()`. Python: `_, b = f()`. Rust: `let (_, b) = f();`.
 
-### strings.*
+### strings.\*
 
 Used by all backends except Python, Ruby, and Perl (native-rune targets where string operations are already correct).
 
@@ -211,13 +185,11 @@ When `strings.content="ascii"`, rune count equals byte count regardless of `stri
 
 The backend transforms the loop: replace the `let ACC = ""` + loop-with-Concat pattern into builder initialization, append calls, and final `.toString()`/`.String()` extraction.
 
-### hoisting.*
+### hoisting.\*
 
 Used by Go, Lua, Perl, and C#.
 
-`hoisting.hoisted_vars` — Go emits `var` declarations before the control structure. Lua emits `local` declarations before the block.
-
-`hoisting.func_hoisted_vars` — Perl reads this to emit `my` declarations at function scope. Perl's block-scoped `my` declarations inside control-flow blocks are invisible to sibling blocks, so all hoisted variables must be pre-declared at function entry.
+`hoisting.hoisted_vars` — Go emits `var` declarations before the control structure. Lua emits `local` declarations before the block. Perl uses this to emit `my` declarations at function scope, since Perl's block-scoped `my` inside control-flow blocks are invisible to sibling blocks.
 
 `hoisting.has_continue` — Lua emits `goto continue_label` with a label at the loop end, since Lua lacks native `continue` (before 5.2) or uses `repeat until true` wrapping.
 
@@ -225,7 +197,7 @@ Used by Go, Lua, Perl, and C#.
 
 `hoisting.rune_vars` — Go emits `xRunes := []rune(x)` at function entry for string variables that are indexed, then uses `xRunes[i]` at index sites. When the strings pass is active, `hoisting.rune_vars` is derived from `strings.indexed` — only bindings with `strings.indexed=true` and `strings.content!="ascii"` need rune conversion.
 
-### ownership.*
+### ownership.\*
 
 Used by C, Rust, Zig, Swift.
 
@@ -235,7 +207,7 @@ Used by C, Rust, Zig, Swift.
 
 `ownership.region` — C: determines which scope calls `free()`. Rust: informs lifetime annotations.
 
-### callgraph.*
+### callgraph.\*
 
 Used by Go, Rust, Zig, Lua.
 
@@ -277,48 +249,13 @@ Backends read provenance annotations from IR nodes and decide whether to emit th
 
 These are stamped on one IR node and require no context beyond that node.
 
-**in_operator / not_in_operator** — `Contains(xs, v)` with provenance.
+**in_operator / not_in_operator** — `Contains(xs, v)` with provenance. Mainly useful for Python (`v in xs`, operand order reversal). Most other backends already emit `Contains` idiomatically regardless of provenance.
 
-| Target     | Idiomatic form       | Notes                             |
-| ---------- | -------------------- | --------------------------------- |
-| Python     | `v in xs`            |                                   |
-| Ruby       | `xs.include?(v)`     | already the Contains emission     |
-| JavaScript | `xs.includes(v)`     | already the Contains emission     |
-| Lua        | table lookup pattern | no direct `in`; ignore provenance |
-| Perl       | `grep { $_ eq $v }`  | or `exists` for hashes            |
+**open_start / open_end** — slice with `0` or `Len(x)` bound. Backends that support open-ended slices (Python `xs[:n]`, Go `xs[:n]`, Rust `&xs[..n]`) omit the redundant bound. Others emit the arithmetic form.
 
-For most backends, `Contains` already emits idiomatically regardless of provenance. The provenance is mainly useful for Python's `v in xs` (operand order reversal) and `v not in xs` (single keyword instead of `not v in xs`).
+**negative_index** — `x[Len(x) - n]` with provenance. Targets with native negative indexing (Python, Ruby, Perl) emit `x[-n]` directly. Others emit the arithmetic form.
 
-**open_start / open_end** — slice with `0` or `Len(x)` bound.
-
-| Target | Idiomatic form | Notes                             |
-| ------ | -------------- | --------------------------------- |
-| Python | `xs[:n]`       | drop the 0                        |
-| Ruby   | `xs[0...n]`    | Ruby slicing already handles this |
-| Go     | `xs[:n]`       | drop the 0                        |
-| Rust   | `&xs[..n]`     | drop the 0                        |
-
-The backend checks provenance on the slice node and omits the redundant bound. Without provenance, the backend would emit `xs[0:n]` which is correct but not idiomatic.
-
-**negative_index** — `x[Len(x) - n]` with provenance.
-
-| Target | Idiomatic form | Notes |
-| ------ | -------------- | ----- |
-| Python | `x[-n]`        |       |
-| Ruby   | `x[-n]`        |       |
-| Perl   | `$x[-n]`       |       |
-
-The backend pattern-matches `Len(x) - n` (guaranteed by the frontend) and emits the negative index directly. Other backends emit the arithmetic form.
-
-**string_multiply / list_multiply** — `Repeat(s, n)` with provenance.
-
-| Target | Idiomatic form | Notes               |
-| ------ | -------------- | ------------------- |
-| Python | `s * n`        |                     |
-| Ruby   | `s * n`        |                     |
-| Perl   | `$s x $n`      | Perl's `x` operator |
-
-Other backends emit their Repeat implementation (loop, library call, etc.).
+**string_multiply / list_multiply** — `Repeat(s, n)` with provenance. Targets with native repetition operators (Python `s * n`, Ruby `s * n`, Perl `$s x $n`) use them. Others emit their Repeat implementation.
 
 **truthiness** — `Len(xs) > 0` or `s != ""` with provenance.
 
@@ -332,15 +269,7 @@ Other backends emit their Repeat implementation (loop, library call, etc.).
 
 **Caution**: Ruby and Lua have different truthiness rules than Python. Ruby treats empty arrays/hashes as truthy. Lua treats tables as truthy. The backend MUST only use the provenance form when the target's truthiness semantics match the desugared form's semantics for the specific type. When in doubt, emit the desugared form.
 
-**enumerate** — `for i, v in xs` where the index was from `enumerate()`.
-
-| Target | Idiomatic form                        | Notes |
-| ------ | ------------------------------------- | ----- |
-| Python | `for i, v in enumerate(xs)`           |       |
-| Rust   | `for (i, v) in xs.iter().enumerate()` |       |
-| Swift  | `for (i, v) in xs.enumerated()`       |       |
-
-Most other backends use a manual counter or their native indexed iteration.
+**enumerate** — `for i, v in xs` where the index was from `enumerate()`. Targets with native enumerate (Python, Rust `.iter().enumerate()`, Swift `.enumerated()`) reconstruct the idiomatic form. Others use a manual counter.
 
 ### Multi-statement provenance
 
@@ -349,6 +278,7 @@ These are stamped on the `for` node but the idiomatic form collapses multiple st
 **list_comprehension / dict_comprehension / set_comprehension**
 
 The desugared pattern (guaranteed by the frontend):
+
 ```
 let ACC: COLL_TYPE              -- accumulator declaration
 for VAR in ITERABLE {
@@ -359,11 +289,13 @@ for VAR in ITERABLE {
 ```
 
 The backend recognizes this by:
+
 1. The `for` node has the comprehension provenance tag.
 2. The loop body contains exactly one mutation call (possibly inside one `if`).
 3. The mutation target is the accumulator declared immediately before the loop.
 
 To emit the comprehension, the backend:
+
 1. Extracts EXPR from the mutation call (second arg of Append, value in map insert, arg of Add).
 2. Extracts VAR and ITERABLE from the for node.
 3. Extracts GUARD from the if condition, if present.
@@ -386,121 +318,6 @@ All other backends emit the loop form directly.
 | Python | `a < b < c`    |
 
 The backend pattern-matches the `&&` node: left is `a OP1 b`, right is `b OP2 c`, and `b` is the same expression on both sides. Emits the chained form. Only Python benefits; all other backends emit the `&&` form.
-
-## Target-Specific Idioms
-
-These are patterns the backend recognizes from IR structure alone — no provenance needed. They are target idioms that have no Python source form.
-
-### Negated conditions
-
-```taytsh
-if !cond { BODY }
-```
-
-| Target | Idiomatic form               |
-| ------ | ---------------------------- |
-| Ruby   | `unless cond`                |
-| Perl   | `unless (cond)`              |
-| Others | `if (!cond)` / `if not cond` |
-
-The backend checks if the condition is a `!` expression with no `else` branch.
-
-### Optional unwrapping
-
-```taytsh
-if x != nil {
-    -- use x (scope.narrowed_type present)
-}
-```
-
-| Target | Idiomatic form                     |
-| ------ | ---------------------------------- |
-| Rust   | `if let Some(x) = x { ... }`       |
-| Swift  | `if let x = x { ... }`             |
-| Go     | direct nil check (no special form) |
-| Kotlin | `x?.let { ... }` (if ever added)   |
-
-The backend sees a nil check where the true branch has `scope.narrowed_type` set, and emits the target's optional-binding syntax.
-
-### Optional unwrapping with early return
-
-```taytsh
-if x == nil { return ... }
--- use x (scope.narrowed_type present after the if)
-```
-
-| Target | Idiomatic form                                    |
-| ------ | ------------------------------------------------- |
-| Swift  | `guard let x = x else { return ... }`             |
-| Go     | `if x == nil { return ... }`                      |
-| Rust   | `let Some(x) = x else { return ... };` (let-else) |
-
-The backend sees a nil-eq check whose body is a single return, followed by uses of the variable with a narrowed type.
-
-### Format as template literals
-
-```taytsh
-Format("hello, {}", name)
-```
-
-| Target     | Idiomatic form                  |
-| ---------- | ------------------------------- |
-| JavaScript | `` `hello, ${name}` ``          |
-| TypeScript | `` `hello, ${name}` ``          |
-| Kotlin     | `"hello, $name"`                |
-| C#         | `$"hello, {name}"`              |
-| Python     | `f"hello, {name}"`              |
-| Others     | format function / concatenation |
-
-The backend's `Format` emitter can always choose to emit template/interpolation syntax when the target supports it. This is a per-call decision — no provenance or annotation needed.
-
-### Error handling patterns
-
-Taytsh try/catch maps to fundamentally different mechanisms per target:
-
-| Target | Mechanism                                |
-| ------ | ---------------------------------------- |
-| C      | setjmp/longjmp or error return codes     |
-| Go     | error returns + defer/recover for panics |
-| Rust   | Result<T, E> + ? operator                |
-| Zig    | error unions + try/catch keywords        |
-| Lua    | pcall/xpcall                             |
-| Perl   | eval { } / die + $@                      |
-| Others | native try/catch/except                  |
-
-Go, Rust, and Zig transform exception semantics into return-value semantics. This is the most complex backend transformation and relies heavily on `callgraph.throws` (to determine the error return type), `returns.needs_named_returns`, `returns.body_has_return`, and `scope.is_modified` for parameters that cross try/catch boundaries.
-
-### Loop forms
-
-Taytsh `for i in range(n)` maps to target-native loop syntax:
-
-| Target     | Emission                              |
-| ---------- | ------------------------------------- |
-| C          | `for (int i = 0; i < n; i++)`         |
-| Go         | `for i := 0; i < n; i++`              |
-| Java       | `for (int i = 0; i < n; i++)`         |
-| Python     | `for i in range(n)`                   |
-| Rust       | `for i in 0..n`                       |
-| Ruby       | `(0...n).each do \|i\|`  or `n.times` |
-| Swift      | `for i in 0..<n`                      |
-| Zig        | `for (0..n) \|i\|` (or while loop)    |
-| JavaScript | `for (let i = 0; i < n; i++)`         |
-| Others     | C-style for or while equivalent       |
-
-This is purely a backend decision based on the `range` node parameters. No middleend involvement.
-
-### Collection literals
-
-Taytsh map/set literals need target-specific construction:
-
-| Target     | Map literal            | Set literal            |
-| ---------- | ---------------------- | ---------------------- |
-| Python     | `{"a": 1}`             | `{1, 2, 3}`            |
-| JavaScript | `new Map([["a", 1]])`  | `new Set([1, 2, 3])`   |
-| Go         | `map[K]V{"a": 1}`      | custom set type        |
-| Java       | `Map.of("a", 1)`       | `Set.of(1, 2, 3)`      |
-| Rust       | `HashMap::from([...])` | `HashSet::from([...])` |
-| C          | custom hash table init | custom set init        |
 
 ## Provenance Consumption Summary
 
@@ -578,7 +395,7 @@ Not all backends are equal in complexity. Rough ranking by implementation diffic
 | ----------- | --------------------- | ------------------------------------------------------------  |
 | Absurd      | Bash                  | No types, no structs, no floats without forking bc/awk.       |
 |             |                       | ID-based object system with global variables for fields.      |
-|             |                       | Function returns via global __retval (subshells break         |
+|             |                       | Function returns via global \_\_retval (subshells break       |
 |             |                       | reference semantics). Error propagation via global error      |
 |             |                       | state + return codes. Needs callgraph (error returns),        |
 |             |                       | hoisting (function-scoped locals), strings (byte-indexed).    |
