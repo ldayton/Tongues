@@ -1190,7 +1190,9 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
             from src.frontend.lowering import lower
             from src.taytsh.ast import TModule, TStructDecl
 
-            def _lower_single_to_module(src: str, extra_known_classes: dict[str, str] | None = None):
+            def _lower_single_to_module(
+                src: str, extra_known_classes: dict[str, str] | None = None
+            ):
                 """Lower a single source to TModule."""
                 ast_dict = parse(src)
                 stamp_uids(ast_dict)
