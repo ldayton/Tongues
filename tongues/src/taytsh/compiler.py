@@ -131,6 +131,7 @@ from .bytecode import (
     OP_LOAD_ENUM,
     OP_LOAD_GLOBAL,
     OP_LOAD_LOCAL,
+    OP_STORE_GLOBAL,
     OP_MATCH_TYPE,
     OP_MOD_FLOAT,
     OP_MOD_INT,
@@ -484,9 +485,11 @@ class Compiler:
                 self._register_enum(decl)
             elif isinstance(decl, TInterfaceDecl):
                 self._register_interface(decl)
-        # Register all top-level function names as globals
+        # Register all top-level function and let names as globals
         for decl in module.decls:
             if isinstance(decl, TFnDecl):
+                self._ensure_global(decl.name)
+            elif isinstance(decl, TLetStmt):
                 self._ensure_global(decl.name)
         # Compile all top-level functions
         for decl in module.decls:
@@ -501,6 +504,8 @@ class Compiler:
         for decl in module.decls:
             if isinstance(decl, TStructDecl):
                 self._compile_struct_methods(decl)
+        # Compile top-level let initializers into a synthetic __init__ function
+        init_index = self._compile_top_level_lets(module)
         return CompiledModule(
             code_objects=self.code_objects,
             global_names=self.global_names,
@@ -508,7 +513,30 @@ class Compiler:
             enum_defs=self.enum_defs,
             interface_defs=self.interface_defs,
             entry_index=self.entry_index,
+            init_index=init_index,
         )
+
+    def _compile_top_level_lets(self, module: TModule) -> int:
+        """Compile top-level let initializers into a synthetic function. Returns code index or -1."""
+        lets: list[TLetStmt] = []
+        for decl in module.decls:
+            if isinstance(decl, TLetStmt):
+                lets.append(decl)
+        if not lets:
+            return -1
+        fc = _FnCompiler(self, "__init__")
+        for stmt in lets:
+            gidx = self._global_index[stmt.name]
+            if stmt.value is not None:
+                self._compile_expr(stmt.value, fc)
+            else:
+                typ = self._resolve_ttype(stmt.typ)
+                self._emit_zero_value(typ, fc, stmt.pos.line)
+            fc.emit(OP_STORE_GLOBAL, gidx, stmt.pos.line)
+        fc.emit(OP_RETURN_VOID, 0, 0)
+        code_idx = len(self.code_objects)
+        self.code_objects.append(fc.to_code_object(0))
+        return code_idx
 
     def _ensure_global(self, name: str) -> int:
         if name in self._global_index:

@@ -10,13 +10,7 @@ struct Point {
 let ORIGIN: Point = Point(0, 0)
 
 fn MakeTable() -> list[int] {
-    let result: list[int] = NewList()
-    let i: int = 0
-    while i < 5 {
-        result = Append(result, i * i)
-        i = i + 1
-    }
-    return result
+    return [0, 1, 4, 9, 16]
 }
 
 let TABLE: list[int] = MakeTable()

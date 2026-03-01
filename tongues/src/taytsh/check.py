@@ -1455,6 +1455,25 @@ class Checker:
                 )
                 self.fn_param_names[decl.name] = pnames
 
+        # Fourth pass: check top-level let names for conflicts
+        seen_lets: set[str] = set()
+        for decl in module.decls:
+            if isinstance(decl, TLetStmt):
+                if decl.name in seen_lets:
+                    self.error("duplicate top-level name '" + decl.name + "'", decl.pos)
+                elif decl.name in self.functions:
+                    self.error(
+                        "'" + decl.name + "' already declared as a function", decl.pos
+                    )
+                elif decl.name in self.types:
+                    self.error(
+                        "'" + decl.name + "' already declared as a type", decl.pos
+                    )
+                elif decl.name in RESERVED_NAMES:
+                    self.error("cannot use reserved name '" + decl.name + "'", decl.pos)
+                else:
+                    seen_lets.add(decl.name)
+
     # ── Pass 2: Check bodies ──────────────────────────────────
 
     def check_bodies(self, module: TModule) -> None:

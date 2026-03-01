@@ -743,6 +743,9 @@ def _build_index(module: TModule) -> ModuleIndex:
         elif isinstance(d, TEnumDecl):
             name = d.name
             d_pos = d.pos
+        elif isinstance(d, TLetStmt):
+            name = d.name
+            d_pos = d.pos
         else:
             continue
         _ensure_not_reserved(name, pos=d_pos)
@@ -1298,6 +1301,7 @@ class Runtime:
         self.stderr = stderr
         self._fn_values = fn_values
         self._builtin_values = builtin_values
+        self._global_values: dict[str, Value] = {}
 
     # ---- Errors / throwing -------------------------------------------------
 
@@ -1344,6 +1348,7 @@ class Runtime:
 
     def run_main(self) -> RunResult:
         try:
+            self._init_top_level_lets()
             self._call_fn(
                 self.index.funcs["Main"].decl, self.index.funcs["Main"].sig, []
             )
@@ -1356,6 +1361,19 @@ class Runtime:
             err_line: str = msg + "\n"
             self.stderr = self.stderr + err_line.encode("utf-8")
             return RunResult(1, self.stdout, self.stderr)
+
+    def _init_top_level_lets(self) -> None:
+        """Evaluate top-level let statements in source order."""
+        env = _RuntimeEnv()
+        env.push_scope()
+        for decl in self.module.decls:
+            if isinstance(decl, TLetStmt):
+                vty = _resolve_type(decl.typ, self.checker)
+                if decl.value is None:
+                    val = self.zero_value(vty)
+                else:
+                    val = self._eval_expr(decl.value, env, expected=vty)
+                self._global_values[decl.name] = val
 
     # ---- Functions ---------------------------------------------------------
 
@@ -1767,6 +1785,8 @@ class Runtime:
         if isinstance(expr, TVar):
             if env.has(expr.name):
                 return env.get(expr.name)
+            if expr.name in self._global_values:
+                return self._global_values[expr.name]
             if expr.name in self._fn_values:
                 return self._fn_values[expr.name]
             if expr.name in self._builtin_values:

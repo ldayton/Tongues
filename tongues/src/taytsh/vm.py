@@ -56,6 +56,7 @@ from .bytecode import (
     OP_LOAD_ENUM,
     OP_LOAD_GLOBAL,
     OP_LOAD_LOCAL,
+    OP_STORE_GLOBAL,
     OP_MATCH_TYPE,
     OP_MOD_FLOAT,
     OP_MOD_INT,
@@ -1875,15 +1876,21 @@ class VM:
     def run(self) -> VMResult:
         if self.module.entry_index < 0:
             return VMResult(1, "", "no Main function")
-        entry_code = self.module.code_objects[self.module.entry_index]
-        frame = Frame(code=entry_code, ip=0, bp=len(self.stack))
-        # Allocate locals
-        i = 0
-        while i < entry_code.local_count:
-            self.stack.append(_NONE_VAL)
-            i += 1
-        self.frames.append(frame)
         try:
+            # Run top-level let initializers
+            if self.module.init_index >= 0:
+                init_code = self.module.code_objects[self.module.init_index]
+                init_frame = Frame(code=init_code, ip=0, bp=len(self.stack))
+                self.frames.append(init_frame)
+                self._dispatch()
+            # Run Main
+            entry_code = self.module.code_objects[self.module.entry_index]
+            frame = Frame(code=entry_code, ip=0, bp=len(self.stack))
+            i = 0
+            while i < entry_code.local_count:
+                self.stack.append(_NONE_VAL)
+                i += 1
+            self.frames.append(frame)
             self._dispatch()
             return VMResult(0, "".join(self.stdout_buf), "".join(self.stderr_buf))
         except _VMExit as e:
@@ -1948,6 +1955,8 @@ class VM:
                 self.stack[frame.bp + arg] = self.stack.pop()
             elif op == OP_LOAD_GLOBAL:
                 self.stack.append(self.globals[arg])
+            elif op == OP_STORE_GLOBAL:
+                self.globals[arg] = self.stack.pop()
             elif op == OP_LOAD_BUILTIN:
                 self.stack.append(VInt(arg))  # placeholder — builtins resolved at call
             elif op == OP_LOAD_CAPTURE:

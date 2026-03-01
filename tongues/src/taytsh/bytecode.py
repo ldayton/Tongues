@@ -24,6 +24,7 @@ OP_EXTENDED_ARG: int = 6
 OP_LOAD_LOCAL: int = 10
 OP_STORE_LOCAL: int = 11
 OP_LOAD_GLOBAL: int = 12
+OP_STORE_GLOBAL: int = 15
 OP_LOAD_BUILTIN: int = 13
 OP_LOAD_CAPTURE: int = 14
 
@@ -256,3 +257,4 @@ class CompiledModule:
     enum_defs: list[EnumDef]
     interface_defs: list[InterfaceDef]
     entry_index: int
+    init_index: int = -1

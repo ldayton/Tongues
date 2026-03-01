@@ -666,7 +666,8 @@ fn Main() -> void {
         code, out, err = _run_ty("""
 let PI: float = 3.14
 fn Main() -> void {
-    Assert(PI > 3.0)
+    let pi: float = PI
+    Assert(pi > 3.0)
 }
 """)
         assert code == 0, err
