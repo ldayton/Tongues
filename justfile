@@ -131,7 +131,7 @@ lang-python:
     just _self-transpile python
     uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
-        tests/test_frontend_linker.py \
+        tests/test_lang_taytsh.py tests/test_frontend_linker.py \
         --transpiled ".out/tongues.py" -v
 
 # Self-transpile and test against transpiled Ruby binary
