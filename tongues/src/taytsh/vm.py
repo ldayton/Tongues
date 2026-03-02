@@ -2864,27 +2864,39 @@ class VM:
             lo = low.value
             hi = high.value
             n = len(obj.items)
-            if lo < 0 or hi > n or lo > hi:
+            if lo < 0:
                 self._throw(_make_error_struct("IndexError", "slice out of range"))
                 return
+            if hi > n:
+                hi = n
+            if lo > hi:
+                lo = hi
             self.stack.append(VList(list(obj.items[lo:hi])))
             return
         if isinstance(obj, VStr) and isinstance(low, VInt) and isinstance(high, VInt):
             lo = low.value
             hi = high.value
             n = len(obj.value)
-            if lo < 0 or hi > n or lo > hi:
+            if lo < 0:
                 self._throw(_make_error_struct("IndexError", "slice out of range"))
                 return
+            if hi > n:
+                hi = n
+            if lo > hi:
+                lo = hi
             self.stack.append(VStr(obj.value[lo:hi]))
             return
         if isinstance(obj, VBytes) and isinstance(low, VInt) and isinstance(high, VInt):
             lo = low.value
             hi = high.value
             n = len(obj.value)
-            if lo < 0 or hi > n or lo > hi:
+            if lo < 0:
                 self._throw(_make_error_struct("IndexError", "slice out of range"))
                 return
+            if hi > n:
+                hi = n
+            if lo > hi:
+                lo = hi
             self.stack.append(VBytes(obj.value[lo:hi]))
             return
         self.stack.append(_NONE_VAL)

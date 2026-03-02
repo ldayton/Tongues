@@ -81,7 +81,9 @@ _STRING_ESCAPE_MAP: dict[str, str] = {
 def escape_string(value: str) -> str:
     """Escape a string for use in a string literal (without quotes)."""
     out: list[str] = []
-    for c in value:
+    i: int = 0
+    while i < len(value):
+        c: str = value[i : i + 1]
         esc = _STRING_ESCAPE_MAP.get(c)
         if esc is not None:
             out.append(esc)
@@ -95,6 +97,7 @@ def escape_string(value: str) -> str:
                 out.append("\\U" + "0" * (8 - len(h)) + h)
         else:
             out.append(c)
+        i += 1
     return "".join(out)
 
 

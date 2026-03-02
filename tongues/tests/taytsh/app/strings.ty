@@ -99,24 +99,23 @@ fn TestStringSlicing() -> void {
     Assert(s2[1:3] == "af")
 }
 
--- string slice out of bounds
-fn TestStringSliceError() -> void {
+-- string slice bounds are clamped
+fn TestStringSliceClamping() -> void {
     let s: string = "abc"
+    -- hi > len clamps to len
+    let a: string = s[0:4]
+    Assert(a == "abc")
+    -- lo > hi produces empty slice
+    let b: string = s[2:1]
+    Assert(b == "")
+    -- negative lo is still an error
     let caught: bool = false
     try {
-        let x: string = s[0:4]
+        let x: string = s[-1:2]
     } catch e: IndexError {
         caught = true
     }
-    Assert(caught, "expected IndexError for slice hi out of range")
-
-    caught = false
-    try {
-        let x: string = s[2:1]
-    } catch e: IndexError {
-        caught = true
-    }
-    Assert(caught, "expected IndexError for lo > hi")
+    Assert(caught, "expected IndexError for negative lo")
 }
 
 -- string equality and comparisons
@@ -413,7 +412,7 @@ fn Main() -> void {
     TestStringIndexing()
     TestStringIndexError()
     TestStringSlicing()
-    TestStringSliceError()
+    TestStringSliceClamping()
     TestStringComparisons()
     TestConcat()
     TestUpperLower()

@@ -56,6 +56,20 @@ def f(xs: list[int]) -> list[int]:
 xs[1:3]
 ---
 
+=== list slice negative upper
+def f(xs: list[int]) -> list[int]:
+    return xs[:-1]
+---
+xs[0:Len(xs) - 1]
+---
+
+=== list slice negative lower
+def f(xs: list[int]) -> list[int]:
+    return xs[-2:]
+---
+xs[Len(xs) - 2:Len(xs)]
+---
+
 === list copy via method
 def f(xs: list[int]) -> list[int]:
     return xs.copy()

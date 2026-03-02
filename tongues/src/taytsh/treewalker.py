@@ -1070,12 +1070,8 @@ def _map_find(keys: list[Value], key: Value) -> int:
 
 
 def _clamp_slice(lo: int, hi: int, n: int) -> tuple[int, int]:
-    if lo < 0:
-        lo = lo + n
-    if hi < 0:
-        hi = hi + n
-    lo = max(0, min(lo, n))
-    hi = max(0, min(hi, n))
+    if hi > n:
+        hi = n
     if lo > hi:
         lo = hi
     return (lo, hi)
@@ -2346,6 +2342,8 @@ class Runtime:
         raise TaytshRuntimeFault("indexing not supported", pos)
 
     def _eval_slice(self, obj: Value, lo: int, hi: int, *, pos: Pos) -> Value:
+        if lo < 0:
+            self._throw_err("IndexError", "slice out of range")
         if isinstance(obj, VList):
             n = len(obj.elements)
             lo, hi = _clamp_slice(lo, hi, n)

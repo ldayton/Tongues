@@ -160,7 +160,9 @@ _PERL_ESCAPE_MAP: dict[str, str] = {
 
 def _escape_perl_string(value: str) -> str:
     out: list[str] = []
-    for c in value:
+    i: int = 0
+    while i < len(value):
+        c: str = value[i : i + 1]
         esc = _PERL_ESCAPE_MAP.get(c)
         if esc is not None:
             out.append(esc)
@@ -168,12 +170,15 @@ def _escape_perl_string(value: str) -> str:
             out.append("\\x{" + hex(ord(c))[2:] + "}")
         else:
             out.append(c)
+        i += 1
     return "".join(out)
 
 
 def _escape_perl_regex(s: str) -> str:
     result: list[str] = []
-    for ch in s:
+    i: int = 0
+    while i < len(s):
+        ch: str = s[i : i + 1]
         if ch == "$" or ch == "@":
             h = hex(ord(ch))[2:]
             if len(h) == 1:
@@ -194,12 +199,15 @@ def _escape_perl_regex(s: str) -> str:
             result.append("\\x{" + h + "}")
         else:
             result.append(ch)
+        i += 1
     return "".join(result)
 
 
 def _escape_perl_replacement(s: str) -> str:
     result: list[str] = []
-    for ch in s:
+    i: int = 0
+    while i < len(s):
+        ch: str = s[i : i + 1]
         if ch == "\\":
             result.append("\\\\")
         elif ch == "$":
@@ -219,12 +227,15 @@ def _escape_perl_replacement(s: str) -> str:
             result.append("\\x{" + h + "}")
         else:
             result.append(ch)
+        i += 1
     return "".join(result)
 
 
 def _escape_regex_charclass(s: str) -> str:
     result: list[str] = []
-    for ch in s:
+    i: int = 0
+    while i < len(s):
+        ch: str = s[i : i + 1]
         if ch in r"]\^-":
             result.append("\\" + ch)
         elif ch == "\n":
@@ -240,6 +251,7 @@ def _escape_regex_charclass(s: str) -> str:
             result.append("\\x{" + h + "}")
         else:
             result.append(ch)
+        i += 1
     return "".join(result)
 
 
