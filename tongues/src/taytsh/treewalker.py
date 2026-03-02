@@ -3796,8 +3796,10 @@ def _bi_list_compare(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_set_from_list(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
+    if isinstance(xs, VSet):
+        return xs
     if not isinstance(xs, VList):
-        raise TaytshRuntimeFault("SetFromList expects list", None)
+        raise TaytshRuntimeFault("SetFromList expects list or set", None)
     elems: list[Value] = []
     for v in xs.elements:
         _set_add(elems, _as_hashable(v))

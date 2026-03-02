@@ -31,6 +31,8 @@ LIB_DIR = TONGUES_DIR / "src" / "lib"
 TRANSPILED_BINARY: str | None = os.environ.get("TONGUES_TRANSPILED_BINARY")
 
 _TRANSPILED_MODULE = None
+_TRANSPILED_TY_MODULE = None
+_TAYTSH_RUNNER: str = os.environ.get("TONGUES_TAYTSH_RUNNER", "treewalker")
 if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".py"):
     _spec = importlib.util.spec_from_file_location(
         "tongues_transpiled", TRANSPILED_BINARY
@@ -156,12 +158,9 @@ def run_linker_test(spec: dict) -> subprocess.CompletedProcess[bytes]:
         parts.append(source)
     stdin_data = "\0".join(parts).encode() if parts else b""
     if TRANSPILED_BINARY is not None:
-        if _TRANSPILED_MODULE is not None:
-            argv = [TRANSPILED_BINARY, *spec["args"]]
-            return _run_inprocess(argv, stdin_data=stdin_data)
-        cmd = [*_transpiled_cmd(), *spec["args"]]
-    else:
-        cmd = [sys.executable, "-m", "src.tongues", *spec["args"]]
+        argv = [TRANSPILED_BINARY, *spec["args"]]
+        return _invoke_binary(argv, stdin_data=stdin_data)
+    cmd = [sys.executable, "-m", "src.tongues", *spec["args"]]
     return subprocess.run(cmd, input=stdin_data, capture_output=True, cwd=TONGUES_DIR)
 
 
@@ -174,12 +173,9 @@ def run_cli(spec: dict) -> subprocess.CompletedProcess[bytes]:
     else:
         stdin_data = b""
     if TRANSPILED_BINARY is not None:
-        if _TRANSPILED_MODULE is not None:
-            argv = [TRANSPILED_BINARY, *spec["args"]]
-            return _run_inprocess(argv, stdin_data=stdin_data)
-        cmd = [*_transpiled_cmd(), *spec["args"]]
-    else:
-        cmd = [sys.executable, "-m", "src.tongues", *spec["args"]]
+        argv = [TRANSPILED_BINARY, *spec["args"]]
+        return _invoke_binary(argv, stdin_data=stdin_data)
+    cmd = [sys.executable, "-m", "src.tongues", *spec["args"]]
     return subprocess.run(cmd, input=stdin_data, capture_output=True, cwd=TONGUES_DIR)
 
 
@@ -235,6 +231,12 @@ from src.taytsh.ast import (
     serialize_annotations,
 )
 from src.taytsh.check import check_with_info
+from src.taytsh.vm import vm_run as _taytsh_vm_run
+
+if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".ty"):
+    _TRANSPILED_TY_MODULE = taytsh_parse(
+        Path(TRANSPILED_BINARY).resolve().read_text()
+    )
 
 PARSE_TIMEOUT = 5
 TESTS_DIR = Path(__file__).parent
@@ -512,13 +514,6 @@ def _transpiled_runtime() -> list[str]:
     return RUNTIMES[lang]
 
 
-def _transpiled_cmd(*extra: str) -> list[str]:
-    """Build a command to invoke the transpiled binary."""
-    assert TRANSPILED_BINARY is not None
-    binary = str((TONGUES_DIR / TRANSPILED_BINARY).resolve())
-    return [*_transpiled_runtime(), binary, *extra]
-
-
 def _run_inprocess(
     argv: list[str], *, stdin_data: bytes = b""
 ) -> subprocess.CompletedProcess:
@@ -556,6 +551,43 @@ def _run_inprocess(
     )
 
 
+def _run_taytsh_inprocess(
+    argv: list[str], *, stdin_data: bytes = b""
+) -> subprocess.CompletedProcess:
+    """Run the transpiled Taytsh module in-process through treewalker or VM."""
+    if _TAYTSH_RUNNER == "vm":
+        result = _taytsh_vm_run(
+            _TRANSPILED_TY_MODULE, stdin=stdin_data, args=argv
+        )
+        return subprocess.CompletedProcess(
+            args=argv,
+            returncode=result.exit_code,
+            stdout=result.stdout.encode(),
+            stderr=result.stderr.encode(),
+        )
+    result = taytsh_run(_TRANSPILED_TY_MODULE, stdin=stdin_data, args=argv)
+    return subprocess.CompletedProcess(
+        args=argv,
+        returncode=result.exit_code,
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
+
+
+def _invoke_binary(
+    argv: list[str], *, stdin_data: bytes = b"", timeout: int = 30
+) -> subprocess.CompletedProcess:
+    """Run the transpiled binary — dispatches to in-process, taytsh, or subprocess."""
+    if _TRANSPILED_MODULE is not None:
+        return _run_inprocess(argv, stdin_data=stdin_data)
+    if _TRANSPILED_TY_MODULE is not None:
+        return _run_taytsh_inprocess(argv, stdin_data=stdin_data)
+    cmd = [*_transpiled_runtime(), *argv]
+    return subprocess.run(
+        cmd, input=stdin_data, capture_output=True, timeout=timeout, cwd=TONGUES_DIR
+    )
+
+
 def _run_transpiled(
     source: str,
     args: list[str],
@@ -573,11 +605,7 @@ def _run_transpiled(
             argv = [TRANSPILED_BINARY, "taytsh", *cmd_args, tmp.name]
         else:
             argv = [TRANSPILED_BINARY, *cmd_args, tmp.name]
-        if _TRANSPILED_MODULE is not None:
-            result = _run_inprocess(argv)
-        else:
-            cmd = [*_transpiled_runtime(), *argv]
-            result = subprocess.run(cmd, capture_output=True, timeout=30)
+        result = _invoke_binary(argv)
         Path(tmp.name).unlink(missing_ok=True)
     stderr_text = result.stderr.decode(errors="replace").strip()
     if result.returncode != 0:
@@ -789,13 +817,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
             lib_sources = _read_lib_sources(lib_names)
             stdin_data = _build_project_input("apptest.py", source, lib_sources)
             argv = [TRANSPILED_BINARY, "--project", "--stop-at", "lowering-text"]
-            if _TRANSPILED_MODULE is not None:
-                result = _run_inprocess(argv, stdin_data=stdin_data)
-            else:
-                cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(
-                    cmd, input=stdin_data, capture_output=True, timeout=30
-                )
+            result = _invoke_binary(argv, stdin_data=stdin_data)
         else:
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".py", delete=False
@@ -803,11 +825,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
                 tmp.write(source)
                 tmp.flush()
                 argv = [TRANSPILED_BINARY, "--stop-at", "lowering-text", tmp.name]
-                if _TRANSPILED_MODULE is not None:
-                    result = _run_inprocess(argv)
-                else:
-                    cmd = [*_transpiled_runtime(), *argv]
-                    result = subprocess.run(cmd, capture_output=True, timeout=30)
+                result = _invoke_binary(argv)
                 Path(tmp.name).unlink(missing_ok=True)
         if result.returncode != 0:
             stderr = result.stderr.decode(errors="replace").strip()
@@ -1049,11 +1067,7 @@ def transpile_code(source: str, lang: str) -> tuple[str | None, str | None]:
             tmp.write(source)
             tmp.flush()
             argv = [TRANSPILED_BINARY, "taytsh", "--emit", lang, tmp.name]
-            if _TRANSPILED_MODULE is not None:
-                result = _run_inprocess(argv)
-            else:
-                cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(cmd, capture_output=True, timeout=30)
+            result = _invoke_binary(argv)
             Path(tmp.name).unlink(missing_ok=True)
         if result.returncode != 0:
             stderr = result.stderr.decode(errors="replace").strip()
@@ -1076,11 +1090,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
             tmp.write(source)
             tmp.flush()
             argv = [TRANSPILED_BINARY, "--target", lang, tmp.name]
-            if _TRANSPILED_MODULE is not None:
-                result = _run_inprocess(argv)
-            else:
-                cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(cmd, capture_output=True, timeout=30)
+            result = _invoke_binary(argv)
             Path(tmp.name).unlink(missing_ok=True)
         if result.returncode != 0:
             stderr = result.stderr.decode(errors="replace").strip()
@@ -1157,13 +1167,7 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
             lib_sources = _read_lib_sources(lib_names)
             stdin_data = _build_project_input("apptest.py", source, lib_sources)
             argv = [TRANSPILED_BINARY, "--project", "--target", target]
-            if _TRANSPILED_MODULE is not None:
-                result = _run_inprocess(argv, stdin_data=stdin_data)
-            else:
-                cmd = [*_transpiled_runtime(), *argv]
-                result = subprocess.run(
-                    cmd, input=stdin_data, capture_output=True, timeout=30
-                )
+            result = _invoke_binary(argv, stdin_data=stdin_data)
         else:
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".py", delete=False
@@ -1171,11 +1175,7 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
                 tmp.write(source)
                 tmp.flush()
                 argv = [TRANSPILED_BINARY, "--target", target, tmp.name]
-                if _TRANSPILED_MODULE is not None:
-                    result = _run_inprocess(argv)
-                else:
-                    cmd = [*_transpiled_runtime(), *argv]
-                    result = subprocess.run(cmd, capture_output=True, timeout=30)
+                result = _invoke_binary(argv)
                 Path(tmp.name).unlink(missing_ok=True)
         if result.returncode != 0:
             stderr = result.stderr.decode(errors="replace").strip()

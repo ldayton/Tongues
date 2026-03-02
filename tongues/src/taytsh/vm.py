@@ -1501,6 +1501,8 @@ class _BuiltinDispatch:
         return VSet([])
 
     def _set_from_list(self, args: list[Val]) -> Val:
+        if isinstance(args[0], VSet):
+            return args[0]
         if isinstance(args[0], VList):
             result: list[Val] = []
             for item in args[0].items:

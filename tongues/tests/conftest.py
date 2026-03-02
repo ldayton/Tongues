@@ -20,6 +20,12 @@ def pytest_addoption(parser):
         "--transpiled",
         help="Path to transpiled binary (e.g. .out/tongues.py)",
     )
+    parser.addoption(
+        "--taytsh-runner",
+        choices=["treewalker", "vm"],
+        default="treewalker",
+        help="Taytsh runtime to use for .ty transpiled binaries",
+    )
 
 
 def pytest_configure(config):
@@ -29,3 +35,6 @@ def pytest_configure(config):
         if not Path(resolved).is_file():
             raise FileNotFoundError("--transpiled binary not found: " + resolved)
         os.environ["TONGUES_TRANSPILED_BINARY"] = resolved
+    runner = config.getoption("taytsh_runner")
+    if runner is not None:
+        os.environ["TONGUES_TAYTSH_RUNNER"] = runner

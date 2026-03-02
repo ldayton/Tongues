@@ -117,7 +117,7 @@ fmt *ARGS:
 _self-transpile target="python":
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [taytsh]=ty)
     mkdir -p tongues/.out
     cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
     if [ "{{target}}" = "python" ]; then
@@ -156,9 +156,39 @@ lang-perl:
         | uv run bin/tongues --project --target perl -o .out/test_harness.pl
     perl tests/test-transpiled.pl ".out/tongues.pl"
 
-# Lower to Taytsh and run through treewalker + VM
+# Self-transpile to Taytsh and test through treewalker
+lang-taytsh-treewalker:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _self-transpile taytsh
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
+        tests/test_frontend_linker.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v
+
+# Self-transpile to Taytsh and test through VM
+lang-taytsh-vm:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _self-transpile taytsh
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
+        tests/test_frontend_linker.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner vm -v
+
+# Self-transpile to Taytsh and test through both treewalker and VM
 lang-taytsh:
-    uv run --directory tongues pytest tests/test_lang_taytsh.py -v
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _self-transpile taytsh
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
+        tests/test_frontend_linker.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
+        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
+        tests/test_frontend_linker.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner vm -v
 
 # Run a just target inside Docker
 docker target lang="python":

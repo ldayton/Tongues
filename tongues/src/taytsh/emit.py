@@ -21,6 +21,7 @@ from .ast import (
     TExpr,
     TExprStmt,
     TFieldAccess,
+    TFieldDecl,
     TFnDecl,
     TFnLit,
     TFloatLit,
@@ -115,16 +116,42 @@ _BIN_PREC: dict[str, int] = {
 }
 
 
+_STRUCTURAL_ANNOTATIONS: set[str] = {"_parent_interface", "_is_exception"}
+
+
 class _Emitter:
-    def __init__(self) -> None:
+    def __init__(self, taytsh: bool = False) -> None:
         self._lines: list[str] = []
         self._indent_level: int = 0
+        self._taytsh: bool = taytsh
 
     # ── Public ──────────────────────────────────────────────
 
     def emit_module(self, module: TModule) -> str:
         self._lines = []
         self._indent_level = 0
+        first = True
+        for decl in module.decls:
+            if not first:
+                self._lines.append("")
+            first = False
+            self._emit_decl(decl)
+        text = "\n".join(self._lines)
+        if text == "":
+            return ""
+        if not text.endswith("\n"):
+            text += "\n"
+        return text
+
+    def emit(self, module: TModule) -> str:
+        """Emit a TModule as valid round-trip Taytsh source (backend mode)."""
+        if module.strict_math or module.strict_tostring:
+            parts: list[str] = []
+            if module.strict_math:
+                parts.append('"strict_math"')
+            if module.strict_tostring:
+                parts.append('"strict_tostring"')
+            self._emit_line("@@[" + ", ".join(parts) + "]")
         first = True
         for decl in module.decls:
             if not first:
@@ -153,15 +180,23 @@ class _Emitter:
 
     def _emit_decl(self, decl: TModuleItem) -> None:
         if isinstance(decl, TFnDecl):
+            if self._taytsh:
+                self._emit_annotations(decl.annotations)
             self._emit_fn_decl(decl)
             return
         if isinstance(decl, TStructDecl):
+            if self._taytsh:
+                self._emit_annotations(decl.annotations)
             self._emit_struct_decl(decl)
             return
         if isinstance(decl, TInterfaceDecl):
-            self._emit_line("interface " + decl.name + " {}")
+            if self._taytsh:
+                self._emit_annotations(decl.annotations)
+            self._emit_interface_decl(decl)
             return
         if isinstance(decl, TEnumDecl):
+            if self._taytsh:
+                self._emit_annotations(decl.annotations)
             self._emit_enum_decl(decl)
             return
         if isinstance(decl, TLetStmt):
@@ -170,7 +205,10 @@ class _Emitter:
         raise TypeError("unhandled decl type")
 
     def _emit_fn_decl(self, decl: TFnDecl) -> None:
-        params = self._render_param_list(decl.params)
+        if self._taytsh:
+            params = self._render_param_list_with_defaults(decl.params)
+        else:
+            params = self._render_param_list(decl.params)
         ret = self._render_type(decl.ret)
         self._emit_line("fn " + decl.name + "(" + params + ") -> " + ret + " {")
         self._emit_stmt_block(decl.body)
@@ -183,14 +221,16 @@ class _Emitter:
             header = "struct " + decl.name + " : " + decl.parent + " {"
         self._emit_line(header)
         self._indent_level += 1
-
         for field in decl.fields:
-            self._emit_line(f"{field.name}: {self._render_type(field.typ)}")
-
+            if self._taytsh:
+                self._emit_field(field)
+            else:
+                self._emit_line(field.name + ": " + self._render_type(field.typ))
         for method in decl.methods:
             self._lines.append("")
+            if self._taytsh:
+                self._emit_annotations(method.annotations)
             self._emit_fn_decl(method)
-
         self._indent_level -= 1
         self._emit_line("}")
 
@@ -201,6 +241,50 @@ class _Emitter:
             self._emit_line(v)
         self._indent_level -= 1
         self._emit_line("}")
+
+    def _emit_interface_decl(self, decl: TInterfaceDecl) -> None:
+        if not self._taytsh or not decl.fields:
+            self._emit_line("interface " + decl.name + " {}")
+            return
+        self._emit_line("interface " + decl.name + " {")
+        self._indent_level += 1
+        for field in decl.fields:
+            self._emit_field(field)
+        self._indent_level -= 1
+        self._emit_line("}")
+
+    def _emit_annotations(self, ann: dict[str, str]) -> None:
+        filtered: dict[str, str] = {}
+        for k in ann:
+            if k in _STRUCTURAL_ANNOTATIONS:
+                filtered[k] = ann[k]
+        if not filtered:
+            return
+        parts: list[str] = []
+        for k, v in filtered.items():
+            if v == "true":
+                parts.append('"' + k + '"')
+            else:
+                parts.append('"' + k + '" = "' + v + '"')
+        self._emit_line("@[" + ", ".join(parts) + "]")
+
+    def _emit_field(self, field: TFieldDecl) -> None:
+        line = field.name + ": " + self._render_type(field.typ)
+        if field.has_default:
+            line += " = " + _zero_value(field.typ)
+        self._emit_line(line)
+
+    def _render_param_list_with_defaults(self, params: list[TParam]) -> str:
+        parts: list[str] = []
+        for p in params:
+            if p.typ is None:
+                parts.append("this")
+            else:
+                s = p.name + ": " + self._render_type(p.typ)
+                if p.has_default:
+                    s += " = " + _zero_value(p.typ)
+                parts.append(s)
+        return ", ".join(parts)
 
     # ── Stmts ───────────────────────────────────────────────
 
@@ -444,9 +528,10 @@ class _Emitter:
     # ── Exprs ───────────────────────────────────────────────
 
     def _render_named_arg_value(self, expr: TExpr) -> str:
-        """Render a named arg value — booleans are capitalized (True/False)."""
-        if isinstance(expr, TBoolLit):
-            return "True" if expr.value else "False"
+        if not self._taytsh and isinstance(expr, TBoolLit):
+            if expr.value:
+                return "True"
+            return "False"
         return self._render_expr(expr, _PREC_TERNARY)
 
     def _expr_prec(self, expr: TExpr) -> int:
@@ -771,3 +856,33 @@ class _Emitter:
                         # Taytsh only specifies \xHH escapes; emit a literal unicode char.
                         out += ch
         return out
+
+
+def _zero_value(typ: TType) -> str:
+    """Return the Taytsh zero-value literal for a type."""
+    if isinstance(typ, TPrimitive):
+        if typ.kind == "int":
+            return "0"
+        if typ.kind == "float":
+            return "0.0"
+        if typ.kind == "bool":
+            return "false"
+        if typ.kind == "string":
+            return '""'
+        if typ.kind == "byte":
+            return "0b0"
+        if typ.kind == "bytes":
+            return 'b""'
+        if typ.kind == "rune":
+            return "' '"
+    if isinstance(typ, TListType):
+        return "[]"
+    if isinstance(typ, TMapType):
+        return "Map()"
+    if isinstance(typ, TSetType):
+        return "Set()"
+    if isinstance(typ, TOptionalType):
+        return "nil"
+    if isinstance(typ, TIdentType):
+        return typ.name + "()"
+    raise ValueError("cannot compute zero value for type: " + str(typ))

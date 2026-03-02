@@ -53,6 +53,7 @@ from .middleend.strings import analyze_strings
 from .backend.python import emit_python
 from .backend.perl import emit_perl
 from .backend.ruby import emit_ruby
+from .backend.taytsh import emit_taytsh
 
 TARGETS: list[str] = [
     "c",
@@ -67,6 +68,7 @@ TARGETS: list[str] = [
     "python",
     "ruby",
     "rust",
+    "taytsh",
     "swift",
     "typescript",
     "zig",
@@ -1586,6 +1588,8 @@ def _pipeline_post_parse(
         return (0, emit_perl(module))
     if target == "ruby":
         return (0, emit_ruby(module))
+    if target == "taytsh":
+        return (0, emit_taytsh(module))
     print("error: backend not yet implemented for '" + target + "'", file=sys.stderr)
     return (1, "")
 
@@ -1724,7 +1728,7 @@ TAYTSH_PHASES: list[str] = [
     "callgraph",
 ]
 
-TAYTSH_EMIT_TARGETS: list[str] = ["python", "perl", "ruby"]
+TAYTSH_EMIT_TARGETS: list[str] = ["python", "perl", "ruby", "taytsh"]
 
 
 def taytsh_pipeline(argv: list[str]) -> int:
@@ -1843,6 +1847,8 @@ def taytsh_pipeline(argv: list[str]) -> int:
             result = emit_perl(module)
         elif emit_target == "ruby":
             result = emit_ruby(module)
+        elif emit_target == "taytsh":
+            result = emit_taytsh(module)
         print(result)
         return 0
     print("error: --stop-at or --emit required", file=sys.stderr)
