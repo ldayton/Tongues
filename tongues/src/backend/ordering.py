@@ -7,6 +7,7 @@ from ..taytsh.ast import (
     TFuncType,
     TIdentType,
     TInterfaceDecl,
+    TLetStmt,
     TListType,
     TMapType,
     TModuleItem,
@@ -61,7 +62,23 @@ def _pop_min(ready: list[int]) -> int:
     return val
 
 
-def order_decls(decls: list[TModuleItem]) -> list[TModuleItem]:
+def _lets_before_fns(decls: list[TModuleItem]) -> list[TModuleItem]:
+    """Reorder so module-level lets precede fns (Perl's `my` is lexically scoped)."""
+    lets: list[TModuleItem] = []
+    rest: list[TModuleItem] = []
+    for decl in decls:
+        if isinstance(decl, TLetStmt):
+            lets.append(decl)
+        else:
+            rest.append(decl)
+    if not lets or not rest:
+        return decls
+    return lets + rest
+
+
+def order_decls(
+    decls: list[TModuleItem], *, lets_first: bool = False
+) -> list[TModuleItem]:
     """Topologically sort type declarations; preserve source order as tiebreaker."""
     type_decls: list[tuple[int, TModuleItem]] = []
     other_decls: list[tuple[int, TModuleItem]] = []
@@ -73,7 +90,7 @@ def order_decls(decls: list[TModuleItem]) -> list[TModuleItem]:
         else:
             other_decls.append((i, decl))
     if not type_decls:
-        return decls
+        return _lets_before_fns(decls) if lets_first else decls
     deps: dict[int, set[int]] = {idx: set() for idx, _ in type_decls}
     for idx, decl in type_decls:
         if isinstance(decl, TStructDecl):
@@ -107,6 +124,14 @@ def order_decls(decls: list[TModuleItem]) -> list[TModuleItem]:
         remaining.sort()
         for orig_idx in remaining:
             result.append(decls[orig_idx])
-    for _, decl in other_decls:
-        result.append(decl)
+    if lets_first:
+        for _, decl in other_decls:
+            if isinstance(decl, TLetStmt):
+                result.append(decl)
+        for _, decl in other_decls:
+            if not isinstance(decl, TLetStmt):
+                result.append(decl)
+    else:
+        for _, decl in other_decls:
+            result.append(decl)
     return result
