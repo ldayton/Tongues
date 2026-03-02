@@ -231,7 +231,11 @@ from src.taytsh.ast import (
     serialize_annotations,
 )
 from src.taytsh.check import check_with_info
-from src.taytsh.vm import vm_run as _taytsh_vm_run, vm_prepare as _taytsh_vm_prepare, VM as _TaytshVM
+from src.taytsh.vm import (
+    vm_run as _taytsh_vm_run,
+    vm_prepare as _taytsh_vm_prepare,
+    VM as _TaytshVM,
+)
 
 _TAYTSH_RUNTIME = None
 _TAYTSH_COMPILED = None
