@@ -234,9 +234,7 @@ from src.taytsh.check import check_with_info
 from src.taytsh.vm import vm_run as _taytsh_vm_run
 
 if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".ty"):
-    _TRANSPILED_TY_MODULE = taytsh_parse(
-        Path(TRANSPILED_BINARY).resolve().read_text()
-    )
+    _TRANSPILED_TY_MODULE = taytsh_parse(Path(TRANSPILED_BINARY).resolve().read_text())
 
 PARSE_TIMEOUT = 5
 TESTS_DIR = Path(__file__).parent
@@ -556,9 +554,7 @@ def _run_taytsh_inprocess(
 ) -> subprocess.CompletedProcess:
     """Run the transpiled Taytsh module in-process through treewalker or VM."""
     if _TAYTSH_RUNNER == "vm":
-        result = _taytsh_vm_run(
-            _TRANSPILED_TY_MODULE, stdin=stdin_data, args=argv
-        )
+        result = _taytsh_vm_run(_TRANSPILED_TY_MODULE, stdin=stdin_data, args=argv)
         return subprocess.CompletedProcess(
             args=argv,
             returncode=result.exit_code,

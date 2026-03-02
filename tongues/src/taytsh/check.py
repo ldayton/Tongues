@@ -3009,9 +3009,7 @@ class Checker:
             if resolved is not None and isinstance(resolved, StructT):
                 return self.check_struct_constructor(resolved, expr.args, expr.pos)
             if resolved is not None and isinstance(resolved, InterfaceT):
-                self.error(
-                    "cannot construct interface '" + func_name + "'", expr.pos
-                )
+                self.error("cannot construct interface '" + func_name + "'", expr.pos)
                 return None
             if resolved is not None and isinstance(resolved, FnT):
                 pnames = self.fn_param_names.get(func_name)

@@ -2892,7 +2892,8 @@ def _lower_struct_constructor(
     if ctx.hier_result.is_hierarchy_root(class_name):
         ctx.errors.append(
             LoweringError(
-                pos.line, pos.col,
+                pos.line,
+                pos.col,
                 "cannot construct interface '" + class_name + "'",
             )
         )
