@@ -35,13 +35,13 @@ def _collect_type_names(typ: TType) -> set[str]:
             out |= _collect_type_names(el)
         return out
     if isinstance(typ, TFuncType):
-        out = set()
+        out: set[str] = set()
         for p in typ.params:
             for n in _collect_type_names(p):
                 out.add(n)
         return out
     if isinstance(typ, TUnionType):
-        out = set()
+        out: set[str] = set()
         for m in typ.members:
             for n in _collect_type_names(m):
                 out.add(n)
