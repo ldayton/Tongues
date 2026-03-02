@@ -176,20 +176,6 @@ lang-taytsh-vm:
         tests/test_frontend_linker.py \
         --transpiled ".out/tongues.ty" --taytsh-runner vm -v
 
-# Self-transpile to Taytsh and test through both treewalker and VM
-lang-taytsh:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just _self-transpile taytsh
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
-        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
-        tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
-        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
-        tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm -v
-
 # Run a just target inside Docker
 docker target lang="python":
     docker build -t tongues-{{lang}} docker/{{lang}}
@@ -283,19 +269,21 @@ test:
     _st python & pid_py=$!
     _st ruby & pid_rb=$!
     _st perl & pid_pl=$!
-    _st taytsh & pid_ty=$!
+    _st taytsh-treewalker & pid_ty_tw=$!
+    _st taytsh-vm & pid_ty_vm=$!
     wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
     wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
-    wait $pid_ty && results[lang-taytsh]=✅ || { results[lang-taytsh]=❌; failed=1; }
+    wait $pid_ty_tw && results[lang-taytsh-tw]=✅ || { results[lang-taytsh-tw]=❌; failed=1; }
+    wait $pid_ty_vm && results[lang-taytsh-vm]=✅ || { results[lang-taytsh-vm]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "           TEST SUMMARY"
     echo "══════════════════════════════════════"
-    printf "%-14s %s\n" "TARGET" "STATUS"
-    printf "%-14s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh; do
-        printf "%-14s %s\n" "$t" "${results[$t]}"
+    printf "%-16s %s\n" "TARGET" "STATUS"
+    printf "%-16s %s\n" "──────" "──────"
+    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm; do
+        printf "%-16s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
     if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi

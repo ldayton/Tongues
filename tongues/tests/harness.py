@@ -226,15 +226,22 @@ from src.middleend.returns import analyze_returns
 from src.middleend.scope import analyze_scope
 from src.middleend.strings import analyze_strings
 from src.taytsh import check as taytsh_check_fn, parse as taytsh_parse
-from src.taytsh.treewalker import run as taytsh_run
+from src.taytsh.treewalker import run as taytsh_run, prepare as _taytsh_prepare
 from src.taytsh.ast import (
     serialize_annotations,
 )
 from src.taytsh.check import check_with_info
-from src.taytsh.vm import vm_run as _taytsh_vm_run
+from src.taytsh.vm import vm_run as _taytsh_vm_run, vm_prepare as _taytsh_vm_prepare, VM as _TaytshVM
+
+_TAYTSH_RUNTIME = None
+_TAYTSH_COMPILED = None
 
 if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".ty"):
     _TRANSPILED_TY_MODULE = taytsh_parse(Path(TRANSPILED_BINARY).resolve().read_text())
+    if _TAYTSH_RUNNER == "vm":
+        _TAYTSH_COMPILED = _taytsh_vm_prepare(_TRANSPILED_TY_MODULE)
+    else:
+        _TAYTSH_RUNTIME = _taytsh_prepare(_TRANSPILED_TY_MODULE)
 
 PARSE_TIMEOUT = 5
 TESTS_DIR = Path(__file__).parent
@@ -554,14 +561,15 @@ def _run_taytsh_inprocess(
 ) -> subprocess.CompletedProcess:
     """Run the transpiled Taytsh module in-process through treewalker or VM."""
     if _TAYTSH_RUNNER == "vm":
-        result = _taytsh_vm_run(_TRANSPILED_TY_MODULE, stdin=stdin_data, args=argv)
+        vm = _TaytshVM(_TAYTSH_COMPILED)
+        result = vm.invoke(stdin=stdin_data, args=argv)
         return subprocess.CompletedProcess(
             args=argv,
             returncode=result.exit_code,
             stdout=result.stdout.encode(),
             stderr=result.stderr.encode(),
         )
-    result = taytsh_run(_TRANSPILED_TY_MODULE, stdin=stdin_data, args=argv)
+    result = _TAYTSH_RUNTIME.invoke(stdin=stdin_data, args=argv)
     return subprocess.CompletedProcess(
         args=argv,
         returncode=result.exit_code,

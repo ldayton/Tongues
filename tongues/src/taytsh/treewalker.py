@@ -476,19 +476,12 @@ class RunResult:
 # ============================================================
 
 
-def run(
-    module: TModule,
-    stdin: bytes = b"",
-    args: list[str] | None = None,
-    env: dict[str, str] | None = None,
-) -> RunResult:
-    """Typecheck and run a parsed Taytsh module."""
+def prepare(module: TModule) -> Runtime:
+    """Typecheck and prepare a Runtime — expensive, do once per module."""
     check_result = check_with_info(module)
     checker: Checker = check_result[1]
     idx = _build_index(module)
     _resolve_index(idx, checker)
-    run_args: list[str] = list(args) if args is not None else []
-    run_env: dict[str, str] = env if env is not None else {}
     fn_values: dict[str, VFunc] = {}
     for fn_name, fn_info in idx.funcs.items():
         fn_values[fn_name] = VFunc(
@@ -501,20 +494,30 @@ def run(
             builtin_values[bi_name] = VFunc(
                 fn_type, bi_name, "builtin", bi_name, None, None, None
             )
-    rt = Runtime(
+    return Runtime(
         module,
         idx,
         checker,
         checker.expr_types,
-        _Input(stdin, 0),
-        run_args,
-        run_env,
+        _Input(b"", 0),
+        [],
+        {},
         b"",
         b"",
         fn_values,
         builtin_values,
     )
-    return rt.run_main()
+
+
+def run(
+    module: TModule,
+    stdin: bytes = b"",
+    args: list[str] | None = None,
+    env: dict[str, str] | None = None,
+) -> RunResult:
+    """Typecheck and run a parsed Taytsh module."""
+    rt = prepare(module)
+    return rt.invoke(stdin, args, env)
 
 
 # ============================================================
@@ -1357,6 +1360,21 @@ class Runtime:
         raise TaytshRuntimeFault(f"type '{type_name(typ)}' has no zero value", None)
 
     # ---- Running -----------------------------------------------------------
+
+    def invoke(
+        self,
+        stdin: bytes = b"",
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
+    ) -> RunResult:
+        """Reset per-invocation state and run Main()."""
+        self.stdin = _Input(stdin, 0)
+        self.args = list(args) if args is not None else []
+        self.env = env if env is not None else {}
+        self.stdout = b""
+        self.stderr = b""
+        self._global_values = {}
+        return self.run_main()
 
     def run_main(self) -> RunResult:
         try:

@@ -1915,6 +1915,26 @@ class VM:
                 self.globals.append(_NONE_VAL)
             i += 1
 
+    def invoke(
+        self,
+        stdin: bytes = b"",
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
+    ) -> VMResult:
+        """Reset per-invocation state and run Main()."""
+        self.stack = []
+        self.frames = []
+        self.handlers = []
+        self.stdout_buf = []
+        self.stderr_buf = []
+        self.stdin_data = stdin
+        self.stdin_pos = 0
+        self.program_args = list(args) if args is not None else []
+        self.env_vars = env if env is not None else {}
+        self.pending_exception = None
+        self._init_globals()
+        return self.run()
+
     def run(self) -> VMResult:
         if self.module.entry_index < 0:
             return VMResult(1, "", "no Main function")
@@ -3112,6 +3132,11 @@ def _cmp_result_str(a: str, b: str, kind: int) -> Val:
 # ============================================================
 
 
+def vm_prepare(module: TModule) -> CompiledModule:
+    """Compile a Taytsh module — expensive, do once per module."""
+    return compile_module(module)
+
+
 def vm_run(
     module: TModule,
     *,
@@ -3120,11 +3145,6 @@ def vm_run(
     env: dict[str, str] | None = None,
 ) -> VMResult:
     """Compile and run a Taytsh module through the bytecode VM."""
-    compiled = compile_module(module)
+    compiled = vm_prepare(module)
     vm = VM(compiled)
-    vm.stdin_data = stdin
-    if args is not None:
-        vm.program_args = args
-    if env is not None:
-        vm.env_vars = env
-    return vm.run()
+    return vm.invoke(stdin=stdin, args=args, env=env)
