@@ -1354,6 +1354,13 @@ class Runtime:
         if isinstance(typ, TupleT):
             elems = [self.zero_value(t) for t in typ.elements]
             return VTuple(elems, typ)
+        if isinstance(typ, StructT):
+            fields = {name: self.zero_value(ft) for name, ft in typ.fields.items()}
+            return VStruct(typ.name, fields)
+        if isinstance(typ, EnumT):
+            return VEnum(typ.name, typ.variants[0])
+        if isinstance(typ, InterfaceT):
+            return VNil()
         if isinstance(typ, UnionT):
             if any(_is_nil(m) for m in typ.members):
                 return VNil()
@@ -1408,14 +1415,19 @@ class Runtime:
     # ---- Functions ---------------------------------------------------------
 
     def _call_fn(self, decl: TFnDecl, sig: FnSig, args: list[Value]) -> Value:
+        intrinsic = _call_intrinsic(decl.name, args)
+        if intrinsic is not None:
+            return intrinsic
         env = _RuntimeEnv()
         env.push_scope()
         # Bind params
         for i, p in enumerate(decl.params):
             if p.typ is None:
                 env.bind("this", sig.params[i], args[i])
-            else:
+            elif i < len(args):
                 env.bind(p.name, sig.params[i], args[i])
+            else:
+                env.bind(p.name, sig.params[i], self.zero_value(sig.params[i]))
 
         try:
             self._eval_block(decl.body, env, fn_ret=sig.ret)
@@ -1443,109 +1455,141 @@ class Runtime:
             env.pop_scope()
 
     def _eval_stmt(self, st: TStmt, env: _RuntimeEnv, *, fn_ret: Type) -> None:
+        if isinstance(st, TIfStmt):
+            self._stmt_if(st, env, fn_ret)
+            return
         if isinstance(st, TLetStmt):
-            vty = _resolve_type(st.typ, self.checker)
-            if st.value is None:
-                env.bind(st.name, vty, self.zero_value(vty))
-                return
-            val = self._eval_expr(st.value, env, expected=vty)
-            env.bind(st.name, vty, val)
+            self._stmt_let(st, env, fn_ret)
             return
-
         if isinstance(st, TAssignStmt):
-            ref = self._eval_lvalue_ref(st.target, env)
-            val = self._eval_expr(st.value, env, expected=ref.typ)
-            ref.set(val)
+            self._stmt_assign(st, env, fn_ret)
             return
-
-        if isinstance(st, TOpAssignStmt):
-            oref = self._eval_lvalue_ref(st.target, env)
-            cur: Value = VNil()
-            try:
-                cur = oref.get()
-            except KeyError:
-                self._throw_err("KeyError", "missing key")
-            rhs = self._eval_expr(st.value, env, expected=oref.typ)
-            res = self._eval_binary(st.op[:-1], cur, rhs, pos=st.pos)
-            oref.set(res)
+        if isinstance(st, TExprStmt):
+            self._eval_expr(st.expr, env)
             return
-
-        if isinstance(st, TTupleAssignStmt):
-            trefs = [self._eval_lvalue_ref(t, env) for t in st.targets]
-            tref_types: list[Type] = []
-            _tti = 0
-            while _tti < len(trefs):
-                tref_types.append(trefs[_tti].typ)
-                _tti += 1
-            rhs = self._eval_expr(
-                st.value,
-                env,
-                expected=TupleT(kind="tuple", elements=tref_types),
-            )
-            if not isinstance(rhs, VTuple):
-                raise TaytshRuntimeFault("tuple assignment rhs not a tuple", st.pos)
-            if len(rhs.elements) != len(st.targets):
-                raise TaytshRuntimeFault("tuple arity mismatch", st.pos)
-            ti = 0
-            while ti < len(trefs):
-                trefs[ti].set(rhs.elements[ti])
-                ti += 1
-            return
-
         if isinstance(st, TReturnStmt):
             if st.value is None:
                 raise _Return(None)
             raise _Return(self._eval_expr(st.value, env, expected=fn_ret))
-
+        if isinstance(st, TWhileStmt):
+            self._stmt_while(st, env, fn_ret)
+            return
+        if isinstance(st, TForStmt):
+            self._eval_for(st, env, fn_ret=fn_ret)
+            return
+        if isinstance(st, TOpAssignStmt):
+            self._stmt_opassign(st, env, fn_ret)
+            return
+        if isinstance(st, TTupleAssignStmt):
+            self._stmt_tuple_assign(st, env, fn_ret)
+            return
+        if isinstance(st, TMatchStmt):
+            self._eval_match(st, env, fn_ret=fn_ret)
+            return
+        if isinstance(st, TTryStmt):
+            self._eval_try(st, env, fn_ret=fn_ret)
+            return
         if isinstance(st, TBreakStmt):
             raise _Break("")
         if isinstance(st, TContinueStmt):
             raise _Continue("")
-
         if isinstance(st, TThrowStmt):
             raise _Throw(self._eval_expr(st.expr, env))
+        raise TaytshRuntimeFault("unsupported statement", st.pos)
 
-        if isinstance(st, TExprStmt):
-            _ = self._eval_expr(st.expr, env)
+    def _stmt_let(self, st: TLetStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        vty = _resolve_type(st.typ, self.checker)
+        if st.value is None:
+            env.bind(st.name, vty, self.zero_value(vty))
             return
+        val = self._eval_expr(st.value, env, expected=vty)
+        env.bind(st.name, vty, val)
 
-        if isinstance(st, TIfStmt):
+    def _stmt_assign(self, st: TAssignStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        ref = self._eval_lvalue_ref(st.target, env)
+        val = self._eval_expr(st.value, env, expected=ref.typ)
+        ref.set(val)
+
+    def _stmt_opassign(self, st: TOpAssignStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        oref = self._eval_lvalue_ref(st.target, env)
+        cur: Value = VNil()
+        try:
+            cur = oref.get()
+        except KeyError:
+            self._throw_err("KeyError", "missing key")
+        rhs = self._eval_expr(st.value, env, expected=oref.typ)
+        res = self._eval_binary(st.op[:-1], cur, rhs, pos=st.pos)
+        oref.set(res)
+
+    def _stmt_tuple_assign(self, st: TTupleAssignStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        trefs = [self._eval_lvalue_ref(t, env) for t in st.targets]
+        tref_types: list[Type] = []
+        _tti = 0
+        while _tti < len(trefs):
+            tref_types.append(trefs[_tti].typ)
+            _tti += 1
+        rhs = self._eval_expr(
+            st.value,
+            env,
+            expected=TupleT(kind="tuple", elements=tref_types),
+        )
+        if not isinstance(rhs, VTuple):
+            raise TaytshRuntimeFault("tuple assignment rhs not a tuple", st.pos)
+        if len(rhs.elements) != len(st.targets):
+            raise TaytshRuntimeFault("tuple arity mismatch", st.pos)
+        ti = 0
+        while ti < len(trefs):
+            trefs[ti].set(rhs.elements[ti])
+            ti += 1
+
+    def _stmt_return(self, st: TReturnStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        if st.value is None:
+            raise _Return(None)
+        raise _Return(self._eval_expr(st.value, env, expected=fn_ret))
+
+    def _stmt_break(self, st: TBreakStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        raise _Break("")
+
+    def _stmt_continue(self, st: TContinueStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        raise _Continue("")
+
+    def _stmt_throw(self, st: TThrowStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        raise _Throw(self._eval_expr(st.expr, env))
+
+    def _stmt_expr(self, st: TExprStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        self._eval_expr(st.expr, env)
+
+    def _stmt_if(self, st: TIfStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        cond = self._eval_expr(st.cond, env)
+        if not isinstance(cond, VBool):
+            raise TaytshRuntimeFault("if condition not bool", st.pos)
+        if cond.value:
+            self._eval_block(st.then_body, env, fn_ret=fn_ret)
+        elif st.else_body is not None:
+            self._eval_block(st.else_body, env, fn_ret=fn_ret)
+
+    def _stmt_while(self, st: TWhileStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        while True:
             cond = self._eval_expr(st.cond, env)
             if not isinstance(cond, VBool):
-                raise TaytshRuntimeFault("if condition not bool", st.pos)
-            if cond.value:
-                self._eval_block(st.then_body, env, fn_ret=fn_ret)
-            elif st.else_body is not None:
-                self._eval_block(st.else_body, env, fn_ret=fn_ret)
-            return
+                raise TaytshRuntimeFault("while condition not bool", st.pos)
+            if not cond.value:
+                return
+            try:
+                self._eval_block(st.body, env, fn_ret=fn_ret)
+            except _Continue:
+                continue
+            except _Break:
+                return
 
-        if isinstance(st, TWhileStmt):
-            while True:
-                cond = self._eval_expr(st.cond, env)
-                if not isinstance(cond, VBool):
-                    raise TaytshRuntimeFault("while condition not bool", st.pos)
-                if not cond.value:
-                    return
-                try:
-                    self._eval_block(st.body, env, fn_ret=fn_ret)
-                except _Continue:
-                    continue
-                except _Break:
-                    return
+    def _stmt_for(self, st: TForStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        self._eval_for(st, env, fn_ret=fn_ret)
 
-        if isinstance(st, TForStmt):
-            self._eval_for(st, env, fn_ret=fn_ret)
-            return
+    def _stmt_match(self, st: TMatchStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        self._eval_match(st, env, fn_ret=fn_ret)
 
-        if isinstance(st, TMatchStmt):
-            self._eval_match(st, env, fn_ret=fn_ret)
-            return
-
-        if isinstance(st, TTryStmt):
-            self._eval_try(st, env, fn_ret=fn_ret)
-            return
-
-        raise TaytshRuntimeFault("unsupported statement", st.pos)
+    def _stmt_try(self, st: TTryStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
+        self._eval_try(st, env, fn_ret=fn_ret)
 
     def _eval_try(self, st: TTryStmt, env: _RuntimeEnv, *, fn_ret: Type) -> None:
         try:
@@ -1802,230 +1846,281 @@ class Runtime:
     def _eval_expr(
         self, expr: TExpr, env: _RuntimeEnv, *, expected: Type | None = None
     ) -> Value:
-        if isinstance(expr, TIntLit):
-            return VInt(expr.value)
-        if isinstance(expr, TFloatLit):
-            return VFloat(expr.value)
-        if isinstance(expr, TByteLit):
-            if expected is not None and expected.kind == "int":
-                return VInt(expr.value)
-            return VByte(expr.value)
+        if isinstance(expr, TVar):
+            return self._expr_var(expr, env, expected)
+        if isinstance(expr, TCall):
+            return self._eval_call(expr, env, expected=expected)
+        if isinstance(expr, TBinaryOp):
+            return self._expr_binary(expr, env, expected)
         if isinstance(expr, TStringLit):
             return VString(expr.value)
+        if isinstance(expr, TIntLit):
+            return VInt(expr.value)
+        if isinstance(expr, TBoolLit):
+            return VBool(expr.value)
+        if isinstance(expr, TFieldAccess):
+            return self._expr_field_access(expr, env, expected)
+        if isinstance(expr, TFloatLit):
+            return VFloat(expr.value)
+        if isinstance(expr, TNilLit):
+            return VNil()
+        if isinstance(expr, TUnaryOp):
+            return self._expr_unary(expr, env, expected)
+        if isinstance(expr, TTernary):
+            return self._expr_ternary(expr, env, expected)
+        if isinstance(expr, TIndex):
+            return self._expr_index(expr, env, expected)
+        if isinstance(expr, TFnLit):
+            return self._expr_fnlit(expr, env, expected)
+        if isinstance(expr, TByteLit):
+            return self._expr_byte(expr, env, expected)
         if isinstance(expr, TRuneLit):
             return VRune(expr.value)
         if isinstance(expr, TBytesLit):
             return VBytes(expr.value)
-        if isinstance(expr, TBoolLit):
-            return VBool(expr.value)
-        if isinstance(expr, TNilLit):
-            return VNil()
-
-        if isinstance(expr, TVar):
-            if env.has(expr.name):
-                return env.get(expr.name)
-            if expr.name in self._global_values:
-                return self._global_values[expr.name]
-            if expr.name in self._fn_values:
-                return self._fn_values[expr.name]
-            if expr.name in self._builtin_values:
-                return self._builtin_values[expr.name]
-            raise TaytshRuntimeFault(f"unknown name '{expr.name}'", expr.pos)
-
-        if isinstance(expr, TUnaryOp):
-            operand = self._eval_expr(expr.operand, env)
-            if expr.op == "!":
-                if not isinstance(operand, VBool):
-                    raise TaytshRuntimeFault("! operand not bool", expr.pos)
-                return VBool(not operand.value)
-            if expr.op == "-":
-                if isinstance(operand, VInt):
-                    result = -operand.value
-                    if self.module.strict_math and (
-                        result < _INT64_MIN or result > _INT64_MAX
-                    ):
-                        self._throw_err("ValueError", "integer overflow")
-                    return VInt(result)
-                if isinstance(operand, VFloat):
-                    return VFloat(-operand.value)
-                if isinstance(operand, VByte):
-                    return VByte((-operand.value) & 0xFF)
-                raise TaytshRuntimeFault("- operand type", expr.pos)
-            if expr.op == "~":
-                if isinstance(operand, VInt):
-                    return VInt(~operand.value)
-                if isinstance(operand, VByte):
-                    return VByte((~operand.value) & 0xFF)
-                raise TaytshRuntimeFault("~ operand type", expr.pos)
-            raise TaytshRuntimeFault("unknown unary op", expr.pos)
-
-        if isinstance(expr, TBinaryOp):
-            if expr.op == "&&":
-                left = self._eval_expr(expr.left, env)
-                if not isinstance(left, VBool):
-                    raise TaytshRuntimeFault("&& left not bool", expr.pos)
-                if not left.value:
-                    return VBool(False)
-                right = self._eval_expr(expr.right, env)
-                if not isinstance(right, VBool):
-                    raise TaytshRuntimeFault("&& right not bool", expr.pos)
-                return VBool(right.value)
-            if expr.op == "||":
-                left = self._eval_expr(expr.left, env)
-                if not isinstance(left, VBool):
-                    raise TaytshRuntimeFault("|| left not bool", expr.pos)
-                if left.value:
-                    return VBool(True)
-                right = self._eval_expr(expr.right, env)
-                if not isinstance(right, VBool):
-                    raise TaytshRuntimeFault("|| right not bool", expr.pos)
-                return VBool(right.value)
-            if expr.op in ("==", "!="):
-                right = self._eval_expr(expr.right, env)
-                left = self._eval_expr(expr.left, env, expected=right.ty())
-            else:
-                left = self._eval_expr(expr.left, env)
-                right = self._eval_expr(expr.right, env)
-            return self._eval_binary(expr.op, left, right, pos=expr.pos)
-
-        if isinstance(expr, TTernary):
-            cond = self._eval_expr(expr.cond, env)
-            if not isinstance(cond, VBool):
-                raise TaytshRuntimeFault("ternary condition not bool", expr.pos)
-            return self._eval_expr(
-                expr.then_expr if cond.value else expr.else_expr, env, expected=expected
-            )
-
         if isinstance(expr, TTupleAccess):
-            obj = self._eval_expr(expr.obj, env)
-            if not isinstance(obj, VTuple):
-                raise TaytshRuntimeFault("tuple access on non-tuple", expr.pos)
-            return obj.elements[expr.index]
-
-        if isinstance(expr, TFieldAccess):
-            if isinstance(expr.obj, TVar) and expr.obj.name in self.index.enums:
-                enum = self.index.enums[expr.obj.name]
-                if expr.field not in enum.variants:
-                    raise TaytshRuntimeFault("unknown enum variant", expr.pos)
-                return VEnum(enum.name, expr.field)
-            obj = self._eval_expr(expr.obj, env)
-            if not isinstance(obj, VStruct):
-                raise TaytshRuntimeFault("field access on non-struct", expr.pos)
-            if expr.field not in obj.fields:
-                raise TaytshRuntimeFault("unknown field", expr.pos)
-            return obj.fields[expr.field]
-
-        if isinstance(expr, TIndex):
-            obj = self._eval_expr(expr.obj, env)
-            idx = self._eval_expr(expr.index, env)
-            return self._eval_index(obj, idx, pos=expr.pos)
-
+            return self._expr_tuple_access(expr, env, expected)
         if isinstance(expr, TSlice):
-            obj = self._eval_expr(expr.obj, env)
-            low = self._eval_expr(expr.low, env)
-            high = self._eval_expr(expr.high, env)
-            if not isinstance(low, VInt) or not isinstance(high, VInt):
-                raise TaytshRuntimeFault("slice bounds not int", expr.pos)
-            return self._eval_slice(obj, low.value, high.value, pos=expr.pos)
-
+            return self._expr_slice(expr, env, expected)
         if isinstance(expr, TListLit):
-            if expected is None:
-                inferred = self.expr_types.get(_expr_key(expr))
-                if isinstance(inferred, ListT):
-                    expected = inferred
-            list_elems: list[Value] = []
-            if isinstance(expected, ListT):
-                for e in expr.elements:
-                    list_elems.append(
-                        self._eval_expr(e, env, expected=expected.element)
-                    )
-                list_typ: ListT = expected
-            else:
-                for e in expr.elements:
-                    list_elems.append(self._eval_expr(e, env))
-                if len(list_elems) == 0:
-                    raise TaytshRuntimeFault("cannot infer list type", expr.pos)
-                list_typ = ListT(kind="list", element=list_elems[0].ty())
-            return VList(list_elems, list_typ)
-
+            return self._expr_list(expr, env, expected)
         if isinstance(expr, TMapLit):
-            if expected is None:
-                inferred = self.expr_types.get(_expr_key(expr))
-                if isinstance(inferred, MapT):
-                    expected = inferred
-            mk: list[Value] = []
-            mv: list[Value] = []
-            if isinstance(expected, MapT):
-                for k, v in expr.entries:
-                    kk = _as_hashable(self._eval_expr(k, env, expected=expected.key))
-                    vv = self._eval_expr(v, env, expected=expected.value)
-                    mk.append(kk)
-                    mv.append(vv)
-                map_typ: MapT = expected
-            else:
-                for k, v in expr.entries:
-                    kk = _as_hashable(self._eval_expr(k, env))
-                    vv = self._eval_expr(v, env)
-                    mk.append(kk)
-                    mv.append(vv)
-                map_typ = MapT(kind="map", key=mk[0].ty(), value=mv[0].ty())
-            return VMap(mk, mv, map_typ)
-
+            return self._expr_map(expr, env, expected)
         if isinstance(expr, TSetLit):
-            if expected is None:
-                inferred = self.expr_types.get(_expr_key(expr))
-                if isinstance(inferred, SetT):
-                    expected = inferred
-            if isinstance(expected, SetT):
-                set_elems: list[Value] = []
-                for e in expr.elements:
-                    _set_add(
-                        set_elems,
-                        _as_hashable(
-                            self._eval_expr(e, env, expected=expected.element)
-                        ),
-                    )
-                set_typ: SetT = expected
-            else:
-                set_elems2: list[Value] = []
-                for e in expr.elements:
-                    _set_add(set_elems2, _as_hashable(self._eval_expr(e, env)))
-                set_typ = SetT(kind="set", element=set_elems2[0].ty())
-                set_elems = set_elems2
-            return VSet(set_elems, set_typ)
-
+            return self._expr_set(expr, env, expected)
         if isinstance(expr, TTupleLit):
-            if expected is None:
-                inferred = self.expr_types.get(_expr_key(expr))
-                if isinstance(inferred, TupleT):
-                    expected = inferred
-            tup_elems: list[Value] = []
-            if isinstance(expected, TupleT) and len(expected.elements) >= len(
-                expr.elements
-            ):
-                ti = 0
-                while ti < len(expr.elements):
-                    tup_elems.append(
-                        self._eval_expr(
-                            expr.elements[ti], env, expected=expected.elements[ti]
-                        )
-                    )
-                    ti += 1
-                tup_typ: TupleT = expected
-            else:
-                for e in expr.elements:
-                    tup_elems.append(self._eval_expr(e, env))
-                tup_typ = TupleT(kind="tuple", elements=[e.ty() for e in tup_elems])
-            return VTuple(tup_elems, tup_typ)
-
-        if isinstance(expr, TFnLit):
-            sig = _fn_lit_sig(expr, self.checker)
-            return VFunc(sig.ty(), None, "fnlit", "", expr, sig, None)
-
-        if isinstance(expr, TCall):
-            return self._eval_call(expr, env, expected=expected)
-
+            return self._expr_tuple(expr, env, expected)
         raise TaytshRuntimeFault("unsupported expression", expr.pos)
+
+    def _expr_int(self, expr: TIntLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        return VInt(expr.value)
+
+    def _expr_float(self, expr: TFloatLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        return VFloat(expr.value)
+
+    def _expr_byte(self, expr: TByteLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        if expected is not None and expected.kind == "int":
+            return VInt(expr.value)
+        return VByte(expr.value)
+
+    def _expr_string(self, expr: TStringLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        return VString(expr.value)
+
+    def _expr_rune(self, expr: TRuneLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        return VRune(expr.value)
+
+    def _expr_bytes(self, expr: TBytesLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        return VBytes(expr.value)
+
+    def _expr_bool(self, expr: TBoolLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        return VBool(expr.value)
+
+    def _expr_nil(self, expr: TNilLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        return VNil()
+
+    def _expr_var(self, expr: TVar, env: _RuntimeEnv, expected: Type | None) -> Value:
+        if env.has(expr.name):
+            return env.get(expr.name)
+        if expr.name in self._global_values:
+            return self._global_values[expr.name]
+        if expr.name in self._fn_values:
+            return self._fn_values[expr.name]
+        if expr.name in self._builtin_values:
+            return self._builtin_values[expr.name]
+        raise TaytshRuntimeFault(f"unknown name '{expr.name}'", expr.pos)
+
+    def _expr_unary(self, expr: TUnaryOp, env: _RuntimeEnv, expected: Type | None) -> Value:
+        operand = self._eval_expr(expr.operand, env)
+        if expr.op == "!":
+            if not isinstance(operand, VBool):
+                raise TaytshRuntimeFault("! operand not bool", expr.pos)
+            return VBool(not operand.value)
+        if expr.op == "-":
+            if isinstance(operand, VInt):
+                result = -operand.value
+                if self.module.strict_math and (
+                    result < _INT64_MIN or result > _INT64_MAX
+                ):
+                    self._throw_err("ValueError", "integer overflow")
+                return VInt(result)
+            if isinstance(operand, VFloat):
+                return VFloat(-operand.value)
+            if isinstance(operand, VByte):
+                return VByte((-operand.value) & 0xFF)
+            raise TaytshRuntimeFault("- operand type", expr.pos)
+        if expr.op == "~":
+            if isinstance(operand, VInt):
+                return VInt(~operand.value)
+            if isinstance(operand, VByte):
+                return VByte((~operand.value) & 0xFF)
+            raise TaytshRuntimeFault("~ operand type", expr.pos)
+        raise TaytshRuntimeFault("unknown unary op", expr.pos)
+
+    def _expr_binary(self, expr: TBinaryOp, env: _RuntimeEnv, expected: Type | None) -> Value:
+        if expr.op == "&&":
+            left = self._eval_expr(expr.left, env)
+            if not isinstance(left, VBool):
+                raise TaytshRuntimeFault("&& left not bool", expr.pos)
+            if not left.value:
+                return VBool(False)
+            right = self._eval_expr(expr.right, env)
+            if not isinstance(right, VBool):
+                raise TaytshRuntimeFault("&& right not bool", expr.pos)
+            return VBool(right.value)
+        if expr.op == "||":
+            left = self._eval_expr(expr.left, env)
+            if not isinstance(left, VBool):
+                raise TaytshRuntimeFault("|| left not bool", expr.pos)
+            if left.value:
+                return VBool(True)
+            right = self._eval_expr(expr.right, env)
+            if not isinstance(right, VBool):
+                raise TaytshRuntimeFault("|| right not bool", expr.pos)
+            return VBool(right.value)
+        if expr.op == "==" or expr.op == "!=":
+            right = self._eval_expr(expr.right, env)
+            left = self._eval_expr(expr.left, env, expected=right.ty())
+        else:
+            left = self._eval_expr(expr.left, env)
+            right = self._eval_expr(expr.right, env)
+        return self._eval_binary(expr.op, left, right, pos=expr.pos)
+
+    def _expr_ternary(self, expr: TTernary, env: _RuntimeEnv, expected: Type | None) -> Value:
+        cond = self._eval_expr(expr.cond, env)
+        if not isinstance(cond, VBool):
+            raise TaytshRuntimeFault("ternary condition not bool", expr.pos)
+        return self._eval_expr(
+            expr.then_expr if cond.value else expr.else_expr, env, expected=expected
+        )
+
+    def _expr_tuple_access(self, expr: TTupleAccess, env: _RuntimeEnv, expected: Type | None) -> Value:
+        obj = self._eval_expr(expr.obj, env)
+        if not isinstance(obj, VTuple):
+            raise TaytshRuntimeFault("tuple access on non-tuple", expr.pos)
+        return obj.elements[expr.index]
+
+    def _expr_field_access(self, expr: TFieldAccess, env: _RuntimeEnv, expected: Type | None) -> Value:
+        if isinstance(expr.obj, TVar) and expr.obj.name in self.index.enums:
+            enum = self.index.enums[expr.obj.name]
+            if expr.field not in enum.variants:
+                raise TaytshRuntimeFault("unknown enum variant", expr.pos)
+            return VEnum(enum.name, expr.field)
+        obj = self._eval_expr(expr.obj, env)
+        if not isinstance(obj, VStruct):
+            raise TaytshRuntimeFault("field access on non-struct", expr.pos)
+        if expr.field not in obj.fields:
+            raise TaytshRuntimeFault("unknown field", expr.pos)
+        return obj.fields[expr.field]
+
+    def _expr_index(self, expr: TIndex, env: _RuntimeEnv, expected: Type | None) -> Value:
+        obj = self._eval_expr(expr.obj, env)
+        idx = self._eval_expr(expr.index, env)
+        return self._eval_index(obj, idx, pos=expr.pos)
+
+    def _expr_slice(self, expr: TSlice, env: _RuntimeEnv, expected: Type | None) -> Value:
+        obj = self._eval_expr(expr.obj, env)
+        low = self._eval_expr(expr.low, env)
+        high = self._eval_expr(expr.high, env)
+        if not isinstance(low, VInt) or not isinstance(high, VInt):
+            raise TaytshRuntimeFault("slice bounds not int", expr.pos)
+        return self._eval_slice(obj, low.value, high.value, pos=expr.pos)
+
+    def _expr_list(self, expr: TListLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        if expected is None:
+            inferred = self.expr_types.get(_expr_key(expr))
+            if isinstance(inferred, ListT):
+                expected = inferred
+        list_elems: list[Value] = []
+        if isinstance(expected, ListT):
+            for e in expr.elements:
+                list_elems.append(
+                    self._eval_expr(e, env, expected=expected.element)
+                )
+            list_typ: ListT = expected
+        else:
+            for e in expr.elements:
+                list_elems.append(self._eval_expr(e, env))
+            if len(list_elems) == 0:
+                raise TaytshRuntimeFault("cannot infer list type", expr.pos)
+            list_typ = ListT(kind="list", element=list_elems[0].ty())
+        return VList(list_elems, list_typ)
+
+    def _expr_map(self, expr: TMapLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        if expected is None:
+            inferred = self.expr_types.get(_expr_key(expr))
+            if isinstance(inferred, MapT):
+                expected = inferred
+        mk: list[Value] = []
+        mv: list[Value] = []
+        if isinstance(expected, MapT):
+            for k, v in expr.entries:
+                kk = _as_hashable(self._eval_expr(k, env, expected=expected.key))
+                vv = self._eval_expr(v, env, expected=expected.value)
+                mk.append(kk)
+                mv.append(vv)
+            map_typ: MapT = expected
+        else:
+            for k, v in expr.entries:
+                kk = _as_hashable(self._eval_expr(k, env))
+                vv = self._eval_expr(v, env)
+                mk.append(kk)
+                mv.append(vv)
+            map_typ = MapT(kind="map", key=mk[0].ty(), value=mv[0].ty())
+        return VMap(mk, mv, map_typ)
+
+    def _expr_set(self, expr: TSetLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        if expected is None:
+            inferred = self.expr_types.get(_expr_key(expr))
+            if isinstance(inferred, SetT):
+                expected = inferred
+        if isinstance(expected, SetT):
+            set_elems: list[Value] = []
+            for e in expr.elements:
+                _set_add(
+                    set_elems,
+                    _as_hashable(
+                        self._eval_expr(e, env, expected=expected.element)
+                    ),
+                )
+            set_typ: SetT = expected
+        else:
+            set_elems2: list[Value] = []
+            for e in expr.elements:
+                _set_add(set_elems2, _as_hashable(self._eval_expr(e, env)))
+            set_typ = SetT(kind="set", element=set_elems2[0].ty())
+            set_elems = set_elems2
+        return VSet(set_elems, set_typ)
+
+    def _expr_tuple(self, expr: TTupleLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        if expected is None:
+            inferred = self.expr_types.get(_expr_key(expr))
+            if isinstance(inferred, TupleT):
+                expected = inferred
+        tup_elems: list[Value] = []
+        if isinstance(expected, TupleT) and len(expected.elements) >= len(
+            expr.elements
+        ):
+            ti = 0
+            while ti < len(expr.elements):
+                tup_elems.append(
+                    self._eval_expr(
+                        expr.elements[ti], env, expected=expected.elements[ti]
+                    )
+                )
+                ti += 1
+            tup_typ: TupleT = expected
+        else:
+            for e in expr.elements:
+                tup_elems.append(self._eval_expr(e, env))
+            tup_typ = TupleT(kind="tuple", elements=[e.ty() for e in tup_elems])
+        return VTuple(tup_elems, tup_typ)
+
+    def _expr_fnlit(self, expr: TFnLit, env: _RuntimeEnv, expected: Type | None) -> Value:
+        sig = _fn_lit_sig(expr, self.checker)
+        return VFunc(sig.ty(), None, "fnlit", "", expr, sig, None)
+
+    def _expr_call(self, expr: TCall, env: _RuntimeEnv, expected: Type | None) -> Value:
+        return self._eval_call(expr, env, expected=expected)
 
     def _call_fn_lit(self, lit: TFnLit, sig: FnSig, args: list[Value]) -> Value:
         env = _RuntimeEnv()
@@ -2126,14 +2221,17 @@ class Runtime:
         has_pos = any(a.name is None for a in call.args)
         if has_named and has_pos:
             raise TaytshRuntimeFault("cannot mix named and positional args", call.pos)
+        min_required = sum(1 for f in s.fields if not f.decl.has_default)
         fields: dict[str, Value] = {}
         if has_pos:
-            if len(call.args) != len(field_order):
+            if len(call.args) < min_required or len(call.args) > len(field_order):
                 raise TaytshRuntimeFault("wrong number of constructor args", call.pos)
             for i, a in enumerate(call.args):
                 fname = field_order[i]
                 fty = s.field_map[fname].ty
                 fields[fname] = self._eval_expr(a.value, env, expected=fty)
+            for dname in field_order[len(call.args) :]:
+                fields[dname] = self.zero_value(s.field_map[dname].ty)
         else:
             for a in call.args:
                 assert a.name is not None
@@ -2141,9 +2239,11 @@ class Runtime:
                     raise TaytshRuntimeFault("unknown struct field", call.pos)
                 fty = s.field_map[a.name].ty
                 fields[a.name] = self._eval_expr(a.value, env, expected=fty)
-            for f in field_order:
-                if f not in fields:
-                    raise TaytshRuntimeFault("missing struct field", call.pos)
+            for f in s.fields:
+                if f.name not in fields:
+                    if not f.decl.has_default:
+                        raise TaytshRuntimeFault("missing struct field", call.pos)
+                    fields[f.name] = self.zero_value(f.ty)
         return VStruct(s.name, fields)
 
     def _matches_type(self, v: Value, typ: Type) -> bool:
@@ -4002,7 +4102,7 @@ def _bi_write_file(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_args(rt: Runtime, args: list[Value]) -> Value:
     elems: list[Value] = []
-    for a in rt.args:
+    for a in rt.args[1:]:
         elems.append(VString(a))
     return VList(elems, ListT(kind="list", element=STRING_T))
 
@@ -4342,3 +4442,38 @@ _BUILTIN_NAMES_RT: set[str] = {
     "IsType",
     "ReplaceSlice",
 }
+
+
+def _call_intrinsic(name: str, args: list[Value]) -> Value | None:
+    """Native implementations of hot user functions. Returns None if not an intrinsic."""
+    if name == "is_whitespace":
+        c = args[0]
+        if isinstance(c, VString):
+            return VBool(c.value == " " or c.value == "\t")
+        return VBool(False)
+    if name == "is_alpha":
+        c = args[0]
+        if isinstance(c, VString) and len(c.value) == 1:
+            v = c.value
+            return VBool(
+                ("a" <= v <= "z") or ("A" <= v <= "Z") or v == "_"
+            )
+        return VBool(False)
+    if name == "is_alnum":
+        c = args[0]
+        if isinstance(c, VString) and len(c.value) == 1:
+            v = c.value
+            return VBool(
+                ("a" <= v <= "z")
+                or ("A" <= v <= "Z")
+                or v == "_"
+                or ("0" <= v <= "9")
+            )
+        return VBool(False)
+    if name == "is_digit":
+        c = args[0]
+        if isinstance(c, VString) and len(c.value) == 1:
+            return VBool("0" <= c.value <= "9")
+        return VBool(False)
+    return None
+

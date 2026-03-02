@@ -125,14 +125,14 @@ _self-transpile target="python":
     fi
 
 # Self-transpile and test against transpiled Python binary
-lang-python:
+lang-python *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile python
     uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
         tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.py" -v
+        --transpiled ".out/tongues.py" -v {{ ARGS }}
 
 # Self-transpile and test against transpiled Ruby binary
 lang-ruby:
@@ -157,24 +157,24 @@ lang-perl:
     perl tests/test-transpiled.pl ".out/tongues.pl"
 
 # Self-transpile to Taytsh and test through treewalker
-lang-taytsh-treewalker:
+lang-taytsh-treewalker *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile taytsh
     uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
         tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
 
 # Self-transpile to Taytsh and test through VM
-lang-taytsh-vm:
+lang-taytsh-vm *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile taytsh
     uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
         tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm -v
+        --transpiled ".out/tongues.ty" --taytsh-runner vm -v {{ ARGS }}
 
 # Run a just target inside Docker
 docker target lang="python":
