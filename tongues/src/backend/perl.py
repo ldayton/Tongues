@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from .ordering import order_decls
-from .util import STRICT_INT_BINARY, STRICT_INT_COMPOUND, Emitter, to_snake
+from .util import (
+    STRICT_INT_BINARY,
+    STRICT_INT_COMPOUND,
+    Emitter,
+    collect_builtin_calls,
+    to_snake,
+)
 from ..taytsh.ast import (
     Ann,
     Pos,
@@ -127,6 +133,18 @@ def _restore_name(name: str, annotations: Ann) -> str:
     if key in annotations:
         return _safe_name(annotations[key])
     return _safe_name(name)
+
+
+_LIST_UTIL_BUILTINS = frozenset({"Min", "Max", "Sum"})
+
+
+def _struct_needs_list_util(decl: TStructDecl) -> bool:
+    """Check if any method in a struct uses Min/Max/Sum builtins."""
+    for method in decl.methods:
+        names = collect_builtin_calls(method.body)
+        if not names.isdisjoint(_LIST_UTIL_BUILTINS):
+            return True
+    return False
 
 
 _PERL_ESCAPE_MAP: dict[str, str] = {
@@ -358,6 +376,8 @@ class _PerlEmitter(Emitter):
             if isinstance(decl, TStructDecl):
                 if current_package != decl.name:
                     self._line("package " + decl.name + ";")
+                    if _struct_needs_list_util(decl):
+                        self._line("use List::Util qw(min max sum);")
                     current_package = decl.name
                     self._line()
                 self._emit_struct(decl)
