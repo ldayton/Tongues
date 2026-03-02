@@ -1069,15 +1069,14 @@ def _map_find(keys: list[Value], key: Value) -> int:
     return -1
 
 
-def _clamp_slice(lo: int, hi: int, n: int) -> tuple[int, int]:
-    if lo < 0:
-        lo = lo + n
-    if hi < 0:
-        hi = hi + n
-    lo = max(0, min(lo, n))
-    hi = max(0, min(hi, n))
-    if lo > hi:
-        lo = hi
+class _SliceOutOfRange(Exception):
+    pass
+
+
+def _resolve_slice(lo: int, hi: int, n: int) -> tuple[int, int]:
+    """Strict bounds check — the lowerer handles all negative resolution."""
+    if lo < 0 or hi > n or lo > hi:
+        raise _SliceOutOfRange
     return (lo, hi)
 
 
@@ -2346,24 +2345,23 @@ class Runtime:
         raise TaytshRuntimeFault("indexing not supported", pos)
 
     def _eval_slice(self, obj: Value, lo: int, hi: int, *, pos: Pos) -> Value:
-        if isinstance(obj, VList):
-            n = len(obj.elements)
-            lo, hi = _clamp_slice(lo, hi, n)
-            return VList(list(obj.elements[lo:hi]), obj.typ)
-        if isinstance(obj, VString):
-            n = len(obj.value)
-            lo, hi = _clamp_slice(lo, hi, n)
-            return VString(obj.value[lo:hi])
-        if isinstance(obj, VBytes):
-            n = len(obj.value)
-            lo, hi = _clamp_slice(lo, hi, n)
-            return VBytes(obj.value[lo:hi])
-        if isinstance(obj, VTuple):
-            n = len(obj.elements)
-            lo, hi = _clamp_slice(lo, hi, n)
-            elems = list(obj.elements[lo:hi])
-            typ = TupleT(kind="tuple", elements=list(obj.typ.elements[lo:hi]))
-            return VTuple(elems, typ)
+        try:
+            if isinstance(obj, VList):
+                lo, hi = _resolve_slice(lo, hi, len(obj.elements))
+                return VList(list(obj.elements[lo:hi]), obj.typ)
+            if isinstance(obj, VString):
+                lo, hi = _resolve_slice(lo, hi, len(obj.value))
+                return VString(obj.value[lo:hi])
+            if isinstance(obj, VBytes):
+                lo, hi = _resolve_slice(lo, hi, len(obj.value))
+                return VBytes(obj.value[lo:hi])
+            if isinstance(obj, VTuple):
+                lo, hi = _resolve_slice(lo, hi, len(obj.elements))
+                elems = list(obj.elements[lo:hi])
+                typ = TupleT(kind="tuple", elements=list(obj.typ.elements[lo:hi]))
+                return VTuple(elems, typ)
+        except _SliceOutOfRange:
+            self._throw_err("IndexError", "slice out of range")
         raise TaytshRuntimeFault("slicing not supported", pos)
 
     def _eval_binary(self, op: str, left: Value, right: Value, *, pos: Pos) -> Value:
