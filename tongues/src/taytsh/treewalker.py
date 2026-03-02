@@ -2380,6 +2380,10 @@ class Runtime:
                 return VBool(_cmp_float(op, left.value, right.value))
             if isinstance(left, VByte) and isinstance(right, VByte):
                 return VBool(_cmp_int(op, left.value, right.value))
+            if isinstance(left, VInt) and isinstance(right, VByte):
+                return VBool(_cmp_int(op, left.value, right.value))
+            if isinstance(left, VByte) and isinstance(right, VInt):
+                return VBool(_cmp_int(op, left.value, right.value))
             if isinstance(left, VRune) and isinstance(right, VRune):
                 return VBool(_cmp_str(op, left.value, right.value))
             if isinstance(left, VString) and isinstance(right, VString):
@@ -3506,7 +3510,7 @@ def _bi_is_space(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_upper(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(str(c).isupper() for c in x.value))
+        return VBool(x.value.isupper())
     if isinstance(x, VRune):
         return VBool(str(x.value).isupper())
     raise TaytshRuntimeFault("IsUpper expects string or rune", None)
@@ -3515,7 +3519,7 @@ def _bi_is_upper(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_lower(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(str(c).islower() for c in x.value))
+        return VBool(x.value.islower())
     if isinstance(x, VRune):
         return VBool(str(x.value).islower())
     raise TaytshRuntimeFault("IsLower expects string or rune", None)
