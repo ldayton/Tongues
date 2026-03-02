@@ -559,10 +559,9 @@ class Parser:
         self.expect("for")
         first_name = self.expect_ident()
         binding: list[str] = [first_name.value]
-        if self.at(","):
+        while self.at(","):
             self.advance()
-            second_name = self.expect_ident()
-            binding.append(second_name.value)
+            binding.append(self.expect_ident().value)
         self.expect("in")
         if self.at("range"):
             iterable: TExpr = self.parse_range()
