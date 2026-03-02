@@ -1069,6 +1069,18 @@ def _map_find(keys: list[Value], key: Value) -> int:
     return -1
 
 
+def _clamp_slice(lo: int, hi: int, n: int) -> tuple[int, int]:
+    if lo < 0:
+        lo = lo + n
+    if hi < 0:
+        hi = hi + n
+    lo = max(0, min(lo, n))
+    hi = max(0, min(hi, n))
+    if lo > hi:
+        lo = hi
+    return (lo, hi)
+
+
 def _map_get(m: VMap, key: Value) -> Value:
     idx = _map_find(m.map_keys, key)
     if idx < 0:
@@ -2191,6 +2203,14 @@ class Runtime:
         # Method call: obj.Method(...)
         if isinstance(call.func, TFieldAccess):
             recv = self._eval_expr(call.func.obj, env)
+            if isinstance(recv, VMap) and call.func.field == "get":
+                if len(call.args) != 1:
+                    raise TaytshRuntimeFault("map.get expects 1 arg", call.pos)
+                key = _as_hashable(self._eval_expr(call.args[0].value, env))
+                idx = _map_find(recv.map_keys, key)
+                if idx < 0:
+                    return VNil()
+                return recv.map_vals[idx]
             if isinstance(recv, VStruct):
                 s = self.index.structs.get(recv.struct_name)
                 if s is not None and call.func.field in s.methods:
@@ -2288,25 +2308,21 @@ class Runtime:
         raise TaytshRuntimeFault("indexing not supported", pos)
 
     def _eval_slice(self, obj: Value, lo: int, hi: int, *, pos: Pos) -> Value:
-        if lo < 0 or hi < 0:
-            self._throw_err("IndexError", "slice bounds out of range")
-        if lo > hi:
-            self._throw_err("IndexError", "slice lo > hi")
         if isinstance(obj, VList):
-            if hi > len(obj.elements):
-                self._throw_err("IndexError", "slice bounds out of range")
+            n = len(obj.elements)
+            lo, hi = _clamp_slice(lo, hi, n)
             return VList(list(obj.elements[lo:hi]), obj.typ)
         if isinstance(obj, VString):
-            if hi > len(obj.value):
-                self._throw_err("IndexError", "slice bounds out of range")
+            n = len(obj.value)
+            lo, hi = _clamp_slice(lo, hi, n)
             return VString(obj.value[lo:hi])
         if isinstance(obj, VBytes):
-            if hi > len(obj.value):
-                self._throw_err("IndexError", "slice bounds out of range")
+            n = len(obj.value)
+            lo, hi = _clamp_slice(lo, hi, n)
             return VBytes(obj.value[lo:hi])
         if isinstance(obj, VTuple):
-            if hi > len(obj.elements):
-                self._throw_err("IndexError", "slice bounds out of range")
+            n = len(obj.elements)
+            lo, hi = _clamp_slice(lo, hi, n)
             elems = list(obj.elements[lo:hi])
             typ = TupleT(kind="tuple", elements=list(obj.typ.elements[lo:hi]))
             return VTuple(elems, typ)
@@ -3331,11 +3347,18 @@ def _bi_encode(rt: Runtime, args: list[Value]) -> Value:
     return VBytes(s.value.encode("utf-8"))
 
 
+def _decode_utf8(data: bytes) -> str:
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise _Throw(VStruct("ValueError", {"message": VString(str(e))})) from e
+
+
 def _bi_decode(rt: Runtime, args: list[Value]) -> Value:
     b = args[0]
     if not isinstance(b, VBytes):
         raise TaytshRuntimeFault("Decode expects bytes", None)
-    return VString(b.value.decode("utf-8"))
+    return VString(_decode_utf8(b.value))
 
 
 def _bi_concat(rt: Runtime, args: list[Value]) -> Value:
@@ -3535,7 +3558,7 @@ def _bi_is_type(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(v, VList):
         return VBool(type_name == "list")
     if isinstance(v, VMap):
-        return VBool(type_name == "map")
+        return VBool(type_name == "map" or type_name == "dict")
     if isinstance(v, VSet):
         return VBool(type_name == "set")
     if isinstance(v, VTuple):
@@ -4028,7 +4051,7 @@ def _bi_read_line(rt: Runtime, args: list[Value]) -> Value:
     line = rt.stdin.read_line()
     if line is None:
         return VNil()
-    text = line.decode("utf-8")
+    text = _decode_utf8(line)
     if text.endswith("\r\n"):
         text = text[:-2]
     elif text.endswith("\n"):
@@ -4037,7 +4060,7 @@ def _bi_read_line(rt: Runtime, args: list[Value]) -> Value:
 
 
 def _bi_read_all(rt: Runtime, args: list[Value]) -> Value:
-    return VString(rt.stdin.read_all().decode("utf-8"))
+    return VString(_decode_utf8(rt.stdin.read_all()))
 
 
 def _bi_read_bytes(rt: Runtime, args: list[Value]) -> Value:
