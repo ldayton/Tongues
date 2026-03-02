@@ -2685,11 +2685,14 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
         return f"{v.enum_name}.{v.variant}"
     if isinstance(v, VStruct):
         si = rt.index.structs.get(v.struct_name)
-        if si is not None and "ToString" in si.methods:
-            mi = si.methods["ToString"]
-            result = rt._call_fn(mi.decl, mi.sig, [v])
-            if isinstance(result, VString):
-                return result.value
+        if si is not None:
+            for ts_name in ("ToString", "__repr__", "to_string"):
+                if ts_name in si.methods:
+                    mi = si.methods[ts_name]
+                    result = rt._call_fn(mi.decl, mi.sig, [v])
+                    if isinstance(result, VString):
+                        return result.value
+                    break
         struct_parts: list[str] = []
         for fname in v.fields:
             struct_parts.append(
@@ -2704,7 +2707,18 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
 def _bi_tostring(rt: Runtime, args: list[Value]) -> Value:
     if rt.module.strict_tostring:
         return VString(_strict_tostring(args[0], rt))
-    return VString(args[0].to_string())
+    v = args[0]
+    if isinstance(v, VStruct):
+        si = rt.index.structs.get(v.struct_name)
+        if si is not None:
+            for ts_name in ("ToString", "__repr__", "to_string"):
+                if ts_name in si.methods:
+                    mi = si.methods[ts_name]
+                    result = rt._call_fn(mi.decl, mi.sig, [v])
+                    if isinstance(result, VString):
+                        return result
+                    break
+    return VString(v.to_string())
 
 
 def _bi_len(rt: Runtime, args: list[Value]) -> Value:
