@@ -418,11 +418,25 @@ class _FnCompiler:
 
     def emit_jump(self, op: int, line: int) -> int:
         """Emit a forward jump with placeholder arg. Returns offset to patch."""
-        # Reserve space for EXTENDED_ARG in case we need it
-        return self.emit(op, 0, line)
+        # Reserve EXTENDED_ARG so patch_jump can fill it in for large offsets
+        self.code.append(OP_EXTENDED_ARG)
+        self.code.append(0)
+        self.lines.append(line)
+        offset = len(self.code)
+        self.code.append(op)
+        self.code.append(0)
+        self.lines.append(line)
+        return offset
 
     def current_offset(self) -> int:
         return len(self.code)
+
+    def emit_jump_back(self, target: int, line: int) -> None:
+        """Emit a backward jump to target offset, accounting for EXTENDED_ARG sizing."""
+        back_dist = self.current_offset() - target + 2
+        if back_dist > 255:
+            back_dist += 2  # EXTENDED_ARG prefix adds 2 bytes to ip advance
+        self.emit(OP_JUMP_BACK, back_dist, line)
 
     def to_code_object(self, param_count: int) -> CodeObject:
         return CodeObject(
@@ -934,8 +948,7 @@ class Compiler:
         exit_jump = fc.emit_jump(OP_JUMP_IF_FALSE, stmt.pos.line)
         self._compile_block(stmt.body, fc)
         # Jump back to loop start
-        back_dist = fc.current_offset() - loop_start + 2
-        fc.emit(OP_JUMP_BACK, back_dist, stmt.pos.line)
+        fc.emit_jump_back(loop_start, stmt.pos.line)
         fc.patch_jump(exit_jump)
         # Patch breaks
         for bp in loop_ctx.break_patches:
@@ -966,8 +979,7 @@ class Compiler:
         else:
             fc.emit(OP_POP, 0, stmt.pos.line)
         self._compile_block(stmt.body, fc)
-        back_dist = fc.current_offset() - loop_start + 2
-        fc.emit(OP_JUMP_BACK, back_dist, stmt.pos.line)
+        fc.emit_jump_back(loop_start, stmt.pos.line)
         fc.patch_jump(exit_jump)
         for bp in loop_ctx.break_patches:
             fc.patch_jump(bp)
@@ -1041,8 +1053,7 @@ class Compiler:
                 # Discard the extra index/key pushed by FOR_ITER
                 fc.emit(OP_POP, 0, stmt.pos.line)
         self._compile_block(stmt.body, fc)
-        back_dist = fc.current_offset() - loop_start + 2
-        fc.emit(OP_JUMP_BACK, back_dist, stmt.pos.line)
+        fc.emit_jump_back(loop_start, stmt.pos.line)
         fc.patch_jump(exit_jump)
         for bp in loop_ctx.break_patches:
             fc.patch_jump(bp)
@@ -1073,8 +1084,7 @@ class Compiler:
         while i < depth_diff:
             fc.emit(OP_POP_HANDLER, 0, stmt.pos.line)
             i += 1
-        back_dist = fc.current_offset() - ctx.continue_target + 2
-        fc.emit(OP_JUMP_BACK, back_dist, stmt.pos.line)
+        fc.emit_jump_back(ctx.continue_target, stmt.pos.line)
 
     def _compile_try(self, stmt: TTryStmt, fc: _FnCompiler) -> None:
         has_finally = stmt.finally_body is not None

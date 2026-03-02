@@ -993,7 +993,7 @@ let k: TokenKind = t.kind
 t.offset = 10
 ```
 
-A struct has a name and one or more typed fields. Construction is positional or named. Positional arguments follow the field declaration order. Named arguments use `field: value` syntax and may appear in any order. Mixing positional and named arguments in a single construction is not allowed. Fields are accessed with `.` and are mutable.
+A struct has a name and zero or more typed fields. A struct with no fields is a tag type — constructed with an empty argument list. Construction is positional or named. Positional arguments follow the field declaration order. Named arguments use `field: value` syntax and may appear in any order. Mixing positional and named arguments in a single construction is not allowed. Fields are accessed with `.` and are mutable.
 
 ### Methods
 
@@ -1525,7 +1525,7 @@ Param         = IDENT ':' Type
 Block         = '{' Stmt* '}'
 
 StructDecl    = 'struct' IDENT ( ':' IDENT )? '{' StructBody '}'
-StructBody    = FnDecl* FieldDecl ( FieldDecl | FnDecl )*
+StructBody    = FnDecl* ( FieldDecl ( FieldDecl | FnDecl )* )?
 FieldDecl     = IDENT ':' Type
 
 InterfaceDecl = 'interface' IDENT '{' '}'

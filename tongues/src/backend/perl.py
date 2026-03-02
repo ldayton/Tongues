@@ -325,7 +325,7 @@ class _PerlEmitter(Emitter):
         self._line("binmode(STDERR, ':utf8');")
         self._line()
         self._line("package main;")
-        ordered = order_decls(module.decls)
+        ordered = order_decls(module.decls, lets_first=True)
         has_types = any(
             isinstance(d, (TStructDecl, TEnumDecl, TInterfaceDecl)) for d in ordered
         )

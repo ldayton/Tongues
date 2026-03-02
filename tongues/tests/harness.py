@@ -816,13 +816,17 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
     try:
         from src.frontend.lowering import lower
         from src.taytsh.emit import to_source
-        from src.taytsh.ast import TModule
+        from src.taytsh.ast import TModule, TStructDecl
 
-        def _lower_single(src: str):
+        def _lower_single(src: str, extra_known_classes: dict[str, str] | None = None):
             """Lower a single source to TModule. Returns (module, error)."""
             ast_dict = parse(src)
             stamp_uids(ast_dict)
             bind_result = run_bind(ast_dict)
+            if extra_known_classes:
+                for k, v in extra_known_classes.items():
+                    if k not in bind_result.known_classes:
+                        bind_result.known_classes[k] = v
             if not bind_result.subset_ok():
                 return (None, bind_result.subset_violations[0].message)
             if not bind_result.names_ok():
@@ -871,6 +875,7 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
 
         # Lower lib modules first, then app module
         all_decls: list = []
+        lib_known_classes: dict[str, str] = {}
         if lib_names:
             lib_sources = _read_lib_sources(lib_names)
             for _path, lib_src in lib_sources:
@@ -878,8 +883,11 @@ def lower_to_taytsh(source: str) -> tuple[str | None, str | None]:
                 if err is not None:
                     return (None, err)
                 all_decls.extend(lib_module.decls)
+                for decl in lib_module.decls:
+                    if isinstance(decl, TStructDecl):
+                        lib_known_classes[decl.name] = decl.name
 
-        app_module, err = _lower_single(source)
+        app_module, err = _lower_single(source, lib_known_classes or None)
         if err is not None:
             return (None, err)
         all_decls.extend(app_module.decls)
@@ -1180,13 +1188,19 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
     if lib_names:
         try:
             from src.frontend.lowering import lower
-            from src.taytsh.ast import TModule
+            from src.taytsh.ast import TModule, TStructDecl
 
-            def _lower_single_to_module(src: str):
+            def _lower_single_to_module(
+                src: str, extra_known_classes: dict[str, str] | None = None
+            ):
                 """Lower a single source to TModule."""
                 ast_dict = parse(src)
                 stamp_uids(ast_dict)
                 bind_result = run_bind(ast_dict)
+                if extra_known_classes:
+                    for k, v in extra_known_classes.items():
+                        if k not in bind_result.known_classes:
+                            bind_result.known_classes[k] = v
                 if not bind_result.subset_ok():
                     return (None, bind_result.subset_violations[0].message)
                 if not bind_result.names_ok():
@@ -1235,13 +1249,17 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
 
             # Lower lib modules first, then app module
             all_decls: list = []
+            lib_known_classes: dict[str, str] = {}
             lib_sources = _read_lib_sources(lib_names)
             for _path, lib_src in lib_sources:
                 lib_module, err = _lower_single_to_module(lib_src)
                 if err is not None:
                     return (None, err)
                 all_decls.extend(lib_module.decls)
-            app_module, err = _lower_single_to_module(source)
+                for decl in lib_module.decls:
+                    if isinstance(decl, TStructDecl):
+                        lib_known_classes[decl.name] = decl.name
+            app_module, err = _lower_single_to_module(source, lib_known_classes or None)
             if err is not None:
                 return (None, err)
             all_decls.extend(app_module.decls)

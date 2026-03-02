@@ -479,11 +479,13 @@ def _self_test() -> int:
             '{"n":null,"b":true,"a":[1,"two"]}',
         ),
     ]
-    for name, input, expected in cases:
-        if _check(name, input, expected):
+    i: int = 0
+    while i < len(cases):
+        if _check(cases[i][0], cases[i][1], cases[i][2]):
             passed += 1
         else:
             failed += 1
+        i += 1
 
     # round-trip test
     try:

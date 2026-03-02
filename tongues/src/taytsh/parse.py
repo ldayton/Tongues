@@ -359,9 +359,10 @@ class Parser:
         # Leading methods before first field
         while self.at("fn"):
             methods.append(self.parse_fn_decl())
-        # At least one field required (grammar says FieldDecl after FnDecl*)
+        # Empty struct (tag type) — no fields
         if self.at("}"):
-            raise self.error("struct must have at least one field")
+            self.expect("}")
+            return TStructDecl(pos, name_tok.value, parent, fields, methods, {})
         fields.append(self.parse_field_decl())
         while not self.at("}"):
             if self.at("fn"):

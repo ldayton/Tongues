@@ -634,7 +634,7 @@ def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
                 if _tt not in preceding_caught:
                     catch_handles.add(_tt)
         else:
-            catch_handles = set()
+            catch_handles: set[str] = set()
             for ct in catch.types:
                 resolved = ctx.checker.resolve_type(ct)
                 if isinstance(resolved, StructT):
