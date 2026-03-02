@@ -4,7 +4,7 @@ class Animal:
     legs: int
 class Dog(Animal):
     breed: str
-BUDDY: Animal = Animal(name="Buddy", legs=4)
+BUDDY: Animal = Dog(name="Buddy", legs=4, breed="Mutt")
 def main() -> None:
     x: str = BUDDY.name
     print(x)

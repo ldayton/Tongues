@@ -19,7 +19,7 @@ class Kind:
     tag: str
 class SubKind(Kind):
     value: int
-DEFAULT_KIND: Kind = Kind(tag="base")
+DEFAULT_KIND: Kind = SubKind(tag="base", value=0)
 def main() -> None:
     x: str = DEFAULT_KIND.tag
     print(x)

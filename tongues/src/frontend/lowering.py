@@ -2889,6 +2889,13 @@ def _lower_struct_constructor(
     ctx: _LowerCtx,
 ) -> TExpr:
     """Lower a struct constructor call."""
+    if ctx.hier_result.is_hierarchy_root(class_name):
+        ctx.errors.append(
+            LoweringError(
+                pos.line, pos.col,
+                "cannot construct interface '" + class_name + "'",
+            )
+        )
     lowered_args: list[TArg] = []
     for a in args:
         lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
