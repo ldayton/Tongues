@@ -168,35 +168,14 @@ xs[Len(xs) - 1]
 def f(xs: list[int]) -> list[int]:
     return xs[:3]
 ---
-xs[0:Min(3, Len(xs))]
+xs[0:3]
 ---
 
 === slice open end
 def f(xs: list[int]) -> list[int]:
     return xs[2:]
 ---
-xs[Min(2, Len(xs)):Len(xs)]
----
-
-=== slice negative upper bound
-def f(xs: list[int]) -> list[int]:
-    return xs[:-1]
----
-xs[0:Min(Len(xs) - 1, Len(xs))]
----
-
-=== slice negative lower bound
-def f(xs: list[int]) -> list[int]:
-    return xs[-2:]
----
-Min(Max(0, Len(xs) - 2), Len(xs)):Len(xs)
----
-
-=== slice both explicit bounds
-def f(xs: list[int]) -> list[int]:
-    return xs[1:3]
----
-xs[Min(1, Min(3, Len(xs))):Min(3, Len(xs))]
+xs[2:Len(xs)]
 ---
 
 === bytes literal

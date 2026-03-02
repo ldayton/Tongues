@@ -449,8 +449,8 @@ def _sqrt(x: float) -> float:
     return x**0.5
 
 
-_INT64_MIN: int = -(2**63)
-_INT64_MAX: int = 2**63 - 1
+_INT64_MAX: int = (1 << 62) - 1 + (1 << 62)
+_INT64_MIN: int = -_INT64_MAX - 1
 
 
 def _wrapping_add(a: int, b: int) -> int:
@@ -1774,7 +1774,7 @@ class _BuiltinDispatch:
 
     def _args(self, args: list[Val]) -> Val:
         items_a: list[Val] = []
-        ai = 0
+        ai = 1
         while ai < len(self.vm.program_args):
             items_a.append(VStr(self.vm.program_args[ai]))
             ai += 1

@@ -477,6 +477,7 @@ class Compiler:
         self.checker_types: dict[str, Type] = {}
         self.checker_functions: dict[str, FnT] = {}
         self.fn_param_names: dict[str, list[str]] = {}
+        self._zero_value_building: set[str] = set()
 
     def compile_module(self, module: TModule) -> CompiledModule:
         result = check_with_info(module)
@@ -839,6 +840,19 @@ class Compiler:
             fc.emit(OP_BUILD_MAP, 0, line)
         elif isinstance(typ, SetT):
             fc.emit(OP_BUILD_SET, 0, line)
+        elif isinstance(typ, StructT):
+            sidx = self._struct_index.get(typ.name)
+            if sidx is not None and typ.name not in self._zero_value_building:
+                self._zero_value_building.add(typ.name)
+                sd = self.struct_defs[sidx]
+                i = 0
+                while i < len(sd.field_types):
+                    self._emit_zero_value(sd.field_types[i], fc, line)
+                    i += 1
+                fc.emit(OP_BUILD_STRUCT, sidx, line)
+                self._zero_value_building.discard(typ.name)
+            else:
+                fc.emit(OP_NIL, 0, line)
         else:
             fc.emit(OP_NIL, 0, line)
 

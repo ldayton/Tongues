@@ -3422,40 +3422,13 @@ def _get_const_int(node: ASTNode) -> int | None:
     return None
 
 
-def _is_neg_const(node: ASTNode) -> int | None:
-    """Detect negative constant in Python AST. Returns positive magnitude or None."""
-    if _is_ast(node, "Constant"):
-        val = node.get("value")
-        if isinstance(val, JInt) and val.value < 0:
-            return -val.value
-    if _is_ast(node, "UnaryOp"):
-        op_node = get_node(node, "op")
-        if get_str(op_node, "_type") == "USub":
-            operand = get_node(node, "operand")
-            if _is_ast(operand, "Constant"):
-                val = operand.get("value")
-                if isinstance(val, JInt) and val.value > 0:
-                    return val.value
-    return None
-
-
 def _lower_slice_bound(
-    pos: Pos,
-    jv: JsonValue | None,
-    default: TExpr,
-    obj: TExpr,
-    obj_type: TypeNode,
-    env: _Env,
-    ctx: _LowerCtx,
+    pos: Pos, jv: JsonValue | None, default: TExpr, env: _Env, ctx: _LowerCtx
 ) -> TExpr:
-    """Lower a single slice bound, resolving negative constants via Len(obj) - N."""
-    if not isinstance(jv, JDict):
-        return default
-    neg = _is_neg_const(jv.entries)
-    if neg is not None:
-        n_lit = TIntLit(pos, neg, str(neg), {})
-        return TBinaryOp(pos, "-", _len_expr(pos, obj, obj_type), n_lit, {})
-    return _lower_expr(jv.entries, env, ctx)
+    """Lower a single slice bound, returning default if absent."""
+    if isinstance(jv, JDict):
+        return _lower_expr(jv.entries, env, ctx)
+    return default
 
 
 def _lower_slice(
@@ -3466,28 +3439,11 @@ def _lower_slice(
     env: _Env,
     ctx: _LowerCtx,
 ) -> TExpr:
-    """Lower a slice access xs[a:b] into TSlice with Python-clamped bounds."""
+    """Lower a slice access xs[a:b] into TSlice."""
     lower_jv = slice_node.get("lower")
     upper_jv = slice_node.get("upper")
-    has_lo = isinstance(lower_jv, JDict)
-    has_hi = isinstance(upper_jv, JDict)
-    len_obj = _len_expr(pos, obj, obj_type)
-    high = _lower_slice_bound(pos, upper_jv, len_obj, obj, obj_type, env, ctx)
-    # Clamp hi to Min(hi, Len(obj)) when explicitly provided
-    if has_hi:
-        high = _make_call(pos, "Min", [high, _len_expr(pos, obj, obj_type)])
-    low = _lower_slice_bound(
-        pos, lower_jv, TIntLit(pos, 0, "0", {}), obj, obj_type, env, ctx
-    )
-    if has_lo:
-        # Clamp lo to Max(0, lo) if it could be negative (skip for non-negative constant literals)
-        lo_const = None
-        if isinstance(lower_jv, JDict):
-            lo_const = _get_const_int(lower_jv.entries)
-        if lo_const is None or lo_const < 0:
-            low = _make_call(pos, "Max", [TIntLit(pos, 0, "0", {}), low])
-        # Ensure lo <= hi
-        low = _make_call(pos, "Min", [low, high])
+    low = _lower_slice_bound(pos, lower_jv, TIntLit(pos, 0, "0", {}), env, ctx)
+    high = _lower_slice_bound(pos, upper_jv, _len_expr(pos, obj, obj_type), env, ctx)
     return TSlice(pos, obj, low, high, {})
 
 
@@ -4317,13 +4273,16 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if _is_ast(slice_node, "Slice"):
             lower_jv = slice_node.get("lower")
             upper_jv = slice_node.get("upper")
-            obj_type = _infer_expr_type(obj_node, env, ctx)
-            low = _lower_slice_bound(
-                pos, lower_jv, TIntLit(pos, 0, "0", {}), obj, obj_type, env, ctx
-            )
-            high = _lower_slice_bound(
-                pos, upper_jv, _len_expr(pos, obj, obj_type), obj, obj_type, env, ctx
-            )
+            low: TExpr
+            high: TExpr
+            if isinstance(lower_jv, JDict):
+                low = _lower_expr(lower_jv.entries, env, ctx)
+            else:
+                low = TIntLit(pos, 0, "0", {})
+            if isinstance(upper_jv, JDict):
+                high = _lower_expr(upper_jv.entries, env, ctx)
+            else:
+                high = _make_call(pos, "Len", [obj])
             value = _lower_expr(value_node, env, ctx)
             call = _make_call(pos, "ReplaceSlice", [obj, low, high, value])
             return [TExprStmt(pos, call, {})]
