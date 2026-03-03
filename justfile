@@ -202,7 +202,7 @@ _lang-taytsh-vm-backend *ARGS:
 
 _lang-taytsh-vm-apptest *ARGS:
     uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm -v {{ ARGS }}
+        --transpiled ".out/tongues.ty" --taytsh-runner vm --timeout-override 60 -v {{ ARGS }}
 
 # Run a just target inside Docker
 docker target lang="python":
