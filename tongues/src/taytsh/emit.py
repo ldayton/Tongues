@@ -309,12 +309,7 @@ class _Emitter:
             self._emit_line("}")
 
     def _emit_for_stmt(self, stmt: TForStmt) -> None:
-        if len(stmt.binding) == 1:
-            binding = stmt.binding[0]
-        elif len(stmt.binding) == 2:
-            binding = f"{stmt.binding[0]}, {stmt.binding[1]}"
-        else:
-            raise ValueError("for binding must have 1 or 2 names")
+        binding = ", ".join(stmt.binding)
 
         if isinstance(stmt.iterable, TRange):
             args: list[str] = []
@@ -659,12 +654,7 @@ class _Emitter:
         if isinstance(stmt, TWhileStmt):
             return f"while {self._render_expr(stmt.cond, _PREC_TERNARY)} {self._render_inline_block(stmt.body)}"
         if isinstance(stmt, TForStmt):
-            if len(stmt.binding) == 1:
-                binding = stmt.binding[0]
-            elif len(stmt.binding) == 2:
-                binding = f"{stmt.binding[0]}, {stmt.binding[1]}"
-            else:
-                raise ValueError("for binding must have 1 or 2 names")
+            binding = ", ".join(stmt.binding)
 
             if isinstance(stmt.iterable, TRange):
                 args: list[str] = []

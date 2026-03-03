@@ -72,6 +72,7 @@ from .ast import (
     TWhileStmt,
 )
 from .tokens import (
+    KEYWORDS,
     TK_BYTE,
     TK_BYTES,
     TK_EOF,
@@ -112,6 +113,8 @@ PRIMITIVE_TYPES: set[str] = {
     "nil",
 }
 
+_LITERAL_TYPES: set[str] = {"STRING", "INT", "FLOAT", "BYTE", "RUNE", "BYTES"}
+
 
 class ParseError(Exception):
     """Parse error with location info."""
@@ -147,7 +150,8 @@ class Parser:
         return tok
 
     def at(self, value: str) -> bool:
-        return self.current().value == value
+        tok = self.current()
+        return tok.value == value and tok.type not in _LITERAL_TYPES
 
     def at_type(self, type_: str) -> bool:
         return self.current().type == type_
@@ -155,15 +159,25 @@ class Parser:
     def at_ident(self) -> bool:
         return self.current().type == TK_IDENT
 
+    def _at_name(self) -> bool:
+        tok = self.current()
+        return tok.type == TK_IDENT or tok.value in KEYWORDS
+
     def expect(self, value: str) -> Token:
         tok = self.current()
-        if tok.value != value:
+        if tok.value != value or tok.type in _LITERAL_TYPES:
             raise self.error("expected '" + value + "', got '" + tok.value + "'")
         return self.advance()
 
     def expect_ident(self) -> Token:
         tok = self.current()
         if tok.type != TK_IDENT:
+            raise self.error("expected identifier, got '" + tok.value + "'")
+        return self.advance()
+
+    def _expect_name(self) -> Token:
+        tok = self.current()
+        if tok.type != TK_IDENT and tok.value not in KEYWORDS:
             raise self.error("expected identifier, got '" + tok.value + "'")
         return self.advance()
 
@@ -301,7 +315,7 @@ class Parser:
     def parse_fn_decl(self) -> TFnDecl:
         pos = self._pos()
         self.expect("fn")
-        name_tok = self.expect_ident()
+        name_tok = self._expect_name()
         self.expect("(")
         params = self.parse_param_list()
         self.expect(")")
@@ -330,7 +344,7 @@ class Parser:
 
     def parse_param(self) -> TParam:
         pos = self._pos()
-        name_tok = self.expect_ident()
+        name_tok = self._expect_name()
         self.expect(":")
         typ = self.parse_type()
         return TParam(pos, name_tok.value, typ, {})
@@ -374,7 +388,7 @@ class Parser:
 
     def parse_field_decl(self) -> TFieldDecl:
         pos = self._pos()
-        name_tok = self.expect_ident()
+        name_tok = self._expect_name()
         self.expect(":")
         typ = self.parse_type()
         return TFieldDecl(pos, name_tok.value, typ)
@@ -430,13 +444,13 @@ class Parser:
         if tok.value in PRIMITIVE_TYPES:
             self.advance()
             return TPrimitive(pos, tok.value)
-        if tok.value == "list":
+        if tok.value == "list" and self.peek(1).value == "[":
             self.advance()
             self.expect("[")
             elem = self.parse_type()
             self.expect("]")
             return TListType(pos, elem)
-        if tok.value == "map":
+        if tok.value == "map" and self.peek(1).value == "[":
             self.advance()
             self.expect("[")
             key = self.parse_type()
@@ -444,13 +458,13 @@ class Parser:
             val = self.parse_type()
             self.expect("]")
             return TMapType(pos, key, val)
-        if tok.value == "set":
+        if tok.value == "set" and self.peek(1).value == "[":
             self.advance()
             self.expect("[")
             elem = self.parse_type()
             self.expect("]")
             return TSetType(pos, elem)
-        if tok.value == "fn":
+        if tok.value == "fn" and self.peek(1).value == "[":
             self.advance()
             self.expect("[")
             params: list[TType] = [self.parse_type()]
@@ -471,7 +485,7 @@ class Parser:
                 elements.append(self.parse_type())
             self.expect(")")
             return TTupleType(pos, elements)
-        if tok.type == TK_IDENT:
+        if tok.type == TK_IDENT or tok.value in KEYWORDS:
             self.advance()
             return TIdentType(pos, tok.value)
         raise self.error("expected type, got '" + tok.value + "'")
@@ -559,10 +573,9 @@ class Parser:
         self.expect("for")
         first_name = self.expect_ident()
         binding: list[str] = [first_name.value]
-        if self.at(","):
+        while self.at(","):
             self.advance()
-            second_name = self.expect_ident()
-            binding.append(second_name.value)
+            binding.append(self.expect_ident().value)
         self.expect("in")
         if self.at("range"):
             iterable: TExpr = self.parse_range()
@@ -616,14 +629,14 @@ class Parser:
         if self.at("nil"):
             self.advance()
             return TPatternNil(pos)
-        first = self.expect_ident()
+        first = self._expect_name()
         if self.at(":"):
             self.advance()
             type_name = self.parse_type_name()
             return TPatternType(pos, first.value, type_name, {})
         if self.at("."):
             self.advance()
-            variant = self.expect_ident()
+            variant = self._expect_name()
             return TPatternEnum(pos, first.value, variant.value)
         raise self.error("expected ':' or '.' in case pattern")
 
@@ -854,7 +867,7 @@ class Parser:
                 if tok.type == TK_INT:
                     self.advance()
                     expr = TTupleAccess(expr.pos, expr, int(tok.value), {})
-                elif tok.type == TK_IDENT:
+                elif tok.type == TK_IDENT or tok.value in KEYWORDS:
                     self.advance()
                     expr = TFieldAccess(expr.pos, expr, tok.value, {})
                 else:
@@ -895,7 +908,7 @@ class Parser:
     def parse_arg(self) -> TArg:
         """Arg = IDENT ':' Expr | Expr  (2-token lookahead for named)"""
         pos = self._pos()
-        if self.at_ident() and self.peek(1).value == ":":
+        if self._at_name() and self.peek(1).value == ":":
             name_tok = self.advance()
             self.advance()  # skip ':'
             value = self.parse_expr()

@@ -165,7 +165,6 @@ def test_fixed_point():
     assert stage2 == stage3, "stage2 != stage3: transpiler did not reach a fixed point"
 
 
-@pytest.mark.xfail(reason="Taytsh emitter can't handle for-loops with 3+ bindings")
 def test_taytsh_emit_round_trip():
     """Lowering to Taytsh text, parsing, and re-emitting produces identical output."""
     from src.taytsh.emit import to_source
@@ -204,12 +203,7 @@ def test_cross_target_agreement(target: str):
         "names",
         "pycheck",
         "lowering",
-        pytest.param(
-            "lowering-text",
-            marks=pytest.mark.xfail(
-                reason="Taytsh emitter can't handle 3+ for-bindings"
-            ),
-        ),
+        "lowering-text",
     ],
 )
 def test_phase_output_agreement(phase: str):
