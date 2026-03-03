@@ -158,12 +158,26 @@ lang-perl:
 
 # Self-transpile to Taytsh and test through treewalker
 lang-taytsh-treewalker *ARGS:
-    #!/usr/bin/env bash
-    set -euo pipefail
     just _self-transpile taytsh
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
-        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
-        tests/test_frontend_linker.py \
+    just _lang-taytsh-treewalker-frontend {{ ARGS }}
+    just _lang-taytsh-treewalker-middleend {{ ARGS }}
+    just _lang-taytsh-treewalker-backend {{ ARGS }}
+    just _lang-taytsh-treewalker-apptest {{ ARGS }}
+
+_lang-taytsh-treewalker-frontend *ARGS:
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
+
+_lang-taytsh-treewalker-middleend *ARGS:
+    uv run --directory tongues pytest tests/test_middleend.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
+
+_lang-taytsh-treewalker-backend *ARGS:
+    uv run --directory tongues pytest tests/test_backend_codegen.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
+
+_lang-taytsh-treewalker-apptest *ARGS:
+    uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
         --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
 
 # Self-transpile to Taytsh and test through VM
