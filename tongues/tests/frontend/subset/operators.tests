@@ -352,18 +352,18 @@ def f(x: int) -> str:
 ok
 ---
 
-=== f-string repr conversion not allowed
+=== f-string repr conversion allowed
 def f(x: str) -> str:
     return f"{x!r}"
 ---
-error: conversion
+ok
 ---
 
-=== f-string str conversion not allowed
+=== f-string str conversion allowed
 def f(x: int) -> str:
     return f"{x!s}"
 ---
-error: conversion
+ok
 ---
 
 === f-string ascii conversion not allowed

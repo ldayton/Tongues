@@ -2528,7 +2528,7 @@ def _lower_conversion_call(
             return _make_call(pos, "RuneToInt", [arg])
     if fname == "repr":
         if args and isinstance(args[0], dict):
-            return _make_call(pos, "ToString", [_lower_expr(args[0], env, ctx)])
+            return _make_call(pos, "ToRepr", [_lower_expr(args[0], env, ctx)])
     if fname == "bytes":
         if not args:
             return TBytesLit(pos, b"", {})
@@ -3724,7 +3724,13 @@ def _lower_fstring(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         elif vtype == "FormattedValue":
             template_parts.append("{}")
             inner = get_node(v, "value")
-            fmt_args.append(_lower_expr(inner, env, ctx))
+            lowered: TExpr = _lower_expr(inner, env, ctx)
+            conversion = get_int(v, "conversion")
+            if conversion == 114:  # !r
+                lowered = _make_call(pos, "ToRepr", [lowered])
+            elif conversion == 115:  # !s
+                lowered = _make_call(pos, "ToString", [lowered])
+            fmt_args.append(lowered)
     template = "".join(template_parts)
     all_args: list[TExpr] = [TStringLit(pos, template, {})]
     for _fa in fmt_args:

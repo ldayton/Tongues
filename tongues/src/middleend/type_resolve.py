@@ -223,7 +223,7 @@ class ScopeResolver(TypeResolver):
             if expr.args:
                 return self.resolve(expr.args[0].value)
             return INT_T
-        if name == "ToString":
+        if name in ("ToString", "ToRepr"):
             return STRING_T
         if name in ("Keys", "Values"):
             if expr.args:
@@ -260,6 +260,7 @@ class StringsResolver(TypeResolver):
 
     def resolve_builtin_call(self, name: str, expr: TCall) -> Type | None:
         if name in (
+            "ToRepr",
             "ToString",
             "Concat",
             "FormatInt",

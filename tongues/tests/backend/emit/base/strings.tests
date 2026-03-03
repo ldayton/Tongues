@@ -29,3 +29,17 @@ def main() -> None:
     print(x)
 if __name__ == "__main__":
     main()
+
+=== fstring repr conversion
+def main() -> None:
+    x: int = 42
+    print(f"{x!r}")
+if __name__ == "__main__":
+    main()
+
+=== fstring str conversion
+def main() -> None:
+    x: int = 42
+    print(f"{x!s}")
+if __name__ == "__main__":
+    main()

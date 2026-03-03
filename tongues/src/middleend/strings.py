@@ -375,7 +375,7 @@ def _classify_string_expr(
             name = expr.func.name
             if name in ("ReadAll", "ReadLine", "ReadFile", "Decode"):
                 return _C_UNKNOWN
-            if name == "ToString":
+            if name in ("ToString", "ToRepr"):
                 if not expr.args:
                     return _C_UNKNOWN
                 t = _make_resolver(ctx).resolve(expr.args[0].value)

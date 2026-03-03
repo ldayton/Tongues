@@ -932,6 +932,7 @@ BUILTIN_NAMES: set[str] = {
     "FloatToInt",
     "ByteToInt",
     "IntToByte",
+    "ToRepr",
     "ToString",
     # I/O
     "WriteOut",
@@ -4572,7 +4573,7 @@ class Checker:
             if t is not None and not type_eq(t, INT_T):
                 self.error("IntToByte requires int", pos)
             return BYTE_T
-        if name == "ToString":
+        if name in ("ToString", "ToRepr"):
             if not _bctx_require(ctx, 1):
                 return None
             return STRING_T
