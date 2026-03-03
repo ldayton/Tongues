@@ -5323,6 +5323,20 @@ def f(a: A) -> int:
 ---
 error: None
 ---
+=== attribute narrowed by direct assignment in if body
+from dataclasses import dataclass
+@dataclass
+class Obj:
+    name: str | None
+def f(o: Obj) -> str:
+    if o.name is None:
+        o.name = "hello"
+    return o.name.upper()
+---
+ok
+---
+
+
 === attribute guard on wrong field fails
 from dataclasses import dataclass
 @dataclass
