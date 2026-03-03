@@ -229,11 +229,11 @@ def main() -> int:
             print("  PASS " + name)
         except AssertionError as e:
             failed += 1
-            print("  FAIL " + name + ": " + str(e))
+            print(f"  FAIL {name}: {e!s}")
         except Exception as e:
             failed += 1
-            print("  FAIL " + name + ": " + str(e))
-    print(str(passed) + " passed, " + str(failed) + " failed")
+            print(f"  FAIL {name}: {e!s}")
+    print(f"{passed!s} passed, {failed!s} failed")
     if failed > 0:
         return 1
     return 0
