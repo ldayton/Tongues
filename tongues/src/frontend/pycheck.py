@@ -74,13 +74,13 @@ from .types import (
     map_subtypes,
     get_subtypes,
     type_name as _type_name_fn,
+    JDict,
+    JList,
     JStr,
     JInt,
     JBool,
     JFloat,
     JNull,
-    JDict,
-    JList,
     ASTNode,
     get_str,
     get_int,
@@ -4422,30 +4422,3 @@ def compute_expr_coverage(
     covered: dict[str, int] = {}
     _count_expr_nodes(tree, result.expr_types, totals, covered)
     return (totals, covered)
-
-
-def report_expr_coverage(tree: ASTNode, result: PycheckResult) -> None:
-    """Print expression type coverage to stderr."""
-    totals, covered = compute_expr_coverage(tree, result)
-    print("=== expr type coverage ===", file=sys.stderr)
-    names = sorted(totals.keys())
-    for name in names:
-        t = totals[name]
-        c = covered.get(name, 0)
-        if t > 0:
-            pct = (c * 100) // t
-        else:
-            pct = 0
-        pad = " " * (12 - len(name))
-        print(
-            "  "
-            + name
-            + pad
-            + str(c).rjust(5)
-            + "/"
-            + str(t).ljust(5)
-            + " ("
-            + str(pct).rjust(3)
-            + "%)",
-            file=sys.stderr,
-        )

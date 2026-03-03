@@ -111,7 +111,6 @@ class FlowGraph:
 
     def __init__(self) -> None:
         self.nodes: list[FlowNode] = []
-        self.start_id: int = 0
         self._succ: dict[int, list[int]] = {}
 
     def add(self, node: FlowNode) -> int:
@@ -263,7 +262,6 @@ def build_cfg(body: list[ASTNode]) -> FlowGraph:
     graph = FlowGraph()
     start = FlowStart(id=graph.next_id(), prev=[])
     graph.add(start)
-    graph.start_id = start.id
     _build_stmts(body, start.id, graph)
     return graph
 

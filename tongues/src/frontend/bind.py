@@ -1411,15 +1411,6 @@ class ProjectVerifyResult:
             result.append(msg)
         return result
 
-    def has_errors(self) -> bool:
-        """Check if there are any errors."""
-        if self.unresolved_imports:
-            return True
-        for f in self.file_results:
-            if not self.file_results[f].ok():
-                return True
-        return False
-
 
 # Allowed builtins
 ALLOWED_BUILTINS: set[str] = {
