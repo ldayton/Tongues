@@ -1820,7 +1820,7 @@ def _val_is_type(
     if isinstance(v, VList):
         return type_name == "list"
     if isinstance(v, VMap):
-        return type_name == "map"
+        return type_name == "map" or type_name == "dict"
     if isinstance(v, VSet):
         return type_name == "set"
     if isinstance(v, VTuple):
@@ -2650,6 +2650,25 @@ class VM:
             i -= 1
         # Pop receiver (self)
         obj = self.stack.pop()
+        if isinstance(obj, VMap) and method_name == "get":
+            if len(args) >= 1:
+                key = args[0]
+                i = 0
+                found = False
+                while i < len(obj.keys):
+                    if _val_eq(obj.keys[i], key):
+                        self.stack.append(obj.values[i])
+                        found = True
+                        break
+                    i += 1
+                if not found:
+                    if len(args) >= 2:
+                        self.stack.append(args[1])
+                    else:
+                        self.stack.append(_NONE_VAL)
+            else:
+                self.stack.append(_NONE_VAL)
+            return
         if isinstance(obj, VStruct):
             # Look up method in struct defs
             all_sdefs: list[StructDef] = self.module.struct_defs
