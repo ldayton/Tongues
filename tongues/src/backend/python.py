@@ -336,10 +336,15 @@ class _PythonEmitter(Emitter):
         self.lines: list[str] = []
         self.self_name: str | None = None
         self.var_types: dict[str, TType] = {}
+        self.module_let_names: set[str] = set()
+        self._current_struct: str = ""
 
     # ── Module ────────────────────────────────────────────────
 
     def emit_module(self, module: TModule) -> None:
+        for decl in module.decls:
+            if isinstance(decl, TLetStmt):
+                self.module_let_names.add(decl.name)
         needs_sys, needs_dataclass, needs_field, needs_math, needs_os = _scan_imports(
             module
         )
@@ -376,8 +381,10 @@ class _PythonEmitter(Emitter):
                 self.indent += 1
                 if not decl.fields:
                     self._line("pass")
+                self._current_struct = decl.name
                 for fld in decl.fields:
                     self._emit_field(fld)
+                self._current_struct = ""
                 self.indent -= 1
                 need_blank = True
                 continue
@@ -461,8 +468,10 @@ class _PythonEmitter(Emitter):
         self.indent += 1
         if not decl.fields and not decl.methods:
             self._line("pass")
+        self._current_struct = decl.name
         for fld in decl.fields:
             self._emit_field(fld)
+        self._current_struct = ""
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -471,10 +480,19 @@ class _PythonEmitter(Emitter):
 
     def _emit_field(self, fld: TFieldDecl) -> None:
         typ_str = self._type(fld.typ)
-        default = self._field_default(fld.typ, fld.has_default)
+        default = self._field_default(fld.name, fld.typ, fld.has_default)
         self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
 
-    def _field_default(self, typ: TType, has_default: bool = False) -> str:
+    def _field_default(self, name: str, typ: TType, has_default: bool = False) -> str:
+        if name == name.upper() and len(name) > 1 and self._current_struct:
+            const = self._current_struct + "_" + name
+            if const in self.module_let_names:
+                if isinstance(typ, TListType):
+                    return "field(default_factory=lambda: list(" + const + "))"
+                if isinstance(typ, TMapType):
+                    return "field(default_factory=lambda: dict(" + const + "))"
+                if isinstance(typ, TSetType):
+                    return "field(default_factory=lambda: set(" + const + "))"
         if isinstance(typ, TListType):
             return "field(default_factory=list)"
         if isinstance(typ, TMapType):

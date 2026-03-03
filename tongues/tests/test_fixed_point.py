@@ -181,15 +181,7 @@ def test_taytsh_emit_round_trip():
     assert ty_text == ty_text_2, "Taytsh emit round-trip is not idempotent"
 
 
-@pytest.mark.parametrize(
-    "target",
-    [
-        "ruby",
-        pytest.param(
-            "perl", marks=pytest.mark.xfail(reason="Perl lambda inlining differs")
-        ),
-    ],
-)
+@pytest.mark.parametrize("target", ["ruby", "perl"])
 def test_cross_target_agreement(target: str):
     """Transpiled Python binary produces same backend output as the original."""
     py_source = _transpile_source("python")
