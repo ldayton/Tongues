@@ -63,6 +63,7 @@ from .types import (
     BOOL_TYPE,
     STR_TYPE,
     VOID_TYPE,
+    NEVER_TYPE,
     BYTES_TYPE,
     is_any,
     contains_any,
@@ -658,6 +659,8 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return FuncType([ANY_TYPE], ANY_TYPE)
     if name == "print":
         return FuncType([ANY_TYPE], VOID_TYPE)
+    if name == "assert_never":
+        return FuncType([NEVER_TYPE], VOID_TYPE)
     if name == "range":
         return FuncType([INT_TYPE], SliceType(INT_TYPE))
     if name == "enumerate":
@@ -1101,6 +1104,8 @@ def _synth_name_call(
         return INT_TYPE
     if fname == "isinstance":
         return BOOL_TYPE
+    if fname == "assert_never":
+        return VOID_TYPE
     if fname == "type":
         return ANY_TYPE
     if fname == "hash":
@@ -1945,6 +1950,15 @@ def _validate_stmt(
         return False
     if t == "Expr":
         _validate_expr_stmt(stmt, env, func_info, ctx)
+        value = get_node(stmt, "value")
+        if _is_type(value, ["Call"]):
+            func = get_node(value, "func")
+            if (
+                func
+                and _is_type(func, ["Name"])
+                and get_str(func, "id") == "assert_never"
+            ):
+                return True
         return False
     if t == "If":
         return _validate_if(stmt, env, func_info, ctx)
@@ -2421,6 +2435,14 @@ def _validate_call_args(
         ftype = env.get_type(fname)
         if ftype is not None and isinstance(ftype, FuncType):
             _check_func_type_args(ftype, args, env, ctx, lineno, n_kw)
+            return
+        synth = _synth_name(func, env, ctx)
+        if (
+            isinstance(synth, FuncType)
+            and len(synth.params) == len(args)
+            and any(_type_eq(p, NEVER_TYPE) for p in synth.params)
+        ):
+            _check_func_type_args(synth, args, env, ctx, lineno, n_kw)
             return
         if fname == "len":
             if args:

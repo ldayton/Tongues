@@ -4085,12 +4085,7 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
                     values.append(make_node("Constant", lineno, col, fields))
                 else:
                     processed = process_escapes(current_str, False, lineno, col)
-                    fstr_v: JsonValue
-                    if isinstance(processed, str):
-                        fstr_v = JStr(processed)
-                    else:
-                        fstr_v = JStr(repr(processed))
-                    fields = {"value": fstr_v}
+                    fields = {"value": JStr(processed)}
                     values.append(make_node("Constant", lineno, col, fields))
                 current_str = ""
             expr_str, conversion, format_spec_str, new_i = _fstring_find_expr_end(
@@ -4139,12 +4134,7 @@ def parse_fstring(token_value: str, lineno: int, col: int) -> list[ASTNode]:
             values.append(make_node("Constant", lineno, col, fields))
         else:
             processed = process_escapes(current_str, False, lineno, col)
-            tail_v: JsonValue
-            if isinstance(processed, str):
-                tail_v = JStr(processed)
-            else:
-                tail_v = JStr(repr(processed))
-            fields = {"value": tail_v}
+            fields = {"value": JStr(processed)}
             values.append(make_node("Constant", lineno, col, fields))
     return values
 
