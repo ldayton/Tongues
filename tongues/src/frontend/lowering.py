@@ -4249,7 +4249,7 @@ def _lower_delete(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     pos = _node_pos(node)
     result: list[TStmt] = []
     for target in get_nodes(node, "targets"):
-        if target.get("_type") != JStr("Subscript"):
+        if get_str(target, "_type") != "Subscript":
             continue
         obj_node = get_node(target, "value")
         key_node = get_node(target, "slice")

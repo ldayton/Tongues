@@ -1231,7 +1231,7 @@ class Verifier:
     def visit_Delete(self, node: ASTNode) -> None:
         """Allow del on subscripts (dict keys, list indices); ban del on variables."""
         for target in get_nodes(node, "targets"):
-            if target.get("_type") == JStr("Subscript"):
+            if get_str(target, "_type") == "Subscript":
                 self.visit(get_node(target, "value"))
                 self.visit(get_node(target, "slice"))
             else:
