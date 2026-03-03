@@ -225,7 +225,6 @@ def test_phase_output_agreement(phase: str):
     assert original == transpiled, f"--stop-at {phase}: original != transpiled"
 
 
-@pytest.mark.xfail(reason="Ruby binary hits bytes iteration bug on full self-compile")
 def test_cross_language_equivalence():
     """Python and Ruby transpiled binaries produce identical output."""
     if shutil.which("ruby") is None:

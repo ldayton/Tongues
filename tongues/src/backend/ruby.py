@@ -507,6 +507,7 @@ class _RubyEmitter(Emitter):
         self.in_fn: bool = False
         self.local_names: dict[str, str] = {}
         self._needs_range_helper: bool = False
+        self._needs_float_repr: bool = False
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -575,6 +576,11 @@ class _RubyEmitter(Emitter):
             import_insert_pos += 2
         if self._needs_range_helper:
             helper = "def _range(start, stop = nil, step = 1); stop.nil? ? (0...start).step(step).to_a : (step > 0 ? (start...stop).step(step).to_a : (stop + 1..start).step(-step).to_a.reverse); end"
+            self.lines.insert(import_insert_pos, helper)
+            self.lines.insert(import_insert_pos + 1, "")
+            import_insert_pos += 2
+        if self._needs_float_repr:
+            helper = 'def _py_float_repr(f); return f.to_s if f.nan? || f.infinite?; b = nil; (1..17).each { |d| s = "%.*g" % [d, f]; if s.to_f == f; b = s; break; end }; b = "%.17g" % f if b.nil?; if b.include?("e") || b.include?("E"); a = f.abs; if a != 0.0; e = Math.log10(a).floor; if e >= 0 && e <= 15; (1..20).each { |d| s = "%.*f" % [d, f]; if s.to_f == f; s = s.sub(/0+\\z/, ""); s = s + "0" if s.end_with?("."); b = s; break; end }; end; end; end; b = b + ".0" if !b.include?(".") && !b.include?("e") && !b.include?("E"); b; end'
             self.lines.insert(import_insert_pos, helper)
             self.lines.insert(import_insert_pos + 1, "")
 
@@ -1107,6 +1113,8 @@ class _RubyEmitter(Emitter):
                 method = ".each_key"
             elif self._is_string_type(stmt.iterable):
                 method = ".each_char"
+            elif self._is_bytes_type(stmt.iterable):
+                method = ".each_byte"
             else:
                 method = ".each"
             self._line(
@@ -1212,6 +1220,23 @@ class _RubyEmitter(Emitter):
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "string"
+        return False
+
+    def _is_bytes_type(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann:
+            return ann == "bytes"
+        if isinstance(expr, TBytesLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "bytes"
+        if isinstance(expr, TFieldAccess):
+            obj_type = self._resolve_type_name(expr.obj)
+            if obj_type is not None:
+                ft = self.field_types.get(obj_type, {})
+                ftyp = ft.get(expr.field)
+                return isinstance(ftyp, TPrimitive) and ftyp.kind == "bytes"
         return False
 
     def _emit_try(self, stmt: TTryStmt) -> None:
@@ -1941,6 +1966,9 @@ class _RubyEmitter(Emitter):
             return "Set.new(" + self._a(args, 0) + ".to_a)"
         if name == "ToString":
             a = self._a(args, 0)
+            if self._is_float_expr(args[0].value):
+                self._needs_float_repr = True
+                return "_py_float_repr(" + a + ")"
             if isinstance(args[0].value, (TBinaryOp, TTernary)):
                 return "(" + a + ").to_s"
             return a + ".to_s"
@@ -1986,8 +2014,10 @@ class _RubyEmitter(Emitter):
             return "puts(" + self._a(args, 0) + ")"
         if name == "WritelnErr":
             return "$stderr.puts(" + self._a(args, 0) + ")"
-        if name in ("Bytes", "BytesFrom"):
-            return self._a(args, 0)
+        if name == "Bytes":
+            return '("\0" * ' + self._a(args, 0) + ")"
+        if name == "BytesFrom":
+            return self._a(args, 0) + '.pack("C*")'
         if name == "ReadLine":
             return "$stdin.gets&.chomp"
         if name == "ReadAll":
