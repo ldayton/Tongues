@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.timeout(60)
+
 TONGUES_DIR = Path(__file__).parent.parent
 SRC_DIR = TONGUES_DIR / "src"
 OUT_DIR = TONGUES_DIR / ".out"
@@ -131,18 +133,104 @@ def _run_perl_binary(pl_path: str, args: list[str], stdin_data: bytes = b"") -> 
     return result.stdout.decode()
 
 
+def _run_original(args: list[str], stdin_data: bytes = b"") -> str:
+    """Run the original transpiler with given args, return stdout."""
+    result = subprocess.run(
+        [sys.executable, str(TONGUES_DIR / "bin" / "tongues"), *args],
+        input=stdin_data,
+        capture_output=True,
+        cwd=TONGUES_DIR,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    return result.stdout.decode()
+
+
+def _project_stdin() -> bytes:
+    """Gather project files and build stdin data (cached-ish via call site)."""
+    return _build_project_stdin(_gather_project_files(SRC_DIR))
+
+
 def test_fixed_point():
     """Stage 1 produces stage 2; stage 2 self-transpiles to identical stage 3."""
     stage2 = _transpile_source("python")
     mod = _load_python_binary(stage2, "fp_stage2")
 
-    files = _gather_project_files(SRC_DIR)
-    stdin_data = _build_project_stdin(files)
+    stdin_data = _project_stdin()
     stage3 = _run_python_binary(
         mod, ["stage2.py", "--project", "--target", "python"], stdin_data
     )
 
     assert stage2 == stage3, "stage2 != stage3: transpiler did not reach a fixed point"
+
+
+@pytest.mark.xfail(reason="Taytsh emitter can't handle for-loops with 3+ bindings")
+def test_taytsh_emit_round_trip():
+    """Lowering to Taytsh text, parsing, and re-emitting produces identical output."""
+    from src.taytsh.emit import to_source
+    from src.taytsh.parse import Parser
+    from src.taytsh.tokens import tokenize
+
+    stdin_data = _project_stdin()
+    ty_text = _run_original(["--project", "--stop-at", "lowering-text"], stdin_data)
+
+    tokens = tokenize(ty_text)
+    module = Parser(tokens).parse_program()
+    ty_text_2 = to_source(module)
+
+    assert ty_text == ty_text_2, "Taytsh emit round-trip is not idempotent"
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "ruby",
+        pytest.param(
+            "perl", marks=pytest.mark.xfail(reason="Perl lambda inlining differs")
+        ),
+    ],
+)
+def test_cross_target_agreement(target: str):
+    """Transpiled Python binary produces same backend output as the original."""
+    py_source = _transpile_source("python")
+    py_mod = _load_python_binary(py_source, f"ct_{target}")
+
+    stdin_data = _project_stdin()
+    original = _run_original(["--project", "--target", target], stdin_data)
+    transpiled = _run_python_binary(
+        py_mod, ["ct.py", "--project", "--target", target], stdin_data
+    )
+
+    assert original == transpiled, f"--target {target}: original != transpiled"
+
+
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "parse",
+        "names",
+        "pycheck",
+        "lowering",
+        pytest.param(
+            "lowering-text",
+            marks=pytest.mark.xfail(
+                reason="Taytsh emitter can't handle 3+ for-bindings"
+            ),
+        ),
+    ],
+)
+def test_phase_output_agreement(phase: str):
+    """Transpiled Python binary produces same intermediate output as the original."""
+    py_source = _transpile_source("python")
+    py_mod = _load_python_binary(py_source, f"po_{phase}")
+
+    stdin_data = _project_stdin()
+    original = _run_original(["--project", "--stop-at", phase], stdin_data)
+    transpiled = _run_python_binary(
+        py_mod, ["po.py", "--project", "--stop-at", phase], stdin_data
+    )
+
+    assert original == transpiled, f"--stop-at {phase}: original != transpiled"
 
 
 @pytest.mark.xfail(reason="Ruby binary hits bytes iteration bug on full self-compile")
