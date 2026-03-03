@@ -5,4 +5,4 @@ GREETING = "hello"
 WORDS = Set["hello", "world"]
 
 === module-level struct instance (hierarchy root)
-DEFAULT_KIND = Kind.new(tag: "base")
+DEFAULT_KIND = SubKind.new(tag: "base", value: 0)

@@ -79,6 +79,7 @@ from .check import (
     TupleT,
     Type,
     check_with_info,
+    contains_nil,
     type_eq,
 )
 from .bytecode import (
@@ -332,12 +333,13 @@ class _Scope:
 
 
 class _LoopCtx:
-    __slots__ = ("break_patches", "continue_target", "handler_depth")
+    __slots__ = ("break_patches", "continue_target", "handler_depth", "match_depth")
 
-    def __init__(self, handler_depth: int) -> None:
+    def __init__(self, handler_depth: int, match_depth: int) -> None:
         self.break_patches: list[int] = []
         self.continue_target: int = -1
         self.handler_depth: int = handler_depth
+        self.match_depth: int = match_depth
 
 
 # ============================================================
@@ -359,6 +361,7 @@ class _FnCompiler:
         self.scope: _Scope = _Scope(None)
         self.loop_stack: list[_LoopCtx] = []
         self.handler_depth: int = 0
+        self.match_depth: int = 0
 
     def emit(self, op: int, arg: int, line: int) -> int:
         """Emit a single instruction pair. Returns the offset of the opcode."""
@@ -477,6 +480,7 @@ class Compiler:
         self.checker_types: dict[str, Type] = {}
         self.checker_functions: dict[str, FnT] = {}
         self.fn_param_names: dict[str, list[str]] = {}
+        self._zero_value_building: set[str] = set()
 
     def compile_module(self, module: TModule) -> CompiledModule:
         result = check_with_info(module)
@@ -615,6 +619,7 @@ class Compiler:
                     pt = self._resolve_param_type(p)
                     fc.add_local(p.name, pt)
             self._collect_locals(method.body, fc)
+            self._emit_default_preamble(method.params, fc, method.pos.line)
             self._compile_block(method.body, fc)
             mt = ct.methods.get(method.name)
             ret_type = mt.ret if mt is not None else VOID_T
@@ -633,6 +638,7 @@ class Compiler:
             fc.add_local(p.name, pt)
         # Pre-scan body for all let statements to assign slots
         self._collect_locals(decl.body, fc)
+        self._emit_default_preamble(decl.params, fc, decl.pos.line)
         # Compile body
         self._compile_block(decl.body, fc)
         # Implicit return void
@@ -839,8 +845,42 @@ class Compiler:
             fc.emit(OP_BUILD_MAP, 0, line)
         elif isinstance(typ, SetT):
             fc.emit(OP_BUILD_SET, 0, line)
+        elif isinstance(typ, StructT):
+            sidx = self._struct_index.get(typ.name)
+            if sidx is not None and typ.name not in self._zero_value_building:
+                self._zero_value_building.add(typ.name)
+                sd = self.struct_defs[sidx]
+                i = 0
+                while i < len(sd.field_types):
+                    self._emit_zero_value(sd.field_types[i], fc, line)
+                    i += 1
+                fc.emit(OP_BUILD_STRUCT, sidx, line)
+                self._zero_value_building.discard(typ.name)
+            else:
+                fc.emit(OP_NIL, 0, line)
         else:
             fc.emit(OP_NIL, 0, line)
+
+    def _emit_default_preamble(
+        self, params: list[TParam], fc: _FnCompiler, line: int
+    ) -> None:
+        """Emit nil-checks for params with defaults: replace nil with zero value."""
+        for p in params:
+            if not p.has_default:
+                continue
+            pt = self._resolve_param_type(p)
+            if contains_nil(pt):
+                continue
+            local = fc.scope.lookup(p.name)
+            if local is None:
+                continue
+            fc.emit(OP_LOAD_LOCAL, local.slot, line)
+            fc.emit(OP_NIL, 0, line)
+            fc.emit(OP_EQ, 0, line)
+            jump = fc.emit_jump(OP_JUMP_IF_FALSE, line)
+            self._emit_zero_value(pt, fc, line)
+            fc.emit(OP_STORE_LOCAL, local.slot, line)
+            fc.patch_jump(jump)
 
     def _compile_assign(self, stmt: TAssignStmt, fc: _FnCompiler) -> None:
         if isinstance(stmt.target, TVar):
@@ -874,25 +914,17 @@ class Compiler:
             fc.emit(OP_STORE_LOCAL, local.slot, stmt.pos.line)
             return
         if isinstance(stmt.target, TIndex):
-            # obj[index] op= value
+            # obj[index] op= value → obj[index] = obj[index] op value
+            # Push obj and index for the store (evaluated first)
             self._compile_expr(stmt.target.obj, fc)
             self._compile_expr(stmt.target.index, fc)
-            fc.emit(OP_DUP, 0, stmt.pos.line)
-            fc.emit(OP_ROT_TWO, 0, stmt.pos.line)
-            # Stack: obj, index, index, obj (wrong) — need to rethink
-            # Actually for index assign, just load current, apply op, store
-            # Simpler: compile as target = target op value
+            # Load current value (re-evaluate obj[index])
             self._compile_expr(stmt.target, fc)
+            # Compute new value
             self._compile_expr(stmt.value, fc)
             typ = self._resolve_expr_type(stmt.target, fc)
             self._emit_binop_for_type(stmt.op, typ, fc, stmt.pos.line)
-            self._compile_expr(stmt.target.obj, fc)
-            self._compile_expr(stmt.target.index, fc)
-            fc.emit(OP_ROT_TWO, 0, stmt.pos.line)
-            # Stack: result, obj, index — need: obj, index, result
-            # This is getting messy. Let's just use the simple approach.
-            # Rewrite: load target, compile value, binop, store target
-            # But store target is complex. For now, punt to simple cases.
+            # Stack: obj, index, result → OP_STORE_INDEX
             fc.emit(OP_STORE_INDEX, 0, stmt.pos.line)
             return
         if isinstance(stmt.target, TFieldAccess):
@@ -941,7 +973,7 @@ class Compiler:
 
     def _compile_while(self, stmt: TWhileStmt, fc: _FnCompiler) -> None:
         loop_start = fc.current_offset()
-        loop_ctx = _LoopCtx(fc.handler_depth)
+        loop_ctx = _LoopCtx(fc.handler_depth, fc.match_depth)
         loop_ctx.continue_target = loop_start
         fc.loop_stack.append(loop_ctx)
         self._compile_expr(stmt.cond, fc)
@@ -970,7 +1002,7 @@ class Compiler:
         binding = stmt.binding[0] if len(stmt.binding) > 0 else "_"
         local = fc.scope.lookup(binding) if binding != "_" else None
         loop_start = fc.current_offset()
-        loop_ctx = _LoopCtx(fc.handler_depth)
+        loop_ctx = _LoopCtx(fc.handler_depth, fc.match_depth)
         loop_ctx.continue_target = loop_start
         fc.loop_stack.append(loop_ctx)
         exit_jump = fc.emit_jump(OP_FOR_ITER, stmt.pos.line)
@@ -994,7 +1026,7 @@ class Compiler:
         self._compile_expr(stmt.iterable, fc)
         fc.emit(OP_INT_ZERO, 0, stmt.pos.line)  # index
         loop_start = fc.current_offset()
-        loop_ctx = _LoopCtx(fc.handler_depth)
+        loop_ctx = _LoopCtx(fc.handler_depth, fc.match_depth)
         loop_ctx.continue_target = loop_start
         fc.loop_stack.append(loop_ctx)
         # FOR_ITER checks index < len(collection)
@@ -1066,6 +1098,12 @@ class Compiler:
         if len(fc.loop_stack) == 0:
             return
         ctx = fc.loop_stack[-1]
+        # Pop match scrutinee/dup values pushed inside the loop
+        match_diff = fc.match_depth - ctx.match_depth
+        i = 0
+        while i < match_diff:
+            fc.emit(OP_POP, 0, stmt.pos.line)
+            i += 1
         # Pop handlers pushed inside the loop
         depth_diff = fc.handler_depth - ctx.handler_depth
         i = 0
@@ -1079,6 +1117,13 @@ class Compiler:
         if len(fc.loop_stack) == 0:
             return
         ctx = fc.loop_stack[-1]
+        # Pop match scrutinee/dup values pushed inside the loop
+        match_diff = fc.match_depth - ctx.match_depth
+        i = 0
+        while i < match_diff:
+            fc.emit(OP_POP, 0, stmt.pos.line)
+            i += 1
+        # Pop handlers pushed inside the loop
         depth_diff = fc.handler_depth - ctx.handler_depth
         i = 0
         while i < depth_diff:
@@ -1222,7 +1267,9 @@ class Compiler:
                 if local is not None:
                     fc.emit(OP_DUP, 0, case.pos.line)
                     fc.emit(OP_STORE_LOCAL, local.slot, case.pos.line)
+                fc.match_depth += 2  # scrutinee + dup on stack
                 self._compile_block(case.body, fc)
+                fc.match_depth -= 2
                 fc.emit(OP_POP, 0, case.pos.line)  # pop the dup (MATCH_TYPE peeks)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
@@ -1234,7 +1281,9 @@ class Compiler:
                 )
                 fc.emit(OP_MATCH_TYPE, idx, case.pos.line)
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
+                fc.match_depth += 2  # scrutinee + dup on stack
                 self._compile_block(case.body, fc)
+                fc.match_depth -= 2
                 fc.emit(OP_POP, 0, case.pos.line)  # pop the dup (MATCH_TYPE peeks)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
@@ -1243,7 +1292,9 @@ class Compiler:
                 fc.emit(OP_NIL, 0, case.pos.line)
                 fc.emit(OP_EQ, 0, case.pos.line)  # consumes dup
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
+                fc.match_depth += 1  # scrutinee on stack (dup consumed by EQ)
                 self._compile_block(case.body, fc)
+                fc.match_depth -= 1
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
         if stmt.default is not None:
@@ -1252,7 +1303,9 @@ class Compiler:
                 if local is not None:
                     fc.emit(OP_DUP, 0, stmt.default.pos.line)
                     fc.emit(OP_STORE_LOCAL, local.slot, stmt.default.pos.line)
+            fc.match_depth += 1  # scrutinee on stack
             self._compile_block(stmt.default.body, fc)
+            fc.match_depth -= 1
         for ep in end_patches:
             fc.patch_jump(ep)
         fc.emit(OP_POP, 0, stmt.pos.line)  # pop scrutinee
@@ -1638,6 +1691,7 @@ class Compiler:
             lit_fc.emit(OP_RETURN, 0, expr.pos.line)
         else:
             self._collect_locals(expr.body, lit_fc)
+            self._emit_default_preamble(expr.params, lit_fc, expr.pos.line)
             self._compile_block(expr.body, lit_fc)
             lit_fc.emit(OP_RETURN_VOID, 0, expr.pos.line)
         code_idx = len(self.code_objects)

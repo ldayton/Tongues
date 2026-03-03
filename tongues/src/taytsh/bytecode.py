@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .check import Type
 
@@ -179,11 +179,13 @@ class VList(Val):
 class VMap(Val):
     keys: list[Val]
     values: list[Val]
+    _shadow: dict[str, int] | None = field(default=None, init=False, repr=False)
 
 
 @dataclass
 class VSet(Val):
     items: list[Val]
+    _shadow: set[str] | None = field(default=None, init=False, repr=False)
 
 
 @dataclass

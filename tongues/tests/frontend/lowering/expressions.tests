@@ -178,6 +178,27 @@ def f(xs: list[int]) -> list[int]:
 xs[2:Len(xs)]
 ---
 
+=== slice negative upper
+def f(xs: list[int]) -> list[int]:
+    return xs[:-1]
+---
+xs[0:Len(xs) - 1]
+---
+
+=== slice negative lower
+def f(xs: list[int]) -> list[int]:
+    return xs[-2:]
+---
+xs[Len(xs) - 2:Len(xs)]
+---
+
+=== slice dynamic bounds
+def f(xs: list[int], i: int) -> list[int]:
+    return xs[i:i+3]
+---
+xs[Max(0, i):i + 3]
+---
+
 === bytes literal
 def f() -> bytes:
     return b"\x89PNG"

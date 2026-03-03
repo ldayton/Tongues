@@ -157,7 +157,8 @@ class Parser:
         return self.current().type == type_
 
     def at_ident(self) -> bool:
-        return self.current().type == TK_IDENT
+        tok = self.current()
+        return tok.type == TK_IDENT or tok.value in KEYWORDS
 
     def _at_name(self) -> bool:
         tok = self.current()
@@ -171,7 +172,7 @@ class Parser:
 
     def expect_ident(self) -> Token:
         tok = self.current()
-        if tok.type != TK_IDENT:
+        if tok.type != TK_IDENT and tok.value not in KEYWORDS:
             raise self.error("expected identifier, got '" + tok.value + "'")
         return self.advance()
 
@@ -347,7 +348,12 @@ class Parser:
         name_tok = self._expect_name()
         self.expect(":")
         typ = self.parse_type()
-        return TParam(pos, name_tok.value, typ, {})
+        has_default = False
+        if self.at("="):
+            self.advance()
+            self.parse_expr()  # consume and discard default value
+            has_default = True
+        return TParam(pos, name_tok.value, typ, {}, has_default)
 
     def parse_block(self) -> list[TStmt]:
         self.expect("{")
@@ -391,15 +397,23 @@ class Parser:
         name_tok = self._expect_name()
         self.expect(":")
         typ = self.parse_type()
-        return TFieldDecl(pos, name_tok.value, typ)
+        has_default = False
+        if self.at("="):
+            self.advance()
+            self.parse_expr()  # consume and discard default value
+            has_default = True
+        return TFieldDecl(pos, name_tok.value, typ, has_default)
 
     def parse_interface_decl(self) -> TInterfaceDecl:
         pos = self._pos()
         self.expect("interface")
         name_tok = self.expect_ident()
         self.expect("{")
+        fields: list[TFieldDecl] = []
+        while not self.at("}"):
+            fields.append(self.parse_field_decl())
         self.expect("}")
-        return TInterfaceDecl(pos, name_tok.value, {}, [])
+        return TInterfaceDecl(pos, name_tok.value, {}, fields)
 
     def parse_enum_decl(self) -> TEnumDecl:
         pos = self._pos()

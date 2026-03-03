@@ -849,7 +849,7 @@ Both bounds of a slice are always present. Open-ended slices are a Python featur
 
 The grammar enforces this — `[Expr : Expr]` requires both expressions. Backends that want to emit idiomatic open-ended slices can detect `0` or `Len(x)` bounds, or use the `open_start` / `open_end` provenance annotations.
 
-If `lo > hi`, the slice throws `IndexError`. Slicing always produces a copy. `xs[0:Len(xs)]` is a full copy of `xs`.
+If `hi > Len`, it is clamped to `Len`. If `lo > hi` (after clamping), the result is an empty slice. A negative bound at runtime is an `IndexError` (the lowerer resolves Python negative indices before emission). Slicing always produces a copy. `xs[0:Len(xs)]` is a full copy of `xs`.
 
 ## Value and Reference Semantics
 

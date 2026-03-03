@@ -5323,6 +5323,20 @@ def f(a: A) -> int:
 ---
 error: None
 ---
+=== attribute narrowed by direct assignment in if body
+from dataclasses import dataclass
+@dataclass
+class Obj:
+    name: str | None
+def f(o: Obj) -> str:
+    if o.name is None:
+        o.name = "hello"
+    return o.name.upper()
+---
+ok
+---
+
+
 === attribute guard on wrong field fails
 from dataclasses import dataclass
 @dataclass
@@ -5931,6 +5945,42 @@ def f(x: A | B | C) -> int:
 ok
 ---
 
+=== in operator narrows union type
+def f(x: int | str) -> int:
+    if x in [1, 2, 3]:
+        return x
+    return 0
+---
+ok
+---
+
+=== not in operator narrows union type in else branch
+def f(x: int | str) -> str:
+    if x not in [1, 2, 3]:
+        return x
+    return ""
+---
+ok
+---
+
+=== not in narrows else branch to matching variants
+def f(x: int | str) -> int:
+    if x not in [1, 2, 3]:
+        return 0
+    return x
+---
+ok
+---
+
+=== tuple union narrowed by length check
+def f(t: tuple[int, int] | tuple[str, str, str]) -> int:
+    if len(t) == 2:
+        return t[0]
+    return 0
+---
+ok
+---
+
 === reveal_type expected_type match
 def f(x: int) -> None:
     reveal_type(x, expected_type="int")
@@ -5943,4 +5993,160 @@ def f(x: int) -> None:
     reveal_type(x, expected_type="str")
 ---
 error: reveal_type: expected 'str', got 'int'
+---
+
+=== type(x) is narrows to exact class
+from dataclasses import dataclass
+@dataclass
+class Animal:
+    name: str
+@dataclass
+class Dog(Animal):
+    tricks: int
+def f(x: Animal) -> None:
+    if type(x) is Dog:
+        reveal_type(x)
+---
+reveal:10 = Dog
+---
+
+=== type(x) == narrows to exact class
+from dataclasses import dataclass
+@dataclass
+class Base:
+    val: int
+@dataclass
+class Sub(Base):
+    extra: str
+def f(x: Base) -> None:
+    if type(x) == Sub:
+        reveal_type(x)
+---
+reveal:10 = Sub
+---
+
+=== type(x) is narrows union
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+def f(x: A | B) -> None:
+    if type(x) is A:
+        reveal_type(x)
+---
+reveal:10 = A
+---
+
+=== type(x) is narrows else branch of union
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+def f(x: A | B) -> None:
+    if type(x) is A:
+        reveal_type(x)
+    else:
+        reveal_type(x)
+---
+reveal:10 = A
+reveal:12 = B
+---
+
+=== type(x) is with early return narrows remainder
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+def f(x: A | B) -> None:
+    if type(x) is A:
+        return
+    reveal_type(x)
+---
+reveal:11 = B
+---
+
+=== type(x) is allows field access
+from dataclasses import dataclass
+@dataclass
+class Animal:
+    name: str
+@dataclass
+class Dog(Animal):
+    tricks: int
+def f(x: Animal) -> int:
+    if type(x) is Dog:
+        return x.tricks
+    return 0
+---
+ok
+---
+
+=== chained and narrows optional for comparison
+def f(x: int | None) -> None:
+    if x is not None and x > 0:
+        reveal_type(x)
+---
+reveal:3 = int
+---
+
+=== chained and narrows multiple optionals for comparison
+def f(x: int | None, y: int | None) -> None:
+    if x is not None and y is not None and x > 0 and x <= y:
+        reveal_type(x)
+        reveal_type(y)
+---
+reveal:3 = int
+reveal:4 = int
+---
+
+=== chained and narrows local annotated optionals
+def f() -> None:
+    x: int | None = None
+    y: int | None = None
+    x = 5
+    y = 10
+    if x is not None and y is not None and x > 0 and x <= y:
+        reveal_type(x)
+        reveal_type(y)
+---
+reveal:7 = int
+reveal:8 = int
+---
+
+=== chained and narrows for attribute access after guard
+from dataclasses import dataclass
+@dataclass
+class Foo:
+    val: int
+def f(x: Foo | None) -> None:
+    if x is not None and x.val > 0:
+        reveal_type(x)
+---
+reveal:7 = Foo
+---
+
+=== chained and with isinstance narrows for comparison
+def f(x: int | str) -> None:
+    if isinstance(x, int) and x > 0:
+        reveal_type(x)
+---
+reveal:3 = int
+---
+
+=== chained or guard narrows remainder
+def f(x: int | None, y: int | None) -> int:
+    if x is None or y is None:
+        return 0
+    return x + y
+---
+ok
 ---

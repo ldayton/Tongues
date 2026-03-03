@@ -1,3 +1,6 @@
 === interface with fields
-package Animal;
+package Dog;
+
+use parent -norequire, 'Animal';
+
 sub new {

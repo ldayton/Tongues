@@ -968,6 +968,9 @@ class _RubyEmitter(Emitter):
             for s in unused_str.split(","):
                 if s:
                     unused_indices.add(int(s))
+        if self._is_divmod_call(stmt.value):
+            self._emit_divmod_assign(stmt, unused_indices)
+            return
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
@@ -975,6 +978,26 @@ class _RubyEmitter(Emitter):
             else:
                 parts.append(self._expr(t))
         self._line(", ".join(parts) + " = " + self._expr(stmt.value))
+
+    def _is_divmod_call(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "DivMod"
+        )
+
+    def _emit_divmod_assign(self, stmt: TTupleAssignStmt, unused: set[int]) -> None:
+        call = stmt.value
+        assert isinstance(call, TCall)
+        a = self._expr(call.args[0].value)
+        b = self._expr(call.args[1].value)
+        q_target = self._expr(stmt.targets[0])
+        if 1 in unused:
+            self._line(q_target + " = (" + a + ".to_f / " + b + ").truncate")
+        else:
+            r_target = self._expr(stmt.targets[1])
+            self._line(q_target + " = (" + a + ".to_f / " + b + ").truncate")
+            self._line(r_target + " = " + a + ".remainder(" + b + ")")
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
@@ -1752,7 +1775,7 @@ class _RubyEmitter(Emitter):
 
     def _builtin_call(self, name: str, args: list[TArg], call: TCall) -> str:
         if name == "FloorDiv":
-            return "(" + self._a(args, 0) + " / " + self._a(args, 1) + ").floor"
+            return self._a(args, 0) + " / " + self._a(args, 1)
         if name == "PythonMod":
             return self._a(args, 0) + " % " + self._a(args, 1)
         # List operations
@@ -1920,10 +1943,13 @@ class _RubyEmitter(Emitter):
             return self._a(args, 0) + ".to_a"
         # Direct functions
         if name == "Len":
-            return self._a(args, 0) + ".length"
+            a = self._a(args, 0)
+            if isinstance(args[0].value, (TBinaryOp, TUnaryOp, TTernary, TCall)):
+                return "(" + a + ").length"
+            return a + ".length"
         if name == "Abs":
             a = self._a(args, 0)
-            if isinstance(args[0].value, (TBinaryOp, TUnaryOp, TTernary)):
+            if isinstance(args[0].value, (TBinaryOp, TUnaryOp, TTernary, TCall)):
                 return "(" + a + ").abs"
             return a + ".abs"
         if name == "Min":
@@ -1957,7 +1983,19 @@ class _RubyEmitter(Emitter):
                 return self._a(args, 0) + ".round(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".round"
         if name == "DivMod":
-            return self._a(args, 0) + ".divmod(" + self._a(args, 1) + ")"
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "[("
+                + a
+                + ".to_f / "
+                + b
+                + ").truncate, "
+                + a
+                + ".remainder("
+                + b
+                + ")]"
+            )
         if name == "Sorted":
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
@@ -2094,11 +2132,6 @@ class _RubyEmitter(Emitter):
         # Fallback
         arg_strs = ", ".join(self._expr(ar.value) for ar in args)
         return _safe_name(name) + "(" + arg_strs + ")"
-
-    def _trim_chars(self, expr: TExpr) -> str:
-        if isinstance(expr, TStringLit):
-            return expr.value
-        return self._expr(expr)
 
     def _trim_gsub(self, expr: TExpr, mode: str) -> str:
         """Emit .gsub for Trim/TrimStart/TrimEnd with \\A/\\z anchors."""

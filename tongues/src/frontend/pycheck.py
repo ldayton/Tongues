@@ -74,13 +74,13 @@ from .types import (
     map_subtypes,
     get_subtypes,
     type_name as _type_name_fn,
+    JDict,
+    JList,
     JStr,
     JInt,
     JBool,
     JFloat,
     JNull,
-    JDict,
-    JList,
     ASTNode,
     get_str,
     get_int,
@@ -654,6 +654,8 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return FuncType([ANY_TYPE], SliceType(ANY_TYPE))
     if name == "isinstance":
         return FuncType([ANY_TYPE, ANY_TYPE], BOOL_TYPE)
+    if name == "type":
+        return FuncType([ANY_TYPE], ANY_TYPE)
     if name == "print":
         return FuncType([ANY_TYPE], VOID_TYPE)
     if name == "range":
@@ -1099,6 +1101,8 @@ def _synth_name_call(
         return INT_TYPE
     if fname == "isinstance":
         return BOOL_TYPE
+    if fname == "type":
+        return ANY_TYPE
     if fname == "hash":
         return INT_TYPE
     if fname == "range":
@@ -1843,6 +1847,10 @@ def _cfg_merge_env(
             env.types[k] = env_a.types[k]
         elif in_b and not both_only:
             env.types[k] = env_b.types[k]
+    gkeys_a = list(env_a.guarded_attrs)
+    for gk in gkeys_a:
+        if gk in env_b.guarded_attrs:
+            env.guarded_attrs.add(gk)
 
 
 # ---------------------------------------------------------------------------
@@ -2069,6 +2077,10 @@ def _validate_assign(
             _validate_subscript_assign(target, val_type, env, ctx, lineno)
         elif _is_type(target, ["Attribute"]):
             _synth_expr(target, env, ctx)
+            if not isinstance(val_type, OptionalType):
+                path = _attr_path(target)
+                if path:
+                    env.guard_attr(path)
 
 
 def _is_empty_collection(node: ASTNode) -> bool:
@@ -3226,6 +3238,37 @@ def _narrow_compare(
     comp_is_none = _is_type(comp, ["Constant"]) and _is_null_value(comp)
     if _is_type(comp, ["Constant"]):
         _synth_expr(comp, then_env, ctx)
+    # type(x) is/== T narrowing
+    if (
+        op_type in ("Is", "Eq", "IsNot", "NotEq")
+        and _is_type(left, ["Call"])
+        and _is_type(comp, ["Name"])
+    ):
+        func = get_node(left, "func")
+        call_args = get_nodes(left, "args")
+        if (
+            func
+            and _is_type(func, ["Name"])
+            and get_str(func, "id") == "type"
+            and len(call_args) == 1
+            and _is_type(call_args[0], ["Name"])
+        ):
+            var_name = get_str(call_args[0], "id")
+            class_name = get_str(comp, "id")
+            if var_name and class_name:
+                sig_errors: list[TypeCollectError] = []
+                resolved = py_type_to_type_dict(
+                    class_name, ctx.known_classes, sig_errors, 0, 0
+                )
+                positive = op_type in ("Is", "Eq")
+                pos_env = then_env if positive else else_env
+                neg_env = else_env if positive else then_env
+                pos_env.narrow(var_name, resolved)
+                neg_type = neg_env.get_type(var_name)
+                if neg_type is not None:
+                    remaining = remove_from_union(neg_type, [resolved])
+                    neg_env.narrow(var_name, remaining)
+                return
     if op_type == "Is" and comp_is_none:
         if _is_type(left, ["Name"]):
             name = get_str(left, "id")
@@ -3277,6 +3320,11 @@ def _narrow_compare(
                         cur = then_env.get_type(name)
                         if cur is not None and _prim_kind(cur) == lit.base.kind:
                             then_env.narrow(name, lit)
+        if _is_type(left, ["Call"]):
+            _narrow_len_check(left, comp, then_env, else_env, eq=True)
+    if op_type == "NotEq" and not comp_is_none:
+        if _is_type(left, ["Call"]):
+            _narrow_len_check(left, comp, then_env, else_env, eq=False)
     if op_type == "Eq":
         if _is_type(left, ["Attribute"]):
             attr = get_str(left, "attr")
@@ -3382,6 +3430,92 @@ def _narrow_compare(
                             if matches:
                                 then_env.narrow(obj_name, PrimitiveType("never"))
             return
+    if op_type == "In":
+        if _is_type(left, ["Name"]):
+            name = get_str(left, "id")
+            if name and _is_type(comp, ["List", "Set", "Tuple"]):
+                elts = get_nodes(comp, "elts")
+                elem_kinds: set[str] = set()
+                for elt in elts:
+                    et = _synth_expr(elt, then_env, ctx)
+                    k = _prim_kind(et)
+                    if k:
+                        elem_kinds.add(k)
+                cur = then_env.get_type(name)
+                if cur is not None and isinstance(cur, UnionType) and elem_kinds:
+                    in_yes = [v for v in cur.variants if _prim_kind(v) in elem_kinds]
+                    in_no = [v for v in cur.variants if _prim_kind(v) not in elem_kinds]
+                    if in_yes:
+                        then_env.narrow(name, combine_types(in_yes))
+                    if in_no:
+                        else_env.narrow(name, combine_types(in_no))
+    if op_type == "NotIn":
+        if _is_type(left, ["Name"]):
+            name = get_str(left, "id")
+            if name and _is_type(comp, ["List", "Set", "Tuple"]):
+                elts = get_nodes(comp, "elts")
+                elem_kinds: set[str] = set()
+                for elt in elts:
+                    et = _synth_expr(elt, then_env, ctx)
+                    k = _prim_kind(et)
+                    if k:
+                        elem_kinds.add(k)
+                cur = then_env.get_type(name)
+                if cur is not None and isinstance(cur, UnionType) and elem_kinds:
+                    in_yes = [v for v in cur.variants if _prim_kind(v) in elem_kinds]
+                    in_no = [v for v in cur.variants if _prim_kind(v) not in elem_kinds]
+                    if in_no:
+                        then_env.narrow(name, combine_types(in_no))
+                    if in_yes:
+                        else_env.narrow(name, combine_types(in_yes))
+
+
+def _narrow_len_check(
+    call: ASTNode,
+    comp: ASTNode,
+    then_env: TypeEnv,
+    else_env: TypeEnv,
+    *,
+    eq: bool,
+) -> None:
+    """Narrow tuple unions by len(x) == N / len(x) != N."""
+    func = get_node(call, "func")
+    args = get_nodes(call, "args")
+    if not func or not _is_type(func, ["Name"]) or get_str(func, "id") != "len":
+        return
+    if len(args) != 1 or not _is_type(args[0], ["Name"]):
+        return
+    name = get_str(args[0], "id")
+    if not name:
+        return
+    comp_v = comp.get("value")
+    if not isinstance(comp_v, JInt):
+        return
+    expected_len = comp_v.value
+    cur = then_env.get_type(name)
+    if cur is None or not isinstance(cur, UnionType):
+        return
+    len_yes: list[TypeNode] = []
+    len_no: list[TypeNode] = []
+    for v in cur.variants:
+        if isinstance(v, TupleType) and not v.variadic:
+            if len(v.elements) == expected_len:
+                len_yes.append(v)
+            else:
+                len_no.append(v)
+        else:
+            len_yes.append(v)
+            len_no.append(v)
+    if eq:
+        if len_yes:
+            then_env.narrow(name, combine_types(len_yes))
+        if len_no:
+            else_env.narrow(name, combine_types(len_no))
+    else:
+        if len_no:
+            then_env.narrow(name, combine_types(len_no))
+        if len_yes:
+            else_env.narrow(name, combine_types(len_yes))
 
 
 def _apply_alias_narrowing(
@@ -4288,30 +4422,3 @@ def compute_expr_coverage(
     covered: dict[str, int] = {}
     _count_expr_nodes(tree, result.expr_types, totals, covered)
     return (totals, covered)
-
-
-def report_expr_coverage(tree: ASTNode, result: PycheckResult) -> None:
-    """Print expression type coverage to stderr."""
-    totals, covered = compute_expr_coverage(tree, result)
-    print("=== expr type coverage ===", file=sys.stderr)
-    names = sorted(totals.keys())
-    for name in names:
-        t = totals[name]
-        c = covered.get(name, 0)
-        if t > 0:
-            pct = (c * 100) // t
-        else:
-            pct = 0
-        pad = " " * (12 - len(name))
-        print(
-            "  "
-            + name
-            + pad
-            + str(c).rjust(5)
-            + "/"
-            + str(t).ljust(5)
-            + " ("
-            + str(pct).rjust(3)
-            + "%)",
-            file=sys.stderr,
-        )

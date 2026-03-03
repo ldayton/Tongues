@@ -50,24 +50,25 @@ fn TestListSlicing() -> void {
     Assert(copy[4] == 50)
 }
 
--- slice out of bounds
-fn TestListSliceError() -> void {
+-- slice bounds are clamped
+fn TestListSliceClamping() -> void {
     let xs: list[int] = [1, 2, 3]
+    -- hi > len clamps to len
+    let a: list[int] = xs[0:4]
+    Assert(Len(a) == 3)
+    Assert(a[0] == 1)
+    Assert(a[2] == 3)
+    -- lo > hi produces empty slice
+    let b: list[int] = xs[2:1]
+    Assert(Len(b) == 0)
+    -- negative lo is still an error
     let caught: bool = false
     try {
-        let s: list[int] = xs[0:4]
+        let s: list[int] = xs[-1:2]
     } catch e: IndexError {
         caught = true
     }
-    Assert(caught, "expected IndexError for slice hi out of range")
-
-    caught = false
-    try {
-        let s: list[int] = xs[2:1]
-    } catch e: IndexError {
-        caught = true
-    }
-    Assert(caught, "expected IndexError for lo > hi")
+    Assert(caught, "expected IndexError for negative lo")
 }
 
 -- slicing produces a copy, not an alias
@@ -492,7 +493,7 @@ fn Main() -> void {
     TestListIndexing()
     TestListIndexError()
     TestListSlicing()
-    TestListSliceError()
+    TestListSliceClamping()
     TestListSliceCopy()
     TestListAppend()
     TestListInsert()

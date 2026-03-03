@@ -1,5 +1,9 @@
 === interface with fields
 @dataclass
-class Animal:
+class Dog(Animal):
     name: str = ""
     legs: int = 0
+    breed: str = ""
+
+
+BUDDY: Animal = Dog("Buddy", 4, "Mutt")

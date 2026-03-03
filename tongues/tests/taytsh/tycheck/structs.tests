@@ -360,6 +360,21 @@ fn Main() -> void {}
 error: cannot assign to this
 ---
 
+=== error: cannot construct interface
+interface Type {
+    kind: string
+}
+struct ListT : Type {
+    kind: string
+    element: Type
+}
+fn Main() -> void {
+    let t: Type = Type(kind: "int")
+}
+---
+error: cannot construct interface
+---
+
 === valid: methods before fields
 struct Foo {
     fn GetX(this) -> int {

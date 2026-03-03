@@ -1,8 +1,9 @@
 === unused tuple target becomes underscore
-q, _ = 17.divmod(5)
+q = (17.to_f / 5).truncate
 
 === all tuple targets used
-q, r = 17.divmod(5)
+q = (17.to_f / 5).truncate
+r = 17.remainder(5)
 
 === initial value suppressed when overwritten
 x = $stdin.read.to_i(10)

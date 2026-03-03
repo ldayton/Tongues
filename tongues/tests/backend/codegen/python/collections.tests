@@ -82,5 +82,14 @@ evens.append(x)
 === dict comprehension
 m[k] = i
 
+=== Union on sets
+c: set[int] = a | b
+
+=== Intersection on sets
+c: set[int] = a & b
+
+=== Difference on sets
+c: set[int] = a - b
+
 === set comprehension
 unique.add(x)

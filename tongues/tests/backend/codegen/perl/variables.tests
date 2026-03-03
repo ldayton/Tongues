@@ -1,8 +1,8 @@
 === unused tuple target becomes underscore
-($q, undef) = (int(17 / 5), 17 % 5);
+$q = int(17 / 5);
 
 === all tuple targets used
-($q, $r) = (int(17 / 5), 17 % 5);
+($q, $r) = (int(17 / 5), 17 - int(17 / 5) * 5);
 
 === initial value suppressed when overwritten
 $x = do { my $__s = do { local $/; decode('UTF-8', scalar(<STDIN>), Encode::FB_CROAK) }; my $__b = 10; $__b == 0 ? ($__s =~ /^0[xX]/ ? hex($__s) : $__s =~ /^0[oO]/ ? oct($__s) : $__s =~ /^0[bB]/ ? oct($__s) : int($__s)) : $__b == 10 ? int($__s) : $__b == 16 ? hex($__s) : $__b == 8 ? oct($__s) : $__b == 2 ? oct('0b' . $__s) : int($__s) };

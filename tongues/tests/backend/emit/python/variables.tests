@@ -5,4 +5,4 @@ GREETING: str = "hello"
 WORDS: set[str] = {"hello", "world"}
 
 === module-level struct instance (hierarchy root)
-DEFAULT_KIND: Kind = Kind("base")
+DEFAULT_KIND: Kind = SubKind("base", 0)

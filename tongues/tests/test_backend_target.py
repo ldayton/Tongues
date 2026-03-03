@@ -44,6 +44,7 @@ def pytest_generate_tests(metafunc):
             metafunc.parametrize("ordering_source,ordering_target", params)
 
 
+@pytest.mark.timeout(30)
 def test_app(app_source: Path, app_target: str) -> None:
     source = app_source.read_text()
     output, err = transpile_app(source, app_target)

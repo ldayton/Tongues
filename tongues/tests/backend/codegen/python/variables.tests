@@ -1,8 +1,9 @@
 === unused tuple target becomes underscore
-q, _ = divmod(17, 5)
+q = int(17 / 5)
 
 === all tuple targets used
-q, r = divmod(17, 5)
+q = int(17 / 5)
+r = 17 - q * 5
 
 === initial value suppressed when overwritten
 x = int(sys.stdin.read(), 10)

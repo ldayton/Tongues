@@ -1,6 +1,5 @@
 """Taytsh app tests: .ty programs on the treewalker."""
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -8,9 +7,7 @@ import pytest
 from tests.harness import (
     TESTS_DIR,
     TRANSPILED_BINARY,
-    _TRANSPILED_MODULE,
-    _run_inprocess,
-    _transpiled_runtime,
+    _invoke_binary,
     discover_ty_apps,
     taytsh_parse,
     taytsh_run,
@@ -33,11 +30,7 @@ def pytest_generate_tests(metafunc):
 def test_ty_app(ty_app: Path):
     if TRANSPILED_BINARY is not None:
         argv = [TRANSPILED_BINARY, "taytsh", str(ty_app)]
-        if _TRANSPILED_MODULE is not None:
-            result = _run_inprocess(argv)
-        else:
-            cmd = [*_transpiled_runtime(), *argv]
-            result = subprocess.run(cmd, capture_output=True, timeout=30)
+        result = _invoke_binary(argv)
         if result.returncode != 0:
             output = (result.stdout + result.stderr).decode(errors="replace").strip()
             pytest.fail(f"Exit code {result.returncode}:\n{output}")

@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from .ordering import order_decls
-from .util import STRICT_INT_BINARY, STRICT_INT_COMPOUND, Emitter, to_snake
+from .util import (
+    STRICT_INT_BINARY,
+    STRICT_INT_COMPOUND,
+    Emitter,
+    collect_builtin_calls,
+    to_snake,
+)
 from ..taytsh.ast import (
     Ann,
     Pos,
@@ -129,6 +135,18 @@ def _restore_name(name: str, annotations: Ann) -> str:
     return _safe_name(name)
 
 
+_LIST_UTIL_BUILTINS = frozenset({"Min", "Max", "Sum"})
+
+
+def _struct_needs_list_util(decl: TStructDecl) -> bool:
+    """Check if any method in a struct uses Min/Max/Sum builtins."""
+    for method in decl.methods:
+        names = collect_builtin_calls(method.body)
+        if not names.isdisjoint(_LIST_UTIL_BUILTINS):
+            return True
+    return False
+
+
 _PERL_ESCAPE_MAP: dict[str, str] = {
     "\\": "\\\\",
     '"': '\\"',
@@ -142,7 +160,9 @@ _PERL_ESCAPE_MAP: dict[str, str] = {
 
 def _escape_perl_string(value: str) -> str:
     out: list[str] = []
-    for c in value:
+    i: int = 0
+    while i < len(value):
+        c: str = value[i : i + 1]
         esc = _PERL_ESCAPE_MAP.get(c)
         if esc is not None:
             out.append(esc)
@@ -150,12 +170,15 @@ def _escape_perl_string(value: str) -> str:
             out.append("\\x{" + hex(ord(c))[2:] + "}")
         else:
             out.append(c)
+        i += 1
     return "".join(out)
 
 
 def _escape_perl_regex(s: str) -> str:
     result: list[str] = []
-    for ch in s:
+    i: int = 0
+    while i < len(s):
+        ch: str = s[i : i + 1]
         if ch == "$" or ch == "@":
             h = hex(ord(ch))[2:]
             if len(h) == 1:
@@ -176,12 +199,15 @@ def _escape_perl_regex(s: str) -> str:
             result.append("\\x{" + h + "}")
         else:
             result.append(ch)
+        i += 1
     return "".join(result)
 
 
 def _escape_perl_replacement(s: str) -> str:
     result: list[str] = []
-    for ch in s:
+    i: int = 0
+    while i < len(s):
+        ch: str = s[i : i + 1]
         if ch == "\\":
             result.append("\\\\")
         elif ch == "$":
@@ -201,12 +227,15 @@ def _escape_perl_replacement(s: str) -> str:
             result.append("\\x{" + h + "}")
         else:
             result.append(ch)
+        i += 1
     return "".join(result)
 
 
 def _escape_regex_charclass(s: str) -> str:
     result: list[str] = []
-    for ch in s:
+    i: int = 0
+    while i < len(s):
+        ch: str = s[i : i + 1]
         if ch in r"]\^-":
             result.append("\\" + ch)
         elif ch == "\n":
@@ -222,6 +251,7 @@ def _escape_regex_charclass(s: str) -> str:
             result.append("\\x{" + h + "}")
         else:
             result.append(ch)
+        i += 1
     return "".join(result)
 
 
@@ -385,6 +415,8 @@ class _PerlEmitter(Emitter):
             if isinstance(decl, TStructDecl):
                 if current_package != decl.name:
                     self._line("package " + decl.name + ";")
+                    if _struct_needs_list_util(decl):
+                        self._line("use List::Util qw(min max sum);")
                     current_package = decl.name
                     self._line()
                 self._emit_struct(decl)
@@ -758,6 +790,14 @@ class _PerlEmitter(Emitter):
             for s in unused_str.split(","):
                 if s:
                     unused_indices.add(int(s))
+        if self._is_divmod_call(stmt.value) and 1 in unused_indices:
+            call = stmt.value
+            assert isinstance(call, TCall)
+            a = self._expr(call.args[0].value)
+            b = self._expr(call.args[1].value)
+            q_target = self._target(stmt.targets[0])
+            self._line(q_target + " = int(" + a + " / " + b + ");")
+            return
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
             is_discard = isinstance(t, TVar) and t.name == "_"
@@ -770,6 +810,13 @@ class _PerlEmitter(Emitter):
             self._line("(" + ", ".join(parts) + ") = (" + rhs[1:-1] + ");")
         else:
             self._line("(" + ", ".join(parts) + ") = @{" + rhs + "};")
+
+    def _is_divmod_call(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "DivMod"
+        )
 
     def _emit_if(self, stmt: TIfStmt) -> None:
         prov = stmt.annotations.get("provenance")
@@ -1869,7 +1916,7 @@ class _PerlEmitter(Emitter):
         if name == "PythonMod":
             a = self._a(args, 0)
             b = self._a(args, 1)
-            return "((" + a + " % " + b + ") + " + b + ") % " + b
+            return a + " - POSIX::floor(" + a + " / " + b + ") * " + b
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":
@@ -2173,26 +2220,28 @@ class _PerlEmitter(Emitter):
         if name == "Union":
             a = self._deref_safe(self._a(args, 0))
             b = self._deref_safe(self._a(args, 1))
-            return "do { my $__s = {%{" + a + "}, %{" + b + "}}; $__s }"
+            return "+{%{" + a + "}, %{" + b + "}}"
         if name == "Intersection":
-            a = self._a(args, 0)
+            a = self._deref_safe(self._a(args, 0))
             b = self._a(args, 1)
             return (
-                "do { my $__a = "
-                + a
-                + "; my $__b = "
+                "do { my $s = {}; $s->{$_} = 1"
+                + " for grep { exists "
                 + b
-                + "; my $__s = {}; for (sort keys %{$__a}) { $__s->{$_} = 1 if exists $__b->{$_} } $__s }"
+                + "->{$_} } keys %{"
+                + a
+                + "}; $s }"
             )
         if name == "Difference":
-            a = self._a(args, 0)
+            a = self._deref_safe(self._a(args, 0))
             b = self._a(args, 1)
             return (
-                "do { my $__a = "
-                + a
-                + "; my $__b = "
+                "do { my $s = {}; $s->{$_} = 1"
+                + " for grep { !exists "
                 + b
-                + "; my $__s = {}; for (sort keys %{$__a}) { $__s->{$_} = 1 unless exists $__b->{$_} } $__s }"
+                + "->{$_} } keys %{"
+                + a
+                + "}; $s }"
             )
         if name == "Get":
             k = self._hash_key(args[1].value)
@@ -2296,15 +2345,21 @@ class _PerlEmitter(Emitter):
         if name == "Ceil":
             return "ceil(" + self._a(args, 0) + ")"
         if name == "DivMod":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
             return (
                 "[int("
-                + self._a(args, 0)
+                + a
                 + " / "
-                + self._a(args, 1)
+                + b
                 + "), "
-                + self._a(args, 0)
-                + " % "
-                + self._a(args, 1)
+                + a
+                + " - int("
+                + a
+                + " / "
+                + b
+                + ") * "
+                + b
                 + "]"
             )
         if name == "Sorted":

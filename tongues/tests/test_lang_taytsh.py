@@ -1,13 +1,14 @@
-"""Lang-taytsh: run app/ordering/ty_app tests through treewalker and VM."""
+"""Lang-taytsh: round-trip app/ordering/ty_app through emit_taytsh then run."""
 
 from pathlib import Path
 
 import pytest
 
+from src.backend.taytsh import emit_taytsh
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.treewalker import run as taytsh_run
 from src.taytsh.vm import vm_run
-from tests.harness import TESTS_DIR, lower_to_taytsh
+from tests.harness import TESTS_DIR, lower_to_taytsh, _transpile_with_emitter
 
 RUNNERS = ["treewalker", "vm"]
 
@@ -23,8 +24,17 @@ _APP_XFAIL_VM: set[str] = set()
 # fmt: on
 
 
-def _run_module(module, runner: str) -> tuple[int, str]:
-    """Run a parsed module and return (exit_code, combined_output)."""
+def _round_trip(ty_text: str) -> str:
+    """Emit taytsh source through the backend, returning the emitted text."""
+    output, err = _transpile_with_emitter(ty_text, emit_taytsh)
+    if err is not None:
+        pytest.fail(f"Taytsh emit error: {err}")
+    return output
+
+
+def _run_taytsh(ty_text: str, runner: str) -> tuple[int, str]:
+    """Parse emitted taytsh and run through treewalker or VM."""
+    module = taytsh_parse(ty_text)
     if runner == "treewalker":
         result = taytsh_run(module)
         output = (result.stdout + result.stderr).decode(errors="replace").strip()
@@ -82,23 +92,23 @@ def test_app(app_source: Path, runner: str) -> None:
     ty_text, err = lower_to_taytsh(source)
     if err is not None:
         pytest.fail(f"Lowering error: {err}")
-    module = taytsh_parse(ty_text)
-    exit_code, output = _run_module(module, runner)
+    emitted = _round_trip(ty_text)
+    exit_code, output = _run_taytsh(emitted, runner)
     if exit_code != 0:
         pytest.fail(f"Exit code {exit_code}:\n{output}")
 
 
 def test_ordering(ordering_source: Path, runner: str) -> None:
     source = ordering_source.read_text()
-    module = taytsh_parse(source)
-    exit_code, output = _run_module(module, runner)
+    emitted = _round_trip(source)
+    exit_code, output = _run_taytsh(emitted, runner)
     if exit_code != 0:
         pytest.fail(f"Exit code {exit_code}:\n{output}")
 
 
 def test_ty_app(ty_app: Path, runner: str) -> None:
     source = ty_app.read_text()
-    module = taytsh_parse(source)
-    exit_code, output = _run_module(module, runner)
+    emitted = _round_trip(source)
+    exit_code, output = _run_taytsh(emitted, runner)
     if exit_code != 0:
         pytest.fail(f"Exit code {exit_code}:\n{output}")

@@ -1032,11 +1032,13 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
         if not isinstance(uid_jv, JInt):
             _record_fallback("no_uid")
-            return _infer_expr_type_fallback(node, env, ctx)
+            fb = _infer_expr_type_fallback(node, env, ctx)
+            return fb
         pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
         if pt is None:
             _record_fallback("no_entry")
-            return _infer_expr_type_fallback(node, env, ctx)
+            fb = _infer_expr_type_fallback(node, env, ctx)
+            return fb
         if _is_any_type(pt):
             _record_fallback("is_any", node)
             return _infer_expr_type_fallback(node, env, ctx)
@@ -1045,7 +1047,8 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             _record_fallback("contains_any", node)
             return _infer_expr_type_fallback(node, env, ctx)
         _record_fallback("success")
-        return _adjust_pycheck_type(node, pt, env)
+        result = _adjust_pycheck_type(node, pt, env)
+        return result
     return _infer_expr_type_fallback(node, env, ctx)
 
 
@@ -2889,6 +2892,14 @@ def _lower_struct_constructor(
     ctx: _LowerCtx,
 ) -> TExpr:
     """Lower a struct constructor call."""
+    if ctx.hier_result.is_hierarchy_root(class_name):
+        ctx.errors.append(
+            LoweringError(
+                pos.line,
+                pos.col,
+                "cannot construct interface '" + class_name + "'",
+            )
+        )
     lowered_args: list[TArg] = []
     for a in args:
         lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
@@ -3414,11 +3425,46 @@ def _get_const_int(node: ASTNode) -> int | None:
     return None
 
 
+def _is_neg_const(node: ASTNode) -> int | None:
+    """Detect a negative constant: Constant(-3) or UnaryOp(USub, Constant(3)).
+    Returns the positive magnitude or None."""
+    if _is_ast(node, "Constant"):
+        val = node.get("value")
+        if isinstance(val, JInt) and val.value < 0:
+            return -val.value
+    if _is_ast(node, "UnaryOp"):
+        op_node = get_node(node, "op")
+        if get_str(op_node, "_type") == "USub":
+            operand = get_node(node, "operand")
+            if _is_ast(operand, "Constant"):
+                val = operand.get("value")
+                if isinstance(val, JInt):
+                    return val.value
+    return None
+
+
 def _lower_slice_bound(
-    pos: Pos, jv: JsonValue | None, default: TExpr, env: _Env, ctx: _LowerCtx
+    pos: Pos,
+    jv: JsonValue | None,
+    default: TExpr,
+    env: _Env,
+    ctx: _LowerCtx,
+    obj: TExpr | None = None,
+    obj_type: TypeNode | None = None,
 ) -> TExpr:
-    """Lower a single slice bound, returning default if absent."""
+    """Lower a single slice bound, returning default if absent.
+    If obj/obj_type are provided, resolves negative constants to Len(obj) - N."""
     if isinstance(jv, JDict):
+        if obj is not None and obj_type is not None:
+            neg = _is_neg_const(jv.entries)
+            if neg is not None:
+                return TBinaryOp(
+                    pos,
+                    "-",
+                    _len_expr(pos, obj, obj_type),
+                    TIntLit(pos, neg, str(neg), {}),
+                    {},
+                )
         return _lower_expr(jv.entries, env, ctx)
     return default
 
@@ -3434,8 +3480,17 @@ def _lower_slice(
     """Lower a slice access xs[a:b] into TSlice."""
     lower_jv = slice_node.get("lower")
     upper_jv = slice_node.get("upper")
-    low = _lower_slice_bound(pos, lower_jv, TIntLit(pos, 0, "0", {}), env, ctx)
-    high = _lower_slice_bound(pos, upper_jv, _len_expr(pos, obj, obj_type), env, ctx)
+    low = _lower_slice_bound(
+        pos, lower_jv, TIntLit(pos, 0, "0", {}), env, ctx, obj, obj_type
+    )
+    high = _lower_slice_bound(
+        pos, upper_jv, _len_expr(pos, obj, obj_type), env, ctx, obj, obj_type
+    )
+    # For dynamic lower bounds that could be negative, wrap in Max(0, lo)
+    if isinstance(lower_jv, JDict) and _is_neg_const(lower_jv.entries) is None:
+        ci = _get_const_int(lower_jv.entries)
+        if ci is None:
+            low = _make_call(pos, "Max", [TIntLit(pos, 0, "0", {}), low])
     return TSlice(pos, obj, low, high, {})
 
 
@@ -4263,18 +4318,15 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         obj = _lower_expr(obj_node, env, ctx)
         # Slice assignment: xs[a:b] = ys → ReplaceSlice(xs, a, b, ys)
         if _is_ast(slice_node, "Slice"):
+            obj_type = _infer_expr_type(obj_node, env, ctx)
             lower_jv = slice_node.get("lower")
             upper_jv = slice_node.get("upper")
-            low: TExpr
-            high: TExpr
-            if isinstance(lower_jv, JDict):
-                low = _lower_expr(lower_jv.entries, env, ctx)
-            else:
-                low = TIntLit(pos, 0, "0", {})
-            if isinstance(upper_jv, JDict):
-                high = _lower_expr(upper_jv.entries, env, ctx)
-            else:
-                high = _make_call(pos, "Len", [obj])
+            low = _lower_slice_bound(
+                pos, lower_jv, TIntLit(pos, 0, "0", {}), env, ctx, obj, obj_type
+            )
+            high = _lower_slice_bound(
+                pos, upper_jv, _len_expr(pos, obj, obj_type), env, ctx, obj, obj_type
+            )
             value = _lower_expr(value_node, env, ctx)
             call = _make_call(pos, "ReplaceSlice", [obj, low, high, value])
             return [TExprStmt(pos, call, {})]
@@ -6157,110 +6209,6 @@ def _build_module_constant(
                 ctx.constant_types[name] = type_dict
                 return TLetStmt(pos, name, ttype, value, {})
     return None
-
-
-def _build_constants(body: list[ASTNode], ctx: _LowerCtx) -> list[TModuleItem]:
-    """Extract module-level and class-level constants."""
-    result: list[TModuleItem] = []
-    for node in body:
-        if not isinstance(node, dict):
-            continue
-        # Module-level ALL_CAPS assignments
-        if _is_ast(node, "Assign"):
-            targets = get_nodes(node, "targets")
-            if targets:
-                t = targets[0]
-                if _is_ast(t, "Name"):
-                    name = get_str(t, "id")
-                    if name == name.upper() and name != "_" and len(name) > 1:
-                        pos = _node_pos(node)
-                        value_node = get_node(node, "value")
-                        val_type: TypeNode = _infer_expr_type(value_node, _Env(), ctx)
-                        if _is_type_dict(val_type, ["void"]):
-                            val_type = PrimitiveType("error")
-                        ttype = _typenode_to_ttype(pos, val_type)
-                        value = _lower_expr(value_node, _Env(), ctx)
-                        result.append(TLetStmt(pos, name, ttype, value, {}))
-                        ctx.constant_types[name] = val_type
-        # Module-level ALL_CAPS annotated assignments
-        if _is_ast(node, "AnnAssign"):
-            target = get_node(node, "target")
-            if _is_ast(target, "Name"):
-                name = get_str(target, "id")
-                if name == name.upper() and name != "_" and len(name) > 1:
-                    pos = _node_pos(node)
-                    ann_jv = node.get("annotation")
-                    ann_str = ""
-                    if isinstance(ann_jv, JDict):
-                        ann_str = annotation_to_str(ann_jv.entries)
-                    type_dict: TypeNode = VOID_TYPE
-                    if ann_str:
-                        type_dict = py_type_to_type_dict(
-                            ann_str, ctx.known_classes, [], 0, 0
-                        )
-                    if _is_type_dict(type_dict, ["void"]):
-                        value_node = get_node(node, "value")
-                        type_dict = _infer_expr_type(value_node, _Env(), ctx)
-                    if _is_type_dict(type_dict, ["void"]):
-                        type_dict = PrimitiveType("error")
-                    ttype = _typenode_to_ttype(pos, type_dict)
-                    value_node = get_node(node, "value")
-                    value = _lower_expr(value_node, _Env(), ctx)
-                    result.append(TLetStmt(pos, name, ttype, value, {}))
-                    ctx.constant_types[name] = type_dict
-        # Class-level constants
-        if _is_ast(node, "ClassDef"):
-            class_name = get_str(node, "name")
-            class_body = get_nodes(node, "body")
-            for item in class_body:
-                if _is_ast(item, "Assign"):
-                    targets = get_nodes(item, "targets")
-                    if targets:
-                        t = targets[0]
-                        if _is_ast(t, "Name"):
-                            fname = get_str(t, "id")
-                            if fname == fname.upper() and len(fname) > 1:
-                                pos = _node_pos(item)
-                                value_node = get_node(item, "value")
-                                val_type: TypeNode = _infer_expr_type(
-                                    value_node, _Env(), ctx
-                                )
-                                if _is_type_dict(val_type, ["void"]):
-                                    val_type = PrimitiveType("error")
-                                ttype = _typenode_to_ttype(pos, val_type)
-                                value = _lower_expr(value_node, _Env(), ctx)
-                                const_name = class_name + "_" + fname
-                                result.append(
-                                    TLetStmt(pos, const_name, ttype, value, {})
-                                )
-                                ctx.constant_types[const_name] = val_type
-                if _is_ast(item, "AnnAssign"):
-                    target = get_node(item, "target")
-                    if _is_ast(target, "Name"):
-                        fname = get_str(target, "id")
-                        if fname == fname.upper() and len(fname) > 1:
-                            pos = _node_pos(item)
-                            ann_jv = item.get("annotation")
-                            ann_str = ""
-                            if isinstance(ann_jv, JDict):
-                                ann_str = annotation_to_str(ann_jv.entries)
-                            c_type_dict: TypeNode = VOID_TYPE
-                            if ann_str:
-                                c_type_dict = py_type_to_type_dict(
-                                    ann_str, ctx.known_classes, [], 0, 0
-                                )
-                            if _is_type_dict(c_type_dict, ["void"]):
-                                value_node = get_node(item, "value")
-                                c_type_dict = _infer_expr_type(value_node, _Env(), ctx)
-                            if _is_type_dict(c_type_dict, ["void"]):
-                                c_type_dict = PrimitiveType("error")
-                            ttype = _typenode_to_ttype(pos, c_type_dict)
-                            value_node = get_node(item, "value")
-                            value = _lower_expr(value_node, _Env(), ctx)
-                            const_name = class_name + "_" + fname
-                            result.append(TLetStmt(pos, const_name, ttype, value, {}))
-                            ctx.constant_types[const_name] = c_type_dict
-    return result
 
 
 def _detect_entry_point(body: list[ASTNode]) -> str | None:

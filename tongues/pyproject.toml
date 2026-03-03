@@ -7,6 +7,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-timeout>=2.3",
     "pytest-xdist>=3.8.0",
     "pytest-timeout>=2.3",
     "ruff>=0.9",
@@ -14,6 +15,8 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+timeout = 5
+timeout_method = "thread"
 
 [tool.ruff.lint]
 ignore = [
