@@ -327,6 +327,57 @@ def _extract_str_or_rune(v: Val) -> str | None:
     return None
 
 
+def _hash_key(v: Val) -> str | None:
+    """Convert a Val to a hashable string key, or None if unhashable."""
+    if isinstance(v, VStr):
+        return "s:" + v.value
+    if isinstance(v, VInt):
+        return "i:" + str(v.value)
+    if isinstance(v, VBool):
+        return "b:1" if v.value else "b:0"
+    if isinstance(v, VNil):
+        return "n"
+    if isinstance(v, VFloat):
+        return "f:" + str(v.value)
+    if isinstance(v, VByte):
+        return "y:" + str(v.value)
+    if isinstance(v, VBytes):
+        return "B:" + v.value.hex()
+    if isinstance(v, VRune):
+        return "r:" + v.value
+    if isinstance(v, VEnum):
+        return "e:" + v.enum_name + "." + v.variant
+    if isinstance(v, VTuple):
+        parts: list[str] = []
+        for e in v.items:
+            hk = _hash_key(e)
+            if hk is None:
+                return None
+            parts.append(hk)
+        return "t:" + ",".join(parts)
+    return None
+
+
+def _shadow_build_map(m: VMap) -> None:
+    """Lazily build shadow dict for a VMap: hash_key → index."""
+    shadow: dict[str, int] = {}
+    for i, k in enumerate(m.keys):
+        hk = _hash_key(k)
+        if hk is not None:
+            shadow[hk] = i
+    m._shadow = shadow
+
+
+def _shadow_build_set(s: VSet) -> None:
+    """Lazily build shadow set for a VSet."""
+    shadow: set[str] = set()
+    for item in s.items:
+        hk = _hash_key(item)
+        if hk is not None:
+            shadow.add(hk)
+    s._shadow = shadow
+
+
 def _val_eq(a: Val, b: Val) -> bool:
     if isinstance(a, VNil) and isinstance(b, VNil):
         return True
@@ -894,14 +945,32 @@ class _BuiltinDispatch:
                     return _TRUE_VAL
             return _FALSE_VAL
         if isinstance(args[0], VSet):
-            for item in args[0].items:
-                if _val_eq(item, args[1]):
+            hk = _hash_key(args[1])
+            if hk is not None:
+                if args[0]._shadow is None:
+                    _shadow_build_set(args[0])
+                set_shadow = args[0]._shadow
+                if set_shadow is not None:
+                    return _TRUE_VAL if hk in set_shadow else _FALSE_VAL
+            i = 0
+            while i < len(args[0].items):
+                if _val_eq(args[0].items[i], args[1]):
                     return _TRUE_VAL
+                i += 1
             return _FALSE_VAL
         if isinstance(args[0], VMap):
-            for k in args[0].keys:
-                if _val_eq(k, args[1]):
+            hk = _hash_key(args[1])
+            if hk is not None:
+                if args[0]._shadow is None:
+                    _shadow_build_map(args[0])
+                shadow = args[0]._shadow
+                if shadow is not None:
+                    return _TRUE_VAL if hk in shadow else _FALSE_VAL
+            i = 0
+            while i < len(args[0].keys):
+                if _val_eq(args[0].keys[i], args[1]):
                     return _TRUE_VAL
+                i += 1
             return _FALSE_VAL
         return _FALSE_VAL
 
@@ -1343,11 +1412,21 @@ class _BuiltinDispatch:
     def _map_get(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap):
             key = args[1]
-            i = 0
-            while i < len(args[0].keys):
-                if _val_eq(args[0].keys[i], key):
-                    return args[0].values[i]
-                i += 1
+            hk = _hash_key(key)
+            if hk is not None:
+                if args[0]._shadow is None:
+                    _shadow_build_map(args[0])
+                shadow = args[0]._shadow
+                if shadow is not None:
+                    found_idx = shadow.get(hk)
+                    if found_idx is not None:
+                        return args[0].values[found_idx]
+            else:
+                i = 0
+                while i < len(args[0].keys):
+                    if _val_eq(args[0].keys[i], key):
+                        return args[0].values[i]
+                    i += 1
             if len(args) > 2:
                 return args[2]
             return _NONE_VAL
@@ -1356,13 +1435,26 @@ class _BuiltinDispatch:
     def _map_delete(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap):
             key = args[1]
-            i = 0
-            while i < len(args[0].keys):
-                if _val_eq(args[0].keys[i], key):
-                    args[0].keys.pop(i)
-                    args[0].values.pop(i)
+            hk = _hash_key(key)
+            if hk is not None:
+                if args[0]._shadow is None:
+                    _shadow_build_map(args[0])
+                shadow = args[0]._shadow
+                if shadow is not None and hk in shadow:
+                    found_idx = shadow[hk]
+                    args[0].keys.pop(found_idx)
+                    args[0].values.pop(found_idx)
+                    _shadow_build_map(args[0])
                     return _NONE_VAL
-                i += 1
+            else:
+                i = 0
+                while i < len(args[0].keys):
+                    if _val_eq(args[0].keys[i], key):
+                        args[0].keys.pop(i)
+                        args[0].values.pop(i)
+                        args[0]._shadow = None
+                        return _NONE_VAL
+                    i += 1
         return _NONE_VAL
 
     def _map_keys(self, args: list[Val]) -> Val:
@@ -1389,20 +1481,35 @@ class _BuiltinDispatch:
         if isinstance(args[0], VMap) and isinstance(args[1], VMap):
             keys: list[Val] = list(args[0].keys)
             values: list[Val] = list(args[0].values)
+            shadow: dict[str, int] = {}
+            for idx, k in enumerate(keys):
+                hk = _hash_key(k)
+                if hk is not None:
+                    shadow[hk] = idx
             i = 0
             while i < len(args[1].keys):
                 k2 = args[1].keys[i]
-                found = False
-                j = 0
-                while j < len(keys):
-                    if _val_eq(keys[j], k2):
-                        values[j] = args[1].values[i]
-                        found = True
-                        break
-                    j += 1
-                if not found:
-                    keys.append(k2)
-                    values.append(args[1].values[i])
+                hk = _hash_key(k2)
+                if hk is not None:
+                    found_idx = shadow.get(hk)
+                    if found_idx is not None:
+                        values[found_idx] = args[1].values[i]
+                    else:
+                        shadow[hk] = len(keys)
+                        keys.append(k2)
+                        values.append(args[1].values[i])
+                else:
+                    found = False
+                    j = 0
+                    while j < len(keys):
+                        if _val_eq(keys[j], k2):
+                            values[j] = args[1].values[i]
+                            found = True
+                            break
+                        j += 1
+                    if not found:
+                        keys.append(k2)
+                        values.append(args[1].values[i])
                 i += 1
             return VMap(keys, values)
         return _NONE_VAL
@@ -1447,19 +1554,47 @@ class _BuiltinDispatch:
     def _set_add(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet):
             val = args[1]
-            for existing in args[0].items:
-                if _val_eq(existing, val):
+            hk = _hash_key(val)
+            if hk is not None:
+                if args[0]._shadow is None:
+                    _shadow_build_set(args[0])
+                shadow = args[0]._shadow
+                if shadow is not None:
+                    if hk in shadow:
+                        return _NONE_VAL
+                    shadow.add(hk)
+                    args[0].items.append(val)
                     return _NONE_VAL
+            i = 0
+            while i < len(args[0].items):
+                if _val_eq(args[0].items[i], val):
+                    return _NONE_VAL
+                i += 1
             args[0].items.append(val)
         return _NONE_VAL
 
     def _set_remove(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet):
             val = args[1]
+            hk = _hash_key(val)
+            if hk is not None:
+                if args[0]._shadow is None:
+                    _shadow_build_set(args[0])
+                shadow = args[0]._shadow
+                if shadow is not None and hk in shadow:
+                    shadow.discard(hk)
+                    i = 0
+                    while i < len(args[0].items):
+                        if _val_eq(args[0].items[i], val):
+                            args[0].items.pop(i)
+                            return _NONE_VAL
+                        i += 1
+                return _NONE_VAL
             i = 0
             while i < len(args[0].items):
                 if _val_eq(args[0].items[i], val):
                     args[0].items.pop(i)
+                    args[0]._shadow = None
                     return _NONE_VAL
                 i += 1
         return _NONE_VAL
@@ -1467,39 +1602,66 @@ class _BuiltinDispatch:
     def _set_union(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet) and isinstance(args[1], VSet):
             result = list(args[0].items)
+            shadow: set[str] = set()
+            for item in result:
+                hk = _hash_key(item)
+                if hk is not None:
+                    shadow.add(hk)
             for item in args[1].items:
-                found = False
-                for r in result:
-                    if _val_eq(r, item):
-                        found = True
-                        break
-                if not found:
-                    result.append(item)
+                hk = _hash_key(item)
+                if hk is not None:
+                    if hk not in shadow:
+                        shadow.add(hk)
+                        result.append(item)
+                else:
+                    found = False
+                    for r in result:
+                        if _val_eq(r, item):
+                            found = True
+                            break
+                    if not found:
+                        result.append(item)
             return VSet(result)
         return VSet([])
 
     def _set_intersection(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet) and isinstance(args[1], VSet):
+            if args[1]._shadow is None:
+                _shadow_build_set(args[1])
+            shadow_b = args[1]._shadow
             result: list[Val] = []
             for item in args[0].items:
-                for item2 in args[1].items:
-                    if _val_eq(item, item2):
+                hk = _hash_key(item)
+                if hk is not None and shadow_b is not None:
+                    if hk in shadow_b:
                         result.append(item)
-                        break
+                else:
+                    for item2 in args[1].items:
+                        if _val_eq(item, item2):
+                            result.append(item)
+                            break
             return VSet(result)
         return VSet([])
 
     def _set_difference(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet) and isinstance(args[1], VSet):
+            if args[1]._shadow is None:
+                _shadow_build_set(args[1])
+            shadow_b = args[1]._shadow
             result: list[Val] = []
             for item in args[0].items:
-                found = False
-                for item2 in args[1].items:
-                    if _val_eq(item, item2):
-                        found = True
-                        break
-                if not found:
-                    result.append(item)
+                hk = _hash_key(item)
+                if hk is not None and shadow_b is not None:
+                    if hk not in shadow_b:
+                        result.append(item)
+                else:
+                    found = False
+                    for item2 in args[1].items:
+                        if _val_eq(item, item2):
+                            found = True
+                            break
+                    if not found:
+                        result.append(item)
             return VSet(result)
         return VSet([])
 
@@ -1508,14 +1670,21 @@ class _BuiltinDispatch:
             return args[0]
         if isinstance(args[0], VList):
             result: list[Val] = []
+            shadow: set[str] = set()
             for item in args[0].items:
-                found = False
-                for r in result:
-                    if _val_eq(r, item):
-                        found = True
-                        break
-                if not found:
-                    result.append(item)
+                hk = _hash_key(item)
+                if hk is not None:
+                    if hk not in shadow:
+                        shadow.add(hk)
+                        result.append(item)
+                else:
+                    found = False
+                    for r in result:
+                        if _val_eq(r, item):
+                            found = True
+                            break
+                    if not found:
+                        result.append(item)
             return VSet(result)
         return VSet([])
 
@@ -1895,26 +2064,51 @@ class VM:
         self.env_vars: dict[str, str] = {}
         self.builtins: _BuiltinDispatch = _BuiltinDispatch(self)
         self.pending_exception: Val | None = None
+        # Build method lookup cache: (type_name, method_name) → code_object_index
+        self._method_cache: dict[tuple[str, str], int] = {}
+        self._build_method_cache()
         # Initialize globals — one slot per function
         self._init_globals()
 
+    def _build_method_cache(self) -> None:
+        """Build (type_name, method_name) → code_index cache, including parents."""
+        for sd in self.module.struct_defs:
+            for mi in range(len(sd.method_names)):
+                key = (sd.name, sd.method_names[mi])
+                self._method_cache[key] = sd.method_indices[mi]
+        # Propagate parent methods to children (child methods take precedence)
+        name_to_sd: dict[str, StructDef] = {}
+        for sd in self.module.struct_defs:
+            name_to_sd[sd.name] = sd
+        for sd in self.module.struct_defs:
+            parent = sd.parent
+            while parent is not None:
+                psd = name_to_sd.get(parent)
+                if psd is None:
+                    break
+                for mi in range(len(psd.method_names)):
+                    key = (sd.name, psd.method_names[mi])
+                    if key not in self._method_cache:
+                        self._method_cache[key] = psd.method_indices[mi]
+                parent = psd.parent
+
     def _init_globals(self) -> None:
-        # Map function names to their code object indices
+        # Build name→index map for code objects, then look up globals in O(1)
+        co_index: dict[str, int] = {}
+        j = 0
+        while j < len(self.module.code_objects):
+            co = self.module.code_objects[j]
+            if co.name not in co_index:
+                co_index[co.name] = j
+            j += 1
         self.globals = []
         i = 0
         while i < len(self.module.global_names):
             name = self.module.global_names[i]
-            # Find the code object for this function
-            found = False
-            j = 0
-            while j < len(self.module.code_objects):
-                co = self.module.code_objects[j]
-                if co.name == name:
-                    self.globals.append(VFunc(j, co.type_sig))
-                    found = True
-                    break
-                j += 1
-            if not found:
+            idx = co_index.get(name)
+            if idx is not None:
+                self.globals.append(VFunc(idx, self.module.code_objects[idx].type_sig))
+            else:
                 self.globals.append(_NONE_VAL)
             i += 1
 
@@ -2656,75 +2850,49 @@ class VM:
         if isinstance(obj, VMap) and method_name == "get":
             if len(args) >= 1:
                 key = args[0]
-                i = 0
-                found = False
-                while i < len(obj.keys):
-                    if _val_eq(obj.keys[i], key):
-                        self.stack.append(obj.values[i])
-                        found = True
-                        break
-                    i += 1
-                if not found:
-                    if len(args) >= 2:
+                hk = _hash_key(key)
+                if hk is not None:
+                    if obj._shadow is None:
+                        _shadow_build_map(obj)
+                    shadow = obj._shadow
+                    found_idx = shadow.get(hk) if shadow is not None else None
+                    if found_idx is not None:
+                        self.stack.append(obj.values[found_idx])
+                    elif len(args) >= 2:
                         self.stack.append(args[1])
                     else:
                         self.stack.append(_NONE_VAL)
+                else:
+                    i = 0
+                    found = False
+                    while i < len(obj.keys):
+                        if _val_eq(obj.keys[i], key):
+                            self.stack.append(obj.values[i])
+                            found = True
+                            break
+                        i += 1
+                    if not found:
+                        if len(args) >= 2:
+                            self.stack.append(args[1])
+                        else:
+                            self.stack.append(_NONE_VAL)
             else:
                 self.stack.append(_NONE_VAL)
             return
         if isinstance(obj, VStruct):
-            # Look up method in struct defs
-            all_sdefs: list[StructDef] = self.module.struct_defs
-            for sd in all_sdefs:
-                if sd.name == obj.type_name:
-                    mi = 0
-                    while mi < len(sd.method_names):
-                        if sd.method_names[mi] == method_name:
-                            code = self.module.code_objects[sd.method_indices[mi]]
-                            bp = len(self.stack)
-                            # Push 'this' as local[0], then args
-                            self.stack.append(obj)
-                            for a in args:
-                                self.stack.append(a)
-                            # Pad remaining locals
-                            filled = 1 + argc
-                            while filled < code.local_count:
-                                self.stack.append(_NONE_VAL)
-                                filled += 1
-                            self.frames.append(Frame(code=code, ip=0, bp=bp))
-                            return
-                        mi += 1
-                    # Check parent struct
-                    parent = sd.parent
-                    while parent is not None:
-                        found_parent = False
-                        for psd in all_sdefs:
-                            if psd.name == parent:
-                                found_parent = True
-                                pi = 0
-                                while pi < len(psd.method_names):
-                                    if psd.method_names[pi] == method_name:
-                                        code = self.module.code_objects[
-                                            psd.method_indices[pi]
-                                        ]
-                                        bp = len(self.stack)
-                                        self.stack.append(obj)
-                                        for a in args:
-                                            self.stack.append(a)
-                                        filled = 1 + argc
-                                        while filled < code.local_count:
-                                            self.stack.append(_NONE_VAL)
-                                            filled += 1
-                                        self.frames.append(
-                                            Frame(code=code, ip=0, bp=bp)
-                                        )
-                                        return
-                                    pi += 1
-                                parent = psd.parent
-                                break
-                        if not found_parent:
-                            parent = None
-                    break
+            code_idx = self._method_cache.get((obj.type_name, method_name))
+            if code_idx is not None:
+                code = self.module.code_objects[code_idx]
+                bp = len(self.stack)
+                self.stack.append(obj)
+                for a in args:
+                    self.stack.append(a)
+                filled = 1 + argc
+                while filled < code.local_count:
+                    self.stack.append(_NONE_VAL)
+                    filled += 1
+                self.frames.append(Frame(code=code, ip=0, bp=bp))
+                return
         self._throw(
             _make_error_struct(
                 "TypeError", "no method '" + method_name + "' on " + _val_to_string(obj)
@@ -2733,31 +2901,7 @@ class VM:
 
     def _find_method(self, type_name: str, method_name: str) -> int | None:
         """Find a method index for a struct type. Returns code object index or None."""
-        sdefs: list[StructDef] = self.module.struct_defs
-        for sd in sdefs:
-            if sd.name == type_name:
-                mi = 0
-                while mi < len(sd.method_names):
-                    if sd.method_names[mi] == method_name:
-                        return sd.method_indices[mi]
-                    mi += 1
-                parent = sd.parent
-                while parent is not None:
-                    found_parent = False
-                    for psd in sdefs:
-                        if psd.name == parent:
-                            found_parent = True
-                            pi = 0
-                            while pi < len(psd.method_names):
-                                if psd.method_names[pi] == method_name:
-                                    return psd.method_indices[pi]
-                                pi += 1
-                            parent = psd.parent
-                            break
-                    if not found_parent:
-                        parent = None
-                break
-        return None
+        return self._method_cache.get((type_name, method_name))
 
     def _call_method_sync(self, obj: Val, code_idx: int, args: list[Val]) -> Val:
         """Synchronously call a method and return its result."""
@@ -2817,12 +2961,23 @@ class VM:
                 self.stack.append(obj.items[i])
                 return
         if isinstance(obj, VMap):
-            i = 0
-            while i < len(obj.keys):
-                if _val_eq(obj.keys[i], idx):
-                    self.stack.append(obj.values[i])
-                    return
-                i += 1
+            hk = _hash_key(idx)
+            if hk is not None:
+                if obj._shadow is None:
+                    _shadow_build_map(obj)
+                shadow = obj._shadow
+                if shadow is not None:
+                    found_idx = shadow.get(hk)
+                    if found_idx is not None:
+                        self.stack.append(obj.values[found_idx])
+                        return
+            else:
+                i = 0
+                while i < len(obj.keys):
+                    if _val_eq(obj.keys[i], idx):
+                        self.stack.append(obj.values[i])
+                        return
+                    i += 1
             self._throw(
                 _make_error_struct("KeyError", "key not found: " + _val_to_string(idx))
             )
@@ -2872,6 +3027,20 @@ class VM:
                 obj.items[i] = val
             return
         if isinstance(obj, VMap):
+            hk = _hash_key(idx)
+            if hk is not None:
+                if obj._shadow is None:
+                    _shadow_build_map(obj)
+                shadow = obj._shadow
+                if shadow is not None:
+                    found_idx = shadow.get(hk)
+                    if found_idx is not None:
+                        obj.values[found_idx] = val
+                        return
+                    shadow[hk] = len(obj.keys)
+                    obj.keys.append(idx)
+                    obj.values.append(val)
+                    return
             i = 0
             while i < len(obj.keys):
                 if _val_eq(obj.keys[i], idx):
