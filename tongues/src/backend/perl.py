@@ -1016,7 +1016,7 @@ class _PerlEmitter(Emitter):
             elif self._is_string_expr(iterable):
                 self._line("for my " + name + " (split(//, " + it + ")) {")
             elif self._is_bytes_expr(iterable):
-                self._line("for my " + name + " (split(//, " + it + ")) {")
+                self._line("for my " + name + " (unpack('C*', " + it + ")) {")
             else:
                 self._line("for my " + name + " (@{" + safe + "}) {")
                 if isinstance(iter_type, TListType):
