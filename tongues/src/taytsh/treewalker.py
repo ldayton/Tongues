@@ -1355,9 +1355,6 @@ class _FieldRef(_LValueRef):
 
 
 class _DiscardRef(_LValueRef):
-    def __init__(self):
-        super().__init__(NIL_T)
-
     def get(self) -> Value:
         raise TaytshRuntimeFault("cannot read discard '_'", None)
 
@@ -1673,13 +1670,21 @@ class Runtime:
         self._eval_expr(st.expr, env)
 
     def _stmt_if(self, st: TIfStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
-        cond = self._eval_expr(st.cond, env)
-        if not isinstance(cond, VBool):
-            raise TaytshRuntimeFault("if condition not bool", st.pos)
-        if cond.value:
-            self._eval_block(st.then_body, env, fn_ret=fn_ret)
-        elif st.else_body is not None:
+        while True:
+            cond = self._eval_expr(st.cond, env)
+            if not isinstance(cond, VBool):
+                raise TaytshRuntimeFault("if condition not bool", st.pos)
+            if cond.value:
+                self._eval_block(st.then_body, env, fn_ret=fn_ret)
+                return
+            if st.else_body is None:
+                return
+            el0 = st.else_body[0]
+            if len(st.else_body) == 1 and isinstance(el0, TIfStmt):
+                st = el0
+                continue
             self._eval_block(st.else_body, env, fn_ret=fn_ret)
+            return
 
     def _stmt_while(self, st: TWhileStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
         while True:
@@ -1933,7 +1938,7 @@ class Runtime:
     def _eval_lvalue_ref(self, expr: TExpr, env: _RuntimeEnv) -> _LValueRef:
         if isinstance(expr, TVar):
             if expr.name == "_":
-                return _DiscardRef()
+                return _DiscardRef(NIL_T)
             return _VarRef(env.get_ty(expr.name), env, expr.name)
         if isinstance(expr, TFieldAccess):
             obj = self._eval_expr(expr.obj, env)
