@@ -2440,7 +2440,7 @@ def _validate_call_args(
         if (
             isinstance(ftype, FuncType)
             and len(ftype.params) == len(args)
-            and not any(is_any(p) for p in ftype.params)
+            and any(_type_eq(p, NEVER_TYPE) for p in ftype.params)
         ):
             _check_func_type_args(ftype, args, env, ctx, lineno, n_kw)
             return
