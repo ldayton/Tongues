@@ -63,6 +63,7 @@ from .types import (
     BOOL_TYPE,
     STR_TYPE,
     VOID_TYPE,
+    NEVER_TYPE,
     BYTES_TYPE,
     is_any,
     contains_any,
@@ -659,7 +660,7 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if name == "print":
         return FuncType([ANY_TYPE], VOID_TYPE)
     if name == "assert_never":
-        return FuncType([ANY_TYPE], VOID_TYPE)
+        return FuncType([NEVER_TYPE], VOID_TYPE)
     if name == "range":
         return FuncType([INT_TYPE], SliceType(INT_TYPE))
     if name == "enumerate":
@@ -2340,20 +2341,6 @@ def _validate_expr_stmt(
                                         + "'",
                                     )
                 return
-            if fname == "assert_never":
-                args = get_nodes(value, "args")
-                if len(args) == 1:
-                    typ = _synth_expr(args[0], env, ctx)
-                    if not (isinstance(typ, PrimitiveType) and typ.kind == "never"):
-                        type_str = _type_name(typ)
-                        ctx.result.add_error(
-                            lineno,
-                            0,
-                            "assert_never: argument type is '"
-                            + type_str
-                            + "', not 'Never'",
-                        )
-                return
             if fname and fname not in _EAGER_CONSUMERS and fname not in _ITERATOR_FUNCS:
                 args = get_nodes(value, "args")
                 for arg in args:
@@ -2447,6 +2434,14 @@ def _validate_call_args(
             return
         ftype = env.get_type(fname)
         if ftype is not None and isinstance(ftype, FuncType):
+            _check_func_type_args(ftype, args, env, ctx, lineno, n_kw)
+            return
+        ftype = _synth_name(func, env, ctx)
+        if (
+            isinstance(ftype, FuncType)
+            and len(ftype.params) == len(args)
+            and not any(is_any(p) for p in ftype.params)
+        ):
             _check_func_type_args(ftype, args, env, ctx, lineno, n_kw)
             return
         if fname == "len":

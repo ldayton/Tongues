@@ -6168,7 +6168,7 @@ def f(x: A | B | C) -> int:
         return x.a_val
     assert_never(x)
 ---
-error: assert_never: argument type is 'B | C', not 'Never'
+error: argument 1 has type B | C, expected never
 ---
 
 === assert_never errors on optional not fully narrowed
@@ -6178,7 +6178,7 @@ def f(x: int | None) -> int:
         return x
     assert_never(x)
 ---
-error: assert_never: argument type is 'None', not 'Never'
+error: argument 1 has type None, expected never
 ---
 
 === assert_never with single type errors without narrowing
@@ -6186,5 +6186,5 @@ from typing import assert_never
 def f(x: int) -> None:
     assert_never(x)
 ---
-error: assert_never: argument type is 'int', not 'Never'
+error: argument 1 has type int, expected never
 ---
