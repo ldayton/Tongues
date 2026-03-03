@@ -25,6 +25,10 @@ print(str(len("hello")))
 === DivMod
 q, r = divmod(17, 5)
 
+=== DivMod negative dividend
+q = int(-7 / 2)
+r = -7 - q * 2
+
 === Sqrt function
 math.sqrt(2.0)
 

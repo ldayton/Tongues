@@ -29,6 +29,9 @@ say(("" . length("hello")));
 === DivMod
 ($q, $r) = (int(17 / 5), 17 % 5);
 
+=== DivMod negative dividend
+($q, $r) = (int(-7 / 2), -7 - int(-7 / 2) * 2);
+
 === Sqrt function
 my $x = sqrt(2.0);
 
