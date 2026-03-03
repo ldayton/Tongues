@@ -119,6 +119,18 @@ def _run_ruby_binary(rb_path: str, args: list[str], stdin_data: bytes = b"") -> 
     return result.stdout.decode()
 
 
+def _run_perl_binary(pl_path: str, args: list[str], stdin_data: bytes = b"") -> str:
+    """Run a transpiled Perl binary via subprocess, return stdout."""
+    result = subprocess.run(
+        ["perl", "-e", f"do '{pl_path}'; die $@ if $@; main()", "--", *args],
+        input=stdin_data,
+        capture_output=True,
+        timeout=600,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    return result.stdout.decode()
+
+
 def test_fixed_point():
     """Stage 1 produces stage 2; stage 2 self-transpiles to identical stage 3."""
     stage2 = _transpile_source("python")
@@ -159,4 +171,31 @@ def test_cross_language_equivalence():
 
     assert from_python == from_ruby, (
         "Python and Ruby transpiled binaries produced different output"
+    )
+
+
+@pytest.mark.xfail(reason="Perl binary has float literal and byte value differences")
+def test_cross_language_equivalence_perl():
+    """Python and Perl transpiled binaries produce identical output."""
+    if shutil.which("perl") is None:
+        pytest.skip("perl not available")
+
+    py_source = _transpile_source("python")
+    pl_source = _transpile_source("perl")
+    py_mod = _load_python_binary(py_source, "xl_py_perl")
+    pl_path = OUT_DIR / "xl_perl.pl"
+    pl_path.parent.mkdir(exist_ok=True)
+    pl_path.write_text(pl_source)
+
+    files = _gather_project_files(SRC_DIR)
+    stdin_data = _build_project_stdin(files)
+    from_python = _run_python_binary(
+        py_mod, ["xl_py_perl.py", "--project", "--target", "python"], stdin_data
+    )
+    from_perl = _run_perl_binary(
+        str(pl_path), ["--project", "--target", "python"], stdin_data
+    )
+
+    assert from_python == from_perl, (
+        "Python and Perl transpiled binaries produced different output"
     )
