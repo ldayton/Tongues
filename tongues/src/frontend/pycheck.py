@@ -3408,12 +3408,12 @@ def _narrow_compare(
                         elem_kinds.add(k)
                 cur = then_env.get_type(name)
                 if cur is not None and isinstance(cur, UnionType) and elem_kinds:
-                    matched = [v for v in cur.variants if _prim_kind(v) in elem_kinds]
-                    rest = [v for v in cur.variants if _prim_kind(v) not in elem_kinds]
-                    if matched:
-                        then_env.narrow(name, combine_types(matched))
-                    if rest:
-                        else_env.narrow(name, combine_types(rest))
+                    in_yes = [v for v in cur.variants if _prim_kind(v) in elem_kinds]
+                    in_no = [v for v in cur.variants if _prim_kind(v) not in elem_kinds]
+                    if in_yes:
+                        then_env.narrow(name, combine_types(in_yes))
+                    if in_no:
+                        else_env.narrow(name, combine_types(in_no))
 
 
 def _narrow_len_check(
@@ -3441,34 +3441,27 @@ def _narrow_len_check(
     cur = then_env.get_type(name)
     if cur is None or not isinstance(cur, UnionType):
         return
-    matched: list[TypeNode] = []
-    rest: list[TypeNode] = []
+    len_yes: list[TypeNode] = []
+    len_no: list[TypeNode] = []
     for v in cur.variants:
-        if (
-            isinstance(v, TupleType)
-            and not v.variadic
-            and len(v.elements) == expected_len
-        ):
-            matched.append(v)
-        elif (
-            isinstance(v, TupleType)
-            and not v.variadic
-            and len(v.elements) != expected_len
-        ):
-            rest.append(v)
+        if isinstance(v, TupleType) and not v.variadic:
+            if len(v.elements) == expected_len:
+                len_yes.append(v)
+            else:
+                len_no.append(v)
         else:
-            matched.append(v)
-            rest.append(v)
+            len_yes.append(v)
+            len_no.append(v)
     if eq:
-        if matched:
-            then_env.narrow(name, combine_types(matched))
-        if rest:
-            else_env.narrow(name, combine_types(rest))
+        if len_yes:
+            then_env.narrow(name, combine_types(len_yes))
+        if len_no:
+            else_env.narrow(name, combine_types(len_no))
     else:
-        if rest:
-            then_env.narrow(name, combine_types(rest))
-        if matched:
-            else_env.narrow(name, combine_types(matched))
+        if len_no:
+            then_env.narrow(name, combine_types(len_no))
+        if len_yes:
+            else_env.narrow(name, combine_types(len_yes))
 
 
 def _apply_alias_narrowing(
