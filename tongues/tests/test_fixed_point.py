@@ -77,7 +77,13 @@ def test_fixed_point():
     """Stage 1 produces stage 2; stage 2 self-transpiles to identical stage 3."""
     # Stage 1: original transpiler transpiles itself
     result = subprocess.run(
-        [sys.executable, str(TONGUES_DIR / "bin" / "tongues"), "--target", "python", "src"],
+        [
+            sys.executable,
+            str(TONGUES_DIR / "bin" / "tongues"),
+            "--target",
+            "python",
+            "src",
+        ],
         capture_output=True,
         cwd=TONGUES_DIR,
         timeout=120,
