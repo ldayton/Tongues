@@ -1857,7 +1857,7 @@ class _PerlEmitter(Emitter):
         if name == "PythonMod":
             a = self._a(args, 0)
             b = self._a(args, 1)
-            return "((" + a + " % " + b + ") + " + b + ") % " + b
+            return a + " - POSIX::floor(" + a + " / " + b + ") * " + b
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":
@@ -2161,26 +2161,28 @@ class _PerlEmitter(Emitter):
         if name == "Union":
             a = self._deref_safe(self._a(args, 0))
             b = self._deref_safe(self._a(args, 1))
-            return "do { my $__s = {%{" + a + "}, %{" + b + "}}; $__s }"
+            return "+{%{" + a + "}, %{" + b + "}}"
         if name == "Intersection":
-            a = self._a(args, 0)
+            a = self._deref_safe(self._a(args, 0))
             b = self._a(args, 1)
             return (
-                "do { my $__a = "
-                + a
-                + "; my $__b = "
+                "do { my $s = {}; $s->{$_} = 1"
+                + " for grep { exists "
                 + b
-                + "; my $__s = {}; for (sort keys %{$__a}) { $__s->{$_} = 1 if exists $__b->{$_} } $__s }"
+                + "->{$_} } keys %{"
+                + a
+                + "}; $s }"
             )
         if name == "Difference":
-            a = self._a(args, 0)
+            a = self._deref_safe(self._a(args, 0))
             b = self._a(args, 1)
             return (
-                "do { my $__a = "
-                + a
-                + "; my $__b = "
+                "do { my $s = {}; $s->{$_} = 1"
+                + " for grep { !exists "
                 + b
-                + "; my $__s = {}; for (sort keys %{$__a}) { $__s->{$_} = 1 unless exists $__b->{$_} } $__s }"
+                + "->{$_} } keys %{"
+                + a
+                + "}; $s }"
             )
         if name == "Get":
             k = self._hash_key(args[1].value)

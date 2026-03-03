@@ -210,6 +210,30 @@ fn Main() -> void {
     WritelnOut(ToString(Len(m)))
 }
 
+=== Union on sets
+fn Main() -> void {
+    let a: set[int] = {1, 2, 3}
+    let b: set[int] = {3, 4, 5}
+    let c: set[int] = Union(a, b)
+    WritelnOut(ToString(Len(c)))
+}
+
+=== Intersection on sets
+fn Main() -> void {
+    let a: set[int] = {1, 2, 3}
+    let b: set[int] = {2, 3, 4}
+    let c: set[int] = Intersection(a, b)
+    WritelnOut(ToString(Len(c)))
+}
+
+=== Difference on sets
+fn Main() -> void {
+    let a: set[int] = {1, 2, 3}
+    let b: set[int] = {2, 3, 4}
+    let c: set[int] = Difference(a, b)
+    WritelnOut(ToString(Len(c)))
+}
+
 === set comprehension
 fn Main() -> void {
     let xs: list[int] = [1, 2, 2, 3]

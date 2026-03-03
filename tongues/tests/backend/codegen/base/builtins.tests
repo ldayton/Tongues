@@ -91,6 +91,18 @@ fn Main() -> void {
     WritelnOut(ToString(n))
 }
 
+=== FloorDiv negative operands
+fn Main() -> void {
+    let q: int = FloorDiv(-7, 2)
+    WritelnOut(ToString(q))
+}
+
+=== PythonMod negative dividend
+fn Main() -> void {
+    let r: int = PythonMod(-7, 2)
+    WritelnOut(ToString(r))
+}
+
 === IsNil check
 fn Main() -> void {
     let x: int? = nil

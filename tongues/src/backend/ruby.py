@@ -1734,7 +1734,7 @@ class _RubyEmitter(Emitter):
 
     def _builtin_call(self, name: str, args: list[TArg], call: TCall) -> str:
         if name == "FloorDiv":
-            return "(" + self._a(args, 0) + " / " + self._a(args, 1) + ").floor"
+            return self._a(args, 0) + " / " + self._a(args, 1)
         if name == "PythonMod":
             return self._a(args, 0) + " % " + self._a(args, 1)
         # List operations

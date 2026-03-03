@@ -41,5 +41,11 @@ my $n = floor(3.7);
 === Ceil function
 my $n = ceil(3.2);
 
+=== FloorDiv negative operands
+my $q = POSIX::floor(-7 / 2);
+
+=== PythonMod negative dividend
+my $r = -7 - POSIX::floor(-7 / 2) * 2;
+
 === IsNil check
 !defined($x)

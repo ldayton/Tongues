@@ -39,5 +39,11 @@ math.floor(3.7)
 === Ceil function
 math.ceil(3.2)
 
+=== FloorDiv negative operands
+q: int = -7 // 2
+
+=== PythonMod negative dividend
+r: int = -7 % 2
+
 === IsNil check
 x is None
