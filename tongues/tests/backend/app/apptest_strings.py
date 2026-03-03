@@ -366,6 +366,26 @@ def test_string_rpartition() -> None:
     assert "a::b::c".rpartition("::") == ("a::b", "::", "c")
 
 
+def test_string_removeprefix() -> None:
+    """removeprefix() removes a leading substring."""
+    assert "hello world".removeprefix("hello ") == "world"
+    assert "hello".removeprefix("xyz") == "hello"
+    assert "hello".removeprefix("") == "hello"
+    assert "hello".removeprefix("hello") == ""
+    assert "hello".removeprefix("hello world") == "hello"
+    assert "aaa".removeprefix("a") == "aa"
+
+
+def test_string_removesuffix() -> None:
+    """removesuffix() removes a trailing substring."""
+    assert "hello world".removesuffix(" world") == "hello"
+    assert "hello".removesuffix("xyz") == "hello"
+    assert "hello".removesuffix("") == "hello"
+    assert "hello".removesuffix("hello") == ""
+    assert "hello".removesuffix("hello world") == "hello"
+    assert "aaa".removesuffix("a") == "aa"
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -409,6 +429,8 @@ def main() -> int:
         ("test_string_multiplication_negative", test_string_multiplication_negative),
         ("test_string_partition", test_string_partition),
         ("test_string_rpartition", test_string_rpartition),
+        ("test_string_removeprefix", test_string_removeprefix),
+        ("test_string_removesuffix", test_string_removesuffix),
     ]
     for name, fn in tests:
         try:
