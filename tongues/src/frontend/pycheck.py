@@ -658,6 +658,8 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return FuncType([ANY_TYPE], ANY_TYPE)
     if name == "print":
         return FuncType([ANY_TYPE], VOID_TYPE)
+    if name == "assert_never":
+        return FuncType([ANY_TYPE], VOID_TYPE)
     if name == "range":
         return FuncType([INT_TYPE], SliceType(INT_TYPE))
     if name == "enumerate":
@@ -1101,6 +1103,8 @@ def _synth_name_call(
         return INT_TYPE
     if fname == "isinstance":
         return BOOL_TYPE
+    if fname == "assert_never":
+        return VOID_TYPE
     if fname == "type":
         return ANY_TYPE
     if fname == "hash":
@@ -1945,6 +1949,15 @@ def _validate_stmt(
         return False
     if t == "Expr":
         _validate_expr_stmt(stmt, env, func_info, ctx)
+        value = get_node(stmt, "value")
+        if _is_type(value, ["Call"]):
+            func = get_node(value, "func")
+            if (
+                func
+                and _is_type(func, ["Name"])
+                and get_str(func, "id") == "assert_never"
+            ):
+                return True
         return False
     if t == "If":
         return _validate_if(stmt, env, func_info, ctx)
@@ -2326,6 +2339,20 @@ def _validate_expr_stmt(
                                         + type_str
                                         + "'",
                                     )
+                return
+            if fname == "assert_never":
+                args = get_nodes(value, "args")
+                if len(args) == 1:
+                    typ = _synth_expr(args[0], env, ctx)
+                    if not (isinstance(typ, PrimitiveType) and typ.kind == "never"):
+                        type_str = _type_name(typ)
+                        ctx.result.add_error(
+                            lineno,
+                            0,
+                            "assert_never: argument type is '"
+                            + type_str
+                            + "', not 'Never'",
+                        )
                 return
             if fname and fname not in _EAGER_CONSUMERS and fname not in _ITERATOR_FUNCS:
                 args = get_nodes(value, "args")

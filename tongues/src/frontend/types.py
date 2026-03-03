@@ -618,6 +618,9 @@ def remove_from_union(t: TypeNode, to_remove: list[TypeNode]) -> TypeNode:
         for rm in to_remove:
             if _removal_matches(t.inner, rm):
                 return PrimitiveType("void")
+    for rm in to_remove:
+        if _removal_matches(t, rm):
+            return PrimitiveType("never")
     return t
 
 

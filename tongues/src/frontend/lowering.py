@@ -5604,6 +5604,21 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     """Lower an expression statement."""
     pos = _node_pos(node)
     value = get_node(node, "value")
+    if _is_ast(value, "Call"):
+        func = get_node(value, "func")
+        if _is_ast(func, "Name") and get_str(func, "id") == "assert_never":
+            return [
+                TThrowStmt(
+                    pos,
+                    TCall(
+                        pos,
+                        TVar(pos, "RuntimeError", {}),
+                        [TArg(pos, None, TStringLit(pos, "unreachable", {}))],
+                        {},
+                    ),
+                    {},
+                )
+            ]
     # Check for method calls that produce assignment side effects
     if _is_ast(value, "Call"):
         func = get_node(value, "func")
