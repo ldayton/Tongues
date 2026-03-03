@@ -1128,6 +1128,20 @@ class _PythonEmitter(Emitter):
         if isinstance(expr, TUnaryOp):
             return self._unary(expr)
         if isinstance(expr, TTernary):
+            prov = expr.annotations.get("provenance", "")
+            if prov == "partition" or prov == "rpartition":
+                pt_cond = expr.cond
+                if isinstance(pt_cond, TBinaryOp) and isinstance(pt_cond.left, TCall):
+                    pt_call = pt_cond.left
+                    obj_s = self._expr(pt_call.args[0].value)
+                    sep_s = self._expr(pt_call.args[1].value)
+                    return obj_s + "." + prov + "(" + sep_s + ")"
+            if prov == "removeprefix" or prov == "removesuffix":
+                rx_cond = expr.cond
+                if isinstance(rx_cond, TCall):
+                    obj_s = self._expr(rx_cond.args[0].value)
+                    arg_s = self._expr(rx_cond.args[1].value)
+                    return obj_s + "." + prov + "(" + arg_s + ")"
             then = self._expr(expr.then_expr)
             if isinstance(expr.then_expr, TTernary):
                 then = "(" + then + ")"

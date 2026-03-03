@@ -3104,7 +3104,7 @@ def _lower_string_method(
             _make_call(pos, "Len", [obj]),
             {},
         )
-        return TTernary(pos, rp_cond, rp_then, obj, {})
+        return TTernary(pos, rp_cond, rp_then, obj, {"provenance": "removeprefix"})
     if method == "removesuffix":
         rs_arg = lowered[0] if lowered else TStringLit(pos, "", {})
         rs_cond = _make_call(pos, "EndsWith", [obj, rs_arg])
@@ -3116,7 +3116,7 @@ def _lower_string_method(
             {},
         )
         rs_then = TSlice(pos, obj, TIntLit(pos, 0, "0", {}), rs_end, {})
-        return TTernary(pos, rs_cond, rs_then, obj, {})
+        return TTernary(pos, rs_cond, rs_then, obj, {"provenance": "removesuffix"})
     if method == "partition" or method == "rpartition":
         func = "Find" if method == "partition" else "RFind"
         sep = lowered[0] if lowered else TStringLit(pos, "", {})
@@ -3133,7 +3133,7 @@ def _lower_string_method(
             not_found = TTupleLit(pos, [obj, empty, TStringLit(pos, "", {})], {})
         else:
             not_found = TTupleLit(pos, [TStringLit(pos, "", {}), empty, obj], {})
-        return TTernary(pos, cond, found, not_found, {})
+        return TTernary(pos, cond, found, not_found, {"provenance": method})
     return _make_method_call(pos, obj, method, lowered)
 
 
