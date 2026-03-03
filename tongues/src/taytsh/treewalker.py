@@ -1354,6 +1354,17 @@ class _FieldRef(_LValueRef):
         self._obj.fields[self._field] = value
 
 
+class _DiscardRef(_LValueRef):
+    def __init__(self):
+        super().__init__(NIL_T)
+
+    def get(self) -> Value:
+        raise TaytshRuntimeFault("cannot read discard '_'", None)
+
+    def set(self, value: Value) -> None:
+        pass
+
+
 class _ListIndexRef(_LValueRef):
     def __init__(self, typ: Type, obj: VList, index: int):
         super().__init__(typ)
@@ -1921,6 +1932,8 @@ class Runtime:
 
     def _eval_lvalue_ref(self, expr: TExpr, env: _RuntimeEnv) -> _LValueRef:
         if isinstance(expr, TVar):
+            if expr.name == "_":
+                return _DiscardRef()
             return _VarRef(env.get_ty(expr.name), env, expr.name)
         if isinstance(expr, TFieldAccess):
             obj = self._eval_expr(expr.obj, env)
