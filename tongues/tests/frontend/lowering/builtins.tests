@@ -96,6 +96,25 @@ def f(n: int) -> bool:
 n != 0
 ---
 
+=== assert_never after exhaustive isinstance
+from typing import assert_never
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+def f(x: A | B) -> int:
+    if isinstance(x, A):
+        return x.a_val
+    if isinstance(x, B):
+        return 0
+    assert_never(x)
+---
+throw RuntimeError("unreachable")
+---
+
 === isinstance
 class Node:
     def __init__(self) -> None:
