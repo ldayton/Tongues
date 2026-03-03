@@ -3724,7 +3724,7 @@ def _lower_fstring(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         elif vtype == "FormattedValue":
             template_parts.append("{}")
             inner = get_node(v, "value")
-            lowered = _lower_expr(inner, env, ctx)
+            lowered: TExpr = _lower_expr(inner, env, ctx)
             conversion = get_int(v, "conversion")
             if conversion == 114:  # !r
                 lowered = _make_call(pos, "ToRepr", [lowered])
