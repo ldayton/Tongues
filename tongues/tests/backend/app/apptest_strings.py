@@ -346,6 +346,26 @@ def test_string_multiplication_negative() -> None:
     assert -5 * "abc" == ""
 
 
+def test_string_partition() -> None:
+    """partition() splits on first occurrence."""
+    assert "a,b,c".partition(",") == ("a", ",", "b,c")
+    assert "hello".partition(",") == ("hello", "", "")
+    assert "hello,world".partition(",") == ("hello", ",", "world")
+    assert ",hello".partition(",") == ("", ",", "hello")
+    assert "hello,".partition(",") == ("hello", ",", "")
+    assert "a::b::c".partition("::") == ("a", "::", "b::c")
+
+
+def test_string_rpartition() -> None:
+    """rpartition() splits on last occurrence."""
+    assert "a,b,c".rpartition(",") == ("a,b", ",", "c")
+    assert "hello".rpartition(",") == ("", "", "hello")
+    assert "hello,world".rpartition(",") == ("hello", ",", "world")
+    assert ",hello".rpartition(",") == ("", ",", "hello")
+    assert "hello,".rpartition(",") == ("hello", ",", "")
+    assert "a::b::c".rpartition("::") == ("a::b", "::", "c")
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -387,6 +407,8 @@ def main() -> int:
         ("test_unicode_length", test_unicode_length),
         ("test_unicode_indexing", test_unicode_indexing),
         ("test_string_multiplication_negative", test_string_multiplication_negative),
+        ("test_string_partition", test_string_partition),
+        ("test_string_rpartition", test_string_rpartition),
     ]
     for name, fn in tests:
         try:

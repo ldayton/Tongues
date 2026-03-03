@@ -788,6 +788,10 @@ def _resolve_attr(
             return FuncType([], STR_TYPE)
         if attr == "ljust" or attr == "rjust" or attr == "center" or attr == "zfill":
             return FuncType([INT_TYPE], STR_TYPE)
+        if attr == "partition" or attr == "rpartition":
+            return FuncType(
+                [STR_TYPE], TupleType([STR_TYPE, STR_TYPE, STR_TYPE], False)
+            )
         return ANY_TYPE
     # Bytes methods
     if _prim_kind(obj_type) == "bytes" or (

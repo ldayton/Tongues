@@ -258,3 +258,25 @@ def f() -> tuple[int, ...]:
 ---
 error: type
 ---
+
+=== string partition returns str triple
+def f(s: str) -> tuple[str, str, str]:
+    return s.partition(",")
+---
+ok
+---
+
+=== string rpartition returns str triple
+def f(s: str) -> tuple[str, str, str]:
+    return s.rpartition(",")
+---
+ok
+---
+
+=== unpack partition allowed
+def f(s: str) -> str:
+    before, sep, after = s.partition(",")
+    return before
+---
+ok
+---
