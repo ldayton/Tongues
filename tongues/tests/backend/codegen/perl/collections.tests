@@ -103,6 +103,15 @@ for my $i (0 .. $#{$keys}) {
     $m->{$k} = $i;
 }
 
+=== Union on sets
+my $c = +{%{$a}, %{$b}};
+
+=== Intersection on sets
+my $c = do { my $s = {}; $s->{$_} = 1 for grep { exists $b->{$_} } keys %{$a}; $s };
+
+=== Difference on sets
+my $c = do { my $s = {}; $s->{$_} = 1 for grep { !exists $b->{$_} } keys %{$a}; $s };
+
 === set comprehension
 for my $x (@{$xs}) {
     $unique->{$x} = 1;

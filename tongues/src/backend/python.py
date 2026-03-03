@@ -732,6 +732,9 @@ class _PythonEmitter(Emitter):
             for s in unused_str.split(","):
                 if s:
                     unused_indices.add(int(s))
+        if self._is_divmod_call(stmt.value):
+            self._emit_divmod_assign(stmt, unused_indices)
+            return
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
@@ -739,6 +742,26 @@ class _PythonEmitter(Emitter):
             else:
                 parts.append(self._expr(t))
         self._line(", ".join(parts) + " = " + self._expr(stmt.value))
+
+    def _is_divmod_call(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "DivMod"
+        )
+
+    def _emit_divmod_assign(self, stmt: TTupleAssignStmt, unused: set[int]) -> None:
+        call = stmt.value
+        assert isinstance(call, TCall)
+        a = self._expr(call.args[0].value)
+        b = self._expr(call.args[1].value)
+        q_target = self._expr(stmt.targets[0])
+        if 1 in unused:
+            self._line(q_target + " = int(" + a + " / " + b + ")")
+        else:
+            r_target = self._expr(stmt.targets[1])
+            self._line(q_target + " = int(" + a + " / " + b + ")")
+            self._line(r_target + " = " + a + " - " + q_target + " * " + b)
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
@@ -1501,7 +1524,22 @@ class _PythonEmitter(Emitter):
                 return "round(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return "round(" + self._a(args, 0) + ")"
         if name == "DivMod":
-            return "divmod(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "int("
+                + a
+                + " / "
+                + b
+                + "), "
+                + a
+                + " - int("
+                + a
+                + " / "
+                + b
+                + ") * "
+                + b
+            )
         if name == "Sorted":
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"

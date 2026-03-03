@@ -26,7 +26,12 @@ puts(x.nan?.to_s)
 puts("hello".length.to_s)
 
 === DivMod
-q, r = 17.divmod(5)
+q = (17.to_f / 5).truncate
+r = 17.remainder(5)
+
+=== DivMod negative dividend
+q = (-7.to_f / 2).truncate
+r = -7.remainder(2)
 
 === Sqrt function
 x = Math.sqrt(2.0)
@@ -36,6 +41,12 @@ n = 3.7.floor
 
 === Ceil function
 n = 3.2.ceil
+
+=== FloorDiv negative operands
+q = -7 / 2
+
+=== PythonMod negative dividend
+r = -7 % 2
 
 === IsNil check
 x.nil?

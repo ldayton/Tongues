@@ -27,7 +27,10 @@ say(("" . (POSIX::isinf($y) ? 1 : 0)));
 say(("" . length("hello")));
 
 === DivMod
-($q, $r) = (int(17 / 5), 17 % 5);
+($q, $r) = (int(17 / 5), 17 - int(17 / 5) * 5);
+
+=== DivMod negative dividend
+($q, $r) = (int(-7 / 2), -7 - int(-7 / 2) * 2);
 
 === Sqrt function
 my $x = sqrt(2.0);
@@ -37,6 +40,12 @@ my $n = floor(3.7);
 
 === Ceil function
 my $n = ceil(3.2);
+
+=== FloorDiv negative operands
+my $q = POSIX::floor(-7 / 2);
+
+=== PythonMod negative dividend
+my $r = -7 - POSIX::floor(-7 / 2) * 2;
 
 === IsNil check
 !defined($x)

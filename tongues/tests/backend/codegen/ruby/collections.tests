@@ -93,6 +93,15 @@ keys.each_with_index do |k, i|
   m[k] = i
 end
 
+=== Union on sets
+c = a | b
+
+=== Intersection on sets
+c = a & b
+
+=== Difference on sets
+c = a - b
+
 === set comprehension
 xs.each do |x|
   unique.add(x)

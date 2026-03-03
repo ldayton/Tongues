@@ -65,6 +65,14 @@ fn Main() -> void {
     WritelnOut(Format("{} {}", ToString(q), ToString(r)))
 }
 
+=== DivMod negative dividend
+fn Main() -> void {
+    let q: int
+    let r: int
+    q, r = DivMod(-7, 2)
+    WritelnOut(Format("{} {}", ToString(q), ToString(r)))
+}
+
 === Sqrt function
 fn Main() -> void {
     let x: float = Sqrt(2.0)
@@ -81,6 +89,18 @@ fn Main() -> void {
 fn Main() -> void {
     let n: int = Ceil(3.2)
     WritelnOut(ToString(n))
+}
+
+=== FloorDiv negative operands
+fn Main() -> void {
+    let q: int = FloorDiv(-7, 2)
+    WritelnOut(ToString(q))
+}
+
+=== PythonMod negative dividend
+fn Main() -> void {
+    let r: int = PythonMod(-7, 2)
+    WritelnOut(ToString(r))
 }
 
 === IsNil check
