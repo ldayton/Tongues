@@ -178,7 +178,7 @@ _lang-taytsh-treewalker-backend *ARGS:
 
 _lang-taytsh-treewalker-apptest *ARGS:
     uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker --timeout-override 60 -n auto -v {{ ARGS }}
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker --timeout-override 60 -n 2 -v {{ ARGS }}
 
 # Self-transpile to Taytsh and test through VM
 lang-taytsh-vm *ARGS:
