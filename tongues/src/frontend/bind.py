@@ -258,6 +258,17 @@ def is_singleton_constant(node: ASTNode) -> bool:
     return isinstance(val, JNull) or isinstance(val, JBool)
 
 
+def _is_type_call(node: ASTNode) -> bool:
+    """Check if node is type(x) — a Call to Name('type') with one arg."""
+    if get_str(node, "_type") != "Call":
+        return False
+    func = get_node(node, "func")
+    if get_str(func, "_type") != "Name" or get_str(func, "id") != "type":
+        return False
+    args = get_nodes(node, "args")
+    return len(args) == 1
+
+
 def get_attr_name(node: ASTNode) -> str | None:
     """Get attr from Attribute node."""
     if get_str(node, "_type") == "Attribute":
@@ -328,6 +339,7 @@ class Verifier:
         self.in_for_iter: bool = False
         self.in_for_body: bool = False  # For structural recursion (yield allowed)
         self.in_file_open: bool = False  # Inside validated with-open block
+        self.in_type_compare: bool = False  # type(x) is/== T comparison
         # Variables guarded by `if var:` condition (for tuple unpacking)
         self.guarded_vars: set[str] = set()
 
@@ -738,7 +750,8 @@ class Verifier:
         func_name = get_name_id(func)
         # Check banned builtins
         if func_name is not None and func_name in BANNED_BUILTINS:
-            self.error(node, "builtin", func_name + "() is not allowed")
+            if not (func_name == "type" and self.in_type_compare):
+                self.error(node, "builtin", func_name + "() is not allowed")
         # open() only allowed inside validated with-open
         if func_name == "open" and not self.in_file_open:
             self.error(node, "builtin", "open() only allowed in with-open idiom")
@@ -831,15 +844,21 @@ class Verifier:
                 if not is_singleton_constant(left) and not is_singleton_constant(
                     comparator
                 ):
-                    self.error(
-                        node,
-                        "reflection",
-                        "is/is not only allowed with None/True/False",
-                    )
+                    if not _is_type_call(left):
+                        self.error(
+                            node,
+                            "reflection",
+                            "is/is not only allowed with None/True/False",
+                        )
             left = comparator
             i += 1
-        # Visit children
+        # Visit children — allow type() in comparisons
+        has_type_call = _is_type_call(get_node(node, "left"))
+        if has_type_call:
+            self.in_type_compare = True
         self.visit(get_node(node, "left"))
+        if has_type_call:
+            self.in_type_compare = False
         for comp in comparators:
             self.visit(comp)
 
@@ -1432,6 +1451,7 @@ ALLOWED_BUILTINS: set[str] = {
     "sorted",
     # Type check
     "isinstance",
+    "type",
     # Iteration
     "range",
     "enumerate",

@@ -654,6 +654,8 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return FuncType([ANY_TYPE], SliceType(ANY_TYPE))
     if name == "isinstance":
         return FuncType([ANY_TYPE, ANY_TYPE], BOOL_TYPE)
+    if name == "type":
+        return FuncType([ANY_TYPE], ANY_TYPE)
     if name == "print":
         return FuncType([ANY_TYPE], VOID_TYPE)
     if name == "range":
@@ -1099,6 +1101,8 @@ def _synth_name_call(
         return INT_TYPE
     if fname == "isinstance":
         return BOOL_TYPE
+    if fname == "type":
+        return ANY_TYPE
     if fname == "hash":
         return INT_TYPE
     if fname == "range":
@@ -3234,6 +3238,37 @@ def _narrow_compare(
     comp_is_none = _is_type(comp, ["Constant"]) and _is_null_value(comp)
     if _is_type(comp, ["Constant"]):
         _synth_expr(comp, then_env, ctx)
+    # type(x) is/== T narrowing
+    if (
+        op_type in ("Is", "Eq", "IsNot", "NotEq")
+        and _is_type(left, ["Call"])
+        and _is_type(comp, ["Name"])
+    ):
+        func = get_node(left, "func")
+        call_args = get_nodes(left, "args")
+        if (
+            func
+            and _is_type(func, ["Name"])
+            and get_str(func, "id") == "type"
+            and len(call_args) == 1
+            and _is_type(call_args[0], ["Name"])
+        ):
+            var_name = get_str(call_args[0], "id")
+            class_name = get_str(comp, "id")
+            if var_name and class_name:
+                sig_errors: list[TypeCollectError] = []
+                resolved = py_type_to_type_dict(
+                    class_name, ctx.known_classes, sig_errors, 0, 0
+                )
+                positive = op_type in ("Is", "Eq")
+                pos_env = then_env if positive else else_env
+                neg_env = else_env if positive else then_env
+                pos_env.narrow(var_name, resolved)
+                neg_type = neg_env.get_type(var_name)
+                if neg_type is not None:
+                    remaining = remove_from_union(neg_type, [resolved])
+                    neg_env.narrow(var_name, remaining)
+                return
     if op_type == "Is" and comp_is_none:
         if _is_type(left, ["Name"]):
             name = get_str(left, "id")

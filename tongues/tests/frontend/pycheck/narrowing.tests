@@ -5976,3 +5976,98 @@ def f(x: int) -> None:
 ---
 error: reveal_type: expected 'str', got 'int'
 ---
+
+=== type(x) is narrows to exact class
+from dataclasses import dataclass
+@dataclass
+class Animal:
+    name: str
+@dataclass
+class Dog(Animal):
+    tricks: int
+def f(x: Animal) -> None:
+    if type(x) is Dog:
+        reveal_type(x)
+---
+reveal:10 = Dog
+---
+
+=== type(x) == narrows to exact class
+from dataclasses import dataclass
+@dataclass
+class Base:
+    val: int
+@dataclass
+class Sub(Base):
+    extra: str
+def f(x: Base) -> None:
+    if type(x) == Sub:
+        reveal_type(x)
+---
+reveal:10 = Sub
+---
+
+=== type(x) is narrows union
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+def f(x: A | B) -> None:
+    if type(x) is A:
+        reveal_type(x)
+---
+reveal:10 = A
+---
+
+=== type(x) is narrows else branch of union
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+def f(x: A | B) -> None:
+    if type(x) is A:
+        reveal_type(x)
+    else:
+        reveal_type(x)
+---
+reveal:10 = A
+reveal:12 = B
+---
+
+=== type(x) is with early return narrows remainder
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+def f(x: A | B) -> None:
+    if type(x) is A:
+        return
+    reveal_type(x)
+---
+reveal:11 = B
+---
+
+=== type(x) is allows field access
+from dataclasses import dataclass
+@dataclass
+class Animal:
+    name: str
+@dataclass
+class Dog(Animal):
+    tricks: int
+def f(x: Animal) -> int:
+    if type(x) is Dog:
+        return x.tricks
+    return 0
+---
+ok
+---
