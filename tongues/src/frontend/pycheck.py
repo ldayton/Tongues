@@ -2436,13 +2436,13 @@ def _validate_call_args(
         if ftype is not None and isinstance(ftype, FuncType):
             _check_func_type_args(ftype, args, env, ctx, lineno, n_kw)
             return
-        ftype = _synth_name(func, env, ctx)
+        synth = _synth_name(func, env, ctx)
         if (
-            isinstance(ftype, FuncType)
-            and len(ftype.params) == len(args)
-            and any(_type_eq(p, NEVER_TYPE) for p in ftype.params)
+            isinstance(synth, FuncType)
+            and len(synth.params) == len(args)
+            and any(_type_eq(p, NEVER_TYPE) for p in synth.params)
         ):
-            _check_func_type_args(ftype, args, env, ctx, lineno, n_kw)
+            _check_func_type_args(synth, args, env, ctx, lineno, n_kw)
             return
         if fname == "len":
             if args:
