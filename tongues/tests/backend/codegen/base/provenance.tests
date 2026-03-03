@@ -151,3 +151,17 @@ fn Main() -> void {
     let v: int = @["provenance" = "dict_get_default"] Get(m, "b", 0)
     WritelnOut(ToString(v))
 }
+
+=== del dict key (raised)
+fn Main() -> void {
+    let d: map[string, int] = {"a": 1, "b": 2}
+    @["provenance" = "del_subscript"] Delete(d, "a")
+    WritelnOut(ToString(Len(d)))
+}
+
+=== del list index (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    @["provenance" = "del_subscript"] RemoveAt(xs, 0)
+    WritelnOut(ToString(Len(xs)))
+}

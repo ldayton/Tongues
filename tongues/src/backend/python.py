@@ -798,13 +798,33 @@ class _PythonEmitter(Emitter):
                 return
             if name == "Delete":
                 args = expr.args
-                self._line(
-                    self._expr(args[0].value)
-                    + ".pop("
-                    + self._expr(args[1].value)
-                    + ", None)"
-                )
+                if stmt.annotations.get("provenance") == "del_subscript":
+                    self._line(
+                        "del "
+                        + self._expr(args[0].value)
+                        + "["
+                        + self._expr(args[1].value)
+                        + "]"
+                    )
+                else:
+                    self._line(
+                        self._expr(args[0].value)
+                        + ".pop("
+                        + self._expr(args[1].value)
+                        + ", None)"
+                    )
                 return
+            if name == "RemoveAt":
+                args = expr.args
+                if stmt.annotations.get("provenance") == "del_subscript":
+                    self._line(
+                        "del "
+                        + self._expr(args[0].value)
+                        + "["
+                        + self._expr(args[1].value)
+                        + "]"
+                    )
+                    return
         self._line(self._expr(expr))
 
     def _emit_if(self, stmt: TIfStmt) -> None:

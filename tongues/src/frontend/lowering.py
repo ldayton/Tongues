@@ -4256,10 +4256,11 @@ def _lower_delete(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         obj_type = _unwrap_pointer(_infer_expr_type(obj_node, env, ctx))
         obj = _lower_expr(obj_node, env, ctx)
         key = _lower_expr(key_node, env, ctx)
+        ann: Ann = {"provenance": "del_subscript"}
         if _is_type_dict(obj_type, ["Map"]):
-            result.append(TExprStmt(pos, _make_call(pos, "Delete", [obj, key]), {}))
+            result.append(TExprStmt(pos, _make_call(pos, "Delete", [obj, key]), ann))
         elif _is_type_dict(obj_type, ["Slice"]):
-            result.append(TExprStmt(pos, _make_call(pos, "RemoveAt", [obj, key]), {}))
+            result.append(TExprStmt(pos, _make_call(pos, "RemoveAt", [obj, key]), ann))
     return result
 
 
