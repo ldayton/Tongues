@@ -166,7 +166,7 @@ lang-taytsh-treewalker *ARGS:
 
 _lang-taytsh-treewalker-frontend *ARGS:
     uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -n auto -v {{ ARGS }}
 
 _lang-taytsh-treewalker-middleend *ARGS:
     uv run --directory tongues pytest tests/test_middleend.py \
@@ -178,7 +178,7 @@ _lang-taytsh-treewalker-backend *ARGS:
 
 _lang-taytsh-treewalker-apptest *ARGS:
     uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker --timeout-override 60 -v {{ ARGS }}
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker --timeout-override 60 -n auto -v {{ ARGS }}
 
 # Self-transpile to Taytsh and test through VM
 lang-taytsh-vm *ARGS:
@@ -190,7 +190,7 @@ lang-taytsh-vm *ARGS:
 
 _lang-taytsh-vm-frontend *ARGS:
     uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm -v {{ ARGS }}
+        --transpiled ".out/tongues.ty" --taytsh-runner vm -n auto -v {{ ARGS }}
 
 _lang-taytsh-vm-middleend *ARGS:
     uv run --directory tongues pytest tests/test_middleend.py \
@@ -202,7 +202,7 @@ _lang-taytsh-vm-backend *ARGS:
 
 _lang-taytsh-vm-apptest *ARGS:
     uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm --timeout-override 60 -v {{ ARGS }}
+        --transpiled ".out/tongues.ty" --taytsh-runner vm --timeout-override 60 -n auto -v {{ ARGS }}
 
 # Run a just target inside Docker
 docker target lang="python":
