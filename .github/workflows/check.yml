@@ -145,7 +145,7 @@ jobs:
           name: tongues-ty
           path: tongues/.out
       - uses: extractions/setup-just@v3
-      - run: just _tw-frontend
+      - run: just _lang-taytsh-treewalker-frontend
 
   tw-middleend:
     runs-on: ubuntu-latest
@@ -161,7 +161,7 @@ jobs:
           name: tongues-ty
           path: tongues/.out
       - uses: extractions/setup-just@v3
-      - run: just _tw-middleend
+      - run: just _lang-taytsh-treewalker-middleend
 
   tw-backend:
     runs-on: ubuntu-latest
@@ -177,7 +177,7 @@ jobs:
           name: tongues-ty
           path: tongues/.out
       - uses: extractions/setup-just@v3
-      - run: just _tw-backend
+      - run: just _lang-taytsh-treewalker-backend
 
   tw-apptest:
     runs-on: ubuntu-latest
@@ -193,7 +193,7 @@ jobs:
           name: tongues-ty
           path: tongues/.out
       - uses: extractions/setup-just@v3
-      - run: just _tw-apptest
+      - run: just _lang-taytsh-treewalker-apptest
 
   vm-frontend:
     runs-on: ubuntu-latest
@@ -209,7 +209,7 @@ jobs:
           name: tongues-ty
           path: tongues/.out
       - uses: extractions/setup-just@v3
-      - run: just _vm-frontend
+      - run: just _lang-taytsh-vm-frontend
 
   vm-middleend:
     runs-on: ubuntu-latest
@@ -225,7 +225,7 @@ jobs:
           name: tongues-ty
           path: tongues/.out
       - uses: extractions/setup-just@v3
-      - run: just _vm-middleend
+      - run: just _lang-taytsh-vm-middleend
 
   vm-backend:
     runs-on: ubuntu-latest
@@ -241,7 +241,7 @@ jobs:
           name: tongues-ty
           path: tongues/.out
       - uses: extractions/setup-just@v3
-      - run: just _vm-backend
+      - run: just _lang-taytsh-vm-backend
 
   vm-apptest:
     runs-on: ubuntu-latest
@@ -257,7 +257,7 @@ jobs:
           name: tongues-ty
           path: tongues/.out
       - uses: extractions/setup-just@v3
-      - run: just _vm-apptest
+      - run: just _lang-taytsh-vm-apptest
 
   check:
     if: always()
