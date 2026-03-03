@@ -79,6 +79,7 @@ from .check import (
     TupleT,
     Type,
     check_with_info,
+    contains_nil,
     type_eq,
 )
 from .bytecode import (
@@ -618,6 +619,7 @@ class Compiler:
                     pt = self._resolve_param_type(p)
                     fc.add_local(p.name, pt)
             self._collect_locals(method.body, fc)
+            self._emit_default_preamble(method.params, fc, method.pos.line)
             self._compile_block(method.body, fc)
             mt = ct.methods.get(method.name)
             ret_type = mt.ret if mt is not None else VOID_T
@@ -636,6 +638,7 @@ class Compiler:
             fc.add_local(p.name, pt)
         # Pre-scan body for all let statements to assign slots
         self._collect_locals(decl.body, fc)
+        self._emit_default_preamble(decl.params, fc, decl.pos.line)
         # Compile body
         self._compile_block(decl.body, fc)
         # Implicit return void
@@ -857,6 +860,27 @@ class Compiler:
                 fc.emit(OP_NIL, 0, line)
         else:
             fc.emit(OP_NIL, 0, line)
+
+    def _emit_default_preamble(
+        self, params: list[TParam], fc: _FnCompiler, line: int
+    ) -> None:
+        """Emit nil-checks for params with defaults: replace nil with zero value."""
+        for p in params:
+            if not p.has_default:
+                continue
+            pt = self._resolve_param_type(p)
+            if contains_nil(pt):
+                continue
+            local = fc.scope.lookup(p.name)
+            if local is None:
+                continue
+            fc.emit(OP_LOAD_LOCAL, local.slot, line)
+            fc.emit(OP_NIL, 0, line)
+            fc.emit(OP_EQ, 0, line)
+            jump = fc.emit_jump(OP_JUMP_IF_FALSE, line)
+            self._emit_zero_value(pt, fc, line)
+            fc.emit(OP_STORE_LOCAL, local.slot, line)
+            fc.patch_jump(jump)
 
     def _compile_assign(self, stmt: TAssignStmt, fc: _FnCompiler) -> None:
         if isinstance(stmt.target, TVar):
@@ -1667,6 +1691,7 @@ class Compiler:
             lit_fc.emit(OP_RETURN, 0, expr.pos.line)
         else:
             self._collect_locals(expr.body, lit_fc)
+            self._emit_default_preamble(expr.params, lit_fc, expr.pos.line)
             self._compile_block(expr.body, lit_fc)
             lit_fc.emit(OP_RETURN_VOID, 0, expr.pos.line)
         code_idx = len(self.code_objects)

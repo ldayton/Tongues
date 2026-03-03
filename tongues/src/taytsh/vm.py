@@ -746,6 +746,8 @@ class _BuiltinDispatch:
         v = args[0]
         if isinstance(v, VStruct):
             method_idx = self.vm._find_method(v.type_name, "ToString")
+            if method_idx is None:
+                method_idx = self.vm._find_method(v.type_name, "__repr__")
             if method_idx is not None:
                 return self.vm._call_method_sync(v, method_idx, [])
         return VStr(_val_to_string(v))
