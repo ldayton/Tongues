@@ -129,7 +129,7 @@ class Emitter:
             self.lines.append("")
 
     def output(self) -> str:
-        return "\n".join(self.lines)
+        return "\n".join(self.lines) + "\n"
 
     def _expr(self, expr: TExpr) -> str:
         raise NotImplementedError

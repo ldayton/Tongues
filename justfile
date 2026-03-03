@@ -156,6 +156,10 @@ lang-perl:
         | uv run bin/tongues --project --target perl -o .out/test_harness.pl
     perl tests/test-transpiled.pl ".out/tongues.pl"
 
+# Verify the transpiler reaches a fixed point via bootstrap
+fixed-point:
+    uv run --directory tongues pytest tests/test_fixed_point.py -v -n auto
+
 # Self-transpile to Taytsh and test through treewalker
 lang-taytsh-treewalker *ARGS:
     just _self-transpile taytsh
@@ -299,18 +303,20 @@ test:
     _st perl & pid_pl=$!
     _st taytsh-treewalker & pid_ty_tw=$!
     _st taytsh-vm & pid_ty_vm=$!
+    just fixed-point & pid_fp=$!
     wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
     wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
     wait $pid_ty_tw && results[lang-taytsh-tw]=✅ || { results[lang-taytsh-tw]=❌; failed=1; }
     wait $pid_ty_vm && results[lang-taytsh-vm]=✅ || { results[lang-taytsh-vm]=❌; failed=1; }
+    wait $pid_fp && results[fixed-point]=✅ || { results[fixed-point]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "           TEST SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-16s %s\n" "TARGET" "STATUS"
     printf "%-16s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm; do
+    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm fixed-point; do
         printf "%-16s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

@@ -9,6 +9,7 @@ dev = [
     "pytest>=8.0",
     "pytest-timeout>=2.3",
     "pytest-xdist>=3.8.0",
+    "pytest-timeout>=2.3",
     "ruff>=0.9",
 ]
 

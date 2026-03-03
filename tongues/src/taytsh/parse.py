@@ -113,6 +113,8 @@ PRIMITIVE_TYPES: set[str] = {
     "nil",
 }
 
+_LITERAL_TYPES: set[str] = {"STRING", "INT", "FLOAT", "BYTE", "RUNE", "BYTES"}
+
 
 class ParseError(Exception):
     """Parse error with location info."""
@@ -149,7 +151,7 @@ class Parser:
 
     def at(self, value: str) -> bool:
         tok = self.current()
-        return tok.value == value and tok.type != TK_STRING
+        return tok.value == value and tok.type not in _LITERAL_TYPES
 
     def at_type(self, type_: str) -> bool:
         return self.current().type == type_
@@ -158,13 +160,23 @@ class Parser:
         tok = self.current()
         return tok.type == TK_IDENT or tok.value in KEYWORDS
 
+    def _at_name(self) -> bool:
+        tok = self.current()
+        return tok.type == TK_IDENT or tok.value in KEYWORDS
+
     def expect(self, value: str) -> Token:
         tok = self.current()
-        if tok.value != value:
+        if tok.value != value or tok.type in _LITERAL_TYPES:
             raise self.error("expected '" + value + "', got '" + tok.value + "'")
         return self.advance()
 
     def expect_ident(self) -> Token:
+        tok = self.current()
+        if tok.type != TK_IDENT and tok.value not in KEYWORDS:
+            raise self.error("expected identifier, got '" + tok.value + "'")
+        return self.advance()
+
+    def _expect_name(self) -> Token:
         tok = self.current()
         if tok.type != TK_IDENT and tok.value not in KEYWORDS:
             raise self.error("expected identifier, got '" + tok.value + "'")
@@ -304,7 +316,7 @@ class Parser:
     def parse_fn_decl(self) -> TFnDecl:
         pos = self._pos()
         self.expect("fn")
-        name_tok = self.expect_ident()
+        name_tok = self._expect_name()
         self.expect("(")
         params = self.parse_param_list()
         self.expect(")")
@@ -333,7 +345,7 @@ class Parser:
 
     def parse_param(self) -> TParam:
         pos = self._pos()
-        name_tok = self.expect_ident()
+        name_tok = self._expect_name()
         self.expect(":")
         typ = self.parse_type()
         has_default = False
@@ -382,7 +394,7 @@ class Parser:
 
     def parse_field_decl(self) -> TFieldDecl:
         pos = self._pos()
-        name_tok = self.expect_ident()
+        name_tok = self._expect_name()
         self.expect(":")
         typ = self.parse_type()
         has_default = False
@@ -631,14 +643,14 @@ class Parser:
         if self.at("nil"):
             self.advance()
             return TPatternNil(pos)
-        first = self.expect_ident()
+        first = self._expect_name()
         if self.at(":"):
             self.advance()
             type_name = self.parse_type_name()
             return TPatternType(pos, first.value, type_name, {})
         if self.at("."):
             self.advance()
-            variant = self.expect_ident()
+            variant = self._expect_name()
             return TPatternEnum(pos, first.value, variant.value)
         raise self.error("expected ':' or '.' in case pattern")
 
@@ -910,7 +922,7 @@ class Parser:
     def parse_arg(self) -> TArg:
         """Arg = IDENT ':' Expr | Expr  (2-token lookahead for named)"""
         pos = self._pos()
-        if self.at_ident() and self.peek(1).value == ":":
+        if self._at_name() and self.peek(1).value == ":":
             name_tok = self.advance()
             self.advance()  # skip ':'
             value = self.parse_expr()
