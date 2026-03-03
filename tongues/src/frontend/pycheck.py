@@ -74,6 +74,8 @@ from .types import (
     map_subtypes,
     get_subtypes,
     type_name as _type_name_fn,
+    JDict,
+    JList,
     JStr,
     JInt,
     JBool,
@@ -4356,3 +4358,67 @@ def run_pycheck(
                         result._errors[ei].source_file = stmt_sf
                         ei += 1
     return result
+
+
+# ---------------------------------------------------------------------------
+# Expression coverage report (TONGUES_SHADOW diagnostic)
+# ---------------------------------------------------------------------------
+
+_EXPR_NODE_TYPES: set[str] = {
+    "Constant",
+    "Name",
+    "Attribute",
+    "Call",
+    "Subscript",
+    "BinOp",
+    "UnaryOp",
+    "Compare",
+    "BoolOp",
+    "IfExp",
+    "List",
+    "Dict",
+    "Set",
+    "Tuple",
+    "ListComp",
+    "SetComp",
+    "DictComp",
+    "JoinedStr",
+    "NamedExpr",
+}
+
+
+def _count_expr_nodes(
+    node: ASTNode,
+    expr_types: dict[int, TypeNode],
+    totals: dict[str, int],
+    covered: dict[str, int],
+) -> None:
+    if not isinstance(node, dict):
+        return
+    t = get_str(node, "_type")
+    if t in _EXPR_NODE_TYPES:
+        totals[t] = totals.get(t, 0) + 1
+        uid_jv = node.get("_uid")
+        if isinstance(uid_jv, JInt) and uid_jv.value in expr_types:
+            covered[t] = covered.get(t, 0) + 1
+    keys = list(node.keys())
+    for k in keys:
+        if k.startswith("_"):
+            continue
+        v = node[k]
+        if isinstance(v, JDict):
+            _count_expr_nodes(v.entries, expr_types, totals, covered)
+        elif isinstance(v, JList):
+            for item in v.items:
+                if isinstance(item, JDict):
+                    _count_expr_nodes(item.entries, expr_types, totals, covered)
+
+
+def compute_expr_coverage(
+    tree: ASTNode, result: PycheckResult
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Count expression nodes and how many have recorded types."""
+    totals: dict[str, int] = {}
+    covered: dict[str, int] = {}
+    _count_expr_nodes(tree, result.expr_types, totals, covered)
+    return (totals, covered)
