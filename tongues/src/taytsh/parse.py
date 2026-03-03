@@ -72,6 +72,7 @@ from .ast import (
     TWhileStmt,
 )
 from .tokens import (
+    KEYWORDS,
     TK_BYTE,
     TK_BYTES,
     TK_EOF,
@@ -147,13 +148,15 @@ class Parser:
         return tok
 
     def at(self, value: str) -> bool:
-        return self.current().value == value
+        tok = self.current()
+        return tok.value == value and tok.type != TK_STRING
 
     def at_type(self, type_: str) -> bool:
         return self.current().type == type_
 
     def at_ident(self) -> bool:
-        return self.current().type == TK_IDENT
+        tok = self.current()
+        return tok.type == TK_IDENT or tok.value in KEYWORDS
 
     def expect(self, value: str) -> Token:
         tok = self.current()
@@ -163,7 +166,7 @@ class Parser:
 
     def expect_ident(self) -> Token:
         tok = self.current()
-        if tok.type != TK_IDENT:
+        if tok.type != TK_IDENT and tok.value not in KEYWORDS:
             raise self.error("expected identifier, got '" + tok.value + "'")
         return self.advance()
 
@@ -333,7 +336,12 @@ class Parser:
         name_tok = self.expect_ident()
         self.expect(":")
         typ = self.parse_type()
-        return TParam(pos, name_tok.value, typ, {})
+        has_default = False
+        if self.at("="):
+            self.advance()
+            self.parse_expr()  # consume and discard default value
+            has_default = True
+        return TParam(pos, name_tok.value, typ, {}, has_default)
 
     def parse_block(self) -> list[TStmt]:
         self.expect("{")
@@ -377,15 +385,23 @@ class Parser:
         name_tok = self.expect_ident()
         self.expect(":")
         typ = self.parse_type()
-        return TFieldDecl(pos, name_tok.value, typ)
+        has_default = False
+        if self.at("="):
+            self.advance()
+            self.parse_expr()  # consume and discard default value
+            has_default = True
+        return TFieldDecl(pos, name_tok.value, typ, has_default)
 
     def parse_interface_decl(self) -> TInterfaceDecl:
         pos = self._pos()
         self.expect("interface")
         name_tok = self.expect_ident()
         self.expect("{")
+        fields: list[TFieldDecl] = []
+        while not self.at("}"):
+            fields.append(self.parse_field_decl())
         self.expect("}")
-        return TInterfaceDecl(pos, name_tok.value, {}, [])
+        return TInterfaceDecl(pos, name_tok.value, {}, fields)
 
     def parse_enum_decl(self) -> TEnumDecl:
         pos = self._pos()
@@ -430,13 +446,13 @@ class Parser:
         if tok.value in PRIMITIVE_TYPES:
             self.advance()
             return TPrimitive(pos, tok.value)
-        if tok.value == "list":
+        if tok.value == "list" and self.peek(1).value == "[":
             self.advance()
             self.expect("[")
             elem = self.parse_type()
             self.expect("]")
             return TListType(pos, elem)
-        if tok.value == "map":
+        if tok.value == "map" and self.peek(1).value == "[":
             self.advance()
             self.expect("[")
             key = self.parse_type()
@@ -444,13 +460,13 @@ class Parser:
             val = self.parse_type()
             self.expect("]")
             return TMapType(pos, key, val)
-        if tok.value == "set":
+        if tok.value == "set" and self.peek(1).value == "[":
             self.advance()
             self.expect("[")
             elem = self.parse_type()
             self.expect("]")
             return TSetType(pos, elem)
-        if tok.value == "fn":
+        if tok.value == "fn" and self.peek(1).value == "[":
             self.advance()
             self.expect("[")
             params: list[TType] = [self.parse_type()]
@@ -471,7 +487,7 @@ class Parser:
                 elements.append(self.parse_type())
             self.expect(")")
             return TTupleType(pos, elements)
-        if tok.type == TK_IDENT:
+        if tok.type == TK_IDENT or tok.value in KEYWORDS:
             self.advance()
             return TIdentType(pos, tok.value)
         raise self.error("expected type, got '" + tok.value + "'")
@@ -559,10 +575,9 @@ class Parser:
         self.expect("for")
         first_name = self.expect_ident()
         binding: list[str] = [first_name.value]
-        if self.at(","):
+        while self.at(","):
             self.advance()
-            second_name = self.expect_ident()
-            binding.append(second_name.value)
+            binding.append(self.expect_ident().value)
         self.expect("in")
         if self.at("range"):
             iterable: TExpr = self.parse_range()
@@ -854,7 +869,7 @@ class Parser:
                 if tok.type == TK_INT:
                     self.advance()
                     expr = TTupleAccess(expr.pos, expr, int(tok.value), {})
-                elif tok.type == TK_IDENT:
+                elif tok.type == TK_IDENT or tok.value in KEYWORDS:
                     self.advance()
                     expr = TFieldAccess(expr.pos, expr, tok.value, {})
                 else:

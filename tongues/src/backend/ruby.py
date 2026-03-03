@@ -1879,10 +1879,13 @@ class _RubyEmitter(Emitter):
             return self._a(args, 0) + ".to_a"
         # Direct functions
         if name == "Len":
-            return self._a(args, 0) + ".length"
+            a = self._a(args, 0)
+            if isinstance(args[0].value, (TBinaryOp, TUnaryOp, TTernary, TCall)):
+                return "(" + a + ").length"
+            return a + ".length"
         if name == "Abs":
             a = self._a(args, 0)
-            if isinstance(args[0].value, (TBinaryOp, TUnaryOp, TTernary)):
+            if isinstance(args[0].value, (TBinaryOp, TUnaryOp, TTernary, TCall)):
                 return "(" + a + ").abs"
             return a + ".abs"
         if name == "Min":

@@ -15,6 +15,8 @@ import struct
 
 import pytest
 
+pytestmark = pytest.mark.timeout(30)
+
 from src.lib.softfloat import (
     F64_SIGN,
     f64_abs,

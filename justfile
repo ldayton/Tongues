@@ -117,7 +117,7 @@ fmt *ARGS:
 _self-transpile target="python":
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl)
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [taytsh]=ty)
     mkdir -p tongues/.out
     cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
     if [ "{{target}}" = "python" ]; then
@@ -125,14 +125,14 @@ _self-transpile target="python":
     fi
 
 # Self-transpile and test against transpiled Python binary
-lang-python:
+lang-python *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile python
     uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
         tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.py" -v
+        --transpiled ".out/tongues.py" -v {{ ARGS }}
 
 # Self-transpile and test against transpiled Ruby binary
 lang-ruby:
@@ -156,9 +156,53 @@ lang-perl:
         | uv run bin/tongues --project --target perl -o .out/test_harness.pl
     perl tests/test-transpiled.pl ".out/tongues.pl"
 
-# Lower to Taytsh and run through treewalker + VM
-lang-taytsh:
-    uv run --directory tongues pytest tests/test_lang_taytsh.py -v
+# Self-transpile to Taytsh and test through treewalker
+lang-taytsh-treewalker *ARGS:
+    just _self-transpile taytsh
+    just _lang-taytsh-treewalker-frontend {{ ARGS }}
+    just _lang-taytsh-treewalker-middleend {{ ARGS }}
+    just _lang-taytsh-treewalker-backend {{ ARGS }}
+    just _lang-taytsh-treewalker-apptest {{ ARGS }}
+
+_lang-taytsh-treewalker-frontend *ARGS:
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -n auto -v {{ ARGS }}
+
+_lang-taytsh-treewalker-middleend *ARGS:
+    uv run --directory tongues pytest tests/test_middleend.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
+
+_lang-taytsh-treewalker-backend *ARGS:
+    uv run --directory tongues pytest tests/test_backend_codegen.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
+
+_lang-taytsh-treewalker-apptest *ARGS:
+    uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner treewalker --timeout-override 60 -n 2 -v {{ ARGS }}
+
+# Self-transpile to Taytsh and test through VM
+lang-taytsh-vm *ARGS:
+    just _self-transpile taytsh
+    just _lang-taytsh-vm-frontend {{ ARGS }}
+    just _lang-taytsh-vm-middleend {{ ARGS }}
+    just _lang-taytsh-vm-backend {{ ARGS }}
+    just _lang-taytsh-vm-apptest {{ ARGS }}
+
+_lang-taytsh-vm-frontend *ARGS:
+    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner vm -n auto -v {{ ARGS }}
+
+_lang-taytsh-vm-middleend *ARGS:
+    uv run --directory tongues pytest tests/test_middleend.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner vm -v {{ ARGS }}
+
+_lang-taytsh-vm-backend *ARGS:
+    uv run --directory tongues pytest tests/test_backend_codegen.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner vm -v {{ ARGS }}
+
+_lang-taytsh-vm-apptest *ARGS:
+    uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
+        --transpiled ".out/tongues.ty" --taytsh-runner vm --timeout-override 60 -n auto -v {{ ARGS }}
 
 # Run a just target inside Docker
 docker target lang="python":
@@ -253,19 +297,21 @@ test:
     _st python & pid_py=$!
     _st ruby & pid_rb=$!
     _st perl & pid_pl=$!
-    _st taytsh & pid_ty=$!
+    _st taytsh-treewalker & pid_ty_tw=$!
+    _st taytsh-vm & pid_ty_vm=$!
     wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
     wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
-    wait $pid_ty && results[lang-taytsh]=✅ || { results[lang-taytsh]=❌; failed=1; }
+    wait $pid_ty_tw && results[lang-taytsh-tw]=✅ || { results[lang-taytsh-tw]=❌; failed=1; }
+    wait $pid_ty_vm && results[lang-taytsh-vm]=✅ || { results[lang-taytsh-vm]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "           TEST SUMMARY"
     echo "══════════════════════════════════════"
-    printf "%-14s %s\n" "TARGET" "STATUS"
-    printf "%-14s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh; do
-        printf "%-14s %s\n" "$t" "${results[$t]}"
+    printf "%-16s %s\n" "TARGET" "STATUS"
+    printf "%-16s %s\n" "──────" "──────"
+    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm; do
+        printf "%-16s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"
     if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi

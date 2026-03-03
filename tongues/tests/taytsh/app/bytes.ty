@@ -74,24 +74,23 @@ fn TestBytesSlicing() -> void {
     Assert(copy[4] == buf[4])
 }
 
--- slice out of bounds throws IndexError
-fn TestBytesSliceError() -> void {
+-- slice bounds are clamped
+fn TestBytesSliceClamping() -> void {
     let buf: bytes = b"abc"
+    -- hi > len clamps to len
+    let a: bytes = buf[0:4]
+    Assert(Len(a) == 3)
+    -- lo > hi produces empty slice
+    let b: bytes = buf[2:1]
+    Assert(Len(b) == 0)
+    -- negative lo is still an error
     let caught: bool = false
     try {
-        let x: bytes = buf[0:4]
+        let x: bytes = buf[-1:2]
     } catch e: IndexError {
         caught = true
     }
-    Assert(caught, "expected IndexError for slice hi out of range")
-
-    caught = false
-    try {
-        let x: bytes = buf[2:1]
-    } catch e: IndexError {
-        caught = true
-    }
-    Assert(caught, "expected IndexError for lo > hi")
+    Assert(caught, "expected IndexError for negative lo")
 }
 
 -- Len
@@ -271,7 +270,7 @@ fn Main() -> void {
     TestBytesIndexing()
     TestBytesIndexError()
     TestBytesSlicing()
-    TestBytesSliceError()
+    TestBytesSliceClamping()
     TestBytesLen()
     TestBytesConcat()
     TestEncodeAndDecode()

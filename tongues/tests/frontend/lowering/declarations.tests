@@ -171,6 +171,21 @@ def f(val: Left | Right) -> int:
 fn f(val: Middle) -> int {
 ---
 
+=== error: base class with subclasses constructed directly
+from dataclasses import dataclass
+@dataclass
+class Type:
+    kind: str
+@dataclass
+class ListT(Type):
+    element: Type
+INT_T: Type = Type(kind="int")
+def f() -> Type:
+    return INT_T
+---
+error: cannot construct interface
+---
+
 === error function with non-zero default parameter value
 def decode(s: str, strict: bool = True) -> str:
     return s

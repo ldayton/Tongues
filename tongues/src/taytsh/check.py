@@ -144,17 +144,22 @@ class UnionT(Type):
     members: list[Type]
 
 
+@dataclass
+class PrimitiveT(Type):
+    pass
+
+
 # Primitive singletons
-INT_T: Type = Type(kind=TY_INT)
-FLOAT_T: Type = Type(kind=TY_FLOAT)
-BOOL_T: Type = Type(kind=TY_BOOL)
-BYTE_T: Type = Type(kind=TY_BYTE)
-BYTES_T: Type = Type(kind=TY_BYTES)
-STRING_T: Type = Type(kind=TY_STRING)
-RUNE_T: Type = Type(kind=TY_RUNE)
-NIL_T: Type = Type(kind=TY_NIL)
-VOID_T: Type = Type(kind=TY_VOID)
-ERROR_T: Type = Type(kind=TY_ERROR)
+INT_T: Type = PrimitiveT(kind=TY_INT)
+FLOAT_T: Type = PrimitiveT(kind=TY_FLOAT)
+BOOL_T: Type = PrimitiveT(kind=TY_BOOL)
+BYTE_T: Type = PrimitiveT(kind=TY_BYTE)
+BYTES_T: Type = PrimitiveT(kind=TY_BYTES)
+STRING_T: Type = PrimitiveT(kind=TY_STRING)
+RUNE_T: Type = PrimitiveT(kind=TY_RUNE)
+NIL_T: Type = PrimitiveT(kind=TY_NIL)
+VOID_T: Type = PrimitiveT(kind=TY_VOID)
+ERROR_T: Type = PrimitiveT(kind=TY_ERROR)
 
 _PRIMITIVE_MAP: dict[str, Type] = {
     "int": INT_T,
@@ -3004,43 +3009,7 @@ class Checker:
             if resolved is not None and isinstance(resolved, StructT):
                 return self.check_struct_constructor(resolved, expr.args, expr.pos)
             if resolved is not None and isinstance(resolved, InterfaceT):
-                # Find common fields across all variants (base class fields)
-                common: dict[str, Type] | None = None
-                for vname in resolved.variants:
-                    vtype = self.types.get(vname)
-                    if vtype is not None and isinstance(vtype, StructT):
-                        if common is None:
-                            common = vtype.fields.copy()
-                        else:
-                            keep: dict[str, Type] = {}
-                            for k in common:
-                                if k in vtype.fields:
-                                    keep[k] = common[k]
-                            common = keep
-                if common is not None and len(expr.args) <= len(common):
-                    for a in expr.args:
-                        aname = a.name
-                        if aname is None:
-                            self.check_expr(a.value, None)
-                        elif aname in common:
-                            at = self.check_expr(a.value, common[aname])
-                            if at is not None and not is_assignable(at, common[aname]):
-                                self.error(
-                                    "field '"
-                                    + aname
-                                    + "': cannot assign "
-                                    + type_name(at)
-                                    + " to "
-                                    + type_name(common[aname]),
-                                    a.pos,
-                                )
-                        else:
-                            self.error(
-                                "'" + func_name + "' has no field '" + aname + "'",
-                                a.pos,
-                            )
-                    return resolved
-                self.error("cannot call " + type_name(resolved), expr.pos)
+                self.error("cannot construct interface '" + func_name + "'", expr.pos)
                 return None
             if resolved is not None and isinstance(resolved, FnT):
                 pnames = self.fn_param_names.get(func_name)
