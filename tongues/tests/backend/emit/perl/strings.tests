@@ -9,3 +9,9 @@ s/^[
 
 === rstrip default whitespace
 ]+$//
+
+=== fstring repr conversion
+sprintf("%s", ("" . $x))
+
+=== fstring str conversion
+sprintf("%s", ("" . $x))

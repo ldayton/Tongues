@@ -2382,7 +2382,7 @@ class _PerlEmitter(Emitter):
                     + "}; $__s }"
                 )
             return "do { my $__s = {}; $__s->{$_} = 1 for @{" + a + "}; $__s }"
-        if name == "ToString":
+        if name in ("ToString", "ToRepr"):
             inner_expr = args[0].value
             inner = self._expr(inner_expr)
             if self._needs_concat_parens(inner_expr):
@@ -2706,7 +2706,7 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, (TStringLit, TRuneLit)):
             return True
         if isinstance(expr, TCall) and isinstance(expr.func, TVar):
-            if expr.func.name == "ToString":
+            if expr.func.name in ("ToString", "ToRepr"):
                 return True
         if isinstance(expr, TVar):
             typ: TType | None = self.var_types.get(expr.name)

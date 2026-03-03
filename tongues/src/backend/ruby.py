@@ -1977,7 +1977,7 @@ class _RubyEmitter(Emitter):
             if isinstance(args[0].value, TSetLit):
                 return self._a(args, 0)
             return "Set.new(" + self._a(args, 0) + ".to_a)"
-        if name == "ToString":
+        if name in ("ToString", "ToRepr"):
             a = self._a(args, 0)
             if isinstance(args[0].value, (TBinaryOp, TTernary)):
                 return "(" + a + ").to_s"

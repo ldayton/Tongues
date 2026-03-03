@@ -274,6 +274,7 @@ BUILTIN_TABLE: list[str] = [
     "Sqrt",
     "StartsWith",
     "Sum",
+    "ToRepr",
     "ToString",
     "Trim",
     "TrimEnd",
@@ -1811,7 +1812,7 @@ class Compiler:
             if name in self.checker_types:
                 return self.checker_types[name]
             # Builtin return types — approximate
-            if name == "ToString":
+            if name in ("ToString", "ToRepr"):
                 return STRING_T
             if name == "Len":
                 return INT_T

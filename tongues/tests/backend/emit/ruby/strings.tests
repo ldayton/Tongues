@@ -9,3 +9,9 @@
 
 === rstrip default whitespace
 ]+\z/, "")
+
+=== fstring repr conversion
+"%s" % x.to_s
+
+=== fstring str conversion
+"%s" % x.to_s

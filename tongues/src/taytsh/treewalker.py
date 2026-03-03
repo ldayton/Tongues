@@ -529,6 +529,7 @@ def run(
 
 _RESERVED_BINDINGS: set[str] = {
     # Built-in functions (spec: reserved names)
+    "ToRepr",
     "ToString",
     "Throw",
     "Catch",
@@ -4313,7 +4314,7 @@ def _bi_exit(rt: Runtime, args: list[Value]) -> Value:
 
 def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
     """Dispatch a builtin function call by name."""
-    if name == "ToString":
+    if name in ("ToString", "ToRepr"):
         return _bi_tostring(rt, args)
     if name == "Len":
         return _bi_len(rt, args)
@@ -4525,6 +4526,7 @@ def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
 
 
 _BUILTIN_NAMES_RT: set[str] = {
+    "ToRepr",
     "ToString",
     "Len",
     "Get",

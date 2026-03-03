@@ -1257,10 +1257,10 @@ class Verifier:
                     )
 
     def visit_FormattedValue(self, node: ASTNode) -> None:
-        """Check f-string replacement field: {expr} only, no !conv or :spec."""
+        """Check f-string replacement field: {expr} with optional !r/!s, no :spec."""
         conversion = get_int(node, "conversion")
-        if conversion != -1:
-            self.error(node, "syntax", "f-string !conversion not supported")
+        if conversion == 97:  # !a (ascii) not supported
+            self.error(node, "syntax", "f-string !a conversion not supported")
         if _has_present(node, "format_spec"):
             self.error(node, "syntax", "f-string :format_spec not supported")
         if _has_present(node, "value"):

@@ -1564,6 +1564,8 @@ class _PythonEmitter(Emitter):
             return "set(" + self._a(args, 0) + ")"
         if name == "ToString":
             return "str(" + self._a(args, 0) + ")"
+        if name == "ToRepr":
+            return "repr(" + self._a(args, 0) + ")"
         if name == "ParseInt":
             return "int(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "ParseFloat":

@@ -550,7 +550,7 @@ class _BuiltinDispatch:
             return self._write_out(args)
         if name == "WriteErr":
             return self._write_err(args)
-        if name == "ToString":
+        if name in ("ToString", "ToRepr"):
             return self._to_string(args)
         if name == "Len":
             return self._len(args)

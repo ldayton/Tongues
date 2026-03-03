@@ -9,3 +9,9 @@ s.lstrip(
 
 === rstrip default whitespace
 s.rstrip(
+
+=== fstring repr conversion
+f"{repr(x)}"
+
+=== fstring str conversion
+f"{str(x)}"

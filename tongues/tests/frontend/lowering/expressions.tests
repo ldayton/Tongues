@@ -93,6 +93,20 @@ def f(name: str) -> str:
 Format("hello {}", name)
 ---
 
+=== fstring with !r conversion
+def f(x: str) -> str:
+    return f"{x!r}"
+---
+Format("{}", ToRepr(x))
+---
+
+=== fstring with !s conversion
+def f(x: int) -> str:
+    return f"{x!s}"
+---
+Format("{}", ToString(x))
+---
+
 === ternary
 def f(x: int) -> str:
     return "pos" if x > 0 else "neg"
