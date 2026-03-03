@@ -23,7 +23,8 @@ print(str(math.isnan(x)))
 print(str(len("hello")))
 
 === DivMod
-q, r = divmod(17, 5)
+q = int(17 / 5)
+r = 17 - q * 5
 
 === DivMod negative dividend
 q = int(-7 / 2)
