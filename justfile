@@ -158,7 +158,7 @@ lang-perl:
 
 # Verify the transpiler reaches a fixed point via bootstrap
 fixed-point:
-    uv run --directory tongues pytest tests/test_fixed_point.py -v
+    uv run --directory tongues pytest tests/test_fixed_point.py -v -n auto
 
 # Self-transpile to Taytsh and test through treewalker
 lang-taytsh-treewalker *ARGS:

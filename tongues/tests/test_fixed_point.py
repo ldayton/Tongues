@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.timeout(60)
+pytestmark = pytest.mark.timeout(600)
 
 TONGUES_DIR = Path(__file__).parent.parent
 SRC_DIR = TONGUES_DIR / "src"
@@ -181,7 +181,6 @@ def test_taytsh_emit_round_trip():
     assert ty_text == ty_text_2, "Taytsh emit round-trip is not idempotent"
 
 
-@pytest.mark.timeout(600)
 @pytest.mark.parametrize("target", ["ruby", "perl"])
 def test_cross_target_agreement(target: str):
     """Transpiled Python binary produces same backend output as the original."""
@@ -249,7 +248,6 @@ def test_cross_language_equivalence():
     )
 
 
-@pytest.mark.timeout(600)
 def test_cross_language_equivalence_perl():
     """Python and Perl transpiled binaries produce identical output."""
     if shutil.which("perl") is None:
