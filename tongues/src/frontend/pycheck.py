@@ -79,8 +79,6 @@ from .types import (
     JBool,
     JFloat,
     JNull,
-    JDict,
-    JList,
     ASTNode,
     get_str,
     get_int,
@@ -4358,94 +4356,3 @@ def run_pycheck(
                         result._errors[ei].source_file = stmt_sf
                         ei += 1
     return result
-
-
-# ---------------------------------------------------------------------------
-# Expression coverage report (TONGUES_SHADOW diagnostic)
-# ---------------------------------------------------------------------------
-
-_EXPR_NODE_TYPES: set[str] = {
-    "Constant",
-    "Name",
-    "Attribute",
-    "Call",
-    "Subscript",
-    "BinOp",
-    "UnaryOp",
-    "Compare",
-    "BoolOp",
-    "IfExp",
-    "List",
-    "Dict",
-    "Set",
-    "Tuple",
-    "ListComp",
-    "SetComp",
-    "DictComp",
-    "JoinedStr",
-    "NamedExpr",
-}
-
-
-def _count_expr_nodes(
-    node: ASTNode,
-    expr_types: dict[int, TypeNode],
-    totals: dict[str, int],
-    covered: dict[str, int],
-) -> None:
-    if not isinstance(node, dict):
-        return
-    t = get_str(node, "_type")
-    if t in _EXPR_NODE_TYPES:
-        totals[t] = totals.get(t, 0) + 1
-        uid_jv = node.get("_uid")
-        if isinstance(uid_jv, JInt) and uid_jv.value in expr_types:
-            covered[t] = covered.get(t, 0) + 1
-    keys = list(node.keys())
-    for k in keys:
-        if k.startswith("_"):
-            continue
-        v = node[k]
-        if isinstance(v, JDict):
-            _count_expr_nodes(v.entries, expr_types, totals, covered)
-        elif isinstance(v, JList):
-            for item in v.items:
-                if isinstance(item, JDict):
-                    _count_expr_nodes(item.entries, expr_types, totals, covered)
-
-
-def compute_expr_coverage(
-    tree: ASTNode, result: PycheckResult
-) -> tuple[dict[str, int], dict[str, int]]:
-    """Count expression nodes and how many have recorded types."""
-    totals: dict[str, int] = {}
-    covered: dict[str, int] = {}
-    _count_expr_nodes(tree, result.expr_types, totals, covered)
-    return (totals, covered)
-
-
-def report_expr_coverage(tree: ASTNode, result: PycheckResult) -> None:
-    """Print expression type coverage to stderr."""
-    totals, covered = compute_expr_coverage(tree, result)
-    print("=== expr type coverage ===", file=sys.stderr)
-    names = sorted(totals.keys())
-    for name in names:
-        t = totals[name]
-        c = covered.get(name, 0)
-        if t > 0:
-            pct = (c * 100) // t
-        else:
-            pct = 0
-        pad = " " * (12 - len(name))
-        print(
-            "  "
-            + name
-            + pad
-            + str(c).rjust(5)
-            + "/"
-            + str(t).ljust(5)
-            + " ("
-            + str(pct).rjust(3)
-            + "%)",
-            file=sys.stderr,
-        )

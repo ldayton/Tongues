@@ -1365,30 +1365,6 @@ class ImportInfo:
         self.col: int = col
 
 
-def extract_imports(ast_dict: ASTNode) -> list[ImportInfo]:
-    """Extract all from-imports from an AST."""
-    result: list[ImportInfo] = []
-    body = get_nodes(ast_dict, "body")
-    for node in body:
-        if get_str(node, "_type") == "ImportFrom":
-            module = get_str(node, "module")
-            level = get_int(node, "level")
-            lineno = get_int(node, "lineno")
-            if lineno == 0:
-                lineno = 1
-            col = get_int(node, "col_offset")
-            if not module and level > 0:
-                # from . import X, Y - each name is a module
-                names = get_nodes(node, "names")
-                for name_node in names:
-                    name = get_str(name_node, "name")
-                    if name and name != "*":
-                        result.append(ImportInfo(name, level, lineno, col))
-            else:
-                result.append(ImportInfo(module, level, lineno, col))
-    return result
-
-
 class ProjectVerifyResult:
     """Result of project-level verification."""
 
@@ -1410,15 +1386,6 @@ class ProjectVerifyResult:
             msg = msg + ": [import] unresolved import: " + imp.module
             result.append(msg)
         return result
-
-    def has_errors(self) -> bool:
-        """Check if there are any errors."""
-        if self.unresolved_imports:
-            return True
-        for f in self.file_results:
-            if not self.file_results[f].ok():
-                return True
-        return False
 
 
 # Allowed builtins

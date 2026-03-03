@@ -12,8 +12,6 @@ DEFAULT_NAN: int = 0x7FF8000000000000
 F64_ZERO: int = 0
 F64_NEG_ZERO: int = F64_SIGN
 
-ROUND_NEAR_EVEN: int = 0
-
 
 def sign_f64(ui: int) -> int:
     return (ui >> 63) & 1
@@ -34,18 +32,6 @@ def pack_f64(sign: int, exp: int, sig: int) -> int:
 
 def is_nan_f64(ui: int) -> bool:
     return (ui & 0x7FFFFFFFFFFFFFFF) > F64_INF
-
-
-def wrapping_add(a: int, b: int) -> int:
-    return (a + b) & MASK64
-
-
-def wrapping_sub(a: int, b: int) -> int:
-    return (a - b) & MASK64
-
-
-def wrapping_mul(a: int, b: int) -> int:
-    return (a * b) & MASK64
 
 
 def lsr64(a: int, n: int) -> int:

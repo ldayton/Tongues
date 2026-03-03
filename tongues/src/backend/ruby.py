@@ -2087,11 +2087,6 @@ class _RubyEmitter(Emitter):
         arg_strs = ", ".join(self._expr(ar.value) for ar in args)
         return _safe_name(name) + "(" + arg_strs + ")"
 
-    def _trim_chars(self, expr: TExpr) -> str:
-        if isinstance(expr, TStringLit):
-            return expr.value
-        return self._expr(expr)
-
     def _trim_gsub(self, expr: TExpr, mode: str) -> str:
         """Emit .gsub for Trim/TrimStart/TrimEnd with \\A/\\z anchors."""
         if isinstance(expr, TStringLit):
