@@ -330,6 +330,7 @@ class VMap(Value):
     map_keys: list[Value]
     map_vals: list[Value]
     typ: MapT
+    _shadow: dict[str, int] | None = field(default=None, init=False, repr=False)
 
     def ty(self) -> Type:
         return self.typ
@@ -349,6 +350,7 @@ class VMap(Value):
 class VSet(Value):
     elements: list[Value]
     typ: SetT
+    _shadow: set[str] | None = field(default=None, init=False, repr=False)
 
     def ty(self) -> Type:
         return self.typ
@@ -925,17 +927,19 @@ def _same_value_class(a: Value, b: Value) -> bool:
 
 
 def _value_eq(a: Value, b: Value) -> bool:
+    if isinstance(a, VString):
+        return isinstance(b, VString) and a.value == b.value
+    if isinstance(a, VInt):
+        if isinstance(b, VInt):
+            return a.value == b.value
+        return isinstance(b, VByte) and a.value == b.value
     if not _same_value_class(a, b):
         if isinstance(a, VByte) and isinstance(b, VInt):
-            return a.value == b.value
-        if isinstance(a, VInt) and isinstance(b, VByte):
             return a.value == b.value
         return False
     if isinstance(a, VNil):
         return True
     if isinstance(a, VBool) and isinstance(b, VBool):
-        return a.value == b.value
-    if isinstance(a, VInt) and isinstance(b, VInt):
         return a.value == b.value
     if isinstance(a, VFloat) and isinstance(b, VFloat):
         return a.value == b.value
@@ -994,7 +998,7 @@ def _value_eq(a: Value, b: Value) -> bool:
         if len(a.elements) != len(b.elements):
             return False
         for e in a.elements:
-            if not _set_has(b.elements, e):
+            if not _set_has(b, e):
                 return False
         return True
     if isinstance(a, VStruct):
@@ -1057,13 +1061,61 @@ def _as_hashable(v: Value) -> Value:
     raise TaytshRuntimeFault("value is not hashable", None)
 
 
+def _hash_key(v: Value) -> str | None:
+    """Convert a Value to a Python-hashable string key, or None if unhashable."""
+    if isinstance(v, VString):
+        return "s:" + v.value
+    if isinstance(v, (VInt, VByte)):
+        return "i:" + str(v.value)
+    if isinstance(v, VBool):
+        return "b:1" if v.value else "b:0"
+    if isinstance(v, VNil):
+        return "n"
+    if isinstance(v, VFloat):
+        return "f:" + str(v.value)
+    if isinstance(v, VBytes):
+        return "B:" + v.value.hex()
+    if isinstance(v, VRune):
+        return "r:" + v.value
+    if isinstance(v, VEnum):
+        return "e:" + v.enum_name + "." + v.variant
+    if isinstance(v, VTuple):
+        parts: list[str] = []
+        for e in v.elements:
+            hk = _hash_key(e)
+            if hk is None:
+                return None
+            parts.append(hk)
+        return "t:" + ",".join(parts)
+    return None
+
+
 # ---- Map helpers (list-based map avoids dict[Value, Value]) ----
 
 
-def _map_find(keys: list[Value], key: Value) -> int:
+def _build_map_shadow(m: VMap) -> None:
+    shadow: dict[str, int] = {}
+    for i, k in enumerate(m.map_keys):
+        hk = _hash_key(k)
+        if hk is not None:
+            shadow[hk] = i
+    m._shadow = shadow
+
+
+def _map_find(m: VMap, key: Value) -> int:
+    hk = _hash_key(key)
+    if hk is not None:
+        if m._shadow is None:
+            _build_map_shadow(m)
+        shadow = m._shadow
+        if shadow is not None:
+            idx = shadow.get(hk)
+            if idx is not None:
+                return idx
+        return -1
     i = 0
-    while i < len(keys):
-        if _value_eq(keys[i], key):
+    while i < len(m.map_keys):
+        if _value_eq(m.map_keys[i], key):
             return i
         i += 1
     return -1
@@ -1078,52 +1130,92 @@ def _clamp_slice(lo: int, hi: int, n: int) -> tuple[int, int]:
 
 
 def _map_get(m: VMap, key: Value) -> Value:
-    idx = _map_find(m.map_keys, key)
+    idx = _map_find(m, key)
     if idx < 0:
         raise TaytshRuntimeFault("key not found", None)
     return m.map_vals[idx]
 
 
 def _map_has(m: VMap, key: Value) -> bool:
-    return _map_find(m.map_keys, key) >= 0
+    return _map_find(m, key) >= 0
 
 
 def _map_set(m: VMap, key: Value, value: Value) -> None:
-    idx = _map_find(m.map_keys, key)
+    idx = _map_find(m, key)
     if idx >= 0:
         m.map_vals[idx] = value
     else:
         m.map_keys.append(key)
         m.map_vals.append(value)
+        hk = _hash_key(key)
+        shadow = m._shadow
+        if shadow is not None and hk is not None:
+            shadow[hk] = len(m.map_keys) - 1
 
 
 def _map_del(m: VMap, key: Value) -> None:
-    idx = _map_find(m.map_keys, key)
+    idx = _map_find(m, key)
     if idx >= 0:
         m.map_keys.pop(idx)
         m.map_vals.pop(idx)
+        m._shadow = None
 
 
-# ---- Set helpers (list-based set avoids set[Value]) ----
+# ---- Set helpers ----
 
 
-def _set_has(elements: list[Value], val: Value) -> bool:
+def _list_set_has(elements: list[Value], val: Value) -> bool:
     for e in elements:
         if _value_eq(e, val):
             return True
     return False
 
 
-def _set_add(elements: list[Value], val: Value) -> None:
-    if not _set_has(elements, val):
+def _list_set_add(elements: list[Value], val: Value) -> None:
+    if not _list_set_has(elements, val):
         elements.append(val)
 
 
-def _set_discard(elements: list[Value], val: Value) -> None:
+def _build_set_shadow(s: VSet) -> None:
+    shadow: set[str] = set()
+    for e in s.elements:
+        hk = _hash_key(e)
+        if hk is not None:
+            shadow.add(hk)
+    s._shadow = shadow
+
+
+def _set_has(s: VSet, val: Value) -> bool:
+    hk = _hash_key(val)
+    if hk is not None:
+        if s._shadow is None:
+            _build_set_shadow(s)
+        shadow = s._shadow
+        if shadow is not None:
+            return hk in shadow
+        return False
+    for e in s.elements:
+        if _value_eq(e, val):
+            return True
+    return False
+
+
+def _set_add(s: VSet, val: Value) -> None:
+    if _set_has(s, val):
+        return
+    s.elements.append(val)
+    hk = _hash_key(val)
+    shadow = s._shadow
+    if shadow is not None and hk is not None:
+        shadow.add(hk)
+
+
+def _set_discard(s: VSet, val: Value) -> None:
     i = 0
-    while i < len(elements):
-        if _value_eq(elements[i], val):
-            elements.pop(i)
+    while i < len(s.elements):
+        if _value_eq(s.elements[i], val):
+            s.elements.pop(i)
+            s._shadow = None
             return
         i += 1
 
@@ -1131,7 +1223,7 @@ def _set_discard(elements: list[Value], val: Value) -> None:
 def _set_union(a: list[Value], b: list[Value]) -> list[Value]:
     result = list(a)
     for e in b:
-        if not _set_has(result, e):
+        if not _list_set_has(result, e):
             result.append(e)
     return result
 
@@ -1139,7 +1231,7 @@ def _set_union(a: list[Value], b: list[Value]) -> list[Value]:
 def _set_intersection(a: list[Value], b: list[Value]) -> list[Value]:
     result: list[Value] = []
     for e in a:
-        if _set_has(b, e):
+        if _list_set_has(b, e):
             result.append(e)
     return result
 
@@ -1147,7 +1239,7 @@ def _set_intersection(a: list[Value], b: list[Value]) -> list[Value]:
 def _set_difference(a: list[Value], b: list[Value]) -> list[Value]:
     result: list[Value] = []
     for e in a:
-        if not _set_has(b, e):
+        if not _list_set_has(b, e):
             result.append(e)
     return result
 
@@ -2120,7 +2212,7 @@ class Runtime:
         if isinstance(expected, SetT):
             set_elems: list[Value] = []
             for e in expr.elements:
-                _set_add(
+                _list_set_add(
                     set_elems,
                     _as_hashable(self._eval_expr(e, env, expected=expected.element)),
                 )
@@ -2128,7 +2220,7 @@ class Runtime:
         else:
             set_elems2: list[Value] = []
             for e in expr.elements:
-                _set_add(set_elems2, _as_hashable(self._eval_expr(e, env)))
+                _list_set_add(set_elems2, _as_hashable(self._eval_expr(e, env)))
             set_typ = SetT(kind="set", element=set_elems2[0].ty())
             set_elems = set_elems2
         return VSet(set_elems, set_typ)
@@ -2241,7 +2333,7 @@ class Runtime:
                 if len(call.args) != 1:
                     raise TaytshRuntimeFault("map.get expects 1 arg", call.pos)
                 key = _as_hashable(self._eval_expr(call.args[0].value, env))
-                idx = _map_find(recv.map_keys, key)
+                idx = _map_find(recv, key)
                 if idx < 0:
                     return VNil()
                 return recv.map_vals[idx]
@@ -2754,7 +2846,7 @@ def _bi_contains(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(a, VMap):
         return VBool(_map_has(a, _as_hashable(b)))
     if isinstance(a, VSet):
-        return VBool(_set_has(a.elements, _as_hashable(b)))
+        return VBool(_set_has(a, _as_hashable(b)))
     if isinstance(a, VString) and isinstance(b, VString):
         return VBool(b.value in a.value)
     if isinstance(a, VString) and isinstance(b, VRune):
@@ -3868,7 +3960,7 @@ def _bi_add(rt: Runtime, args: list[Value]) -> Value:
     v = args[1]
     if not isinstance(s, VSet):
         raise TaytshRuntimeFault("Add expects set", None)
-    _set_add(s.elements, _as_hashable(v))
+    _set_add(s, _as_hashable(v))
     return VNil()
 
 
@@ -3877,7 +3969,7 @@ def _bi_remove(rt: Runtime, args: list[Value]) -> Value:
     v = args[1]
     if not isinstance(s, VSet):
         raise TaytshRuntimeFault("Remove expects set", None)
-    _set_discard(s.elements, _as_hashable(v))
+    _set_discard(s, _as_hashable(v))
     return VNil()
 
 
@@ -3997,7 +4089,7 @@ def _bi_set_from_list(rt: Runtime, args: list[Value]) -> Value:
         raise TaytshRuntimeFault("SetFromList expects list or set", None)
     elems: list[Value] = []
     for v in xs.elements:
-        _set_add(elems, _as_hashable(v))
+        _list_set_add(elems, _as_hashable(v))
     return VSet(elems, SetT(kind="set", element=xs.typ.element))
 
 
