@@ -3648,13 +3648,39 @@ def _lower_ifexp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
 
 
 def _lower_list_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
-    """Lower a List literal."""
+    """Lower a List literal, desugaring star unpacking to Concat chains."""
     pos = _node_pos(node)
     elts = get_nodes(node, "elts")
-    elements: list[TExpr] = []
+    has_starred = False
     for e in elts:
-        elements.append(_lower_expr(e, env, ctx))
-    return TListLit(pos, elements, {})
+        if _is_ast(e, "Starred"):
+            has_starred = True
+            break
+    if not has_starred:
+        elements: list[TExpr] = []
+        for e in elts:
+            elements.append(_lower_expr(e, env, ctx))
+        return TListLit(pos, elements, {})
+    # Group into runs of plain elements and starred expressions
+    parts: list[TExpr] = []
+    plain: list[TExpr] = []
+    for e in elts:
+        if _is_ast(e, "Starred"):
+            if plain:
+                parts.append(TListLit(pos, plain, {}))
+                plain = []
+            parts.append(_lower_expr(get_node(e, "value"), env, ctx))
+        else:
+            plain.append(_lower_expr(e, env, ctx))
+    if plain:
+        parts.append(TListLit(pos, plain, {}))
+    result = parts[0]
+    ann: Ann = {"provenance": "star_unpack"}
+    for i in range(1, len(parts)):
+        call = _make_call(pos, "Concat", [result, parts[i]])
+        call.annotations = ann
+        result = call
+    return result
 
 
 def _lower_dict_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:

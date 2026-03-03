@@ -5,3 +5,40 @@ def main() -> None:
     print(str(len(s)))
 if __name__ == "__main__":
     main()
+
+=== star unpack two lists
+def main() -> None:
+    a: list[int] = [1, 2]
+    b: list[int] = [3, 4]
+    c: list[int] = [*a, *b]
+    print(str(len(c)))
+if __name__ == "__main__":
+    main()
+
+=== star unpack element then starred
+def main() -> None:
+    x: int = 1
+    rest: list[int] = [2, 3]
+    c: list[int] = [x, *rest]
+    print(str(len(c)))
+if __name__ == "__main__":
+    main()
+
+=== star unpack starred then element
+def main() -> None:
+    xs: list[int] = [1, 2]
+    y: int = 3
+    c: list[int] = [*xs, y]
+    print(str(len(c)))
+if __name__ == "__main__":
+    main()
+
+=== star unpack element starred element
+def main() -> None:
+    x: int = 1
+    middle: list[int] = [2, 3]
+    y: int = 4
+    c: list[int] = [x, *middle, y]
+    print(str(len(c)))
+if __name__ == "__main__":
+    main()
