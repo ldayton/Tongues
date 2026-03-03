@@ -1229,8 +1229,15 @@ class Verifier:
             self.visit(get_node(node, "right"))
 
     def visit_Delete(self, node: ASTNode) -> None:
-        """Check delete statement - banned."""
-        self.error(node, "syntax", "del: reassign or let variable go out of scope")
+        """Allow del on subscripts (dict keys, list indices); ban del on variables."""
+        for target in get_nodes(node, "targets"):
+            if isinstance(target, dict) and target.get("_type") == JStr("Subscript"):
+                self.visit(get_node(target, "value"))
+                self.visit(get_node(target, "slice"))
+            else:
+                self.error(
+                    node, "syntax", "del: reassign or let variable go out of scope"
+                )
 
     def visit_JoinedStr(self, node: ASTNode) -> None:
         """Visit f-string, check children."""
