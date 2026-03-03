@@ -3285,6 +3285,11 @@ def _narrow_compare(
                         cur = then_env.get_type(name)
                         if cur is not None and _prim_kind(cur) == lit.base.kind:
                             then_env.narrow(name, lit)
+        if _is_type(left, ["Call"]):
+            _narrow_len_check(left, comp, then_env, else_env, eq=True)
+    if op_type == "NotEq" and not comp_is_none:
+        if _is_type(left, ["Call"]):
+            _narrow_len_check(left, comp, then_env, else_env, eq=False)
     if op_type == "Eq":
         if _is_type(left, ["Attribute"]):
             attr = get_str(left, "attr")
@@ -3390,6 +3395,80 @@ def _narrow_compare(
                             if matches:
                                 then_env.narrow(obj_name, PrimitiveType("never"))
             return
+    if op_type == "In":
+        if _is_type(left, ["Name"]):
+            name = get_str(left, "id")
+            if name and _is_type(comp, ["List", "Set", "Tuple"]):
+                elts = get_nodes(comp, "elts")
+                elem_kinds: set[str] = set()
+                for elt in elts:
+                    et = _synth_expr(elt, then_env, ctx)
+                    k = _prim_kind(et)
+                    if k:
+                        elem_kinds.add(k)
+                cur = then_env.get_type(name)
+                if cur is not None and isinstance(cur, UnionType) and elem_kinds:
+                    matched = [v for v in cur.variants if _prim_kind(v) in elem_kinds]
+                    rest = [v for v in cur.variants if _prim_kind(v) not in elem_kinds]
+                    if matched:
+                        then_env.narrow(name, combine_types(matched))
+                    if rest:
+                        else_env.narrow(name, combine_types(rest))
+
+
+def _narrow_len_check(
+    call: ASTNode,
+    comp: ASTNode,
+    then_env: TypeEnv,
+    else_env: TypeEnv,
+    *,
+    eq: bool,
+) -> None:
+    """Narrow tuple unions by len(x) == N / len(x) != N."""
+    func = get_node(call, "func")
+    args = get_nodes(call, "args")
+    if not func or not _is_type(func, ["Name"]) or get_str(func, "id") != "len":
+        return
+    if len(args) != 1 or not _is_type(args[0], ["Name"]):
+        return
+    name = get_str(args[0], "id")
+    if not name:
+        return
+    comp_v = comp.get("value")
+    if not isinstance(comp_v, JInt):
+        return
+    expected_len = comp_v.value
+    cur = then_env.get_type(name)
+    if cur is None or not isinstance(cur, UnionType):
+        return
+    matched: list[TypeNode] = []
+    rest: list[TypeNode] = []
+    for v in cur.variants:
+        if (
+            isinstance(v, TupleType)
+            and not v.variadic
+            and len(v.elements) == expected_len
+        ):
+            matched.append(v)
+        elif (
+            isinstance(v, TupleType)
+            and not v.variadic
+            and len(v.elements) != expected_len
+        ):
+            rest.append(v)
+        else:
+            matched.append(v)
+            rest.append(v)
+    if eq:
+        if matched:
+            then_env.narrow(name, combine_types(matched))
+        if rest:
+            else_env.narrow(name, combine_types(rest))
+    else:
+        if rest:
+            then_env.narrow(name, combine_types(rest))
+        if matched:
+            else_env.narrow(name, combine_types(matched))
 
 
 def _apply_alias_narrowing(

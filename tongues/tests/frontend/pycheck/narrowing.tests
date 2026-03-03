@@ -5945,6 +5945,24 @@ def f(x: A | B | C) -> int:
 ok
 ---
 
+=== in operator narrows union type
+def f(x: int | str) -> int:
+    if x in [1, 2, 3]:
+        return x
+    return 0
+---
+ok
+---
+
+=== tuple union narrowed by length check
+def f(t: tuple[int, int] | tuple[str, str, str]) -> int:
+    if len(t) == 2:
+        return t[0]
+    return 0
+---
+ok
+---
+
 === reveal_type expected_type match
 def f(x: int) -> None:
     reveal_type(x, expected_type="int")
