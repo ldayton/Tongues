@@ -3414,6 +3414,25 @@ def _narrow_compare(
                         then_env.narrow(name, combine_types(in_yes))
                     if in_no:
                         else_env.narrow(name, combine_types(in_no))
+    if op_type == "NotIn":
+        if _is_type(left, ["Name"]):
+            name = get_str(left, "id")
+            if name and _is_type(comp, ["List", "Set", "Tuple"]):
+                elts = get_nodes(comp, "elts")
+                elem_kinds: set[str] = set()
+                for elt in elts:
+                    et = _synth_expr(elt, then_env, ctx)
+                    k = _prim_kind(et)
+                    if k:
+                        elem_kinds.add(k)
+                cur = then_env.get_type(name)
+                if cur is not None and isinstance(cur, UnionType) and elem_kinds:
+                    in_yes = [v for v in cur.variants if _prim_kind(v) in elem_kinds]
+                    in_no = [v for v in cur.variants if _prim_kind(v) not in elem_kinds]
+                    if in_no:
+                        then_env.narrow(name, combine_types(in_no))
+                    if in_yes:
+                        else_env.narrow(name, combine_types(in_yes))
 
 
 def _narrow_len_check(

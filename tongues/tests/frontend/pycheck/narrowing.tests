@@ -5954,6 +5954,24 @@ def f(x: int | str) -> int:
 ok
 ---
 
+=== not in operator narrows union type in else branch
+def f(x: int | str) -> str:
+    if x not in [1, 2, 3]:
+        return x
+    return ""
+---
+ok
+---
+
+=== not in narrows else branch to matching variants
+def f(x: int | str) -> int:
+    if x not in [1, 2, 3]:
+        return 0
+    return x
+---
+ok
+---
+
 === tuple union narrowed by length check
 def f(t: tuple[int, int] | tuple[str, str, str]) -> int:
     if len(t) == 2:
