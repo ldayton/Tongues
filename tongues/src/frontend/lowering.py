@@ -3094,33 +3094,29 @@ def _lower_string_method(
         return _make_call(pos, "Encode", [obj])
     if method == "index":
         return _make_call(pos, "Find", [obj] + lowered)
-    if method == "removeprefix" or method == "removesuffix":
-        prefix = lowered[0] if lowered else TStringLit(pos, "", {})
-        if method == "removeprefix":
-            cond = _make_call(pos, "StartsWith", [obj, prefix])
-            result = TSlice(
-                pos,
-                obj,
-                _make_call(pos, "Len", [prefix]),
-                _make_call(pos, "Len", [obj]),
-                {},
-            )
-        else:
-            cond = _make_call(pos, "EndsWith", [obj, prefix])
-            result = TSlice(
-                pos,
-                obj,
-                TIntLit(pos, 0, "0", {}),
-                TBinaryOp(
-                    pos,
-                    "-",
-                    _make_call(pos, "Len", [obj]),
-                    _make_call(pos, "Len", [prefix]),
-                    {},
-                ),
-                {},
-            )
-        return TTernary(pos, cond, result, obj, {})
+    if method == "removeprefix":
+        rp_arg = lowered[0] if lowered else TStringLit(pos, "", {})
+        rp_cond = _make_call(pos, "StartsWith", [obj, rp_arg])
+        rp_then = TSlice(
+            pos,
+            obj,
+            _make_call(pos, "Len", [rp_arg]),
+            _make_call(pos, "Len", [obj]),
+            {},
+        )
+        return TTernary(pos, rp_cond, rp_then, obj, {})
+    if method == "removesuffix":
+        rs_arg = lowered[0] if lowered else TStringLit(pos, "", {})
+        rs_cond = _make_call(pos, "EndsWith", [obj, rs_arg])
+        rs_end = TBinaryOp(
+            pos,
+            "-",
+            _make_call(pos, "Len", [obj]),
+            _make_call(pos, "Len", [rs_arg]),
+            {},
+        )
+        rs_then = TSlice(pos, obj, TIntLit(pos, 0, "0", {}), rs_end, {})
+        return TTernary(pos, rs_cond, rs_then, obj, {})
     if method == "partition" or method == "rpartition":
         func = "Find" if method == "partition" else "RFind"
         sep = lowered[0] if lowered else TStringLit(pos, "", {})
