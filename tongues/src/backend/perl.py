@@ -290,12 +290,15 @@ class _PerlEmitter(Emitter):
         function_names: set[str],
         struct_fields: dict[str, list[str]],
         strict_math: bool = False,
+        strict_tostring: bool = False,
     ) -> None:
         self.struct_names = struct_names
         self.enum_names = enum_names
         self.function_names = function_names
         self.struct_fields = struct_fields
         self.strict_math = strict_math
+        self.strict_tostring = strict_tostring
+        self._needs_float_repr: bool = False
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -324,6 +327,30 @@ class _PerlEmitter(Emitter):
         self._line("binmode(STDOUT, ':utf8');")
         self._line("binmode(STDERR, ':utf8');")
         self._line()
+        if self.strict_tostring:
+            self._line(
+                "sub _py_float_repr {"
+                " my ($f) = @_;"
+                ' return "$f" if $f != $f;'
+                ' return "inf" if $f == 9**9**9;'
+                ' return "-inf" if $f == -(9**9**9);'
+                " my $b;"
+                ' for my $d (1..17) { $b = sprintf("%.*g", $d, $f);'
+                " last if $b + 0 == $f }"
+                ' $b = sprintf("%.17g", $f) if !defined $b;'
+                " if ($b =~ /[eE]/) {"
+                " my $a = abs($f); if ($a != 0) {"
+                " my $e = int(log($a) / log(10));"
+                " $e-- if 10**($e+1) <= $a;"
+                " if ($e >= 0 && $e <= 15) {"
+                ' for my $d (1..20) { my $s = sprintf("%.*f", $d, $f);'
+                " if ($s + 0 == $f) {"
+                ' $s =~ s/0+$//; $s .= "0" if $s =~ /\\.$/;'
+                " $b = $s; last } } } } }"
+                ' $b .= ".0" if $b !~ /\\./ && $b !~ /[eE]/;'
+                " return $b }"
+            )
+            self._line()
         self._line("package main;")
         ordered = order_decls(module.decls, lets_first=True)
         has_types = any(
@@ -942,7 +969,7 @@ class _PerlEmitter(Emitter):
             elif self._is_string_expr(iterable):
                 self._line("for my " + name + " (split(//, " + it + ")) {")
             elif self._is_bytes_expr(iterable):
-                self._line("for my " + name + " (unpack('C*', " + it + ")) {")
+                self._line("for my " + name + " (split(//, " + it + ")) {")
             else:
                 self._line("for my " + name + " (@{" + safe + "}) {")
                 if isinstance(iter_type, TListType):
@@ -2330,6 +2357,9 @@ class _PerlEmitter(Emitter):
         if name == "ToString":
             inner_expr = args[0].value
             inner = self._expr(inner_expr)
+            if self.strict_tostring and self._is_float_expr(inner_expr):
+                self._needs_float_repr = True
+                return "_py_float_repr(" + inner + ")"
             if self._needs_concat_parens(inner_expr):
                 inner = "(" + inner + ")"
             return '("" . ' + inner + ")"
@@ -2821,6 +2851,7 @@ def emit_perl(module: TModule) -> str:
         function_names,
         struct_fields,
         module.strict_math,
+        module.strict_tostring,
     )
     emitter.emit_module(module)
     return emitter.output()

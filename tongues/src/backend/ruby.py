@@ -492,6 +492,7 @@ class _RubyEmitter(Emitter):
         field_types: dict[str, dict[str, TType]],
         enum_names: set[str],
         strict_math: bool = False,
+        strict_tostring: bool = False,
     ) -> None:
         self.struct_names = struct_names
         self.fn_names = fn_names
@@ -499,6 +500,7 @@ class _RubyEmitter(Emitter):
         self.field_types = field_types
         self.enum_names = enum_names
         self.strict_math = strict_math
+        self.strict_tostring = strict_tostring
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -579,8 +581,22 @@ class _RubyEmitter(Emitter):
             self.lines.insert(import_insert_pos, helper)
             self.lines.insert(import_insert_pos + 1, "")
             import_insert_pos += 2
-        if self._needs_float_repr:
-            helper = 'def _py_float_repr(f); return f.to_s if f.nan? || f.infinite?; b = nil; (1..17).each { |d| s = "%.*g" % [d, f]; if s.to_f == f; b = s; break; end }; b = "%.17g" % f if b.nil?; if b.include?("e") || b.include?("E"); a = f.abs; if a != 0.0; e = Math.log10(a).floor; if e >= 0 && e <= 15; (1..20).each { |d| s = "%.*f" % [d, f]; if s.to_f == f; s = s.sub(/0+\\z/, ""); s = s + "0" if s.end_with?("."); b = s; break; end }; end; end; end; b = b + ".0" if !b.include?(".") && !b.include?("e") && !b.include?("E"); b; end'
+        if self.strict_tostring:
+            helper = (
+                "def _py_float_repr(f); return f.to_s if f.nan? || f.infinite?;"
+                " b = nil; (1..17).each { |d| s = '%.*g' % [d, f];"
+                " if s.to_f == f; b = s; break; end };"
+                ' b = "%.17g" % f if b.nil?;'
+                " if b.include?('e') || b.include?('E');"
+                " a = f.abs; if a != 0.0; e = Math.log10(a).floor;"
+                " if e >= 0 && e <= 15;"
+                " (1..20).each { |d| s = '%.*f' % [d, f];"
+                ' if s.to_f == f; s = s.sub(/0+\\z/, "");'
+                ' s = s + "0" if s.end_with?(".");'
+                " b = s; break; end }; end; end; end;"
+                ' b = b + ".0" if !b.include?(".") && !b.include?("e")'
+                ' && !b.include?("E"); b; end'
+            )
             self.lines.insert(import_insert_pos, helper)
             self.lines.insert(import_insert_pos + 1, "")
 
@@ -1966,7 +1982,7 @@ class _RubyEmitter(Emitter):
             return "Set.new(" + self._a(args, 0) + ".to_a)"
         if name == "ToString":
             a = self._a(args, 0)
-            if self._is_float_expr(args[0].value):
+            if self.strict_tostring and self._is_float_expr(args[0].value):
                 self._needs_float_repr = True
                 return "_py_float_repr(" + a + ")"
             if isinstance(args[0].value, (TBinaryOp, TTernary)):
@@ -2200,6 +2216,7 @@ def emit_ruby(module: TModule) -> str:
         field_types,
         enum_names,
         module.strict_math,
+        module.strict_tostring,
     )
     emitter.emit_module(module)
     return emitter.output()

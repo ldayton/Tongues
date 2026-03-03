@@ -55,6 +55,7 @@ def _transpile_source(target: str) -> str:
         [
             sys.executable,
             str(TONGUES_DIR / "bin" / "tongues"),
+            "--strict-tostring",
             "--target",
             target,
             "src",
@@ -253,7 +254,7 @@ def test_cross_language_equivalence():
     )
 
 
-@pytest.mark.xfail(reason="Perl binary has float literal and byte value differences")
+@pytest.mark.timeout(600)
 def test_cross_language_equivalence_perl():
     """Python and Perl transpiled binaries produce identical output."""
     if shutil.which("perl") is None:

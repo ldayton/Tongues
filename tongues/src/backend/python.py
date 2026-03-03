@@ -328,10 +328,12 @@ class _PythonEmitter(Emitter):
         struct_names: set[str],
         struct_fields: dict[str, list[str]],
         strict_math: bool = False,
+        strict_tostring: bool = False,
     ) -> None:
         self.struct_names = struct_names
         self.struct_fields = struct_fields
         self.strict_math = strict_math
+        self.strict_tostring = strict_tostring
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -1769,6 +1771,8 @@ def emit_python(module: TModule) -> str:
                 for f in decl.fields:
                     ifnames.append(_safe_name(f.name))
                 struct_fields[decl.name] = ifnames
-    emitter = _PythonEmitter(struct_names, struct_fields, module.strict_math)
+    emitter = _PythonEmitter(
+        struct_names, struct_fields, module.strict_math, module.strict_tostring
+    )
     emitter.emit_module(module)
     return emitter.output()
