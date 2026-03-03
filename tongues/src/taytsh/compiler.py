@@ -332,12 +332,13 @@ class _Scope:
 
 
 class _LoopCtx:
-    __slots__ = ("break_patches", "continue_target", "handler_depth")
+    __slots__ = ("break_patches", "continue_target", "handler_depth", "match_depth")
 
-    def __init__(self, handler_depth: int) -> None:
+    def __init__(self, handler_depth: int, match_depth: int) -> None:
         self.break_patches: list[int] = []
         self.continue_target: int = -1
         self.handler_depth: int = handler_depth
+        self.match_depth: int = match_depth
 
 
 # ============================================================
@@ -359,6 +360,7 @@ class _FnCompiler:
         self.scope: _Scope = _Scope(None)
         self.loop_stack: list[_LoopCtx] = []
         self.handler_depth: int = 0
+        self.match_depth: int = 0
 
     def emit(self, op: int, arg: int, line: int) -> int:
         """Emit a single instruction pair. Returns the offset of the opcode."""
@@ -955,7 +957,7 @@ class Compiler:
 
     def _compile_while(self, stmt: TWhileStmt, fc: _FnCompiler) -> None:
         loop_start = fc.current_offset()
-        loop_ctx = _LoopCtx(fc.handler_depth)
+        loop_ctx = _LoopCtx(fc.handler_depth, fc.match_depth)
         loop_ctx.continue_target = loop_start
         fc.loop_stack.append(loop_ctx)
         self._compile_expr(stmt.cond, fc)
@@ -984,7 +986,7 @@ class Compiler:
         binding = stmt.binding[0] if len(stmt.binding) > 0 else "_"
         local = fc.scope.lookup(binding) if binding != "_" else None
         loop_start = fc.current_offset()
-        loop_ctx = _LoopCtx(fc.handler_depth)
+        loop_ctx = _LoopCtx(fc.handler_depth, fc.match_depth)
         loop_ctx.continue_target = loop_start
         fc.loop_stack.append(loop_ctx)
         exit_jump = fc.emit_jump(OP_FOR_ITER, stmt.pos.line)
@@ -1008,7 +1010,7 @@ class Compiler:
         self._compile_expr(stmt.iterable, fc)
         fc.emit(OP_INT_ZERO, 0, stmt.pos.line)  # index
         loop_start = fc.current_offset()
-        loop_ctx = _LoopCtx(fc.handler_depth)
+        loop_ctx = _LoopCtx(fc.handler_depth, fc.match_depth)
         loop_ctx.continue_target = loop_start
         fc.loop_stack.append(loop_ctx)
         # FOR_ITER checks index < len(collection)
@@ -1080,6 +1082,12 @@ class Compiler:
         if len(fc.loop_stack) == 0:
             return
         ctx = fc.loop_stack[-1]
+        # Pop match scrutinee/dup values pushed inside the loop
+        match_diff = fc.match_depth - ctx.match_depth
+        i = 0
+        while i < match_diff:
+            fc.emit(OP_POP, 0, stmt.pos.line)
+            i += 1
         # Pop handlers pushed inside the loop
         depth_diff = fc.handler_depth - ctx.handler_depth
         i = 0
@@ -1093,6 +1101,13 @@ class Compiler:
         if len(fc.loop_stack) == 0:
             return
         ctx = fc.loop_stack[-1]
+        # Pop match scrutinee/dup values pushed inside the loop
+        match_diff = fc.match_depth - ctx.match_depth
+        i = 0
+        while i < match_diff:
+            fc.emit(OP_POP, 0, stmt.pos.line)
+            i += 1
+        # Pop handlers pushed inside the loop
         depth_diff = fc.handler_depth - ctx.handler_depth
         i = 0
         while i < depth_diff:
@@ -1236,7 +1251,9 @@ class Compiler:
                 if local is not None:
                     fc.emit(OP_DUP, 0, case.pos.line)
                     fc.emit(OP_STORE_LOCAL, local.slot, case.pos.line)
+                fc.match_depth += 2  # scrutinee + dup on stack
                 self._compile_block(case.body, fc)
+                fc.match_depth -= 2
                 fc.emit(OP_POP, 0, case.pos.line)  # pop the dup (MATCH_TYPE peeks)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
@@ -1248,7 +1265,9 @@ class Compiler:
                 )
                 fc.emit(OP_MATCH_TYPE, idx, case.pos.line)
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
+                fc.match_depth += 2  # scrutinee + dup on stack
                 self._compile_block(case.body, fc)
+                fc.match_depth -= 2
                 fc.emit(OP_POP, 0, case.pos.line)  # pop the dup (MATCH_TYPE peeks)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
@@ -1257,7 +1276,9 @@ class Compiler:
                 fc.emit(OP_NIL, 0, case.pos.line)
                 fc.emit(OP_EQ, 0, case.pos.line)  # consumes dup
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
+                fc.match_depth += 1  # scrutinee on stack (dup consumed by EQ)
                 self._compile_block(case.body, fc)
+                fc.match_depth -= 1
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
         if stmt.default is not None:
@@ -1266,7 +1287,9 @@ class Compiler:
                 if local is not None:
                     fc.emit(OP_DUP, 0, stmt.default.pos.line)
                     fc.emit(OP_STORE_LOCAL, local.slot, stmt.default.pos.line)
+            fc.match_depth += 1  # scrutinee on stack
             self._compile_block(stmt.default.body, fc)
+            fc.match_depth -= 1
         for ep in end_patches:
             fc.patch_jump(ep)
         fc.emit(OP_POP, 0, stmt.pos.line)  # pop scrutinee
